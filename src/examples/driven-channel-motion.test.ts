@@ -4,12 +4,11 @@ import { flatDocument } from "@compiler/test-support.ts";
 import { flattenComponents } from "../compiler/flatten.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { componentNodeType, createComponentSystem } from "../domain/components/index.ts";
-import { NO_INSTANCES, parameterReadOptions, type InstanceChannelSources } from "../domain/parameters/node-references.ts";
-import { NO_MORPHS } from "../domain/presets/morph-index.ts";
+import { NO_FLATTENING, parameterReadOptions, type FlatteningReads } from "../domain/parameters/node-references.ts";
 import { SILENCE } from "../domain/audio/feature-track.ts";
 import { SPECTRUM_BAND_NAMES } from "../domain/audio/spectrum-bands.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../domain/types/frame.ts";
-import type { GraphDocument } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphDocument } from "../domain/types/graph.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
@@ -179,16 +178,18 @@ interface Motion {
  * because it is smoothing would read as alive when it is not.
  */
 function motionOf(
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
   randomSeed: number,
   /**
-   * §T1551b: the flattening's instances. `op('<instance>').chan.<c>` names a node the
-   * flattening deleted, so no address answers it; it is read the way the app reads it, by
-   * the reader itself, through the inner node the instance's output publishes from.
+   * §T1551b/§T1559b: what the flattening knows, whole — required, so a caller with none
+   * says `NO_FLATTENING`. Its instances matter here: `op('<instance>').chan.<c>` names a
+   * node the flattening deleted, so no address answers it; it is read the way the app reads
+   * it, by the reader itself, through the inner node the instance's output publishes from.
    */
-  instances: InstanceChannelSources = NO_INSTANCES,
+  flattening: FlatteningReads,
 ): Map<string, Motion> {
+  const instances = flattening.instanceChannels;
   const reads = channelReads(graph);
   const addresses = [...new Set(reads.map((read) => `${read.name}.${read.key}`))].map((key) => {
     const dot = key.lastIndexOf(".");
@@ -258,7 +259,8 @@ function motionOf(
       const name = colon < 0 ? address : address.slice(0, colon);
       return seams.has(name) ? stimulusAt(frameIndex) : undefined;
     };
-    const evaluated = session.evaluate(flatDocument(graph), frame, {
+    const evaluated = session.evaluate(graph, frame, {
+      flattening,
       // §V182: the pointer the shaders read. Moving, for the same reason the seams move.
       pointer: {
         x: 0.5 + 0.3 * Math.sin(frameIndex * 0.021),
@@ -279,13 +281,7 @@ function motionOf(
     const instanceRead =
       instances.size === 0
         ? undefined
-        : parameterReadOptions({
-            graph: flatDocument(graph),
-            registry,
-            frame,
-            channels: (address) => ladder(address),
-            flattening: { morphs: NO_MORPHS, instanceChannels: instances },
-          }).nodes;
+        : parameterReadOptions({ graph, registry, frame, channels: (address) => ladder(address), flattening }).nodes;
 
     for (const address of addresses) {
       if (instanceRead !== undefined && instances.has(address.name)) {
@@ -412,7 +408,7 @@ const SWEEP: Sweep[] = [...listExamples(), ...listStarterComponentFiles()].map((
   const flattened = flattenComponents({ graph: document.graph, registry, components });
   return {
     fileName: file.fileName,
-    motion: motionOf(flattened.graph, registry, document.settings.randomSeed, flattened.instanceChannels),
+    motion: motionOf(flattened.graph, registry, document.settings.randomSeed, flattened),
   };
 });
 
@@ -477,7 +473,7 @@ describe("T1145 — every driven channel in every shipped document actually move
       groups: {},
     };
 
-    const motion = motionOf(graph, registry, 54);
+    const motion = motionOf(flatDocument(graph), registry, 54, NO_FLATTENING);
     // The band energy never reaches `every`, so the step index is pinned — a CONSTANT.
     expect(motion.get("step1.low")?.distinct).toBe(1);
     // And the same node's `bar` counts, so the same step index genuinely increments. This
@@ -503,7 +499,7 @@ describe("T1145 — every driven channel in every shipped document actually move
       },
     } as unknown as GraphDocument;
     const flattened = flattenComponents({ graph, registry: system.nodes, components: system.components.view() });
-    const motion = motionOf(flattened.graph, system.nodes, 54, flattened.instanceChannels).get("analysis1.level");
+    const motion = motionOf(flattened.graph, system.nodes, 54, flattened).get("analysis1.level");
     expect(motion?.unresolved).toBe(0);
     expect(motion?.distinct).toBe(HORIZON_FRAMES);
     expect(motion?.maximum).toBeCloseTo((HORIZON_FRAMES - 1) / 1000, 12);

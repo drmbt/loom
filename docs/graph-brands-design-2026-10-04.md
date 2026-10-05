@@ -61,12 +61,14 @@ Where a command must read the flattening (a Recall pulse fired inside a look), i
 `frame-path-flattening.test.ts` (in `test:gates`) gains a §T1552b block with two checks. Both were red-verified.
 
 - **No brand forged.** An `as FlatGraph` cast in any product module other than `compiler/flatten.ts` fails the gate, as does an `as AuthoredGraph` outside `domain/types/graph.ts`. Tests may force the defect on purpose: `component-animation.test.ts`'s raw-document controls do. Tests mint flat graphs through `flatDocument(graph)` (`compiler/test-support.ts`). It throws on a document holding a component instance, because handing that to a flat consumer is the mistake itself.
-- **The checker refuses the mistake.** A probe file is compiled with the app's tsconfig, and the gate asserts errors on exactly five lines:
+- **The checker refuses the mistake.** A probe file is compiled with the app's tsconfig, and the gate asserts errors on exactly seven lines:
   - the store's document passed where the flattening is needed;
   - `parameterReadOptions` handed a bare document;
   - `authoredGraph(flat)`;
   - the value graph's `evaluate` handed the store's document (T1559b);
-  - `evaluate` handed `authoredGraph(document)` (T1559b).
+  - `evaluate` handed `authoredGraph(document)` (T1559b);
+  - `evaluate` called with no third argument, so no flattening is said (T1559b);
+  - `evaluate` handed inputs with no `flattening` among them (T1559b).
 
 ## The scan over `src/editor`: not extended
 

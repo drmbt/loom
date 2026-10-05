@@ -9,6 +9,7 @@ import { stickyRange } from "./plot-range.ts";
 import type { PlotRange } from "./plot-range.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
 import { flatDocument } from "@compiler/test-support.ts";
+import { NO_FLATTENING } from "@domain/parameters/node-references.ts";
 
 /**
  * T735 — the value plot's axis stops refitting once a period fits the window.
@@ -96,7 +97,7 @@ function runChannel(graph: GraphDocument, frames: number): number[] {
       wallDeltaSeconds: 1 / FPS,
       absFrameIndex: index,
       absTimeSeconds: timeSeconds,
-    });
+    }, { flattening: NO_FLATTENING });
     const bag = result.byId.get("math1" as NodeId);
     out.push(bag?.["value"] ?? 0);
   }
@@ -270,7 +271,7 @@ describe("T735 — the cliff: refits stop once a period fits the window", () => 
         wallDeltaSeconds: chain.periodSeconds / 8,
         absFrameIndex: index,
         absTimeSeconds: timeSeconds,
-      });
+      }, { flattening: NO_FLATTENING });
       expect(curve[index]).toBeCloseTo(result.byId.get("math1" as NodeId)!["value"]!, 9);
     }
   });

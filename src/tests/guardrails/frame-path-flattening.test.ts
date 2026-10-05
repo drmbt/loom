@@ -301,14 +301,18 @@ describe("§T1552b — a FlatGraph is minted only by the flattener", () => {
         "declare function needsFlat(graph: FlatGraph): void;",
         "const registry = { get: () => undefined };",
         "needsFlat(flat);",
-        "session.evaluate(flat, ZERO_FRAME);",
+        "session.evaluate(flat, ZERO_FRAME, { flattening: NO_FLATTENING });",
         "parameterReadOptions({ graph: flat, registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING });",
         "parameterReadOptions({ graph: authoredGraph(stored), registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING });",
         "needsFlat(stored); // REFUSED: the store's document where the flattening is needed",
         "parameterReadOptions({ graph: stored, registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING }); // REFUSED: no side said",
         "authoredGraph(flat); // REFUSED: a flattening is not the document",
-        "session.evaluate(stored, ZERO_FRAME); // REFUSED: §T1559b — the value graph evaluates the flattening",
-        "session.evaluate(authoredGraph(stored), ZERO_FRAME); // REFUSED: and saying `authored` does not make it one",
+        "session.evaluate(stored, ZERO_FRAME, { flattening: NO_FLATTENING }); // REFUSED: §T1559b — the value graph evaluates the flattening",
+        "session.evaluate(authoredGraph(stored), ZERO_FRAME, { flattening: NO_FLATTENING }); // REFUSED: and saying `authored` does not make it one",
+        // §T1559b: WHICH flattening is required too — an evaluation input left optional is
+        // the bug class (§T1551b): the reader was built with no instances and nothing failed.
+        "session.evaluate(flat, ZERO_FRAME); // REFUSED: no flattening said",
+        "session.evaluate(flat, ZERO_FRAME, { pointer: { x: 0, y: 0, buttons: 0 } }); // REFUSED: inputs handed, and still no flattening",
         "",
       ];
       writeFileSync(file, lines.join("\n"), "utf8");
@@ -325,9 +329,9 @@ describe("§T1552b — a FlatGraph is minted only by the flattener", () => {
             .map((diagnostic) => source.getLineAndCharacterOfPosition(diagnostic.start as number).line),
         ),
       ].sort((a, b) => a - b);
-      // Exactly the five marked lines; the legitimate reads beside them typecheck.
+      // Exactly the seven marked lines; the legitimate reads beside them typecheck.
       const refused = lines.flatMap((line, index) => (line.includes("// REFUSED") ? [index] : []));
-      expect(refused).toHaveLength(5);
+      expect(refused).toHaveLength(7);
       expect(errorLines).toEqual(refused);
     } finally {
       rmSync(directory, { recursive: true, force: true });

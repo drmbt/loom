@@ -67,7 +67,8 @@ async function staged(type: string, parameters: Record<string, unknown>): Promis
 
 /** The value graph's resolver at `frame`, over the runtime's flat document — what the compile hands on. */
 function channelsAt(runtime: AppRuntime, frame: FrameEvaluationInput): ChannelResolver {
-  return createValueGraphSession(runtime.registry).evaluate(runtime.flattened.current().graph, frame).resolver;
+  const flattened = runtime.flattened.current();
+  return createValueGraphSession(runtime.registry).evaluate(flattened.graph, frame, { flattening: flattened }).resolver;
 }
 
 describe("§T1551b — the pulse watcher reads op('<instance>').chan.<c>", () => {

@@ -684,7 +684,7 @@ describe("the value graph reads the same fade (§V61)", () => {
     const fading = values.evaluate(flatDocument(graph), frame, { flattening: { ...NO_FLATTENING, morphs: buildMorphIndex({ document: graph, registry }) } });
     expect(fading.byName.get("constant1")?.["value"]).toBe(blend(0, 1, record, frame));
     // Cut the wire: without the index the same frame publishes the destination.
-    expect(values.evaluate(flatDocument(graph), frame).byName.get("constant1")?.["value"]).toBe(1);
+    expect(values.evaluate(flatDocument(graph), frame, { flattening: NO_FLATTENING }).byName.get("constant1")?.["value"]).toBe(1);
   });
 });
 

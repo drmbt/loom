@@ -120,7 +120,8 @@ function playheads(graph: GraphDocument, frames = HORIZON): number[] {
   const out: number[] = [];
   for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
     const frame = frameAt(frameIndex);
-    const evaluated = session.evaluate(flatDocument(graph), frame, {});
+    // E56 holds no component instance (`flatDocument` refuses one) and no bank.
+    const evaluated = session.evaluate(flatDocument(graph), frame, { flattening: NO_FLATTENING });
     /* §V837's ONE factory. `op('travel1').chan.high` is read inside the NODE REFERENCE
        READER, not off `channels` — a resolve handed only `channels` answers every chan read
        with "no resolver", falls back to §V108's retained static, and reports a lane that
@@ -144,7 +145,7 @@ function channel(graph: GraphDocument, name: string): number[] {
   const session = createValueGraphSession(registry);
   const out: number[] = [];
   for (let frameIndex = 0; frameIndex < HORIZON; frameIndex += 1) {
-    const value = session.evaluate(flatDocument(graph), frameAt(frameIndex), {}).resolver(name, undefined as never);
+    const value = session.evaluate(flatDocument(graph), frameAt(frameIndex), { flattening: NO_FLATTENING }).resolver(name, undefined as never);
     out.push(typeof value === "number" ? value : Number.NaN);
   }
   return out;

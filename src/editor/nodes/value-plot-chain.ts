@@ -5,6 +5,7 @@ import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { NO_FLATTENING } from "@domain/parameters/node-references.ts";
 import { compiledWithoutCatalogue } from "@compiler/index.ts";
 import { plotValues } from "./value-function.ts";
 import type { ValueFunctionPlot } from "./value-function.ts";
@@ -299,7 +300,9 @@ function sampleChainUncached(
       mode: "fixed-step",
       randomSeed: options.randomSeed,
       fps: DEFAULT_PROJECT_FPS,
-    }));
+      // §T1559b: no flattening, on purpose. The cut-out holds no instance to name, and the
+      // node-body plot draws the document's value through a fade, never the fade (§T1525b).
+    }), { flattening: NO_FLATTENING });
     const bag = result.byId.get(chain.nodeId) ?? {};
     for (const [name, value] of Object.entries(bag)) {
       let series = channels.get(name);

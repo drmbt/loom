@@ -3,6 +3,7 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { createValueGraphSession } from "../channels/value-graph.ts";
 import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../parameters/node-references.ts";
 import type { GraphDocument } from "../types/graph.ts";
 import { migrateProjectDocument } from "./document-migrations.ts";
 import type { RawDocument } from "./types.ts";
@@ -64,7 +65,7 @@ describe("3 → 4: a channel wire becomes a Select", () => {
     const after = graphOf(
       migrated(v3({ e1: { id: "e1", source: { nodeId: "m", portId: "out" }, target: { nodeId: "a", portId: "in" }, channel: "y" } })),
     );
-    const result = createValueGraphSession(registry).evaluate(flatDocument(after), frame, { pointer });
+    const result = createValueGraphSession(registry).evaluate(flatDocument(after), frame, { flattening: NO_FLATTENING, pointer });
     expect(result.diagnostics).toEqual([]);
     expect(result.byName.get("a")).toEqual({ y: 0.75 });
     // And no edge anywhere still names a channel.

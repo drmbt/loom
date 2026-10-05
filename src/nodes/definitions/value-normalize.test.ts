@@ -4,6 +4,7 @@ import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument } from "../../domain/types/graph.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 
@@ -80,7 +81,7 @@ function normalizeGraph(value: number, window: number): GraphDocument {
 function ranks(signal: readonly number[], window: number, deltaSeconds = 1 / FPS): number[] {
   const session = createValueGraphSession(registry);
   return signal.map((value, index) => {
-    const evaluated = session.evaluate(flatDocument(normalizeGraph(value, window)), frameAt(index, deltaSeconds));
+    const evaluated = session.evaluate(flatDocument(normalizeGraph(value, window)), frameAt(index, deltaSeconds), { flattening: NO_FLATTENING });
     return evaluated.byName.get("norm1")?.["value"] as number;
   });
 }
@@ -185,7 +186,7 @@ describe("valueNormalize — the mapping (T1190)", () => {
     } as never as GraphDocument;
     let last: Record<string, number> = {};
     for (let index = 0; index < 600; index += 1) {
-      last = { ...(session.evaluate(flatDocument(graph), frameAt(index)).byName.get("norm1") ?? {}) };
+      last = { ...(session.evaluate(flatDocument(graph), frameAt(index), { flattening: NO_FLATTENING }).byName.get("norm1") ?? {}) };
     }
     expect(Object.keys(last).length).toBeGreaterThan(3);
     for (const [name, value] of Object.entries(last)) {

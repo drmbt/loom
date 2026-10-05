@@ -11,6 +11,7 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { bypassPassthroughPorts } from "../graph/bypass.ts";
 import { createValueGraphSession } from "./value-graph.ts";
 import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../parameters/node-references.ts";
 
 /**
  * T541/B114 — MUTE and BYPASS on a VALUE node.
@@ -146,7 +147,7 @@ describe("B114 — a muted value source stops driving what is wired to it (T541)
    */
   it("reads the pattern's exact bag on BOTH nodes while nothing is flagged", () => {
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(flatDocument(musicIntoSwitch({})), frameAt(1.37));
+    const result = session.evaluate(flatDocument(musicIntoSwitch({})), frameAt(1.37), { flattening: NO_FLATTENING });
 
     const music = bag(result, "music1");
     // T701 moved `low` from 0.137789 to the analyser's dB domain — same kick envelope,
@@ -164,7 +165,7 @@ describe("B114 — a muted value source stops driving what is wired to it (T541)
 
   it("MUTE: the source publishes nothing and the switch sees its port as UNWIRED", () => {
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(flatDocument(musicIntoSwitch({ muted: true })), frameAt(1.37));
+    const result = session.evaluate(flatDocument(musicIntoSwitch({ muted: true })), frameAt(1.37), { flattening: NO_FLATTENING });
 
     // The muted node itself: absent, not an empty bag and not zeros. Its plot reads the
     // same map, so this is also why the plot stops.
@@ -179,7 +180,7 @@ describe("B114 — a muted value source stops driving what is wired to it (T541)
 
   it("BYPASS on a SOURCE means the same silence — it has nothing to pass through", () => {
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(flatDocument(musicIntoSwitch({ bypassed: true })), frameAt(1.37));
+    const result = session.evaluate(flatDocument(musicIntoSwitch({ bypassed: true })), frameAt(1.37), { flattening: NO_FLATTENING });
 
     expect(result.byName.has("music1")).toBe(false);
     expect(result.byName.has("source1")).toBe(false);
@@ -203,8 +204,8 @@ describe("BYPASS on a node WITH an input is a wire (T541)", () => {
 
   it("clamps to exactly 0.2 while live, and passes exactly 3.7 while bypassed", () => {
     const session = createValueGraphSession(registry);
-    expect(bag(session.evaluate(flatDocument(limitGraph(false)), frameAt(0)), "clamp1")).toEqual({ value: 0.2 });
-    expect(bag(session.evaluate(flatDocument(limitGraph(true)), frameAt(0)), "clamp1")).toEqual({ value: 3.7 });
+    expect(bag(session.evaluate(flatDocument(limitGraph(false)), frameAt(0), { flattening: NO_FLATTENING }), "clamp1")).toEqual({ value: 0.2 });
+    expect(bag(session.evaluate(flatDocument(limitGraph(true)), frameAt(0), { flattening: NO_FLATTENING }), "clamp1")).toEqual({ value: 3.7 });
   });
 
   it("passes the WHOLE bag, channel names and all, not just a `value`", () => {
@@ -216,7 +217,7 @@ describe("BYPASS on a node WITH an input is a wire (T541)", () => {
       [["m1", "out", "clamp1", "in"]],
     );
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(flatDocument(graph), frameAt(0), { pointer: POINTER_NEXT });
+    const result = session.evaluate(flatDocument(graph), frameAt(0), { flattening: NO_FLATTENING, pointer: POINTER_NEXT });
     // Live it would be {x: 0.5, y: 0.5, buttons: 0.5} — every channel on the ceiling.
     // Bypassed it is the mouse verbatim, which no clamp of this input could produce.
     expect(bag(result, "clamp1")).toEqual(POINTER_NEXT);
@@ -238,8 +239,8 @@ describe("BYPASS on a node WITH an input is a wire (T541)", () => {
         ],
       );
     const session = createValueGraphSession(registry);
-    expect(bag(session.evaluate(flatDocument(graph(false)), frameAt(0)), "pick1")).toEqual({ value: 22 });
-    expect(bag(session.evaluate(flatDocument(graph(true)), frameAt(0)), "pick1")).toEqual({ value: 11 });
+    expect(bag(session.evaluate(flatDocument(graph(false)), frameAt(0), { flattening: NO_FLATTENING }), "pick1")).toEqual({ value: 22 });
+    expect(bag(session.evaluate(flatDocument(graph(true)), frameAt(0), { flattening: NO_FLATTENING }), "pick1")).toEqual({ value: 11 });
   });
 
   it("a bypassed node whose passthrough port is UNWIRED is silent, and the silence propagates", () => {
@@ -256,7 +257,7 @@ describe("BYPASS on a node WITH an input is a wire (T541)", () => {
         ["math1", "out", "after1", "in"],
       ],
     );
-    const result = createValueGraphSession(registry).evaluate(flatDocument(graph), frameAt(0));
+    const result = createValueGraphSession(registry).evaluate(flatDocument(graph), frameAt(0), { flattening: NO_FLATTENING });
     expect(result.byName.has("math1")).toBe(false);
     expect(result.byName.has("after1")).toBe(false);
   });
@@ -285,11 +286,11 @@ describe("muting changes a §V457 merge, deliberately (T541)", () => {
 
   it("the last edge wins while both are live; muting the WINNER hands the port to the loser", () => {
     const session = createValueGraphSession(registry);
-    expect(bag(session.evaluate(flatDocument(merged("none")), frameAt(0)), "sum1")).toEqual({ value: 22 });
+    expect(bag(session.evaluate(flatDocument(merged("none")), frameAt(0), { flattening: NO_FLATTENING }), "sum1")).toEqual({ value: 22 });
     // Muting `late1` does not zero the channel — it hands it to `early1`. A different
     // node's contribution changed because of a flag on this one.
-    expect(bag(session.evaluate(flatDocument(merged("late")), frameAt(0)), "sum1")).toEqual({ value: 11 });
-    expect(bag(session.evaluate(flatDocument(merged("early")), frameAt(0)), "sum1")).toEqual({ value: 22 });
+    expect(bag(session.evaluate(flatDocument(merged("late")), frameAt(0), { flattening: NO_FLATTENING }), "sum1")).toEqual({ value: 11 });
+    expect(bag(session.evaluate(flatDocument(merged("early")), frameAt(0), { flattening: NO_FLATTENING }), "sum1")).toEqual({ value: 22 });
   });
 
   it("a muted contributor takes ITS channels out of the composed bag and leaves the rest", () => {
@@ -306,12 +307,12 @@ describe("muting changes a §V457 merge, deliberately (T541)", () => {
         ],
       );
     const session = createValueGraphSession(registry);
-    expect(bag(session.evaluate(flatDocument(graph(false)), frameAt(0), { pointer: POINTER_NEXT }), "join1")).toEqual({
+    expect(bag(session.evaluate(flatDocument(graph(false)), frameAt(0), { flattening: NO_FLATTENING, pointer: POINTER_NEXT }), "join1")).toEqual({
       ...POINTER_NEXT,
       value: 3.7,
     });
     // Not zeroed channels — GONE channels, and the untouched contributor is intact.
-    expect(bag(session.evaluate(flatDocument(graph(true)), frameAt(0), { pointer: POINTER_NEXT }), "join1")).toEqual({
+    expect(bag(session.evaluate(flatDocument(graph(true)), frameAt(0), { flattening: NO_FLATTENING, pointer: POINTER_NEXT }), "join1")).toEqual({
       value: 3.7,
     });
   });
@@ -334,8 +335,8 @@ describe("muting changes a §V457 merge, deliberately (T541)", () => {
         ],
       );
     const session = createValueGraphSession(registry);
-    expect(bag(session.evaluate(flatDocument(graph(false)), frameAt(0)), "pick1")).toEqual({ value: 22 });
-    expect(bag(session.evaluate(flatDocument(graph(true)), frameAt(0)), "pick1")).toEqual({ value: 11 });
+    expect(bag(session.evaluate(flatDocument(graph(false)), frameAt(0), { flattening: NO_FLATTENING }), "pick1")).toEqual({ value: 22 });
+    expect(bag(session.evaluate(flatDocument(graph(true)), frameAt(0), { flattening: NO_FLATTENING }), "pick1")).toEqual({ value: 11 });
   });
 });
 
@@ -432,8 +433,8 @@ describe("EVERY value node honours mute and bypass (T541, §V437)", () => {
     const session = createValueGraphSession(registry);
     // TWO frames with a MOVING pointer: Slope and Trigger have nothing to say about a
     // still signal, and a silent "live" reading would make the mute assertion vacuous.
-    session.evaluate(flatDocument(graph), frameAt(1.37), { pointer: POINTER, audio: AUDIO });
-    return session.evaluate(flatDocument(graph), frameAt(1.37 + 1 / 60), { pointer: POINTER_NEXT, audio: AUDIO });
+    session.evaluate(flatDocument(graph), frameAt(1.37), { flattening: NO_FLATTENING, pointer: POINTER, audio: AUDIO });
+    return session.evaluate(flatDocument(graph), frameAt(1.37 + 1 / 60), { flattening: NO_FLATTENING, pointer: POINTER_NEXT, audio: AUDIO });
   };
 
   for (const definition of valueNodes) {
@@ -498,18 +499,18 @@ describe("a muted stateful stage is not cooked (T541, §V181)", () => {
       );
     const session = createValueGraphSession(registry);
     // Settled on 1 (the smoother starts ON its input, so one frame is enough).
-    expect(bag(session.evaluate(flatDocument(graph(1, false)), frameAt(0)), "lag1")).toEqual({ value: 1 });
+    expect(bag(session.evaluate(flatDocument(graph(1, false)), frameAt(0), { flattening: NO_FLATTENING }), "lag1")).toEqual({ value: 1 });
 
     // Sixty muted frames while the INPUT is 0: nothing published, and — the point —
     // nothing integrated. Had the stage cooked through them it would now hold ~0.018.
     for (let index = 1; index < 61; index += 1) {
-      const muted = session.evaluate(flatDocument(graph(0, true)), frameAt(index / 60));
+      const muted = session.evaluate(flatDocument(graph(0, true)), frameAt(index / 60), { flattening: NO_FLATTENING });
       expect(muted.byName.has("lag1")).toBe(false);
     }
 
     // Unmuted, it resumes from 1 and takes its FIRST step down — one frame of a 0.25s
     // lag, ≈0.935. A stage that had been cooking would read ≈0.017 here.
-    const resumed = bag(session.evaluate(flatDocument(graph(0, false)), frameAt(61 / 60)), "lag1")?.["value"] as number;
+    const resumed = bag(session.evaluate(flatDocument(graph(0, false)), frameAt(61 / 60), { flattening: NO_FLATTENING }), "lag1")?.["value"] as number;
     expect(resumed).toBeCloseTo(0.9355, 4);
   });
 });

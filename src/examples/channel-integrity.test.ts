@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { compiledWithoutCatalogue, flattenComponents } from "../compiler/flatten.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { componentNodeType, createComponentSystem } from "../domain/components/index.ts";
-import { NO_INSTANCES, nodeReferenceMembers, type InstanceChannelSources } from "../domain/parameters/node-references.ts";
+import { NO_FLATTENING, nodeReferenceMembers, type FlatteningReads } from "../domain/parameters/node-references.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { FlatGraph, GraphDocument, GraphNode } from "../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
@@ -104,11 +104,11 @@ const nodeByLabel = (graph: GraphDocument, label: string): GraphNode | undefined
   Object.values(graph.nodes).find((node) => node.label === label);
 
 /** The union of channel names each label publishes, over the frames above. */
-function publishedChannels(graph: FlatGraph): Map<string, Set<string>> {
+function publishedChannels(logical: Logical): Map<string, Set<string>> {
   const session = createValueGraphSession(registry);
   const published = new Map<string, Set<string>>();
   for (const frame of FRAMES) {
-    for (const [name, bag] of session.evaluate(graph, frame).byName) {
+    for (const [name, bag] of session.evaluate(logical.graph, frame, { flattening: logical }).byName) {
       const keys = published.get(name) ?? new Set<string>();
       for (const key of Object.keys(bag)) keys.add(key);
       published.set(name, keys);
@@ -119,16 +119,16 @@ function publishedChannels(graph: FlatGraph): Map<string, Set<string>> {
 
 const EXAMPLE_PATHS = new Set(listExamples().map((file) => file.path));
 
-/** What the app evaluates: the flat graph, and the instances `op()` can still name in it. */
-interface Logical {
+/** What the app evaluates: the flat graph, and what its flattening knows (the instances `op()` can still name in it). */
+interface Logical extends FlatteningReads {
   readonly graph: FlatGraph;
-  readonly instanceChannels: InstanceChannelSources;
 }
 
 /** The graph the app evaluates for `file`: flattened for an example, raw for a component file. */
 function logicalGraphOf(file: ExampleFile, graph: GraphDocument): Logical {
-  // Walked raw means walked with NO catalogue: the document as it is, an instance whole.
-  const raw = { graph: compiledWithoutCatalogue(graph), instanceChannels: NO_INSTANCES };
+  // Walked raw means walked with NO catalogue: the document as it is, an instance whole —
+  // so nothing was inlined, and there is no flattening to read from.
+  const raw = { graph: compiledWithoutCatalogue(graph), ...NO_FLATTENING };
   if (!EXAMPLE_PATHS.has(file.path)) return raw;
   const { document, result } = requireExample(file);
   if (result.components === undefined || result.nodes === undefined) return raw;
@@ -140,7 +140,7 @@ function unresolvable(file: ExampleFile, graph: GraphDocument, unverified: strin
 }
 
 function unresolvableIn(fileName: string, graph: GraphDocument, logical: Logical, unverified: string[]): string[] {
-  const published = publishedChannels(logical.graph);
+  const published = publishedChannels(logical);
   const problems: string[] = [];
   for (const reference of channelReferences(graph)) {
     /*

@@ -4,6 +4,7 @@ import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument } from "../../domain/types/graph.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 
@@ -55,7 +56,7 @@ function stepGraph(count: number, parameters: Record<string, unknown> = {}): Gra
 }
 
 const heldAt = (count: number, parameters: Record<string, unknown> = {}, seconds = 0): number =>
-  createValueGraphSession(registry).evaluate(flatDocument(stepGraph(count, parameters)), frameAt(seconds)).byName.get("step1")?.[
+  createValueGraphSession(registry).evaluate(flatDocument(stepGraph(count, parameters)), frameAt(seconds), { flattening: NO_FLATTENING }).byName.get("step1")?.[
     "value"
   ] as number;
 
@@ -124,9 +125,9 @@ describe("valueStep — holds a pick for N counts, then steps (T548)", () => {
     const session = createValueGraphSession(registry);
     const played: number[] = [];
     for (const count of [0, 4, 8, 12]) {
-      played.push(session.evaluate(flatDocument(stepGraph(count)), frameAt(count)).byName.get("step1")?.["value"] as number);
+      played.push(session.evaluate(flatDocument(stepGraph(count)), frameAt(count), { flattening: NO_FLATTENING }).byName.get("step1")?.["value"] as number);
     }
-    const scrubbedBack = session.evaluate(flatDocument(stepGraph(4)), frameAt(4)).byName.get("step1")?.["value"];
+    const scrubbedBack = session.evaluate(flatDocument(stepGraph(4)), frameAt(4), { flattening: NO_FLATTENING }).byName.get("step1")?.["value"];
     expect(scrubbedBack).toBe(played[1]);
     // And a cold session — an offline render that never saw the earlier frames — agrees.
     expect(heldAt(4)).toBe(played[1]);
@@ -147,6 +148,7 @@ describe("valueStep — holds a pick for N counts, then steps (T548)", () => {
       groups: {},
     } as unknown as GraphDocument;
     const bag = createValueGraphSession(registry).evaluate(flatDocument(graph), frameAt(0), {
+      flattening: NO_FLATTENING,
       pointer: { x: 3, y: 7, buttons: 1 },
     }).byName.get("step1");
     expect(Object.keys(bag ?? {}).sort()).toEqual(["buttons", "x", "y"]);
@@ -189,7 +191,7 @@ describe("bar → Step → Lag is 'hold for a phrase, then lerp to the next' (T5
     // make it converge at a rate no running session ever sees.
     for (let index = 0; index <= 16 * 60; index += 1) {
       const seconds = index / 60;
-      const result = session.evaluate(flatDocument(graph), frameAt(seconds));
+      const result = session.evaluate(flatDocument(graph), frameAt(seconds), { flattening: NO_FLATTENING });
       bars.push({
         t: seconds,
         step: result.byName.get("step1")?.["bar"] as number,

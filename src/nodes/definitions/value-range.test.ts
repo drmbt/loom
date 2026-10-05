@@ -5,6 +5,7 @@ import type { GraphDocument } from "../../domain/types/graph.ts";
 import type { ValueChannels } from "../../domain/types/node-definition.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
@@ -79,7 +80,7 @@ function chain(
 
 function bagOf(graph: GraphDocument, pointer?: { x: number; y: number; buttons: number }): ValueChannels {
   const session = createValueGraphSession(registry);
-  const result = session.evaluate(flatDocument(graph), FRAME, pointer === undefined ? undefined : { pointer });
+  const result = session.evaluate(flatDocument(graph), FRAME, { flattening: NO_FLATTENING, ...(pointer === undefined ? {} : { pointer }) });
   expect(result.diagnostics).toEqual([]);
   const bag = result.byName.get("math1");
   expect(bag).toBeDefined();
@@ -303,7 +304,7 @@ describe("T1348b — the Range node is Math's Range with Clamp on by default", (
       { range: { id: "range", type: "valueRange", definitionVersion: 1, position: { x: 0, y: 0 }, label: "range1", parameters } },
     );
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(flatDocument(doc), FRAME);
+    const result = session.evaluate(flatDocument(doc), FRAME, { flattening: NO_FLATTENING });
     expect(result.diagnostics).toEqual([]);
     return result.byName.get("range1")!["value"]!;
   }

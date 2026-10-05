@@ -11,12 +11,12 @@ describe("Resonance musical control lanes",()=>{
   it("separates drum impulses from slow spectral motion and preserves the source bar clock",async()=>{
     expect(resonanceDocument.graph.nodes["room"]!.parameters["panelClock"]).toBe(0);
     const registry=createNodeRegistry(allNodeDefinitions).view();
-    const graph=flattenComponents({graph:resonanceDocument.graph,registry,components:await starterComponentsView()}).graph;
+    const flattened=flattenComponents({graph:resonanceDocument.graph,registry,components:await starterComponentsView()});
     const session=createValueGraphSession(registry);
     const samples:Record<string,number>[]=[];
     for(let i=0;i<1200;i++) {
       const phase=i%180;
-      const result=session.evaluate(graph,{timeSeconds:i/60,deltaSeconds:1/60,frameIndex:i,mode:"offline",randomSeed:75},{audio:{...SILENCE,
+      const result=session.evaluate(flattened.graph,{timeSeconds:i/60,deltaSeconds:1/60,frameIndex:i,mode:"offline",randomSeed:75},{flattening:flattened,audio:{...SILENCE,
         level:0.3,low:i<600?0.2:0.8,lowMid:0.4,highMid:0.3,high:0.2,
         kickCount:phase===30?1:0,snareCount:phase===90?1:0,hatCount:phase===120?1:0,
       }});

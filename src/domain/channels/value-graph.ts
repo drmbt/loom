@@ -9,7 +9,7 @@ import { resolveParameterSchema, effectiveParameterSchema } from "../parameters/
 import { bypassPassthroughPorts } from "../graph/bypass.ts";
 import { nodeNames } from "../graph/names.ts";
 import { bindingTargets, parameterDependencies } from "../graph/parameter-dependencies.ts";
-import { NO_FLATTENING, parameterReadOptions, type FlatteningReads } from "../parameters/node-references.ts";
+import { parameterReadOptions, type FlatteningReads } from "../parameters/node-references.ts";
 
 /**
  * The value graph (T273/T274, §V179): TD's CHOP layer, CPU-side, evaluated once per
@@ -110,20 +110,23 @@ export interface ValueGraphSession {
      */
     graph: FlatGraph,
     frame: FrameEvaluationInput,
-    extras?: {
-      pointer?: { x: number; y: number; buttons: number };
-      audio?: AudioFeatures;
-      /** T654: external channels (analyze, or anything published) for `channelIn`. */
-      channels?: (name: string) => number | undefined;
+    extras: {
       /**
        * §T1559b: what the flattening knows, WHOLE — the runtime passes its `FlattenedGraph`
        * (§T1551b), the one `graph` came from. Its morphs in flight: a widget or a Constant a
        * bank recalls with a morph publishes the FADING value, the same number the plan's
        * uniforms carry that frame (T1497b, §V61, §V109). And its instances: a value node's
        * own parameter reads `op('<instance>').chan.<c>` as the compiler does (T1485b).
-       * Absent = `NO_FLATTENING`, a document with nothing fading and no instance.
+       *
+       * REQUIRED, as every field of a `ParameterReadContext` is (§T1551b): while it was
+       * optional the reader was built with no instances and nothing failed to compile. A
+       * caller with no flattening behind its graph says so by name, with `NO_FLATTENING`.
        */
-      flattening?: FlatteningReads;
+      flattening: FlatteningReads;
+      pointer?: { x: number; y: number; buttons: number };
+      audio?: AudioFeatures;
+      /** T654: external channels (analyze, or anything published) for `channelIn`. */
+      channels?: (name: string) => number | undefined;
     },
   ): ValueGraphResult;
   /** Clears every node's persistent state (§V181) — transport reset, backward seek. */
@@ -148,9 +151,9 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
       states.clear();
     },
 
-    evaluate(graph, frame, extras = {}) {
+    evaluate(graph, frame, extras) {
       const diagnostics: RuntimeDiagnostic[] = [];
-      const flattening = extras.flattening ?? NO_FLATTENING;
+      const { flattening } = extras;
 
       interface Member {
         readonly nodeId: NodeId;

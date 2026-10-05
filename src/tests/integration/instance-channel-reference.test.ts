@@ -98,7 +98,7 @@ function world(amount: StoredParameter, level = 0.75) {
   const flattened = flattenComponents({ graph, registry: system.nodes, components });
   // The premise, asserted: the instance node is gone from what the compiler reads.
   expect(Object.keys(flattened.graph.nodes)).not.toContain("inst");
-  const evaluated = createValueGraphSession(system.nodes).evaluate(flattened.graph, FRAME);
+  const evaluated = createValueGraphSession(system.nodes).evaluate(flattened.graph, FRAME, { flattening: flattened });
   return { system, graph, components, flattened, evaluated };
 }
 

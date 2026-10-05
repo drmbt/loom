@@ -6,6 +6,7 @@ import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { flatDocument } from "../compiler/test-support.ts";
+import { NO_FLATTENING } from "../domain/parameters/node-references.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import { valueLagNode } from "../nodes/definitions/value-graph-nodes.ts";
 import { audioAnalysisHost } from "./starter-components.ts";
@@ -51,7 +52,7 @@ function trace(
   const session = createValueGraphSession(registry);
   const out: Record<string, number[]> = Object.fromEntries(nodeIds.map((id) => [id, []]));
   for (let index = 0; index < frames; index += 1) {
-    const result = session.evaluate(flatDocument(graph), frameAt(index), {});
+    const result = session.evaluate(flatDocument(graph), frameAt(index), { flattening: NO_FLATTENING });
     for (const id of nodeIds) out[id]!.push(result.byId.get(id as never)?.[channel] ?? NaN);
   }
   return out;

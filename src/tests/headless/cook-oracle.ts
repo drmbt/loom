@@ -10,6 +10,8 @@ import { createDomainBus } from "../../domain/commands/index.ts";
 import type { GraphPatchOperation } from "../../domain/types/patch.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import type { ComponentRegistryView } from "../../domain/components/index.ts";
+import { NO_INSTANCES, type FlatteningReads } from "../../domain/parameters/node-references.ts";
+import { buildMorphIndex } from "../../domain/presets/morph-index.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 import type { FlatGraph, GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
@@ -346,6 +348,16 @@ export async function renderUnderPolicy(request: OracleRunRequest): Promise<stri
      * the graph the compile below evaluates (`compiledWithoutCatalogue`, as `renderHeadless`).
      */
     const logicalGraph = (): FlatGraph => flattened?.graph ?? compiledWithoutCatalogue(store.view.getGraph());
+    /**
+     * §T1559b: what the value graph reads beside that graph — exactly what the compile below
+     * reads. With a catalogue that is the flattening, whole; with none, `compileGraph` reads
+     * the document's own morph index and no instance, so the value graph is handed the same.
+     */
+    const logicalFlattening = (): FlatteningReads =>
+      flattened ?? {
+        morphs: buildMorphIndex({ document: store.view.getGraph(), registry: request.registry }),
+        instanceChannels: NO_INSTANCES,
+      };
 
     const compileNow = (resolution?: ParameterResolution) =>
       compileGraph({
@@ -447,7 +459,10 @@ export async function renderUnderPolicy(request: OracleRunRequest): Promise<stri
       // T340's order, exactly as renderHeadless keeps it: channels advance, the
       // per-frame plan re-resolves, and only changed VALUES are pushed (§V5).
       const audio = audioAt?.(frameIndex) ?? null;
-      const evaluated = valueSession.evaluate(logicalGraph(), frame, audio === null ? {} : { audio });
+      const evaluated = valueSession.evaluate(logicalGraph(), frame, {
+        flattening: logicalFlattening(),
+        ...(audio === null ? {} : { audio }),
+      });
       const next = compileNow({ frame, channels: evaluated.resolver });
       animator.push(backend, plan, next);
 

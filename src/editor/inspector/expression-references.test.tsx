@@ -423,7 +423,7 @@ describe("§T1485b — op('<instance>').chan. offers the instance's channels", (
       frameIndex: 0,
       mode: "offline",
       randomSeed: 0,
-    });
+    }, { flattening: flattened });
     render(
       <Inspector
         bus={bus}

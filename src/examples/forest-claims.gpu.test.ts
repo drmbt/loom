@@ -6,6 +6,7 @@ import type { GraphDocument } from "../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { flatDocument } from "../compiler/test-support.ts";
+import { NO_FLATTENING } from "../domain/parameters/node-references.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { renderHeadless } from "../tests/headless/render-harness.ts";
@@ -971,6 +972,8 @@ describe("E57 Forest — claims", () => {
           randomSeed: 57,
         };
         const evaluated = session.evaluate(flatDocument(subject), frame, {
+          // E57 holds no component instance (`flatDocument` refuses one) and no bank.
+          flattening: NO_FLATTENING,
           pointer: { x: 0.5, y: 0.5, buttons: 0 },
           channels: () => undefined,
         });
@@ -1144,7 +1147,7 @@ describe("E57 Forest — claims", () => {
       const evaluated = session.evaluate(
         flatDocument(graph),
         { timeSeconds: frameIndex / 60, deltaSeconds: 1 / 60, frameIndex, mode: "offline", randomSeed: 57 },
-        { pointer: { x: 0.5, y: 0.5, buttons: 0 }, channels: () => undefined },
+        { flattening: NO_FLATTENING, pointer: { x: 0.5, y: 0.5, buttons: 0 }, channels: () => undefined },
       );
       const value = evaluated.resolver("rise1:onset", undefined as never);
       if (typeof value === "number" && Number.isFinite(value)) series.push(value);

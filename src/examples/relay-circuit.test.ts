@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createDeviceHub, nodeUdpSocketFactory, type DeviceSession } from "@devices/device-hub.ts";
 import { messagesFor } from "@/app/use-osc-bridge.ts";
+import { flatDocument } from "@compiler/test-support.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
 import { NO_FLATTENING, parameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
@@ -60,6 +61,8 @@ const REGISTRY = createNodeRegistry(allNodeDefinitions).view();
 /** The shipped document, not a fixture: the point is that ITS numbers agree with each other. */
 const RELAY = EXAMPLE_DOCUMENTS.find((document) => document.projectId === "example-e64-relay");
 if (RELAY === undefined) throw new Error("E64 Relay is not in EXAMPLE_DOCUMENTS");
+/** What the value graph evaluates. E64 holds no component instance (`flatDocument` refuses one) and no bank, so there is no flattening to read beside it. */
+const RELAY_GRAPH = flatDocument(RELAY.graph);
 
 /** The node ids the document uses. Read from the graph so a rename fails here, loudly. */
 const SEND = "send" as NodeId;
@@ -121,7 +124,8 @@ function step(
     mode: "realtime",
     randomSeed: RELAY?.settings.randomSeed ?? 0,
   };
-  const evaluated = graphSession.evaluate(RELAY?.graph as never, frame, {
+  const evaluated = graphSession.evaluate(RELAY_GRAPH, frame, {
+    flattening: NO_FLATTENING,
     pointer: { x: 0.5, y: 0.5, buttons: 0 },
     channels: (name: string) => (name === "meter1" ? meter : circuit.readings.get(name)),
   });
@@ -190,9 +194,9 @@ describe("T1193 — E64 Relay: oscOut reaches its own oscIn over real UDP", () =
   it("publishes its declared Rest before anything arrives — the no-helper picture", () => {
     const graphSession = createValueGraphSession(REGISTRY);
     const evaluated = graphSession.evaluate(
-      RELAY?.graph as never,
+      RELAY_GRAPH,
       { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "realtime", randomSeed: 64 },
-      { pointer: { x: 0.5, y: 0.5, buttons: 0 }, channels: () => undefined },
+      { flattening: NO_FLATTENING, pointer: { x: 0.5, y: 0.5, buttons: 0 }, channels: () => undefined },
     );
     // No resolver at all is the strongest form of "no helper": the node still publishes.
     expect(evaluated.byId.get(HEAR)).toEqual({ level: rest });

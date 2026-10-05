@@ -6,7 +6,7 @@ import { testCapabilities } from "../../compiler/test-support.ts";
 import { hasAnimatedParameters } from "../../domain/channels/graph-channels.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { createPulseWatcher, pulseCommandInput } from "../../domain/parameters/pulse.ts";
-import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
+import { NO_FLATTENING, type FlatteningReads } from "../../domain/parameters/node-references.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 import { DEFAULT_PROJECT_SETTINGS, type FlatGraph } from "../../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
@@ -73,14 +73,14 @@ function fixture(): {
 
 /** Runs the value graph forward, exactly as `advanceChannels` does, and keeps the last. */
 function runValueGraph(
-  graph: Parameters<ReturnType<typeof createValueGraphSession>["evaluate"]>[0],
+  flattened: FlatteningReads & { readonly graph: FlatGraph },
   registry: ReturnType<typeof animatedComponentSystem>["registry"],
   frames: number,
 ) {
   const session = createValueGraphSession(registry);
-  let last = session.evaluate(graph, frameAt(0), { pointer: POINTER });
+  let last = session.evaluate(flattened.graph, frameAt(0), { flattening: flattened, pointer: POINTER });
   for (let index = 1; index < frames; index += 1) {
-    last = session.evaluate(graph, frameAt(index), { pointer: POINTER });
+    last = session.evaluate(flattened.graph, frameAt(index), { flattening: flattened, pointer: POINTER });
   }
   return last;
 }
@@ -90,10 +90,11 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const { raw, flat, registry } = fixture();
 
     // The control: on the raw document the component's internals do not exist at all.
-    const dead = runValueGraph(raw as FlatGraph, registry, 16); // §T1552b: the defect, forced past the brand
+    // §T1552b: the defect, forced past the brand — the raw document, with no flattening behind it.
+    const dead = runValueGraph({ ...NO_FLATTENING, graph: raw as FlatGraph }, registry, 16);
     expect([...dead.byId.keys()]).toEqual([]);
 
-    const live = runValueGraph(flat.graph, registry, 16);
+    const live = runValueGraph(flat, registry, 16);
     const one = live.byId.get("c1/wob")?.["value"];
     const two = live.byId.get("c2/wob")?.["value"];
     expect(typeof one).toBe("number");
@@ -112,7 +113,7 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const one: number[] = [];
     const two: number[] = [];
     for (let index = 0; index < 24; index += 1) {
-      const result = session.evaluate(flat.graph, frameAt(index), { pointer: POINTER });
+      const result = session.evaluate(flat.graph, frameAt(index), { flattening: flat, pointer: POINTER });
       one.push(result.byId.get("c1/lag")?.["value"] as number);
       two.push(result.byId.get("c2/lag")?.["value"] as number);
     }
@@ -124,14 +125,14 @@ describe("T615 — a component's own animation runs, per instance", () => {
     expect(two.every((value) => Number.isFinite(value))).toBe(true);
     expect(one).not.toEqual(two);
     // And each one is a SMOOTHING, not a copy of its input — it lags behind the LFO.
-    const lastFrame = session.evaluate(flat.graph, frameAt(24), { pointer: POINTER });
+    const lastFrame = session.evaluate(flat.graph, frameAt(24), { flattening: flat, pointer: POINTER });
     expect(lastFrame.byId.get("c1/lag")?.["value"]).not.toBe(lastFrame.byId.get("c1/wob")?.["value"]);
   });
 
   it("mechanism 3 (EXPRESSION): the operand expression evaluates inside the component, per instance", () => {
     const { flat, registry } = fixture();
     const frames = 16;
-    const live = runValueGraph(flat.graph, registry, frames);
+    const live = runValueGraph(flat, registry, frames);
 
     const time = frameAt(frames - 1).timeSeconds;
     const expected = (instance: string): number =>
@@ -158,7 +159,7 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const { raw, flat, registry } = fixture();
     const frames = 16;
     const frame = frameAt(frames - 1);
-    const live = runValueGraph(flat.graph, registry, frames);
+    const live = runValueGraph(flat, registry, frames);
 
     // B41's `withUniqueNames` renamed instance 2's `amt` and REWROTE the binding that
     // reads it — this is the property the whole flat route rests on.

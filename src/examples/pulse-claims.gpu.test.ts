@@ -4,6 +4,7 @@ import { planRegion } from "../nodes/definitions/test-support.ts";
 
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { flatDocument } from "../compiler/test-support.ts";
+import { NO_FLATTENING } from "../domain/parameters/node-references.ts";
 import type { GraphDocument } from "../domain/types/graph.ts";
 import { nodeGpuHost, probeDawn } from "../runtime/backend/vgpu/node-gpu-host.ts";
 import { toRgba8 } from "../runtime/export/image.ts";
@@ -64,7 +65,8 @@ describe("E45 Pulse — the set holds between boundaries and changes across one"
     const paletteValues = new Set<number>();
     let boundaries = 0;
     for (let frame = 0; frame < 1900; frame += 1) {
-      const evaluated = session.evaluate(flatDocument(document.graph), frameAt(frame, seed), {});
+      // E45 holds no component instance (`flatDocument` refuses one) and no bank.
+      const evaluated = session.evaluate(flatDocument(document.graph), frameAt(frame, seed), { flattening: NO_FLATTENING });
       const bar = evaluated.byId.get("beat")?.["bar"];
       const held = evaluated.byId.get("step")?.["bar"];
       // T828 addendum: the PALETTE is phrase-held on the same structure — the cut and
