@@ -1695,6 +1695,45 @@
             1,
             1
           ],
+          "color.b": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7) * 0.06 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.28 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "color.g": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7) * 0.1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.62 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.84))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.84
+              }
+            },
+            "mode": "expression"
+          },
+          "color.r": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7) * 1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + -1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 1 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + -1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.62))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.62
+              }
+            },
+            "mode": "expression"
+          },
           "falloff": "inverseSquare",
           "intensity": {
             "bindings": {
@@ -1773,6 +1812,45 @@
             1,
             1
           ],
+          "color.b": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7) * 0.06 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.28 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "color.g": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7) * 0.1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.62 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.84))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.84
+              }
+            },
+            "mode": "expression"
+          },
+          "color.r": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7) * 1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 0), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 1 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 0)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.62))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.62
+              }
+            },
+            "mode": "expression"
+          },
           "falloff": "inverseSquare",
           "intensity": {
             "bindings": {
@@ -1851,6 +1929,45 @@
             1,
             1
           ],
+          "color.b": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7) * 0.06 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.28 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "color.g": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7) * 0.1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 0.62 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.84))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.84
+              }
+            },
+            "mode": "expression"
+          },
+          "color.r": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7) * 1 + (1 - (mod((floor(op('travel1').chan.value / 12.8) + 1), 15) == 7)) * (((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5) * 1 + (1 - ((1 - smoothstep(6, 13, abs(mod((((floor(op('travel1').chan.value / 12.8) + 1)) + 0.5) * 12.8, 96) - 48))) > 0.5)) * 0.62))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.62
+              }
+            },
+            "mode": "expression"
+          },
           "falloff": "inverseSquare",
           "intensity": {
             "bindings": {
@@ -1937,7 +2054,7 @@
             "mode": "expression"
           },
           "model": "pbr",
-          "source": "// @use surface-detail\nstruct Params {\n  wet: f32, // @default 0.7  How much of the wall carries a film of water.\n  grime: f32, // @default 0.6  Rust and soot in the recesses.\n  lamp: f32, // @default 14  Radiance of the lamp plates in the crown.\n  lampColor: vec3f, // @default [0.62, 0.84, 1]  Their colour.\n};\n\nconst LAMP: f32 = 12.80000;\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let what = s.tint.r;\n  let around = s.tint.b;\n  let along = s.tint.a;\n  let coarse = detailFbm(s.world * 1.7, 4, s.footprint);\n  let fine = detailFbm(s.world * 13.0, 3, s.footprint);\n  // Water runs down from the crown in streaks and pools on the deck.\n  let streak = detailFbm(vec3f(around * 90.0, along * 0.6, 3.0), 3, s.footprint).value;\n  let film = clamp(p.wet * (0.35 + 0.9 * smoothstep(0.42, 0.7, streak) + 0.5 * step(2.5, what)), 0.0, 1.0);\n  let recess = smoothstep(0.35, 0.75, coarse.value);\n\n  var albedo = vec3f(0.035, 0.038, 0.042);\n  var rough = 0.72;\n  var metal = 0.0;\n  if (what > 2.5) {\n    // The deck: plate steel.\n    albedo = vec3f(0.03, 0.031, 0.033);\n    rough = 0.5;\n    metal = 0.85;\n  } else if (what > 1.5) {\n    // Pipes and cable runs: painted, chipped.\n    albedo = mix(vec3f(0.05, 0.055, 0.06), vec3f(0.07, 0.03, 0.02), step(0.55, s.tint.g));\n    rough = 0.45;\n    metal = 0.4;\n  } else if (what > 0.5) {\n    // Ribs: bare steel.\n    albedo = vec3f(0.045, 0.046, 0.05);\n    rough = 0.4;\n    metal = 0.9;\n  }\n  let rust = recess * p.grime;\n  albedo = mix(albedo, vec3f(0.07, 0.028, 0.012), rust * 0.6) * (1.0 - 0.45 * rust);\n  rough = mix(rough + 0.2 * rust, 0.07, film);\n\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.05, 1.0);\n  o.metallic = metal;\n  o.normal = detailBump(s.normal, coarse.gradient * 1.7 + fine.gradient * 13.0 * 0.25, 0.05 * (1.0 - 0.7 * film));\n\n  // A lamp plate in the crown at every lamp station; each has its own steadiness.\n  let station = floor(along / LAMP);\n  let onPlate = (1.0 - smoothstep(0.3, 0.36, abs(along - (station + 0.5) * LAMP))) * (1.0 - smoothstep(0.012, 0.016, abs(around - 0.5)));\n  let nerve = fract(sin(station * 12.9898) * 43758.5453);\n  let flicker = 1.0 - step(0.82, nerve) * step(0.6, fract(sin(floor(s.absTime * 11.0) * 78.233 + station) * 43758.5453)) * 0.8;\n  o.emissive = o.emissive + p.lampColor * p.lamp * onPlate * flicker;\n  return o;\n}"
+          "source": "// @use surface-detail\nstruct Params {\n  wet: f32, // @default 0.7  How much of the wall carries a film of water.\n  grime: f32, // @default 0.6  Rust and soot in the recesses.\n  lamp: f32, // @default 14  Radiance of the lamp plates in the crown.\n};\n\nconst LAMP: f32 = 12.80000;\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\n// The tone of the lamp at a station (tunnel.ts, LAMP_TONES): cold in the bore, sodium in a hall, every fifteenth an alarm.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP)));\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let what = s.tint.r;\n  let around = s.tint.b;\n  let along = s.tint.a;\n  let coarse = detailFbm(s.world * 1.7, 4, s.footprint);\n  let fine = detailFbm(s.world * 13.0, 3, s.footprint);\n  // Water runs down from the crown in streaks and pools on the deck.\n  let streak = detailFbm(vec3f(around * 90.0, along * 0.6, 3.0), 3, s.footprint).value;\n  let film = clamp(p.wet * (0.35 + 0.9 * smoothstep(0.42, 0.7, streak) + 0.5 * step(2.5, what)), 0.0, 1.0);\n  let recess = smoothstep(0.35, 0.75, coarse.value);\n\n  var albedo = vec3f(0.035, 0.038, 0.042);\n  var rough = 0.72;\n  var metal = 0.0;\n  if (what > 2.5) {\n    // The deck: plate steel.\n    albedo = vec3f(0.03, 0.031, 0.033);\n    rough = 0.5;\n    metal = 0.85;\n  } else if (what > 1.5) {\n    // Pipes and cable runs: painted, chipped.\n    albedo = mix(vec3f(0.05, 0.055, 0.06), vec3f(0.07, 0.03, 0.02), step(0.55, s.tint.g));\n    rough = 0.45;\n    metal = 0.4;\n  } else if (what > 0.5) {\n    // Ribs: bare steel.\n    albedo = vec3f(0.045, 0.046, 0.05);\n    rough = 0.4;\n    metal = 0.9;\n  }\n  let rust = recess * p.grime;\n  albedo = mix(albedo, vec3f(0.07, 0.028, 0.012), rust * 0.6) * (1.0 - 0.45 * rust);\n  rough = mix(rough + 0.2 * rust, 0.07, film);\n\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.05, 1.0);\n  o.metallic = metal;\n  o.normal = detailBump(s.normal, coarse.gradient * 1.7 + fine.gradient * 13.0 * 0.25, 0.05 * (1.0 - 0.7 * film));\n\n  // A lamp plate in the crown at every lamp station; each has its own steadiness.\n  let station = floor(along / LAMP);\n  let onPlate = (1.0 - smoothstep(0.3, 0.36, abs(along - (station + 0.5) * LAMP))) * (1.0 - smoothstep(0.012, 0.016, abs(around - 0.5)));\n  let nerve = fract(sin(station * 12.9898) * 43758.5453);\n  let flicker = 1.0 - step(0.82, nerve) * step(0.6, fract(sin(floor(s.absTime * 11.0) * 78.233 + station) * 43758.5453)) * 0.8;\n  o.emissive = o.emissive + lampTone(station) * p.lamp * onPlate * flicker;\n  return o;\n}"
         },
         "position": {
           "x": -2100,

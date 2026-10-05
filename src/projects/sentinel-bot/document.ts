@@ -10,7 +10,7 @@ import { PATH, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { BODY_ATTRIBUTES, BODY_KERNEL, JOINT_ATTRIBUTES, jointCount, jointKernel } from "./rig.ts";
 import { HULL_SURFACE_WGSL } from "./surface.ts";
-import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMP_SPACING } from "./tunnel.ts";
+import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMP_SPACING, lampToneExpression } from "./tunnel.ts";
 
 /**
  * T1561b — THE SENTINEL DOCUMENT: a robot walking, swimming and perching in the tunnel, played
@@ -123,13 +123,16 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const aim = onPath(`(0.3 + 3 * (${RIG("pick")} == 0))`, "0", "0", [0, 0, 3.3]);
   const glow = onPath("0.9", "0", "0", [0, 0, 0.9]);
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
-  const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string } => {
+  const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; tone: readonly [string, string, string] } => {
+    const station = `(floor(${TRAVEL} / ${LAMP_SPACING}) + ${step})`;
     const z = `((floor(${TRAVEL} / ${LAMP_SPACING}) + ${step + 0.5}) * ${LAMP_SPACING})`;
     const at = pathExpression(z);
     const rest = (step + 0.5) * LAMP_SPACING;
     return {
       position: { x: expressionSlot(at.x, 0), y: expressionSlot(`${at.y} + ${on("bore")} - 0.35`, 2.25), z: expressionSlot(z, rest) },
       near: `clamp(1.5 - abs(${z} - ${TRAVEL}) / ${LAMP_SPACING}, 0, 1)`,
+      // The light is the colour of the plate it hangs under (tunnel.ts, LAMP_TONES).
+      tone: lampToneExpression(station),
     };
   };
   const lamps = [-1, 0, 1].map(lampAt);
@@ -257,6 +260,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {
         kind: "point",
         color: [0.62, 0.84, 1, 1],
+        "color.r": expressionSlot(lamp.tone[0], 0.62),
+        "color.g": expressionSlot(lamp.tone[1], 0.84),
+        "color.b": expressionSlot(lamp.tone[2], 1),
         intensity: expressionSlot(`${on("lamp")} * ${lamp.near} * (0.7 + ${LOW} * 0.8)`, index === 1 ? 26 : 0),
         position: [0, 2.25, (index - 0.5) * LAMP_SPACING],
         "position.x": lamp.position.x,

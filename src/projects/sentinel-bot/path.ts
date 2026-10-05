@@ -90,6 +90,17 @@ export function pathExpression(z: string, path: PathSpec = PATH): { readonly x: 
   return { x: sum(path.x), y: sum(path.y) };
 }
 
+/** The chambers alone as WGSL, for a reader that needs them without the path (a material). */
+export function chamberWgsl(): string {
+  return `// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.
+const CHAMBER_SWELL: f32 = ${f(CHAMBERS.swell)};
+fn chamberAt(z: f32) -> f32 {
+  let along = z - ${f(CHAMBERS.spacing)} * floor(z / ${f(CHAMBERS.spacing)});
+  return 1.0 - smoothstep(${f(CHAMBERS.reach - CHAMBERS.flare)}, ${f(CHAMBERS.reach)}, abs(along - ${f(CHAMBERS.spacing / 2)}));
+}
+`;
+}
+
 /**
  * The same line as WGSL: `pathAt(z)`, its unit tangent, and the frame a thing in the tunnel
  * stands in — `right`, `up`, `forward`, right-handed with right = up × forward, which is the
@@ -117,13 +128,7 @@ struct Frame {
   forward: vec3f,
 };
 
-// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.
-const CHAMBER_SWELL: f32 = ${f(CHAMBERS.swell)};
-fn chamberAt(z: f32) -> f32 {
-  let along = z - ${f(CHAMBERS.spacing)} * floor(z / ${f(CHAMBERS.spacing)});
-  return 1.0 - smoothstep(${f(CHAMBERS.reach - CHAMBERS.flare)}, ${f(CHAMBERS.reach)}, abs(along - ${f(CHAMBERS.spacing / 2)}));
-}
-
+${chamberWgsl()}
 fn pathFrame(z: f32) -> Frame {
   var frame: Frame;
   frame.origin = pathAt(z);

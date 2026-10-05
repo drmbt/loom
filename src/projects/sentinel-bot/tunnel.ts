@@ -1,5 +1,5 @@
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
-import { pathWgsl } from "./path.ts";
+import { PATH, chamberAt, chamberExpression, chamberWgsl, pathWgsl } from "./path.ts";
 
 /**
  * T1561b — THE TUNNEL: a bore the robots climb, as geometry inside the Render.
@@ -26,6 +26,42 @@ const ROWS_BEHIND = 180;
 /** Metres between ribs, and between the lamps in the crown. */
 export const RIB_SPACING = 1.6;
 export const LAMP_SPACING = 12.8;
+
+/**
+ * WHAT COLOUR A LAMP IS, by its station along the tunnel. Cold in the bore, sodium in the
+ * halls, and every fifteenth an emergency red. One rule with two readers that must agree,
+ * because a lamp is drawn twice: its plate glows in the wall's material (WGSL) and the nearest
+ * three are real lights whose colour is an expression. So the rule is whole numbers and the
+ * chamber function, exact in both, and never a float hash that 32 and 64 bits would round apart.
+ */
+export const LAMP_TONES = {
+  bore: [0.62, 0.84, 1],
+  hall: [1, 0.62, 0.28],
+  alarm: [1, 0.1, 0.06],
+  /** Every this-many stations one is an alarm; it divides the stations in a period, so the wrap does not recolour a lamp. */
+  alarmEvery: 15,
+  alarmAt: 7,
+} as const;
+
+const STATIONS = Math.round(PATH.period / LAMP_SPACING);
+if (STATIONS % LAMP_TONES.alarmEvery !== 0) throw new Error(`tunnel.ts: ${LAMP_TONES.alarmEvery} does not divide the ${STATIONS} lamp stations of a period.`);
+
+/** The rule itself: the tone of the lamp at a whole station number. */
+export function lampTone(station: number): readonly [number, number, number] {
+  const turn = station - LAMP_TONES.alarmEvery * Math.floor(station / LAMP_TONES.alarmEvery);
+  if (turn === LAMP_TONES.alarmAt) return LAMP_TONES.alarm;
+  return chamberAt((station + 0.5) * LAMP_SPACING) > 0.5 ? LAMP_TONES.hall : LAMP_TONES.bore;
+}
+
+/** The same rule as three expressions of a station number (itself an expression). */
+export function lampToneExpression(station: string): readonly [string, string, string] {
+  const alarm = `(mod(${station}, ${LAMP_TONES.alarmEvery}) == ${LAMP_TONES.alarmAt})`;
+  const hall = `(${chamberExpression(`((${station}) + 0.5) * ${LAMP_SPACING}`)} > 0.5)`;
+  const channel = (index: 0 | 1 | 2): string => `(${alarm} * ${LAMP_TONES.alarm[index]} + (1 - ${alarm}) * (${hall} * ${LAMP_TONES.hall[index]} + (1 - ${hall}) * ${LAMP_TONES.bore[index]}))`;
+  return [channel(0), channel(1), channel(2)];
+}
+
+const wgslTone = (tone: readonly number[]): string => `vec3f(${tone.map((component) => component.toFixed(4)).join(", ")})`;
 
 export const BORE_ATTRIBUTES = JSON.stringify([
   { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
@@ -121,10 +157,16 @@ struct Params {
   wet: f32, // @default 0.7  How much of the wall carries a film of water.
   grime: f32, // @default 0.6  Rust and soot in the recesses.
   lamp: f32, // @default 14  Radiance of the lamp plates in the crown.
-  lampColor: vec3f, // @default [0.62, 0.84, 1]  Their colour.
 };
 
 const LAMP: f32 = ${LAMP_SPACING.toFixed(5)};
+${chamberWgsl()}
+// The tone of the lamp at a station (tunnel.ts, LAMP_TONES): cold in the bore, sodium in a hall, every fifteenth an alarm.
+fn lampTone(station: f32) -> vec3f {
+  let turn = station - ${LAMP_TONES.alarmEvery}.0 * floor(station / ${LAMP_TONES.alarmEvery}.0);
+  if (abs(turn - ${LAMP_TONES.alarmAt}.0) < 0.5) { return ${wgslTone(LAMP_TONES.alarm)}; }
+  return mix(${wgslTone(LAMP_TONES.bore)}, ${wgslTone(LAMP_TONES.hall)}, step(0.5, chamberAt((station + 0.5) * LAMP)));
+}
 
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
@@ -171,7 +213,7 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   let onPlate = (1.0 - smoothstep(0.3, 0.36, abs(along - (station + 0.5) * LAMP))) * (1.0 - smoothstep(0.012, 0.016, abs(around - 0.5)));
   let nerve = fract(sin(station * 12.9898) * 43758.5453);
   let flicker = 1.0 - step(0.82, nerve) * step(0.6, fract(sin(floor(s.absTime * 11.0) * 78.233 + station) * 43758.5453)) * 0.8;
-  o.emissive = o.emissive + p.lampColor * p.lamp * onPlate * flicker;
+  o.emissive = o.emissive + lampTone(station) * p.lamp * onPlate * flicker;
   return o;
 }`;
 
