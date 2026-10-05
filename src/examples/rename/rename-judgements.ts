@@ -37,16 +37,6 @@ export interface Judgement {
 }
 
 export const JUDGEMENTS: readonly Judgement[] = [
-  // ── E54 Quorum: the phrase lane and the deposit lane ───────────────────────────────────
-  { scope: "E54-Quorum", kind: "step", old: "cstep1", role: "envoy", reason: "the phrase lane: a value held four bars that ends on the kernel's Envoy" },
-  { scope: "E54-Quorum", kind: "math", old: "cmul1", role: "envoygain", reason: "the phrase lane's gain (x0.6)" },
-  { scope: "E54-Quorum", kind: "math", old: "csub1", role: "envoybias", reason: "the phrase lane's offset (-0.6)" },
-  { scope: "E54-Quorum", kind: "limit", old: "clim1", role: "envoy", reason: "the phrase lane's clamp" },
-  { scope: "E54-Quorum", kind: "lag", old: "clag1", role: "envoy", reason: "eases the phrase in; it drives Envoy" },
-  { scope: "E54-Quorum", kind: "step", old: "dstep1", role: "deposit", reason: "the deposit lane: a value held two bars" },
-  { scope: "E54-Quorum", kind: "limit", old: "dlim1", role: "deposit", reason: "the deposit lane's clamp" },
-  { scope: "E54-Quorum", kind: "lag", old: "dlag1", role: "deposit", reason: "eases the deposit; it drives how much scent a footfall leaves" },
-
   // ── E66, E81: bg ───────────────────────────────────────────────────────────────────────
   { scope: "E66-Meter", kind: "solid", old: "bg1", role: "background", reason: "`bg` is background: the backdrop the onsets flash" },
   { scope: "E81-Phone-Desk", kind: "solid", old: "bg1", role: "background", reason: "`bg` is background: the black behind the pinned quad" },

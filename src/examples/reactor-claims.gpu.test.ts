@@ -229,12 +229,12 @@ describe("E55 Reactor — claims", () => {
 
   it("the bloom branch is alive: zeroing both widths darkens the disc", async () => {
     expect(dawnError, dawnError ?? "").toBeUndefined();
-    // The branch shipped DEAD for three rounds (cut1.brightness was 0, a multiplier) and no
+    // The branch shipped DEAD for three rounds (level_cut.brightness was 0, a multiplier) and no
     // gate noticed, because add(x, 0) = x. This is the wire-cut claim that would have.
     const [lit] = await shoot({}, [60], noGrade);
     const { graph, settings } = e55();
     // `add` requires both inputs, so the branch is cut the way the defect cut it: both gains
-    // at zero (gain1's brightness is a driven slot; the static 0 replaces it).
+    // at zero (level_gain1's brightness is a driven slot; the static 0 replaces it).
     noBloom(graph);
     noGrade(graph);
     const result = await renderHeadless({ host: nodeGpuHost(), graph, settings, frames: 61, capture: [60], animate: true, fps: 60, outputNodeId: "out" });

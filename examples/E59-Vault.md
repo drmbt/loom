@@ -51,7 +51,7 @@ So the baseline understates this file, which is §V913 running the other way fro
 ## The chain
 
 ```
-palette1(ramp) -> alembic1(customWgsl) -> out1(output)
+ramp_palette(ramp) -> wgsl_alembic(customWgsl) -> output1(output)
 ```
 
-`out1` tone-maps with `none`, for E58's reason: `tanh` has already done that job inside the shader.
+`output1` tone-maps with `none`, for E58's reason: `tanh` has already done that job inside the shader.

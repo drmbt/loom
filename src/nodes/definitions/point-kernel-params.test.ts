@@ -435,7 +435,7 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
      renamed in memory (which does not touch a shader), rename the node names inside its
      shader COMMENTS and nowhere else, and the two are byte-identical
      (`apply-rename.ts --written --build-in`, "the same but for prose").
-     Rows moved for that reason, as the batches landed: E27, E31, E32, E33, E34. */
+     Rows moved for that reason, as the batches landed: E27, E31, E32, E33, E34, E54. */
   /* T1290: E69-Burnish, new in this commit rather than re-stamped. Its digest is the
      resolved passes of its four sphere kernels — one `pointGrid` folded onto a ball four
      times, differing only in where each stands. */
@@ -464,7 +464,7 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
      `kernel_mark` and `kernel_mark2a` each grew a `struct Params` and its uniform members, and twelve
      literals became `ctx.params.<name>` reads. NO PICTURE MOVED — every promoted uniform
      carries the exact f32 the literal it replaced was, checked pass by pass against the
-     HEAD file, and E34's other four kernels (kernel_unfold, kernel_raise, pool1, kernel_ricochet) are
+     HEAD file, and E34's other four kernels (kernel_unfold, kernel_raise, multiply_pool, kernel_ricochet) are
      byte-identical because nothing in them was artistic direction. */
   "E34-Lidar.loom.json": "948ea8f3284db431",
   "E35-Nova-Torus.loom.json": "738e4e77f2cf31d4",
@@ -502,7 +502,7 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
      rewritten. The picture is asserted by the ten claims in `quorum-claims.gpu.test.ts` —
      rewritten in the same commit — and by a re-measured §V885 look row (motion 0.02956 →
      0.05087, whole minute 0.03706 → 0.06468, both moving the same way, §V913). */
-  "E54-Quorum.loom.json": "1abe2f8d3023ef7f",
+  "E54-Quorum.loom.json": "f091d626f54b8a3a",
   /* T1169: E63 Skin's kernels are the SKIN chain — one pointset rolled into a tube three
      times, differing only in where each stands. The digest covers all three, which is why
      one row stands for what reads on screen as three separate claims. */

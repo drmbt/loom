@@ -3,9 +3,9 @@ import { settings, node, edge, graph, document, expressionSlot } from "./builder
 /**
  * E53 — Two Cuts (T1037). THE SAME SUBJECT, CUT TWO WAYS, SIDE BY SIDE.
  *
- *   src1 ─┬─► matte1(matte)      ─► keyM1(multiply ◄ src1) ─► leftC1(over ◄ baseL1)
- *         └─► seg1(personMask)   ─► keyV1(multiply ◄ src1) ─► rightC1(over ◄ baseR1)
- *   a soft vertical wipe stitches leftC1 | rightC1 into one frame
+ *   switch_src ─┬─► matte1(matte)      ─► multiply_keyM(multiply ◄ switch_src) ─► over_leftC(over ◄ add_baseL)
+ *         └─► personmask_seg(personMask)   ─► multiply_keyV(multiply ◄ switch_src) ─► over_rightC(over ◄ add_baseR)
+ *   a soft vertical wipe stitches over_leftC | over_rightC into one frame
  *
  * ## What the picture argues
  *
@@ -20,7 +20,7 @@ import { settings, node, edge, graph, document, expressionSlot } from "./builder
  * ## Both coverages are SPENT (§V856, E52's rule)
  *
  * Each side's wash saturates with ITS OWN cut's coverage — `matte1:coverage` warms
- * the left, `seg1:coverage` cools the right — so "found nobody" is a value on both
+ * the left, `personmask_seg:coverage` cools the right — so "found nobody" is a value on both
  * sides, and a disagreement between the two cuts is VISIBLE as a saturation imbalance
  * before anyone squints at edges.
  *
@@ -30,7 +30,7 @@ import { settings, node, edge, graph, document, expressionSlot } from "./builder
  * cuts honestly find nobody, both keys go dark, and what ships is the two-tone
  * animated diptych with the stand-in glowing through at low brightness — a picture,
  * not a black frame, and every moving part is visible to the harness (both hazes are
- * 4D). Flip `src1` to 1 with a webcam (and the helper paired, on a Mac, for the right
+ * 4D). Flip `switch_src` to 1 with a webcam (and the helper paired, on a Mac, for the right
  * half) and the same person appears twice, cut two ways.
  */
 export const twoCutsDocument = document(
@@ -44,46 +44,46 @@ export const twoCutsDocument = document(
         type: "perlin4d", seed: 9, period: 0.3, harmon: 3, spread: 2, gain: 0.5,
         rough: 0.5, exp: 1.3, amp: 1, offset: 0.1, mono: false, aspectcorrect: true,
         speed: 0.3, t4d: 0.41, s4d: 1,
-      }, { label: "bed1" }),
-      node("cam", "webcam", [-2220, 140], {}, { label: "cam1" }),
-      node("src", "switch", [-1920, 0], { index: 0 }, { label: "src1" }),
+      }, { label: "noise_bed" }),
+      node("cam", "webcam", [-2220, 140], {}, { label: "webcam1" }),
+      node("src", "switch", [-1920, 0], { index: 0 }, { label: "switch_src" }),
 
       // ---- cut one: the downloaded matte -------------------------------------------
       node("matte", "matte", [-1620, -260], {}, { label: "matte1" }),
-      node("keyM", "multiply", [-1320, -200], { opacity: 1 }, { label: "keyM1" }),
+      node("keyM", "multiply", [-1320, -200], { opacity: 1 }, { label: "multiply_keyM" }),
       // ---- cut two: the OS's segmentation ------------------------------------------
-      node("seg", "personMask", [-1620, 260], { rateLimit: 0.1, invert: false }, { label: "seg1" }),
-      node("keyV", "multiply", [-1320, 200], { opacity: 1 }, { label: "keyV1" }),
+      node("seg", "personMask", [-1620, 260], { rateLimit: 0.1, invert: false }, { label: "personmask_seg" }),
+      node("keyV", "multiply", [-1320, 200], { opacity: 1 }, { label: "multiply_keyV" }),
 
       // ---- the stand-in shows through, dimmed, on both sides ------------------------
-      node("dim", "level", [-1620, 0], { brightness: 0.18 }, { label: "dim1" }),
+      node("dim", "level", [-1620, 0], { brightness: 0.18 }, { label: "level_dim" }),
 
       // ---- two rooms that answer their own cut (E52's coverage rule, twice) ---------
       node("hazeW", "noise", [-1620, -520], {
         type: "perlin4d", seed: 21, period: 0.8, harmon: 2, spread: 2, gain: 0.4,
         rough: 0.5, exp: 1, amp: 0.7, offset: 0.15, mono: true, aspectcorrect: true,
         speed: 0.12, t4d: 0.37, s4d: 1,
-      }, { label: "hazeW1" }),
-      node("inkW", "solid", [-1620, -760], { color: [1.0, 0.45, 0.12, 1] }, { label: "inkW1" }),
-      node("tintW", "multiply", [-1020, -820], { opacity: 1 }, { label: "tintW1" }),
+      }, { label: "noise_hazeW" }),
+      node("inkW", "solid", [-1620, -760], { color: [1.0, 0.45, 0.12, 1] }, { label: "solid_inkW" }),
+      node("tintW", "multiply", [-1020, -820], { opacity: 1 }, { label: "multiply_tintW" }),
       /* §V856 SPENT as LIGHT: the warm side literally brightens with ITS cut's coverage
          — an empty room is a dim ember-field, a found person turns the lamp up. */
       node("washW", "level", [-1320, -520], {},
-        { label: "washW1", parameters: { brightness: expressionSlot("0.55 + op('matte1').chan.coverage * 3", 0.55) } }),
+        { label: "level_washW", parameters: { brightness: expressionSlot("0.55 + op('matte1').chan.coverage * 3", 0.55) } }),
       node("hazeC", "noise", [-1620, 520], {
         type: "perlin4d", seed: 34, period: 0.8, harmon: 2, spread: 2, gain: 0.4,
         rough: 0.5, exp: 1, amp: 0.7, offset: 0.15, mono: true, aspectcorrect: true,
         speed: 0.12, t4d: 0.63, s4d: 1,
-      }, { label: "hazeC1" }),
-      node("inkC", "solid", [-1620, 760], { color: [0.1, 0.35, 0.9, 1] }, { label: "inkC1" }),
-      node("tintC", "multiply", [-1020, 820], { opacity: 1 }, { label: "tintC1" }),
+      }, { label: "noise_hazeC" }),
+      node("inkC", "solid", [-1620, 760], { color: [0.1, 0.35, 0.9, 1] }, { label: "solid_inkC" }),
+      node("tintC", "multiply", [-1020, 820], { opacity: 1 }, { label: "multiply_tintC" }),
       node("washC", "level", [-1320, 520], {},
-        { label: "washC1", parameters: { brightness: expressionSlot("0.55 + op('seg1').chan.coverage * 3", 0.55) } }),
+        { label: "level_washC", parameters: { brightness: expressionSlot("0.55 + op('personmask_seg').chan.coverage * 3", 0.55) } }),
 
-      node("baseL", "add", [-1020, -400], { opacity: 1 }, { label: "baseL1" }),
-      node("baseR", "add", [-1020, 400], { opacity: 1 }, { label: "baseR1" }),
-      node("leftC", "over", [-720, -260], { opacity: 1 }, { label: "leftC1" }),
-      node("rightC", "over", [-720, 260], { opacity: 1 }, { label: "rightC1" }),
+      node("baseL", "add", [-1020, -400], { opacity: 1 }, { label: "add_baseL" }),
+      node("baseR", "add", [-1020, 400], { opacity: 1 }, { label: "add_baseR" }),
+      node("leftC", "over", [-720, -260], { opacity: 1 }, { label: "over_leftC" }),
+      node("rightC", "over", [-720, 260], { opacity: 1 }, { label: "over_rightC" }),
 
       // ---- the wipe: two mirrored ramps, one soft seam ------------------------------
       node("gateL", "ramp", [-720, -860], {
@@ -92,18 +92,18 @@ export const twoCutsDocument = document(
           { position: 0.47, color: [1, 1, 1, 1] },
           { position: 0.53, color: [0, 0, 0, 1] },
         ],
-      }, { label: "gateL1", definitionVersion: 2 }),
+      }, { label: "ramp_gateL", definitionVersion: 2 }),
       node("gateR", "ramp", [-720, 860], {
         type: "horizontal", interp: "smooth", phase: 0, period: 1,
         stops: [
           { position: 0.47, color: [0, 0, 0, 1] },
           { position: 0.53, color: [1, 1, 1, 1] },
         ],
-      }, { label: "gateR1", definitionVersion: 2 }),
-      node("halfL", "multiply", [-420, -160], { opacity: 1 }, { label: "halfL1" }),
-      node("halfR", "multiply", [-420, 160], { opacity: 1 }, { label: "halfR1" }),
-      node("sum", "add", [-120, 0], { opacity: 1 }, { label: "sum1" }),
-      node("out", "output", [180, 0], {}, { label: "out1" }),
+      }, { label: "ramp_gateR", definitionVersion: 2 }),
+      node("halfL", "multiply", [-420, -160], { opacity: 1 }, { label: "multiply_halfL" }),
+      node("halfR", "multiply", [-420, 160], { opacity: 1 }, { label: "multiply_halfR" }),
+      node("sum", "add", [-120, 0], { opacity: 1 }, { label: "add_sum" }),
+      node("out", "output", [180, 0], {}, { label: "output1" }),
     ],
     [
       edge("e1", ["bed", "out"], ["src", "inputs"], 0),

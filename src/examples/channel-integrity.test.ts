@@ -224,7 +224,7 @@ const UNVERIFIABLE = [
   "AudioAnalysis.loom.json  glow.contrast  op('limit_hits').chan.kickCount  [valueLimit]",
   "AudioLevel.loom.json  glow.brightness  op('limit_probe').chan.low  [valueLimit]",
   "E52-Presence.loom.json  wash.brightness  op('personmask1').chan.coverage  [personMask]",
-  "E53-Two-Cuts.loom.json  washC.brightness  op('seg1').chan.coverage  [personMask]",
+  "E53-Two-Cuts.loom.json  washC.brightness  op('personmask_seg').chan.coverage  [personMask]",
   "E53-Two-Cuts.loom.json  washW.brightness  op('matte1').chan.coverage  [matte]",
 ];
 

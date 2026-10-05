@@ -63,8 +63,8 @@ describe("E53 Two Cuts", () => {
       return slot?.bindings?.expression?.source ?? "";
     };
     expect(sourceOf("washW")).toContain("matte1");
-    expect(sourceOf("washW")).not.toContain("seg1");
-    expect(sourceOf("washC")).toContain("seg1");
+    expect(sourceOf("washW")).not.toContain("personmask_seg");
+    expect(sourceOf("washC")).toContain("personmask_seg");
     expect(sourceOf("washC")).not.toContain("matte1");
   });
 

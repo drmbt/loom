@@ -162,7 +162,7 @@ describe("examples with a temporal loop", () => {
       // those same agents on the next frame, so the feedback is stigmergy rather than
       // persistence: cut it and the colony does not merely stop smearing, it stops
       // communicating and the territories never form. That is why its 0.72 is not a tail
-      // length but an evaporation rate, and why it closes on `mix1` (the deposit) rather
+      // length but an evaporation rate, and why it closes on `add_mix` (the deposit) rather
       // than on the final output (§V471.5) — grading the field the agents SENSE would
       // make them chase the look instead of the signal.
       "E54-Quorum.loom.json",

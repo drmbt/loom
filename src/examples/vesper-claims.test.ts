@@ -69,11 +69,11 @@ const view = registry.view();
 const SOURCE_FRAMES = 496;
 const SOURCE_FPS = 24;
 const DURATION = SOURCE_FRAMES / SOURCE_FPS;
-/** The lane `travel1` bounces between — short of both ends of the file (T1190). */
+/** The lane `speed_travel` bounces between — short of both ends of the file (T1190). */
 const LANE_LOW = 0.4;
 const LANE_HIGH = 14.6;
 const HORIZON = 3600;
-/** One `norm1` window (17 s) plus the follower's own settle. Before that, warm-up. */
+/** One `normalize1` window (17 s) plus the follower's own settle. Before that, warm-up. */
 const SETTLED = 1200;
 
 function vesper(): GraphDocument {
@@ -114,7 +114,7 @@ const frameAt = (frameIndex: number): FrameEvaluationInput => ({
  * interpreted reddens this file rather than sliding past it.
  */
 function playheads(graph: GraphDocument, frames = HORIZON): number[] {
-  const clip = nodeNamed(graph, "clip1");
+  const clip = nodeNamed(graph, "movie_clip");
   const definition = view.get(clip.type);
   const session = createValueGraphSession(registry);
   const out: number[] = [];
@@ -122,7 +122,7 @@ function playheads(graph: GraphDocument, frames = HORIZON): number[] {
     const frame = frameAt(frameIndex);
     // E56 holds no component instance (`flatDocument` refuses one) and no bank.
     const evaluated = session.evaluate(flatDocument(graph), frame, { flattening: NO_FLATTENING });
-    /* §V837's ONE factory. `op('travel1').chan.high` is read inside the NODE REFERENCE
+    /* §V837's ONE factory. `op('speed_travel').chan.high` is read inside the NODE REFERENCE
        READER, not off `channels` — a resolve handed only `channels` answers every chan read
        with "no resolver", falls back to §V108's retained static, and reports a lane that
        never moves while the app animates (§B181). */
@@ -154,38 +154,38 @@ function channel(graph: GraphDocument, name: string): number[] {
 /**
  * THE FAILING ARM (§V461): the same shipped document driven as a POSITION.
  *
- * `travel1` is cut out of the chain — `clip1.cuePoint` is re-pointed at `rate1`, which is
- * the node it integrates — and `rate1`'s output bounds are rewritten as CLIP POSITIONS
+ * `speed_travel` is cut out of the chain — `movie_clip.cuePoint` is re-pointed at `math_rate`, which is
+ * the node it integrates — and `math_rate`'s output bounds are rewritten as CLIP POSITIONS
  * rather than rates. That is round two's mechanism exactly, and with the owner's own
  * calibration it is the configuration he reported freezing.
  */
 function positionArm(fromLow: number, fromHigh: number, toLow: number, toHigh: number): GraphDocument {
   const graph = vesper();
-  const rate = nodeNamed(graph, "rate1");
+  const rate = nodeNamed(graph, "math_rate");
   for (const [key, value] of Object.entries({ fromLow, fromHigh, toLow, toHigh })) {
     (rate.parameters as Record<string, ParameterValue>)[key] = value;
   }
-  const clip = nodeNamed(graph, "clip1");
+  const clip = nodeNamed(graph, "movie_clip");
   const slot = clip.parameters["cuePoint"] as {
     bindings: { expression: { kind: string; source: string }; static: { kind: string; value: number } };
   };
-  slot.bindings.expression.source = "op('rate1').chan.high";
+  slot.bindings.expression.source = "op('math_rate').chan.high";
   return graph;
 }
 
 /**
- * THE OTHER FAILING ARM: `norm1` cut out, so `rate1` reads the RAW envelope.
+ * THE OTHER FAILING ARM: `normalize1` cut out, so `math_rate` reads the RAW envelope.
  *
  * Under a rate drive the position histogram is no longer evidence for the normaliser — a
  * bounced integral of almost any positive rate covers its lane evenly, which is exactly
- * what the first version of this file measured and mistook for a result. What `norm1`
+ * what the first version of this file measured and mistook for a result. What `normalize1`
  * actually shapes now is HOW THE SPEED IS DISTRIBUTED, so that is what the pair below
  * compares, with the linear arm auto-calibrated to the envelope's own measured span.
  */
 function rawEnvelopeArm(low: number, high: number): GraphDocument {
   const graph = vesper();
-  const envId = nodeNamed(graph, "env1").id;
-  const rateId = nodeNamed(graph, "rate1").id;
+  const envId = nodeNamed(graph, "lag_env").id;
+  const rateId = nodeNamed(graph, "math_rate").id;
   for (const [edgeId, edge] of Object.entries(graph.edges)) {
     if (edge.target.nodeId === rateId) {
       (graph.edges as Record<string, typeof edge>)[edgeId] = {
@@ -194,7 +194,7 @@ function rawEnvelopeArm(low: number, high: number): GraphDocument {
       };
     }
   }
-  const rate = nodeNamed(graph, "rate1");
+  const rate = nodeNamed(graph, "math_rate");
   (rate.parameters as Record<string, ParameterValue>)["fromLow"] = low;
   (rate.parameters as Record<string, ParameterValue>)["fromHigh"] = high;
   return graph;
@@ -239,22 +239,22 @@ describe("E56 Vesper — the envelope drives the playhead", () => {
   it("holds the element at the cue point rather than playing it", () => {
     /* The mechanism in one assertion: without `cue`, `cuePoint` is inert and everything
        below would be measuring a free-running clock instead of the drive. */
-    const clip = nodeNamed(vesper(), "clip1");
+    const clip = nodeNamed(vesper(), "movie_clip");
     expect(clip.parameters["cue"]).toBe(true);
     expect(clip.type).toBe("movieFileIn");
   });
 
   it("drives a RATE through an integrator, not a position — the shape, pinned", () => {
     /* The structural fact the rest of this file rests on. A future edit that re-pointed
-       `cuePoint` at `rate1` would restore round two's freeze and pass nothing below, but it
+       `cuePoint` at `math_rate` would restore round two's freeze and pass nothing below, but it
        would pass more of them if this were not stated as its own claim. */
     const graph = vesper();
-    const travel = nodeNamed(graph, "travel1");
+    const travel = nodeNamed(graph, "speed_travel");
     expect(travel.type).toBe("valueSpeed");
     expect(travel.parameters["limit"]).toBe("mirror");
     expect(travel.parameters["minimum"]).toBe(LANE_LOW);
     expect(travel.parameters["maximum"]).toBe(LANE_HIGH);
-    const rate = nodeNamed(graph, "rate1");
+    const rate = nodeNamed(graph, "math_rate");
     /* ⚑ THE FLOOR. `toLow` above zero is what makes "it never freezes" a property of the
        document rather than a hope about the signal. */
     expect(rate.parameters["toLow"]).toBeGreaterThan(0);
@@ -299,7 +299,7 @@ describe("E56 Vesper — the envelope drives the playhead", () => {
     /* The owner asked for reverse twice and could not find it, because with `cue` on the
        transport's own `speed` is not read at all. Here the reverse is the BOUNCE: the rate
        never goes negative and the picture still plays backwards on every other leg. */
-    const rate = channel(vesper(), "rate1:high").slice(SETTLED);
+    const rate = channel(vesper(), "math_rate:high").slice(SETTLED);
     expect(Math.min(...rate), "the rate is a speed, never a direction").toBeGreaterThan(0);
 
     const positions = playheads(vesper()).slice(SETTLED);
@@ -312,13 +312,13 @@ describe("E56 Vesper — the envelope drives the playhead", () => {
     expect(share).toBeLessThan(0.65);
   });
 
-  it("⚑ `norm1` spreads the SPEED evenly — and the raw envelope, best-calibrated, does not", () => {
+  it("⚑ `normalize1` spreads the SPEED evenly — and the raw envelope, best-calibrated, does not", () => {
     /* ⚠ WHAT THIS MEASURES CHANGED WITH THE DRIVE, and the first version of this claim was
        wrong in a way worth recording: it measured the POSITION histogram, which under a
        bounced integral is even for almost any positive rate signal and therefore says
-       nothing about the normaliser at all. Under a rate drive `norm1` shapes the SPEED, so
+       nothing about the normaliser at all. Under a rate drive `normalize1` shapes the SPEED, so
        the speed is what the pair below compares. */
-    const shipped = rangeHistogram(channel(vesper(), "rate1:high").slice(SETTLED), 0.4, 5);
+    const shipped = rangeHistogram(channel(vesper(), "math_rate:high").slice(SETTLED), 0.4, 5);
     expect(unevenness(shipped), `shipped: ${shipped.map((s) => s.toFixed(1)).join(" ")}`).toBeLessThan(15);
     expect(Math.max(...shipped)).toBeLessThan(9);
 
@@ -326,9 +326,9 @@ describe("E56 Vesper — the envelope drives the playhead", () => {
        span over this exact run — a calibration no human could beat, because it is measured
        from the answer. It still crams most of the run into a few tenths of the range, which
        is the owner's "wasting most of the resolution on the first 20 decibels". */
-    const envelope = channel(vesper(), "env1:high").slice(SETTLED);
+    const envelope = channel(vesper(), "lag_env:high").slice(SETTLED);
     const raw = rangeHistogram(
-      channel(rawEnvelopeArm(Math.min(...envelope), Math.max(...envelope)), "rate1:high").slice(SETTLED),
+      channel(rawEnvelopeArm(Math.min(...envelope), Math.max(...envelope)), "math_rate:high").slice(SETTLED),
       0.4,
       5,
     );
@@ -343,7 +343,7 @@ describe("E56 Vesper — the envelope drives the playhead", () => {
 
   it("§V914 — the retained cue point is the driven mean, and inside what the drive produces", () => {
     const positions = playheads(vesper());
-    const retained = nodeNamed(vesper(), "clip1").parameters["cuePoint"] as {
+    const retained = nodeNamed(vesper(), "movie_clip").parameters["cuePoint"] as {
       bindings?: { static?: { value?: number } };
     };
     const stood = retained.bindings?.static?.value;
@@ -377,7 +377,7 @@ describe("E56 Vesper — the envelope drives the playhead", () => {
   it("THE SPEED IS THE MUSIC, AND CUTTING THE DRIVE STOPS THE PICTURE DEAD", () => {
     const graph = vesper();
     const positions = playheads(graph).slice(SETTLED);
-    const envelope = channel(graph, "env1:high").slice(SETTLED);
+    const envelope = channel(graph, "lag_env:high").slice(SETTLED);
 
     const speed: number[] = [];
     for (let index = 1; index < positions.length; index += 1) {
@@ -406,7 +406,7 @@ describe("E56 Vesper — the envelope drives the playhead", () => {
     expect(Math.max(...speed) / Math.min(...speed)).toBeGreaterThan(5);
 
     const cut = vesper();
-    const clip = nodeNamed(cut, "clip1");
+    const clip = nodeNamed(cut, "movie_clip");
     const slot = clip.parameters["cuePoint"] as { bindings: { static: { value: number } } };
     /* §V108's own fallback path: drop the expression and the retained static stands. This
        is severance rather than deletion on purpose — a document with no `cuePoint` at all
