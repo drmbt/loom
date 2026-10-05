@@ -91,6 +91,7 @@ import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
 import type { InstanceChannelSources } from "../domain/parameters/node-references.ts";
 import { buildMorphIndex } from "../domain/presets/morph-index.ts";
+import { timelineCueProblems } from "../domain/presets/timeline-cues.ts";
 import { outputPixelScale } from "../domain/types/graph.ts";
 import { orderNodes } from "./topology.ts";
 import { isTemporalOutput, validateGraph, validateRequiredInputs } from "./validate.ts";
@@ -926,6 +927,9 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   // T1485b: and the instances `op('<instance>').chan` can name, by the same precedence.
   const instances = request.resolution?.instances ?? flattened?.instanceChannels;
   const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs, ...(instances === undefined ? {} : { instances }) };
+  // §T1559b (2): a cue list that follows the timeline reads its bank's Morph and Curve as the
+  // document stores them. A driven one is said here, on the bank, where both roots read problems.
+  diagnostics.push(...timelineCueProblems({ document: request.graph, registry: request.registry, components: request.components, flattened }));
 
   /**
    * T350 (§V285) / T447 (§V373): a SOURCE REFERENCE synthesizes the exact edge the wired

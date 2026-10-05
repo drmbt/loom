@@ -10,10 +10,10 @@ import { isComponentNodeType, parseComponentNodeType } from "../components/compo
 import { publishedSchema } from "../components/published-page.ts";
 import { nodeByName } from "../graph/names.ts";
 import { effectiveParameterSchema, resolveStored, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
-import { componentAddressedDefinition, parseComponentKey, storedStaticValue } from "../parameters/slots.ts";
+import { componentAddressedDefinition, isParameterSlot, parseComponentKey, storedStaticValue } from "../parameters/slots.ts";
 import { defaultParameterValue } from "../parameters/validate.ts";
 import { parsePresetBank, type MorphCurve } from "./bank.ts";
-import { bankOf, type BankCatalogue } from "./bank-view.ts";
+import { bankOf, isPresetsNode, type BankCatalogue } from "./bank-view.ts";
 import { notABank, presetMorph, presetRecallEnd } from "./commands.ts";
 import { CUE_FOLLOW_TIMELINE, CUE_LIST_NODE_TYPE, cueReachFrame, parseCueList, type CueList } from "./cue-list.ts";
 import { easeMorph } from "./morph.ts";
@@ -75,7 +75,28 @@ import { morphableKey, publishedTargets, type MorphIndexInput } from "./morph-in
  *
  * GO, BACK and fire are refused on a following list (`cue.timeline`, `cue-commands.ts`); a
  * cue with no `at` is skipped with a warning; manual cues run from a second, live list.
+ *
+ * ## The bank's Morph and Curve are read STORED (§T1559b (2), owner ruling 2026-10-05)
+ *
+ * GO reads the bank's Morph once, at the command, and writes the seconds into the record it
+ * commits. A timed cue writes nothing and `stepsAt` recomputes its fade at every playhead,
+ * so a live Morph has no moment to be read at that keeps playback, a cold seek and an export
+ * equal: read at the current frame the fade's length changes during the fade, and read at
+ * the cue's reach frame it needs channel values of a past frame. So a timed cue fades over
+ * what the document says (`resolveStored`), and a bank whose Morph or Curve is DRIVEN gets a
+ * named warning (`cue.timeline.drivenMorph`) stating the value in use.
  */
+
+/** The bank settings a recall's fade is read from when neither the cue nor the preset carries a morph. */
+const BANK_MORPH_KEYS = ["morph", "curve"] as const;
+
+/** §T1559b (2): a following list fires a bank whose Morph or Curve is driven. */
+const CUE_TIMELINE_DRIVEN_MORPH = "cue.timeline.drivenMorph";
+
+/** The mode a stored parameter is DRIVEN in, or null for a plain value (bare, or a static slot). */
+function drivenMode(stored: StoredParameter | undefined): string | null {
+  return isParameterSlot(stored) && stored.mode !== "static" ? stored.mode : null;
+}
 
 /** Does this node follow the timeline? Read from the STORED value, so it is per revision. */
 export function followsTimeline(node: GraphNode): boolean {
@@ -204,7 +225,8 @@ const nameOf = (node: GraphNode): string => node.label ?? node.id;
 /**
  * Every following list, planned: the end each timed cue applies, per root key, and every
  * warning — an untimed cue, a bank or preset that is not there, the planner's own skips, a
- * structural key on an instance whose definition cannot be read, two lists on one key — and (§T1537b) the
+ * structural key on an instance whose definition cannot be read, two lists on one key, a bank
+ * whose Morph or Curve is driven (§T1559b (2)) — and (§T1537b) the
  * structural settings each timed cue cuts. Pure; per revision.
  *
  * T1541b: `components` is the catalogue a look's instance is a bank through (`bankOf`) —
@@ -238,6 +260,8 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
       warn(null, "cue.timeline.malformed", `Cue list "${listName}" follows the timeline, but ${parsed.reason}; it drives nothing.`, "Fix the Cues field.");
       continue;
     }
+    /** §T1559b (2): `bank id\u0000key` already said for this list — once per bank setting, not per cue. */
+    const drivenSaid = new Set<string>();
     for (const [position, cue] of parsed.list.cues.entries()) {
       const where = `Cue "${cue.name}" (${listName})`;
       if (cue.at === undefined) {
@@ -271,6 +295,34 @@ export function planTimelineCues(document: GraphDocument, registry: NodeRegistry
         warnings.push({ list: listNode.id, cue: cue.name, diagnostic: { ...said, message: `${where}: ${said.message}`, nodeId: listNode.id } });
       }
       if (end.refused) continue;
+      /*
+       * §T1559b (2): this cue's fade is the BANK's (neither it nor its preset carries a
+       * morph), read stored above, and the setting is driven — so GO and a Recall, which
+       * read it live (`bankSettings`), would fade differently. Said on the BANK
+       * (`nodeId`): whoever drives its Morph is looking at the bank, not at this list.
+       * Not an instance bank: its settings are the definition's page bank's and GO reads
+       * them stored too, so the two already agree.
+       */
+      if (cue.morph === undefined && preset.morph === undefined && view.kind === "node") {
+        for (const key of BANK_MORPH_KEYS) {
+          const mode = drivenMode(view.bank.parameters[key]);
+          const setting = `${view.bank.id}\u0000${key}`;
+          if (mode === null || drivenSaid.has(setting)) continue;
+          drivenSaid.add(setting);
+          const label = effectiveParameterSchema(registry.get(view.bank.type), view.bank.parameters)[key]?.label ?? key;
+          warnings.push({
+            list: listNode.id,
+            cue: null,
+            diagnostic: {
+              severity: "warning",
+              code: CUE_TIMELINE_DRIVEN_MORPH,
+              message: `Cue list "${listName}" follows the timeline and fires bank "${nameOf(view.bank)}", whose ${label} is driven (${mode}). A timed cue that takes its fade from the bank does not read the driver: it uses the stored value, ${key === "morph" ? `${String(morph.seconds)} s` : morph.curve}. GO on a live list and a direct Recall read the driven value.`,
+              nodeId: view.bank.id,
+              suggestion: `Type a plain value into ${label}, or give each timed cue its own morph.`,
+            },
+          });
+        }
+      }
       /** Files a structural link (§T1537b) and notes which list covers its address. */
       const fileStructural = (node: GraphNode, target: string, address: string, to: StructuralLink["to"]): void => {
         const byTarget = structure.get(node.id) ?? new Map<string, StructuralLink[]>();
@@ -371,6 +423,28 @@ export function timelineCueWarnings(document: GraphDocument, registry: NodeRegis
   const node = document.nodes[listId];
   if (node === undefined || !followsTimeline(node)) return [];
   return planTimelineCues(document, registry, components).warnings.filter((warning) => warning.list === listId);
+}
+
+/**
+ * §T1559b (2) — THE TIMELINE WARNING THE DOCUMENT'S PROBLEMS CARRY: what `compileGraph` adds
+ * to its diagnostics, so the Problems list, the bank's badge and `get_diagnostics` say it in
+ * both composition roots.
+ *
+ * Only the driven bank setting. Every other warning of the plan is about the list's own cues
+ * and is said where the list is edited (its inspector section, `cue.list`); this one is about
+ * a parameter of ANOTHER node, whose author may never open the list.
+ *
+ * The planner runs only when a root bank holds a driven Morph or Curve: an instance bank
+ * never warns (`planTimelineCues`), so without such a bank there is nothing to say, and the
+ * compile of every other timed document pays one walk of its nodes for the question.
+ */
+export function timelineCueProblems(input: MorphIndexInput): readonly RuntimeDiagnostic[] {
+  if (!hasTimelineCueLists(input.document)) return [];
+  const drivenBank = (node: GraphNode): boolean => isPresetsNode(node) && BANK_MORPH_KEYS.some((key) => drivenMode(node.parameters[key]) !== null);
+  if (!Object.values(input.document.nodes).some(drivenBank)) return [];
+  return planTimelineCues(input.document, plannerRegistry(input), input.components)
+    .warnings.filter((warning) => warning.diagnostic.code === CUE_TIMELINE_DRIVEN_MORPH)
+    .map((warning) => warning.diagnostic);
 }
 
 /**

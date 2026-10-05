@@ -603,6 +603,47 @@ describe("T1541b — a timed cue names a look's instance", () => {
 });
 
 /**
+ * §T1559b (2) — A PAGE BANK WHOSE MORPH IS DRIVEN, under a timed list. A ROOT bank in that
+ * state is warned about (`cue.timeline.drivenMorph`, `compiler/timeline-cue-problems.test.ts`),
+ * because its timed cues read the Morph stored while GO reads it live. An instance's settings
+ * are its definition's page bank's, and GO reads those stored as well (`bankSettings`): the
+ * two doors agree, so there is nothing to say. Both halves are held here — the second is
+ * only right while the first is.
+ */
+describe("§T1559b (2) — a page bank whose Morph is driven", () => {
+  /** Morph `time + 3`: 3 s as the document says it (the zero frame), 8 s at the frame attached below. */
+  const drivenCity = (): GraphComponentDefinition => {
+    const base = city();
+    const looks = base.graph.nodes["looks"] as GraphNode;
+    const morph: StoredParameter = {
+      mode: "expression",
+      bindings: { static: { kind: "static", value: 9 }, expression: { kind: "expression", source: "time + 3" } },
+    };
+    return { ...base, graph: { ...base.graph, nodes: { ...base.graph.nodes, looks: { ...looks, parameters: { ...looks.parameters, morph } } } } };
+  };
+  const show = (follow: "live" | "timeline"): GraphNode =>
+    node("show", "cueList", "show", {
+      follow,
+      cues: serializeCueList({ version: 1, cues: [{ name: "A", bank: "cityA", preset: "calm", ...(follow === "timeline" ? { at: 1 } : {}) }] }),
+    }, 400);
+
+  it("GO on the instance fades for the STORED 3 s, with a frame attached at which the expression says 8", async () => {
+    const doc = documentWith([...twoLooks(), show("live")], { definitions: [drivenCity()] });
+    doc.bus.attachFrame(() => ({ timeSeconds: 5, deltaSeconds: 1 / 30, frameIndex: 150, mode: "realtime", randomSeed: 0 }));
+    doc.at({ epoch: "e1", absTimeSeconds: 5 });
+    const go = await doc.bus.execute("cue.go", { nodeId: "show" }, ctx);
+    expect(go.status, codes(go).join()).toBe("applied");
+    expect(parseMorphRecords(param(doc, "a", PRESET_MORPHS_KEY)).map((record) => record.seconds)).toEqual([3]);
+  });
+
+  it("so a timed list firing it warns nothing", async () => {
+    const doc = documentWith([...twoLooks(), show("timeline")], { definitions: [drivenCity()] });
+    expect((await doc.bus.query("cue.list", { nodeId: "show" }, ctx)).lists[0]?.warnings).toEqual([]);
+    expect(planTimelineCues(doc.graph(), doc.bus.registry, doc.components).warnings).toEqual([]);
+  });
+});
+
+/**
  * T1541b — `preset.recall` NAMED BY A FLAT ID, as a Recall pulse fired inside a look names
  * it (`city/looks`): the page bank's id under a ROOT instance is that instance's recall. The
  * internal authoring bank (`inner`) is not the page bank and stays refused; so does a deeper

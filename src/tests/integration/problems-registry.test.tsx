@@ -4,6 +4,8 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createMemoryStorage, installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { installFlowStubs } from "@editor/graph-canvas/testing.tsx";
 import { detectPlatform } from "@editor/keymap/index.ts";
+import { serializePresetBank } from "@domain/presets/bank.ts";
+import { serializeCueList } from "@domain/presets/cue-list.ts";
 import type { BackendCapabilities } from "@domain/types/backend.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
@@ -176,6 +178,62 @@ describe("T1555b — the Problems list through the mounted app", () => {
       fireEvent.click(screen.getByRole("button", { name: "Clear problems" }));
     });
     expect((await problems(runtime)).map((entry) => entry.code)).toEqual(["gpu.unavailable"]);
+    runtime.dispose();
+  }, 30_000);
+
+  /**
+   * §T1559b (2) — a cue list that follows the timeline reads its bank's Morph as the document
+   * stores it, and a DRIVEN Morph is said by the compile (`timelineCueProblems`). The other
+   * timeline warnings stay on the list's own inspector section; this one is about the bank,
+   * so it has to arrive HERE, in the list the person and the agent read, on the bank's id.
+   * The fade's stored seconds are `compiler/timeline-cue-problems.test.ts`.
+   */
+  it("§T1559b (2): says a timed cue list's bank has a driven Morph, on the bank, with the stored seconds", async () => {
+    const { backend } = refusingBackend();
+    const runtime = await mount({ kind: "ready", capabilities: CAPABILITIES, baseline: true, backend });
+    await act(async () => {
+      const added = await runtime.bus.execute(
+        "graph.applyPatch",
+        {
+          baseRevision: runtime.bus.store.getRevision(),
+          operations: [
+            { op: "addNode", ref: "$level", type: "level", label: "level1", position: { x: 0, y: 0 } },
+            {
+              op: "addNode",
+              ref: "$bank",
+              type: "presets",
+              label: "looks",
+              position: { x: 0, y: 200 },
+              parameters: {
+                targets: "level1",
+                presets: serializePresetBank({ version: 1, presets: [{ name: "bright", values: { level1: { brightness: 0.8 } } }] }),
+                // `time + 2`: 2 s as the document says it (the zero frame), and longer every second it plays.
+                morph: { mode: "expression", bindings: { static: { kind: "static", value: 9 }, expression: { kind: "expression", source: "time + 2" } } },
+              },
+            },
+            {
+              op: "addNode",
+              ref: "$list",
+              type: "cueList",
+              label: "show",
+              position: { x: 0, y: 400 },
+              parameters: { follow: "timeline", cues: serializeCueList({ version: 1, cues: [{ name: "A", bank: "looks", preset: "bright", at: 1 }] }) },
+            },
+          ],
+        },
+        runtime.invocation,
+      );
+      expect(added.status).toBe("applied");
+    });
+    await settle();
+
+    const bank = Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.label === "looks");
+    const said = (await problems(runtime)).filter((entry) => entry.code.startsWith("cue."));
+    expect(said.map((entry) => [entry.severity, entry.code, entry.nodeId])).toEqual([["warning", "cue.timeline.drivenMorph", bank?.id]]);
+    expect(said[0]?.message).toContain('Cue list "show" follows the timeline and fires bank "looks", whose Morph is driven (expression)');
+    expect(said[0]?.message).toContain("the stored value, 2 s");
+    // The person's pane renders the same entry.
+    expect(within(screen.getByLabelText("Problems")).getByText("cue.timeline.drivenMorph")).toBeDefined();
     runtime.dispose();
   }, 30_000);
 });
