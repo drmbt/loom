@@ -54,6 +54,9 @@ export interface SentinelDocumentOptions {
    * what bring the shadow and the articulated claw back to the live tier.
    */
   readonly tier?: "live" | "offline";
+  /** The two things a tier decides, each on its own, for measuring one without the other. Unset, the tier decides. */
+  readonly shadows?: boolean;
+  readonly hingedClaws?: boolean;
 }
 
 /**
@@ -123,6 +126,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const travel = expressionSlot(TRAVEL, 0);
   const robots = options.robots ?? PACK.slice(0, 1);
   const offline = options.tier === "offline";
+  const shadows = options.shadows ?? offline;
+  const hingedClaws = options.hingedClaws ?? offline;
   // Perched, it eases to a stop (below) and its head scans the tunnel on two slow counts, so the sweep never repeats on the bar.
   const PERCHED = "op('lag_perched').chan.value";
   const look: Record<string, StoredParameter> = {
@@ -168,7 +173,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     { role: "hull", shape: facts.robot, pick: "body" },
     { role: "ring", shape: facts.ring, pick: { first: 0, count: facts.ringCount } },
     // The claw: live, one rigid piece on the wrist; offline, its cone and eight phalanges, each hinged (see `tier`).
-    ...(offline
+    ...(hingedClaws
       ? [{ role: "hub", shape: facts.hub, pick: { first: facts.ringCount, count: 1 } }, ...facts.phalanxMeshes.map((shape, which) => ({ role: `phalanx${which}`, shape, pick: { first: facts.ringCount + 1 + which, count: 1 } }))]
       : [{ role: "claw", shape: facts.claw, pick: { first: facts.ringCount, count: 1 } }]),
   ];
@@ -277,7 +282,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // A kick punches the lens in.
     node("cam", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "cam1" }),
     // Offline, the eyes throw the tentacles' shadows down the walls; live, no light casts (see `tier`).
-    node("eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, ...(offline ? { shadows: true, shadowExtent: 14, shadowSoftness: 1 } : {}) }, { label: "eyes1" }),
+    node("eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.12, 0.06, 1], intensity: expressionSlot(`${on("glow")} * 0.18 * (0.75 + ${HAT} * 0.9)`, 1.6), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 14, ...(shadows ? { shadows: true, shadowExtent: 14, shadowSoftness: 1 } : {}) }, { label: "eyes1" }),
     // The three lamp plates nearest the robot, as lights; they breathe with the low end.
     ...lamps.map((lamp, index) =>
       node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {
@@ -294,7 +299,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         falloff: "inverseSquare",
         range: 30,
         // Offline, the lamp overhead casts too.
-        ...(offline && index === 1 ? { shadows: true, shadowExtent: 30, shadowSoftness: 1 } : {}),
+        ...(shadows && index === 1 ? { shadows: true, shadowExtent: 30, shadowSoftness: 1 } : {}),
       }, { label: `light_lamp${index}` }),
     ),
     node("shot", "render", [-1200, 0], {
