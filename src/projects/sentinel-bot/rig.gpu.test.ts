@@ -5,7 +5,7 @@ import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host
 import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
-import { pathAt } from "./path.ts";
+import { CHAMBERS, chamberAt, pathAt } from "./path.ts";
 import { JOINT_ATTRIBUTES, jointCount, jointKernel, stationsPerTentacle } from "./rig.ts";
 import { BORE_ATTRIBUTES, BORE_KERNEL } from "./tunnel.ts";
 
@@ -181,7 +181,7 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     // mean of a row IS that point.
     const COLS = 33;
     const ROWS = 48;
-    const bore = node("kernel_bore", "pointKernel", [0, 0], { capacity: COLS * ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel: 333, relief: 0, deck: 2 });
+    const bore = node("kernel_bore", "pointKernel", [0, 0], { capacity: COLS * ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel: 350, relief: 0, deck: 2 });
     const result = await renderHeadless({
       host: nodeGpuHost(),
       graph: graph(
@@ -207,6 +207,7 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     if (packed === undefined) throw new Error("probe buffers missing");
     const floats = kernelRegionSlice(bore as never, packed, "position").floats;
     const stride = floats.length / (COLS * ROWS);
+    let swollen = 0;
     for (let row = 0; row < ROWS; row += 1) {
       const mean: Vec = [0, 0, 0];
       // The last column repeats the first (the seam), so a turn is the first COLS − 1.
@@ -215,10 +216,17 @@ describe("the sentinel's rig — every joint, across two strides", () => {
         for (let axis = 0; axis < 3; axis += 1) mean[axis] = (mean[axis] as number) + (floats[base + axis] as number) / (COLS - 1);
       }
       const expected = pathAt(mean[2]);
-      // At z ≈ 333 m a float resolves 3e-5 m; the mean of 32 such readings is good to that.
+      // The window is rows at z ≈ 323 to 330 m, up the flare of the hall at 336 m. There a float resolves 3e-5 m; the mean of 32 such readings is good to that.
       expect(Math.abs(mean[0] - expected[0])).toBeLessThan(1e-4);
       expect(Math.abs(mean[1] - expected[1])).toBeLessThan(1e-4);
+      // …and the wall stands where the CPU's chamber says: the liner is 5 cm outside a bore of 2.6 m that a hall swells.
+      const first = row * COLS * stride;
+      const radius = Math.hypot((floats[first] as number) - mean[0], (floats[first + 1] as number) - mean[1], (floats[first + 2] as number) - mean[2]);
+      expect(Math.abs(radius - (2.6 * (1 + CHAMBERS.swell * chamberAt(mean[2])) + 0.05))).toBeLessThan(2e-4);
+      swollen = Math.max(swollen, chamberAt(mean[2]));
     }
+    // The window really did cross into a hall, so the line above was not read on plain bore alone.
+    expect(swollen).toBeGreaterThan(0.5);
   }, 120_000);
 
   it("swims: every claw lets go and trails behind its socket, flung wide at the top of the beat and drawn in after the snap", async () => {
@@ -247,6 +255,28 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     expect(Math.min(...open.behind)).toBeGreaterThan(0);
     // The beat is the difference: cut `stroke` and the two poses are one. Open, the claws stand at least a metre further off the axis.
     expect(open.spread - shut.spread).toBeGreaterThan(1);
+  }, 120_000);
+
+  it("crosses a chamber swimming: told to walk, in the middle of a hall every claw has let go and trails", async () => {
+    // A chamber's wall stands 1.9 bore radii off the axis, further than a tentacle reaches, so the
+    // rig lets go by itself. The same robot, the same Swim of 0, a hall's middle against plain bore.
+    const middle = CHAMBERS.spacing / 2;
+    expect([chamberAt(middle), chamberAt(0)]).toEqual([1, 0]);
+    const hall = await walk(1, { travel: middle, stroke: 0.3 });
+    const bore = await walk(1, { travel: 0, stroke: 0.3 });
+    let held = 0;
+    for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+      const socket = hall.at(0, tentacle, 0);
+      const claw = hall.at(0, tentacle, FACTS.ringCount);
+      if (socket === undefined || claw === undefined) throw new Error("a tentacle is stowed in the hall");
+      expect(hall.slip(0, tentacle, FACTS.ringCount)).toBe(0);
+      expect(socket[2] - claw[2]).toBeGreaterThan(1.5);
+      // In the bore it walks: most wrists are abreast of the body or ahead of it, not streaming aft.
+      const walking = bore.at(0, tentacle, FACTS.ringCount);
+      const from = bore.at(0, tentacle, 0);
+      if (walking !== undefined && from !== undefined && from[2] - walking[2] < 1.5) held += 1;
+    }
+    expect(held).toBeGreaterThan(TENTACLES / 2);
   }, 120_000);
 
   it("gestures: a tentacle with nothing to hold reaches out instead of trailing", async () => {

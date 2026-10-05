@@ -13,7 +13,7 @@ import { pathWgsl } from "./path.ts";
  * robots and its rows are laid at fixed distances, so the wall stands still while the window
  * slides and nothing swims. The relief is a function of the angle and the distance: a rib
  * every 1.6 m, pipes and cable runs along the walls, plates set a little in or out, a flat deck
- * to stand on. Until a swept surface and instanced modules exist (§T1587b, §T1581b) this grid
+ * to stand on, and every 96 m a chamber where the bore opens out into a hall. Until a swept surface and instanced modules exist (§T1587b, §T1581b) this grid
  * IS the tunnel; when they do, the ribs and pipes become modules and this the liner behind them.
  */
 
@@ -75,7 +75,9 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let wall = pathFrame(z);
   let radial = wall.right * cos(theta) + wall.up * sin(theta);
 
-  let liner = ctx.params.bore + 0.05;
+  // In a chamber the bore opens out into a hall (path.ts, CHAMBERS).
+  let bore = ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt(z));
+  let liner = bore + 0.05;
   var radius = liner;
   var what = 0.0;
   // Plates: a panel every rib bay and every eighth of a turn, set a little in or out.
@@ -95,7 +97,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let alongBay = abs(z - (bay + 0.5) * RIB);
   let rib = 1.0 - smoothstep(0.08, 0.17, alongBay);
   if (rib > 0.0) {
-    radius = min(radius, mix(radius, ctx.params.bore - 0.12, rib * ctx.params.relief));
+    radius = min(radius, mix(radius, bore - 0.12, rib * ctx.params.relief));
     what = mix(what, 1.0, step(0.5, rib));
   }
   // The deck: nothing hangs below it.

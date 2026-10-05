@@ -133,6 +133,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     };
   };
   const lamps = [-1, 0, 1].map(lampAt);
+  // The body and the joints must agree on how much it swims and where the stroke is: the lunge is in both.
+  const swimming: Record<string, StoredParameter> = { swim: expressionSlot(SWIM, 0), stroke: expressionSlot(STROKE, 0) };
   const boxes = (id: string, kind: number, scale: number, position: readonly [number, number]): GraphNode =>
     node(id, "geometry", position, {
       mode: "instances",
@@ -184,9 +186,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("hits", "valueLag", [-3000, 750], { lag: 0.001, releaseRatio: 250 }, { label: "hits1" }),
 
     // ── How far it has come: a rate, eased, integrated, wrapping where the path does ──
-    // Perch stops it; a kick shoves it; swimming surges on the snap of each beat and glides between.
+    // Perch stops it; a kick shoves it. (The lunge of a swimming stroke is the rig's own, on the
+    // GPU: the rate cannot read how far it has come without the value graph closing a loop,
+    // and a loop there is dropped whole.)
     node("rate", "constant", [-2400, 1000], {
-      value: expressionSlot(`${on("speed")} * (1 - ${on("perch")}) * (1 + ${KICK} * 0.6) * (1 + ${SWIM} * (sin(clamp(${STROKE} / 0.25, 0, 1) * 3.14159265) * 1.4 - 0.3))`, 3.2),
+      value: expressionSlot(`${on("speed")} * (1 - ${on("perch")}) * (1 + ${KICK} * 0.6)`, 3.2),
     }, { label: "rate1" }),
     node("ease", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "ease1" }),
     // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
@@ -201,7 +205,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("robot", "meshFileIn", [-2400, 0], { file: facts.glbUrl, select: facts.robot.select, vertices: facts.robot.vertices, triangles: facts.robot.triangles, parts: facts.robot.parts }, { label: "robot1" }),
     // One kernel and one draw per robot until the body is an object with a transform (T1588b).
     ...robots.flatMap((offset, index) => [
-      node(`body${index}`, "pointKernel", [-2100, -index * 150], { capacity: facts.robot.vertices, attributes: BODY_ATTRIBUTES, kernel: BODY_KERNEL, travel, offset: [offset[0], offset[1], offset[2]], ...look }, { label: `body${index}_1` }),
+      node(`body${index}`, "pointKernel", [-2100, -index * 150], { capacity: facts.robot.vertices, attributes: BODY_ATTRIBUTES, kernel: BODY_KERNEL, travel, offset: [offset[0], offset[1], offset[2]], ...look, ...swimming }, { label: `body${index}_1` }),
       node(`bodyGeo${index}`, "geometry", [-1800, -index * 150], { mode: "surface", material: "hull1" }, { label: `bodygeo${index}_1` }),
     ]),
     node("hull", "materialWgsl", [-1800, 150], {
@@ -223,8 +227,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       gesture: expressionSlot(`${on("slider_gesture")} * (0.5 + 0.5 * ${PERCHED}) * (0.7 + ${LOW} * 0.6)`, 0.3),
       // A hat clacks the idle claws.
       snap: expressionSlot(HAT, 0),
-      swim: expressionSlot(SWIM, 0),
-      stroke: expressionSlot(STROKE, 0),
+      ...swimming,
       stride: expressionSlot(on("stride"), 3.2),
       flare: expressionSlot(on("flare"), 0.25),
       // The low end runs down the tentacles.
