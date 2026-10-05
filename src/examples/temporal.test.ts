@@ -149,7 +149,7 @@ describe("examples with a temporal loop", () => {
       // §V694 was found here: a Level with a positive blacklevel inside this loop drove
       // empty pixels NEGATIVE in rgba16float and cancelled the base layer downstream.
       "E40-Wake.loom.json",
-      // T947: the loop as an INSTRUMENT'S GLOW. E49's `echo1` is a CRT phosphor
+      // T947: the loop as an INSTRUMENT'S GLOW. E49's `feedback_echo` is a CRT phosphor
       // (persistence 0.9 ≈ 1/e in ten frames, a P31's order of magnitude); E50's is the
       // EYE — persistence of vision at 0.55, a much shorter tail, because a galvo wall
       // has no phosphor and the afterimage is the viewer's. Same node, two decay

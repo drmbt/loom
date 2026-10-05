@@ -25,7 +25,7 @@ import { expressionSlot } from "./documents/builders.ts";
  * and the document renders, every claim passes, and the feature never ran. That is §V856's
  * family, and it has now shipped three times in one week:
  *
- *   - E52  `op('mask1').chan.coverage`  — a LIVE source (personMask), whose road into the
+ *   - E52  `op('personmask1').chan.coverage`  — a LIVE source (personMask), whose road into the
  *          expression engine did not exist until T1067 put `externalChannels` in the ladder
  *   - E53  `op('matte1').chan.coverage` — the same, one seam over
  *   - E54  reported as `op('clag1').chan.bar` and was NOT this bug at all: `clag1` publishes
@@ -223,7 +223,7 @@ const UNVERIFIABLE = [
   "AudioAnalysis.loom.json  glow.brightness  op('limit_probe').chan.low  [valueLimit]",
   "AudioAnalysis.loom.json  glow.contrast  op('limit_hits').chan.kickCount  [valueLimit]",
   "AudioLevel.loom.json  glow.brightness  op('limit_probe').chan.low  [valueLimit]",
-  "E52-Presence.loom.json  wash.brightness  op('mask1').chan.coverage  [personMask]",
+  "E52-Presence.loom.json  wash.brightness  op('personmask1').chan.coverage  [personMask]",
   "E53-Two-Cuts.loom.json  washC.brightness  op('seg1').chan.coverage  [personMask]",
   "E53-Two-Cuts.loom.json  washW.brightness  op('matte1').chan.coverage  [matte]",
 ];

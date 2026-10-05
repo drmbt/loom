@@ -194,7 +194,7 @@ describe.each(examples)("example $fileName", (file) => {
     // therefore fail on a working document, so the claim is split: everything is live,
     // and everything that should compile did.
     expect([...documentLiveness(document.graph, registry).dead]).toEqual(unwireable);
-    /* T956: a component INSTANCE flattens into `<id>/<inner>` plan nodes (E47's holo1 is
+    /* T956: a component INSTANCE flattens into `<id>/<inner>` plan nodes (E47's depthpoints_holo1 is
        the first shipped case), and the plan is compiled from that FLATTENED document — so
        the flattened document is where the expected order is read from. T1236: an instance
        of value nodes only (E66's AudioAnalysis) expands to NO plan node at all and is

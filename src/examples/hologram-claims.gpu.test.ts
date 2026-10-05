@@ -26,8 +26,8 @@ const DEPTH_POINT_CAPACITY = 36864;
 /**
  * E47 HOLOGRAM — THE CLAIMS (T956, then T983/§T979).
  *
- * The v2 picture is two clouds split by ONE range: `zone1` keeps the subject's near
- * band of depthN, `wall1` keeps the backdrop instance's complement of the same range.
+ * The v2 picture is two clouds split by ONE range: `range_zone` keeps the subject's near
+ * band of depthN, `range_wall` keeps the backdrop instance's complement of the same range.
  * A screenshot cannot tell an exact partition from a plausible one, so the split is
  * asserted on the point buffers through the REAL flattened component plan — the
  * expectation for every slot DERIVED from the read-back inputs (§V147: no bands).
@@ -69,7 +69,7 @@ async function renderE47(options?: { mutate?: (graph: GraphDocument) => void; pr
     animate: true,
     components: result.components,
     // A mutant that unlists the wall PRUNES its branch, so probes only ride the
-    // shipped graph — asking a pruned plan for holo2's buffers is a loud unknown.
+    // shipped graph — asking a pruned plan for depthpoints_holo2's buffers is a loud unknown.
     ...(options?.probe === false
       ? {}
       : {
@@ -196,7 +196,7 @@ describe("E47 Hologram — the zone and the wall (T983, §T979)", () => {
       probe: false,
       mutate: (graph) => {
         const shot = graph.nodes["shot"]!;
-        (shot.parameters as Record<string, unknown>)["scenes"] = "dots1";
+        (shot.parameters as Record<string, unknown>)["scenes"] = "geometry_dots";
       },
     });
     const wallPixels = differingPixels(shippedImage.data, rgba(withoutWall.frames[0]!, space).data);
@@ -366,8 +366,8 @@ describe("E47 Hologram — the zone and the wall (T983, §T979)", () => {
    * WHY RED, and why it is exact rather than a band. `paint` publishes
    * `tint = vec4f(colour.rgb * gain * cover, cover)`, so `tint.r / tint.a` recovers
    * `palette.r * gain` for any lit mote — coverage divides out, which is what lets the
-   * cut's own cohorts stay out of this. `palette1`'s red is non-decreasing across all six
-   * stops (0.004, 0.02, 0.08, 0.86, 1, 1) and `coat1`'s index is non-increasing in depth
+   * cut's own cohorts stay out of this. `ramp_palette`'s red is non-decreasing across all six
+   * stops (0.004, 0.02, 0.08, 0.86, 1, 1) and `lookup_coat`'s index is non-increasing in depth
    * (brighter map = nearer = higher index), so composed, red must be NON-INCREASING in
    * depthN. That is a property of the two, not a measurement of the picture.
    *
@@ -376,7 +376,7 @@ describe("E47 Hologram — the zone and the wall (T983, §T979)", () => {
    * far — the four flat octiles are the orb's core, where the understudy map CLIPS at 1.0
    * and the carve clamps the same sample, so a flat colour there agrees with a flat depth.
    *
-   * THE MUTANT IS THE COPY-WITHOUT-THE-KEY. `coat1.scale = 0` leaves the ramp, the braid,
+   * THE MUTANT IS THE COPY-WITHOUT-THE-KEY. `lookup_coat.scale = 0` leaves the ramp, the braid,
    * the cut and every cohort exactly where they are and only stops the lookup READING the
    * map: measured, the span collapses to exactly 0 and all 2508 motes publish one red. So
    * this test cannot be satisfied by a prettier static tint, which is the whole point.

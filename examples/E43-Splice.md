@@ -32,25 +32,25 @@ asserted, as the §V361 cut.
 ## Graph
 
 ```
-bed1(noise, dark smoke) ─┐
-orb1(circle ┄ pathx1/pathy1) ─┴─► stand1(add) ─┐ order 0
-clip1(movieFileIn) ─────────────────────────────┴─► pick1(switch)
+noise_bed(noise, dark smoke) ─────┐
+circle_orb(circle ┄ lfo_pathx/lfo_pathy) ─┴─► add_stand(add) ─┐ order 0
+movie_clip(movieFileIn) ───────────────────────────────────────┴─► switch_pick(switch)
 
-pick1 ─► splice1(customWgsl: the glitch) ─► fold1(mirror ┄ spin1) ──────────┬─► slam1(crop) ─► punch1.in2
-beat1(audioPattern 122bpm) ┄ gsub1(−rest)·gd1(×5.5)·genv1 ┄► splice1.amount │
-       ┄ esub1(−rest)·ed1(×1.7)·lenv1 ┄► punch1.opacity                     └─► echo1(transform ×1.18) ─► punch1.in1
-       ┄ slag1·sl1(×0.24) ┄► slam1.bottom
-punch1(composite, over) ─► out1
+switch_pick ─► wgsl_splice(customWgsl: the glitch) ─► mirror_fold(mirror ┄ lfo_spin) ─────────────────────────────┬─► crop_slam(crop) ─► composite_punch.in2
+pattern_beat(audioPattern 122bpm) ┄ math_glitchrest(−rest)·math_glitchgain(×5.5)·lag_glitch ┄► wgsl_splice.amount │
+       ┄ math_echorest(−rest)·math_echogain(×1.7)·lag_echo ┄► composite_punch.opacity                             └─► transform_echo(transform ×1.18) ─► composite_punch.in1
+       ┄ lag_slam·math_slamgain(×0.24) ┄► crop_slam.bottom
+composite_punch(composite, over) ─► output1
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `splice1` | `customWgsl` | the star: 36 bands roll per (band, deal) whether to jump, a 9×5 block grid tears vertically on a rarer roll, and R/B travel further along the same tear — all `textureLoad`, so zero is exact |
-| `fold1` | `mirror` | the kaleidoscope fold on live video — the mirror node's **first example**, and the first time its shader was ever compiled by a real device (see below) |
-| `slam1` | `crop` | crop *blanks* (TD's crop resizes; ours doesn't) — which makes it the letterbox: the bottom edge rides the onsets through a lag, bars slam up and decay |
-| `punch1` | `composite` | the kick echo: a ×1.18 copy laid `over` the frame, opacity driven by the rest-subtracted low band — silent means absent, in bytes |
-| `spin1` | `lfo` | the fold axis drifts ±22° — a locked mirror reads as a screenshot |
-| `gsub1`/`esub1` | `valueMath` | the T701 rest subtractions: high rests at 0.381, low at 0.712; silence must drive zero or the identity claim is a lie |
+| `wgsl_splice` | `customWgsl` | the star: 36 bands roll per (band, deal) whether to jump, a 9×5 block grid tears vertically on a rarer roll, and R/B travel further along the same tear — all `textureLoad`, so zero is exact |
+| `mirror_fold` | `mirror` | the kaleidoscope fold on live video — the mirror node's **first example**, and the first time its shader was ever compiled by a real device (see below) |
+| `crop_slam` | `crop` | crop *blanks* (TD's crop resizes; ours doesn't) — which makes it the letterbox: the bottom edge rides the onsets through a lag, bars slam up and decay |
+| `composite_punch` | `composite` | the kick echo: a ×1.18 copy laid `over` the frame, opacity driven by the rest-subtracted low band — silent means absent, in bytes |
+| `lfo_spin` | `lfo` | the fold axis drifts ±22° — a locked mirror reads as a screenshot |
+| `math_glitchrest`/`math_echorest` | `valueMath` | the T701 rest subtractions: high rests at 0.381, low at 0.712; silence must drive zero or the identity claim is a lie |
 
 ## What compiling the mirror found (the §B39 shape, again)
 
@@ -80,5 +80,5 @@ tell either apart from the shipped behaviour (§V712/§V717).
 - **The deal hash is the kernel's own.** `hash2` is the standard sin-fract lattice hash —
   fine for a glitch, not a statistical RNG, and deliberately not `pointRand` (that is
   the point pipeline's; a fragment shader has no point identity).
-- **Point `clip1` at real footage** (`pick1.index = 1`) and the rack plays it as-is —
+- **Point `movie_clip` at real footage** (`switch_pick.index = 1`) and the rack plays it as-is —
   the understudy proves the mechanism; the video input is the point.

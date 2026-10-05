@@ -3,9 +3,9 @@ import { settings, node, edge, graph, document } from "./builders.ts";
 /**
  * E49 — Lissajous (T947). AN X-Y OSCILLOSCOPE, SIMULATED BY ITS OWN PHYSICS.
  *
- *   gen1(pointKernel: x = sin 3θ+φt, y = sin 2θ) ─► scope1(laserPath) ─► draw1(renderPoints)
- *   draw1 ─► trace1(add) ◄─ echo1(feedback, the phosphor)
- *   trace1 ─► hot1(threshold) ─► halo1(blur) ─► glow1(add ◄ trace1) ─► out1
+ *   kernel_gen(pointKernel: x = sin 3θ+φt, y = sin 2θ) ─► laserpath_scope(laserPath) ─► points_draw(renderPoints)
+ *   points_draw ─► add_trace(add) ◄─ feedback_echo(feedback, the phosphor)
+ *   add_trace ─► threshold_hot(threshold) ─► blur_halo(blur) ─► add_glow(add ◄ add_trace) ─► output1
  *
  * ## What the picture is
  *
@@ -26,7 +26,7 @@ import { settings, node, edge, graph, document } from "./builders.ts";
  * electrons. The plan (~1,200 samples) EXCEEDS the 500-point budget of 30,000 pps at
  * 60 fps, so `laserPath`'s scan window sweeps the figure at its honest ~25 Hz refresh
  * — the bright drawing head chasing around the trace is the beam, and the tail behind
- * it is `echo1`, the phosphor: `feedback` at persistence 0.9 (≈ 1/e in 10 frames, a
+ * it is `feedback_echo`, the phosphor: `feedback` at persistence 0.9 (≈ 1/e in 10 frames, a
  * P31 phosphor's order of magnitude). The bloom is the shipped threshold → blur → add
  * chain; only what the beam deposited can glow.
  */
@@ -52,7 +52,7 @@ export const lissajousDocument = document(
   return q;
 }`,
         value1: 0, value2: 0, value3: 0, value4: 0,
-      }, { label: "gen1" }),
+      }, { label: "kernel_gen" }),
 
       /* The planner in scope trim: resampling on (the beam is continuous), corner hold
          OFF (no mirrors), the scanner clock at a real 30 kpps. 1,200 points against a
@@ -65,7 +65,7 @@ export const lissajousDocument = document(
         closed: true,
         color: [0.5, 1, 0.62, 1],
         slots: 4,
-      }, { label: "scope1" }),
+      }, { label: "laserpath_scope" }),
 
       /* The beam spot: small, soft, additive — deposited energy sums, which is the
          whole dwell-time mechanism. Colour is MAPPED from the plan's tint: samples
@@ -73,24 +73,24 @@ export const lissajousDocument = document(
       node("draw", "renderPoints", [-900, 0], {
         count: 4800, blend: "additive", accumulate: false, sizePixels: 1.8, group: "",
         color: [1, 1, 1, 1],
-      }, { label: "draw1", parameters: {
+      }, { label: "points_draw", parameters: {
         color: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
       } }),
 
       /* The phosphor: last frame's trace, decayed. 0.9 ≈ 1/e in ten frames — the tail
          is a beat long, so the sweeping beam leaves a whole figure on the glass. */
-      node("trace", "add", [-600, 0], {}, { label: "trace1" }),
+      node("trace", "add", [-600, 0], {}, { label: "add_trace" }),
       node("echo", "feedback", [-900, 280], {
-        source: "trace1",
+        source: "add_trace",
         persistence: 0.9,
         clearColor: [0, 0, 0, 1],
-      }, { label: "echo1" }),
+      }, { label: "feedback_echo" }),
 
       // ---- the glass glow: the shipped bloom chain, green already in the beam -------
-      node("hot", "threshold", [-300, -160], { threshold: 0.55, softness: 0.3, channel: "luminance", compare: "greater" }, { label: "hot1" }),
-      node("halo", "blur", [0, -160], { size: 22, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
-      node("glow", "add", [300, 0], {}, { label: "glow1" }),
-      node("out", "output", [600, 0], {}, { label: "out1" }),
+      node("hot", "threshold", [-300, -160], { threshold: 0.55, softness: 0.3, channel: "luminance", compare: "greater" }, { label: "threshold_hot" }),
+      node("halo", "blur", [0, -160], { size: 22, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
+      node("glow", "add", [300, 0], {}, { label: "add_glow" }),
+      node("out", "output", [600, 0], {}, { label: "output1" }),
     ],
     [
       edge("e-gen-scope", ["gen", "out"], ["scope", "points"]),

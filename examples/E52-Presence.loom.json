@@ -132,7 +132,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "noise_bed",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -159,7 +159,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "webcam1",
         "parameters": {},
         "position": {
           "x": -1920,
@@ -170,7 +170,7 @@
       "haze": {
         "definitionVersion": 1,
         "id": "haze",
-        "label": "haze1",
+        "label": "noise_haze",
         "parameters": {
           "amp": 0.7,
           "aspectcorrect": true,
@@ -197,7 +197,7 @@
       "ink": {
         "definitionVersion": 1,
         "id": "ink",
-        "label": "ink1",
+        "label": "solid_ink",
         "parameters": {
           "color": [
             0.12,
@@ -215,7 +215,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "multiply_key",
         "parameters": {
           "opacity": 1
         },
@@ -228,7 +228,7 @@
       "mask": {
         "definitionVersion": 1,
         "id": "mask",
-        "label": "mask1",
+        "label": "personmask1",
         "parameters": {
           "invert": false,
           "rateLimit": 0.1
@@ -242,7 +242,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": -420,
@@ -253,7 +253,7 @@
       "room": {
         "definitionVersion": 1,
         "id": "room",
-        "label": "room1",
+        "label": "over_room",
         "parameters": {
           "opacity": 1
         },
@@ -266,7 +266,7 @@
       "src": {
         "definitionVersion": 1,
         "id": "src",
-        "label": "src1",
+        "label": "switch_src",
         "parameters": {
           "index": 0
         },
@@ -279,7 +279,7 @@
       "tint": {
         "definitionVersion": 1,
         "id": "tint",
-        "label": "tint1",
+        "label": "multiply_tint",
         "parameters": {
           "opacity": 1
         },
@@ -292,13 +292,13 @@
       "wash": {
         "definitionVersion": 1,
         "id": "wash",
-        "label": "wash1",
+        "label": "level_wash",
         "parameters": {
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.55 + op('mask1').chan.coverage * 4"
+                "source": "0.55 + op('personmask1').chan.coverage * 4"
               },
               "static": {
                 "kind": "static",

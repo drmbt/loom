@@ -36,45 +36,7 @@ export interface Judgement {
   readonly unsure?: true;
 }
 
-const REST = "takes the band's resting level off first, so silence drives exactly zero";
-
 export const JUDGEMENTS: readonly Judgement[] = [
-  // ── E45: a shot's letter is its name ───────────────────────────────────────────────────
-  { scope: "E45-Pulse", kind: "camera", old: "camA1", role: "A", reason: "shot A's camera: kept, the letter is the shot's name (`render_shotA`)" },
-  { scope: "E45-Pulse", kind: "camera", old: "camB1", role: "B", reason: "shot B's camera: kept, as above" },
-
-  // ── E37: a number that only told two kinds apart ───────────────────────────────────────
-
-  // ── E36: left and right ────────────────────────────────────────────────────────────────
-
-  // ── E43 Splice: three drives off the beat ──────────────────────────────────────────────
-  { scope: "E43-Splice", kind: "math", old: "gsub1", role: "glitchrest", reason: `the glitch drive: ${REST}` },
-  { scope: "E43-Splice", kind: "math", old: "gd1", role: "glitchgain", reason: "the glitch drive's gain (x5.5)" },
-  { scope: "E43-Splice", kind: "lag", old: "genv1", role: "glitch", reason: "the envelope on the tear, fast up and slow down; it drives the splice's amount" },
-  { scope: "E43-Splice", kind: "math", old: "esub1", role: "echorest", reason: `the echo drive: ${REST}` },
-  { scope: "E43-Splice", kind: "math", old: "ed1", role: "echogain", reason: "the echo drive's gain (x1.7)" },
-  { scope: "E43-Splice", kind: "lag", old: "lenv1", role: "echo", reason: "the envelope on the echo; it drives the echo's opacity" },
-  { scope: "E43-Splice", kind: "lag", old: "slag1", role: "slam", reason: "onsets through a lag, so the letterbox bar decays like a hit" },
-  { scope: "E43-Splice", kind: "math", old: "sl1", role: "slamgain", reason: "how far the bar slams (x0.24); it drives the crop's bottom edge" },
-
-  // ── E45 Pulse: high band, low band, the shot, the palette ──────────────────────────────
-  { scope: "E45-Pulse", kind: "math", old: "hs1", role: "highrest", reason: `the high band: ${REST}` },
-  { scope: "E45-Pulse", kind: "lag", old: "henv1", role: "high", reason: "the one envelope both high-band consumers read" },
-  { scope: "E45-Pulse", kind: "math", old: "gth1", role: "glitchthreshold", reason: "a threshold before the gain, so only a strong strike tears" },
-  { scope: "E45-Pulse", kind: "math", old: "hd1", role: "glitchgain", reason: "the tear's gain (x8); its id is `hglitch`" },
-  { scope: "E45-Pulse", kind: "limit", old: "glim1", role: "glitch", reason: "clamps the tear to 0..1; it drives the splice's amount" },
-  { scope: "E45-Pulse", kind: "math", old: "hm1", role: "radiusgain", reason: "the high band into the web's radius (x0.32); its id is `hrad`" },
-  { scope: "E45-Pulse", kind: "math", old: "rad1", role: "radius", reason: "adds the web's resting radius (0.12); it drives the proximity radius" },
-  { scope: "E45-Pulse", kind: "math", old: "ls1", role: "lowrest", reason: `the low band: ${REST}` },
-  { scope: "E45-Pulse", kind: "lag", old: "lenv1", role: "low", reason: "the low band's envelope" },
-  { scope: "E45-Pulse", kind: "math", old: "ld1", role: "breath", reason: "the low band into the constellation's breath (x1.4); its id is `lbreath`" },
-  { scope: "E45-Pulse", kind: "math", old: "sm1", role: "shotgain", reason: "reshapes the held value so most phrases land on one shot or the other (x12)" },
-  { scope: "E45-Pulse", kind: "math", old: "ss1", role: "shotbias", reason: "the second half of that reshape (-5.5)" },
-  { scope: "E45-Pulse", kind: "limit", old: "sl1", role: "shot", reason: "clamps it to 0..1: which shot, A or B; `step1` before it and `lag1` after already carry their kind" },
-  { scope: "E45-Pulse", kind: "step", old: "pstep1", role: "palette", reason: "a second value held per phrase: the palette's" },
-  { scope: "E45-Pulse", kind: "math", old: "pm1", role: "palettegain", reason: "spreads it over the hue swing (x320)" },
-  { scope: "E45-Pulse", kind: "math", old: "pal1", role: "palette", reason: "centres the swing (-160); it drives the hue offset" },
-
   // ── E54 Quorum: the phrase lane and the deposit lane ───────────────────────────────────
   { scope: "E54-Quorum", kind: "step", old: "cstep1", role: "envoy", reason: "the phrase lane: a value held four bars that ends on the kernel's Envoy" },
   { scope: "E54-Quorum", kind: "math", old: "cmul1", role: "envoygain", reason: "the phrase lane's gain (x0.6)" },
