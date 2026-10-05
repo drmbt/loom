@@ -16,16 +16,16 @@ const ROSETTE_INV_ASPECT = 720 / 1280;
 /**
  * E39 — Rosette (T729).
  *
- *   stand1(noise 4d) ─┐ order 0
- *                     ├─► pick1(switch) ─────────────────► warp1.source
- *   clip1(movieFileIn)┘ order 1                                 ▲
+ *   noise_stand(noise 4d) ─┐ order 0
+ *                     ├─► switch_pick(switch) ─────────────────► remap_warp.source
+ *   movie_clip(movieFileIn)┘ order 1                                 ▲
  *                                                               │
- *   ang1(ramp circular, phase ┄ spin1, period ┄ petal1) ─► angfix1(transform) ─┐
- *                                                                              ├─► field1(reorder) ─► warp1.map
- *   rad1(circle, distance) ─► depth1(level, gamma ┄ deep1) ─────────────────────┘
+ *   ramp_ang(ramp circular, phase ┄ lfo_spin, period ┄ limit_petal) ─► transform_angfix(transform) ─┐
+ *                                                                              ├─► reorder_field(reorder) ─► remap_warp.map
+ *   circle_rad(circle, distance) ─► level_depth(level, gamma ┄ limit_deep) ─────────────────────┘
  *
- *   warp1(remap) ─► paint1(lookup ◄─ palette1) ─┬─► burn1(add) ─► trim1 ─► out1
- *                                               └─► halo1(blur) ─► haze1(level) ─┘
+ *   remap_warp(remap) ─► lookup_paint(lookup ◄─ ramp_palette) ─┬─► add_burn(add) ─► level_trim ─► output1
+ *                                               └─► blur_halo(blur) ─► level_haze(level) ─┘
  *
  * ## A POLAR WARP IS NOT A NODE — it is six nodes we already had (§V688)
  *
@@ -39,7 +39,7 @@ const ROSETTE_INV_ASPECT = 720 / 1280;
  * Three details are load-bearing, and each was measured rather than reasoned (§V688):
  *
  * ASPECT. `ramp(circular)` computes its atan2 in UV space, so on 16:9 the rays come out
- * elliptically spaced. `angfix1` samples the ramp through a transform scaled by 1/aspect,
+ * elliptically spaced. `transform_angfix` samples the ramp through a transform scaled by 1/aspect,
  * which is exactly atan2(dv, du * aspect) — the angle in PIXEL space. Delete it and the
  * rosette squashes into an ellipse.
  *
@@ -65,22 +65,22 @@ const ROSETTE_INV_ASPECT = 720 / 1280;
  *
  * ## The bloom threshold is GAMMA, never a black level (§V694)
  *
- * `haze1` was a Level with `blacklevel: 0.68` — the obvious way to write "bloom only the
+ * `level_haze` was a Level with `blacklevel: 0.68` — the obvious way to write "bloom only the
  * highlights", and a trap. A positive black level is a SUBTRACTION, `rgba16float` does not
  * clamp, and every pixel below 0.68 (nearly all of them) went negative as far as -2.1, so
- * `burn1` subtracted the bloom everywhere it was not blooming. At the liveness probe size
- * `paint1` spanned 0.545 and `burn1` came out at 0.115 — an ADD that reduced range, which
+ * `add_burn` subtracted the bloom everywhere it was not blooming. At the liveness probe size
+ * `lookup_paint` spanned 0.545 and `add_burn` came out at 0.115 — an ADD that reduced range, which
  * is the algebraic tell (§V698). `gamma1` below one crushes midtones and keeps highlights
  * without ever crossing zero, and the same picture then measures 0.970.
  *
- * `halo1` is 16px and not 34 for a separate reason (§V699): blur size is in PIXELS and the
+ * `blur_halo` is 16px and not 34 for a separate reason (§V699): blur size is in PIXELS and the
  * contrast floor measures at 192x108, so a 2.7% glow at 1280 is an 18%-of-width wash there.
  *
  * ## The palette had to be balanced by LIGHT, not by numbers (§V695)
  *
  * Ramp stops are declared in display space and decode to linear, which costs a dark cool
  * colour most of its luminance while a bright warm one barely moves: the first version of
- * `palette1` looked balanced as authored numbers and played back as red over black,
+ * `ramp_palette` looked balanced as authored numbers and played back as red over black,
  * because [0.05, 0.36, 0.55] lands at linear [0.004, 0.106, 0.267] and simply reads as
  * black. The cool half is lifted until it carries comparable light.
  */
@@ -107,9 +107,9 @@ export const rosetteDocument = document(
         speed: 0.19,
         t4d: 0.4,
         s4d: 1,
-      }, { label: "stand1" }),
-      node("clip", "movieFileIn", [-1620, 100], { file: "", playMode: "freeRun", speed: 1 }, { label: "clip1" }),
-      node("pick", "switch", [-1360, 150], { index: 0 }, { label: "pick1" }),
+      }, { label: "noise_stand" }),
+      node("clip", "movieFileIn", [-1620, 100], { file: "", playMode: "freeRun", speed: 1 }, { label: "movie_clip" }),
+      node("pick", "switch", [-1360, 150], { index: 0 }, { label: "switch_pick" }),
 
       // ── theta: a circular ramp, un-skewed by a transform in the ramp's own space ──
       node("ang", "ramp", [-1360, -420], {
@@ -119,7 +119,7 @@ export const rosetteDocument = document(
           { position: 0, color: [0, 0, 0, 1] },
           { position: 1, color: [1, 1, 1, 1] },
         ],
-      }, { label: "ang1", definitionVersion: 2, parameters: { phase: drivenSlot("spin1", 0), period: drivenSlot("petal1:low", 6), } }),
+      }, { label: "ramp_ang", definitionVersion: 2, parameters: { phase: drivenSlot("lfo_spin", 0), period: drivenSlot("limit_petal:low", 6), } }),
       node("angfix", "transform", [-1100, -420], {
         t: [0, 0],
         r: 0,
@@ -128,7 +128,7 @@ export const rosetteDocument = document(
         xord: "srt",
         extend: "hold",
         aspectcorrect: false,
-      }, { label: "angfix1" }),
+      }, { label: "transform_angfix" }),
 
       // ── rho: an unclamped radius, curved by gamma ──────────────────────────
       node("rad", "circle", [-1360, -180], {
@@ -139,7 +139,7 @@ export const rosetteDocument = document(
         fillcolor: [1, 1, 1, 1],
         bgcolor: [0, 0, 0, 0],
         aspectcorrect: true,
-      }, { label: "rad1" }),
+      }, { label: "circle_rad" }),
       node("depth", "level", [-1100, -180], {
         blacklevel: -ROSETTE_POLAR_K,
         whitelevel: 0,
@@ -147,7 +147,7 @@ export const rosetteDocument = document(
         brightness: 1,
         invert: 0,
         opacity: 1,
-      }, { label: "depth1", parameters: { gamma1: drivenSlot("deep1:lowMid", 1.6), } }),
+      }, { label: "level_depth", parameters: { gamma1: drivenSlot("limit_deep:lowMid", 1.6), } }),
 
       // ── the uv field, and the warp ────────────────────────────────────────
       node("field", "reorder", [-840, -300], {
@@ -155,14 +155,14 @@ export const rosetteDocument = document(
         outg: "in2r",
         outb: "zero",
         outa: "one",
-      }, { label: "field1" }),
+      }, { label: "reorder_field" }),
       node("warp", "remap", [-580, -80], {
         sourcex: "red",
         sourcey: "green",
         flipu: false,
         flipv: false,
         extend: "mirror",
-      }, { label: "warp1" }),
+      }, { label: "remap_warp" }),
 
       // ── the grade ─────────────────────────────────────────────────────────
       node("palette", "ramp", [-840, 300], {
@@ -179,15 +179,15 @@ export const rosetteDocument = document(
           { position: 0.9, color: [1, 0.72, 0.32, 1] },
           { position: 1, color: [1, 0.98, 0.92, 1] },
         ],
-      }, { label: "palette1", definitionVersion: 2 }),
+      }, { label: "ramp_palette", definitionVersion: 2 }),
       node("paint", "lookup", [-320, -80], {
         channel: "luminance",
         row: 0.5,
         offset: 0,
-      }, { label: "paint1", parameters: { scale: drivenSlot("hue1:highMid", 1), } }),
+      }, { label: "lookup_paint", parameters: { scale: drivenSlot("limit_hue:highMid", 1), } }),
 
       // ── bloom ─────────────────────────────────────────────────────────────
-      node("halo", "blur", [-60, 200], { size: 16, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
+      node("halo", "blur", [-60, 200], { size: 16, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
       node("haze", "level", [200, 200], {
         blacklevel: 0,
         whitelevel: 1,
@@ -196,8 +196,8 @@ export const rosetteDocument = document(
         brightness: 1.1,
         invert: 0,
         opacity: 1,
-      }, { label: "haze1" }),
-      node("burn", "add", [200, -80], { opacity: 1 }, { label: "burn1" }),
+      }, { label: "level_haze" }),
+      node("burn", "add", [200, -80], { opacity: 1 }, { label: "add_burn" }),
       node("trim", "level", [460, -80], {
         blacklevel: 0.015,
         whitelevel: 1.05,
@@ -206,25 +206,25 @@ export const rosetteDocument = document(
         brightness: 1,
         invert: 0,
         opacity: 1,
-      }, { label: "trim1" }),
-      node("out", "output", [720, -80], {}, { label: "out1" }),
+      }, { label: "level_trim" }),
+      node("out", "output", [720, -80], {}, { label: "output1" }),
 
       // ── the score ─────────────────────────────────────────────────────────
-      node("beat", "audioPattern", [-1620, 600], { bpm: 118, amount: 1, beatsPerBar: 4 }, { label: "beat1" }),
-      node("smooth", "valueLag", [-1360, 600], { lag: 0.09 }, { label: "smooth1" }),
-      node("spin", "lfo", [-1620, 340], { shape: "saw", frequency: 0.037, amplitude: 0.5, offset: 0.5, phase: 0 }, { label: "spin1" }),
+      node("beat", "audioPattern", [-1620, 600], { bpm: 118, amount: 1, beatsPerBar: 4 }, { label: "pattern_beat" }),
+      node("smooth", "valueLag", [-1360, 600], { lag: 0.09 }, { label: "lag_smooth" }),
+      node("spin", "lfo", [-1620, 340], { shape: "saw", frequency: 0.037, amplitude: 0.5, offset: 0.5, phase: 0 }, { label: "lfo_spin" }),
 
-      node("petalg", "valueMath", [-1100, 620], { operation: "multiply", operand: 5.5 }, { label: "petalg1" }),
-      node("petalb", "valueMath", [-840, 620], { operation: "add", operand: 4.2 }, { label: "petalb1" }),
-      node("petal", "valueLimit", [-580, 620], { minimum: 3, maximum: 11 }, { label: "petal1" }),
+      node("petalg", "valueMath", [-1100, 620], { operation: "multiply", operand: 5.5 }, { label: "math_petalg" }),
+      node("petalb", "valueMath", [-840, 620], { operation: "add", operand: 4.2 }, { label: "math_petalb" }),
+      node("petal", "valueLimit", [-580, 620], { minimum: 3, maximum: 11 }, { label: "limit_petal" }),
 
-      node("deepg", "valueMath", [-1100, 880], { operation: "multiply", operand: 2.4 }, { label: "deepg1" }),
-      node("deepb", "valueMath", [-840, 880], { operation: "add", operand: 0.9 }, { label: "deepb1" }),
-      node("deep", "valueLimit", [-580, 880], { minimum: 0.6, maximum: 4.5 }, { label: "deep1" }),
+      node("deepg", "valueMath", [-1100, 880], { operation: "multiply", operand: 2.4 }, { label: "math_deepg" }),
+      node("deepb", "valueMath", [-840, 880], { operation: "add", operand: 0.9 }, { label: "math_deepb" }),
+      node("deep", "valueLimit", [-580, 880], { minimum: 0.6, maximum: 4.5 }, { label: "limit_deep" }),
 
-      node("hueg", "valueMath", [-1100, 1140], { operation: "multiply", operand: 0.9 }, { label: "hueg1" }),
-      node("hueb", "valueMath", [-840, 1140], { operation: "add", operand: 0.72 }, { label: "hueb1" }),
-      node("hue", "valueLimit", [-580, 1140], { minimum: 0.45, maximum: 1.9 }, { label: "hue1" }),
+      node("hueg", "valueMath", [-1100, 1140], { operation: "multiply", operand: 0.9 }, { label: "math_hueg" }),
+      node("hueb", "valueMath", [-840, 1140], { operation: "add", operand: 0.72 }, { label: "math_hueb" }),
+      node("hue", "valueLimit", [-580, 1140], { minimum: 0.45, maximum: 1.9 }, { label: "limit_hue" }),
     ],
     [
       edge("e-stand-pick", ["stand", "out"], ["pick", "inputs"], 0),

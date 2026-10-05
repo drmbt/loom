@@ -23,7 +23,7 @@ describe("E40 Wake claims", () => {
     edges.find((e) => e.target.nodeId === target && e.target.portId === port)?.source.nodeId;
 
   /**
-   * THE claim of the example. `moved1` must difference the live frame against the CACHED
+   * THE claim of the example. `difference_moved` must difference the live frame against the CACHED
    * one; wire both inputs to the same source and it is identically zero everywhere, the
    * wake never appears, and nothing in a still frame distinguishes that from a quiet moment.
    */
@@ -48,7 +48,7 @@ describe("E40 Wake claims", () => {
    * a loop closing on the finished frame would smear the still bed along with the wake.
    */
   it("accumulates raw motion and grades what comes OUT, so the palette axis is age", () => {
-    expect(sourceReferenceName(nodes["loop"]?.type ?? "", nodes["loop"]?.parameters ?? {})).toBe("born1");
+    expect(sourceReferenceName(nodes["loop"]?.type ?? "", nodes["loop"]?.parameters ?? {})).toBe("add_born");
     expect(into("born", "in2")).toBe("loop");
     // born -> paint, and emphatically not paint -> born.
     expect(into("paint", "source")).toBe("born");
@@ -64,10 +64,10 @@ describe("E40 Wake claims", () => {
    * §V694 turned into something a gate can see, and §V666 is why it is stated this widely.
    *
    * The first version of this claim walked only the nodes FEEDING the accumulator, which is
-   * where the compounding argument lives. It went red on `gain1` and stayed GREEN on
-   * `under1` — the instance that actually mattered, because `under1` sits DOWNSTREAM of the
-   * loop and feeds `lay1` directly, so its negative reached the finished frame while
-   * `gain1`'s was contained by the Lookup's clamp-by-indexing. A guard that catches the
+   * where the compounding argument lives. It went red on `level_gain` and stayed GREEN on
+   * `level_under` — the instance that actually mattered, because `level_under` sits DOWNSTREAM of the
+   * loop and feeds `add_lay` directly, so its negative reached the finished frame while
+   * `level_gain`'s was contained by the Lookup's clamp-by-indexing. A guard that catches the
    * harmless case and misses the harmful one is worse than none, so the property is stated
    * where it is actually true: in a float working format, a positive black level is a
    * SUBTRACTION, and this graph adds things together. Range is bought with `whitelevel`,
@@ -102,7 +102,7 @@ describe("E40 Wake claims", () => {
     const orb = nodes["orb"]?.parameters ?? {};
     for (const key of ["center.x", "center.y"]) {
       const slot = orb[key] as ParameterSlot | undefined;
-      expect(slot?.mode, `orb1.${key} must be driven`).toBe("expression");
+      expect(slot?.mode, `circle_orb.${key} must be driven`).toBe("expression");
     }
     expect(nodes["bed"]?.parameters["speed"] as number).toBeLessThan(
       (nodes["pathx"]?.parameters["frequency"] as number) ?? 0,

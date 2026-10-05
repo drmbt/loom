@@ -420,7 +420,7 @@
       "aim": {
         "definitionVersion": 1,
         "id": "aim",
-        "label": "aim1",
+        "label": "kernel_aim",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"direction\",\"type\":\"vec3f\",\"default\":[0,-1,0]},{\"name\":\"spoke\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 240,
@@ -432,7 +432,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tiltwave1').chan.value"
+                "source": "op('lfo_tiltwave').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -451,7 +451,7 @@
       "basalt": {
         "definitionVersion": 1,
         "id": "basalt",
-        "label": "basalt1",
+        "label": "material_basalt",
         "parameters": {
           "color": [
             0.14,
@@ -477,11 +477,11 @@
       "bounce": {
         "definitionVersion": 1,
         "id": "bounce",
-        "label": "bounce1",
+        "label": "geometry_bounce",
         "parameters": {
           "endpoint": "hitPosition",
           "group": "p.wake.w > 0.03 && p.spoke > 0.5",
-          "material": "mist1",
+          "material": "material_mist",
           "mode": "beam",
           "scale": 0.006,
           "taper": 1,
@@ -513,7 +513,7 @@
       "carve": {
         "definitionVersion": 1,
         "id": "carve",
-        "label": "carve1",
+        "label": "level_carve",
         "parameters": {
           "blacklevel": 0.36,
           "brightness": 1,
@@ -536,7 +536,7 @@
       "cast": {
         "definitionVersion": 1,
         "id": "cast",
-        "label": "cast1",
+        "label": "ray_cast",
         "parameters": {
           "direction": [
             0,
@@ -558,7 +558,7 @@
       "clip": {
         "definitionVersion": 1,
         "id": "clip",
-        "label": "clip1",
+        "label": "limit_clip",
         "parameters": {
           "high": 6,
           "low": 0,
@@ -574,7 +574,7 @@
       "cut": {
         "definitionVersion": 1,
         "id": "cut",
-        "label": "cut1",
+        "label": "level_cut",
         "parameters": {
           "blacklevel": 0.42,
           "brightness": 1,
@@ -592,10 +592,10 @@
       "echoes": {
         "definitionVersion": 1,
         "id": "echoes",
-        "label": "echoes1",
+        "label": "geometry_echoes",
         "parameters": {
           "group": "p.wake.w > 0.03",
-          "material": "spark1",
+          "material": "material_spark",
           "mode": "instances",
           "scale": 0.03,
           "shape": "octahedron",
@@ -627,7 +627,7 @@
       "eye": {
         "definitionVersion": 1,
         "id": "eye",
-        "label": "eye1",
+        "label": "camera_eye",
         "parameters": {
           "eye": [
             3.8,
@@ -638,7 +638,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbx1').chan.value"
+                "source": "op('lfo_orbx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -651,7 +651,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbz1').chan.value"
+                "source": "op('lfo_orbz').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -679,7 +679,7 @@
       "fan": {
         "definitionVersion": 1,
         "id": "fan",
-        "label": "fan1",
+        "label": "line_fan",
         "parameters": {
           "count": 240
         },
@@ -692,7 +692,7 @@
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
-        "label": "glow1",
+        "label": "add_glow",
         "parameters": {},
         "position": {
           "x": 960,
@@ -703,9 +703,9 @@
       "ground": {
         "definitionVersion": 1,
         "id": "ground",
-        "label": "ground1",
+        "label": "geometry_ground",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": [
             1,
@@ -723,7 +723,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -738,7 +738,7 @@
       "haze": {
         "definitionVersion": 1,
         "id": "haze",
-        "label": "haze1",
+        "label": "material_haze",
         "parameters": {
           "color": [
             1,
@@ -756,7 +756,7 @@
       "hot": {
         "definitionVersion": 1,
         "id": "hot",
-        "label": "hot1",
+        "label": "threshold_hot",
         "parameters": {
           "channel": "luminance",
           "compare": "greater",
@@ -772,9 +772,9 @@
       "impacts": {
         "definitionVersion": 1,
         "id": "impacts",
-        "label": "impacts1",
+        "label": "geometry_impacts",
         "parameters": {
-          "material": "spark1",
+          "material": "material_spark",
           "mode": "instances",
           "scale": 0.052,
           "shape": "octahedron",
@@ -806,7 +806,7 @@
       "lamp": {
         "definitionVersion": 1,
         "id": "lamp",
-        "label": "lamp1",
+        "label": "light_lamp",
         "parameters": {
           "color": [
             1,
@@ -832,7 +832,7 @@
       "mark": {
         "definitionVersion": 1,
         "id": "mark",
-        "label": "mark1",
+        "label": "kernel_mark",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"hitPosition\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"wake\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 240,
@@ -852,13 +852,13 @@
       "mark2": {
         "definitionVersion": 1,
         "id": "mark2",
-        "label": "mark2a",
+        "label": "kernel_mark2a",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"hitPosition\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"wake\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 240,
           "echoBase": 0.15,
           "echoGain": 1.35,
-          "kernel": "struct Params {\n  echoBase: f32,  // @default 0.15  How bright the faintest echo is, so far scatter stays scatter and does not read as confetti.\n  echoGain: f32,  // @default 1.35  How much brighter an echo gets as its round trip shortens.\n}\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let leg2 = length(p.hitPosition - p.position);\n  let landed = leg2 < 3.9 - 0.02 && p.hitPosition.y > -10.0;\n  /* T672 — SAMPLE AND HOLD. The gate is `p.wake.w < 0.06`, and it is the whole fix: a\n     marker takes a new reading only while it is already DARK. Delete it and the echoes\n     scintillate again while every STILL frame still looks right (§V638). */\n  let take = landed && p.wake.w < 0.06;\n  let pos = select(p.wake.xyz, p.hitPosition, take);\n  let level = select(p.wake.w * 0.94, 1.0, take);\n  q.wake = vec4f(pos, level);\n  q.position = pos;\n  /* T711 — the BOUNCE LEG's far end, and the only place it can live. `p.position` here\n     is the FIRST hit, the primary ray's landing, and this kernel's own `hitPosition`\n     slot is a LEAF: nothing downstream reads it, because the only consumer of mark2a is\n     the draw. Four attributes is the whole budget (§V588), so the segment gets published\n     through a slot that already exists rather than through a fifth pair. The far end is\n     LIVE while the near end is HELD, which is the right way round: the first hit is a\n     SMOOTH function of azimuth (T681 measured the primary ring as a clean colour wheel),\n     so the beam's base creeps while its tip stays put, and nothing pops. */\n  q.hitPosition = p.position;\n  /* round-trip attenuation, crudely: mast → surface → echo, against 1.8× range. The\n     floor is LOW (0.15) so the far scatter stays a scatter and the near returns are\n     the ones that read — depth, rather than confetti at one brightness. */\n  let near = clamp(1.0 - length(pos - vec3f(0.0, 3.3, 0.0)) / (3.9 * 1.8), 0.0, 1.0);\n  q.tint = vec4f(0.30, 0.95, 0.85, 1.0) * (ctx.params.echoBase + ctx.params.echoGain * near) * level;\n  return q;\n}"
+          "kernel": "struct Params {\n  echoBase: f32,  // @default 0.15  How bright the faintest echo is, so far scatter stays scatter and does not read as confetti.\n  echoGain: f32,  // @default 1.35  How much brighter an echo gets as its round trip shortens.\n}\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let leg2 = length(p.hitPosition - p.position);\n  let landed = leg2 < 3.9 - 0.02 && p.hitPosition.y > -10.0;\n  /* T672 — SAMPLE AND HOLD. The gate is `p.wake.w < 0.06`, and it is the whole fix: a\n     marker takes a new reading only while it is already DARK. Delete it and the echoes\n     scintillate again while every STILL frame still looks right (§V638). */\n  let take = landed && p.wake.w < 0.06;\n  let pos = select(p.wake.xyz, p.hitPosition, take);\n  let level = select(p.wake.w * 0.94, 1.0, take);\n  q.wake = vec4f(pos, level);\n  q.position = pos;\n  /* T711 — the BOUNCE LEG's far end, and the only place it can live. `p.position` here\n     is the FIRST hit, the primary ray's landing, and this kernel's own `hitPosition`\n     slot is a LEAF: nothing downstream reads it, because the only consumer of kernel_mark2a is\n     the draw. Four attributes is the whole budget (§V588), so the segment gets published\n     through a slot that already exists rather than through a fifth pair. The far end is\n     LIVE while the near end is HELD, which is the right way round: the first hit is a\n     SMOOTH function of azimuth (T681 measured the primary ring as a clean colour wheel),\n     so the beam's base creeps while its tip stays put, and nothing pops. */\n  q.hitPosition = p.position;\n  /* round-trip attenuation, crudely: mast → surface → echo, against 1.8× range. The\n     floor is LOW (0.15) so the far scatter stays a scatter and the near returns are\n     the ones that read — depth, rather than confetti at one brightness. */\n  let near = clamp(1.0 - length(pos - vec3f(0.0, 3.3, 0.0)) / (3.9 * 1.8), 0.0, 1.0);\n  q.tint = vec4f(0.30, 0.95, 0.85, 1.0) * (ctx.params.echoBase + ctx.params.echoGain * near) * level;\n  return q;\n}"
         },
         "position": {
           "x": -960,
@@ -869,7 +869,7 @@
       "mist": {
         "definitionVersion": 1,
         "id": "mist",
-        "label": "mist1",
+        "label": "material_mist",
         "parameters": {
           "color": [
             0.85,
@@ -887,7 +887,7 @@
       "moon": {
         "definitionVersion": 1,
         "id": "moon",
-        "label": "moon1",
+        "label": "light_moon",
         "parameters": {
           "color": [
             0.72,
@@ -914,7 +914,7 @@
       "orbx": {
         "definitionVersion": 1,
         "id": "orbx",
-        "label": "orbx1",
+        "label": "lfo_orbx",
         "parameters": {
           "amplitude": 3.8,
           "frequency": 0.019,
@@ -931,7 +931,7 @@
       "orbz": {
         "definitionVersion": 1,
         "id": "orbz",
-        "label": "orbz1",
+        "label": "lfo_orbz",
         "parameters": {
           "amplitude": 3.8,
           "frequency": 0.019,
@@ -948,7 +948,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 1280,
@@ -959,7 +959,7 @@
       "pool": {
         "definitionVersion": 1,
         "id": "pool",
-        "label": "pool1",
+        "label": "kernel_pool",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]}]",
           "capacity": 240,
@@ -974,7 +974,7 @@
       "poolbase": {
         "definitionVersion": 1,
         "id": "poolbase",
-        "label": "poolbase1",
+        "label": "level_poolbase",
         "parameters": {
           "blacklevel": -0.1,
           "brightness": 1,
@@ -997,7 +997,7 @@
       "poolmap": {
         "definitionVersion": 1,
         "id": "poolmap",
-        "label": "poolmap1",
+        "label": "points_poolmap",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -1037,7 +1037,7 @@
       "poolsoft": {
         "definitionVersion": 1,
         "id": "poolsoft",
-        "label": "poolsoft1",
+        "label": "blur_poolsoft",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -1057,7 +1057,7 @@
       "probe": {
         "definitionVersion": 1,
         "id": "probe",
-        "label": "probe1",
+        "label": "sample_probe",
         "parameters": {},
         "position": {
           "x": -1920,
@@ -1068,7 +1068,7 @@
       "raise": {
         "definitionVersion": 1,
         "id": "raise",
-        "label": "raise1",
+        "label": "kernel_raise",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"sample\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 36864,
@@ -1083,11 +1083,11 @@
       "rays": {
         "definitionVersion": 1,
         "id": "rays",
-        "label": "rays1",
+        "label": "geometry_rays",
         "parameters": {
           "endpoint": "hitPosition",
           "group": "p.spoke > 0.5",
-          "material": "haze1",
+          "material": "material_haze",
           "mode": "beam",
           "scale": 0.013,
           "taper": 0,
@@ -1119,7 +1119,7 @@
       "rebound": {
         "definitionVersion": 1,
         "id": "rebound",
-        "label": "rebound1",
+        "label": "ray_rebound",
         "parameters": {
           "direction": [
             0,
@@ -1141,7 +1141,7 @@
       "relief": {
         "definitionVersion": 1,
         "id": "relief",
-        "label": "relief1",
+        "label": "noise_relief",
         "parameters": {
           "amp": 1,
           "aspectcorrect": false,
@@ -1173,7 +1173,7 @@
       "ricochet": {
         "definitionVersion": 1,
         "id": "ricochet",
-        "label": "ricochet1",
+        "label": "kernel_ricochet",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"direction\",\"type\":\"vec3f\",\"default\":[0,-1,0]},{\"name\":\"hitPosition\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"hitNormal\",\"type\":\"vec3f\",\"default\":[0,1,0]}]",
           "capacity": 240,
@@ -1188,7 +1188,7 @@
       "sheet": {
         "definitionVersion": 1,
         "id": "sheet",
-        "label": "sheet1",
+        "label": "grid_sheet",
         "parameters": {
           "cols": 192,
           "count": 36864,
@@ -1203,7 +1203,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0.5,
@@ -1218,10 +1218,10 @@
             0.016,
             1
           ],
-          "camera": "eye1",
+          "camera": "camera_eye",
           "environmentIntensity": 1.15,
-          "lights": "moon1 lamp1",
-          "scenes": "ground1 impacts1 echoes1 rays1 bounce1",
+          "lights": "light_moon light_lamp",
+          "scenes": "geometry_ground geometry_impacts geometry_echoes geometry_rays geometry_bounce",
           "showEnvironment": true
         },
         "position": {
@@ -1233,7 +1233,7 @@
       "sight": {
         "definitionVersion": 1,
         "id": "sight",
-        "label": "sight1",
+        "label": "kernel_sight",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"spoke\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"hitPosition\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]}]",
           "beamBase": 0.35,
@@ -1250,7 +1250,7 @@
       "skyband": {
         "definitionVersion": 2,
         "id": "skyband",
-        "label": "skyband1",
+        "label": "ramp_skyband",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -1318,7 +1318,7 @@
       "smear": {
         "definitionVersion": 1,
         "id": "smear",
-        "label": "smear1",
+        "label": "add_smear",
         "parameters": {},
         "position": {
           "x": 640,
@@ -1329,7 +1329,7 @@
       "spark": {
         "definitionVersion": 1,
         "id": "spark",
-        "label": "spark1",
+        "label": "material_spark",
         "parameters": {
           "color": [
             1,
@@ -1347,7 +1347,7 @@
       "stain": {
         "definitionVersion": 1,
         "id": "stain",
-        "label": "stain1",
+        "label": "multiply_stain",
         "parameters": {
           "opacity": 0.05
         },
@@ -1360,7 +1360,7 @@
       "tiltwave": {
         "definitionVersion": 1,
         "id": "tiltwave",
-        "label": "tiltwave1",
+        "label": "lfo_tiltwave",
         "parameters": {
           "amplitude": 0.5,
           "frequency": 0.045,
@@ -1377,7 +1377,7 @@
       "trail": {
         "definitionVersion": 1,
         "id": "trail",
-        "label": "trail1",
+        "label": "feedback_trail",
         "parameters": {
           "clearColor": [
             0,
@@ -1386,7 +1386,7 @@
             0
           ],
           "persistence": 0.9,
-          "source": "smear1"
+          "source": "add_smear"
         },
         "position": {
           "x": 640,
@@ -1397,7 +1397,7 @@
       "unfold": {
         "definitionVersion": 1,
         "id": "unfold",
-        "label": "unfold1",
+        "label": "kernel_unfold",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 36864,

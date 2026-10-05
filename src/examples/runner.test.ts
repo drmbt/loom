@@ -234,12 +234,12 @@ describe.each(examples)("example $fileName", (file) => {
   /**
    * T826/§B163 — a LABEL IS AN ADDRESS, so it must be unique per document (§V782's family).
    *
-   * A driven or bound parameter names its source by LABEL (`drivenSlot("tearn1:high")`),
+   * A driven or bound parameter names its source by LABEL (`drivenSlot("limit_tearn:high")`),
    * and `nodeNames` resolves a label to the FIRST node id that carries it and silently
    * drops the rest — so two nodes sharing a label is not an error, it is a binding that
    * quietly resolves to whichever id sorts first while the branch it was built for goes
-   * dead. E40 shipped exactly that: `tearb` and `tearn` both labelled `tearb1`, and
-   * `shiftb1` bound the positive intermediate instead of the negative clamp. A count, not
+   * dead. E40 shipped exactly that: `tearb` and `tearn` both labelled `math_tearb`, and
+   * `transform_shiftb` bound the positive intermediate instead of the negative clamp. A count, not
    * `nodeNames`, because the point is to catch the collision the resolver hides.
    */
   it("gives every node a UNIQUE label — a label is an address (§B163)", () => {

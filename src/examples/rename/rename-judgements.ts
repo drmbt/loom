@@ -44,11 +44,8 @@ export const JUDGEMENTS: readonly Judgement[] = [
   { scope: "E45-Pulse", kind: "camera", old: "camB1", role: "B", reason: "shot B's camera: kept, as above" },
 
   // ── E37: a number that only told two kinds apart ───────────────────────────────────────
-  { scope: "E37-Sirocco", kind: "lfo", old: "drift2", role: "drift", reason: "the `2` only told it from the Kernel `drift1`, which its kind now does; this one drifts the hue" },
 
   // ── E36: left and right ────────────────────────────────────────────────────────────────
-  { scope: "E36-Facade", kind: "projector", old: "projL1", role: "left", reason: "L is the left projector (eye x = -2)" },
-  { scope: "E36-Facade", kind: "projector", old: "projR1", role: "right", reason: "R is the right projector (eye x = +2)" },
 
   // ── E43 Splice: three drives off the beat ──────────────────────────────────────────────
   { scope: "E43-Splice", kind: "math", old: "gsub1", role: "glitchrest", reason: `the glitch drive: ${REST}` },

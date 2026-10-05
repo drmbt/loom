@@ -4,19 +4,19 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * E37 — Sirocco (T727). The canonical TouchDesigner particle look, and the first example
  * in the set to draw `geometry` in `points` mode at all.
  *
- *   drift1(pointKernel · THE WIND) ─► streak1(pointKernel · THE READING) ─┬─► body1(geometry · BEAM)
- *      curl of a vector potential        trail = position − velocity·t     ├─► fast1(geometry · BEAM)
- *      + containment + inertia           size  = f(speed)                  └─► heads1(geometry · POINTS)
- *                                                                               ▲ haze1(materialUnlit)
- *   orbx1/orbz1(lfo) ─► eye1(camera) ─► shot1(render)
- *   shot1 ─┬──────────────────────────────► burn1(add) ─► hue1(hsv ┄ drift2) ─► out1
- *          └─► halo1(blur) ─► halolvl1(level) ─┘
+ *   kernel_drift(pointKernel · THE WIND) ─► kernel_streak(pointKernel · THE READING) ─┬─► geometry_body(geometry · BEAM)
+ *      curl of a vector potential        trail = position − velocity·t     ├─► geometry_fast(geometry · BEAM)
+ *      + containment + inertia           size  = f(speed)                  └─► geometry_heads(geometry · POINTS)
+ *                                                                               ▲ material_haze(materialUnlit)
+ *   lfo_orbx/lfo_orbz(lfo) ─► camera_eye(camera) ─► render_shot(render)
+ *   render_shot ─┬──────────────────────────────► add_burn(add) ─► hsv_hue(hsv ┄ lfo_drift) ─► output1
+ *          └─► blur_halo(blur) ─► level_halo(level) ─┘
  *
  * ## The streak is FREE, and that is T680's own claim collected
  *
  * `beam` mode takes a per-point FAR END, and its author named the generalisation when it
  * shipped: "velocity-scaled streaks for E16-Murmuration, spark trails for E9-Ember, a
- * previous-position trail anywhere." This is that, cashed: `streak1` writes
+ * previous-position trail anywhere." This is that, cashed: `kernel_streak` writes
  * `trail = position − velocity × TRAIL`, so the ribbon IS the distance the mote covers in
  * a third of a second, and a fast mote draws a long one BY CONSTRUCTION. One attribute,
  * no history buffer, no second pass.
@@ -31,7 +31,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * `geometry` mode `points` was drawn by NO shipped example — every scene used `surface`,
  * `instances` or `beam` — which is how §B132 (points-mode `scale` silently inert; every
  * authored size rendering as 0.05, live since T647) survived to be found by measurement
- * rather than by looking. `heads1` is that mode's first witness, and dropping it from the
+ * rather than by looking. `geometry_heads` is that mode's first witness, and dropping it from the
  * render changes 9.0% of the frame. T721's mapped `scale` had none either; all three draws
  * take it off the `size` attribute, so the number on the node stays the object's size and
  * the attribute is a factor.
@@ -39,7 +39,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * ## FIVE channels where one kernel may declare FOUR (§V588)
  *
  * The ceiling is PER KERNEL, and a chain is how you spend more than one kernel's worth.
- * `drift1` owns position, velocity and tint; `streak1` declares position, velocity, trail
+ * `kernel_drift` owns position, velocity and tint; `kernel_streak` declares position, velocity, trail
  * and size — exactly four, AT the ceiling — and does not declare `tint`, so the colour
  * travels past it by reference (§V197). Same split E16 makes between flock and part, and
  * E34 between cast and sight: the simulation in one kernel, the reading in another.
@@ -318,22 +318,22 @@ export const siroccoDocument = document(
         capacity: SIROCCO_POINTS, seed: 37, group: "",
         attributes: SIROCCO_DRIFT_ATTRIBUTES, kernel: SIROCCO_DRIFT_KERNEL,
         value1: 0, value2: 0, value3: 0, value4: 0,
-      }, { label: "drift1" }),
+      }, { label: "kernel_drift" }),
       node("streak", "pointKernel", [-1180, 0], {
         capacity: SIROCCO_POINTS, seed: 37, group: "",
         attributes: SIROCCO_STREAK_ATTRIBUTES, kernel: SIROCCO_STREAK_KERNEL,
         value1: 0, value2: 0, value3: 0, value4: 0,
-      }, { label: "streak1" }),
+      }, { label: "kernel_streak" }),
 
       // ---- one material: the identity element, so the TINT is the colour ------------
-      node("haze", "materialUnlit", [-1180, -420], { color: [1, 1, 1, 1] }, { label: "haze1" }),
+      node("haze", "materialUnlit", [-1180, -420], { color: [1, 1, 1, 1] }, { label: "material_haze" }),
 
       // ---- ONE cloud, THREE readings (§V471.1) --------------------------------------
       node("body", "geometry", [-860, 220], {
         mode: "beam", endpoint: "trail", taper: 0.35, scale: 0.0013,
-        material: "haze1", group: SIROCCO_BODY_GROUP,
+        material: "material_haze", group: SIROCCO_BODY_GROUP,
       }, {
-        label: "body1",
+        label: "geometry_body",
         parameters: {
           tint: {
             mode: "map",
@@ -353,9 +353,9 @@ export const siroccoDocument = document(
       }),
       node("fast", "geometry", [-860, 0], {
         mode: "beam", endpoint: "trail", taper: 0.12, scale: 0.0020,
-        material: "haze1", group: SIROCCO_FAST_GROUP,
+        material: "material_haze", group: SIROCCO_FAST_GROUP,
       }, {
-        label: "fast1",
+        label: "geometry_fast",
         parameters: {
           tint: {
             mode: "map",
@@ -374,9 +374,9 @@ export const siroccoDocument = document(
         },
       }),
       node("heads", "geometry", [-860, -220], {
-        mode: "points", scale: 0.0034, material: "haze1", group: "",
+        mode: "points", scale: 0.0034, material: "material_haze", group: "",
       }, {
-        label: "heads1",
+        label: "geometry_heads",
         parameters: {
           tint: {
             mode: "map",
@@ -396,17 +396,17 @@ export const siroccoDocument = document(
       }),
 
       // ---- the shot -----------------------------------------------------------------
-      node("orbx", "lfo", [-1500, 520], { shape: "sine", frequency: 0.021, amplitude: SIROCCO_ORBIT, offset: 0, phase: 0.25 }, { label: "orbx1" }),
-      node("orbz", "lfo", [-1500, 704], { shape: "sine", frequency: 0.021, amplitude: SIROCCO_ORBIT, offset: 0, phase: 0 }, { label: "orbz1" }),
+      node("orbx", "lfo", [-1500, 520], { shape: "sine", frequency: 0.021, amplitude: SIROCCO_ORBIT, offset: 0, phase: 0.25 }, { label: "lfo_orbx" }),
+      node("orbz", "lfo", [-1500, 704], { shape: "sine", frequency: 0.021, amplitude: SIROCCO_ORBIT, offset: 0, phase: 0 }, { label: "lfo_orbz" }),
       node("eye", "camera", [-540, 0], {
         eye: [SIROCCO_ORBIT, 0.90, 0], lookAt: [0, 0, 0], fov: 42, near: 0.1, far: 24, ortho: false,
       }, {
-        label: "eye1",
-        parameters: { "eye.x": drivenSlot("orbx1", SIROCCO_ORBIT), "eye.z": drivenSlot("orbz1", 0) },
+        label: "camera_eye",
+        parameters: { "eye.x": drivenSlot("lfo_orbx", SIROCCO_ORBIT), "eye.z": drivenSlot("lfo_orbz", 0) },
       }),
       node("shot", "render", [-220, 0], {
-        scenes: "body1 fast1 heads1",
-        camera: "eye1",
+        scenes: "geometry_body geometry_fast geometry_heads",
+        camera: "camera_eye",
         lights: "",
         ambientColor: [1, 1, 1, 1],
         ambientIntensity: 1,
@@ -414,20 +414,20 @@ export const siroccoDocument = document(
         environmentIntensity: 1,
         showEnvironment: false,
         ambientOcclusion: false,
-      }, { label: "shot1" }),
+      }, { label: "render_shot" }),
 
       // ---- the post, one job per stage (§V471.4) ------------------------------------
-      node("halo", "blur", [100, 220], { size: 24, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
+      node("halo", "blur", [100, 220], { size: 24, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
       node("haloLvl", "level", [420, 220], {
         blacklevel: 0.04, whitelevel: 1, contrast: 1, gamma1: 1, invert: 0, opacity: 1, brightness: 0.55,
-      }, { label: "halolvl1" }),
-      node("burn", "add", [740, 0], {}, { label: "burn1" }),
-      node("drift2", "lfo", [740, 320], { shape: "sine", frequency: 0.035, amplitude: 15, offset: 0, phase: 0 }, { label: "drift2" }),
+      }, { label: "level_halo" }),
+      node("burn", "add", [740, 0], {}, { label: "add_burn" }),
+      node("drift2", "lfo", [740, 320], { shape: "sine", frequency: 0.035, amplitude: 15, offset: 0, phase: 0 }, { label: "lfo_drift" }),
       node("hue", "hsv", [1060, 0], { saturation: 1.05, value: 1 }, {
-        label: "hue1",
-        parameters: { hueoffset: drivenSlot("drift2", 0) },
+        label: "hsv_hue",
+        parameters: { hueoffset: drivenSlot("lfo_drift", 0) },
       }),
-      node("out", "output", [1380, 0], {}, { label: "out1" }),
+      node("out", "output", [1380, 0], {}, { label: "output1" }),
     ],
     [
       edge("e-drift-streak", ["drift", "out"], ["streak", "in"]),

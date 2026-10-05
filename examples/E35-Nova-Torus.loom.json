@@ -696,7 +696,7 @@
       "analysis1": {
         "definitionVersion": 1,
         "id": "analysis1",
-        "label": "analysis1",
+        "label": "audioanalysis1",
         "parameters": {
           "envelope": 0.09,
           "hitDecay": 250,
@@ -712,7 +712,7 @@
       "audiofilein1": {
         "definitionVersion": 1,
         "id": "audiofilein1",
-        "label": "audiofilein1",
+        "label": "audiofile1",
         "parameters": {
           "cue": false,
           "cuePoint": 0,
@@ -762,7 +762,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.62 + 0.16 * op('lvl1').chan.level"
+                "source": "0.62 + 0.16 * op('select_lvl').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -784,7 +784,7 @@
       "hit1": {
         "definitionVersion": 1,
         "id": "hit1",
-        "label": "hit1",
+        "label": "select_hit",
         "parameters": {
           "channels": "*"
         },
@@ -831,7 +831,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.4 + 1.2 * op('lvl1').chan.low"
+                "source": "0.4 + 1.2 * op('select_lvl').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -862,7 +862,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.15 + 4 * op('hit1').chan.hatCount"
+                "source": "0.15 + 4 * op('select_hit').chan.hatCount"
               },
               "static": {
                 "kind": "static",
@@ -893,7 +893,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.9 + 1.1 * op('lvl1').chan.low"
+                "source": "0.9 + 1.1 * op('select_lvl').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -943,7 +943,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.7 + 1.5 * op('lvl1').chan.highMid"
+                "source": "0.7 + 1.5 * op('select_lvl').chan.highMid"
               },
               "static": {
                 "kind": "static",
@@ -962,7 +962,7 @@
       "lvl1": {
         "definitionVersion": 1,
         "id": "lvl1",
-        "label": "lvl1",
+        "label": "select_lvl",
         "parameters": {
           "channels": "*"
         },
@@ -988,7 +988,7 @@
       "music1": {
         "definitionVersion": 1,
         "id": "music1",
-        "label": "music1",
+        "label": "pattern_music",
         "parameters": {
           "amount": 1,
           "bpm": 112
@@ -1081,7 +1081,7 @@
       "pointgenerator1": {
         "definitionVersion": 1,
         "id": "pointgenerator1",
-        "label": "pointgenerator1",
+        "label": "generator1",
         "parameters": {
           "cols": 256,
           "count": 65536,
@@ -1090,7 +1090,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.18 + 0.3 * op('lvl1').chan.lowMid"
+                "source": "0.18 + 0.3 * op('select_lvl').chan.lowMid"
               },
               "static": {
                 "kind": "static",
@@ -1114,7 +1114,7 @@
       "pointkernel1": {
         "definitionVersion": 1,
         "id": "pointkernel1",
-        "label": "pointkernel1",
+        "label": "kernel1",
         "parameters": {
           "attributes": "",
           "capacity": 65536,
@@ -1216,7 +1216,7 @@
       "renderpoints1": {
         "definitionVersion": 1,
         "id": "renderpoints1",
-        "label": "renderpoints1",
+        "label": "points1",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -1232,7 +1232,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.1 + 0.9 * op('lvl1').chan.level"
+                "source": "1.1 + 0.9 * op('select_lvl').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -1251,7 +1251,7 @@
       "renderpoints2": {
         "definitionVersion": 1,
         "id": "renderpoints2",
-        "label": "renderpoints2",
+        "label": "points2",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -1274,7 +1274,7 @@
       "renderpoints3": {
         "definitionVersion": 1,
         "id": "renderpoints3",
-        "label": "renderpoints3",
+        "label": "points3",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -1290,7 +1290,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.6 + 2.6 * op('hit1').chan.hatCount"
+                "source": "0.6 + 2.6 * op('select_hit').chan.hatCount"
               },
               "static": {
                 "kind": "static",
@@ -1348,7 +1348,7 @@
       "source1": {
         "definitionVersion": 1,
         "id": "source1",
-        "label": "source1",
+        "label": "switch_source",
         "parameters": {
           "index": 0
         },

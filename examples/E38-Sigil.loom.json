@@ -210,7 +210,7 @@
       "both": {
         "definitionVersion": 1,
         "id": "both",
-        "label": "both1",
+        "label": "add_both",
         "parameters": {
           "opacity": 1
         },
@@ -223,7 +223,7 @@
       "burn": {
         "definitionVersion": 1,
         "id": "burn",
-        "label": "burn1",
+        "label": "add_burn",
         "parameters": {
           "opacity": 1
         },
@@ -236,7 +236,7 @@
       "cycle": {
         "definitionVersion": 1,
         "id": "cycle",
-        "label": "cycle1",
+        "label": "lfo_cycle",
         "parameters": {
           "amplitude": 0.5,
           "frequency": 0.08,
@@ -253,7 +253,7 @@
       "disc": {
         "definitionVersion": 1,
         "id": "disc",
-        "label": "disc1",
+        "label": "circle_disc",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -288,7 +288,7 @@
       "drift": {
         "definitionVersion": 1,
         "id": "drift",
-        "label": "drift1",
+        "label": "lfo_drift",
         "parameters": {
           "amplitude": 18,
           "frequency": 0.041,
@@ -305,7 +305,7 @@
       "emblem": {
         "definitionVersion": 1,
         "id": "emblem",
-        "label": "emblem1",
+        "label": "add_emblem",
         "parameters": {
           "opacity": 1
         },
@@ -318,7 +318,7 @@
       "gather": {
         "definitionVersion": 1,
         "id": "gather",
-        "label": "gather1",
+        "label": "kernel_gather",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"drift\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"vel\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,0,0]},{\"name\":\"mark\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 82944,
@@ -329,7 +329,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('hold1').chan.value"
+                "source": "op('limit_hold').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -351,7 +351,7 @@
       "glyph": {
         "definitionVersion": 1,
         "id": "glyph",
-        "label": "glyph1",
+        "label": "points_glyph",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -391,7 +391,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -406,7 +406,7 @@
       "haloLvl": {
         "definitionVersion": 1,
         "id": "haloLvl",
-        "label": "halolvl1",
+        "label": "level_halo",
         "parameters": {
           "blacklevel": 0.03,
           "brightness": 0.9,
@@ -425,7 +425,7 @@
       "haze": {
         "definitionVersion": 1,
         "id": "haze",
-        "label": "haze1",
+        "label": "points_haze",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -448,7 +448,7 @@
       "hold": {
         "definitionVersion": 1,
         "id": "hold",
-        "label": "hold1",
+        "label": "limit_hold",
         "parameters": {
           "maximum": 1,
           "minimum": 0
@@ -462,7 +462,7 @@
       "hole": {
         "definitionVersion": 1,
         "id": "hole",
-        "label": "hole1",
+        "label": "circle_hole",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -497,13 +497,13 @@
       "hue": {
         "definitionVersion": 1,
         "id": "hue",
-        "label": "hue1",
+        "label": "hsv_hue",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drift1').chan.value"
+                "source": "op('lfo_drift').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -524,7 +524,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 1420,
@@ -535,7 +535,7 @@
       "pip": {
         "definitionVersion": 1,
         "id": "pip",
-        "label": "pip1",
+        "label": "circle_pip",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -570,7 +570,7 @@
       "ring": {
         "definitionVersion": 1,
         "id": "ring",
-        "label": "ring1",
+        "label": "difference_ring",
         "parameters": {
           "opacity": 1
         },
@@ -583,7 +583,7 @@
       "shape": {
         "definitionVersion": 1,
         "id": "shape",
-        "label": "shape1",
+        "label": "math_shape",
         "parameters": {
           "operand": 1.6,
           "operation": "multiply"

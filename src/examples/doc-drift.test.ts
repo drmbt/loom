@@ -11,7 +11,7 @@ import { exampleRegistry } from "./runner.ts";
  *
  * Every example ships a `.md` beside its `.loom.json`, and the prose drifts: three
  * instances were found by hand (E5 described a picture the file never rendered; E13 and
- * E7 likewise), and this sweep's first run found six more — nodes named `state1`/`out1`
+ * E7 likewise), and this sweep's first run found six more — nodes named `state1`/`output1`
  * where the document says `state`/`out`, and types claimed as `limit`/`radial` where the
  * node is a `valueLimit`/`ramp`.
  *
@@ -40,7 +40,7 @@ interface Claim {
  *
  * Two of the gates below find the names in a fence by their SHAPE, because a diagram does
  * not say which of its words are nodes. The shape used to be "letters and a trailing
- * digit", the old naming habit (`dye1`, `pathx1`), and both gates were written around it.
+ * digit", the old naming habit (`dye1`, `lfo_pathx`), and both gates were written around it.
  * A name is `kind_role` now (`feedback_dye`), and a gate that only knew the old shape did
  * two things to a renamed page, neither of them loud: the reference gate stopped seeing
  * the names at all and passed on nothing, and the driver gate picked the one old-shaped
@@ -158,11 +158,11 @@ describe("T522 — example markdown matches the document it sits beside", () => 
  *
  * T522 above reads only `name(type)` claims, and that type filter is exactly what makes
  * it precise and cheap. It is also what blinds it. §T885 is the instance: §T826 renamed
- * ONE node (`tearn`, which had collided with `tearb` on the label `tearb1`, became
- * `tearn1`) and left TWO stale references in `E40-Wake.md` — and the gate saw one.
+ * ONE node (`tearn`, which had collided with `tearb` on the label `math_tearb`, became
+ * `limit_tearn`) and left TWO stale references in `E40-Wake.md` — and the gate saw one.
  *
- *   tearng1 ─► tearnb1 ─► tearb1(valueLimit)   ← carries a type, T522 caught it
- *   shiftb1(transform) ┄ tearb1                ← carries none, unreachable by T522
+ *   math_tearng ─► math_tearnb ─► math_tearb(valueLimit)   ← carries a type, T522 caught it
+ *   transform_shiftb(transform) ┄ math_tearb                ← carries none, unreachable by T522
  *
  * Both named the node that had been renamed; only one was a "claim" under the type
  * filter. §V808 is the shape of that: THE PRECISION THAT MAKES A GREP-BASED GATE CHEAP IS
@@ -172,7 +172,7 @@ describe("T522 — example markdown matches the document it sits beside", () => 
  * ## The filter, and why it reads four namespaces rather than carrying a list
  *
  * Inside fences only, tokens matching the house LABEL SHAPE — lowercase, letters, a
- * trailing digit (`tearb1`, `shiftb1`, `out1`) — with dotted tokens excluded exactly as
+ * trailing digit (`math_tearb`, `transform_shiftb`, `output1`) — with dotted tokens excluded exactly as
  * T522 excludes them and for the same reason. A token RESOLVES if the document holds it
  * as a node id, a node LABEL, a PARAMETER name, or a PORT name.
  *
@@ -184,19 +184,19 @@ describe("T522 — example markdown matches the document it sits beside", () => 
  * too dissolves them structurally instead of parking six entries in an exemption list
  * that would then have to be kept true. The remaining TWO were both defects:
  *
- *   - `E24`'s `─► hue1 ─► out1`, where the node is `out`, unlabelled. T522's own docblock
- *     names this pattern ("nodes named `state1`/`out1` where the document says
+ *   - `E24`'s `─► hue1 ─► output1`, where the node is `out`, unlabelled. T522's own docblock
+ *     names this pattern ("nodes named `state1`/`output1` where the document says
  *     `state`/`out`") — it caught those instances because they carried a type, and missed
  *     this one because it did not. Fixed with this gate.
- *   - `E40`'s `pathx1/y1`, below.
+ *   - `E40`'s `lfo_pathx/y1`, below.
  *
  * ## THE BLIND SPOT, AND IT INCLUDES THE CASE THIS GATE WAS ASKED FOR
  *
  * Say it plainly, because the opposite is what a reader will assume: THIS GATE DOES NOT
  * CATCH §T885's SECOND DEFECT. It was red-verified against it and stayed green. The
- * annotation `shiftb1(transform) ┄ tearb1` names `tearb1`, which IS a real label in that
+ * annotation `transform_shiftb(transform) ┄ math_tearb` names `math_tearb`, which IS a real label in that
  * document — `tearb`'s. The defect was never that the name was missing; it was that the
- * name was the WRONG EXISTING NODE, because `shiftb1` binds `tearn1:high`. An existence
+ * name was the WRONG EXISTING NODE, because `transform_shiftb` binds `limit_tearn:high`. An existence
  * check cannot see that, and no amount of loosening this filter will make it.
  *
  * What would: reading the `┄` DRIVER notation and asserting the annotated node actually
@@ -209,7 +209,7 @@ describe("T522 — example markdown matches the document it sits beside", () => 
  * document against a notation that is regular first.
  *
  * So what this gate DOES buy, exactly: a reference to a name that is NOT THERE AT ALL —
- * the other half of the class, and the half that let `E24`'s `out1` sit unread. It also
+ * the other half of the class, and the half that let `E24`'s `output1` sit unread. It also
  * does not read edge DIRECTION (a diagram drawing `a1 ─► b1` where the file wires
  * `b1 ─► a1` resolves both ends and passes), and a node whose name is not name-shaped
  * (`nameShaped`, above: a bare word such as `dim`) is invisible to it — precisely as an
@@ -233,12 +233,9 @@ describe("T890 — a fenced reference resolves against the document, typed or no
       token: "python3",
       reason: "The Python executable in the shell setup command, not a graph-node reference.",
     },
-    {
-      doc: "E40-Wake.md",
-      token: "y1",
-      reason:
-        "the tail of `pathx1/y1`, a slash-compressed pair naming `pathx1` and `pathy1` — both of which ship. Writing it out lengthens the line by four columns and pushes the junction's `┐` three columns off the `├` and `┘` it connects to, so the diagram would read as broken to buy one token.",
-    },
+    // E40-Wake.md's `pathx1/y1` stood here: the tail of a slash-compressed pair, which was
+    // name-shaped and named nothing. The pair is `lfo_pathx/y` since T1593b, and `y` is not
+    // name-shaped, so there is nothing left to exempt (the driver gate still expands it).
   ];
 
   /** Every name the document answers to: node ids, labels, parameter names, port ids. */
@@ -383,9 +380,9 @@ describe("T516 — fenced clock claims match the shipped code", () => {
  * T894/§V808 — THE `┄` DRIVER ANNOTATION RESOLVES AGAINST THE DOCUMENT'S BINDINGS.
  *
  * This is the gate §T890 could not reach, and §T890's docblock says so plainly: it caught
- * a reference to a name that is not there, and `shiftb1(transform) ┄ tearb1` names a name
+ * a reference to a name that is not there, and `transform_shiftb(transform) ┄ math_tearb` names a name
  * that IS there — `tearb`'s label. The defect was that it was the WRONG EXISTING NODE,
- * because `shiftb1` binds `tearn1:high`. Existence cannot see that; only the bindings can.
+ * because `transform_shiftb` binds `limit_tearn:high`. Existence cannot see that; only the bindings can.
  *
  * §T894 was first scoped as "regularise the notation, THEN gate it" and re-scoped after
  * measurement, because the migration was not a prerequisite: the hard part (slash-
@@ -416,7 +413,7 @@ describe("T516 — fenced clock claims match the shipped code", () => {
  * Form E gets a WEAKER one, and the reason is measured rather than assumed. The bare `┄`
  * is DIRECTIONALLY AMBIGUOUS — the corpus holds three readings of it:
  *
- *   shiftb1(transform) ┄ tearn1        E40: right is the DRIVER
+ *   transform_shiftb(transform) ┄ limit_tearn        E40: right is the DRIVER
  *   bore1(valueLimit)  ┄ value1        E30: right is the driven PARAM, left is the driver
  *   sway1, rise1 (lfo) ┄ eye1(camera)  E30: right is the driven NODE, left is the drivers
  *
@@ -424,13 +421,13 @@ describe("T516 — fenced clock claims match the shipped code", () => {
  * `gamma ┄ deep1` for `depth1.gamma1` — both correct, neither spellable as a pair check;
  * that was tried and produced three false positives). So form E asserts only that AT
  * LEAST ONE SIDE IS A REAL DRIVER in that document. That is weak, and it is still exactly
- * enough for §T885: `tearb1` drives nothing in E40, so the stale annotation fails.
+ * enough for §T885: `math_tearb` drives nothing in E40, so the stale annotation fails.
  *
  * ## THE COVERAGE FLOOR, AND WHY IT IS NOT DECORATION
  *
  * The first draft of this gate went GREEN on the very defect it exists for. Its form-E
- * regex required a word character before the `┄`, and the corpus writes `shiftb1(transform)
- * ┄ tearb1` — a `)` — so it extracted NOTHING from that line and passed. A classification
+ * regex required a word character before the `┄`, and the corpus writes `transform_shiftb(transform)
+ * ┄ math_tearb` — a `)` — so it extracted NOTHING from that line and passed. A classification
  * count would not have caught it: the line classified fine and was then checked zero
  * times. So the ANNOTATIONS ACTUALLY CHECKED are counted and floored. §V808 one level
  * down: the gate proved a line was read, not that anything in it was tested.
@@ -506,7 +503,7 @@ describe("T894 — the ┄ driver annotation matches the document's bindings", (
     return { names, bindings, feedbackSources };
   }
 
-  /** `pathx1/y1` → `pathx1`, `pathy1`: the second half inherits the first's prefix. */
+  /** `lfo_pathx/y1` → `lfo_pathx`, `lfo_pathy`: the second half inherits the first's prefix. */
   function expandPair(token: string, names: ReadonlySet<string>): string[] {
     if (!token.includes("/")) return [token];
     const [head = "", tail = ""] = token.split("/", 2);

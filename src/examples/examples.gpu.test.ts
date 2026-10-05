@@ -689,7 +689,7 @@ describe("E33 reads as a yin-yang without a disc behind it", () => {
   const noObject = (graph: GraphDocument): GraphDocument => {
     const shot = graph.nodes["shot"];
     if (shot === undefined) throw new Error("E33 has no render");
-    return { ...graph, nodes: { ...graph.nodes, shot: { ...shot, parameters: { ...shot.parameters, scenes: "cyc1" } } } };
+    return { ...graph, nodes: { ...graph.nodes, shot: { ...shot, parameters: { ...shot.parameters, scenes: "geometry_cyc" } } } };
   };
   /** THE CONTROL: the tiles' two tones split by a straight line instead of by `taiji`. */
   const straightTone = (graph: GraphDocument): GraphDocument => {
@@ -780,7 +780,7 @@ describe("E33 reads as a yin-yang without a disc behind it", () => {
    * of those passes the build that got it wrong — deleting the mass passes "absent at the
    * emblem end", and never growing it passes "present at the goo end".
    *
-   * Measured by DROPPING `body1` from the render and counting what changes, which is the
+   * Measured by DROPPING `geometry_body` from the render and counting what changes, which is the
    * only way to ask "is it contributing" without asking "is it in the graph": 0 pixels at
    * frame 0 (and 0 at frame 2100, the other emblem moment), 106,056 at frame 484 (0592b2e).
    * The zero is exact, not a threshold — the mass is grown down to a speck behind a mosaic
@@ -795,12 +795,12 @@ describe("E33 reads as a yin-yang without a disc behind it", () => {
         const shot = graph.nodes["shot"];
         if (shot === undefined) throw new Error("E33 has no render");
         const scenes = String(shot.parameters["scenes"]).split(/\s+/);
-        if (!scenes.includes("body1")) throw new Error("E33's render no longer names the mass");
+        if (!scenes.includes("geometry_body")) throw new Error("E33's render no longer names the mass");
         return {
           ...graph,
           nodes: {
             ...graph.nodes,
-            shot: { ...shot, parameters: { ...shot.parameters, scenes: scenes.filter((s) => s !== "body1").join(" ") } },
+            shot: { ...shot, parameters: { ...shot.parameters, scenes: scenes.filter((s) => s !== "geometry_body").join(" ") } },
           },
         };
       },

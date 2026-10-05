@@ -50,7 +50,7 @@ export const facadeDocument = document(
   graph(
     [
       // ---- the content: what each projector carries --------------------------------
-      node("drive", "lfo", [-2160, 40], { shape: "sine", frequency: 0.05, amplitude: 0.5, offset: 0.5, phase: 0 }, { label: "drive1" }),
+      node("drive", "lfo", [-2160, 40], { shape: "sine", frequency: 0.05, amplitude: 0.5, offset: 0.5, phase: 0 }, { label: "lfo_drive" }),
       node("warm", "ramp", [-1860, 40], {
         type: "horizontal", interp: "smooth", period: 1,
         stops: [
@@ -59,48 +59,48 @@ export const facadeDocument = document(
           { position: 1.0, color: [0.62, 0.1, 0.85, 1] },
         ],
       }, {
-        label: "warm1",
+        label: "ramp_warm",
         definitionVersion: 2,
         resolution: { mode: "fixed", width: 256, height: 144 },
         /* The content MOVES — a scroll of the gradient, driven as a value (§V5). The
            projector re-samples it every frame; nothing about the throw recompiles. */
-        parameters: { phase: drivenSlot("drive1", 0) },
+        parameters: { phase: drivenSlot("lfo_drive", 0) },
       }),
       // The alignment chart: the first thing a real install ever throws.
       node("chart", "checker", [-1860, 340], {
         size: [8, 5], offset: [0, 0],
         color1: [0.05, 0.05, 0.06, 1], color2: [0.85, 0.85, 0.9, 1],
-      }, { label: "chart1" }),
+      }, { label: "checker_chart" }),
 
       // ---- the site: wall, ground, cornice ------------------------------------------
-      node("wallPts", "pointGrid", [-1560, 40], { cols: 32, rows: 18, count: 576, sizeX: 8, sizeY: 4.2 }, { label: "wallpts1" }),
+      node("wallPts", "pointGrid", [-1560, 40], { cols: 32, rows: 18, count: 576, sizeX: 8, sizeY: 4.2 }, { label: "grid_wall" }),
       node("wallLay", "pointKernel", [-1260, 40], {
         capacity: 576,
         attributes: '[{"name":"position","type":"vec3f","semantic":"position","default":[0,0,0]}]',
         kernel: "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  /* the grid stands up: the facade, 8 wide, foot on the ground at y = 0 */\n  q.position = vec3f(p.position.x, p.position.y + 2.1, 0.0);\n  return q;\n}",
-      }, { label: "walllay1" }),
+      }, { label: "kernel_walllay" }),
       /* Default LIT material on purpose (§V617): an unlit surface takes no projector
          light at all (§V666), and an 0.8 grey lambert IS a projection surface. */
-      node("wall", "geometry", [-960, 40], { mode: "surface" }, { label: "wall1" }),
+      node("wall", "geometry", [-960, 40], { mode: "surface" }, { label: "geometry_wall" }),
 
-      node("groundPts", "pointGrid", [-1560, 340], { cols: 24, rows: 16, count: 384, sizeX: 10, sizeY: 8 }, { label: "groundpts1" }),
+      node("groundPts", "pointGrid", [-1560, 340], { cols: 24, rows: 16, count: 384, sizeX: 10, sizeY: 8 }, { label: "grid_ground" }),
       node("groundLay", "pointKernel", [-1260, 340], {
         capacity: 384,
         attributes: '[{"name":"position","type":"vec3f","semantic":"position","default":[0,0,0]}]',
         kernel: "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  /* the grid lies down: the forecourt, from the wall foot toward the camera */\n  q.position = vec3f(p.position.x, 0.0, p.position.y + 4.0);\n  return q;\n}",
-      }, { label: "groundlay1" }),
-      node("ground", "geometry", [-960, 340], { mode: "surface" }, { label: "ground1" }),
+      }, { label: "kernel_groundlay" }),
+      node("ground", "geometry", [-960, 340], { mode: "surface" }, { label: "geometry_ground" }),
 
-      node("cornPts", "pointGrid", [-1560, 640], { cols: 9, rows: 1, count: 9, sizeX: 6.4, sizeY: 1 }, { label: "cornpts1" }),
+      node("cornPts", "pointGrid", [-1560, 640], { cols: 9, rows: 1, count: 9, sizeX: 6.4, sizeY: 1 }, { label: "grid_corn" }),
       node("cornLay", "pointKernel", [-1260, 640], {
         capacity: 9,
         attributes: '[{"name":"position","type":"vec3f","semantic":"position","default":[0,0,0]}]',
         kernel: "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  /* nine dentil blocks along the cornice line, jutting off the wall face */\n  q.position = vec3f(p.position.x, 3.25, 0.42);\n  return q;\n}",
-      }, { label: "cornlay1" }),
+      }, { label: "kernel_cornlay" }),
       /* LIT, and this line is the load-bearing one (§V617/§V666): an unlit cornice casts
          no shadow, and the occlusion this example exists to show silently vanishes —
          a failure that would read as "shadows broke", not "the material opted out". */
-      node("cornice", "geometry", [-960, 640], { mode: "instances", shape: "box", scale: 0.22 }, { label: "cornice1" }),
+      node("cornice", "geometry", [-960, 640], { mode: "instances", shape: "box", scale: 0.22 }, { label: "geometry_cornice" }),
 
       // ---- the rig: two throws, one blend zone ---------------------------------------
       /* Aim at wall mid-height and climb the facade by LENS SHIFT, not tilt: the image
@@ -109,28 +109,28 @@ export const facadeDocument = document(
          runs out. throwRatio 1.8 over ~6.3 units of throw = a ~3.5-wide image each. */
       node("projL", "projector", [-640, 40], {
         eye: [-2, 1.2, 6], lookAt: [-0.8, 2.3, 0], throwRatio: 1.8, shiftY: 0.35, brightness: 1.1,
-      }, { label: "projL1" }),
+      }, { label: "projector_left" }),
       node("projR", "projector", [-640, 340], {
         eye: [2, 1.2, 6], lookAt: [0.8, 2.3, 0], throwRatio: 1.8, shiftY: 0.35, brightness: 1.1,
-      }, { label: "projR1" }),
+      }, { label: "projector_right" }),
 
       // ---- the night ------------------------------------------------------------------
       /* Enough moon to read the architecture, never enough to compete with a throw. */
       node("moon", "light", [-640, 640], {
         kind: "directional", direction: [0.4, -0.7, -0.6], color: [0.5, 0.62, 0.95, 1], intensity: 0.16, shadows: false,
-      }, { label: "moon1" }),
-      node("drift", "lfo", [-960, 940], { shape: "sine", frequency: 0.03, amplitude: 0.35, offset: 3.4, phase: 0 }, { label: "drift1" }),
+      }, { label: "light_moon" }),
+      node("drift", "lfo", [-960, 940], { shape: "sine", frequency: 0.03, amplitude: 0.35, offset: 3.4, phase: 0 }, { label: "lfo_drift" }),
       node("view", "camera", [-640, 940], {
         eye: [3.4, 1.9, 9.5], lookAt: [0, 2.2, 0], fov: 38, near: 0.1, far: 60, ortho: false,
-      }, { label: "view1", parameters: { "eye.x": drivenSlot("drift1", 3.4) } }),
+      }, { label: "camera_view", parameters: { "eye.x": drivenSlot("lfo_drift", 3.4) } }),
 
       node("shot", "render", [-320, 340], {
-        scenes: "wall1 ground1 cornice1", camera: "view1", lights: "moon1",
-        projectors: "projL1 projR1",
+        scenes: "geometry_wall geometry_ground geometry_cornice", camera: "camera_view", lights: "light_moon",
+        projectors: "projector_left projector_right",
         ambientColor: [0.55, 0.65, 1, 1], ambientIntensity: 0.07,
         background: [0.008, 0.012, 0.028, 1],
-      }, { label: "shot1" }),
-      node("out", "output", [0, 340], {}, { label: "out1" }),
+      }, { label: "render_shot" }),
+      node("out", "output", [0, 340], {}, { label: "output1" }),
     ],
     [
       edge("e-warm-projL", ["warm", "out"], ["projL", "cookie"]),

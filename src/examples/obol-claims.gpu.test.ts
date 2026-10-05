@@ -59,7 +59,7 @@ function param(graph: GraphDocument, id: string, key: string, value: unknown): v
 /**
  * THE BLOOM, MUTED — E13's handle, ported (`prism.gpu.test.ts`).
  *
- * `cut1` is the Level that thresholds the picture before `veil1` blurs it and `bloom1`
+ * `level_cut` is the Level that thresholds the picture before `blur_veil` blurs it and `add_bloom`
  * adds it back. Pushing its window above every value in the frame makes it emit black, so
  * the add adds nothing: the real chain still runs, no pass is removed, and nothing
  * downstream has to know. Without this a 34 px blur smears the silhouette's own light
@@ -80,7 +80,7 @@ function soloBackdropOff(graph: GraphDocument): void {
  * THE SUBJECT, SOLOED — and this is E13's third handle, which took a measurement to find.
  *
  * `soloPrism` names ONE scene (`scenes: "solid1"`) so the frame contains the subject and
- * nothing else. E33 renders `cyc1 body1 shards1`, and `cyc1` is a CYCLORAMA — a lit plaster
+ * nothing else. E33 renders `geometry_cyc geometry_body geometry_shards`, and `geometry_cyc` is a CYCLORAMA — a lit plaster
  * wall filling the frame behind the object. With bloom muted and the backdrop off, the mask
  * still covered all 921600 pixels, because the thing lighting them was never the bloom: it
  * was a wall that is legitimately part of the scene.
@@ -91,11 +91,11 @@ function soloBackdropOff(graph: GraphDocument): void {
  * not a new one.
  */
 function soloBody(graph: GraphDocument): void {
-  /* `body1 shards1`, not `body1`: T716/T724 moved the emblem INTO the tiles — at the
-     emblem end the disc is made of `shards1` and the body behind it is barely lit, so
+  /* `geometry_body geometry_shards`, not `geometry_body`: T716/T724 moved the emblem INTO the tiles — at the
+     emblem end the disc is made of `geometry_shards` and the body behind it is barely lit, so
      soloing the body alone left 8 lit pixels and an empty interior. The cyclorama is the
      only thing dropped, because it is the only thing that is not the subject. */
-  param(graph, "shot", "scenes", "body1 shards1");
+  param(graph, "shot", "scenes", "geometry_body geometry_shards");
   /* AND THE BACKGROUND GOES BLACK, which E13 gets for free and E33 does not. §V640's mask
      is "lit above 1 of 255", and E33's background is [0.008, 0.009, 0.013] — about 25/255
      once display-encoded, so every pixel in the frame passes the threshold on the colour
@@ -107,7 +107,7 @@ function soloBody(graph: GraphDocument): void {
 /**
  * The environment cut, and it is NOT the same edit E13 makes.
  *
- * E13 sets `environmentIntensity` on the render node. E33's is a DRIVEN slot (`envrest1`
+ * E13 sets `environmentIntensity` on the render node. E33's is a DRIVEN slot (`math_envrest`
  * feeds it), and a driven slot beats the static underneath it — so writing 0 there would
  * change nothing and the "unwired" arm would silently be the wired one, which is the
  * §V288 shape that would have made this whole measurement a lie. Replacing the parameter

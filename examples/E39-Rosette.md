@@ -13,24 +13,24 @@ and had never shown.
 ## Graph
 
 ```
-stand1(noise, perlin4d) ─┐ order 0
-                         ├─► pick1(switch, index 0) ──────────────► warp1.source
-clip1(movieFileIn) ──────┘ order 1                                      ▲
-                                                                        │
-ang1(ramp, circular) ─► angfix1(transform) ─┐                           │
-    phase ┄ spin1, period ┄ petal1          ├─► field1(reorder) ────────┘ warp1.map
-rad1(circle, distance) ─► depth1(level) ────┘   r = theta, g = rho
-                              gamma ┄ deep1
+noise_stand(noise, perlin4d) ─┐ order 0
+                              ├─► switch_pick(switch, index 0) ──────────────► remap_warp.source
+movie_clip(movieFileIn) ──────┘ order 1                                                     ▲
+                                                                                            │
+ramp_ang(ramp, circular) ─► transform_angfix(transform) ─┐                                  │
+    phase ┄ lfo_spin, period ┄ limit_petal               ├─► reorder_field(reorder) ────────┘ remap_warp.map
+circle_rad(circle, distance) ─► level_depth(level) ──────┘   r = theta, g = rho
+                              gamma ┄ limit_deep
 
-warp1(remap, extend mirror) ─► paint1(lookup) ◄─ palette1(ramp)
-                                    │  scale ┄ hue1
-                                    ├──────────────► burn1(add) ─► trim1(level) ─► out1
-                                    └─► halo1(blur) ─► haze1(level) ─┘
+remap_warp(remap, extend mirror) ─► lookup_paint(lookup) ◄─ ramp_palette(ramp)
+                                         │  scale ┄ limit_hue
+                                         ├──────────────► add_burn(add) ─► level_trim(level) ─► output1
+                                         └─► blur_halo(blur) ─► level_haze(level) ─┘
 
-beat1(audioPattern) ─► smooth1(valueLag) ─┬─► petalg1 ─► petalb1 ─► petal1(valueLimit)
-                                          ├─► deepg1 ─► deepb1 ─► deep1(valueLimit)
-                                          └─► hueg1 ─► hueb1 ─► hue1(valueLimit)
-spin1(lfo, saw 0.037 Hz)
+pattern_beat(audioPattern) ─► lag_smooth(valueLag) ─┬─► math_petalg ─► math_petalb ─► limit_petal(valueLimit)
+                                                    ├─► math_deepg ─► math_deepb ─► limit_deep(valueLimit)
+                                                    └─► math_hueg ─► math_hueb ─► limit_hue(valueLimit)
+lfo_spin(lfo, saw 0.037 Hz)
 ```
 
 ## A polar warp is not a node
@@ -56,7 +56,7 @@ build any coordinate map you can draw.
 ## Three details that are load-bearing, all of them measured
 
 **Aspect.** `ramp(circular)` computes its `atan2` in **uv** space, so on a 16:9 frame the
-rays come out elliptically spaced and the figure squashes. `angfix1` samples the ramp
+rays come out elliptically spaced and the figure squashes. `transform_angfix` samples the ramp
 through a transform scaled by `1/aspect` with `aspectcorrect` off, which works out to
 `atan2(dv, du * aspect)` — the angle in **pixel** space. One node, and it is the difference
 between a rosette and an ellipse.
@@ -89,24 +89,24 @@ angular axis — and not a scale.
 Three gain-and-bias pairs, each mapping one band to one property with its own scale and
 offset, and each ending in a `valueLimit` that states the range out loud:
 
-- **low → `ang1.period`**, clamped 3..11. The kick multiplies the petals.
-- **lowMid → `depth1.gamma1`**, clamped 0.6..4.5. The snare pushes the rings out from the
+- **low → `ramp_ang.period`**, clamped 3..11. The kick multiplies the petals.
+- **lowMid → `level_depth.gamma1`**, clamped 0.6..4.5. The snare pushes the rings out from the
   centre and lets them fall back.
-- **highMid → `paint1.scale`**, clamped 0.45..1.9. The hats slide the whole picture along
+- **highMid → `lookup_paint.scale`**, clamped 0.45..1.9. The hats slide the whole picture along
   the palette, so the colour breathes with the top end rather than sitting still.
 
-`smooth1` is a `valueLag` at 0.09 s between the analysis and all three, so none of them
-jitters on a single frame's noise. `spin1` is a free-running saw at 0.037 Hz — one turn
+`lag_smooth` is a `valueLag` at 0.09 s between the analysis and all three, so none of them
+jitters on a single frame's noise. `lfo_spin` is a free-running saw at 0.037 Hz — one turn
 every twenty-seven seconds, on the absolute clock, so a timeline lap cannot snap it.
 
-Swap `beat1` for an `audioFileIn` and point it at a track; the three pairs are already
+Swap `pattern_beat` for an `audioFileIn` and point it at a track; the three pairs are already
 scaled for the analyser's decibel domain, which is what the pattern node publishes in.
 
 ## The understudy
 
-`pick1` opens on branch 0, a four-dimensional noise with a real `speed`, and `clip1` is
+`switch_pick` opens on branch 0, a four-dimensional noise with a real `speed`, and `movie_clip` is
 still in the graph, still in the plan, and still compiled on a real device by
-`examples.gpu.test.ts`. Set `pick1.index` to 1 and drop a file into `clip1` and it is your
+`examples.gpu.test.ts`. Set `switch_pick.index` to 1 and drop a file into `movie_clip` and it is your
 footage — the polar field does not care what it is sampling. A `webcam` wired as branch 2
 works the same way, and E27 is the file that established the pattern.
 
@@ -116,7 +116,7 @@ shader had never been compiled by the one integration gate we have — the same 
 
 ## The palette had to be balanced by light, not by numbers
 
-`palette1` is seven stops from near-black blue through indigo, teal and violet to rose, gold
+`ramp_palette` is seven stops from near-black blue through indigo, teal and violet to rose, gold
 and white. The first version of it looked balanced as authored numbers and played back as
 red over black.
 
@@ -128,11 +128,11 @@ as comparable numbers.
 
 ## And the bloom nearly took the picture with it
 
-`haze1` used to be a Level with `blacklevel: 0.68`, the obvious way to say "bloom only the
+`level_haze` used to be a Level with `blacklevel: 0.68`, the obvious way to say "bloom only the
 highlights". It is a trap. A positive black level is a **subtraction**, the working format
 is float, and nothing clamps: every pixel below 0.68 — nearly all of them — went negative,
-as far as −2.1, and `burn1` then *subtracted* the bloom everywhere it was not blooming.
-Measured at the liveness probe size, `paint1` spanned 0.545 and `burn1` came out at 0.115.
+as far as −2.1, and `add_burn` then *subtracted* the bloom everywhere it was not blooming.
+Measured at the liveness probe size, `lookup_paint` spanned 0.545 and `add_burn` came out at 0.115.
 
 `gamma1` is the threshold that cannot go negative: `signedPow(c, 1/gamma)` with gamma below
 one crushes the midtones and keeps the highlights, and the same picture then measures 0.970.

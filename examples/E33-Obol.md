@@ -28,40 +28,40 @@ the air, onto the surface and into it.
 ```
   ramp ──────┐
   circle ────┤ add ─────────────────► render.environment
-  circle ────┤ (studio1)                   ▲
-  circle ────┘                             │
-                                           │
-  pointTube ── pointKernel ── geometry ────┤        ┌─ level ─ limit ─ blur ─┐
-   (grid:208x160:wrapU)  (morph1)  (body1) │        │                       │
-                                           │        │                       │
-  pointGrid ── pointKernel ── geometry ────┼── render ──────────────────────add ── output
-   (segpts1)             (segs1) (shards1) │   (shot1)                       │
-                                           │      ▲  ▲                       │
-  pointGrid ── pointKernel ── geometry ────┤      │  └── camera (eye1)       │
-   (sweeppts1)           (sweep1)   (cyc1) │      │                          │
-                                           └──────┴───── 3 lights            │
-                                                                             │
-  lfo tide1 ─┬─ multiply ─ add ─► render.aoIntensity        (and the render's own
-             ├─ multiply ─ add ─► render.environmentIntensity  output feeds `in1`)
-             └─ multiply ─ add ─► materialPhong.roughness
-  lfo tide1 ────────────────────► pointKernel.value1  (the morph, both kernels)
-  lfo sheen1 ───────────────────► pointKernel.value2  (the spectrum's phase)
-  lfo swing1, lift1 ────────────► camera.eye.x, camera.eye.y
+  circle ────┤ (add_studio)                               ▲
+  circle ────┘                                            │
+                                                          │
+  pointTube ── pointKernel ── geometry ───────────────────┤        ┌─ level ─ limit ─ blur ─┐
+   (grid:208x160:wrapU)  (kernel_morph)  (geometry_body)  │        │                       │
+                                                          │        │                       │
+  pointGrid ── pointKernel ── geometry ───────────────────┼── render ──────────────────────add ── output
+   (grid_seg)             (kernel_segs) (geometry_shards) │   (render_shot)                             │
+                                                          │      ▲        ▲                             │
+  pointGrid ── pointKernel ── geometry ───────────────────┤      │        └── camera (camera_eye)       │
+   (grid_sweep)           (kernel_sweep)   (geometry_cyc) │      │                                      │
+                                                          └──────┴───── 3 lights                        │
+                                                                                                        │
+  lfo lfo_tide ─┬─ multiply ─ add ─► render.aoIntensity        (and the render's own
+                ├─ multiply ─ add ─► render.environmentIntensity  output feeds `in1`)
+                └─ multiply ─ add ─► materialPhong.roughness
+  lfo lfo_tide ────────────────────► pointKernel.value1  (the morph, both kernels)
+  lfo lfo_sheen ───────────────────► pointKernel.value2  (the spectrum's phase)
+  lfo lfo_swing, lfo_lift ────────────► camera.eye.x, camera.eye.y
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `shell1` | `pointTube` | 208 x 160 points with **wrapU**, so the longitude seam closes and the blob has no slit. The kernel overwrites every position; only the topology matters here |
-| `morph1` | `pointKernel` | the MASS — the organic blob and only the blob. One configuration and the rule for when it is there |
-| `body1` | `geometry` | surface mode, `tint` in **map** mode bound to the kernel's `tint` attribute (T478) |
-| `oil1` | `materialPhong` | shininess 300, roughness driven 0.190 → 0.085. White base colour: the colour is the per-point tint |
-| `segpts1` | `pointGrid` | 54 x 32 = 1728 slots. The grid's own positions are discarded; `ctx.index` is what the kernel uses |
-| `segs1` | `pointKernel` | the TILES. The whole of the medallion, and the mosaic that fuses into the goo: both configurations, the melt order, the two tones and the front's spectrum |
-| `shards1` | `geometry` | **instances** mode, box, scale 0.019, the `oil1` material and the mapped `tint` attribute (T478) |
-| `rimband1` | `circle` | the rim — a band on the equirect's horizon, which is what a silhouette reflects (see below) |
-| `sweep1` | `pointKernel` | bends a flat 64 x 96 grid into a cyclorama — flat to z = −2, then rising 14 units over the next 16 |
-| `shot1` | `render` | three lights, an equirect environment on a wire, `ambientOcclusion` on at quality **high** |
-| `cut1`/`clip1`/`veil1`/`bloom1` | `level`/`limit`/`blur`/`add` | the bloom, with the clamp that makes it work (see below) |
+| `tube_shell` | `pointTube` | 208 x 160 points with **wrapU**, so the longitude seam closes and the blob has no slit. The kernel overwrites every position; only the topology matters here |
+| `kernel_morph` | `pointKernel` | the MASS — the organic blob and only the blob. One configuration and the rule for when it is there |
+| `geometry_body` | `geometry` | surface mode, `tint` in **map** mode bound to the kernel's `tint` attribute (T478) |
+| `material_oil` | `materialPhong` | shininess 300, roughness driven 0.190 → 0.085. White base colour: the colour is the per-point tint |
+| `grid_seg` | `pointGrid` | 54 x 32 = 1728 slots. The grid's own positions are discarded; `ctx.index` is what the kernel uses |
+| `kernel_segs` | `pointKernel` | the TILES. The whole of the medallion, and the mosaic that fuses into the goo: both configurations, the melt order, the two tones and the front's spectrum |
+| `geometry_shards` | `geometry` | **instances** mode, box, scale 0.019, the `material_oil` material and the mapped `tint` attribute (T478) |
+| `circle_rimband` | `circle` | the rim — a band on the equirect's horizon, which is what a silhouette reflects (see below) |
+| `kernel_sweep` | `pointKernel` | bends a flat 64 x 96 grid into a cyclorama — flat to z = −2, then rising 14 units over the next 16 |
+| `render_shot` | `render` | three lights, an equirect environment on a wire, `ambientOcclusion` on at quality **high** |
+| `level_cut`/`limit_clip`/`blur_veil`/`add_bloom` | `level`/`limit`/`blur`/`add` | the bloom, with the clamp that makes it work (see below) |
 
 ## T673 — what the second round changed
 
@@ -122,7 +122,7 @@ travels as a wave from the seam outward rather than happening everywhere at once
 
 ### The emblem is now made of parts
 
-The owner's own idea, and the strongest one in the note. `segs1` lays its tiles out by the
+The owner's own idea, and the strongest one in the note. `kernel_segs` lays its tiles out by the
 golden angle — a polar lattice crowds at the centre and a square one leaves a stepped rim,
 and the golden angle spaces evenly at every radius so one tile size fits the whole disc
 with no seam. Each wears its own piece of `taiji`, and each melts on the same `meltOrder`
@@ -145,14 +145,14 @@ find, it is a floor the occlusion has to climb out of.
 
 | | pre-T673 | T673, unchanged by T716 |
 | --- | --- | --- |
-| `shot1.ambientIntensity` | 0.62 | 0.20 |
-| `key1.intensity` | 0.26 | 0.55 |
-| `key1.shadowExtent` | 2.8 | 3.2 |
-| `fill1.intensity` | 0.11 | 0.22 |
-| `plaster1` albedo | 0.185 | 0.085 |
+| `render_shot.ambientIntensity` | 0.62 | 0.20 |
+| `light_key.intensity` | 0.26 | 0.55 |
+| `light_key.shadowExtent` | 2.8 | 3.2 |
+| `light_fill.intensity` | 0.11 | 0.22 |
+| `material_plaster` albedo | 0.185 | 0.085 |
 | sky ramp | ×1.0 | ×0.42 |
-| `keybox1` radius | 0.150 × 0.052 | 0.280 × 0.130 |
-| `shot1.aoRadius` | 0.50 | 0.34 |
+| `circle_keybox` radius | 0.150 × 0.052 | 0.280 × 0.130 |
+| `render_shot.aoRadius` | 0.50 | 0.34 |
 
 The sky is dimmed and the softboxes are not, and that pairing is the whole of "wet". The
 sky's widest reader is the irradiance tap (five samples over a broad cone along N, T636)
@@ -205,7 +205,7 @@ The complaint was only ever about the EMBLEM end. **T724 keeps T716's emblem and
 blob back**, with the mass growing from a speck as the morph runs and the tiles fusing into
 it.
 
-**THE ONE NUMBER, and it holds both asks at once.** Drop `body1` from the render and count
+**THE ONE NUMBER, and it holds both asks at once.** Drop `geometry_body` from the render and count
 what changes:
 
 | pixels of the frame that change without the mass | |
@@ -397,7 +397,7 @@ Shadows, which is §V617 and what gives the form its body:
 
 The last row is what makes the others evidence. §V617 says an unlit geometry casts no
 shadow in any draw mode, because a surface that ignores light cannot block it — and the
-count goes to exactly zero when `oil1` is swapped for a light-ignoring material, at both
+count goes to exactly zero when `material_oil` is swapped for a light-ignoring material, at both
 ends, for every version of this file. The tiles cast BECAUSE they are lit matter, not
 because a shadow happens to appear. At the emblem end the tiles are the only caster and
 their count is unchanged from T716; at the goo end the mass is back and the full-scene
@@ -415,7 +415,7 @@ away: a back light in this engine is a second key wearing a rim's name. One at i
 What rims here is the environment's Schlick term (T632). `envFresnel` rises to 1 at
 grazing incidence, and at grazing the reflection vector points AWAY from the camera — so
 the silhouette samples the equirect at its horizon, `(0.5, 0.5)`, and until now there was
-nothing there but the dim end of the sky ramp. `rimband1` is that texel.
+nothing there but the dim end of the sky ramp. `circle_rimband` is that texel.
 
 **And it is a rim on the goo and a fill on the emblem** — which is the Fresnel term
 working rather than a compromise, and is worth stating because "rim light" implies an
@@ -448,7 +448,7 @@ on both and left both ratios where they were. The flat end was never fill-domina
 0.74× was an artefact of a recipe that is not recoverable.
 
 **T716 did not re-take this pair, and the limit it records is the reason.** §V640 is
-already stated with these two numbers and T716 changes nothing about `rimband1` or the
+already stated with these two numbers and T716 changes nothing about `circle_rimband` or the
 Fresnel term — but the object it was measured on is gone, so the table is kept with its
 stamp rather than presented as current. What T716 does change is the direction of the
 finding: the emblem end is now MORE grazing surface, not less, because a mosaic of boxes
@@ -486,7 +486,7 @@ shadow EDGE and a diffuse wrap; the cast shadow here is hard, and that is record
 than hidden (§V328: state the capability, never promise the hardware).
 
 **It did need a POINT light.** Directional lights do not fall off, so three of them paint
-a cyclorama one flat grey and the piece reads as a model on a card table. The `crown1`
+a cyclorama one flat grey and the piece reads as a model on a card table. The `light_crown`
 light is a point light at (0, 2.90, −3.40) with intensity 14, which the 1/(1 + d²)
 attenuation eats down to about 0.6 at the object. The gradient on the backdrop is that
 ratio and nothing else.
@@ -516,7 +516,7 @@ staying axis-aligned. Neither blocks the fuse and both would sharpen it.
 ## Ambient occlusion (T624)
 
 This is the first example to switch on the render's `ambientOcclusion`. It is one
-parameter on `shot1` — not a per-geometry opt-in — and the tiles and the cyclorama occlude
+parameter on `render_shot` — not a per-geometry opt-in — and the tiles and the cyclorama occlude
 each other with nothing else to configure (§V437). AO multiplies the AMBIENT and
 ENVIRONMENT terms only, never the direct lights: occlusion is about light that arrives
 from everywhere, and a key light arrives from one direction whether or not the
@@ -567,10 +567,10 @@ reflections travelling across the surface.
 - **The emblem reads as confetti** → the same ratio went the other way, or the tile count
   fell. Below about 60% the face has more room than tiles in it.
 - **The disc is back behind the cubes** → the mass stopped shrinking at the emblem end.
-  The number is exact: dropping `body1` from the render must change ZERO pixels of the
+  The number is exact: dropping `geometry_body` from the render must change ZERO pixels of the
   emblem frame. Anything above zero is the thing the owner objected to.
 - **The goo is a blob made of cubes** → the mass stopped growing, or was deleted again.
-  Dropping `body1` must change 106,056 pixels of the goo frame. That is the gimmick and
+  Dropping `geometry_body` must change 106,056 pixels of the goo frame. That is the gimmick and
   it is the half of the gate that fails if somebody satisfies the other half by deleting.
 - **A cube arrives before the skin does, or lands on skin that is already there** → the
   mass stopped inverting the tiles' map. The two must read the SAME `meltOrder` from the
@@ -599,7 +599,7 @@ reflections travelling across the surface.
 - **The object and the room are the same brightness** → the ambient went back up, or the
   room's albedo did. The separation numbers are 137 luma on the emblem frame and 42 on
   the goo frame.
-- **No rim at all** → `rimband1` is unwired, or it moved off `v = 0.5`. The silhouette
+- **No rim at all** → `circle_rimband` is unwired, or it moved off `v = 0.5`. The silhouette
   reflects the equirect's horizon and nowhere else. Expect the goo's silhouette ring to
   move ~46 luma when it is switched off; if it moves like the body does, the band is
   acting as fill only and has drifted off the horizon.
@@ -678,10 +678,10 @@ the 1280×720 frame that change, on the emblem frame:
 
 | | T673 | T716 / T724 |
 | --- | --- | --- |
-| `shards1.scale` → 0.030 | 28,842 (3.13%) | 30,515 (3.31%) |
-| `shards1` removed from the render | 185,496 (20.13%) | 165,678 (17.98%) |
-| `rimband1` unwired from the studio | 159,359 (17.29%) | 142,011 (15.41%) |
-| `body1` removed from the render | — | **0 (0.00%)** |
+| `geometry_shards.scale` → 0.030 | 28,842 (3.13%) | 30,515 (3.31%) |
+| `geometry_shards` removed from the render | 185,496 (20.13%) | 165,678 (17.98%) |
+| `circle_rimband` unwired from the studio | 159,359 (17.29%) | 142,011 (15.41%) |
+| `geometry_body` removed from the render | — | **0 (0.00%)** |
 
 Counted at a threshold of 8 luma. The rim guard is given at 8 rather than 1 because the
 environment reaches the cyclorama as well as the object, so at 1 luma it saturates at
@@ -691,7 +691,7 @@ threshold; this row replaces it rather than sitting beside it.
 
 The first is the one §B132 would have failed: instances-mode scale is carried, and the
 draw changes when it does. The second is the whole object at this frame rather than a layer
-on it — removing `shards1` leaves an empty room. The last is the only guard in this file
+on it — removing `geometry_shards` leaves an empty room. The last is the only guard in this file
 whose PASSING value is zero, and it is deliberate: at the emblem frame the mass is not a
 wire that might be broken, it is a thing that must not be there. Its non-zero half lives
 at frame 484, where the same removal takes 106,056 pixels.

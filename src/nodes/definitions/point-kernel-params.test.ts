@@ -435,7 +435,7 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
      renamed in memory (which does not touch a shader), rename the node names inside its
      shader COMMENTS and nowhere else, and the two are byte-identical
      (`apply-rename.ts --written --build-in`, "the same but for prose").
-     Rows moved for that reason, as the batches landed: E27, E31, E32. */
+     Rows moved for that reason, as the batches landed: E27, E31, E32, E33, E34. */
   /* T1290: E69-Burnish, new in this commit rather than re-stamped. Its digest is the
      resolved passes of its four sphere kernels — one `pointGrid` folded onto a ball four
      times, differing only in where each stands. */
@@ -459,14 +459,14 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
      dispatch size. The picture is held by the example's look baseline and its .md's
      re-measured claims, not by this number. */
   "E32-Pasture.loom.json": "f3aa1a3557dbd524",
-  "E33-Obol.loom.json": "68029203112b3bbc",
-  /* T1053 re-pinned this one, and the module's gain is enumerable: `aim1`, `sight1`,
-     `mark1` and `mark2a` each grew a `struct Params` and its uniform members, and twelve
+  "E33-Obol.loom.json": "30e1616cff75e4e0",
+  /* T1053 re-pinned this one, and the module's gain is enumerable: `kernel_aim`, `kernel_sight`,
+     `kernel_mark` and `kernel_mark2a` each grew a `struct Params` and its uniform members, and twelve
      literals became `ctx.params.<name>` reads. NO PICTURE MOVED — every promoted uniform
      carries the exact f32 the literal it replaced was, checked pass by pass against the
-     HEAD file, and E34's other four kernels (unfold1, raise1, pool1, ricochet1) are
+     HEAD file, and E34's other four kernels (kernel_unfold, kernel_raise, pool1, kernel_ricochet) are
      byte-identical because nothing in them was artistic direction. */
-  "E34-Lidar.loom.json": "4ef176c1ad25ab03",
+  "E34-Lidar.loom.json": "948ea8f3284db431",
   "E35-Nova-Torus.loom.json": "738e4e77f2cf31d4",
   "E36-Facade.loom.json": "019eaf2401006054",
   "E37-Sirocco.loom.json": "2087d8858acc22c2",

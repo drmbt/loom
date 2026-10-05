@@ -237,7 +237,15 @@ if (only !== undefined) {
 /** The renames this run applies: all of them, or the batch's. */
 const applying = batch === undefined ? byScope : new Map([...byScope].filter(([scope]) => batch?.has(scope) === true));
 
-/** Which scopes a test names nodes of: the documents it spells, by file name, slug or exported constant. */
+/**
+ * Which scopes a test names nodes of: the documents it LOADS, by file name, slug or exported
+ * constant.
+ *
+ * Loads, not mentions. An engine test that says "measured on E34-Lidar while prototyping"
+ * in a comment has a graph of its own, with nodes it called `shot1` and `mark1` long before
+ * the sweep, and a private fixture is not a shipped name. Three such files were half
+ * renamed (a Material called `kernel_mark`) before this asked for the file name.
+ */
 function testScopes(path: string, text: string): Set<string> {
   const scopes = new Set<string>();
   const project = /^src\/projects\/([^/]+)\//.exec(path)?.[1];
@@ -247,7 +255,7 @@ function testScopes(path: string, text: string): Set<string> {
     // it has to be spelled as a file. And a host document is not found by the constant that
     // exports it, because the example built from the same constant is a different document.
     const host = isComponentHost(example);
-    const named = host ? text.includes(`${example.stem}.loom.json`) : text.includes(example.stem) || text.includes(`"${example.slug}"`);
+    const named = text.includes(`${example.stem}.loom.json`) || (!host && text.includes(`"${example.slug}"`));
     const imported = !host && [...sourceScopes].some(([source, built]) => built.has(example.document.path) && (exportsOf.get(source) ?? []).some((name) => new RegExp(`\\b${name}\\b`).test(text)));
     if (!named && !imported) continue;
     scopes.add(example.document.path);
