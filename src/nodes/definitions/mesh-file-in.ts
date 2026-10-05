@@ -1,7 +1,7 @@
 import type { CompiledNodeDescription, NodeDefinition, PointsetAttributeRef } from "../../domain/types/node-definition.ts";
 import type { DispatchPassDescriptor } from "../../runtime/backend/plan.ts";
 import { scratchResourceId } from "../../compiler/resources.ts";
-import { MESH_ATTRIBUTES, meshLayout, meshSourceIdsFor } from "../../points/mesh.ts";
+import { MESH_ATTRIBUTES, meshLayout, meshSourceIdsFor, parseMeshBounds } from "../../points/mesh.ts";
 import { formatTopology } from "../../points/topology.ts";
 import { MESH_CLIP_WGSL } from "../shaders/mesh-clip.wgsl.ts";
 import { MESH_LAMPS_WGSL } from "../shaders/mesh-lamps.wgsl.ts";
@@ -153,6 +153,16 @@ export const meshFileInNode: NodeDefinition = {
       description: "index:name for every loom_part the selection holds — the numbers a kernel branches on (surface.w).",
       inactiveWhen: () => MEASURED,
     },
+    bounds: {
+      type: "string",
+      label: "Bounds",
+      default: "",
+      group: "File",
+      compileTime: true,
+      description:
+        "T1598b: x,y,z,r — the sphere that holds every vertex of the selection, in the frame the vertices are in, metres. A Geometry drawing this mesh as a Surface, straight from this node, uses it to leave the mesh out of a point light's shadow sweep that cannot reach it. A kernel or a clip between here and the Geometry moves the vertices, so the sphere is not passed on and the mesh is always drawn. Empty: unknown, always drawn.",
+      inactiveWhen: () => MEASURED,
+    },
     clip: {
       type: "string",
       label: "Clip",
@@ -285,6 +295,9 @@ export const meshFileInNode: NodeDefinition = {
     const clip = playClip(nodeId, parameters, { vertices, skinned, empty, rest: pairs, poseSource: sources.pose });
     if ("refusal" in clip) return { passes: [], diagnostics: [clip.refusal] };
     const lit = lampPass(nodeId, parameters, { vertices, empty, groups: lamps.length, rest: pairs });
+    /* T1598b: the measured sphere holds the REST vertices. A clip poses them on the GPU,
+       so with one playing nothing here knows where they are. */
+    const bounds = empty || clip.passes.length > 0 ? undefined : parseMeshBounds(parameters["bounds"]);
     return {
       passes: [...clip.passes, ...lit.passes],
       scratch: [
@@ -298,6 +311,7 @@ export const meshFileInNode: NodeDefinition = {
           pairs: { ...pairs, ...clip.pairs, ...lit.pairs },
           capacity: vertices,
           topology: formatTopology({ kind: "mesh", triangles, indexBuffer }),
+          ...(bounds === undefined ? {} : { bounds }),
         },
       },
     };

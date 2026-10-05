@@ -53,6 +53,12 @@ export interface FrameLoopSettings {
 export interface UniformUpdate {
   readonly passId: string;
   readonly values: UniformValues;
+  /**
+   * T1598b: a DRAW pass's other per-frame value (`DrawPassDescriptor.skip`) — true stops it
+   * being encoded, false draws it again. Absent leaves it as it is. Still a value: nothing
+   * is built or released either way.
+   */
+  readonly skip?: boolean;
 }
 
 /**

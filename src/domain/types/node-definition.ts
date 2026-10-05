@@ -277,6 +277,20 @@ export interface PointsetAttributeRef {
   type?: string;
 }
 
+/**
+ * T1598b — a SPHERE that holds every point of a pointset, in the frame its positions are in.
+ *
+ * It rides a pointset edge only where it is KNOWN EXACTLY WITHOUT READING THE GPU: a Mesh
+ * File In measures it from the file. A node that moves points on the GPU (a kernel, a clip)
+ * publishes none, and it is never carried through by default — a node builds its own edge
+ * description, so forgetting this field loses the bound, which is the safe direction. A
+ * consumer without one must assume the points can be anywhere (§V426: no guessed bounds).
+ */
+export interface PointsetBounds {
+  readonly center: readonly [number, number, number];
+  readonly radius: number;
+}
+
 export interface CompiledNodeDescription {
   passes: ReadonlyArray<unknown>;
   /** Scratch resources this node's passes use between each other. */
@@ -297,6 +311,8 @@ export interface CompiledNodeDescription {
         capacity: number;
         topology?: string;
         count?: { buffer: string };
+        /** T1598b: the sphere holding every point, when the producer knows it exactly. */
+        bounds?: PointsetBounds;
       }
     >
   >;

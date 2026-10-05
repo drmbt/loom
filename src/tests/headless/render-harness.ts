@@ -239,8 +239,12 @@ export interface HarnessControl {
    * It reaches no further than a uniform block, by construction: the backend's
    * `updateUniforms` "accepts values and nothing else", so a test cannot rebuild a plan
    * or re-point a resource through here.
+   *
+   * T1598b: `skip` is a draw pass's other per-frame value (`DrawPassDescriptor.skip`), the
+   * same call's third field. Passing `false` for every skipped draw renders the frame with
+   * nothing left out, which is the picture a culled frame must equal.
    */
-  updateUniforms(passId: string, values: Record<string, number | number[]>): void;
+  updateUniforms(passId: string, values: Record<string, number | number[]>, skip?: boolean): void;
   /**
    * T1508b — a LAP: the timeline wraps to `frameIndex` and keeps running, exactly the
    * transport's own `wrapTo` (T464) — the clock changes, nothing is cleared, and the
@@ -951,8 +955,8 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
         backend.resetTemporalHistory(undefined, { buffers: true, silent: true });
       },
       // §T1311b(b): byte for byte the call `use-view-camera` makes while the viewer flies.
-      updateUniforms: (passId, values) => {
-        backend.updateUniforms({ passId, values });
+      updateUniforms: (passId, values, skip) => {
+        backend.updateUniforms({ passId, values, ...(skip === undefined ? {} : { skip }) });
       },
       outputResourceId,
       plan,

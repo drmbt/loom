@@ -53,6 +53,7 @@ import {
   passStructureKey,
   planStructureSignature,
   resourceStructureKey,
+  planSkippedDraws,
   planUniformValues,
   readExecutionPlan,
   type PassDescriptor,
@@ -174,6 +175,11 @@ interface Program {
   readonly loopCounts: Map<string, number>;
   /** T1583b: a kernel region's live iterations per substep, by loopId, beside its count. */
   readonly loopIterations: Map<string, number>;
+  /**
+   * T1598b: the draw passes NOT encoded this frame (`DrawPassDescriptor.skip`), by pass id.
+   * Seeded from the plan and moved by `updateUniforms`, like a loop's count.
+   */
+  readonly skipped: Set<string>;
   /**
    * T1583b: the dispatches a kernel region steps, by DISPATCH pass id. Read off the plan
    * whenever it is installed or its values move (`prepare` is a value).
@@ -1573,6 +1579,10 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             typeof pass.instances === "object"
               ? active.resources.buffers.get(pass.instances.indirect)
               : undefined;
+          // T1598b: a skipped draw is provably empty, so it is not encoded. One that owns
+          // its target's clear still clears, with nothing drawn.
+          const skipped = active.skipped.has(pass.id);
+          if (skipped && pass.clear === false) continue;
           const span = spanFor(pass.id);
           // Every draw encodes through f.pass, which is what gives it a clear knob (T180 —
           // clear:false is the trails pattern), a GPU timer span (T181 — span name = pass
@@ -1592,7 +1602,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
                 clear: pass.clear ?? true,
                 ...(span === undefined ? {} : { timer: span }),
               },
-              indirect === undefined ? drawable : (encoder) => encoder.draw(drawable, { indirect }),
+              skipped ? () => {} : indirect === undefined ? drawable : (encoder) => encoder.draw(drawable, { indirect }),
             ),
           );
           continue;
@@ -2569,6 +2579,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           }
         }
         program.stepped = steppedDispatches(read.passes);
+        // T1598b: which draws are skipped is a value too, and moves with the rest.
+        program.skipped.clear();
+        for (const passId of planSkippedDraws(read.passes)) program.skipped.add(passId);
         program.dirty = true; // values moved; the next frame must draw them (§V159)
         stale = false;
         return program.compiled;
@@ -2711,6 +2724,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             pass.kind === "loop" && pass.steps !== undefined ? [[pass.loopId, pass.steps.iterations] as const] : [],
           ),
         ),
+        skipped: planSkippedDraws(read.passes),
         stepped: steppedDispatches(read.passes),
         stepRuns: new Map(),
         compiled: { id, logical: plan },
@@ -3114,6 +3128,23 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           program.loopIterations.set(loopBegin.loopId, iterations);
         }
         return;
+      }
+      // T1598b: a draw's skip flag — a value the encoder reads, like the count above.
+      if (update.skip !== undefined) {
+        if (!program.resources.draws.has(update.passId)) {
+          hub.report(
+            backendDiagnostic(
+              "warning",
+              BackendDiagnosticCode.unknownPass,
+              `updateUniforms() set skip on pass "${update.passId}", which is not a draw of this plan.`,
+            ),
+          );
+          return;
+        }
+        if (update.skip) program.skipped.add(update.passId);
+        else program.skipped.delete(update.passId);
+        // A draw with no uniform block, or an update that moves nothing else, ends here.
+        if (Object.keys(update.values).length === 0) return;
       }
       if (!program.resources.passUniforms.has(update.passId)) {
         hub.report(

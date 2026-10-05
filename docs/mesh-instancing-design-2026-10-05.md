@@ -713,7 +713,7 @@ So the order after slice E is performance first: F1's compaction, T1598b, and a 
 
 **What a Group costs now.** Not the rejected instances: an indirect draw in each pass. A Group that rejects nothing is worth removing. The consumer's documents carry one on every instanced Geometry (`p.kind > -0.5`, from when the pieces shared a pointset) although each kernel now writes exactly its points; with them the hinged document's GPU frame is 18.5 ms and the rigid one's 9.2, against 11.1 and 8.5 with those Groups gone.
 
-**Per-view lists** (a camera frustum cull, T1598b's per-light caster lists) are further `visible_<view>` regions and counts, as planned. Each such list is an indirect draw in the passes that read it, which is the cost to weigh there.
+**Per-view lists** (a camera frustum cull, a light's range) are further `visible_<view>` regions and counts, as planned. Each such list is an indirect draw in the passes that read it, which is the cost to weigh there. T1598b built the two coarser cuts first, per geometry rather than per instance: the Light's caster lists, and skipping a geometry whose CPU bound a point light cannot reach. A per-light list for instances is still open; see `docs/shadow-casters-design-2026-10-05.md`.
 
 ### Slice E — custom instance attributes (T1581b, built)
 

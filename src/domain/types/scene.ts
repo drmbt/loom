@@ -97,6 +97,14 @@ export interface LightPayload {
      */
     readonly shadowCenter: readonly [number, number, number];
     /**
+     * T1598b: the ONLY geometries that cast this light's shadow, as geometry NODE IDS (the
+     * Light resolved its Shadow Casters names). Absent: every geometry a Render draws casts.
+     * A Render keeps its own geometries that are listed; one that is not still receives.
+     */
+    readonly shadowCasters?: ReadonlyArray<string>;
+    /** T1598b: geometries that do NOT cast this light's shadow, as node ids. Wins over `shadowCasters`. */
+    readonly shadowExclude?: ReadonlyArray<string>;
+    /**
      * T1437b: how a POINT light's radiance falls with distance d. "soft" is 1/(1 + d²),
      * which is nearly flat inside a metre and so washes a close-up evenly; "inverseSquare"
      * is the physical 1/d² (d held at 1 cm or more). Both equal the intensity's reading at
@@ -185,6 +193,14 @@ export interface GeometryPayload {
       readonly fields?: Readonly<Record<string, { readonly offset: number; readonly type: string }>>;
     };
   };
+  /**
+   * T1598b — a sphere IN WORLD SPACE that holds everything this geometry draws, when that is
+   * known exactly on the CPU: a Surface over a pointset that carries its own bound (a Mesh
+   * File In, wired directly), turned by `objectMatrix`. Absent means "it can be anywhere"
+   * — kernel-moved points, instances, billboards — and a consumer then always draws it.
+   * A Render uses it to leave the geometry out of a shadow sweep that cannot reach it.
+   */
+  readonly bounds?: { readonly center: readonly [number, number, number]; readonly radius: number };
   /** How this object renders. */
   readonly mode: "surface" | "instances" | "points" | "beam";
   /**

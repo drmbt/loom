@@ -1,5 +1,6 @@
 import { isUniformOnlyChange } from "@compiler/index.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
+import { planSkippedDraws } from "@runtime/backend/plan.ts";
 import type { UniformValue, UniformValues } from "@runtime/backend/plan.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 
@@ -82,6 +83,8 @@ function blocksOf(plan: CompiledGraph): Map<string, UniformValues> {
 
 export function createUniformAnimator(): UniformAnimator {
   let pushed: Map<string, UniformValues> | null = null;
+  /** T1598b: the draws the backend was last told to skip — a pass's other per-frame value. */
+  let skipped: Set<string> | null = null;
 
   return {
     push(backend, base, next) {
@@ -99,10 +102,23 @@ export function createUniformAnimator(): UniformAnimator {
         written += 1;
       }
       pushed = blocks;
+
+      // T1598b: a draw that entered or left its light's reach. Pushed on the flip only, and
+      // not counted as a block: it writes no buffer.
+      const skips = planSkippedDraws(next.passes);
+      const before = skipped ?? planSkippedDraws(base.passes);
+      for (const passId of skips) {
+        if (!before.has(passId)) backend.updateUniforms({ passId, values: {}, skip: true });
+      }
+      for (const passId of before) {
+        if (!skips.has(passId)) backend.updateUniforms({ passId, values: {}, skip: false });
+      }
+      skipped = skips;
       return written;
     },
     reset() {
       pushed = null;
+      skipped = null;
     },
   };
 }

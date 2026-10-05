@@ -458,6 +458,18 @@ export interface DrawPassDescriptor {
    * no clear hook yet — documented gap, not a decision).
    */
   readonly clear?: boolean;
+  /**
+   * T1598b: true = NOTHING IS DRAWN THIS FRAME (a pass that clears still clears). A VALUE,
+   * never structure, exactly as a loop's count is (T425): it is outside the structure key,
+   * the per-frame compile carries it, and `updateUniforms` moves it. The pass, its pipeline
+   * and its bindings stay built, so flipping it costs nothing.
+   *
+   * Set only where the draw is PROVABLY EMPTY — a shadow caster wholly outside the light's
+   * reach, whose every fragment the sweep would discard — so a path that ignores it draws
+   * the same picture. It is an optimisation that cannot be wrong by being missed, and it
+   * must stay one: never use it to hide something that would have been visible.
+   */
+  readonly skip?: boolean;
 }
 
 /**
@@ -887,6 +899,8 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
   if (depthWrite !== undefined && typeof depthWrite !== "boolean") return undefined;
   const clear = value["clear"];
   if (clear !== undefined && typeof clear !== "boolean") return undefined;
+  const skip = value["skip"];
+  if (skip !== undefined && typeof skip !== "boolean") return undefined;
 
   const nodeId = value["nodeId"];
   const sourceMap = readSourceMap(value["sourceMap"]);
@@ -906,6 +920,8 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
     ...(blend === undefined ? {} : { blend }),
     ...(depthWrite === undefined ? {} : { depthWrite }),
     ...(clear === undefined ? {} : { clear }),
+    // T1598b: only `true` is kept, so a pass that is drawn has the bytes it always had.
+    ...(skip === true ? { skip: true } : {}),
     ...(typeof nodeId === "string" ? { nodeId } : {}),
     ...(sourceMap === undefined ? {} : { sourceMap }),
   };
@@ -1470,6 +1486,18 @@ export function estimateResourceBytes(resources: ReadonlyArray<ResourceDescripto
 }
 
 /** Uniform values a plan carries, keyed by pass id. Extracted after the signature is taken. */
+/**
+ * T1598b: the draws a plan SKIPS — its other per-frame value beside the uniform blocks.
+ * One reader for the backend (what it does not encode) and the animator (what it pushes).
+ */
+export function planSkippedDraws(passes: ReadonlyArray<PassDescriptor>): Set<string> {
+  const skipped = new Set<string>();
+  for (const pass of passes) {
+    if (pass.kind === "draw" && pass.skip === true) skipped.add(pass.id);
+  }
+  return skipped;
+}
+
 export function planUniformValues(
   passes: ReadonlyArray<PassDescriptor>,
 ): ReadonlyMap<string, UniformValues> {

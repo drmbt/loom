@@ -4,7 +4,7 @@ import type { PreviewPayloadKind } from "./preview-orbit.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { ColorPolicy, GraphDocument, ProjectSettings } from "../domain/types/graph.ts";
 import type { BackendCapabilities, LogicalExecutionPlan } from "../domain/types/backend.ts";
-import type { NodeCompileContext, PointsetAttributeRef, TextureFormat } from "../domain/types/node-definition.ts";
+import type { NodeCompileContext, PointsetAttributeRef, PointsetBounds, TextureFormat } from "../domain/types/node-definition.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
 import type { ComponentRegistryView } from "../domain/components/index.ts";
@@ -318,6 +318,8 @@ export interface PointsetEdgeInfo {
    * Consumers that draw switch to indirect; consumers needing a static count refuse.
    */
   readonly count?: { readonly buffer: string };
+  /** T1598b: the sphere holding every point, when the producer knows it exactly (`PointsetBounds`). */
+  readonly bounds?: PointsetBounds;
 }
 
 export interface CompiledInputBinding {

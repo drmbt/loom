@@ -353,18 +353,55 @@ export function directionalShadowMatrix(
  * direction lands on. Near is a fixed fraction of the range: a caster closer than that to
  * the light is inside the lamp.
  */
+/** The cube's faces, in atlas order. One table for the matrices and for `pointShadowFaceReaches`. */
+const POINT_SHADOW_FACES: ReadonlyArray<{ readonly axis: readonly [number, number, number]; readonly up: readonly [number, number, number] }> = [
+  { axis: [1, 0, 0], up: [0, 1, 0] },
+  { axis: [-1, 0, 0], up: [0, 1, 0] },
+  { axis: [0, 1, 0], up: [0, 0, -1] },
+  { axis: [0, -1, 0], up: [0, 0, 1] },
+  { axis: [0, 0, 1], up: [0, 1, 0] },
+  { axis: [0, 0, -1], up: [0, 1, 0] },
+];
+
+/**
+ * T1598b — whether face `face` of a point light's cube sweep can hold ANY of a sphere.
+ *
+ * False only when the sphere's draw into that face is provably empty, so a caller may
+ * leave the draw out without changing a picture:
+ *
+ *  - OUT OF RANGE: every point of it is further than `range` from the light. The sweep
+ *    stores distance ÷ range and a receiver beyond the range is unshadowed by rule, so a
+ *    caster out there can only shadow what is never shadowed.
+ *  - OUT OF THE FACE: it lies wholly behind one of the four side planes of the face's 90°
+ *    pyramid. The sweep discards every fragment outside its face (`cubeShadowVariant`).
+ *
+ * Conservative: a sphere that touches the volume, or is near one of the pyramid's edges
+ * without entering it, answers true. `range` is clamped as the matrices clamp it.
+ */
+export function pointShadowFaceReaches(
+  position: readonly [number, number, number],
+  range: number,
+  face: number,
+  sphere: { readonly center: readonly [number, number, number]; readonly radius: number },
+): boolean {
+  const axis = POINT_SHADOW_FACES[face]?.axis;
+  if (axis === undefined) return true;
+  const d = [sphere.center[0] - position[0], sphere.center[1] - position[1], sphere.center[2] - position[2]] as const;
+  if (Math.hypot(d[0], d[1], d[2]) - sphere.radius > Math.max(0.1, range)) return false;
+  // The face's axis is a world axis, so "along" is one component and the side planes pair
+  // it with each of the other two: inside means along ≥ |other|, and a plane's unit normal
+  // is (axis ∓ other) / √2, which is where the √2 comes from.
+  const which = axis[0] !== 0 ? 0 : axis[1] !== 0 ? 1 : 2;
+  const along = d[which] * (axis[which] as number);
+  const aside = Math.max(Math.abs(d[(which + 1) % 3] as number), Math.abs(d[(which + 2) % 3] as number));
+  return along + sphere.radius * Math.SQRT2 >= aside;
+}
+
 export function pointShadowFaceMatrices(position: readonly [number, number, number], range: number): Mat4[] {
   const far = Math.max(0.1, range);
   const near = Math.max(0.01, far * 0.002);
   const projection = perspective(Math.PI / 2, 1, near, far);
-  const faces: ReadonlyArray<{ readonly axis: readonly [number, number, number]; readonly up: readonly [number, number, number] }> = [
-    { axis: [1, 0, 0], up: [0, 1, 0] },
-    { axis: [-1, 0, 0], up: [0, 1, 0] },
-    { axis: [0, 1, 0], up: [0, 0, -1] },
-    { axis: [0, -1, 0], up: [0, 0, 1] },
-    { axis: [0, 0, 1], up: [0, 1, 0] },
-    { axis: [0, 0, -1], up: [0, 1, 0] },
-  ];
+  const faces = POINT_SHADOW_FACES;
   return faces.map(({ axis, up }) =>
     multiply(
       projection,

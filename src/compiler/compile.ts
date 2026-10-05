@@ -1345,6 +1345,16 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         const topology = rawInfo["topology"];
         const countRaw = rawInfo["count"];
         const countBuffer = isRecord(countRaw) ? countRaw["buffer"] : undefined;
+        /* T1598b: a bound is used to leave draws out, so a malformed one is DROPPED — an
+           unbounded pointset is always drawn, a wrongly bounded one loses its shadow. */
+        const boundsRaw = rawInfo["bounds"];
+        const center = isRecord(boundsRaw) ? boundsRaw["center"] : undefined;
+        const radius = isRecord(boundsRaw) ? boundsRaw["radius"] : undefined;
+        const bounds =
+          Array.isArray(center) && center.length === 3 && center.every((value) => typeof value === "number" && Number.isFinite(value)) &&
+          typeof radius === "number" && Number.isFinite(radius) && radius >= 0
+            ? { center: [center[0], center[1], center[2]] as [number, number, number], radius }
+            : undefined;
         pointsetInfoByOutput.set(outputKey(nodeId, portId), {
           pairs,
           capacity: capacity as number,
@@ -1352,6 +1362,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
           ...(typeof countBuffer === "string" && countBuffer.length > 0
             ? { count: { buffer: countBuffer } }
             : {}),
+          ...(bounds === undefined ? {} : { bounds }),
         });
       }
     }

@@ -173,3 +173,76 @@ describe("a driven substeps parameter animates like a uniform (T425)", () => {
   });
 });
 
+
+/*
+ * T1598b: a draw's `skip` is its other per-frame value — whether a light reaches the caster
+ * this frame. It is outside the structure key, so the frame that flips it is values-only,
+ * and if the animator did not push it the backend would go on skipping a caster that had
+ * moved into the light: a shadow that never appears, with every gate green.
+ */
+describe("a draw that enters or leaves its light's reach is pushed like a uniform (T1598b)", () => {
+  const sweep = (skipped: ReadonlyArray<string>, level = 1): CompiledGraph =>
+    ({
+      passes: ["near", "far"].map((id) => ({
+        kind: "draw",
+        id,
+        shader: "",
+        target: "map",
+        topology: "triangle-list",
+        instances: 1,
+        uniforms: { level },
+        ...(skipped.includes(id) ? { skip: true } : {}),
+      })),
+      resources: [],
+      resourceSignatures: [{ id: "map", signature: "map@1" }],
+      passSignatures: [
+        { id: "near", signature: "near@1" },
+        { id: "far", signature: "far@1" },
+      ],
+      signature: "sweep@1",
+    }) as unknown as CompiledGraph;
+
+  function skipRecorder() {
+    const calls: Array<{ passId: string; values: UniformValues; skip?: boolean }> = [];
+    const backend = {
+      updateUniforms(update: { passId: string; values: UniformValues; skip?: boolean }) {
+        calls.push({ passId: update.passId, values: update.values, ...(update.skip === undefined ? {} : { skip: update.skip }) });
+      },
+    } as unknown as LoomBackend;
+    return { backend, calls };
+  }
+
+  it("pushes the flip, each way, once, and writes no block for it", () => {
+    const { backend, calls } = skipRecorder();
+    const animator = createUniformAnimator();
+    const base = sweep(["far"]);
+
+    // The base already skips `far`: the first frame that agrees pushes nothing.
+    expect(animator.push(backend, base, sweep(["far"]))).toBe(0);
+    expect(calls).toEqual([]);
+
+    // The light moves: `far` comes into reach, `near` leaves it. No uniform block moved.
+    expect(animator.push(backend, base, sweep(["near"]))).toBe(0);
+    expect(calls).toEqual([
+      { passId: "near", values: {}, skip: true },
+      { passId: "far", values: {}, skip: false },
+    ]);
+
+    // Standing still costs nothing.
+    expect(animator.push(backend, base, sweep(["near"]))).toBe(0);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("starts from the plan again after a reset", () => {
+    const { backend, calls } = skipRecorder();
+    const animator = createUniformAnimator();
+    const base = sweep(["far"]);
+    animator.push(backend, base, sweep([]));
+    expect(calls).toEqual([{ passId: "far", values: {}, skip: false }]);
+
+    // A new structural plan is installed with its own flags; what was pushed is forgotten.
+    animator.reset();
+    animator.push(backend, base, sweep(["far"]));
+    expect(calls).toHaveLength(1);
+  });
+});

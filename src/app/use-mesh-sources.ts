@@ -143,13 +143,25 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
         clips === facts.clips &&
         clipFrames === facts.clipFrames &&
         frameOrigin === facts.frameOrigin
-      ) return true;
+      ) {
+        /* T1598b: Bounds sizes NOTHING, so it is not part of "sized for this file": a
+           document saved before it existed, or a mesh inside a component, still feeds.
+           It is written beside the facts, and on its own when it is all that is missing. */
+        if (parameters["bounds"] !== facts.bounds) {
+          void bus.execute(
+            "graph.applyPatch",
+            { baseRevision: bus.store.getRevision(), label: "Measure mesh", operations: [{ op: "setParameters", nodeId, parameters: { bounds: facts.bounds } }] },
+            runtimeRef.current.invocation,
+          );
+        }
+        return true;
+      }
       void bus.execute(
         "graph.applyPatch",
         {
           baseRevision: bus.store.getRevision(),
           label: "Measure mesh",
-          operations: [{ op: "setParameters", nodeId, parameters: { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints, clips: facts.clips, clipFrames: facts.clipFrames, frameOrigin: facts.frameOrigin } }],
+          operations: [{ op: "setParameters", nodeId, parameters: { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints, clips: facts.clips, clipFrames: facts.clipFrames, frameOrigin: facts.frameOrigin, bounds: facts.bounds } }],
         },
         runtimeRef.current.invocation,
       );

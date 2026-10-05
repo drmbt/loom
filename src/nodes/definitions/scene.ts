@@ -8,7 +8,7 @@ import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
 import type { CameraPayload, GeometryPayload, LightPayload, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
-import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, projectorMatrix } from "../../domain/geometry/camera.ts";
+import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix } from "../../domain/geometry/camera.ts";
 import { identityMatrix, normalMatrix, objectMatrix } from "../../domain/geometry/transform.ts";
 import { gridCellCounts, gridPointCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
@@ -331,8 +331,17 @@ export const lightNode: NodeDefinition = {
   description:
     "A light other nodes reference by NAME — a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; point lights sit at Position with distance falloff (soft or inverse-square, and an optional range). Colour, intensity and placement are all drivable.",
   tags: ["3d", "scene", "light", "shading"],
-  inputs: [],
+  inputs: [
+    // T1598b: reference-fed, as a Render's Scenes is — the two list parameters name the
+    // geometries; the compiler synthesizes these edges; a wire is refused.
+    { id: "shadowCasters", label: "Shadow Casters", optional: true, variadic: true, type: { kind: "scene" } },
+    { id: "shadowExclude", label: "Shadow Exclude", optional: true, variadic: true, type: { kind: "scene" } },
+  ],
   outputs: [{ id: "out", label: "Out", type: { kind: "light" } }],
+  sourceReferences: [
+    { parameter: "shadowCasters", input: "shadowCasters", list: true },
+    { parameter: "shadowExclude", input: "shadowExclude", list: true },
+  ],
   parameters: {
     kind: {
       type: "enum",
@@ -387,7 +396,7 @@ export const lightNode: NodeDefinition = {
       default: false,
       compileTime: true,
       description:
-        "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible.",
+        "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible. Shadow Casters and Shadow Exclude choose which geometries those passes draw (T1598b).",
     },
     shadowExtent: {
       type: "number",
@@ -433,10 +442,35 @@ export const lightNode: NodeDefinition = {
         "T1438b: extra distance, in world units, a surface may sit behind the shadow map before it counts as shadowed — added to the built-in bias (one shadow-map texel plus a slope term). Raise it when a lit surface speckles or stripes with its own shadow (acne): a coarse mesh whose smoothed normals say it faces the light more than its facets do, or a large Shadow Extent spreading the map thin. Too much and a thin caster's shadow detaches from its base (peter-panning). 0 is the built-in bias alone. A compile-time knob: changing it rebuilds the shader.",
       inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has a shadow to bias."),
     },
+    shadowCasters: {
+      type: "string",
+      label: "Shadow Casters",
+      default: "",
+      description:
+        "T1598b: space-separated geometry names — the ONLY geometries that cast this light's shadow. Empty: every geometry the Render draws casts. A geometry left out is still lit by this light, still receives its shadows and still casts for other lights. A casting light draws each caster again (a point light six times), so leave out what only ever receives: a floor, a wall, a tunnel.",
+      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has casters."),
+    },
+    shadowExclude: {
+      type: "string",
+      label: "Shadow Exclude",
+      default: "",
+      description:
+        "T1598b: space-separated geometry names that do NOT cast this light's shadow — taken out of Shadow Casters, or out of everything when that is empty. The shorter list to write when one big receiver is the only thing to leave out.",
+      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has casters."),
+    },
   },
   compile(context): CompiledNodeDescription {
     const { parameters } = readCompileInputs(context);
     const color = readColor(parameters, "color", [1, 1, 1, 1]);
+    /* T1598b: the two lists as the ids of the nodes the names resolved to. A Render matches
+       them against the geometries it draws, so a light shared by two Renders casts in each
+       from what that Render has. */
+    const named = (portId: string): string[] =>
+      ((context as { inputs?: Record<string, ReadonlyArray<{ sourceNodeId?: string }>> }).inputs?.[portId] ?? []).flatMap((binding) =>
+        binding.sourceNodeId === undefined ? [] : [binding.sourceNodeId],
+      );
+    const casters = named("shadowCasters");
+    const excluded = named("shadowExclude");
     const payload: LightPayload = {
       kind: "light",
       light: {
@@ -450,6 +484,8 @@ export const lightNode: NodeDefinition = {
         shadowSoftness: readNumber(parameters, "shadowSoftness", 2),
         shadowBias: Math.max(0, readNumber(parameters, "shadowBias", 0)),
         shadowCenter: vec3(parameters, "shadowCenter", [0, 0, 0]),
+        ...(casters.length === 0 ? {} : { shadowCasters: casters }),
+        ...(excluded.length === 0 ? {} : { shadowExclude: excluded }),
         falloff: parameters["falloff"] === "inverseSquare" ? "inverseSquare" : "soft",
         range: Math.max(0, readNumber(parameters, "range", 0)),
       },
@@ -457,6 +493,29 @@ export const lightNode: NodeDefinition = {
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
   },
 };
+
+/**
+ * T1598b: a sphere through an object matrix (column-major, the Transform group's: translate
+ * × rotate × scale about a pivot). The centre is transformed; the radius grows by the
+ * largest axis scale, which for that matrix is its longest column — exact for a rotation
+ * times a scale, and it is never anything else here.
+ */
+function transformedSphere(
+  sphere: { readonly center: readonly [number, number, number]; readonly radius: number },
+  matrix: ReadonlyArray<number>,
+): { center: [number, number, number]; radius: number } {
+  const at = (index: number): number => matrix[index] ?? 0;
+  const [x, y, z] = sphere.center;
+  const column = (first: number): number => Math.hypot(at(first), at(first + 1), at(first + 2));
+  return {
+    center: [
+      at(0) * x + at(4) * y + at(8) * z + at(12),
+      at(1) * x + at(5) * y + at(9) * z + at(13),
+      at(2) * x + at(6) * y + at(10) * z + at(14),
+    ],
+    radius: sphere.radius * Math.max(column(0), column(4), column(8)),
+  };
+}
 
 /** T1581b: Instances mode drawing a MESH (the Shape Mesh input) at every point. */
 const meshInstances = (values: Readonly<Record<string, unknown>>): boolean => values["mode"] === "instances" && values["shape"] === "mesh";
@@ -1304,6 +1363,10 @@ export const geometryNode: NodeDefinition = {
       pairs: pointset.pairs,
       capacity: pointset.capacity,
       objectMatrix: transform,
+      /* T1598b: a Surface draws its points through `transform` and nothing else, so the
+         pointset's own sphere, turned by it, holds the draw. Every other mode places
+         something at each point (a shape, a card, a ribbon) and has no bound here. */
+      ...(mode === "surface" && pointset.bounds !== undefined ? { bounds: transformedSphere(pointset.bounds, transform) } : {}),
       ...(instanceMesh === undefined ? {} : { instanceMesh }),
       ...(pointset.topology === undefined ? {} : { topology: pointset.topology }),
       mode,
@@ -1786,6 +1849,8 @@ export const renderNode: NodeDefinition = {
 
     // LIGHTS, in LIST order (§V131 carries the token order through the synthetic edges).
     const lights: LightPayload["light"][] = [];
+    /** T1598b: the light NODES, beside their payloads — a diagnostic about a light names it. */
+    const lightSources: string[] = [];
     for (const binding of sceneOf("lights")) {
       if (binding.scene?.kind !== "light") {
         return refuse(
@@ -1795,6 +1860,7 @@ export const renderNode: NodeDefinition = {
         );
       }
       lights.push(binding.scene.light);
+      lightSources.push(binding.source?.nodeId ?? "?");
     }
 
     // T704: PROJECTORS, in LIST order — referenced exactly as lights are.
@@ -1967,6 +2033,14 @@ export const renderNode: NodeDefinition = {
     const emitDepthSweep = (options: {
       readonly prefix: string;
       readonly target: string;
+      /** T1598b: a LIGHT's sweep draws only its casters — one entry per geometry, false = not in this sweep. */
+      readonly casters?: ReadonlyArray<boolean>;
+      /**
+       * T1598b: a caster this sweep CANNOT REACH THIS FRAME (false). Its draws stay in the
+       * plan, since where a light and a geometry stand is a value and a value never changes
+       * the pass list (§V453), and carry `skip`, so nothing is encoded for them.
+       */
+      readonly reaches?: (payload: GeometryPayload) => boolean;
       readonly matrix: Float32Array | undefined;
       readonly linearDepth: boolean;
       /** Camera visibility includes transmissive and emissive surfaces, unlike occlusion. */
@@ -2001,7 +2075,7 @@ export const renderNode: NodeDefinition = {
         ...(options.linearDepth ? { linearDepth: true } : {}),
         ...(options.perspective === true ? { perspective: true } : {}),
       };
-      geometries.forEach(({ payload }, geometryIndex) => {
+      const sweepGeometry = ({ payload }: (typeof geometries)[number], geometryIndex: number): void => {
         const position = payload.pairs["position"];
         if (position === undefined) return; // the lit loop refuses this by name
         /* T1411b: an ADDITIVE surface is light laid over the picture, not a body — it
@@ -2248,8 +2322,55 @@ export const renderNode: NodeDefinition = {
           uniformBinding: "params",
           clear: false,
         });
+      };
+      geometries.forEach((geometry, geometryIndex) => {
+        // T1598b: left out of this light's casters — it is in no draw of the sweep, and it
+        // still receives, because receiving is the lit pass reading the map.
+        if (options.casters?.[geometryIndex] === false) return;
+        const first = passes.length;
+        sweepGeometry(geometry, geometryIndex);
+        if (options.reaches === undefined || options.reaches(geometry.payload)) return;
+        // Out of this sweep's reach this frame: every draw it just emitted is provably
+        // empty. (A counted geometry's args dispatch is not a draw and is left alone.)
+        for (let index = first; index < passes.length; index += 1) {
+          const pass = passes[index];
+          if (pass !== undefined && pass.kind === "draw") passes[index] = { ...pass, skip: true };
+        }
       });
     };
+
+    /*
+     * T1598b — WHICH GEOMETRIES CAST FOR EACH CASTING LIGHT, by slot: the light's Shadow
+     * Casters (empty = all) less its Shadow Exclude, matched against what THIS Render
+     * draws. The lists are the author's knowledge that a geometry never casts for that
+     * light (a floor, a tunnel wall); nothing measured could find it out.
+     */
+    const castersBySlot = casting.map(({ light, index }) => {
+      const only = light.shadowCasters === undefined ? undefined : new Set(light.shadowCasters);
+      const never = new Set(light.shadowExclude ?? []);
+      const cast = geometries.map(({ source }) => (only === undefined || only.has(source)) && !never.has(source));
+      if (!cast.includes(true)) {
+        // The map is still cleared and still sampled by every lit fragment: a cost with no
+        // shadow to show for it, which is worth saying once (§V369's sibling).
+        diagnostics.push({
+          severity: "warning",
+          code: "node.scene.shadowCasters",
+          message: `Node "${nodeId}": light "${lightSources[index] ?? "?"}" casts no shadow here — its Shadow Casters and Shadow Exclude leave none of this Render's geometries.`,
+          nodeId,
+          suggestion: "Name a geometry this Render draws in the light's Shadow Casters, shorten its Shadow Exclude, or turn Cast Shadows off.",
+        });
+      }
+      return cast;
+    });
+
+    /*
+     * T1598b — WHAT ONE FACE OF A POINT LIGHT'S CUBE CAN REACH THIS FRAME: a geometry whose
+     * world sphere lies wholly beyond the shadow range, or wholly outside the face's
+     * quarter of space. A geometry with no bound (kernel-moved, instanced) is always
+     * reached. The same range the face matrices and the lit lookup use.
+     */
+    const reachOf = (light: LightPayload["light"], face: number) => (payload: GeometryPayload): boolean =>
+      payload.bounds === undefined || pointShadowFaceReaches(light.position, Math.max(0.1, light.shadowExtent), face, payload.bounds);
 
     /* T481: the shadow phase — every map is rendered BEFORE the lit draws that read it.
        Zero casting lights emits nothing here and nothing below changes: §V309 holds as
@@ -2268,6 +2389,8 @@ export const renderNode: NodeDefinition = {
             emitDepthSweep({
               prefix: `shadow:${lightIndex}:face${face}`,
               target: shadowTargetOf(slot),
+              casters: castersBySlot[slot] ?? [],
+              reaches: reachOf(light, face),
               matrix,
               linearDepth: false,
               extraUniforms: {},
@@ -2284,6 +2407,7 @@ export const renderNode: NodeDefinition = {
         emitDepthSweep({
           prefix: `shadow:${lightIndex}`,
           target: shadowTargetOf(slot),
+          casters: castersBySlot[slot] ?? [],
           matrix: shadowMatrices[slot],
           linearDepth: false,
           extraUniforms: {},
@@ -2311,6 +2435,8 @@ export const renderNode: NodeDefinition = {
           emitDepthSweep({
             prefix: `lightDepth:face${face}`,
             target: lightDepthTarget,
+            casters: castersBySlot[0] ?? [],
+            reaches: reachOf(first.light, face),
             matrix,
             linearDepth: false,
             extraUniforms: {},
@@ -2322,7 +2448,7 @@ export const renderNode: NodeDefinition = {
           });
         });
       } else {
-        emitDepthSweep({ prefix: "lightDepth", target: lightDepthTarget, matrix: shadowMatrices[0], linearDepth: false, extraUniforms: {} });
+        emitDepthSweep({ prefix: "lightDepth", target: lightDepthTarget, casters: castersBySlot[0] ?? [], matrix: shadowMatrices[0], linearDepth: false, extraUniforms: {} });
       }
     }
 
