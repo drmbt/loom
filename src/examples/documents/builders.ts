@@ -175,11 +175,33 @@ export function expressionSlot(source: string, retained: number): ParameterSlot 
   };
 }
 
+/**
+ * The map is keyed by id, so a repeated id would replace the earlier entry without a word
+ * and the file would save whatever was left. Refused here, by name, at the call site.
+ */
+function keyedOnce<T extends { readonly id: string }>(entries: readonly T[], kind: string, describe: (entry: T) => string): Record<string, T> {
+  const keyed: Record<string, T> = {};
+  for (const entry of entries) {
+    const earlier = keyed[entry.id];
+    if (earlier !== undefined) {
+      throw new Error(
+        `graph(): two ${kind}s share the id "${entry.id}" (${describe(earlier)}, then ${describe(entry)}). An id names one ${kind}; rename one.`,
+      );
+    }
+    keyed[entry.id] = entry;
+  }
+  return keyed;
+}
+
 export function graph(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): GraphDocument {
   return {
     revision: 1,
-    nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])),
-    edges: Object.fromEntries(edges.map((entry) => [entry.id, entry])),
+    nodes: keyedOnce(nodes, "node", (entry) => entry.type),
+    edges: keyedOnce(
+      edges,
+      "edge",
+      (entry) => `${entry.source.nodeId}.${entry.source.portId} → ${entry.target.nodeId}.${entry.target.portId}`,
+    ),
     groups: {},
   };
 }

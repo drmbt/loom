@@ -5,7 +5,7 @@ import { createComponentSystem } from "../../domain/components/registry.ts";
 import { componentNodeType } from "../../domain/components/component-type.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { document, graph, node, settings } from "./builders.ts";
+import { document, edge, graph, node, settings } from "./builders.ts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
@@ -124,5 +124,32 @@ describe("the example builders stamp the version the loader agrees with (§T1068
     // diagnostic an author reads a pipeline stage later, if at all. The builder is where the
     // name was typed, so it is where the name is checked.
     expect(() => node("oops", "gaussianBlurr", [0, 0])).toThrow(/gaussianBlurr/);
+  });
+});
+
+describe("graph() refuses a second node or edge under an id already taken", () => {
+  /*
+   * `graph()` keys by id, so a repeated id used to replace the earlier entry without a
+   * word: a Slider and a Light both called "lamp" compiled, and the scene had no light
+   * (sentinel-bot, 2026-10-05). The loss is silent in the file too, since the save path
+   * writes whatever the map holds.
+   */
+  it("names the id and both node types", () => {
+    expect(() => graph([node("lamp", "slider", [0, 0]), node("lamp", "constant", [200, 0])], [])).toThrow(
+      'graph(): two nodes share the id "lamp" (slider, then constant). An id names one node; rename one.',
+    );
+  });
+
+  it("names a repeated edge id with both connections", () => {
+    const nodes = [node("a", "constant", [0, 0]), node("b", "constant", [200, 0]), node("c", "constant", [400, 0])];
+    expect(() => graph(nodes, [edge("e1", ["a", "value"], ["b", "value"]), edge("e1", ["a", "value"], ["c", "value"])])).toThrow(
+      'graph(): two edges share the id "e1" (a.value → b.value, then a.value → c.value). An id names one edge; rename one.',
+    );
+  });
+
+  it("still builds a graph whose ids are all different", () => {
+    const built = graph([node("a", "constant", [0, 0]), node("b", "constant", [200, 0])], [edge("e1", ["a", "value"], ["b", "value"])]);
+    expect(Object.keys(built.nodes)).toEqual(["a", "b"]);
+    expect(Object.keys(built.edges)).toEqual(["e1"]);
   });
 });
