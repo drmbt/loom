@@ -1,6 +1,8 @@
 # Sweep: a profile along a curve, as a lit surface (T1587b)
 
-**Status, 2026-10-05: a design, with decisions to rule in section 8.3. No product code.** It follows `docs/curve-family-design-2026-10-05.md` (T1586b, whose slices 1 to 4 and 6 to 8 are built) and reads `docs/mesh-instancing-design-2026-10-05.md` (T1581b) and `docs/geometry-cost-profile-2026-10-05.md`.
+**Status, 2026-10-06: slices 1 and 3 are built (`90fb1558`, with the worked check in `bd2b364e`); slice 2 (sheets, in the Render) is not.** The decisions of section 8.3 are ruled, all as recommended, with D9 moved out to its own bug row (B255). The node is `src/nodes/definitions/point-sweep.ts`, its pass `src/nodes/shaders/sweep.wgsl.ts`, its CPU reference `src/points/sweep.ts`. Sections 4, 5.2, 6.1, 7 and 9 say what was built and measured; where building it showed the design wrong, the text is corrected in place and section 11 lists the corrections. The worked check against the consumer's bore is section 11.2.
+
+It follows `docs/curve-family-design-2026-10-05.md` (T1586b, whose slices 1 to 4 and 6 to 8 are built) and reads `docs/mesh-instancing-design-2026-10-05.md` (T1581b) and `docs/geometry-cost-profile-2026-10-05.md`.
 
 The row asks for a profile (ring, square, strip, custom) swept along a curve into surface geometry that the Render lights, shadows and writes to its G-buffer: radial segments, radius, per-point scale, caps, twist. Its consumers are the sentinel tunnel's bore, cables, and a tentacle's skin. The owner's standard is the curve row's: consider how TouchDesigner and Notch do it, build the general shape, no brittle or unscalable shortcuts.
 
@@ -78,8 +80,8 @@ Read from `scene.ts`, `scene-render.wgsl.ts` and `points/topology.ts`; section 2
 
 - Every draw is vertex-pulled: `draw(vertexCount)`, with the vertex stage reading storage buffers by `vertex_index`. There are no vertex buffers and no index buffers.
 - A Surface geometry takes a pointset whose edge claims a **grid** or a **mesh**. Anything else is refused ("carries neither an analytic grid nor a mesh topology").
-- **Grid** (`surfaceMeshWgsl`): the claim is `grid:{cols}x{rows}` with `wrapU`, `wrapV`. Six vertices a cell; the vertex index is the connectivity. The normal is the cross product of central differences of the positions, taken in the vertex stage on every draw. The texture coordinate is the grid coordinate. A `color` attribute tints. It binds the positions, and the colours if any.
-- **Mesh** (`meshVertexWgsl`): the claim is `mesh:{triangles}@{index buffer}`. The vertex stage reads the index, then `position`, then a `normal` attribute, which is required, and `uv`, `surface`, `emissive` and `color` if present. Each is its own storage binding: seven for a full mesh. The fragment stage turns a mesh's normal to face the viewer; a grid's normal is used as it stands, so a grid is lit on one side.
+- **Grid** (`surfaceMeshWgsl`): the claim is `grid:{cols}x{rows}` with `wrapU`, `wrapV`. Six vertices a cell; the vertex index is the connectivity. The normal is the cross product of central differences of the positions, taken in the vertex stage on every draw. The texture coordinate is the grid coordinate. A vec4f attribute tints it when the Geometry's Tint is mapped to one. It binds the positions, and the colours if any.
+- **Mesh** (`meshVertexWgsl`): the claim is `mesh:{triangles}@{index buffer}`. The vertex stage reads the index, then `position`, then a `normal` attribute, which is required, and `uv`, `surface`, `emissive` and `color` if present. Each is its own storage binding: seven for a full mesh. The fragment stage turns a mesh's normal to face the viewer and lights the side that faces the light; a grid's normal is used as it stands and the surface is lit on both sides (`abs(N · L)`).
 - **The depth sweeps** (shadows, the AO prepass, the Depth outputs) use `shadowSurfaceWgsl` for a grid, which reads the positions and nothing else, and `shadowMeshWgsl` for a mesh, which reads the index and then the position.
 - There is a third copy of the grid chunk in the older Render Surface node (`render-surface.wgsl.ts`).
 
@@ -188,11 +190,11 @@ A parameter marked ⓢ is structural. "Map" is Map mode on the Path input.
 | `smooth` ⓢ | boolean | on | Ring and Custom: on, one normal a corner (a round tube from few sides); off, every side flat |
 | `radius` | number, Map f32 | 0.1 | the profile's half-width, metres. A mapped attribute multiplies it per path point |
 | `caps` ⓢ | enum | None | None, Start, End, Both. A closed path has none |
-| `facing` ⓢ | enum | Outward | which way the surface's normal points: Inward for a tunnel seen from inside |
-| `uvAlong` ⓢ | enum | Stretch | the coordinate along the path: Stretch (0 to 1 over each strip), Metres (distance ÷ `uvLength`), Points (one per ring) |
+| `facing` ⓢ | enum | Outward | which way the surface's normal points: Inward for a tunnel seen from inside. It decides the `normal` attribute, the Render's Normal output and what a material's normal starts from. It does not decide which side is lit: a grid Surface is lit on both (section 11.1) |
+| `uvAlong` ⓢ | enum | Stretch | the coordinate along the path: Stretch (0 to 1 over each strip), Metres (distance ÷ `uvLength`), Points (the row over the rows) |
 | `uvLength` | number | 1 | Metres: metres of curve to one tile |
 
-- **Ring** is `sides` points on a circle of `radius`. **Square** is four flat sides, flats up, half-width `radius`. **Strip** is a flat ribbon along the frame's X, `2 × radius` wide, lit on its +Y side. **Custom** is the Profile input, scaled by `radius`.
+- **Ring** is `sides` points on a circle of `radius`, at least three, the first on the frame's +X. **Square** is four flat sides, flats up, half-width `radius`; its first side is the +X face. **Strip** is a flat ribbon along the frame's X, `2 × radius` wide, from +X to −X so that its normal is +Y. **Custom** is the Profile input, its x and y multiplied by `radius` (1 keeps its size).
 - **There is no twist or roll here.** Curve Frames has Roll, Twist and Close Twist, and the sweep reads the frame they made. A sweep and the instances along the same curve therefore agree, and Notch's Radial Rotation Offset is Curve Frames' Roll.
 - **The mapped radius multiplies** the authored one, as a Geometry's mapped Scale does. A Curve's table publishes `scale` per control point; mapped onto `radius` it is Notch's Control Point Scaling Mode: Radius. A taper, a fade at the ends (Notch's Fade Scale) or a hall in a tunnel is an attribute a kernel writes on the path.
 - **Part of a path** (Notch's Spline Time Min, Max and Offset) is Resample's Range and Offset upstream. Resample by Distance keeps its stations at fixed distances while the range moves, which is Lock Subdivisions To Spline Time.
@@ -200,14 +202,14 @@ A parameter marked ⓢ is structural. "Map" is Map mode on the Path input.
 ### 4.3 What it publishes
 
 - `position`.
-- `normal` (vec3f): the profile's outward normal in the ring's plane. It is for a kernel that pushes the surface in or out. It is not the lit normal, which the grid works out from the points, and it does not lean with a taper.
+- `normal` (vec3f): the profile's own normal in the ring's plane, on the side `facing` names; on a cap's two rows, the end's. It is for a kernel that pushes the surface in or out. It is not the lit normal, which the grid works out from the points, and it does not lean with a taper.
 - `uv` (vec2f): round the profile from 0, and along the path by `uvAlong`.
-- **Every attribute the path point carries**, copied to each vertex of its ring, except the frame's own (`orient`, `tangent`, `normal`, `binormal`). So a `color` on the path tints the tube (TouchDesigner's carried colours, Notch's Use Spline Colours), and `distance`, `curveU` and any attribute of the author's reach a kernel or a material. What the path carries is what is paid for: a tube of 256 sides copies each attribute 256 times.
+- **Every attribute the path point carries**, copied to each vertex of its ring, except the frame's own (`orient`, `tangent`, `normal`, `binormal`). So a colour on the path reaches every vertex, and tints the tube when the Geometry's Tint is mapped to it (TouchDesigner's carried colours, Notch's Use Spline Colours), and `distance`, `curveU` and any attribute of the author's reach a kernel or a material. What the path carries is what is paid for: a tube of 256 sides copies each attribute 256 times.
 - The claim: `grid:{columns}x{rows}` for one strip, `grid:{columns}x{rows}x{strips}` for several, with `wrapU` when the profile is closed and `wrapV` when the path is.
 
 ### 4.4 Columns, rows, and hard edges
 
-- **Columns** go round the profile from the frame's +X toward its +Y. With rows running along the tangent, the grid's normal then points outward. Inward reverses the columns.
+- **Columns** go round the profile from the frame's +X toward its +Y. With rows running along the tangent, the grid's normal then points outward. **Inward walks the same outline the other way from its first point**: a closed smooth outline starts on the same point and goes round backwards, any other is its column list reversed. The way round (`uv.x`) still rises with the column, so a pattern reads the right way from the side the surface faces.
 - **A corner that should be sharp is two columns in one place.** The grid's normal at a point is the cross product of the differences to its neighbours across and along. For the first of two coincident columns the neighbour ahead is in the same place, so its difference across is the side behind it; for the second it is the side ahead. Each gets its own side's normal, and the cell between them has no area. So Square is eight columns, a Ring with Smooth off is `2 × sides`, and a custom profile is sharp where it repeats a point.
 - **Rows** are the path's points in order, with cap rows before and after (4.5).
 
@@ -216,28 +218,29 @@ A parameter marked ⓢ is structural. "Map" is Map mode on the Path input.
 - A cap is two more rows at an end: the end ring again, and then that ring drawn in to the path point.
 - The repeated ring gets the cap's flat normal by the same rule as a hard edge, and the tube's last ring keeps its own.
 - The centre row has no normal of its own (its points coincide); the fragment stage already guards a normal of no length, and every pixel of the cap takes the rim's normal by interpolation.
-- The cap's `uv` runs from the rim's coordinate inward: polar, not planar.
+- The cap's `uv` is polar, not planar: the way round is the rim's, and the coordinate along carries on over the edge at the same rate, so the centre is one radius further than the rim (in metres, or as a share of the length under Stretch). The radius is the cap's own end's on a tapered path.
 - **A cap is a fan to the path point.** That is right for a profile every point of which can see the origin: Ring, Square, Strip, and any convex outline round its centre. For a C-shaped profile the fan folds over itself. Such caps are a follow-up that needs real triangles (C3).
 
 ### 4.6 Texture coordinates
 
-- **Around**: the share of the way round the profile at that column, by its sides: once round a closed profile and 0 to 1 across an open one. Two columns in one place share it. Tiling is the material's UV scale.
+- **Around**: the share of the way round the profile at that column, by its sides (not by their lengths: follow-up C11): once round a closed profile and 0 to 1 across an open one. Two columns in one place share it; the last column of a flat-sided closed outline is at 1, where it closes. Tiling is the material's UV scale.
 - **Along**:
   - **Stretch**: `curveU`, 0 at the strip's start and 1 at its end, by distance.
   - **Metres**: `distance ÷ uvLength`, so a pattern keeps its size whatever the spacing of the rings. On a closed path the number of tiles is rounded to a whole number per strip, so the pattern meets itself at the seam; the tile is then within half a tile of the length asked for.
-  - **Points**: the row number over the rows. It needs no attribute.
-- Stretch and Metres read `curveU`, `distance` and `curveLength` from the path, which Curve Frames publishes with Metrics on. Without them the node refuses by name and says which switch to turn on. It does not fall back to Points.
+  - **Points**: the row number over the rows, a cap's rows included (over the rows less one on an open path, so the last row is 1). It needs no attribute.
+- Each mode reads only what it uses, from what Curve Frames publishes with Metrics on: Stretch reads `curveU`, and `curveLength` when an end is capped; Metres reads `distance`, and `curveLength` on a closed path. Without one of them the node refuses by name and says which switch to turn on. It does not fall back to Points.
 - Before slice 2 the Render shows the grid coordinate (which is Points) whatever the node writes; the `uv` attribute is there for a kernel.
 
 ### 4.7 Refusals, all by name
 
-- The Path edge claims no strips; or carries a GPU live count.
+- The Path edge claims no strips; or carries a GPU live count; or its strip has one point.
 - The path carries no `orient`, or one that is not a vec4f: "put a Curve Frames before the Sweep".
+- A path attribute with no type on the edge: the sweep owns every attribute of its output and cannot copy what it cannot size.
 - `uvAlong` needs an attribute the path does not carry.
 - Profile is Custom and nothing is wired, the edge claims no strips, or the strip has fewer than two points.
 - The sweep would hold more than 1,000,000 vertices: the count, and which of Sides and the path's points to lower.
 - Several strips before slice 2: a grid claim holds one sheet until the Render reads the third number.
-- A parameter in Map mode other than `radius`; a `radius` map that is not an f32.
+- A parameter in Map mode other than `radius`; a `radius` map that is not an f32 or one channel of a float vector; a `radius` map that names the Profile input (a Map reads the path, §V306).
 - More upstream buffers than a stage binds (§V588).
 
 Caps on a closed path are not a refusal: a loop has no ends, so there is nothing to cap.
@@ -256,11 +259,20 @@ Caps on a closed path are not a refusal: a loop has no ends, so there is nothing
 
 | | Figure | Basis |
 |---|---|---|
-| The sweep pass | under 0.1 ms for 200,000 vertices; about 0.2 to 0.4 ms for a million | derived: the Curve node writes a million points in 0.07 to 0.17 ms, and a sweep writes about three times the bytes a vertex |
+| The sweep pass | 0.02 to 0.06 ms for 199,936 vertices; 0.22 to 0.46 ms for 999,936 | measured, 2026-10-06 (the table below) |
 | Drawing it, one point shadow | 1.17 ms at 196,608 vertices; 5.0 ms at a million | measured (2.3) |
 | A vertex, per pass | 0.1 ms per million invocations; six invocations a cell | measured (2.3) |
 | One more Geometry | 0.31 ms of device time with one point shadow | measured (2.3) |
 | Memory | 16 bytes a vertex for position, 16 for `normal`, 8 for `uv`, and each carried attribute's own size | the packed layout |
+
+**The sweep pass, measured.** Dawn on Metal, best of 9 runs of 200 frames, over the same graph without the node; a Ring; ms a frame. What a vertex is written from decides the cost: 40 bytes of its own, and every attribute the path carries copied on top.
+
+| Vertices | Sides × rings | Path with a frame only (40 bytes a vertex) | With Curve Frames' metrics (56 bytes) | And a colour and a width (76 bytes) |
+|---|---|---|---|---|
+| 199,936 | 64 × 3,124 | 0.02 | 0.04 | 0.06 |
+| 999,936 | 256 × 3,906 | 0.22 | 0.36 | 0.46 |
+
+Flat sides, a mapped radius and the coordinate along make no difference the measurement resolves (runs of one graph differ by 0.05 ms). The derived figure this replaces was "under 0.1 ms and 0.2 to 0.4 ms": it held.
 
 - **A long sweep is cheap and a many-Geometry sweep is not.** That is the reason for sheets.
 - A million vertices is the pointset ceiling: 256 sides by 3,906 rings, or 16 sides by 62,500.
@@ -276,22 +288,35 @@ Caps on a closed path are not a refusal: a loop has no ends, so there is nothing
 
 ### 6.1 The sentinel tunnel's bore
 
-**Today** (`src/projects/sentinel-bot/tunnel.ts`): one grid of 256 columns by 768 rows, a window of 115 m that rides with the robots. A kernel does everything for each vertex: the path's frame at the row's distance (`pathFrame`, which is the tunnel's centre line written once in WGSL and once in TypeScript), the ring, and then the relief: plates, nine pipe runs, a rib every 1.6 m, the flat deck, and the swell of a hall every 96 m. It writes `tint` as four numbers for the material: what the wall is here, a plate's own random, the angle round, the distance along. The seam is two columns in one place under the deck, with an unwrapped claim.
+**Today** (`src/projects/sentinel-bot/tunnel.ts`): one grid of 256 columns by 768 rows, a window of 115 m that rides with the robots. Its rows are 0.15 m of z apart, and z is the centre line's own parameter, not the distance along it. A kernel does everything for each vertex: the path's frame at the row's z (`pathFrame`, which is the tunnel's centre line written once in WGSL and once in TypeScript), the ring, and then the relief: plates, nine pipe runs, a rib every 1.6 m, the flat deck, and the swell of a hall every 96 m. It writes `tint` as four numbers for the material: what the wall is here, a plate's own random, the angle round, the distance along. The seam is two columns in one place under the deck, with an unwrapped claim.
 
-**With the family:**
+**With the family** (corrected by the worked check, section 11.2; the first draft of this section took the tunnel for a closed loop with its centre line typed into a Curve, and both were wrong):
 
 ```
-curve (the centre line, typed into the node) ─▶ resample (Distance 0.15, a Range that rides with the robots)
-  ─▶ curveFrames (Fixed Up) ─▶ sweep (Ring, 256 sides, Inward, Metres) ─▶ kernel (the relief) ─▶ geometry (Surface)
+kernel (the centre line by its formula: a control point every 1.2 m of z) ─▶ topology (Strips)
+  ─▶ curve (Catmull-Rom, 8 segments: a point a row) ─▶ resample (Count 768, Even Parameter: the window)
+  ─▶ kernel (the hall's radius; z, for the relief) ─▶ curveFrames (Fixed Up, Roll −90)
+  ─▶ sweep (Ring, 255 sides, radius mapped) ─▶ kernel (the relief, the deck) ─▶ geometry (Surface)
 ```
 
-- **The kernel keeps the relief and loses the path.** It reads `p.uv` (the angle round and the metres along), `p.normal` (which way is out) and `ctx.dim`, moves the vertex along the normal, and writes `tint` as now. The halls are a `radius` mapped from an attribute a kernel writes on the path, or stay in the relief.
-- **The centre line is authored once**, as a Curve. The camera rides the same node on the CPU (T1590b), so the tunnel and the camera cannot drift apart, which `path.ts` holds today by writing one function in two languages.
-- **The wall stands still while the window slides.** The bore kernel lays its rows at whole multiples of the row spacing. Here that is Resample's Range Start driven in steps: `floor(travel ÷ 0.15) × 0.15 ÷ length`, with the length the authored curve's own, which its CPU reference gives. The stations then stay at fixed distances and the window moves a whole row at a time.
-- **A gap in the curve family, found here.** The tunnel is a loop, and a window that rides round a closed curve has to cross its seam. Resample's Range runs from 0 to 1 and does not wrap. Until it does (C10), the centre line is typed in as an open curve whose last 115 m repeat its first, and the travel wraps where the two agree.
-- **The seam** is a wrapped claim, so the normal is smooth across it. Today's has a crease under the deck, where two columns each take a one-sided difference.
-- **Cost.** The draw is the same 196,608 vertices as today. The family adds the frames for a 768-point strip (about 0.6 ms, where `pathFrame` is a closed form and free), the resample and the sweep pass (under 0.2 ms together).
-- **It needs slice 1 only.**
+Or with no spline at all, since the centre line is a formula a kernel can evaluate where the rows are:
+
+```
+kernel (the window's 768 points on the centre line) ─▶ topology (Strips) ─▶ curveFrames (Fixed Up, Roll −90)
+  ─▶ sweep ─▶ kernel (the relief, the deck) ─▶ geometry (Surface)
+```
+
+- **The tunnel is not a loop.** Its centre line is `(X(z), Y(z), z)`: endless, and periodic in z every 960 m. The travel wraps there, 960 m back down z, where the tunnel is the same. One period is 1,058.26 m of curve, because the line wanders.
+- **The kernel after the sweep keeps the relief and loses the frame.** It reads `p.uv` (the way round), `p.normal` (which way is out) and whatever the path carried, and may write `position` any way it likes: the deck is a clamp to a level plane, not a move along the normal, and the surface is lit by the normal of the shape it ends up with (tested: section 7).
+- **The centre line cannot be typed into the Curve.** The table holds 64 control points; over a period and a window's length they would be 17 m apart, and the spline decimetres off the line. The control points are wired, from a kernel that evaluates the formula. A camera cannot ride a wired Curve on the CPU (T1590b reads the table), so the camera keeps its own expression of the same formula for now: follow-up C12.
+- **How close the spline has to be.** A ring of radius R turns an error in the curve's direction into R times as much at the wall. Control points every 2.4, 1.2 and 0.6 m of z leave the wall 11.2, 2.3 and 0.4 mm from the bore's (section 11.2). The second chain above has no spline and is within 0.11 mm.
+- **The wall stands still while the window slides, and the rows a period on are the same rows.** Take the rows at the curve's own points: Resample by Count, Even Parameter, with a Range from point `i` to point `i + 767` and `i = floor(travel ÷ row)`. Eight segments on a control point every 1.2 m put a point every 0.15 m of z to within a millimetre, as the bore's rows are, and a period is then 6,400 rows because the control points say so (measured: rows within 0.14 mm of themselves a period on).
+- **Resample by Distance does not do that by itself.** Its rows start at the Range's start, a row of Distance apart along the curve. A period is 7,055.05 rows of 0.15 m, so a Range stepped in rows of 0.15 m lands 7.4 mm off a period later. A Distance of the period ÷ 7,055 makes them agree. And its rows are even along the curve, not in z: between 0.113 and 0.150 m of z apart here.
+- **What the relief counts by.** The bore keys its bays and its lamps on z: a bay every 1.6 m and 600 to a period, a lamp station every 12.8 m and 75 to a period. A ring carries its path point's attributes, so the kernel on the path writes z as an attribute and the relief reads it, exactly as today. `uv`'s Metres is distance along the curve, of which a period is 1,058.26 m: those hashes do not divide it.
+- **The repeated part must repeat one control point further than it is used.** The last span of an open spline is shaped by its end, so the copy differs there (1.3 mm at this spacing). And its x and y should come from the point's index within its period, so they are the first part's to the bit; only z is 960 m on.
+- **The seam.** A Ring of 255 sides on a wrapped claim, so the normal is smooth across it. The bore today is 256 columns with the seam's two in one place and an unwrapped claim, which leaves a crease under the deck; a Custom outline of those 256 points reproduces that exactly, if it is ever wanted.
+- **Cost.** The draw is the same 196,608 vertices as today. The family adds the frames for a 768-point strip (about 0.6 ms, where `pathFrame` is a closed form and free), the resample and the sweep pass (under 0.1 ms: section 5.2).
+- **It needs slice 1 only**, with the deck as a second Geometry (the consumer's review confirmed one strip for the bore).
 
 ### 6.2 Cables
 
@@ -326,41 +351,43 @@ kernel (two sections a tentacle: a length, a bend, the socket's frame) ─▶ to
 
 ## 7. Tests
 
-On Dawn through the compiler and the backend; exact where the fixture's numbers are, a closed form or the CPU reference otherwise (§V147); red-verified; a wire cut wherever a wire or a mapped parameter is involved.
+As built for slices 1 and 3. On Dawn through the compiler and the backend; exact where the fixture's numbers are, the CPU reference or a derived bound otherwise (§V147); seventeen mutations of the pass, the reference and the node were each seen red and restored by edit.
 
-**The points** (read back)
+**The vertices** (`point-sweep.gpu.test.ts`, 29 tests, read back)
 
-- A Square along three points on +Z with the identity frame: the eight columns of each ring at exactly `(±r, ±r, z)`, corners doubled.
-- A Ring of 4 against its closed form; a Ring of 16 against the reference.
-- `(½, ½, ½, ½)` as the frame turns the ring into the YZ plane: a corner that was at `(r, r, z)` is at `(z', r, r)` by hand.
+- A Square along three points with the identity frame: the eight columns of each ring at exactly `(±r, ±r, z)`, corners doubled, each side its own exact normal, the way round in quarters.
+- A frame of halves `(½, ½, ½, ½)` turns the axes into each other: the corner `(r, r, 0)` lands on `(0, r, r)` exactly.
+- **A Ring along a straight path is the Tube generator's points to the bit**, through a measured frame (Curve Frames measures a +Z line as the identity), and the cylinder in closed form.
+- A planar arc: every ring square to the measured tangent, a radius out, its normal out of the plane; the tangent at inner points is the circle's own.
+- The reference on a path that leaves its plane: ten cases across every profile, smooth and flat, both facings, every cap, every coordinate along, open and closed, a mapped radius.
 - Radius mapped: each ring at its own radius; cut the map and all take the node's.
-- Carried attributes: a `color` and a u32 on the path, read at every vertex of the ring.
-- `uv`: Stretch is 0 and 1 at the ends; Metres on a line with points 0.5 m apart and a tile of 2 is `0.25 × row`; a closed path's Metres is a whole number at the seam.
-- Padding: a path with three repeated end points sweeps to four identical rings.
-- The reference on two unlike strips, every profile, open and closed.
+- The coordinate along: Metres is `0.25 × row` at half a metre and a tile of two; Stretch does not change with the path's length; Points reads nothing from the path; a closed path holds a whole number of tiles.
+- Carried attributes: a colour, a u32 and Curve Frames' own `distance`, at every vertex of the ring.
+- Padding: a path that repeats its end repeats its last ring, and an End cap sits on it.
+- Caps: the two rows an end, their normals, one end only, the coordinate along carried on a radius past the edge, a cap's radius its own end's on a taper.
+- Facing: Inward is the columns reversed, the normals turned and the way round still rising; an inward Ring starts on the same point.
 
-**The picture** (pixels)
+**The pictures** (`point-sweep-render.gpu.test.ts`, 8 tests, pixels through the Render)
 
-- A tube lit from one side, seen from outside: the lit side is brighter by the cosine it should be. Inward and the same picture from inside is lit; Outward from inside is dark. That pins the normal's side to a fact.
-- A Square under a light along one face's normal: that face reads one level across its whole width and its neighbour another. Smooth shading would give a ramp. The control is a Ring of 4 with Smooth on.
-- A capped tube seen end on: the cap covers the disc it should, in pixels, and is lit as a flat face.
-- **Two strips, one draw: the pixels between two parallel tubes are the background's, exactly.** Without sheets the grid joins one tube's end to the next one's start and a band crosses the gap. This is slice 2's test, red before it.
-- A kernel between the sweep and the Geometry that pushes every other ring in: the grooves are lit as grooves. With a mesh claim they would not be; the test is the reason for decision D1.
-- A Material · WGSL that writes `uv` as colour: a pixel at a known place reads a known coordinate, and across a wrapped seam the coordinate runs on and does not run back.
-- The sweep casts a shadow and receives one, and is in the Normal and Depth outputs: one assertion each, because it is a Surface and those are the Surface's own.
+- **A Ring along a straight path draws the Tube's picture to the byte**: lit, the Normal and Depth outputs, with a shadow cast and received.
+- **A kernel after the sweep that writes `position`**: a tube clamped to a level plane (the consumer's deck, a move that is not along the normal) reads that plane's normal, `(0, −1, 0)`, on every pixel of the flattened part. Without the kernel the same pixels read the round tube's normals. This is the test of decision D1.
+- A Square's face reads its own normal across its whole width; the same four corners as a smooth outline shade round; with Smooth off they are the Square again, byte for byte.
+- Facing: a Strip reads +Y outward and −Y inward in the Normal output, and the two are lit alike.
+- A cap covers exactly the outline's pixels at the end's depth, each with the end's normal; without it nothing is at that depth.
 
-**The node** (headless)
+**The node** (`point-sweep.test.ts`, 26 tests) and **the reference** (`src/points/sweep.test.ts`, 20 tests, numbers worked out by hand)
 
-- Every refusal sentence of 4.7.
-- The claim strings; the column and row counts for every profile, Smooth and Caps.
-- Every pass sets exactly the uniforms its shader declares.
-- Seek: frame N rendered directly equals frame N after the frames before it.
+- The claim strings and the column and row counts for every profile, Smooth and Caps; the pass's bindings; exactly the uniforms its shader declares, in every shape of the program; every refusal sentence of 4.7; which parameters apply.
 
-**The claim** (slice 2)
+**The worked check** (`point-sweep-bore.gpu.test.ts`, 4 tests): section 11.2.
 
+**For slice 2, not built**
+
+- Two strips, one draw: the pixels between two parallel tubes are the background's, exactly. Without sheets the grid joins one tube's end to the next one's start and a band crosses the gap. Red before the slice.
 - `parseTopology` and `formatTopology` round-trip the third number; a claim without it parses as one sheet and formats as before, so no shipped document's bytes change.
 - Every shipped example that draws a grid Surface reads back the pixels it read before.
 - A kernel's `ctx.dim.sheet` on a sweep of three strips.
+- A Material · WGSL that writes `uv` as colour: a pixel at a known place reads a known coordinate, and across a wrapped seam the coordinate runs on and does not run back.
 
 ## 8. Build plan
 
@@ -372,7 +399,8 @@ On Dawn through the compiler and the backend; exact where the fixture's numbers 
 | 2 | Sheets | `grid:CxRxS` in the claim, the three grid chunks, the draw's size, the Topology node, `ctx.dim`; the grid reads `uv`; several strips | cables; the tentacle's skin; any set of tubes as one Geometry | yes: after the shadow work in `scene.ts` |
 | 3 | Caps and the custom profile | the cap rows; the Profile input | closed ends; rails, gutters, any outline | no |
 
-- Slice 1 depends on nothing unbuilt. Slice 3 depends on slice 1 only.
+- **Slices 1 and 3 are built** (2026-10-06). Slice 2 is not: until it is, a path of several strips is refused by name, pointing at this row.
+- The consumer's review asked for slice 2 sooner than this plan assumed: pipes a claw can take hold of are several tubes in one Geometry.
 - Slice 2 is the one that edits `scene-render.wgsl.ts`, `scene.ts` and `render-surface.ts`. It can be built by whoever holds those files, from section 3.3.
 - T1589b (lights from a pointset) is ruled to be built with this row. The two share a consumer and no code: a lamp on every rib is that row's, the rib is this one's.
 
@@ -384,14 +412,20 @@ On Dawn through the compiler and the backend; exact where the fixture's numbers 
 | C2 | A profile scaled in X and Y separately per point (Notch's XY mode), and a thick strip | a vec2 map; no consumer yet |
 | C3 | Caps of outlines that are not star-shaped, and planar cap UVs | real triangles: a mesh claim for the caps alone |
 | C4 | A profile that changes along the path (TouchDesigner's Cycle Type; a morph between two profiles) | a profile per row; the column counts must agree |
-| C5 | A ribbon lit on both sides | the grid path uses its normal as it stands; the mesh path's turn-to-viewer is the model |
+| C5 | ~~A ribbon lit on both sides~~ | not needed: a grid Surface is already lit on both sides (section 11.1) |
 | C6 | Fewer sides and rings at a distance | the same absence as for every Surface |
 | C7 | A sweep as the shape of mesh instances | the mesh-instancing design's F10 |
 | C8 | The unskinned form: the profile placed at each point and not joined (TouchDesigner's Skin: Off) | it is instancing a strip, which needs a line draw |
 | C9 | Motion vectors for a sweep | T1371b is not built for any geometry |
-| C10 | Resample: a Range that wraps on a closed strip, so a window can ride round a loop | a change to the curve row's Resample, not to the sweep; the tunnel works round it (6.1) |
+| C10 | Resample: a Range that wraps on a closed strip, so a window can ride round a loop | a change to the curve row's Resample, not to the sweep. The tunnel turned out not to need it: it is periodic, not a loop (6.1) |
+| C11 | The way round a Custom outline by its sides' lengths, not their count | a walk over the outline for every vertex, or the outline's own `curveU`; uneven outlines stretch a texture meanwhile |
+| C12 | A typed centre line longer than 64 control points, or a CPU reader of a formula path | the tunnel's line needs about 900; today the camera and the wall each evaluate the formula (T1590b) |
+| C13 | The tangent at a strip's two ends | Curve Frames has one chord there: the bore's first ring is 2.7 mm off where the rest are 0.11 mm (11.2). A path a point longer than is drawn hides it |
+| C14 | A port that can say "one strip with a frame" | the catalogue's minimal graph names the Sweep to feed it one (`test-support.ts`): a port's `requires` is matched against what the producer's port declares, and Curve Frames declares no `orient` |
 
-### 8.3 Decisions to rule
+### 8.3 Decisions, as ruled
+
+All ruled as recommended on 2026-10-05. D9 is its own bug row, B255, and its own commit: it moves textures on shipped Tube and Torus grids.
 
 - **D1. The representation.** Recommended: a grid claim with sheets (3.2). Alternatives: a mesh claim (no Render change, any triangles, but a kernel after it cannot be lit); a sweep in the vertex stage.
 - **D2. A closed axis and its texture coordinate.** Recommended: the wrapped claim that exists, and a `uv` attribute that the grid continues past the seam by `⌈u_last − u₀⌉` (3.3). Alternative: a repeated seam column and a second kind of closure in the claim, which is the textbook form and can crack under a careless kernel.
@@ -406,9 +440,11 @@ On Dawn through the compiler and the backend; exact where the fixture's numbers 
 
 ## 9. Found on the way (not fixed, not in scope)
 
-- On a wrapped grid the texture coordinate ends at `cols ÷ (cols − 1)`, not at 1 (`surfaceMeshWgsl`: `gx ÷ max(cols − 1, 1)` with `gx` running to `cols`). A texture does not go exactly once round a Tube or a Torus. D9.
+- On a wrapped grid the texture coordinate ends at `cols ÷ (cols − 1)`, not at 1 (`surfaceMeshWgsl`: `gx ÷ max(cols − 1, 1)` with `gx` running to `cols`). A texture does not go exactly once round a Tube or a Torus. D9, now bug row B255.
 - The bore's seam is two columns in one place with an unwrapped claim, so each takes a one-sided difference and the normal has a crease there. It is under the deck and does not show.
-- A grid Surface is lit on one side and a mesh Surface is turned to face the viewer (B227). Nothing says so where a person chooses between them.
+- A grid Surface is lit on BOTH sides (`abs(N · L)`, T301's rule) and a mesh Surface on one, with its normal turned to face the viewer (B227). Nothing says so where a person chooses between them. The first draft of this document had the grid lit on one side; section 11.1.
+- The fragment stage stands +Z in for a normal shorter than 1e-6, and tests the length before normalising. A grid's normal is the cross product of two differences, each across two cells, so a grid whose cells are finer than about half a millimetre each way reads +Z everywhere. Read from `scene-render.wgsl.ts`, not tested. A cable a millimetre thick would meet it.
+- A frame measured from points far from the origin carries their rounding as an angle. At 1,000 m a float holds 0.06 mm; across a 0.15 m chord that is 0.0004 rad, and a 5 m ring makes it up to 2 mm at the wall (measured between the tunnel's first part and its repeat: 0.8 mm). The bore's kernel has a closed form for its tangent and does not have this.
 - The Topology node's Columns and Rows stopped at 4,096 each. Fixed in T1586b's slice 6.
 - Resample's Range cannot cross the seam of a closed strip (C10).
 
@@ -426,3 +462,55 @@ TouchDesigner (Derivative), fetched 2026-10-05:
 Notch, fetched 2026-10-05 (page updated 16 Sep 2026):
 
 - Spline Extruder: https://manual.notch.one/2026.2/en/docs/reference/nodes/3d/spline-extruder/
+
+## 11. What building it showed (2026-10-06)
+
+### 11.1 Where the design was wrong, and what it is now
+
+| The design said | What is true | Where it is corrected |
+|---|---|---|
+| A grid Surface is lit on one side, so Facing decides whether a tunnel is lit from inside | A grid Surface's lambert is `abs(N · L)`: lit on both sides. Facing decides the `normal` attribute, the Render's Normal output and what a material's normal starts from | 2.1, 4.2, 7, 8.2 (C5), 9 |
+| A test would show "Outward from inside is dark" | It cannot be dark. The test that pins the normal's side reads the Normal output: +Y outward, −Y inward, and the two lit alike | 7 |
+| A `color` attribute on the path tints the tube | It reaches every vertex, and tints when the Geometry's Tint is mapped to it. A grid has no default tint attribute; a mesh has | 2.1, 4.3 |
+| Inward reverses the columns | It walks the same outline the other way from its first point, and the way round still rises with the column | 4.4 |
+| The tunnel is a loop, so a window that rides it has to cross a seam (C10) | It is endless and periodic in z. C10 is still a gap in Resample, and not this consumer's | 6.1 |
+| The tunnel's centre line is typed into a Curve, and the camera rides the same node | The table holds 64 points and the line needs about 900. The control points are wired from the formula | 6.1, C12 |
+| Resample by Distance, its Range stepped in rows, keeps the wall still | Only if the period is a whole number of rows. Rows at the curve's own points are, by construction | 6.1 |
+| The sweep pass costs "under 0.1 ms, 0.2 to 0.4 ms for a million" (derived) | Measured: 0.02 to 0.06 ms and 0.22 to 0.46 ms, by what the path carries | 5.2 |
+
+### 11.2 The worked check: the consumer's bore from the stock nodes
+
+`src/nodes/definitions/point-sweep-bore.gpu.test.ts` builds the sentinel tunnel's bore from the stock nodes and holds it against the project's own kernel-bent grid (`src/projects/sentinel-bot/tunnel.ts`, read and not edited), with the relief off and the deck out of the way. Dawn on Metal. Every figure has a bound in the test derived from what explains it.
+
+**On the bore's own rows.** The path's 768 points come from the project's formula at the bore's rows; Curve Frames (Fixed Up) and a Sweep lay the wall. Against the project's kernel, vertex for vertex, all 196,608:
+
+| | Worst difference | What explains it |
+|---|---|---|
+| The 766 inner rings | 0.11 mm | rounding: the frame's tangent is measured from points a float holds to 0.004 mm, across a 0.15 m chord, and a hall's 5 m radius multiplies the angle |
+| The first ring | 2.7 mm | a strip's end has one chord to take its tangent from, off the end's own by half the turn across it (C13) |
+| The last ring | 0.7 mm | the same |
+
+A Custom outline of the bore's 256 columns (the seam's two in one place) and a Ring of 255 with the frame rolled a quarter turn give the same figures.
+
+**Through a Curve and a Resample.** Control points on the formula, a Catmull-Rom of 8 segments, rows at the curve's own points, a kernel for the hall's radius, Curve Frames, Sweep. Each vertex against the bore's own vertex at that row's z and that column's angle, and against the bore's wall:
+
+| Control points every | Centre line off by | Vertex off by | Off the wall by |
+|---|---|---|---|
+| 2.4 m | 0.82 mm | 11.2 mm | 4.6 mm |
+| 1.2 m (the test's) | 0.12 mm | 2.3 mm | 0.9 mm |
+| 0.6 m | 0.07 mm | 0.4 mm | 0.15 mm |
+
+- What explains it is the spline's DIRECTION, not its position. A Catmull-Rom's tangent at a control point is the chord across two spans, off the curve's own by `h² f‴ ÷ 6` (0.9 mrad at 1.2 m here; measured 0.45), and a ring of radius R turns an angle into R times as much. Halving the spacing quarters it.
+- A vertex is further from the bore's vertex than from the bore's wall: a turned ring slides its rim along the wall, and leaves it only where the wall flares into a hall.
+- The first and the third row are measured with the same chain at another spacing, outside the test.
+
+**The repeated part.** One period is 960 m of z and 1,058.257 m of curve.
+
+| | Rows a period on, against the first part's | The wall |
+|---|---|---|
+| Rows at the curve's own points | 0.14 mm | 0.8 mm |
+| Rows by Distance, the Range started a period on | 0.23 mm | 0.9 mm |
+| Rows by Distance, the Range stepped in rows of 0.15 m | 7.4 mm off: a period is 7,055.05 rows | not built |
+
+- The first two are what a float holds near 1,000 m (0.06 to 0.12 mm), seen through the frame for the wall.
+- So the answer to "does Resample by Distance give the repeated part the same rows": yes when its Range starts a period further on, to a quarter of a millimetre; no when the Range is stepped in rows from a fixed start, unless Distance divides the period.
