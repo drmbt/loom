@@ -1042,8 +1042,9 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                 pointer: inputs.pointer,
                 ...(inputs.audio === undefined ? {} : { audio: inputs.audio }),
                 // T1497b: the same morph index the per-frame compile below derives, so a
-                // recalled widget publishes the fading value here as it does live.
-                morphs,
+                // recalled widget publishes the fading value here as it does live — and
+                // (§T1559b) the instances a value node's own `op('<instance>')` can name.
+                flattening: { morphs, instanceChannels: flattened?.instanceChannels ?? NO_INSTANCES },
                 // T655/T654: analyze readbacks enter the value graph here — the same
                 // extras.channels seam `useValueGraph` threads live, number-narrowed
                 // the same way.

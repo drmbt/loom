@@ -101,6 +101,6 @@ The Panel MIDI work landed (`01b2ab30`) with two `parameterReadOptions` calls. E
   - `examples/channel-integrity.test.ts` walks a starter-component file with no catalogue on purpose, and says so with the same producer.
   - Every other caller is a test and uses `flatDocument(…)`. `midi-controls.test.ts` and the Playwright fixture `panel-midi-fixture.html` read `runtime.flattened.current().graph`, as the app does.
   - `mcp/serve.ts` and `bridge-host.ts` build no value graph session.
-- **The Controls pane reads the authored document, with no fade**, and that is right for the two cases checked:
+- **The Controls pane reads the authored document, with no fade**, plus the flattening's instances off `bus.readScope()` (see `docs/evaluation-context-design-2026-10-04.md`, "T1559b (1)"). The authored, no-fade read is right for the two cases checked:
   - A Panel control inside a component is never shown. The pane lists the widgets of the root document it is handed, and publishing a Panel from inside a component is open work (T1143, T1388b phase 2).
   - A control whose value fades in a preset morph shows its document value, which is the destination, by design (`docs/presets-scenes-layers-design-2026-09-29.md` §5.5, T1525b). Only a driven widget samples the read at all; a static one shows what the document stores.

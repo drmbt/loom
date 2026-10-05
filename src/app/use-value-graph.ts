@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { InstanceChannelSources } from "@domain/parameters/node-references.ts";
+import { NO_MORPHS } from "@domain/presets/morph-index.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import { ZERO_FRAME } from "@domain/types/frame.ts";
@@ -158,8 +159,9 @@ export function useValueGraph(runtime: AppRuntime, externalChannels?: ChannelRes
       // since the session keys its state by node id.
       const flattened = runtimeRef.current.flattened.current();
       const result = session.evaluate(flattened.graph, inputs.frame, {
-        // T1497b: the same morph index the plan compiles with (it rides on the flattening).
-        morphs: flattened.morphs,
+        // §T1551b: the flattening, whole — the morph index the plan compiles with (T1497b)
+        // and the instances `op('<instance>').chan.<c>` can name (T1485b, §T1559b).
+        flattening: flattened,
         // §V182: the SAME pointer the shaders read. A second DOM listener would drift by a
         // frame and the CPU and GPU halves of one graph would disagree about the cursor.
         pointer: inputs.pointer,
@@ -230,7 +232,11 @@ export function useValueGraph(runtime: AppRuntime, externalChannels?: ChannelRes
       const cached = structural.current;
       if (cached === null || cached.flattened !== flattened) {
         const once = createValueGraphSession(runtimeRef.current.registry);
-        const result = once.evaluate(flattened.graph, ZERO_FRAME, { pointer: { x: 0, y: 0, buttons: 0 } });
+        const result = once.evaluate(flattened.graph, ZERO_FRAME, {
+          pointer: { x: 0, y: 0, buttons: 0 },
+          // The structural compile reads no fade (it has no frame); it does read instances.
+          flattening: { morphs: NO_MORPHS, instanceChannels: flattened.instanceChannels },
+        });
         structural.current = { flattened, resolver: result.resolver, byName: result.byName };
         return result.resolver(channel, context);
       }

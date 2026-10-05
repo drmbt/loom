@@ -6,7 +6,8 @@ import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import { resolveParameters, type ChannelResolver } from "@domain/parameters/resolve.ts";
-import { NO_FLATTENING, parameterReadOptions } from "@domain/parameters/node-references.ts";
+import { parameterReadOptions } from "@domain/parameters/node-references.ts";
+import { NO_MORPHS } from "@domain/presets/morph-index.ts";
 import { CONTROL_WIDGET_TYPES, LAYER_NODE_TYPE, panelBoard, panelTitle } from "@nodes/definitions/controls.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
@@ -112,8 +113,9 @@ export function ControlsPane({ graph, registry, bus, invocation, phone, midi, ch
     if (definition === undefined) throw new Error(`No definition for control "${node.type}".`);
     const frame = latestFrame?.()?.frame;
     // Authored and no fade, on purpose: the pane lists authored widgets (none inside a component, §T1143), and mid-morph a control shows its document value (§T1525b).
+    // §T1559b: the instances `op('<instance>').chan.<c>` can name are the flattening's, off the bus's read scope — the value graph reads them, so the display must.
     return resolveParameters(node, definition, parameterReadOptions({ graph: authoredGraph(current), registry, channels,
-      frame, flattening: NO_FLATTENING })).values;
+      frame, flattening: { morphs: NO_MORPHS, instanceChannels: bus.readScope().flattening.instanceChannels } })).values;
   } }), [bus, registry, channels, latestFrame]);
 
   const apply = (operations: GraphPatchOperation[], label: string): void => {
