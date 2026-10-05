@@ -649,7 +649,7 @@ export const prismDocument = document(
       // more nodes. The split is not cosmetic: a single shaft wants a parallel-sided
       // ribbon, and 61 beams leaving the same face within 0.03 of each other fuse into
       // an opaque wedge at any taper above about zero (T680).
-      node("shaft", "geometry", [-1240, -80], {
+      node("shaft", "geometry", [-1240, -96], {
         /* T917: SOFT + ADDITIVE — the beams are light now, not ribbons of paint. The soft
            profile falls off across the width; additive lets the ghost, interior and shaft
            sum where they cross instead of z-fighting. */
