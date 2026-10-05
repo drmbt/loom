@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ZERO_FRAME, frameFromClock } from "../../domain/types/frame.ts";
 import { valueExpressionNode } from "../../nodes/definitions/value-structure-nodes.ts";
-import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS, SHOT_TABLE, shotAtTurn } from "./camera.ts";
+import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS, SHOT_TABLE, SWIMMING_ORDER, WALKING_ORDER, shotAtTurn } from "./camera.ts";
 
 /**
  * T1561b — the camera rig, run through the Expression node that runs it in the document.
@@ -37,28 +37,56 @@ describe("the sentinel camera", () => {
     expect(Math.hypot((later["right"] as number) - (early["right"] as number), (later["up"] as number) - (early["up"] as number))).toBeGreaterThan(1.5);
   });
 
-  it("cuts on every second bar when Cuts is on, visits every shot, and never cuts from a close one to a close one", () => {
+  it("cuts on every second bar when Cuts is on: walking, through the nine shots of the robot, never from a close one to a close one", () => {
     const order: number[] = [];
-    for (let bar = 0; bar < 2 * SHOTS.length; bar += 1) {
-      const out = rig({ value: 0, shot: 0, cuts: 1, bar }, 0);
+    for (let bar = 0; bar < 2 * WALKING_ORDER.length; bar += 1) {
+      const out = rig({ value: 0, shot: 0, cuts: 1, bar, swim: 0 }, 0);
       // The pick is the pair of bars it falls in: bars 0 and 1 share a shot, bar 2 is the next.
       expect(out["pick"]).toBe(shotAtTurn(Math.floor(bar / 2)));
       if (bar % 2 === 0) order.push(out["pick"] as number);
     }
-    expect(new Set(order).size).toBe(SHOTS.length);
+    expect(order).toEqual([...WALKING_ORDER]);
+    expect(new Set(order).size).toBe(9);
+    // None of them is a tail shot: those are for when it swims.
+    expect(order.every((pick) => (SHOT_TABLE[pick] as (typeof SHOT_TABLE)[number]).aim > 0)).toBe(true);
     // A close shot is one that rides with the robot (it would lose it otherwise). Round the whole cycle, wrap included.
     const close = order.map((pick) => (SHOT_TABLE[pick] as (typeof SHOT_TABLE)[number]).ride >= 0.6);
     expect(close.filter(Boolean).length).toBe(4);
     for (let index = 0; index < close.length; index += 1) expect(close[index] === true && close[(index + 1) % close.length] === true).toBe(false);
   });
 
-  it("looks where the shot says: down the tunnel past the robot from behind it, at the robot from anywhere else", () => {
+  it("swimming, cuts through every shot of the tail, and cuts the moment it lets go of the wall", () => {
+    const order: number[] = [];
+    for (let bar = 0; bar < 2 * SWIMMING_ORDER.length; bar += 2) order.push(rig({ value: 0, shot: 0, cuts: 1, bar, swim: 1 }, 0)["pick"] as number);
+    expect(order).toEqual([...SWIMMING_ORDER]);
+    const tails = SHOT_TABLE.map((shot, at) => ({ shot, at })).filter(({ shot }) => shot.aim <= 0);
+    expect(tails.length).toBe(6);
+    for (const { at } of tails) expect(order).toContain(at);
+    // The same bar, walking and swimming, is two different shots: letting go is a cut, and to the tail.
+    const walking = rig({ value: 0, shot: 0, cuts: 1, bar: 0, swim: 0.4 }, 0)["pick"] as number;
+    const swimming = rig({ value: 0, shot: 0, cuts: 1, bar: 0, swim: 0.6 }, 0)["pick"] as number;
+    expect([SHOT_TABLE[walking]?.name, SHOT_TABLE[swimming]?.name]).toEqual(["chase", "tail"]);
+    // With Cuts off the slider holds any of the fifteen, whatever it is doing.
+    expect(rig({ value: 0, shot: 12, cuts: 0, bar: 7, swim: 1 }, 0)["pick"]).toBe(12);
+  });
+
+  it("looks where the shot says: past the robot down the tunnel, at the robot, or at its tail", () => {
     for (const [index, shot] of SHOT_TABLE.entries()) {
       const out = rig({ value: 10, shot: index, cuts: 0, distance: 7.5 }, 3);
       expect([shot.name, out["aim"], out["ride"], out["lens"]]).toEqual([shot.name, shot.aim, shot.ride, shot.lens]);
-      // Behind the robot it looks past it; ahead of it or beside it, back at it.
-      if ((out["ahead"] as number) < -1) expect(shot.aim).toBeGreaterThan(3);
-      else expect(shot.aim).toBeLessThan(1);
+      const ahead = out["ahead"] as number;
+      if (shot.aim <= 0) {
+        // A tail shot: behind the robot's middle, looking at a point no further forward than that middle, from close
+        // (the furthest is the long lens, 4.3 m off what it looks at), and riding with the robot.
+        expect(ahead).toBeLessThan(-1.2);
+        expect(Math.hypot(ahead - shot.aim, out["right"] as number, out["up"] as number)).toBeLessThan(4.5);
+        expect(shot.ride).toBe(1);
+      } else if (ahead < -1) {
+        // Behind the robot and not a tail shot: it looks past it, down the tunnel.
+        expect(shot.aim).toBeGreaterThan(3);
+      } else {
+        expect(shot.aim).toBeLessThan(1);
+      }
     }
   });
 

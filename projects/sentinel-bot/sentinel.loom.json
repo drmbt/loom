@@ -173,6 +173,18 @@
           "portId": "in"
         }
       },
+      "camera-expression_swimming": {
+        "id": "camera-expression_swimming",
+        "order": 6,
+        "source": {
+          "nodeId": "expression_swimming",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_camera",
+          "portId": "in"
+        }
+      },
       "camera-slider_distance": {
         "id": "camera-slider_distance",
         "order": 4,
@@ -1119,6 +1131,17 @@
           "portId": "in"
         }
       },
+      "swim-named": {
+        "id": "swim-named",
+        "source": {
+          "nodeId": "lag_swim",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_swimming",
+          "portId": "in"
+        }
+      },
       "winding-sum": {
         "id": "winding-sum",
         "source": {
@@ -1523,12 +1546,26 @@
         "id": "expression_camera",
         "label": "expression_camera",
         "parameters": {
-          "defaults": "bar = floor(abstime / 4);\nvalue = 0;\nshot = 0;\ncuts = 0;\ndistance = 7.5;\nviewX = 1.1;\nviewY = 0.6",
-          "expressions": "turn = floor(bar / 2) * 4;\npick = (cuts > 0.5) * (turn - 9 * floor(turn / 9)) + (cuts <= 0.5) * floor(shot + 0.5);\npost = (floor(value / 25.6) + 0.5) * 25.6;\nahead = (pick == 0) * (0 - distance) + (pick == 1) * 5.5 + (pick == 2) * 0.4 + (pick == 3) * (post - value) + (pick == 4) * 1.5 * sin(abstime * 0.17) + (pick == 5) * 2.7 + (pick == 6) * (0 - 1.7) + (pick == 7) * 1.75 + (pick == 8) * 0.9;\nright = (pick == 0) * viewX + (pick == 1) * (0 - 0.9) + (pick == 2) * 2 + (pick == 3) * 1.6 + (pick == 4) * 1.9 * cos(abstime * 0.3) + (pick == 5) * 0.22 * sin(abstime * 0.23) + (pick == 6) * 0.8 + (pick == 7) * 0.7 + (pick == 8) * 0.35;\nup = (pick == 0) * viewY + (pick == 1) * 0.35 + (pick == 2) * 0.15 + (pick == 3) * (0 - 1.3) + (pick == 4) * 1.3 * sin(abstime * 0.3) + (pick == 5) * (0 - 0.12) + (pick == 6) * 0.75 + (pick == 7) * 0.3 + (pick == 8) * (0 - 1.45);\nlens = (pick == 0) * 55 + (pick == 1) * 48 + (pick == 2) * 68 + (pick == 3) * 40 + (pick == 4) * 60 + (pick == 5) * 34 + (pick == 6) * 52 + (pick == 7) * 24 + (pick == 8) * 64;\naim = (pick == 0) * 3.3 + (pick == 1) * 0.3 + (pick == 2) * 0.3 + (pick == 3) * 0.3 + (pick == 4) * 0.3 + (pick == 5) * 0.7 + (pick == 6) * 8 + (pick == 7) * 0.85 + (pick == 8) * 0.2;\nride = (pick == 0) * 0 + (pick == 1) * 0 + (pick == 2) * 0 + (pick == 3) * 0 + (pick == 4) * 0.5 + (pick == 5) * 0.85 + (pick == 6) * 1 + (pick == 7) * 1 + (pick == 8) * 0.6;\nz = value + ahead"
+          "defaults": "bar = floor(abstime / 4);\nvalue = 0;\nswim = 0;\nshot = 0;\ncuts = 0;\ndistance = 7.5;\nviewX = 1.1;\nviewY = 0.6",
+          "expressions": "turn = floor(bar / 2);\ncut = (swim > 0.5) * (((turn - 10 * floor(turn / 10)) == 0) * 9 + ((turn - 10 * floor(turn / 10)) == 1) * 0 + ((turn - 10 * floor(turn / 10)) == 2) * 11 + ((turn - 10 * floor(turn / 10)) == 3) * 13 + ((turn - 10 * floor(turn / 10)) == 4) * 1 + ((turn - 10 * floor(turn / 10)) == 5) * 10 + ((turn - 10 * floor(turn / 10)) == 6) * 4 + ((turn - 10 * floor(turn / 10)) == 7) * 12 + ((turn - 10 * floor(turn / 10)) == 8) * 14 + ((turn - 10 * floor(turn / 10)) == 9) * 2) + (swim <= 0.5) * (((turn - 9 * floor(turn / 9)) == 0) * 0 + ((turn - 9 * floor(turn / 9)) == 1) * 4 + ((turn - 9 * floor(turn / 9)) == 2) * 8 + ((turn - 9 * floor(turn / 9)) == 3) * 3 + ((turn - 9 * floor(turn / 9)) == 4) * 7 + ((turn - 9 * floor(turn / 9)) == 5) * 2 + ((turn - 9 * floor(turn / 9)) == 6) * 6 + ((turn - 9 * floor(turn / 9)) == 7) * 1 + ((turn - 9 * floor(turn / 9)) == 8) * 5);\npick = (cuts > 0.5) * cut + (cuts <= 0.5) * floor(shot + 0.5);\npost = (floor(value / 25.6) + 0.5) * 25.6;\nahead = (pick == 0) * (0 - distance) + (pick == 1) * 5.5 + (pick == 2) * 0.4 + (pick == 3) * (post - value) + (pick == 4) * 1.5 * sin(abstime * 0.17) + (pick == 5) * 2.7 + (pick == 6) * (0 - 1.7) + (pick == 7) * 1.75 + (pick == 8) * 0.9 + (pick == 9) * (0 - 4.4) + (pick == 10) * (0 - 3.5) + (pick == 11) * (0 - 2.2) + (pick == 12) * (0 - 3) + (pick == 13) * (0 - 6.8) + (pick == 14) * (0 - 2.1 + 0.7 * sin(abstime * 0.19));\nright = (pick == 0) * viewX + (pick == 1) * (0 - 0.9) + (pick == 2) * 2 + (pick == 3) * 1.6 + (pick == 4) * 1.9 * cos(abstime * 0.3) + (pick == 5) * 0.22 * sin(abstime * 0.23) + (pick == 6) * 0.8 + (pick == 7) * 0.7 + (pick == 8) * 0.35 + (pick == 9) * 0.5 + (pick == 10) * 0.12 * sin(abstime * 0.21) + (pick == 11) * 1.05 + (pick == 12) * 0.2 + (pick == 13) * 0.8 * sin(abstime * 0.13) + (pick == 14) * 1.15 * cos(abstime * 0.33);\nup = (pick == 0) * viewY + (pick == 1) * 0.35 + (pick == 2) * 0.15 + (pick == 3) * (0 - 1.3) + (pick == 4) * 1.3 * sin(abstime * 0.3) + (pick == 5) * (0 - 0.12) + (pick == 6) * 0.75 + (pick == 7) * 0.3 + (pick == 8) * (0 - 1.45) + (pick == 9) * 0.3 + (pick == 10) * 0.1 + (pick == 11) * (0 - 0.2) + (pick == 12) * 1.2 + (pick == 13) * 0.45 + (pick == 14) * 1.15 * sin(abstime * 0.33);\nlens = (pick == 0) * 55 + (pick == 1) * 48 + (pick == 2) * 68 + (pick == 3) * 40 + (pick == 4) * 60 + (pick == 5) * 34 + (pick == 6) * 52 + (pick == 7) * 24 + (pick == 8) * 64 + (pick == 9) * 40 + (pick == 10) * 74 + (pick == 11) * 44 + (pick == 12) * 50 + (pick == 13) * 26 + (pick == 14) * 48;\naim = (pick == 0) * 3.3 + (pick == 1) * 0.3 + (pick == 2) * 0.3 + (pick == 3) * 0.3 + (pick == 4) * 0.3 + (pick == 5) * 0.7 + (pick == 6) * 8 + (pick == 7) * 0.85 + (pick == 8) * 0.2 + (pick == 9) * -1.4 + (pick == 10) * 0 + (pick == 11) * -2.1 + (pick == 12) * -1 + (pick == 13) * -2.6 + (pick == 14) * -2;\nride = (pick == 0) * 0 + (pick == 1) * 0 + (pick == 2) * 0 + (pick == 3) * 0 + (pick == 4) * 0.5 + (pick == 5) * 0.85 + (pick == 6) * 1 + (pick == 7) * 1 + (pick == 8) * 0.6 + (pick == 9) * 1 + (pick == 10) * 1 + (pick == 11) * 1 + (pick == 12) * 1 + (pick == 13) * 1 + (pick == 14) * 1;\nz = value + ahead"
         },
         "position": {
           "x": -1800,
           "y": -600
+        },
+        "type": "valueExpression"
+      },
+      "expression_swimming": {
+        "definitionVersion": 1,
+        "id": "expression_swimming",
+        "label": "expression_swimming",
+        "parameters": {
+          "defaults": "value = 0",
+          "expressions": "swim = value"
+        },
+        "position": {
+          "x": -900,
+          "y": 725
         },
         "type": "valueExpression"
       },
@@ -4647,9 +4684,9 @@
         "id": "slider_shot",
         "label": "slider_shot",
         "parameters": {
-          "caption": "Shot (chase, lead, flank, post, circle, face, shoulder, eye, under)",
+          "caption": "Shot (chase, lead, flank, post, circle, face, shoulder, eye, under, tail, wake, tailside, tailtop, tips, tailround)",
           "channel": "shot",
-          "max": 8,
+          "max": 14,
           "min": 0,
           "step": 1,
           "value": 0
@@ -5150,7 +5187,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(((op('expression_camera').chan.ahead - 0.4) * (op('expression_camera').chan.ahead - 0.4) + op('expression_camera').chan.right * op('expression_camera').chan.right + op('expression_camera').chan.up * op('expression_camera').chan.up) ^ 0.5, 0.6)"
+                "source": "max(((op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) * (op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) + op('expression_camera').chan.right * op('expression_camera').chan.right + op('expression_camera').chan.up * op('expression_camera').chan.up) ^ 0.5, 0.6)"
               },
               "static": {
                 "kind": "static",

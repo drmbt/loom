@@ -418,6 +418,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("constant_winding", "constant", [-900, 1100], { value: expressionSlot(`${SPIRAL} * op('lag_rate').chan.value / 16`, 0) }, { label: "constant_winding" }),
     node("speed_winding", "valueSpeed", [-600, 1100], { minimum: 0, maximum: 1, limit: "loop" }, { label: "speed_winding" }),
     node("lag_swim", "valueLag", [-1200, 725], { lag: 0.8, releaseRatio: 1.5 }, { label: "lag_swim" }),
+    // The same number under a name of its own, for the camera: an Expression node reads its wires into one
+    // bag by channel name, and the distance travelled is already `value` there.
+    node("expression_swimming", "valueExpression", [-900, 725], { expressions: "swim = value", defaults: "value = 0" }, { label: "expression_swimming" }),
     // The long view: the passage's loudness ranked against the last minute's, eased.
     node("normalize_intensity", "valueNormalize", [-2100, 850], { window: 60 }, { label: "normalize_intensity" }),
     node("lag_intensity", "valueLag", [-1800, 850], { lag: 2, releaseRatio: 1 }, { label: "lag_intensity" }),
@@ -603,7 +606,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("wgsl_focus", "customWgslMulti", [-750, 0], {
       source: DOF_WGSL,
       ...lens,
-      focusDistance: expressionSlot(`max(((${RIG("ahead")} - 0.4) * (${RIG("ahead")} - 0.4) + ${RIG("right")} * ${RIG("right")} + ${RIG("up")} * ${RIG("up")}) ^ 0.5, 0.6)`, 7.5),
+      // On the robot's face, or on the tail when that is what the shot looks at.
+      focusDistance: expressionSlot(`max(((${RIG("ahead")} - min(${RIG("aim")}, 0.4)) * (${RIG("ahead")} - min(${RIG("aim")}, 0.4)) + ${RIG("right")} * ${RIG("right")} + ${RIG("up")} * ${RIG("up")}) ^ 0.5, 0.6)`, 7.5),
       aperture: expressionSlot(`${on("slider_focus")} * 55 / ${RIG("lens")}`, 0.5),
       maxRadius: 14,
     }, { label: "wgsl_focus", resolution: { mode: "project" } }),
@@ -651,7 +655,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("perch-ease", ["constant_perch", "out"], ["lag_perched", "in"]),
     edge("stroke-rate", ["constant_stroke", "out"], ["speed_stroke", "in"]),
     // What the camera rig reads: how far the robot has come, the track's bars, and the panel.
-    ...["speed_travel", "audiofile_track", "slider_shot", "toggle_cuts", "slider_distance", "xypad_view"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
+    ...["speed_travel", "audiofile_track", "slider_shot", "toggle_cuts", "slider_distance", "xypad_view", "expression_swimming"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
+    edge("swim-named", ["lag_swim", "out"], ["expression_swimming", "in"]),
     ...pieces.flatMap((piece) => [
       edge(`${piece.role}-shape`, [`mesh_${piece.role}`, "out"], [`geometry_${piece.role}`, "mesh"]),
       edge(`${piece.role}-points`, [`kernel_${piece.role}`, "out"], [`geometry_${piece.role}`, "points"]),

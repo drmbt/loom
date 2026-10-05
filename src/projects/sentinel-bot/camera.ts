@@ -1,5 +1,5 @@
 /**
- * T1561b — THE CAMERA: nine ways of watching a robot in a tunnel, and what picks between them.
+ * T1561b — THE CAMERA: fifteen ways of watching a robot in a tunnel, and what picks between them.
  *
  * A shot is where the camera rides relative to the robot (metres ahead, right and up of the
  * tunnel's axis at that distance), its lens, how far ahead of the robot it looks, and how much
@@ -8,9 +8,16 @@
  * is a CUT: the pick is an integer and nothing blends through a wall.
  *
  * Wide ones and close ones (the owner, 2026-10-05: "being right in front of it … over the
- * shoulder, more close ups"); with Cuts on they alternate, a new one every two bars of the
- * track. Off, the Shot slider holds one. Every shot keeps inside the bore and above the deck:
- * the test evaluates these statements.
+ * shoulder, more close ups"), and six of the TAIL: the tentacles it trails and their lights,
+ * close (2026-10-06: "i do love some of the tail light shots when in squid mode … more angles
+ * like this to choose from and step through that show the wiggly set of tentacles with its
+ * lights in interesting angles closer up").
+ *
+ * With Cuts on a new shot comes every two bars of the track, from one of two orders: walking,
+ * the nine shots of the robot, a wide one and a close one taking turns; swimming, the tail
+ * shots with a few of the others between. It cuts when the robot lets go of the wall or takes
+ * hold of it, too. Off, the Shot slider holds one, and steps through all fifteen. Every shot
+ * keeps inside the bore and above the deck: the test evaluates these statements.
  */
 
 interface Shot {
@@ -22,7 +29,7 @@ interface Shot {
   readonly up: string;
   /** Field of view, degrees. */
   readonly lens: number;
-  /** Metres ahead of the robot's middle that it looks at. */
+  /** Metres ahead of the robot's middle that it looks at. Under zero it looks at the tail. */
   readonly aim: number;
   /** 0 to 1: how much the camera itself goes with a robot that is adrift. A close shot must, or it loses it. */
   readonly ride: number;
@@ -38,32 +45,51 @@ export const SHOT_TABLE: readonly Shot[] = [
   { name: "shoulder", what: "over its shoulder, down the tunnel it is going into", ahead: "(0 - 1.7)", right: "0.8", up: "0.75", lens: 52, aim: 8, ride: 1 },
   { name: "eye", what: "a long lens on the lenses, three-quarter on", ahead: "1.75", right: "0.7", up: "0.3", lens: 24, aim: 0.85, ride: 1 },
   { name: "under", what: "from the deck, looking up at its belly as the tentacles work overhead", ahead: "0.9", right: "0.35", up: "(0 - 1.45)", lens: 64, aim: 0.2, ride: 0.6 },
+  // ── The tail: what it trails, and the lights along it ──
+  { name: "tail", what: "behind the ends of the tentacles, looking up the bundle to the body", ahead: "(0 - 4.4)", right: "0.5", up: "0.3", lens: 40, aim: -1.4, ride: 1 },
+  { name: "wake", what: "in among the ends, wide: the tentacles stream past the lens toward the body", ahead: "(0 - 3.5)", right: "0.12 * sin(abstime * 0.21)", up: "0.1", lens: 74, aim: 0, ride: 1 },
+  { name: "tailside", what: "close beside the bundle, across it: the lit segments go by", ahead: "(0 - 2.2)", right: "1.05", up: "(0 - 0.2)", lens: 44, aim: -2.1, ride: 1 },
+  { name: "tailtop", what: "over the bundle, looking down it and forward", ahead: "(0 - 3)", right: "0.2", up: "1.2", lens: 50, aim: -1, ride: 1 },
+  { name: "tips", what: "a long lens from well behind: the ends large, the body small beyond them", ahead: "(0 - 6.8)", right: "0.8 * sin(abstime * 0.13)", up: "0.45", lens: 26, aim: -2.6, ride: 1 },
+  { name: "tailround", what: "slowly round the bundle, an arm's length off it", ahead: "(0 - 2.1 + 0.7 * sin(abstime * 0.19))", right: "1.15 * cos(abstime * 0.33)", up: "1.15 * sin(abstime * 0.33)", lens: 48, aim: -2, ride: 1 },
 ];
 
 export const SHOTS: readonly string[] = SHOT_TABLE.map((shot) => shot.name);
 
-/** Cutting, the shots come in this stride through the table, so a wide one and a close one take turns. */
-const CUT_STRIDE = 4;
-if (SHOT_TABLE.length % 2 === 0 || SHOT_TABLE.length % CUT_STRIDE === 0) throw new Error("camera.ts: the cut stride must not share a factor with the number of shots, or some are never cut to.");
+const index = (name: string): number => {
+  const at = SHOT_TABLE.findIndex((shot) => shot.name === name);
+  if (at < 0) throw new Error(`camera.ts: no shot "${name}".`);
+  return at;
+};
+
+/** The order shots are cut to while it walks: the nine of the robot, a wide one and a close one taking turns. */
+export const WALKING_ORDER: readonly number[] = ["chase", "circle", "under", "post", "eye", "flank", "shoulder", "lead", "face"].map(index);
+/** …and while it swims: every tail shot, with four of the others between so the tail is not all there is. */
+export const SWIMMING_ORDER: readonly number[] = ["tail", "chase", "tailside", "tips", "lead", "wake", "circle", "tailtop", "tailround", "flank"].map(index);
 
 /** The shot cut to on the `turn`-th pair of bars. */
-export function shotAtTurn(turn: number): number {
-  return (((turn * CUT_STRIDE) % SHOT_TABLE.length) + SHOT_TABLE.length) % SHOT_TABLE.length;
+export function shotAtTurn(turn: number, swimming = false): number {
+  const order = swimming ? SWIMMING_ORDER : WALKING_ORDER;
+  return order[((turn % order.length) + order.length) % order.length] as number;
 }
 
 /** Metres between the stations the post shot plants on. */
 const POST_SPACING = 25.6;
 
-const picked = (value: (shot: Shot) => string | number): string => SHOT_TABLE.map((shot, index) => `(pick == ${index}) * ${value(shot)}`).join(" + ");
+const picked = (value: (shot: Shot) => string | number): string => SHOT_TABLE.map((shot, at) => `(pick == ${at}) * ${value(shot)}`).join(" + ");
+/** Entry `place` of an order, as an expression: there is no table to look up in, so it is a sum with one live term. */
+const ordered = (order: readonly number[], place: string): string => `(${order.map((shot, at) => `(${place} == ${at}) * ${shot}`).join(" + ")})`;
+const turnIn = (order: readonly number[]): string => `(turn - ${order.length} * floor(turn / ${order.length}))`;
 
 /**
- * Reads, by wire: `value` (distance travelled), `bar` (the track's bar count), `shot`, `cuts`,
- * `distance`, `viewX`, `viewY` (the panel). Writes `pick`, `ahead`, `right`, `up`, `lens`,
- * `aim`, `ride`, `z`.
+ * Reads, by wire: `value` (distance travelled), `bar` (the track's bar count), `swim` (how
+ * much it is swimming), `shot`, `cuts`, `distance`, `viewX`, `viewY` (the panel). Writes
+ * `pick`, `ahead`, `right`, `up`, `lens`, `aim`, `ride`, `z`.
  */
 export const CAMERA_STATEMENTS = [
-  `turn = floor(bar / 2) * ${CUT_STRIDE}`,
-  `pick = (cuts > 0.5) * (turn - ${SHOT_TABLE.length} * floor(turn / ${SHOT_TABLE.length})) + (cuts <= 0.5) * floor(shot + 0.5)`,
+  `turn = floor(bar / 2)`,
+  `cut = (swim > 0.5) * ${ordered(SWIMMING_ORDER, turnIn(SWIMMING_ORDER))} + (swim <= 0.5) * ${ordered(WALKING_ORDER, turnIn(WALKING_ORDER))}`,
+  `pick = (cuts > 0.5) * cut + (cuts <= 0.5) * floor(shot + 0.5)`,
   `post = (floor(value / ${POST_SPACING}) + 0.5) * ${POST_SPACING}`,
   `ahead = ${picked((shot) => shot.ahead)}`,
   `right = ${picked((shot) => shot.right)}`,
@@ -75,4 +101,4 @@ export const CAMERA_STATEMENTS = [
 ].join(";\n");
 
 /** What a channel reads before anything is wired or playing: a silent host cuts on the clock instead of the bar. */
-export const CAMERA_DEFAULTS = ["bar = floor(abstime / 4)", "value = 0", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6"].join(";\n");
+export const CAMERA_DEFAULTS = ["bar = floor(abstime / 4)", "value = 0", "swim = 0", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6"].join(";\n");
