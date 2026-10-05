@@ -169,7 +169,7 @@ export const pointCurveNode: NodeDefinition = {
   title: "Curve",
   category: "points",
   description:
-    "Turns control points into a curve: Segments points per span, as a strip. Wire a pointset to Control (each of its strips is one curve's control points), or leave it unwired and type the points into the node. Catmull-Rom, Cardinal, B-Spline and Bezier are splines, whose length is whatever the points make it. Arc is one arc of constant curvature per span with a GIVEN length, bowing to the Bow side — for a tentacle, a cable or a spine, which must not stretch; a bow direction that sweeps through the chord flips the arc's side in one frame. Follow it with Resample and Curve Frames.",
+    "Turns control points into a curve: Segments points per span, as a strip. Wire a pointset to Control (each of its strips is one curve's control points), or leave it unwired and type the points into the node. Linear joins them with straight segments. Catmull-Rom, Cardinal, B-Spline and Bezier are splines, whose length is whatever the points make it. Arc is one arc of constant curvature per span with a GIVEN length, bowing to the Bow side — for a tentacle, a cable or a spine, which must not stretch; a bow direction that sweeps through the chord flips the arc's side in one frame. Follow it with Resample and Curve Frames.",
   tags: ["points", "curve", "spline", "strips", "bezier", "catmull-rom", "b-spline", "arc", "line", "path", "interpolate"],
   inputs: [
     {

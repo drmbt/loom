@@ -118,6 +118,8 @@ const BOUNDED_DEGREES: Readonly<Record<string, string>> = {
   "crtTube.fov": "the projection matrix is singular at 0° and at 180°",
   "crtTube.pitch": "±80° off the face's normal: at 90° the camera sees the glass edge-on and the tube vanishes",
   "crtTube.yaw": "same as pitch: past ±80° the glass is edge-on, never a wrap",
+  "pointCurve.maxTurn":
+    "a cap on how far ONE arc may turn: 360° is a full circle, the most a single constant-curvature span can be, never a wrap",
   "pointCurveFrames.twist":
     "a twist is spread ALONG the strip from its start to its end: 720° is two turns of the frame, not the same as 0°",
 };
