@@ -225,14 +225,15 @@ export interface ProjectorLens {
  * screen produces: a shear INTO THE W ROW, so one side of the image genuinely scales
  * against the other rather than merely sliding.
  */
-export function projectorMatrix(
-  pose: {
-    readonly eye: readonly [number, number, number];
-    readonly lookAt: readonly [number, number, number];
-    readonly roll?: number;
-  },
-  lens: ProjectorLens,
-): Mat4 {
+/**
+ * The projector frustum's near and far planes, from the throw distance (|eye − lookAt|):
+ * near at 2% of it, far at 8×. One function, because the lit read linearises the depth
+ * map with the same two numbers the matrix was built from (VNB11).
+ */
+export function projectorDepthRange(pose: {
+  readonly eye: readonly [number, number, number];
+  readonly lookAt: readonly [number, number, number];
+}): { readonly near: number; readonly far: number } {
   const distance = Math.max(
     0.05,
     Math.hypot(
@@ -241,8 +242,18 @@ export function projectorMatrix(
       pose.lookAt[2] - pose.eye[2],
     ),
   );
-  const near = Math.max(0.01, distance * 0.02);
-  const far = distance * 8;
+  return { near: Math.max(0.01, distance * 0.02), far: distance * 8 };
+}
+
+export function projectorMatrix(
+  pose: {
+    readonly eye: readonly [number, number, number];
+    readonly lookAt: readonly [number, number, number];
+    readonly roll?: number;
+  },
+  lens: ProjectorLens,
+): Mat4 {
+  const { near, far } = projectorDepthRange(pose);
   const tanHalfX = 0.5 / Math.max(lens.throwRatio, 0.05);
   const tanHalfY = tanHalfX / Math.max(lens.aspect, 0.05);
 
@@ -266,6 +277,13 @@ export function projectorMatrix(
   if (kH !== 0 || kV !== 0) {
     projection[3] = kH * (projection[0] ?? 0);
     projection[7] = kV * (projection[5] ?? 0);
+    // VNB10: the depth row takes the SAME shear, so depth stays the usual perspective depth
+    // of the sheared w (z_ndc = −m10 + m14 / w). Without it the w-row shear divided an
+    // unsheared z: on the image's narrow side z_ndc passed 1 within a metre of the lens, the
+    // depth range test dropped that half of the image from the lit draw and its depth sweep,
+    // and the beam a matching volumetric drew there landed on nothing.
+    projection[2] = -(projection[10] ?? 0) * (projection[3] ?? 0);
+    projection[6] = -(projection[10] ?? 0) * (projection[7] ?? 0);
   }
 
   const up = guardedRolledUp(pose.eye, pose.lookAt, pose.roll ?? 0);

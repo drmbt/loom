@@ -6,7 +6,7 @@ import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
 import type { CameraPayload, GeometryPayload, LightPayload, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
-import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, projectorMatrix } from "../../domain/geometry/camera.ts";
+import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, projectorDepthRange, projectorMatrix } from "../../domain/geometry/camera.ts";
 import { gridCellCounts, gridPointCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
@@ -45,6 +45,25 @@ import {
   envPrefilterLevelWgsl,
 } from "../shaders/scene-render.wgsl.ts";
 import { aoBlurWgsl, aoResolveWgsl, aoSampleCount } from "../shaders/scene-ao.wgsl.ts";
+
+/**
+ * VNB11 — what a projector's lit read needs to compare DEPTHS rather than fragment-z: the
+ * frustum's near and far (the matrix's own, `projectorDepthRange`), and the image's angular
+ * width as 2·tan(half) — widened for keystone, whose wide side reaches past the native image
+ * by up to 1 / (1 − tan k) — so the bias can be the depth map's texel footprint.
+ */
+function projectorOcclusionMeta(proj: {
+  readonly eye: readonly [number, number, number];
+  readonly lookAt: readonly [number, number, number];
+  readonly throwRatio: number;
+  readonly keystoneH: number;
+  readonly keystoneV: number;
+}): [number, number, number] {
+  const { near, far } = projectorDepthRange(proj);
+  const tanOf = (degrees: number): number => Math.abs(Math.tan((degrees * Math.PI) / 180));
+  const narrowest = Math.max(0.25, 1 - tanOf(proj.keystoneH) - tanOf(proj.keystoneV));
+  return [near, far, 1 / Math.max(proj.throwRatio, 0.05) / narrowest];
+}
 
 /**
  * T624 — the two AO constants that are NOT knobs. The bias is the slope threshold that
@@ -1989,7 +2008,7 @@ export const renderNode: NodeDefinition = {
           [`projector${index}Matrix`, Array.from(projectorMatrices[index] ?? [])],
           [`projector${index}Pos`, [proj.eye[0], proj.eye[1], proj.eye[2], proj.brightness]],
           [`projector${index}Color`, [proj.color[0], proj.color[1], proj.color[2], proj.falloff ? 1 : 0]],
-          [`projector${index}Meta`, [nominal, 0, 0, 0]],
+          [`projector${index}Meta`, [nominal, ...projectorOcclusionMeta(proj)]],
         ] as Array<[string, number[]]>;
       }),
     );
