@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { parsePresetBank } from "../../domain/presets/bank.ts";
+import { parseCueList } from "../../domain/presets/cue-list.ts";
 import { presetSession } from "../../domain/presets/test-support.ts";
 import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import { panelBoard } from "../../nodes/definitions/controls.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
+import { SHOTS } from "./camera.ts";
 import { sentinelDocument } from "./document.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
@@ -111,6 +113,50 @@ describe("the sentinel's panels", () => {
       }
     }
     expect(storedStaticValue(named(graph, "panel_all").parameters["remote"])).toBe(false);
+  });
+
+  it("a scene is one press: the place, the shot and what the pack is doing, held with both autos off; `show` gives it back; and GO steps through them in order", async () => {
+    // The owner, 2026-10-06: "scene presets" stepping "through camera and sentinel positionings", and "a button that
+    // turns off the audio reactive or programmed camera director so that we can actually manually drive this".
+    const graph = built();
+    const bank = named(graph, "presets_scenes");
+    const scenes = readPresetBank(bank).presets.map((preset) => preset.name);
+    expect(scenes).toEqual(["show", "walk", "eyes", "strike", "swim", "fields", "stand", "dock", "temple"]);
+    const read = (from: GraphDocument, name: string, key: string): unknown => storedStaticValue(named(from, name).parameters[key]);
+    /** What a scene decides, read off the controls after its press. */
+    const after = async (scene: string): Promise<Record<string, unknown>> => {
+      const session = presetSession(moved(built()), registry);
+      await session.recall(named(session.graph(), "presets_scenes").id, scene);
+      const now = session.graph();
+      return { follow: read(now, "toggle_follow", "on"), cuts: read(now, "toggle_cuts", "on"), place: read(now, "slider_fields", "value"), shot: SHOTS[read(now, "slider_shot", "value") as number], pack: read(now, "slider_pack", "value"), perch: read(now, "toggle_perch", "on"), attack: read(now, "slider_attack", "value"), search: read(now, "slider_search", "value") };
+    };
+    // Every scene but `show` holds: Auto direction and Auto camera off, so nothing moves it on.
+    for (const scene of scenes.filter((name) => name !== "show")) expect([scene, (await after(scene))["follow"], (await after(scene))["cuts"]]).toEqual([scene, false, false]);
+    expect(await after("show")).toMatchObject({ follow: true, cuts: true, place: 0, pack: 1, perch: false, attack: 0 });
+    // Each of the four places has one, on a shot of that place, and the open places have the pack out.
+    expect(await after("walk")).toMatchObject({ place: 0, shot: "chase", pack: 1 });
+    expect(await after("eyes")).toMatchObject({ place: 0, shot: "eye", perch: true });
+    expect(await after("fields")).toMatchObject({ place: 1, shot: "fieldfront", pack: 3, search: 1 });
+    expect(await after("stand")).toMatchObject({ place: 1, shot: "fieldhigh", pack: 3, perch: true, attack: 1 });
+    expect(await after("dock")).toMatchObject({ place: 2, shot: "fieldside", pack: 3 });
+    expect(await after("temple")).toMatchObject({ place: 3, shot: "fieldlow", pack: 3 });
+    // A press touches nothing a scene does not decide: a light's colour moved before it is as it was moved.
+    const session = presetSession(moved(built()), registry);
+    const hue = read(session.graph(), "slider_huefrom", "value");
+    await session.recall(named(session.graph(), "presets_scenes").id, "dock");
+    expect(read(session.graph(), "slider_huefrom", "value")).toBe(hue);
+    // The Cue List steps through the same scenes in the bank's own order, each cue a scene of that bank, and goes round.
+    const list = parseCueList(storedStaticValue(named(graph, "cuelist_scenes").parameters["cues"]) as string);
+    if (!list.ok) throw new Error("the scenes' cue list does not read");
+    expect(list.list.cues.map((cue) => [cue.name, cue.bank, cue.preset])).toEqual(scenes.map((scene) => [scene, "presets_scenes", scene]));
+    expect(storedStaticValue(named(graph, "cuelist_scenes").parameters["wrap"])).toBe(true);
+    // A cue's note fits the phone's one line.
+    for (const cue of list.list.cues) expect([cue.name, (cue.note ?? "").length <= 30 && (cue.note ?? "").length > 0]).toEqual([cue.name, true]);
+    // Both are on a panel of their own, on the phone, whose name is not the Scene panel's with a letter added.
+    const board = panelBoard(graph, named(graph, "panel_scenes"));
+    expect((board?.items ?? []).flatMap((item) => (item.kind === "widget" ? [item.node.label as string] : [])).sort()).toEqual(["cuelist_scenes", "presets_scenes"]);
+    expect(storedStaticValue(named(graph, "panel_scenes").parameters["remote"])).toBe(true);
+    expect(storedStaticValue(named(graph, "panel_scenes").parameters["title"])).toBe("Presets");
   });
 
   it("a panel's reset puts every control of that panel back to what the file ships and leaves the other panels as they were moved; the reset for everything puts back all three", async () => {

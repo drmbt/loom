@@ -3124,6 +3124,20 @@
         },
         "type": "valueCount"
       },
+      "cuelist_scenes": {
+        "definitionVersion": 1,
+        "id": "cuelist_scenes",
+        "label": "cuelist_scenes",
+        "parameters": {
+          "cues": "{\n  \"version\": 1,\n  \"cues\": [\n    {\n      \"name\": \"show\",\n      \"bank\": \"presets_scenes\",\n      \"preset\": \"show\",\n      \"note\": \"the show runs itself\"\n    },\n    {\n      \"name\": \"walk\",\n      \"bank\": \"presets_scenes\",\n      \"preset\": \"walk\",\n      \"note\": \"tunnel: walking, from behind\"\n    },\n    {\n      \"name\": \"eyes\",\n      \"bank\": \"presets_scenes\",\n      \"preset\": \"eyes\",\n      \"note\": \"tunnel: perched, on the face\"\n    },\n    {\n      \"name\": \"strike\",\n      \"bank\": \"presets_scenes\",\n      \"preset\": \"strike\",\n      \"note\": \"tunnel: attacking\"\n    },\n    {\n      \"name\": \"swim\",\n      \"bank\": \"presets_scenes\",\n      \"preset\": \"swim\",\n      \"note\": \"tunnel: the pack, fast\"\n    },\n    {\n      \"name\": \"fields\",\n      \"bank\": \"presets_scenes\",\n      \"preset\": \"fields\",\n      \"note\": \"fields: pack, searchlights\"\n    },\n    {\n      \"name\": \"stand\",\n      \"bank\": \"presets_scenes\",\n      \"preset\": \"stand\",\n      \"note\": \"fields: stopped, attacking\"\n    },\n    {\n      \"name\": \"dock\",\n      \"bank\": \"presets_scenes\",\n      \"preset\": \"dock\",\n      \"note\": \"dock: pack, from abreast\"\n    },\n    {\n      \"name\": \"temple\",\n      \"bank\": \"presets_scenes\",\n      \"preset\": \"temple\",\n      \"note\": \"temple: pack among fires\"\n    }\n  ]\n}\n",
+          "wrap": true
+        },
+        "position": {
+          "x": -1200,
+          "y": 4000
+        },
+        "type": "cueList"
+      },
       "expression_busy": {
         "definitionVersion": 1,
         "id": "expression_busy",
@@ -8547,6 +8561,21 @@
         },
         "type": "panel"
       },
+      "panel_scenes": {
+        "definitionVersion": 1,
+        "id": "panel_scenes",
+        "label": "panel_scenes",
+        "parameters": {
+          "board": "{\n  \"columns\": 9,\n  \"items\": [\n    {\"label\":\"Scene presets\",\"rect\":{\"x\":0,\"y\":0,\"w\":9,\"h\":1}},\n    {\"member\":\"cuelist_scenes\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":2}},\n    {\"member\":\"presets_scenes\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":5}}\n  ]\n}",
+          "remote": true,
+          "title": "Presets"
+        },
+        "position": {
+          "x": -1200,
+          "y": 3500
+        },
+        "type": "panel"
+      },
       "presets_all": {
         "definitionVersion": 1,
         "id": "presets_all",
@@ -8599,6 +8628,20 @@
         },
         "position": {
           "x": -2100,
+          "y": 3750
+        },
+        "type": "presets"
+      },
+      "presets_scenes": {
+        "definitionVersion": 1,
+        "id": "presets_scenes",
+        "label": "presets_scenes",
+        "parameters": {
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"show\",\n      \"values\": {\n        \"toggle_follow\": {\n          \"on\": true\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_search\": {\n          \"value\": 0\n        }\n      }\n    },\n    {\n      \"name\": \"walk\",\n      \"values\": {\n        \"toggle_follow\": {\n          \"on\": false\n        },\n        \"toggle_cuts\": {\n          \"on\": false\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_search\": {\n          \"value\": 0\n        }\n      }\n    },\n    {\n      \"name\": \"eyes\",\n      \"values\": {\n        \"toggle_follow\": {\n          \"on\": false\n        },\n        \"toggle_cuts\": {\n          \"on\": false\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 7\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"toggle_perch\": {\n          \"on\": true\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_search\": {\n          \"value\": 0\n        }\n      }\n    },\n    {\n      \"name\": \"strike\",\n      \"values\": {\n        \"toggle_follow\": {\n          \"on\": false\n        },\n        \"toggle_cuts\": {\n          \"on\": false\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 5\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"slider_attack\": {\n          \"value\": 1\n        },\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_search\": {\n          \"value\": 0\n        }\n      }\n    },\n    {\n      \"name\": \"swim\",\n      \"values\": {\n        \"toggle_follow\": {\n          \"on\": false\n        },\n        \"toggle_cuts\": {\n          \"on\": false\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 17\n        },\n        \"slider_pack\": {\n          \"value\": 3\n        },\n        \"slider_swim\": {\n          \"value\": 1\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_speed\": {\n          \"value\": 7\n        },\n        \"slider_search\": {\n          \"value\": 0\n        }\n      }\n    },\n    {\n      \"name\": \"fields\",\n      \"values\": {\n        \"toggle_follow\": {\n          \"on\": false\n        },\n        \"toggle_cuts\": {\n          \"on\": false\n        },\n        \"slider_fields\": {\n          \"value\": 1\n        },\n        \"slider_shot\": {\n          \"value\": 19\n        },\n        \"slider_pack\": {\n          \"value\": 3\n        },\n        \"slider_swim\": {\n          \"value\": 1\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_search\": {\n          \"value\": 1\n        }\n      }\n    },\n    {\n      \"name\": \"stand\",\n      \"values\": {\n        \"toggle_follow\": {\n          \"on\": false\n        },\n        \"toggle_cuts\": {\n          \"on\": false\n        },\n        \"slider_fields\": {\n          \"value\": 1\n        },\n        \"slider_shot\": {\n          \"value\": 22\n        },\n        \"slider_pack\": {\n          \"value\": 3\n        },\n        \"slider_swim\": {\n          \"value\": 1\n        },\n        \"toggle_perch\": {\n          \"on\": true\n        },\n        \"slider_attack\": {\n          \"value\": 1\n        },\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_search\": {\n          \"value\": 0\n        }\n      }\n    },\n    {\n      \"name\": \"dock\",\n      \"values\": {\n        \"toggle_follow\": {\n          \"on\": false\n        },\n        \"toggle_cuts\": {\n          \"on\": false\n        },\n        \"slider_fields\": {\n          \"value\": 2\n        },\n        \"slider_shot\": {\n          \"value\": 20\n        },\n        \"slider_pack\": {\n          \"value\": 3\n        },\n        \"slider_swim\": {\n          \"value\": 1\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_speed\": {\n          \"value\": 5\n        },\n        \"slider_search\": {\n          \"value\": 0\n        }\n      }\n    },\n    {\n      \"name\": \"temple\",\n      \"values\": {\n        \"toggle_follow\": {\n          \"on\": false\n        },\n        \"toggle_cuts\": {\n          \"on\": false\n        },\n        \"slider_fields\": {\n          \"value\": 3\n        },\n        \"slider_shot\": {\n          \"value\": 21\n        },\n        \"slider_pack\": {\n          \"value\": 3\n        },\n        \"slider_swim\": {\n          \"value\": 1\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_search\": {\n          \"value\": 1\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "toggle_follow.on toggle_cuts.on slider_fields.value slider_shot.value slider_pack.value slider_swim.value toggle_perch.on slider_attack.value slider_speed.value slider_search.value"
+        },
+        "position": {
+          "x": -1200,
           "y": 3750
         },
         "type": "presets"

@@ -8,6 +8,7 @@ import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { serializePresetBank } from "../../domain/presets/bank.ts";
+import { serializeCueList } from "../../domain/presets/cue-list.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, CUT_DEFAULTS, SHOTS, cutStatements } from "./camera.ts";
 import { BEAM_CAPACITY, BEAM_KERNEL, BEAM_LIGHT_KERNEL, BEAM_SURFACE_WGSL, BRIDGE_CAPACITY, BRIDGE_KERNEL, BRIDGE_SURFACE_WGSL, DOCK, DOCK_LAMPS, DOCK_LAMP_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK_STRIP_ATTRIBUTES, HALL_ATTRIBUTES, HALL_CAPACITY, HALL_KERNEL, HALL_SURFACE_WGSL } from "./dock.ts";
 import { BOLT_ATTRIBUTES, BOLT_CAPACITY, BOLT_KERNEL, BOLT_SURFACE_WGSL, FIELD, FIELD_ATTRIBUTES, STRIKE_ATTRIBUTES, STRIKE_KERNEL, TOWER_CAPACITY, TOWER_KERNEL, TOWER_SURFACE_WGSL, TRUNK_TOWERS } from "./field.ts";
@@ -721,6 +722,59 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node(bankOf("all"), "presets", [-1500, 3750], { targets: targetsOf(savedAll), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf("all"), values: savedAll }] }) }, { label: bankOf("all") }),
   ];
 
+  /**
+   * SCENES: the piece put somewhere and held there, at one press. The owner, 2026-10-06: "expose a camera position,
+   * camera preset selector, or scene presets" that step "through camera and sentinel positionings", and "a button
+   * that turns off the audio reactive or programmed camera director so that we can actually manually drive this …
+   * manually puppeteer the robot and the cameras".
+   *
+   * A scene is a preset of a Presets bank: the place, the shot, how many of the pack are out and what they are
+   * doing, with Auto direction and Auto camera OFF so that it stays put (the track still plays in the lights).
+   * `show` gives it back to the show. The bank is a strip of buttons named as the scenes are, on a panel of its
+   * own, on the desk and on the phone; and a Cue List over the same scenes steps through them with GO and BACK
+   * (the engine's own, which also answers the GO and BACK keys). A cue's note is short: the phone shows it on
+   * one line beside the cue, some thirty letters of it.
+   */
+  const shot = (name: string): number => {
+    const at = SHOTS.indexOf(name);
+    if (at < 0) throw new Error(`sentinelDocument: no shot named ${name} for a scene`);
+    return at;
+  };
+  const held = { toggle_follow: { on: false }, toggle_cuts: { on: false } };
+  const scene = (place: number, shotName: string, robot: { pack?: number; swim?: number; perch?: boolean; attack?: number; speed?: number; search?: number } = {}): Record<string, Record<string, number | boolean>> => ({
+    ...held,
+    slider_fields: { value: place },
+    slider_shot: { value: shot(shotName) },
+    slider_pack: { value: Math.min(robot.pack ?? 1, robots.length) },
+    slider_swim: { value: robot.swim ?? 0 },
+    toggle_perch: { on: robot.perch ?? false },
+    slider_attack: { value: robot.attack ?? 0 },
+    slider_speed: { value: robot.speed ?? 3.2 },
+    slider_search: { value: robot.search ?? 0 },
+  });
+  const SCENES: ReadonlyArray<{ name: string; note: string; values: Record<string, Record<string, number | boolean>> }> = [
+    { name: "show", note: "the show runs itself", values: { ...scene(0, "chase"), toggle_follow: { on: true }, toggle_cuts: { on: true } } },
+    { name: "walk", note: "tunnel: walking, from behind", values: scene(0, "chase") },
+    { name: "eyes", note: "tunnel: perched, on the face", values: scene(0, "eye", { perch: true }) },
+    { name: "strike", note: "tunnel: attacking", values: scene(0, "face", { attack: 1 }) },
+    { name: "swim", note: "tunnel: the pack, fast", values: scene(0, "packrear", { pack: 3, swim: 1, speed: 7 }) },
+    { name: "fields", note: "fields: pack, searchlights", values: scene(1, "fieldfront", { pack: 3, swim: 1, search: 1 }) },
+    { name: "stand", note: "fields: stopped, attacking", values: scene(1, "fieldhigh", { pack: 3, swim: 1, perch: true, attack: 1 }) },
+    { name: "dock", note: "dock: pack, from abreast", values: scene(2, "fieldside", { pack: 3, swim: 1, speed: 5 }) },
+    { name: "temple", note: "temple: pack among fires", values: scene(3, "fieldlow", { pack: 3, swim: 1, search: 1 }) },
+  ];
+  const sceneBank = node(bankOf("scenes"), "presets", [-1200, 3750], { targets: targetsOf(SCENES[1]?.values ?? {}), presets: serializePresetBank({ version: 1, presets: SCENES.map(({ name, values }) => ({ name, values })) }) }, { label: bankOf("scenes") });
+  const sceneList = node("cuelist_scenes", "cueList", [-1200, 4000], { cues: serializeCueList({ version: 1, cues: SCENES.map(({ name, note }) => ({ name, bank: bankOf("scenes"), preset: name, note })) }), wrap: true }, { label: "cuelist_scenes" });
+  const scenesPanel = node("panel_scenes", "panel", [-1200, 3500], {
+    // "Presets" and not "Scenes": the panel beside it is "Scene", and on a phone's tab bar the two are one word.
+    title: "Presets",
+    board: serializePanelBoard({
+      columns: COLUMNS,
+      items: [heading("Scene presets", 0), { member: "cuelist_scenes", rect: { x: 0, y: 1, w: COLUMNS - 1, h: 2 } }, { member: bankOf("scenes"), rect: { x: 0, y: 3, w: COLUMNS - 1, h: Math.ceil((SCENES.length + 1) / 2) } }] as never,
+    }),
+    remote: true,
+  }, { label: "panel_scenes" });
+
   // Every control is on exactly one panel: one left off would be a slider nobody can reach from a phone.
   const placed = panels.flatMap((panel) => panel.members);
   const unplaced = controls.map((control) => control.id).filter((id) => !placed.includes(id));
@@ -1191,6 +1245,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ...banks,
     ...panels.map((panel, index) => node(panel.id, "panel", [-2400 + index * 300, 3500], { title: panel.title, board: panel.board, remote: true }, { label: panel.id })),
     node(everything.id, "panel", [-1500, 3500], { title: everything.title, board: everything.board, remote: false }, { label: everything.id }),
+    sceneBank,
+    sceneList,
+    scenesPanel,
   ];
 
   const edges: GraphEdge[] = [
