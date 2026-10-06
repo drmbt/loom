@@ -67,6 +67,12 @@ export const CompilerDiagnosticCode = {
    * picture is plausible and the simulation is fifty times slower than the number says.
    */
   substepsRefused: "compiler/substeps-refused",
+  /**
+   * B263: a pass's WGSL divides the high half of a 32-bit value by a constant, which Apple
+   * GPUs get wrong. A WARNING on the author's node and line: the code is valid and is right
+   * elsewhere, so nothing is refused and nothing is rewritten (`wgsl-high-half.ts`).
+   */
+  wgslHighHalfDivide: "compiler/wgsl-high-half-divide",
 } as const;
 
 export type CompilerDiagnosticCodeValue =

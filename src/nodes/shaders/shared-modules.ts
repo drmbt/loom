@@ -328,8 +328,44 @@ fn quatSlerp(a: vec4f, b: vec4f, t: f32) -> vec4f {
 }`,
 };
 
+/**
+ * B263 — A LOT IN 0 .. n − 1 FROM A HASH, without a divide.
+ *
+ * The line everyone writes is `hash % n`. On Apple GPUs the remainder (and the quotient) of
+ * the HIGH HALF of a 32-bit value by a constant is wrong: `(h >> 16u) % 97u` returned 63993
+ * where the CPU says 9, in a kernel and in a fragment shader alike, with every shift and
+ * mask around it correct (`docs/apple-gpu-divide-high-half-2026-10-06.md`). The high half is
+ * exactly what a careful author takes from a multiplicative hash, because its low bits are
+ * its worst.
+ *
+ * So the lot is a scale, not a remainder: the high half is a number in 0 .. 65535, times n,
+ * shifted down by 16. One multiply, exact, the same on every device and equal to
+ * `hashLotReference` below to the bit. n may be anything up to 65536; above that the
+ * product leaves 32 bits.
+ *
+ * A module of its own and not three more lines of `hash`: that text is in every shipped
+ * shader that includes the hashes, and adding to it would move every one of them (§V309).
+ * It calls nothing, so it is used after any u32 hash, the author's own included.
+ */
+const LOT_MODULE: SharedWgslModule = {
+  summary: "hashLot(h, n): a lot in 0..n-1 from a u32 hash, exact on every GPU (never hash % n)",
+  source: `fn hashLot(h: u32, n: u32) -> u32 {
+  return ((h >> 16u) * n) >> 16u;
+}`,
+};
+
+/**
+ * The CPU's `hashLot`, bit for bit: what a test, an oracle or a document source computes to
+ * know which lot a shader will draw. `nodes/definitions/hash-lot.gpu.test.ts` holds the two
+ * together on Dawn, in a kernel and in a fragment shader.
+ */
+export function hashLotReference(hash: number, n: number): number {
+  return (Math.imul(hash >>> 16, n) >>> 16) >>> 0;
+}
+
 export const SHARED_WGSL_MODULES: Readonly<Record<string, SharedWgslModule>> = {
   hash: HASH_MODULE,
+  lot: LOT_MODULE,
   grid: GRID_MODULE,
   "surface-detail": SURFACE_DETAIL_MODULE,
   "light-depth": LIGHT_DEPTH_MODULE,

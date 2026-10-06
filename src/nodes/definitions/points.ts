@@ -482,7 +482,7 @@ export const pointKernelNode: NodeDefinition = {
   title: "Point Kernel",
   category: "points",
   description:
-    "Runs a per-point WGSL kernel over a GPU point set every frame. The POP-style custom operator.",
+    "Runs a per-point WGSL kernel over a GPU point set every frame. The POP-style custom operator. For a lot in 0..n-1 from a hash, `// @use lot` and hashLot(h, n): never divide a hash's high half (h >> 16u) by a constant, which Apple GPUs get wrong.",
   tags: ["points", "particles", "compute", "simulation"],
   inputs: [
     {

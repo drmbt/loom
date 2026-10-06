@@ -80,6 +80,7 @@ import { identityMatrix } from "../domain/geometry/transform.ts";
 import type { Mat4 } from "../domain/geometry/camera.ts";
 import { DEFAULT_MATERIAL } from "../domain/types/scene.ts";
 import { applyKernelSteps, applySubstepLoops, planSubstepLoops } from "./substeps.ts";
+import { highHalfDivideWarnings } from "./wgsl-high-half.ts";
 import { isParameterSlot } from "../domain/parameters/slots.ts";
 import { scaleOutputPixels } from "./pixel-scale.ts";
 import { timeProbeFor } from "./time-probe.ts";
@@ -2494,6 +2495,9 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   const candidate: LogicalExecutionPlan = { passes, resources, diagnostics: [] };
   const read = readExecutionPlan(candidate);
   diagnostics.push(...read.diagnostics);
+  // B263: a divide of a high half by a constant is valid WGSL and wrong on Apple GPUs. Said
+  // here, once for every surface an author writes WGSL on, by the author's node and line.
+  diagnostics.push(...highHalfDivideWarnings(read.passes));
 
   // T150/B5: a texture binding that SAMPLES an unfilterable format is refused here,
   // with the node named, instead of surfacing as a cryptic vgpu bind error at render
