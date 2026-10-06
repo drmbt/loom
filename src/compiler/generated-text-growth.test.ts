@@ -1300,7 +1300,7 @@ const NOT_YET_DATA: Readonly<Record<string, Debt>> = {
     law: "chain",
     task: "T1623b",
     why: "R3 with its textures: two bindings and a depth sweep each, so sixteen sampled textures a stage bound it.",
-    grows: { "scene:#/fs": 1447 },
+    grows: { "scene:#/fs": 1359 }, // VNB11: the occlusion compare is one shared function, each projector a call,
     members: 4,
     bindings: 2,
     passes: 2,

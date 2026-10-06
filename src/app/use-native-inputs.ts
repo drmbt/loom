@@ -88,6 +88,7 @@ export function useNativeInputs(runtime: AppRuntime, backend: LoomBackend | null
           if (result.status !== "applied") throw new Error(result.diagnostics.map(d => d.message).join("; "));
         },
         report: message => { if (live) report(nodeId, message); },
+        transport,
       });
       const unregister = backend.registerMediaSource(mediaSourceIdFor(nodeId), input.source);
       entries.current.set(nodeId, { uuid, transport,

@@ -1,6 +1,6 @@
 import { createVgpuBackend, browserGpuHost } from '../../runtime/backend/index.ts';
 import type { LogicalExecutionPlan } from '../../domain/types/backend.ts';
-import { desktopInputBridge, type NativeInputTransport } from '../../devices/native-input.ts';
+import { desktopInputBridge, nativeMediaFrame, type NativeInputTransport } from '../../devices/native-input.ts';
 
 // Test-only readback oracle. Transport uses native GPU surfaces, never these bytes.
 export async function verifyNativeInput(name: string, transport: NativeInputTransport = 'syphon') {
@@ -32,7 +32,8 @@ export async function verifyNativeInput(name: string, transport: NativeInputTran
     session = await bridge.open(sources[0]!.id, async (frame, metadata) => {
       if (metadata.width !== 1920 || metadata.height !== 1080) throw new Error('Native input lost full resolution');
       const unregister = backend.registerMediaSource('native-source', {
-        currentFrame: () => ({ frameId: metadata.sequence, image: frame }),
+        // the app's own orientation rule (VNB13): a Syphon frame is bottom row first
+        currentFrame: () => nativeMediaFrame(transport, frame, metadata.sequence),
       });
       try {
         backend.render(compiled, {

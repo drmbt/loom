@@ -333,23 +333,31 @@ describe("B260: no lit fragment function chains more sources than the threshold"
  * no grid chunk and did not move. Before: lambert grid 2717505ab16a6316, pbr Material WGSL
  * 5ba3e4b2fe94caa0, pbr grid 326c14a7a3a7a8d8, pbr grid additive 6eaba590ca5564d9, pbr grid
  * many projectors 2c0992f1f780d0a3, phong grid 33ea50e380739696.
+ *
+ * VNB11 (laubsauger/loom#1) made it for the five cases that draw an OCCLUDING projector: the
+ * shadow compare moved from a fixed fragment-z bias to linearised depths through one
+ * `projectorOccluded` function (texel footprint scaled by slope), so a deck shadows its own
+ * front face at stage throws. Cases with no occluding projector did not move. Before:
+ * instances every feature 9469ec94d83d006b, instances pbr boxes many projectors
+ * a90b1694c52863f5, surface every feature ebfc4f2f17792cf3, surface every feature instanced
+ * 08ac687490aa4d09, surface pbr grid many projectors 434bfacef3d74cb1.
  */
 const TEXT_AT_AND_BELOW_THE_THRESHOLD: Readonly<Record<string, string>> = {
-  "instances: every feature": "9469ec94d83d006b",
+  "instances: every feature": "15dae2785a96cba9", // VNB11
   "instances: lambert boxes": "b9f749509e1212f3",
   "instances: pbr beams": "dedf0a34a1924685",
   "instances: pbr billboards, spherical": "464b1308dc31f71e",
   "instances: pbr boxes": "8f1a800f9c626a17",
-  "instances: pbr boxes, many projectors": "a90b1694c52863f5",
+  "instances: pbr boxes, many projectors": "b6e61e8d775c0998", // VNB11
   "instances: phong boxes": "a6e35e45230851ad",
-  "surface: every feature": "ebfc4f2f17792cf3",
-  "surface: every feature, instanced": "08ac687490aa4d09",
+  "surface: every feature": "7994ac5c8a51d335", // VNB11
+  "surface: every feature, instanced": "be036fddadc29ea0", // VNB11
   "surface: lambert grid": "42e77db29fe97b61", // §B255
   "surface: pbr Material WGSL": "dd94c30cf125247d", // §B255
   "surface: pbr file mesh with surface rows": "381f3a037e9c200e",
   "surface: pbr grid": "3862a064f9cad6eb", // §B255
   "surface: pbr grid, additive": "919ec18941e4d41b", // §B255
-  "surface: pbr grid, many projectors": "434bfacef3d74cb1", // §B255
+  "surface: pbr grid, many projectors": "b3fd71a4695289c6", // §B255, VNB11
   "surface: pbr mesh instances": "17dac438da6a102a",
   "surface: phong Material WGSL on a mesh": "2d6c6b1825c09ebc",
   "surface: phong grid": "c2608dcc7fcfca2d", // §B255

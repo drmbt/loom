@@ -19,13 +19,41 @@ function displayGrant(contents, permission, requestingUrl, origin) {
   return ours && asker;
 }
 
+/*
+ * VNB4: a file handle the user gave Loom is the consent to use it (ruling, 2026-10-05).
+ *
+ * Measured on Electron 44.5.1 (testing/file-access.test.cjs): once a session has a
+ * permission CHECK handler, a file handle's status is that handler's answer alone, granted
+ * or denied, never "prompt". That holds for a freshly picked or dropped file and for one
+ * restored from storage, and undefined or null read as denied. So the earlier design,
+ * which denied the check so that the request handler would ask, could not work: a denied
+ * status makes requestPermission() return at once and the request handler is never called.
+ * It refused every file Loom was given, including the one the user had just picked.
+ *
+ * A page can only hold a handle the user gave it, through a picker, a drop, or storage of
+ * one of those, so holding it is the consent. Read and write are granted to Loom's own
+ * document for an absolute path to a FILE. A directory is refused (Loom asks for none), and
+ * so is any other origin. Protected OS paths are refused below. The price: a file chosen
+ * in an earlier session opens again without asking, as a desktop app's recent files do.
+ *
+ * What a fileSystem check carries in 44.5.1 is narrower than the typings suggest: NO
+ * webContents (null) and no requestingUrl, only the requesting origin (as a URL) and the
+ * file details. The origin is therefore the guard; a webContents, should a later Electron
+ * pass one, must be Loom's too.
+ */
+const FILE_ACCESS = new Set(['readable', 'writable']);
+function fileGrant(contents, permission, requestingUrl, details, origin) {
+  return permission === 'fileSystem' && allowNavigation(requestingUrl, origin) &&
+    (contents === null || contents === undefined || (!contents.isDestroyed() && allowNavigation(contents.getURL(), origin))) &&
+    typeof details?.filePath === 'string' && isAbsolute(details.filePath) &&
+    details.isDirectory === false && FILE_ACCESS.has(details.fileAccessType);
+}
+
 function installFilePermissions({ session, origin, confirm, report, requestSystemAccess, notify }) {
-  const pending = new WeakSet();
   const media = createMediaPermissions({ origin, confirm, report, requestSystemAccess, notify });
-  // No broad grant cache. Chromium owns its document/path-scoped grants; checks
-  // without one must reach the explicit request below, never auto-approve.
   session.setPermissionCheckHandler((contents, permission, requestingOrigin, details) =>
     displayGrant(contents, permission, details?.requestingUrl ?? requestingOrigin, origin) ||
+    fileGrant(contents, permission, details?.requestingUrl ?? requestingOrigin, details, origin) ||
     media.check(contents, permission, requestingOrigin, details));
   session.setPermissionRequestHandler((contents, permission, callback, details) => {
     if (DISPLAY_PERMISSIONS.has(permission)) {
@@ -35,44 +63,11 @@ function installFilePermissions({ session, origin, confirm, report, requestSyste
       return;
     }
     if (media.handles(permission)) { media.request(contents, permission, callback, details); return; }
-    if (permission !== 'fileSystem' || !contents || contents.isDestroyed() ||
-        !allowNavigation(contents.getURL(), origin) ||
-        !allowNavigation(details?.requestingUrl, origin) ||
-        typeof details.filePath !== 'string' || !isAbsolute(details.filePath) ||
-        details.isDirectory !== false ||
-        !['readable', 'writable'].includes(details.fileAccessType) || pending.has(contents)) {
-      report(`Denied desktop permission: ${permission}`);
-      callback(false);
-      return;
-    }
-    // Electron reports isMainFrame=false for fileSystem even for the main frame.
-    // Validate both URLs instead. Any navigation revokes this outstanding prompt.
-    let settled = false;
-    const settle = granted => {
-      if (settled) return;
-      settled = true;
-      pending.delete(contents);
-      contents.removeListener('did-start-navigation', revoke);
-      contents.removeListener('destroyed', revoke);
-      callback(granted);
-    };
-    const revoke = () => settle(false);
-    pending.add(contents);
-    contents.on('did-start-navigation', revoke);
-    contents.once('destroyed', revoke);
-    void Promise.resolve().then(() => {
-      if (settled) return false;
-      return confirm(contents, {
-        title: 'Loom file access',
-        message: details.fileAccessType === 'writable' ? 'Allow Loom to modify this file?' : 'Allow Loom to read this file?',
-        detail: details.filePath,
-        buttons: ['Deny', 'Allow'], defaultId: 0, cancelId: 0, noLink: true,
-      });
-    }).then(allowed => settle(allowed === true && !contents.isDestroyed() &&
-      allowNavigation(contents.getURL(), origin)), error => {
-      report(`File permission dialog failed: ${String(error)}`);
-      settle(false);
-    });
+    // fileSystem never arrives here: its status is the check's answer above (VNB4), and a
+    // denied status ends requestPermission() without a request. Anything that does arrive
+    // is refused, as is every permission this file does not name.
+    report(`Denied desktop permission: ${permission}`);
+    callback(false);
   });
   // Never turn a protected OS path into an ordinary file grant.
   session.on('file-system-access-restricted', (_event, _details, callback) => {

@@ -48,6 +48,54 @@ describe("mesh file source bindings", () => {
   });
 
   /*
+   * VNB8 — the literal bug: the app keeps one loader for its whole life, and it used to keep
+   * every file it had read, by URL, for that life too. Rebuild the GLB on disk, open a project
+   * sized for the NEW file, and the loader measured the OLD bytes it still held and wrote
+   * their counts back over the project's — so a Point Kernel sized to the new mesh refused
+   * the stale one and the whole document stopped compiling. A load mints a new
+   * documentIdentity; that is when a file must be read again.
+   */
+  it("VNB8: a project opened after its file changed on disk reads the new file, not the one read before", async () => {
+    const before = encodeFixtureGlb({ nodes: [{ name: "a", mesh: [cubePrimitive()] }] });
+    const after = encodeFixtureGlb({ nodes: [{ name: "a", mesh: [cubePrimitive()] }, { name: "b", mesh: [cubePrimitive()] }] });
+    const factsOf = (bytes: Uint8Array) => {
+      const prepared = prepareMesh(bytes, "");
+      if (prepared === null) throw new Error("fixture must contain a mesh");
+      return prepared.facts;
+    };
+    expect(factsOf(after).vertices).not.toBe(factsOf(before).vertices);
+    let served = before;
+    const fetchFile = vi.fn(async () => new Response(new Uint8Array(served)));
+    vi.stubGlobal("fetch", fetchFile);
+    const registerMediaSource = vi.fn<LoomBackend["registerMediaSource"]>(() => () => {});
+    const backend = { registerMediaSource } as unknown as LoomBackend;
+    const url = "media/stage.glb";
+    const open = async (bytes: Uint8Array) => {
+      const runtime = createAppRuntime({ identityStorage: null });
+      const added = await runtime.bus.execute("graph.applyPatch", { baseRevision: 0, operations: [
+        { op: "addNode", ref: "$mesh", type: "meshFileIn", position: { x: 0, y: 0 }, parameters: { file: url, ...factsOf(bytes) } },
+      ] }, runtime.invocation);
+      expect(added.status).toBe("applied");
+      return { runtime, id: added.output.createdIds["$mesh"]!, graph: runtime.flattened.current().graph };
+    };
+    const first = await open(before);
+    const second = await open(after);
+    try {
+      const hook = renderHook((props: { runtime: typeof first.runtime; graph: typeof first.graph }) => useMeshSources(props.runtime, backend, props.graph), { initialProps: first });
+      await waitFor(() => expect(registerMediaSource).toHaveBeenCalledTimes(2));
+      served = after; // the export is rebuilt on disk
+      hook.rerender(second); // and the next project opened is sized for it
+      await waitFor(() => expect(registerMediaSource).toHaveBeenCalledTimes(4));
+      expect(fetchFile).toHaveBeenCalledTimes(2);
+      expect(second.runtime.bus.store.getGraph().nodes[second.id]!.parameters["vertices"]).toBe(factsOf(after).vertices);
+      hook.unmount();
+    } finally {
+      first.runtime.dispose();
+      second.runtime.dispose();
+    }
+  });
+
+  /*
    * T1598b: Bounds is a measured fact that SIZES NOTHING. A document saved before it existed
    * has every other fact right, so its mesh must feed at once, exactly as it did; the sphere
    * is then written beside the others. Treated as one more "is this node sized for the file"

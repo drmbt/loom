@@ -364,7 +364,7 @@ function projectorBlocks(
       (_, p) => `  projector${p}Matrix: mat4x4f,
   projector${p}Pos: vec4f,    // xyz = lens position, w = brightness (nominal at look-at)
   projector${p}Color: vec4f,  // rgb = tint, w = falloff switch (0 off, 1 inverse-square)
-  projector${p}Meta: vec4f,   // x = throw distance |lookAt - eye|, yzw reserved
+  projector${p}Meta: vec4f,   // x = throw distance |lookAt - eye|; y, z = near, far; w = image width as 2·tan(half), keystone included
 `,
     )
     .join("");
@@ -383,9 +383,7 @@ function projectorBlocks(
       const occlusionBlock = proj.occlusion
         ? `      let ddims = vec2f(textureDimensions(projectorDepth${p}, 0));
       let stored = textureLoad(projectorDepth${p}, vec2i(puv * (ddims - vec2f(1.0))), 0).r;
-      /* The T624 slope-scaled bias, reused: fragment-z on both sides of the compare. */
-      let bias = 0.0015 + 0.012 * (1.0 - plambert);
-      if (pndc.z - bias > stored) { beam = 0.0; }
+      if (projectorOccluded(pndc.z, stored, params.projector${p}Meta, ddims.x, plambert)) { beam = 0.0; }
 `
         : "";
       return `  {
@@ -410,7 +408,23 @@ ${occlusionBlock}        let nominal = max(params.projector${p}Meta.x, 1e-4);
 `;
     })
     .join("");
-  return { fields, bindings, term, bindingCount: binding - baseBinding };
+  // VNB11: compare DEPTHS, not fragment-z. Perspective fragment-z crowds toward 1 with distance
+  // (near is 2% of the throw), so a fixed bias in it was a sliver of a texel by the lens and
+  // metres at the end of a stage throw: a deck's top no longer shadowed its own front face.
+  // Linearised, the bias is the depth map's texel footprint at this depth, scaled by the slope,
+  // plus a hair for float precision. ONE function for every projector (§V1029: per-projector text
+  // stays a call). m = (throw, near, far, image width as 2·tan(half)).
+  const occluded = projectors.some((proj) => proj.occlusion)
+    ? `fn projectorOccluded(z: f32, stored: f32, m: vec4f, texels: f32, lambert: f32) -> bool {
+  let here = m.y * m.z / (m.z - z * (m.z - m.y));
+  let there = m.y * m.z / (m.z - min(stored, 1.0) * (m.z - m.y));
+  let texel = here * m.w / max(texels, 1.0);
+  let slope = sqrt(max(1.0 - lambert * lambert, 0.0)) / max(lambert, 0.1);
+  return here - (texel * (1.5 + 2.0 * slope) + here * 0.0005) > there;
+}
+`
+    : "";
+  return { fields, bindings: bindings + occluded, term, bindingCount: binding - baseBinding };
 }
 
 /**

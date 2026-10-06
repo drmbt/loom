@@ -119,9 +119,26 @@ export function canvasMenu(registry: NodeRegistryView): MenuSchema {
       // the background double-click are the same command, so all three open one browser
       // at one position (§V78, §V307).
       { command: "ui.openNodeSearch", label: "Search nodes…" },
-      // T1494b: the drop's twin for a user who would rather pick the file — the same
-      // command, landing at the click's graph point like "Add node" (§V78).
-      { command: "component.import", label: "Import component…" },
+      /**
+       * VN1 — the component gestures on the CANVAS, as the node menu's submenu has them.
+       *
+       * "Import component…" stood here alone (T1494b), so a right-click on the background
+       * with nodes selected offered to bring a component IN and said nothing about making
+       * one: the making lived only on the node menu and `Shift+C`. This menu is at its
+       * eleven-item cap, and the cap's own instruction is to open a submenu rather than
+       * raise it, so the two verbs share one row — the shape the node menu already uses.
+       *
+       * "Save selection as component…" acts on the SELECTION (there is no node under a
+       * background click); with nothing selected its builder refuses by name, so the row
+       * greys with the reason. Import still lands at the click's graph point (§V78).
+       */
+      {
+        label: "Component",
+        submenu: [
+          { command: "ui.createComponent", label: "Save selection as component…" },
+          { command: "component.import", label: "Import component…" },
+        ],
+      },
       { separator: true },
       { command: "graph.paste", label: "Paste" },
       { command: "graph.selectAll", label: "Select all" },

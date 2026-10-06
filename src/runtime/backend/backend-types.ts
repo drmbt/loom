@@ -455,6 +455,12 @@ export interface MediaSourceFrame {
   readonly frameId: number;
   readonly bytes?: Uint8Array;
   readonly image?: unknown;
+  /**
+   * VNB13: the image's first row is its BOTTOM (OpenGL's origin), so the upload flips it.
+   * Syphon surfaces are laid out that way — every OpenGL publisher (Resolume, TouchDesigner,
+   * VDMX) draws with a bottom-left origin — while a VideoFrame is read top row first.
+   */
+  readonly flipY?: boolean;
 }
 
 /**

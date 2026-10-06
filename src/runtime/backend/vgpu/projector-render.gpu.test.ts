@@ -172,6 +172,29 @@ describe("the beam lands exactly (T704, §V147, §V644)", () => {
     savePng("projector-beam.png", image);
   }, 120_000);
 
+  it("VNB10: a keystoned image lands on BOTH sides of its axis — the narrow side is lit, not dropped", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+
+    // throwRatio 1.5 from 4 units out: half-width 4/3 natively; keystone 30° narrows one side to
+    // 4/3 ÷ (1 + tan 30°) ≈ 0.85 and widens the other — so x = ±0.6 is inside the image on both.
+    const image = await renderPlan(
+      flatGraph([{ eye: [0, 0, 4], lookAt: [0, 0, 0], throwRatio: 1.5, brightness: 1, falloff: false, keystoneH: 30 }]),
+    );
+    const half = 3 * Math.tan((27.5 * Math.PI) / 180); // the camera sees ±half on the z = 0 plane
+    for (const side of [-1, 1]) {
+      const index = texelOf([side * 0.6, 0, 0]);
+      const px = (index / 4) % 64;
+      const py = Math.floor(index / 4 / 64);
+      const x = (((px + 0.5) / 64) * 2 - 1) * half;
+      const y = (1 - ((py + 0.5) / 64) * 2) * half;
+      // Falloff off and a white cookie: the beam adds exactly |N·L| of one light at that texel.
+      const lambert = 4 / Math.hypot(x, y, 4);
+      expect(image[index], `x = ${side * 0.6}`).toBe(Math.round(0.8 * (0.12 + lambert) * 255));
+    }
+    savePng("projector-keystone.png", image);
+  }, 120_000);
+
   it("two half beams add to one; falloff is (nominal/distance)² exactly, and switchable", async () => {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
@@ -224,7 +247,10 @@ describe("a parapet occludes (T704, §V147)", () => {
    * perspective depth compare. Beside it the beam lands, and toggling occlusion off
    * must not move a single unblocked byte (§V461: the fixtures distinguish).
    */
-  const buildGraph = (occlusion: boolean): GraphDocument =>
+  const buildGraph = (
+    occlusion: boolean,
+    stage: { readonly projectorY: number; readonly projectorZ: number; readonly boxY: number; readonly boxScale: number } = { projectorY: 4, projectorZ: 0, boxY: 1, boxScale: 0.5 },
+  ): GraphDocument =>
     ({
       revision: 1,
       nodes: Object.fromEntries(
@@ -254,17 +280,17 @@ describe("a parapet occludes (T704, §V147)", () => {
                 { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
               ]),
               kernel:
-                "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  q.position = vec3f(0.0, 1.0, 0.0);\n  return q;\n}",
+                `fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  q.position = vec3f(0.0, ${stage.boxY.toFixed(3)}, 0.0);\n  return q;\n}`,
             },
             "lift1",
           ),
-          node("box", "geometry", { mode: "instances", shape: "box", scale: 0.5 }, "box1"),
+          node("box", "geometry", { mode: "instances", shape: "box", scale: stage.boxScale }, "box1"),
           node("cam", "camera", { eye: [0, 2, 4], lookAt: [0, 0, 0] }, "cam1"),
           // Straight down — the T706 pole guard carries the projector's basis here.
           node(
             "proj",
             "projector",
-            { eye: [0, 4, 0], lookAt: [0, 0, 0], throwRatio: 1.5, brightness: 1, occlusion },
+            { eye: [0, stage.projectorY, stage.projectorZ], lookAt: [0, 0, 0], throwRatio: 1.5, brightness: 1, occlusion },
             "proj1",
           ),
           node(
@@ -328,5 +354,38 @@ describe("a parapet occludes (T704, §V147)", () => {
 
     savePng("projector-occluded.png", occluded);
     savePng("projector-decal.png", decal);
+  }, 240_000);
+
+  it("VNB11: at a stage throw (11 m), an occluder half a metre off the floor still blocks", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+
+    // The deck's lip over its own face, in miniature: a box whose top is under 0.6 m off the
+    // ground, lit from 11 m up and 6 m back, so its shadow falls toward the camera, clear of the
+    // box itself. The old fragment-z bias (0.0015 at near = 2% of a 12.5 m throw) let a ground
+    // point that close behind its occluder through, as it let the deck lip light the deck face.
+    const stage = { projectorY: 11, projectorZ: -6, boxY: 0.3, boxScale: 0.25 };
+    const matrix = cameraPayloadMatrix(
+      { eye: [0, 2, 4], lookAt: [0, 0, 0], fovDeg: 55, near: 0.1, far: 100, ortho: false, orthoHeight: 2 },
+      1,
+    );
+    const texelOf = (world: readonly [number, number, number]): number => {
+      const clip = transformPoint(matrix, world);
+      const x = Math.round(((clip[0] / clip[3]) * 0.5 + 0.5) * 64);
+      const y = Math.round((0.5 - (clip[1] / clip[3]) * 0.5) * 64);
+      return (y * 64 + x) * 4;
+    };
+    const blocked = texelOf([0, 0, 0.3]); // in its shadow whichever way its scale reads
+    const open = texelOf([1, 0, 0]);
+
+    const occluded = await renderPlan(buildGraph(true, stage));
+    const decal = await renderPlan(buildGraph(false, stage));
+    const floor = Math.round(0.8 * 0.12 * 255);
+
+    expect(occluded[blocked]).toBe(floor);
+    expect(decal[blocked]).toBeGreaterThan(floor + 50);
+    expect([occluded[open], occluded[open + 1], occluded[open + 2]]).toEqual([decal[open], decal[open + 1], decal[open + 2]]);
+    expect(occluded[open]).toBeGreaterThan(floor + 50);
+    savePng("projector-occluded-far.png", occluded);
   }, 240_000);
 });
