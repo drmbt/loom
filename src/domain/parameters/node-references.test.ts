@@ -700,32 +700,32 @@ describe("T1172 — the per-reader memo of a referenced node's parameters", () =
     /*
      * THE CASE THE CYCLE CONDITION EXISTS FOR, and it is genuinely path-dependent — which
      * most cycle shapes are not, because a diagnostic propagates and taints every caller
-     * equally. This one does not:
+     * equally. This one does not. A compound resolves WHOLE, so its components are one
+     * member of a ring while each keeps its own value:
      *
-     *   x.gain   = 5                       x.other = op('b').par.gain
-     *   b.gain   = op('x').par.gain        n.gain  = op('b').par.gain
-     *   t.gain   = op('x').par.other
+     *   x.aim    = 5, 0, 0                 x.aim.z = op('b').par.gain
+     *   b.gain   = op('x').par.aim.x       n.gain  = op('b').par.gain
+     *   t.gain   = op('x').par.aim.z
      *
-     * `x` and `b` close a loop THROUGH `x.other`, so `t` (which reads `other`) is inside
-     * it and reports the loop. `n` reads `b.gain`, which resolves through `x.gain` — a
-     * static — and is worth 5 with no diagnostic at all. But `b`'s resolve does fire the
-     * guard, one level down in `x.other`, so a memo that stored it anyway would hand `n`
-     * the loop's fallback.
+     * `x.aim` and `b.gain` close a ring THROUGH `aim.z`, so `t` (which reads `aim.z`) is
+     * inside it and reports the ring. `n` reads `b.gain`, which resolves through `aim.x` —
+     * a static — and is worth 5 with no diagnostic at all. But `b.gain`'s resolve does fire
+     * the guard, one level down in `aim.z`, so a memo that stored it anyway would hand `n`
+     * the ring's fallback.
      *
-     * MEASURED with the condition removed: reading `t` and then `n` through one reader
-     * gives `n = 1` and reports `n` as part of a cycle it is not in — a correct reference
-     * broken by nothing but the order somebody else was read in. Both orders are asserted
-     * here because only one of them poisons.
+     * (§B293: until the guard moved to (node, key) this fixture was two SCALARS of `x`, one
+     * of them static, and it was "a loop" only because a read resolved the whole node. That
+     * shape is no ring now and is held as such below.)
      */
     const two: ParameterSchema = {
       gain: { type: "number", label: "Gain", default: 1 },
-      other: { type: "number", label: "Other", default: 2 },
+      aim: { type: "vector", size: 3, label: "Aim", default: [0, 0, 0] },
     };
     const graph = graphOf(
-      node("nx", "x", { gain: 5, other: expression("op('b').par.gain") }),
-      node("nb", "b", { gain: expression("op('x').par.gain") }),
+      node("nx", "x", { aim: [5, 0, 0], "aim.z": expression("op('b').par.gain") }),
+      node("nb", "b", { gain: expression("op('x').par.aim.x") }),
       node("nn", "n", { gain: expression("op('b').par.gain") }),
-      node("nt", "t", { gain: expression("op('x').par.other") }),
+      node("nt", "t", { gain: expression("op('x').par.aim.z") }),
     );
     const readsOf = (order: readonly string[]) => {
       const options = testRead({ graph, registry: { get: () => ({ parameters: two }) } });
@@ -823,5 +823,111 @@ describe("a bind that names a NODE says what to write instead (T1207)", () => {
     const second = bound(graphOf(deep), deep)?.diagnostic?.message ?? "";
     expect(second).toContain("it names no parameter on this node");
     expect(second).not.toContain("op(");
+  });
+});
+
+/**
+ * §B293 — A RING IS OVER (node, key), THROUGH THE REAL RESOLVE.
+ *
+ * Found by a camera whose Look At z was written as the length of its own Heading and refused
+ * as "a cycle". The reader resolved the target's WHOLE schema and its guard was keyed by
+ * node, so a parameter could not read another parameter of its own node: read from the node
+ * itself it happened to work (the guard fired one level down and was thrown away), and read
+ * from ANY OTHER node it failed. Both orders are held here, because only one of them failed.
+ */
+describe("B293 — a parameter reads another parameter of its own node", () => {
+  const KEYS: ParameterSchema = {
+    gain: { type: "number", label: "Gain", default: 1 },
+    other: { type: "number", label: "Other", default: 2 },
+    third: { type: "number", label: "Third", default: 3 },
+    aim: { type: "vector", size: 3, label: "Aim", default: [0, 0, 0] },
+  };
+  const read = (graph: GraphDocument, nodeId: string, key = "gain") =>
+    resolveParameterSchema(graph.nodes[nodeId]!, KEYS, testRead({ graph, registry: { get: () => ({ parameters: KEYS }) } })).get(key);
+
+  it("⚑ one key reading another key of the same node is that key's value, from the node itself AND from another node", () => {
+    const graph = graphOf(
+      node("n1", "a", { gain: expression("op('a').par.other * 2"), other: 7 }),
+      node("n2", "reader", { gain: expression("op('a').par.gain + 1") }),
+    );
+    expect([read(graph, "n1")?.value, read(graph, "n1")?.diagnostic]).toEqual([14, null]);
+    // From another node: this is the read that was "a cycle" (the node already on the path).
+    expect([read(graph, "n2")?.value, read(graph, "n2")?.diagnostic]).toEqual([15, null]);
+  });
+
+  it("⚑ a chain of three keys on one node resolves in the order it reads, whatever order they are declared in", () => {
+    // gain is declared FIRST and read last: nothing is resolved "in a pass".
+    const graph = graphOf(
+      node("n1", "a", { gain: expression("op('a').par.other + 1"), other: expression("op('a').par.third + 1"), third: 5 }),
+      node("n2", "reader", { gain: expression("op('a').par.gain * 10") }),
+    );
+    expect([read(graph, "n1")?.value, read(graph, "n1")?.diagnostic]).toEqual([7, null]);
+    expect([read(graph, "n1", "other")?.value, read(graph, "n1", "other")?.diagnostic]).toEqual([6, null]);
+    expect([read(graph, "n2")?.value, read(graph, "n2")?.diagnostic]).toEqual([70, null]);
+  });
+
+  it("⚑ a component reading a key of its own node, and a key reading a component of its own node", () => {
+    const graph = graphOf(node("n1", "a", { aim: [1, 2, 0], "aim.z": expression("0 - op('a').par.gain"), gain: 4, other: expression("op('a').par.aim.y + op('a').par.aim.z") }));
+    expect(read(graph, "n1", "aim")?.value).toEqual([1, 2, -4]);
+    expect([read(graph, "n1", "other")?.value, read(graph, "n1", "other")?.diagnostic]).toEqual([-2, null]);
+  });
+
+  it("⚑ two nodes that read each other's UNRELATED parameters are not a ring", () => {
+    // x.other → b.gain → x.gain (a static). It was "a loop through x" while a read resolved the whole node.
+    const graph = graphOf(
+      node("nx", "x", { gain: 5, other: expression("op('b').par.gain") }),
+      node("nb", "b", { gain: expression("op('x').par.gain") }),
+      node("nt", "t", { gain: expression("op('x').par.other") }),
+    );
+    expect([read(graph, "nt")?.value, read(graph, "nt")?.diagnostic]).toEqual([5, null]);
+    expect([read(graph, "nx", "other")?.value, read(graph, "nx", "other")?.diagnostic]).toEqual([5, null]);
+  });
+
+  it("⚑ STILL A RING: a reads b reads a on one node, named by its parameters", () => {
+    const graph = graphOf(node("n1", "a", { gain: expression("op('a').par.other"), other: expression("op('a').par.gain") }));
+    const gain = read(graph, "n1");
+    expect([gain?.diagnostic?.severity, gain?.diagnostic?.code]).toEqual(["error", "parameter.referenceCycle"]);
+    expect(gain?.diagnostic?.message).toContain("that reference is a cycle (n1.gain → n1.other → n1.gain)");
+    // §V108: its fallback, never a number that looks like an answer.
+    expect(gain?.value).toBe(1);
+  });
+
+  it("⚑ STILL A RING: a parameter reading itself, and a component reading another component of its own vector", () => {
+    const self = graphOf(node("n1", "a", { gain: expression("op('a').par.gain + 1") }));
+    expect(read(self, "n1")?.diagnostic?.code).toBe("parameter.referenceCycle");
+    expect(read(self, "n1")?.diagnostic?.message).toContain("(n1.gain → n1.gain)");
+    const vector = graphOf(node("n1", "a", { aim: [3, 0, 0], "aim.z": expression("op('a').par.aim.x") }));
+    const aim = read(vector, "n1", "aim");
+    expect(aim?.components?.[2]?.diagnostic?.code).toBe("parameter.referenceCycle");
+    expect(aim?.components?.[2]?.diagnostic?.message).toContain("(n1.aim → n1.aim)");
+  });
+
+  it("⚑ STILL A RING: through two nodes, named in order", () => {
+    const graph = graphOf(
+      node("n1", "a", { gain: expression("op('b').par.other") }),
+      node("n2", "b", { other: expression("op('a').par.gain") }),
+    );
+    expect(read(graph, "n1")?.diagnostic?.code).toBe("parameter.referenceCycle");
+    expect(read(graph, "n1")?.diagnostic?.message).toContain("(n1.gain → n2.other → n1.gain)");
+  });
+
+  it("a sibling read many times is resolved once a reader, and a bind on the target still reads its own node", () => {
+    // The memo is per (node, key): twenty reads of one key are one resolve of it, and so one
+    // read of the channel that key reads.
+    let asked = 0;
+    const graph = graphOf(
+      node("n1", "a", {
+        gain: expression(Array.from({ length: 20 }, () => "op('a').par.other").join(" + ")),
+        other: expression("op('k').chan.value + op('a').par.third"),
+        third: { mode: "bind", bindings: { bind: { kind: "bind", ref: "aim.x" } } },
+        aim: [2, 0, 0],
+      }),
+      node("n2", "k"),
+    );
+    const options = testRead({ graph, registry: { get: () => ({ parameters: KEYS }) }, channels: (address) => (address === "k:value" ? ((asked += 1), 3) : undefined) });
+    const gain = resolveParameterSchema(graph.nodes["n1"]!, { gain: KEYS["gain"]! }, { ...options, schema: KEYS }).get("gain");
+    // third binds aim.x = 2; other = 3 + 2; gain = twenty of them.
+    expect([gain?.value, gain?.diagnostic]).toEqual([100, null]);
+    expect(asked).toBe(1);
   });
 });

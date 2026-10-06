@@ -13,7 +13,8 @@ import type { SourceReferenceSpec } from "./source-references.ts";
  * second half of that union — the half with no wire. Three things read it and they must
  * not disagree:
  *
- *  - the CYCLE GATE (`reference-cycles.ts`), which refuses a patch;
+ *  - the CYCLE GATE (`reference-cycles.ts`), which refuses a patch (§B293: it reads the SAME
+ *    bindings at a finer grain, `keyReads` below, because a ring is over (node, key));
  *  - LIVENESS (`liveness.ts`), which decides whether a node is dead;
  *  - the reference LINES on the canvas (§V151), which show the user the same fact.
  *
@@ -76,13 +77,31 @@ export interface ParameterDependency {
  * inside it. That is exactly how `call` was missed.
  */
 export function opReferenceNames(source: string): string[] {
+  const parsed = opReferences(source);
+  if (parsed !== null) return parsed.map((reference) => reference.name);
+  // A stored source the current grammar refuses (older document): the reference is
+  // still a dependency, so a syntactic scan beats pretending it is not there.
+  return [...source.matchAll(/op\(\s*(['"])(.+?)\1\s*\)/g)].map((match) => match[2] ?? "");
+}
+
+/** One `op('name').a.b` in an expression: the node it names and the path read off it. */
+export interface OpReference {
+  readonly name: string;
+  readonly path: readonly string[];
+}
+
+/**
+ * Every `op()` read in one expression source, WITH ITS PATH, or null when the source does
+ * not parse (it can then never be evaluated, so it reads nothing).
+ */
+export function opReferences(source: string): OpReference[] | null {
   const parsed = parseExpression(source);
   if (parsed.ok) {
-    const names: string[] = [];
+    const names: OpReference[] = [];
     const walk = (ast: ExpressionAst): void => {
       switch (ast.kind) {
         case "opRef":
-          names.push(ast.name);
+          names.push({ name: ast.name, path: ast.path });
           return;
         case "unary":
           walk(ast.operand);
@@ -114,9 +133,54 @@ export function opReferenceNames(source: string): string[] {
     walk(parsed.ast);
     return names;
   }
-  // A stored source the current grammar refuses (older document): the reference is
-  // still a dependency, so a syntactic scan beats pretending it is not there.
-  return [...source.matchAll(/op\(\s*(['"])(.+?)\1\s*\)/g)].map((match) => match[2] ?? "");
+  return null;
+}
+
+/**
+ * §B293 — ONE READ A PARAMETER MAKES, AT THE GRAIN A RING IS DECIDED AT: (node, key).
+ *
+ * The node-to-node edges above answer "which node does this one depend on", which is the
+ * right question for liveness and for a line on the canvas. It is the wrong grain for "is
+ * this a ring": a camera's Look At reading its own Heading is one node reading itself and
+ * no ring at all. A ring is a chain of PARAMETERS that returns to a parameter.
+ *
+ * `from` is the reader's BASE key (`lookAt` for a slot stored under `lookAt.z`): a compound
+ * resolves whole, so its components are one vertex, for a bind and an `op()` alike.
+ */
+export type KeyRead =
+  /** `op('name').par.key[.component]`, or a bind to a sibling (`node` null: this node). */
+  | { readonly from: string; readonly stored: string; readonly kind: "parameter"; readonly node: string | null; readonly key: string }
+  /** `op('name').chan.channel`: what that depends on is the named node's own business. */
+  | { readonly from: string; readonly stored: string; readonly kind: "channel"; readonly node: string; readonly channel: string };
+
+const baseKeyOf = (key: string): string => {
+  const dot = key.indexOf(".");
+  return dot < 0 ? key : key.slice(0, dot);
+};
+
+/** Every read the ACTIVE bindings of one node's parameters make (§V110: retained payloads are data). */
+export function keyReads(parameters: GraphNode["parameters"]): KeyRead[] {
+  const reads: KeyRead[] = [];
+  for (const stored of Object.keys(parameters).sort()) {
+    const value = parameters[stored];
+    if (value === undefined || !isParameterSlot(value)) continue;
+    const binding = value.bindings[value.mode];
+    if (binding === undefined) continue;
+    const from = baseKeyOf(stored);
+    if (binding.kind === "bind") {
+      // `parent.*` leaves the node through the component's scope, which has its own gate (§V81).
+      if (!binding.ref.startsWith("parent.")) reads.push({ from, stored, kind: "parameter", node: null, key: baseKeyOf(binding.ref) });
+      continue;
+    }
+    if (binding.kind !== "expression") continue;
+    for (const { name, path } of opReferences(binding.source) ?? []) {
+      const [namespace, member] = path;
+      if (member === undefined) continue;
+      if (namespace === "par") reads.push({ from, stored, kind: "parameter", node: name, key: member });
+      else if (namespace === "chan") reads.push({ from, stored, kind: "channel", node: name, channel: member });
+    }
+  }
+  return reads;
 }
 
 /**

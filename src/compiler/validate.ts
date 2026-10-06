@@ -15,7 +15,7 @@ import {
 import { NO_MORPHS } from "../domain/presets/morph-index.ts";
 import type { ParameterReadOptions, ResolveParametersOptions } from "../domain/parameters/resolve.ts";
 import { bindCycleDiagnostics } from "../domain/parameters/bind-cycles.ts";
-import { referenceCycleDiagnostics } from "../domain/graph/reference-cycles.ts";
+import { channelDependenciesOf, referenceCycleDiagnostics } from "../domain/graph/reference-cycles.ts";
 import { composedParameterReadDiagnostics } from "../domain/graph/composed-parameter-reads.ts";
 import { undeclaredKeys, undeclaredParameter } from "../domain/parameters/validate.ts";
 import type { ResolvedParameters } from "../domain/parameters/resolve.ts";
@@ -227,7 +227,7 @@ export function validateGraph(
    * cycle spans NODES, so unlike a bind cycle it has no per-node home in
    * `resolveNodeParameters`. Reported once for the graph, before any resolution runs.
    */
-  diagnostics.push(...referenceCycleDiagnostics(graph));
+  diagnostics.push(...referenceCycleDiagnostics(graph, (node) => channelDependenciesOf(registry.get(node.type))));
   // §T1674b: a read of a parameter that is not what its name says (a framed camera's Eye).
   diagnostics.push(...composedParameterReadDiagnostics(graph, (node) => registry.get(node.type)?.parameterChannels));
 

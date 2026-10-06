@@ -61,10 +61,19 @@ import {
  * still be hand-edited, and it names the loop rather than reporting a stack overflow,
  * because a user who typed the cycle needs to be told which two nodes they joined.
  *
- * The visited set is keyed by NODE, and the gate is keyed the same way on purpose: a read
- * resolves the target's whole schema, so `a.x → b.y` plus `b.z → a.w` really does recurse
- * even though the two parameter chains never touch. Making either half finer without the
- * other would accept documents the other refuses.
+ * ## The guard is keyed by (node, key), and so is the gate (§B293)
+ *
+ * A read resolves the ONE parameter it names (`targetOf`), so the chain being resolved is
+ * a chain of parameters and a ring is a parameter reached again. It used to resolve the
+ * target's WHOLE schema, with the guard keyed by node to match: `a.x → b.y` beside
+ * `b.z → a.w` really did recurse then, and a parameter could not read another parameter
+ * of its own node at all (a camera's Look At from the length of its own Heading was "a
+ * cycle" from wherever that camera was read). `reference-cycles.ts` is keyed the same way;
+ * making either half finer without the other would accept documents the other refuses.
+ *
+ * ORDER WITHIN ONE NODE IS NOT A QUESTION. Nothing here resolves a node "in a pass": each
+ * parameter is resolved when it is asked for, a sibling it reads is resolved by that read
+ * (as a `bind` has always done), and the memo below makes that once a reader.
  */
 
 /**
@@ -294,9 +303,25 @@ function asNumber(value: ParameterValue | undefined, reference: string): NodeRef
 
 export function createNodeReferenceReader(options: NodeReferenceOptions): NodeReferenceReader {
   const scope: ReaderScope = { index: null, resolved: new Map(), cycles: 0 };
-  return Object.assign(readerWithin(options, new Set(), scope), {
+  return askedBy(options, new Set(), scope);
+}
+
+/**
+ * A reader on a path, with what a caller asks of it beside a read: the spelling help, and
+ * §B293's `readingFrom`. The parameter that asks joins the path, so a read that comes back to
+ * it is a ring at once. Inside a read the asker is already on the path (`targetOf` put it
+ * there), and the reader is handed back as it is: only a resolve that STARTS here pays.
+ */
+function askedBy(options: NodeReferenceOptions, visited: ReadonlySet<ReadKey>, scope: ReaderScope): NodeReferenceReader {
+  const reader: NodeReferenceReader = Object.assign(readerWithin(options, visited, scope), {
     spelledLike: (bare: string): SpelledLike => spelledLike(options, scope, bare),
+    readingFrom: (nodeId: string, key: string): NodeReferenceReader => {
+      const dot = key.indexOf(".");
+      const id = readKey(nodeId, dot < 0 ? key : key.slice(0, dot));
+      return visited.has(id) ? reader : askedBy(options, new Set([...visited, id]), scope);
+    },
   });
+  return reader;
 }
 
 /**
@@ -376,8 +401,8 @@ function spelledLike(options: NodeReferenceOptions, scope: ReaderScope, bare: st
  */
 interface ReaderScope {
   index: ReadonlyMap<string, NodeId> | null;
-  /** T1172: what each target node resolved to, for this reader's lifetime. See `targetOf`. */
-  readonly resolved: Map<NodeId, ResolvedParameters>;
+  /** T1172, §B293: what each (node, key) resolved to, for this reader's lifetime. See `targetOf`. */
+  readonly resolved: Map<ReadKey, ResolvedParameters>;
   /** T1172: how many times §V152's cycle guard has fired. See `targetOf`. */
   cycles: number;
 }
@@ -392,8 +417,9 @@ function nodeIdNamed(scope: ReaderScope, graph: GraphDocument, name: string): No
  * THE TARGET MEMO (T1172) — THE ONE THAT CHANGES THE COMPLEXITY CLASS
  * ═══════════════════════════════════════════════════════════════════════════════════
  *
- * A read is a RESOLVE, and it resolves the target's WHOLE parameter set — recursively,
- * through the target's own expressions. That is the right semantics (it is what makes
+ * A read is a RESOLVE of the parameter it names — recursively, through that parameter's
+ * own expressions (§B293: the one parameter; it was the target's whole set until the guard
+ * moved to (node, key)). That is the right semantics (it is what makes
  * `op('a').par.x` worth whatever `a.x` is worth) and it was being paid once PER READ, so a
  * chain of references was quadratic and E55's twenty-one reads of `reactor1` resolved
  * `reactor1` twenty-one times a frame. §T1172 measured it, render cost held constant: 20
@@ -410,7 +436,7 @@ function nodeIdNamed(scope: ReaderScope, graph: GraphDocument, name: string): No
  * ⚠ WHY A CYCLE FORBIDS THE ENTRY. The result of a resolve depends on `visited` — but only
  * through §V152's guard, which is the sole place `visited` is read. So a resolve during
  * which the guard never fired is PATH-INDEPENDENT and safe to reuse under any other chain:
- * if a longer chain could make the guard fire inside this subtree, some node of that chain
+ * if a longer chain could make the guard fire inside this subtree, some parameter of that chain
  * is reachable from this target and also reaches it, which is a graph cycle — and that same
  * cycle fires the guard under the shorter chain too, one hop further down. So "no fire in
  * this subtree" is exactly the condition, and the counter around the resolve is how it is
@@ -421,24 +447,36 @@ function nodeIdNamed(scope: ReaderScope, graph: GraphDocument, name: string): No
 function targetOf(
   options: NodeReferenceOptions,
   scope: ReaderScope,
-  visited: ReadonlySet<NodeId>,
+  visited: ReadonlySet<ReadKey>,
   targetId: NodeId,
   target: GraphNode,
   schema: ParameterSchema,
+  key: string,
+  definition: ParameterDefinition,
 ): ResolvedParameters {
-  const hit = scope.resolved.get(targetId);
+  const id = readKey(targetId, key);
+  const hit = scope.resolved.get(id);
   if (hit !== undefined) return hit;
   const firesBefore = scope.cycles;
-  // The recursive step. The target resolves with the same frame and channels, and with
-  // a reader that remembers we came through here — so a loop is caught one hop before
-  // it would repeat rather than however many frames later the stack gives out.
-  const resolved = resolveParameterSchema(target, schema, readOptionsOf({
-    ...options.base,
-    nodes: readerWithin(options, new Set([...visited, targetId]), scope),
-  }));
-  if (scope.cycles === firesBefore) scope.resolved.set(targetId, resolved);
+  // The recursive step. The ONE parameter resolves with the same frame and channels, and
+  // with a reader that remembers we came through here — so a ring is caught one hop before
+  // it would repeat rather than however many frames later the stack gives out. The whole
+  // schema rides along as the SIBLING schema: a bind on the target reads its own node.
+  const resolved = resolveParameterSchema(target, { [key]: definition }, {
+    ...readOptionsOf({
+      ...options.base,
+      nodes: askedBy(options, new Set([...visited, id]), scope),
+    }),
+    schema,
+  });
+  if (scope.cycles === firesBefore) scope.resolved.set(id, resolved);
   return resolved;
 }
+
+/** §B293: one parameter of one node, by its BASE key (a compound resolves whole). */
+type ReadKey = string;
+const readKey = (nodeId: NodeId, key: string): ReadKey => `${nodeId}\u0000${key}`;
+const ringText = (chain: readonly string[]): string => chain.map((entry) => entry.replace("\u0000", ".")).join(" → ");
 
 /**
  * §T1551b — WHAT A FLATTENING CONTRIBUTES TO A READ, beside its graph.
@@ -649,7 +687,7 @@ function readInstanceChannel(
  */
 function readerWithin(
   options: NodeReferenceOptions,
-  visited: ReadonlySet<NodeId>,
+  visited: ReadonlySet<ReadKey>,
   /** T1172: the name index this whole read shares — see `nodeIdNamed`. */
   scope: ReaderScope,
 ): NodeReferenceReader {
@@ -725,27 +763,34 @@ function readerWithin(
             suggestion: `${near === null ? "" : `Nearest: "${near}". `}"${name}" (${channelNode.type}) publishes: ${offered.join(", ")}.`,
           };
         }
-        if (visited.has(channelTarget)) {
+        // §B293: the channel is composed FROM these parameters, so one of them already being
+        // resolved on this path is a ring, and it is named: the parameter, through the channel.
+        const ringed = declared.reads.find((parameter) => visited.has(readKey(channelTarget, parameter)));
+        if (ringed !== undefined) {
           scope.cycles += 1;
           return {
             ok: false,
             kind: "cycle",
-            reason: `${reference}: that reference is a cycle (${[...visited, channelTarget].join(" → ")})`,
+            reason: `${reference}: that reference is a cycle (${ringText([...visited, `${channelTarget}.chan.${key}`, readKey(channelTarget, ringed)])}): "${name}" composes ${key} from its ${ringed}`,
           };
         }
         const schema = options.schemaOf(channelNode);
         if (schema === undefined) {
           return { ok: false, kind: "unknownType", reason: `${reference}: "${name}" has an unknown node type` };
         }
-        const resolved = targetOf(options, scope, visited, channelTarget, channelNode, schema);
         // A parameter the channel is composed from that fell back is not a pose: its failure
         // is the read's (the rule the `.par` read has, over every parameter this one reads).
+        const composedFrom: Record<string, ParameterValue> = {};
         for (const parameter of declared.reads) {
+          const definition = Object.hasOwn(schema, parameter) ? schema[parameter] : undefined;
+          if (definition === undefined) continue;
+          const resolved = targetOf(options, scope, visited, channelTarget, channelNode, schema, parameter, definition);
           const entry = resolved.get(parameter);
           const governing = entry?.diagnostic ?? entry?.components?.find((each) => each.diagnostic != null)?.diagnostic ?? null;
           if (governing !== null) return { ok: false, kind: upstreamKind(governing), reason: `${reference}: ${governing.message}` };
+          composedFrom[parameter] = resolved.values[parameter] as ParameterValue;
         }
-        const composed = declared.evaluate(resolved.values)[key];
+        const composed = declared.evaluate(composedFrom)[key];
         if (typeof composed !== "number" || !Number.isFinite(composed)) {
           return { ok: false, kind: "channel", reason: `${reference}: "${name}" publishes no channel "${key}" right now` };
         }
@@ -792,15 +837,17 @@ function readerWithin(
     if (targetId === undefined) {
       return { ok: false, kind: "node", reason: `${reference}: there is no node named "${name}"` };
     }
-    if (visited.has(targetId)) {
-      // §V152. Named, not "maximum call stack exceeded": the user joined two specific
-      // nodes and has to be told which. T1172: counted, because a resolve whose subtree
+    if (visited.has(readKey(targetId, key))) {
+      // §V152. Named, not "maximum call stack exceeded": the user joined specific
+      // parameters and has to be told which. T1172: counted, because a resolve whose subtree
       // fired this guard is path-dependent and may not be memoised — see `targetOf`.
+      // §B293: THIS parameter is already being resolved on this path. Another parameter of
+      // the same node is not, and is read like any other.
       scope.cycles += 1;
       return {
         ok: false,
         kind: "cycle",
-        reason: `${reference}: that reference is a cycle (${[...visited, targetId].join(" → ")})`,
+        reason: `${reference}: that reference is a cycle (${ringText([...visited, readKey(targetId, key)])})`,
       };
     }
     const target = options.graph.nodes[targetId];
@@ -866,7 +913,7 @@ function readerWithin(
     }
 
     // T1172: through the per-frame memo, so a chain of references stops being quadratic.
-    const resolved = targetOf(options, scope, visited, targetId, target, schema);
+    const resolved = targetOf(options, scope, visited, targetId, target, schema, key, definition);
 
     /**
      * The referenced parameter has to have resolved, not merely produced a number.

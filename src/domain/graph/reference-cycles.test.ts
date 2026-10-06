@@ -57,8 +57,11 @@ describe("op() reference cycles (§V152)", () => {
     // `color.r` is an ordinary carrier of an expression, so a loop can close through one
     // — and a gate that only walked bare keys would let exactly that through.
     const a = node("n1", "a", { "color.r": expression("op('b').par.gain") });
-    const b = node("n2", "b", { gain: expression("op('a').par.gain") });
-    expect(referenceCyclesThrough(graphOf(a, b), "n1")).toHaveLength(1);
+    const b = node("n2", "b", { gain: expression("op('a').par.color.g") });
+    const [found] = referenceCyclesThrough(graphOf(a, b), "n1");
+    // §B293: a compound resolves WHOLE, so its components are one member of a ring:
+    // `color.g` is read through `color`, which `color.r` is part of.
+    expect(found?.message).toContain("a.color.r → b.gain → a.color.r");
   });
 
   it("leaves a node that only READS a cycle alone", () => {
@@ -111,16 +114,96 @@ describe("op() reference cycles (§V152)", () => {
     expect(referenceCycleDiagnostics(graphOf(a, b, c, d))).toHaveLength(2);
   });
 
-  it("counts a reference to a DIFFERENT parameter of the same node as the same loop", () => {
+  it("⚑ B293 — two nodes that read each other's UNRELATED parameters are not a ring", () => {
     /**
-     * Not a conservative approximation — the reader resolves the target node's whole
-     * schema, so reading `b.y` resolves `b.z` on the way past and the recursion is real.
-     * The gate is keyed to the node for that reason, and this test is what fails if
-     * someone makes one of the two halves finer without the other (§V61).
+     * This test asserted the opposite, and said why: the reader resolved the target's whole
+     * schema, so reading `b.gain` resolved `b.other` on the way past and the recursion was
+     * real. It was what failed if someone made one half finer without the other (§V61).
+     * Both halves moved: the reader resolves the one parameter it is asked for
+     * (`node-references.test.ts` holds the same shape through the real resolve).
      */
     const a = node("n1", "a", { gain: expression("op('b').par.gain"), other: 2 });
-    const b = node("n2", "b", { other: expression("op('a').par.other") });
-    expect(referenceCyclesThrough(graphOf(a, b), "n1")).toHaveLength(1);
+    const b = node("n2", "b", { gain: 3, other: expression("op('a').par.other") });
+    expect(referenceCyclesThrough(graphOf(a, b), "n1")).toEqual([]);
+    expect(referenceCycleDiagnostics(graphOf(a, b))).toEqual([]);
+  });
+});
+
+/**
+ * §B293 — A RING IS OVER (node, key). Found by a camera whose Look At z was written as the
+ * length of its own Heading and refused as "a cycle": one node, two parameters, no ring.
+ */
+describe("B293 — the ring is over (node, key)", () => {
+  it("⚑ one key reading another key of the SAME node is not a ring, and neither is a chain of three", () => {
+    const one = node("n1", "a", { gain: expression("op('a').par.other * 2"), other: 3 });
+    expect(referenceCyclesThrough(graphOf(one), "n1")).toEqual([]);
+    const three = node("n1", "a", { first: expression("op('a').par.second + 1"), second: expression("op('a').par.third + 1"), third: 1 });
+    expect(referenceCyclesThrough(graphOf(three), "n1")).toEqual([]);
+    expect(referenceCycleDiagnostics(graphOf(three))).toEqual([]);
+  });
+
+  it("⚑ a reads b reads a on ONE node is a ring, named by its two parameters", () => {
+    const ring = node("n1", "a", { gain: expression("op('a').par.other"), other: expression("op('a').par.gain") });
+    const [found, ...rest] = referenceCyclesThrough(graphOf(ring), "n1");
+    expect(rest).toEqual([]);
+    expect(found?.code).toBe("parameter.referenceCycle");
+    expect(found?.message).toBe("Parameter reference chain is circular: a.gain → a.other → a.gain.");
+    expect(found?.nodeId).toBe("n1");
+  });
+
+  it("a parameter reading ITSELF is a ring of one", () => {
+    const self = node("n1", "a", { gain: expression("op('a').par.gain + 1") });
+    expect(referenceCyclesThrough(graphOf(self), "n1")[0]?.message).toBe("Parameter reference chain is circular: a.gain → a.gain.");
+    // One component of a vector reading another is the vector reading itself: it resolves whole.
+    const vector = node("n1", "a", { "aim.z": expression("op('a').par.aim.x") });
+    expect(referenceCyclesThrough(graphOf(vector), "n1")[0]?.message).toBe("Parameter reference chain is circular: a.aim.z → a.aim.z.");
+  });
+
+  it("a ring through two nodes names all four of its hops' parameters, in order", () => {
+    const a = node("n1", "a", { gain: expression("op('b').par.other") });
+    const b = node("n2", "b", { other: expression("op('a').par.gain") });
+    expect(referenceCycleDiagnostics(graphOf(a, b))[0]?.message).toBe("Parameter reference chain is circular: a.gain → b.other → a.gain.");
+  });
+
+  it("⚑ a ring through a CHANNEL the node composes from its own parameters is a ring, and names the channel", () => {
+    // A camera's `chan.distance` is composed from its Eye and Look At (the definition says so).
+    const channels = (target: GraphNode): readonly string[] | null => (target.type === "test.camera" ? ["eye", "lookAt"] : null);
+    const camera = { ...node("n1", "cam", { "lookAt.z": expression("0 - op('cam').chan.distance") }), type: "test.camera" };
+    const [found] = referenceCyclesThrough(graphOf(camera), "n1", channels);
+    expect(found?.message).toBe("Parameter reference chain is circular: cam.lookAt.z → cam.chan.distance → cam.lookAt.z.");
+    // A parameter the channel is NOT composed from may read it: that is the consumer's own use.
+    const fine = { ...node("n1", "cam", { fov: expression("op('cam').chan.distance * 10") }), type: "test.camera" };
+    expect(referenceCyclesThrough(graphOf(fine), "n1", channels)).toEqual([]);
+    // And with nobody to say what the channel is composed from, a channel read is no edge.
+    expect(referenceCyclesThrough(graphOf(camera), "n1")).toEqual([]);
+  });
+
+  it("a value node's channel is made from ALL its parameters: reading it from one of them is a ring", () => {
+    const all = (): "all" => "all";
+    const lfo = node("n1", "lfo", { rate: expression("op('lfo').chan.value + 1") });
+    expect(referenceCyclesThrough(graphOf(lfo), "n1", all)[0]?.message).toBe("Parameter reference chain is circular: lfo.rate → lfo.chan.value → lfo.rate.");
+    // Two value nodes reading each other's channels, as before the grain changed.
+    const a = node("n1", "a", { rate: expression("op('b').chan.value") });
+    const b = node("n2", "b", { rate: expression("op('a').chan.value") });
+    expect(referenceCycleDiagnostics(graphOf(a, b), all)).toHaveLength(1);
+  });
+
+  it("a ring that is part BIND and part op() is seen; a ring of binds alone is the bind gate's", () => {
+    const bind = (ref: string) => ({ mode: "bind" as const, bindings: { bind: { kind: "bind" as const, ref } } });
+    const mixed = node("n1", "a", { gain: bind("other"), other: expression("op('a').par.gain") });
+    expect(referenceCyclesThrough(graphOf(mixed), "n1")[0]?.message).toBe("Parameter reference chain is circular: a.other → a.gain → a.other.");
+    const binds = node("n1", "a", { gain: bind("other"), other: bind("gain") });
+    expect(referenceCycleDiagnostics(graphOf(binds))).toEqual([]);
+  });
+
+  it("a long chain is walked without a ring, and a ring at its end is found from the far node", () => {
+    // 400 nodes, each reading the next: no ring. Close it and it is one ring, 400 long.
+    const chain = Array.from({ length: 400 }, (_, index) => node(`n${String(index)}`, `v${String(index)}`, { gain: index === 399 ? 1 : expression(`op('v${String(index + 1)}').par.gain`) }));
+    expect(referenceCycleDiagnostics(graphOf(...chain))).toEqual([]);
+    chain[399] = node("n399", "v399", { gain: expression("op('v0').par.gain") });
+    const found = referenceCycleDiagnostics(graphOf(...chain));
+    expect(found).toHaveLength(1);
+    expect(referenceCyclesThrough(graphOf(...chain), "n200")).toHaveLength(1);
   });
 });
 
