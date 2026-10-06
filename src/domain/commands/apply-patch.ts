@@ -21,14 +21,14 @@ import { arePortsCompatible, describePortType } from "../graph/port-compat.ts";
 import { compareEdgeOrder } from "../graph/edge-order.ts";
 import {
   countNodeNameReferences,
-  nameBaseFor,
   nodeNames,
   resolveRename,
   rewriteNodeNameReferences,
   uniqueNodeName,
 } from "../graph/names.ts";
+import { kindOf } from "../graph/node-kinds.ts";
 import { sourceReferenceForInput } from "../graph/source-references.ts";
-import { defaultParameters, validateParameters } from "../parameters/validate.ts";
+import { defaultParameters, undeclaredKeys, validateParameters } from "../parameters/validate.ts";
 import { bindCycleDiagnostics } from "../parameters/bind-cycles.ts";
 import { effectiveParameterSchema } from "../parameters/resolve.ts";
 import { isParameterSlot, withBinding } from "../parameters/slots.ts";
@@ -430,7 +430,7 @@ function executeOperation(
       // T880: reflect from the params being provided (a customWgsl created with a shader gets
       // that shader's controls), so creating a node with a reflected value does not abort.
       const creationSchema = effectiveParameterSchema(definition, provided);
-      const invalid = validateParameters(creationSchema, provided, nodeId);
+      const invalid = validateParameters(creationSchema, provided, nodeId, definition.parameterKeysNote);
       if (invalid.length > 0) {
         run.diagnostics.push(...invalid);
         throw new PatchAbort();
@@ -456,10 +456,16 @@ function executeOperation(
         type: definition.type,
         definitionVersion: definition.version,
         position: { x: operation.position.x, y: operation.position.y },
-        parameters: { ...defaultParameters(creationSchema), ...provided },
+        // T1619b: `bornWith` between the two — what this type stores at birth beside its
+        // manifest defaults (a control's default is the value it is made with), under
+        // whatever the creator provided.
+        parameters: { ...defaultParameters(creationSchema), ...(definition.bornWith?.(provided) ?? {}), ...provided },
         // §V129: the label is the NAME — unique per graph, auto-numbered at creation
         // (`noise1`, `noise2`), which is what makes `op('name')` references resolvable.
-        label: requested ?? uniqueNodeName(draft, nameBaseFor(definition.type)),
+        // T1593b: numbered under the type's KIND, so an unrenamed node already carries it
+        // (`kernel1` for a Point Kernel; `bloom1` for an instance of the component Bloom,
+        // whose kind is the component's own name). An explicit label is stored exactly as given.
+        label: requested ?? uniqueNodeName(draft, kindOf(definition)),
       };
       // The new node arrives with a name and, optionally, expressions of its own — both
       // halves a loop needs. The name is the surprising half: numbering reuses a name a
@@ -715,7 +721,7 @@ function executeOperation(
           ? node.parameters
           : { ...Object.fromEntries(Object.entries(node.parameters).filter(([key]) => !removed.includes(key))), ...writes },
       );
-      const invalid = validateParameters(schema, writes, node.id);
+      const invalid = validateParameters(schema, writes, node.id, definition.parameterKeysNote);
       if (invalid.length > 0) {
         run.diagnostics.push(...invalid);
         throw new PatchAbort();
@@ -747,6 +753,38 @@ function executeOperation(
       // names it is a mitigation, not the gate — a document should never hold the cycle
       // in the first place.
       refuseReferenceCycle(node.id);
+      return;
+    }
+
+    case "removeParameters": {
+      // §T1641b slice 2: the way a key nothing reads LEAVES a document (see the op's type).
+      const node = requireNode(operation.nodeId);
+      const definition = registry.get(node.type);
+      if (definition === undefined) {
+        fail("node.unknownType", `node "${node.id}" has unknown type "${node.type}" and is a placeholder.`, {
+          nodeId: node.id,
+          // What this build cannot name it cannot call undeclared (§V10).
+          suggestion: "Install the node package that defines this type before editing it (§V10).",
+        });
+        return;
+      }
+      const undeclared = undeclaredKeys(
+        effectiveParameterSchema(definition, node.parameters),
+        node.parameters,
+        definition.retainedParameterKeys,
+      );
+      for (const key of operation.keys) {
+        if (!Object.hasOwn(node.parameters, key)) {
+          fail("parameter.remove.absent", `node "${node.id}" stores nothing under "${key}".`, { nodeId: node.id });
+        }
+        if (!undeclared.includes(key)) {
+          fail("parameter.remove.declared", `"${key}" is a parameter "${node.type}" declares, so something reads it.`, {
+            nodeId: node.id,
+            suggestion: "This removes only what nothing reads. `parameter.reset` returns a declared parameter to its default.",
+          });
+        }
+      }
+      for (const key of operation.keys) delete node.parameters[key];
       return;
     }
 

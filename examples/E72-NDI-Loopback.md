@@ -17,15 +17,15 @@ copy-paste base for senders, receivers and checking an actual round trip.
    includes no SDK, installer or permission to redistribute either.
 2. Open the example and approve local-network access when requested. macOS may
    require its own local-network permission. Settings shows Loom permissions.
-3. `send1` publishes **Loom E72 NDI**. Select `receive1`, refresh discovery and
+3. `ndiout_send` publishes **Loom E72 NDI**. Select `ndiin_receive`, refresh discovery and
    choose that exact live source; the displayed name includes the sender machine.
    No machine-specific source name is saved in the shipped file.
-4. Compare viewer outputs **reference1** and **returned1**. Both should animate;
-   only the latter proves reception. `send1` previews its local input.
+4. Compare viewer outputs **output_reference** and **output_returned**. Both should animate;
+   only the latter proves reception. `ndiout_send` previews its local input.
 
-`signal1 → send1`, `signal1 → reference1`, `receive1 → returned1`.
+`over_signal → ndiout_send`, `over_signal → output_reference`, `ndiin_receive → output_returned`.
 
-What `signal1` sends is a **reference chart**, not a texture chosen for looks: a
+What `over_signal` sends is a **reference chart**, not a texture chosen for looks: a
 black-and-white checkerboard tinted by a four-stop colour sweep, with a marker
 crossing the frame. Each part answers a question the round trip poses — the checker
 shows resampling as moiré on its edges, the sweep shows orientation and channel
@@ -42,7 +42,7 @@ full source size and uses CPU processing, staging and lossy encoding on the
 default development path. It is **not** zero-copy GPU tensor transport or an
 image-exact/end-to-end latency benchmark.
 
-Turn `send1` Publish off: the received image becomes stale with a diagnostic.
+Turn `ndiout_send` Publish off: the received image becomes stale with a diagnostic.
 Turn it back on with the same identity: NDI can reconnect the existing receiver.
 Rename the publisher and you must explicitly select the new source.
 

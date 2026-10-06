@@ -33,9 +33,9 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  * Four spheres and a plate under a coloured sky. If the metallic-roughness path breaks, a
  * picture in the catalogue breaks with it.
  *
- *   plate1 ─┐
- *   mirror1 · brushed1 · rough1 · glass1 ─┴► shot1(render) ─► out1
- *                                   sky1(ramp) ─► shot1.environment
+ *   geometry_plate ─┐
+ *   geometry_mirror · geometry_brushed · geometry_rough · geometry_glass ─┴► render_shot(render) ─► output1
+ *                                   ramp_sky(ramp) ─► render_shot.environment
  *
  * ## What the four spheres are for
  *
@@ -79,7 +79,7 @@ export const burnishDocument = document(
       /* THE PLATE. A wide, nearly flat grid: the spheres need something to sit on and to
          cast onto, and a dielectric floor is also the one surface here with a diffuse half
          worth looking at. */
-      node("platePts", "pointGrid", [-1400, 40], { cols: 48, rows: 36, count: 1728, sizeX: 16, sizeY: 12 }, { label: "platepts1" }),
+      node("platePts", "pointGrid", [-1400, 40], { cols: 48, rows: 36, count: 1728, sizeX: 16, sizeY: 12 }, { label: "grid_plate" }),
       node("plateLay", "pointKernel", [-1160, 40], {
         capacity: 1728,
         seed: 69,
@@ -93,8 +93,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   return q;
 }
 `,
-      }, { label: "platelay1" }),
-      node("plate", "geometry", [-900, 40], { mode: "surface", material: "matplate1" }, { label: "plate1" }),
+      }, { label: "kernel_platelay" }),
+      node("plate", "geometry", [-900, 40], { mode: "surface", material: "material_plate" }, { label: "geometry_plate" }),
 
       /* THE FOUR SPHERES, one geometry each because a material belongs to a geometry and
          the whole point of the file is that the four materials differ. */
@@ -108,46 +108,46 @@ fn process(p: Point, ctx: PointCtx) -> Point {
          construction, mapped to a sphere in a kernel. The surface renderer takes its
          normals from central differences on that grid, so the reflections belong to the
          material rather than to the mesh. */
-      node("ballPts", "pointGrid", [-1400, 500], { cols: 64, rows: 48, count: 3072, sizeX: 2, sizeY: 2 }, { label: "ballpts1" }),
+      node("ballPts", "pointGrid", [-1400, 500], { cols: 64, rows: 48, count: 3072, sizeX: 2, sizeY: 2 }, { label: "grid_ball" }),
       node("atMirror", "pointKernel", [-1160, 240], {
         capacity: 3072,
         seed: 69,
         attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
         kernel: SPHERE_KERNEL(-3.3),
-      }, { label: "atmirror1" }),
+      }, { label: "kernel_atmirror" }),
       node("atBrushed", "pointKernel", [-1160, 480], {
         capacity: 3072,
         seed: 69,
         attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
         kernel: SPHERE_KERNEL(-1.1),
-      }, { label: "atbrushed1" }),
+      }, { label: "kernel_atbrushed" }),
       node("atRough", "pointKernel", [-1160, 720], {
         capacity: 3072,
         seed: 69,
         attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
         kernel: SPHERE_KERNEL(1.1),
-      }, { label: "atrough1" }),
+      }, { label: "kernel_atrough" }),
       node("atGlass", "pointKernel", [-1160, 960], {
         capacity: 3072,
         seed: 69,
         attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
         kernel: SPHERE_KERNEL(3.3),
-      }, { label: "atglass1" }),
+      }, { label: "kernel_atglass" }),
 
-      node("mirror", "geometry", [-900, 240], { mode: "surface", material: "matmirror1" }, { label: "mirror1" }),
-      node("brushed", "geometry", [-900, 480], { mode: "surface", material: "matbrushed1" }, { label: "brushed1" }),
-      node("rough", "geometry", [-900, 720], { mode: "surface", material: "matrough1" }, { label: "rough1" }),
-      node("glass", "geometry", [-900, 960], { mode: "surface", material: "matglass1" }, { label: "glass1" }),
+      node("mirror", "geometry", [-900, 240], { mode: "surface", material: "material_mirror" }, { label: "geometry_mirror" }),
+      node("brushed", "geometry", [-900, 480], { mode: "surface", material: "material_brushed" }, { label: "geometry_brushed" }),
+      node("rough", "geometry", [-900, 720], { mode: "surface", material: "material_rough" }, { label: "geometry_rough" }),
+      node("glass", "geometry", [-900, 960], { mode: "surface", material: "material_glass" }, { label: "geometry_glass" }),
 
       /* ⚑ THE FOUR MATERIALS, AND THEY DIFFER IN EXACTLY TWO NUMBERS. Same base colour on
          the three metals, same everything else: the only things that move are `metallic`
          and `roughness`, so anything you can see between them is the BRDF and not a tint. */
-      node("matMirror", "materialPbr", [-620, 240], { color: [0.92, 0.9, 0.86, 1], metallic: 1, roughness: 0.05 }, { label: "matmirror1" }),
-      node("matBrushed", "materialPbr", [-620, 480], { color: [0.92, 0.9, 0.86, 1], metallic: 1, roughness: 0.42 }, { label: "matbrushed1" }),
-      node("matRough", "materialPbr", [-620, 720], { color: [0.92, 0.9, 0.86, 1], metallic: 1, roughness: 0.92 }, { label: "matrough1" }),
+      node("matMirror", "materialPbr", [-620, 240], { color: [0.92, 0.9, 0.86, 1], metallic: 1, roughness: 0.05 }, { label: "material_mirror" }),
+      node("matBrushed", "materialPbr", [-620, 480], { color: [0.92, 0.9, 0.86, 1], metallic: 1, roughness: 0.42 }, { label: "material_brushed" }),
+      node("matRough", "materialPbr", [-620, 720], { color: [0.92, 0.9, 0.86, 1], metallic: 1, roughness: 0.92 }, { label: "material_rough" }),
       /* The dielectric: metallic 0, so it keeps the diffuse half the metals have none of. */
-      node("matGlass", "materialPbr", [-620, 960], { color: [0.22, 0.4, 0.52, 1], metallic: 0, roughness: 0.3 }, { label: "matglass1" }),
-      node("matPlate", "materialPbr", [-620, 40], { color: [0.16, 0.16, 0.18, 1], metallic: 0, roughness: 0.65 }, { label: "matplate1" }),
+      node("matGlass", "materialPbr", [-620, 960], { color: [0.22, 0.4, 0.52, 1], metallic: 0, roughness: 0.3 }, { label: "material_glass" }),
+      node("matPlate", "materialPbr", [-620, 40], { color: [0.16, 0.16, 0.18, 1], metallic: 0, roughness: 0.65 }, { label: "material_plate" }),
 
       /* THE SKY. A `ramp` and nothing else — the environment is any TOP, so a reflection
          here costs no asset pipeline. The band at the horizon is deliberate: a gradient
@@ -165,16 +165,16 @@ fn process(p: Point, ctx: PointCtx) -> Point {
           { position: 0.58, color: [0.24, 0.16, 0.14, 1] },
           { position: 1, color: [0.05, 0.04, 0.05, 1] },
         ],
-      }, { label: "sky1", definitionVersion: 2 }),
+      }, { label: "ramp_sky", definitionVersion: 2 }),
 
       /* A slow drift across the row, so the reflections MOVE — a still mirror and a still
          rough ball differ less than a moving pair, because what roughness does to a
          reflection is most legible when the reflection is travelling. */
-      node("drift", "lfo", [-340, 520], { shape: "sine", frequency: 0.02, amplitude: 1.6, offset: 0, phase: 0 }, { label: "drift1" }),
+      node("drift", "lfo", [-340, 520], { shape: "sine", frequency: 0.02, amplitude: 1.6, offset: 0, phase: 0 }, { label: "lfo_drift" }),
       node("cam", "camera", [-340, 40], { lookAt: [0, 0.75, 0], fov: 38 }, {
-        label: "cam1",
+        label: "camera1",
         parameters: {
-          "eye.x": drivenSlot("drift1", 0),
+          "eye.x": drivenSlot("lfo_drift", 0),
           "eye.y": 1.9,
           "eye.z": 8.4,
         },
@@ -183,11 +183,11 @@ fn process(p: Point, ctx: PointCtx) -> Point {
         kind: "directional", color: [1, 0.94, 0.86, 1], intensity: 1.1,
         direction: [-0.6, -0.8, -0.45],
         shadows: true, shadowExtent: 7,
-      }, { label: "key1" }),
+      }, { label: "light_key" }),
       node("shot", "render", [-60, 40], {
-        scenes: "plate1 mirror1 brushed1 rough1 glass1",
-        camera: "cam1",
-        lights: "key1",
+        scenes: "geometry_plate geometry_mirror geometry_brushed geometry_rough geometry_glass",
+        camera: "camera1",
+        lights: "light_key",
         ambientColor: [0.45, 0.55, 0.8, 1],
         ambientIntensity: 0.18,
         background: [0.03, 0.035, 0.05, 1],
@@ -197,8 +197,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {
         /* E68 could not have this: MSAA is free on the rasterised path and unavailable to
            a marcher, and a sphere's silhouette is exactly where it shows. */
         antialias: "msaa",
-      }, { label: "shot1" }),
-      node("out", "output", [220, 40], { toneMap: "filmic" }, { label: "out1" }),
+      }, { label: "render_shot" }),
+      node("out", "output", [220, 40], { toneMap: "filmic" }, { label: "output1" }),
     ],
     [
       edge("e-platepts-lay", ["platePts", "out"], ["plateLay", "in"]),

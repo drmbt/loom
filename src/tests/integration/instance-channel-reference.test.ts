@@ -98,7 +98,7 @@ function world(amount: StoredParameter, level = 0.75) {
   const flattened = flattenComponents({ graph, registry: system.nodes, components });
   // The premise, asserted: the instance node is gone from what the compiler reads.
   expect(Object.keys(flattened.graph.nodes)).not.toContain("inst");
-  const evaluated = createValueGraphSession(system.nodes).evaluate(flattened.graph, FRAME);
+  const evaluated = createValueGraphSession(system.nodes).evaluate(flattened.graph, FRAME, { flattening: flattened });
   return { system, graph, components, flattened, evaluated };
 }
 
@@ -236,5 +236,52 @@ describe("§T1485b — completion offers what the reader accepts (§V150)", () =
       ["chan"],
     ).map((member) => member.text);
     expect(offered).toEqual(["level", "kick"]);
+  });
+});
+
+/**
+ * §T1559b — THE VALUE GRAPH is a reader too. Since the Panel MIDI work a value node's own
+ * parameters resolve against this evaluation's channels, through a reader the value graph
+ * builds itself — and it built it with the morphs and NO instances, so a Slider reading
+ * `op('analysis1').chan.level` published its retained value while a texture node beside it,
+ * reading the same expression, compiled to the instance's.
+ *
+ * What is asserted is the BAG the Slider publishes, which is what every consumer of its
+ * channel reads. Two Sliders, because the read also has to be ORDERED: the value graph
+ * evaluates in id order unless a reference says otherwise, the instance's inner nodes are
+ * `inst/…`, and a reader that sorts before them would otherwise read a bag not published yet.
+ */
+describe("§T1559b — the value graph reads op('<instance>').chan.<c> in a value node's own parameter", () => {
+  function published(source: string, level = 0.75) {
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
+    system.components.register(analysis(level));
+    const slider = (id: string, label: string) => node(id, "slider", { value: expressionSlot(source, 0.25), min: 0, max: 1 }, label);
+    const graph: GraphDocument = {
+      revision: 1,
+      groups: {},
+      edges: {},
+      nodes: {
+        inst: node("inst", componentNodeType("analysis", 1), {}, "analysis1"),
+        "a-early": slider("a-early", "early1"),
+        "z-late": slider("z-late", "late1"),
+      },
+    };
+    const flattened = flattenComponents({ graph, registry: system.nodes, components: system.components.view() });
+    // The premise: one reader sorts before the instance's inner nodes and one after.
+    expect(Object.keys(flattened.graph.nodes).sort()).toEqual(["a-early", "inst/bands", "inst/hits", "inst/levels", "inst/onsets", "z-late"]);
+    const evaluated = createValueGraphSession(system.nodes).evaluate(flattened.graph, FRAME, { flattening: flattened });
+    expect(evaluated.diagnostics).toEqual([]);
+    return { early: evaluated.byId.get("a-early"), late: evaluated.byId.get("z-late") };
+  }
+
+  it("publishes the instance's value, whichever side of the instance the reader sorts on", () => {
+    expect(published("op('analysis1').chan.level")).toEqual({ early: { value: 0.75 }, late: { value: 0.75 } });
+    // The cut-the-wire question: the instance publishes another number, the Slider follows.
+    expect(published("op('analysis1').chan.level", 0.4)).toEqual({ early: { value: 0.4 }, late: { value: 0.4 } });
+    expect(published("op('analysis1').chan.kick")).toEqual({ early: { value: 0.6 }, late: { value: 0.6 } });
+  });
+
+  it("still refuses a channel two outputs publish, and keeps the retained value", () => {
+    expect(published("op('analysis1').chan.shared")).toEqual({ early: { value: 0.25 }, late: { value: 0.25 } });
   });
 });

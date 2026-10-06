@@ -35,6 +35,21 @@ export interface PreviewSlotBoundsStore {
    */
   snapshot(): ReadonlyMap<NodeId, SlotBox>;
   subscribe(listener: () => void): () => void;
+  /**
+   * T1655b — the tiles whose CHROME CORNER (bottom-right, where the camera toggle or its
+   * sentence is drawn) lies under a node that paints in front.
+   *
+   * The compositor already clips a tile by the nodes in front of it (T1102); the chrome
+   * layer is a sibling of the compositing surface, above every node, and clipped nothing.
+   * Seen in the owner's own document, where nodes overlap: a covered geometry's "No object
+   * drawn on this tile." was painted across the material tile in front of it, which plainly
+   * draws one. Chrome that lands on another node's picture says something false about it.
+   *
+   * Written by the preview tick, which is the one reader of the DOM's stacking order; the
+   * snapshot's identity moves when membership does, so the overlay re-renders on it.
+   */
+  setCornerCovered(nodeIds: ReadonlySet<NodeId>): void;
+  cornerCovered(nodeId: NodeId): boolean;
 }
 
 function sameBox(a: SlotBox, b: SlotBox): boolean {
@@ -43,6 +58,7 @@ function sameBox(a: SlotBox, b: SlotBox): boolean {
 
 export function createPreviewSlotBounds(): PreviewSlotBoundsStore {
   let boxes = new Map<NodeId, SlotBox>();
+  let covered: ReadonlySet<NodeId> = new Set();
   const listeners = new Set<() => void>();
   const notify = (): void => {
     for (const listener of listeners) listener();
@@ -71,6 +87,16 @@ export function createPreviewSlotBounds(): PreviewSlotBoundsStore {
       return () => {
         listeners.delete(listener);
       };
+    },
+    setCornerCovered(nodeIds) {
+      if (nodeIds.size === covered.size && [...nodeIds].every((nodeId) => covered.has(nodeId))) return;
+      covered = new Set(nodeIds);
+      // The map's identity is the change notification (see `snapshot`).
+      boxes = new Map(boxes);
+      notify();
+    },
+    cornerCovered(nodeId) {
+      return covered.has(nodeId);
     },
   };
 }

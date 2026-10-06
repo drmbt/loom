@@ -9,6 +9,7 @@ import { CRT_WGSL, GRADE_WGSL, LENS_WGSL, OPTICS_COMPOSITE_WGSL, STREAK_WGSL } f
 import { GLOSSY_SSR_WGSL } from "../reflections.ts";
 import type { OnNothingFacts } from "../scene-facts.ts";
 import { carAreas } from "../scene-facts.ts";
+import { geometryName, meshName } from "../names.ts";
 import { LAMP_GLASS_WGSL, surfaceWgsl, type Footprint } from "../surface.ts";
 import { ShotGraph, cameraRefs } from "./chain.ts";
 import { DOF_FILL_WGSL, LENS_DOF_WGSL, STUDIO_ENV_WGSL } from "./closeups-fx.ts";
@@ -999,7 +1000,7 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
         return [(b.min[0] + b.max[0]) / 2, (b.min[2] + b.max[2]) / 2, (b.max[0] - b.min[0]) / 2 - 0.12, (b.max[2] - b.min[2]) / 2 - 0.25] as const;
       })
     : [];
-  g.node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: surfaceWgsl(footprints), headGain: 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6 }, { label: "surf1" });
+  g.node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: surfaceWgsl(footprints), headGain: 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6 }, { label: "material_surf" });
   const scenes: string[] = [];
   const lights: string[] = [];
   const projectors: string[] = [];
@@ -1007,22 +1008,22 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
     ["wh", ...carAreas(facts)].forEach((area, index) => {
       const mesh = facts.areas.get(area as never);
       if (mesh === undefined) throw new Error(`mcuDocument: no "${area}" area in the GLB.`);
-      g.node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts }, { label: `mesh${area}1` });
-      g.node(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "surf1" }, { label: `geo${area}1` });
+      g.node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts }, { label: meshName(area) });
+      g.node(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "material_surf" }, { label: geometryName(area) });
       g.edge(`mesh-geo-${area}`, [`mesh_${area}`, "out"], [`geo_${area}`, "points"]);
-      scenes.push(`geo${area}1`);
+      scenes.push(geometryName(area));
     });
     const glass = facts.areas.get("lampglass");
     if (glass !== undefined) {
-      g.node("mesh_lampglass", "meshFileIn", [-3600, 1700], { file: facts.glbUrl, select: glass.select, vertices: glass.vertices, triangles: glass.triangles, parts: glass.parts }, { label: "meshlampglass1" });
-      g.node("glassMat", "materialWgsl", [-3300, 1750], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02 }, { label: "glassmat1" });
-      g.node("geo_lampglint", "geometry", [-3000, 1750], { mode: "surface", material: "glassmat1", blend: "additive" }, { label: "geolampglint1" });
+      g.node("mesh_lampglass", "meshFileIn", [-3600, 1700], { file: facts.glbUrl, select: glass.select, vertices: glass.vertices, triangles: glass.triangles, parts: glass.parts }, { label: "mesh_lampglass" });
+      g.node("glassMat", "materialWgsl", [-3300, 1750], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02 }, { label: "material_glass" });
+      g.node("geo_lampglint", "geometry", [-3000, 1750], { mode: "surface", material: "material_glass", blend: "additive" }, { label: "geometry_lampglint" });
       g.edge("mesh-geo-lampglint", ["mesh_lampglass", "out"], ["geo_lampglint", "points"]);
-      scenes.push("geolampglint1");
+      scenes.push("geometry_lampglint");
     }
     // one projector per car, from between its headlights (document.ts's low beams)
-    g.node("cookieSeed", "ramp", [-3000, 2000], {}, { label: "cookieseed1", resolution: { mode: "fixed", width: 256, height: 128 } });
-    g.node("cookie", "customWgsl", [-2800, 2000], { source: HEADLIGHT_COOKIE_WGSL }, { label: "cookie1", resolution: { mode: "fixed", width: 256, height: 128 } });
+    g.node("cookieSeed", "ramp", [-3000, 2000], {}, { label: "ramp_cookieseed", resolution: { mode: "fixed", width: 256, height: 128 } });
+    g.node("cookie", "customWgsl", [-2800, 2000], { source: HEADLIGHT_COOKIE_WGSL }, { label: "wgsl_cookie", resolution: { mode: "fixed", width: 256, height: 128 } });
     g.edge("seed-cookie", ["cookieSeed", "out"], ["cookie", "input"]);
     const heads = [...facts.markers.values()].filter((marker) => marker.name.startsWith("lamp.head."));
     const carIds = [...new Set(heads.map((marker) => marker.name.slice("lamp.head.".length, -1)))].sort();
@@ -1040,16 +1041,16 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
         color: [0.78, 0.92, 1, 1],
         falloff: true,
         occlusion: true,
-      }, { label: `${id}1` });
+      }, { label: `projector_${id}` });
       g.edge(`cookie-${id}`, ["cookie", "out"], [id, "cookie"]);
-      projectors.push(`${id}1`);
+      projectors.push(`projector_${id}`);
     });
     // the room's sodium high-bays (document.ts), and a low cool key on the car fronts from far behind the lens
     const warm = [1, 0.52, 0.2, 1];
-    g.node("sodiumA", "light", [-2600, 2400], { kind: "point", position: [-9, 7.2, -6], color: warm, intensity: 4 }, { label: "sodiuma1" });
-    g.node("sodiumB", "light", [-2600, 2500], { kind: "point", position: [10, 7.2, -9], color: warm, intensity: 3 }, { label: "sodiumb1" });
-    g.node("carKey", "light", [-2600, 2600], { kind: "point", position: [0, 0.45, 16], color: [0.88, 0.94, 1, 1], intensity: take.carKey ?? 10 }, { label: "carkey1" });
-    lights.push("sodiuma1", "sodiumb1", "carkey1");
+    g.node("sodiumA", "light", [-2600, 2400], { kind: "point", position: [-9, 7.2, -6], color: warm, intensity: 4 }, { label: "light_sodiuma" });
+    g.node("sodiumB", "light", [-2600, 2500], { kind: "point", position: [10, 7.2, -9], color: warm, intensity: 3 }, { label: "light_sodiumb" });
+    g.node("carKey", "light", [-2600, 2600], { kind: "point", position: [0, 0.45, 16], color: [0.88, 0.94, 1, 1], intensity: take.carKey ?? 10 }, { label: "light_carkey" });
+    lights.push("light_sodiuma", "light_sodiumb", "light_carkey");
   }
 
   // ── The figure ──
@@ -1064,7 +1065,7 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
   });
   const figure = figureNodes(facts, {
     area: take.wardrobe,
-    material: "surf1",
+    material: "material_surf",
     yaw: switched(yaws.map(fmt), starts),
     place: [0, 1, 2].map((axis) => switched(places.map((p) => fmt(p[axis]!)), starts)) as [string, string, string],
     pose: Object.fromEntries(Object.entries(pose).map(([knob, values]) => [knob, switched(values, starts)])),
@@ -1087,12 +1088,12 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
     [0, 1, 2].forEach((axis) => {
       params[`position.${"xyz"[axis]}`] = expressionSlot(switched(world.map((p) => fmt(p[axis]!)), starts), world[0]![axis]!);
     });
-    g.node(`l_${slot}`, "light", [-2600, 1000 + index * 100], params, { label: `l${slot.toLowerCase()}1` });
-    lights.push(`l${slot.toLowerCase()}1`);
+    g.node(`l_${slot}`, "light", [-2600, 1000 + index * 100], params, { label: `light_l${slot.toLowerCase()}` });
+    lights.push(`light_l${slot.toLowerCase()}`);
   });
 
   // ── Environment (reflections: the jewellery's glints) ──
-  g.node("envSeed", "ramp", [-2700, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 1024, height: 512 } });
+  g.node("envSeed", "ramp", [-2700, 300], {}, { label: "ramp_envseed", resolution: { mode: "fixed", width: 1024, height: 512 } });
   // a jeweller's studio for the reflections (closeups-fx.ts): cards round the lens, an overhead
   // box, a scatter of hard points — the chain, the rings and the sunglasses glint white, as in
   // the reference, where the room's own bars left them black
@@ -1105,12 +1106,12 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
   });
   const envParams: Record<string, StoredParameter> = { source: STUDIO_ENV_WGSL, softbox: 3, strip: 4, points: 60, count: 70, size: 0.01, ambient: 0.004, surround: 1.0, cards: 60, room: 0, toward: toward[0]! };
   [0, 1, 2].forEach((axis) => { envParams[`toward.${"xyz"[axis]}`] = expressionSlot(switched(toward.map((v) => fmt(v[axis]!)), starts), toward[0]![axis]!); });
-  g.node("env", "customWgsl", [-2700, 500], envParams, { label: "env1", resolution: { mode: "fixed", width: 1024, height: 512 } });
+  g.node("env", "customWgsl", [-2700, 500], envParams, { label: "wgsl_env", resolution: { mode: "fixed", width: 1024, height: 512 } });
   g.edge("seed-env", ["envSeed", "out"], ["env", "input"]);
   const hdri = options.hdri === true;
   if (hdri) {
-    g.node("hdri", "movieFileIn", [-2900, 700], { file: "media/on-nothing/hdri.png" }, { label: "hdri1", resolution: { mode: "fixed", width: 2048, height: 1024 } });
-    g.node("envHdri", "customWgsl", [-2700, 700], { source: ENVIRONMENT_HDRI_WGSL, gain: 0.6, crush: 0.7 }, { label: "envhdri1", resolution: { mode: "fixed", width: 2048, height: 1024 } });
+    g.node("hdri", "movieFileIn", [-2900, 700], { file: "media/on-nothing/hdri.png" }, { label: "movie_hdri", resolution: { mode: "fixed", width: 2048, height: 1024 } });
+    g.node("envHdri", "customWgsl", [-2700, 700], { source: ENVIRONMENT_HDRI_WGSL, gain: 0.6, crush: 0.7 }, { label: "wgsl_envhdri", resolution: { mode: "fixed", width: 2048, height: 1024 } });
     g.edge("hdri-env", ["hdri", "out"], ["envHdri", "input"]);
   }
 
@@ -1126,12 +1127,12 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
   }
   const fovs = take.beats.map((beat) => beat.fov);
   camera["fov"] = expressionSlot(switched(fovs.map(fmt), starts), fovs[0]!);
-  g.node("cam", "camera", [-2700, -900], { eye: eyes[0]!, lookAt: aims[0]!, fov: fovs[0]!, near: 0.03, far: 200, ...camera }, { label: "cam1" });
-  const cameraParams = cameraRefs("cam1", eyes[0]!, aims[0]!, fovs[0]!, 200);
+  g.node("cam", "camera", [-2700, -900], { eye: eyes[0]!, lookAt: aims[0]!, fov: fovs[0]!, near: 0.03, far: 200, ...camera }, { label: "camera1" });
+  const cameraParams = cameraRefs("camera1", eyes[0]!, aims[0]!, fovs[0]!, 200);
 
   g.node("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
-    camera: "cam1",
+    camera: "camera1",
     lights: lights.join(" "),
     projectors: projectors.join(" "),
     ambientColor: [1, 1, 1, 1],
@@ -1143,7 +1144,7 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
     albedoOutput: true,
     environmentIntensity: 0.25,
     environmentTaps: 16,
-  }, { label: "shot1" });
+  }, { label: "render_shot" });
   g.edge("env-shot", [hdri ? "envHdri" : "env", "out"], ["shot", "environment"]);
 
   // ── Screen space ──
@@ -1214,35 +1215,35 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
   // ── Optics: the streak glass (three chained box passes, document.ts's), bloom ──
   const audio = options.audio === true;
   if (audio) {
-    g.node("song", "audioFileIn", [-4200, 1400], { file: "media/on-nothing/song.wav", playMode: "timeline" }, { label: "song1" });
-    g.node("pickLevels", "valueSelect", [-3900, 1300], { channels: "level low high" }, { label: "picklevels1" });
-    g.node("smooth", "valueLag", [-3600, 1300], { lag: 0.02, releaseRatio: 4 }, { label: "smooth1" });
-    g.node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "rank1" });
-    g.node("levels", "valueLag", [-3000, 1300], { lag: 1.0, releaseRatio: 1.5 }, { label: "levels1" });
+    g.node("song", "audioFileIn", [-4200, 1400], { file: "media/on-nothing/song.wav", playMode: "timeline" }, { label: "audiofile_song" });
+    g.node("pickLevels", "valueSelect", [-3900, 1300], { channels: "level low high" }, { label: "select_picklevels" });
+    g.node("smooth", "valueLag", [-3600, 1300], { lag: 0.02, releaseRatio: 4 }, { label: "lag_smooth" });
+    g.node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "normalize_rank" });
+    g.node("levels", "valueLag", [-3000, 1300], { lag: 1.0, releaseRatio: 1.5 }, { label: "lag_levels" });
     g.edge("song-pick", ["song", "out"], ["pickLevels", "in"]);
     g.edge("pick-smooth", ["pickLevels", "out"], ["smooth", "in"]);
     g.edge("smooth-rank", ["smooth", "out"], ["rank", "in"]);
     g.edge("rank-levels", ["rank", "out"], ["levels", "in"]);
   }
-  const loud = audio ? "clamp(op('levels1').chan.level * 0.6 + op('levels1').chan.low * 0.4, 0, 1)" : "0.5";
+  const loud = audio ? "clamp(op('lag_levels').chan.level * 0.6 + op('lag_levels').chan.low * 0.4, 0, 1)" : "0.5";
   // one direction per cut: each beat's columns grow from `from` to `to` over the beat
   const grow = switched(take.beats.map((beat, b) => `clamp((abstime - ${starts[b]!.toFixed(5)}) / ${(beat.frames / 24).toFixed(5)}, 0, 1)`), starts);
   const reach = `((${take.streak.from} + (${take.streak.to - take.streak.from}) * (${grow})) * (0.9 + 0.2 * ${loud}))`;
-  g.node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 0.8 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } });
+  g.node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 0.8 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } });
   g.edge("scene-bright", scene, ["bright", "input"]);
-  g.node("streakSrc", "customWgsl", [-1300, 200], { source: BRIGHT_PASS_WGSL, threshold: take.streak.threshold, knee: 1.2 }, { label: "streaksrc1", resolution: { mode: "scale", factor: 0.5 } });
+  g.node("streakSrc", "customWgsl", [-1300, 200], { source: BRIGHT_PASS_WGSL, threshold: take.streak.threshold, knee: 1.2 }, { label: "wgsl_streaksrc", resolution: { mode: "scale", factor: 0.5 } });
   g.edge("scene-streaksrc", scene, ["streakSrc", "input"]);
   ([400, 60, 20] as const).forEach((div, index) => {
     const id = `streak${index}`;
-    g.node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reach} / ${div}`, take.streak.from / div), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, compress: index === 0 ? 3 : 0, ...(index === 0 ? { minSize: 0.004 } : {}), down: 0, gain: take.streak.gain, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } });
+    g.node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reach} / ${div}`, take.streak.from / div), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, compress: index === 0 ? 3 : 0, ...(index === 0 ? { minSize: 0.004 } : {}), down: 0, gain: take.streak.gain, striation: 0.22, striationScale: 110 }, { label: `wgsl_${id}`, resolution: { mode: "scale", factor: 1 } });
     g.edge(`into-${id}`, [index === 0 ? "streakSrc" : `streak${index - 1}`, "out"], [id, "input"]);
   });
   for (const level of [1, 2, 3, 4]) {
-    g.node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `bloomdown${level}1`, resolution: { mode: "scale", factor: 0.5 } });
+    g.node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } });
     g.edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]);
   }
   for (const level of [0, 1, 2, 3]) {
-    g.node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `bloomup${level}1`, resolution: { mode: "scale", factor: 2 } });
+    g.node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } });
     g.edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]);
     g.edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0);
   }

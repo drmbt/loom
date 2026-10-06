@@ -5,6 +5,7 @@ import type { OnNothingFacts, PartFacts } from "../scene-facts.ts";
 import { markerOf, wgslVec3 } from "../scene-facts.ts";
 import { CAR_RIG_ATTRIBUTES } from "../car-rig.ts";
 import { CRT_WGSL } from "../fx.ts";
+import { lightName } from "../names.ts";
 import { boneParam, handPose } from "../skin-kernel.ts";
 import { GLASS_COMPOSITE_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "../surface.ts";
 import { Plate, knob, vectorKnobs, wobble } from "./plate.ts";
@@ -360,7 +361,7 @@ function row36Glitch(plate: Plate, at: (local: V3) => [number, number, number]):
     smear: knob(steps(0, [[0, 1, 0.04], [9, 10, 0.05], [10, 11, 0.05], [15, 16, 0.3]])),
     split: knob(steps(0, [[10, 11, 0.012], [11, 14, 0.0015]])),
     teal: knob(steps(0, [[10, 14, 1]])),
-  }, { label: "tear1", resolution: { mode: "project" } });
+  }, { label: "wgsl_tear", resolution: { mode: "project" } });
   plate.spliceAfter("negative", "tear");
   // 10-13: the positive back on the left and dark; the negative keeps the face (the right)
   plate.set("negative", {
@@ -509,25 +510,25 @@ function cabinPlate(facts: OnNothingFacts, build: Builder, options: IncarOptions
   const body = facts.areas.get("cabin");
   const panes = facts.areas.get("cabinglass");
   if (body === undefined || panes === undefined) throw new Error("incar: no cabin in the GLB (rebuild it with tools/blender/on-nothing/carint.py).");
-  plate.add("mesh_cabin", "meshFileIn", { file: facts.glbUrl, select: body.select, vertices: body.vertices, triangles: body.triangles, parts: body.parts }, { label: "meshcabin1" });
-  plate.add("cabinSurf", "materialWgsl", { ...plate.node("surf").parameters, source: CABIN_SURFACE_WGSL, leather: [...take.leather], trim: [0.02, 0.02, 0.021], stripGain: take.strips, lens: take.lens ?? 0.004, plainChain: take.chain === false ? 1 : 0, ...(take.ownLamps === undefined ? {} : { headGain: take.ownLamps }) }, { label: "cabinsurf1" });
-  plate.add("geo_cabin", "geometry", { mode: "surface", material: "cabinsurf1" }, { label: "geocabin1" });
-  plate.add("door", "pointKernel", { capacity: body.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: doorKernel(body.partTable), open: knob(take.door, 0) }, { label: "door1" });
+  plate.add("mesh_cabin", "meshFileIn", { file: facts.glbUrl, select: body.select, vertices: body.vertices, triangles: body.triangles, parts: body.parts }, { label: "mesh_cabin" });
+  plate.add("cabinSurf", "materialWgsl", { ...plate.node("surf").parameters, source: CABIN_SURFACE_WGSL, leather: [...take.leather], trim: [0.02, 0.02, 0.021], stripGain: take.strips, lens: take.lens ?? 0.004, plainChain: take.chain === false ? 1 : 0, ...(take.ownLamps === undefined ? {} : { headGain: take.ownLamps }) }, { label: "material_cabinsurf" });
+  plate.add("geo_cabin", "geometry", { mode: "surface", material: "material_cabinsurf" }, { label: "geometry_cabin" });
+  plate.add("door", "pointKernel", { capacity: body.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: doorKernel(body.partTable), open: knob(take.door, 0) }, { label: "kernel_door" });
   plate.connect("mesh-door", ["mesh_cabin", "out"], ["door", "in"]);
   // the take may move the whole car (its panes too) to another mark in the room
   const carOut: readonly [string, string] = take.shift === undefined ? ["door", "out"] : ["moveCabin", "out"];
   const paneOut: readonly [string, string] = take.shift === undefined ? ["mesh_cabinglass", "out"] : ["movePanes", "out"];
   if (take.shift !== undefined) {
-    plate.add("moveCabin", "pointTransform", { translate: [...take.shift], pivot: "origin" }, { label: "movecabin1" });
+    plate.add("moveCabin", "pointTransform", { translate: [...take.shift], pivot: "origin" }, { label: "transform_movecabin" });
     plate.connect("door-move", ["door", "out"], ["moveCabin", "points"]);
   }
   plate.connect("door-geo-cabin", carOut, ["geo_cabin", "points"]);
-  plate.set("shot", { scenes: `${String(plate.node("shot").parameters["scenes"])} geocabin1` });
+  plate.set("shot", { scenes: `${String(plate.node("shot").parameters["scenes"])} geometry_cabin` });
 
   // ── The figure, seated in the driver's seat ──
   const figure = facts.areas.get(take.area);
   if (figure === undefined) throw new Error(`incar: no ${take.area} in the GLB.`);
-  plate.set("figGeo", { material: "cabinsurf1" });
+  plate.set("figGeo", { material: "material_cabinsurf" });
   plate.set("fig", { select: figure.select, vertices: figure.vertices, triangles: figure.triangles, parts: figure.parts, joints: figure.joints });
   const pelvis = facts.bones.find((bone) => bone.name === "thigh.L");
   if (pelvis === undefined) throw new Error("incar: the figure has no thigh.L bone.");
@@ -544,12 +545,12 @@ function cabinPlate(facts: OnNothingFacts, build: Builder, options: IncarOptions
     if (other === undefined) throw new Error(`incar: no ${take.passenger.area} in the GLB.`);
     const across = Math.hypot(cabin.seat[0] - cabin.passengerSeat[0], cabin.seat[2] - cabin.passengerSeat[2]);
     const seatHip = frame.at(add([across, 0, 0], take.passenger.hipShift ?? [0, 0, 0]));
-    plate.add("fig2", "meshFileIn", { file: facts.glbUrl, select: other.select, vertices: other.vertices, triangles: other.triangles, parts: other.parts, joints: other.joints }, { label: "fig21" });
-    plate.add("skin2", "pointKernel", { ...kept, capacity: other.vertices, yaw: Math.atan2(cabin.forward[0], cabin.forward[2]), place: [seatHip[0], seatHip[1] - pelvis.head[1], seatHip[2] - pelvis.head[2]], ...seatedPose(facts, take.passenger.pose) }, { label: "skin21" });
-    plate.add("figGeo2", "geometry", { mode: "surface", material: "cabinsurf1" }, { label: "figgeo21" });
+    plate.add("fig2", "meshFileIn", { file: facts.glbUrl, select: other.select, vertices: other.vertices, triangles: other.triangles, parts: other.parts, joints: other.joints }, { label: "mesh_fig2" });
+    plate.add("skin2", "pointKernel", { ...kept, capacity: other.vertices, yaw: Math.atan2(cabin.forward[0], cabin.forward[2]), place: [seatHip[0], seatHip[1] - pelvis.head[1], seatHip[2] - pelvis.head[2]], ...seatedPose(facts, take.passenger.pose) }, { label: "kernel_skin2" });
+    plate.add("figGeo2", "geometry", { mode: "surface", material: "material_cabinsurf" }, { label: "geometry_fig2" });
     plate.connect("fig2-skin2", ["fig2", "out"], ["skin2", "in"]);
     plate.connect("skin2-geo2", ["skin2", "out"], ["figGeo2", "points"]);
-    plate.set("shot", { scenes: `${String(plate.node("shot").parameters["scenes"])} figgeo21` });
+    plate.set("shot", { scenes: `${String(plate.node("shot").parameters["scenes"])} geometry_fig2` });
   }
 
   // ── The camera ──
@@ -568,34 +569,34 @@ function cabinPlate(facts: OnNothingFacts, build: Builder, options: IncarOptions
 
   // ── Light inside the cabin: the strips' cyan spill, a dim cool top, the figure's rim ──
   const light = (id: string, at: V3, color: readonly number[], intensity: number): void => {
-    plate.add(id, "light", { kind: "point", position: [...at], color: [...color], intensity }, { label: `${id.toLowerCase()}1` });
-    plate.set("shot", { lights: `${String(plate.node("shot").parameters["lights"])} ${id.toLowerCase()}1` });
+    plate.add(id, "light", { kind: "point", position: [...at], color: [...color], intensity }, { label: lightName(id.toLowerCase()) });
+    plate.set("shot", { lights: `${String(plate.node("shot").parameters["lights"])} ${lightName(id.toLowerCase())}` });
   };
   for (const [id, at, color, intensity] of take.lights) light(id, frame.at(at), color, intensity);
   plate.set("grade", { exposure: knob(take.exposure, 0) });
 
   // ── The panes: their own Render (the car and the figure as black occluders), laid over ──
-  plate.add("mesh_cabinglass", "meshFileIn", { file: facts.glbUrl, select: panes.select, vertices: panes.vertices, triangles: panes.triangles, parts: panes.parts }, { label: "meshcabinglass1" });
-  plate.add("paneMat", "materialWgsl", { model: "pbr", source: SURFACE_WGSL }, { label: "panemat1" });
-  plate.add("occMat", "materialWgsl", { model: "unlit", source: OCCLUDER_WGSL, roughness: 1 }, { label: "occmat1" });
-  plate.add("geo_panes", "geometry", { mode: "surface", material: "panemat1" }, { label: "geopanes1" });
-  plate.add("occ_cabin", "geometry", { mode: "surface", material: "occmat1" }, { label: "occcabin1" });
-  plate.add("occ_fig", "geometry", { mode: "surface", material: "occmat1" }, { label: "occfig1" });
+  plate.add("mesh_cabinglass", "meshFileIn", { file: facts.glbUrl, select: panes.select, vertices: panes.vertices, triangles: panes.triangles, parts: panes.parts }, { label: "mesh_cabinglass" });
+  plate.add("paneMat", "materialWgsl", { model: "pbr", source: SURFACE_WGSL }, { label: "material_pane" });
+  plate.add("occMat", "materialWgsl", { model: "unlit", source: OCCLUDER_WGSL, roughness: 1 }, { label: "material_occ" });
+  plate.add("geo_panes", "geometry", { mode: "surface", material: "material_pane" }, { label: "geometry_panes" });
+  plate.add("occ_cabin", "geometry", { mode: "surface", material: "material_occ" }, { label: "geometry_occcabin" });
+  plate.add("occ_fig", "geometry", { mode: "surface", material: "material_occ" }, { label: "geometry_occfig" });
   if (take.shift !== undefined) {
-    plate.add("movePanes", "pointTransform", { translate: [...take.shift], pivot: "origin" }, { label: "movepanes1" });
+    plate.add("movePanes", "pointTransform", { translate: [...take.shift], pivot: "origin" }, { label: "transform_movepanes" });
     plate.connect("panes-move", ["mesh_cabinglass", "out"], ["movePanes", "points"]);
   }
   plate.connect("mesh-geo-panes", paneOut, ["geo_panes", "points"]);
   plate.connect("door-occ-cabin", carOut, ["occ_cabin", "points"]);
   plate.connect("skin-occ-fig", ["skin", "out"], ["occ_fig", "points"]);
   if (take.passenger !== undefined) {
-    plate.add("occ_fig2", "geometry", { mode: "surface", material: "occmat1" }, { label: "occfig21" });
+    plate.add("occ_fig2", "geometry", { mode: "surface", material: "material_occ" }, { label: "geometry_occfig2" });
     plate.connect("skin2-occ-fig2", ["skin2", "out"], ["occ_fig2", "points"]);
   }
   const envPort = plate.feederOf("shot", "environment").source;
   plate.add("paneShot", "render", {
-    scenes: `geopanes1 occcabin1 occfig1${take.passenger === undefined ? "" : " occfig21"}`,
-    camera: "cam1",
+    scenes: `geometry_panes geometry_occcabin geometry_occfig${take.passenger === undefined ? "" : " geometry_occfig2"}`,
+    camera: "camera1",
     lights: "",
     ambientIntensity: 0,
     background: [0, 0, 0, 1],
@@ -603,23 +604,23 @@ function cabinPlate(facts: OnNothingFacts, build: Builder, options: IncarOptions
     normalOutput: true,
     environmentIntensity: 1,
     environmentTaps: 16,
-  }, { label: "paneshot1" });
+  }, { label: "render_paneshot" });
   plate.connect("env-paneshot", [envPort.nodeId, envPort.portId], ["paneShot", "environment"]);
-  plate.add("panes", "customWgslMulti", { source: GLASS_COMPOSITE_WGSL, refract: 0.002, dispersion: 0.1, reflect: 0.5, tint: 0.6 }, { label: "panes1", resolution: { mode: "project" } });
+  plate.add("panes", "customWgslMulti", { source: GLASS_COMPOSITE_WGSL, refract: 0.002, dispersion: 0.1, reflect: 0.5, tint: 0.6 }, { label: "wgsl_panes", resolution: { mode: "project" } });
   plate.spliceAfter("occlusion", "panes", [["paneShot", "out"], ["paneShot", "normal"]]);
 
   // ── The finish ──
   if (take.negative) {
-    plate.add("negative", "customWgsl", { source: NEGATIVE_WGSL, amount: 1, gain: 3, gamma: 1.6, white: 0.9, tint: [0.86, 1.0, 1.02, 1], dots: 0.14, pitch: 4 }, { label: "negative1", resolution: { mode: "project" } });
+    plate.add("negative", "customWgsl", { source: NEGATIVE_WGSL, amount: 1, gain: 3, gamma: 1.6, white: 0.9, tint: [0.86, 1.0, 1.02, 1], dots: 0.14, pitch: 4 }, { label: "wgsl_negative", resolution: { mode: "project" } });
     plate.spliceAfter("grade", "negative");
   }
   take.finish?.(plate, frame.at);
   if (take.mirror === true) {
-    plate.add("mirrorX", "customWgsl", { source: MIRROR_X_WGSL }, { label: "mirrorx1", resolution: { mode: "project" } });
+    plate.add("mirrorX", "customWgsl", { source: MIRROR_X_WGSL }, { label: "wgsl_mirrorx", resolution: { mode: "project" } });
     plate.spliceAfter("grade", "mirrorX");
   }
   if (options.crt === true) {
-    plate.add("crt", "customWgsl", { source: CRT_WGSL, amount: 1 }, { label: "crt1", resolution: { mode: "project" } });
+    plate.add("crt", "customWgsl", { source: CRT_WGSL, amount: 1 }, { label: "wgsl_crt", resolution: { mode: "project" } });
     plate.spliceAfter(plate.feederOf("out").source.nodeId, "crt");
   }
   return plate;

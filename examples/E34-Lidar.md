@@ -27,28 +27,28 @@ skyband(ramp) ─► shot(render) ◄─ ground · impacts · echoes · rays · 
 shot ─► cut(level) ─► clip(limit) ─► halo(blur) ─► glow(add) ─► out(output)
 shot ─┬─► hot(threshold) ─┐                                          the TRAIL: only bright things smear
       └─► stain(multiply) ◄┘ ─► smear(add) ─► glow.in2
-                                  ▲ trail(feedback "smear1")
+                                  ▲ trail(feedback "add_smear")
 ```
 
 ## What it proves
 
 - **A lidar without beams is a hillside with noise on it.** The returns used to appear
   with no visible cause, and the owner read them exactly that way — "some weird noise,
-  missing something that ties it together". `rays1` draws the causal chain: mode `beam`
-  (T680) spans each ray's `position` — the mast — to its `hitPosition`, which `cast1`
+  missing something that ties it together". `geometry_rays` draws the causal chain: mode `beam`
+  (T680) spans each ray's `position` — the mast — to its `hitPosition`, which `ray_cast`
   already carries, so 24 beams cost 24 instances of six vertices and **not one extra ray
   march**. The alternative, sampling each ray into a string of billboards, was built and
   measured first: 983,000 texture reads a frame against this file's 15,400, for a
   serrated ribbon that cannot taper. The primitive was the cheap answer as well as the
   good one.
 - **A ray and the mark it makes share a colour, and that is why the scene reads as one
-  process.** `haze1` used to be a flat `[0.36, 0.21, 0.08]` — one colour for every beam,
+  process.** `material_haze` used to be a flat `[0.36, 0.21, 0.08]` — one colour for every beam,
   unrelated to the box it landed on — and the mechanism nobody had named is that 0.36
-  sits just *below* `cut1`'s 0.42 bloom knee, so 24 lit ribbons read as matte orange
-  sticks while the ring they ended on glowed. `sight1` now gives each beam `mark1`'s own
+  sits just *below* `level_cut`'s 0.42 bloom knee, so 24 lit ribbons read as matte orange
+  sticks while the ring they ended on glowed. `kernel_sight` now gives each beam `kernel_mark`'s own
   return expression at a lower gain, so the beam is the same yellow as its impact and
-  lands *above* the knee. The bounce leg does the same on the other side: `bounce1` reads
-  `mark2a`'s tint unchanged, so the leg and the echo it ends on are literally one colour.
+  lands *above* the knee. The bounce leg does the same on the other side: `geometry_bounce` reads
+  `kernel_mark2a`'s tint unchanged, so the leg and the echo it ends on are literally one colour.
   The eye traces cause to effect because there is nothing to trace *between*.
 - **A ray with no return is not drawn, and both alternatives were built and measured
   first.** Recolouring the misses takes the green band's hard-flip rate from **0.4% to
@@ -73,9 +73,9 @@ shot ─┬─► hot(threshold) ─┐                                         
   fact about the instrument rather than about one frame.
 - **The bounce leg is drawn, and it took a hold to make that affordable.** This was
   rejected once, by measurement, and the rejection was right for its tree: drawn off
-  `rebound1`'s *raw* verdict it cost green energy 873k → 1,399k, because the segments
+  `ray_rebound`'s *raw* verdict it cost green energy 873k → 1,399k, because the segments
   popped in and out with the verdict and had no persistence to inherit. Sample-and-hold
-  then landed, and a beam hung on `mark2a` inherits exactly the persistence the rejected
+  then landed, and a beam hung on `kernel_mark2a` inherits exactly the persistence the rejected
   version lacked. Same ten rays, same width, same colour, camera frozen, the only variable
   being where the segment reads from:
 
@@ -86,7 +86,7 @@ shot ─┬─► hot(threshold) ─┐                                         
   | bounce, raw verdict | 32,123,665 | 1,490,859 | **7.1%** |
 
   The hold is worth 6.5× the green energy and 3.2× the churn. Two details make it work
-  with no new state: the far end is the *first* hit, which `mark2a` publishes by
+  with no new state: the far end is the *first* hit, which `kernel_mark2a` publishes by
   overwriting its own leaf `hitPosition` slot (four attributes is the whole budget,
   §V588), and it is deliberately live while the near end is held — the first hit is a
   smooth function of azimuth, so the beam's base creeps while its tip stays put. And the
@@ -94,9 +94,9 @@ shot ─┬─► hot(threshold) ─┐                                         
   *declare* still flows through the pointset, so the every-tenth subset reaches this draw
   for free. Drop that half and all 240 legs draw, the basin becomes green spaghetti, and
   it is T681's picture exactly.
-- **Only bright things trail, and where the threshold sits is a measurement.** `hot1`
-  thresholds *luminance* off the scene, `stain1` multiplies the colour back through the
-  mask, and `smear1` + `trail1` are the loop. The tuning question is where the threshold
+- **Only bright things trail, and where the threshold sits is a measurement.** `threshold_hot`
+  thresholds *luminance* off the scene, `multiply_stain` multiplies the colour back through the
+  mask, and `add_smear` + `feedback_trail` are the loop. The tuning question is where the threshold
   sits relative to the pool-lit ground, and it is answered with a number: rendered with
   the marks, beams and echoes taken out of the Scenes list, the terrain — moonlit *and*
   lit by its own impact pool — tops out at **linear luma 0.102**. Threshold 0.16 with
@@ -106,9 +106,9 @@ shot ─┬─► hot(threshold) ─┐                                         
   (§V631): steady state is injection ÷ (1 − 0.90), so an injection gain of 0.05 settles at
   half the source at a mark that holds still; gain is positive and below one, so it
   converges without the sign alternation §V630's oscillator needs. Checked over a long
-  window, not a short one — `smear1`'s own alpha reads [0, 0.47] at frame 60 and
+  window, not a short one — `add_smear`'s own alpha reads [0, 0.47] at frame 60 and
   [0, 0.50] at frame 800, and the sink's stays inside [0, 1].
-- **Only one ray in ten is drawn, and that is measured rather than chosen.** `aim1`
+- **Only one ray in ten is drawn, and that is measured rather than chosen.** `kernel_aim`
   writes a third attribute, `spoke`, and the beam geometry's group predicate reads it, so
   every ray is still cast and only every tenth is drawn. At 240 the beams fuse into a
   solid opaque cone that hides the terrain completely. The `taper` is the other half of
@@ -116,9 +116,9 @@ shot ─┬─► hot(threshold) ─┐                                         
   and pinching the near end to a point is both the cure and what a divergent beam does.
 - **The artistic direction is on the nodes, not buried in the WGSL** (T1053). Four of this
   graph's kernels declare a `struct Params`, which the point kernel reflects into named,
-  typed, drivable controls: `aim1` carries the ring's *Sweep Rate* and the two ends of its
-  tilt, `sight1` and `mark1` and `mark2a` carry the brightness ramps of the beams, the
-  returns and the echoes, and `mark1` also carries the two persistence rates that decide
+  typed, drivable controls: `kernel_aim` carries the ring's *Sweep Rate* and the two ends of its
+  tilt, `kernel_sight` and `kernel_mark` and `kernel_mark2a` carry the brightness ramps of the beams, the
+  returns and the echoes, and `kernel_mark` also carries the two persistence rates that decide
   how far a moving return smears. Turn any of them, or drive it from an LFO, without
   opening a shader. What stayed a constant is the interesting half: the extent, the height
   scale, the mast and the range are each written in three or four places that must AGREE —
@@ -126,22 +126,22 @@ shot ─┬─► hot(threshold) ─┐                                         
   a defect no still frame can see. A knob you can turn to make the picture wrong is not a
   control.
 - **The ground is lit by its own returns, through the albedo map** — and the mapping is
-  the same agreement, stated a second time. `pool1` parks each return at clip
-  `(X/extent, −Z/extent)`, `poolmap1` splats it additively, and `poolbase1` — a Level with
+  the same agreement, stated a second time. `kernel_pool` parks each return at clip
+  `(X/extent, −Z/extent)`, `points_poolmap` splats it additively, and `level_poolbase` — a Level with
   its black point at −0.1 and its white at 0, which is how you say *add one* — turns the
   splat into a multiplier the terrain's albedo can wear. It has to be `1 + pool` and not
   `pool`, because albedo *multiplies*: a map that read zero anywhere would black the
   terrain out there (§V644). Why that exact clip mapping: the surface samples its map by
   grid uv, grid v runs along world Z, and `renderPoints` draws at clip xy where +1 is the
   top of the picture and therefore texel row 0 and therefore v = 0. Compose those three
-  and the minus sign comes back out — the same minus `unfold1` needs, for the same reason.
+  and the minus sign comes back out — the same minus `kernel_unfold` needs, for the same reason.
 - **The echoes stopped scintillating when the relocation moved out of sight, not when the
   smoothing got stronger.** Round two's `wake` was the right state and the wrong end of
   the problem. The second leg's landing point is a *chaotic* function of azimuth — colour
   each echo by the index of the ray that made it and the primary ring is a smooth colour
   wheel while the echoes are scrambled, adjacent rays landing metres apart — so a marker
   that adopts a new hit every frame it qualifies **teleports while lit**, constantly.
-  `mark2a` now takes a new reading only while it is already dark (`p.wake.w < 0.06`): it
+  `kernel_mark2a` now takes a new reading only while it is already dark (`p.wake.w < 0.06`): it
   lights at a place, holds still, fades, re-arms. A display's phosphor. Measured with the
   camera frozen, so nothing but the reading can change: the green band's frame-to-frame
   energy falls **873,292 → 53,657** and its hard-flip rate **39.1% → 6.6%**, which is
@@ -149,19 +149,19 @@ shot ─┬─► hot(threshold) ─┐                                         
   history for a reason: position lag made it *worse* (2,386,000 — a lagged marker smears
   across more pixels), a lagged rise moved 4.5%, and decay 0.90 → 0.98 moved the hard-flip
   rate 39.1% → 34.7%. **The churn was births, not the tail.**
-- **Per-ray aiming is what makes Ray a POP.** `aim1` writes a vec3f `direction`
+- **Per-ray aiming is what makes Ray a POP.** `kernel_aim` writes a vec3f `direction`
   attribute — azimuth from the point's own index, the ring's tilt breathing on a driven
   Value slot — and the Ray node reads it instead of its Direction parameter. A grid of
   downward rays would be a heightmap lookup; a cloud of independently aimed rays is an
   instrument.
 - **One texture, two mappings, made to agree.** The terrain the camera sees and the
   field the rays march are the *same* carved texture. The bridge samples at clip xy with
-  v inverted; the Ray maps world x,z over 2·extent with no inversion — so `unfold1`
+  v inverted; the Ray maps world x,z over 2·extent with no inversion — so `kernel_unfold`
   parks the sample sheet at `(X/extent, −Z/extent)`, and the minus sign is the whole
   agreement. Get it wrong and the scan drapes over a terrain the picture mirrors
   front-to-back: plausible at a glance, wrong everywhere.
 - **The stretch is measured, and measured in the right space.** Four perlin harmonics
-  sum to a sliver (≈0.36–0.61 *linear* here), so `carve1` stretches it to full range
+  sum to a sliver (≈0.36–0.61 *linear* here), so `level_carve` stretches it to full range
   once, on the texture both readers share (E27's lesson). The window is stated in
   linear because the ray and the mesh read the target raw — an early read of the same
   numbers *through the Output node* came back display-encoded and off by a whole
@@ -169,10 +169,10 @@ shot ─┬─► hot(threshold) ─┐                                         
 - **The clamp under the bloom is load-bearing.** Level is a signed pipeline: below its
   black point it emits negatives, the blur spreads them, and `add` then *subtracts* the
   halo from the picture — on a night scene almost everything sits below the threshold,
-  and the un-clamped chain blacks out the entire film. `clip1` pins the floor at zero
+  and the un-clamped chain blacks out the entire film. `limit_clip` pins the floor at zero
   before the blur ever sees it.
-- **Reflection, literally.** Two chained Ray nodes: `ricochet1` re-origins each hit a
-  hair along its `hitNormal` and reflects the direction; `rebound1` casts again. The
+- **Reflection, literally.** Two chained Ray nodes: `kernel_ricochet` re-origins each hit a
+  hair along its `hitNormal` and reflects the direction; `ray_rebound` casts again. The
   first leg's verdict crosses the second cast as a *parked position* rather than a
   carried flag — every declared attribute costs a read-and-write pair against the
   WebGPU baseline of 8 storage buffers per stage, so four attributes is the whole
@@ -189,7 +189,7 @@ shot ─┬─► hot(threshold) ─┐                                         
   unplug the environment wire and the valleys go black. The returns themselves are
   unlit emitters (`materialUnlit` × per-point tint), which is what a display's dots are.
 - **The sky is the same map that lights the scene** (T659). `showEnvironment` on the
-  render draws `skyband1` as the background along a camera ray per pixel. Before it,
+  render draws `ramp_skyband` as the background along a camera ray per pixel. Before it,
   `sampleEnvironment` had exactly two readers — the reflection vector and the five
   irradiance taps — and *no pass drew it*, so the visible night was the Background
   colour and retuning the ramp moved the fill and the rim and never the sky. The
@@ -228,45 +228,45 @@ predicate.
   how ridgelines punch through it first.
 - Kill `e-skyband-shot` and watch the valleys die: that is the diffuse irradiance term
   working, not `ambientIntensity`.
-- `cast1.steps` — THE cost knob (steps × points per frame). At 8 the drape starts
+- `ray_cast.steps` — THE cost knob (steps × points per frame). At 8 the drape starts
   tunnelling through thin ridges; 64 is honest for this relief.
-- The **wake**: set `mark1`'s lag rates to 1.0, or `mark2a`'s decay to 0.0, and watch
+- The **wake**: set `kernel_mark`'s lag rates to 1.0, or `kernel_mark2a`'s decay to 0.0, and watch
   the readings start blinking again. A ray's verdict is binary, so a ray sitting on the
   range frontier flips it every frame; the smoothing therefore has to be *temporal and
   on the reading*, never a blur on the picture. The same state that stops the blinking
   is what leaves a fade behind a moving return — the trail and the smoothing are one
   mechanism, not two.
-- The **beams**, and what they explain: set `rays1`'s group predicate to empty and watch
+- The **beams**, and what they explain: set `geometry_rays`'s group predicate to empty and watch
   240 of them fuse into an opaque cone; set `taper` to 1 and watch the apex become a solid
   wedge. Both failures are why the two knobs exist.
-- The **colour agreement**: put a flat colour back on `haze1` and the beams stop belonging
+- The **colour agreement**: put a flat colour back on `material_haze` and the beams stop belonging
   to the marks they make — they read as scaffolding rather than as the cause. Then put
   that colour *below* 0.42 and watch them stop glowing entirely, which is the bloom knee
   and not a lighting change.
-- The **drop**: delete the `select` on `sight1`'s last line and every ray draws to its
+- The **drop**: delete the `select` on `kernel_sight`'s last line and every ray draws to its
   full range whether it found anything or not, which is a picture of hits that did not
   happen. Recolour that class instead of dropping it and the frame starts blinking, which
   is the measurement in the bullet above.
 - The **contraction**, and its price: raise the tilt span past ~0.62 without raising
   `LIDAR_RANGE` with it and the middle of the ring goes out-of-range steel — the shot no
   longer reaches the basin floor. The two constants are one decision.
-- The **trail**: drop `hot1`'s threshold under 0.10 and the whole lit hillside smears,
+- The **trail**: drop `threshold_hot`'s threshold under 0.10 and the whole lit hillside smears,
   because that is where the pool-lit ground actually tops out; raise it past 0.40 and only
-  the 0.7% of the frame that is core survives. And set `trail1`'s persistence to 1.0 to
+  the 0.7% of the frame that is core survives. And set `feedback_trail`'s persistence to 1.0 to
   see §V631's other half: the loop stops decaying and the picture accumulates without
   bound.
 - The **light pool**: kill `e-poolbase-basalt` and the ground under the ring goes back to
   the same blue-grey as the far hills. That is the returns lighting their own terrain, and
   it is an albedo map rather than 240 lights.
-- The **hold**: set `mark2a`'s re-arm threshold to 1.0 and the echoes go back to adopting
+- The **hold**: set `kernel_mark2a`'s re-arm threshold to 1.0 and the echoes go back to adopting
   a new hit every frame they qualify — which is round two's behaviour, and it
   scintillates. Note that a *still* frame looks the same either way; this one only shows
   up in motion, which is why it is asserted rather than eyeballed.
 
 ## Editing the camera
 
-**The orbit radius is not in the camera.** `eye1.eye.x` and `eye1.eye.z` are *driven*
-by `orbx1`/`orbz1`, so the static vector's x and z are inert (§V465) and changing them
+**The orbit radius is not in the camera.** `camera_eye.eye.x` and `camera_eye.eye.z` are *driven*
+by `lfo_orbx`/`lfo_orbz`, so the static vector's x and z are inert (§V465) and changing them
 to reframe the shot is a silent no-op that looks like a fix in the diff. The radius is
 the two LFO amplitudes, and it is deliberately smaller than the terrain's half-extent:
 the camera orbits *inside* the plate's footprint, which is what keeps the sheet's
@@ -286,7 +286,7 @@ comparison is not an argument:
 |---|---|
 | "before" | E34's entry as shipped at `5979367` (T672) |
 | "after" | the T711 rework, same engine tree, measured minutes apart |
-| method | camera frozen (`orbx1`/`orbz1` frequency 0), 15 frame-pairs, full 1280×720 (§V627), display-encoded (§V618) |
+| method | camera frozen (`lfo_orbx`/`lfo_orbz` frequency 0), 15 frame-pairs, full 1280×720 (§V627), display-encoded (§V618) |
 
 Two windows, because one of them is a lie on its own: frames 400–415 sit near the tilt's
 **steep** peak where nearly every ray lands, and 1000–1015 near its **shallow** one where

@@ -1,0 +1,600 @@
+import { CHAMBERS, PATH, chamberAt, chamberExpression, chamberWgsl, pathExpression, pathWgsl } from "./path.ts";
+
+/**
+ * T1561b — THE TUNNEL: a bore the robots climb, as geometry inside the Render.
+ *
+ * It is a lit surface, not a raymarched backdrop, so the robots' lights fall on it, its lamps
+ * fall on them, and a tentacle's shadow lands on a wall that is really there
+ * (docs/td-notch-mechanisms-2026-10-05.md: neither TouchDesigner nor Notch gives a raymarched
+ * pass the scene's lights unless the renderer takes it natively).
+ *
+ * One grid, bent: columns run round the bore, rows along it. A window of it rides with the
+ * robots and its rows are laid at fixed distances, so the wall stands still while the window
+ * slides and nothing swims. The relief is a function of the angle and the distance: a rib
+ * every 1.6 m, pipes and cable runs along the walls, plates set a little in or out, a flat deck
+ * to stand on, and every 96 m a chamber where the bore opens out into a hall. Until a swept surface and instanced modules exist (§T1587b, §T1581b) this grid
+ * IS the tunnel; when they do, the ribs and pipes become modules and this the liner behind them.
+ */
+
+/** Columns round the bore and rows along it: 6.5 cm by 15 cm cells, a window of 115 m. */
+export const BORE_COLUMNS = 256;
+export const BORE_ROWS = 768;
+const ROW_SPACING = 0.15;
+/** Rows of the window that lie behind the robots. */
+const ROWS_BEHIND = 180;
+/** Metres between ribs, and between the lamps in the crown. */
+export const RIB_SPACING = 1.6;
+export const LAMP_SPACING = 12.8;
+/**
+ * THE TUNNEL'S OTHER LAMPS: where they are and which of them still work. One every other rib bay: a bulkhead
+ * lamp at shoulder height in the plain bore, on alternate walls, in the middle of the second bay of its pair;
+ * and in a hall a tube along each shoulder, in the middle of the first. Whether one works is a lot drawn from
+ * its number in the lap: a whole number from 0 to 99, by 32-bit arithmetic that the CPU and the GPU do alike.
+ * So whoever else has to know which lamp is lit (a test today, the kernel that makes them lights when a
+ * pointset can feed a Light, §T1589b) reads the same answer the wall's material does. (A run of fifteen, as the
+ * crown lamps have, would not do here: a hall comes round every thirty of these, so every hall would be lit alike.)
+ */
+export const FIXTURES = {
+  /** Metres from one bulkhead, or one tube on a wall, to the next. */
+  spacing: RIB_SPACING * 2,
+  /** How far round from the crown each stands, as a share of a turn. */
+  bulkheadSide: 0.2,
+  tubeSide: 0.21,
+  /** Where in its pair of bays each stands, as a share of the spacing: clear of the ribs. */
+  bulkheadAlong: 0.75,
+  tubeAlong: 0.25,
+  /** Of a hundred lots: under `dead` it is dark, from `failing` up it cannot hold its light, between them it is lit. */
+  bulkheads: { dead: 45, failing: 88 },
+  tubes: { dead: 42, failing: 86 },
+} as const;
+const FIXTURE_COUNT = Math.round(PATH.period / FIXTURES.spacing);
+if (Math.abs(FIXTURE_COUNT * FIXTURES.spacing - PATH.period) > 1e-6) throw new Error(`tunnel.ts: the fixtures' spacing does not divide the path's ${PATH.period} m period, so the wrap would relight them.`);
+/** The draws: one for the bulkheads, one for each wall's tubes. */
+const FIXTURE_SALT = { bulkhead: 1, tubeLeft: 2, tubeRight: 3 } as const;
+/**
+ * A fixture's lot, 0 to 99. The same line is `fixtureLot` in the wall's material.
+ *
+ * The top sixteen bits of a wrapping multiply, scaled to a hundred by another multiply and shift, and NOT by
+ * `% 100`: on this machine's GPU (Dawn on Metal) the whole high half of a 32-bit value, `x >> 16u`, used directly
+ * as the dividend of `/` or `%` by a constant that is not a power of two returns garbage (for place 5 of the
+ * right wall's tubes, 35899 / 97 came back 386, and `% 97` and `% 100` with it), while the multiply, the shift,
+ * `&` and this scaling all agree with the CPU to the bit (§B263: Apple's driver, not the WGSL). Measured through
+ * the material itself; the test beside this file holds the two readers together.
+ */
+function fixtureLot(index: number, salt: number): number {
+  const place = index - FIXTURE_COUNT * Math.floor(index / FIXTURE_COUNT);
+  return ((Math.imul(place + salt * 977, 2654435761) >>> 16) * 100) >>> 16;
+}
+const fixtureState = (lot: number, odds: { readonly dead: number; readonly failing: number }): number => (lot < odds.dead ? 0 : lot < odds.failing ? 1 : 2);
+/** Bulkhead `index` along the tunnel (it stands at (index + bulkheadAlong) × spacing): 0 dead, 1 lit, 2 failing; and which wall, −1 or 1 (the sign of `around − 0.5`). */
+export function bulkheadAt(index: number): { state: number; wall: -1 | 1 } {
+  return { state: fixtureState(fixtureLot(index, FIXTURE_SALT.bulkhead), FIXTURES.bulkheads), wall: index - 2 * Math.floor(index / 2) === 1 ? 1 : -1 };
+}
+/** Tube `index` on `wall` (−1 or 1): 0 dead, 1 lit, 2 failing. */
+export function tubeAt(index: number, wall: -1 | 1): number {
+  return fixtureState(fixtureLot(index, wall === 1 ? FIXTURE_SALT.tubeRight : FIXTURE_SALT.tubeLeft), FIXTURES.tubes);
+}
+
+/**
+ * WHAT COLOUR A LAMP IS, by its station along the tunnel. Cold in the bore, sodium in the
+ * halls, and every fifteenth an emergency red. One rule with two readers that must agree,
+ * because a lamp is drawn twice: its plate glows in the wall's material (WGSL) and the nearest
+ * three are real lights whose colour is an expression. So the rule is whole numbers and the
+ * chamber function, exact in both, and never a float hash that 32 and 64 bits would round apart.
+ */
+export const LAMP_TONES = {
+  bore: [0.62, 0.84, 1],
+  hall: [1, 0.62, 0.28],
+  alarm: [1, 0.1, 0.06],
+  /** Every this-many stations one is an alarm; it divides the stations in a period, so the wrap does not recolour a lamp. */
+  alarmEvery: 15,
+  alarmAt: 7,
+} as const;
+
+/**
+ * How much of its light each lamp of a run of fifteen still gives: a third of them give a
+ * fifth of it or less (two of those no more than a filament's glow) and a fifth are failing, so the tunnel is dark for stretches and the robot crosses them by
+ * its own eyes. (The owner, 2026-10-05: "it shouldn't look like a hospital".) The alarm is lit.
+ * A tone below is this times the lamp's colour, so the plate, its light, the dust and the
+ * steel's reflection of it all go dark together.
+ */
+// Turns 3 and 11 stay lit: with a hall every seven and a half stations, those are the lamps in the halls.
+export const LAMP_GAINS: readonly number[] = [1, 0.2, 1, 1, 0.06, 0.4, 1, 1, 0.2, 0.06, 0.4, 1, 1, 0.2, 0.4];
+if (LAMP_GAINS.length !== LAMP_TONES.alarmEvery || LAMP_GAINS[LAMP_TONES.alarmAt] !== 1) throw new Error("tunnel.ts: LAMP_GAINS is one gain per station of a run, and the alarm is lit.");
+
+const STATIONS = Math.round(PATH.period / LAMP_SPACING);
+if (STATIONS % LAMP_TONES.alarmEvery !== 0) throw new Error(`tunnel.ts: ${LAMP_TONES.alarmEvery} does not divide the ${STATIONS} lamp stations of a period.`);
+
+/** The rule itself: the tone of the lamp at a whole station number. */
+export function lampTone(station: number): readonly [number, number, number] {
+  const turn = station - LAMP_TONES.alarmEvery * Math.floor(station / LAMP_TONES.alarmEvery);
+  if (turn === LAMP_TONES.alarmAt) return LAMP_TONES.alarm;
+  const gain = LAMP_GAINS[turn] as number;
+  const tone = chamberAt((station + 0.5) * LAMP_SPACING) > 0.5 ? LAMP_TONES.hall : LAMP_TONES.bore;
+  return [tone[0] * gain, tone[1] * gain, tone[2] * gain];
+}
+
+/** The same rule as three expressions of a station number (itself an expression). */
+export function lampToneExpression(station: string): readonly [string, string, string] {
+  const alarm = `(mod(${station}, ${LAMP_TONES.alarmEvery}) == ${LAMP_TONES.alarmAt})`;
+  const hall = `(${chamberExpression(`((${station}) + 0.5) * ${LAMP_SPACING}`)} > 0.5)`;
+  // The gain of its place in the run: the sum of the gains whose turn this is (a dead lamp adds nothing).
+  const turn = `mod(${station}, ${LAMP_TONES.alarmEvery})`;
+  const gain = `(${LAMP_GAINS.map((value, index) => (value === 0 ? "" : `(${turn} == ${index}) * ${value}`)).filter((term) => term !== "").join(" + ")})`;
+  const channel = (index: 0 | 1 | 2): string => `(${alarm} * ${LAMP_TONES.alarm[index]} + (1 - ${alarm}) * ${gain} * (${hall} * ${LAMP_TONES.hall[index]} + (1 - ${hall}) * ${LAMP_TONES.bore[index]}))`;
+  return [channel(0), channel(1), channel(2)];
+}
+
+const wgslTone = (tone: readonly number[]): string => `vec3f(${tone.map((component) => component.toFixed(4)).join(", ")})`;
+
+/**
+ * THE CHASE: a lamp's strength just now against its own. The owner, 2026-10-06: "we can play with the lights a
+ * little bit more in the tunnel to be audio reactive to certain other features of the song, maybe the hats,
+ * without getting too flickery". So nothing blinks: one lamp in every four is up and the rest a little down,
+ * and WHICH is up glides down the tunnel one station a beat (`at` is the beat's count and how far through the
+ * beat it is, so it moves smoothly: a lamp swells as the bright place reaches it and falls as it goes on). Over
+ * any four lamps the strengths sum to what they were: the tunnel is no brighter, its light travels. `depth` is
+ * how much of it, 0 none: the top of the track drives it.
+ */
+// (`wide` 1: the bright place is shared between the two lamps it is between in the proportion of where it is,
+// so their sum is always one lamp's worth. At 0.9 four lamps summed to 4.12 between beats.)
+export const CHASE = { every: 4, wide: 1, up: 2, down: 0.5 } as const;
+/** The same in plain arithmetic, for a test. */
+export function lampChase(station: number, at: number, depth: number): number {
+  const turn = station - at;
+  const off = turn - CHASE.every * Math.round(turn / CHASE.every);
+  return 1 + depth * (CHASE.up * Math.max(0, 1 - Math.abs(off) / CHASE.wide) - CHASE.down);
+}
+if (Math.abs((CHASE.up * CHASE.wide) / CHASE.every - CHASE.down) > 1e-9) throw new Error("tunnel.ts: the chase must leave the lamps' sum as it was: up × wide ÷ every = down.");
+
+/** The rule as WGSL, for the wall's material and the motes. Needs `chamberAt` beside it. */
+export const LAMP_TONE_WGSL = `const LAMP: f32 = ${LAMP_SPACING.toFixed(5)};
+const LAMP_GAIN = array<f32, ${LAMP_GAINS.length}>(${LAMP_GAINS.map((gain) => gain.toFixed(2)).join(", ")});
+// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,
+// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.
+fn lampTone(station: f32) -> vec3f {
+  let turn = station - ${LAMP_TONES.alarmEvery}.0 * floor(station / ${LAMP_TONES.alarmEvery}.0);
+  if (abs(turn - ${LAMP_TONES.alarmAt}.0) < 0.5) { return ${wgslTone(LAMP_TONES.alarm)}; }
+  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, ${LAMP_GAINS.length - 1}.5))];
+  return mix(${wgslTone(LAMP_TONES.bore)}, ${wgslTone(LAMP_TONES.hall)}, step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;
+}
+// The chase (tunnel.ts, CHASE): this lamp's strength just now against its own.
+fn lampChase(station: f32, at: f32, depth: f32) -> f32 {
+  let turn = station - at;
+  let off = turn - ${CHASE.every}.0 * round(turn / ${CHASE.every}.0);
+  return 1.0 + depth * (${CHASE.up.toFixed(2)} * max(0.0, 1.0 - abs(off) / ${CHASE.wide.toFixed(2)}) - ${CHASE.down.toFixed(2)});
+}
+`;
+
+export const BORE_ATTRIBUTES = JSON.stringify([
+  { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+  // What the wall is here, for its material: r 0 liner, 1 rib, 2 pipe, 3 deck; g the plate's own random; b the angle round the bore (0 to 1); a the distance along it, metres.
+  { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 0] },
+]);
+
+/** Where the pipes and cable runs sit round the bore (radians, 0 = the right wall, π/2 = the crown), and how far each stands off the liner. */
+const RUNS: ReadonlyArray<readonly [angle: number, width: number, height: number]> = [
+  [0.42, 0.075, 0.13],
+  [0.62, 0.035, 0.07],
+  [0.7, 0.035, 0.07],
+  [2.5, 0.09, 0.15],
+  [2.74, 0.03, 0.06],
+  [1.18, 0.028, 0.055],
+  [1.98, 0.028, 0.055],
+  [3.55, 0.05, 0.1],
+  [5.85, 0.05, 0.1],
+];
+
+export const BORE_KERNEL = `// T1561b — the tunnel's bore (src/projects/sentinel-bot/tunnel.ts).
+struct Params {
+  travel: f32, // @default 0  Distance travelled along the tunnel, metres.
+  bore: f32, // @default 2.6  Radius the claws plant on, metres: the ribs' crests.
+  relief: f32, // @default 1  How much of the ribs, pipes and plates stands off the liner: 0 is a plain pipe.
+  deck: f32, // @default 0.74  How far below the axis the flat deck lies, as a share of the radius; 1 or more is no deck.
+  place: f32, // @default 0  0 the tunnel; 1 the fields (field.ts), where there is no tunnel: every point of the wall is drawn in to one.
+};
+${pathWgsl()}
+const ROW: f32 = ${ROW_SPACING.toFixed(5)};
+const RIB: f32 = ${RIB_SPACING.toFixed(5)};
+const RUNS: u32 = ${RUNS.length}u;
+const RUN = array<vec3f, ${RUNS.length}>(${RUNS.map((run) => `vec3f(${run[0].toFixed(4)}, ${run[1].toFixed(4)}, ${run[2].toFixed(4)})`).join(", ")});
+
+fn plate(a: u32, b: u32) -> f32 {
+  let x = (a * 747796405u) ^ (b * 2891336453u);
+  let w = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
+  return f32((w >> 22u) ^ w) / 4294967295.0;
+}
+
+fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  if (ctx.params.place > 0.5) {
+    // Out in the fields the line goes on and the tunnel does not: a wall of no size, well under everything.
+    q.position = vec3f(0.0, -4000.0, 0.0);
+    q.tint = vec4f(0.0);
+    return q;
+  }
+  // Rows stand at whole multiples of the row spacing, so the wall holds still while the window slides along it.
+  let z = (floor(ctx.params.travel / ROW) + f32(ctx.dim.j) - ${ROWS_BEHIND}.0) * ROW;
+  // The seam is under the deck: the first and last column are the same line.
+  let around = f32(ctx.dim.i) / f32(ctx.dim.cols - 1u);
+  let theta = (around - 0.25) * 6.2831853;
+  let wall = pathFrame(z);
+  let radial = wall.right * cos(theta) + wall.up * sin(theta);
+
+  // In a chamber the bore opens out into a hall (path.ts, CHAMBERS).
+  let bore = ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt(z));
+  let liner = bore + 0.05;
+  var radius = liner;
+  var what = 0.0;
+  // Plates: a panel every rib bay and every eighth of a turn, set a little in or out.
+  let bay = floor(z / RIB);
+  let panel = plate(u32(bay - floor(bay / 600.0) * 600.0), u32(around * 8.0));
+  radius = radius - (panel - 0.5) * 0.05 * ctx.params.relief;
+  // Pipes and cable runs along the wall.
+  let angle = theta - 6.2831853 * floor(theta / 6.2831853);
+  for (var i = 0u; i < RUNS; i = i + 1u) {
+    let across = abs(angle - RUN[i].x) / RUN[i].y;
+    if (across < 1.0) {
+      radius = min(radius, liner - RUN[i].z * sqrt(1.0 - across * across) * ctx.params.relief);
+      what = 2.0;
+    }
+  }
+  // Ribs: a ring that stands in to the radius the claws plant on.
+  let alongBay = abs(z - (bay + 0.5) * RIB);
+  let rib = 1.0 - smoothstep(0.08, 0.17, alongBay);
+  if (rib > 0.0) {
+    radius = min(radius, mix(radius, bore - 0.12, rib * ctx.params.relief));
+    what = mix(what, 1.0, step(0.5, rib));
+  }
+  // The deck: nothing hangs below it.
+  let floorAt = ctx.params.bore * ctx.params.deck;
+  if (sin(theta) < 0.0 && radius * -sin(theta) > floorAt) {
+    radius = floorAt / -sin(theta);
+    what = 3.0;
+  }
+  q.position = wall.origin + radial * radius;
+  q.tint = vec4f(what, panel, around, z);
+  return q;
+}`;
+
+/**
+ * The wall's surface: OLD, and mostly DRY. Soot-black concrete segments stained with rust
+ * where water has run down from the ribs, a tide of silt toward the deck, iron ribs gone to
+ * rust, pipes whose paint is coming off. It is matt nearly everywhere; water shines only in
+ * the narrow tracks it still runs in and where it stands on the deck, so a highlight is an
+ * event. (The owner, 2026-10-05: "too shiny all around, not dark and gritty and grimy
+ * enough … the tunnel is very grey".) The lamps are plates in the crown that glow.
+ */
+export const BORE_SURFACE_WGSL = `// @use surface-detail
+struct Params {
+  wet: f32, // @default 0.4  How much water still runs: the tracks down the wall and the pools on the deck.
+  grime: f32, // @default 0.85  Rust, soot and silt.
+  lamp: f32, // @default 14  Radiance of the lamp plates in the crown.
+  bore: f32, // @default 2.6  The tunnel's radius, metres: how far round the wall a share of a turn is.
+  fixtures: f32, // @default 1  The tunnel's other lamps (bulkheads, a hall's tubes, beacons): 0 none.
+  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.
+  chase: f32, // @default 0  …and how much of it, 0 none.
+};
+
+${chamberWgsl()}${LAMP_TONE_WGSL}
+// THE TUNNEL'S OTHER LAMPS (the owner, 2026-10-06: "the tunnels could use a bit more detail work too, different
+// lights at different positions in the tube"): bulkheads in the bore, tubes in a hall, a turning beacon either
+// side of every alarm lamp (tunnel.ts, FIXTURES). They are drawn here: a lens that glows, and the pool it throws
+// on the wall round it, painted. They light nothing else, the robot least of all. A lamp that lights is a Light,
+// and this tunnel has several hundred of these: they become Lights fed by a pointset when that exists (§T1589b).
+const FIXTURE: f32 = ${FIXTURES.spacing.toFixed(5)};
+const FIXTURE_COUNT: f32 = ${FIXTURE_COUNT}.0;
+// A fixture's lot, 0 to 99, drawn from its number in the lap: tunnel.ts, fixtureLot, the same line (and why
+// it scales by a multiply and a shift and never divides).
+fn fixtureLot(index: f32, salt: u32) -> u32 {
+  let place = u32(index - FIXTURE_COUNT * floor(index / FIXTURE_COUNT) + 0.5);
+  return ((((place + salt * 977u) * 2654435761u) >> 16u) * 100u) >> 16u;
+}
+// 0 dead, 1 lit, 2 failing.
+fn fixtureState(lot: u32, dead: u32, failing: u32) -> f32 {
+  return select(select(2.0, 1.0, lot < failing), 0.0, lot < dead);
+}
+const WALL_TONE = vec3f(1.0, 0.5, 0.16);
+const TUBE_TONE = vec3f(0.62, 1.0, 0.78);
+
+// What a small lamp standing \`proud\` metres off a wall throws on it, as a share of what falls at its foot:
+// the cosine law over the distance squared. \`away2\` is the distance along the wall from its foot, squared.
+fn poolOf(away2: f32, proud: f32) -> f32 {
+  let d2 = away2 + proud * proud;
+  return proud * proud * proud / (d2 * sqrt(d2));
+}
+
+fn fixtureLuck(n: f32, salt: f32) -> f32 {
+  return fract(sin(n * 91.3458 + salt * 17.13) * 47453.5453);
+}
+
+fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
+  var o = surfaceDefaults(s);
+  let what = s.tint.r;
+  let own = s.tint.g;
+  let around = s.tint.b;
+  let along = s.tint.a;
+  // 0 at the crown, 1 at the bottom of the bore.
+  let low = abs(around - 0.5) * 2.0;
+  let stain = detailFbm(s.world * 0.55, 4, s.footprint);
+  let spall = detailFbm(s.world * 4.3, 4, s.footprint);
+  let grit = detailFbm(s.world * 31.0, 3, s.footprint);
+  // Water comes down the wall: tracks a hand wide that run the long way round it.
+  let track = detailFbm(vec3f(along * 7.0, around * 2.2, 3.0), 3, s.footprint).value;
+  // Not on the deck: there the angle round the bore barely changes across three metres of plate and jumps at the
+  // seam under its middle, so a track was a stripe from wall to wall that stopped dead on the centre line
+  // (the owner, 2026-10-06: "the floor has some stripey issues"). On the deck water stands: the pools, below.
+  let run = smoothstep(0.6, 0.72, track) * (0.35 + 0.65 * low) * step(what, 2.5);
+  let dirt = p.grime * smoothstep(0.3, 0.72, stain.value);
+  let pit = smoothstep(0.52, 0.8, spall.value);
+
+  // The liner: concrete segments, each cast on its own day.
+  var albedo = mix(vec3f(0.03, 0.03, 0.032), vec3f(0.16, 0.135, 0.105), 0.25 + 0.75 * own) * (0.55 + 0.6 * stain.value);
+  var rough = 0.9;
+  var metal = 0.0;
+  var relief = 0.14;
+  if (what > 2.5) {
+    // The deck: plate steel under silt.
+    albedo = mix(vec3f(0.04, 0.038, 0.036), vec3f(0.09, 0.066, 0.04), dirt);
+    rough = 0.78;
+    metal = 0.5 * (1.0 - dirt);
+    relief = 0.09;
+  } else if (what > 1.5) {
+    // Pipes and cable runs: ochre, oxide green or red lead, flaking to the iron.
+    let paint = mix(mix(vec3f(0.13, 0.105, 0.03), vec3f(0.03, 0.07, 0.052), step(0.34, own)), vec3f(0.12, 0.03, 0.02), step(0.67, own));
+    albedo = mix(paint, vec3f(0.06, 0.05, 0.046), pit);
+    rough = 0.66;
+    metal = 0.55 * pit;
+    relief = 0.06;
+  } else if (what > 0.5) {
+    // Ribs: iron, mostly rust.
+    albedo = mix(vec3f(0.05, 0.048, 0.05), vec3f(0.16, 0.066, 0.026), 0.35 + 0.65 * smoothstep(0.25, 0.7, spall.value) * p.grime);
+    rough = 0.74;
+    metal = 0.6 * (1.0 - pit);
+    relief = 0.08;
+  }
+  // Rust and soot: brown where water has carried it, black where nothing has washed it.
+  albedo = mix(albedo, vec3f(0.15, 0.062, 0.024), run * p.grime * 0.75);
+  albedo = mix(albedo, vec3f(0.014, 0.014, 0.015), dirt * 0.55);
+  // Silt at the foot of the wall.
+  let silt = p.grime * smoothstep(0.62, 0.86, low + (stain.value - 0.5) * 0.25) * step(what, 2.5);
+  albedo = mix(albedo, vec3f(0.07, 0.052, 0.034), silt * 0.8);
+  // What still shines: the running tracks, and pools where the deck dips.
+  let pool = step(2.5, what) * smoothstep(0.5, 0.62, stain.value);
+  let film = clamp(p.wet * max(run * 0.9, pool), 0.0, 1.0);
+  rough = mix(rough + 0.08 * (grit.value - 0.5), 0.12, film);
+  albedo = albedo * (1.0 - 0.35 * film);
+
+  o.albedo = vec4f(albedo, 1.0);
+  o.roughness = clamp(rough, 0.06, 1.0);
+  o.metallic = metal * (1.0 - film);
+  // Pitted and spalled where dry; water lies flat.
+  // (Fine grit in the normal made every lit metre of wall sparkle: it roughens, it does not glint.)
+  o.normal = detailBump(s.normal, stain.gradient * 0.55 * 0.4 + spall.gradient * 4.3 * 0.42 + grit.gradient * 31.0 * 0.025, relief * (1.0 - 0.85 * film));
+
+  // A lamp plate in the crown at every lamp station; each has its own steadiness.
+  let station = floor(along / LAMP);
+  let onPlate = (1.0 - smoothstep(0.3, 0.36, abs(along - (station + 0.5) * LAMP))) * (1.0 - smoothstep(0.012, 0.016, abs(around - 0.5)));
+  let nerve = fract(sin(station * 12.9898) * 43758.5453);
+  let flicker = 1.0 - step(0.82, nerve) * step(0.6, fract(sin(floor(s.absTime * 11.0) * 78.233 + station) * 43758.5453)) * 0.8;
+  o.emissive = o.emissive + lampTone(station) * p.lamp * onPlate * flicker * lampChase(station, p.chaseAt, p.chase);
+
+  // ── The other lamps: what each lens gives off, and what it throws on the wall round it ──
+  let hall = chamberAt(along);
+  let girth = 6.2831853 * p.bore * (1.0 + CHAMBER_SWELL * hall);
+  let wallward = sign(around - 0.5);
+  var lenses = vec3f(0.0);
+  var thrown = vec3f(0.0);
+
+  // A fixture's state (0 dead, 1 lit, 2 failing) as how much of its light it gives now: a failing one drops out nine times a second, by chance.
+  let pair = floor(along / FIXTURE);
+  let stutter = step(0.55, fixtureLuck(floor(s.absTime * 9.0), pair + 3.0 * wallward));
+
+  // Bulkheads: in the plain bore, amber.
+  let bulkheadSide = 2.0 * (pair - 2.0 * floor(pair * 0.5)) - 1.0;
+  let bulkheadOff = vec2f(along - (pair + ${FIXTURES.bulkheadAlong}) * FIXTURE, (around - (0.5 + ${FIXTURES.bulkheadSide} * bulkheadSide)) * girth);
+  let bulkhead = fixtureState(fixtureLot(pair, ${FIXTURE_SALT.bulkhead}u), ${FIXTURES.bulkheads.dead}u, ${FIXTURES.bulkheads.failing}u);
+  let bulkheadOn = min(bulkhead, 1.0) * (1.0 - 0.85 * step(1.5, bulkhead) * stutter) * (1.0 - smoothstep(0.25, 0.6, hall));
+  let bulkheadLens = (1.0 - smoothstep(0.09, 0.11, abs(bulkheadOff.x))) * (1.0 - smoothstep(0.05, 0.065, abs(bulkheadOff.y)));
+  lenses = lenses + WALL_TONE * (bulkheadOn * bulkheadLens * 0.4);
+  thrown = thrown + WALL_TONE * (bulkheadOn * poolOf(dot(bulkheadOff, bulkheadOff), 0.4) * 0.22);
+
+  // A hall's tubes: along both shoulders, 1.2 m of light between two ribs.
+  let beside = (around - (0.5 + ${FIXTURES.tubeSide} * wallward)) * girth;
+  let lengthways = abs(along - (pair + ${FIXTURES.tubeAlong}) * FIXTURE);
+  let tube = fixtureState(fixtureLot(pair, select(${FIXTURE_SALT.tubeLeft}u, ${FIXTURE_SALT.tubeRight}u, wallward > 0.0)), ${FIXTURES.tubes.dead}u, ${FIXTURES.tubes.failing}u);
+  let tubeOn = min(tube, 1.0) * (1.0 - 0.9 * step(1.5, tube) * stutter) * smoothstep(0.5, 0.9, hall);
+  let tubeLens = (1.0 - smoothstep(0.02, 0.035, abs(beside))) * (1.0 - smoothstep(0.58, 0.62, lengthways));
+  // A line of light: what it throws falls with the distance from the line, and off its ends.
+  let tubePool = 0.09 / (beside * beside + 0.09) * (1.0 - smoothstep(0.5, 1.8, lengthways));
+  lenses = lenses + TUBE_TONE * (tubeOn * tubeLens * 0.5);
+  thrown = thrown + TUBE_TONE * (tubeOn * tubePool * 0.1);
+
+  // A beacon either side of every alarm lamp, low on the wall, turning: each wall sees it come round half a turn after the other.
+  let turn = station - ${LAMP_TONES.alarmEvery}.0 * floor(station / ${LAMP_TONES.alarmEvery}.0);
+  let alarmed = 1.0 - step(0.5, abs(turn - ${LAMP_TONES.alarmAt}.0));
+  let beaconOff = vec2f(along - (station + 0.5) * LAMP, (around - (0.5 + 0.3 * wallward)) * girth);
+  let sweep = pow(0.5 + 0.5 * sin(s.absTime * 4.2 + 1.5707963 * wallward), 6.0);
+  let beaconLens = 1.0 - smoothstep(0.07, 0.1, length(beaconOff));
+  lenses = lenses + ${wgslTone(LAMP_TONES.alarm)} * (alarmed * beaconLens * (0.12 + sweep));
+  thrown = thrown + ${wgslTone(LAMP_TONES.alarm)} * (alarmed * poolOf(dot(beaconOff, beaconOff), 0.7) * sweep * 0.5);
+
+  // A lens under years of soot gives less; the wall shows what is thrown on it in its own colour.
+  o.emissive = o.emissive + (lenses * (1.0 - 0.5 * dirt) + thrown * albedo) * (p.lamp * p.fixtures);
+  return o;
+}`;
+
+/** How many lamp stations either side of the robot's own a mirror on it can show, and the air can glow round: five lamps, 64 m of tunnel. */
+/**
+ * How bright a lamp's beam of lit air is against the same lamp as a bare point. Set by eye in a hall, where
+ * the lens is often inside a beam: at 2.5 the whole frame went to milk, at 1 the cone shows and the walls
+ * keep their dark.
+ */
+export const BEAM_GAIN = 1;
+/** A lamp's light hangs this far under its plate, metres: a point light in the wall's own surface lights nothing. */
+export const LAMP_HANGS = 0.35;
+/**
+ * How high the lamp at `z` along the tunnel hangs, as an expression: under its plate, wherever the wall there
+ * holds it. A hall's crown is higher (path.ts, CHAMBERS); left at the plain bore's height the light, its lit air
+ * and its picture in the steel all hung metres under the plate in a hall (the owner, 2026-10-06: "this random
+ * sphere that is visible with like a gap").
+ */
+export function lampHeightExpression(z: string, bore: string): string {
+  return `${pathExpression(z).y} + ${bore} * (1 + ${CHAMBERS.swell} * ${chamberExpression(z)}) - ${LAMP_HANGS}`;
+}
+export const LAMPS_MIRRORED = 2;
+/** The lamps a pass is handed: the station the robot is under and `LAMPS_MIRRORED` either side. */
+export const NEAR_LAMPS = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => index);
+/** The parameter that carries where lamp `index` of those hangs (document.ts drives it from the lights' own expression). */
+export const lampParameter = (index: number): string => `lamp${index}`;
+/** Those parameters, as lines of a WGSL Params struct. */
+export const LAMP_PARAMS_WGSL = `${NEAR_LAMPS.map((index) => `  ${lampParameter(index)}: vec3f, // @default [0, 2.25, ${((index - LAMPS_MIRRORED + 0.5) * LAMP_SPACING).toFixed(1)}]  Where the lamp ${index - LAMPS_MIRRORED} stations on from the robot's own hangs.`).join("\n")}
+  station: f32, // @default 37  The station the robot is under: which lamp is which tone.
+  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.
+  chase: f32, // @default 0  …and how much of it, 0 none.`;
+
+/**
+ * THE TUNNEL AS A GLOSSY THING IN IT SEES IT. Blackened steel has no diffuse, so between two
+ * lamps the robot is a hole in the picture unless something is reflected in it. This is what
+ * is there to reflect: a lamp plate at the crown, in its own tone, and the pool of lit liner
+ * round it, as a ray from a place sees them. The hull's material looks the nearest lamps up
+ * along its mirror direction (surface.ts), so as the robot travels the plates pass overhead
+ * and their highlights run along the hull.
+ *
+ * A picture of the lamps, not a second set of them: the plate's size is the wall's own
+ * (BORE_SURFACE_WGSL), and where each hangs is handed in, from the same expression that
+ * places the lights (document.ts), so the shader does no path arithmetic per pixel.
+ *
+ * Why not the Render's Environment input, which is the stock way to give a mirror something to
+ * show: tried first (an equirect of this same picture, 512×256). In the app the header's GPU
+ * time went from about 4.5 ms to about 5.6 ms a frame, the same with 8 taps, 2 taps or
+ * prefiltered, because every lit pixel of the tunnel pays for it and only the robot wanted
+ * it. (Smallest of five readings per document, four documents back to back, twice, on a
+ * machine other sessions were loading: a direction, not a number to quote.) Here only the
+ * robot's pixels pay, and each reads the lamps from where it is, not from the robot's middle.
+ */
+export const LAMP_SEEN_WGSL = `${chamberWgsl()}${LAMP_TONE_WGSL}
+// What a ray going up (d.y > 0) from \`here\` sees of the lamp of \`station\` hanging at \`lampAt\`, in the level
+// plane it hangs in. \`pool\` is the lit liner round the plate as a share of the plate's radiance; \`soft\`
+// widens the plate's edge, metres (a rough mirror).
+fn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft: f32) -> vec3f {
+  let lamp = lampAt - here;
+  // The tunnel climbs and falls: a lamp below this height is round a bend of it.
+  if (lamp.y < 0.3) { return vec3f(0.0); }
+  let hit = d * (lamp.y / d.y);
+  let across = hit.x - lamp.x;
+  let along = hit.z - lamp.z;
+  let plate = (1.0 - smoothstep(0.2, 0.26 + soft, abs(across))) * (1.0 - smoothstep(0.3, 0.36 + soft, abs(along)));
+  let lit = exp(-(across * across + along * along) / 3.0) * pool;
+  // Air between: a far lamp is a dim one.
+  return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);
+}
+`;
+
+/**
+ * THE CROWN LAMPS AS LIGHTS: one point for every lamp station of the lap, each where its lamp hangs, for a
+ * Light in Points mode to stand a light on (§T1589b). Until that existed the piece had three Lights that
+ * followed the robot from station to station; now every lamp of the tunnel lights the tunnel, the far ones too.
+ *
+ * The lap's stations are taken as the 75 nearest the robot (37 behind it, 37 ahead and its own), not as stations
+ * 0 to 74: the wall is built round the robot wherever along the line it is, on either side of the lap's end, and
+ * so are these. `tint` is the lamp's own colour (linear) and `power` its strength, both by the rule the plates
+ * are drawn by (lampTone), so a dead lamp's plate is dark and its light is none.
+ */
+export const LAMP_COUNT = Math.round(PATH.period / LAMP_SPACING);
+export const LAMP_ATTRIBUTES = JSON.stringify([
+  { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+  { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 1] },
+  { name: "power", type: "f32", default: [0] },
+]);
+export const LAMP_KERNEL = `// T1561b — the tunnel's crown lamps, as points for a Light (src/projects/sentinel-bot/tunnel.ts).
+struct Params {
+  travel: f32, // @default 0  Distance travelled along the tunnel, metres.
+  bore: f32, // @default 2.6  The tunnel's radius, metres.
+  lamp: f32, // @default 26  A whole lamp's strength, as a Light's Intensity has it.
+  named: f32, // @default 0  1 when the three stations nearest the robot have Lights of their own (the ones that cast): those are dimmed here by as much as those are lit, so no lamp is lit twice.
+  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.
+  chase: f32, // @default 0  …and how much of it, 0 none.
+};
+${pathWgsl()}${LAMP_TONE_WGSL}
+fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  let station = floor(ctx.params.travel / LAMP) + f32(ctx.index) - ${Math.floor(LAMP_COUNT / 2)}.0;
+  let z = (station + 0.5) * LAMP;
+  let high = 1.0 + CHAMBER_SWELL * chamberAt(z);
+  // Under its plate, wherever the wall there holds it (lampHeightExpression: the same height).
+  q.position = pathAt(z) + vec3f(0.0, ctx.params.bore * high - ${LAMP_HANGS.toFixed(2)}, 0.0);
+  // The colour is written as a display colour (LAMP_TONES), as a Light's own Color is read; a point's is linear.
+  q.tint = vec4f(pow(lampTone(station), vec3f(2.2)), 1.0);
+  // How much of its own Light a named station has (document.ts, lampAt: 1 within half a spacing, 0 a spacing and a half off).
+  let near = clamp(1.5 - abs(z - ctx.params.travel) / LAMP, 0.0, 1.0);
+  // A hall's lamp is the bigger lamp, by how much higher it hangs.
+  q.power = ctx.params.lamp * high * (1.0 - clamp(ctx.params.named, 0.0, 1.0) * near) * lampChase(station, ctx.params.chaseAt, ctx.params.chase);
+  return q;
+}`;
+
+/** Dust in the air: how many motes, and how long a stretch of tunnel they fill round the robot. */
+export const MOTE_COUNT = 6000;
+const MOTE_SPAN = 60;
+const MOTES_BEHIND = 14;
+
+export const MOTE_ATTRIBUTES = JSON.stringify([
+  { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+  // The light a mote throws back, already multiplied out (additive, unlit); alpha is its size as a multiple of the draw's.
+  { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 1] },
+]);
+
+/**
+ * AIR: motes hanging in the tunnel, each lit by the lamp it is nearest and by the robot's
+ * eyes, so the light has something to be seen in before it reaches a wall. A mote keeps its
+ * place in the tunnel while the window of them rides with the robot; it is the same wrapping
+ * the wall's rows do. Billboards, additive, unlit: the kernel does their lighting.
+ */
+export const MOTE_KERNEL = `// T1561b — dust in the tunnel's air (src/projects/sentinel-bot/tunnel.ts).
+struct Params {
+  travel: f32, // @default 0  Distance travelled along the tunnel, metres.
+  bore: f32, // @default 2.6  The tunnel's radius, metres.
+  lamp: f32, // @default 26  The lamps' intensity, as their lights have it.
+  eyes: f32, // @default 8  The eyes' light, as its light has it.
+  eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its colour.
+  amount: f32, // @default 1  How much of the dust shows: 0 none.
+  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.
+  chase: f32, // @default 0  …and how much of it, 0 none.
+};
+${pathWgsl()}${LAMP_TONE_WGSL}
+fn moteHash(a: u32, b: u32) -> f32 {
+  let x = (a * 747796405u) ^ (b * 2891336453u + 12345u);
+  let w = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;
+  return f32((w >> 22u) ^ w) / 4294967295.0;
+}
+
+fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  let start = ctx.params.travel - ${MOTES_BEHIND}.0;
+  // Its own place along the tunnel, in whichever span of it the window is over now.
+  let home = moteHash(ctx.index, 1u) * ${MOTE_SPAN}.0;
+  let z = start + (home - start) - ${MOTE_SPAN}.0 * floor((home - start) / ${MOTE_SPAN}.0);
+  let wall = pathFrame(z);
+  let reach = ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt(z)) * 0.9;
+  let angle = moteHash(ctx.index, 2u) * 6.2831853;
+  let radius = sqrt(moteHash(ctx.index, 3u)) * reach;
+  let nerve = moteHash(ctx.index, 4u);
+  // It hangs, and drifts a hand's width on a slow count of its own.
+  let drift = vec2f(sin(ctx.absTime * (0.11 + nerve * 0.2) + nerve * 40.0), cos(ctx.absTime * (0.09 + nerve * 0.17) + nerve * 23.0)) * 0.12;
+  var across = vec2f(cos(angle), sin(angle)) * radius + drift;
+  // Nothing hangs under the deck.
+  across.y = max(across.y, -ctx.params.bore * 0.7);
+  q.position = wall.origin + wall.right * across.x + wall.up * across.y;
+
+  // The lamp it is nearest, and the robot's eyes: inverse square, as the lights themselves fall off.
+  let station = floor(z / LAMP);
+  let lampAt = pathFrame((station + 0.5) * LAMP);
+  // Under the plate, wherever the wall there holds it: a hall's crown is higher (CHAMBERS).
+  let toLamp = lampAt.origin + lampAt.up * (ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt((station + 0.5) * LAMP)) - ${LAMP_HANGS.toFixed(2)}) - q.position;
+  let eyesAt = pathAt(ctx.params.travel + 0.9);
+  let toEyes = eyesAt - q.position;
+  let lit = lampTone(station) * (ctx.params.lamp * lampChase(station, ctx.params.chaseAt, ctx.params.chase)) / (1.0 + dot(toLamp, toLamp)) + ctx.params.eyeColor * ctx.params.eyes / (0.3 + dot(toEyes, toEyes));
+  let twinkle = 0.55 + 0.45 * sin(ctx.absTime * (0.8 + nerve * 2.5) + nerve * 60.0);
+  q.tint = vec4f(lit * (0.006 * ctx.params.amount * twinkle), 0.5 + nerve);
+  return q;
+}`;

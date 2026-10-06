@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   GENERATOR_SHAPES,
   pointBoxNode,
+  pointCircleNode,
   pointGeneratorDefinitions,
   pointGeneratorNode,
+  pointLineNode,
   pointSphereNode,
   pointTorusNode,
 } from "./point-generators.ts";
@@ -107,6 +109,33 @@ describe("point generator family (T298)", () => {
       compileContext({ nodeId: "gen", outputs: [], parameters: { count: 4096, cols: 48, rows: 24 } }),
     );
     expect(torus.pointsets?.["out"]?.topology).toBe("grid:48x24:wrapUV");
+  });
+
+  /**
+   * T1586b. A line and a circle are ONE strip of `count` points in slot order, so a curve
+   * node or a kernel's `ctx.dim` can follow them with no Topology node in between. Both are
+   * OPEN: the circle's kernel runs its angle to TAU inclusive, so the loop is already
+   * closed in the data and a `:closed` claim would add a segment of rounding noise. The
+   * cols/rows set below are the grid's knobs and must not reach a strip's claim.
+   */
+  it("publishes one open strip of `count` points for the line and the circle (T1586b)", () => {
+    const line = pointLineNode.compile(
+      compileContext({ nodeId: "gen", outputs: [], parameters: { count: 240, cols: 48, rows: 24 } }),
+    );
+    expect(line.diagnostics ?? []).toEqual([]);
+    expect(line.pointsets?.["out"]?.topology).toBe("strips:240x1");
+    expect(line.pointsets?.["out"]?.capacity).toBe(240);
+
+    const circle = pointCircleNode.compile(
+      compileContext({ nodeId: "gen", outputs: [], parameters: { count: 96 } }),
+    );
+    expect(circle.pointsets?.["out"]?.topology).toBe("strips:96x1");
+
+    // The menu spelling is the same compile, so it makes the same claim.
+    const menu = pointGeneratorNode.compile(
+      compileContext({ nodeId: "gen", outputs: [], parameters: { shape: "line", count: 12 } }),
+    );
+    expect(menu.pointsets?.["out"]?.topology).toBe("strips:12x1");
   });
 
   /**

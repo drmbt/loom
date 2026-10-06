@@ -79,8 +79,8 @@ describe("E26 Interference", () => {
         (warp.parameters[key] as { bindings?: { expression?: { source?: string } } })?.bindings
           ?.expression?.source,
       );
-    expect(channel("t.x")).toBe("driftx1");
-    expect(channel("t.y")).toBe("drifty1");
+    expect(channel("t.x")).toBe("lfo_driftx");
+    expect(channel("t.y")).toBe("lfo_drifty");
   });
 
   /**

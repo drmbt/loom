@@ -21,7 +21,7 @@ import {
   parseMorphRecords,
   parsePresetBank,
 } from "@domain/presets/index.ts";
-import { LAYER_NODE_TYPE, controlNameOf, layerPicture, type BoardRect } from "@nodes/definitions/controls.ts";
+import { LAYER_NODE_TYPE, layerPicture, surfaceNameOf, type BoardRect } from "@nodes/definitions/controls.ts";
 import { refusalMessage, type CommandAnswer } from "@editor/inspector/command-refusal.ts";
 import { boardFit, boardValueEm, cueListBoardLayout, cueListShowsCues, layerBoardLayout, presetStripGrid, type BoardCells } from "./board-fit.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
@@ -162,7 +162,7 @@ function useMorphFade(bus: LoomBus, morphs: unknown): { readonly preset: string;
  * writes the component for every instance with no undo, which is the inspector's to do
  * deliberately, not a stray press mid-show.
  */
-function PresetStrip({ node, rect, cells, bus, invocation, view }: BoardMemberProps & { readonly view?: BankView }) {
+function PresetStrip({ node, rect, cells, bus, invocation, view, name }: BoardMemberProps & { readonly view?: BankView; readonly name?: string }) {
   const parsed = parsePresetBank((view?.bank ?? node).parameters["presets"]);
   const presets = parsed.ok ? parsed.bank.presets : [];
   const current = text(node.parameters[view?.currentKey ?? "current"]);
@@ -194,7 +194,9 @@ function PresetStrip({ node, rect, cells, bus, invocation, view }: BoardMemberPr
           fontSize: px(fit.fontPx),
         }}
         role="group"
-        aria-label={`Presets of ${controlNameOf(node)}`}
+        // T1593b: called by its role (`looks`). `name` is handed in for a look's instance,
+        // whose kind is its component's name and so needs the catalogue to read.
+        aria-label={`Presets of ${name ?? surfaceNameOf(node)}`}
       >
         {presets.map((preset) => {
           const fading = fade !== null && fade.preset === preset.name;
@@ -233,7 +235,8 @@ function PresetStrip({ node, rect, cells, bus, invocation, view }: BoardMemberPr
 }
 
 function LayerStrip({ node, rect, cells, bus, invocation, write }: BoardMemberProps) {
-  const name = controlNameOf(node);
+  // T1593b: the strip is drawn as a layer, so its caption is the ROLE (`graphic`).
+  const name = surfaceNameOf(node);
   const on = node.ui?.bypassed !== true;
   const layout = layerBoardLayout(rect);
   const width = cells.widthOf(rect.w);
@@ -331,7 +334,7 @@ function CueListPad({ node, rect, cells, bus, invocation }: BoardMemberProps) {
         </div>
       )}
       {cues === null ? null : (
-        <div className={styles.cueList} style={{ fontSize: px(namesFit.fontPx) }} ref={list} role="group" aria-label={`Cues of ${controlNameOf(node)}`} data-cue-list>
+        <div className={styles.cueList} style={{ fontSize: px(namesFit.fontPx) }} ref={list} role="group" aria-label={`Cues of ${surfaceNameOf(node)}`} data-cue-list>
           {cues.map((cue) => (
             <button
               key={cue.name}
@@ -376,5 +379,5 @@ export function BoardMember(props: BoardMemberProps) {
   if (Member !== undefined) return <Member {...props} />;
   // T1505b: a look's instance on the board by name is its bank — the strip, from its component.
   const view = bankViewOf(props.node, catalogue);
-  return view?.kind === "instance" ? <PresetStrip {...props} view={view} /> : null;
+  return view?.kind === "instance" ? <PresetStrip {...props} view={view} name={surfaceNameOf(props.node, catalogue)} /> : null;
 }

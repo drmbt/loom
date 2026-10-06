@@ -121,7 +121,8 @@ async function renderLinks(
   }
 }
 
-const line = node("src", "pointLine", { shape: "line", count: 5, sizeX: 4 });
+// §T1641b: Line Points IS the line shape; it declares no `shape`. This stored one nothing read.
+const line = node("src", "pointLine", { count: 5, sizeX: 4 });
 
 describe("Proximity links, by value (T819)", () => {
   it("selects the exact K nearest on a line, ranks by distance, and parks the absent (§V788)", async () => {

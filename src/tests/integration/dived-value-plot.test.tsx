@@ -20,8 +20,8 @@ import type { GraphActions } from "../../app/graph-pane.tsx";
  * T615 keys the history by FLAT id on purpose ("the flat document is what brings a
  * value node inside a component into the window at all" — its own comment), but the
  * pane's read side used the CANVAS id, so every value node in a dived interior
- * subscribed to a ring nobody writes: the owner's screenshot of TimeGrid's `churnx1` /
- * `churny1` showing "VALUE —" over an empty plot while the signal demonstrably ran the
+ * subscribed to a ring nobody writes: the owner's screenshot of TimeGrid's `lfo_churnx` /
+ * `lfo_churny` showing "VALUE —" over an empty plot while the signal demonstrably ran the
  * wall. The write half shipped without its read half — the value-system twin of
  * T1019's texture fix, at the same seam, with the same identity-at-root property.
  */

@@ -9,7 +9,8 @@ import { createSequentialIdFactory } from "../../domain/graph/ids.ts";
 import { createGraphStore } from "../../domain/graph/store.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { compileGraph } from "../../compiler/compile.ts";
-import { testCapabilities, testSettings } from "../../compiler/test-support.ts";
+import { testCapabilities, testSettings, flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
 import type { GraphPatchOperation } from "../../domain/types/patch.ts";
@@ -88,7 +89,7 @@ describe("T1512b — a Panel's members are the widgets wired into it, in wiring 
     const compiled = compileGraph({ graph, settings: testSettings(), registry, capabilities: testCapabilities() });
     expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const frame = { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "offline", randomSeed: 1 } as const;
-    expect(createValueGraphSession(registry).evaluate(graph, frame).diagnostics).toEqual([]);
+    expect(createValueGraphSession(registry).evaluate(flatDocument(graph), frame, { flattening: NO_FLATTENING }).diagnostics).toEqual([]);
   });
 
 });

@@ -57,7 +57,7 @@
             "cut": {
               "definitionVersion": 1,
               "id": "cut",
-              "label": "cut1",
+              "label": "mask_cut",
               "parameters": {
                 "apply": "colour",
                 "channel": "red"
@@ -93,7 +93,7 @@
             "matte": {
               "definitionVersion": 1,
               "id": "matte",
-              "label": "matte1",
+              "label": "wgsl_matte",
               "parameters": {
                 "feather": 0.12,
                 "invert": 0,
@@ -265,7 +265,7 @@
             "carve": {
               "definitionVersion": 1,
               "id": "carve",
-              "label": "carve1",
+              "label": "kernel_carve",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,
@@ -337,7 +337,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "kernel_paint",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,
@@ -867,7 +867,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "noise_bed",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -894,7 +894,7 @@
       "braid": {
         "definitionVersion": 1,
         "id": "braid",
-        "label": "braid1",
+        "label": "reorder_braid",
         "parameters": {
           "outa": "in2a",
           "outb": "in1b",
@@ -910,7 +910,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "webcam1",
         "parameters": {},
         "position": {
           "x": -1920,
@@ -921,14 +921,14 @@
       "coat": {
         "definitionVersion": 1,
         "id": "coat",
-        "label": "coat1",
+        "label": "lookup_coat",
         "parameters": {
           "channel": "luminance",
           "offset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-0.06 + op('cycle1').chan.value"
+                "source": "-0.06 + op('lfo_cycle').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -949,7 +949,7 @@
       "cut": {
         "definitionVersion": 1,
         "id": "cut",
-        "label": "cut1",
+        "label": "depthcut1",
         "parameters": {
           "feather": 0.12,
           "invert": 0,
@@ -964,7 +964,7 @@
       "cycle": {
         "definitionVersion": 1,
         "id": "cycle",
-        "label": "cycle1",
+        "label": "lfo_cycle",
         "parameters": {
           "amplitude": 0.05,
           "frequency": 0.037,
@@ -994,10 +994,10 @@
       "dots": {
         "definitionVersion": 1,
         "id": "dots",
-        "label": "dots1",
+        "label": "geometry_dots",
         "parameters": {
           "blend": "additive",
-          "material": "glowm1",
+          "material": "material_glowm",
           "mode": "points",
           "scale": 0.0068,
           "soft": 1,
@@ -1030,7 +1030,7 @@
       "eye": {
         "definitionVersion": 1,
         "id": "eye",
-        "label": "eye1",
+        "label": "camera_eye",
         "parameters": {
           "eye": [
             0,
@@ -1041,7 +1041,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbit1').chan.value"
+                "source": "op('lfo_orbit').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1069,7 +1069,7 @@
       "flat": {
         "definitionVersion": 1,
         "id": "flat",
-        "label": "flat1",
+        "label": "hsv_flat1",
         "parameters": {
           "hueoffset": 0,
           "saturation": 0,
@@ -1084,7 +1084,7 @@
       "flat2": {
         "definitionVersion": 1,
         "id": "flat2",
-        "label": "flat2",
+        "label": "hsv_flat2",
         "parameters": {
           "hueoffset": 0,
           "saturation": 0,
@@ -1099,7 +1099,7 @@
       "glowm": {
         "definitionVersion": 1,
         "id": "glowm",
-        "label": "glowm1",
+        "label": "material_glowm",
         "parameters": {
           "color": [
             1,
@@ -1117,7 +1117,7 @@
       "holo": {
         "definitionVersion": 1,
         "id": "holo",
-        "label": "holo1",
+        "label": "depthpoints_holo1",
         "parameters": {
           "displace": 1,
           "far": 2.6,
@@ -1138,7 +1138,7 @@
       "holo2": {
         "definitionVersion": 1,
         "id": "holo2",
-        "label": "holo2",
+        "label": "depthpoints_holo2",
         "parameters": {
           "displace": 1.2,
           "far": 4.4,
@@ -1159,7 +1159,7 @@
       "orb": {
         "definitionVersion": 1,
         "id": "orb",
-        "label": "orb1",
+        "label": "circle_orb",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -1176,7 +1176,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swayx1').chan.value"
+                "source": "op('lfo_swayx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1189,7 +1189,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swayy1').chan.value"
+                "source": "op('lfo_swayy').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1220,7 +1220,7 @@
       "orbit": {
         "definitionVersion": 1,
         "id": "orbit",
-        "label": "orbit1",
+        "label": "lfo_orbit",
         "parameters": {
           "amplitude": 0.9,
           "frequency": 0.03,
@@ -1237,7 +1237,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 180,
@@ -1248,7 +1248,7 @@
       "palette": {
         "definitionVersion": 2,
         "id": "palette",
-        "label": "palette1",
+        "label": "ramp_palette",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -1320,7 +1320,7 @@
       "pick": {
         "definitionVersion": 1,
         "id": "pick",
-        "label": "pick1",
+        "label": "switch_pick",
         "parameters": {
           "index": 0
         },
@@ -1333,7 +1333,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0,
@@ -1349,9 +1349,9 @@
             0.016,
             1
           ],
-          "camera": "eye1",
+          "camera": "camera_eye",
           "lights": "",
-          "scenes": "dots1 wdots1"
+          "scenes": "geometry_dots geometry_wdots"
         },
         "position": {
           "x": -120,
@@ -1362,7 +1362,7 @@
       "soften": {
         "definitionVersion": 1,
         "id": "soften",
-        "label": "soften1",
+        "label": "blur_soften1",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -1377,7 +1377,7 @@
       "soften2": {
         "definitionVersion": 1,
         "id": "soften2",
-        "label": "soften2",
+        "label": "blur_soften2",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -1392,7 +1392,7 @@
       "src": {
         "definitionVersion": 1,
         "id": "src",
-        "label": "src1",
+        "label": "add_src",
         "parameters": {
           "opacity": 1
         },
@@ -1405,7 +1405,7 @@
       "srcpick": {
         "definitionVersion": 1,
         "id": "srcpick",
-        "label": "srcpick1",
+        "label": "switch_srcpick",
         "parameters": {
           "index": 0
         },
@@ -1418,7 +1418,7 @@
       "swayx": {
         "definitionVersion": 1,
         "id": "swayx",
-        "label": "swayx1",
+        "label": "lfo_swayx",
         "parameters": {
           "amplitude": 0.28,
           "frequency": 0.29,
@@ -1435,7 +1435,7 @@
       "swayy": {
         "definitionVersion": 1,
         "id": "swayy",
-        "label": "swayy1",
+        "label": "lfo_swayy",
         "parameters": {
           "amplitude": 0.22,
           "frequency": 0.19,
@@ -1452,7 +1452,7 @@
       "wall": {
         "definitionVersion": 1,
         "id": "wall",
-        "label": "wall1",
+        "label": "range_wall",
         "parameters": {
           "attribute": "depthN",
           "component": "x",
@@ -1469,7 +1469,7 @@
       "wallm": {
         "definitionVersion": 1,
         "id": "wallm",
-        "label": "wallm1",
+        "label": "material_wallm",
         "parameters": {
           "color": [
             1,
@@ -1487,14 +1487,14 @@
       "wcoat": {
         "definitionVersion": 1,
         "id": "wcoat",
-        "label": "wcoat1",
+        "label": "lookup_wcoat",
         "parameters": {
           "channel": "luminance",
           "offset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-0.94 + op('cycle1').chan.value"
+                "source": "-0.94 + op('lfo_cycle').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1515,10 +1515,10 @@
       "wdots": {
         "definitionVersion": 1,
         "id": "wdots",
-        "label": "wdots1",
+        "label": "geometry_wdots",
         "parameters": {
           "blend": "additive",
-          "material": "wallm1",
+          "material": "material_wallm",
           "mode": "points",
           "scale": 0.007,
           "soft": 1,
@@ -1551,7 +1551,7 @@
       "zone": {
         "definitionVersion": 1,
         "id": "zone",
-        "label": "zone1",
+        "label": "range_zone",
         "parameters": {
           "attribute": "depthN",
           "component": "x",

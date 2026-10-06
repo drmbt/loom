@@ -49,8 +49,8 @@ function node(id: string, type: string, position: readonly [number, number], par
   return buildNode(id, type, position, {}, { ...extra, parameters });
 }
 
-const HIT = (channel: string): string => `op('hits1').chan.${channel}`;
-const LEVEL = (channel: string): string => `op('levels1').chan.${channel}`;
+const HIT = (channel: string): string => `op('lag_hits').chan.${channel}`;
+const LEVEL = (channel: string): string => `op('lag_levels').chan.${channel}`;
 
 function vec(value: readonly [number, number, number]): number[] {
   return [value[0], value[1], value[2]];
@@ -90,9 +90,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
    * restrained and gets wilder — rougher hands, more glitch, louder steel — so the song's
    * shape reads in the picture, not only its beats.
    */
-  const act = "clamp(op('dirSections1').chan.novelty / 5, 0, 1)";
+  const act = "clamp(op('count_dirSections').chan.novelty / 5, 0, 1)";
   const handheld = `((0.6 + ${direction.energy} * ${direction.energy} * 4 + ${direction.build} * 2) * (1 + ${act}))`;
-  const kickPunch = `(clamp(1 - op('kicks1').chan.kickCountSince * 5, 0, 1) ^ 2 * (0.35 + 0.65 * clamp((${direction.energy} - 0.3) / 0.4, 0, 1)))`;
+  const kickPunch = `(clamp(1 - op('count_kicks').chan.kickCountSince * 5, 0, 1) ^ 2 * (0.35 + 0.65 * clamp((${direction.energy} - 0.3) / 0.4, 0, 1)))`;
   const path =
     options.shot === undefined
       ? shotPath(facts, { index: options.cutIndex === undefined ? direction.shot : String(options.cutIndex), progress: options.cutIndex === undefined ? `${direction.since} / ${moveSeconds}` : `abstime / ${moveSeconds}`, time: "abstime", blockers: facts.blockers, shake: handheld, punch: kickPunch })
@@ -124,9 +124,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
         intensity,
         position: vec(markerAt(facts, marker)),
         ...(shadowRange === undefined ? {} : { shadows: true, shadowExtent: shadowRange, shadowSoftness: 1 }),
-      }, { label: `${label}1` }),
+      }, { label: `light_${label}` }),
     );
-    lightLabels.push(`${label}1`);
+    lightLabels.push(`light_${label}`);
   };
   // The furnace breathes with the low band; the arc flickers on the hats (and never quite
   // steadies — a real arc hunts); the high bays are dim sodium, the shop's only steady light.
@@ -151,7 +151,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   atmosphereScatter["lampScatter"] = 0.8;
   // The sun is programmed with the windows: its shafts dim at rest, flare through a build and
   // go out at a section change.
-  atmosphereScatter["sunShafts"] = expressionSlot(`(90 + ${direction.energy} * 70 + ${direction.build} * 140) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 80);
+  atmosphereScatter["sunShafts"] = expressionSlot(`(90 + ${direction.energy} * 70 + ${direction.build} * 140) * clamp(op('count_dirSections').chan.noveltySince / 2 - 0.2, 0, 1)`, 80);
   atmosphereScatter["sunColor"] = [0.62, 0.86, 1, 1];
   atmosphereScatter["density"] = 0.009;
   // Low and cold: at a blackout this is all the smoke carries, and the camera must not
@@ -164,7 +164,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
   const sun = sunView(facts, KEY_DIRECTION);
   const SUN_MAP = 2048;
 
-  const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('cam1').par.${field}`, fallback);
+  const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('camera1').par.${field}`, fallback);
 
   /** The fixtures as the lamp pass and the smoke both see them: one gain, the crane travel. */
   const lampDrive: Record<string, StoredParameter> = {
@@ -173,7 +173,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     // frame — and the music switches it: the high bays rise with energy, strobe on alternate
     // beats through a build, and black out at a section change before fading back in.
     // …and every kick flashes the bays, at any energy: the hall breathes with the beat.
-    hall: expressionSlot(`(0.14 + ${HIT("kickCount")} * 0.35 + 0.5 * ${direction.energy} ^ 2 + ${direction.build} * 0.6 * ((op('dirBeats1').chan.beatCount % 2) == 0)) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.1),
+    hall: expressionSlot(`(0.14 + ${HIT("kickCount")} * 0.35 + 0.5 * ${direction.energy} ^ 2 + ${direction.build} * 0.6 * ((op('count_dirBeats').chan.beatCount % 2) == 0)) * clamp(op('count_dirSections').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.1),
     crane: expressionSlot(`0.3 + ${HIT("hatCount")} * 2`, 0.3),
     furnace: expressionSlot(`0.3 + ${LEVEL("low")} * 1.2`, 0.5),
     catwalk: expressionSlot(`0.25 + ${direction.density} * 0.9`, 0.4),
@@ -183,19 +183,19 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     chase: expressionSlot(`clamp(${direction.build} * 1.5 - 0.3, 0, 1)`, 0),
     // The export's warm lamps retinted to neutral steel-blue (0.85, 0.9, 1): only the melt is warm.
     tint: [0.9, 0.95, 1.35, 1],
-    craneX: expressionSlot("op('rig1').par.craneX", 0),
-    crane2X: expressionSlot("op('rig1').par.crane2X", 0),
+    craneX: expressionSlot("op('kernel_rig').par.craneX", 0),
+    crane2X: expressionSlot("op('kernel_rig').par.crane2X", 0),
   };
 
   /**
    * The GLITCH BUDGET, a boundary: heavy glitching is allowed in every third section and
    * through a build-up; elsewhere it is damped to 30%, so the breaks are accents, not a coat.
    */
-  const glitchBudget = `clamp(0.05 + 0.75 * ((op('dirSections1').chan.novelty % 3) == 1) + ${direction.build} * 0.6, 0, 1)`;
+  const glitchBudget = `clamp(0.05 + 0.75 * ((op('count_dirSections').chan.novelty % 3) == 1) + ${direction.build} * 0.6, 0, 1)`;
   /** How hard the track is pushing: nothing below a third of its range, full at the top. Every glitch scales by it. */
   const intensity = `clamp((${direction.energy} - 0.35) / 0.45 + ${act} * 0.2, 0, 1)`;
   /** RARE BURSTS: half a second of hard glitch at a section change, and on a kick at a loud peak — sprinkled, never a coat. */
-  const burst = `clamp((op('dirSections1').chan.noveltySince < 1) + (${direction.energy} > 0.7) * (${HIT("kickCount")} > 0.9) * (op('dirCuts1').chan.cut % 2 == 0) * (0.5 + ${act}), 0, 1)`;
+  const burst = `clamp((op('count_dirSections').chan.noveltySince < 1) + (${direction.energy} > 0.7) * (${HIT("kickCount")} > 0.9) * (op('count_dirCuts').chan.cut % 2 == 0) * (0.5 + ${act}), 0, 1)`;
 
   /** The camera now and one frame ago, as the screen-space passes that reproject read it. */
   const cameraNowAndBefore: Record<string, StoredParameter> = {
@@ -238,22 +238,22 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
 
   const nodes: GraphNode[] = [
     // ── Audio (a stand-in track until the song arrives) ──
-    node("clip", "audioFileIn", [-4200, 1400], { file: options.audioUrl ?? "media/furnace/clankz3.wav", playMode: "timeline" }, { label: "clip1" }),
-    node("pickLevels", "valueSelect", [-3900, 1300], { channels: "level low high" }, { label: "picklevels1" }),
-    node("smooth", "valueLag", [-3600, 1300], { lag: 0.02, releaseRatio: 4 }, { label: "smooth1" }),
-    node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "rank1" }),
+    node("clip", "audioFileIn", [-4200, 1400], { file: options.audioUrl ?? "media/furnace/clankz3.wav", playMode: "timeline" }, { label: "audiofile_clip" }),
+    node("pickLevels", "valueSelect", [-3900, 1300], { channels: "level low high" }, { label: "select_picklevels" }),
+    node("smooth", "valueLag", [-3600, 1300], { lag: 0.02, releaseRatio: 4 }, { label: "lag_smooth" }),
+    node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "normalize_rank" }),
     // Fast attack, slow release: a level that rises late reads as the picture lagging the music.
-    node("levels", "valueLag", [-3000, 1300], { lag: 0.03, releaseRatio: 5 }, { label: "levels1" }),
-    node("pickHits", "valueSelect", [-3900, 1550], { channels: "kickCount snareCount hatCount" }, { label: "pickhits1" }),
+    node("levels", "valueLag", [-3000, 1300], { lag: 0.03, releaseRatio: 5 }, { label: "lag_levels" }),
+    node("pickHits", "valueSelect", [-3900, 1550], { channels: "kickCount snareCount hatCount" }, { label: "select_pickhits" }),
     // Seconds since the last kick and snare, for the shockwave and the scanline on the steel.
-    node("kickPick", "valueSelect", [-3900, 1750], { channels: "kickCount" }, { label: "kickpick1" }),
-    node("kicks", "valueCount", [-3600, 1750], { threshold: 0.5, holdoff: 0.1 }, { label: "kicks1" }),
-    node("snarePick", "valueSelect", [-3900, 1900], { channels: "snareCount" }, { label: "snarepick1" }),
-    node("snares", "valueCount", [-3600, 1900], { threshold: 0.5, holdoff: 0.1 }, { label: "snares1" }),
-    node("hits", "valueLag", [-3600, 1550], { lag: 0.001, releaseRatio: 250 }, { label: "hits1" }),
+    node("kickPick", "valueSelect", [-3900, 1750], { channels: "kickCount" }, { label: "select_kickpick" }),
+    node("kicks", "valueCount", [-3600, 1750], { threshold: 0.5, holdoff: 0.1 }, { label: "count_kicks" }),
+    node("snarePick", "valueSelect", [-3900, 1900], { channels: "snareCount" }, { label: "select_snarepick" }),
+    node("snares", "valueCount", [-3600, 1900], { threshold: 0.5, holdoff: 0.1 }, { label: "count_snares" }),
+    node("hits", "valueLag", [-3600, 1550], { lag: 0.001, releaseRatio: 250 }, { label: "lag_hits" }),
     // ── The shop ──
-    node("plant", "meshFileIn", [-3600, -300], { file: facts.glbUrl, select: facts.plant.select, vertices: facts.plant.vertices, triangles: facts.plant.triangles, parts: facts.plant.parts }, { label: "plant1" }),
-    node("machines", "meshFileIn", [-3600, 0], { file: facts.glbUrl, select: facts.machines.select, vertices: facts.machines.vertices, triangles: facts.machines.triangles, parts: facts.machines.parts }, { label: "machines1" }),
+    node("plant", "meshFileIn", [-3600, -300], { file: facts.glbUrl, select: facts.plant.select, vertices: facts.plant.vertices, triangles: facts.plant.triangles, parts: facts.plant.parts }, { label: "mesh_plant" }),
+    node("machines", "meshFileIn", [-3600, 0], { file: facts.glbUrl, select: facts.machines.select, vertices: facts.machines.vertices, triangles: facts.machines.triangles, parts: facts.machines.parts }, { label: "mesh_machines" }),
     node("rig", "pointKernel", [-3300, 0], {
       capacity: facts.machines.vertices,
       attributes: RIG_ATTRIBUTES,
@@ -276,37 +276,37 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       ladleTilt: expressionSlot("max(sin(abstime * 0.05), 0.0) * 0.35", 0),
       casting: expressionSlot("abstime * 0.4", 0),
       conveyor: expressionSlot("abstime * 1.2", 0),
-    }, { label: "rig1" }),
+    }, { label: "kernel_rig" }),
     node("steel", "materialWgsl", [-3000, -600], { model: "pbr", source: plantSurfaceWgsl(facts), heatGlow: 3.2, liquidGlow: 2.2, liningGlow: 24, arcGlow: expressionSlot(`1.6 + ${direction.density} * 1.2 + ${HIT("hatCount")} * 3`, 2), arcFlash: expressionSlot(`${HIT("hatCount")} * 6 + ${direction.density} * 0.5`, 0), fire: expressionSlot(`5 + ${LEVEL("low")} * 12 + ${direction.build} * 10`, 9), chalk: 0.12, soot: 0.38,
       // The steel answers every kick and snare, loud or quiet: a floor of 0.4 even in the calm.
       fx: expressionSlot(`0.25 + 0.35 * ${act} + 0.5 * clamp((${direction.energy} - 0.3) / 0.5, 0, 1)`, 0.3),
-      kickSince: expressionSlot("op('kicks1').chan.kickCountSince", 100),
-      snareSince: expressionSlot("op('snares1').chan.snareCountSince", 100),
-      kickCount: expressionSlot("op('kicks1').chan.kickCount", 0),
-      beltTravel: expressionSlot("op('rig1').par.conveyor", 0),
-      lampHall: expressionSlot("op('lamps1').par.hall", 1),
-      lampProps: expressionSlot("op('lamps1').par.props", 1),
-      lampChase: expressionSlot("op('lamps1').par.chase", 0),
-      lampFailing: expressionSlot("op('lamps1').par.failing", 0.1),
-      snareCount: expressionSlot("op('snares1').chan.snareCount", 0),
+      kickSince: expressionSlot("op('count_kicks').chan.kickCountSince", 100),
+      snareSince: expressionSlot("op('count_snares').chan.snareCountSince", 100),
+      kickCount: expressionSlot("op('count_kicks').chan.kickCount", 0),
+      beltTravel: expressionSlot("op('kernel_rig').par.conveyor", 0),
+      lampHall: expressionSlot("op('wgsl_lamps').par.hall", 1),
+      lampProps: expressionSlot("op('wgsl_lamps').par.props", 1),
+      lampChase: expressionSlot("op('wgsl_lamps').par.chase", 0),
+      lampFailing: expressionSlot("op('wgsl_lamps').par.failing", 0.1),
+      snareCount: expressionSlot("op('count_snares').chan.snareCount", 0),
       flicker: expressionSlot(`${HIT("hatCount")} * (${direction.density} > 0.5)`, 0),
-      heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "steel1" }),
+      heatPulse: expressionSlot(`${direction.energy} * 0.25 + ${direction.build} * 0.35`, 0.1) }, { label: "material_steel" }),
     // The sky through the openings: emissive, unlit — so it neither shades nor casts (T666).
-    node("sky", "meshFileIn", [-3600, -600], { file: facts.glbUrl, select: facts.sky.select, vertices: facts.sky.vertices, triangles: facts.sky.triangles, parts: facts.sky.parts }, { label: "sky1" }),
+    node("sky", "meshFileIn", [-3600, -600], { file: facts.glbUrl, select: facts.sky.select, vertices: facts.sky.vertices, triangles: facts.sky.triangles, parts: facts.sky.parts }, { label: "mesh_sky" }),
     // The windows are PROGRAMMED: their glow follows the light programme (dim at rest, a
     // flare through a build, black at a section change).
     node("skyMat", "materialWgsl", [-3300, -700], {
       model: "unlit",
       source: SKY_SURFACE_WGSL,
-      sky: expressionSlot(`(0.1 + ${direction.energy} ^ 2 * 0.7 + ${direction.build} * 1.5 * ((op('dirBeats1').chan.beatCount % 2) == 0)) * clamp(op('dirSections1').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.5),
+      sky: expressionSlot(`(0.1 + ${direction.energy} ^ 2 * 0.7 + ${direction.build} * 1.5 * ((op('count_dirBeats').chan.beatCount % 2) == 0)) * clamp(op('count_dirSections').chan.noveltySince / 2 - 0.2, 0, 1)`, 0.5),
       chase: expressionSlot(`clamp(${direction.build} * 1.5 - 0.2, 0, 1)`, 0),
       strobe: expressionSlot(`${HIT("snareCount")} * clamp((${direction.energy} - 0.35) / 0.4, 0, 1)`, 0),
-      pick: expressionSlot("op('kicks1').chan.kickCount", 0),
+      pick: expressionSlot("op('count_kicks').chan.kickCount", 0),
       warm: expressionSlot(`clamp((${direction.energy} - 0.75) / 0.2, 0, 1) * 0.7`, 0),
-    }, { label: "skymat1" }),
-    node("skyGeo", "geometry", [-3000, -750], { mode: "surface", material: "skymat1" }, { label: "skygeo1" }),
-    node("plantGeo", "geometry", [-3000, -300], { mode: "surface", material: "steel1" }, { label: "plantgeo1" }),
-    node("machineGeo", "geometry", [-3000, 0], { mode: "surface", material: "steel1" }, { label: "machinegeo1" }),
+    }, { label: "material_sky" }),
+    node("skyGeo", "geometry", [-3000, -750], { mode: "surface", material: "material_sky" }, { label: "geometry_sky" }),
+    node("plantGeo", "geometry", [-3000, -300], { mode: "surface", material: "material_steel" }, { label: "geometry_plant" }),
+    node("machineGeo", "geometry", [-3000, 0], { mode: "surface", material: "material_steel" }, { label: "geometry_machine" }),
     // ── Sparks ──
     node("sparks", "pointKernel", [-3300, 400], {
       capacity: 8000,
@@ -320,17 +320,17 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       // No pour stream exists yet (T1386b): a spray from the lip would come out of nothing.
       pourRate: 0,
       brightness: expressionSlot(`28 * (0.7 + 0.6 * ${act})`, 28),
-    }, { label: "sparks1" }),
-    node("sparkMat", "materialUnlit", [-3000, 700], { color: [1, 1, 1, 1] }, { label: "sparkmat1" }),
+    }, { label: "kernel_sparks" }),
+    node("sparkMat", "materialUnlit", [-3000, 700], { color: [1, 1, 1, 1] }, { label: "material_spark" }),
     node("sparkGeo", "geometry", [-3000, 400], {
       mode: "beam",
-      material: "sparkmat1",
+      material: "material_spark",
       endpoint: "endpoint",
       blend: "additive",
       scale: 0.012,
       taper: 0.25,
       tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
-    }, { label: "sparkgeo1" }),
+    }, { label: "geometry_spark" }),
     // ── Camera and light ──
     node("cam", "camera", [-2700, -900], {
       eye: vec(eye),
@@ -350,7 +350,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
             fov: expressionSlot(options.portrait === true ? portraitFovExpression(path.fov) : path.fov, portraitFov(camera.fovDeg)),
             roll: expressionSlot(path.roll, 0),
           }),
-    }, { label: "cam1" }),
+    }, { label: "camera1" }),
     node("key", "light", [-2600, -900], {
       kind: "directional",
       direction: [KEY_DIRECTION[0], KEY_DIRECTION[1], KEY_DIRECTION[2]],
@@ -360,23 +360,23 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       shadows: true,
       shadowExtent: 80,
       shadowSoftness: 1,
-    }, { label: "key1" }),
+    }, { label: "light_key" }),
     ...lightNodes,
-    node("envSeed", "ramp", [-2700, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 1024, height: 512 } }),
-    node("env", "customWgsl", [-2700, 500], { source: SHOP_ENVIRONMENT_WGSL }, { label: "env1" }),
+    node("envSeed", "ramp", [-2700, 300], {}, { label: "ramp_envseed", resolution: { mode: "fixed", width: 1024, height: 512 } }),
+    node("env", "customWgsl", [-2700, 500], { source: SHOP_ENVIRONMENT_WGSL }, { label: "wgsl_env" }),
     // ── The sun's view: depth only, for the shafts ──
-    node("sunCam", "camera", [-2700, 900], { eye: vec(sun.eye), lookAt: vec(sun.aim), ortho: true, orthoHeight: sun.height, near: sun.near, far: sun.far }, { label: "suncam1" }),
-    node("sunMat", "materialUnlit", [-3300, 1100], { color: [1, 1, 1, 1] }, { label: "sunmat1" }),
-    node("plantSun", "geometry", [-3000, 900], { mode: "surface", material: "sunmat1" }, { label: "plantsun1" }),
-    node("machineSun", "geometry", [-3000, 1050], { mode: "surface", material: "sunmat1" }, { label: "machinesun1" }),
-    node("sunShot", "render", [-2400, 900], { scenes: "plantsun1 machinesun1", camera: "suncam1", lights: "", depthOutput: true }, {
-      label: "sunshot1",
+    node("sunCam", "camera", [-2700, 900], { eye: vec(sun.eye), lookAt: vec(sun.aim), ortho: true, orthoHeight: sun.height, near: sun.near, far: sun.far }, { label: "camera_sun" }),
+    node("sunMat", "materialUnlit", [-3300, 1100], { color: [1, 1, 1, 1] }, { label: "material_sun" }),
+    node("plantSun", "geometry", [-3000, 900], { mode: "surface", material: "material_sun" }, { label: "geometry_plantsun" }),
+    node("machineSun", "geometry", [-3000, 1050], { mode: "surface", material: "material_sun" }, { label: "geometry_machinesun" }),
+    node("sunShot", "render", [-2400, 900], { scenes: "geometry_plantsun geometry_machinesun", camera: "camera_sun", lights: "", depthOutput: true }, {
+      label: "render_sunshot",
       resolution: { mode: "fixed", width: SUN_MAP, height: Math.max(64, Math.round((SUN_MAP * sun.height) / sun.width)) },
     }),
     node("shot", "render", [-2400, 0], {
-      scenes: "plantgeo1 skygeo1 machinegeo1 sparkgeo1",
-      camera: "cam1",
-      lights: ["key1", ...lightLabels].join(" "),
+      scenes: "geometry_plant geometry_sky geometry_machine geometry_spark",
+      camera: "camera1",
+      lights: ["light_key", ...lightLabels].join(" "),
       ambientColor: [0.56, 0.58, 0.6, 1],
       ambientIntensity: 0.002,
       background: [0, 0, 0, 1],
@@ -388,7 +388,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       environmentTaps: 12,
       ambientOcclusion: true,
       aoRadius: 0.8,
-    }, { label: "shot1" }),
+    }, { label: "render_shot" }),
     // ── Air, bloom, grade ──
     // The fixtures, deferred on the G-buffer (T1371b/T1380b); then contact occlusion darkens
     // what they lit, then reflections, then air.
@@ -406,11 +406,11 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       far: cameraRef("far", 400),
       roll: cameraRef("roll", 0),
       ...lampDrive,
-    }, { label: "lamps1", resolution: { mode: "project" } }),
+    }, { label: "wgsl_lamps", resolution: { mode: "project" } }),
     // Screen space on the G-buffer (T1371b): contact occlusion, then reflections, then air.
     // GI (gi.ts): the lit frame at quarter size is the light source for one bounce — hot
     // things light what is around them. Gathered at half size, blurred, added at full size.
-    node("litQuarter", "customWgsl", [-2250, 250], { source: BLOOM_DOWN_WGSL, clampLuma: 1 }, { label: "litquarter1", resolution: { mode: "scale", factor: 0.25 } }),
+    node("litQuarter", "customWgsl", [-2250, 250], { source: BLOOM_DOWN_WGSL, clampLuma: 1 }, { label: "wgsl_litquarter", resolution: { mode: "scale", factor: 0.25 } }),
     node("gather", "customWgslMulti", [-2200, 350], {
       source: SSGI_WGSL,
       eye: vec(eye),
@@ -426,9 +426,9 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       roll: cameraRef("roll", 0),
       radius: 9,
       strength: 20,
-    }, { label: "gather1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("gatherBlur", "blur", [-2150, 450], { size: 4, filter: "gaussian", extend: "hold" }, { label: "gatherblur1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("bounce", "customWgslMulti", [-2150, 0], { source: GI_COMPOSITE_WGSL, amount: 1 }, { label: "bounce1", resolution: { mode: "project" } }),
+    }, { label: "wgsl_gather", resolution: { mode: "scale", factor: 0.5 } }),
+    node("gatherBlur", "blur", [-2150, 450], { size: 4, filter: "gaussian", extend: "hold" }, { label: "blur_gather", resolution: { mode: "scale", factor: 0.5 } }),
+    node("bounce", "customWgslMulti", [-2150, 0], { source: GI_COMPOSITE_WGSL, amount: 1 }, { label: "wgsl_bounce", resolution: { mode: "project" } }),
     node("occlusion", "customWgslMulti", [-2100, 0], {
       source: GTAO_WGSL,
       eye: vec(eye),
@@ -442,7 +442,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
       roll: cameraRef("roll", 0),
-    }, { label: "occlusion1", resolution: { mode: "project" } }),
+    }, { label: "wgsl_occlusion", resolution: { mode: "project" } }),
     node("reflections", "customWgslMulti", [-1800, 0], {
       source: SSR_WGSL,
       eye: vec(eye),
@@ -456,7 +456,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
       roll: cameraRef("roll", 0),
-    }, { label: "reflections1", resolution: { mode: "project" } }),
+    }, { label: "wgsl_reflections", resolution: { mode: "project" } }),
     node("air", "customWgslMulti", [-1500, 0], {
       source: atmosphereWgsl(facts, sun),
       ...atmosphereScatter,
@@ -472,8 +472,8 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
       roll: cameraRef("roll", 0),
-    }, { label: "air1", resolution: { mode: "scale", factor: 0.5 } }),
-    node("airComposite", "customWgslMulti", [-1450, 150], { source: AIR_COMPOSITE_WGSL }, { label: "aircomposite1", resolution: { mode: "project" } }),
+    }, { label: "wgsl_air", resolution: { mode: "scale", factor: 0.5 } }),
+    node("airComposite", "customWgslMulti", [-1450, 150], { source: AIR_COMPOSITE_WGSL }, { label: "wgsl_aircomposite", resolution: { mode: "project" } }),
     node("lens", "customWgslMulti", [-1350, 0], {
       source: DOF_WGSL,
       // In PIXELS per unit defocus: the tall frame is narrower, so the same number blurred more of it.
@@ -490,19 +490,19 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
       roll: cameraRef("roll", 0),
-    }, { label: "lens1", resolution: { mode: "project" } }),
+    }, { label: "wgsl_lens", resolution: { mode: "project" } }),
     // Camera motion blur: the path one frame earlier is the previous camera (exact, stateless).
     // TAA (taa.ts): the history reprojected through last frame's camera, clamped, blended.
     node("taa", "customWgslMulti", [-1400, 150], {
       source: TAA_WGSL,
       ...cameraNowAndBefore,
-      reset: expressionSlot("op('dirCuts1').chan.cutSince < 0.05", 0),
-    }, { label: "taa1", resolution: { mode: "project" } }),
-    node("taaHistory", "feedback", [-1400, 300], { source: "taa1" }, { label: "taahistory1" }),
+      reset: expressionSlot("op('count_dirCuts').chan.cutSince < 0.05", 0),
+    }, { label: "wgsl_taa", resolution: { mode: "project" } }),
+    node("taaHistory", "feedback", [-1400, 300], { source: "wgsl_taa" }, { label: "feedback_taahistory" }),
     node("shutter", "customWgslMulti", [-1200, 0], {
       source: MOTION_BLUR_WGSL,
       ...cameraNowAndBefore,
-    }, { label: "shutter1", resolution: { mode: "project" } }),
+    }, { label: "wgsl_shutter", resolution: { mode: "project" } }),
     // The glitch layer (glitch.ts), after the grade, reading its own previous output and depth.
     // The SEGMENT FILTER (segments.ts): in one section of every three a slab of the hall is
     // re-drawn — wireframe, mono-with-reds, or thermal — drifting along the hall, fixed to the
@@ -520,12 +520,12 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       fov: cameraRef("fov", camera.fovDeg),
       far: cameraRef("far", 400),
       roll: cameraRef("roll", 0),
-      amount: expressionSlot(`((op('dirSections1').chan.novelty % 3) == 2) * clamp(0.55 + ${act} * 0.3 + ${direction.build} * 0.4, 0, 1) * clamp(op('dirSections1').chan.noveltySince / 1.5, 0, 1)`, 0),
-      mode: expressionSlot("floor(op('dirSections1').chan.novelty / 3) % 3", 0),
-      centre: expressionSlot("-45 + 90 * fract(abstime * 0.02 + op('dirSections1').chan.novelty * 0.37)", 0),
+      amount: expressionSlot(`((op('count_dirSections').chan.novelty % 3) == 2) * clamp(0.55 + ${act} * 0.3 + ${direction.build} * 0.4, 0, 1) * clamp(op('count_dirSections').chan.noveltySince / 1.5, 0, 1)`, 0),
+      mode: expressionSlot("floor(op('count_dirSections').chan.novelty / 3) % 3", 0),
+      centre: expressionSlot("-45 + 90 * fract(abstime * 0.02 + op('count_dirSections').chan.novelty * 0.37)", 0),
       width: expressionSlot(`10 + ${direction.energy} * 22`, 16),
       edgeColour: [1, 0.12, 0.04, 1],
-    }, { label: "segments1", resolution: { mode: "project" } }),
+    }, { label: "wgsl_segments", resolution: { mode: "project" } }),
     node("glitch", "customWgslMulti", [600, 0], {
       source: GLITCH_WGSL,
       ...cameraNowAndBefore,
@@ -536,14 +536,14 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       sort: expressionSlot(`${glitchBudget} * ${intensity} * ${direction.build} * 0.7`, 0),
       crush: expressionSlot(`${burst} * 0.6 + ${glitchBudget} * ${intensity} * (${direction.density} > 0.85) * ${HIT("kickCount")} * 0.5`, 0),
       freeze: expressionSlot(`(${direction.energy} > 0.92) * (${HIT("kickCount")} > 0.9) * ${glitchBudget}`, 0),
-    }, { label: "glitch1", resolution: { mode: "project" } }),
-    node("history", "feedback", [900, 300], { source: "glitch1" }, { label: "history1" }),
-    node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 2, knee: 1.5 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }),
+    }, { label: "wgsl_glitch", resolution: { mode: "project" } }),
+    node("history", "feedback", [900, 300], { source: "wgsl_glitch" }, { label: "feedback_history" }),
+    node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 2, knee: 1.5 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }),
     // The bloom PYRAMID (post.ts): four 13-tap downsamples, then tent upsamples back up,
     // each adding its own level — a round glow at every width, never a stretched texel.
     ...[1, 2, 3, 4].map((level) =>
       node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, {
-        label: `bloomdown${level}1`,
+        label: `wgsl_bloomdown${level}`,
         // A scale is relative to the node's INPUT (compiler/resolution.ts): each level halves
         // the one above, so the pyramid runs 1/4 … 1/32 of the frame (T1404b).
         resolution: { mode: "scale", factor: 0.5 },
@@ -551,20 +551,20 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     ),
     ...[0, 1, 2, 3].map((level) =>
       node(`bloomUp${level}`, "customWgslMulti", [-600, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, {
-        label: `bloomup${level}1`,
+        label: `wgsl_bloomup${level}`,
         // Doubles its input (the level below), landing back on its own level's size.
         resolution: { mode: "scale", factor: 2 },
       }),
     ),
-    node("glow", "add", [-300, 0], { opacity: 0.35 }, { label: "glow1", resolution: { mode: "project" } }),
+    node("glow", "add", [-300, 0], { opacity: 0.35 }, { label: "add_glow", resolution: { mode: "project" } }),
     // Auto-exposure (T1378b): meter the frame's log-average luminance, adapt toward a key
     // like an eye does — faster when the scene brightens than when it darkens — and hand the
     // grade the gain. One frame late by the meter's contract; the lag hides it.
-    node("meter", "analyze", [-300, 300], { channel: "luminance", operation: "logAverage" }, { label: "meter1" }),
-    node("metered", "channelIn", [0, 300], { channel: "meter1", fallback: 0.05 }, { label: "metered1" }),
-    node("adaptation", "valueLag", [300, 300], { lag: 0.35, releaseRatio: 3 }, { label: "adaptation1" }),
-    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: -0.6, adapt: expressionSlot("clamp((0.075 / max(op('adaptation1').chan.value, 0.0005)) ^ 0.72, 0.03, 3)", 1), punch: 1.3, punchSaturation: 1.2, contrast: 1.15, grain: 0.016, saturation: expressionSlot(`1.0 + 0.3 * ${act}`, 1.1), split: 0.3, shadowTint: [0.88, 0.98, 1.06, 1], highlightTint: [1.1, 1, 0.86, 1] }, { label: "grade1", resolution: { mode: "project" } }),
-    node("out", "output", [300, 0], { toneMap: "none" }, { label: "out1" }),
+    node("meter", "analyze", [-300, 300], { channel: "luminance", operation: "logAverage" }, { label: "analyze_meter" }),
+    node("metered", "channelIn", [0, 300], { channel: "analyze_meter", fallback: 0.05 }, { label: "channelin_metered" }),
+    node("adaptation", "valueLag", [300, 300], { lag: 0.35, releaseRatio: 3 }, { label: "lag_adaptation" }),
+    node("grade", "customWgsl", [0, 0], { source: GRADE_WGSL, exposure: -0.6, adapt: expressionSlot("clamp((0.075 / max(op('lag_adaptation').chan.value, 0.0005)) ^ 0.72, 0.03, 3)", 1), punch: 1.3, punchSaturation: 1.2, contrast: 1.15, grain: 0.016, saturation: expressionSlot(`1.0 + 0.3 * ${act}`, 1.1), split: 0.3, shadowTint: [0.88, 0.98, 1.06, 1], highlightTint: [1.1, 1, 0.86, 1] }, { label: "wgsl_grade", resolution: { mode: "project" } }),
+    node("out", "output", [300, 0], { toneMap: "none" }, { label: "output1" }),
     ...direction.nodes,
   ];
 

@@ -252,6 +252,16 @@ export interface PassTimingRow {
   readonly label: string | null;
   readonly availability: TimingAvailability;
   readonly gpuMs: number | null;
+  /**
+   * T1604b: set while this pass's GPU span is SHARED — the device drew it in one render
+   * pass with the rest of its run, so there is one measurement for all of them. `head` is
+   * the pass the span is billed to (its `gpuMs` IS the run's); every other pass of the run
+   * reads `gpuMs: null`, because no figure is made up by dividing one. The node's total is
+   * exact either way: a run is one node's draws. Absent when the pass has a span of its
+   * own — it is alone in its run, or one pass per draw is being encoded
+   * (`TelemetrySource.demandPassDetail`).
+   */
+  readonly run?: { readonly head: string; readonly passes: number };
 }
 
 /** Everything the performance tab shows, sampled at <= 10 Hz (§V16). */
@@ -351,6 +361,14 @@ export interface TelemetrySource {
    * hand-written fixture source need not keep one; absent, the timeline is not drawn.
    */
   timeline?(spanMs: number): TimelineWindow;
+  /**
+   * T1604b: "someone is looking at per-pass figures". While at least one demand is held the
+   * backend encodes one device render pass per draw, so every pass has a GPU span of its
+   * own; released, a run of draws shares a pass and a span again (`PassTimingRow.run`).
+   * Returns the release. Not a measurement and not document state: it changes how the same
+   * plan is encoded, never what it draws. Optional for the same reason `timeline` is.
+   */
+  demandPassDetail?(): () => void;
 }
 
 /**

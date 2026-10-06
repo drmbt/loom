@@ -67,10 +67,10 @@ export const slitScanDocument = document(
           aspectcorrect: true,
         },
         {
-          label: "body1",
+          label: "circle_body",
           parameters: {
-            "center.x": drivenSlot("swingx1", 0.5),
-            "center.y": drivenSlot("swingy1", 0.5),
+            "center.x": drivenSlot("lfo_swingx", 0.5),
+            "center.y": drivenSlot("lfo_swingy", 0.5),
           },
         },
       ),
@@ -80,14 +80,14 @@ export const slitScanDocument = document(
         "lfo",
         [-1160, -240],
         { shape: "sine", frequency: 0.62, amplitude: 0.36, offset: 0.5, phase: 0 },
-        { label: "swingx1" },
+        { label: "lfo_swingx" },
       ),
       node(
         "swingy",
         "lfo",
         [-1160, -20],
         { shape: "sine", frequency: 0.4, amplitude: 0.3, offset: 0.5, phase: 0.25 },
-        { label: "swingy1" },
+        { label: "lfo_swingy" },
       ),
       node("gradient", "ramp", [-900, 160], { type: "vertical" }, { label: "ramp1", definitionVersion: 2 }),
       node("scan", "slitScan", [-560, 0], { frames: 48, depth: 1 }, { label: "slitscan1" }),
@@ -101,7 +101,7 @@ export const slitScanDocument = document(
        * legible at a glance: you can see the subject AND the trail it is leaving.
        */
       node("now", "add", [-260, -60], { opacity: 0.55 }, { label: "add1" }),
-      node("out", "output", [40, -60], {}, { label: "out1" }),
+      node("out", "output", [40, -60], {}, { label: "output1" }),
     ],
     [
       edge("e-body-scan", ["body", "out"], ["scan", "input"]),

@@ -247,6 +247,18 @@ export function projectEdges(
         sourceNodeId: domain.source.nodeId,
         inactive: isInactive(sourceNode),
       };
+      /*
+       * T1639b — WHICH END OF A WIRE CAN BE PULLED OFF ITS PORT: the input end, and only
+       * where the wire can be told from its neighbours.
+       *
+       * Never the output end: an output fans out, so several wires leave one dot and a
+       * press there cannot say which. And not a one-socket input (the Panel's Controls,
+       * T1518b), for the same reason at the other end: every wire into it is drawn to one
+       * handle. A variadic input is fine, it has a socket per wire (T695).
+       */
+      const targetNode = nodes[domain.target.nodeId];
+      const reconnectable =
+        targetNode !== undefined && isOneSocketInput(targetNode.type, domain.target.portId) ? false : "target";
       const prior = before.get(edgeId);
       if (
         prior !== undefined &&
@@ -254,6 +266,7 @@ export function projectEdges(
         prior.target === domain.target.nodeId &&
         prior.sourceHandle === domain.source.portId &&
         prior.targetHandle === targetHandle &&
+        prior.reconnectable === reconnectable &&
         prior.data?.portKind === data.portKind &&
         prior.data.sourceNodeId === data.sourceNodeId &&
         prior.data.inactive === data.inactive
@@ -269,6 +282,7 @@ export function projectEdges(
           sourceHandle: domain.source.portId,
           target: domain.target.nodeId,
           targetHandle,
+          reconnectable,
           data,
         },
       ];

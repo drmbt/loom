@@ -54,11 +54,6 @@ export interface CatalogueChanges {
 }
 
 export function useDocumentDirty(bus: LoomBus, catalogue?: CatalogueChanges): DocumentDirty {
-  const revision = useSyncExternalStore(
-    bus.store.subscribe,
-    bus.store.getRevision,
-    bus.store.getRevision,
-  );
   // A count, not a flag: the baseline below records how many writes a save covered.
   const [catalogueWrites, setCatalogueWrites] = useState(0);
   useEffect(() => catalogue?.subscribe(() => setCatalogueWrites((count) => count + 1)), [catalogue]);
@@ -79,8 +74,23 @@ export function useDocumentDirty(bus: LoomBus, catalogue?: CatalogueChanges): Do
    * A ref assignment costs no extra pass, and it is idempotent: a render that runs twice
    * for any other reason computes the same baseline from the same bus.
    */
-  const baseline = useRef({ bus, revision, catalogueWrites });
-  if (baseline.current.bus !== bus) baseline.current = { bus, revision, catalogueWrites };
+  const baseline = useRef({ bus, revision: bus.store.getRevision(), catalogueWrites });
+  if (baseline.current.bus !== bus) baseline.current = { bus, revision: bus.store.getRevision(), catalogueWrites };
+  /**
+   * T1652b — the snapshot is WHETHER THE DOCUMENT IS AHEAD OF THE BASELINE, not its revision.
+   *
+   * It was the revision, so this hook re-rendered its host on every write, and its host is
+   * the composition root: a slider dragged for a second rendered `App` sixty times to learn,
+   * sixty times, that the document was still dirty. The answer is a boolean and it changes
+   * twice in a session of editing — at the first write after a save, and at the save. Every
+   * write is still heard (the subscription is the store's own); only a CHANGE of the answer
+   * renders. Read after the rebase above, so a new bus is asked against its own baseline.
+   */
+  const ahead = useSyncExternalStore(
+    bus.store.subscribe,
+    () => bus.store.getRevision() > baseline.current.revision,
+    () => bus.store.getRevision() > baseline.current.revision,
+  );
 
   // `markSaved` has to be visible, and a ref alone does not re-render. The counter is
   // only a nudge — `baseline` above is the value everything reads.
@@ -91,7 +101,7 @@ export function useDocumentDirty(bus: LoomBus, catalogue?: CatalogueChanges): Do
   }, [bus]);
 
   return {
-    dirty: revision > baseline.current.revision || catalogueWrites > baseline.current.catalogueWrites,
+    dirty: ahead || catalogueWrites > baseline.current.catalogueWrites,
     markSaved,
   };
 }

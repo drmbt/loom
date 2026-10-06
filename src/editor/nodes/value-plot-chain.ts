@@ -1,10 +1,12 @@
 import { frameFromClock } from "@domain/types/frame.ts";
 import { DEFAULT_PROJECT_FPS } from "@domain/types/graph.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph, GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { NO_FLATTENING } from "@domain/parameters/node-references.ts";
+import { compiledWithoutCatalogue } from "@compiler/index.ts";
 import { plotValues } from "./value-function.ts";
 import type { ValueFunctionPlot } from "./value-function.ts";
 
@@ -48,8 +50,12 @@ import type { ValueFunctionPlot } from "./value-function.ts";
 
 /** A chain that can be drawn: the subgraph to evaluate, and the cycle it repeats on. */
 export interface ValuePlotChain {
-  /** Just the contributing nodes and the value edges between them. */
-  readonly subgraph: GraphDocument;
+  /**
+   * Just the contributing nodes and the value edges between them. §T1559b: a `FlatGraph`,
+   * which is what the value graph evaluates — the cut-out holds no component instance (see
+   * `resolveChainUncached`), so it is evaluated as it is.
+   */
+  readonly subgraph: FlatGraph;
   /** The node whose channels the plot wants. */
   readonly nodeId: NodeId;
   readonly periodSeconds: number;
@@ -206,7 +212,9 @@ function resolveChainUncached(
   }
 
   return {
-    subgraph: { revision: graph.revision, nodes, edges, groups: {} },
+    // §T1559b: no catalogue to flatten with and nothing to flatten — every node the walk
+    // collected declares or propagates a plot period, which a component instance never does.
+    subgraph: compiledWithoutCatalogue({ revision: graph.revision, nodes, edges, groups: {} }),
     nodeId,
     periodSeconds: period,
   };
@@ -292,7 +300,9 @@ function sampleChainUncached(
       mode: "fixed-step",
       randomSeed: options.randomSeed,
       fps: DEFAULT_PROJECT_FPS,
-    }));
+      // §T1559b: no flattening, on purpose. The cut-out holds no instance to name, and the
+      // node-body plot draws the document's value through a fade, never the fade (§T1525b).
+    }), { flattening: NO_FLATTENING });
     const bag = result.byId.get(chain.nodeId) ?? {};
     for (const [name, value] of Object.entries(bag)) {
       let series = channels.get(name);

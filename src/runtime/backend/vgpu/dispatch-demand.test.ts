@@ -168,7 +168,15 @@ it.each([false, true])("reports sampled texture provenance, open frame=%s", asyn
 });
 
 
-it("stamps an immediately submitted indirect draw before demanded preprocessing", async () => {
+/*
+ * B253: an INDIRECT draw is a pass of its frame, like every other draw. It used to go
+ * through vgpu's standalone `Draw.draw()`, which submitted at once (and cleared its target,
+ * which was the bug), so a demanded dispatch after it in an open frame read THIS render.
+ * Now the draw is submitted with the frame, and the dispatch reads what it reads after any
+ * render pass in an open frame: the previous render (the effect case above, `open = true`).
+ * This test asserted the old provenance and was left red by that fix.
+ */
+it("stamps an indirect draw as a pass of its frame: a demanded dispatch after it reads the previous render", async () => {
   const backend = createVgpuBackend({ host: mockGpuHost() });
   try {
     await backend.initialize({});
@@ -189,9 +197,13 @@ it("stamps an immediately submitted indirect draw before demanded preprocessing"
     backend.registerDispatchGate("preprocess", gate);
     vi.useFakeTimers();
     const loop = backend.loop(() => backend.render(compiled, input), { scheduler: "timer", fps: 60 });
-    vi.advanceTimersByTime(17);
+    vi.advanceTimersByTime(34);
     loop.stop();
-    expect(gate).toHaveBeenCalledWith(input.frame, { renderIndex: 1,
-      source: { renderIndex: 1, frameIndex: 12, timeSeconds: 3 } });
+    expect(gate.mock.calls).toEqual([
+      // The first render: nothing has been drawn into the picture yet.
+      [input.frame, { renderIndex: 1, source: undefined }],
+      // The second: the picture the first render's indirect draw made.
+      [input.frame, { renderIndex: 2, source: { renderIndex: 1, frameIndex: 12, timeSeconds: 3 } }],
+    ]);
   } finally { backend.dispose(); vi.useRealTimers(); }
 });

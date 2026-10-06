@@ -53,6 +53,12 @@ export interface FrameLoopSettings {
 export interface UniformUpdate {
   readonly passId: string;
   readonly values: UniformValues;
+  /**
+   * T1598b: a DRAW pass's other per-frame value (`DrawPassDescriptor.skip`) — true stops it
+   * being encoded, false draws it again. Absent leaves it as it is. Still a value: nothing
+   * is built or released either way.
+   */
+  readonly skip?: boolean;
 }
 
 /**
@@ -326,6 +332,17 @@ export interface LoomBackend extends RenderBackend {
    * a few frames later. Costs nothing while no listener is registered.
    */
   onCpuTimings(listener: (spans: Readonly<Record<string, number>>) => void): () => void;
+
+  /**
+   * T1604b: one device render pass PER DRAW again, so each draw's GPU span is its own.
+   *
+   * By default a run of a node's draws into one target is ONE device render pass
+   * (`renderPassRuns`), with one span the run's passes share. That is the cheap frame and
+   * the picture is the same either way; this is for a person measuring a pass, and whoever
+   * shows per-pass figures asks for it while they are on screen. Same plan, same picture,
+   * nothing rebuilt. Optional so a backend without runs need not stub it.
+   */
+  setExactPassTiming?(exact: boolean): void;
 
   /**
    * Re-attempts device recovery after automatic rebuilds gave up (§V23). Resolves when

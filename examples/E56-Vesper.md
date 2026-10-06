@@ -9,14 +9,14 @@ Named for the evening: *vespers* is a service sung at dusk. The clip runs the ot
 and the name stayed.
 
 ```
-music1(audioPattern) ─┐
-track1(audioFileIn) ──┴► source1(valueSwitch) ─► env1(valueLag) ─► norm1(valueNormalize)
-                                                                        │
-                   travel1(valueSpeed) ◄── rate1(valueMath, range) ◄────┘
-                        ┄high┄► clip1.cuePoint
+pattern_music(audioPattern) ───┐
+audiofile_track(audioFileIn) ──┴► switch_source(valueSwitch) ─► lag_env(valueLag) ─► normalize1(valueNormalize)
+                                                                                               │
+                   speed_travel(valueSpeed) ◄── math_rate(valueMath, range) ◄──────────────────┘
+                        ┄high┄► movie_clip.cuePoint
 
-clip1(movieFileIn, 1280×720) ─► tone1(level) ─► grade1(hsv) ─► mul1(multiply) ─► out1(output)
-                                                vign1(circle) ──────────────►┘
+movie_clip(movieFileIn, 1280×720) ─► level_tone(level) ─► hsv_grade(hsv) ─► multiply1(multiply) ─► output1(output)
+                                                          circle_vign(circle) ──────────────►┘
 ```
 
 ## ⚑ The thing this file learned: drive a SPEED, not a POSITION
@@ -38,16 +38,16 @@ the lag, and the normaliser too — and flatness on a position map renders as st
 setting escapes it; tuning only trades a freeze for a jitter.
 
 **His immediate freeze also had a sharper, second cause worth recording.** He set the Range
-to `From Low 0.20, From High 0.99` with `Outside: Clamp`. `norm1` publishes a *percentile*,
+to `From Low 0.20, From High 0.99` with `Outside: Clamp`. `normalize1` publishes a *percentile*,
 so "below 0.20" is not a rare excursion — by construction it is **exactly 20 % of the time**.
 Reproduced on this chain: 20.3 % of the run pinned on frame 0, longest still run **109 frames
 (1.82 s)**. On a percentile input, a clamped `From Low` *is* a duty cycle of frozen picture.
 
-### So the audio sets a rate, and `travel1` integrates it
+### So the audio sets a rate, and `speed_travel` integrates it
 
-`travel1` is a **Speed** node — TouchDesigner's Speed CHOP, and the value family's first
+`speed_travel` is a **Speed** node — TouchDesigner's Speed CHOP, and the value family's first
 accumulator. The audio produces a rate in clip-seconds per second; the node integrates it
-into the position `clip1.cuePoint` reads. Measured over 2400 steady-state frames, as the
+into the position `movie_clip.cuePoint` reads. Measured over 2400 steady-state frames, as the
 **longest run of frames showing the same source frame** — the literal reading of "it
 freezes", and the thing no coverage metric implies:
 
@@ -59,9 +59,9 @@ freezes", and the thing no coverage metric implies:
 
 Three things follow, and they are three of the asks at once:
 
-- **It cannot freeze.** A constant input is constant motion, and `rate1`'s low end is **0.4**
+- **It cannot freeze.** A constant input is constant motion, and `math_rate`'s low end is **0.4**
   clip-seconds per second — a *floor*, not zero — so even the quietest moment is travelling.
-- **It cannot corner itself.** There is no absolute target to sit on, and `travel1`'s limit is
+- **It cannot corner itself.** There is no absolute target to sit on, and `speed_travel`'s limit is
   **Mirror**, so the ends of the lane bounce rather than clamp or jump-cut. A wrap would be a
   hard cut from sunrise to midnight; a bounce is the day running backwards.
 - **Reverse is on screen.** The rate is strictly *positive* and the picture still runs
@@ -80,7 +80,7 @@ Trigger already declare — but it *is* the trade, and it was made because the o
 and chose this one. A file that is reproducible and frozen is worth less than one that is
 alive.
 
-## Why `norm1` stays, and what it does now
+## Why `normalize1` stays, and what it does now
 
 > maybe we make up an interesting ranging system that doesn't just make it linear on the
 > frequency or loudness spectrum — it gives more resolution to where there's more interesting
@@ -88,13 +88,13 @@ alive.
 > almost always be used up and never give us anything.
 
 A loudness envelope sits in a narrow band around its own median nearly all the time. Map that
-band **linearly** and most of the output goes to levels the signal rarely visits. `norm1`
+band **linearly** and most of the output goes to levels the signal rarely visits. `normalize1`
 maps each channel through **its own distribution** — the percentile within its last 17
 seconds — so equal amounts of *time* map to equal amounts of *range*, with no floor and no
 gain to retune when the track changes.
 
 Under a rate drive that is a **better** job for it than it had, and the instrument had to
-change with it: what `norm1` shapes now is how the **speed** is distributed, *not* the
+change with it: what `normalize1` shapes now is how the **speed** is distributed, *not* the
 position — under a bounced integral the position comes out even for almost any positive rate
 and therefore proves nothing about the mapping. Measured as the share of the run in each
 twentieth of the 0.4–5 rate range:
@@ -127,7 +127,7 @@ also matters much less, because nothing is pinned to an absolute position any mo
 > We need to range it so that we don't hit the actual end of frame range, and maybe we can
 > even curve it so there's more resolution in a certain area of the clip.
 
-`travel1` bounces between **0.4 s and 14.6 s** of a 20.67 s file, so the drive never reaches
+`speed_travel` bounces between **0.4 s and 14.6 s** of a 20.67 s file, so the drive never reaches
 either end — and with Mirror that is structural rather than a clamp. The 6 s given up are a
 judgement about the footage: the last quarter of this clip is flat white haze, source frames
 384 onward differ from each other by almost nothing, and a drive that covered them would spend
@@ -136,7 +136,7 @@ a quarter of its travel there.
 **A curve is deliberately not shipped.** A hand-picked curve re-introduces exactly the
 eyeballed knob the percentile map removes, and the argument against the linear map is the
 argument against it. When the ask is "dwell in *this* part of the clip", the honest control is
-the one that names that part: `travel1`'s own bounds, or Trim Start / Trim End.
+the one that names that part: `speed_travel`'s own bounds, or Trim Start / Trim End.
 
 ## Reverse and ping-pong: what shipped, and why it looked like it had not
 
@@ -208,9 +208,9 @@ The project is **1280×720** and the file records it, so opening the example set
 exactly the clip's own size, so the file, the node and the frame are all the same pixels and
 nothing resamples anywhere in the chain.
 
-`clip1`'s resolution is pinned to 1280×720 rather than left to inherit. The media hook writes
+`movie_clip`'s resolution is pinned to 1280×720 rather than left to inherit. The media hook writes
 a `setNodeResolution` patch when the intrinsic size differs from the node's, so an unpinned
-document would mutate itself the moment it opened. `tone1` carries `resolution: project`,
+document would mutate itself the moment it opened. `level_tone` carries `resolution: project`,
 which is a no-op here and is where the chain would resample if you swapped in a file of
 another size.
 
@@ -222,7 +222,7 @@ bar-to-bar mean of 0.226–0.270, a 0.044 wiggle that would sweep nothing. `high
 arrangement lives — its bar means run 0.39 / 0.43 / 0.44 / 0.35 and repeat, so the quiet bar
 of every four is a slow bar, once every 8.57 seconds.
 
-`env1` is a peak follower at **0.25 s rise, ×4 release** (a 1 s fall), shortened from round
+`lag_env` is a peak follower at **0.25 s rise, ×4 release** (a 1 s fall), shortened from round
 one's 0.6 / ×8 on the note *"I think our lag is probably too intense for something audio
 reactive."* **The rate drive is what makes that safe.** Under a position map the playhead's
 *speed* was the envelope's *derivative*, so a twitchy envelope strobed the picture and the lag
@@ -236,8 +236,8 @@ range from 0.38 to 5.0 clip-seconds per second.
 ## The grade, and its knobs are the point
 
 Two ordinary nodes in the chain rather than a grading page bolted onto `movieFileIn`, which
-would be a second copy of `level` free to disagree with the first. `tone1` is the exposure and
-contrast desk, `grade1` the colour, and they are the knobs to reach for on **any** video in
+would be a second copy of `level` free to disagree with the first. `level_tone` is the exposure and
+contrast desk, `hsv_grade` the colour, and they are the knobs to reach for on **any** video in
 the catalogue.
 
 **Every knob went the other way from round one, and that is worth more than the numbers.**
@@ -249,11 +249,11 @@ turned the sky electric magenta.
 
 | knob | ships at | why |
 | --- | --- | --- |
-| `tone1` Black Level | 0.015 | a black *point*, not a crush — the night half already reaches black, and this only takes the milk off the haze |
-| `tone1` White Level | 0.94 | the neon clips through the filmic tone map otherwise |
-| `tone1` Contrast | 1 | untouched: the footage has its own, and an S closed the shadows the gamma is opening |
-| `tone1` Gamma | 1.14 | **mids up** — the inverse of round one. This is the knob that gives the night its shadow detail back and lets the dawn mist read as depth rather than grey |
-| `grade1` Saturation | 0.88 | **pulled back**: a night city is already saturated and the tone map adds punch on top. At 1.2 the blue hour read as a cyanotype |
+| `level_tone` Black Level | 0.015 | a black *point*, not a crush — the night half already reaches black, and this only takes the milk off the haze |
+| `level_tone` White Level | 0.94 | the neon clips through the filmic tone map otherwise |
+| `level_tone` Contrast | 1 | untouched: the footage has its own, and an S closed the shadows the gamma is opening |
+| `level_tone` Gamma | 1.14 | **mids up** — the inverse of round one. This is the knob that gives the night its shadow detail back and lets the dawn mist read as depth rather than grey |
+| `hsv_grade` Saturation | 0.88 | **pulled back**: a night city is already saturated and the tone map adds punch on top. At 1.2 the blue hour read as a cyanotype |
 
 All five are static, deliberately: the person turning them is the person looking at the
 picture.
@@ -263,7 +263,7 @@ where they go is a property of the footage in front of you.
 
 ## What stands when there is no audio
 
-`clip1.cuePoint` retains **8.0 s**, the driven mean over 3600 frames, which sits well inside
+`movie_clip.cuePoint` retains **8.0 s**, the driven mean over 3600 frames, which sits well inside
 the 0.4–14.6 the drive produces. A host with no audio opens on the blue hour, not on a time of
 day the music never reaches. It is the file's only driven parameter, and it matters more here
 than usual: every headless render and every thumbnail is captured with no track at all, so the
@@ -271,6 +271,6 @@ retained value *is* the picture in all of them.
 
 ## Swap the pattern for a track
 
-`source1` is a Switch at index 0, the deterministic pattern. Drop a track into `track1`, move
-`source1` to index 1, and the same city answers to real music — which is what this file is
+`switch_source` is a Switch at index 0, the deterministic pattern. Drop a track into `audiofile_track`, move
+`switch_source` to index 1, and the same city answers to real music — which is what this file is
 for, and the reason the mapping had to stop depending on numbers measured off the fixture.

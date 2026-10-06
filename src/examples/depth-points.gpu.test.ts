@@ -105,7 +105,7 @@ async function runCloud(
         definitionVersion: 1,
         position: { x: 0, y: 0 },
         parameters: { capacity: CAPACITY, seed: 7, attributes: ATTRIBUTES, kernel: DEPTH_CARVE_KERNEL, ...carve },
-        label: "carve1",
+        label: "kernel_carve",
       },
       paint: {
         id: "paint",
@@ -113,10 +113,10 @@ async function runCloud(
         definitionVersion: 1,
         position: { x: 0, y: 0 },
         parameters: { capacity: CAPACITY, seed: 7, attributes: ATTRIBUTES, kernel: DEPTH_PAINT_KERNEL, gain: 1, heat: 0 },
-        label: "paint1",
+        label: "kernel_paint",
       },
       draw: { id: "draw", type: "renderPoints", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {}, label: "draw1" },
-      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {}, label: "out1" },
+      out: { id: "out", type: "output", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {}, label: "output1" },
     },
     edges: {
       e0: { id: "e0", source: { nodeId: "depthmap", portId: "out" }, target: { nodeId: "carve", portId: "field" } },

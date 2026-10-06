@@ -9,13 +9,13 @@ import { FOREST_WGSL, FOREST_DOF_WGSL } from "../shaders/forest.wgsl.ts";
  * foggy, interesting light, walking infinitely towards the full moon. Very moody, nice and
  * adjustable, with a cool way to generate reasonably pretty procedural trees.
  *
- *   veil1(noise) ─► forest1(customWgsl: the walking DDA raymarcher)
- *                   ─► dof1(customWgsl: the near-field defocus) ─► out1(output)
+ *   noise_veil(noise) ─► wgsl_forest(customWgsl: the walking DDA raymarcher)
+ *                   ─► wgsl_dof(customWgsl: the near-field defocus) ─► output1(output)
  *
- *   music1(audioPattern) ─┐
- *   track1(audioFileIn)  ─┴► source1(valueSwitch)
- *        ├► air1 ─► airRank1 ─► airSmooth1 ─► airMap1 ──drives──► forest1.mist
- *        └► dim1 ─► dimRank1 ─► dimSmooth1 ─► dimMap1 ──drives──► forest1.moonGain
+ *   pattern_music(audioPattern) ─┐
+ *   audiofile_track(audioFileIn)  ─┴► switch_source(valueSwitch)
+ *        ├► lag_air ─► normalize_airRank ─► lag_airSmooth ─► math_airMap ──drives──► wgsl_forest.mist
+ *        └► lag_dim ─► normalize_dimRank ─► lag_dimSmooth ─► math_dimMap ──drives──► wgsl_forest.moonGain
  *
  * T1170 DEEPENED IT, on the owner's reading that it was "a little bit lame, a little bit
  * repetitive" and wanted depth of field. Four changes and the section at the bottom of this
@@ -142,7 +142,7 @@ import { FOREST_WGSL, FOREST_DOF_WGSL } from "../shaders/forest.wgsl.ts";
  * ground plane does NOT roll and that is a refusal: intersecting a height field needs a
  * march, and the floor of every frame in this file is haze — nobody ever sees it.
  *
- * **4. THE NEAR FIELD IS OUT OF FOCUS (`dof1`).** Half of depth of field was already here:
+ * **4. THE NEAR FIELD IS OUT OF FOCUS (`wgsl_dof`).** Half of depth of field was already here:
  * fog attenuates with distance, and a far blur would only argue with it. What fog cannot do
  * is soften what is too CLOSE, and a trunk sliding past at arm's length out of focus is the
  * difference between walking through a wood and looking at one. A separate pass, not lens
@@ -198,12 +198,12 @@ import { FOREST_WGSL, FOREST_DOF_WGSL } from "../shaders/forest.wgsl.ts";
  * ## THE KNOBS ARE THE SHADER'S `struct Params` (T880)
  *
  * There is no project-level publish surface in this build (§T1143), so the top level is
- * `forest1`'s own page: thirty-nine fields, each reflecting into a named, typed control
+ * `wgsl_forest`'s own page: thirty-nine fields, each reflecting into a named, typed control
  * with the shader's own trailing comment as its description (T1053). Every one moves the
  * picture (§V146) — the walk, the grid, the tree's character, the air, the moon, the
- * composition. `veil1` is the cloud field the sky and the moon are seen through, and it is
+ * composition. `noise_veil` is the cloud field the sky and the moon are seen through, and it is
  * load-bearing rather than decorative: the camera never turns, so the per-pixel sky
- * direction is constant and a screen-space veil is exactly correct here. `dof1` carries two
+ * direction is constant and a screen-space veil is exactly correct here. `wgsl_dof` carries two
  * more of its own — `focus` in metres and `blur` — and `blur` at 0 passes the frame straight
  * through, which makes it the third cost lever in the file.
  *
@@ -341,8 +341,8 @@ import { FOREST_WGSL, FOREST_DOF_WGSL } from "../shaders/forest.wgsl.ts";
  * on E56 the day before. So NOTHING HERE DRIVES A PER-FRAME BRIGHTNESS. Two lanes, both on
  * quantities with mass, both slower than a bar:
  *
- *   `mist`     the density of the air   air1 (1.2 s) → airRank1 (18 s) → airSmooth1 (0.6 s)
- *   `moonGain` the moon's own output    dim1 (3 s)   → dimRank1 (40 s) → dimSmooth1 (1 s)
+ *   `mist`     the density of the air   lag_air (1.2 s) → normalize_airRank (18 s) → lag_airSmooth (0.6 s)
+ *   `moonGain` the moon's own output    lag_dim (3 s)   → normalize_dimRank (40 s) → lag_dimSmooth (1 s)
  *
  * Both go through `valueNormalize` (§T1190), which is the reason there is no floor and no
  * gain to eyeball per track: it maps a channel through its OWN recent distribution, so equal
@@ -351,7 +351,7 @@ import { FOREST_WGSL, FOREST_DOF_WGSL } from "../shaders/forest.wgsl.ts";
  * ⚑⚑ BUT NORMALIZE ALONE DOES NOT BUY "NOT FLICKERY", AND THAT IS THIS TASK'S SHARPEST
  * FINDING. A percentile FLATTENS a distribution, and flattening it means STEEPENING THE MAP
  * WHERE THE SIGNAL IS DENSE — so a signal that was already smooth going in can come out as a
- * jump. Measured over 3600 frames with the follower only on the input side, `airRank1` moved
+ * jump. Measured over 3600 frames with the follower only on the input side, `normalize_airRank` moved
  * 20.9% OF ITS OWN SPAN IN ONE FRAME — 1257% a second, and `mist` stepping 0.21 to 0.24
  * between two frames is a visible lurch in the fog. Lengthening the input lag cannot fix it:
  * the input was not the rough thing, the MAP was. So each lane carries a SECOND follower
@@ -359,8 +359,8 @@ import { FOREST_WGSL, FOREST_DOF_WGSL } from "../shaders/forest.wgsl.ts";
  * coverage at the tails:
  *
  *   lane                 per twentieth     max step / frame        mean     longest still
- *   airMap1:low          1.3% to 7.9%      2.09% of span (126%/s)  0.2123   1 frame
- *   dimMap1:lowMid       1.6% to 8.4%      0.78% of span  (47%/s)  0.9951   1 frame
+ *   math_airMap:low          1.3% to 7.9%      2.09% of span (126%/s)  0.2123   1 frame
+ *   math_dimMap:lowMid       1.6% to 8.4%      0.78% of span  (47%/s)  0.9951   1 frame
  *
  * Before the second follower those steps were 20.9% and 8.6%. Neither lane ever repeats a
  * value for two consecutive frames, so §V903 has no silent run to report at all.
@@ -413,7 +413,7 @@ export const forestDocument = document(
       node("veil", "noise", [-900, 0], {
         type: "perlin4d", period: 0.42, harmon: 3, spread: 2, gain: 0.55, rough: 0.5,
         exp: 1, amp: 1.15, offset: 0.5, mono: true, speed: 0.014,
-      }, { label: "veil1" }),
+      }, { label: "noise_veil" }),
 
       node("forest", "customWgsl", [-600, 0], {
         source: FOREST_WGSL,
@@ -469,21 +469,21 @@ export const forestDocument = document(
         vignette: 0.55,
         exposure: 0.85,
       }, {
-        label: "forest1",
+        label: "wgsl_forest",
         /* THE TWO DRIVEN SLOTS, and the retained figures are the MEASURED DRIVEN MEANS over
            3600 frames of the deterministic pattern rather than the midpoints of the lanes
            (§V914): the value that stands when no audio arrives has to be the value the drive
            spends its time around, because absence is the common case — every headless
            render, every thumbnail and every first open has no track. */
         parameters: {
-          mist: drivenSlot("airMap1:low", 0.212),
+          mist: drivenSlot("math_airMap:low", 0.212),
           /* T1279 — THE MOON DIPS ON THE KICK, on top of the section-long lane.
-             `dimMap1` still carries the slow key change; the second factor is the beat,
+             `math_dimMap` still carries the slow key change; the second factor is the beat,
              and it only ever DARKENS (a count rests at 0, so the product is the lane
              itself between kicks). This is the owner's "dim the light" read literally:
              the light dims ON something, rather than drifting. */
           moonGain: expressionSlot(
-            `op('dimMap1').chan.lowMid * (1 - 1.5 * op('rise1').chan.kick)`,
+            `op('math_dimMap').chan.lowMid * (1 - 1.5 * op('lag_rise').chan.kick)`,
             0.995,
           ),
           /* T1279 — THE GLOOM CLOSES ON THE SAME KICK. Fog is the aerial perspective, so
@@ -502,11 +502,11 @@ export const forestDocument = document(
              cut and it swallowed the wood whole at the peak — every trunk gone, which reads
              as the picture dropping out rather than as a beat. +0.022 shuts the middle
              distance and leaves the near stems standing, which is a wood closing. */
-          fog: expressionSlot(`0.03 + 0.11 * op('rise1').chan.onset`, 0.03),
+          fog: expressionSlot(`0.03 + 0.11 * op('lag_rise').chan.onset`, 0.03),
           /* T1279 — AND THE SNARE REVEALS. The shafts are the one term in this shader
              that ADDS light between the trunks rather than taking it away, so the offbeat
              gets "make some things appear" while the downbeat gets the gloom. */
-          shafts: expressionSlot(`0.85 + 2.3 * op('rise1').chan.snare`, 0.85),
+          shafts: expressionSlot(`0.85 + 2.3 * op('lag_rise').chan.snare`, 0.85),
         },
       }),
 
@@ -520,9 +520,9 @@ export const forestDocument = document(
         source: FOREST_DOF_WGSL,
         focus: 8.5,
         blur: 0.016,
-      }, { label: "dof1" }),
+      }, { label: "wgsl_dof" }),
 
-      node("out", "output", [0, 0], { toneMap: "filmic" }, { label: "out1" }),
+      node("out", "output", [0, 0], { toneMap: "filmic" }, { label: "output1" }),
 
       /* ─── THE AUDIO, AND THE CONSTRAINT IS THE DESIGN (T1170b) ────────────────────────
        *
@@ -547,38 +547,38 @@ export const forestDocument = document(
        * knob and it must exceed the cycle you want to see.
        *
        * THE TWO LANES ARE DELIBERATELY DIFFERENT LENGTHS, because one signal shaped two ways
-       * is one gesture. `air1` follows the phrase (1.2 s attack, an 18 s window — two 8.6 s
-       * phrases of the fixture) and `dim1` follows the section (3 s attack, a 40 s window).
+       * is one gesture. `lag_air` follows the phrase (1.2 s attack, an 18 s window — two 8.6 s
+       * phrases of the fixture) and `lag_dim` follows the section (3 s attack, a 40 s window).
        * The air thickens with the bass while the moon rises and falls underneath it. */
-      node("music", "audioPattern", [-2100, 700], { bpm: 112, amount: 1, beatsPerBar: 4 }, { label: "music1" }),
+      node("music", "audioPattern", [-2100, 700], { bpm: 112, amount: 1, beatsPerBar: 4 }, { label: "pattern_music" }),
       node("track", "audioFileIn", [-2100, 1120], {
         cue: false, cuePoint: 0, extend: "loop", file: "", monitor: true, play: true,
         playMode: "freeRun", speed: 1, trimEnd: 0, trimStart: 0, volume: 1,
-      }, { label: "track1" }),
+      }, { label: "audiofile_track" }),
       /* Index 0 is the deterministic pattern, so the file is audio-reactive on open with no
-         track at all; drop a file into `track1` and move this to 1 (§V363). */
-      node("source", "valueSwitch", [-1800, 910], { index: 0 }, { label: "source1" }),
+         track at all; drop a file into `audiofile_track` and move this to 1 (§V363). */
+      node("source", "valueSwitch", [-1800, 910], { index: 0 }, { label: "switch_source" }),
 
       /* THE AIR LANE. Slow on purpose: 1.2 s to rise and 2.4 s to fall, which is a lungful
          of fog rather than a beat. */
-      node("air", "valueLag", [-1500, 700], { lag: 1.2, releaseRatio: 2 }, { label: "air1" }),
-      node("airRank", "valueNormalize", [-1200, 700], { window: 18 }, { label: "airRank1" }),
+      node("air", "valueLag", [-1500, 700], { lag: 1.2, releaseRatio: 2 }, { label: "lag_air" }),
+      node("airRank", "valueNormalize", [-1200, 700], { window: 18 }, { label: "normalize_airRank" }),
       /* ⚑ AND A SECOND LAG *AFTER* THE RANK, WHICH IS THE FINDING OF THIS LANE AND NOT AN
          EXTRA. A percentile flattens a distribution, and flattening it means STEEPENING THE
          MAP WHERE THE SIGNAL IS DENSE — so a smoothed input can still come out of Normalize
-         as a jump, and this one did: measured over 3600 frames, `airRank1` moved 20.9% OF
+         as a jump, and this one did: measured over 3600 frames, `normalize_airRank` moved 20.9% OF
          ITS OWN SPAN IN A SINGLE FRAME, which is 1257% a second and is exactly the flicker
          the owner asked not to have. Smoothing the input cannot fix it, because the input
          was already smooth; the steepness is the map's. So the follower goes on BOTH sides
          and this one bounds the OUTPUT's step directly. */
-      node("airSmooth", "valueLag", [-900, 700], { lag: 0.6, releaseRatio: 1 }, { label: "airSmooth1" }),
+      node("airSmooth", "valueLag", [-900, 700], { lag: 0.6, releaseRatio: 1 }, { label: "lag_airSmooth" }),
       /* Into `mist`, and the range is bounded at the BOTTOM by the frame budget rather than
          by taste: thinner mist is a longer reach and more cells, so the cheap end of this
          lane is where the cost is measured. 0.155 is a hair under the shipped 0.17 and the
          top end only ever makes the file cheaper. */
       node("airMap", "valueMath", [-600, 700], {
         operation: "range", fromLow: 0, fromHigh: 1, toLow: 0.155, toHigh: 0.285, outside: "clamp",
-      }, { label: "airMap1" }),
+      }, { label: "math_airMap" }),
 
       /* THE DIMMING LANE — his own suggestion, and the slowest thing in the file. 3 s to
          rise, 4.5 s to fall, ranked against forty seconds of history, so what it carries is
@@ -586,13 +586,13 @@ export const forestDocument = document(
          else is measured against — the shafts, the halo, the disc and the light on the bark
          — so moving it slowly moves the whole picture's key together rather than making one
          term twitch against the others. */
-      node("dim", "valueLag", [-1500, 1120], { lag: 3, releaseRatio: 1.5 }, { label: "dim1" }),
-      node("dimRank", "valueNormalize", [-1200, 1120], { window: 40 }, { label: "dimRank1" }),
+      node("dim", "valueLag", [-1500, 1120], { lag: 3, releaseRatio: 1.5 }, { label: "lag_dim" }),
+      node("dimRank", "valueNormalize", [-1200, 1120], { window: 40 }, { label: "normalize_dimRank" }),
       // The same second follower, longer, because this lane is the slower of the two.
-      node("dimSmooth", "valueLag", [-900, 1120], { lag: 1, releaseRatio: 1 }, { label: "dimSmooth1" }),
+      node("dimSmooth", "valueLag", [-900, 1120], { lag: 1, releaseRatio: 1 }, { label: "lag_dimSmooth" }),
       node("dimMap", "valueMath", [-600, 1120], {
         operation: "range", fromLow: 0, fromHigh: 1, toLow: 0.85, toHigh: 1.22, outside: "clamp",
-      }, { label: "dimMap1" }),
+      }, { label: "math_dimMap" }),
 
       /* ─── THE BEAT LANE (T1279) ───────────────────────────────────────────────────────
        *
@@ -674,7 +674,7 @@ export const forestDocument = document(
        * 12.1% while the frame's mean is unmoved (62.05 to 61.56) — the gesture is half the
        * travel spread over many times the frames, which is what separates a swell from a
        * strobe. */
-      node("rise", "valueLag", [-1500, 1500], { lag: 0.14, releaseRatio: 2.2 }, { label: "rise1" }),
+      node("rise", "valueLag", [-1500, 1500], { lag: 0.14, releaseRatio: 2.2 }, { label: "lag_rise" }),
     ],
     [
       edge("e-veil-forest", ["veil", "out"], ["forest", "input"]),

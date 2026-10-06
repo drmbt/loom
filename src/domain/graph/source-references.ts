@@ -66,6 +66,11 @@ export interface SourceReferenceSpec {
 export const SOURCE_REFERENCE_PARAMETERS: Readonly<Record<string, ReadonlyArray<SourceReferenceSpec>>> = {
   feedback: [{ parameter: "source", input: "in" }],
   geometry: [{ parameter: "material", input: "material" }],
+  // T1598b: a casting light names the geometries that cast for it, and those that do not.
+  light: [
+    { parameter: "shadowCasters", input: "shadowCasters", list: true },
+    { parameter: "shadowExclude", input: "shadowExclude", list: true },
+  ],
   render: [
     { parameter: "scenes", input: "scenes", list: true },
     { parameter: "camera", input: "camera" },

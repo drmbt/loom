@@ -421,12 +421,12 @@ describe("T1237 — the band holds along the whole morph path, and the high corn
  * ═══════════════════════════════════════════════════════════════════════════════════
  *
  * The owner asked for the colony to swing between round spots and squares, and saw squares
- * only on the first frame. `rd1.shape` (T1237) squares a front through the 9-tap
+ * only on the first frame. `wgsl_reaction.shape` (T1237) squares a front through the 9-tap
  * Laplacian's lattice error, which only shows on features a few texels wide; E24's spots
- * are 8–10 px. `rd1.facet` grows the squares instead (1 + facet·cos4θ on the front's
- * orientation), riding the same `stencil1` lane.
+ * are 8–10 px. `wgsl_reaction.facet` grows the squares instead (1 + facet·cos4θ on the front's
+ * orientation), riding the same `lfo_stencil` lane.
  *
- * THE MEASURE IS MORPHOLOGY, NOT BRIGHTNESS. On `rd1`'s own output (the chemistry, before
+ * THE MEASURE IS MORPHOLOGY, NOT BRIGHTNESS. On `wgsl_reaction`'s own output (the chemistry, before
  * palette, rings and lenses), the energy-weighted cos 4θ of V's gradient:
  * Σ (gx⁴ − 6gx²gy² + gy⁴)/|g|² ÷ Σ |g|². +1 is a field whose edges all face the grid (grid
  * squares), −1 all diagonal (turned squares), 0 round. Scaling V scales numerator and
@@ -435,7 +435,7 @@ describe("T1237 — the band holds along the whole morph path, and the high corn
  * THE CONTROL IS THE SAME FILE WITH `facet` CUT to its retained 0, rendered on the same
  * source — the red for every line below, measured: cut, the colony at 90 s (stencil −1)
  * reads +0.134 on the pattern and +0.160 on the clip, and at 30 s (stencil +1) −0.118 and
- * −0.113. It is not 0 because `grain1`'s anisotropy lays fronts on the axes too; what
+ * −0.113. It is not 0 because `lfo_grain`'s anisotropy lays fronts on the axes too; what
  * `facet` must add is the difference. Shipped it reads +0.228 / +0.292 at 90 s and
  * −0.161 / −0.143 at 30 s. The bounds sit well inside those gaps and well outside zero.
  */
@@ -455,7 +455,7 @@ describe("T1269 — E24's colony turns square on an established plate", () => {
     if (facet === "cut") {
       const rd = graph.nodes["rd"]!;
       const slot = rd.parameters["facet"] as ParameterSlot;
-      expect(slot.mode, "rd1.facet is not driven").toBe("expression");
+      expect(slot.mode, "wgsl_reaction.facet is not driven").toBe("expression");
       rd.parameters = { ...rd.parameters, facet: { ...slot, mode: "static" } };
     }
     const audio = source === "clip" ? shippedClipAudio(graph, 60) : undefined;
@@ -504,7 +504,7 @@ describe("T1269 — E24's colony turns square on an established plate", () => {
       if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
       const shipped = await morphology(source, "shipped");
       const cut = await morphology(source, "cut");
-      // (4) No divergence on an established plate, on either source (T1234's cap1 holds).
+      // (4) No divergence on an established plate, on either source (T1234's limit_cap holds).
       for (const frame of [AT.turned, AT.round, AT.grid]) {
         expect(shipped.get(frame)!.nonFinite, `${source} f${frame} diverged`).toBe(0);
       }

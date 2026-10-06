@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import { authoredGraph, type GraphDocument } from "@domain/types/graph.ts";
+import { revisionWatchFor } from "./revision-watch.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { createVec3GizmoStore } from "@editor/viewer/index.ts";
@@ -46,17 +47,19 @@ import type { LiveReads, MappingTarget, Size } from "./perform-mapping.ts";
  * Re-derived on the window's triggers — a toggle, a document change (a drag lands there
  * first), a new plan, a new output or size, and a resize of the frame — never per frame: a
  * corner that keeps moving is placed where it was at the last of those. The document is the
- * pane's own `graph` prop, the authored one, never a raw store read of this hook's. `M` is the
- * keymap's `viewer.editMapping` row; Escape is answered here, only while the mode is on.
+ * AUTHORED one, read off the store at each of those triggers (T1652b: the pane's `graph` prop
+ * is the trigger for a structural change, and a values-only revision is heard here directly,
+ * because the pane is not rendered for one). `M` is the keymap's `viewer.editMapping` row;
+ * Escape is answered here, only while the mode is on.
  */
 
 export interface ViewerMappingOptions {
   readonly bus: LoomBus;
   /**
    * The AUTHORED document as a React value (the pane's `graph`, `useGraphCompile`'s
-   * subscription): the nodes the user placed, whose parameters a drag writes. Handed in
-   * rather than read off the store, so the layer follows the same document the pane renders
-   * (a dragged handle lands in the document first, then here).
+   * subscription): the nodes the user placed, whose parameters a drag writes. It is the
+   * TRIGGER for a structural change; the layer reads the store's document when it
+   * re-derives (T1652b), because this value does not move for a values-only revision.
    */
   readonly graph: GraphDocument;
   readonly registry: NodeRegistryView;
@@ -149,7 +152,9 @@ export function useViewerMapping({ bus, graph, registry, invocation, output, sur
       setChosen(target?.nodeId);
     };
     const viewOf = (): MappingOverlayView => {
-      const { graph, registry: nodes, output: shown, reads: live } = readsRef.current;
+      const { registry: nodes, output: shown, reads: live } = readsRef.current;
+      // T1652b: the store's document, not the pane's `graph` prop — see the values listener below.
+      const graph = bus.store.getGraph();
       if (shown === null) {
         publish([], undefined);
         return { note: VIEWER_MAPPING_NO_OUTPUT_NOTE };
@@ -187,7 +192,15 @@ export function useViewerMapping({ bus, graph, registry, invocation, output, sur
     const overlay = createMappingOverlay({ window: view, host, store: createVec3GizmoStore({ editor }), lines, tokens: {} });
     refreshRef.current = refresh;
     refresh();
+    /*
+     * T1652b: a dragged handle is a run of VALUES-ONLY revisions (a corner is two numbers),
+     * and the viewer pane is not rendered for those: its `graph` prop moves with the
+     * document's structure. So while the mode is on, the layer hears values itself and
+     * re-derives from the store, which is where a drag lands first.
+     */
+    const offValues = revisionWatchFor(bus.store, readsRef.current.registry).subscribeValues(refresh);
     return () => {
+      offValues();
       refreshRef.current = null;
       overlay.dispose();
       editor.dispose();

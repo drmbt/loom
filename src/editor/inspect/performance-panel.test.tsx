@@ -308,3 +308,100 @@ describe("PerformancePanel shows held ticks and warmed Effects (§T1544b)", () =
     expect(stat("held ticks")).toBe("3");
   });
 });
+
+/*
+ * T1604b: a run of a node's draws is one device render pass by default, with one GPU span.
+ * This panel shows a figure PER PASS, so while it is on screen it asks the hub for one pass
+ * per draw, and it gives that up the moment nobody can see it — a dock pane stays mounted
+ * while hidden (§V96), and a demand held by a hidden tab would cost every frame for nobody.
+ */
+describe("T1604b — the panel asks for per-pass figures only while it is on screen", () => {
+  function demandingSource() {
+    const hub = fakeSource(snapshot(3.5, 120));
+    let held = 0;
+    const source: TelemetrySource = {
+      ...hub.source,
+      demandPassDetail: () => {
+        held += 1;
+        let live = true;
+        return () => {
+          if (live) held -= 1;
+          live = false;
+        };
+      },
+    };
+    return { source, tick: hub.tick, held: () => held };
+  }
+
+  it("holds one demand while shown, none while hidden, and none once it is gone", async () => {
+    const hub = demandingSource();
+    const view = mount(hub.source);
+    expect(hub.held()).toBe(1);
+
+    // Hidden: noticed on the hub's next tick, and released.
+    view.hide();
+    hub.tick(snapshot(3.5, 121));
+    expect(hub.held()).toBe(0);
+    // Ticks while hidden do not take it again.
+    hub.tick(snapshot(3.5, 122));
+    expect(hub.held()).toBe(0);
+
+    // Shown: taken at once, without waiting for a tick.
+    view.show();
+    await waitFor(() => expect(hub.held()).toBe(1));
+    // And one demand only, however many ticks pass.
+    hub.tick(snapshot(3.5, 123));
+    hub.tick(snapshot(3.5, 124));
+    expect(hub.held()).toBe(1);
+
+    cleanup();
+    expect(hub.held()).toBe(0);
+  });
+
+  it("says a pass shares its run's figure instead of waiting for one that will not come", () => {
+    const base = snapshot(3.5, 120);
+    const run = { head: "shot:scene:0", passes: 2 };
+    const hub = fakeSource({
+      ...base,
+      plan: {
+        ...base.plan!,
+        passes: [
+          { id: "shot:scene:0", kind: "draw", nodeId: "blur", label: null },
+          { id: "shot:scene:1", kind: "draw", nodeId: "blur", label: null },
+        ],
+      },
+      passes: [
+        { passId: "shot:scene:0", kind: "draw", nodeId: "blur", sourcePath: null, label: null, availability: "measured", gpuMs: 6, run },
+        { passId: "shot:scene:1", kind: "draw", nodeId: "blur", sourcePath: null, label: null, availability: "pending", gpuMs: null, run },
+      ],
+    });
+    mount(hub.source);
+    const cells = screen.getAllByRole("row").map((row) => row.textContent ?? "");
+    // The run's figure is on its first pass; the second says "shared", not "measuring…" and not a number.
+    expect(cells.find((text) => text.includes("shot:scene:0"))).toContain("6.000 ms");
+    const sharer = cells.find((text) => text.includes("shot:scene:1")) ?? "";
+    expect(sharer).toContain("shared");
+    expect(sharer).not.toContain("measuring");
+    expect(sharer).not.toMatch(/\d ms/);
+  });
+});
+
+/**
+ * T1652b — a value write the lane could not follow is compiled in full. That is the
+ * difference between a control that follows the finger and one that drags, so the panel
+ * where a slow control is looked for says how many there were and why the last one was.
+ */
+describe("T1652b — the panel says when value writes were compiled in full", () => {
+  it("says nothing while every write took the lane; then the count and the last reason", () => {
+    const hub = fakeSource(snapshot(3.5, 120));
+    let stats: { values: number; escalated: number; lastEscalation: string | null } = { values: 12, escalated: 0, lastEscalation: null };
+    render(<PerformancePanel telemetry={hub.source} valueWrites={() => stats} />);
+    expect(screen.queryByTestId("value-write-escalations")).toBeNull();
+
+    stats = { values: 12, escalated: 3, lastEscalation: 'Node "level_grade" says something different about its new value, so the revision is compiled in full.' };
+    hub.tick(snapshot(3.5, 121));
+    const line = screen.getByTestId("value-write-escalations");
+    expect(line.textContent).toMatch(/^3 of 15 value writes compiled in full/);
+    expect(line.textContent).toContain('Node "level_grade" says something different');
+  });
+});

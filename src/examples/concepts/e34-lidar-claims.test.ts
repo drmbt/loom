@@ -15,7 +15,7 @@ describe("E34 Lidar claims", () => {
   const { document, plan } = example("E34-Lidar.loom.json");
   const nodes = document.graph.nodes as Record<string, GraphNode>;
   /**
-   * A scene draw belongs to the RENDER node, not to the geometry — `shot1` emits one
+   * A scene draw belongs to the RENDER node, not to the geometry — `render_shot` emits one
    * `shot:scene:N` pass per name in its Scenes list, in list order. So the lookup goes
    * through that list, which makes "the beams are actually in the render" part of the
    * claim rather than a separate hope.
@@ -23,7 +23,7 @@ describe("E34 Lidar claims", () => {
   const scenes = String(nodes["shot"]?.parameters["scenes"]).split(/\s+/);
   const sceneDraw = (label: string) => {
     const index = scenes.indexOf(label);
-    expect(index, `${label} is not in shot1's Scenes list`).toBeGreaterThanOrEqual(0);
+    expect(index, `${label} is not in render_shot's Scenes list`).toBeGreaterThanOrEqual(0);
     const pass = plan.passes.find((entry) => entry.kind === "draw" && entry.id.endsWith(`:scene:${String(index)}`));
     if (pass === undefined || pass.kind !== "draw") throw new Error(`no scene draw for ${label}`);
     return pass;
@@ -39,14 +39,14 @@ describe("E34 Lidar claims", () => {
    * cone that hides the terrain entirely.
    *
    * The endpoint binding is the claim that this costs NO SECOND MARCH: the far end is
-   * `cast1`'s own `hitPosition` pair, handed to the draw, not a re-cast.
+   * `ray_cast`'s own `hitPosition` pair, handed to the draw, not a re-cast.
    */
   it("draws one ray in ten as a beam off the cast's own hit, tapered to a point", () => {
     expect(nodes["rays"]?.parameters["mode"]).toBe("beam");
     expect(nodes["rays"]?.parameters["endpoint"]).toBe("hitPosition");
     expect(nodes["rays"]?.parameters["group"]).toBe("p.spoke > 0.5");
     expect(nodes["aim"]?.parameters["kernel"]).toContain("q.spoke = select(0.0, 1.0, (ctx.index % 10u) == 0u);");
-    const rays = sceneDraw("rays1");
+    const rays = sceneDraw("geometry_rays");
     // Six vertices an instance — the billboard branch with the axis handed in.
     expect(rays.vertexCount).toBe(6);
     // The far end arrives as a BUFFER, which is the whole "no extra ray march" claim.
@@ -70,7 +70,7 @@ describe("E34 Lidar claims", () => {
    * condition: re-read only while already dark. Both halves are pinned, because gating
    * only the LEVEL while the POSITION still tracks every hit restores the whole bug.
    */
-  it("re-reads mark2a's echo only while it is already dark", () => {
+  it("re-reads kernel_mark2a's echo only while it is already dark", () => {
     const kernel = String(nodes["mark2"]?.parameters["kernel"]);
     expect(kernel).toContain("let take = landed && p.wake.w < 0.06;");
     // the POSITION holds on `take`, not on `landed` — this is the half that teleports.
@@ -81,12 +81,12 @@ describe("E34 Lidar claims", () => {
   /**
    * §V644 — THE IDENTITY ELEMENT IN A MULTIPLYING SLOT.
    *
-   * An albedo map multiplies, so the pool must read 1.0 where nothing is lit. `poolbase1`
+   * An albedo map multiplies, so the pool must read 1.0 where nothing is lit. `level_poolbase`
    * is a Level with black at −0.1 and white at 0, which is how you say ADD ONE: out =
    * 10·in + 1. Drop the offset and the ground goes BLACK everywhere the pool is not — a
    * failure that reads as "the light broke the terrain" and is really a missing identity.
    * The mapping claim rides along: the pool parks its sprites at the SAME clip
-   * (X/extent, −Z/extent) `unfold1` uses, and if those two ever disagree the pool lights
+   * (X/extent, −Z/extent) `kernel_unfold` uses, and if those two ever disagree the pool lights
    * the terrain's mirror image, which is plausible at a glance and wrong everywhere.
    */
   it("feeds the terrain's albedo a pool offset to 1.0 where it is unlit", () => {
@@ -101,10 +101,10 @@ describe("E34 Lidar claims", () => {
     expect(String(nodes["unfold"]?.parameters["kernel"])).toContain("q.position = vec3f(worldX / 4.8, -worldZ / 4.8, 0.0);");
     expect(String(nodes["pool"]?.parameters["kernel"])).toContain("q.position = vec3f(p.position.x / 4.8, -p.position.z / 4.8, 0.0);");
     // and the terrain draw actually SAMPLES an albedo map, rather than the wire hanging.
-    expect(sceneDraw("ground1").textures?.map((texture) => texture.binding) ?? []).toContain("albedoMap");
+    expect(sceneDraw("geometry_ground").textures?.map((texture) => texture.binding) ?? []).toContain("albedoMap");
     // and the pool's own splat is a real renderPoints draw, selecting on the return class.
     const splat = plan.passes.find((entry) => entry.kind === "draw" && entry.nodeId === "poolmap");
-    expect(splat, "poolmap1 must emit a sprite draw").toBeDefined();
+    expect(splat, "points_poolmap must emit a sprite draw").toBeDefined();
     expect(nodes["poolmap"]?.parameters["blend"]).toBe("additive");
   });
 
@@ -139,8 +139,8 @@ describe("E34 Lidar claims", () => {
    * COLLAPSE TARGET rather than a number of beams.
    *
    * The condition is `slant < RANGE - 0.01` and the epsilon is not incidental: it is
-   * `mark1`'s own landed test, so the beam and the box it ends on change class on the
-   * SAME frame. Move it to `mark2a`'s 0.02 and a ray whose slant sits between them draws
+   * `kernel_mark`'s own landed test, so the beam and the box it ends on change class on the
+   * SAME frame. Move it to `kernel_mark2a`'s 0.02 and a ray whose slant sits between them draws
    * a beam to an impact that is already steel, which reads as a flicker and gets
    * misdiagnosed as a rendering fault. The collapse target is `p.position` — both ends on
    * one point is a zero-AREA beam — and it has to be that rather than a dim colour,
@@ -159,15 +159,15 @@ describe("E34 Lidar claims", () => {
 
   /**
    * T711 — THE BOUNCE LEG INHERITS §V638's HOLD, which is the whole reason it is
-   * affordable at all. T681 measured this segment off `rebound1`'s raw verdict and
-   * rejected it; hung on `mark2a` it reads from a position that HOLDS and a level that
+   * affordable at all. T681 measured this segment off `ray_rebound`'s raw verdict and
+   * rejected it; hung on `kernel_mark2a` it reads from a position that HOLDS and a level that
    * fades, and the same measurement passes. Both halves of the predicate are pinned:
    * `wake.w` is where the persistence comes from, `spoke` is the every-tenth subset, and
    * losing either restores a failure that still contains bounce beams — without the hold
    * they pop with the raw verdict (7.1% green hard-flip against the held 2.2%), without
    * the subset all 240 legs draw and the basin is green spaghetti.
    *
-   * And the far end is the FIRST hit, published through mark2a's own leaf `hitPosition`
+   * And the far end is the FIRST hit, published through kernel_mark2a's own leaf `hitPosition`
    * slot: four attributes is the whole budget (§V588), so a fifth pair is not available
    * and the segment has to travel through a slot that already exists.
    *
@@ -176,20 +176,20 @@ describe("E34 Lidar claims", () => {
    * FRAMES — a marker keeping its place while lit — and every still-frame instrument we
    * own is blind to it. Delete the gate and each individual frame still looks correct;
    * only the relationship between consecutive frames breaks. Measured, not assumed: all
-   * three mutations of this claim (drop `wake.w`, drop `spoke`, drop mark2a's published
+   * three mutations of this claim (drop `wake.w`, drop `spoke`, drop kernel_mark2a's published
    * first hit) leave `liveness.test.ts` GREEN, and so do the seven others in this file's
    * E34 set — including "draw all 240 bounce legs", which is a visibly ruined frame. A
    * green look baseline means "about the same picture", never "this example is intact"
    * (§V653). So the assertion names the CONDITION, and the flicker numbers that justify
    * it were taken from frame PAIRS with the camera frozen, never from a still.
    */
-  it("hangs the bounce leg on mark2a's hold, subset by the same spoke as the primaries", () => {
+  it("hangs the bounce leg on kernel_mark2a's hold, subset by the same spoke as the primaries", () => {
     expect(nodes["bounce"]?.parameters["mode"]).toBe("beam");
     expect(nodes["bounce"]?.parameters["group"]).toBe("p.wake.w > 0.03 && p.spoke > 0.5");
     expect(String(nodes["mark2"]?.parameters["kernel"])).toContain("q.hitPosition = p.position;");
-    // mark2a stays at FOUR declared attributes — the budget is the reason for the line above.
+    // kernel_mark2a stays at FOUR declared attributes — the budget is the reason for the line above.
     expect(JSON.parse(String(nodes["mark2"]?.parameters["attributes"]))).toHaveLength(4);
-    const bounce = sceneDraw("bounce1");
+    const bounce = sceneDraw("geometry_bounce");
     const bindings = (bounce.buffers ?? []).map((buffer) => buffer.binding);
     expect(bindings).toContain("endpoints");
     expect(bindings).toContain("group_wake");
@@ -221,9 +221,9 @@ describe("E34 Lidar claims", () => {
     const persistence = Number(nodes["trail"]?.parameters["persistence"]);
     expect(persistence).toBeGreaterThan(0);
     expect(persistence).toBeLessThan(1);
-    expect(nodes["trail"]?.parameters["source"]).toBe("smear1");
+    expect(nodes["trail"]?.parameters["source"]).toBe("add_smear");
     // The loop is SELECTIVE, so it closes on a side branch and not on the finished frame:
-    // `smear1` feeds glow1's stack, and glow1 is what the output shows.
+    // `add_smear` feeds add_glow's stack, and add_glow is what the output shows.
     const into = (nodeId: string) =>
       Object.values(document.graph.edges).filter((edge) => edge.target.nodeId === nodeId).map((edge) => edge.source.nodeId);
     expect(into("stain").sort()).toEqual(["hot", "shot"]);

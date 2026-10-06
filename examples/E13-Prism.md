@@ -31,41 +31,41 @@ Watch 30 seconds: the body swivels, the lit dust churns, nothing is a still.
 ## Graph
 
 ```
-bar1(pointTube) ─► form1(pointKernel) ─► solid1(geometry) ─┐
-glass1(materialGlass) ─────── by name ────────────────────┘  the glass (T758)
-                                                              │
-spectrum1(ramp) ─► optics1.field                              │
-optics1(pointKernel) ─┬─► shaft1(geometry)  p.role < 0.5      ├─► shot1(render)
-                      └─► fan1(geometry)    p.role > 0.5      │
-flare1(materialUnlit) ────── by name ─────────────────────────┤
-                                                              │
-sky1(ramp) ──┐                                                │
-band1(circle) ┴─► studio1(add) ─► shot1.environment           │
-key1(light), eye1(camera) ──── by name ───────────────────────┘
+tube_bar(pointTube) ────► kernel_form(pointKernel) ─► geometry_solid(geometry) ─┐
+material_glass(materialGlass) ────────── by name ───────────────────────────────┘  the glass (T758)
+                                                                                │
+ramp_spectrum(ramp) ─────► kernel_optics.field                                  │
+kernel_optics(pointKernel) ──────┬─► geometry_shaft(geometry)  p.role < 0.5     ├─► render_shot(render)
+                                 └─► geometry_fan(geometry)    p.role > 0.5     │
+material_flare(materialUnlit) ───────── by name ────────────────────────────────┤
+                                                                                │
+ramp_sky(ramp) ──────┐                                                          │
+circle_band(circle) ─┴─► add_studio(add) ─► render_shot.environment             │
+light_key(light), camera_eye(camera) ──── by name ──────────────────────────────┘
 
-shot1 ─► cut1(level) ─► clip1(limit) ─► halo1(blur) ─► glow1.in2
-shot1 ────────────────────────────────────────────► glow1(add) ─► out1(output)
+render_shot ─► level_cut(level) ─► limit_clip(limit) ─► blur_halo(blur) ─► add_glow.in2
+render_shot ──────────────────────────────────────────────────────────► add_glow(add) ─► output1(output)
 
-mouse1 ─► follow1(valueLag) ┄drives┄► optics1.value1 (y) + value3 (x)   the torch (T929)
-follow1 ┄drives┄► form1.value1 (x) + value2 (y)                     the body tilt (T928)
-driftyaw1(lfo 0.041Hz), driftnod1(lfo 0.067Hz) ┄drive┄► form1.value3/4  the drift (T934)
-fan1.tint ← the `tint` attribute                                    the map mode
+mouse1 ─────────► lag_follow(valueLag) ┄drives┄► kernel_optics.value1 (y) + value3 (x)   the torch (T929)
+lag_follow ┄drives┄┄┄┄┄┄► kernel_form.value1 (x) + value2 (y)                     the body tilt (T928)
+lfo_driftyaw(lfo 0.041Hz), lfo_driftnod(lfo 0.067Hz) ┄drive┄┄┄┄► kernel_form.value3/4  the drift (T934)
+geometry_fan.tint ← the `tint` attribute                                        the map mode
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `bar1` | `pointTube` | a 240×45 grid with its u seam closed — the topology a prism's lateral loop needs |
-| `form1` | `pointKernel` | walks a **rounded** triangle by arc length and puts a quarter-round on each cap edge |
-| `glass1` | `materialGlass` | the T725 transmissive surface (T758): ior 1.5, gentle absorption, dispersion 0.06 — the body SAMPLES the frame behind it, and its Schlick fresnel against the environment carries the rim |
-| `solid1` | `geometry` | `mode: surface` |
-| `spectrum1` | `ramp` | seven stops, red → violet. The kernel samples it at `u = t`, and `t` is also the refractive index |
-| `optics1` | `pointKernel` | Snell's law twice per band, 61 bands, plus the shaft and its reflected ghost |
-| `driftyaw1`, `driftnod1` | `lfo` | the body's passive drift (T934): two sines at incommensurate frequencies, riding on top of the cursor tilt, never touching the aim |
-| `shaft1` | `geometry` | `mode: beam`, taper 1 — a parallel-sided ribbon |
-| `fan1` | `geometry` | `mode: beam`, taper 0.06, **tint mapped per point** |
-| `sky1`, `band1` | `ramp`, `circle` | the equirect: near-black, with a bright band on its horizon at (0.5, 0.5) |
-| `key1` | `light` | one directional, aimed to put a glint on one edge and nowhere else |
-| `cut1 → clip1 → halo1 → glow1` | post | the bloom, with the clamp that is load-bearing |
+| `tube_bar` | `pointTube` | a 240×45 grid with its u seam closed — the topology a prism's lateral loop needs |
+| `kernel_form` | `pointKernel` | walks a **rounded** triangle by arc length and puts a quarter-round on each cap edge |
+| `material_glass` | `materialGlass` | the T725 transmissive surface (T758): ior 1.5, gentle absorption, dispersion 0.06 — the body SAMPLES the frame behind it, and its Schlick fresnel against the environment carries the rim |
+| `geometry_solid` | `geometry` | `mode: surface` |
+| `ramp_spectrum` | `ramp` | seven stops, red → violet. The kernel samples it at `u = t`, and `t` is also the refractive index |
+| `kernel_optics` | `pointKernel` | Snell's law twice per band, 61 bands, plus the shaft and its reflected ghost |
+| `lfo_driftyaw`, `lfo_driftnod` | `lfo` | the body's passive drift (T934): two sines at incommensurate frequencies, riding on top of the cursor tilt, never touching the aim |
+| `geometry_shaft` | `geometry` | `mode: beam`, taper 1 — a parallel-sided ribbon |
+| `geometry_fan` | `geometry` | `mode: beam`, taper 0.06, **tint mapped per point** |
+| `ramp_sky`, `circle_band` | `ramp`, `circle` | the equirect: near-black, with a bright band on its horizon at (0.5, 0.5) |
+| `light_key` | `light` | one directional, aimed to put a glint on one edge and nowhere else |
+| `level_cut → limit_clip → blur_halo → add_glow` | post | the bloom, with the clamp that is load-bearing |
 
 ## What it proves
 
@@ -82,7 +82,7 @@ interior segment lives inside the body's depth since this change, so the thread 
 *through* the front face — absorption-warmed — and the rounded edges refract the beams
 into dispersion fringes that move with the aim.
 
-So `form1` builds a shape that curves exactly where the light is wanted. The cross-section
+So `kernel_form` builds a shape that curves exactly where the light is wanted. The cross-section
 is a rounded triangle walked by **arc length** — three straight runs joined by three 120°
 arcs — and the profile puts a quarter-round where each flat cap meets the barrel. Along a
 straight run, the surface renderer's central difference is collinear, so the face normal is
@@ -117,20 +117,20 @@ i.e. fill wearing a rim's name. §V640's limit is a limit; here it is the whole 
 **Ambient is zero and the key is hard**, which is E33's lesson (§V632/T636) rather than
 taste. The physical terms in this scene are a 4% head-on Fresnel on a specular of 0.86 and
 a diffuse albedo of 0.0009 linear, so any ambient worth the name drowns them and the glass
-goes to grey slate. `key1` does exactly one job: its direction is the mirror of the view
+goes to grey slate. `light_key` does exactly one job: its direction is the mirror of the view
 about the upper-left round-over's normal, so its Blinn lobe lands as a glint on that edge.
 Killing it moves 8,387 pixels by more than 4 luma — it earns its node.
 
 ### The dispersion is solved, not drawn
 
-`optics1` runs `refract` twice per band, vectorially, in the prism's own cross-section:
+`kernel_optics` runs `refract` twice per band, vectorially, in the prism's own cross-section:
 into the right face, across to the left face's plane, out. The refractive index runs from
 1.500 at the red end to 1.585 at the violet end, and the *same* parameter `t` picks the
-band's colour out of `spectrum1`. Hue and refractive index are one number, so a reversed
+band's colour out of `ramp_spectrum`. Hue and refractive index are one number, so a reversed
 `n(λ)` reverses the fan and nothing else.
 
 Exaggeration, stated: real crown glass disperses about a sixth of this. The span is
-`optics1.value2`, a number this file owns rather than a constant hidden in the kernel — set
+`kernel_optics.value2`, a number this file owns rather than a constant hidden in the kernel — set
 it to zero and the fan collapses to a single ray, which is what the gate asserts.
 
 **Which way the angle actually works.** The brief for this rebuild said a more oblique
@@ -175,11 +175,11 @@ their exit points rather than their angles.
 
 ### One source, two readings
 
-`optics1` writes 65 points — the shaft, its ghost, the drawn internal segment, its TIR
+`kernel_optics` writes 65 points — the shaft, its ghost, the drawn internal segment, its TIR
 continuation (zero-length whenever the central ray exits cleanly), and 61 bands — and two Geometries read
 that one pointset through a **group predicate** (§V471's first idea, structure from
-selection rather than from more nodes). The split is not cosmetic: `shaft1` wants taper 1,
-a parallel-sided ribbon, and `fan1` wants taper 0.06, because 61 beams leaving the same
+selection rather than from more nodes). The split is not cosmetic: `geometry_shaft` wants taper 1,
+a parallel-sided ribbon, and `geometry_fan` wants taper 0.06, because 61 beams leaving the same
 face within 0.03 of each other fuse into an opaque wedge at any taper above roughly zero
 (T680).
 
@@ -192,7 +192,7 @@ brightens as the fan narrows, out of one number rather than a second knob.
 
 T857's blend and its velocity envelope are gone — `hold1` decayed when the cursor stopped,
 which was the owner's "reset after a time": the aim changed when the input didn't. The only
-motion filter left is `follow1`'s positional lag, which settles AT the pointer and stays.
+motion filter left is `lag_follow`'s positional lag, which settles AT the pointer and stays.
 
 The mapping is direct manipulation rather than parameter mapping. `x` sets the lamp's
 place on a 240° arc of radius 3.3 around the prism (rest: level-left, the classic card);
@@ -239,7 +239,7 @@ the body since T758 — would be swallowed by an opaque solid.)
 sweeping through grazing. The picture still renders a triangle; §V640's split falls from
 10.2× to under the gate's floor, which is the only thing that notices.
 
-**The mesh and the optics disagreeing.** `form1` builds the geometry and `optics1` solves
+**The mesh and the optics disagreeing.** `kernel_form` builds the geometry and `kernel_optics` solves
 the optics, and the *only* thing making them agree is that both read one circumradius.
 Nothing in the compiler checks it. Move one and the picture stays entirely plausible — a
 prism, a beam, a spectrum — while the beam either floats beside the glass or drives through
@@ -253,7 +253,7 @@ through the base, and the apex case shortening the internal path.
 **The clamp between the Level and the blur.** Level is a signed pipeline: below
 `blacklevel` it emits negatives, the blur spreads them across the whole frame, and `add`
 then *subtracts* a halo from the picture. On a document this black almost every pixel is
-below the threshold, so without `clip1` the frame goes out entirely. E33 and E34 both
+below the threshold, so without `limit_clip` the frame goes out entirely. E33 and E34 both
 learned this; a deep-black document is its worst case.
 
 **Judging any of it from a saved linear frame.** §V618: `savePng` in a GPU test writes the
@@ -288,5 +288,5 @@ project's full 1280×720, with the output space read from the plan.
   them into a continuous band.
 - **~~A point kernel cannot read the pointer.~~** Fixed by T367 — `PointCtx` carries
   `pointer`. This file still routes the cursor through the value graph rather than reading
-  it in the kernel, because the aim wants smoothing (`follow1`) and a Lag is a value-graph
+  it in the kernel, because the aim wants smoothing (`lag_follow`) and a Lag is a value-graph
   node, not a kernel one.

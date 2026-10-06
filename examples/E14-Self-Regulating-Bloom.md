@@ -15,19 +15,19 @@ nothing could subtract it from a target, scale it, or clamp it on the way.
 ```
 sway(lfo 0.013 Hz) ─► field.amp        (the disturbance)
 
-field(noise) ─► gain(level) ─► clipbase(limit) ─┬─► cut(level) ─► clip(limit) ─► halo(blur) ─► tint(lookup) ─► glow(add).in1
-                    ▲                           └────────────────────────────────────────────────────────────► glow.in2
-                    │ brightness                          palette(ramp) ─► tint.lookup ◄─ phase: swirl1
-                    │                                     glow ─► out(output)
-                    │                                     glow ─► meter(analyze "meter1")
+field(noise) ─► gain(level) ────────► clipbase(limit) ─┬─► cut(level) ─► clip(limit) ─► halo(blur) ─► tint(lookup) ─► glow(add).in1
+                    ▲                                  └────────────────────────────────────────────────────────────► glow.in2
+                    │ brightness                                 palette(ramp) ─► tint.lookup ◄─ phase: limit_swirl
+                    │                                            glow ─► out(output)
+                    │                                            glow ─► meter(analyze "analyze_meter")
                     │
-  probe(channelIn "meter1") ─► neg(valueMath ×−1) ─► err(valueMath +0.18) ─┬─► push(×2) ─► lift(+1.3) ─► clampg(valueLimit) ─► engage(valueSwitch) = "gain1"
-                                                                           │                              rest(constant 1.3) ─► engage.in2
-                                                                           └─► swirl(×0.15) ─► swirlbias(+0.03) ─► swirlclamp(valueLimit) = "swirl1"
+  probe(channelIn "analyze_meter") ─► neg(valueMath ×−1) ─► err(valueMath +0.18) ─┬─► push(×2) ─► lift(+1.3) ─► clampg(valueLimit) ─► engage(valueSwitch) = "switch_gain"
+                                                                                  │                              rest(constant 1.3) ─► engage.in2
+                                                                                  └─► swirl(×0.15) ─► swirlbias(+0.03) ─► swirlclamp(valueLimit) = "limit_swirl"
 ```
 
-The controller, spelled out: `gain1 = clamp(1.3 + 2.0 · (0.18 − meter1), 0.8, 1.8)`.
-Too bright and the brightness comes down; too dark and it comes up. `err1` is the shared
+The controller, spelled out: `switch_gain = clamp(1.3 + 2.0 · (0.18 − analyze_meter), 0.8, 1.8)`.
+Too bright and the brightness comes down; too dark and it comes up. `math_err` is the shared
 error; a second tap scales it into a small palette-phase nudge, so the halo's colour
 leans warmer when the picture is starving and cooler when it is overshooting.
 
@@ -131,7 +131,7 @@ anything downstream can see it.
 - **`engage`.** Flip it to 1: same sway, no controller, and the slow breathing gets
   visibly deeper. Flip it back and watch the loop re-acquire with the same ring it
   opened with.
-- **`gain1` in the parameter panel**, sliding slowly against `sway`'s breathing: the
+- **`switch_gain` in the parameter panel**, sliding slowly against `sway`'s breathing: the
   controller doing its job in plain sight.
 - **Kill `e-glow-meter`.** The channel disappears, `probe` falls back to the setpoint,
   the error reads zero, and the picture drifts with the sway, unregulated — the open

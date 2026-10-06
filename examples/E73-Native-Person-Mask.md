@@ -15,28 +15,28 @@ and multiply the returned mask into the original image.
    ```
 
    No model download or automatic Python-package installation is needed.
-2. Open the example. **source1** starts at index **0**, `signal1` — an animated
+2. Open the example. **switch_source** starts at index **0**, `over_signal` — an animated
    calibration chart containing no person. An empty mask is expected and **does not
-   prove person detection works**. **reference1** displays the selected source.
+   prove person detection works**. **output_reference** displays the selected source.
    The chart is a checkerboard tinted by a colour sweep with a marker crossing it:
    the checker shows any resampling as moiré, the sweep shows orientation and
    channel order, and the marker shows the graph is live. A noise field, which is
    what this was, answers none of those questions about a pipeline.
-3. Change **source1** Index to **1** for **camera1**, and approve camera access
+3. Change **switch_source** Index to **1** for **webcam1**, and approve camera access
    when prompted. Review permissions in Settings. A visible webcam preview can
    also demand access; opening the file is not consent.
-4. **mask1** explicitly saves Transport as **Native GPU (Electron)**. Select
-   **person1** in the viewer and stand in view. Inspect `mask1` for the
-   white-where-person mask; `key1` applies that mask to the original image.
+4. **personmask1** explicitly saves Transport as **Native GPU (Electron)**. Select
+   **output_person** in the viewer and stand in view. Inspect `personmask1` for the
+   white-where-person mask; `multiply_key` applies that mask to the original image.
 
-`signal1 / camera1 → source1 → mask1 → key1 → person1`, with
-`source1 → key1` and `source1 → reference1` as the original-image branches.
+`over_signal / webcam1 → switch_source → personmask1 → multiply_key → output_person`, with
+`switch_source → multiply_key` and `switch_source → output_reference` as the original-image branches.
 Replace the selected source with a Movie File In node for your own footage.
 No personal media, camera identifier or downloaded fixture ships.
 
 ## Expectations and limits
 
-The project stays 1280 × 720 with ordinary-color RGBA SDR 8-bit storage; `mask1`
+The project stays 1280 × 720 with ordinary-color RGBA SDR 8-bit storage; `personmask1`
 explicitly keeps RGBA16F because its values are measurements. Person Mask retains
 its existing fixed 512-square model preprocessing policy. Min interval is 0.1
 timeline seconds; 0 requests work as quickly as results return, not a promised

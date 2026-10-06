@@ -289,8 +289,16 @@ export interface AgentTool<TInput = unknown, TData = unknown> {
   readonly capabilities: readonly CapabilityClass[];
   /** Mutating tools accept `dryRun` and are the ones a review gate can hold (§V42). */
   readonly mutates: boolean;
-  /** Patch preview for the review gate — mutating tools only (§V42, T60). */
-  readonly preview?: (input: TInput) => readonly GraphPatchOperation[];
+  /**
+   * Patch preview for the review gate — mutating tools only (§V42, T60).
+   *
+   * T1593b: it is handed the node registry, because what a held edit WILL do can depend on
+   * what a type is. A node's name carries its kind, and a component instance's kind is its
+   * component's name, which only the registry knows: without it `add_node` showed the
+   * reviewer the label that was asked for (`glow`) and then stored another (`bloom_glow`).
+   * A preview that differs from the edit it previews is the review gate lying.
+   */
+  readonly preview?: (input: TInput, registry: LoomBus["registry"]) => readonly GraphPatchOperation[];
   run(input: TInput, runtime: ToolRuntime): Promise<ToolResult<TData>> | ToolResult<TData>;
 }
 

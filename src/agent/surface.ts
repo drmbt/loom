@@ -534,7 +534,7 @@ export function createAgentToolSurface(options: AgentSurfaceOptions): AgentToolS
         tool: tool.name,
         label: tool.title,
         baseRevision,
-        operations: tool.preview(parsed.data),
+        operations: tool.preview(parsed.data, bus.registry),
         transactionId,
       });
       return result(tool.name, "awaiting-approval", null, {

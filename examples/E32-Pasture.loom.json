@@ -944,7 +944,7 @@
       "beat": {
         "definitionVersion": 1,
         "id": "beat",
-        "label": "beat1",
+        "label": "pattern_beat",
         "parameters": {
           "amount": 1,
           "bpm": 104
@@ -958,7 +958,7 @@
       "bite": {
         "definitionVersion": 1,
         "id": "bite",
-        "label": "bite1",
+        "label": "points_bite",
         "parameters": {
           "accumulate": false,
           "blend": "alpha",
@@ -974,7 +974,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('gnaw1').chan.low"
+                "source": "op('math_gnaw').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -998,7 +998,7 @@
       "bowl": {
         "definitionVersion": 1,
         "id": "bowl",
-        "label": "bowl1",
+        "label": "circle_bowl",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -1038,13 +1038,13 @@
       "burn": {
         "definitionVersion": 1,
         "id": "burn",
-        "label": "burn1",
+        "label": "add_burn",
         "parameters": {
           "opacity": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('glow1').chan.level"
+                "source": "op('math_glow').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -1063,7 +1063,7 @@
       "burst": {
         "definitionVersion": 1,
         "id": "burst",
-        "label": "burst1",
+        "label": "math_burst",
         "parameters": {
           "operand": 0.02,
           "operation": "add"
@@ -1077,7 +1077,7 @@
       "burstG": {
         "definitionVersion": 1,
         "id": "burstG",
-        "label": "burstg1",
+        "label": "math_burstg",
         "parameters": {
           "operand": 3.4,
           "operation": "multiply"
@@ -1091,7 +1091,7 @@
       "chem": {
         "definitionVersion": 1,
         "id": "chem",
-        "label": "chem1",
+        "label": "level_chem",
         "parameters": {
           "blacklevel": 0,
           "brightness": 0.14,
@@ -1110,7 +1110,7 @@
       "chew": {
         "definitionVersion": 1,
         "id": "chew",
-        "label": "chew1",
+        "label": "level_chew",
         "parameters": {
           "blacklevel": 0,
           "brightness": 1,
@@ -1129,7 +1129,7 @@
       "coast": {
         "definitionVersion": 1,
         "id": "coast",
-        "label": "coast1",
+        "label": "displace_coast",
         "parameters": {
           "extend": "hold",
           "offset": [
@@ -1152,7 +1152,7 @@
       "dish": {
         "definitionVersion": 1,
         "id": "dish",
-        "label": "dish1",
+        "label": "screen_dish",
         "parameters": {
           "opacity": 1
         },
@@ -1165,7 +1165,7 @@
       "drift": {
         "definitionVersion": 1,
         "id": "drift",
-        "label": "drift1",
+        "label": "lfo_drift",
         "parameters": {
           "amplitude": 24,
           "frequency": 0.028,
@@ -1182,7 +1182,7 @@
       "drop": {
         "definitionVersion": 1,
         "id": "drop",
-        "label": "drop1",
+        "label": "math_drop",
         "parameters": {
           "operand": 0.1758,
           "operation": "add"
@@ -1196,7 +1196,7 @@
       "dropG": {
         "definitionVersion": 1,
         "id": "dropG",
-        "label": "dropg1",
+        "label": "math_dropg",
         "parameters": {
           "operand": 0.14,
           "operation": "multiply"
@@ -1210,7 +1210,7 @@
       "eat": {
         "definitionVersion": 1,
         "id": "eat",
-        "label": "eat1",
+        "label": "multiply_eat",
         "parameters": {
           "opacity": 1
         },
@@ -1228,7 +1228,7 @@
       "env": {
         "definitionVersion": 1,
         "id": "env",
-        "label": "env1",
+        "label": "limit_env",
         "parameters": {
           "maximum": 4,
           "minimum": 0
@@ -1242,7 +1242,7 @@
       "envDiff": {
         "definitionVersion": 1,
         "id": "envDiff",
-        "label": "envdiff1",
+        "label": "math_envdiff",
         "parameters": {
           "operation": "subtract"
         },
@@ -1255,7 +1255,7 @@
       "envFast": {
         "definitionVersion": 1,
         "id": "envFast",
-        "label": "envfast1",
+        "label": "lag_envfast",
         "parameters": {
           "lag": 0.045
         },
@@ -1268,7 +1268,7 @@
       "envMid": {
         "definitionVersion": 1,
         "id": "envMid",
-        "label": "envmid1",
+        "label": "lag_envmid",
         "parameters": {
           "lag": 0.4
         },
@@ -1281,7 +1281,7 @@
       "envPeak": {
         "definitionVersion": 1,
         "id": "envPeak",
-        "label": "envpeak1",
+        "label": "math_envpeak",
         "parameters": {
           "operation": "maximum"
         },
@@ -1294,7 +1294,7 @@
       "envSlow": {
         "definitionVersion": 1,
         "id": "envSlow",
-        "label": "envslow1",
+        "label": "lag_envslow",
         "parameters": {
           "lag": 5
         },
@@ -1307,7 +1307,7 @@
       "find": {
         "definitionVersion": 1,
         "id": "find",
-        "label": "find1",
+        "label": "points_find",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -1323,7 +1323,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('spark1').chan.high"
+                "source": "op('math_spark').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -1347,7 +1347,7 @@
       "flow": {
         "definitionVersion": 1,
         "id": "flow",
-        "label": "flow1",
+        "label": "displace_flow",
         "parameters": {
           "extend": "hold",
           "offset": [
@@ -1375,7 +1375,7 @@
       "front": {
         "definitionVersion": 2,
         "id": "front",
-        "label": "front1",
+        "label": "ramp_front",
         "parameters": {
           "interp": "smooth",
           "period": 2.2,
@@ -1383,7 +1383,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sweepg1').chan.value"
+                "source": "op('math_sweepg').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1455,7 +1455,7 @@
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
-        "label": "glow1",
+        "label": "math_glow",
         "parameters": {
           "operand": 0.1571,
           "operation": "add"
@@ -1469,7 +1469,7 @@
       "glowG": {
         "definitionVersion": 1,
         "id": "glowG",
-        "label": "glowg1",
+        "label": "math_glowg",
         "parameters": {
           "operand": 0.24,
           "operation": "multiply"
@@ -1483,7 +1483,7 @@
       "gnaw": {
         "definitionVersion": 1,
         "id": "gnaw",
-        "label": "gnaw1",
+        "label": "math_gnaw",
         "parameters": {
           "operand": 2.24,
           "operation": "add"
@@ -1497,7 +1497,7 @@
       "gnawG": {
         "definitionVersion": 1,
         "id": "gnawG",
-        "label": "gnawg1",
+        "label": "math_gnawg",
         "parameters": {
           "operand": 6.6897,
           "operation": "multiply"
@@ -1511,7 +1511,7 @@
       "grade": {
         "definitionVersion": 1,
         "id": "grade",
-        "label": "grade1",
+        "label": "math_grade",
         "parameters": {
           "operand": 0.98,
           "operation": "add"
@@ -1525,7 +1525,7 @@
       "gradeG": {
         "definitionVersion": 1,
         "id": "gradeG",
-        "label": "gradeg1",
+        "label": "math_gradeg",
         "parameters": {
           "operand": 1.6083,
           "operation": "multiply"
@@ -1539,7 +1539,7 @@
       "graze": {
         "definitionVersion": 1,
         "id": "graze",
-        "label": "graze1",
+        "label": "points_graze",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -1580,7 +1580,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -1595,18 +1595,18 @@
       "herd": {
         "definitionVersion": 1,
         "id": "herd",
-        "label": "herd1",
+        "label": "kernel_herd",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"velocity\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"graze\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 12000,
           "group": "",
-          "kernel": "/* A clip unit is 640 px across x and 360 px across y on this 16:9 frame, so every\n   displacement is squashed in x to make walking ISOTROPIC ON SCREEN. One constant, and it\n   is the only thing in this kernel that knows the output's shape. */\nconst PX: vec2f = vec2f(0.5625, 1.0);\n/* T1399b — FOUR ROOSTS, not one. The owner's word for the single herd was \"the activity\n   centre looks awesome — maybe we need more of those\", and a centre IS a roost: the herd\n   gathers wherever its homing spring points. So every animal belongs to one of four, by\n   `ctx.index % ROOSTS` (identity, never slot — §V74's rule, so a herd keeps its members),\n   and each roost walks its own circle: centre (clip, y UP), radius (screen units, squashed\n   by PX like every other displacement here), and laps per `range1` lap. The lap counts are\n   INTEGERS on purpose — `ctx.value4` is a saw on an angle, and only a whole multiple of it\n   wraps where the cosine cannot see the seam (a 1.3× lap would jump once per circuit). The\n   circuits sit in the four quarters of the frame and cross near the middle, so the herds\n   meet and part rather than share one clearing. There is still deliberately NO pasture\n   radius here: an animal knows which way its roost is, never where the dead ground starts. */\nconst HOME: vec2f = vec2f(-0.3, -0.3);\nconst RANGE: f32 = 0.46;\nconst ROOSTS: u32 = 4u;\nfn roost(k: u32, bearing: f32) -> vec2f {\n  var circuit = array<vec4f, 4>(\n    vec4f(HOME, RANGE, 1.0),\n    vec4f(0.52, 0.46, 0.40, -1.0),\n    vec4f(0.50, -0.50, 0.44, 2.0),\n    vec4f(-0.60, 0.52, 0.34, -1.0),\n  );\n  var phase = array<f32, 4>(0.0, 2.1, 4.2, 1.0);\n  let c = circuit[k];\n  let a = bearing * c.w + phase[k];\n  return c.xy + vec2f(cos(a), sin(a)) * c.z * PX;\n}\n\n/* WHAT AN ANIMAL SMELLS: the reaction RATE, not a concentration. U*V*V is Gray-Scott's own\n   reaction term, and it is largest exactly on a GROWING front — zero in empty plate (V=0)\n   and small inside a saturated blob (U already eaten). Steering on it puts the herd on the\n   living edge and nowhere else, which is why the swarm never piles onto a dead spot and\n   never has to be told not to. The field arrives BLURRED (`smell1`): fieldAt is a\n   textureLoad, NEAREST and unfiltered by construction (§V57), and a Gray-Scott V is\n   near-binary (§V427), so an unblurred difference of it is mostly quantisation. */\nfn forage(spot: vec2f) -> f32 {\n  let f = fieldAt(vec3f(spot, 0.0));\n  return f.r * f.g * f.g;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n\n  /* T510: firstRun is 1u on exactly the dispatches whose storage was just created or\n     cleared — the seeding signal, and the only honest one (frameIndex == 0 is a timeline\n     lap, not a fresh buffer). Scatter once, deterministically: pointRand is a hash of the\n     identity, not a stream, so the same seed lays the same herd on any device (§V45). */\n  if (ctx.firstRun == 1u) {\n    /* ON EACH ROOST, not across the frame. A uniform scatter walks a fifth of the herd\n       through the dead ground before the spring gathers it, and every one of them seeds a\n       spot out there that then persists for the rest of the run — measured: the first build\n       to get this far had the empty four fifths covered in stray colonies laid in the first\n       two seconds. sqrt() on the radius is what makes the disc UNIFORM rather than\n       centre-heavy; without it the middle is seeded four times as hard as the rim. */\n    let a = pointRand(ctx.index, 37u) * 6.2831853;\n    let r = sqrt(pointRand(ctx.index, 11u)) * 0.45;\n    let h = pointRand(ctx.index, 23u) * 6.2831853;\n    q.position = vec3f(roost(ctx.index % ROOSTS, ctx.value4) + vec2f(cos(a), sin(a)) * r * PX, 0.0);\n    q.velocity = vec3f(cos(h), sin(h), 0.0);\n    q.graze = vec4f(0.0, 0.0, 0.0, 0.0);\n    return q;\n  }\n\n  let pos = q.position.xy;\n  let dir = normalize(select(vec2f(1.0, 0.0), q.velocity.xy, dot(q.velocity.xy, q.velocity.xy) > 1e-8));\n  let nrm = vec2f(-dir.y, dir.x);\n\n  /* THREE SENSORS, not a finite difference — and this is the cheaper of the two ways to\n     get a direction out of a field. The alternative is to make the reaction shader encode\n     its own gradient into spare channels, and there are none spare (b is the chemistry\n     map, a is the kernel's initialised flag), so it would cost a second full-field pass:\n     230 400 texels. Three taps per animal costs 36 000 loads for the whole herd — a sixth\n     of that, with no extra node and no channel budget. Sensing scales with the HERD; a\n     field encoding scales with the FIELD, and the field is the bigger of the two.\n     ctx.value2 is the audio on the reach: the hats make the herd look further ahead. */\n  let reach = ctx.value2;\n  let sway = 0.62;\n  let leftDir = dir * cos(sway) + nrm * sin(sway);\n  let rightDir = dir * cos(sway) - nrm * sin(sway);\n  let ahead = forage(pos + dir * reach * PX);\n  let left = forage(pos + leftDir * reach * PX);\n  let right = forage(pos + rightDir * reach * PX);\n\n  /* A FIXED TURN TOWARD THE BETTER SIDE — Physarum's rule — and NOT a proportional\n     controller on (left - right)/total, which is what this kernel had for six builds and\n     which measured as doing nothing at all. The reason is worth keeping: a gain small\n     enough that a saturated sensor does not spin the animal is also too small to turn it\n     onto a feature ten pixels wide before it has walked past. ABLATION, at gain 3.6: the\n     reaction rate under the herd was 1.56x the pasture's average with steering on and\n     1.71x with the term deleted entirely. A term you can delete without the measurement\n     moving is not a mechanism, however good the sentence describing it is.\n     The 1e-4 guard is the other half: on bare ground all three sensors read zero, the\n     comparison is meaningless, and an animal that turns on noise never travels. */\n  var steer = 0.0;\n  if (max(left, right) > ahead + 1e-4) {\n    steer = select(-9.5, 9.5, left > right);\n  }\n\n  /* HUNGER RANDOMISES, and this is the line that makes `graze.y` a POLICY rather than a\n     colour. A fed animal walks its front; a starving one loses the plot and random-walks,\n     which is the only thing in the file that ever finds the NEXT colony. The picture reads\n     the same number as \"scouts\", so what you see streaming out of the cluster is literally\n     the search. The gain is 2.4 and not 7: at 7 a starved animal spins fast enough that it\n     cannot hold a heading long enough to follow a gradient at all, so hunger became a TRAP\n     — measured, the starving fraction saturated at famine 1.0 and never recovered, and the\n     \"found\" caste below rendered nothing, ever. Exploration has to stay navigable. */\n  steer = steer + (pointRand(ctx.index, 5u) - 0.5) * (0.45 + 2.4 * q.graze.y);\n\n  /* E16's spring — but keyed to HUNGER rather than to distance, and that one change is\n     what stops the picture being a circle. A distance spring draws a disc: every animal is\n     equally pulled wherever it is, so the flock fills a round region whatever the field is\n     doing underneath it, and the pasture's shape stops mattering. Gated on famine instead,\n     a WELL-FED animal is not homing at all — it stays where the food is — and only an\n     animal that has gone hungry turns back toward the middle. The flock's outline is\n     therefore drawn by the FOOD, it migrates as it eats a region down, and E16's sentence\n     still holds: the murmuration never abandons the sphere. The second term is the fence:\n     past 0.45 screen units from its roost an animal starts turning back, and by 0.8 it turns\n     at full rate. T1399b pulled it in from 0.8…1.2 — with four roosts a loose fence lets the\n     herds drift into one another's clearings and merge back into a single centre. */\n  /* WHERE HOME IS THIS MINUTE. A fixed spring has a FIXED POINT, and a flock sitting on\n     its own fixed point eats one spot to the ground and stays there forever — measured, a\n     blown-out core in the same place at frames 300, 900 and 1500 with the rest of the\n     pasture untouched. §V532 is the same sentence about an expanding loop; this is the herd\n     saying it. So the roost walks a slow circle: ctx.value4 is an 83-second SAW on an\n     ANGLE, which is the one wave whose wrap is continuous once you take its cosine, and the\n     flock makes a circuit of its range, grazing it down behind and finding it regrown by\n     the time it comes round again. It is the piece's longest cycle and it is in the\n     ANIMALS, not in the grade. Since T1399b there are four such circles (`roost` above). */\n  let home = roost(ctx.index % ROOSTS, ctx.value4);\n  let toHome = (home - pos) / PX;\n  let away = length(toHome);\n  let sinHome = (dir.x * toHome.y - dir.y * toHome.x) / max(away, 1e-5);\n  steer = steer + sinHome * (5.5 * q.graze.y + 9.0 * smoothstep(0.45, 0.8, away));\n\n  /* §V481(b) ON THE HERD, which is the half of that invariant nobody had a place to put.\n     An envelope on the turn rate is a DC term: it bends every animal the same way for as\n     long as it is up, which is a drift, not an event. A beat arrives as an ANGLE instead —\n     one frame, a different kick per animal — and because the HEADING IS STATE the swarm\n     carries the consequence for seconds afterwards. It is E24's seeded plate said in the\n     other half of the loop: the impulse is instant and the consequence is not. It is an\n     ANGLE and not a rate, and deliberately NOT multiplied by ctx.delta: a trigger has no\n     duration, so scaling it by time would be scaling an event by how long it did not last\n     (§V509). */\n  let burst = (pointRand(ctx.index, 9u) - 0.5) * ctx.value3;\n\n  let ang = atan2(dir.y, dir.x) + steer * ctx.delta + burst;\n  let walk = vec2f(cos(ang), sin(ang));\n  var nextPos = pos + walk * ctx.value1 * ctx.delta * PX;\n  /* A fence, not a mechanism — the spring above is what actually holds the herd. Anything\n     that reaches this has been pushed by a burst on the far side of the frame. */\n  nextPos = clamp(nextPos, vec2f(-1.02), vec2f(1.02));\n\n  q.velocity = vec3f(walk, 0.0);\n  q.position = vec3f(nextPos, 0.0);\n\n  /* WHAT THE ANIMAL KNOWS ABOUT ITSELF — three numbers the picture then slices on. */\n  /* THE GAIN IS MEASURED, not chosen: over the blurred field the reaction rate is 0 at the\n     median and 0.136 at the ninth decile, so x14 saturates on roughly the richest tenth of\n     the pasture and reads zero on the half of it that is bare. */\n  let meal = clamp(forage(nextPos) * 14.0, 0.0, 1.0);\n  /* A SHORT lag, 1/12 s — long enough to smooth the crossing of a single texel, short\n     enough to actually REACH what it is tracking. At 1/5 s it never did: an animal crosses\n     a front in about six frames, the lag only closes 8% of the gap per frame, and the value\n     equilibrated near the duty cycle instead of near the value — measured, it never passed\n     0.45 for any animal in the herd, so every threshold above it was dead. */\n  let fed = q.graze.x + (meal - q.graze.x) * clamp(ctx.delta * 12.0, 0.0, 1.0);\n  /* FAMINE RESETS ON A PROPER MOUTHFUL, NOT ON A BRUSH PAST ONE, and that\n     one number is the difference between a live mechanism and a decorative attribute.\n     Reset at 0.20 and every animal brushes enough structure to keep its clock at zero: the\n     scout caste renders ONE sprite in the whole frame and the hunger term in the steering\n     above multiplies by zero — an idea the file states and never delivers, which is the\n     exact failure §V471.8 records in Corona's hue drift. Measured at both settings. */\n  let famine = select(min(1.0, q.graze.y + ctx.delta / 1.6), 0.0, fed > 0.45);\n  let found = select(0.0, 1.0, q.graze.y > 0.20 && fed > 0.40);\n  /* .w is the grazer's own size in pixels: a per-point pscale (T286), so `graze1` is not\n     one sprite size for a whole layer but every animal drawn at how much it is eating. */\n  /* T671: the decay was 0.8 and is now 0.45. `found` is a hard threshold and the caste\n     that reads it (`find1`, group p.graze.z > 0.30) POPS when a point dithers across the\n     line — E34's lesson in the other example, that a binary verdict wants a slower state\n     under it rather than a filter over the picture. 2.2 s instead of 1.25 s keeps a point\n     on one side long enough to stop flickering, and the caste still empties. */\n  q.graze = vec4f(fed, famine, max(found, q.graze.z * exp(-ctx.delta * 0.45)), 0.7 + 1.4 * fed);\n  return q;\n}",
+          "kernel": "/* A clip unit is 640 px across x and 360 px across y on this 16:9 frame, so every\n   displacement is squashed in x to make walking ISOTROPIC ON SCREEN. One constant, and it\n   is the only thing in this kernel that knows the output's shape. */\nconst PX: vec2f = vec2f(0.5625, 1.0);\n/* T1399b — FOUR ROOSTS, not one. The owner's word for the single herd was \"the activity\n   centre looks awesome — maybe we need more of those\", and a centre IS a roost: the herd\n   gathers wherever its homing spring points. So every animal belongs to one of four, by\n   `ctx.index % ROOSTS` (identity, never slot — §V74's rule, so a herd keeps its members),\n   and each roost walks its own circle: centre (clip, y UP), radius (screen units, squashed\n   by PX like every other displacement here), and laps per `lfo_range` lap. The lap counts are\n   INTEGERS on purpose — `ctx.value4` is a saw on an angle, and only a whole multiple of it\n   wraps where the cosine cannot see the seam (a 1.3× lap would jump once per circuit). The\n   circuits sit in the four quarters of the frame and cross near the middle, so the herds\n   meet and part rather than share one clearing. There is still deliberately NO pasture\n   radius here: an animal knows which way its roost is, never where the dead ground starts. */\nconst HOME: vec2f = vec2f(-0.3, -0.3);\nconst RANGE: f32 = 0.46;\nconst ROOSTS: u32 = 4u;\nfn roost(k: u32, bearing: f32) -> vec2f {\n  var circuit = array<vec4f, 4>(\n    vec4f(HOME, RANGE, 1.0),\n    vec4f(0.52, 0.46, 0.40, -1.0),\n    vec4f(0.50, -0.50, 0.44, 2.0),\n    vec4f(-0.60, 0.52, 0.34, -1.0),\n  );\n  var phase = array<f32, 4>(0.0, 2.1, 4.2, 1.0);\n  let c = circuit[k];\n  let a = bearing * c.w + phase[k];\n  return c.xy + vec2f(cos(a), sin(a)) * c.z * PX;\n}\n\n/* WHAT AN ANIMAL SMELLS: the reaction RATE, not a concentration. U*V*V is Gray-Scott's own\n   reaction term, and it is largest exactly on a GROWING front — zero in empty plate (V=0)\n   and small inside a saturated blob (U already eaten). Steering on it puts the herd on the\n   living edge and nowhere else, which is why the swarm never piles onto a dead spot and\n   never has to be told not to. The field arrives BLURRED (`blur_smell`): fieldAt is a\n   textureLoad, NEAREST and unfiltered by construction (§V57), and a Gray-Scott V is\n   near-binary (§V427), so an unblurred difference of it is mostly quantisation. */\nfn forage(spot: vec2f) -> f32 {\n  let f = fieldAt(vec3f(spot, 0.0));\n  return f.r * f.g * f.g;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n\n  /* T510: firstRun is 1u on exactly the dispatches whose storage was just created or\n     cleared — the seeding signal, and the only honest one (frameIndex == 0 is a timeline\n     lap, not a fresh buffer). Scatter once, deterministically: pointRand is a hash of the\n     identity, not a stream, so the same seed lays the same herd on any device (§V45). */\n  if (ctx.firstRun == 1u) {\n    /* ON EACH ROOST, not across the frame. A uniform scatter walks a fifth of the herd\n       through the dead ground before the spring gathers it, and every one of them seeds a\n       spot out there that then persists for the rest of the run — measured: the first build\n       to get this far had the empty four fifths covered in stray colonies laid in the first\n       two seconds. sqrt() on the radius is what makes the disc UNIFORM rather than\n       centre-heavy; without it the middle is seeded four times as hard as the rim. */\n    let a = pointRand(ctx.index, 37u) * 6.2831853;\n    let r = sqrt(pointRand(ctx.index, 11u)) * 0.45;\n    let h = pointRand(ctx.index, 23u) * 6.2831853;\n    q.position = vec3f(roost(ctx.index % ROOSTS, ctx.value4) + vec2f(cos(a), sin(a)) * r * PX, 0.0);\n    q.velocity = vec3f(cos(h), sin(h), 0.0);\n    q.graze = vec4f(0.0, 0.0, 0.0, 0.0);\n    return q;\n  }\n\n  let pos = q.position.xy;\n  let dir = normalize(select(vec2f(1.0, 0.0), q.velocity.xy, dot(q.velocity.xy, q.velocity.xy) > 1e-8));\n  let nrm = vec2f(-dir.y, dir.x);\n\n  /* THREE SENSORS, not a finite difference — and this is the cheaper of the two ways to\n     get a direction out of a field. The alternative is to make the reaction shader encode\n     its own gradient into spare channels, and there are none spare (b is the chemistry\n     map, a is the kernel's initialised flag), so it would cost a second full-field pass:\n     230 400 texels. Three taps per animal costs 36 000 loads for the whole herd — a sixth\n     of that, with no extra node and no channel budget. Sensing scales with the HERD; a\n     field encoding scales with the FIELD, and the field is the bigger of the two.\n     ctx.value2 is the audio on the reach: the hats make the herd look further ahead. */\n  let reach = ctx.value2;\n  let sway = 0.62;\n  let leftDir = dir * cos(sway) + nrm * sin(sway);\n  let rightDir = dir * cos(sway) - nrm * sin(sway);\n  let ahead = forage(pos + dir * reach * PX);\n  let left = forage(pos + leftDir * reach * PX);\n  let right = forage(pos + rightDir * reach * PX);\n\n  /* A FIXED TURN TOWARD THE BETTER SIDE — Physarum's rule — and NOT a proportional\n     controller on (left - right)/total, which is what this kernel had for six builds and\n     which measured as doing nothing at all. The reason is worth keeping: a gain small\n     enough that a saturated sensor does not spin the animal is also too small to turn it\n     onto a feature ten pixels wide before it has walked past. ABLATION, at gain 3.6: the\n     reaction rate under the herd was 1.56x the pasture's average with steering on and\n     1.71x with the term deleted entirely. A term you can delete without the measurement\n     moving is not a mechanism, however good the sentence describing it is.\n     The 1e-4 guard is the other half: on bare ground all three sensors read zero, the\n     comparison is meaningless, and an animal that turns on noise never travels. */\n  var steer = 0.0;\n  if (max(left, right) > ahead + 1e-4) {\n    steer = select(-9.5, 9.5, left > right);\n  }\n\n  /* HUNGER RANDOMISES, and this is the line that makes `graze.y` a POLICY rather than a\n     colour. A fed animal walks its front; a starving one loses the plot and random-walks,\n     which is the only thing in the file that ever finds the NEXT colony. The picture reads\n     the same number as \"scouts\", so what you see streaming out of the cluster is literally\n     the search. The gain is 2.4 and not 7: at 7 a starved animal spins fast enough that it\n     cannot hold a heading long enough to follow a gradient at all, so hunger became a TRAP\n     — measured, the starving fraction saturated at famine 1.0 and never recovered, and the\n     \"found\" caste below rendered nothing, ever. Exploration has to stay navigable. */\n  steer = steer + (pointRand(ctx.index, 5u) - 0.5) * (0.45 + 2.4 * q.graze.y);\n\n  /* E16's spring — but keyed to HUNGER rather than to distance, and that one change is\n     what stops the picture being a circle. A distance spring draws a disc: every animal is\n     equally pulled wherever it is, so the flock fills a round region whatever the field is\n     doing underneath it, and the pasture's shape stops mattering. Gated on famine instead,\n     a WELL-FED animal is not homing at all — it stays where the food is — and only an\n     animal that has gone hungry turns back toward the middle. The flock's outline is\n     therefore drawn by the FOOD, it migrates as it eats a region down, and E16's sentence\n     still holds: the murmuration never abandons the sphere. The second term is the fence:\n     past 0.45 screen units from its roost an animal starts turning back, and by 0.8 it turns\n     at full rate. T1399b pulled it in from 0.8…1.2 — with four roosts a loose fence lets the\n     herds drift into one another's clearings and merge back into a single centre. */\n  /* WHERE HOME IS THIS MINUTE. A fixed spring has a FIXED POINT, and a flock sitting on\n     its own fixed point eats one spot to the ground and stays there forever — measured, a\n     blown-out core in the same place at frames 300, 900 and 1500 with the rest of the\n     pasture untouched. §V532 is the same sentence about an expanding loop; this is the herd\n     saying it. So the roost walks a slow circle: ctx.value4 is an 83-second SAW on an\n     ANGLE, which is the one wave whose wrap is continuous once you take its cosine, and the\n     flock makes a circuit of its range, grazing it down behind and finding it regrown by\n     the time it comes round again. It is the piece's longest cycle and it is in the\n     ANIMALS, not in the grade. Since T1399b there are four such circles (`roost` above). */\n  let home = roost(ctx.index % ROOSTS, ctx.value4);\n  let toHome = (home - pos) / PX;\n  let away = length(toHome);\n  let sinHome = (dir.x * toHome.y - dir.y * toHome.x) / max(away, 1e-5);\n  steer = steer + sinHome * (5.5 * q.graze.y + 9.0 * smoothstep(0.45, 0.8, away));\n\n  /* §V481(b) ON THE HERD, which is the half of that invariant nobody had a place to put.\n     An envelope on the turn rate is a DC term: it bends every animal the same way for as\n     long as it is up, which is a drift, not an event. A beat arrives as an ANGLE instead —\n     one frame, a different kick per animal — and because the HEADING IS STATE the swarm\n     carries the consequence for seconds afterwards. It is E24's seeded plate said in the\n     other half of the loop: the impulse is instant and the consequence is not. It is an\n     ANGLE and not a rate, and deliberately NOT multiplied by ctx.delta: a trigger has no\n     duration, so scaling it by time would be scaling an event by how long it did not last\n     (§V509). */\n  let burst = (pointRand(ctx.index, 9u) - 0.5) * ctx.value3;\n\n  let ang = atan2(dir.y, dir.x) + steer * ctx.delta + burst;\n  let walk = vec2f(cos(ang), sin(ang));\n  var nextPos = pos + walk * ctx.value1 * ctx.delta * PX;\n  /* A fence, not a mechanism — the spring above is what actually holds the herd. Anything\n     that reaches this has been pushed by a burst on the far side of the frame. */\n  nextPos = clamp(nextPos, vec2f(-1.02), vec2f(1.02));\n\n  q.velocity = vec3f(walk, 0.0);\n  q.position = vec3f(nextPos, 0.0);\n\n  /* WHAT THE ANIMAL KNOWS ABOUT ITSELF — three numbers the picture then slices on. */\n  /* THE GAIN IS MEASURED, not chosen: over the blurred field the reaction rate is 0 at the\n     median and 0.136 at the ninth decile, so x14 saturates on roughly the richest tenth of\n     the pasture and reads zero on the half of it that is bare. */\n  let meal = clamp(forage(nextPos) * 14.0, 0.0, 1.0);\n  /* A SHORT lag, 1/12 s — long enough to smooth the crossing of a single texel, short\n     enough to actually REACH what it is tracking. At 1/5 s it never did: an animal crosses\n     a front in about six frames, the lag only closes 8% of the gap per frame, and the value\n     equilibrated near the duty cycle instead of near the value — measured, it never passed\n     0.45 for any animal in the herd, so every threshold above it was dead. */\n  let fed = q.graze.x + (meal - q.graze.x) * clamp(ctx.delta * 12.0, 0.0, 1.0);\n  /* FAMINE RESETS ON A PROPER MOUTHFUL, NOT ON A BRUSH PAST ONE, and that\n     one number is the difference between a live mechanism and a decorative attribute.\n     Reset at 0.20 and every animal brushes enough structure to keep its clock at zero: the\n     scout caste renders ONE sprite in the whole frame and the hunger term in the steering\n     above multiplies by zero — an idea the file states and never delivers, which is the\n     exact failure §V471.8 records in Corona's hue drift. Measured at both settings. */\n  let famine = select(min(1.0, q.graze.y + ctx.delta / 1.6), 0.0, fed > 0.45);\n  let found = select(0.0, 1.0, q.graze.y > 0.20 && fed > 0.40);\n  /* .w is the grazer's own size in pixels: a per-point pscale (T286), so `points_graze` is not\n     one sprite size for a whole layer but every animal drawn at how much it is eating. */\n  /* T671: the decay was 0.8 and is now 0.45. `found` is a hard threshold and the caste\n     that reads it (`points_find`, group p.graze.z > 0.30) POPS when a point dithers across the\n     line — E34's lesson in the other example, that a binary verdict wants a slower state\n     under it rather than a filter over the picture. 2.2 s instead of 1.25 s keeps a point\n     on one side long enough to stop flickering, and the caste still empties. */\n  q.graze = vec4f(fed, famine, max(found, q.graze.z * exp(-ctx.delta * 0.45)), 0.7 + 1.4 * fed);\n  return q;\n}",
           "seed": 21,
           "value1": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('pace1').chan.low"
+                "source": "op('math_pace').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -1619,7 +1619,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reach1').chan.high"
+                "source": "op('math_reach').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -1632,7 +1632,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('burst1').chan.onsetCount"
+                "source": "op('math_burst').chan.onsetCount"
               },
               "static": {
                 "kind": "static",
@@ -1645,7 +1645,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('range1').chan.value"
+                "source": "op('lfo_range').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1664,7 +1664,7 @@
       "hit": {
         "definitionVersion": 1,
         "id": "hit",
-        "label": "hit1",
+        "label": "beat_hit",
         "parameters": {
           "decay": "exponential",
           "retrigger": 0.2,
@@ -1680,7 +1680,7 @@
       "hitSel": {
         "definitionVersion": 1,
         "id": "hitSel",
-        "label": "hitsel1",
+        "label": "select_hit",
         "parameters": {
           "channels": "onsetCount"
         },
@@ -1693,13 +1693,13 @@
       "hue": {
         "definitionVersion": 1,
         "id": "hue",
-        "label": "hue1",
+        "label": "hsv_hue",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drift1').chan.value"
+                "source": "op('lfo_drift').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1720,7 +1720,7 @@
       "liftFind": {
         "definitionVersion": 1,
         "id": "liftFind",
-        "label": "liftfind1",
+        "label": "screen_liftfind",
         "parameters": {
           "opacity": 1
         },
@@ -1733,7 +1733,7 @@
       "liftGraze": {
         "definitionVersion": 1,
         "id": "liftGraze",
-        "label": "liftgraze1",
+        "label": "screen_liftgraze",
         "parameters": {
           "opacity": 1
         },
@@ -1746,7 +1746,7 @@
       "liftScout": {
         "definitionVersion": 1,
         "id": "liftScout",
-        "label": "liftscout1",
+        "label": "screen_liftscout",
         "parameters": {
           "opacity": 1
         },
@@ -1759,7 +1759,7 @@
       "look": {
         "definitionVersion": 1,
         "id": "look",
-        "label": "look1",
+        "label": "add_look",
         "parameters": {
           "opacity": 1
         },
@@ -1777,7 +1777,7 @@
       "loop": {
         "definitionVersion": 1,
         "id": "loop",
-        "label": "loop1",
+        "label": "feedback_loop",
         "parameters": {
           "clearColor": [
             0,
@@ -1789,7 +1789,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('trail1').chan.level"
+                "source": "op('math_trail').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -1799,7 +1799,7 @@
             "mode": "expression"
           },
           "reset": false,
-          "source": "hue1",
+          "source": "hsv_hue",
           "substeps": 1
         },
         "position": {
@@ -1811,7 +1811,7 @@
       "mixTrail": {
         "definitionVersion": 1,
         "id": "mixTrail",
-        "label": "mixtrail1",
+        "label": "screen_mixtrail",
         "parameters": {
           "opacity": 1
         },
@@ -1824,7 +1824,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 4420,
@@ -1835,7 +1835,7 @@
       "pace": {
         "definitionVersion": 1,
         "id": "pace",
-        "label": "pace1",
+        "label": "math_pace",
         "parameters": {
           "operand": 0.2208,
           "operation": "add"
@@ -1849,7 +1849,7 @@
       "paceG": {
         "definitionVersion": 1,
         "id": "paceG",
-        "label": "paceg1",
+        "label": "math_paceg",
         "parameters": {
           "operand": 1.1372,
           "operation": "multiply"
@@ -1863,7 +1863,7 @@
       "pack": {
         "definitionVersion": 1,
         "id": "pack",
-        "label": "pack1",
+        "label": "reorder_pack",
         "parameters": {
           "outa": "one",
           "outb": "in2lum",
@@ -1884,7 +1884,7 @@
       "palette": {
         "definitionVersion": 2,
         "id": "palette",
-        "label": "palette1",
+        "label": "ramp_palette",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -1965,7 +1965,7 @@
       "range": {
         "definitionVersion": 1,
         "id": "range",
-        "label": "range1",
+        "label": "lfo_range",
         "parameters": {
           "amplitude": 3.14159,
           "frequency": 0.012,
@@ -1982,7 +1982,7 @@
       "rd": {
         "definitionVersion": 1,
         "id": "rd",
-        "label": "rd1",
+        "label": "wgsl_reaction1",
         "parameters": {
           "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nconst FEED_LOW: f32 = 0.037;\nconst KILL_LOW: f32 = 0.0600;\nconst FEED_HIGH: f32 = 0.026;\nconst KILL_HIGH: f32 = 0.0640;\n\nconst DIFFUSE_U: f32 = 0.2097;\nconst DIFFUSE_V: f32 = 0.105;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let texel = 1.0 / vec2f(textureDimensions(inputTexture));\n\n  let centre = textureSample(inputTexture, inputSampler, uv);\n  let west = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, 0.0)).rg;\n  let east = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, 0.0)).rg;\n  let south = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, -texel.y)).rg;\n  let north = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, texel.y)).rg;\n  let sw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, -texel.y)).rg;\n  let se = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, -texel.y)).rg;\n  let nw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, texel.y)).rg;\n  let ne = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, texel.y)).rg;\n\n  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above. It is\n  // passed THROUGH (the return below), so every one of the eight steps reads it (T1399b).\n  let chemistry = clamp(centre.b, 0.0, 1.0);\n  let feed = mix(FEED_LOW, FEED_HIGH, chemistry);\n  let kill = mix(KILL_LOW, KILL_HIGH, chemistry);\n\n  let state = centre.rg;\n  let laplacian =\n    ((west + east + south + north) * 0.2) + ((sw + se + nw + ne) * 0.05) - state;\n\n  let reaction = state.x * state.y * state.y;\n  let stepped = clamp(\n    vec2f(\n      state.x + ((DIFFUSE_U * laplacian.x) - reaction + (feed * (1.0 - state.x))),\n      state.y + ((DIFFUSE_V * laplacian.y) + reaction - ((kill + feed) * state.y)),\n    ),\n    vec2f(0.0),\n    vec2f(1.0),\n  );\n\n  // alpha < 0.5 == the pair was cleared: a BARE pasture, not a seeded plate.\n  let next = select(vec2f(1.0, 0.0), stepped, centre.a >= 0.5);\n  return vec4f(next, chemistry, 1.0);\n}"
         },
@@ -1995,7 +1995,7 @@
       "rd2": {
         "definitionVersion": 1,
         "id": "rd2",
-        "label": "rd2",
+        "label": "wgsl_reaction2",
         "parameters": {
           "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nconst FEED_LOW: f32 = 0.037;\nconst KILL_LOW: f32 = 0.0600;\nconst FEED_HIGH: f32 = 0.026;\nconst KILL_HIGH: f32 = 0.0640;\n\nconst DIFFUSE_U: f32 = 0.2097;\nconst DIFFUSE_V: f32 = 0.105;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let texel = 1.0 / vec2f(textureDimensions(inputTexture));\n\n  let centre = textureSample(inputTexture, inputSampler, uv);\n  let west = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, 0.0)).rg;\n  let east = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, 0.0)).rg;\n  let south = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, -texel.y)).rg;\n  let north = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, texel.y)).rg;\n  let sw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, -texel.y)).rg;\n  let se = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, -texel.y)).rg;\n  let nw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, texel.y)).rg;\n  let ne = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, texel.y)).rg;\n\n  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above. It is\n  // passed THROUGH (the return below), so every one of the eight steps reads it (T1399b).\n  let chemistry = clamp(centre.b, 0.0, 1.0);\n  let feed = mix(FEED_LOW, FEED_HIGH, chemistry);\n  let kill = mix(KILL_LOW, KILL_HIGH, chemistry);\n\n  let state = centre.rg;\n  let laplacian =\n    ((west + east + south + north) * 0.2) + ((sw + se + nw + ne) * 0.05) - state;\n\n  let reaction = state.x * state.y * state.y;\n  let stepped = clamp(\n    vec2f(\n      state.x + ((DIFFUSE_U * laplacian.x) - reaction + (feed * (1.0 - state.x))),\n      state.y + ((DIFFUSE_V * laplacian.y) + reaction - ((kill + feed) * state.y)),\n    ),\n    vec2f(0.0),\n    vec2f(1.0),\n  );\n\n  // alpha < 0.5 == the pair was cleared: a BARE pasture, not a seeded plate.\n  let next = select(vec2f(1.0, 0.0), stepped, centre.a >= 0.5);\n  return vec4f(next, chemistry, 1.0);\n}"
         },
@@ -2008,7 +2008,7 @@
       "rd3": {
         "definitionVersion": 1,
         "id": "rd3",
-        "label": "rd3",
+        "label": "wgsl_reaction3",
         "parameters": {
           "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nconst FEED_LOW: f32 = 0.037;\nconst KILL_LOW: f32 = 0.0600;\nconst FEED_HIGH: f32 = 0.026;\nconst KILL_HIGH: f32 = 0.0640;\n\nconst DIFFUSE_U: f32 = 0.2097;\nconst DIFFUSE_V: f32 = 0.105;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let texel = 1.0 / vec2f(textureDimensions(inputTexture));\n\n  let centre = textureSample(inputTexture, inputSampler, uv);\n  let west = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, 0.0)).rg;\n  let east = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, 0.0)).rg;\n  let south = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, -texel.y)).rg;\n  let north = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, texel.y)).rg;\n  let sw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, -texel.y)).rg;\n  let se = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, -texel.y)).rg;\n  let nw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, texel.y)).rg;\n  let ne = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, texel.y)).rg;\n\n  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above. It is\n  // passed THROUGH (the return below), so every one of the eight steps reads it (T1399b).\n  let chemistry = clamp(centre.b, 0.0, 1.0);\n  let feed = mix(FEED_LOW, FEED_HIGH, chemistry);\n  let kill = mix(KILL_LOW, KILL_HIGH, chemistry);\n\n  let state = centre.rg;\n  let laplacian =\n    ((west + east + south + north) * 0.2) + ((sw + se + nw + ne) * 0.05) - state;\n\n  let reaction = state.x * state.y * state.y;\n  let stepped = clamp(\n    vec2f(\n      state.x + ((DIFFUSE_U * laplacian.x) - reaction + (feed * (1.0 - state.x))),\n      state.y + ((DIFFUSE_V * laplacian.y) + reaction - ((kill + feed) * state.y)),\n    ),\n    vec2f(0.0),\n    vec2f(1.0),\n  );\n\n  // alpha < 0.5 == the pair was cleared: a BARE pasture, not a seeded plate.\n  let next = select(vec2f(1.0, 0.0), stepped, centre.a >= 0.5);\n  return vec4f(next, chemistry, 1.0);\n}"
         },
@@ -2021,7 +2021,7 @@
       "rd4": {
         "definitionVersion": 1,
         "id": "rd4",
-        "label": "rd4",
+        "label": "wgsl_reaction4",
         "parameters": {
           "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nconst FEED_LOW: f32 = 0.037;\nconst KILL_LOW: f32 = 0.0600;\nconst FEED_HIGH: f32 = 0.026;\nconst KILL_HIGH: f32 = 0.0640;\n\nconst DIFFUSE_U: f32 = 0.2097;\nconst DIFFUSE_V: f32 = 0.105;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let texel = 1.0 / vec2f(textureDimensions(inputTexture));\n\n  let centre = textureSample(inputTexture, inputSampler, uv);\n  let west = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, 0.0)).rg;\n  let east = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, 0.0)).rg;\n  let south = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, -texel.y)).rg;\n  let north = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, texel.y)).rg;\n  let sw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, -texel.y)).rg;\n  let se = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, -texel.y)).rg;\n  let nw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, texel.y)).rg;\n  let ne = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, texel.y)).rg;\n\n  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above. It is\n  // passed THROUGH (the return below), so every one of the eight steps reads it (T1399b).\n  let chemistry = clamp(centre.b, 0.0, 1.0);\n  let feed = mix(FEED_LOW, FEED_HIGH, chemistry);\n  let kill = mix(KILL_LOW, KILL_HIGH, chemistry);\n\n  let state = centre.rg;\n  let laplacian =\n    ((west + east + south + north) * 0.2) + ((sw + se + nw + ne) * 0.05) - state;\n\n  let reaction = state.x * state.y * state.y;\n  let stepped = clamp(\n    vec2f(\n      state.x + ((DIFFUSE_U * laplacian.x) - reaction + (feed * (1.0 - state.x))),\n      state.y + ((DIFFUSE_V * laplacian.y) + reaction - ((kill + feed) * state.y)),\n    ),\n    vec2f(0.0),\n    vec2f(1.0),\n  );\n\n  // alpha < 0.5 == the pair was cleared: a BARE pasture, not a seeded plate.\n  let next = select(vec2f(1.0, 0.0), stepped, centre.a >= 0.5);\n  return vec4f(next, chemistry, 1.0);\n}"
         },
@@ -2034,7 +2034,7 @@
       "rd5": {
         "definitionVersion": 1,
         "id": "rd5",
-        "label": "rd5",
+        "label": "wgsl_reaction5",
         "parameters": {
           "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nconst FEED_LOW: f32 = 0.037;\nconst KILL_LOW: f32 = 0.0600;\nconst FEED_HIGH: f32 = 0.026;\nconst KILL_HIGH: f32 = 0.0640;\n\nconst DIFFUSE_U: f32 = 0.2097;\nconst DIFFUSE_V: f32 = 0.105;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let texel = 1.0 / vec2f(textureDimensions(inputTexture));\n\n  let centre = textureSample(inputTexture, inputSampler, uv);\n  let west = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, 0.0)).rg;\n  let east = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, 0.0)).rg;\n  let south = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, -texel.y)).rg;\n  let north = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, texel.y)).rg;\n  let sw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, -texel.y)).rg;\n  let se = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, -texel.y)).rg;\n  let nw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, texel.y)).rg;\n  let ne = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, texel.y)).rg;\n\n  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above. It is\n  // passed THROUGH (the return below), so every one of the eight steps reads it (T1399b).\n  let chemistry = clamp(centre.b, 0.0, 1.0);\n  let feed = mix(FEED_LOW, FEED_HIGH, chemistry);\n  let kill = mix(KILL_LOW, KILL_HIGH, chemistry);\n\n  let state = centre.rg;\n  let laplacian =\n    ((west + east + south + north) * 0.2) + ((sw + se + nw + ne) * 0.05) - state;\n\n  let reaction = state.x * state.y * state.y;\n  let stepped = clamp(\n    vec2f(\n      state.x + ((DIFFUSE_U * laplacian.x) - reaction + (feed * (1.0 - state.x))),\n      state.y + ((DIFFUSE_V * laplacian.y) + reaction - ((kill + feed) * state.y)),\n    ),\n    vec2f(0.0),\n    vec2f(1.0),\n  );\n\n  // alpha < 0.5 == the pair was cleared: a BARE pasture, not a seeded plate.\n  let next = select(vec2f(1.0, 0.0), stepped, centre.a >= 0.5);\n  return vec4f(next, chemistry, 1.0);\n}"
         },
@@ -2047,7 +2047,7 @@
       "rd6": {
         "definitionVersion": 1,
         "id": "rd6",
-        "label": "rd6",
+        "label": "wgsl_reaction6",
         "parameters": {
           "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nconst FEED_LOW: f32 = 0.037;\nconst KILL_LOW: f32 = 0.0600;\nconst FEED_HIGH: f32 = 0.026;\nconst KILL_HIGH: f32 = 0.0640;\n\nconst DIFFUSE_U: f32 = 0.2097;\nconst DIFFUSE_V: f32 = 0.105;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let texel = 1.0 / vec2f(textureDimensions(inputTexture));\n\n  let centre = textureSample(inputTexture, inputSampler, uv);\n  let west = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, 0.0)).rg;\n  let east = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, 0.0)).rg;\n  let south = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, -texel.y)).rg;\n  let north = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, texel.y)).rg;\n  let sw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, -texel.y)).rg;\n  let se = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, -texel.y)).rg;\n  let nw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, texel.y)).rg;\n  let ne = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, texel.y)).rg;\n\n  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above. It is\n  // passed THROUGH (the return below), so every one of the eight steps reads it (T1399b).\n  let chemistry = clamp(centre.b, 0.0, 1.0);\n  let feed = mix(FEED_LOW, FEED_HIGH, chemistry);\n  let kill = mix(KILL_LOW, KILL_HIGH, chemistry);\n\n  let state = centre.rg;\n  let laplacian =\n    ((west + east + south + north) * 0.2) + ((sw + se + nw + ne) * 0.05) - state;\n\n  let reaction = state.x * state.y * state.y;\n  let stepped = clamp(\n    vec2f(\n      state.x + ((DIFFUSE_U * laplacian.x) - reaction + (feed * (1.0 - state.x))),\n      state.y + ((DIFFUSE_V * laplacian.y) + reaction - ((kill + feed) * state.y)),\n    ),\n    vec2f(0.0),\n    vec2f(1.0),\n  );\n\n  // alpha < 0.5 == the pair was cleared: a BARE pasture, not a seeded plate.\n  let next = select(vec2f(1.0, 0.0), stepped, centre.a >= 0.5);\n  return vec4f(next, chemistry, 1.0);\n}"
         },
@@ -2060,7 +2060,7 @@
       "rd7": {
         "definitionVersion": 1,
         "id": "rd7",
-        "label": "rd7",
+        "label": "wgsl_reaction7",
         "parameters": {
           "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nconst FEED_LOW: f32 = 0.037;\nconst KILL_LOW: f32 = 0.0600;\nconst FEED_HIGH: f32 = 0.026;\nconst KILL_HIGH: f32 = 0.0640;\n\nconst DIFFUSE_U: f32 = 0.2097;\nconst DIFFUSE_V: f32 = 0.105;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let texel = 1.0 / vec2f(textureDimensions(inputTexture));\n\n  let centre = textureSample(inputTexture, inputSampler, uv);\n  let west = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, 0.0)).rg;\n  let east = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, 0.0)).rg;\n  let south = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, -texel.y)).rg;\n  let north = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, texel.y)).rg;\n  let sw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, -texel.y)).rg;\n  let se = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, -texel.y)).rg;\n  let nw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, texel.y)).rg;\n  let ne = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, texel.y)).rg;\n\n  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above. It is\n  // passed THROUGH (the return below), so every one of the eight steps reads it (T1399b).\n  let chemistry = clamp(centre.b, 0.0, 1.0);\n  let feed = mix(FEED_LOW, FEED_HIGH, chemistry);\n  let kill = mix(KILL_LOW, KILL_HIGH, chemistry);\n\n  let state = centre.rg;\n  let laplacian =\n    ((west + east + south + north) * 0.2) + ((sw + se + nw + ne) * 0.05) - state;\n\n  let reaction = state.x * state.y * state.y;\n  let stepped = clamp(\n    vec2f(\n      state.x + ((DIFFUSE_U * laplacian.x) - reaction + (feed * (1.0 - state.x))),\n      state.y + ((DIFFUSE_V * laplacian.y) + reaction - ((kill + feed) * state.y)),\n    ),\n    vec2f(0.0),\n    vec2f(1.0),\n  );\n\n  // alpha < 0.5 == the pair was cleared: a BARE pasture, not a seeded plate.\n  let next = select(vec2f(1.0, 0.0), stepped, centre.a >= 0.5);\n  return vec4f(next, chemistry, 1.0);\n}"
         },
@@ -2073,7 +2073,7 @@
       "rd8": {
         "definitionVersion": 1,
         "id": "rd8",
-        "label": "rd8",
+        "label": "wgsl_reaction8",
         "parameters": {
           "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nconst FEED_LOW: f32 = 0.037;\nconst KILL_LOW: f32 = 0.0600;\nconst FEED_HIGH: f32 = 0.026;\nconst KILL_HIGH: f32 = 0.0640;\n\nconst DIFFUSE_U: f32 = 0.2097;\nconst DIFFUSE_V: f32 = 0.105;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let texel = 1.0 / vec2f(textureDimensions(inputTexture));\n\n  let centre = textureSample(inputTexture, inputSampler, uv);\n  let west = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, 0.0)).rg;\n  let east = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, 0.0)).rg;\n  let south = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, -texel.y)).rg;\n  let north = textureSample(inputTexture, inputSampler, uv + vec2f(0.0, texel.y)).rg;\n  let sw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, -texel.y)).rg;\n  let se = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, -texel.y)).rg;\n  let nw = textureSample(inputTexture, inputSampler, uv + vec2f(-texel.x, texel.y)).rg;\n  let ne = textureSample(inputTexture, inputSampler, uv + vec2f(texel.x, texel.y)).rg;\n\n  // b is a 0..1 coordinate the GRAPH paints per pixel; the band it walks is above. It is\n  // passed THROUGH (the return below), so every one of the eight steps reads it (T1399b).\n  let chemistry = clamp(centre.b, 0.0, 1.0);\n  let feed = mix(FEED_LOW, FEED_HIGH, chemistry);\n  let kill = mix(KILL_LOW, KILL_HIGH, chemistry);\n\n  let state = centre.rg;\n  let laplacian =\n    ((west + east + south + north) * 0.2) + ((sw + se + nw + ne) * 0.05) - state;\n\n  let reaction = state.x * state.y * state.y;\n  let stepped = clamp(\n    vec2f(\n      state.x + ((DIFFUSE_U * laplacian.x) - reaction + (feed * (1.0 - state.x))),\n      state.y + ((DIFFUSE_V * laplacian.y) + reaction - ((kill + feed) * state.y)),\n    ),\n    vec2f(0.0),\n    vec2f(1.0),\n  );\n\n  // alpha < 0.5 == the pair was cleared: a BARE pasture, not a seeded plate.\n  let next = select(vec2f(1.0, 0.0), stepped, centre.a >= 0.5);\n  return vec4f(next, chemistry, 1.0);\n}"
         },
@@ -2086,7 +2086,7 @@
       "reach": {
         "definitionVersion": 1,
         "id": "reach",
-        "label": "reach1",
+        "label": "math_reach",
         "parameters": {
           "operand": 0.0648,
           "operation": "add"
@@ -2100,7 +2100,7 @@
       "reachG": {
         "definitionVersion": 1,
         "id": "reachG",
-        "label": "reachg1",
+        "label": "math_reachg",
         "parameters": {
           "operand": 0.0931,
           "operation": "multiply"
@@ -2114,7 +2114,7 @@
       "scout": {
         "definitionVersion": 1,
         "id": "scout",
-        "label": "scout1",
+        "label": "points_scout",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -2142,7 +2142,7 @@
       "shape": {
         "definitionVersion": 1,
         "id": "shape",
-        "label": "shape1",
+        "label": "level_shape",
         "parameters": {
           "blacklevel": 0.42,
           "brightness": 1,
@@ -2154,7 +2154,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('warm1').chan.lowMid"
+                "source": "op('math_warm').chan.lowMid"
               },
               "static": {
                 "kind": "static",
@@ -2173,7 +2173,7 @@
       "smell": {
         "definitionVersion": 1,
         "id": "smell",
-        "label": "smell1",
+        "label": "blur_smell",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -2193,7 +2193,7 @@
       "source": {
         "definitionVersion": 1,
         "id": "source",
-        "label": "source1",
+        "label": "switch_source",
         "parameters": {
           "index": 0
         },
@@ -2206,7 +2206,7 @@
       "sow": {
         "definitionVersion": 1,
         "id": "sow",
-        "label": "sow1",
+        "label": "points_sow",
         "parameters": {
           "accumulate": false,
           "blend": "alpha",
@@ -2234,13 +2234,13 @@
       "sowIn": {
         "definitionVersion": 1,
         "id": "sowIn",
-        "label": "sowin1",
+        "label": "screen_sowin",
         "parameters": {
           "opacity": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drop1').chan.level + 0.35 * op('hit1').chan.onsetCount"
+                "source": "op('math_drop').chan.level + 0.35 * op('beat_hit').chan.onsetCount"
               },
               "static": {
                 "kind": "static",
@@ -2264,7 +2264,7 @@
       "spark": {
         "definitionVersion": 1,
         "id": "spark",
-        "label": "spark1",
+        "label": "math_spark",
         "parameters": {
           "operand": 1.32,
           "operation": "add"
@@ -2278,7 +2278,7 @@
       "sparkG": {
         "definitionVersion": 1,
         "id": "sparkG",
-        "label": "sparkg1",
+        "label": "math_sparkg",
         "parameters": {
           "operand": 2.3275,
           "operation": "multiply"
@@ -2292,7 +2292,7 @@
       "spin": {
         "definitionVersion": 1,
         "id": "spin",
-        "label": "spin1",
+        "label": "transform_spin",
         "parameters": {
           "aspectcorrect": true,
           "extend": "hold",
@@ -2304,7 +2304,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sway1').chan.value"
+                "source": "op('lfo_sway').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -2336,7 +2336,7 @@
           "mode": "fixed"
         },
         "id": "state",
-        "label": "state1",
+        "label": "feedback_state",
         "parameters": {
           "clearColor": [
             0,
@@ -2346,7 +2346,7 @@
           ],
           "persistence": 1,
           "reset": false,
-          "source": "pack1",
+          "source": "reorder_pack",
           "substeps": 1
         },
         "position": {
@@ -2363,7 +2363,7 @@
       "sway": {
         "definitionVersion": 1,
         "id": "sway",
-        "label": "sway1",
+        "label": "lfo_sway",
         "parameters": {
           "amplitude": 4.5,
           "frequency": 0.012,
@@ -2380,7 +2380,7 @@
       "sweepG": {
         "definitionVersion": 1,
         "id": "sweepG",
-        "label": "sweepg1",
+        "label": "math_sweepg",
         "parameters": {
           "operand": 0.3,
           "operation": "multiply"
@@ -2394,7 +2394,7 @@
       "swell": {
         "definitionVersion": 1,
         "id": "swell",
-        "label": "swell1",
+        "label": "noise_swell",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -2426,7 +2426,7 @@
       "terrain": {
         "definitionVersion": 1,
         "id": "terrain",
-        "label": "terrain1",
+        "label": "noise_terrain",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -2458,7 +2458,7 @@
       "tint": {
         "definitionVersion": 1,
         "id": "tint",
-        "label": "tint1",
+        "label": "lookup_tint",
         "parameters": {
           "channel": "green",
           "offset": 0,
@@ -2467,7 +2467,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('grade1').chan.highMid"
+                "source": "op('math_grade').chan.highMid"
               },
               "static": {
                 "kind": "static",
@@ -2486,7 +2486,7 @@
       "track": {
         "definitionVersion": 1,
         "id": "track",
-        "label": "track1",
+        "label": "audiofile_track",
         "parameters": {
           "monitor": true
         },
@@ -2499,7 +2499,7 @@
       "trail": {
         "definitionVersion": 1,
         "id": "trail",
-        "label": "trail1",
+        "label": "math_trail",
         "parameters": {
           "operand": 0.6249,
           "operation": "add"
@@ -2513,7 +2513,7 @@
       "trailG": {
         "definitionVersion": 1,
         "id": "trailG",
-        "label": "trailg1",
+        "label": "math_trailg",
         "parameters": {
           "operand": 0.22,
           "operation": "multiply"
@@ -2527,7 +2527,7 @@
       "trig": {
         "definitionVersion": 1,
         "id": "trig",
-        "label": "trig1",
+        "label": "trigger1",
         "parameters": {
           "threshold": 0.5
         },
@@ -2540,7 +2540,7 @@
       "warm": {
         "definitionVersion": 1,
         "id": "warm",
-        "label": "warm1",
+        "label": "math_warm",
         "parameters": {
           "operand": 0.6,
           "operation": "add"
@@ -2554,7 +2554,7 @@
       "warmG": {
         "definitionVersion": 1,
         "id": "warmG",
-        "label": "warmg1",
+        "label": "math_warmg",
         "parameters": {
           "operand": 0.3,
           "operation": "multiply"
@@ -2568,7 +2568,7 @@
       "weather": {
         "definitionVersion": 1,
         "id": "weather",
-        "label": "weather1",
+        "label": "multiply_weather",
         "parameters": {
           "opacity": 1
         },

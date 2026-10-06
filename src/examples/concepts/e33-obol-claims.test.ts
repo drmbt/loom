@@ -133,10 +133,10 @@ describe("E33 Obol claims", () => {
         ((document.graph.nodes[id] as GraphNode).parameters[slot] as { bindings?: { expression?: { source?: string } } })
           ?.bindings?.expression?.source,
       );
-    expect(channel("segs", "value1")).toBe("tide1");
-    expect(channel("morph", "value1")).toBe("tide1");
-    expect(channel("segs", "value2")).toBe("sheen1");
-    expect(channel("morph", "value2")).toBe("sheen1");
+    expect(channel("segs", "value1")).toBe("lfo_tide");
+    expect(channel("morph", "value1")).toBe("lfo_tide");
+    expect(channel("segs", "value2")).toBe("lfo_sheen");
+    expect(channel("morph", "value2")).toBe("lfo_sheen");
     expect(kernel).toContain("return smoothstep(0.18, 0.82, v);");
     expect(body).toContain("return smoothstep(0.18, 0.82, v);");
   });
@@ -208,7 +208,7 @@ describe("E33 Obol claims", () => {
     expect(shards.parameters["mode"]).toBe("instances");
     // The material is the LIT one. `materialUnlit` here would keep the picture and
     // silently drop every shadow and every contact.
-    expect(shards.parameters["material"]).toBe("oil1");
+    expect(shards.parameters["material"]).toBe("material_oil");
     expect((document.graph.nodes["oil"] as GraphNode).type).toBe("materialPhong");
     // The depth sweep therefore takes them: one shadow draw per casting light per
     // geometry, and the tiles' is present.

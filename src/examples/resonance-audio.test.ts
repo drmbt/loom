@@ -11,12 +11,12 @@ describe("Resonance musical control lanes",()=>{
   it("separates drum impulses from slow spectral motion and preserves the source bar clock",async()=>{
     expect(resonanceDocument.graph.nodes["room"]!.parameters["panelClock"]).toBe(0);
     const registry=createNodeRegistry(allNodeDefinitions).view();
-    const graph=flattenComponents({graph:resonanceDocument.graph,registry,components:await starterComponentsView()}).graph;
+    const flattened=flattenComponents({graph:resonanceDocument.graph,registry,components:await starterComponentsView()});
     const session=createValueGraphSession(registry);
     const samples:Record<string,number>[]=[];
     for(let i=0;i<1200;i++) {
       const phase=i%180;
-      const result=session.evaluate(graph,{timeSeconds:i/60,deltaSeconds:1/60,frameIndex:i,mode:"offline",randomSeed:75},{audio:{...SILENCE,
+      const result=session.evaluate(flattened.graph,{timeSeconds:i/60,deltaSeconds:1/60,frameIndex:i,mode:"offline",randomSeed:75},{flattening:flattened,audio:{...SILENCE,
         level:0.3,low:i<600?0.2:0.8,lowMid:0.4,highMid:0.3,high:0.2,
         kickCount:phase===30?1:0,snareCount:phase===90?1:0,hatCount:phase===120?1:0,
       }});
@@ -25,7 +25,7 @@ describe("Resonance musical control lanes",()=>{
         if(typeof value!=="number") throw new Error(`Missing control ${address}`);
         return value;
       };
-      samples.push({low:read("body1:low"),kick:read("detail1:kickCount"),snare:read("detail1:snareCount"),hat:read("detail1:hatCount"),bar:read("clip1:bar"),phase:read("clip1:barPhase")});
+      samples.push({low:read("lag_body:low"),kick:read("lag_detail:kickCount"),snare:read("lag_detail:snareCount"),hat:read("lag_detail:hatCount"),bar:read("audiofile_clip:bar"),phase:read("audiofile_clip:barPhase")});
     }
     // Same loudness throughout: band changes must still move the slow geometry lane.
     const low=samples.map(s=>s["low"]!);

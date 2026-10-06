@@ -326,11 +326,11 @@ export function quadDocument(facts: OnNothingFacts, options: QuadOptions): Proje
   const rimLight: [number, number, number] = [rimAt[0], 2.0, rimAt[2]];
 
   const g = new ShotGraph();
-  g.node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL }, { label: "surf1" });
+  g.node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL }, { label: "material_surf" });
   // The jut lifts the whole figure a little (a bounce in the knees); the turn yaws it away.
   const figure = figureNodes(facts, {
     area: "fignocap",
-    material: "surf1",
+    material: "material_surf",
     yaw: `${yawFor(stage.facing).toFixed(5)} - 0.5 * (${TURN})`,
     place: [at[0], `${at[1]} + 0.03 * (${JUT})`, at[2]],
     pose: performance(),
@@ -353,29 +353,29 @@ export function quadDocument(facts: OnNothingFacts, options: QuadOptions): Proje
     roll: expressionSlot(handheld(t, -0.12, 4, 0.7), 0),
     near: 0.1,
     far: 60,
-  }, { label: "cam1" });
-  const cameraParams = cameraRefs("cam1", eye, aim, fov, 60);
+  }, { label: "camera1" });
+  const cameraParams = cameraRefs("camera1", eye, aim, fov, 60);
 
   // The backlight lights what faces it — the upturned palms, the tops of the shoulders.
-  g.node("back", "light", [-2600, 1000], { kind: "point", color: [...lightColor, 1], intensity: 6, position: light }, { label: "back1" });
+  g.node("back", "light", [-2600, 1000], { kind: "point", color: [...lightColor, 1], intensity: 6, position: light }, { label: "light_back" });
   // T1417b: the backlight's own view of the figure, for the haze's shadow — a zero-intensity
   // casting copy (it lights nothing) and a Render that exports its cube map as Light Depth.
   // 512-texel faces: a centimetre at the figure, 1.3 m off.
   const shadowRange = 8;
-  g.node("backShadow", "light", [-2600, 1100], { kind: "point", color: [...lightColor, 1], intensity: 0, position: light, shadows: true, shadowExtent: shadowRange, shadowSoftness: 0 }, { label: "backshadow1" });
+  g.node("backShadow", "light", [-2600, 1100], { kind: "point", color: [...lightColor, 1], intensity: 0, position: light, shadows: true, shadowExtent: shadowRange, shadowSoftness: 0 }, { label: "light_backshadow" });
   g.node("backView", "render", [-2400, 300], {
     scenes: figure.scene,
-    camera: "cam1",
-    lights: "backshadow1",
+    camera: "camera1",
+    lights: "light_backshadow",
     ambientIntensity: 0,
     background: [0, 0, 0, 0],
     environmentIntensity: 0,
     lightDepthOutput: true,
-  }, { label: "backview1", resolution: { mode: "fixed", width: 1536, height: 1024 } });
+  }, { label: "render_backview", resolution: { mode: "fixed", width: 1536, height: 1024 } });
   g.node("shot", "render", [-2400, 0], {
     scenes: figure.scene,
-    camera: "cam1",
-    lights: "back1",
+    camera: "camera1",
+    lights: "light_back",
     ambientColor: [1, 1, 1, 1],
     ambientIntensity: 0,
     // Alpha 0 behind the figure: the resolved alpha is the silhouette's coverage.
@@ -384,7 +384,7 @@ export function quadDocument(facts: OnNothingFacts, options: QuadOptions): Proje
     depthOutput: true,
     normalOutput: true,
     environmentIntensity: 0,
-  }, { label: "shot1" });
+  }, { label: "render_shot" });
 
   const depth = ["shot", "depth"] as const;
   g.pass("haze", QUAD_HAZE_WGSL, {
@@ -438,7 +438,7 @@ export function quadDocument(facts: OnNothingFacts, options: QuadOptions): Proje
   // Tile's seams layout with the outer tiles unfolded (T1413b): the seam at AXIS, strips STRIP
   // wide, the tile right of it unflipped, the two strips the frame edges cut running on.
   const window = 0.5 - 0.605 * STRIP - 9 / 1920;
-  g.node("mirror", "tile", [-300, 0], { layout: "seams", seam: [AXIS, 0], tilesize: [STRIP, 1], mirrorx: true, unfoldx: true, cropleft: window, cropright: window + STRIP }, { label: "mirror1" });
+  g.node("mirror", "tile", [-300, 0], { layout: "seams", seam: [AXIS, 0], tilesize: [STRIP, 1], mirrorx: true, unfoldx: true, cropleft: window, cropright: window + STRIP }, { label: "tile_mirror" });
   g.edge("optics-mirror", g.last, ["mirror", "input"]);
   g.last = ["mirror", "out"];
   g.pass("lens", LENS_WGSL, { distortion: 0.02, edgeBlur: 0.01, aberration: 0.001, vignette: 0.55, vignetteRound: 0.6 }, g.last, [], [-100, 0]);

@@ -93,6 +93,8 @@ const nameOf = (container: Element, id: string) =>
   container.querySelector(`[data-testid="node-name-${id}"]`);
 const inputOf = (container: Element, id: string) =>
   container.querySelector<HTMLInputElement>(`[data-testid="node-name-input-${id}"]`);
+const kindOf = (container: Element, id: string) =>
+  container.querySelector<HTMLButtonElement>(`[data-testid="node-name-kind-${id}"]`);
 const errorOf = (container: Element, id: string) =>
   container.querySelector(`[data-testid="node-name-error-${id}"]`);
 const typeOf = (container: Element, id: string) =>
@@ -104,47 +106,113 @@ async function type(input: HTMLInputElement, text: string) {
   });
 }
 
-async function press(element: Element, key: string) {
+async function press(element: Element, key: string, init: KeyboardEventInit = {}) {
   await act(async () => {
-    fireEvent.keyDown(element, { key });
+    fireEvent.keyDown(element, { key, ...init });
   });
 }
 
+/** Opens the title editor the way a person does, and hands back its input. */
+async function openEditor(container: Element, id: string): Promise<HTMLInputElement> {
+  await act(async () => {
+    fireEvent.doubleClick(nameOf(container, id) as Element);
+  });
+  return inputOf(container, id) as HTMLInputElement;
+}
+
+/** Renames WITHOUT the kind, the deliberate way: switch the prefix off, then type. */
+async function renameWithoutKind(container: Element, id: string, text: string) {
+  const input = await openEditor(container, id);
+  await act(async () => {
+    fireEvent.click(kindOf(container, id) as Element);
+  });
+  await type(input, text);
+  await press(input, "Enter");
+}
+
 describe("the node title is an editable field (T415, B60)", () => {
-  it("double-clicking the title opens an editor holding the current name", async () => {
+  /**
+   * T1593b — the field is the KIND, fixed, and then the role. `solid1` is an auto-name: it
+   * carries the kind and has no role yet, so the input opens empty rather than on a digit.
+   */
+  it("double-clicking the title opens the kind as fixed text and an input for the role", async () => {
     const { ids, container } = await mountWithNodes(["solid"]);
     const [id] = ids as [string];
 
     expect(inputOf(container, id)).toBeNull();
     const title = nameOf(container, id);
     expect(title).not.toBeNull();
-    await act(async () => {
-      fireEvent.doubleClick(title as Element);
-    });
+    const input = await openEditor(container, id);
 
-    const input = inputOf(container, id);
     expect(input).not.toBeNull();
-    expect(input?.value).toBe("solid1");
+    expect(kindOf(container, id)?.textContent).toBe("solid_");
+    expect(kindOf(container, id)?.getAttribute("aria-pressed")).toBe("true");
+    expect(input.value).toBe("");
   });
 
-  it("Enter commits the typed name to the DOCUMENT and closes the editor", async () => {
+  it("opens on the role alone when the name already has one", async () => {
+    const { runtime, ids, container } = await mountWithNodes(["solid"]);
+    const [id] = ids as [string];
+    await seed(runtime, [{ op: "setNodeLabel", nodeId: id, label: "solid_backdrop" }]);
+
+    const input = await openEditor(container, id);
+
+    expect(kindOf(container, id)?.textContent).toBe("solid_");
+    expect(input.value).toBe("backdrop");
+  });
+
+  it("Enter commits kind_role to the DOCUMENT and closes the editor", async () => {
     const { runtime, ids, container } = await mountWithNodes(["solid"]);
     const [id] = ids as [string];
 
-    await act(async () => {
-      fireEvent.doubleClick(nameOf(container, id) as Element);
-    });
-    const input = inputOf(container, id) as HTMLInputElement;
-    await type(input, "Bloom pass");
+    const input = await openEditor(container, id);
+    await type(input, "backdrop");
     await press(input, "Enter");
 
     await waitFor(() => {
-      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("Bloom pass");
+      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid_backdrop");
     });
     await waitFor(() => {
       expect(inputOf(container, id)).toBeNull();
     });
-    expect(nameOf(container, id)?.textContent).toBe("Bloom pass");
+    expect(nameOf(container, id)?.textContent).toBe("solid_backdrop");
+  });
+
+  /**
+   * A name holds letters, digits and underscores. The change is made WHILE typing, so the
+   * field shows the name that will be stored instead of a different one after Enter.
+   */
+  it("turns a space into an underscore as it is typed, and stores what it showed", async () => {
+    const { runtime, ids, container } = await mountWithNodes(["solid"]);
+    const [id] = ids as [string];
+
+    const input = await openEditor(container, id);
+    await type(input, "Bloom pass");
+    expect(input.value).toBe("Bloom_pass");
+    await press(input, "Enter");
+
+    await waitFor(() => {
+      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid_Bloom_pass");
+    });
+  });
+
+  it("takes a typed name that already carries the kind as it is, never prefixed twice", async () => {
+    const { runtime, ids, container } = await mountWithNodes(["solid", "solid"]);
+    const [first, second] = ids as [string, string];
+
+    const role = await openEditor(container, first);
+    await type(role, "solid_sky");
+    await press(role, "Enter");
+    await waitFor(() => {
+      expect(runtime.bus.store.getGraph().nodes[first]?.label).toBe("solid_sky");
+    });
+
+    const numbered = await openEditor(container, second);
+    await type(numbered, "solid7");
+    await press(numbered, "Enter");
+    await waitFor(() => {
+      expect(runtime.bus.store.getGraph().nodes[second]?.label).toBe("solid7");
+    });
   });
 
   it("Escape cancels and restores the name the node had", async () => {
@@ -152,10 +220,7 @@ describe("the node title is an editable field (T415, B60)", () => {
     const [id] = ids as [string];
     const before = runtime.bus.store.getRevision();
 
-    await act(async () => {
-      fireEvent.doubleClick(nameOf(container, id) as Element);
-    });
-    const input = inputOf(container, id) as HTMLInputElement;
+    const input = await openEditor(container, id);
     await type(input, "Discarded");
     await press(input, "Escape");
 
@@ -170,17 +235,164 @@ describe("the node title is an editable field (T415, B60)", () => {
     const { runtime, ids, container } = await mountWithNodes(["solid"]);
     const [id] = ids as [string];
 
-    await act(async () => {
-      fireEvent.doubleClick(nameOf(container, id) as Element);
-    });
-    const input = inputOf(container, id) as HTMLInputElement;
-    await type(input, "Backdrop");
+    const input = await openEditor(container, id);
+    await type(input, "backdrop");
     await act(async () => {
       fireEvent.blur(input);
     });
 
     await waitFor(() => {
-      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("Backdrop");
+      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid_backdrop");
+    });
+  });
+
+  it("with the kind kept and no role typed there is nothing to rename to", async () => {
+    const { runtime, ids, container } = await mountWithNodes(["solid"]);
+    const [id] = ids as [string];
+    const before = runtime.bus.store.getRevision();
+
+    const input = await openEditor(container, id);
+    await type(input, "   ");
+    await press(input, "Enter");
+
+    expect(inputOf(container, id)).toBeNull();
+    expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid1");
+    expect(runtime.bus.store.getRevision()).toBe(before);
+  });
+
+  /**
+   * A name saved before the convention does not carry its kind. The field shows the kind
+   * in front of it, so Enter is an answer ("yes, this") and gives it one. Opening the field
+   * and clicking away is not an edit, and must not rename a node or rewrite its references.
+   */
+  describe("a name that does not carry its kind yet", () => {
+    async function mountLegacy() {
+      const mounted = await mountWithNodes(["solid"]);
+      const [id] = mounted.ids as [string];
+      await seed(mounted.runtime, [{ op: "setNodeLabel", nodeId: id, label: "backdrop" }]);
+      return { ...mounted, id };
+    }
+
+    it("opens showing the kind in front of the whole name", async () => {
+      const { container, id } = await mountLegacy();
+      const input = await openEditor(container, id);
+      expect(kindOf(container, id)?.textContent).toBe("solid_");
+      expect(input.value).toBe("backdrop");
+    });
+
+    it("is left alone when the field is opened and left untouched", async () => {
+      const { runtime, container, id } = await mountLegacy();
+      const before = runtime.bus.store.getRevision();
+
+      const input = await openEditor(container, id);
+      await act(async () => {
+        fireEvent.blur(input);
+      });
+
+      await waitFor(() => {
+        expect(inputOf(container, id)).toBeNull();
+      });
+      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("backdrop");
+      expect(runtime.bus.store.getRevision()).toBe(before);
+    });
+
+    it("gets its kind on Enter", async () => {
+      const { runtime, container, id } = await mountLegacy();
+      const input = await openEditor(container, id);
+      await press(input, "Enter");
+      await waitFor(() => {
+        expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid_backdrop");
+      });
+    });
+  });
+
+  /**
+   * REMOVING THE KIND IS POSSIBLE AND DELIBERATE (the owner's ruling). Two gestures, both
+   * visible: a fresh Backspace with the caret at the very start of the role, or a click on
+   * the kind. The kind stays on screen switched off, and the name is stored as typed.
+   */
+  describe("naming a node without its kind", () => {
+    it("Backspace at the start of the role switches the kind off, and the name is stored exactly", async () => {
+      const { runtime, ids, container } = await mountWithNodes(["solid"]);
+      const [id] = ids as [string];
+
+      const input = await openEditor(container, id);
+      await type(input, "Bloom pass");
+      input.setSelectionRange(0, 0);
+      await press(input, "Backspace");
+
+      expect(kindOf(container, id)?.getAttribute("aria-pressed")).toBe("false");
+      // The text is the person's, untouched by the gesture.
+      expect(input.value).toBe("Bloom_pass");
+      // Exact means exact: with the kind off a space is a space again.
+      await type(input, "Bloom pass");
+      expect(input.value).toBe("Bloom pass");
+      await press(input, "Enter");
+
+      await waitFor(() => {
+        expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("Bloom pass");
+      });
+    });
+
+    it("does not happen by holding Backspace to clear the role", async () => {
+      const { ids, container } = await mountWithNodes(["solid"]);
+      const [id] = ids as [string];
+
+      const input = await openEditor(container, id);
+      input.setSelectionRange(0, 0);
+      // What the browser sends while the key is held: the role is already empty and the
+      // key is still down. Clearing the role is not asking to drop the kind.
+      await press(input, "Backspace", { repeat: true });
+
+      expect(kindOf(container, id)?.getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("does not happen while there is text to the left of the caret", async () => {
+      const { ids, container } = await mountWithNodes(["solid"]);
+      const [id] = ids as [string];
+
+      const input = await openEditor(container, id);
+      await type(input, "sky");
+      input.setSelectionRange(3, 3);
+      await press(input, "Backspace");
+
+      expect(kindOf(container, id)?.getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("a click on the kind switches it off, and a second click brings it back", async () => {
+      const { runtime, ids, container } = await mountWithNodes(["solid"]);
+      const [id] = ids as [string];
+
+      const input = await openEditor(container, id);
+      const kind = kindOf(container, id) as HTMLButtonElement;
+      await act(async () => {
+        fireEvent.click(kind);
+      });
+      expect(kind.getAttribute("aria-pressed")).toBe("false");
+      await type(input, "my sky");
+      await act(async () => {
+        fireEvent.click(kind);
+      });
+      expect(kind.getAttribute("aria-pressed")).toBe("true");
+      // Back under the kind the text is a role again, and is shown as one.
+      expect(input.value).toBe("my_sky");
+      await press(input, "Enter");
+
+      await waitFor(() => {
+        expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid_my_sky");
+      });
+    });
+
+    it("refuses a blank name by name rather than clearing the node's identity", async () => {
+      const { runtime, ids, container } = await mountWithNodes(["solid"]);
+      const [id] = ids as [string];
+
+      await renameWithoutKind(container, id, "   ");
+
+      await waitFor(() => {
+        expect(errorOf(container, id)).not.toBeNull();
+      });
+      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid1");
     });
   });
 
@@ -192,39 +404,28 @@ describe("the node title is an editable field (T415, B60)", () => {
   it("refuses a name that is taken, keeps the text, and says what is taken", async () => {
     const { runtime, ids, container } = await mountWithNodes(["solid", "solid"]);
     const [first, second] = ids as [string, string];
-    expect(runtime.bus.store.getGraph().nodes[first]?.label).toBe("solid1");
+    await seed(runtime, [{ op: "setNodeLabel", nodeId: first, label: "solid_sky" }]);
 
-    await act(async () => {
-      fireEvent.doubleClick(nameOf(container, second) as Element);
-    });
-    const input = inputOf(container, second) as HTMLInputElement;
-    await type(input, "solid1");
+    const input = await openEditor(container, second);
+    await type(input, "sky");
     await press(input, "Enter");
 
     await waitFor(() => {
       expect(errorOf(container, second)).not.toBeNull();
     });
-    expect(errorOf(container, second)?.textContent).toContain("solid1");
-    // Not renamed, and NOT silently minted as `solid12` either.
+    // The name it would have stored, and the free neighbour, both spelled with the kind.
+    //
+    // The WHOLE sentence, exactly. A real browser showed this card reading
+    // `Operation 0 (setNodeLabel): the name …` — the patch's own bookkeeping, to someone
+    // who typed a name and wrote no patch. `toContain` on the name had passed over it since
+    // the editor was built.
+    expect(errorOf(container, second)?.textContent).toBe(`The name "solid_sky" is already in use. "solid_sky2" is free.`);
+    // The red edge is on the whole field, so the kind is inside it and not left grey beside it.
+    expect(kindOf(container, second)?.parentElement?.getAttribute("data-invalid")).toBe("true");
+    expect(inputOf(container, second)?.parentElement).toBe(kindOf(container, second)?.parentElement);
+    // Not renamed, and NOT silently minted as `solid_sky2` either.
     expect(runtime.bus.store.getGraph().nodes[second]?.label).toBe("solid2");
-    expect(inputOf(container, second)?.value).toBe("solid1");
-  });
-
-  it("refuses a blank name by name rather than clearing the node's identity", async () => {
-    const { runtime, ids, container } = await mountWithNodes(["solid"]);
-    const [id] = ids as [string];
-
-    await act(async () => {
-      fireEvent.doubleClick(nameOf(container, id) as Element);
-    });
-    const input = inputOf(container, id) as HTMLInputElement;
-    await type(input, "   ");
-    await press(input, "Enter");
-
-    await waitFor(() => {
-      expect(errorOf(container, id)).not.toBeNull();
-    });
-    expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid1");
+    expect(inputOf(container, second)?.value).toBe("sky");
   });
 
   /**
@@ -251,20 +452,17 @@ describe("the node title is an editable field (T415, B60)", () => {
       },
     ]);
 
-    await act(async () => {
-      fireEvent.doubleClick(nameOf(container, source) as Element);
-    });
-    const input = inputOf(container, source) as HTMLInputElement;
+    const input = await openEditor(container, source);
     await type(input, "backdrop");
     await press(input, "Enter");
 
     await waitFor(() => {
-      expect(runtime.bus.store.getGraph().nodes[source]?.label).toBe("backdrop");
+      expect(runtime.bus.store.getGraph().nodes[source]?.label).toBe("solid_backdrop");
     });
     const rewritten = runtime.bus.store.getGraph().nodes[consumer]?.parameters["size"] as {
       bindings: { expression: { source: string } };
     };
-    expect(rewritten.bindings.expression.source).toBe("op('backdrop').par.size * 2");
+    expect(rewritten.bindings.expression.source).toBe("op('solid_backdrop').par.size * 2");
   });
 });
 
@@ -290,7 +488,7 @@ describe("`n` opens the editor on the selected node (B60, §V342)", () => {
     await type(input, "Keyed");
     await press(input, "Enter");
     await waitFor(() => {
-      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("Keyed");
+      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid_Keyed");
     });
   });
 
@@ -348,16 +546,31 @@ describe("the node type beside the name (T416)", () => {
     expect(typeOf(container, id)).toBeNull();
   });
 
+  /**
+   * T1593b: a rename no longer spends the identification, because the kind stays in the
+   * name. `solid_backdrop  Solid` would be the same word twice in the most crowded row in
+   * the app, which is what the chip exists to avoid (§V90).
+   */
+  it("still shows nothing after a rename that kept the kind", async () => {
+    const { runtime, ids, container } = await mountWithNodes(["solid"]);
+    const [id] = ids as [string];
+
+    const input = await openEditor(container, id);
+    await type(input, "backdrop");
+    await press(input, "Enter");
+
+    await waitFor(() => {
+      expect(runtime.bus.store.getGraph().nodes[id]?.label).toBe("solid_backdrop");
+    });
+    expect(nameOf(container, id)?.textContent).toBe("solid_backdrop");
+    expect(typeOf(container, id)).toBeNull();
+  });
+
   it("shows the type once a rename has taken the identification away", async () => {
     const { ids, container } = await mountWithNodes(["solid"]);
     const [id] = ids as [string];
 
-    await act(async () => {
-      fireEvent.doubleClick(nameOf(container, id) as Element);
-    });
-    const input = inputOf(container, id) as HTMLInputElement;
-    await type(input, "Backdrop");
-    await press(input, "Enter");
+    await renameWithoutKind(container, id, "Backdrop");
 
     await waitFor(() => {
       expect(typeOf(container, id)).not.toBeNull();
@@ -373,11 +586,7 @@ describe("the node type beside the name (T416)", () => {
   it("is switched off from the settings dialog the app actually mounts", async () => {
     const { ids, container } = await mountWithNodes(["solid"]);
     const [id] = ids as [string];
-    await act(async () => {
-      fireEvent.doubleClick(nameOf(container, id) as Element);
-    });
-    await type(inputOf(container, id) as HTMLInputElement, "Backdrop");
-    await press(inputOf(container, id) as HTMLInputElement, "Enter");
+    await renameWithoutKind(container, id, "Backdrop");
     await waitFor(() => {
       expect(typeOf(container, id)).not.toBeNull();
     });
@@ -400,11 +609,7 @@ describe("the node type beside the name (T416)", () => {
   it("the setting hides it, and the name is untouched", async () => {
     const { ids, container } = await mountWithNodes(["solid"]);
     const [id] = ids as [string];
-    await act(async () => {
-      fireEvent.doubleClick(nameOf(container, id) as Element);
-    });
-    await type(inputOf(container, id) as HTMLInputElement, "Backdrop");
-    await press(inputOf(container, id) as HTMLInputElement, "Enter");
+    await renameWithoutKind(container, id, "Backdrop");
     await waitFor(() => {
       expect(typeOf(container, id)).not.toBeNull();
     });

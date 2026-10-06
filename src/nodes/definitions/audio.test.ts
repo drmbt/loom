@@ -4,6 +4,8 @@ import { SILENCE } from "../../domain/audio/feature-track.ts";
 import { distinctSpectrumBands } from "../../domain/audio/spectrum-bands.fixture.ts";
 import { SPECTRUM_BAND_NAMES } from "../../domain/audio/spectrum-bands.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument } from "../../domain/types/graph.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
@@ -78,13 +80,13 @@ function audioGraph(extra: GraphDocument["nodes"] = {}, edges: GraphDocument["ed
 describe("audioIn (T414)", () => {
   it("projects the frame's features as channels, verbatim", () => {
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(audioGraph(), frame(0), { audio: FEATURES });
+    const result = session.evaluate(flatDocument(audioGraph()), frame(0), { flattening: NO_FLATTENING, audio: FEATURES });
     expect(result.byName.get("audio1")).toEqual(FEATURES);
   });
 
   it("is SILENT — all zeros, not absent — when the session has no audio (§V329)", () => {
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(audioGraph(), frame(0));
+    const result = session.evaluate(flatDocument(audioGraph()), frame(0), { flattening: NO_FLATTENING });
     // Zeros, so every downstream stage keeps evaluating deterministically; a missing
     // bag would make `driven` parameters dangle instead.
     expect(result.byName.get("audio1")).toEqual(SILENCE);
@@ -117,7 +119,7 @@ describe("audioIn (T414)", () => {
       const session = createValueGraphSession(registry);
       const out: Array<number | undefined> = [];
       track.forEach((features, index) => {
-        const result = session.evaluate(graph, frame(index), { audio: features });
+        const result = session.evaluate(flatDocument(graph), frame(index), { flattening: NO_FLATTENING, audio: features });
         out.push(result.byName.get("smooth1")?.["low"]);
       });
       return out;
@@ -135,7 +137,7 @@ describe("audioIn (T414)", () => {
     // V143's model verbatim, which is the whole point of publishing features as
     // channels rather than inventing an audio binding.
     const session = createValueGraphSession(registry);
-    const result = session.evaluate(audioGraph(), frame(0), { audio: FEATURES });
+    const result = session.evaluate(flatDocument(audioGraph()), frame(0), { flattening: NO_FLATTENING, audio: FEATURES });
     expect(result.resolver("audio1:low", { frame: frame(0) } as never)).toBe(0.9);
     expect(result.resolver("audio1:onset", { frame: frame(0) } as never)).toBe(0.75);
   });
@@ -169,7 +171,7 @@ describe("audioIn (T414)", () => {
     // a non-zero bpm would be the record contradicting itself.
     const session = createValueGraphSession(registry);
     const live = { ...FEATURES, bpm: 0, bpmConfidence: 0, beatPhase: 0, beat: 0, beatCount: 0 };
-    const bag = session.evaluate(audioGraph(), frame(0), { audio: live }).byName.get("audio1") ?? {};
+    const bag = session.evaluate(flatDocument(audioGraph()), frame(0), { flattening: NO_FLATTENING, audio: live }).byName.get("audio1") ?? {};
     expect([bag["bpm"], bag["bpmConfidence"], bag["beatPhase"], bag["beat"], bag["beatCount"]]).toEqual([0, 0, 0, 0, 0]);
     // While the detectors, which are measurements of the interval, still come through.
     expect(bag["kickCount"]).toBe(2);

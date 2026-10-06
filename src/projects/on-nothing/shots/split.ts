@@ -183,11 +183,11 @@ function carPlate(facts: OnNothingFacts, build: Builder, options: SplitOptions):
   const scale = (options.width ?? 1920) / 1920;
   // the sedan in black lacquer
   const surf = plate.node("surf");
-  plate.add("splitPaint", "materialWgsl", { ...surf.parameters, source: BLACK_PAINT_WGSL, paint: 0.012, headGain: 0 }, { label: "splitpaint1" });
-  plate.set("geo_car3", { material: "splitpaint1" });
+  plate.add("splitPaint", "materialWgsl", { ...surf.parameters, source: BLACK_PAINT_WGSL, paint: 0.012, headGain: 0 }, { label: "material_splitpaint" });
+  plate.set("geo_car3", { material: "material_splitpaint" });
   // no figure in this plate
   plate.remove("fig", "skin", "figGeo");
-  plate.dropFromList("shot", "scenes", "figgeo1");
+  plate.dropFromList("shot", "scenes", "geometry_fig");
   // The camera: above and to the car's left of the ornament, looking down across the grille,
   // on a long-ish lens; a slow push (the ornament grows 5 % over the cut) with handheld sway.
   const [ox, oy, oz] = ORNAMENT;
@@ -224,16 +224,16 @@ function carPlate(facts: OnNothingFacts, build: Builder, options: SplitOptions):
   // and the surround; a hard point just above the camera puts the surround's highlight where
   // the streak glass lifts it into columns — and it dims through the cut, so they retract.
   for (const id of ["fill", "carKey", "sodiumPool", "sodiumA", "sodiumB"]) if (plate.has(id)) plate.remove(id);
-  plate.add("splitTop", "light", { kind: "point", position: [ox - 0.2, oy + 1.6, oz + 1.6], color: [0.82, 0.94, 1, 1], intensity: 1.6 }, { label: "splittop1" });
-  plate.add("splitGlint", "light", { kind: "point", position: [ox - 0.3, oy + 0.9, oz + 1.25], color: [0.85, 0.95, 1, 1], intensity: knob(`1.5 * (1 - ${FADE} * 0.85)`, 1.5) }, { label: "splitglint1" });
+  plate.add("splitTop", "light", { kind: "point", position: [ox - 0.2, oy + 1.6, oz + 1.6], color: [0.82, 0.94, 1, 1], intensity: 1.6 }, { label: "light_splittop" });
+  plate.add("splitGlint", "light", { kind: "point", position: [ox - 0.3, oy + 0.9, oz + 1.25], color: [0.85, 0.95, 1, 1], intensity: knob(`1.5 * (1 - ${FADE} * 0.85)`, 1.5) }, { label: "light_splitglint" });
   // no headlight projectors: the sedan's own sits behind its grille and floods the bars from inside
-  plate.set("shot", { lights: "splittop1 splitglint1", projectors: "", environmentIntensity: 0.8 });
+  plate.set("shot", { lights: "light_splittop light_splitglint", projectors: "", environmentIntensity: 0.8 });
   // the room the lacquer mirrors at a grazing angle: a ring of vertical LED bars in the dark
   const env = plate.node("env");
   plate.nodes.set("env", { ...env, parameters: {} });
   plate.set("env", { source: SPLIT_ENV_WGSL, tubes: 2.6, tubeFrom: -0.4, tubeTo: 2.6, tubeCount: 7, tubeTop: 0.75, tubeWidth: 0.32, sodium: 0.2, panel: 2, wall: 1.2, wallDir: [-0.85, 0.25, 0.45], room: 0.004, roof: 1.2 });
   // the lamp glass shell would draw the sedan's headlight cover as a hot band in the corner
-  if (plate.nodes.has("geo_lampglint")) plate.dropFromList("shot", "scenes", "geolampglint1");
+  if (plate.nodes.has("geo_lampglint")) plate.dropFromList("shot", "scenes", "geometry_lampglint");
   // focus on the ornament; the grille's far half falls soft
   plate.set("lens_dof", { focusDistance: 1.47, aperture: 2.2 * scale, maxRadius: 22 * scale });
   // CALM and SOFT, as the reference's (the owner: "not overpowered by the lights"): a thin even
@@ -317,12 +317,12 @@ export function splitDocument(facts: OnNothingFacts, build: Builder, options: Sp
     poolWidth: 0.75,
     poolTint: [0.8, 1.0, 1.08, 1],
   };
-  nodes.push(node("split", "customWgslMulti", [900, 0], {}, { parameters: matte, label: "split1", resolution: { mode: "project" } }));
-  nodes.push(node("out", "output", [1100, 0], {}, { parameters: { toneMap: "none" }, label: "out1" }));
+  nodes.push(node("split", "customWgslMulti", [900, 0], {}, { parameters: matte, label: "wgsl_split", resolution: { mode: "project" } }));
+  nodes.push(node("out", "output", [1100, 0], {}, { parameters: { toneMap: "none" }, label: "output1" }));
   edges.push(edge("floor-split", [rightLast.source.nodeId, rightLast.source.portId], ["split", "input"]));
   edges.push(edge("car-split", [leftLast.source.nodeId, leftLast.source.portId], ["split", "more"], 0));
   if (options.crt === true) {
-    nodes.push(node("crt", "customWgsl", [1000, 0], {}, { parameters: { source: CRT_WGSL, amount: 1 }, label: "crt1", resolution: { mode: "project" } }));
+    nodes.push(node("crt", "customWgsl", [1000, 0], {}, { parameters: { source: CRT_WGSL, amount: 1 }, label: "wgsl_crt", resolution: { mode: "project" } }));
     edges.push(edge("split-crt", ["split", "out"], ["crt", "input"]));
     edges.push(edge("crt-out", ["crt", "out"], ["out", "input"]));
   } else {

@@ -81,8 +81,8 @@ describe("desktop technical recipes", () => {
     expect(nodes["receive"]?.parameters["source"]).toBe("");
     expect([...feeds(doc.graph, "signal")].sort()).toEqual(["out", "send", "signal"]);
     expect([...feeds(doc.graph, "receive")].sort()).toEqual(["receive", "returnOut"]);
-    expect(nodes["out"]?.label).toBe("reference1");
-    expect(nodes["returnOut"]?.label).toBe("returned1");
+    expect(nodes["out"]?.label).toBe("output_reference");
+    expect(nodes["returnOut"]?.label).toBe("output_returned");
   });
 
   it("E73 explicitly chooses native Vision and keeps the measurement float", () => {

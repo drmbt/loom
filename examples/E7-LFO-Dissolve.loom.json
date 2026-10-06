@@ -122,7 +122,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 120,

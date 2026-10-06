@@ -99,7 +99,8 @@ function payloadProblem(binding: ParameterBinding): string | null {
   switch (binding.kind) {
     case "expression": {
       const parsed = parseExpression(binding.source);
-      return parsed.ok ? null : parsed.reason;
+      // §T1641b: with what to write instead, when the grammar can say (`pow(x, 2)`: `x ^ 2`).
+      return parsed.ok ? null : withRemedy(parsed.reason, parsed.suggestion);
     }
     case "bind":
       return binding.ref.trim() === "" ? "Name a parameter or parent value to read." : null;
@@ -110,6 +111,12 @@ function payloadProblem(binding: ParameterBinding): string | null {
     case "static":
       return null;
   }
+}
+
+/** A problem and its remedy as the one line the panel has room for. */
+function withRemedy(problem: string, remedy: string | undefined): string {
+  if (remedy === undefined) return problem;
+  return `${/[.!?]$/.test(problem) ? problem : `${problem}.`} ${remedy}`;
 }
 
 /** §T1394b: plenty for any node's channels or parameters; the list scrolls. */
@@ -233,7 +240,9 @@ export function ParameterModePanel({
     return found === null ? null : describeForecast(found);
   }, [active, rangeMin, rangeMax, text]);
 
-  const message = problem ?? diagnostic?.message ?? forecast;
+  // §T1641b: the resolver's remedy too. This panel is where the expression is typed, so it
+  // is where "what to write instead" has to be read.
+  const message = problem ?? (diagnostic === null ? null : withRemedy(diagnostic.message, diagnostic.suggestion)) ?? forecast;
 
   return (
     <div className={styles.modePanel}>

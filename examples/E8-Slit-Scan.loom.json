@@ -64,7 +64,7 @@
       "body": {
         "definitionVersion": 1,
         "id": "body",
-        "label": "body1",
+        "label": "circle_body",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -81,7 +81,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swingx1').chan.value"
+                "source": "op('lfo_swingx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -94,7 +94,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swingy1').chan.value"
+                "source": "op('lfo_swingy').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -151,7 +151,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 40,
@@ -176,7 +176,7 @@
       "swingx": {
         "definitionVersion": 1,
         "id": "swingx",
-        "label": "swingx1",
+        "label": "lfo_swingx",
         "parameters": {
           "amplitude": 0.36,
           "frequency": 0.62,
@@ -193,7 +193,7 @@
       "swingy": {
         "definitionVersion": 1,
         "id": "swingy",
-        "label": "swingy1",
+        "label": "lfo_swingy",
         "parameters": {
           "amplitude": 0.3,
           "frequency": 0.4,

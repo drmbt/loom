@@ -2,6 +2,7 @@ import type { ProjectDocument } from "../../../domain/types/graph.ts";
 import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { expressionSlot } from "../../../examples/documents/builders.ts";
 import type { OnNothingFacts } from "../scene-facts.ts";
+import { lightName } from "../names.ts";
 import { boneParam, yawFor } from "../skin-kernel.ts";
 import { hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { CAR_RIG_ATTRIBUTES } from "../car-rig.ts";
@@ -128,9 +129,9 @@ function poseFigure(cut: Surgery, facts: OnNothingFacts, figure: { area?: "fig" 
   setParams(cut, "skin", pose);
 }
 
-/** A light added to the base's Render (its label: the id lower-cased plus 1). */
+/** A light added to the base's Render (its name: `light_`, then the id lower-cased). */
 function addLight(cut: Surgery, id: string, parameters: Record<string, StoredParameter>): void {
-  const label = `${id.toLowerCase()}1`;
+  const label = lightName(id.toLowerCase());
   addNode(cut, id, "light", [-2600, 600 - Object.keys(cut.nodes).length * 10], parameters, { label });
   const shot = cut.nodes["shot"];
   if (shot === undefined) throw new Error("lights: the base graph has no Render shot.");
@@ -171,7 +172,7 @@ function thinLens(cut: Surgery, lens: { fov: number; fstop: number; focus: strin
   // the fill after the gather reads the same lens and camera
   const camera = Object.fromEntries(Object.entries(node.parameters).filter(([key]) => ["eye", "aim", "fov", "far", "roll"].some((k) => key === k || key.startsWith(`${k}.`))));
   const { rim: _rim, catEye: _catEye, fringe: _fringe, ...fill } = params;
-  addNode(cut, "dofFill", "customWgslMulti", [-1400, 200], { source: DOF_FILL_WGSL, ...camera, ...fill }, { label: "doffill1" });
+  addNode(cut, "dofFill", "customWgslMulti", [-1400, 200], { source: DOF_FILL_WGSL, ...camera, ...fill }, { label: "wgsl_doffill" });
   spliceAfter(cut, "lens_dof", "dofFill");
   connect(cut, ["shot", "depth"], ["dofFill", "more"], 0);
 }
@@ -206,7 +207,7 @@ function moveCar(cut: Surgery, facts: OnNothingFacts, area: string, shift: V3, y
   // turned about its own footprint's centre (normals turn with it), then moved
   const b = mesh.bounds;
   const pivot: V3 = [(b.min[0] + b.max[0]) / 2, 0, (b.min[2] + b.max[2]) / 2];
-  addNode(cut, `move_${area}`, "pointKernel", [-3450, 0], { capacity: mesh.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: TURN_CAR_KERNEL, pivot: [...pivot], shift: [...shift], yaw: (yawDeg * Math.PI) / 180 }, { label: `move${area}1` });
+  addNode(cut, `move_${area}`, "pointKernel", [-3450, 0], { capacity: mesh.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: TURN_CAR_KERNEL, pivot: [...pivot], shift: [...shift], yaw: (yawDeg * Math.PI) / 180 }, { label: `kernel_move${area}` });
   connect(cut, [`mesh_${area}`, "out"], [`move_${area}`, "in"]);
   connect(cut, [`move_${area}`, "out"], [`geo_${area}`, "points"]);
 }
@@ -245,7 +246,7 @@ const TAKES: Record<number, Take> = {};
 // ─────────────────────────────── the car set (the tableau's) ───────────────────────────────
 
 /** The tableau without its figure. */
-const noFigure = (cut: Surgery): void => dropScenes(cut, ["figgeo1"]);
+const noFigure = (cut: Surgery): void => dropScenes(cut, ["geometry_fig"]);
 
 /**
  * Row 28 (0:30.45, 17 frames): a tele CU along the satin-grey hero's flank from its front
@@ -257,7 +258,7 @@ TAKES[28] = {
   base: "tableau",
   build: (cut) => {
     // the hero and its neighbour only: the back row's lamps would sit on the flank's vanishing point
-    dropScenes(cut, ["figgeo1", "geocar11", "geocar21", "geocar31", "geocar41", "geolampglint1"]);
+    dropScenes(cut, ["geometry_fig", "geometry_car1", "geometry_car2", "geometry_car3", "geometry_car4", "geometry_lampglint"]);
     setParams(cut, "shot", { projectors: "" });
     const fov = 10;
     setCamera(cut, {
@@ -324,7 +325,7 @@ TAKES[29] = {
     // them it is a black face with a chrome grille, lit only by its neighbours' columns.
     const flash = frameFlash([5, 8, 15]);
     // the tableau's low key and face fill would light the hero's face between the flashes
-    keepLights(cut, ["sodiumpool1", "sodiuma1", "sodiumb1"]);
+    keepLights(cut, ["light_sodiumpool", "light_sodiuma", "light_sodiumb"]);
     // (behind the lens and a little right of it: the near white car at the frame's edge must not blow out;
     // a trickle between the flashes keeps the hero's silver readable, as the reference's is)
     addLight(cut, "key29", { kind: "point", position: [-2.2, 1.6, 6.8], color: [0.88, 0.94, 1, 1], intensity: expressionSlot(`40 + 100 * ${flash}`, 40) });

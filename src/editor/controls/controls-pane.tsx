@@ -6,8 +6,9 @@ import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import { resolveParameters, type ChannelResolver } from "@domain/parameters/resolve.ts";
-import { NO_FLATTENING, parameterReadOptions } from "@domain/parameters/node-references.ts";
-import { CONTROL_WIDGET_TYPES, LAYER_NODE_TYPE, panelBoard, panelTitle } from "@nodes/definitions/controls.ts";
+import { parameterReadOptions } from "@domain/parameters/node-references.ts";
+import { NO_MORPHS } from "@domain/presets/morph-index.ts";
+import { CONTROL_WIDGET_TYPES, LAYER_NODE_TYPE, panelBoard, panelMembers, panelTitle } from "@nodes/definitions/controls.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
@@ -17,6 +18,7 @@ import { PanelBoardEditor, PanelBoardGrid, Pencil } from "./panel-board.tsx";
 import { LayersView } from "./layers-view.tsx";
 import { PanelRows } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
+import { ResetAllButton } from "./reset-all.tsx";
 import { PANEL_EMPTY_HINT, type PhoneDoorView } from "./phone-door-copy.ts";
 import { ControlValuesContext } from "./control-values-context.ts";
 import { useControlMidiLearn, type ControlMidiSurface } from "./control-midi-learn.tsx";
@@ -102,6 +104,9 @@ export function ControlsPane({ graph, registry, bus, invocation, phone, midi, ch
   const showLayers = layersChosen && layers;
   const panel = panels.find((candidate) => candidate.id === chosen) ?? panels[0];
   const board = panel === undefined ? null : panelBoard(graph, panel);
+  // T1619b: the controls this tab shows, for the header's reset-all count: the Panel's
+  // members, or with no Panel the inventory above. Per revision, like the inventory.
+  const shown = useMemo(() => (panel === undefined ? widgets : panelMembers(graph, panel)), [graph, panel, widgets]);
   const midiLearn = useControlMidiLearn(bus, invocation, midi, showLayers ? "layers" : panel?.id ?? "all", !editing);
   const controlValues = useMemo(() => channels === undefined ? null : ({ read: (nodeId: string) => {
     const current = bus.store.getGraph();
@@ -111,9 +116,10 @@ export function ControlsPane({ graph, registry, bus, invocation, phone, midi, ch
     const definition = registry.get(node.type);
     if (definition === undefined) throw new Error(`No definition for control "${node.type}".`);
     const frame = latestFrame?.()?.frame;
-    // §T1551b/§T1552b (migrated by the lead): the stored document, no fade — as before.
+    // Authored and no fade, on purpose: the pane lists authored widgets (none inside a component, §T1143), and mid-morph a control shows its document value (§T1525b).
+    // §T1559b: the instances `op('<instance>').chan.<c>` can name are the flattening's, off the bus's read scope — the value graph reads them, so the display must.
     return resolveParameters(node, definition, parameterReadOptions({ graph: authoredGraph(current), registry, channels,
-      frame, flattening: NO_FLATTENING })).values;
+      frame, flattening: { morphs: NO_MORPHS, instanceChannels: bus.readScope().flattening.instanceChannels } })).values;
   } }), [bus, registry, channels, latestFrame]);
 
   const apply = (operations: GraphPatchOperation[], label: string): void => {
@@ -189,7 +195,9 @@ export function ControlsPane({ graph, registry, bus, invocation, phone, midi, ch
     <ControlValuesContext.Provider value={controlValues}>
     <div className={styles.pane} data-controls-pane data-midi-learning={midiLearn.active || undefined}
       onPointerDownCapture={midiLearn.capture} onClickCapture={midiLearn.captureClick}
-      data-editing={editing && board !== null ? true : undefined}>
+      data-editing={editing && board !== null ? true : undefined}
+      // T1619b: which Panel a right-clicked control's "all on this Panel" means (`menus/target.ts`).
+      data-control-panel={panel?.id}>
       <header className={styles.header}>
         <h2 className={styles.title}>{panel === undefined ? "All controls" : panelTitle(panel)}</h2>
         {board === null ? null : (
@@ -205,6 +213,8 @@ export function ControlsPane({ graph, registry, bus, invocation, phone, midi, ch
             <Pencil />
           </button>
         )}
+        {/* T1619b: reset all — the shown Panel's controls, or with no Panel every control. Off while arranging or learning. */}
+        <ResetAllButton controls={shown} panel={panel} bus={bus} invocation={invocation} disabled={(editing && board !== null) || midiLearn.active} />
         {phone === undefined ? null : (
           <PhoneDoorButton
             door={phone}

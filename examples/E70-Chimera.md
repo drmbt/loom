@@ -25,11 +25,11 @@ seconds, at 45, at 90 — and would anybody notice?*
 ## What it is made of
 
 ```
-sky1(solid) ─► shape1(customWgsl: the fold chain) ─► fxaa1(customWgsl) ─► out1(output)
+solid_sky(solid) ─► wgsl_shape(customWgsl: the fold chain) ─► wgsl_fxaa(customWgsl) ─► output1(output)
 
-music1(audioPattern) ─┐
-                       source1(valueSwitch) ─► analysis1 ─┬─► lvl1(valueSelect)
-track1(audioFileIn) ──┘                                   └─► hit1(valueSelect)
+pattern_music(audioPattern) ─┐
+                       switch_source(valueSwitch) ─► audioanalysis1 ─┬─► select_lvl(valueSelect)
+audiofile_track(audioFileIn) ──┘                                     └─► select_hit(valueSelect)
 ```
 
 One `customWgsl` pass holds the whole picture — the same lane as E55, E57, E67 and E68 —
@@ -533,15 +533,15 @@ single-frame step, *and they still land*.
 
 | target | lane | why |
 |---|---|---|
-| `veinEmission` | `hit1.kick` envelope | the hits of bioluminescence the brief asked for by name |
-| `shellGlow` | `hit1.snare` envelope | the membranes answer on the backbeat — a *different* structure, so two hit lanes are two events rather than one read twice |
-| `veinSpread` | `hit1.hat` envelope | finer reaction to finer detail: a hat widens the glow, not the veins |
-| `haze` | `lvl1.low` rank | the medium breathes |
-| `fillIntensity` | `lvl1.highMid` rank | the opposition light opens |
-| `specular` | `lvl1.high` rank | the wetness follows the top end |
-| `saturation` | `lvl1.centroid` rank | spectral brightness opens the chroma |
-| `spacingOpen` | `lvl1.lowMid` rank, **centred**, **inverted** | **sustained** energy CLOSES the gaps: sparse and open when the track is quiet, dense and busy when it drives — the one lane that reaches the form, and the only kind that may |
-| `keyIntensity` | `hit1.kick` envelope | the key punches, and because the key now CASTS, its shadow snaps with it |
+| `veinEmission` | `select_hit.kick` envelope | the hits of bioluminescence the brief asked for by name |
+| `shellGlow` | `select_hit.snare` envelope | the membranes answer on the backbeat — a *different* structure, so two hit lanes are two events rather than one read twice |
+| `veinSpread` | `select_hit.hat` envelope | finer reaction to finer detail: a hat widens the glow, not the veins |
+| `haze` | `select_lvl.low` rank | the medium breathes |
+| `fillIntensity` | `select_lvl.highMid` rank | the opposition light opens |
+| `specular` | `select_lvl.high` rank | the wetness follows the top end |
+| `saturation` | `select_lvl.centroid` rank | spectral brightness opens the chroma |
+| `spacingOpen` | `select_lvl.lowMid` rank, **centred**, **inverted** | **sustained** energy CLOSES the gaps: sparse and open when the track is quiet, dense and busy when it drives — the one lane that reaches the form, and the only kind that may |
+| `keyIntensity` | `select_hit.kick` envelope | the key punches, and because the key now CASTS, its shadow snaps with it |
 | the shape | **nothing at all** | see below |
 
 Every retained value is the lane's **driven mean**, not its floor and not its peak: the value
@@ -623,7 +623,7 @@ term is 1. On the shipped pattern the confidence is 1 and the bpm *is* 112, so i
 arithmetic rather than by luck — the rest state and the shipped picture are the same picture,
 and a 140 BPM track moves the morph 25% faster with nothing retuned.
 
-It is read from `source1` rather than from the analysis bags, and that is load-bearing: the
+It is read from `switch_source` rather than from the analysis bags, and that is load-bearing: the
 levels lane ranks everything to 0..1 over a sliding window, so a bpm through it would read 0.5
 forever.
 

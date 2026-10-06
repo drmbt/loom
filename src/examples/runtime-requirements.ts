@@ -70,7 +70,7 @@ export function exampleRuntimeRequirements(project: unknown): readonly ExampleRu
        back under a different name. Transport is compile-time, so these are the same
        effective values the app runs on. */
     const resolved = resolveNodeParameters(node, effectiveParameterSchema(definition, node.parameters), definition.title, diagnostics,
-      STORED_READ, definition.retainedParameterKeys);
+      STORED_READ, { retained: definition.retainedParameterKeys, note: definition.parameterKeysNote });
     let declared: readonly RuntimeRequirementId[];
     try {
       declared = nodeRuntimeRequirements(definition, resolved.values);

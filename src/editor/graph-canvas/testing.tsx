@@ -2,6 +2,7 @@ import { Position } from "@xyflow/react";
 import type { EdgeProps, NodeProps } from "@xyflow/react";
 import { createEdgeGeometry } from "@editor/edges/edge-geometry.ts";
 import { createRenameSessionStore } from "@editor/nodes/rename-session.ts";
+import { createKindLabelRegistry } from "@editor/nodes/kind-label.ts";
 import { createTimingOverlayStore } from "@editor/nodes/timing-overlay-command.ts";
 import { createEdgeFlowStore } from "@editor/edges/edge-flow-command.ts";
 import type { EdgeFlowStore } from "@editor/edges/edge-flow-command.ts";
@@ -176,6 +177,8 @@ export interface FixtureContextOptions {
   selection?: GraphCanvasContextValue["selection"];
   toggleUi?: GraphCanvasContextValue["toggleUi"];
   renameSession?: GraphCanvasContextValue["renameSession"];
+  /** T1597b: pass one to drive the low-zoom kind labels from a test; a fresh one otherwise. */
+  kindLabels?: GraphCanvasContextValue["kindLabels"];
   beginRename?: GraphCanvasContextValue["beginRename"];
   renameNode?: GraphCanvasContextValue["renameNode"];
   renderPreview?: GraphCanvasContextValue["renderPreview"];
@@ -218,6 +221,7 @@ export function fixtureContext(options: FixtureContextOptions): {
       diveIn: options.diveIn ?? (() => {}),
       ...(options.components === undefined ? {} : { components: options.components }),
       renameSession: options.renameSession ?? createRenameSessionStore(),
+      kindLabels: options.kindLabels ?? createKindLabelRegistry(),
       beginRename: options.beginRename ?? (() => {}),
       // Deliberately a REFUSAL rather than a no-op: a fixture that silently "succeeds" at
       // renaming would let a test assert a commit path nothing performed (§V220).

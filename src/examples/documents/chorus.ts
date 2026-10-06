@@ -3,15 +3,15 @@ import { settings, node, edge, graph, document, drivenSlot, expressionSlot } fro
 /**
  * E51 — Chorus (T956's component arc; slitScan T321, tile T242).
  *
- *   bed1(noise, perlin4d) ─┐
- *   orb1(circle) ───┤
- *   mate1(circle) ──┴─► stand1(add) ──┐ order 0
- *   cam1(webcam) ────────────────────┤ order 1 ─► pick1(switch) ─► wall1 ─► out1(output)
- *   clip1(movieFileIn) ──────────────┘ order 2                      ▲
+ *   noise_bed(noise, perlin4d) ─┐
+ *   circle_orb(circle) ───┤
+ *   circle_mate(circle) ──┴─► add_stand(add) ──┐ order 0
+ *   webcam1(webcam) ────────────────────┤ order 1 ─► switch_pick(switch) ─► timegrid_wall ─► output1(output)
+ *   movie_clip(movieFileIn) ──────────────┘ order 2                      ▲
  *
  * ## What it is
  *
- * ONE stream, played back at nine different moments at once. `wall1` is an instance of
+ * ONE stream, played back at nine different moments at once. `timegrid_wall` is an instance of
  * the TimeGrid library component: Tile repeats the picture into a grid, SlitScan gives
  * each cell its own delay out of a one-second history, and a duotone ties the nine
  * independently-lit moments together. The performer turns eight knobs and never opens
@@ -27,7 +27,7 @@ import { settings, node, edge, graph, document, drivenSlot, expressionSlot } fro
  * §V411's understudy pattern, and here it earns its place twice. The shipped branch is a
  * deterministic disc on two incommensurate LFOs — something with IDENTITY, because a wall
  * of delayed noise is a wall of noise (§V427, E8's lesson). Branch 1 is the WEBCAM: flip
- * `pick1` to 1 and the wall is nine moments of your own face, which is the thing this
+ * `switch_pick` to 1 and the wall is nine moments of your own face, which is the thing this
  * example is actually for. Branch 2 takes a clip. The component cannot tell the three
  * apart — it takes a texture — so nothing inside it changes when you switch.
  *
@@ -70,7 +70,7 @@ import { settings, node, edge, graph, document, drivenSlot, expressionSlot } fro
  * Unclamped is honest anyway: `low` bottoms out near 0.69, which lands the radius at
  * 0.082 — a slightly smaller body, not a broken one.
  */
-const BODY_ON_THE_KICK = "0.085 + 0.26 * (op('env1').chan.low - 0.7)";
+const BODY_ON_THE_KICK = "0.085 + 0.26 * (op('lag_env').chan.low - 0.7)";
 
 /**
  * The hats, on the FAST envelope, driving how hard the whole source is lit — and through
@@ -83,7 +83,7 @@ const BODY_ON_THE_KICK = "0.085 + 0.26 * (op('env1').chan.low - 0.7)";
  * component boundary. `high` rests at 0.381 and peaks at 0.574, so this rides 1.00 to
  * about 1.50 and sits at exact unity — a true identity — when nothing is playing.
  */
-const LIT_ON_THE_HATS = "1 + 2.6 * (op('snap1').chan.high - 0.381)";
+const LIT_ON_THE_HATS = "1 + 2.6 * (op('lag_snap').chan.high - 0.381)";
 
 export const chorusDocument = document(
   "e51-chorus",
@@ -122,7 +122,7 @@ export const chorusDocument = document(
           t4d: 0.41,
           s4d: 1,
         },
-        { label: "bed1" },
+        { label: "noise_bed" },
       ),
       /* TWO bodies, not one, and on incommensurate paths: one disc gives every cell the
          same POSE at a different place, which reads as polka dots. Two give each cell a
@@ -145,10 +145,10 @@ export const chorusDocument = document(
           aspectcorrect: true,
         },
         {
-          label: "orb1",
+          label: "circle_orb",
           parameters: {
-            "center.x": drivenSlot("swoopa1", 0.5),
-            "center.y": drivenSlot("swoopb1", 0.5),
+            "center.x": drivenSlot("lag_swoopa", 0.5),
+            "center.y": drivenSlot("lag_swoopb", 0.5),
             /*
              * THE ONE AUDIO MAPPING, and it is on the SOURCE rather than on a knob.
              *
@@ -183,24 +183,24 @@ export const chorusDocument = document(
        *
        * INDEX 0 IS THE PATTERN and stays that way: §V44/§V45 are not negotiable, a
        * shipped example must not open a device, and every gate has to see the same
-       * performance twice. Index 1 is the drop target — put a track on `track1`, flip the
+       * performance twice. Index 1 is the drop target — put a track on `audiofile_track`, flip the
        * index, and everything downstream follows because everything downstream reads
-       * `source1`.
+       * `switch_source`.
        *
        * `audioIn` (the microphone) is DELIBERATELY ABSENT: a shipped one opens the device
        * on load. The `.md` says how to add it. That is E24's ruling, unchanged.
        */
-      node("music", "audioPattern", [-2540, 1460], { bpm: 124, amount: 1, beatsPerBar: 4 }, { label: "music1" }),
-      node("track", "audioFileIn", [-2540, 1700], { monitor: true }, { label: "track1" }),
-      node("source", "valueSwitch", [-2260, 1580], { index: 0 }, { label: "source1" }),
+      node("music", "audioPattern", [-2540, 1460], { bpm: 124, amount: 1, beatsPerBar: 4 }, { label: "pattern_music" }),
+      node("track", "audioFileIn", [-2540, 1700], { monitor: true }, { label: "audiofile_track" }),
+      node("source", "valueSwitch", [-2260, 1580], { index: 0 }, { label: "switch_source" }),
       /*
        * TWO ENVELOPES, because the piece has two timescales and one Lag cannot be both.
-       * `env1` is slow — it turns the kick into a swell the BODY rides. `snap1` is fast —
+       * `lag_env` is slow — it turns the kick into a swell the BODY rides. `lag_snap` is fast —
        * it keeps the transient the hats need, because what it drives is an EVENT rate
-       * rather than a shape (see `flare1`).
+       * rather than a shape (see `level_flare`).
        */
-      node("env", "valueLag", [-1980, 1460], { lag: 0.11 }, { label: "env1" }),
-      node("snap", "valueLag", [-1980, 1700], { lag: 0.035 }, { label: "snap1" }),
+      node("env", "valueLag", [-1980, 1460], { lag: 0.11 }, { label: "lag_env" }),
+      node("snap", "valueLag", [-1980, 1700], { lag: 0.035 }, { label: "lag_snap" }),
       node(
         "mate",
         "circle",
@@ -215,10 +215,10 @@ export const chorusDocument = document(
           aspectcorrect: true,
         },
         {
-          label: "mate1",
+          label: "circle_mate",
           parameters: {
-            "center.x": drivenSlot("matex1", 0.5),
-            "center.y": drivenSlot("matey1", 0.5),
+            "center.x": drivenSlot("lfo_matex", 0.5),
+            "center.y": drivenSlot("lfo_matey", 0.5),
           },
         },
       ),
@@ -248,20 +248,20 @@ export const chorusDocument = document(
        * holds a different moment, so ONE fast move arrives in each cell at a different
        * time and the wall shows the whole gesture at once, spread across the grid.
        */
-      node("pathx", "lfo", [-2260, 380], { shape: "noise", frequency: 0.16, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "pathx1" }),
-      node("pathy", "lfo", [-2260, 620], { shape: "noise", frequency: 0.125, amplitude: 0.28, offset: 0.5, phase: 0.25 }, { label: "pathy1" }),
-      node("matex", "lfo", [-2260, 860], { shape: "sine", frequency: 0.043, amplitude: 0.34, offset: 0.5, phase: 0.6 }, { label: "matex1" }),
-      node("matey", "lfo", [-2260, 1100], { shape: "sine", frequency: 0.029, amplitude: 0.24, offset: 0.5, phase: 0.1 }, { label: "matey1" }),
-      node("swoopa", "valueLag", [-1980, 380], { lag: 0.3 }, { label: "swoopa1" }),
-      node("swoopb", "valueLag", [-1980, 620], { lag: 0.3 }, { label: "swoopb1" }),
-      node("stand", "add", [-1420, -20], { opacity: 1 }, { label: "stand1" }),
+      node("pathx", "lfo", [-2260, 380], { shape: "noise", frequency: 0.16, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "lfo_pathx" }),
+      node("pathy", "lfo", [-2260, 620], { shape: "noise", frequency: 0.125, amplitude: 0.28, offset: 0.5, phase: 0.25 }, { label: "lfo_pathy" }),
+      node("matex", "lfo", [-2260, 860], { shape: "sine", frequency: 0.043, amplitude: 0.34, offset: 0.5, phase: 0.6 }, { label: "lfo_matex" }),
+      node("matey", "lfo", [-2260, 1100], { shape: "sine", frequency: 0.029, amplitude: 0.24, offset: 0.5, phase: 0.1 }, { label: "lfo_matey" }),
+      node("swoopa", "valueLag", [-1980, 380], { lag: 0.3 }, { label: "lag_swoopa" }),
+      node("swoopb", "valueLag", [-1980, 620], { lag: 0.3 }, { label: "lag_swoopb" }),
+      node("stand", "add", [-1420, -20], { opacity: 1 }, { label: "add_stand" }),
 
       // ── the two live inputs, in the plan and compiled (§V363) ───────────────
-      node("cam", "webcam", [-1700, 400], {}, { label: "cam1" }),
-      node("clip", "movieFileIn", [-1700, 640], { file: "", playMode: "freeRun", speed: 1 }, { label: "clip1" }),
+      node("cam", "webcam", [-1700, 400], {}, { label: "webcam1" }),
+      node("clip", "movieFileIn", [-1700, 640], { file: "", playMode: "freeRun", speed: 1 }, { label: "movie_clip" }),
       /* BRANCH 0 understudy, 1 camera, 2 clip, and the ORDER SAYS SO (§V131) — leaving
          it to id order would let a spelling decide what plays on open. */
-      node("pick", "switch", [-1140, 160], { index: 0 }, { label: "pick1" }),
+      node("pick", "switch", [-1140, 160], { index: 0 }, { label: "switch_pick" }),
 
       /*
        * THE FLARE — the hats, made visible, and the wall's damage gate in one node.
@@ -274,17 +274,17 @@ export const chorusDocument = document(
         contrast: 1,
         invert: 0,
         opacity: 1,
-      }, { label: "flare1", parameters: { brightness: expressionSlot(LIT_ON_THE_HATS, 1) } }),
+      }, { label: "level_flare", parameters: { brightness: expressionSlot(LIT_ON_THE_HATS, 1) } }),
 
       /*
        * ── THE MATTE, ON A SWITCH (§V363/§V411, E47's shape) ───────────────────────────
        *
        * TimeGrid's second input is a MATTE TEXTURE, not "the matte node" — which is what
        * lets a luma key, a real person matte, a depth cut or a hand-drawn shape all feed
-       * the same component. Index 0 is `key1`, the understudy: a luma threshold, which is
+       * the same component. Index 0 is `threshold_key`, the understudy: a luma threshold, which is
        * the honest answer for a bright subject on a dark bed and is DETERMINISTIC.
        *
-       * Index 1 is `cut1`, MODNet, AND IT IS THE SHIPPED DEFAULT (T1042). It was 0, and
+       * Index 1 is `matte_cut`, MODNet, AND IT IS THE SHIPPED DEFAULT (T1042). It was 0, and
        * the owner's report was that nothing he changed on the Matte node — model, backend,
        * resolution — moved the picture. It could not: at index 0 the matte node's output
        * reached no pixel of the wall, so every experiment was correctly reporting no
@@ -292,10 +292,10 @@ export const chorusDocument = document(
        *
        * Per §T715 the document loads and renders without the model — the node publishes
        * ZERO everywhere, "nobody is here", so a dropout blanks its cell rather than
-       * failing. With the webcam on (`pick1` → 1) the wall drops the room away from behind
+       * failing. With the webcam on (`switch_pick` → 1) the wall drops the room away from behind
        * whoever is in front of it.
        *
-       * ⚠ `pick1` STAYS AT 0, against the first reading of T1042. A shipped example must
+       * ⚠ `switch_pick` STAYS AT 0, against the first reading of T1042. A shipped example must
        * not open a device on load — E27's precedent, restated by E52 and E53, and this
        * file's own audio switch obeys it eight paragraphs down. Flipping it would trade a
        * deterministic gallery card and every headless gate for a permission prompt.
@@ -316,7 +316,7 @@ export const chorusDocument = document(
         softness: 0.3,
         channel: "luminance",
         compare: "greater",
-      }, { label: "key1" }),
+      }, { label: "threshold_key" }),
       /* T1024/T1036: NOT the quantized build. It is not faster (928 ms vs 818 ms on the
          same input) and it collapses below ~0.2 mean input — measured coverage 0.037 at
          0.095 and 0.007 at 0.046, with the surviving fragment no longer on the subject.
@@ -324,8 +324,8 @@ export const chorusDocument = document(
          referred, so a normally-lit room lands squarely in that collapse zone: the app's
          own input buffer measured 0.049 and 0.103. The accurate build is flat across five
          stops, centroid stable to a texel. The default is the accurate one. */
-      node("cut", "matte", [-580, 660], {}, { label: "cut1" }),
-      node("mpick", "switch", [-300, 540], { index: 1 }, { label: "mpick1" }),
+      node("cut", "matte", [-580, 660], {}, { label: "matte_cut" }),
+      node("mpick", "switch", [-300, 540], { index: 1 }, { label: "switch_mpick" }),
 
       // ── the wall ────────────────────────────────────────────────────────────
       /* The published page, turned from the outside. Grid is a vec2 because a component
@@ -371,11 +371,11 @@ export const chorusDocument = document(
           blend: 0.82,
         },
         {
-          label: "wall1",
+          label: "timegrid_wall",
         },
       ),
 
-      node("out", "output", [280, 160], {}, { label: "out1" }),
+      node("out", "output", [280, 160], {}, { label: "output1" }),
     ],
     [
       edge("e-bed-stand", ["bed", "out"], ["stand", "in1"], 0),

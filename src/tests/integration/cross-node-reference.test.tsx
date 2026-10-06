@@ -286,8 +286,10 @@ describe("T316 — a cross-node reference resolves everywhere (§V148, §V61)", 
 
   it("reports a reference to a node that is not there, rather than rendering a default", async () => {
     const { plan } = await mountWithReference("op('doesNotExist').par.size");
-    const codes = plan.diagnostics.map((diagnostic) => diagnostic.code);
-    expect(codes).toContain("parameter.expression");
+    // §T1641b: its own code, and a WARNING. A node of that name may arrive; the plan the
+    // backend was handed is this one, so the report did not cost the picture.
+    const missing = plan.diagnostics.filter((diagnostic) => diagnostic.code === "parameter.reference.node");
+    expect(missing.map((diagnostic) => diagnostic.severity)).toEqual(["warning"]);
     expect(
       plan.diagnostics.some((diagnostic) => diagnostic.message.includes("doesNotExist")),
     ).toBe(true);

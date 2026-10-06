@@ -301,7 +301,7 @@
       "engage": {
         "definitionVersion": 1,
         "id": "engage",
-        "label": "gain1",
+        "label": "switch_gain",
         "parameters": {
           "index": 0
         },
@@ -314,7 +314,7 @@
       "err": {
         "definitionVersion": 1,
         "id": "err",
-        "label": "err1",
+        "label": "math_err",
         "parameters": {
           "operand": 0.18,
           "operation": "add"
@@ -333,7 +333,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sway1').chan.value"
+                "source": "op('lfo_sway').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -372,7 +372,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('gain1').chan.value"
+                "source": "op('switch_gain').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -432,7 +432,7 @@
       "meter": {
         "definitionVersion": 1,
         "id": "meter",
-        "label": "meter1",
+        "label": "analyze_meter",
         "parameters": {
           "channel": "luminance",
           "operation": "average"
@@ -476,7 +476,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swirl1').chan.value"
+                "source": "op('limit_swirl').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -553,7 +553,7 @@
         "definitionVersion": 1,
         "id": "probe",
         "parameters": {
-          "channel": "meter1",
+          "channel": "analyze_meter",
           "fallback": 0.18
         },
         "position": {
@@ -590,7 +590,7 @@
       "sway": {
         "definitionVersion": 1,
         "id": "sway",
-        "label": "sway1",
+        "label": "lfo_sway",
         "parameters": {
           "amplitude": 0.35,
           "frequency": 0.013,
@@ -633,7 +633,7 @@
       "swirlclamp": {
         "definitionVersion": 1,
         "id": "swirlclamp",
-        "label": "swirl1",
+        "label": "limit_swirl",
         "parameters": {
           "maximum": 0.055,
           "minimum": 0.005

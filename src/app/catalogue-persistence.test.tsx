@@ -261,7 +261,7 @@ describe("§T1540b — a component editor open on the look does not write its st
 
     // An edit that has nothing to do with the bank, on the bus the canvas holds now.
     await act(async () => {
-      const renamed = await handle.editing.bus.execute("node.rename", { nodeId: "blurA", label: "softened" }, runtime.invocation);
+      const renamed = await handle.editing.bus.execute("node.rename", { nodeId: "blurA", label: "softened", exact: true }, runtime.invocation);
       expect(renamed.status).toBe("applied");
     });
 

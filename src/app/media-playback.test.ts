@@ -733,7 +733,7 @@ describe("§T1559b — a Movie's Speed driven by op('<instance>').chan.<c> reach
     const flattened = flattenComponents({ graph, registry: system.nodes, components: system.components.view() });
     // The premise: the instance the expression names is not in the graph the runner reads.
     expect(Object.keys(flattened.graph.nodes)).not.toContain("inst");
-    const channels = createValueGraphSession(system.nodes).evaluate(flattened.graph, FRAME_30).resolver;
+    const channels = createValueGraphSession(system.nodes).evaluate(flattened.graph, FRAME_30, { flattening: flattened }).resolver;
     return { registry: system.nodes, flattened, channels };
   }
 

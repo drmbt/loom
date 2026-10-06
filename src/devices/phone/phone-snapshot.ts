@@ -27,7 +27,7 @@ import { layerNode } from "../../nodes/definitions/layer.ts";
 import {
   CONTROL_WIDGET_TYPES,
   LAYER_NODE_TYPE,
-  controlNameOf,
+  surfaceNameOf,
   layerPicture,
   controlButtonNode,
   controlChannel,
@@ -375,7 +375,9 @@ function memberWidget(
   registry: NodeRegistryView | undefined,
 ): PhoneWidget {
   const handle = node.id;
-  const caption = controlNameOf(node);
+  // T1593b: the phone draws a bank, a layer and a cue list as what they are, so each is
+  // captioned by its ROLE, by the rule the desk's board uses (`surfaceNameOf`).
+  const caption = surfaceNameOf(node, components);
   switch (kind) {
     case "preset":
       return {
@@ -621,7 +623,8 @@ export function vetPhoneSet(graph: GraphDocument, set: PhoneSet, components?: Ca
  * A NAME (`recall`, `standby`) is checked against the bank or the list as it is NOW.
  */
 function vetMember(node: GraphNode, kind: MemberKind, set: PhoneSet, components: Catalogue): PhoneVet {
-  const caption = controlNameOf(node);
+  // The caption the phone drew this member under, so a refusal names what the person pressed.
+  const caption = surfaceNameOf(node, components);
   /** A refusal about THIS member: it is published, so the phone that pressed it can be shown the sentence on it (T1526b). */
   const no = (reason: string): PhoneVet => refuse(reason, node.id);
   const values = typeof set.values === "object" && set.values !== null ? set.values : {};

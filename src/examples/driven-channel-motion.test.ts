@@ -4,12 +4,11 @@ import { flatDocument } from "@compiler/test-support.ts";
 import { flattenComponents } from "../compiler/flatten.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { componentNodeType, createComponentSystem } from "../domain/components/index.ts";
-import { NO_INSTANCES, parameterReadOptions, type InstanceChannelSources } from "../domain/parameters/node-references.ts";
-import { NO_MORPHS } from "../domain/presets/morph-index.ts";
+import { NO_FLATTENING, parameterReadOptions, type FlatteningReads } from "../domain/parameters/node-references.ts";
 import { SILENCE } from "../domain/audio/feature-track.ts";
 import { SPECTRUM_BAND_NAMES } from "../domain/audio/spectrum-bands.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../domain/types/frame.ts";
-import type { GraphDocument } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphDocument } from "../domain/types/graph.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
@@ -61,8 +60,8 @@ import { expressionSlot } from "./documents/builders.ts";
  *
  * The app runs the value graph on the flattened graph (`use-value-graph.ts`), and nothing
  * else is honest here. Component internals reference names that only exist once inlined —
- * the shipped `Kaleidoscope` component reads `driftx1` from its HOST's root graph, and
- * `AudioLevel`'s `probe` is fed across the component boundary — so a per-graph walk reports
+ * the shipped `Kaleidoscope` component reads `lfo_driftx` from its HOST's root graph, and
+ * `AudioLevel`'s `limit_probe` is fed across the component boundary — so a per-graph walk reports
  * both as unresolvable and MISSES the ten driven lanes inside `TimeGrid` entirely. Those
  * ten are not a hypothetical: they are the only place in the catalogue where a published
  * parameter (Churn) reaches its consumers through a channel, and E51 turns it up while the
@@ -179,16 +178,18 @@ interface Motion {
  * because it is smoothing would read as alive when it is not.
  */
 function motionOf(
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
   randomSeed: number,
   /**
-   * §T1551b: the flattening's instances. `op('<instance>').chan.<c>` names a node the
-   * flattening deleted, so no address answers it; it is read the way the app reads it, by
-   * the reader itself, through the inner node the instance's output publishes from.
+   * §T1551b/§T1559b: what the flattening knows, whole — required, so a caller with none
+   * says `NO_FLATTENING`. Its instances matter here: `op('<instance>').chan.<c>` names a
+   * node the flattening deleted, so no address answers it; it is read the way the app reads
+   * it, by the reader itself, through the inner node the instance's output publishes from.
    */
-  instances: InstanceChannelSources = NO_INSTANCES,
+  flattening: FlatteningReads,
 ): Map<string, Motion> {
+  const instances = flattening.instanceChannels;
   const reads = channelReads(graph);
   const addresses = [...new Set(reads.map((read) => `${read.name}.${read.key}`))].map((key) => {
     const dot = key.lastIndexOf(".");
@@ -259,6 +260,7 @@ function motionOf(
       return seams.has(name) ? stimulusAt(frameIndex) : undefined;
     };
     const evaluated = session.evaluate(graph, frame, {
+      flattening,
       // §V182: the pointer the shaders read. Moving, for the same reason the seams move.
       pointer: {
         x: 0.5 + 0.3 * Math.sin(frameIndex * 0.021),
@@ -279,13 +281,7 @@ function motionOf(
     const instanceRead =
       instances.size === 0
         ? undefined
-        : parameterReadOptions({
-            graph: flatDocument(graph),
-            registry,
-            frame,
-            channels: (address) => ladder(address),
-            flattening: { morphs: NO_MORPHS, instanceChannels: instances },
-          }).nodes;
+        : parameterReadOptions({ graph, registry, frame, channels: (address) => ladder(address), flattening }).nodes;
 
     for (const address of addresses) {
       if (instanceRead !== undefined && instances.has(address.name)) {
@@ -335,23 +331,23 @@ function motionOf(
  * by accident, because the sweep that created this table found none.
  */
 const DELIBERATELY_STILL: Record<string, string> = {
-  "E75-Resonance.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
-  "E75-Resonance.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
-  "E76-Verdant-Lotus.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
-  "E76-Verdant-Lotus.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
-  "E77-Ember-Monoliths.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
-  "E77-Ember-Monoliths.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
-  "E78-Aether-Orrery.loom.json churnx1.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
-  "E78-Aether-Orrery.loom.json churny1.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
+  "E75-Resonance.loom.json lfo_churnx.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E75-Resonance.loom.json lfo_churny.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
+  "E76-Verdant-Lotus.loom.json lfo_churnx.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E76-Verdant-Lotus.loom.json lfo_churny.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
+  "E77-Ember-Monoliths.loom.json lfo_churnx.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E77-Ember-Monoliths.loom.json lfo_churny.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
+  "E78-Aether-Orrery.loom.json lfo_churnx.value": "TimeGrid Churn 0 fixes twelve columns to the architectural bay mapping",
+  "E78-Aether-Orrery.loom.json lfo_churny.value": "TimeGrid Churn 0 fixes two rows to the architectural bay mapping",
   /* §T809 — E27's optional audio, and "optional" is a GATE here rather than a promise:
-     `kick1` is a multiply whose operand ships at 0, so the whole audioPattern → bias →
-     envelope → gain chain reaches `lift1.value1` as EXACTLY 0. `relief-claims.gpu.test.ts`
+     `math_kick` is a multiply whose operand ships at 0, so the whole audioPattern → bias →
+     envelope → gain chain reaches `kernel_lift.value1` as EXACTLY 0. `relief-claims.gpu.test.ts`
      renders the file with the chain in the graph and compares BYTES against the pre-T809
-     frames, and separately proves the drive is real above zero. Raise `kick1.operand`. */
-  "E27-Relief.loom.json kick1.low": "T809: the optional audio ships at gain 0, byte-identity gated",
+     frames, and separately proves the drive is real above zero. Raise `math_kick.operand`. */
+  "E27-Relief.loom.json math_kick.low": "T809: the optional audio ships at gain 0, byte-identity gated",
   /* §T809 again, the colour half: an `lfo` at `amplitude: 0` returns `offset + 0 * wave`,
      which is exactly its offset. Same identity claim, same test, same one number to turn. */
-  "E27-Relief.loom.json cycle1.value": "T809: the optional colour rotation ships at amplitude 0",
+  "E27-Relief.loom.json lfo_cycle.value": "T809: the optional colour rotation ships at amplitude 0",
   /* The TimeGrid starter component's own HOST DEMO, at the component's default `Churn: 0`.
      The two `lfo`s are not decoration — they are how the PUBLISHED `Columns`/`Rows` knobs
      reach their five consumers at all, since §T1017 means a published parameter cannot
@@ -365,17 +361,17 @@ const DELIBERATELY_STILL: Record<string, string> = {
      CLOCKLESS by definition and move only when a hand or a paired phone moves them, which
      no offline horizon does. The published control IS the thing that turns each one on,
      and `phone-desk-claims.gpu.test.ts` moves every widget and asserts the render follows. */
-  "E81-Phone-Desk.loom.json heat.heat": "Slider: moves by hand only; the claims test moves it",
-  "E81-Phone-Desk.loom.json invert.invert": "Toggle: moves by hand only; the claims test flips it",
-  "E81-Phone-Desk.loom.json flash.flashCount": "Button presses: by hand only; the claims test presses it",
-  "E81-Phone-Desk.loom.json warp.warpX": "XY Pad: moves by hand only; the claims test drags it",
-  "E81-Phone-Desk.loom.json warp.warpY": "XY Pad: moves by hand only; the claims test drags it",
+  "E81-Phone-Desk.loom.json slider_heat.heat": "Slider: moves by hand only; the claims test moves it",
+  "E81-Phone-Desk.loom.json toggle_invert.invert": "Toggle: moves by hand only; the claims test flips it",
+  "E81-Phone-Desk.loom.json button_flash.flashCount": "Button presses: by hand only; the claims test presses it",
+  "E81-Phone-Desk.loom.json xypad_warp.warpX": "XY Pad: moves by hand only; the claims test drags it",
+  "E81-Phone-Desk.loom.json xypad_warp.warpY": "XY Pad: moves by hand only; the claims test drags it",
   /* E82's two lanes are the Show desk's sliders, clockless for E81's reason;
      `set-list-claims.gpu.test.ts` moves both and asserts the render follows. */
-  "E82-Set-List.loom.json master.master": "Slider: moves by hand only; the claims test moves it",
-  "E82-Set-List.loom.json keystone.keystone": "Slider: moves by hand only; the claims test moves it",
-  "TimeGrid.loom.json churnx1.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
-  "TimeGrid.loom.json churny1.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
+  "E82-Set-List.loom.json slider_master.master": "Slider: moves by hand only; the claims test moves it",
+  "E82-Set-List.loom.json slider_keystone.keystone": "Slider: moves by hand only; the claims test moves it",
+  "TimeGrid.loom.json lfo_churnx.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
+  "TimeGrid.loom.json lfo_churny.value": "TimeGrid ships Churn at its 0 default; E51 turns it up",
   /* ⚑ E70's TEMPO LANE, AND IT IS A DIFFERENT KIND OF ROW FROM THE FOUR ABOVE — not a knob
      at its off position, but §T1279's shape: A LANE THAT IS A NO-OP ON THE SHIPPED FIXTURE
      AND REAL ON A TRACK, which that row's owner proved byte-for-byte rather than letting it
@@ -388,13 +384,13 @@ const DELIBERATELY_STILL: Record<string, string> = {
      picture to be the shipped picture, and a tempo term that moved the morph on the fixture
      would mean the thumbnail and the file disagreed about what the piece looks like.
 
-     The one number that turns it on is in the document: `music1.bpm`. Set it to 140 and the
-     morph runs 25% faster; drop any track into `track1` and the lane rides the real claim.
+     The one number that turns it on is in the document: `pattern_music.bpm`. Set it to 140 and the
+     morph runs 25% faster; drop any track into `audiofile_track` and the lane rides the real claim.
      `chimera-claims.gpu.test.ts` asserts BOTH halves — that the lane is inert at 112, and
      that it is genuinely live at a different tempo — so this row cannot decay into a lane
      that is dead everywhere. */
-  "E70-Chimera.loom.json source1.bpm": "T1309b: the tempo lane is 1 by arithmetic at the fixture's own 112 bpm; music1.bpm turns it on",
-  "E70-Chimera.loom.json source1.bpmConfidence": "T1309b: the pattern always claims its tempo, so the confidence gate is open and constant here; a live source on Auto publishes 0 and the term vanishes",
+  "E70-Chimera.loom.json switch_source.bpm": "T1309b: the tempo lane is 1 by arithmetic at the fixture's own 112 bpm; pattern_music.bpm turns it on",
+  "E70-Chimera.loom.json switch_source.bpmConfidence": "T1309b: the pattern always claims its tempo, so the confidence gate is open and constant here; a live source on Auto publishes 0 and the term vanishes",
 };
 
 interface Sweep {
@@ -412,7 +408,7 @@ const SWEEP: Sweep[] = [...listExamples(), ...listStarterComponentFiles()].map((
   const flattened = flattenComponents({ graph: document.graph, registry, components });
   return {
     fileName: file.fileName,
-    motion: motionOf(flattened.graph, registry, document.settings.randomSeed, flattened.instanceChannels),
+    motion: motionOf(flattened.graph, registry, document.settings.randomSeed, flattened),
   };
 });
 
@@ -439,7 +435,7 @@ describe("T1145 — every driven channel in every shipped document actually move
       nodes: {
         beat: {
           id: "beat" as never, type: "audioPattern", definitionVersion: 1,
-          position: { x: 0, y: 0 }, parameters: { bpm: 112, amount: 1 }, label: "beat1",
+          position: { x: 0, y: 0 }, parameters: { bpm: 112, amount: 1 }, label: "pattern_beat",
         },
         step: {
           id: "step" as never, type: "valueStep", definitionVersion: 1,
@@ -477,7 +473,7 @@ describe("T1145 — every driven channel in every shipped document actually move
       groups: {},
     };
 
-    const motion = motionOf(graph, registry, 54);
+    const motion = motionOf(flatDocument(graph), registry, 54, NO_FLATTENING);
     // The band energy never reaches `every`, so the step index is pinned — a CONSTANT.
     expect(motion.get("step1.low")?.distinct).toBe(1);
     // And the same node's `bar` counts, so the same step index genuinely increments. This
@@ -503,7 +499,7 @@ describe("T1145 — every driven channel in every shipped document actually move
       },
     } as unknown as GraphDocument;
     const flattened = flattenComponents({ graph, registry: system.nodes, components: system.components.view() });
-    const motion = motionOf(flattened.graph, system.nodes, 54, flattened.instanceChannels).get("analysis1.level");
+    const motion = motionOf(flattened.graph, system.nodes, 54, flattened).get("analysis1.level");
     expect(motion?.unresolved).toBe(0);
     expect(motion?.distinct).toBe(HORIZON_FRAMES);
     expect(motion?.maximum).toBeCloseTo((HORIZON_FRAMES - 1) / 1000, 12);

@@ -134,8 +134,8 @@ export const kaleidoscopeDocument = document(
         },
         {
           parameters: {
-            "offset.x": drivenSlot("driftx1", 0.15),
-            "offset.y": drivenSlot("drifty1", 0.05),
+            "offset.x": drivenSlot("lfo_driftx", 0.15),
+            "offset.y": drivenSlot("lfo_drifty", 0.05),
           },
         },
       ),
@@ -146,14 +146,14 @@ export const kaleidoscopeDocument = document(
         "lfo",
         [-240, 260],
         { shape: "sine", frequency: 0.023, amplitude: 0.25, offset: 0.15, phase: 0 },
-        { label: "driftx1" },
+        { label: "lfo_driftx" },
       ),
       node(
         "drifty",
         "lfo",
         [-240, 470],
         { shape: "sine", frequency: 0.031, amplitude: 0.25, offset: 0.05, phase: 0.25 },
-        { label: "drifty1" },
+        { label: "lfo_drifty" },
       ),
       node(
         "spin",

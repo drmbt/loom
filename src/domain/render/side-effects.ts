@@ -216,6 +216,14 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   pointGather: "none",
   pointRange: "none",
   pointTransform: "none",
+  // T1586b: the curve family measures and re-places points in GPU buffers; nothing leaves.
+  pointCurve: "none",
+  pointCurveFrames: "none",
+  pointResample: "none",
+  // T1587b: a sweep writes a grid of vertices into a GPU buffer; nothing leaves.
+  pointSweep: "none",
+  // T1585b: a rope steps points in its own GPU buffers; nothing leaves.
+  pointRope: "none",
   /*
    * T947. THE PLANNER, NOT THE TRANSPORT — and this row is the first real exercise of the
    * split T949 exists to make, so it is argued rather than filled in.

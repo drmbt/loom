@@ -148,14 +148,18 @@ export interface ParentScopeDriverOptions {
  */
 export function parentBindResolver(
   scope: ParentScope | undefined,
-): (ref: string) => { ok: true; value: ParameterValue } | { ok: false; message: string } {
+): (ref: string) => { ok: true; value: ParameterValue } | { ok: false; kind: "unreadable"; message: string } {
   return (ref) => {
     const reference = parseParentReference(ref);
+    // §T1641b slice 1b: every refusal here is of the stored ref, against the scope this was
+    // BUILT with: it is not a parent reference, there is no component around the node, it
+    // reaches past the outermost one, or the component publishes no such key. None of them
+    // reads until the ref or the component changes.
     if (reference === null) {
-      return { ok: false, message: `"${ref}" is not a parent reference; expected parent.<key> (§V81).` };
+      return { ok: false, kind: "unreadable", message: `"${ref}" is not a parent reference; expected parent.<key> (§V81).` };
     }
     const lookup = lookupParentScope(scope, reference);
-    if (!lookup.found) return { ok: false, message: lookup.message };
+    if (!lookup.found) return { ok: false, kind: "unreadable", message: lookup.message };
     return { ok: true, value: lookup.value };
   };
 }

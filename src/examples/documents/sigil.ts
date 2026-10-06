@@ -4,16 +4,16 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * E38 — Sigil (T727). A mark assembles itself out of a drifting population, holds, comes
  * apart, and comes back — and it is A PICTURE that decides which motes belong to it.
  *
- *   disc1(circle) ─┐                         cycle1(lfo) ─► shape1(valueMath) ─► hold1(valueLimit)
- *   hole1(circle) ─┴─► ring1(difference) ─┐                                            │ value1
- *   pip1(circle) ─────────────────────────┴─► emblem1(add) ─────────────► gather1(pointKernel)
+ *   circle_disc(circle) ─┐                         lfo_cycle(lfo) ─► math_shape(valueMath) ─► limit_hold(valueLimit)
+ *   circle_hole(circle) ─┴─► difference_ring(difference) ─┐                                            │ value1
+ *   circle_pip(circle) ─────────────────────────┴─► add_emblem(add) ─────────────► kernel_gather(pointKernel)
  *                                                                            ▲ field    │
  *   grid1(pointGrid 384x216) ────────────────────────────────────────────────┘ in       │
  *                                                          ┌───────────────────────────-┘
- *                                       haze1(renderPoints  p.mark <= 0.5) ─┐
- *                                       glyph1(renderPoints p.mark >  0.5) ─┴─► both1(add)
- *   both1 ─┬────────────────────────────► burn1(add) ─► hue1(hsv ┄ drift1) ─► out1
- *          └─► halo1(blur) ─► halolvl1(level) ─┘
+ *                                       points_haze(renderPoints  p.mark <= 0.5) ─┐
+ *                                       points_glyph(renderPoints p.mark >  0.5) ─┴─► add_both(add)
+ *   add_both ─┬────────────────────────────► add_burn(add) ─► hsv_hue(hsv ┄ lfo_drift) ─► output1
+ *          └─► blur_halo(blur) ─► level_halo(level) ─┘
  *
  * ## What is new here: an image that decides TARGETS, not tint
  *
@@ -194,25 +194,25 @@ export const sigilDocument = document(
       node("disc", "circle", [-1720, -260], {
         mode: "fill", center: [0.5, 0.5], radius: [0.3, 0.3], softness: 0.035,
         fillcolor: [1, 1, 1, 1], bgcolor: [0, 0, 0, 1], aspectcorrect: true,
-      }, { label: "disc1" }),
+      }, { label: "circle_disc" }),
       node("hole", "circle", [-1720, -60], {
         mode: "fill", center: [0.5, 0.5], radius: [0.185, 0.185], softness: 0.035,
         fillcolor: [1, 1, 1, 1], bgcolor: [0, 0, 0, 1], aspectcorrect: true,
-      }, { label: "hole1" }),
-      node("ring", "difference", [-1420, -160], { opacity: 1 }, { label: "ring1" }),
+      }, { label: "circle_hole" }),
+      node("ring", "difference", [-1420, -160], { opacity: 1 }, { label: "difference_ring" }),
       node("pip", "circle", [-1720, 140], {
         mode: "fill", center: [0.5, 0.5], radius: [0.072, 0.072], softness: 0.03,
         fillcolor: [1, 1, 1, 1], bgcolor: [0, 0, 0, 1], aspectcorrect: true,
-      }, { label: "pip1" }),
-      node("emblem", "add", [-1120, -60], { opacity: 1 }, { label: "emblem1" }),
+      }, { label: "circle_pip" }),
+      node("emblem", "add", [-1120, -60], { opacity: 1 }, { label: "add_emblem" }),
 
       // ---- the cycle: one job per node ----------------------------------------------
-      node("cycle", "lfo", [-1720, 420], { shape: "sine", frequency: 0.08, amplitude: 0.5, offset: 0.5, phase: 0.306 }, { label: "cycle1" }),
+      node("cycle", "lfo", [-1720, 420], { shape: "sine", frequency: 0.08, amplitude: 0.5, offset: 0.5, phase: 0.306 }, { label: "lfo_cycle" }),
       /* A sine spends almost no time at its extremes, so on its own the glyph would never
          HOLD - it would pass through legible on its way somewhere. Gain then clamp is the
          standard shape for that: 2.1x flattens the top and the bottom into real dwells. */
-      node("shape", "valueMath", [-1420, 420], { operation: "multiply", operand: 1.6 }, { label: "shape1" }),
-      node("hold", "valueLimit", [-1120, 420], { minimum: 0, maximum: 1 }, { label: "hold1" }),
+      node("shape", "valueMath", [-1420, 420], { operation: "multiply", operand: 1.6 }, { label: "math_shape" }),
+      node("hold", "valueLimit", [-1120, 420], { minimum: 0, maximum: 1 }, { label: "limit_hold" }),
 
       // ---- the population -------------------------------------------------------------
       node("grid", "pointGrid", [-1420, 180], { cols: SIGIL_COLS, rows: SIGIL_ROWS, count: SIGIL_POINTS, sizeX: 2.4, sizeY: 2.4 }, { label: "grid1" }),
@@ -220,33 +220,33 @@ export const sigilDocument = document(
         capacity: SIGIL_POINTS, seed: 38, group: "",
         attributes: SIGIL_ATTRIBUTES, kernel: SIGIL_KERNEL,
         value2: 0, value3: 0, value4: 0,
-      }, { label: "gather1", parameters: { value1: drivenSlot("hold1", 1) } }),
+      }, { label: "kernel_gather", parameters: { value1: drivenSlot("limit_hold", 1) } }),
 
       // ---- ONE cloud, TWO readings (§V471.1) -------------------------------------------
       node("haze", "renderPoints", [-500, 240], {
         count: SIGIL_POINTS, blend: "additive", accumulate: false,
         color: [0.22, 0.38, 0.86, 1], sizePixels: 1.2,
         group: "p.mark <= 0.5",
-      }, { label: "haze1" }),
+      }, { label: "points_haze" }),
       node("glyph", "renderPoints", [-500, -60], {
         count: SIGIL_POINTS, blend: "additive", accumulate: false,
         color: [1, 0.74, 0.40, 1], sizePixels: 1.7,
         group: "p.mark > 0.5",
-      }, { label: "glyph1" }),
-      node("both", "add", [-180, 60], { opacity: 1 }, { label: "both1" }),
+      }, { label: "points_glyph" }),
+      node("both", "add", [-180, 60], { opacity: 1 }, { label: "add_both" }),
 
       // ---- the post, one job per stage --------------------------------------------------
-      node("halo", "blur", [140, 260], { size: 26, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
+      node("halo", "blur", [140, 260], { size: 26, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
       node("haloLvl", "level", [460, 260], {
         blacklevel: 0.03, whitelevel: 1, contrast: 1, gamma1: 1, invert: 0, opacity: 1, brightness: 0.9,
-      }, { label: "halolvl1" }),
-      node("burn", "add", [780, 60], { opacity: 1 }, { label: "burn1" }),
-      node("drift", "lfo", [780, 320], { shape: "sine", frequency: 0.041, amplitude: 18, offset: 0, phase: 0 }, { label: "drift1" }),
+      }, { label: "level_halo" }),
+      node("burn", "add", [780, 60], { opacity: 1 }, { label: "add_burn" }),
+      node("drift", "lfo", [780, 320], { shape: "sine", frequency: 0.041, amplitude: 18, offset: 0, phase: 0 }, { label: "lfo_drift" }),
       node("hue", "hsv", [1100, 60], { saturation: 1.08, value: 1 }, {
-        label: "hue1",
-        parameters: { hueoffset: drivenSlot("drift1", 0) },
+        label: "hsv_hue",
+        parameters: { hueoffset: drivenSlot("lfo_drift", 0) },
       }),
-      node("out", "output", [1420, 60], {}, { label: "out1" }),
+      node("out", "output", [1420, 60], {}, { label: "output1" }),
     ],
     [
       edge("e-disc-ring", ["disc", "out"], ["ring", "in1"]),

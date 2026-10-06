@@ -15,8 +15,10 @@ import type { CommandName } from "./commands.ts";
 
 /** A right-click means different things over a node, a port, an edge, or empty canvas. */
 export interface MenuTarget {
-  surface: "canvas" | "node" | "port" | "edge" | "parameter" | "channel";
+  surface: "canvas" | "node" | "port" | "edge" | "parameter" | "channel" | "control";
   nodeId?: NodeId;
+  /** §T1619b: the Panel whose board the control was right-clicked on (`surface: "control"`), when it was on one. */
+  panelId?: NodeId;
   /** §T1393b: the channel under the cursor on a value node's card (`surface: "channel"`). */
   channel?: string;
   /** Its reading when the row showed one. */
@@ -40,6 +42,13 @@ export interface MenuItem {
   /** Named guard, evaluated against the target — e.g. "hasSelection", "isBypassed". */
   when?: string;
   danger?: boolean;
+  /**
+   * §T1619b: do not print the command's key beside this row. For a row whose input is NOT
+   * what the key's binding sends: the control menu's Reset acts on the control under the
+   * cursor and the key on the canvas selection, so a chip there would teach a key that does
+   * something else.
+   */
+  noShortcut?: true;
   submenu?: ReadonlyArray<MenuItem>;
 }
 

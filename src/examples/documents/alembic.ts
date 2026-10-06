@@ -4,7 +4,7 @@ import { ALEMBIC_WGSL } from "../shaders/alembic.wgsl.ts";
 /**
  * E58 — Alembic (T1166). ONE TECHNIQUE, FIVE LOOKS. Credit: @Xor.
  *
- *   palette1(ramp) ─► alembic1(customWgsl: the warp-and-accumulate march) ─► out1(output)
+ *   ramp_palette(ramp) ─► wgsl_alembic(customWgsl: the warp-and-accumulate march) ─► output1(output)
  *
  * ## CREDIT AND THE CONSTRAINT, BECAUSE IT CAME BEFORE ANY OF THE DESIGN
  *
@@ -54,7 +54,7 @@ import { ALEMBIC_WGSL } from "../shaders/alembic.wgsl.ts";
  * `ramp`. The colour term of this family is a gradient editor. Measured as an identity
  * rather than an impression: with a flat grey ramp, 0 of 57600 pixels carry any hue.
  *
- * `out1` tone-maps with `none` on purpose — `tanh` has already done that job inside the
+ * `output1` tone-maps with `none` on purpose — `tanh` has already done that job inside the
  * shader, and a filmic curve on top would be tone-mapping a tone-mapped image.
  *
  * ## MEASURED, on the shipped file
@@ -149,7 +149,7 @@ export const alembicDocument = document(
           { position: 0.84, color: [0.05, 0.08, 0.3, 1] },
           { position: 1, color: [0.01, 0.01, 0.04, 1] },
         ],
-      }, { label: "palette1" }),
+      }, { label: "ramp_palette" }),
 
       node("alembic", "customWgsl", [-300, 0], {
         source: ALEMBIC_WGSL,
@@ -176,9 +176,9 @@ export const alembicDocument = document(
         paletteScale: 0.5,
         paletteBias: 0.4,
         grain: 1,
-      }, { label: "alembic1" }),
+      }, { label: "wgsl_alembic" }),
 
-      node("out", "output", [0, 0], { toneMap: "none" }, { label: "out1" }),
+      node("out", "output", [0, 0], { toneMap: "none" }, { label: "output1" }),
     ],
     [
       edge("e-palette-alembic", ["palette", "out"], ["alembic", "input"]),

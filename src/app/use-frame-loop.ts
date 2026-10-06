@@ -15,7 +15,7 @@ import { planStructureSignature } from "@runtime/backend/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { TelemetryHub } from "@runtime/telemetry/index.ts";
 import { createUniformAnimator } from "./animate-parameters.ts";
-import type { StructureFrame, TimelineStructureLink, WarmLoop } from "./use-graph-compile.ts";
+import type { StructureFrame, TimelineStructureLink, ValuesHandoff, WarmLoop } from "./use-graph-compile.ts";
 import { compileLatest } from "./compile-latest.ts";
 import { MAX_RETAINED_DIAGNOSTICS, retainDiagnostic } from "./diagnostic-buffer.ts";
 import { registerTransportCommands, transportHolderFor } from "./transport-commands.ts";
@@ -56,10 +56,24 @@ const NO_DIAGNOSTICS: readonly RuntimeDiagnostic[] = [];
  * value-blind way (`planStructureSignature` over the synthesis's own passes): a scene
  * payload's uniforms move with its parameters (§V5, T462) and must not re-render the App.
  */
-function installedPlanKey(plan: CompiledGraph): string {
+export function installedPlanKey(plan: CompiledGraph): string {
   const synthesized = plan.outputs.flatMap((output) =>
     output.synthesis === undefined
-      ? []
+      ? /*
+         * T1655b: and a row that BORROWS another row's resource, or says something about its
+         * camera. A camera with exactly one Render previews as that Render's own picture by
+         * aliasing its row (T546): no pass, no resource, no synthesis, so nothing above moves
+         * when the camera's tile comes on screen, the row was never announced, and the tile
+         * read "no signal" for as long as nothing structural happened. Reproduced through
+         * the app in `preview-camera.spec.ts` (a camera far from everything, gone to after the
+         * install); the owner's camera read "no signal" when framed alone on the walk, which is
+         * this shape, though that one was not re-run against the old key. The camera answer
+         * rides along for the same reason: re-wiring a Render to another camera moves a
+         * uniform and the name its tile shows, and no structure.
+         */
+        output.previewCamera === undefined
+        ? []
+        : [`${output.nodeId}:${output.portId}:${output.resourceId}:${JSON.stringify(output.previewCamera)}`]
       : [
           `${output.nodeId}:${output.portId}:${output.synthesis.kind ?? ""}:${planStructureSignature(
             [],
@@ -98,6 +112,8 @@ export interface FrameLoopResult {
    * backend holds nothing, so there is nothing to bind against.
    */
   readonly installedPlan: CompiledGraph | null;
+  /** T1655b: the rows of the installed plan's newest values-only variation (see `liveOutputsRef`). */
+  readonly liveOutputs: () => CompiledGraph["outputs"] | null;
   /**
    * T433 — true while playback is cycling the document's frame range.
    *
@@ -204,6 +220,20 @@ export interface FrameLoopOptions {
    * real plans before acting on it, and falls back to a full compile when they disagree.
    */
   readonly valuesOnly?: boolean | undefined;
+  /**
+   * T1652b — where a VALUES-ONLY revision's plan arrives WITHOUT A RENDER, from
+   * `useGraphCompile` (`GraphCompileResult.values`).
+   *
+   * `compiled` above only moves when the composition root renders, and it no longer
+   * renders for a revision that moved values only. This is the other door: the compile's
+   * values lane hands such a revision's plan and its `animate` here, and they are taken
+   * exactly as the `valuesOnly` branch of the compile effect takes them — a uniform write
+   * `push` has verified against the installed plan. Refused (and the revision then takes
+   * the structural road, through `compiled`) when no plan is installed yet, when a
+   * structural install is on its way, or when `push` says the two plans differ in more
+   * than values.
+   */
+  readonly values?: ValuesHandoff | undefined;
   /**
    * This revision must land on CLEARED temporal history (§V22, T519, B106).
    *
@@ -313,6 +343,16 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
    */
   const [installedPlan, setInstalledPlan] = useState<CompiledGraph | null>(null);
   const installedSignatureRef = useRef<string | null>(null);
+  /**
+   * T1655b: the rows of the newest plan the backend holds VALUES for: the installed plan,
+   * or its latest values-only variation. A values-only edit is deliberately not announced
+   * through `installedPlan` (§V16), and a synthesized preview's uniform values live on its
+   * row, so without this a camera, light or material tile kept drawing the values of the
+   * last STRUCTURAL edit (`live-synthesis.ts` has the measurement). Read by the preview
+   * tick, never rendered from.
+   */
+  const liveOutputsRef = useRef<CompiledGraph["outputs"] | null>(null);
+  const liveOutputs = useCallback(() => liveOutputsRef.current, []);
   /**
    * T455 — TIMELINE MODE IS THE DEFAULT, so the frame counter is BOUNDED.
    *
@@ -977,6 +1017,38 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
     driver.start();
   }, [fps]);
 
+  /**
+   * T1652b — THE VALUES LANE'S DOOR (`FrameLoopOptions.values`).
+   *
+   * Taken the way the `valuesOnly` branch of the compile effect below takes a plan: `push`
+   * verifies it is a values-only variation of the plan the backend holds and writes the
+   * blocks that moved; then the plan and its `animate` are the installed ones, so the next
+   * push diffs against these values and the next frame resolves against this revision.
+   * Not announced (`installedPlan` keeps its object), for T1163's reason: nothing a
+   * consumer of the installed plan reads has moved.
+   *
+   * REFUSED while a structural install is on its way: that install lands with the values
+   * its plan was compiled with, and would overwrite on the device what this wrote. The
+   * refusal sends the revision down the structural road, where it queues behind that
+   * install and lands after it.
+   */
+  const pendingInstallRef = useRef(false);
+  const laneHeldRef = useRef<{ readonly backend: unknown; readonly plan: CompiledGraph } | null>(null);
+  const valuesHandoff = options.values;
+  useEffect(() => {
+    if (valuesHandoff === undefined || backend === null || backend === undefined) return;
+    return valuesHandoff.attach((plan) => {
+      const built = planRef.current;
+      if (built === null || driverRef.current === null || pendingInstallRef.current) return false;
+      if (animatorRef.current.pushRebased(backend, built, plan.compiled) === null) return false;
+      planRef.current = plan.compiled;
+      liveOutputsRef.current = plan.compiled.outputs;
+      installedAnimateRef.current = plan.animate;
+      laneHeldRef.current = { backend, plan: plan.compiled };
+      return true;
+    });
+  }, [backend, valuesHandoff]);
+
   useEffect(() => {
     const driver = driverRef.current;
     if (backend === null || backend === undefined || driver === null) return;
@@ -1015,12 +1087,31 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
     /** §T1537b: the segment this plan was compiled for, read beside it. */
     const segment = timelineRef.current?.compiledKey ?? "";
     const built = planRef.current;
-    if (valuesOnlyRef.current && built !== null) {
+    /*
+     * T1652b: this very plan is ALREADY what the backend holds. It arrived by the values
+     * lane (above) for a revision the root did not render for, and a render for something
+     * else has now caught up with it. Installing it again would be a structural build of
+     * the program that is running.
+     */
+    if (laneHeldRef.current?.plan === compiled && laneHeldRef.current.backend === backend && built === compiled) {
+      installedAnimateRef.current = animate;
+      return;
+    }
+    /*
+     * T1652b: not while a structural install is on its way, for the reason the lane's door
+     * is shut then. `built` is still the plan BEFORE that install; when the two have the
+     * same structure (a rename, then a value) the push would be accepted, and the install
+     * would then land on top of it with the values ITS plan was compiled with — the value
+     * on the device one revision behind the document until something else moved. Falling
+     * through queues this plan behind the one in flight (§B235) and supersedes it.
+     */
+    if (valuesOnlyRef.current && built !== null && !pendingInstallRef.current) {
       const written = animatorRef.current.push(backend, built, compiled);
       if (written !== null) {
         // Later pushes diff against the newest values, so a slider dragged through ten
         // positions writes each block once, not ten times against a stale base.
         planRef.current = compiled;
+        liveOutputsRef.current = compiled.outputs;
         installedAnimateRef.current = animate;
         installedSegmentRef.current = segment;
         wakeInstallWaiters();
@@ -1062,6 +1153,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
 
     const generation = (generationRef.current += 1);
     const warmPlan = warmPlanRef.current;
+    // T1652b: until this lands (or a newer one does), the values lane's door is shut.
+    pendingInstallRef.current = true;
     // §B235: queued behind the compile already in flight, never beside it — two compiles
     // carrying from one retained program destroy each other's objects. A request a newer
     // one overtook while it waited is never sent (`null`).
@@ -1070,6 +1163,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         // A newer compile landed while this one was in flight — that result, not this
         // one, is authoritative for the driver.
         if (generation !== generationRef.current || plan === null) return;
+        pendingInstallRef.current = false;
         // The structural plan the per-frame push diffs against. Reset together, so a
         // recompile never leaves the animator comparing against a plan that is gone.
         planRef.current = compiled;
@@ -1083,6 +1177,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         // The generation guard above has already dropped a superseded install, so this
         // can only ever announce the newest plan that landed.
         // §B188: keyed on what a CONSUMER can read, which the plan signature alone is not.
+        liveOutputsRef.current = compiled.outputs;
         const key = installedPlanKey(compiled);
         if (installedSignatureRef.current !== key) {
           installedSignatureRef.current = key;
@@ -1151,6 +1246,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       })
       .catch((error: unknown) => {
         if (generation !== generationRef.current) return;
+        pendingInstallRef.current = false;
         // §T1537b: the backend refused this segment's plan; its frames take the installed one.
         failedSegmentRef.current = segment;
         wakeInstallWaiters();
@@ -1179,5 +1275,5 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
   // T465: the problems tab's Clear empties every ACCUMULATING source; anything still
   // real re-reports on its own and thereby proves it is live.
   const clearDiagnostics = useCallback(() => setDiagnostics([]), []);
-  return { diagnostics, clearDiagnostics, playing, looping, latestFrame, installedPlan };
+  return { diagnostics, clearDiagnostics, playing, looping, latestFrame, installedPlan, liveOutputs };
 }

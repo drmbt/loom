@@ -87,6 +87,22 @@ function exposedPortDefinitions(
 }
 
 /**
+ * What an INSTANCE of this definition declares BESIDE its published page.
+ *
+ * T1505b (§1.2 Q3): a definition with a page bank gives each instance its OWN `current`
+ * and fades, on its page, so a recall writes them in the same patch as the values — one
+ * revision, one undo, per instance — and paste and `get_node` carry them.
+ *
+ * §T1641b slice 2: ONE answer, for the manifest below and for the flattener, which reads an
+ * instance against its published page alone. While only the manifest knew, the write gate
+ * accepted `presetCurrent` and every compile after a recall called it a key the instance's
+ * type does not declare.
+ */
+export function instanceOwnParameters(definition: GraphComponentDefinition): Readonly<Record<string, ParameterDefinition>> {
+  return pageBanksOf(definition).length > 0 ? PRESET_STATE_PARAMETERS : {};
+}
+
+/**
  * The synthesized manifest for one component version.
  *
  * `compile` returns no passes on purpose: a component does not compile as a node, it is
@@ -102,10 +118,7 @@ export function componentNodeDefinition(
   for (const published of definition.parameters) {
     parameters[published.key] = published.definition;
   }
-  // T1505b (§1.2 Q3): a definition with a page bank gives each instance its OWN `current`
-  // and fades, on its page, so a recall writes them in the same patch as the values — one
-  // revision, one undo, per instance — and paste and `get_node` carry them.
-  if (pageBanksOf(definition).length > 0) Object.assign(parameters, PRESET_STATE_PARAMETERS);
+  Object.assign(parameters, instanceOwnParameters(definition));
 
   return {
     type: componentNodeType(definition.componentId, definition.version),

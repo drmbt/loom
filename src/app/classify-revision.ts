@@ -1,7 +1,13 @@
-import { classifyEdit } from "@compiler/index.ts";
+import { classifyEdit, structuralParameterKeys } from "@compiler/index.ts";
 import type { GraphEdit, RecompileDecision, RecompileWork } from "@compiler/index.ts";
+import { isComponentNodeType } from "@domain/components/component-type.ts";
+import { effectiveParameterSchema, resolveStored } from "@domain/parameters/resolve.ts";
+import { isParameterSlot } from "@domain/parameters/slots.ts";
+import { PRESETS_NODE_TYPE } from "@domain/presets/bank.ts";
+import { CUE_LIST_NODE_TYPE } from "@domain/presets/cue-list.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
+import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 
 /**
@@ -282,4 +288,267 @@ export function classifyGraphChange(
   return edits
     .map((edit) => classifyEdit(edit, context))
     .reduce(strongest, classifyEdit(edits[0] as GraphEdit, context));
+}
+
+/**
+ * T1652b — A VALUES-ONLY REVISION, defined ONCE. Every reader that asks "did only a value
+ * move" asks `classifyRevision`; there is no second copy of this rule in a hook or a pane.
+ *
+ * ## Why it exists
+ *
+ * A slider moved by a hand (the Controls tab, the inspector, a phone, MIDI) is a document
+ * revision like any other, and every revision re-rendered the composition root and re-ran
+ * some twenty whole-document passes behind it: the structural compile, the requirement
+ * diagnostics, the reference lines, every pane. Measured on a 152-node document: 57 to
+ * 66 ms on the main thread per write, linear in the document and not in what changed. A
+ * revision of this kind is not an event for the root (`revision-watch.ts`): its values
+ * take the compiler's values lane (`rebaseOnValues`) and the surfaces that show a value
+ * hear it themselves.
+ *
+ * ## What it IS
+ *
+ * Between two revisions of one document, EVERYTHING is the same object except, on one or
+ * more nodes, stored parameters where:
+ *
+ *  - a STATIC literal moved: a number, a boolean, or a tuple of numbers of the same
+ *    length (a vector, a colour), bare or as the `static` binding of a slot;
+ *  - the slot's MODE and every other binding are the same objects;
+ *  - the key is one no definition calls STRUCTURAL (`structuralParameterKeys`: declared
+ *    `compileTime`, or read by a parameter resolution policy);
+ *  - the node's EFFECTIVE SCHEMA is the same schema before and after (`parametersFor`:
+ *    the same object, or one built anew that says the same), and every `inactiveWhen` of
+ *    that schema answers the same before and after;
+ *  - no HOST service reads the node's values off the root's document (`hostServed`).
+ *
+ * and, beside those, a bank or a cue list recording a recall it just made (`current`,
+ * `standby`, `morphs`): the picture's values in that revision are the targets' numbers,
+ * the record is which preset the holder shows as current and which fades it started. That
+ * is what lets a recall of thirty values be ONE values pass.
+ *
+ * ## What it is NOT (each sends the revision down the structural road, by name)
+ *
+ *  - a node added, removed, renamed, moved or resized; a wire; a group; the viewport;
+ *  - a UI field (preview, bypass, pin), a resolution, a format, a channel mask;
+ *  - a parameter stored for the first time, or one removed (the key set moved);
+ *  - a MODE change, an expression's source, a bind, a map, a driven channel;
+ *  - a STRING of any kind: an enum, a name another node is read by, a file, a caption, a
+ *    board, shader or preset text. And a ramp's stops or any other structured value;
+ *  - a key the definitions call structural (a Light's kind, a count that sizes a buffer);
+ *  - a value the node's own SCHEMA follows (`parametersFor`: a control's stored default,
+ *    a grid's rows) or that changes what APPLIES (`inactiveWhen`);
+ *  - any parameter of a node a host service reads (`hostServed`: a movie, a camera, a
+ *    Text, an audio track, a mesh, a model, a Syphon or NDI session, a window, OSC, the
+ *    laser), of a node whose runtime requirements are chosen by a value (`requires` as a
+ *    function), of a component instance (flattening writes its values onto the
+ *    internals), or of a type this build does not have.
+ *
+ * Conservative in one direction, like the classifier above: every doubt is `structure`,
+ * which costs what every revision cost before this existed. `reason` says which rule
+ * refused, so a write that should have been cheap and was not can be found (the
+ * performance panel counts them).
+ *
+ * It answers about the DOCUMENT. Whether the compiled plan can follow without a structural
+ * compile is the lane's own question, asked against the plan under §V936's verifier, and
+ * a refusal there escalates the same way.
+ */
+export type RevisionKind =
+  | {
+      readonly kind: "values";
+      /** The nodes a value moved on, sorted by id. */
+      readonly written: readonly NodeId[];
+    }
+  | {
+      readonly kind: "structure";
+      /** The first rule the revision failed, naming the node and key where there is one. */
+      readonly reason: string;
+    };
+
+/**
+ * How a top-level field of the document is read when it differs. Keyed by
+ * `keyof GraphDocument`, so a field added to the type stops this file compiling until
+ * someone says whether a values-only revision may move it.
+ */
+const DOCUMENT_FIELDS: Record<keyof GraphDocument, "revision" | "nodes" | "structure"> = {
+  revision: "revision",
+  nodes: "nodes",
+  edges: "structure",
+  groups: "structure",
+  viewport: "structure",
+};
+
+/**
+ * What a bank and a cue list write about THEMSELVES when they recall: which preset or cue
+ * is current, which stands by, the fades started. `classify-revision.test.ts` holds the
+ * bank's two keys against `bankOf`'s own view.
+ */
+export const RECALL_RECORD_KEYS: Readonly<Record<string, readonly string[]>> = {
+  [PRESETS_NODE_TYPE]: ["current", "morphs"],
+  [CUE_LIST_NODE_TYPE]: ["current", "standby"],
+};
+
+/**
+ * THE NODES A HOST SERVICE READS, and why their values are the composition root's business.
+ *
+ * The root hands its document to the services that stand behind a node outside the plan: a
+ * movie element, a camera, the text raster, an audio track, a mesh file, a model, a
+ * Syphon or NDI session, a perform window, the OSC and laser doors (`useMediaSources`,
+ * `useAudioInput`, `useMeshSources`, `useNativeInputs`, …). They read stored numbers from
+ * that document — a movie's speed, a text's size and colour, a mesh's frame — and they
+ * hear a change by the root rendering. So a value written on one of these nodes stays a
+ * revision the root renders for, exactly as before.
+ *
+ * (An expression on such a node that reads a control is not a write on it: the service
+ * resolves it at its own tick through the live channels, as it always did.)
+ *
+ * By declaration where there is one — the two shelves that are nothing else (`input`,
+ * `output`), and every definition that says it has a side effect, needs something of the
+ * machine, listens on a port, is measured from a readback or is a sink — and by name for
+ * the few with a CPU source or a model behind them and no such trait.
+ * `classify-revision.test.ts` holds the names against the node types the host services'
+ * own sources mention.
+ */
+const HOST_SHELVES: ReadonlySet<string> = new Set(["input", "output"]);
+export const HOST_SERVED_TYPES: ReadonlySet<string> = new Set(["text", "meshFileIn", "matte", "personMask", "depth", "pose", "analyze"]);
+
+/** Why this node type's values are read by a host service, or null when none reads them. */
+export function hostServed(definition: NodeDefinition): string | null {
+  const read = "is served by the host, which reads its values off the root's document";
+  if (HOST_SHELVES.has(definition.category) || HOST_SERVED_TYPES.has(definition.type)) return `${read}.`;
+  if (definition.sideEffect !== undefined) return `${read} (a side effect).`;
+  if (definition.requires !== undefined) return `${read} (a runtime requirement).`;
+  if (definition.listensOn !== undefined) return `${read} (a listener).`;
+  if (definition.measuredChannel === true) return `${read} (a measured channel).`;
+  if (definition.sink === true) return `${read} (a sink).`;
+  return null;
+}
+
+const structural = (reason: string): RevisionKind => ({ kind: "structure", reason });
+
+/** A number, a boolean, or a tuple of numbers: the only literals a values-only revision moves. */
+function isMovable(value: unknown): value is number | boolean | readonly number[] {
+  if (typeof value === "number" || typeof value === "boolean") return true;
+  return Array.isArray(value) && value.length > 0 && value.every((entry) => typeof entry === "number");
+}
+
+function sameShape(before: number | boolean | readonly number[], after: number | boolean | readonly number[]): boolean {
+  if (typeof before !== "object") return typeof before === typeof after;
+  return typeof after === "object" && before.length === after.length;
+}
+
+/** Why one stored parameter's change is not a static literal moving, or null when it is one. */
+function notAMovedLiteral(before: unknown, after: unknown): string | null {
+  let from: unknown = before;
+  let to: unknown = after;
+  if (isParameterSlot(before) !== isParameterSlot(after)) return "went between a bare value and a slot";
+  if (isParameterSlot(before) && isParameterSlot(after)) {
+    if (before.mode !== after.mode) return `changed mode (${before.mode} to ${after.mode})`;
+    const bindingsBefore = before.bindings as Readonly<Record<string, unknown>>;
+    const bindingsAfter = after.bindings as Readonly<Record<string, unknown>>;
+    for (const kind of new Set([...Object.keys(bindingsBefore), ...Object.keys(bindingsAfter)])) {
+      if (kind !== "static" && bindingsBefore[kind] !== bindingsAfter[kind]) return `changed its ${kind} binding`;
+    }
+    const staticBefore = before.bindings.static;
+    const staticAfter = after.bindings.static;
+    if (staticBefore?.kind !== "static" || staticAfter?.kind !== "static") return "gained or lost its static binding";
+    from = staticBefore.value;
+    to = staticAfter.value;
+  }
+  if (!isMovable(from) || !isMovable(to)) return "holds something other than a number, a boolean or a tuple of numbers";
+  if (!sameShape(from, to)) return "changed the shape of its value";
+  return null;
+}
+
+/**
+ * Whether two effective schemas are the same schema. Most definitions hand back the same
+ * object for the same stored parameters; one that builds its schema per call (a point
+ * kernel reflecting its `struct Params`) hands back an equal one, and that is compared
+ * field by field. A FUNCTION that is not the same object is never called equal: two
+ * closures cannot be proven to answer alike, and a doubt is `structure`.
+ */
+function sameSchema(a: unknown, b: unknown, depth = 0): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || depth > 6) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const left = a as Readonly<Record<string, unknown>>;
+  const right = b as Readonly<Record<string, unknown>>;
+  const keys = Object.keys(left);
+  const others = Object.keys(right);
+  if (keys.length !== others.length) return false;
+  // Key ORDER is part of a schema: it is the order the inspector and the diagnostics read in.
+  return keys.every((key, index) => others[index] === key && sameSchema(left[key], right[key], depth + 1));
+}
+
+/** The `inactiveWhen` answers of a node's schema, in key order; null when the schema has none. */
+function appliesOf(node: GraphNode, definition: NodeDefinition, schema: ReturnType<typeof effectiveParameterSchema>): string | null {
+  const keys = Object.keys(schema).filter((key) => schema[key]?.inactiveWhen !== undefined);
+  if (keys.length === 0) return null;
+  const values = resolveStored(node, definition).values;
+  return keys.map((key) => `${key}:${schema[key]?.inactiveWhen?.(values) ?? ""}`).join("\u0000");
+}
+
+/** Why one node's change is not values-only, or null when it is. */
+function nodeMovedMoreThanValues(before: GraphNode, after: GraphNode, registry: NodeRegistryView): string | null {
+  const named = `Node "${after.label ?? after.id}"`;
+  for (const field of Object.keys(NODE_FIELDS) as Array<keyof GraphNode>) {
+    if (field !== "parameters" && before[field] !== after[field]) return `${named} changed its ${field}.`;
+  }
+  const keysAfter = Object.keys(after.parameters);
+  if (Object.keys(before.parameters).length !== keysAfter.length || keysAfter.some((key) => !(key in before.parameters))) {
+    return `${named} stores a different set of parameters.`;
+  }
+  const definition = registry.get(after.type);
+  if (definition === undefined) return `${named} is of a type this build does not have.`;
+  if (isComponentNodeType(after.type)) return `${named} is a component instance: flattening writes its values onto its internals.`;
+  if (typeof definition.requires === "function") return `${named} chooses its runtime requirements from its values.`;
+  const host = hostServed(definition);
+  if (host !== null) return `${named} ${host}`;
+
+  const record = RECALL_RECORD_KEYS[after.type] ?? [];
+  const moved: string[] = [];
+  for (const key of keysAfter) {
+    if (before.parameters[key] === after.parameters[key]) continue;
+    if (record.includes(key)) continue;
+    const refusal = notAMovedLiteral(before.parameters[key], after.parameters[key]);
+    if (refusal !== null) return `${named} parameter "${key}" ${refusal}.`;
+    moved.push(key);
+  }
+  if (moved.length === 0) return null;
+
+  const schema = effectiveParameterSchema(definition, after.parameters);
+  if (!sameSchema(schema, effectiveParameterSchema(definition, before.parameters))) {
+    return `${named} has a schema that follows the value written (parametersFor).`;
+  }
+  const structuralKeys = structuralParameterKeys(definition, after.parameters);
+  for (const key of moved) {
+    if (structuralKeys.has(key.split(".")[0] as string)) {
+      return `${named} parameter "${key}" is structural (compileTime or a resolution policy input).`;
+    }
+  }
+  if (appliesOf(before, definition, schema) !== appliesOf(after, definition, schema)) {
+    return `${named} changed which of its parameters apply (inactiveWhen).`;
+  }
+  return null;
+}
+
+/** What kind of revision `next` is of `previous`: only values moved, or anything else. */
+export function classifyRevision(previous: GraphDocument, next: GraphDocument, registry: NodeRegistryView): RevisionKind {
+  if (previous === next) return structural("The document did not move.");
+  for (const field of Object.keys(DOCUMENT_FIELDS) as Array<keyof GraphDocument>) {
+    if (DOCUMENT_FIELDS[field] === "structure" && previous[field] !== next[field]) return structural(`The document's ${field} changed.`);
+  }
+  if (previous.nodes === next.nodes) return structural("No node changed.");
+  const ids = Object.keys(next.nodes) as NodeId[];
+  if (ids.length !== Object.keys(previous.nodes).length) return structural("A node was added or removed.");
+  const written: NodeId[] = [];
+  for (const id of ids) {
+    const before = previous.nodes[id];
+    const after = next.nodes[id];
+    if (before === undefined || after === undefined) return structural("A node was added or removed.");
+    if (before === after) continue;
+    const refusal = nodeMovedMoreThanValues(before, after, registry);
+    if (refusal !== null) return structural(refusal);
+    written.push(id);
+  }
+  if (written.length === 0) return structural("No node changed.");
+  return { kind: "values", written: written.sort() };
 }

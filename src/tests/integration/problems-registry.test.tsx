@@ -4,6 +4,8 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createMemoryStorage, installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { installFlowStubs } from "@editor/graph-canvas/testing.tsx";
 import { detectPlatform } from "@editor/keymap/index.ts";
+import { serializePresetBank } from "@domain/presets/bank.ts";
+import { serializeCueList } from "@domain/presets/cue-list.ts";
 import type { BackendCapabilities } from "@domain/types/backend.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
@@ -176,6 +178,98 @@ describe("T1555b — the Problems list through the mounted app", () => {
       fireEvent.click(screen.getByRole("button", { name: "Clear problems" }));
     });
     expect((await problems(runtime)).map((entry) => entry.code)).toEqual(["gpu.unavailable"]);
+    runtime.dispose();
+  }, 30_000);
+
+  /**
+   * §T1559b (2) — what a cue list that follows the timeline cannot do as written is in the
+   * compile's diagnostics (`timelineCueProblems`), so it has to arrive HERE, in the list the
+   * person and the agent read: a DRIVEN bank Morph on the bank's id (its timed cues read the
+   * Morph as stored), and the list's own warnings — a cue with no At — on the list's id. The
+   * list's inspector section shows the same sentences from its own read of the plan, and
+   * that must not put a second copy in this list. Each of the six older warnings through
+   * the compile, and the fade's stored seconds, are `compiler/timeline-cue-problems.test.ts`.
+   */
+  it("§T1559b (2): says a timed cue list's problems — a driven bank Morph on the bank, a cue with no At on the list — once each, with the list's inspector open", async () => {
+    const { backend } = refusingBackend();
+    const runtime = await mount({ kind: "ready", capabilities: CAPABILITIES, baseline: true, backend });
+    await act(async () => {
+      const added = await runtime.bus.execute(
+        "graph.applyPatch",
+        {
+          baseRevision: runtime.bus.store.getRevision(),
+          operations: [
+            { op: "addNode", ref: "$level", type: "level", label: "level1", position: { x: 0, y: 0 } },
+            {
+              op: "addNode",
+              ref: "$bank",
+              type: "presets",
+              label: "looks",
+              position: { x: 0, y: 200 },
+              parameters: {
+                targets: "level1",
+                presets: serializePresetBank({ version: 1, presets: [{ name: "bright", values: { level1: { brightness: 0.8 } } }] }),
+                // `time + 2`: 2 s as the document says it (the zero frame), and longer every second it plays.
+                morph: { mode: "expression", bindings: { static: { kind: "static", value: 9 }, expression: { kind: "expression", source: "time + 2" } } },
+              },
+            },
+            {
+              op: "addNode",
+              ref: "$list",
+              type: "cueList",
+              label: "show",
+              position: { x: 0, y: 400 },
+              parameters: {
+                follow: "timeline",
+                cues: serializeCueList({
+                  version: 1,
+                  cues: [
+                    { name: "A", bank: "looks", preset: "bright", at: 1 },
+                    { name: "B", bank: "looks", preset: "bright" },
+                  ],
+                }),
+              },
+            },
+          ],
+        },
+        runtime.invocation,
+      );
+      expect(added.status).toBe("applied");
+    });
+    await settle();
+
+    const labelled = (label: string) => Object.values(runtime.bus.store.getGraph().nodes).find((node) => node.label === label);
+    const bank = labelled("looks");
+    const list = labelled("show");
+    const UNTIMED = 'Cue "B" (show) has no At time, so the timeline skips it.';
+    const cueProblems = async () => (await problems(runtime)).filter((entry) => entry.code.startsWith("cue."));
+    const expected = [
+      ["warning", "cue.timeline.drivenMorph", bank?.id],
+      ["warning", "cue.timeline.untimed", list?.id],
+    ];
+    const said = await cueProblems();
+    expect(said.map((entry) => [entry.severity, entry.code, entry.nodeId])).toEqual(expected);
+    expect(said[0]?.message).toContain('Cue list "show" follows the timeline and fires bank "looks", whose Morph is driven (expression)');
+    expect(said[0]?.message).toContain("the stored value, 2 s");
+    expect(said[1]?.message).toBe(UNTIMED);
+    // The person's pane renders the same entries, one row each.
+    const pane = within(screen.getByLabelText("Problems"));
+    expect(pane.getAllByText("cue.timeline.drivenMorph")).toHaveLength(1);
+    expect(pane.getAllByText("cue.timeline.untimed")).toHaveLength(1);
+
+    // Open the list's inspector: its own section says the same two sentences…
+    await act(async () => {
+      const selected = await runtime.bus.execute("graph.selectNodes", { nodeIds: [list?.id ?? ""] }, runtime.invocation);
+      expect(selected.status).toBe("applied");
+    });
+    await settle();
+    const section = document.querySelector("[data-timeline-warnings]");
+    expect(section?.textContent).toContain(UNTIMED);
+    expect(section?.textContent).toContain('fires bank "looks", whose Morph is driven (expression)');
+    // …and the Problems list still holds each once.
+    expect((await cueProblems()).map((entry) => [entry.severity, entry.code, entry.nodeId])).toEqual(expected);
+    expect(pane.getAllByText("cue.timeline.drivenMorph")).toHaveLength(1);
+    expect(pane.getAllByText("cue.timeline.untimed")).toHaveLength(1);
     runtime.dispose();
   }, 30_000);
 });

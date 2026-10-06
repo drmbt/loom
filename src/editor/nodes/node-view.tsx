@@ -10,7 +10,15 @@ import { useStore } from "zustand";
 import { cx } from "@ui/cx.ts";
 import { portFamilyColor } from "@ui/ports.ts";
 import { describePortType } from "@domain/graph/port-compat.ts";
-import { nameBaseFor } from "@domain/graph/names.ts";
+import {
+  conformsToKind,
+  kindBindsName,
+  kindOf,
+  nameInKind,
+  roleFromText,
+  roleOf,
+  roleWhileTyping,
+} from "@domain/graph/node-kinds.ts";
 import { isNameOnlyInput } from "@domain/graph/source-references.ts";
 import { isComponentInputBoundary, isComponentOutputBoundary } from "@nodes/definitions/index.ts";
 import { isOneSocketInput } from "@nodes/definitions/controls.ts";
@@ -35,6 +43,7 @@ import type { NodeRunStatus } from "@editor/graph-canvas/node-runtime.ts";
 import { ShaderStatusBadge } from "@editor/shader-editor/shader-status-badge.tsx";
 import { NodeTimingOverlay } from "./node-timing-overlay.tsx";
 import { nodeTypeLabelStore } from "./node-type-labels.ts";
+import { kindLabelParts } from "./kind-label.ts";
 import { AGENT_LABEL, AGENT_TOKEN, STATUS_LABEL, STATUS_TOKEN } from "./status.ts";
 import styles from "./node-view.module.css";
 
@@ -68,6 +77,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
     renameSession,
     beginRename,
     renameNode,
+    kindLabels,
     renderPreview,
     renderControls,
     renderHeaderControls,
@@ -107,6 +117,14 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
   );
   const typeLabels = nodeTypeLabelStore();
   const showTypeLabel = useSyncExternalStore(typeLabels.subscribe, typeLabels.get);
+
+  /**
+   * T1597b — this node's low-zoom kind label joins its canvas's registry when it mounts
+   * and leaves when it unmounts (React 19: the function a ref callback returns is its
+   * cleanup). The registry tells the element the zoom; this component never learns it,
+   * which is what keeps a zoom from re-rendering a single node (§V16).
+   */
+  const joinKindLabels = useCallback((label: HTMLSpanElement) => kindLabels.register(label), [kindLabels]);
 
   /**
    * §V101 — a badge press acts on the whole selection when this node is IN it, and on
@@ -235,22 +253,61 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
    * because "blur1  Blur" is the same word twice in the most crowded row in the app, which
    * is precisely what §V90 forbids.
    *
-   * The test is derived from `nameBaseFor`, the same function that MINTS those names, so
-   * it cannot drift from the naming rule (§V316). It is a display decision only: nothing
-   * here reads back into the document.
+   * T1593b: a name now carries its kind after a rename too (`blur_diffuse`), so the test
+   * is `conformsToKind`, the one function that decides it, asked about the same kind that
+   * MINTS the auto-names. It cannot drift from the naming rule (§V316), and "blur_diffuse
+   * Blur" never shows. It is a display decision only: nothing here reads back into the
+   * document.
+   *
+   * AN UNNAMED NODE SHOWS ITS DEFINITION'S TITLE AS ITS NAME, so the title beside it would
+   * be that same word again ("Blur  blur", and for an instance of Bloom "Bloom  bloom",
+   * which is the repetition T639(d)/T640 was filed about). It has no name that could have
+   * lost the kind, so it gets no chip.
    */
   const nameCarriesType =
-    definition === undefined ||
-    new RegExp(`^${nameBaseFor(node.type)}\\d+$`, "i").test(displayName);
-  /*
-   * T639(d)/T640: an instance's synthesized definition title is the COMPONENT'S OWN
-   * NAME (a component the owner called "animated" labelled its nodes "animated"), so
-   * the label repeated the name and said nothing about what the node IS. The kind is
-   * the useful fact, so the kind is the label.
+    definition === undefined || node.label === undefined || conformsToKind(node.label, kindOf(definition));
+  /**
+   * The kind the title editor keeps in front of the name, or `null` where the convention
+   * does not bind: an unknown type has no kind worth insisting on, and a component's In
+   * and Out are named for the socket they publish.
    */
-  const typeLabel = showTypeLabel && !nameCarriesType
-    ? (isComponentNodeType(node.type) ? "component" : (definition?.title ?? null))
-    : null;
+  const nameKind = definition === undefined || !kindBindsName(node.type) ? null : kindOf(definition);
+  /*
+   * What the chip says is the definition's TITLE, and for a component instance that is the
+   * component's own name: `holo1  DepthPoints`.
+   *
+   * T639(d)/T640 made it the literal word "component", because an instance then showed its
+   * component's name AS its name and the chip repeated it. T1593b (ruled 2026-10-05) makes
+   * the component's name the instance's KIND, which changes both halves: the repetition
+   * cannot happen any more (the chip is hidden whenever the name carries the kind, and for
+   * an unnamed node, above), and the fact the chip exists to give back, what KIND of thing
+   * this is, is now exactly that name. That it is a component at all is said by the
+   * stacked card and the version chip beside the name, at any zoom.
+   */
+  const typeLabel = showTypeLabel && !nameCarriesType ? (definition?.title ?? null) : null;
+  /**
+   * T1597b — what this node says at low zoom: its kind, then the rest of its name.
+   *
+   * From the TYPE, so it is right whatever the node is called. Not for a node whose type
+   * is not installed (it has no kind), and not while its title is being edited: the label
+   * stands on the header band (B258), and the field being typed in is under it.
+   */
+  const kindLabel = definition === undefined || isEditingName ? null : kindLabelParts(node.label, kindOf(definition));
+  /**
+   * The name AT REST, in the two parts it is made of, when it has both (ruled 2026-10-05).
+   *
+   * `camerablur_the_quick_brown_fox` does not fit a 103 px slot. Cut at the end it read
+   * `camerablur_the…`: the kind whole and the role, the part a person chose, gone. So the
+   * header draws the kind and the role as separate boxes and lets the KIND give way first,
+   * `cam…_the_quick_bro…`, exactly as the field does while the name is being edited. The
+   * element's text is still the whole name, and so is its hover.
+   *
+   * Only for a name that carries its kind AND a role. An auto-name (`blur1`) has no role to
+   * protect, and a name without its kind has no kind to elide.
+   */
+  const restKind = definition === undefined ? null : kindOf(definition);
+  const restRole = node.label === undefined || restKind === null ? null : roleOf(node.label, restKind);
+  const nameAtRest = restKind !== null && restRole !== null && restRole !== "" ? { kind: restKind, role: restRole } : null;
 
   return (
     <>
@@ -315,6 +372,27 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           still wakes on every 10 Hz sample even while it draws nothing (§V836).
         */}
         {showTimingOverlay ? <NodeTimingOverlay nodeId={id as NodeId} /> : null}
+        {/*
+          T1597b — the KIND, at a size that does not shrink with the canvas. Always in the
+          DOM and hidden by the stylesheet until the canvas is zoomed out past the point
+          where the header can be read (`kind-label.ts`), so crossing that point renders
+          nothing. Hidden from assistive technology: it repeats the name beside it.
+        */}
+        {kindLabel === null ? null : (
+          // Two boxes: the outer is the band a label may use (the node's width, from the line
+          // under the header upward, B258) and clips; the inner is the one the canvas tells
+          // the zoom, and only its transform ever changes (see `.kindLabelClip`).
+          <span className={styles.kindLabelClip} aria-hidden="true">
+            <span ref={joinKindLabels} className={styles.kindLabel} data-testid={`node-kind-label-${id}`}>
+              <span className={styles.kindLabelKind}>{kindLabel.kind}</span>
+              {kindLabel.rest === "" ? null : (
+                <span className={styles.kindLabelRest} data-joined={kindLabel.joined}>
+                  {kindLabel.rest}
+                </span>
+              )}
+            </span>
+          </span>
+        )}
         <header className={styles.title}>
           <span
             className={styles.dot}
@@ -331,14 +409,16 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           {isEditingName ? (
             <NameEditor
               nodeId={id}
-              initial={displayName}
+              name={node.label}
+              shown={displayName}
+              kind={nameKind}
               onCommit={renameNode}
               onClose={() => renameSession.end(id)}
             />
           ) : (
             <>
               <span
-                className={styles.name}
+                className={cx(styles.name, nameAtRest !== null && styles.nameInParts)}
                 data-testid={`node-name-${id}`}
                 title={displayName}
                 // T415: TouchDesigner's own gesture, and the one the owner asked for —
@@ -352,7 +432,19 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
                   beginRename(id);
                 }}
               >
-                {displayName}
+                {nameAtRest === null ? (
+                  displayName
+                ) : (
+                  <>
+                    {/* A kind of four letters or fewer is already as short as an elided one
+                        (`cam…`), so it does not give way: see `.restKind`. */}
+                    <span className={styles.restKind} data-short={nameAtRest.kind.length <= 4}>
+                      {nameAtRest.kind}
+                    </span>
+                    <span className={styles.restJoin}>_</span>
+                    <span className={styles.restRole}>{nameAtRest.role}</span>
+                  </>
+                )}
               </span>
               {typeLabel === null ? null : (
                 <span
@@ -588,11 +680,33 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
   );
 });
 
+/**
+ * A refusal as a person reads it on the node.
+ *
+ * `applyGraphPatch` prefixes every refusal with the operation it came from —
+ * `Operation 0 (setNodeLabel): the name "lfo_pathx" is already in use.` — which is what
+ * makes a rejected BATCH fixable and is noise on a one-operation rename: there is no
+ * other operation it could be, and the person typed a name, not a `setNodeLabel`. Seen in
+ * the browser as the first two lines of the card. So the prefix comes off here, at the one
+ * surface that shows this sentence to someone who did not write a patch, and the sentence
+ * starts with a capital.
+ */
+function refusalSentence(message: string | undefined): string | undefined {
+  if (message === undefined) return undefined;
+  const sentence = message.replace(/^Operation \d+ \([A-Za-z]+\): /, "");
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
 interface NameEditorProps {
   nodeId: string;
-  /** The name as shown, which is what the field opens holding. */
-  initial: string;
-  onCommit: (nodeId: string, label: string) => Promise<CommandResult<"node.rename">>;
+  /** The name the node holds; `undefined` for an unnamed node. */
+  name: string | undefined;
+  /** The name as shown (the definition title when unnamed). The field opens on it when there is no kind. */
+  shown: string;
+  /** The kind kept in front of the name, or `null` where the convention does not bind. */
+  kind: string | null;
+  /** `exact` is true when the person switched the kind off: the name is stored as typed. */
+  onCommit: (nodeId: string, label: string, exact: boolean) => Promise<CommandResult<"node.rename">>;
   onClose: () => void;
 }
 
@@ -605,11 +719,43 @@ interface NameEditorProps {
  * the name is one short word, the node is on screen, and a modal to type one word puts a
  * scrim over the graph you are naming a node IN.
  *
+ * ## The kind stays in front, and the person types the role (T1593b)
+ *
+ * A name is `kind_role`. The field is drawn as two parts that read as one: the kind and
+ * its underscore as fixed text (`slider_`), then the input, which holds the role alone
+ * (`lamp`). So what is on screen is the name that will be stored, and the part that says
+ * what the node IS cannot be lost by typing over it.
+ *
+ *  - It opens on the role: `lamp` for `slider_lamp`, empty for an auto-name (`blur1` has
+ *    no role yet), and the whole cleaned name for one that does not carry its kind.
+ *  - A space becomes an underscore AS IT IS TYPED, so the change is seen, not discovered.
+ *  - Typing a name that already carries the kind (`slider_lamp`, `slider2`) is taken as it
+ *    is: nothing is prefixed twice.
+ *  - With no role typed there is nothing to rename to, and the name stays.
+ *
+ * ## Removing the kind is possible, and deliberate
+ *
+ * The fixed part is a toggle. Backspace with the caret at the very start of the role (a
+ * fresh press, not a held key running into it) switches it off, and so does a click on it.
+ * It stays on screen, struck through, and the name is then stored exactly as typed. A
+ * click brings it back.
+ *
+ * Why this and not a modifier on Enter: a modifier is invisible until it is known, and the
+ * field would show one name while storing another. And why Backspace: it is the key
+ * someone presses when they want what is left of the caret gone, so the gesture already
+ * means this. A held Backspace that empties the role stops at the kind, because clearing
+ * the role and discarding the kind are different intentions.
+ *
  * ## Keys
  *
  * Enter commits, Escape cancels and restores, blur commits — the same three the number
  * fields in project settings already have, so a control does not behave differently from
  * its neighbour for reasons only its author knows.
+ *
+ * One difference between Enter and blur, and only for a name that does not carry its kind
+ * yet: Enter on the untouched field gives it the kind that is on screen (`dye1` on a
+ * Feedback becomes `feedback_dye1`); leaving the untouched field renames nothing. Opening
+ * a field and clicking away is not an edit (§V33), while Enter is an answer.
  *
  * Typing here cannot reach a graph binding, and §V53 is what makes that structural rather
  * than a promise: the keymap derives the `text` context from the EVENT TARGET, so a focused
@@ -629,90 +775,175 @@ interface NameEditorProps {
  * they typed, says which name is taken, and takes focus back — silently reverting their
  * typing, or silently accepting a name they did not choose, are the two worse answers.
  */
-function NameEditor({ nodeId, initial, onCommit, onClose }: NameEditorProps) {
+function NameEditor({ nodeId, name, shown, kind, onCommit, onClose }: NameEditorProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [draft, setDraft] = useState(initial);
+  const [draft, setDraft] = useState(() =>
+    kind === null ? shown : name === undefined ? "" : (roleOf(name, kind) ?? roleFromText(name)),
+  );
+  const [kindKept, setKindKept] = useState(kind !== null);
   const [error, setError] = useState<string | null>(null);
   // Enter commits and then blurs, which would commit again. One settle per session.
   const settling = useRef(false);
+  // Has the person changed anything? Leaving an untouched field renames nothing.
+  const touched = useRef(false);
+  // Where the caret belongs after a keystroke was cleaned into something else.
+  const caret = useRef<number | null>(null);
 
   useEffect(() => {
     const input = inputRef.current;
     if (input === null) return;
     input.focus();
-    // Selected, not just focused: renaming usually REPLACES the auto-name rather than
+    // Selected, not just focused: renaming usually REPLACES the role rather than
     // editing it, and this is the only chance to say so without the user pressing ⌘A.
     input.select();
+    // Selecting scrolls a field to the END of its text (measured in Chromium: a 25-letter
+    // role opened showing only `…ox_jumps`). The start of the role is what tells one node
+    // from its neighbour, so the field opens on it.
+    input.scrollLeft = 0;
   }, []);
 
-  const commit = useCallback(async () => {
-    if (settling.current) return;
-    const next = draft.trim();
-    if (next === initial) {
-      // Nothing to say: closing without a command means no revision and no undo entry
-      // for an edit that did not happen (§V33).
-      onClose();
-      return;
-    }
-    settling.current = true;
-    const result = await onCommit(nodeId, next);
-    if (result.status === "applied") {
-      onClose();
-      return;
-    }
-    // §V288 — the refusal NAMES the problem, on the node, where the attempt was made.
-    settling.current = false;
-    const diagnostic = result.diagnostics.find((entry) => entry.severity !== "info");
-    setError(
-      [diagnostic?.message, diagnostic?.suggestion].filter((part) => part !== undefined).join(" ") ||
-        "That name was refused.",
-    );
-    const input = inputRef.current;
-    if (input !== null) {
-      input.focus();
-      input.select();
-    }
-  }, [draft, initial, nodeId, onClose, onCommit]);
+  // A controlled input whose value was rewritten loses its caret to the end of the field.
+  useLayoutEffect(() => {
+    if (caret.current === null) return;
+    inputRef.current?.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  });
+
+  const commit = useCallback(
+    async (reason: "enter" | "blur") => {
+      if (settling.current) return;
+      const typed = draft.trim();
+      let label: string | null = typed;
+      // The kind is kept and no role was typed: there is no name to rename to.
+      if (kind !== null && kindKept) label = typed === "" ? null : nameInKind(typed, kind).name;
+      const unchanged = label === (kind === null ? shown : name);
+      if (label === null || unchanged || (reason === "blur" && !touched.current)) {
+        // Nothing to say: closing without a command means no revision and no undo entry
+        // for an edit that did not happen (§V33).
+        onClose();
+        return;
+      }
+      settling.current = true;
+      const result = await onCommit(nodeId, label, !(kind !== null && kindKept));
+      if (result.status === "applied") {
+        onClose();
+        return;
+      }
+      // §V288 — the refusal NAMES the problem, on the node, where the attempt was made.
+      settling.current = false;
+      const diagnostic = result.diagnostics.find((entry) => entry.severity !== "info");
+      setError(
+        [refusalSentence(diagnostic?.message), diagnostic?.suggestion].filter((part) => part !== undefined).join(" ") ||
+          "That name was refused.",
+      );
+      const input = inputRef.current;
+      if (input !== null) {
+        input.focus();
+        input.select();
+      }
+    },
+    [draft, kind, kindKept, name, nodeId, onClose, onCommit, shown],
+  );
+
+  const keepKind = useCallback((keep: boolean) => {
+    touched.current = true;
+    setError(null);
+    setKindKept(keep);
+    // Back under the kind, the text is a role again and is cleaned like one.
+    if (keep) setDraft((text) => roleWhileTyping(text));
+    inputRef.current?.focus();
+  }, []);
 
   const onKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
       if (event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
-        void commit();
+        void commit("enter");
       } else if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
         settling.current = true;
         onClose();
+      } else if (
+        event.key === "Backspace" &&
+        kind !== null &&
+        kindKept &&
+        // A held key that has just emptied the role must not run on into the kind.
+        !event.repeat &&
+        event.currentTarget.selectionStart === 0 &&
+        event.currentTarget.selectionEnd === 0
+      ) {
+        event.preventDefault();
+        keepKind(false);
       }
     },
-    [commit, onClose],
+    [commit, keepKind, kind, kindKept, onClose],
   );
 
   return (
-    <span className={cx(styles.nameEdit, "nodrag", "nopan")}>
+    // `data-invalid` puts the refusal's red edge on the whole field, the kind included.
+    <span className={cx(styles.nameEdit, "nodrag", "nopan")} data-invalid={error !== null}>
+      {kind === null ? null : (
+        <button
+          type="button"
+          // Not a tab stop: Tab out of the name must leave the field, not land on its prefix.
+          tabIndex={-1}
+          className={styles.nameKind}
+          data-testid={`node-name-kind-${nodeId}`}
+          aria-pressed={kindKept}
+          aria-label={`Keep the kind ${kind} in front of the name`}
+          // §V90: one short line each, on demand. Neither carries a substitution, so the
+          // copy guard reads both in full rather than skipping one.
+          title={
+            kindKept
+              ? "Backspace at the start, or a click, drops the kind"
+              : "The name is stored as typed; click to keep the kind"
+          }
+          onPointerDown={(event) => event.stopPropagation()}
+          // preventDefault keeps the focus in the input: a blur would commit the rename.
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onClick={() => keepKind(!kindKept)}
+        >
+          {/* Two parts, so a long kind elides in its WORD and the join survives:
+              `camer…_soft` still reads as one name (see `.nameKind`). */}
+          <span className={styles.nameKindWord}>{kind}</span>
+          <span className={styles.nameKindJoin}>_</span>
+        </button>
+      )}
       <input
         ref={inputRef}
         className={styles.nameInput}
         data-testid={`node-name-input-${nodeId}`}
         type="text"
-        aria-label="Node name"
+        aria-label={kind !== null && kindKept ? `Node name, after ${kind}_` : "Node name"}
         aria-invalid={error !== null}
         value={draft}
-        maxLength={120}
+        placeholder={kind !== null && kindKept ? "name" : undefined}
+        maxLength={kind !== null && kindKept ? 120 - kind.length - 1 : 120}
         // §V20 — the press belongs to the field, not to the node under it: without this,
         // dragging to select the text drags the node across the canvas.
         onPointerDown={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
         onDoubleClick={(event) => event.stopPropagation()}
         onChange={(event) => {
-          setDraft(event.target.value);
+          const raw = event.target.value;
+          const next = kind !== null && kindKept ? roleWhileTyping(raw) : raw;
+          if (next !== raw) {
+            const at = event.target.selectionStart ?? raw.length;
+            caret.current = Math.max(0, at - (raw.length - next.length));
+          }
+          touched.current = true;
+          setDraft(next);
           setError(null);
         }}
         onKeyDown={onKeyDown}
         onBlur={() => {
-          void commit();
+          void commit("blur");
         }}
       />
       {error === null ? null : (

@@ -1,9 +1,11 @@
-import { wgsl } from "../../runtime/backend/wgsl.ts";
+import { generatedOnce, wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
-import { declaredNames } from "./shared-modules.ts";
+import { SHARED_WGSL_MODULES, declaredNames } from "./shared-modules.ts";
 import type { WgslPosition } from "../../runtime/backend/wgsl-source-map.ts";
 import { advance, endOf } from "../../runtime/backend/wgsl-source-map.ts";
+import { packedAccessorWgsl, packedBindingsWgsl, type InstanceRecordOffsets, type PackedRead } from "./instance-resolve.wgsl.ts";
+import { LIGHT_GRID_FIELDS_WGSL, lightGridDeclarationsWgsl, lightTableWalkWgsl } from "./scene-lights.wgsl.ts";
 /**
  * The scene Render shader (T377/T428): the surface mesh machinery of T301 with the
  * SHADING GENERATED per material model — the V349 fix. The legacy renderers keep their
@@ -13,11 +15,15 @@ import { advance, endOf } from "../../runtime/backend/wgsl-source-map.ts";
  * grid connectivity, normals are central differences over grid neighbours, wrapped
  * axes address modularly so the seam cell closes the ring. What T377 adds: `uv` (the
  * grid coordinate — free, and what material maps sample by), `eye` (for the view
- * vector), and a LIGHT ARRAY sized to the scene's actual referenced count — structural
- * in COUNT (adding a light recompiles), pure values in CONTENT (moving one animates),
- * which is the no-artificial-cap shape without a storage buffer: a uniform array
- * carries thousands of lights before the block limit, and B33's silent storage-budget
- * cliff never enters the picture.
+ * vector), and the LIGHTS of the scene's actual referenced count — structural in COUNT
+ * (adding a light recompiles), pure values in CONTENT (moving one animates). They are not
+ * an array: each Light in Single mode is three named rows of the params block and a block
+ * of its own in the fragment stage (`lightBlock`), so the count has no cap in the block
+ * and a real one in the program: a straight chain of such blocks is what a compiler sinks
+ * to the end of the function, and past about twenty of them a fragment's cost jumps (B260,
+ * measured and derived at `LIGHT_GUARD_ABOVE` below, which puts each block under a test of
+ * its own above eight). Many lights are a Light in Points mode, rows of a table walked from
+ * a grid (T1589b, `scene-lights.wgsl.ts`).
  */
 
 export interface SceneShadingOptions {
@@ -25,8 +31,30 @@ export interface SceneShadingOptions {
   /** Lights the shader is compiled for. 0 is legal: ambient floor only. */
   readonly lightCount: number;
   readonly maps?: { readonly albedo?: boolean; readonly roughness?: boolean };
+  /**
+   * T1618b: how the maps are read past their edge, an axis at a time (the material's Map
+   * Extend). Absent, or Hold on both axes, emits the text a map was always read by, to the
+   * byte: the coordinate clamped to 0..1. Otherwise the maps are read through `mapTexel`,
+   * which folds each axis by the shared module `extend`.
+   */
+  readonly mapExtend?: { readonly u: "hold" | "repeat" | "mirror"; readonly v: "hold" | "repeat" | "mirror" };
   /** T478: a vec4f attribute multiplies the base colour per point (the mapped tint). */
   readonly pointColor?: boolean;
+  /**
+   * T1587b: the grid this draws is SEVERAL SHEETS (`grid:{cols}x{rows}x{sheets}`): a sheet's
+   * rows follow the one before it in the buffer and no cell joins two. The vertex chunk then
+   * reads the sheet off the vertex index. Absent (one sheet), the text is the one a grid
+   * always had, to the byte — see `GRID_SHEET_WGSL`.
+   */
+  readonly sheets?: boolean;
+  /**
+   * T1618b: the grid's pointset carries a `uv` (vec2f) AND this draw reads a texture
+   * coordinate (a map is bound, or the Material · WGSL names `.uv`): the vertex chunk binds
+   * the attribute and hands it on in place of the grid coordinate, carried past a wrapped
+   * seam by whole turns — see `GRID_UV_WGSL`. Absent, the text is the one a grid has
+   * without it, to the byte: a pointset that carries a `uv` nobody reads costs nothing.
+   */
+  readonly gridUv?: boolean;
   /**
    * T481: the LIGHT INDICES that cast, in casting order. Slot s of this list owns
    * `shadow{s}Matrix` (a named mat4 member, V380) and the `shadowMap{s}` texture at
@@ -124,7 +152,56 @@ export interface SceneShadingOptions {
    * "more opaque" than 1. Absent emits the stock text byte for byte (§V309).
    */
   readonly additive?: boolean;
+  /**
+   * T1581b: the surface is a MESH DRAWN ONCE PER INSTANCE (Geometry, Instances mode, Shape:
+   * Mesh). Needs `mesh`. The vertex stage pulls the shape's vertex as an indexed mesh does
+   * and places it by the instance's RECORD — `Object · Instance`, resolved once a frame by
+   * `instanceResolveWgsl` — instead of by the `model` uniform. Everything after the vertex
+   * stage is the surface's own: lighting, shadows received, the G-buffer writes, a Material ·
+   * WGSL. Absent emits the non-instanced text byte for byte (§V309).
+   */
+  readonly instanced?: SceneInstancedOption;
+  /**
+   * T1589b, T1623b: this draw walks its Render's LIGHT TABLE (`scene-lights.wgsl.ts`): the
+   * rows that reach every pixel, then the rows its pixel's cell of the grid holds and whose
+   * range holds the fragment, the light block once for each. After the unrolled blocks,
+   * through the same block text. A Render's every lit Surface draw has it, whatever the
+   * Render lists (the table then holds its Lights in Single mode that do not cast and the
+   * lights of its Lights in Points mode), and `lightCount` is then its CASTING Lights alone,
+   * each block under B260's guard at every count. An unlit model and the G-buffer variants
+   * take no light and ignore it. Absent emits the text with no table (§V309): a tile's
+   * preview, and what the gates of B260 pin.
+   *
+   * A FLAG, and nothing else: the table's size, its layout, how many lights it holds and of
+   * what kind are read from the table, so a draw that walks it has one text whatever it
+   * holds (T1623b).
+   */
+  readonly lightGrid?: boolean;
 }
+
+/**
+ * T1581b: where an instanced mesh draw reads from. Every buffer is bound WHOLE as
+ * `packed<group>` and read by offset (the point kernels' accessors), so the draw spends one
+ * storage binding per producer whatever the shape carries (§V588).
+ */
+export interface SceneInstancedOption {
+  /** How many buffers are bound, as `packed0..` from `INSTANCED_BINDING_BASE`. */
+  readonly groups: number;
+  /** The shape's vertex attributes. */
+  readonly position: PackedRead;
+  readonly normal: PackedRead;
+  readonly uv?: PackedRead;
+  readonly color?: PackedRead;
+  readonly surface?: PackedRead;
+  readonly emissive?: PackedRead;
+  /** The instance records: which bound buffer, and where its regions start. */
+  readonly record: InstanceRecordOffsets & { readonly group: number };
+}
+
+/** T1581b: the first binding of an instanced draw's whole-buffer bindings — clear of every other slot. */
+export const INSTANCED_BINDING_BASE = 130;
+/** T1581b: the variable prefix of those bindings; a pass binds `packed0`, `packed1`, …. */
+export const INSTANCED_BINDING_PREFIX = "packed";
 
 /** T1355b: the author's surface code, placed into the lit surface generator. */
 export interface SceneCustomSurface {
@@ -133,6 +210,30 @@ export interface SceneCustomSurface {
   /** The author's `struct Params` declaration, verbatim, or "" when none. */
   readonly paramsDeclaration: string;
   readonly fields: ReadonlyArray<{ readonly name: string; readonly wgsl: string }>;
+  /**
+   * T1581b: the fields of the author's `struct Instance` (declared in `code`), in declared
+   * order. `SurfaceIn` then carries `instance: Instance`. On an instanced draw a field the
+   * geometry bound (`instanced.record.fields`) is read from the instance's record at the
+   * fragment's slot; every other field, and every field on any other draw, is its
+   * `default` (zero when the author declared none) — so one material compiles everywhere.
+   */
+  readonly instance?: ReadonlyArray<{ readonly name: string; readonly wgsl: string; readonly default?: readonly number[] }>;
+}
+
+/** T1581b: the accessor a bound `struct Instance` field is read through, by field name. */
+export function instanceFieldAccessor(name: string): string {
+  return `instanceField_${name}`;
+}
+
+/** A `struct Instance` field's default as a WGSL constructor of its own type. */
+function instanceDefaultWgsl(type: string, values: readonly number[] | undefined): string {
+  const components = type === "vec2f" ? 2 : type === "vec3f" ? 3 : type === "vec4f" || type === "vec4u" ? 4 : 1;
+  const numbers = Array.from({ length: components }, (_, index) => values?.[index] ?? 0);
+  const unsigned = (value: number): string => `${Math.max(0, Math.trunc(value))}u`;
+  if (type === "u32") return unsigned(numbers[0] ?? 0);
+  if (type === "vec4u") return `vec4u(${numbers.map(unsigned).join(", ")})`;
+  if (type === "f32") return biasLiteral(numbers[0] ?? 0);
+  return `${type}(${numbers.map(biasLiteral).join(", ")})`;
 }
 
 /** T1355b: the uniform member a Material · WGSL field is carried under. */
@@ -143,7 +244,7 @@ export function materialParamUniformKey(name: string): string {
 /** T1355b: the binding the shared frame block rides on a custom-material draw. */
 export const CUSTOM_SURFACE_FRAME_BINDING = "frameU";
 
-const CUSTOM_SURFACE_PRELUDE = `struct SurfaceIn {
+const customSurfacePrelude = (instanceMember: string): string => `struct SurfaceIn {
   world: vec3f,
   normal: vec3f,
   uv: vec2f,
@@ -160,7 +261,13 @@ const CUSTOM_SURFACE_PRELUDE = `struct SurfaceIn {
   // taken by the generator in uniform control flow so the author's code may branch freely.
   footprint: f32,
   curvature: f32,
-};
+  // T1588b/T1581b: the SHAPE'S OWN FRAME — the vertex and its unit normal before the object
+  // transform (and, on a mesh instance, before the instance's), so detail painted by them
+  // sticks to a part however it is moved. instanceId is the instance's slot, 0 on a surface.
+  local: vec3f,
+  localNormal: vec3f,
+  instanceId: u32,
+${instanceMember}};
 
 struct SurfaceOut {
   albedo: vec4f,
@@ -176,7 +283,17 @@ fn surfaceDefaults(s: SurfaceIn) -> SurfaceOut {
 `;
 
 /** T1535b: everything a custom surface's text puts in front of the author's `struct Params`. */
-const CUSTOM_SURFACE_HEAD = `${SHARED_UNIFORMS_WGSL}\n@group(0) @binding(120) var<uniform> ${CUSTOM_SURFACE_FRAME_BINDING}: SharedFrame;\n\n${CUSTOM_SURFACE_PRELUDE}\n`;
+const customSurfaceHead = (instanceMember: string): string =>
+  `${SHARED_UNIFORMS_WGSL}\n@group(0) @binding(120) var<uniform> ${CUSTOM_SURFACE_FRAME_BINDING}: SharedFrame;\n\n${customSurfacePrelude(instanceMember)}\n`;
+const CUSTOM_SURFACE_HEAD = customSurfaceHead("");
+/**
+ * T1581b: the head for a source that declares `struct Instance`. The struct itself stays
+ * where the author wrote it, in their code below: a module-scope declaration is in scope
+ * for the whole module, so `SurfaceIn` may name it from above.
+ */
+const CUSTOM_SURFACE_HEAD_WITH_INSTANCE = customSurfaceHead(
+  "  // T1581b: the material's own `struct Instance`: one value per instance on a mesh-instance\n  // draw (bound by name to the points' attributes), its declared defaults on any other.\n  instance: Instance,\n",
+);
 
 /** T1353b: which per-vertex attributes an indexed surface binds. */
 export interface SceneMeshOption {
@@ -248,18 +365,7 @@ function projectorBlocks(
       const occlusionBlock = proj.occlusion
         ? `      let ddims = vec2f(textureDimensions(projectorDepth${p}, 0));
       let stored = textureLoad(projectorDepth${p}, vec2i(puv * (ddims - vec2f(1.0))), 0).r;
-      /* VNB11: compare DEPTHS, not fragment-z. Perspective fragment-z crowds toward 1 with
-         distance (near is 2% of the throw), so a fixed bias in it was a sliver of a texel by
-         the lens and metres at the end of a stage throw: a deck's top no longer shadowed its
-         own front face. Linearised, the bias is the depth map's texel footprint at this
-         depth, scaled by the slope, plus a hair for float precision. */
-      let pnear = params.projector${p}Meta.y;
-      let pfar = params.projector${p}Meta.z;
-      let here = pnear * pfar / (pfar - pndc.z * (pfar - pnear));
-      let there = pnear * pfar / (pfar - min(stored, 1.0) * (pfar - pnear));
-      let ptexel = here * params.projector${p}Meta.w / max(ddims.x, 1.0);
-      let pslope = sqrt(max(1.0 - plambert * plambert, 0.0)) / max(plambert, 0.1);
-      if (here - (ptexel * (1.5 + 2.0 * pslope) + here * 0.0005) > there) { beam = 0.0; }
+      if (projectorOccluded(pndc.z, stored, params.projector${p}Meta, ddims.x, plambert)) { beam = 0.0; }
 `
         : "";
       return `  {
@@ -284,7 +390,23 @@ ${occlusionBlock}        let nominal = max(params.projector${p}Meta.x, 1e-4);
 `;
     })
     .join("");
-  return { fields, bindings, term, bindingCount: binding - baseBinding };
+  // VNB11: compare DEPTHS, not fragment-z. Perspective fragment-z crowds toward 1 with distance
+  // (near is 2% of the throw), so a fixed bias in it was a sliver of a texel by the lens and
+  // metres at the end of a stage throw: a deck's top no longer shadowed its own front face.
+  // Linearised, the bias is the depth map's texel footprint at this depth, scaled by the slope,
+  // plus a hair for float precision. ONE function for every projector (§V1029: per-projector text
+  // stays a call). m = (throw, near, far, image width as 2·tan(half)).
+  const occluded = projectors.some((proj) => proj.occlusion)
+    ? `fn projectorOccluded(z: f32, stored: f32, m: vec4f, texels: f32, lambert: f32) -> bool {
+  let here = m.y * m.z / (m.z - z * (m.z - m.y));
+  let there = m.y * m.z / (m.z - min(stored, 1.0) * (m.z - m.y));
+  let texel = here * m.w / max(texels, 1.0);
+  let slope = sqrt(max(1.0 - lambert * lambert, 0.0)) / max(lambert, 0.1);
+  return here - (texel * (1.5 + 2.0 * slope) + here * 0.0005) > there;
+}
+`
+    : "";
+  return { fields, bindings: bindings + occluded, term, bindingCount: binding - baseBinding };
 }
 
 /**
@@ -459,6 +581,56 @@ export const POINT_FALLOFF_WGSL = `      attenuation = select(1.0 / (1.0 + dista
         attenuation = attenuation * reachWindow * reachWindow;
       }
 `;
+
+/**
+ * B260 — ABOVE THIS MANY LIGHTS, each light's block does its work under a test that the
+ * light is on (`lightGuardWgsl`). At and below it the lit text is what it always was.
+ *
+ * The cause it answers. The lit sum is one chain of `lit +=` through every light's block.
+ * Apple's Metal compiler runs with fast math: it takes every light's terms out of their
+ * blocks, sums them at the END of the fragment function, and so moves each light's lobe
+ * below every light's kind and range branch. What a fragment holds live at once then grows
+ * with the light count, and past the GPU's registers its cost jumps: on a PBR floor 0.39 ms
+ * at 20 lights and 1.51 ms at 24, 18.7 ms at 64 where the guarded text takes 1.3. A branch
+ * on the light's own intensity ends the chain at every light.
+ *
+ * Why 8 and not the 20 where that floor's cliff is: a Material · WGSL moves it to between 16
+ * and 20, a casting point light too, and both together are a timer step apart at 16. A file
+ * mesh with surface rows, several casting lights, a projector and an environment in one
+ * shader were not measured. The guard costs nothing that could be resolved at 8, 12 or 16
+ * lights, so the margin goes to the side that cannot hurt.
+ *
+ * The count is LIGHTS. A projector adds into the same sum, but its addition has always sat
+ * under two tests of the fragment's own place (in front of the lens, inside the frustum), so
+ * `lit` is a merge after every projector and the chain ends there: 8 lights with 24
+ * projectors cost what 24 projectors cost one by one, guarded or not. The gate
+ * (`scene-light-guard.test.ts`) counts a projector written without its tests as a light.
+ *
+ * A stopgap with a named end, and T1623b's third slice took the first part of it: a
+ * Render's lit Surface draw walks the light table now, its Lights that do not cast are rows,
+ * and the blocks left in it (the casting Lights') are each guarded at EVERY count, whatever
+ * this number is. What the threshold still decides is the texts with NO table: the instances
+ * generator's (primitive instances, points and beams unroll a block for every Light in
+ * Single mode until slice 7), a tile's preview (two stock lights) and the shadow matte. It
+ * goes with the last of those blocks. Measured and derived in
+ * `docs/light-cost-investigation-2026-10-06.md`.
+ */
+export const LIGHT_GUARD_ABOVE = 8;
+
+/**
+ * B260 — the two lines round a light block's work, after its three uniform reads and
+ * before its closing brace; both empty at or below `LIGHT_GUARD_ABOVE` in a text with no
+ * light table (beside the table's walk every block has them: `buildSceneSurfaceModule`).
+ *
+ * The test is `lightMeta.y != 0.0`: the Light's Intensity. A light of intensity 0 adds
+ * `0 × lobe` without it, which is zero wherever the lobe is finite, so the sum is the same
+ * sum. Where the lobe is NaN or infinite (a halfway vector of zero length, a light exactly
+ * at the fragment) the unguarded block adds NaN for a light that is switched off and the
+ * guarded one adds nothing. A light that is on runs the same code either way, NaN included,
+ * and a NaN intensity is "not zero", so it still shows.
+ */
+export const lightGuardWgsl = (lightCount: number): { readonly open: string; readonly close: string } => (lightCount > LIGHT_GUARD_ABOVE ? LIGHT_GUARD : { open: "", close: "" });
+const LIGHT_GUARD = { open: "    if (lightMeta.y != 0.0) {\n", close: "    }\n" } as const;
 
 /**
  * T1437b — the `light{i}Meta` row every lit draw writes, in ONE place (the render's two
@@ -649,7 +821,8 @@ fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
 }`;
 
 /** T1427b step 2: one level — the previous level blurred by a cone of `radius` (tangent units). */
-export function envPrefilterLevelWgsl(radius: number): EmittedWgsl {
+export const envPrefilterLevelWgsl = generatedOnce("envPrefilterLevelWgsl", buildEnvPrefilterLevelWgsl);
+function buildEnvPrefilterLevelWgsl(radius: number): EmittedWgsl {
   return wgsl`${PREFILTER_PARAMS}@group(0) @binding(1) var sourceTex: texture_2d<f32>;
 ${ENV_UV_WGSL}${ENV_DIRECTION_WGSL}${FULLSCREEN_VS}@fragment
 fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
@@ -765,7 +938,8 @@ const IRRADIANCE_PREFILTERED_WGSL = `  let envN = normal * select(-1.0, 1.0, dot
  * degenerate: parallel rays see one point of an environment at infinity. Stated because
  * a flat sky under an ortho camera otherwise reads as a bug (§V403).
  */
-export function backdropWgsl(options: { readonly environment?: boolean } = {}): EmittedWgsl {
+export const backdropWgsl = generatedOnce("backdropWgsl", buildBackdropWgsl);
+function buildBackdropWgsl(options: { readonly environment?: boolean } = {}): EmittedWgsl {
   if (options.environment !== true) {
     return wgsl`struct Backdrop { color: vec4f };
 @group(0) @binding(0) var<uniform> backdrop: Backdrop;
@@ -819,14 +993,123 @@ fn fs(input: BackdropOut) -> @location(0) vec4f {
  * source (§V349). The lit template's emitted text is byte-identical to before the
  * extraction — the golden scene hashes are the proof.
  */
-function surfaceMeshWgsl(pointColor: boolean): EmittedWgsl {
+/**
+ * T1588b — the two inter-stage members a Material · WGSL reads the SHAPE'S OWN FRAME by:
+ * the vertex and its normal before any transform. Carried only when a custom surface is
+ * placed, at the same locations in the grid and the mesh chunk.
+ */
+const LOCAL_VARYINGS = `  @location(6) local: vec3f,
+  @location(7) localNormal: vec3f,
+`;
+
+/**
+ * T1587b — A GRID OF SEVERAL SHEETS, as the two grid chunks (the lit one below and the depth
+ * one, `shadowSurfaceWgsl`) read it. Ten tubes swept from ten strips are ONE pointset and
+ * ONE draw of `sheets × cells × 6` vertices: a vertex's cell says which sheet it is in, and
+ * since no cell joins two sheets there is no join to draw, degenerate or otherwise.
+ *
+ * ⚑ A BRANCH IN THE ONE EMITTER, AND ONLY FOR A CLAIM OF MORE THAN ONE SHEET. With `sheets`
+ * false each chunk emits the text it always did, to the byte. That is on purpose: two
+ * shader programs can round one expression differently (a fused multiply-add is the
+ * compiler's choice), so the way to keep every grid that shipped on its picture is to keep
+ * its program. `grid-sheets.test.ts` pins the one-sheet programs by their text.
+ *
+ * The sheet is a module-scope private, set once at the top of the vertex stage, so
+ * `gridPosition` keeps its two arguments and every call of it (the vertex, its four
+ * neighbours for the normal) stays the line it was.
+ */
+const GRID_SHEET_WGSL = {
+  /** Declared before `gridPosition`. */
+  declaration: `/* T1587b: the sheet this vertex is in. A sheet's rows follow the one before it in the
+   buffer, and no cell joins two sheets. */
+var<private> gridSheet: u32;
+
+`,
+  /** A row's first slot: the sheets before this one hold `rows` rows each. */
+  row: (row: string): string => `(gridSheet * rows + ${row})`,
+  /** In the vertex stage, after `cellsU` and `quad`: which sheet, and which cell of it. */
+  cell: (cellsV: string): string => `  /* T1587b: a sheet is cellsU × cellsV cells, and the draw is every sheet's. */
+  let sheetCells = cellsU * ${cellsV};
+  gridSheet = quad / sheetCells;
+  let cell = quad % sheetCells;
+`,
+} as const;
+
+/**
+ * T1618b — A GRID THAT CARRIES ITS OWN TEXTURE COORDINATE. A pointset with a vec2f `uv`
+ * (a Sweep publishes one: round its profile, and along its path by length or by count) is
+ * read by the material in place of the grid coordinate. It is a variant, emitted only for a
+ * draw that reads a coordinate from a pointset that has one.
+ *
+ * ⚑ THE SEAM. On a wrapped axis the corner past the last point IS the first point, and its
+ * coordinate is back where the axis began: read plainly, the seam cell would run the whole
+ * map backwards. So past the seam the coordinate is CARRIED ON BY WHOLE TURNS: the first
+ * point's, plus the whole number of turns the axis makes on its way to the last, up for a
+ * coordinate that rises and down for one that falls. Once round a tube from 0 arrives at 1;
+ * three tiles round arrive at 3; a mirrored coordinate that falls from 1 arrives at 0.
+ * It takes the producer's coordinate to make a whole number of turns round a wrapped axis,
+ * which a Sweep's always does (Metres on a closed path rounds its tiles to a whole number).
+ *
+ * `row` is the lit chunk's own row rule, so on a grid of several sheets a vertex reads its
+ * own sheet's coordinate and each sheet's seam is carried by its own turns.
+ */
+const GRID_UV_WGSL = (rowOf: (row: string) => string): string => `/* T1618b: the pointset's own texture coordinate. */
+fn gridUvAt(column: u32, row: u32) -> vec2f {
+  let cols = u32(params.grid.x);
+  let rows = u32(params.grid.y);
+  return gridUvs[${rowOf("row")} * cols + column];
+}
+
+/* Past a wrapped seam: the first point's coordinate, carried on by the whole turns the axis
+   makes on its way to the last point, in the direction it goes. */
+fn gridUvPastSeam(first: f32, last: f32) -> f32 {
+  let turns = last - first;
+  return first + sign(turns) * ceil(abs(turns));
+}
+
+fn gridUvOf(gx: u32, gy: u32) -> vec2f {
+  let cols = u32(params.grid.x);
+  let rows = u32(params.grid.y);
+  let wrapU = params.grid.z > 0.5;
+  let wrapV = params.grid.w > 0.5;
+  let column = select(gx, gx % cols, wrapU);
+  let row = select(gy, gy % rows, wrapV);
+  var coordinate = gridUvAt(column, row);
+  if (wrapU && gx == cols) {
+    coordinate.x = gridUvPastSeam(coordinate.x, gridUvAt(cols - 1u, row).x);
+  }
+  if (wrapV && gy == rows) {
+    coordinate.y = gridUvPastSeam(coordinate.y, gridUvAt(column, rows - 1u).y);
+  }
+  return coordinate;
+}
+
+`;
+
+function surfaceMeshWgsl(pointColor: boolean, carriesLocal = false, sheets = false, gridUv = false): EmittedWgsl {
+  /* One sheet: the cell IS the quad, and a row's first slot is `row × cols`. */
+  const cell = sheets ? "cell" : "quad";
+  const rowOf = (row: string): string => (sheets ? GRID_SHEET_WGSL.row(row) : row);
+  /* §B255 in the grid's own coordinate; T1618b where the pointset brings one that is read. */
+  const coordinate = gridUv
+    ? `  /* T1618b: the pointset's own uv, carried past a wrapped seam by whole turns. */
+  out.uv = gridUvOf(gx, gy);`
+    : `  /* The grid coordinate IS the uv — free, and what material maps sample by. B255: an axis
+     runs over its CELLS. A wrapped axis has as many cells as points (the last is the seam
+     cell), so the coordinate is 1 at the seam vertex and a texture goes once round. It was
+     the points less one on every axis, which on a wrapped one ran to cols ÷ (cols − 1):
+     the seam cell read past the map's edge and showed its last texel all the way across. */
+  out.uv = vec2f(
+    f32(gx) / max(select(params.grid.x - 1.0, params.grid.x, wrapU), 1.0),
+    f32(gy) / max(select(params.grid.y - 1.0, params.grid.y, wrapV), 1.0),
+  );`;
   return wgsl`struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) normal: vec3f,
   @location(1) world: vec3f,
   @location(2) uv: vec2f,
   @location(3) tint: vec4f,
-};
+${carriesLocal ? LOCAL_VARYINGS : ""}};
 
 fn cellCorner(v: u32) -> vec2u {
   var corners = array<vec2u, 6>(
@@ -836,12 +1119,12 @@ fn cellCorner(v: u32) -> vec2u {
   return corners[v];
 }
 
-fn gridPosition(gx: u32, gy: u32) -> vec3f {
+${sheets ? GRID_SHEET_WGSL.declaration : ""}fn gridPosition(gx: u32, gy: u32) -> vec3f {
   let cols = u32(params.grid.x);
   let rows = u32(params.grid.y);
   let px = select(gx, gx % cols, params.grid.z > 0.5);
   let py = select(gy, gy % rows, params.grid.w > 0.5);
-  return positions[py * cols + px];
+  return positions[${rowOf("py")} * cols + px];
 }
 
 fn nextIndex(i: u32, extent: u32, wrapped: bool) -> u32 {
@@ -851,7 +1134,7 @@ fn previousIndex(i: u32, extent: u32, wrapped: bool) -> u32 {
   return select(max(i, 1u) - 1u, (i + extent - 1u) % extent, wrapped);
 }
 
-@vertex
+${gridUv ? GRID_UV_WGSL(rowOf) : ""}@vertex
 fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let cols = u32(params.grid.x);
   let rows = u32(params.grid.y);
@@ -860,24 +1143,27 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let cellsU = select(cols - 1u, cols, wrapU);
   let quad = vertex / 6u;
   let corner = cellCorner(vertex % 6u);
-  let gx = (quad % cellsU) + corner.x;
-  let gy = (quad / cellsU) + corner.y;
+${sheets ? GRID_SHEET_WGSL.cell("select(rows - 1u, rows, wrapV)") : ""}  let gx = (${cell} % cellsU) + corner.x;
+  let gy = (${cell} / cellsU) + corner.y;
 
-  let world = gridPosition(gx, gy);
+  let local = gridPosition(gx, gy);
   let du = gridPosition(nextIndex(gx, cols, wrapU), gy) -
     gridPosition(previousIndex(gx, cols, wrapU), gy);
   let dv = gridPosition(gx, nextIndex(gy, rows, wrapV)) -
     gridPosition(gx, previousIndex(gy, rows, wrapV));
+  /* T1588b: the object transform. The cross product of two transformed edges is the
+     cofactor of the transform applied to the cross product of the edges themselves. */
+  let world = (params.model * vec4f(local, 1.0)).xyz;
+  let localNormal = cross(du, dv);
 
   var out: VertexOut;
   out.position = params.viewProjection * vec4f(world, 1.0);
-  out.normal = cross(du, dv);
-  out.world = world;
-  /* The grid coordinate IS the uv — free, and what material maps sample by. */
-  out.uv = vec2f(f32(gx) / max(params.grid.x - 1.0, 1.0), f32(gy) / max(params.grid.y - 1.0, 1.0));
+  out.normal = (params.modelNormal * vec4f(localNormal, 0.0)).xyz;
+  out.world = world;${carriesLocal ? "\n  out.local = local;\n  out.localNormal = localNormal;" : ""}
+${coordinate}
   /* Same modular indexing as the position read, so the seam vertex wears column 0's tint. */
   out.tint = ${pointColor
-    ? "pointColors[select(gy, gy % rows, wrapV) * cols + select(gx, gx % cols, wrapU)]"
+    ? `pointColors[${rowOf("select(gy, gy % rows, wrapV)")} * cols + select(gx, gx % cols, wrapU)]`
     : "vec4f(1.0)"};
   return out;
 }`;
@@ -889,7 +1175,7 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
  * is zero until the file's bytes arrive, which makes every triangle degenerate — no
  * fragments, rather than a shape made of whatever vertex 0 happens to be.
  */
-function meshVertexWgsl(pointColor: boolean, mesh: SceneMeshOption): EmittedWgsl {
+function meshVertexWgsl(pointColor: boolean, mesh: SceneMeshOption, carriesLocal = false): EmittedWgsl {
   return wgsl`struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) normal: vec3f,
@@ -898,16 +1184,19 @@ function meshVertexWgsl(pointColor: boolean, mesh: SceneMeshOption): EmittedWgsl
   @location(3) tint: vec4f,
   @location(4) surface: vec4f,
   @location(5) emissive: vec3f,
-};
+${carriesLocal ? LOCAL_VARYINGS : ""}};
 
 @vertex
 fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let index = meshIndices[vertex];
-  let world = positions[index];
+  let local = positions[index];
+  let localNormal = meshNormals[index];
+  /* T1588b: the object transform; the normal takes its cofactor. */
+  let world = (params.model * vec4f(local, 1.0)).xyz;
   var out: VertexOut;
   out.position = params.viewProjection * vec4f(world, 1.0);
-  out.normal = meshNormals[index];
-  out.world = world;
+  out.normal = (params.modelNormal * vec4f(localNormal, 0.0)).xyz;
+  out.world = world;${carriesLocal ? "\n  out.local = local;\n  out.localNormal = localNormal;" : ""}
   out.uv = ${mesh.uv ? "meshUvs[index]" : "vec2f(0.0)"};
   out.tint = ${pointColor ? "pointColors[index]" : "vec4f(1.0)"};
   out.surface = ${mesh.surface ? "meshSurface[index]" : "vec4f(0.0)"};
@@ -924,12 +1213,97 @@ function meshBindingsWgsl(mesh: SceneMeshOption): string {
     mesh.uv ? `@group(0) @binding(${MESH_BINDINGS.uvs}) var<storage, read> meshUvs: array<vec2f>;\n` : "",
     mesh.surface ? `@group(0) @binding(${MESH_BINDINGS.surface}) var<storage, read> meshSurface: array<vec4f>;\n` : "",
     mesh.emissive ? `@group(0) @binding(${MESH_BINDINGS.emissive}) var<storage, read> meshEmissive: array<vec3f>;\n` : "",
-    // B227: the normal of the side the viewer sees.
-    "fn faceViewer(n: vec3f, toEye: vec3f) -> vec3f { return select(-n, n, dot(n, toEye) >= 0.0); }\n",
+    FACE_VIEWER_WGSL,
   ].join("");
 }
 
-/** T1438b: a light's Shadow Bias (world units) as a WGSL float literal. */
+/** B227: the normal of the side the viewer sees. */
+const FACE_VIEWER_WGSL = "fn faceViewer(n: vec3f, toEye: vec3f) -> vec3f { return select(-n, n, dot(n, toEye) >= 0.0); }\n";
+
+/**
+ * T1581b: an instanced draw's storage — the index list, the buffers bound whole, and one
+ * accessor per attribute read. `instanceSlot` is the ONE place a drawn instance index
+ * becomes a record slot. For a geometry that leaves instances out (F1) it reads the
+ * records' `visible` list, the slots of the instances that are drawn; the draw's count is
+ * that list's length, so a rejected instance runs no vertex. For one that draws every point
+ * it is the identity. Nothing else here has to know which.
+ */
+function instancedStorageWgsl(instanced: Pick<SceneInstancedOption, "groups" | "position" | "record"> & Partial<SceneInstancedOption>): string {
+  const read = (name: string, attribute: PackedRead | undefined): string =>
+    attribute === undefined ? "" : `${packedAccessorWgsl(name, INSTANCED_BINDING_PREFIX, attribute)}\n`;
+  const row = (name: string, offset: number): string => read(name, { group: instanced.record.group, offset, type: "vec4f" });
+  return [
+    `@group(0) @binding(${MESH_BINDINGS.indices}) var<storage, read> meshIndices: array<u32>;\n`,
+    packedBindingsWgsl(INSTANCED_BINDING_PREFIX, instanced.groups, INSTANCED_BINDING_BASE),
+    read("meshPositionAt", instanced.position),
+    read("meshNormalAt", instanced.normal),
+    read("meshUvAt", instanced.uv),
+    read("meshColorAt", instanced.color),
+    read("meshSurfaceAt", instanced.surface),
+    read("meshEmissiveAt", instanced.emissive),
+    row("recordM0", instanced.record.m0),
+    row("recordM1", instanced.record.m1),
+    row("recordM2", instanced.record.m2),
+    instanced.record.tint === undefined ? "" : row("recordTint", instanced.record.tint),
+    instanced.record.visible === undefined
+      ? "fn instanceSlot(drawn: u32) -> u32 { return drawn; }\n"
+      : read("instanceSlot", { group: instanced.record.group, offset: instanced.record.visible, type: "u32" }),
+  ].join("");
+}
+
+/** The world position of a shape-local point under the record's three rows. */
+const RECORD_PLACE_WGSL = `  let slot = instanceSlot(drawn);
+  /* The record is Object · Instance, resolved once this frame (instance-resolve.wgsl.ts). */
+  let r0 = recordM0(slot);
+  let r1 = recordM1(slot);
+  let r2 = recordM2(slot);`;
+
+/**
+ * T1581b — the INSTANCED mesh chunk: the indexed chunk's fetch, placed by the instance's
+ * record instead of the model uniform. Same VertexOut fields, so the fragment stage is the
+ * surface's own. The tint is the shape's colour times the instance's.
+ */
+function meshInstancedVertexWgsl(instanced: SceneInstancedOption, carriesLocal: boolean): EmittedWgsl {
+  const tint = [instanced.color === undefined ? "" : "meshColorAt(index)", instanced.record.tint === undefined ? "" : "recordTint(slot)"].filter((term) => term !== "").join(" * ");
+  return wgsl`struct VertexOut {
+  @builtin(position) position: vec4f,
+  @location(0) normal: vec3f,
+  @location(1) world: vec3f,
+  @location(2) uv: vec2f,
+  @location(3) tint: vec4f,
+  @location(4) surface: vec4f,
+  @location(5) emissive: vec3f,
+${carriesLocal ? `${LOCAL_VARYINGS}  @location(8) @interpolate(flat) slot: u32,\n` : ""}};
+
+@vertex
+fn vs(@builtin(vertex_index) vertex: u32, @builtin(instance_index) drawn: u32) -> VertexOut {
+${RECORD_PLACE_WGSL}
+  let index = meshIndices[vertex];
+  let local = meshPositionAt(index);
+  let localNormal = meshNormalAt(index);
+  let world = vec3f(dot(r0, vec4f(local, 1.0)), dot(r1, vec4f(local, 1.0)), dot(r2, vec4f(local, 1.0)));
+  /* The normal takes the inverse transpose's direction: the cofactor of the record's 3x3
+     (its rows are r1×r2, r2×r0, r0×r1) times the sign of its determinant, made unit HERE so
+     a very small instance does not reach the fragment stage's zero-length guard. An
+     instance that is not drawn has a zero record: a zero normal, on triangles with no area. */
+  let c0 = cross(r1.xyz, r2.xyz);
+  let c1 = cross(r2.xyz, r0.xyz);
+  let c2 = cross(r0.xyz, r1.xyz);
+  let turned = vec3f(dot(c0, localNormal), dot(c1, localNormal), dot(c2, localNormal)) * select(-1.0, 1.0, dot(r0.xyz, c0) >= 0.0);
+  let turnedLength = length(turned);
+  var out: VertexOut;
+  out.position = params.viewProjection * vec4f(world, 1.0);
+  out.normal = select(vec3f(0.0), turned / max(turnedLength, 1e-30), turnedLength > 0.0);
+  out.world = world;${carriesLocal ? "\n  out.local = local;\n  out.localNormal = localNormal;\n  out.slot = slot;" : ""}
+  out.uv = ${instanced.uv === undefined ? "vec2f(0.0)" : "meshUvAt(index)"};
+  out.tint = ${tint === "" ? "vec4f(1.0)" : tint};
+  out.surface = ${instanced.surface === undefined ? "vec4f(0.0)" : "meshSurfaceAt(index)"};
+  out.emissive = ${instanced.emissive === undefined ? "vec3f(0.0)" : "meshEmissiveAt(index)"};
+  return out;
+}`;
+}
+
+/** A number as a WGSL float literal: a light's Shadow Bias in world units (T1438b), an instance field's default (T1581b). */
 function biasLiteral(metres: number): string {
   const text = String(metres);
   return /[.e]/.test(text) ? text : `${text}.0`;
@@ -1109,9 +1483,45 @@ export interface SceneSurfaceModule {
   readonly placed: { readonly params?: WgslPosition; readonly code?: WgslPosition };
 }
 
-export function sceneSurfaceModule(options: SceneShadingOptions): SceneSurfaceModule {
+/**
+ * T1618b — THE TEXEL A MAP IS READ AT WHEN AN AXIS TILES (the stock materials' Map Extend).
+ *
+ * ⚑ WHY THIS IS A PARAMETER AND NOT A RULE ABOUT THE COORDINATE. "Repeat whatever leaves
+ * 0..1" was built first and moved a shipped picture (E75): under multisampling a partly
+ * covered pixel interpolates its coordinate at the pixel centre, which lies OUTSIDE the
+ * triangle, so at every open edge of a surface whose own coordinate is in range the
+ * fragment sees one that is not. The clamp absorbed that; a repeat puts the map's opposite
+ * edge there. A fragment cannot tell a coordinate that tiles from an open edge, so tiling is
+ * said by the material, an axis at a time, and Hold stays the read it always was.
+ *
+ *  - Hold: the coordinate clamped to 0..1, times the size less one, as ever. The last texel
+ *    is read only at exactly 1 (a known oddity of this address, recorded and not changed).
+ *  - Repeat: `floor(extendRepeat(c) × size)`. A tile is all `size` texels, and one tile
+ *    length further on reads the same texel.
+ *  - Mirror: `floor(extendMirror(c) × size)`: every odd tile is read backwards.
+ * The two folds are the shared module `extend`, pasted, so a Material · WGSL that asks for
+ * it tiles the same way. The `min` keeps a fold that rounds up to 1 inside the map.
+ */
+function mapTexelWgsl(u: "hold" | "repeat" | "mirror", v: "hold" | "repeat" | "mirror"): string {
+  const axis = (extend: "hold" | "repeat" | "mirror", coordinate: string, size: string): string =>
+    extend === "hold"
+      ? `i32(clamp(${coordinate}, 0.0, 1.0) * (${size} - 1.0))`
+      : `i32(min(floor(${extend === "repeat" ? "extendRepeat" : "extendMirror"}(${coordinate}) * ${size}), ${size} - 1.0))`;
+  return `${SHARED_WGSL_MODULES["extend"]!.source}
+
+/* T1618b: Map Extend, across: ${u}; along: ${v}. */
+fn mapTexel(uv: vec2f, size: vec2f) -> vec2i {
+  return vec2i(${axis(u, "uv.x", "size.x")}, ${axis(v, "uv.y", "size.y")});
+}
+`;
+}
+
+export const sceneSurfaceModule = generatedOnce("sceneSurfaceModule", buildSceneSurfaceModule);
+function buildSceneSurfaceModule(options: SceneShadingOptions): SceneSurfaceModule {
   const lightCount = Math.max(0, Math.floor(options.lightCount));
   const pointColor = options.pointColor === true;
+  /* T1618b: a grid's own `uv`. A mesh has its own (`mesh.uv`), and an instanced draw no grid. */
+  const gridUv = options.gridUv === true && options.mesh === undefined;
   const albedoMap = options.maps?.albedo === true;
   const roughnessMap = options.maps?.roughness === true;
   const shadows = options.shadows ?? [];
@@ -1183,13 +1593,21 @@ ${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradianc
 
   /* Maps read with textureLoad (the T262 bridge's precedent): draw passes carry no
      sampler slot, and a texel fetch keeps unfilterable formats working on Tier B. */
+  /* T1618b: Map Extend. Hold on both axes is the read a map always had, and the text below
+     is then the text it was; an axis that tiles sends every map through `mapTexel`. */
+  const extendU = options.mapExtend?.u ?? "hold";
+  const extendV = options.mapExtend?.v ?? "hold";
+  const extended = (albedoMap || roughnessMap) && (extendU !== "hold" || extendV !== "hold");
   const mapBindings = [
     albedoMap ? `@group(0) @binding(3) var albedoMap: texture_2d<f32>;\n` : "",
     roughnessMap ? `@group(0) @binding(${albedoMap ? 4 : 3}) var roughnessMap: texture_2d<f32>;\n` : "",
+    extended ? mapTexelWgsl(extendU, extendV) : "",
   ].join("");
 
   const mapLoad = (name: string): string =>
-    `textureLoad(${name}, vec2i(clamp(input.uv, vec2f(0.0), vec2f(1.0)) * (vec2f(textureDimensions(${name})) - vec2f(1.0))), 0)`;
+    extended
+      ? `textureLoad(${name}, mapTexel(input.uv, vec2f(textureDimensions(${name}))), 0)`
+      : `textureLoad(${name}, vec2i(clamp(input.uv, vec2f(0.0), vec2f(1.0)) * (vec2f(textureDimensions(${name})) - vec2f(1.0))), 0)`;
 
   const albedoExpr = `${albedoMap ? `params.baseColor * ${mapLoad("albedoMap")}` : "params.baseColor"}${pointColor ? " * input.tint" : ""}`;
   /* T1353b: a mesh with a `surface` row carries its OWN roughness and metallic per
@@ -1199,6 +1617,8 @@ ${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradianc
      Grid surfaces never reach this and emit their text unchanged. */
   const meshSurface = options.mesh?.surface === true;
   const custom = options.custom;
+  /* T1581b: an instanced draw needs the mesh options it rides on. */
+  const instanced = options.mesh === undefined ? undefined : options.instanced;
   /* Only PBR derives its specular tint from metallic (the CPU does the same per object);
      Phong's specular colour is AUTHORED, so it stays the material's own. */
   const perVertex = (text: string): string => {
@@ -1211,11 +1631,35 @@ ${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradianc
     ? `clamp(${roughnessBase} * ${mapLoad("roughnessMap")}.r, 0.04, 1.0)`
     : roughnessBase;
 
-  const lightBlock = (index: number): string => `  {
-    let lightMeta = params.light${index}Meta;
-    let lightColor = params.light${index}Color;
-    let lightVector = params.light${index}Vector;
-    var toLight: vec3f;
+  /* T1589b: the walk of a Render's light table stands after the unrolled blocks. Lit draws
+     only: an unlit model takes no light and a G-buffer variant lights nothing. */
+  const lightGrid = options.lightGrid === true && options.model !== "unlit" && options.gbuffer === undefined;
+  /* ONE emitter of a light's shading. A block reads its three rows off the params block by
+     its index; a row of the table (`lightTableWalkWgsl`) hands the same block its rows as
+     expressions and no index, so it has no shadow slot.
+
+     B260's guard is for the blocks that stand one after another. T1623b: in a draw that walks
+     the table the blocks are the casting Lights alone, and each works under its guard at
+     EVERY count: what follows them is the walk's loops, which add into the same `lit`, and a
+     block that ends at a merge leaves no chain for any of them to join. A text with no table
+     (a tile's preview with its two stock lights, the shadow matte) keeps the threshold. A
+     row of the walk stands in a loop's turn or under a test of the loop's bound, a merge
+     either way, and takes no guard (`scene-light-guard.test.ts` counts it: one source in a
+     straight line, at every count). */
+  const lightGuard = lightGrid ? LIGHT_GUARD : lightGuardWgsl(lightCount);
+  const lightBlock = (
+    index: number,
+    rows: { readonly meta: string; readonly color: string; readonly vector: string } = {
+      meta: `params.light${index}Meta`,
+      color: `params.light${index}Color`,
+      vector: `params.light${index}Vector`,
+    },
+    guard: { readonly open: string; readonly close: string } = lightGuard,
+  ): string => `  {
+    let lightMeta = ${rows.meta};
+    let lightColor = ${rows.color};
+    let lightVector = ${rows.vector};
+${guard.open}    var toLight: vec3f;
     var attenuation = 1.0;
     if (lightMeta.x < 0.5) {
       toLight = normalize(-lightVector.xyz);
@@ -1253,10 +1697,11 @@ ${
     lit += params.specular.rgb * radiance * highlight;
 `
         : "")
-}  }
+}${guard.close}  }
 `;
 
-  const needsViewDir = lightCount > 0 || environment;
+  const lightGridLoop = lightGrid ? perVertex(lightTableWalkWgsl((rows) => lightBlock(-1, rows, lightGuardWgsl(0)))) : "";
+  const needsViewDir = lightCount > 0 || environment || lightGrid;
   const emissiveTerm =
     custom !== undefined ? "  lit += shaded.emissive;\n" : options.mesh?.emissive === true ? "  lit += input.emissive;\n" : "";
   const aoLookup = ambientOcclusion
@@ -1277,7 +1722,7 @@ ${
   !needsViewDir
     ? ""
     : `  let viewDir = normalize(params.eye.xyz - input.world);
-${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index))).join("")}`
+${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index))).join("")}${lightGridLoop}`
 }${projectors.term}${perVertex(envTerm)}${emissiveTerm}  return vec4f(lit * cover, ${alphaOut});`;
   /* T1355b — the custom surface: its uniform members, its module text, and the fragment
      head that calls it. Without `custom` the head is the stock text, character for
@@ -1288,8 +1733,30 @@ ${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index)))
       : custom.fields.map((field) => `  ${materialParamUniformKey(field.name)}: ${field.wgsl},\n`).join("");
   const customParamsDeclaration =
     custom === undefined ? "" : custom.paramsDeclaration === "" ? "struct Params {\n  unused: f32,\n};" : custom.paramsDeclaration;
-  const customDeclarations =
-    custom === undefined ? "" : `${CUSTOM_SURFACE_HEAD}${customParamsDeclaration}\n\n${custom.code}\n`;
+  const customHead = custom?.instance === undefined ? CUSTOM_SURFACE_HEAD : CUSTOM_SURFACE_HEAD_WITH_INSTANCE;
+  const customDeclarations = custom === undefined ? "" : `${customHead}${customParamsDeclaration}\n\n${custom.code}\n`;
+  /* T1581b (D9): the material's `struct Instance`, filled per fragment. A field the geometry
+     bound is read from the instance's record at the slot the vertex stage passed down (one
+     flat u32, so the field count is not an inter-stage budget); the rest are constants. */
+  const boundFields = instanced?.record.fields ?? {};
+  const instanceFields = custom?.instance ?? [];
+  const instanceAccessors =
+    instanced === undefined
+      ? ""
+      : instanceFields
+          .flatMap((field) => {
+            const stored = boundFields[field.name];
+            return stored === undefined
+              ? []
+              : [`${packedAccessorWgsl(instanceFieldAccessor(field.name), INSTANCED_BINDING_PREFIX, { group: instanced.record.group, offset: stored.offset, type: stored.type })}\n`];
+          })
+          .join("");
+  const instanceFill =
+    custom?.instance === undefined
+      ? ""
+      : `  surfaceIn.instance = Instance(${instanceFields
+          .map((field) => (instanced !== undefined && boundFields[field.name] !== undefined ? `${instanceFieldAccessor(field.name)}(input.slot)` : instanceDefaultWgsl(field.wgsl, field.default)))
+          .join(", ")});\n`;
   const customParams =
     custom === undefined || custom.fields.length === 0
       ? "Params(0.0)"
@@ -1325,7 +1792,11 @@ ${unlitModel ? "" : `  let roughness = ${roughnessExpr};\n  _ = roughness;\n`}`
   surfaceIn.absTime = ${CUSTOM_SURFACE_FRAME_BINDING}.absTime;
   surfaceIn.footprint = length(fwidth(input.world));
   surfaceIn.curvature = length(fwidth(geometryNormal)) / max(surfaceIn.footprint, 1e-5);
-  let shaded = surface(surfaceIn, ${customParams});
+  let localLength = length(input.localNormal);
+  surfaceIn.local = input.local;
+  surfaceIn.localNormal = select(vec3f(0.0, 0.0, 1.0), input.localNormal / max(localLength, 1e-6), localLength > 1e-6);
+  surfaceIn.instanceId = ${instanced === undefined ? "0u" : "input.slot"};
+${instanceFill}  let shaded = surface(surfaceIn, ${customParams});
   let shadedLength = length(shaded.normal);
   let normal = select(geometryNormal, shaded.normal / max(shadedLength, 1e-6), shadedLength > 1e-6);
   _ = normal;
@@ -1376,28 +1847,45 @@ ${shadowFactor(index)}    matte.${"xyz"[channel]} = 1.0 - shadow;
   /* T1535b: split where the custom texts are pasted, byte-identical to the one template it
      was, so their start is read off the text in front of them (each piece is the `wgsl`
      tag's cached string, so the position memo hits frame after frame). */
+  /* T1581b: an instanced draw is placed by its records (the object transform is already in
+     them), so it declares neither the model uniforms nor the per-attribute bindings. */
+  const modelFields = instanced === undefined ? "  model: mat4x4f,           // T1588b: the object transform\n  modelNormal: mat4x4f,     // its normal matrix (upper 3x3)\n" : "";
+  const pointBindings =
+    instanced === undefined
+      ? `@group(0) @binding(1) var<storage, read> positions: array<vec3f>;\n${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}${
+          /* T1618b: a grid's own uv attribute, at the slot a mesh's has (a draw is one or the other). */
+          gridUv ? `@group(0) @binding(${MESH_BINDINGS.uvs}) var<storage, read> gridUvs: array<vec2f>;\n` : ""
+        }`
+      : "";
+  const meshDeclarations =
+    options.mesh === undefined ? "" : instanced === undefined ? meshBindingsWgsl(options.mesh) : `${instancedStorageWgsl(instanced)}${instanceAccessors}${FACE_VIEWER_WGSL}`;
+  const vertexStage =
+    options.mesh === undefined
+      ? surfaceMeshWgsl(pointColor, custom !== undefined, options.sheets === true, gridUv)
+      : instanced === undefined
+        ? meshVertexWgsl(pointColor, options.mesh, custom !== undefined)
+        : meshInstancedVertexWgsl(instanced, custom !== undefined);
   const top = wgsl`struct SceneParams {
   viewProjection: mat4x4f,
-  eye: vec4f,
+${modelFields}  eye: vec4f,
   ambientColor: vec4f,      // rgb colour, a = intensity
   baseColor: vec4f,
   specular: vec4f,          // rgb specular colour, w = shininess
   material: vec4f,          // x = metallic, y = roughness, zw reserved
   grid: vec4f,              // cols, rows, wrapU, wrapV
-${lightField}${shadowFields}${envField}${projectors.fields}${customFields}};
+${lightField}${shadowFields}${envField}${projectors.fields}${customFields}${lightGrid ? LIGHT_GRID_FIELDS_WGSL : ""}};
 
 @group(0) @binding(0) var<uniform> params: SceneParams;
-@group(0) @binding(1) var<storage, read> positions: array<vec3f>;
-${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${options.mesh === undefined ? "" : meshBindingsWgsl(options.mesh)}`;
+${pointBindings}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${meshDeclarations}${lightGrid ? lightGridDeclarationsWgsl() : ""}`;
   const text = wgsl`${top}${customDeclarations}
-${options.mesh === undefined ? surfaceMeshWgsl(pointColor) : meshVertexWgsl(pointColor, options.mesh)}
+${vertexStage}
 
 @fragment
 fn fs(input: VertexOut) -> @location(0) vec4f {
 ${fragmentHead}${gbufferWrite ?? `${surfaceLocals}${shading}`}
 }`;
   if (custom === undefined) return { wgsl: text, placed: {} };
-  const params = advance(endOf(top), CUSTOM_SURFACE_HEAD);
+  const params = advance(endOf(top), customHead);
   return {
     wgsl: text,
     placed: {
@@ -1527,7 +2015,8 @@ ${gatedReturn}
   return { bindings, declarations, gate };
 }
 
-export function sceneInstancesWgsl(options: {
+export const sceneInstancesWgsl = generatedOnce("sceneInstancesWgsl", buildSceneInstancesWgsl);
+function buildSceneInstancesWgsl(options: {
   model: "unlit" | "lambert" | "phong" | "pbr";
   lightCount: number;
   /** Camera visibility depth uses the identical ribbon/billboard vertices and coverage. */
@@ -1723,11 +2212,12 @@ ${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradianc
   const lightField = Array.from({ length: lightCount }, (_, index) =>
     `  light${index}Meta: vec4f,\n  light${index}Color: vec4f,\n  light${index}Vector: vec4f,\n`,
   ).join("");
+  const lightGuard = lightGuardWgsl(lightCount);
   const lightBlock = (index: number): string => `  {
     let lightMeta = params.light${index}Meta;
     let lightColor = params.light${index}Color;
     let lightVector = params.light${index}Vector;
-    var toLight: vec3f;
+${lightGuard.open}    var toLight: vec3f;
     var attenuation = 1.0;
     if (lightMeta.x < 0.5) {
       toLight = normalize(-lightVector.xyz);
@@ -1756,7 +2246,7 @@ ${
     lit += params.specular.rgb * radiance * highlight;
 `
         : "")
-}  }
+}${lightGuard.close}  }
 `;
   const needsViewDir = lightCount > 0 || environment;
   const aoLookup = ambientOcclusion
@@ -1951,13 +2441,19 @@ export interface DepthPassOptions {
    * not a depth at all. The read side does the matching divide (`pc.xyz / pc.w`).
    */
   readonly perspective?: boolean;
+  /** T1587b: the grid is several sheets (the surface chunk's `sheets`). Grid sweeps only. */
+  readonly sheets?: boolean;
 }
 
 /** The surface mesh from the light's view — grid arithmetic identical to the lit draw. */
-export function shadowSurfaceWgsl(options: DepthPassOptions = {}): EmittedWgsl {
+export const shadowSurfaceWgsl = generatedOnce("shadowSurfaceWgsl", buildShadowSurfaceWgsl);
+function buildShadowSurfaceWgsl(options: DepthPassOptions = {}): EmittedWgsl {
   const linear = options.linearDepth === true;
+  /* T1587b: several sheets, by the lit chunk's own pieces (`GRID_SHEET_WGSL`). */
+  const sheets = options.sheets === true;
+  const cell = sheets ? "cell" : "quad";
   const depthExpr = linear
-    ? `dot(params.depthRow, vec4f(gridPosition(gx, gy), 1.0)) / max(params.depthRange.x, 1e-6)`
+    ? `dot(params.depthRow, vec4f(world, 1.0)) / max(params.depthRange.x, 1e-6)`
     : `clip.z`;
   const linearFields = linear
     ? `  depthRow: vec4f,         // dot(depthRow, vec4f(world,1)) = linear view distance
@@ -1966,6 +2462,7 @@ export function shadowSurfaceWgsl(options: DepthPassOptions = {}): EmittedWgsl {
     : "";
   return wgsl`struct ShadowParams {
   lightViewProjection: mat4x4f,
+  model: mat4x4f,           // T1588b: the object transform
   grid: vec4f,              // cols, rows, wrapU, wrapV
 ${linearFields}};
 
@@ -1980,12 +2477,12 @@ fn cellCorner(v: u32) -> vec2u {
   return corners[v];
 }
 
-fn gridPosition(gx: u32, gy: u32) -> vec3f {
+${sheets ? GRID_SHEET_WGSL.declaration : ""}fn gridPosition(gx: u32, gy: u32) -> vec3f {
   let cols = u32(params.grid.x);
   let rows = u32(params.grid.y);
   let px = select(gx, gx % cols, params.grid.z > 0.5);
   let py = select(gy, gy % rows, params.grid.w > 0.5);
-  return positions[py * cols + px];
+  return positions[${sheets ? GRID_SHEET_WGSL.row("py") : "py"} * cols + px];
 }
 
 struct VertexOut {
@@ -2000,9 +2497,10 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let cellsU = select(cols - 1u, cols, wrapU);
   let quad = vertex / 6u;
   let corner = cellCorner(vertex % 6u);
-  let gx = (quad % cellsU) + corner.x;
-  let gy = (quad / cellsU) + corner.y;
-  let clip = params.lightViewProjection * vec4f(gridPosition(gx, gy), 1.0);
+${sheets ? GRID_SHEET_WGSL.cell("select(u32(params.grid.y) - 1u, u32(params.grid.y), params.grid.w > 0.5)") : ""}  let gx = (${cell} % cellsU) + corner.x;
+  let gy = (${cell} / cellsU) + corner.y;
+  let world = (params.model * vec4f(gridPosition(gx, gy), 1.0)).xyz;
+  let clip = params.lightViewProjection * vec4f(world, 1.0);
   var out: VertexOut;
   out.position = clip;
   out.depth = ${depthExpr};
@@ -2020,30 +2518,46 @@ fn fs(input: VertexOut) -> @location(0) vec4f {
  * contract as `shadowSurfaceWgsl`, with positions pulled through the index list. Shares
  * the MESH_BINDINGS slot for indices, so the draw's buffer list is the lit draw's prefix.
  */
-export function shadowMeshWgsl(options: DepthPassOptions = {}): EmittedWgsl {
+export const shadowMeshWgsl = generatedOnce("shadowMeshWgsl", buildShadowMeshWgsl);
+function buildShadowMeshWgsl(
+  options: DepthPassOptions & {
+    /**
+     * T1581b: the mesh is drawn once per instance, placed by its record — the lit draw's
+     * own placement, so a shadow is cast by exactly the shape that is in the picture.
+     */
+    readonly instanced?: Pick<SceneInstancedOption, "groups" | "position" | "record">;
+  } = {},
+): EmittedWgsl {
   const linear = options.linearDepth === true;
+  const instanced = options.instanced;
   const depthExpr = linear ? `dot(params.depthRow, vec4f(world, 1.0)) / max(params.depthRange.x, 1e-6)` : `clip.z`;
   const linearFields = linear
     ? `  depthRow: vec4f,         // dot(depthRow, vec4f(world,1)) = linear view distance
   depthRange: vec4f,       // x = far plane
 `
     : "";
+  const storage =
+    instanced === undefined
+      ? `@group(0) @binding(1) var<storage, read> positions: array<vec3f>;\n@group(0) @binding(${MESH_BINDINGS.indices}) var<storage, read> meshIndices: array<u32>;\n`
+      : instancedStorageWgsl(instanced);
+  const place =
+    instanced === undefined
+      ? "  let world = (params.model * vec4f(positions[meshIndices[vertex]], 1.0)).xyz;"
+      : `${RECORD_PLACE_WGSL}\n  let local = vec4f(meshPositionAt(meshIndices[vertex]), 1.0);\n  let world = vec3f(dot(r0, local), dot(r1, local), dot(r2, local));`;
   return wgsl`struct ShadowParams {
   lightViewProjection: mat4x4f,
-${linearFields}};
+${instanced === undefined ? "  model: mat4x4f,           // T1588b: the object transform\n" : ""}${linearFields}};
 
 @group(0) @binding(0) var<uniform> params: ShadowParams;
-@group(0) @binding(1) var<storage, read> positions: array<vec3f>;
-@group(0) @binding(${MESH_BINDINGS.indices}) var<storage, read> meshIndices: array<u32>;
-
+${storage}
 struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) depth: f32,
 };
 
 @vertex
-fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
-  let world = positions[meshIndices[vertex]];
+fn vs(@builtin(vertex_index) vertex: u32${instanced === undefined ? "" : ", @builtin(instance_index) drawn: u32"}) -> VertexOut {
+${place}
   let clip = params.lightViewProjection * vec4f(world, 1.0);
   var out: VertexOut;
   out.position = clip;
@@ -2058,7 +2572,8 @@ fn fs(input: VertexOut) -> @location(0) vec4f {
 }
 
 /** The instance primitives from the light's view — shapes identical to the lit draw. */
-export function shadowInstancesWgsl(
+export const shadowInstancesWgsl = generatedOnce("shadowInstancesWgsl", buildShadowInstancesWgsl);
+function buildShadowInstancesWgsl(
   options: DepthPassOptions & {
     group?: SceneGroupOption;
     pointScale?: { type: string; channel?: string };
@@ -2386,6 +2901,8 @@ fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
 export interface GlassShaderOptions {
   /** An equirect environment is wired on the render — the reflection samples it. */
   readonly environment?: boolean;
+  /** T1587b: the grid is several sheets (the surface chunk's `sheets`). Grid glass only. */
+  readonly sheets?: boolean;
 }
 
 /** Manual bilinear per level + a level mix: textureLoad trilinear, exact at lod 0. */
@@ -2508,9 +3025,12 @@ function glassBindingsWgsl(options: GlassShaderOptions): EmittedWgsl {
 }
 
 /** The glass draw for SURFACE geometry — the lit generator's own mesh, new optics. */
-export function glassSurfaceWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
+export const glassSurfaceWgsl = generatedOnce("glassSurfaceWgsl", buildGlassSurfaceWgsl);
+function buildGlassSurfaceWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
   return wgsl`struct SceneParams {
   viewProjection: mat4x4f,
+  model: mat4x4f,           // T1588b: the object transform
+  modelNormal: mat4x4f,     // its normal matrix (upper 3x3)
   eye: vec4f,
   glassA: vec4f,            // ior, roughness, thickness, dispersion
   glassB: vec4f,            // absorption rgb, w = environment intensity
@@ -2520,7 +3040,7 @@ export function glassSurfaceWgsl(options: GlassShaderOptions = {}): EmittedWgsl 
 
 @group(0) @binding(0) var<uniform> params: SceneParams;
 @group(0) @binding(1) var<storage, read> positions: array<vec3f>;
-${glassBindingsWgsl(options)}${surfaceMeshWgsl(false)}
+${glassBindingsWgsl(options)}${surfaceMeshWgsl(false, false, options.sheets === true)}
 
 ${glassPyramidWgsl()}
 ${glassFragmentWgsl(options)}`;
@@ -2532,10 +3052,13 @@ ${glassFragmentWgsl(options)}`;
  * face the camera sees as the entry face, so a file mesh's authored side needs no
  * B227 turn here.
  */
-export function glassMeshWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
+export const glassMeshWgsl = generatedOnce("glassMeshWgsl", buildGlassMeshWgsl);
+function buildGlassMeshWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
   const mesh = { uv: false, surface: false, emissive: false } as const;
   return wgsl`struct SceneParams {
   viewProjection: mat4x4f,
+  model: mat4x4f,           // T1588b: the object transform
+  modelNormal: mat4x4f,     // its normal matrix (upper 3x3)
   eye: vec4f,
   glassA: vec4f,            // ior, roughness, thickness, dispersion
   glassB: vec4f,            // absorption rgb, w = environment intensity
@@ -2551,7 +3074,8 @@ ${glassFragmentWgsl(options)}`;
 }
 
 /** The glass draw for INSTANCES geometry — plain primitives (no group/billboard/beam). */
-export function glassInstancesWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
+export const glassInstancesWgsl = generatedOnce("glassInstancesWgsl", buildGlassInstancesWgsl);
+function buildGlassInstancesWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
   return wgsl`struct SceneParams {
   viewProjection: mat4x4f,
   eye: vec4f,
@@ -2594,25 +3118,47 @@ ${glassFragmentWgsl(options)}`;
  * minus the one function the author is required to declare. A Material · WGSL refuses a
  * source that declares any of these rather than shadowing one.
  */
+const ALL_SURFACE_FEATURES: SceneShadingOptions = {
+  model: "pbr",
+  lightCount: 1,
+  maps: { albedo: true, roughness: true },
+  pointColor: true,
+  shadows: [0],
+  shadowSoftness: [1],
+  environment: true,
+  environmentPrefiltered: true,
+  ambientOcclusion: true,
+  projectors: [{ cookie: true, occlusion: true }],
+  mesh: { uv: true, surface: true, emissive: true },
+  custom: { code: "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut { return surfaceDefaults(s); }", paramsDeclaration: "", fields: [] },
+  lightGrid: true,
+};
+
+/**
+ * T1581b: the same run for a mesh drawn per instance, which declares other functions (the
+ * accessors, `instanceSlot`).
+ */
+const ALL_INSTANCED_FEATURES: SceneShadingOptions = (() => {
+  const read = (group: number): PackedRead => ({ group, offset: 0, type: "vec4f" });
+  return {
+    ...ALL_SURFACE_FEATURES,
+    instanced: {
+      groups: 2,
+      position: { ...read(0), type: "vec3f" },
+      normal: { ...read(0), type: "vec3f" },
+      uv: { ...read(0), type: "vec2f" },
+      color: read(0),
+      surface: read(0),
+      emissive: { ...read(0), type: "vec3f" },
+      record: { group: 1, m0: 0, m1: 0, m2: 0, visible: 0, tint: 0 },
+    },
+  };
+})();
+
 export const SURFACE_RESERVED_NAMES: ReadonlySet<string> = new Set(
-  declaredNames(
-    String(
-      sceneSurfaceWgsl({
-        model: "pbr",
-        lightCount: 1,
-        maps: { albedo: true, roughness: true },
-        pointColor: true,
-        shadows: [0],
-        shadowSoftness: [1],
-        environment: true,
-        environmentPrefiltered: true,
-        ambientOcclusion: true,
-        projectors: [{ cookie: true, occlusion: true }],
-        mesh: { uv: true, surface: true, emissive: true },
-        custom: { code: "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut { return surfaceDefaults(s); }", paramsDeclaration: "", fields: [] },
-      }),
-    ),
-  ).filter((name) => name !== "surface"),
+  [ALL_SURFACE_FEATURES, ALL_INSTANCED_FEATURES]
+    .flatMap((features) => declaredNames(String(sceneSurfaceWgsl(features))))
+    .filter((name) => name !== "surface"),
 );
 
 /**
@@ -2624,7 +3170,8 @@ export const SURFACE_RESERVED_NAMES: ReadonlySet<string> = new Set(
  * range (`cubeLight`), which is what the lit lookup compares. Throws if an anchor it
  * rewrites is missing, so a generator that changes shape fails here, loudly.
  */
-export function cubeShadowVariant(shader: EmittedWgsl): EmittedWgsl {
+export const cubeShadowVariant = generatedOnce("cubeShadowVariant", buildCubeShadowVariant);
+function buildCubeShadowVariant(shader: EmittedWgsl): EmittedWgsl {
   let text = String(shader);
   const swap = (from: string, to: string): void => {
     if (!text.includes(from)) throw new Error(`cubeShadowVariant: depth shader lacks "${from.slice(0, 60)}"`);
@@ -2632,12 +3179,6 @@ export function cubeShadowVariant(shader: EmittedWgsl): EmittedWgsl {
   };
   swap("  lightViewProjection: mat4x4f,\n", "  lightViewProjection: mat4x4f,\n  cubeLight: vec4f,\n  cubeTile: vec4f,\n");
   swap("  @location(0) depth: f32,\n};", "  @location(0) depth: f32,\n  @location(1) world: vec3f,\n  @location(2) faceClip: vec3f,\n};");
-  if (text.includes("let clip = params.lightViewProjection * vec4f(gridPosition(gx, gy), 1.0);")) {
-    swap(
-      "let clip = params.lightViewProjection * vec4f(gridPosition(gx, gy), 1.0);",
-      "let world = gridPosition(gx, gy);\n  let clip = params.lightViewProjection * vec4f(world, 1.0);",
-    );
-  }
   swap(
     "  out.position = clip;\n",
     "  out.position = vec4f(clip.x * params.cubeTile.x + params.cubeTile.z * clip.w, clip.y * params.cubeTile.y + params.cubeTile.w * clip.w, clip.z, clip.w);\n  out.world = world;\n  out.faceClip = clip.xyw;\n",

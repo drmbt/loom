@@ -33,6 +33,7 @@ const OPERATIONS: Record<GraphPatchOperation["op"], true> = {
   disconnect: true,
   reorderEdges: true,
   setParameters: true,
+  removeParameters: true,
   setShaderSource: true,
   moveNodes: true,
   setNodeSize: true,

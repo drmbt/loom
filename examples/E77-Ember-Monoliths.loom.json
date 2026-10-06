@@ -556,7 +556,7 @@
             "break": {
               "definitionVersion": 1,
               "id": "break",
-              "label": "break1",
+              "label": "wgsl_break",
               "parameters": {
                 "amount": 0.35,
                 "grid": [
@@ -567,7 +567,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -580,7 +580,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -602,7 +602,7 @@
             "churnx": {
               "definitionVersion": 1,
               "id": "churnx",
-              "label": "churnx1",
+              "label": "lfo_churnx",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.062,
@@ -619,7 +619,7 @@
             "churny": {
               "definitionVersion": 1,
               "id": "churny",
-              "label": "churny1",
+              "label": "lfo_churny",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.041,
@@ -636,7 +636,7 @@
             "crush": {
               "definitionVersion": 1,
               "id": "crush",
-              "label": "crush1",
+              "label": "level_crush",
               "parameters": {
                 "blacklevel": 0.03,
                 "brightness": 1,
@@ -655,7 +655,7 @@
             "fit": {
               "definitionVersion": 1,
               "id": "fit",
-              "label": "fit1",
+              "label": "transform_fit",
               "parameters": {
                 "aspectcorrect": false,
                 "extend": "hold",
@@ -672,7 +672,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churnx1').chan.value) / max(1, op('churny1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churnx').chan.value) / max(1, op('lfo_churny').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -685,7 +685,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churny1').chan.value) / max(1, op('churnx1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churny').chan.value) / max(1, op('lfo_churnx').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -709,7 +709,7 @@
             "grid": {
               "definitionVersion": 1,
               "id": "grid",
-              "label": "grid1",
+              "label": "tile_grid",
               "parameters": {
                 "mirrorx": false,
                 "mirrory": false,
@@ -725,7 +725,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -738,7 +738,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -762,7 +762,7 @@
             "guard": {
               "definitionVersion": 1,
               "id": "guard",
-              "label": "guard1",
+              "label": "limit_guard",
               "parameters": {
                 "high": 1,
                 "low": 0,
@@ -800,7 +800,7 @@
             "map": {
               "definitionVersion": 1,
               "id": "map",
-              "label": "map1",
+              "label": "wgsl_map",
               "parameters": {
                 "grid": [
                   3,
@@ -810,7 +810,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -823,7 +823,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -846,7 +846,7 @@
             "mix": {
               "definitionVersion": 1,
               "id": "mix",
-              "label": "mix1",
+              "label": "cross_mix",
               "parameters": {
                 "cross": 0.55
               },
@@ -870,7 +870,7 @@
             "pack": {
               "definitionVersion": 1,
               "id": "pack",
-              "label": "pack1",
+              "label": "reorder_pack",
               "parameters": {
                 "outa": "in2lum",
                 "outb": "in1b",
@@ -891,7 +891,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "solid_paint",
               "parameters": {
                 "color": [
                   1,
@@ -914,7 +914,7 @@
             "palette": {
               "definitionVersion": 2,
               "id": "palette",
-              "label": "palette1",
+              "label": "ramp_palette",
               "parameters": {
                 "interp": "smooth",
                 "period": 1,
@@ -1012,7 +1012,7 @@
             "scan": {
               "definitionVersion": 1,
               "id": "scan",
-              "label": "scan1",
+              "label": "slitscan1",
               "parameters": {
                 "depth": 1,
                 "frames": 61,
@@ -1027,7 +1027,7 @@
             "sweep": {
               "definitionVersion": 1,
               "id": "sweep",
-              "label": "sweep1",
+              "label": "wgsl_sweep",
               "parameters": {
                 "amount": 0.5,
                 "grid": [
@@ -1038,7 +1038,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -1051,7 +1051,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -1072,7 +1072,7 @@
             "tint": {
               "definitionVersion": 1,
               "id": "tint",
-              "label": "tint1",
+              "label": "multiply_tint",
               "parameters": {
                 "opacity": 1
               },
@@ -1085,7 +1085,7 @@
             "tone": {
               "definitionVersion": 1,
               "id": "tone",
-              "label": "tone1",
+              "label": "lookup_tone",
               "parameters": {
                 "channel": "luminance",
                 "offset": 0.08,
@@ -2463,7 +2463,7 @@
       "air": {
         "definitionVersion": 1,
         "id": "air",
-        "label": "air1",
+        "label": "lag_air",
         "parameters": {
           "lag": 4,
           "releaseRatio": 2
@@ -2477,7 +2477,7 @@
       "analysis": {
         "definitionVersion": 1,
         "id": "analysis",
-        "label": "analysis1",
+        "label": "audioanalysis1",
         "parameters": {
           "envelope": 0.12,
           "hitDecay": 160,
@@ -2493,7 +2493,7 @@
       "basalt": {
         "definitionVersion": 1,
         "id": "basalt",
-        "label": "basalt1",
+        "label": "material_basalt",
         "parameters": {
           "color": [
             0.2,
@@ -2513,7 +2513,7 @@
       "bloom": {
         "definitionVersion": 1,
         "id": "bloom",
-        "label": "bloom1",
+        "label": "wgsl_bloom",
         "parameters": {
           "source": "\nstruct Params {\n  strength: f32, // @default 0.35 Scattered highlight energy.\n  threshold: f32, // @default 0.8 Highlight extraction threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> params: Params;\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {\n  let base=textureSampleLevel(inputTexture,inputSampler,uv,0.0).rgb;\n  let brightness=max(base.r,max(base.g,base.b));\n  let knee=max(params.threshold*0.5,0.0001);\n  let soft=clamp(brightness-params.threshold+knee,0.0,2.0*knee);\n  let contribution=max(brightness-params.threshold,soft*soft/(4.0*knee))/max(brightness,0.0001);\n  return vec4f(base*contribution*params.strength,1);\n}",
           "strength": 0.1,
@@ -2547,7 +2547,7 @@
       "body": {
         "definitionVersion": 1,
         "id": "body",
-        "label": "body1",
+        "label": "lag_body",
         "parameters": {
           "lag": 1.1,
           "releaseRatio": 3
@@ -2561,7 +2561,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "camera1",
         "parameters": {
           "eye": [
             0,
@@ -2586,7 +2586,7 @@
       "cameraCrop": {
         "definitionVersion": 1,
         "id": "cameraCrop",
-        "label": "cameracrop1",
+        "label": "wgsl_cameracrop",
         "parameters": {
           "source": "\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler:sampler;\n@group(0) @binding(1) var inputTexture:texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU:SharedFrame;\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {\n  let dims=vec2f(textureDimensions(inputTexture));\n  let sourceAspect=dims.x/dims.y;\n  let outputAspect=16.0/9.0;\n  let crop=vec2f(min(1.0,outputAspect/sourceAspect),min(1.0,sourceAspect/outputAspect));\n  return textureSampleLevel(inputTexture,inputSampler,vec2f(0.5)+(uv-0.5)*crop,0.0);\n}"
         },
@@ -2604,7 +2604,7 @@
       "clip": {
         "definitionVersion": 1,
         "id": "clip",
-        "label": "clip1",
+        "label": "audiofile_clip",
         "parameters": {
           "beatOffset": 0.484,
           "beatsPerBar": 4,
@@ -2631,7 +2631,7 @@
       "depthPack": {
         "definitionVersion": 1,
         "id": "depthPack",
-        "label": "depthpack1",
+        "label": "mask_depthpack",
         "parameters": {
           "apply": "alpha",
           "channel": "red",
@@ -2646,7 +2646,7 @@
       "detail": {
         "definitionVersion": 1,
         "id": "detail",
-        "label": "detail1",
+        "label": "lag_detail",
         "parameters": {
           "lag": 0.012,
           "releaseRatio": 3
@@ -2660,7 +2660,7 @@
       "emberKey": {
         "definitionVersion": 1,
         "id": "emberKey",
-        "label": "emberkey1",
+        "label": "light_emberkey",
         "parameters": {
           "color": [
             0.88,
@@ -2687,7 +2687,7 @@
       "emberRim": {
         "definitionVersion": 1,
         "id": "emberRim",
-        "label": "emberrim1",
+        "label": "light_emberrim",
         "parameters": {
           "color": [
             1,
@@ -2712,7 +2712,7 @@
       "envSeed": {
         "definitionVersion": 1,
         "id": "envSeed",
-        "label": "envseed1",
+        "label": "solid_envseed",
         "parameters": {
           "color": [
             0,
@@ -2735,7 +2735,7 @@
       "environment": {
         "definitionVersion": 1,
         "id": "environment",
-        "label": "environment1",
+        "label": "wgsl_environment",
         "parameters": {
           "aim": [
             0,
@@ -2746,7 +2746,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.atmosphere"
+                "source": "op('wgsl_room').par.atmosphere"
               },
               "static": {
                 "kind": "static",
@@ -2759,7 +2759,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.bass"
+                "source": "op('wgsl_room').par.bass"
               },
               "static": {
                 "kind": "static",
@@ -2772,7 +2772,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.beatPosition"
+                "source": "op('wgsl_room').par.beatPosition"
               },
               "static": {
                 "kind": "static",
@@ -2785,7 +2785,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.beatPulse"
+                "source": "op('wgsl_room').par.beatPulse"
               },
               "static": {
                 "kind": "static",
@@ -2798,7 +2798,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.coreGradient"
+                "source": "op('wgsl_room').par.coreGradient"
               },
               "static": {
                 "kind": "static",
@@ -2811,7 +2811,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.energy"
+                "source": "op('wgsl_room').par.energy"
               },
               "static": {
                 "kind": "static",
@@ -2833,7 +2833,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.highs"
+                "source": "op('wgsl_room').par.highs"
               },
               "static": {
                 "kind": "static",
@@ -2846,7 +2846,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.mids"
+                "source": "op('wgsl_room').par.mids"
               },
               "static": {
                 "kind": "static",
@@ -2859,7 +2859,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.paletteCycle"
+                "source": "op('wgsl_room').par.paletteCycle"
               },
               "static": {
                 "kind": "static",
@@ -2872,7 +2872,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelAudio"
+                "source": "op('wgsl_room').par.panelAudio"
               },
               "static": {
                 "kind": "static",
@@ -2885,7 +2885,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelBars"
+                "source": "op('wgsl_room').par.panelBars"
               },
               "static": {
                 "kind": "static",
@@ -2898,7 +2898,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelBpm"
+                "source": "op('wgsl_room').par.panelBpm"
               },
               "static": {
                 "kind": "static",
@@ -2911,7 +2911,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelBrightness"
+                "source": "op('wgsl_room').par.panelBrightness"
               },
               "static": {
                 "kind": "static",
@@ -2924,7 +2924,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelClock"
+                "source": "op('wgsl_room').par.panelClock"
               },
               "static": {
                 "kind": "static",
@@ -2937,7 +2937,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelCoverage"
+                "source": "op('wgsl_room').par.panelCoverage"
               },
               "static": {
                 "kind": "static",
@@ -2950,7 +2950,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelFadeBars"
+                "source": "op('wgsl_room').par.panelFadeBars"
               },
               "static": {
                 "kind": "static",
@@ -2963,7 +2963,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelPosition"
+                "source": "op('wgsl_room').par.panelPosition"
               },
               "static": {
                 "kind": "static",
@@ -2976,7 +2976,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelScene"
+                "source": "op('wgsl_room').par.panelScene"
               },
               "static": {
                 "kind": "static",
@@ -2989,7 +2989,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelSequence"
+                "source": "op('wgsl_room').par.panelSequence"
               },
               "static": {
                 "kind": "static",
@@ -3002,7 +3002,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelStyle"
+                "source": "op('wgsl_room').par.panelStyle"
               },
               "static": {
                 "kind": "static",
@@ -3015,7 +3015,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelVariety"
+                "source": "op('wgsl_room').par.panelVariety"
               },
               "static": {
                 "kind": "static",
@@ -3028,7 +3028,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelVideo"
+                "source": "op('wgsl_room').par.panelVideo"
               },
               "static": {
                 "kind": "static",
@@ -3041,7 +3041,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.panelWater"
+                "source": "op('wgsl_room').par.panelWater"
               },
               "static": {
                 "kind": "static",
@@ -3054,7 +3054,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.projectionSeed"
+                "source": "op('wgsl_room').par.projectionSeed"
               },
               "static": {
                 "kind": "static",
@@ -3068,7 +3068,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.shaftDirection"
+                "source": "op('wgsl_room').par.shaftDirection"
               },
               "static": {
                 "kind": "static",
@@ -3082,7 +3082,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.transient"
+                "source": "op('wgsl_room').par.transient"
               },
               "static": {
                 "kind": "static",
@@ -3095,7 +3095,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.videoGlitch"
+                "source": "op('wgsl_room').par.videoGlitch"
               },
               "static": {
                 "kind": "static",
@@ -3108,7 +3108,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('room1').par.videoMotion"
+                "source": "op('wgsl_room').par.videoMotion"
               },
               "static": {
                 "kind": "static",
@@ -3132,7 +3132,7 @@
       "faultGlow": {
         "definitionVersion": 1,
         "id": "faultGlow",
-        "label": "faultglow1",
+        "label": "material_faultglow",
         "parameters": {
           "color": [
             1,
@@ -3150,7 +3150,7 @@
       "fill": {
         "definitionVersion": 1,
         "id": "fill",
-        "label": "fill1",
+        "label": "light_fill",
         "parameters": {
           "color": [
             0.65,
@@ -3175,7 +3175,7 @@
       "fxaa": {
         "definitionVersion": 1,
         "id": "fxaa",
-        "label": "fxaa1",
+        "label": "wgsl_fxaa",
         "parameters": {
           "amount": 1,
           "source": "struct Params {\n  amount: f32, // @default 1  0 is the input exactly, 1 is full FXAA.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> params: Params;\n\nconst SPAN_MAX: f32 = 8.0;\nconst REDUCE_MUL: f32 = 0.125;\nconst REDUCE_MIN: f32 = 0.0078125;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn luma(c: vec3f) -> f32 {\n  let t = max(c, vec3f(0.0)) / (vec3f(1.0) + max(c, vec3f(0.0)));\n  return dot(t, vec3f(0.299, 0.587, 0.114));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let px = 1.0 / vec2f(textureDimensions(inputTexture));\n  let centre = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let m = centre.rgb;\n  let lM = luma(m);\n  let lNW = luma(tap(uv + vec2f(-1.0, -1.0) * px));\n  let lNE = luma(tap(uv + vec2f(1.0, -1.0) * px));\n  let lSW = luma(tap(uv + vec2f(-1.0, 1.0) * px));\n  let lSE = luma(tap(uv + vec2f(1.0, 1.0) * px));\n  let lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  let lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n\n  var dir = vec2f(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  let reduce = max((lNW + lNE + lSW + lSE) * 0.25 * REDUCE_MUL, REDUCE_MIN);\n  let rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);\n  dir = clamp(dir * rcpMin, vec2f(-SPAN_MAX), vec2f(SPAN_MAX)) * px;\n\n  let a = 0.5 * (tap(uv + dir * (1.0 / 3.0 - 0.5)) + tap(uv + dir * (2.0 / 3.0 - 0.5)));\n  let b = a * 0.5 + 0.25 * (tap(uv - dir * 0.5) + tap(uv + dir * 0.5));\n  let lB = luma(b);\n  let smoothed = select(b, a, (lB < lMin) || (lB > lMax));\n  // Alpha passes through untouched: an edge-smoothing pass has no business deciding coverage\n  // (T1276 found the first version writing 1 over a plate that carried 0).\n  return vec4f(mix(m, smoothed, params.amount), centre.a);\n}"
@@ -3192,7 +3192,7 @@
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
-        "label": "glow1",
+        "label": "add_glow",
         "parameters": {
           "opacity": 1
         },
@@ -3208,14 +3208,14 @@
       "lens": {
         "definitionVersion": 1,
         "id": "lens",
-        "label": "lens1",
+        "label": "wgsl_lens",
         "parameters": {
           "chromatic": 0.035,
           "far": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -3239,7 +3239,7 @@
       "lightAlpha": {
         "definitionVersion": 1,
         "id": "lightAlpha",
-        "label": "lightalpha1",
+        "label": "reorder_lightalpha",
         "parameters": {
           "outa": "one"
         },
@@ -3252,7 +3252,7 @@
       "lightAtlas": {
         "definitionVersion": 1,
         "id": "lightAtlas",
-        "label": "lightatlas1",
+        "label": "add_lightatlas",
         "parameters": {
           "opacity": 1
         },
@@ -3265,7 +3265,7 @@
       "lightBlock": {
         "definitionVersion": 1,
         "id": "lightBlock",
-        "label": "lightblock1",
+        "label": "material_lightblock",
         "parameters": {
           "color": [
             0,
@@ -3283,7 +3283,7 @@
       "lightDepth": {
         "definitionVersion": 1,
         "id": "lightDepth",
-        "label": "lightdepth1",
+        "label": "mask_lightdepth",
         "parameters": {
           "apply": "alpha",
           "channel": "red",
@@ -3298,9 +3298,9 @@
       "lightOccluder_slab0Mesh": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab0Mesh",
-        "label": "lightoccluder_slab0mesh1",
+        "label": "geometry_lightoccluder_slab0mesh",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3330,9 +3330,9 @@
       "lightOccluder_slab0Reflection": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab0Reflection",
-        "label": "lightoccluder_slab0reflection1",
+        "label": "geometry_lightoccluder_slab0reflection",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3362,9 +3362,9 @@
       "lightOccluder_slab1Mesh": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab1Mesh",
-        "label": "lightoccluder_slab1mesh1",
+        "label": "geometry_lightoccluder_slab1mesh",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3394,9 +3394,9 @@
       "lightOccluder_slab1Reflection": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab1Reflection",
-        "label": "lightoccluder_slab1reflection1",
+        "label": "geometry_lightoccluder_slab1reflection",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3426,9 +3426,9 @@
       "lightOccluder_slab2Mesh": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab2Mesh",
-        "label": "lightoccluder_slab2mesh1",
+        "label": "geometry_lightoccluder_slab2mesh",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3458,9 +3458,9 @@
       "lightOccluder_slab2Reflection": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab2Reflection",
-        "label": "lightoccluder_slab2reflection1",
+        "label": "geometry_lightoccluder_slab2reflection",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3490,9 +3490,9 @@
       "lightOccluder_slab3Mesh": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab3Mesh",
-        "label": "lightoccluder_slab3mesh1",
+        "label": "geometry_lightoccluder_slab3mesh",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3522,9 +3522,9 @@
       "lightOccluder_slab3Reflection": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab3Reflection",
-        "label": "lightoccluder_slab3reflection1",
+        "label": "geometry_lightoccluder_slab3reflection",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3554,9 +3554,9 @@
       "lightOccluder_slab4Mesh": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab4Mesh",
-        "label": "lightoccluder_slab4mesh1",
+        "label": "geometry_lightoccluder_slab4mesh",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3586,9 +3586,9 @@
       "lightOccluder_slab4Reflection": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab4Reflection",
-        "label": "lightoccluder_slab4reflection1",
+        "label": "geometry_lightoccluder_slab4reflection",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3618,9 +3618,9 @@
       "lightOccluder_slab5Mesh": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab5Mesh",
-        "label": "lightoccluder_slab5mesh1",
+        "label": "geometry_lightoccluder_slab5mesh",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3650,9 +3650,9 @@
       "lightOccluder_slab5Reflection": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab5Reflection",
-        "label": "lightoccluder_slab5reflection1",
+        "label": "geometry_lightoccluder_slab5reflection",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3682,9 +3682,9 @@
       "lightOccluder_slab6Mesh": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab6Mesh",
-        "label": "lightoccluder_slab6mesh1",
+        "label": "geometry_lightoccluder_slab6mesh",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3714,9 +3714,9 @@
       "lightOccluder_slab6Reflection": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab6Reflection",
-        "label": "lightoccluder_slab6reflection1",
+        "label": "geometry_lightoccluder_slab6reflection",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3746,9 +3746,9 @@
       "lightOccluder_slab7Mesh": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab7Mesh",
-        "label": "lightoccluder_slab7mesh1",
+        "label": "geometry_lightoccluder_slab7mesh",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3778,9 +3778,9 @@
       "lightOccluder_slab7Reflection": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab7Reflection",
-        "label": "lightoccluder_slab7reflection1",
+        "label": "geometry_lightoccluder_slab7reflection",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3810,9 +3810,9 @@
       "lightOccluder_slab8Mesh": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab8Mesh",
-        "label": "lightoccluder_slab8mesh1",
+        "label": "geometry_lightoccluder_slab8mesh",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3842,9 +3842,9 @@
       "lightOccluder_slab8Reflection": {
         "definitionVersion": 1,
         "id": "lightOccluder_slab8Reflection",
-        "label": "lightoccluder_slab8reflection1",
+        "label": "geometry_lightoccluder_slab8reflection",
         "parameters": {
-          "material": "lightblock1",
+          "material": "material_lightblock",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3874,7 +3874,7 @@
       "lightPack": {
         "definitionVersion": 1,
         "id": "lightPack",
-        "label": "lightpack1",
+        "label": "wgsl_lightpack",
         "parameters": {
           "source": "\n@group(0) @binding(0) var inputSampler:sampler;\n@group(0) @binding(1) var inputTexture:texture_2d<f32>;\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {\n  let local=(uv-vec2f(0.0,0.5))*2.0;\n  if(any(local<vec2f(0)) || any(local>=vec2f(1))){return vec4f(0);}\n  let dims=textureDimensions(inputTexture);\n  return textureLoad(inputTexture,clamp(vec2i(local*vec2f(dims)),vec2i(0),vec2i(dims)-1),0);\n}"
         },
@@ -3891,7 +3891,7 @@
       "lightShot": {
         "definitionVersion": 1,
         "id": "lightShot",
-        "label": "lightshot1",
+        "label": "render_lightshot",
         "parameters": {
           "antialias": "msaa",
           "background": [
@@ -3900,9 +3900,9 @@
             0,
             0
           ],
-          "camera": "cam1",
+          "camera": "camera1",
           "depthOutput": true,
-          "scenes": "lightoccluder_slab0mesh1 lightoccluder_slab0reflection1 lightoccluder_slab1mesh1 lightoccluder_slab1reflection1 lightoccluder_slab2mesh1 lightoccluder_slab2reflection1 lightoccluder_slab3mesh1 lightoccluder_slab3reflection1 lightoccluder_slab4mesh1 lightoccluder_slab4reflection1 lightoccluder_slab5mesh1 lightoccluder_slab5reflection1 lightoccluder_slab6mesh1 lightoccluder_slab6reflection1 lightoccluder_slab7mesh1 lightoccluder_slab7reflection1 lightoccluder_slab8mesh1 lightoccluder_slab8reflection1 slab0glow1 slab1glow1 slab2glow1 slab3glow1 slab4glow1 slab5glow1 slab6glow1 slab7glow1 slab8glow1"
+          "scenes": "geometry_lightoccluder_slab0mesh geometry_lightoccluder_slab0reflection geometry_lightoccluder_slab1mesh geometry_lightoccluder_slab1reflection geometry_lightoccluder_slab2mesh geometry_lightoccluder_slab2reflection geometry_lightoccluder_slab3mesh geometry_lightoccluder_slab3reflection geometry_lightoccluder_slab4mesh geometry_lightoccluder_slab4reflection geometry_lightoccluder_slab5mesh geometry_lightoccluder_slab5reflection geometry_lightoccluder_slab6mesh geometry_lightoccluder_slab6reflection geometry_lightoccluder_slab7mesh geometry_lightoccluder_slab7reflection geometry_lightoccluder_slab8mesh geometry_lightoccluder_slab8reflection geometry_slab0glow geometry_slab1glow geometry_slab2glow geometry_slab3glow geometry_slab4glow geometry_slab5glow geometry_slab6glow geometry_slab7glow geometry_slab8glow"
         },
         "position": {
           "x": -100,
@@ -3913,7 +3913,7 @@
       "movieCrop": {
         "definitionVersion": 1,
         "id": "movieCrop",
-        "label": "moviecrop1",
+        "label": "wgsl_moviecrop",
         "parameters": {
           "source": "\nstruct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n@group(0) @binding(0) var inputSampler:sampler;\n@group(0) @binding(1) var inputTexture:texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU:SharedFrame;\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {\n  let dims=vec2f(textureDimensions(inputTexture));\n  let sourceAspect=dims.x/dims.y;\n  let outputAspect=16.0/9.0;\n  let crop=vec2f(min(1.0,outputAspect/sourceAspect),min(1.0,sourceAspect/outputAspect));\n  return textureSampleLevel(inputTexture,inputSampler,vec2f(0.5)+(uv-0.5)*crop,0.0);\n}"
         },
@@ -3931,7 +3931,7 @@
       "opaqueAlpha": {
         "definitionVersion": 1,
         "id": "opaqueAlpha",
-        "label": "opaquealpha1",
+        "label": "reorder_opaquealpha",
         "parameters": {
           "outa": "one"
         },
@@ -3944,7 +3944,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "filmic"
         },
@@ -3957,7 +3957,7 @@
       "panelCam": {
         "definitionVersion": 1,
         "id": "panelCam",
-        "label": "panelcam1",
+        "label": "webcam_panel",
         "parameters": {},
         "position": {
           "x": 200,
@@ -3968,7 +3968,7 @@
       "panelMovie": {
         "definitionVersion": 1,
         "id": "panelMovie",
-        "label": "panelmovie1",
+        "label": "movie_panel",
         "parameters": {
           "file": "",
           "playMode": "freeRun",
@@ -3983,7 +3983,7 @@
       "panelSource": {
         "definitionVersion": 1,
         "id": "panelSource",
-        "label": "panelsource1",
+        "label": "switch_panelsource",
         "parameters": {
           "index": 0
         },
@@ -3996,7 +3996,7 @@
       "presence": {
         "definitionVersion": 1,
         "id": "presence",
-        "label": "presence1",
+        "label": "lag_presence",
         "parameters": {
           "lag": 0.6,
           "releaseRatio": 3
@@ -4010,7 +4010,7 @@
       "room": {
         "definitionVersion": 1,
         "id": "room",
-        "label": "room1",
+        "label": "wgsl_room",
         "parameters": {
           "aim": [
             0,
@@ -4021,7 +4021,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera1').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -4034,7 +4034,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera1').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -4047,7 +4047,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera1').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -4060,7 +4060,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * clamp(op('presence1').chan.level * 6, 0, 1), 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * clamp(op('lag_presence').chan.level * 6, 0, 1), 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4073,7 +4073,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('detail1').chan.kickCount * 0.8 + op('detail1').chan.beatCount * 0.2, 0, 1)"
+                "source": "clamp(op('lag_detail').chan.kickCount * 0.8 + op('lag_detail').chan.beatCount * 0.2, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4086,7 +4086,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('clip1').chan.beat + op('clip1').chan.beatPhase"
+                "source": "op('audiofile_clip').chan.beat + op('audiofile_clip').chan.beatPhase"
               },
               "static": {
                 "kind": "static",
@@ -4099,7 +4099,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('detail1').chan.beatCount, 0, 1)"
+                "source": "clamp(op('lag_detail').chan.beatCount, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4113,7 +4113,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(((op('body1').chan.low * 0.65 + op('body1').chan.level * 0.35) - 0.2) * 2.1 * clamp(op('presence1').chan.level * 6, 0, 1), 0, 1)"
+                "source": "clamp(((op('lag_body').chan.low * 0.65 + op('lag_body').chan.level * 0.35) - 0.2) * 2.1 * clamp(op('lag_presence').chan.level * 6, 0, 1), 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4132,7 +4132,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera1').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -4145,7 +4145,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera1').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -4158,7 +4158,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera1').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -4171,7 +4171,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -4186,7 +4186,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('detail1').chan.hatCount * 0.8 + op('body1').chan.high * 0.2, 0, 1)"
+                "source": "clamp(op('lag_detail').chan.hatCount * 0.8 + op('lag_body').chan.high * 0.2, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4199,7 +4199,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('body1').chan.lowMid, 0, 1)"
+                "source": "clamp(op('lag_body').chan.lowMid, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4215,7 +4215,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('clip1').par.bpm"
+                "source": "op('audiofile_clip').par.bpm"
               },
               "static": {
                 "kind": "static",
@@ -4232,7 +4232,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('clip1').chan.bar + op('clip1').chan.barPhase"
+                "source": "op('audiofile_clip').chan.bar + op('audiofile_clip').chan.barPhase"
               },
               "static": {
                 "kind": "static",
@@ -4249,7 +4249,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "min(op('panelsource1').par.index, 1)"
+                "source": "min(op('switch_panelsource').par.index, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4267,7 +4267,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('detail1').chan.snareCount * 0.7 + op('detail1').chan.onsetCount * 0.3, 0, 1)"
+                "source": "clamp(op('lag_detail').chan.snareCount * 0.7 + op('lag_detail').chan.onsetCount * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4291,7 +4291,7 @@
       "sceneAtlas": {
         "definitionVersion": 1,
         "id": "sceneAtlas",
-        "label": "sceneatlas1",
+        "label": "add_sceneatlas",
         "parameters": {
           "opacity": 1
         },
@@ -4304,7 +4304,7 @@
       "scenePack": {
         "definitionVersion": 1,
         "id": "scenePack",
-        "label": "scenepack1",
+        "label": "wgsl_scenepack",
         "parameters": {
           "source": "\n@group(0) @binding(0) var inputSampler:sampler;\n@group(0) @binding(1) var inputTexture:texture_2d<f32>;\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {\n  let local=(uv-vec2f(0.0,0.0))*2.0;\n  if(any(local<vec2f(0)) || any(local>=vec2f(1))){return vec4f(0);}\n  let dims=textureDimensions(inputTexture);\n  return textureLoad(inputTexture,clamp(vec2i(local*vec2f(dims)),vec2i(0),vec2i(dims)-1),0);\n}"
         },
@@ -4321,7 +4321,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0.6,
@@ -4337,12 +4337,12 @@
             0,
             0
           ],
-          "camera": "cam1",
+          "camera": "camera1",
           "depthOutput": true,
           "environmentIntensity": 0.16,
           "environmentTaps": 16,
-          "lights": "emberkey1 emberrim1 fill1",
-          "scenes": "slab0mesh1 slab0reflection1 slab1mesh1 slab1reflection1 slab2mesh1 slab2reflection1 slab3mesh1 slab3reflection1 slab4mesh1 slab4reflection1 slab5mesh1 slab5reflection1 slab6mesh1 slab6reflection1 slab7mesh1 slab7reflection1 slab8mesh1 slab8reflection1"
+          "lights": "light_emberkey light_emberrim light_fill",
+          "scenes": "geometry_slab0mesh geometry_slab0reflection geometry_slab1mesh geometry_slab1reflection geometry_slab2mesh geometry_slab2reflection geometry_slab3mesh geometry_slab3reflection geometry_slab4mesh geometry_slab4reflection geometry_slab5mesh geometry_slab5reflection geometry_slab6mesh geometry_slab6reflection geometry_slab7mesh geometry_slab7reflection geometry_slab8mesh geometry_slab8reflection"
         },
         "position": {
           "x": -100,
@@ -4353,7 +4353,7 @@
       "slab0Form": {
         "definitionVersion": 1,
         "id": "slab0Form",
-        "label": "slab0form1",
+        "label": "kernel_slab0form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -4362,7 +4362,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * 0.7 + op('body1').chan.low * 0.3, 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * 0.7 + op('lag_body').chan.low * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4389,12 +4389,13 @@
       "slab0Glow": {
         "definitionVersion": 1,
         "id": "slab0Glow",
-        "label": "slab0glow1",
+        "label": "geometry_slab0glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.fissure > 0.5",
-          "material": "faultglow1",
+          "inDepthOutput": true,
+          "material": "material_faultglow",
           "mode": "beam",
           "scale": 0.028,
           "soft": 1,
@@ -4426,7 +4427,7 @@
       "slab0Grid": {
         "definitionVersion": 1,
         "id": "slab0Grid",
-        "label": "slab0grid1",
+        "label": "grid_slab0",
         "parameters": {
           "cols": 129,
           "count": 16641,
@@ -4443,9 +4444,9 @@
       "slab0Mesh": {
         "definitionVersion": 1,
         "id": "slab0Mesh",
-        "label": "slab0mesh1",
+        "label": "geometry_slab0mesh",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -4475,7 +4476,7 @@
       "slab0Mirror": {
         "definitionVersion": 1,
         "id": "slab0Mirror",
-        "label": "slab0mirror1",
+        "label": "kernel_slab0mirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -4490,9 +4491,9 @@
       "slab0Reflection": {
         "definitionVersion": 1,
         "id": "slab0Reflection",
-        "label": "slab0reflection1",
+        "label": "geometry_slab0reflection",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -4522,7 +4523,7 @@
       "slab1Form": {
         "definitionVersion": 1,
         "id": "slab1Form",
-        "label": "slab1form1",
+        "label": "kernel_slab1form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -4531,7 +4532,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * 0.7 + op('body1').chan.low * 0.3, 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * 0.7 + op('lag_body').chan.low * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4558,12 +4559,13 @@
       "slab1Glow": {
         "definitionVersion": 1,
         "id": "slab1Glow",
-        "label": "slab1glow1",
+        "label": "geometry_slab1glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.fissure > 0.5",
-          "material": "faultglow1",
+          "inDepthOutput": true,
+          "material": "material_faultglow",
           "mode": "beam",
           "scale": 0.028,
           "soft": 1,
@@ -4595,7 +4597,7 @@
       "slab1Grid": {
         "definitionVersion": 1,
         "id": "slab1Grid",
-        "label": "slab1grid1",
+        "label": "grid_slab1",
         "parameters": {
           "cols": 129,
           "count": 16641,
@@ -4612,9 +4614,9 @@
       "slab1Mesh": {
         "definitionVersion": 1,
         "id": "slab1Mesh",
-        "label": "slab1mesh1",
+        "label": "geometry_slab1mesh",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -4644,7 +4646,7 @@
       "slab1Mirror": {
         "definitionVersion": 1,
         "id": "slab1Mirror",
-        "label": "slab1mirror1",
+        "label": "kernel_slab1mirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -4659,9 +4661,9 @@
       "slab1Reflection": {
         "definitionVersion": 1,
         "id": "slab1Reflection",
-        "label": "slab1reflection1",
+        "label": "geometry_slab1reflection",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -4691,7 +4693,7 @@
       "slab2Form": {
         "definitionVersion": 1,
         "id": "slab2Form",
-        "label": "slab2form1",
+        "label": "kernel_slab2form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -4700,7 +4702,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * 0.7 + op('body1').chan.low * 0.3, 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * 0.7 + op('lag_body').chan.low * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4727,12 +4729,13 @@
       "slab2Glow": {
         "definitionVersion": 1,
         "id": "slab2Glow",
-        "label": "slab2glow1",
+        "label": "geometry_slab2glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.fissure > 0.5",
-          "material": "faultglow1",
+          "inDepthOutput": true,
+          "material": "material_faultglow",
           "mode": "beam",
           "scale": 0.028,
           "soft": 1,
@@ -4764,7 +4767,7 @@
       "slab2Grid": {
         "definitionVersion": 1,
         "id": "slab2Grid",
-        "label": "slab2grid1",
+        "label": "grid_slab2",
         "parameters": {
           "cols": 129,
           "count": 16641,
@@ -4781,9 +4784,9 @@
       "slab2Mesh": {
         "definitionVersion": 1,
         "id": "slab2Mesh",
-        "label": "slab2mesh1",
+        "label": "geometry_slab2mesh",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -4813,7 +4816,7 @@
       "slab2Mirror": {
         "definitionVersion": 1,
         "id": "slab2Mirror",
-        "label": "slab2mirror1",
+        "label": "kernel_slab2mirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -4828,9 +4831,9 @@
       "slab2Reflection": {
         "definitionVersion": 1,
         "id": "slab2Reflection",
-        "label": "slab2reflection1",
+        "label": "geometry_slab2reflection",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -4860,7 +4863,7 @@
       "slab3Form": {
         "definitionVersion": 1,
         "id": "slab3Form",
-        "label": "slab3form1",
+        "label": "kernel_slab3form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -4869,7 +4872,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * 0.7 + op('body1').chan.low * 0.3, 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * 0.7 + op('lag_body').chan.low * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -4896,12 +4899,13 @@
       "slab3Glow": {
         "definitionVersion": 1,
         "id": "slab3Glow",
-        "label": "slab3glow1",
+        "label": "geometry_slab3glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.fissure > 0.5",
-          "material": "faultglow1",
+          "inDepthOutput": true,
+          "material": "material_faultglow",
           "mode": "beam",
           "scale": 0.028,
           "soft": 1,
@@ -4933,7 +4937,7 @@
       "slab3Grid": {
         "definitionVersion": 1,
         "id": "slab3Grid",
-        "label": "slab3grid1",
+        "label": "grid_slab3",
         "parameters": {
           "cols": 129,
           "count": 16641,
@@ -4950,9 +4954,9 @@
       "slab3Mesh": {
         "definitionVersion": 1,
         "id": "slab3Mesh",
-        "label": "slab3mesh1",
+        "label": "geometry_slab3mesh",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -4982,7 +4986,7 @@
       "slab3Mirror": {
         "definitionVersion": 1,
         "id": "slab3Mirror",
-        "label": "slab3mirror1",
+        "label": "kernel_slab3mirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -4997,9 +5001,9 @@
       "slab3Reflection": {
         "definitionVersion": 1,
         "id": "slab3Reflection",
-        "label": "slab3reflection1",
+        "label": "geometry_slab3reflection",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5029,7 +5033,7 @@
       "slab4Form": {
         "definitionVersion": 1,
         "id": "slab4Form",
-        "label": "slab4form1",
+        "label": "kernel_slab4form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5038,7 +5042,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * 0.7 + op('body1').chan.low * 0.3, 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * 0.7 + op('lag_body').chan.low * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -5065,12 +5069,13 @@
       "slab4Glow": {
         "definitionVersion": 1,
         "id": "slab4Glow",
-        "label": "slab4glow1",
+        "label": "geometry_slab4glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.fissure > 0.5",
-          "material": "faultglow1",
+          "inDepthOutput": true,
+          "material": "material_faultglow",
           "mode": "beam",
           "scale": 0.028,
           "soft": 1,
@@ -5102,7 +5107,7 @@
       "slab4Grid": {
         "definitionVersion": 1,
         "id": "slab4Grid",
-        "label": "slab4grid1",
+        "label": "grid_slab4",
         "parameters": {
           "cols": 129,
           "count": 16641,
@@ -5119,9 +5124,9 @@
       "slab4Mesh": {
         "definitionVersion": 1,
         "id": "slab4Mesh",
-        "label": "slab4mesh1",
+        "label": "geometry_slab4mesh",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5151,7 +5156,7 @@
       "slab4Mirror": {
         "definitionVersion": 1,
         "id": "slab4Mirror",
-        "label": "slab4mirror1",
+        "label": "kernel_slab4mirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5166,9 +5171,9 @@
       "slab4Reflection": {
         "definitionVersion": 1,
         "id": "slab4Reflection",
-        "label": "slab4reflection1",
+        "label": "geometry_slab4reflection",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5198,7 +5203,7 @@
       "slab5Form": {
         "definitionVersion": 1,
         "id": "slab5Form",
-        "label": "slab5form1",
+        "label": "kernel_slab5form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5207,7 +5212,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * 0.7 + op('body1').chan.low * 0.3, 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * 0.7 + op('lag_body').chan.low * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -5234,12 +5239,13 @@
       "slab5Glow": {
         "definitionVersion": 1,
         "id": "slab5Glow",
-        "label": "slab5glow1",
+        "label": "geometry_slab5glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.fissure > 0.5",
-          "material": "faultglow1",
+          "inDepthOutput": true,
+          "material": "material_faultglow",
           "mode": "beam",
           "scale": 0.028,
           "soft": 1,
@@ -5271,7 +5277,7 @@
       "slab5Grid": {
         "definitionVersion": 1,
         "id": "slab5Grid",
-        "label": "slab5grid1",
+        "label": "grid_slab5",
         "parameters": {
           "cols": 129,
           "count": 16641,
@@ -5288,9 +5294,9 @@
       "slab5Mesh": {
         "definitionVersion": 1,
         "id": "slab5Mesh",
-        "label": "slab5mesh1",
+        "label": "geometry_slab5mesh",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5320,7 +5326,7 @@
       "slab5Mirror": {
         "definitionVersion": 1,
         "id": "slab5Mirror",
-        "label": "slab5mirror1",
+        "label": "kernel_slab5mirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5335,9 +5341,9 @@
       "slab5Reflection": {
         "definitionVersion": 1,
         "id": "slab5Reflection",
-        "label": "slab5reflection1",
+        "label": "geometry_slab5reflection",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5367,7 +5373,7 @@
       "slab6Form": {
         "definitionVersion": 1,
         "id": "slab6Form",
-        "label": "slab6form1",
+        "label": "kernel_slab6form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5376,7 +5382,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * 0.7 + op('body1').chan.low * 0.3, 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * 0.7 + op('lag_body').chan.low * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -5403,12 +5409,13 @@
       "slab6Glow": {
         "definitionVersion": 1,
         "id": "slab6Glow",
-        "label": "slab6glow1",
+        "label": "geometry_slab6glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.fissure > 0.5",
-          "material": "faultglow1",
+          "inDepthOutput": true,
+          "material": "material_faultglow",
           "mode": "beam",
           "scale": 0.028,
           "soft": 1,
@@ -5440,7 +5447,7 @@
       "slab6Grid": {
         "definitionVersion": 1,
         "id": "slab6Grid",
-        "label": "slab6grid1",
+        "label": "grid_slab6",
         "parameters": {
           "cols": 129,
           "count": 16641,
@@ -5457,9 +5464,9 @@
       "slab6Mesh": {
         "definitionVersion": 1,
         "id": "slab6Mesh",
-        "label": "slab6mesh1",
+        "label": "geometry_slab6mesh",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5489,7 +5496,7 @@
       "slab6Mirror": {
         "definitionVersion": 1,
         "id": "slab6Mirror",
-        "label": "slab6mirror1",
+        "label": "kernel_slab6mirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5504,9 +5511,9 @@
       "slab6Reflection": {
         "definitionVersion": 1,
         "id": "slab6Reflection",
-        "label": "slab6reflection1",
+        "label": "geometry_slab6reflection",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5536,7 +5543,7 @@
       "slab7Form": {
         "definitionVersion": 1,
         "id": "slab7Form",
-        "label": "slab7form1",
+        "label": "kernel_slab7form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5545,7 +5552,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * 0.7 + op('body1').chan.low * 0.3, 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * 0.7 + op('lag_body').chan.low * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -5572,12 +5579,13 @@
       "slab7Glow": {
         "definitionVersion": 1,
         "id": "slab7Glow",
-        "label": "slab7glow1",
+        "label": "geometry_slab7glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.fissure > 0.5",
-          "material": "faultglow1",
+          "inDepthOutput": true,
+          "material": "material_faultglow",
           "mode": "beam",
           "scale": 0.028,
           "soft": 1,
@@ -5609,7 +5617,7 @@
       "slab7Grid": {
         "definitionVersion": 1,
         "id": "slab7Grid",
-        "label": "slab7grid1",
+        "label": "grid_slab7",
         "parameters": {
           "cols": 129,
           "count": 16641,
@@ -5626,9 +5634,9 @@
       "slab7Mesh": {
         "definitionVersion": 1,
         "id": "slab7Mesh",
-        "label": "slab7mesh1",
+        "label": "geometry_slab7mesh",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5658,7 +5666,7 @@
       "slab7Mirror": {
         "definitionVersion": 1,
         "id": "slab7Mirror",
-        "label": "slab7mirror1",
+        "label": "kernel_slab7mirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5673,9 +5681,9 @@
       "slab7Reflection": {
         "definitionVersion": 1,
         "id": "slab7Reflection",
-        "label": "slab7reflection1",
+        "label": "geometry_slab7reflection",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5705,7 +5713,7 @@
       "slab8Form": {
         "definitionVersion": 1,
         "id": "slab8Form",
-        "label": "slab8form1",
+        "label": "kernel_slab8form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5714,7 +5722,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('air1').chan.level * 0.7 + op('body1').chan.low * 0.3, 0, 1)"
+                "source": "clamp(op('lag_air').chan.level * 0.7 + op('lag_body').chan.low * 0.3, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -5741,12 +5749,13 @@
       "slab8Glow": {
         "definitionVersion": 1,
         "id": "slab8Glow",
-        "label": "slab8glow1",
+        "label": "geometry_slab8glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.fissure > 0.5",
-          "material": "faultglow1",
+          "inDepthOutput": true,
+          "material": "material_faultglow",
           "mode": "beam",
           "scale": 0.028,
           "soft": 1,
@@ -5778,7 +5787,7 @@
       "slab8Grid": {
         "definitionVersion": 1,
         "id": "slab8Grid",
-        "label": "slab8grid1",
+        "label": "grid_slab8",
         "parameters": {
           "cols": 129,
           "count": 16641,
@@ -5795,9 +5804,9 @@
       "slab8Mesh": {
         "definitionVersion": 1,
         "id": "slab8Mesh",
-        "label": "slab8mesh1",
+        "label": "geometry_slab8mesh",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5827,7 +5836,7 @@
       "slab8Mirror": {
         "definitionVersion": 1,
         "id": "slab8Mirror",
-        "label": "slab8mirror1",
+        "label": "kernel_slab8mirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"fissure\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 16641,
@@ -5842,9 +5851,9 @@
       "slab8Reflection": {
         "definitionVersion": 1,
         "id": "slab8Reflection",
-        "label": "slab8reflection1",
+        "label": "geometry_slab8reflection",
         "parameters": {
-          "material": "basalt1",
+          "material": "material_basalt",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -5874,7 +5883,7 @@
       "timeWall": {
         "definitionVersion": 1,
         "id": "timeWall",
-        "label": "timewall1",
+        "label": "timegrid_wall",
         "parameters": {
           "blend": 0,
           "chroma": 0,
@@ -5904,7 +5913,7 @@
       "videoPack": {
         "definitionVersion": 1,
         "id": "videoPack",
-        "label": "videopack1",
+        "label": "wgsl_videopack",
         "parameters": {
           "source": "\n@group(0) @binding(0) var inputSampler:sampler;\n@group(0) @binding(1) var inputTexture:texture_2d<f32>;\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {\n  let local=(uv-vec2f(0.5,0.0))*2.0;\n  if(any(local<vec2f(0)) || any(local>=vec2f(1))){return vec4f(0);}\n  let dims=textureDimensions(inputTexture);\n  return textureLoad(inputTexture,clamp(vec2i(local*vec2f(dims)),vec2i(0),vec2i(dims)-1),0);\n}"
         },

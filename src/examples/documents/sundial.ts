@@ -39,7 +39,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * about, and the shadow test is a discrete comparison — there is no `d` to take `fwidth`
  * of. Reaching for `fwidth` here would have been the right tool on the wrong image.
  *
- * So this renders at 2× and lets the present resample it: `shot1` carries a per-node
+ * So this renders at 2× and lets the present resample it: `render_shot` carries a per-node
  * resolution override (§V50) of 1536×864 over a 768×432 project, and the output's blit
  * downsamples it. At exactly 2:1 each destination pixel's sample lands on the corner
  * between four source texels, so a bilinear read returns their exact mean — a true 4×
@@ -60,50 +60,50 @@ export const sundialDocument = document(
   graph(
     [
       // ---- the floor: a grid laid flat, worn as a lit surface ---------------------
-      node("floorPts", "pointGrid", [-1460, 40], { cols: 32, rows: 24, count: 768, sizeX: 13, sizeY: 10 }, { label: "floorpts1" }),
+      node("floorPts", "pointGrid", [-1460, 40], { cols: 32, rows: 24, count: 768, sizeX: 13, sizeY: 10 }, { label: "grid_floor" }),
       node("floorLay", "pointKernel", [-1180, 40], {
         capacity: 768,
         attributes: '[{"name":"position","type":"vec3f","semantic":"position","default":[0,0,0]}]',
         kernel: "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  /* the grid lies down: xy becomes xz, the floor is the world's ground plane */\n  q.position = vec3f(p.position.x, 0.0, p.position.y);\n  return q;\n}",
-      }, { label: "floorlay1" }),
-      node("ground", "geometry", [-880, 40], { mode: "surface", material: "matground1" }, { label: "ground1" }),
+      }, { label: "kernel_floorlay" }),
+      node("ground", "geometry", [-880, 40], { mode: "surface", material: "material_ground" }, { label: "geometry_ground" }),
 
       // ---- three standing stones: the sundial's fixed marks -----------------------
-      node("stonePts", "pointGrid", [-1460, 340], { cols: 3, rows: 1, count: 3, sizeX: 3, sizeY: 1 }, { label: "stonepts1" }),
+      node("stonePts", "pointGrid", [-1460, 340], { cols: 3, rows: 1, count: 3, sizeX: 3, sizeY: 1 }, { label: "grid_stone" }),
       node("stoneLay", "pointKernel", [-1180, 340], {
         capacity: 3,
         attributes: '[{"name":"position","type":"vec3f","semantic":"position","default":[0,0,0]}]',
         kernel: "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  /* three marks, placed off-axis so no two shadows ever agree */\n  if (ctx.index == 0u) { q.position = vec3f(-1.5, 0.4, -0.9); }\n  else if (ctx.index == 1u) { q.position = vec3f(0.5, 0.4, -1.5); }\n  else { q.position = vec3f(1.7, 0.4, 0.3); }\n  return q;\n}",
-      }, { label: "stonelay1" }),
-      node("stones", "geometry", [-880, 340], { mode: "instances", shape: "box", scale: 0.4, material: "matstone1" }, { label: "stones1" }),
+      }, { label: "kernel_stonelay" }),
+      node("stones", "geometry", [-880, 340], { mode: "instances", shape: "box", scale: 0.4, material: "material_stone" }, { label: "geometry_stones" }),
 
       // ---- the caster: one octahedron on a slow circular orbit --------------------
-      node("sunPt", "pointGrid", [-1460, 660], { cols: 1, rows: 1, count: 1, sizeX: 1, sizeY: 1 }, { label: "sunpt1" }),
-      node("orbX", "lfo", [-1460, 900], { shape: "sine", frequency: 0.04, amplitude: 1.7, offset: 0, phase: 0 }, { label: "orbx1" }),
-      node("orbZ", "lfo", [-1460, 1084], { shape: "sine", frequency: 0.04, amplitude: 1.7, offset: 0, phase: 0.25 }, { label: "orbz1" }),
+      node("sunPt", "pointGrid", [-1460, 660], { cols: 1, rows: 1, count: 1, sizeX: 1, sizeY: 1 }, { label: "grid_sunpt" }),
+      node("orbX", "lfo", [-1460, 900], { shape: "sine", frequency: 0.04, amplitude: 1.7, offset: 0, phase: 0 }, { label: "lfo_orbx" }),
+      node("orbZ", "lfo", [-1460, 1084], { shape: "sine", frequency: 0.04, amplitude: 1.7, offset: 0, phase: 0.25 }, { label: "lfo_orbz" }),
       node("sunOrbit", "pointKernel", [-1180, 660], {
         capacity: 1,
         attributes: '[{"name":"position","type":"vec3f","semantic":"position","default":[0,0,0]}]',
         kernel: "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  /* two quadrature LFOs, in through the value slots (T479): values, never rebuilds */\n  q.position = vec3f(ctx.value1, 0.85, ctx.value2);\n  return q;\n}",
       }, {
-        label: "sunorbit1",
+        label: "kernel_sunorbit",
         parameters: {
-          value1: drivenSlot("orbx1", 1.7),
-          value2: drivenSlot("orbz1", 0),
+          value1: drivenSlot("lfo_orbx", 1.7),
+          value2: drivenSlot("lfo_orbz", 0),
         },
       }),
-      node("sun", "geometry", [-880, 660], { mode: "instances", shape: "octahedron", scale: 0.34, material: "matsun1" }, { label: "sun1" }),
+      node("sun", "geometry", [-880, 660], { mode: "instances", shape: "octahedron", scale: 0.34, material: "material_sun" }, { label: "geometry_sun" }),
 
       // ---- materials and the sky ---------------------------------------------------
       node("matGround", "materialPhong", [-580, 40], {
         color: [0.36, 0.37, 0.42, 1], specular: [0.25, 0.28, 0.35, 1], shininess: 10, roughness: 0.85,
-      }, { label: "matground1" }),
+      }, { label: "material_ground" }),
       node("matStone", "materialPhong", [-580, 300], {
         color: [0.58, 0.52, 0.44, 1], specular: [0.8, 0.85, 1, 1], shininess: 60, roughness: 0.3,
-      }, { label: "matstone1" }),
+      }, { label: "material_stone" }),
       node("matSun", "materialPhong", [-580, 560], {
         color: [1, 0.55, 0.2, 1], specular: [1, 0.9, 0.7, 1], shininess: 40, roughness: 0.35,
-      }, { label: "matsun1" }),
+      }, { label: "material_sun" }),
       node("sky", "ramp", [-580, 820], {
         type: "vertical",
         interp: "linear",
@@ -118,14 +118,14 @@ export const sundialDocument = document(
           { position: 0.62, color: [0.2, 0.12, 0.1, 1] },
           { position: 1, color: [0.08, 0.06, 0.06, 1] },
         ],
-      }, { label: "sky1", definitionVersion: 2 }),
+      }, { label: "ramp_sky", definitionVersion: 2 }),
 
       // ---- the shot ---------------------------------------------------------------
-      node("drift", "lfo", [-280, 560], { shape: "sine", frequency: 0.03, amplitude: 0.5, offset: 0.4, phase: 0 }, { label: "drift1" }),
+      node("drift", "lfo", [-280, 560], { shape: "sine", frequency: 0.03, amplitude: 0.5, offset: 0.4, phase: 0 }, { label: "lfo_drift" }),
       node("cam", "camera", [-280, 40], { lookAt: [0, 0.15, -0.4], fov: 40 }, {
-        label: "cam1",
+        label: "camera1",
         parameters: {
-          "eye.x": drivenSlot("drift1", 0.4),
+          "eye.x": drivenSlot("lfo_drift", 0.4),
           "eye.y": 1.25,
           "eye.z": 4.9,
         },
@@ -135,21 +135,21 @@ export const sundialDocument = document(
         /* low and from the west: the raking angle IS the long shadow */
         direction: [-1, -0.45, 0.25],
         shadows: true, shadowExtent: 3.6,
-      }, { label: "key1" }),
+      }, { label: "light_key" }),
       node("shot", "render", [0, 40], {
-        scenes: "ground1 stones1 sun1", camera: "cam1", lights: "key1",
+        scenes: "geometry_ground geometry_stones geometry_sun", camera: "camera1", lights: "light_key",
         ambientColor: [0.4, 0.5, 0.95, 1], ambientIntensity: 0.3,
         background: [0.05, 0.06, 0.12, 1],
         environmentIntensity: 1,
       }, {
-        label: "shot1",
+        label: "render_shot",
         /* T503 — the whole antialiasing fix, and it is one field. EXACTLY 2× the project's
            768×432 (§V50): at any other ratio the downsample is an interpolation with
            unequal weights, and at this one it is a box filter. See the note above for why
            analytic coverage is not available on a rasterised silhouette. */
         resolution: { mode: "fixed", width: 1536, height: 864 },
       }),
-      node("out", "output", [280, 40], {}, { label: "out1" }),
+      node("out", "output", [280, 40], {}, { label: "output1" }),
     ],
     [
       edge("e-floorpts-lay", ["floorPts", "out"], ["floorLay", "in"]),

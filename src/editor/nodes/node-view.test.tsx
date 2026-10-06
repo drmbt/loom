@@ -95,7 +95,7 @@ function mountNode(type: string, options: Options = {}) {
     </CanvasFixture>,
   );
 
-  return { ...view, bus, runtime, nodeId, dispatched, toggled, type, timingOverlay, timingScale };
+  return { ...view, bus, runtime, nodeId, dispatched, toggled, type, timingOverlay, timingScale, kindLabels: value.kindLabels };
 }
 
 function graphWith(type: string, ui?: Record<string, boolean>): GraphDocument {
@@ -728,17 +728,186 @@ describe("T603 — a component instance reads as one at a glance", () => {
   });
 });
 
-describe("T639(d)/T640 — an instance's type label says what the node IS", () => {
-  it("reads 'component', not the component's own name again", async () => {
-    // The synthesized definition's title is the component's NAME (definition.ts:95), so
-    // the old label repeated the name and said nothing — a component the owner called
-    // "animated" labelled its nodes "animated". The KIND is the useful fact.
+/**
+ * T1593b (ruled 2026-10-05) — A LONG NAME AT REST GIVES UP ITS KIND FIRST.
+ *
+ * `camerablur_the_quick_brown_fox` cut at the end reads `camerablur_the…`: the kind whole
+ * and the role, the word a person chose, gone. The header draws the two parts separately so
+ * the kind can be the one that elides (`cam…_the_quick_brown`).
+ *
+ * jsdom lays nothing out, so WHICH part elides is not asserted here; it was read from a real
+ * browser (docs/node-naming-2026-10-05.md). What is held here is what makes that possible
+ * and what must not change: the name is in parts only when it has both, the join is its own
+ * part, and the element still says the whole name to a test, a screen reader and a hover.
+ */
+describe("T1593b — a name at rest is drawn as its kind and its role", () => {
+  const nameOf = (container: HTMLElement, nodeId: string) =>
+    container.querySelector<HTMLElement>(`[data-testid="node-name-${nodeId}"]`);
+  const withLabel = (type: string, label?: string): GraphDocument => {
+    const graph = graphWith(type);
+    if (label !== undefined) (graph.nodes["n1"] as { label?: string }).label = label;
+    return graph;
+  };
+  const partsOf = (element: HTMLElement | null) => [...(element?.children ?? [])].map((part) => part.textContent);
+
+  it("splits a name that carries its kind and a role into kind, join and role", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite", "composite_lower_third") });
+    const name = nameOf(container, nodeId);
+    expect(partsOf(name)).toEqual(["composite", "_", "lower_third"]);
+  });
+
+  it("still says the whole name: as its text, and on hover", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite", "composite_lower_third") });
+    const name = nameOf(container, nodeId);
+    expect(name?.textContent).toBe("composite_lower_third");
+    expect(name?.getAttribute("title")).toBe("composite_lower_third");
+  });
+
+  it("leaves an auto-name whole: it has no role to protect", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite", "composite1") });
+    expect(partsOf(nameOf(container, nodeId))).toEqual([]);
+    expect(nameOf(container, nodeId)?.textContent).toBe("composite1");
+  });
+
+  it("leaves a name without its kind whole: there is no kind to elide", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite", "lower_third") });
+    expect(partsOf(nameOf(container, nodeId))).toEqual([]);
+    expect(nameOf(container, nodeId)?.textContent).toBe("lower_third");
+  });
+
+  it("leaves an unnamed node's title whole", () => {
+    const { container, nodeId } = mountNode("test.composite", { graph: withLabel("test.composite") });
+    expect(partsOf(nameOf(container, nodeId))).toEqual([]);
+  });
+
+  /*
+   * A kind of four letters or fewer is already as short as an elided one (`cam…`), so it
+   * is marked not to give way.
+   *
+   * The mark used to be all that kept the elision floor from holding a short kind's box
+   * open and drawing a gap inside `lfo_pathx`. It guessed a width from a letter count, and
+   * `slider_master` (six letters, narrower than the floor) got the gap anyway (B258). The
+   * floor itself can no longer exceed the word; that is a measurement, and it is taken in
+   * a real browser (`kind-label.spec.ts`).
+   */
+  it("marks a short kind so it never elides, and a long one so it can", () => {
+    const short = mountNode("test.blur", { graph: withLabel("test.blur", "blur_diffuse") });
+    expect(nameOf(short.container, short.nodeId)?.firstElementChild?.getAttribute("data-short")).toBe("true");
+    cleanup();
+    const long = mountNode("test.composite", { graph: withLabel("test.composite", "composite_lower_third") });
+    expect(nameOf(long.container, long.nodeId)?.firstElementChild?.getAttribute("data-short")).toBe("false");
+  });
+});
+
+/**
+ * T1597b — THE NODE'S HALF OF THE LOW-ZOOM KIND LABEL.
+ *
+ * `kind-label.test.tsx` holds what the label says at each zoom and what a zoom costs. What
+ * is held here is that a real node RENDERS the label from its type and its name, and that
+ * its label is the element its canvas's registry writes to: the two halves were built
+ * separately, and a label nothing tells the zoom would sit at `scale(1)` under a canvas at
+ * 15 %, which is the bug with a feature's name on it (§V220).
+ */
+describe("T1597b — a node carries its kind for low zoom", () => {
+  const labelOf = (container: HTMLElement, nodeId: string) =>
+    container.querySelector<HTMLElement>(`[data-testid="node-kind-label-${nodeId}"]`);
+  const named = (type: string, label?: string): GraphDocument => {
+    const graph = graphWith(type);
+    if (label !== undefined) (graph.nodes["n1"] as { label?: string }).label = label;
+    return graph;
+  };
+
+  it("says its kind and then its role, split where the kind ends", () => {
+    const { container, nodeId } = mountNode("test.blur", { graph: named("test.blur", "blur_diffuse") });
+    const label = labelOf(container, nodeId);
+    expect([...(label?.children ?? [])].map((part) => part.textContent)).toEqual(["blur", "_diffuse"]);
+    expect(label?.children[1]?.getAttribute("data-joined")).toBe("true");
+  });
+
+  it("says the kind FIRST for a name that does not carry it, and leaves the name whole", () => {
+    const { container, nodeId } = mountNode("test.blur", { graph: named("test.blur", "dye1") });
+    const label = labelOf(container, nodeId);
+    expect([...(label?.children ?? [])].map((part) => part.textContent)).toEqual(["blur", "dye1"]);
+    expect(label?.children[1]?.getAttribute("data-joined")).toBe("false");
+  });
+
+  it("is the kind alone on an unnamed node", () => {
+    const { container, nodeId } = mountNode("test.blur", { graph: named("test.blur") });
+    expect([...(labelOf(container, nodeId)?.children ?? [])].map((part) => part.textContent)).toEqual(["blur"]);
+  });
+
+  it("is hidden from a screen reader: it repeats the name beside it", () => {
+    const { container, nodeId } = mountNode("test.blur", { graph: named("test.blur", "blur_diffuse") });
+    expect(labelOf(container, nodeId)?.closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  /*
+   * The label is the one element its canvas writes the zoom on, and it sits in a clip box
+   * that is NOT written to: the clip is what keeps it to its node's width and above the
+   * line under the header (B258), and it must not depend on the zoom or every zoom step
+   * lays it out again (measured, `kind-label.ts`).
+   */
+  it("sits inside a clip box of its own, which the canvas never writes to", () => {
+    const { container, nodeId, kindLabels } = mountNode("test.blur", { graph: named("test.blur", "blur_diffuse") });
+    const label = labelOf(container, nodeId) as HTMLElement;
+    const clip = label.parentElement as HTMLElement;
+    expect(clip.parentElement?.getAttribute("data-testid")).toBe(`node-${nodeId}`);
+
+    kindLabels.attach(container);
+    kindLabels.apply(0.2);
+
+    expect(label.style.getPropertyValue("--kind-label-zoom")).toBe("0.2");
+    expect(clip.getAttribute("style")).toBeNull();
+  });
+
+  it("is the element its canvas tells the zoom, and is forgotten when the node unmounts", () => {
+    const { container, nodeId, kindLabels, unmount } = mountNode("test.blur", { graph: named("test.blur", "blur_diffuse") });
+    const label = labelOf(container, nodeId) as HTMLElement;
+    kindLabels.attach(container);
+
+    kindLabels.apply(0.35);
+    expect(label.style.getPropertyValue("--kind-label-zoom")).toBe("0.35");
+    expect(container.getAttribute("data-kind-labels")).toBe("kind");
+
+    unmount();
+    kindLabels.apply(0.2);
+    expect(label.style.getPropertyValue("--kind-label-zoom")).toBe("0.35");
+  });
+
+  it("is not drawn for a node whose type is not installed: it has no kind", () => {
+    const { container, nodeId } = mountNode("vendor.missing", { graph: named("vendor.missing", "ghost1") });
+    expect(labelOf(container, nodeId)).toBeNull();
+  });
+});
+
+/**
+ * T639(d)/T640, AS T1593b LEAVES IT.
+ *
+ * The bug T640 fixed: an instance showed its component's name AS its name, and the type
+ * chip beside it said that name again ("animated  animated"). The fix was to make the chip
+ * the literal word "component".
+ *
+ * T1593b (ruled 2026-10-05) makes the component's own name the instance's KIND, so the
+ * same bug is now prevented at the other end, and the chip is free to say what it exists
+ * to say:
+ *
+ *  - the name is never repeated: no chip when the name carries the kind, and none on an
+ *    unnamed instance, whose shown name IS the component's name;
+ *  - when a rename has taken the kind out of the name (`holo1` on Depth Points), the chip
+ *    gives it back, as it does for a Blur renamed `Bloom pass`: it reads `Depth Points`,
+ *    which is the kind. The word "component" would not say what kind of thing it is.
+ *
+ * That the node is a component at all is carried by the version chip (and the stacked
+ * card), which every case below asserts is still there.
+ */
+describe("T639(d)/T640 — an instance never repeats its component's name, and the type chip names its kind", () => {
+  async function mountInstance(componentName: string, label?: string) {
     const { createComponentSystem } = await import("@domain/components/index.ts");
     const system = createComponentSystem(createTestRegistry().view(), [
       {
-        componentId: "animated",
+        componentId: "cmp_7",
         version: 1,
-        name: "animated",
+        name: componentName,
         graph: {
           revision: 1,
           nodes: { inner: { id: "inner", type: "test.solid", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} } },
@@ -750,16 +919,35 @@ describe("T639(d)/T640 — an instance's type label says what the node IS", () =
         parameters: [],
       } as never,
     ]);
-    const { nodeId, container } = mountNode("component:animated@1", {
-      graph: graphWith("component:animated@1"),
-      registry: system.nodes,
-      components: system.components.view(),
-    });
-    const label = container.querySelector(`[data-testid="node-type-${nodeId}"]`);
-    expect(label?.textContent).toBe("component");
-    expect(label?.textContent).not.toBe("animated");
+    const graph = graphWith("component:cmp_7@1");
+    if (label !== undefined) (graph.nodes["n1"] as { label?: string }).label = label;
+    const mounted = mountNode("component:cmp_7@1", { graph, registry: system.nodes, components: system.components.view() });
+    const { container, nodeId } = mounted;
+    return {
+      name: container.querySelector(`[data-testid="node-name-${nodeId}"]`)?.textContent,
+      type: container.querySelector(`[data-testid="node-type-${nodeId}"]`)?.textContent ?? null,
+      isComponent: container.querySelector(`[data-testid="node-component-${nodeId}"]`) !== null,
+    };
+  }
+
+  it("shows an unnamed instance's component name once: as its name, with no chip repeating it", async () => {
+    // The owner's own case ("animated"), and the usual one, where the name has a capital.
+    expect(await mountInstance("animated")).toEqual({ name: "animated", type: null, isComponent: true });
+    cleanup();
+    expect(await mountInstance("Bloom")).toEqual({ name: "Bloom", type: null, isComponent: true });
+  });
+
+  it("shows no chip while the name carries the component's name as its kind", async () => {
+    expect(await mountInstance("Depth Points", "depthpoints1")).toEqual({ name: "depthpoints1", type: null, isComponent: true });
+    cleanup();
+    expect(await mountInstance("Depth Points", "depthpoints_holo")).toEqual({ name: "depthpoints_holo", type: null, isComponent: true });
+  });
+
+  it("names the component in the chip once a rename has taken the kind out of the name", async () => {
+    expect(await mountInstance("Depth Points", "holo1")).toEqual({ name: "holo1", type: "Depth Points", isComponent: true });
   });
 });
+
 
 /**
  * T924(2) / T919 — A RE-RENDER THAT MOVED NOTHING MUST NOT ASK THE BROWSER WHERE ANYTHING IS.

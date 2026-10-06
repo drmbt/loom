@@ -9,30 +9,30 @@ Spout video today, including on Windows.
 
 Open the example and inspect the two independent branches:
 
-`signal1 → send1`, `signal1 → reference1`, `receive1 → returned1`.
+`over_signal → spoutout_send`, `over_signal → output_reference`, `spoutin_receive → output_returned`.
 
-What `signal1` sends is a **reference chart**, not a texture chosen for looks: a
+What `over_signal` sends is a **reference chart**, not a texture chosen for looks: a
 black-and-white checkerboard tinted by a four-stop colour sweep, with a marker
 crossing the frame. Each part answers a question the round trip poses — the checker
 shows resampling as moiré on its edges, the sweep shows orientation and channel
 order, and the marker shows liveness and, if the return lags, how far behind it is.
 Comparing two panes of noise, which is what this used to send, answers none of them.
 
-**reference1** shows the local animated 1920 × 1080 texture using ordinary-color
+**output_reference** shows the local animated 1920 × 1080 texture using ordinary-color
 RGBA SDR 8-bit storage. Copy either branch into a graph to prepare its layout and
-parameters. **send1** starts with Publish off. **receive1** has no selected source;
+parameters. **spoutout_send** starts with Publish off. **spoutin_receive** has no selected source;
 the example contains no fabricated machine-specific sender identity.
 
 The library marks this file **Desktop only**, **Windows**, **Not implemented**.
 Enabling Publish does not install a native adapter or make sharing work. An
 unsupported-transport diagnostic is expected, not a reason to try another format
-or lower resolution. **returned1** cannot show received video yet.
+or lower resolution. **output_returned** cannot show received video yet.
 
 ## Future Windows verification
 
 Once a real Windows adapter is implemented and qualified, the intended workflow
-is to publish **Loom E74 Spout**, select its exact discovered sender in `receive1`,
-then compare **reference1** against **returned1**. Actual pixels, synchronization,
+is to publish **Loom E74 Spout**, select its exact discovered sender in `spoutin_receive`,
+then compare **output_reference** against **output_returned**. Actual pixels, synchronization,
 adapter compatibility and teardown still require a Windows GPU test machine.
 This document is a preparation checklist, not proof those steps currently work.
 

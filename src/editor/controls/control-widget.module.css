@@ -54,6 +54,28 @@
   background: var(--signal);
   opacity: 0.85;
 }
+/*
+ * T1619b — where the default sits on a slider: two notches, top and bottom of the track, so
+ * the caption and value written inside a board slider's bar are never crossed and a low row
+ * gains no new line through its middle. Dim while the value is at the default, the text
+ * colour while it is away — not the signal colour, which is the fill it would vanish into.
+ */
+.tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  color: var(--text-dim);
+  opacity: 0.6;
+  background: linear-gradient(to bottom, currentColor 0 22%, transparent 22% 78%, currentColor 78% 100%);
+  pointer-events: none;
+}
+.tick.away,
+.home.away {
+  color: var(--text);
+  opacity: 1;
+}
 /* Square, and capped: a pad is a control, not the pane's hero (T1513b). */
 .pad {
   position: relative;
@@ -75,6 +97,36 @@
   transform: translateY(50%);
   border-radius: var(--radius-pill);
   background: var(--signal);
+}
+/* T1619b — a pad's default: a ring the puck sits in while it is there, and leaves behind. */
+.home {
+  position: absolute;
+  width: calc(var(--space-4) + 6px);
+  height: calc(var(--space-4) + 6px);
+  margin: calc((var(--space-4) + 6px) / -2) 0 0 calc((var(--space-4) + 6px) / -2);
+  transform: translateY(50%);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  opacity: 0.6;
+  pointer-events: none;
+}
+/*
+ * T1619b — a toggle that is not at its default says so with one dot in its corner. Out of
+ * flow, so the caption and the switch keep the room `board-fit.ts` measured for them.
+ */
+.offDefault {
+  position: absolute;
+  top: 0.3em;
+  right: 0.3em;
+  width: 0.4em;
+  height: 0.4em;
+  border-radius: var(--radius-pill);
+  background: var(--text);
+  pointer-events: none;
+}
+.toggle {
+  position: relative;
 }
 .toggle,
 .button {

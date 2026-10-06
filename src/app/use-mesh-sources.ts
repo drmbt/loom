@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
-import { GlbDecodeError } from "@domain/mesh/glb.ts";
+import { GlbDecodeError, type MeshFrame } from "@domain/mesh/glb.ts";
 import { storedStaticValue } from "@domain/parameters/slots.ts";
 import { meshSourceIdsFor, prepareMesh, type PreparedMesh } from "@/points/mesh.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
@@ -51,6 +51,8 @@ interface MeshRequest {
   readonly clipRate: number;
   /** T1424b: the Lamps groups — they add the `lamp` attribute, so they are part of the decode. */
   readonly lamps: string;
+  /** T1581b: the frame the vertices are decoded in. */
+  readonly frame: MeshFrame;
   /** The node's stored facts, so a written measurement re-runs the effect (T1401b: joints too — a skin changes the layout, not the counts). */
   readonly sized: string;
 }
@@ -65,6 +67,7 @@ function meshRequests(graph: GraphDocument): MeshRequest[] {
     const clip = node.parameters["clip"];
     const clipRate = node.parameters["clipRate"];
     const lamps = node.parameters["lamps"];
+    const frame = node.parameters["frame"];
     requests.push({
       nodeId: node.id,
       file,
@@ -72,7 +75,9 @@ function meshRequests(graph: GraphDocument): MeshRequest[] {
       clip: typeof clip === "string" ? clip.trim() : "",
       clipRate: typeof clipRate === "number" ? clipRate : 30,
       lamps: typeof lamps === "string" ? lamps : "",
-      sized: `${String(node.parameters["vertices"])}/${String(node.parameters["triangles"])}/${String(node.parameters["parts"])}/${String(node.parameters["joints"])}/${String(node.parameters["clips"])}/${String(node.parameters["clipFrames"])}`,
+      // T1581b: the frame the vertices are decoded in (Mesh File In's Frame).
+      frame: frame === "object" || frame === "part" ? frame : "world",
+      sized: `${String(node.parameters["vertices"])}/${String(node.parameters["triangles"])}/${String(node.parameters["parts"])}/${String(node.parameters["joints"])}/${String(node.parameters["clips"])}/${String(node.parameters["clipFrames"])}/${String(node.parameters["frameOrigin"])}`,
     });
   }
   return requests.sort((a, b) => (a.nodeId < b.nodeId ? -1 : a.nodeId > b.nodeId ? 1 : 0));
@@ -92,7 +97,7 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
 
   const requests = meshRequests(graph);
   // A flat string, so an unrelated recompile does not re-open every mesh.
-  const key = requests.map((request) => `${request.nodeId}|${request.file}|${request.select}|${request.clip}@${request.clipRate}|${request.lamps}|${request.sized}`).join("\n");
+  const key = requests.map((request) => `${request.nodeId}|${request.file}|${request.select}|${request.clip}@${request.clipRate}|${request.lamps}|${request.frame}|${request.sized}`).join("\n");
 
   useEffect(() => {
     if (backend === null || key === "") {
@@ -143,20 +148,35 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
       // T1410b: absent clip facts read as the no-clip file's ("" and 0).
       const clips = typeof parameters["clips"] === "string" ? parameters["clips"] : "";
       const clipFrames = typeof parameters["clipFrames"] === "number" ? parameters["clipFrames"] : 0;
+      // T1581b: absent reads as the world frame's (empty).
+      const frameOrigin = typeof parameters["frameOrigin"] === "string" ? parameters["frameOrigin"] : "";
       if (
         parameters["vertices"] === facts.vertices &&
         parameters["triangles"] === facts.triangles &&
         parameters["parts"] === facts.parts &&
         joints === facts.joints &&
         clips === facts.clips &&
-        clipFrames === facts.clipFrames
-      ) return true;
+        clipFrames === facts.clipFrames &&
+        frameOrigin === facts.frameOrigin
+      ) {
+        /* T1598b: Bounds sizes NOTHING, so it is not part of "sized for this file": a
+           document saved before it existed, or a mesh inside a component, still feeds.
+           It is written beside the facts, and on its own when it is all that is missing. */
+        if (parameters["bounds"] !== facts.bounds) {
+          void bus.execute(
+            "graph.applyPatch",
+            { baseRevision: bus.store.getRevision(), label: "Measure mesh", operations: [{ op: "setParameters", nodeId, parameters: { bounds: facts.bounds } }] },
+            runtimeRef.current.invocation,
+          );
+        }
+        return true;
+      }
       void bus.execute(
         "graph.applyPatch",
         {
           baseRevision: bus.store.getRevision(),
           label: "Measure mesh",
-          operations: [{ op: "setParameters", nodeId, parameters: { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints, clips: facts.clips, clipFrames: facts.clipFrames } }],
+          operations: [{ op: "setParameters", nodeId, parameters: { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints, clips: facts.clips, clipFrames: facts.clipFrames, frameOrigin: facts.frameOrigin, bounds: facts.bounds } }],
         },
         runtimeRef.current.invocation,
       );
@@ -165,11 +185,11 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
 
     void (async () => {
       for (const request of requests) {
-        const preparedKey = `${request.file}|${request.select}|${request.clip}@${request.clipRate}|${request.lamps}`;
+        const preparedKey = `${request.file}|${request.select}|${request.clip}@${request.clipRate}|${request.lamps}|${request.frame}`;
         let prepared: PreparedMesh | null;
         try {
           const cached = preparedRef.current.get(preparedKey);
-          prepared = cached !== undefined ? cached : prepareMesh(await readFile(request.file), request.select, request.clip === "" ? {} : { name: request.clip, rate: request.clipRate }, request.lamps);
+          prepared = cached !== undefined ? cached : prepareMesh(await readFile(request.file), request.select, request.clip === "" ? {} : { name: request.clip, rate: request.clipRate }, request.lamps, request.frame);
           preparedRef.current.set(preparedKey, prepared);
         } catch (error) {
           found.push({

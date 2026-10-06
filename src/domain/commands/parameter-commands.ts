@@ -30,7 +30,7 @@ import {
   slotFromValue,
   withMode,
 } from "../parameters/slots.ts";
-import { defaultParameterValue, validateParameterValue } from "../parameters/validate.ts";
+import { defaultParameterValue, undeclaredKeys, validateParameterValue } from "../parameters/validate.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
 import { encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
 import type { LoomClipboardPayload, SystemClipboard } from "./loom-clipboard.ts";
@@ -186,8 +186,26 @@ declare module "../types/commands.ts" {
     "parameter.revert": { input: ParameterRef; output: GraphPatchResult };
     /** Switch which binding is in effect, keeping every other mode's payload (§V108). */
     "parameter.setMode": { input: ParameterSetModeInput; output: GraphPatchResult };
+    /**
+     * §T1641b slice 2: remove what a node stores under keys it does not declare, which
+     * nothing reads. All of them, or the ones named. One patch, one undo step.
+     */
+    "parameter.removeUndeclared": { input: ParameterRemoveUndeclaredInput; output: ParameterRemoveUndeclaredOutput };
   }
 }
+
+export interface ParameterRemoveUndeclaredInput {
+  nodeId: NodeId;
+  /** Absent: every key the node stores and does not declare. */
+  keys?: string[];
+}
+
+export interface ParameterRemoveUndeclaredOutput extends GraphPatchResult {
+  /** The keys that left the document, sorted. Empty when the command was refused. */
+  removed: string[];
+}
+
+const removeUndeclaredSchema = z.object({ nodeId: idInput, keys: z.array(z.string().min(1)).min(1).optional() }).strict();
 
 /**
  * What a copy put on the bus-local parameter clipboard (T246, T1004).
@@ -1052,6 +1070,69 @@ export function registerParameterCommands(
       ...rejectedPatch(revision, diagnostics),
       clearedMode: null,
     }),
+  });
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════
+   * `parameter.removeUndeclared` — HOW A KEY NOTHING READS LEAVES A DOCUMENT (T1641b)
+   * ═══════════════════════════════════════════════════════════════════════════════════
+   *
+   * A stored key the node does not declare is an error at rest (`parameter.unknown`), and
+   * it has no row in the inspector to fix it from: the inspector draws what the node
+   * declares. Such a key is usually nobody's write. A shader edit dropped the field it was
+   * stored under, and the edit was right not to drop the value with it (a field renamed for
+   * one commit would lose its expression). So the finding needs a way out that is a
+   * decision: this command, offered on the Problems row. It removes ONLY what the node does
+   * not declare, in one patch, and undo brings every value back.
+   */
+  bus.registerCommand({
+    name: "parameter.removeUndeclared",
+    inputSchema: removeUndeclaredSchema,
+    description: "Remove the values a node stores under keys it does not declare, which nothing reads (T1641b).",
+    handler: (input, context) => {
+      const revision = context.store.getRevision();
+      const refused = (diagnostic: RuntimeDiagnostic) => ({
+        status: "rejected" as const,
+        output: { ...rejectedPatch(revision, [diagnostic]), removed: [] },
+        diagnostics: [diagnostic],
+      });
+      const node = context.graph.nodes[input.nodeId];
+      if (node === undefined) return refused(refuse("parameter.node", `No node "${input.nodeId}".`));
+      const definition = context.registry.get(node.type);
+      if (definition === undefined) {
+        // §V10: what a placeholder's type declares is not known to this build.
+        return refused(
+          refuse(
+            "node.unknownType",
+            `Node "${node.id}" has unknown type "${node.type}", so nothing it stores can be called undeclared.`,
+            node.id,
+            "Install the node package that defines this type before editing it (§V10).",
+          ),
+        );
+      }
+      const keys =
+        input.keys ??
+        undeclaredKeys(effectiveParameterSchema(definition, node.parameters), node.parameters, definition.retainedParameterKeys);
+      if (keys.length === 0) {
+        return refused(
+          refuse("parameter.remove.none", `Node "${node.id}" stores nothing under a key it does not declare.`, node.id),
+        );
+      }
+      // The operation is the gate: it refuses a declared key and a key that is not stored,
+      // each by name, and nothing is removed unless every key named may be.
+      const removed = [...keys].sort();
+      const patched = applyGraphPatch(
+        { baseRevision: revision, label: "Remove undeclared parameters", operations: [{ op: "removeParameters", nodeId: node.id, keys: removed }] },
+        context,
+      );
+      const diagnostics = [...(patched.diagnostics ?? patched.output.diagnostics)];
+      return {
+        status: patched.status,
+        output: { ...patched.output, diagnostics, removed: patched.status === "applied" ? removed : [] },
+        diagnostics,
+      };
+    },
+    rejectionOutput: (_input, diagnostics, revision) => ({ ...rejectedPatch(revision, diagnostics), removed: [] }),
   });
 
   /**

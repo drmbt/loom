@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { revisionWatchFor } from "./revision-watch.ts";
 import type { AgentToolSurface } from "@agent/index.ts";
 import { SHADER_SOURCE_PARAMETER } from "@domain/commands/index.ts";
 import type { AdapterIdentity } from "@domain/types/backend.ts";
@@ -380,7 +381,9 @@ export function PerformancePane({
   cookPolicy?: CookPolicyValue | undefined;
   onCookPolicyChange?: ((policy: CookPolicyValue) => void) | undefined;
 }) {
-  const { telemetry, settings } = useAppRuntime();
+  const { telemetry, settings, bus, registry } = useAppRuntime();
+  // T1652b: the count of value writes that were compiled in full, for the panel's note.
+  const valueWrites = useMemo(() => revisionWatchFor(bus.store, registry).stats, [bus, registry]);
   /*
    * B172: the reason lives in the hub and the row it qualifies lives in the card, so the
    * pane reads the one value and hands it over. Selected rather than snapshotted whole —
@@ -398,6 +401,7 @@ export function PerformancePane({
       <PerformancePanel
         telemetry={telemetry}
         fps={projectFps(settings)}
+        valueWrites={valueWrites}
         {...(cookPolicy === undefined ? {} : { cookPolicy })}
         {...(onCookPolicyChange === undefined ? {} : { onCookPolicyChange })}
       />

@@ -1,4 +1,5 @@
-import { wgsl } from "../../runtime/backend/wgsl.ts";
+import { generatedOnce, wgsl } from "../../runtime/backend/wgsl.ts";
+import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 /**
  * The surface render shader (T301): a shaded surface over a point grid with ANALYTIC
  * topology — no index buffer, no mesh asset. The vertex index IS the connectivity:
@@ -11,8 +12,17 @@ import { wgsl } from "../../runtime/backend/wgsl.ts";
  * are central differences over grid neighbours (clamped at the borders, so an edge
  * vertex uses a one-cell forward/backward difference) — analytic, per-frame correct
  * under any deform, and free of a normal-recompute pass.
+ *
+ * T1587b: `sheets` is a grid of SEVERAL SHEETS (`grid:{cols}x{rows}x{sheets}`), drawn as one
+ * draw of every sheet's cells: a vertex's cell says which sheet it is in, and no cell joins
+ * two. It is a branch in this one emitter, taken only for a claim of more than one sheet;
+ * without it the text is the one this node always had, to the byte (the Render's grid
+ * chunks say why, `GRID_SHEET_WGSL`).
  */
-export const RENDER_SURFACE_WGSL = wgsl`struct SurfaceParams {
+export const renderSurfaceWgsl = generatedOnce("renderSurfaceWgsl", buildRenderSurfaceWgsl);
+function buildRenderSurfaceWgsl(sheets: boolean): EmittedWgsl {
+  const cell = sheets ? "cell" : "quad";
+  return wgsl`struct SurfaceParams {
   viewProjection: mat4x4f,
   color: vec4f,
   cols: u32,
@@ -38,11 +48,19 @@ fn cellCorner(v: u32) -> vec2u {
   return corners[v];
 }
 
-fn gridPosition(gx: u32, gy: u32) -> vec3f {
+${
+  sheets
+    ? `/* T1587b: the sheet this vertex is in. A sheet's rows follow the one before it in the
+   buffer, and no cell joins two sheets. */
+var<private> gridSheet: u32;
+
+`
+    : ""
+}fn gridPosition(gx: u32, gy: u32) -> vec3f {
   /* Wrapped axes address modularly — the seam cell's far corner IS column/row zero. */
   let px = select(gx, gx % params.cols, params.wrapU == 1u);
   let py = select(gy, gy % params.rows, params.wrapV == 1u);
-  return positions[py * params.cols + px];
+  return positions[${sheets ? "(gridSheet * params.rows + py)" : "py"} * params.cols + px];
 }
 
 /* +1/-1 neighbours along one axis: modular when wrapped, clamped one-sided at open
@@ -59,8 +77,16 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let cellsU = select(params.cols - 1u, params.cols, params.wrapU == 1u);
   let quad = vertex / 6u;
   let corner = cellCorner(vertex % 6u);
-  let gx = (quad % cellsU) + corner.x;
-  let gy = (quad / cellsU) + corner.y;
+${
+  sheets
+    ? `  /* T1587b: a sheet is cellsU × cellsV cells, and the draw is every sheet's. */
+  let sheetCells = cellsU * select(params.rows - 1u, params.rows, params.wrapV == 1u);
+  gridSheet = quad / sheetCells;
+  let cell = quad % sheetCells;
+`
+    : ""
+}  let gx = (${cell} % cellsU) + corner.x;
+  let gy = (${cell} / cellsU) + corner.y;
 
   let world = gridPosition(gx, gy);
 
@@ -92,3 +118,4 @@ fn fs(input: VertexOut) -> @location(0) vec4f {
   let shade = AMBIENT + (1.0 - AMBIENT) * lambert;
   return vec4f(params.color.rgb * shade, params.color.a);
 }`;
+}

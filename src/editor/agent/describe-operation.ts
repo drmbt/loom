@@ -44,6 +44,8 @@ export function describeOperation(operation: GraphPatchOperation): OperationRow 
         targets: [operation.nodeId],
         detail: Object.keys(operation.parameters).sort().join(", "),
       };
+    case "removeParameters":
+      return { kind: operation.op, targets: [operation.nodeId], detail: [...operation.keys].sort().join(", ") };
     case "setShaderSource":
       return {
         kind: operation.op,

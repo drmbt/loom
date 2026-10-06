@@ -54,9 +54,9 @@ The claims measure this as an identity rather than an impression: **feed the sha
 
 ## Five looks
 
-Every row is a set of overrides on `alembic1`, at the shipped everything-else, and every row after the first is now also a **shipped file** you can open. The table exists because five entries in a gallery do not tell you that they are five settings of one thing, and this is where that is visible: five pictures, one shader, and the difference between them written out as numbers.
+Every row is a set of overrides on `wgsl_alembic`, at the shipped everything-else, and every row after the first is now also a **shipped file** you can open. The table exists because five entries in a gallery do not tell you that they are five settings of one thing, and this is where that is visible: five pictures, one shader, and the difference between them written out as numbers.
 
-**The claims file parses this table out of this document** and does two things with it. It renders all four and asserts each is far from the shipped picture *and* from every other row. And it opens the four shipped examples and asserts that **each row is exactly the difference between that document's `alembic1` and this one's** — so the table cannot drift away from the files it names, and a typo here reddens the suite instead of misleading a reader. It also refuses a row naming a parameter `alembic1` does not have.
+**The claims file parses this table out of this document** and does two things with it. It renders all four and asserts each is far from the shipped picture *and* from every other row. And it opens the four shipped examples and asserts that **each row is exactly the difference between that document's `wgsl_alembic` and this one's** — so the table cannot drift away from the files it names, and a typo here reddens the suite instead of misleading a reader. It also refuses a row naming a parameter `wgsl_alembic` does not have.
 
 Each shipped file additionally brings its own gradient; the ramp is not in the table, because the table is about the shader's coordinates.
 
@@ -116,17 +116,17 @@ The first draft of that claim measured the shipped file's pace at the end of the
 
 ## The knobs are the shader's own struct
 
-There is no project-level publish surface in this build (T1143), so the top level is `alembic1`'s own parameter page: every field of `struct Params` reflects into a named, typed control with the shader's trailing comment as its description (T880, T1053). Twenty-three of them, in four groups — the fold (`octaves`, `baseFreq`, `lacunarity`, `warpGain`, `twist`, `flow`, `drift`), the vessel (`radius`, `flare`, `squash`, `wander`, `coil`), the march (`steps`, `looseness`, `minStep`, `travel`, `lens`) and the light (`exposure`, `depthFade`, `paletteAxis`, `paletteScale`, `paletteBias`, `grain`).
+There is no project-level publish surface in this build (T1143), so the top level is `wgsl_alembic`'s own parameter page: every field of `struct Params` reflects into a named, typed control with the shader's trailing comment as its description (T880, T1053). Twenty-three of them, in four groups — the fold (`octaves`, `baseFreq`, `lacunarity`, `warpGain`, `twist`, `flow`, `drift`), the vessel (`radius`, `flare`, `squash`, `wander`, `coil`), the march (`steps`, `looseness`, `minStep`, `travel`, `lens`) and the light (`exposure`, `depthFade`, `paletteAxis`, `paletteScale`, `paletteBias`, `grain`).
 
 Every one of them moves the picture, and that was measured rather than assumed: perturbing each by 30% on its own, the *smallest* effect in the file is `depthFade`, which still changes 78% of the frame by more than a quantisation step. The largest single change is not a knob at all — it is replacing the ramp with flat grey.
 
 ## The chain
 
 ```
-palette1(ramp) -> alembic1(customWgsl) -> out1(output)
+ramp_palette(ramp) -> wgsl_alembic(customWgsl) -> output1(output)
 ```
 
-`out1` tone-maps with `none` on purpose: `tanh` has already done that job inside the shader, and a filmic curve on top would be tone-mapping a tone-mapped image.
+`output1` tone-maps with `none` on purpose: `tanh` has already done that job inside the shader, and a filmic curve on top would be tone-mapping a tone-mapped image.
 
 ## Reproducibility
 

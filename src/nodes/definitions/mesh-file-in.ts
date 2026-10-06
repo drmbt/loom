@@ -1,7 +1,7 @@
 import type { CompiledNodeDescription, NodeDefinition, PointsetAttributeRef } from "../../domain/types/node-definition.ts";
 import type { DispatchPassDescriptor } from "../../runtime/backend/plan.ts";
 import { scratchResourceId } from "../../compiler/resources.ts";
-import { MESH_ATTRIBUTES, meshLayout, meshSourceIdsFor } from "../../points/mesh.ts";
+import { MESH_ATTRIBUTES, meshLayout, meshSourceIdsFor, parseMeshBounds } from "../../points/mesh.ts";
 import { formatTopology } from "../../points/topology.ts";
 import { MESH_CLIP_WGSL } from "../shaders/mesh-clip.wgsl.ts";
 import { MESH_LAMPS_WGSL } from "../shaders/mesh-lamps.wgsl.ts";
@@ -19,6 +19,15 @@ import { attributeBinding, packedPointStorage } from "./point-storage.ts";
  * this node's index buffer, so a Geometry in Surface mode draws the triangles — and
  * everything between can treat the vertices as points: a Point Kernel animates a part
  * (`p.surface.w` is its index) or tears the mesh apart, and the claim survives it.
+ *
+ * ## A frame (T1581b)
+ *
+ * World (the default) is the sentence above. Frame: Object and Frame: Part decode the
+ * selection in a node's OWN frame instead — one object's authored vertices exactly, or a
+ * `loom_part`'s with its pivot at the origin — which is the shape a Geometry in Instances
+ * mode draws at every point (its Shape Mesh input). The loader reports the frame it found in
+ * Frame Origin. The decode is where it is decided because that is where a node's world
+ * matrix exists (`domain/mesh/glb.ts`, `MeshFrame`).
  *
  * ## Sizes are parameters, bytes are a source
  *
@@ -71,7 +80,7 @@ export const meshFileInNode: NodeDefinition = {
   title: "Mesh File In",
   category: "points",
   description:
-    "Loads a glTF binary (.glb) as a pointset: one point per vertex with position, normal, uv, color, surface (roughness, metallic, heat, part) and emissive, in world space, with the triangles riding the edge as mesh topology. Wire it to a Geometry in Surface mode to draw it, or through a Point Kernel first to move its parts — objects exported with a loom_part property carry their part's index in surface.w. Select keeps only matching object, part or material names (globs), which is how a scene bigger than one buffer splits across several of these. A skinned file also carries joints (four joint indices) and weights per vertex, with the joint table (index:name<parent@head) in Joints, for a Point Kernel to pose; an unskinned object parented to a bone (sunglasses on the head) is bound wholly to that joint, so it rides the pose. Vertices, Triangles, Parts and Joints are measured from the file by the loader. Draws nothing until a file is loaded.",
+    "Loads a glTF binary (.glb) as a pointset: one point per vertex with position, normal, uv, color, surface (roughness, metallic, heat, part) and emissive, in world space, with the triangles riding the edge as mesh topology. Wire it to a Geometry in Surface mode to draw it, to its Shape Mesh input to instance it, or through a Point Kernel first to move its parts — objects exported with a loom_part property carry their part's index in surface.w. Select keeps only matching object, part or material names (globs), which is how a scene bigger than one buffer splits across several of these. A skinned file also carries joints (four joint indices) and weights per vertex, with the joint table (index:name<parent@head) in Joints, for a Point Kernel to pose; an unskinned object parented to a bone (sunglasses on the head) is bound wholly to that joint, so it rides the pose. Vertices, Triangles, Parts and Joints are measured from the file by the loader. Draws nothing until a file is loaded.",
   tags: ["mesh", "gltf", "glb", "file", "import", "blender", "geometry", "points", "skin", "skeleton", "rig"],
   inputs: [],
   outputs: [
@@ -91,6 +100,27 @@ export const meshFileInNode: NodeDefinition = {
       compileTime: true,
       description:
         "Space-separated globs (* and ?) matched against each object's name, its part's name and its material's name; a leading ! drops what matches. Empty keeps everything. Changing it re-reads the file and re-measures Vertices, Triangles, Parts and Joints for what it keeps (the app's loader and offline renders alike, T1416b).",
+    },
+    frame: {
+      type: "enum",
+      label: "Frame",
+      default: "world",
+      group: "File",
+      options: [
+        { value: "world", label: "World" },
+        { value: "object", label: "Object" },
+        { value: "part", label: "Part" },
+      ],
+      description:
+        "T1581b: the frame the vertices are in. World bakes every object's place in the file into its vertices — a set, drawn where the file puts it. Object is the selection's own frame (one object: its authored vertices exactly, wherever the file placed it; several: the lowest object that holds them all) — the SHAPE a Geometry in Instances mode draws at every point. Part is the frame of the loom_part the selection lies in, its pivot at the origin. Frame Origin reports the frame and where it stands in the file. Changing it re-reads the file.",
+    },
+    frameOrigin: {
+      type: "string",
+      label: "Frame Origin",
+      default: "",
+      group: "File",
+      description: "name@x,y,z — the object whose frame the vertices are in (Frame: Object or Part) and where it stands in the file's world, in metres. Empty under Frame: World.",
+      inactiveWhen: () => MEASURED,
     },
     vertices: {
       type: "number",
@@ -121,6 +151,16 @@ export const meshFileInNode: NodeDefinition = {
       group: "File",
       compileTime: true,
       description: "index:name for every loom_part the selection holds — the numbers a kernel branches on (surface.w).",
+      inactiveWhen: () => MEASURED,
+    },
+    bounds: {
+      type: "string",
+      label: "Bounds",
+      default: "",
+      group: "File",
+      compileTime: true,
+      description:
+        "T1598b: x,y,z,r — the sphere that holds every vertex of the selection, in the frame the vertices are in, metres. A Geometry drawing this mesh as a Surface, straight from this node, uses it to leave the mesh out of a point light's shadow sweep that cannot reach it. A kernel or a clip between here and the Geometry moves the vertices, so the sphere is not passed on and the mesh is always drawn. Empty: unknown, always drawn.",
       inactiveWhen: () => MEASURED,
     },
     clip: {
@@ -255,6 +295,9 @@ export const meshFileInNode: NodeDefinition = {
     const clip = playClip(nodeId, parameters, { vertices, skinned, empty, rest: pairs, poseSource: sources.pose });
     if ("refusal" in clip) return { passes: [], diagnostics: [clip.refusal] };
     const lit = lampPass(nodeId, parameters, { vertices, empty, groups: lamps.length, rest: pairs });
+    /* T1598b: the measured sphere holds the REST vertices. A clip poses them on the GPU,
+       so with one playing nothing here knows where they are. */
+    const bounds = empty || clip.passes.length > 0 ? undefined : parseMeshBounds(parameters["bounds"]);
     return {
       passes: [...clip.passes, ...lit.passes],
       scratch: [
@@ -268,6 +311,7 @@ export const meshFileInNode: NodeDefinition = {
           pairs: { ...pairs, ...clip.pairs, ...lit.pairs },
           capacity: vertices,
           topology: formatTopology({ kind: "mesh", triangles, indexBuffer }),
+          ...(bounds === undefined ? {} : { bounds }),
         },
       },
     };

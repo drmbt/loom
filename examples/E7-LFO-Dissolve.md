@@ -7,7 +7,7 @@ The animation stack end to end. The only example where the thing that moves is a
 
 ```
 noise1(noise, perlin4d) ─► cross1.in1 ─┐
-checker1(checker) ───────► cross1.in2 ─┴─► cross1(cross) ─► out1(output)
+checker1(checker) ───────► cross1.in2 ─┴─► cross1(cross) ─► output1(output)
 
 lfo1(lfo) ┄┄drives┄┄► cross1.cross
 ```

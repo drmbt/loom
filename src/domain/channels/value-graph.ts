@@ -1,14 +1,15 @@
-import { authoredGraph, type GraphDocument } from "../types/graph.ts";
+import type { FlatGraph, GraphDocument } from "../types/graph.ts";
 import type { NodeId, PortId } from "../types/ids.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../types/frame.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { NodeDefinition, ValueChannels } from "../types/node-definition.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
-import type { ChannelResolver, ParameterMorphs } from "../parameters/resolve.ts";
+import type { ChannelResolver } from "../parameters/resolve.ts";
 import { resolveParameterSchema, effectiveParameterSchema } from "../parameters/resolve.ts";
 import { bypassPassthroughPorts } from "../graph/bypass.ts";
-import { parameterDependencies } from "../graph/parameter-dependencies.ts";
-import { NO_FLATTENING, parameterReadOptions } from "../parameters/node-references.ts";
+import { nodeNames } from "../graph/names.ts";
+import { bindingTargets, parameterDependencies } from "../graph/parameter-dependencies.ts";
+import { parameterReadOptions, type FlatteningReads } from "../parameters/node-references.ts";
 
 /**
  * The value graph (T273/T274, §V179): TD's CHOP layer, CPU-side, evaluated once per
@@ -103,19 +104,29 @@ export interface ValueGraphResult {
 
 export interface ValueGraphSession {
   evaluate(
-    graph: GraphDocument,
+    /**
+     * §T1552b/§T1559b: the FLATTENING (`runtime.flattened.current().graph`). A component's
+     * value nodes exist only there (T615), so the authored document is a type error here.
+     */
+    graph: FlatGraph,
     frame: FrameEvaluationInput,
-    extras?: {
+    extras: {
+      /**
+       * §T1559b: what the flattening knows, WHOLE — the runtime passes its `FlattenedGraph`
+       * (§T1551b), the one `graph` came from. Its morphs in flight: a widget or a Constant a
+       * bank recalls with a morph publishes the FADING value, the same number the plan's
+       * uniforms carry that frame (T1497b, §V61, §V109). And its instances: a value node's
+       * own parameter reads `op('<instance>').chan.<c>` as the compiler does (T1485b).
+       *
+       * REQUIRED, as every field of a `ParameterReadContext` is (§T1551b): while it was
+       * optional the reader was built with no instances and nothing failed to compile. A
+       * caller with no flattening behind its graph says so by name, with `NO_FLATTENING`.
+       */
+      flattening: FlatteningReads;
       pointer?: { x: number; y: number; buttons: number };
       audio?: AudioFeatures;
       /** T654: external channels (analyze, or anything published) for `channelIn`. */
       channels?: (name: string) => number | undefined;
-      /**
-       * T1497b: the preset morphs in flight (`FlattenedGraph.morphs`). A widget or a
-       * Constant a bank recalls with a morph publishes the FADING value, the same number
-       * the plan's uniforms carry that frame — one read path (§V61, §V109).
-       */
-      morphs?: ParameterMorphs;
     },
   ): ValueGraphResult;
   /** Clears every node's persistent state (§V181) — transport reset, backward seek. */
@@ -140,8 +151,9 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
       states.clear();
     },
 
-    evaluate(graph, frame, extras = {}) {
+    evaluate(graph, frame, extras) {
       const diagnostics: RuntimeDiagnostic[] = [];
+      const { flattening } = extras;
 
       interface Member {
         readonly nodeId: NodeId;
@@ -186,6 +198,29 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
       let dependencies = dependenciesByGraph.get(graph);
       if (dependencies === undefined) {
         const authored = parameterDependencies(graph);
+        /*
+         * T1485b: `op('<instance>')` names no node of the flattening (the instance was
+         * inlined), so `parameterDependencies` finds nothing for it. The read goes to the
+         * inner nodes the instance's value outputs publish from, and it has to be ordered
+         * after them like any other reference — or a reader whose id sorts first reads a
+         * bag that is not published yet. The instances are the flattening's own, so they
+         * are as fixed as the graph this memo is keyed on.
+         */
+        const named = flattening.instanceChannels.size === 0 ? null : nodeNames(graph);
+        const readsOf = (owner: NodeId): NodeId[] => {
+          const reads = (authored.get(owner) ?? [])
+            .filter((reference) => reference.kind === "reference" || reference.kind === "driven")
+            .map((reference) => reference.to);
+          if (named === null) return reads;
+          for (const target of bindingTargets(graph.nodes[owner]?.parameters ?? {})) {
+            if (target.kind !== "reference") continue;
+            for (const source of flattening.instanceChannels.get(target.address) ?? []) {
+              const publisher = named.get(source.publisher);
+              if (publisher !== undefined) reads.push(publisher);
+            }
+          }
+          return reads;
+        };
         const compiled = new Map<NodeId, Set<NodeId>>();
         for (const target of members.keys()) {
           const sources = new Set<NodeId>();
@@ -195,12 +230,11 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
             const owner = pending.pop()!;
             if (visited.has(owner)) continue;
             visited.add(owner);
-            for (const reference of authored.get(owner) ?? []) {
-              if (reference.kind !== "reference" && reference.kind !== "driven") continue;
-              if (members.has(reference.to)) sources.add(reference.to);
+            for (const read of readsOf(owner)) {
+              if (members.has(read)) sources.add(read);
               // A nonvalue parameter owner may itself read a value channel. Walk that
               // chain once when the graph changes, without evaluating any node's state.
-              else pending.push(reference.to);
+              else pending.push(read);
             }
           }
           if (sources.size > 0) compiled.set(target, sources);
@@ -255,12 +289,7 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
         if (valueNames.has(name)) return resolver(channel, context);
         return extras.channels?.(channel);
       };
-      // §T1551b/§T1552b (migrated by the lead when `createParameterReadOptions` was removed):
-      // `evaluate` still takes a plain `GraphDocument`, so the graph is labelled authored here;
-      // the frame path hands it the flattening — type `evaluate` as `FlatGraph` when this lands.
-      const readOptions = parameterReadOptions({ graph: authoredGraph(graph), registry, channels, frame,
-        flattening: { ...NO_FLATTENING, ...(extras.morphs === undefined ? {} : { morphs: extras.morphs }) },
-      });
+      const readOptions = parameterReadOptions({ graph, registry, channels, frame, flattening });
       /** Publishes a node's bag. A node that never calls this is SILENT (see the note). */
       const publish = (nodeId: NodeId, bag: ValueChannels): void => {
         // Non-finite numbers never leave a stage: downstream math on NaN is a graph

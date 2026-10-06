@@ -23,36 +23,36 @@ without.
 ## Graph
 
 ```
-ripple1(noise) ─► bed1(level) ─────────────► sum1(add).in2
-swell1(circle, centre ┄ driftx1/drifty1) ──► sum1.in1
-                                              │        order 0
-                                              ├──────────────► pick1(switch, index 0)
-cam1(webcam) ─────────────────────────────────┘        order 1        │
-                                                                      ▼
-                             roof1(analyze, max) ◄────────────────────┤
-                                    │                                 ▼
-     ceil1(channelIn) ─► roofsafe1(valueLimit) ┄┄► whitelevel of norm1(level)
-                                                                      │
-                    ┌─────────────────────────────────────────────────┤
-     cycle1(lfo) ┄┄► offset of                                        │
-palette1(ramp) ─► coat1(lookup) ◄─────────────────────────────────────┤ (colour)
-                    │                                                 │
-                    │        now1(cache, 1 back) ◄────────────────────┤
-                    │        past1(cache, 6 back) ◄───────────────────┤
-                    │                └──► moved1(difference) ─► stir1(level)
-                    │                                                 │
-                    │                        heat1(add) ◄── norm1 + stir1
-                    ▼                              │
-                 braid1(reorder) ◄─────────────────┘
+noise_ripple(noise) ─► level_bed(level) ─────────────► add_sum(add).in2
+circle_swell(circle, centre ┄ lfo_driftx/lfo_drifty) ──► add_sum.in1
+                                                          │        order 0
+                                                          ├──────────────► switch_pick(switch, index 0)
+webcam1(webcam) ──────────────────────────────────────────┘        order 1               │
+                                                                                         ▼
+                             analyze_roof(analyze, max) ◄────────────────────────────────┤
+                                                  │                                      ▼
+     channelin_ceil(channelIn) ─► limit_roofsafe(valueLimit) ┄┄► whitelevel of level_norm(level)
+                                                                                              │
+                    ┌─────────────────────────────────────────────────────────────────────────┤
+     lfo_cycle(lfo) ┄┄► offset of                                                             │
+ramp_palette(ramp) ─► lookup_coat(lookup) ◄───────────────────────────────────────────────────┤ (colour)
+                        │                                                                     │
+                        │        cache_now(cache, 1 back) ◄───────────────────────────────────┤
+                        │        cache_past(cache, 6 back) ◄──────────────────────────────────┤
+                        │                     └──► difference_moved(difference) ─► level_stir(level)
+                        │                                                                     │
+                        │                        add_heat(add) ◄── level_norm + level_stir
+                        ▼                                 │
+                 reorder_braid(reorder) ◄─────────────────┘
                         rgb = paletted colour, alpha = luminance + movement
-                                              │
-grid1(pointGrid 480×220) ─► bridge1(textureToAttribute) ─► lift1(pointKernel)
-  beat1(audioPattern) ─► bsub1(valueMath) ─► env1(valueLag) ─► kick1(valueMath) ┄┄► lift1.value1
-                                              │
-                    phosphor1(materialUnlit) ─┴─► body1(geometry: instances, tint ← sample)
-                    eye1(camera, eye.x ┄ sway1)
-                    shot1(render) ─┬─► halo1(blur) ─┐
-                                   └────────────────┴─► burn1(add) ─► out1
+                                                    │
+grid1(pointGrid 480×220) ─► sample_bridge(textureToAttribute) ─► kernel_lift(pointKernel)
+  pattern_beat(audioPattern) ─► math_bsub(valueMath) ─► lag_env(valueLag) ─► math_kick(valueMath) ┄┄► kernel_lift.value1
+                                                         │
+                    material_phosphor(materialUnlit) ────┴─► geometry_body(geometry: instances, tint ← sample)
+                    camera_eye(camera, eye.x ┄ lfo_sway)
+                    render_shot(render) ─┬─► blur_halo(blur) ─┐
+                                         └────────────────────┴─► add_burn(add) ─► output1
 ```
 
 ## The understudy pattern (§V411)
@@ -61,13 +61,13 @@ grid1(pointGrid 480×220) ─► bridge1(textureToAttribute) ─► lift1(pointK
 a live input at all — and that is precisely why `webcam` shipped **dead** for months (B39):
 nothing used it, so nothing ever compiled its shader or bound its external texture.
 
-`pick1` dissolves the conflict. **A Switch selects a resource; it does not prune the branch
+`switch_pick` dissolves the conflict. **A Switch selects a resource; it does not prune the branch
 it did not select.** So this file opens playing a synthetic performer — a soft dome
-wandering over a rolling sea of noise — *and* `cam1` is in the graph, in the plan, and
+wandering over a rolling sea of noise — *and* `webcam1` is in the graph, in the plan, and
 compiled on a real device by `examples.gpu.test.ts`. That is the integration gate §V362
 names as the only one we have, and it is the gate B39 escaped.
 
-Move `pick1.index` to 1 and it is your camera. Nothing else in the graph changes.
+Move `switch_pick.index` to 1 and it is your camera. Nothing else in the graph changes.
 
 **The order is load-bearing, and it bit while this was being built.** A variadic port's
 input order lives on the EDGES (§V131/T225), and an edge with no declared order falls
@@ -105,7 +105,7 @@ The bridge mapped `position.y = -1` to `uv.y = 0`, and `uv.y = 0` is **texel row
 row an output node shows at the *top* of the frame. World +y is up, so `position.y = -1`
 draws at the *bottom*. Every texture-to-points bridge therefore handed the picture back
 mirrored across the horizon. Nothing caught it because the understudy — noise plus a
-centred dome — has no top and no bottom; flip `pick1` to the webcam and it was your own
+centred dome — has no top and no bottom; flip `switch_pick` to the webcam and it was your own
 face, upside down.
 
 The one-node probe that settled it is worth copying: a `circle` at `center.y = 0.2`
@@ -124,15 +124,15 @@ read the mapping there rather than assuming, because assuming is exactly what B1
 
 ### The height came out of the palette, which is why it was "weak"
 
-`lift1` took luminance off the **coated** colour. That palette's luminance runs 0.02, 0.14,
+`kernel_lift` took luminance off the **coated** colour. That palette's luminance runs 0.02, 0.14,
 0.28, 0.49, 0.95 across its stops — monotone, but wildly non-linear. Four fifths of the
 source got squashed into the bottom half of the height range and the last fifth exploded,
 so the shipped picture was a flat plate with a single needle spike in it.
 
-`braid1` is the fix, and it generalises. **The bridge is four channels wide and a
+`reorder_braid` is the fix, and it generalises. **The bridge is four channels wide and a
 displacement only needs one**: a Reorder puts the paletted colour in rgb and the *raw*
 source luminance in alpha, so one texture crosses one bridge carrying two different fields.
-`lift1` reads `sample.a` for shape and `sample.rgb` for colour, and the palette is free to
+`kernel_lift` reads `sample.a` for shape and `sample.rgb` for colour, and the palette is free to
 be chosen for how it looks instead of doubling as a height transfer function.
 
 ### The camera looked down the height axis
@@ -161,13 +161,13 @@ the historical Rutt–Etra frame, which is what this document is quoting.
 So the sheet now stands at **70° off the floor**, not the 90° the report named. 90° with a
 camera in front puts the view direction straight back down the height axis — exactly the
 86% failure above — and it removes both cues this example reads by, with no third one to
-fall back on: `phosphor1` is **unlit**, so there is no shading here and a raking key, a
+fall back on: `material_phosphor` is **unlit**, so there is no shading here and a raking key, a
 bas-relief's usual mechanism, is not available. What remains is silhouette and scan-line
 bunching, and both are obliquity cues. Leaning back 20° keeps the eye about 20–25° off the
 sheet's normal: the image reads face-on and the relief still has somewhere to project.
 
 **The sway became load-bearing in the same move.** With no light and no shading, parallax
-is the only depth cue left, so `sway1` swinging `eye.x` ±1.15 at 0.024 Hz — ±16° at this
+is the only depth cue left, so `lfo_sway` swinging `eye.x` ±1.15 at 0.024 Hz — ±16° at this
 distance — is what makes the near ridges slide against the far ground. Laid down it was a
 garnish; stood up it is the reason you can see depth at all.
 
@@ -177,7 +177,7 @@ Owner: *"i think relief when driving with camera and a rather dark image is kind
 and needs to react more to darker colors and movement of these."*
 
 That is not a taste note, it is a description of the mechanism working exactly as built.
-`braid1` puts the source's own luminance in alpha and `lift1` pushes each point out in
+`reorder_braid` puts the source's own luminance in alpha and `kernel_lift` pushes each point out in
 proportion to it, so **the sheet IS this frame's luminance histogram stood on edge** — and
 a dark room's histogram is a narrow band near zero. Every point lands at nearly the same
 height and the relief flattens. Rendered against a dimmed understudy (×0.14, this
@@ -191,8 +191,8 @@ reported.
 second customer arriving from video after audio. It is not. **A texture already has the
 primitive**: `analyze` reduces its input to average / minimum / **maximum** and publishes
 the number as a driven channel (T236, §V144) — E14 has been closing an image→parameter loop
-with it since T654. So `roof1` measures the top of the source's range and drives the white
-point of `norm1`, and the picture is re-ranged **before anything reads it**: the colour, the
+with it since T654. So `analyze_roof` measures the top of the source's range and drives the white
+point of `level_norm`, and the picture is re-ranged **before anything reads it**: the colour, the
 height and the motion are all downstream of one Level. Dimmed ×0.14 the frame comes back to
 **0.1961**, past the lit original, with the palette's whole climb in use again.
 
@@ -206,7 +206,7 @@ black point from the measured *minimum* would push pixels negative on the two co
 node cannot avoid: `analyze` reduces a **64×64 subsample**, so the true per-pixel floor can
 sit below the number being subtracted, and it answers with the **last completed frame**
 (§V144), so a frame that just got darker is already below it. A pure gain has neither
-failure. `roofsafe1` floors the divisor at 0.06 — the white point is a *divisor*, so an
+failure. `limit_roofsafe` floors the divisor at 0.06 — the white point is a *divisor*, so an
 unfloored channel on a frame that goes black is a divide-by-nothing — which caps the gain at
 about 17×: two and a half stops past the dark fixture, and short of amplifying sensor noise
 into a mountain range.
@@ -229,7 +229,7 @@ moved one file over: `cache` six frames back, `difference`, a `level` to range i
 `add` so the height is luminance **plus** movement. Move, and you stand further out of the
 sheet.
 
-**It reads off `norm1`, not off `pick1`, and that order is the whole finding.** The natural
+**It reads off `level_norm`, not off `switch_pick`, and that order is the whole finding.** The natural
 reading is that a dark scene has little luminance but plenty of motion, so the motion term
 carries the frame exactly where the luminance term is starved. **It does not, and the frame
 says so**: a frame difference of a dark picture is dark by the same factor. The motion rig
@@ -238,9 +238,9 @@ change at all, still a navy rectangle. Auto-gain first is what gives the differe
 to be a difference *of*. These are not two independent fixes; (a) is the precondition for (b).
 
 With the gain in front of it, the motion term is not decoration either: at
-`stir1.whitelevel` 0.6 — E41's own number, kept rather than re-fitted, because the
+`level_stir.whitelevel` 0.6 — E41's own number, kept rather than re-fitted, because the
 difference is taken off a source normalised to the same range in both files — it moves
-**56% of the frame's pixels, mean |Δ| 18.7/255**, against the same graph with `stir1`
+**56% of the frame's pixels, mean |Δ| 18.7/255**, against the same graph with `level_stir`
 bypassed.
 
 **The understudy is an honest but weak witness for this half, and this is the place that
@@ -252,9 +252,9 @@ same claim to be legible (§V687). The witness for *the moving part stands out* 
 ### Both sides of the difference come out of a ring, and that is the frame-0 fix
 
 §V229 says a Cache tap reads the **oldest slice written** rather than black, and it does —
-*from frame 1 onward*. Measured: `past1` holds frame 0's picture at frames 1…6 while the
+*from frame 1 onward*. Measured: `cache_past` holds frame 0's picture at frames 1…6 while the
 ring fills. On **frame 0** there is no oldest slice yet and the tap reads black, so a
-difference taken against the live source is `picture − black` = the whole picture: `stir1`
+difference taken against the live source is `picture − black` = the whole picture: `level_stir`
 measured **mean 0.935, peak 1.72** on frame 0 against 0.015 from frame 1 on, and the sheet
 opened over-lifted and blown (whole-frame mean 0.256 against a steady 0.178).
 
@@ -263,7 +263,7 @@ That is §V732's transient exactly — the one that was baked into a baseline an
 guard it with `ctx.firstRun` because the decision lived in a **spawn hook**; here the motion
 is already summed into alpha before any kernel sees it, so the guard has to be structural.
 **Taking the near side out of a ring too** makes frame 0 `black − black` = 0 and leaves every
-later frame identical: `now1` at index 1 needs a two-slice ring, the cheapest allocation the
+later frame identical: `cache_now` at index 1 needs a two-slice ring, the cheapest allocation the
 node allows. Frame 0 now measures 0.1752 against 0.1721 at frame 1 — no flash.
 
 ## T809 — two optional knobs, and *optional* is measured
@@ -280,19 +280,19 @@ and inert.
 
 ### The audio scales the LIFT, not the exposure
 
-`beat1(audioPattern)` → `bsub1` subtracts the low band's T701 rest of 0.713 → `env1`
-follows the envelope (T820, below — this is the node that stops it jittering) → `kick1`
-multiplies by the knob → `lift1.value1`, and the kernel reads it as
+`pattern_beat(audioPattern)` → `math_bsub` subtracts the low band's T701 rest of 0.713 → `lag_env`
+follows the envelope (T820, below — this is the node that stops it jittering) → `math_kick`
+multiplies by the knob → `kernel_lift.value1`, and the kernel reads it as
 `height * (1.05 + ctx.value1)`. The sheet stands further out on the kick.
 
 **It could not go on the white point, and that is §V730.** The height is `luminance ×
-exposure` since T797, and `norm1.whitelevel` already has a driver — `roof1`'s measurement
+exposure` since T797, and `level_norm.whitelevel` already has a driver — `analyze_roof`'s measurement
 of the frame. A second driver there would be two decisions on one number, and the one that
 lost would be the auto-gain this file exists to have. The lift amplitude is the term
 *downstream* of everything the exposure decided, so audio scales it and the re-ranging is
 untouched.
 
-Measured at `kick1.operand = 1` (a full strike is the low band's 0.26 excursion, so the lift
+Measured at `math_kick.operand = 1` (a full strike is the low band's 0.26 excursion, so the lift
 runs 1.05 → 1.31, about a quarter more relief):
 
 | arm | frame | mean display luma | mean \|Δ\| vs. the same frame at rest |
@@ -321,7 +321,7 @@ every four bars.
 
 ### The colour travels along the ramp, and it does not rotate around it
 
-`cycle1(lfo, sine, 0.035 Hz)` → `coat1.offset`. Measured at amplitude 0.1: mean |Δ| luma
+`lfo_cycle(lfo, sine, 0.035 Hz)` → `lookup_coat.offset`. Measured at amplitude 0.1: mean |Δ| luma
 0.0464 at the bottom of the swing and 0.0485 at the top on the lit understudy, 0.0405 at
 the bottom on the dark fixture — and the dark frame at the cool end still reads **0.1641**
 mean, clear of the 0.12 floor and nowhere near the 0.0159 the original report measured.
@@ -329,7 +329,7 @@ The white crest cools through orange to magenta and back over about 29 seconds, 
 line walks down the sheet, and the composition is the same at every point of the swing.
 
 **And it is a SWEEP, not a cycle. The wrap-around was tried first and it takes the picture
-apart.** The move that would make it a true cycle is `palette1.phase` — Ramp's shader ends
+apart.** The move that would make it a true cycle is `ramp_palette.phase` — Ramp's shader ends
 in `fract(raw)` (T556), so a phase drive walks every colour past every stop and returns,
 which is exactly what a Rutt–Etra colouriser does. Rendered at four phases across one turn
 on the lit understudy at frame 90:
@@ -344,53 +344,53 @@ on the lit understudy at frame 90:
 That is not tuning, it is structural. **This ramp is monotone in luminance by design** —
 T503 chose a near-black foot and a white crest so the colour climbs with the height — and
 rotating a monotone table makes it non-monotone. The instant "brighter" stops meaning
-"further up the ramp", the relief loses the only reading it has, because `phosphor1` is
+"further up the ramp", the relief loses the only reading it has, because `material_phosphor` is
 unlit and there is no shading to fall back on. Wired at zero it would be a knob that looks
 broken the moment anyone turns it, so **it is not wired**, and the frames are recorded here
 rather than the option being quietly dropped.
 
-`coat1.offset` has the opposite property for the opposite reason: Lookup's shader is
+`lookup_coat.offset` has the opposite property for the opposite reason: Lookup's shader is
 `clamp(index * scale + offset, 0, 1)`, so it slides and clamps instead of wrapping, and the
 monotone mapping survives. Sliding **down** is the free direction; sliding **up** buys the
 summit's detail at the top stop, which is why the swing is small. Negative is also the
 direction that could have walked a dark frame back toward the flat plate T797 fixed, and
 the gate measures that it does not.
 
-**Neither knob can reach the geometry from the colour side, or vice versa.** `braid1`
+**Neither knob can reach the geometry from the colour side, or vice versa.** `reorder_braid`
 carries the shape in alpha and the colour in rgb (T503), so the audio drive is height-only
 and the palette drive is colour-only. Neither touches the exposure loop or the motion path.
 
 ## What else it proves
 
-**T478: per-point colour reaches the scene pipeline.** `body1`'s `tint` is in map mode on
+**T478: per-point colour reaches the scene pipeline.** `geometry_body`'s `tint` is in map mode on
 the bridged `sample`, so the palette colour multiplies the material's base colour *per
 point*. Before T478 a scene-pipeline draw had one colour per object and per-point colour
 lived only on the legacy renderers — a deep 3D example had to choose. This one does not,
 and it needs no albedo map and no uv mapping to do it.
 
-**Unlit is the look, not a shortcut.** A phosphor has no diffuse response. `shot1` names no
+**Unlit is the look, not a shortcut.** A phosphor has no diffuse response. `render_shot` names no
 lights at all, so nothing shades these quads and the colour is exactly the sample. A lit
 material here would multiply the palette by a lambert term and the panel would fall dark at
 its edges — plausible, and wrong.
 
 **The aspect fix lives in the kernel.** The bridge maps `position.xy * 0.5 + 0.5` to uv, so
-the sampling grid *has* to span [-1,1] on both axes — a square. The source is 16:9. `lift1`
+the sampling grid *has* to span [-1,1] on both axes — a square. The source is 16:9. `kernel_lift`
 therefore samples on the square and stretches x by 16/9 on the way out: read square, drawn
 wide, one line, and the only place the aspect appears.
 
 ## The numbers that are constraints, not taste
 
-- **`body1.scale` must stay under half the point spacing.** The sheet is 3.56 world units
+- **`geometry_body.scale` must stay under half the point spacing.** The sheet is 3.56 world units
   across 480 columns, so the points are 0.0074 apart; a quad half-extent at or above 0.0037
   closes every gap and the scan lines fuse into a solid slab. The first build ran 0.0075 and
   rendered one flat sheet with every wire correct. Pinned by test.
-- **`swell1.fillcolor` stays under 1.0** because `bed1` is added on top of it. A dome
+- **`circle_swell.fillcolor` stays under 1.0** because `level_bed` is added on top of it. A dome
   already at full brightness clips flat where the two meet, and the mountain comes out with
   a scooped, level summit.
-- **`lift1` returns `sample.a` to 1 before the draw.** `body1` maps that same attribute onto
+- **`kernel_lift` returns `sample.a` to 1 before the draw.** `geometry_body` maps that same attribute onto
   the material tint, and a tint whose alpha still carried the height would have made the low
   ground transparent as well as dark.
-- **`swell1.softness` is larger than its radius**, which is E13's finding: past the radius a
+- **`circle_swell.softness` is larger than its radius**, which is E13's finding: past the radius a
   Circle is a *dome* rather than a disc, and a disc lifts as a cylinder with a cliff edge.
 
 ## No tone map, deliberately
@@ -401,7 +401,7 @@ Worth stating because this looks like an HDR image and is not one: the bloom is 
 an add inside the working range, not a highlight rolloff.
 
 **Re-measured after T797, because an auto-gain is exactly the change that would break it**:
-0.9995 at frames 0, 1, 2, 90 and 240 on the lit understudy and on the dark fixture. `norm1`
+0.9995 at frames 0, 1, 2, 90 and 240 on the lit understudy and on the dark fixture. `level_norm`
 does push its own output past 1 (peak 1.035 on the lit source, which is the clip the shipped
 file was quietly taking), but that is a *height* field, not a colour — the palette is what
 sets the drawn colour and its top stop is 1.0.
@@ -410,47 +410,47 @@ sets the drawn colour and its top stop is 1.0.
 
 - **A black frame on open** → the switch is selecting the webcam. Either `index` moved or
   an edge lost its `order` and the id tiebreak took over.
-- **One flat glowing sheet, no scan lines** → `body1.scale` grew past half the point
+- **One flat glowing sheet, no scan lines** → `geometry_body.scale` grew past half the point
   spacing and the quads closed the gaps.
 - **The picture is there but lies flat** → the sample stopped reaching the height term in
-  `lift1`. This is the failure the GPU control catches; nothing structural can see it.
-- **The sheet is on its back again** → the rotation in `lift1` collapsed to 0°, which is
+  `kernel_lift`. This is the failure the GPU control catches; nothing structural can see it.
+- **The sheet is on its back again** → the rotation in `kernel_lift` collapsed to 0°, which is
   exactly the old lay-down mapping (`y = h`, `z = −v`). That is the check the coefficients
   were chosen against, so a sheet on the floor means the sines and cosines were swapped.
-- **The terrain is a flat plate with one spike in it** → `lift1` went back to reading
-  luminance off `coat1` instead of `braid1`'s alpha, and the palette is acting as the height
+- **The terrain is a flat plate with one spike in it** → `kernel_lift` went back to reading
+  luminance off `lookup_coat` instead of `reorder_braid`'s alpha, and the palette is acting as the height
   curve again.
-- **The picture is mirrored top-to-bottom** → the bridge's uv mapping changed and `lift1`'s
+- **The picture is mirrored top-to-bottom** → the bridge's uv mapping changed and `kernel_lift`'s
   z sign did not follow it, or vice versa. The two move together (B105/T512), and the
   understudy cannot show you: pin the dome at one end of the source to find out which way
   round it is.
 - **The panel darkens toward its edges** → the material became lit, or a light list
-  appeared on `shot1`.
-- **The mountain has a level, scooped summit** → `swell1.fillcolor` went to 1.0 and the add
+  appeared on `render_shot`.
+- **The mountain has a level, scooped summit** → `circle_swell.fillcolor` went to 1.0 and the add
   is clipping.
 - **The relief is squashed to 9:16** → the kernel's aspect stretch was removed.
-- **A dark source is a flat plate again** → the exposure loop is open. Either `roof1` lost
-  its input edge, or `norm1.whitelevel` fell back to static, or `roofsafe1` was renamed —
+- **A dark source is a flat plate again** → the exposure loop is open. Either `analyze_roof` lost
+  its input edge, or `level_norm.whitelevel` fell back to static, or `limit_roofsafe` was renamed —
   the channel is the node's *name* (§V129), so a rename silently drops the drive back to its
   1.0 fallback and every symptom is "it looks like it did before T797".
-- **A dark source blows out into white spray** → `roofsafe1.minimum` went below 0.06 and the
+- **A dark source blows out into white spray** → `limit_roofsafe.minimum` went below 0.06 and the
   gain is amplifying whatever the source's noise floor is.
-- **Dark pixels go negative / the low ground turns to holes** → someone drove `norm1` or
-  `stir1`'s `blacklevel` from the measured minimum. §V694: a black point is a subtraction,
+- **Dark pixels go negative / the low ground turns to holes** → someone drove `level_norm` or
+  `level_stir`'s `blacklevel` from the measured minimum. §V694: a black point is a subtraction,
   this target does not clamp, and `analyze` is both subsampled and one frame late.
-- **The first frame is blown and over-lifted, then it settles** → `moved1`'s near side went
-  back to reading the live source instead of `now1`. On frame 0 a ring reads black, so the
+- **The first frame is blown and over-lifted, then it settles** → `difference_moved`'s near side went
+  back to reading the live source instead of `cache_now`. On frame 0 a ring reads black, so the
   first difference is the whole picture (§V732's transient, §V769's thumbnail).
-- **The whole sheet boils** → `stir1.whitelevel` dropped; it is a *divisor*, so smaller is
+- **The whole sheet boils** → `level_stir.whitelevel` dropped; it is a *divisor*, so smaller is
   louder. 0.12 shreds the surface into a spray, which is what the tuning pass rejected.
 - **The shipped file no longer matches its pre-T809 frames** → one of the two knobs left
-  zero. `kick1.operand` and `cycle1.amplitude` are both 0 in the shipped file and the
+  zero. `math_kick.operand` and `lfo_cycle.amplitude` are both 0 in the shipped file and the
   identity gate reads exactly 0 differing pixels; anything else means a default moved.
 - **Black holes in the summit, or the dome inverted to a silhouette** → someone drove
-  `palette1.phase`. See T809 above: a wrap-around rotation of a monotone palette is
+  `ramp_palette.phase`. See T809 above: a wrap-around rotation of a monotone palette is
   non-monotone, and this file's only depth cues are silhouette and scan-line bunching.
-  The rotation that ships is `coat1.offset`, which clamps rather than wraps.
-- **The relief pumps on every frame instead of on the beat** → `bsub1`'s rest subtraction
+  The rotation that ships is `lookup_coat.offset`, which clamps rather than wraps.
+- **The relief pumps on every frame instead of on the beat** → `math_bsub`'s rest subtraction
   moved off the low band's T701 value of 0.713, so the drive no longer returns to zero
   between kicks.
 
@@ -476,8 +476,8 @@ people actually meet it. Verdict: **ships.**
 
 The shipped understudy is **lit**, which is very probably why the flat-in-the-dark
 behaviour shipped at all: nothing in the gate or the look pass had ever asked this file for
-a dark frame. So this pass was run against a dimmed copy of the understudy (`bed1.brightness`
-and `swell1.fillcolor` both ×0.14 — the same picture, one fourteenth of the light), at
+a dark frame. So this pass was run against a dimmed copy of the understudy (`level_bed.brightness`
+and `circle_swell.fillcolor` both ×0.14 — the same picture, one fourteenth of the light), at
 1280×720, frames 0, 90 and 240, and the frames were **looked at** rather than read off the
 numbers (§V732: a baseline delta has no sign).
 
@@ -498,7 +498,7 @@ arm refutes the reading that motion carries a frame whose luminance is starved.
 **The lit case did not break, which was the other half of the brief.** Side by side with the
 pre-T797 frame at 90 and 240: the same composition — teal valleys, magenta ridge line, white
 crest, dome silhouette against the far ground, scan lines bunching on the rising slopes. It
-is slightly hotter (0.1812 against 0.1713) because `norm1` re-ranges a source that peaked at
+is slightly hotter (0.1812 against 0.1713) because `level_norm` re-ranges a source that peaked at
 1.035 and was clipping, and slightly crisper because the motion term adds high-frequency
 relief. It still reads at 220px. Verdict: **ships.**
 
@@ -514,8 +514,8 @@ Owner, on the T809 chain: *"relief audioreactivity is too glitchy and jumpy and 
 
 They were right, and the cause is one sentence: **T809 wired a raw per-frame band value
 straight to the lift.** No smoothing anywhere, so every frame's value was a height, and
-`beat1`'s strike has an *instant* attack — `exp(-beatPhase * 7)` is 1.0 on the beat
-boundary. Measured on the drive at `kick1.operand = 1`: the value jumped its whole **0.262**
+`pattern_beat`'s strike has an *instant* attack — `exp(-beatPhase * 7)` is 1.0 on the beat
+boundary. Measured on the drive at `math_kick.operand = 1`: the value jumped its whole **0.262**
 excursion in **one 16 ms frame**, then sagged to ~0 before the next beat. Snap, collapse,
 repeat. That is not a musical response, it is a strobe.
 
@@ -526,14 +526,14 @@ frame 225:
 | --- | --- | --- | --- |
 | audio **off** (the shipped gain) | 0.0244 | 0.0228 | 0.0228 — the file's own motion floor |
 | raw drive, gain 1 | **0.0649** | 0.0228 | 0.038 – 0.042 |
-| `env1`, gain 1 | **0.0478** | 0.0243 | 0.026 |
+| `lag_env`, gain 1 | **0.0478** | 0.0243 | 0.026 |
 
 Subtracting the audio-off floor gives the part the audio is responsible for: **0.0405 on the
 strike frame, cut to 0.0234 — 42% less**, and the frames *between* strikes fall from ~0.016
 down to ~0.003, about **80% less**. The peak keeps **71%** of the raw excursion, so the kick
 still reads as a kick.
 
-### `env1` is an envelope follower, and it is one node only because of T814
+### `lag_env` is an envelope follower, and it is one node only because of T814
 
 `valueLag` with **`lag` 0.04** and **`releaseRatio` 8**: a 40 ms attack, so a strike still
 lands inside three frames, and a 320 ms release, so at 112 bpm it has decayed to about a
@@ -546,16 +546,16 @@ Before T814 gave the smoother a `releaseRatio`, fast-attack/slow-release took a 
 chain of three or four nodes, rebuilt per example and tuned against a fixture — the exact
 duplication T738 measured and T821 exists to end. Here it is one node with two knobs.
 
-**Do not "simplify" this node away.** A straight `bsub1 → kick1` wire is not a shorter
+**Do not "simplify" this node away.** A straight `math_bsub → math_kick` wire is not a shorter
 spelling of this graph; it is the bug the owner reported. If you are reading this because
-`env1` looks redundant with the gain at zero — it is inert at zero *by construction*, like
+`lag_env` looks redundant with the gain at zero — it is inert at zero *by construction*, like
 everything else T809 added, and the moment anyone turns the knob up it is the difference
 between a pump and a strobe.
 
 ### The order is still the identity
 
-The chain is now **bias → envelope → gain**, and `kick1` still multiplies **last**. Anything
-finite times zero is zero, so `env1` costs T809's identity claim nothing, and that is
+The chain is now **bias → envelope → gain**, and `math_kick` still multiplies **last**. Anything
+finite times zero is zero, so `lag_env` costs T809's identity claim nothing, and that is
 measured rather than argued: **12 of 12 byte hashes identical** across frames 0, 1, 2, 60, 90
 and 240, on the lit understudy *and* the ×0.14 dark fixture, before and after this node
 joined the graph. The envelope belongs between the bias and the gain rather than after it —

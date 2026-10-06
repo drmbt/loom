@@ -8,40 +8,40 @@ A number leaves this document as an OSC message, travels out of the browser thro
 
 ## The design decision that makes it runnable by anybody
 
-An OSC example that needs a phone running TouchOSC, or a lighting desk, or a second machine, is an example nobody runs. So both ends are the same machine and the same process: `send1` transmits to `127.0.0.1:9107` and `hear1` listens on `127.0.0.1:9107`. One helper owns both sockets — the ingress socket binds loopback and takes no host at all, the egress socket is the one the OS gives an ephemeral port — so the datagram genuinely leaves this machine's UDP stack and genuinely comes back into it. Nothing is faked and nothing is short-circuited in software.
+An OSC example that needs a phone running TouchOSC, or a lighting desk, or a second machine, is an example nobody runs. So both ends are the same machine and the same process: `oscout_send` transmits to `127.0.0.1:9107` and `oscin_hear` listens on `127.0.0.1:9107`. One helper owns both sockets — the ingress socket binds loopback and takes no host at all, the egress socket is the one the OS gives an ephemeral port — so the datagram genuinely leaves this machine's UDP stack and genuinely comes back into it. Nothing is faked and nothing is short-circuited in software.
 
 ## A bare round trip proves nothing, so this one transforms
 
 If the graph sent a number and read the same number back, the picture would be a tautology: the value that returns is the value you sent, and a wire that did nothing would look identical. So the number is not arbitrary — it is a **measurement of the picture itself** — and what returns **drives that picture**.
 
 ```
-wash1(ramp) ------------------------------+
-bed1(noise) -> bedclip1(limit) -----------+
-gate1(rectangle) -------------------------+-> field1(add) -> dim1(level) -+-> win1(crop) -> meter1(analyze)
-sweep1(lfo) -> beam1(circle) -------------+                              |
-                                                                         +-> plate1(over) -> out1(output)
-meter1 ~~> probe1(channelIn) -> wire1(valueMath) -> send1(oscOut)   [127.0.0.1:9107 /loom/relay]
+ramp_wash(ramp) ------------------------------+
+noise_bed(noise) -> limit_bedclip(limit) -----------+
+rectangle_gate(rectangle) -------------------------+-> add_field(add) -> level_dim(level) -+-> crop_win(crop) -> analyze_meter(analyze)
+lfo_sweep(lfo) -> circle_beam(circle) -------------+                              |
+                                                                         +-> over_plate(over) -> output1(output)
+analyze_meter ~~> channelin_probe(channelIn) -> math_wire(valueMath) -> oscout_send(oscOut)   [127.0.0.1:9107 /loom/relay]
                                                         |
                                               ~~~ a UDP datagram, out of the page ~~~
                                                         |
-hear1(oscIn) [listening on 9107] -+-> ctl1(valueMath) ~~> dim1.brightness
-                                  +-> penB1(valueMath) ~~> penb1(circle)
-wire1 -> penA1(valueMath) ~~> pena1(circle)
-pena1 -> ink1(over) <- penb1 ;  ink1 -> tape1(over) <- roll1(transform) <- hist1(feedback)
-tape1 -> plate1 ; panel1(rectangle) -> plate1
+oscin_hear(oscIn) [listening on 9107] -+-> math_ctl(valueMath) ~~> level_dim.brightness
+                                  +-> math_penB(valueMath) ~~> circle_penb(circle)
+math_wire -> math_penA(valueMath) ~~> circle_pena(circle)
+circle_pena -> over_ink(over) <- circle_penb ;  over_ink -> over_tape(over) <- transform_roll(transform) <- feedback_hist(feedback)
+over_tape -> over_plate ; rectangle_panel(rectangle) -> over_plate
 ```
 
-`meter1` reduces the marked window to the **brightest** luminance inside it; the beam sweeping through the window is what makes that number rise and fall. `wire1` normalises it onto 0…1. `send1` puts it on the wire. `hear1` reads it back. `ctl1` turns it into `dim1`'s brightness, with its output bounds **inverted** — brighter window, higher reading, lower brightness — so the loop is negative feedback and settles instead of running away.
+`analyze_meter` reduces the marked window to the **brightest** luminance inside it; the beam sweeping through the window is what makes that number rise and fall. `math_wire` normalises it onto 0…1. `oscout_send` puts it on the wire. `oscin_hear` reads it back. `math_ctl` turns it into `level_dim`'s brightness, with its output bounds **inverted** — brighter window, higher reading, lower brightness — so the loop is negative feedback and settles instead of running away.
 
 E14 Self-Regulating Bloom closes exactly this loop inside the process, with `channelIn` feeding a proportional controller. **This is that same loop with the wire replaced by a UDP socket**, and the extra latency is the whole demonstration.
 
 ## The chart is the latency, drawn
 
-`pena1` (amber, thin) plots what was sent this frame. `penb1` (cyan, thick) plots what has come back. Both draw at x = 0.94 and the whole strip scrolls left, so **x is time** and a feature that appears in cyan some frames after it appeared in amber sits **further to the right by exactly the round trip**.
+`circle_pena` (amber, thin) plots what was sent this frame. `circle_penb` (cyan, thick) plots what has come back. Both draw at x = 0.94 and the whole strip scrolls left, so **x is time** and a feature that appears in cyan some frames after it appeared in amber sits **further to the right by exactly the round trip**.
 
 Two details that are not decoration:
 
-- `roll1` translates by exactly **eight texels** of a 1280-wide frame. A fractional shift resampled a few hundred times turns a trace into fog; an exact texel shift is a bilinear identity, so the history stays a line.
+- `transform_roll` translates by exactly **eight texels** of a 1280-wide frame. A fractional shift resampled a few hundred times turns a trace into fog; an exact texel shift is a bilinear identity, so the history stays a line.
 - The strip's x axis is **frames, not seconds** — it is the feedback loop's own step. At 60 fps the trace reads as a smooth curve; drop the frame rate and the same signal draws steeper, because the beam has moved further between two pens that are still eight pixels apart.
 
 The reading's working span is set at 0.075…0.42 against measured extremes of **0.041 and 0.447** across fifteen seconds, so the trace has flat rails top and bottom. That is deliberate: a square-ish edge is the easiest feature there is to line up between two traces.
@@ -50,7 +50,7 @@ The reading's working span is set at 0.075…0.42 against measured extremes of *
 
 **This is the first example in the catalogue that cannot fully render standalone.** A browser page cannot open a UDP socket — that is the entire reason a local helper exists — so the round trip needs that helper running and paired. The document is built for that state rather than apologising for it:
 
-- **`oscIn` always publishes.** An unheard address falls to its declared Rest, so `hear1` reads **0.420**, `ctl1` reads **1.080**, and `dim1` sits at a fixed, well-exposed brightness. The picture is a picture.
+- **`oscIn` always publishes.** An unheard address falls to its declared Rest, so `oscin_hear` reads **0.420**, `math_ctl` reads **1.080**, and `level_dim` sits at a fixed, well-exposed brightness. The picture is a picture.
 - **The cyan trace goes dead flat** while the amber one keeps moving. One live trace and one straight line is a legible statement that nothing is coming back. It is not a dead frame and it is not a lie that looks like it is working.
 - **The reason reaches a surface, and this document draws no text to do it.** With no helper attached, the problems pane carries three rows against these two nodes — one for the send that went nowhere, two for the listeners — each naming the helper and the exact command to start it. That command is spelled in exactly one place in the source (`src/devices/helper.ts`), which is why this page does not repeat it: a second copy is a second thing to go stale, and the app is the surface that should be answering "what do I run?" anyway.
 
@@ -64,7 +64,7 @@ So a document that wants to transmit has to **say where**. This one says `127.0.
 
 ## Units, and why the normalise is on the sending side
 
-`wire1` normalises before the send and `ctl1` denormalises after the receive. That is not symmetry for its own sake. What goes on the wire should be in the units the far end expects, because **the far end might not be you**: point `send1` at a lighting desk and 0…1 is what a fader wants, and point any other sender at port 9107 and 0…1 is what this document promises to accept. Both remaps clamp, so a value arriving from anywhere cannot drive the picture past its rails.
+`math_wire` normalises before the send and `math_ctl` denormalises after the receive. That is not symmetry for its own sake. What goes on the wire should be in the units the far end expects, because **the far end might not be you**: point `oscout_send` at a lighting desk and 0…1 is what a fader wants, and point any other sender at port 9107 and 0…1 is what this document promises to accept. Both remaps clamp, so a value arriving from anywhere cannot drive the picture past its rails.
 
 Two things the transport does to the number, worth knowing before you go looking for them:
 
@@ -81,8 +81,8 @@ This is the part it would be easy to lie about, so it is written out in full.
 | --- | --- |
 | the two halves name the same port and the same address — the circuit is a circuit | `src/examples/relay-circuit.test.ts` |
 | a number the graph derived goes out over a **real UDP datagram** and comes back as itself (f32 rounding asserted, not hidden in a tolerance), and is **not** the Rest value | `src/examples/relay-circuit.test.ts` |
-| the returned number reaches `dim1.brightness` through the real expression reader, at the value `ctl1`'s arithmetic says, and differs from the no-helper brightness | `src/examples/relay-circuit.test.ts` |
-| `hear1` publishes exactly its declared Rest with no resolver at all — the no-helper picture | `src/examples/relay-circuit.test.ts` |
+| the returned number reaches `level_dim.brightness` through the real expression reader, at the value `math_ctl`'s arithmetic says, and differs from the no-helper brightness | `src/examples/relay-circuit.test.ts` |
+| `oscin_hear` publishes exactly its declared Rest with no resolver at all — the no-helper picture | `src/examples/relay-circuit.test.ts` |
 | every driven channel in the document actually moves when its sources move, `oscIn`'s included | `src/examples/driven-channel-motion.test.ts` |
 | UDP bytes → `oscIn` → a driven parameter, across the loopback bridge, from the helper's side | `src/devices/device-bridge.test.ts` |
 | `oscOut` sends only what the document configured, honours its Rate, and refuses with no destination | `src/app/use-osc-bridge.test.tsx` |
@@ -95,20 +95,20 @@ This is the part it would be easy to lie about, so it is written out in full.
 
 **The documented manual check**, run against this file on macOS with the device-only helper:
 
-1. Opened with **no helper**: `hear1` published 0.420, `ctl1` 1.080, the cyan trace was flat, and the problems pane carried the three rows described above, naming the helper and the command.
+1. Opened with **no helper**: `oscin_hear` published 0.420, `math_ctl` 1.080, the cyan trace was flat, and the problems pane carried the three rows described above, naming the helper and the command.
 2. **Paired** with the device-only helper: the helper logged the device attachment and bound `UDP 127.0.0.1:9107` — the port this document names — and the two listener warnings cleared.
-3. An external OSC sender pushed `/loom/relay` at port 9107: `hear1` moved to **0.583**, `ctl1` to **1.019**, `penB1` to **0.828**, and the picture's exposure and the cyan pen followed. **The ingress half is verified live, in the browser, end to end.**
+3. An external OSC sender pushed `/loom/relay` at port 9107: `oscin_hear` moved to **0.583**, `math_ctl` to **1.019**, `math_penB` to **0.828**, and the picture's exposure and the cyan pen followed. **The ingress half is verified live, in the browser, end to end.**
 4. The egress half's last leg — the tab's own `oscOut` datagram completing the circuit inside the app — was **not** observed in that session: the tab was background-throttled to a fraction of a frame per second and its transport had been rewound by an edit, and the pump's rate limiter is keyed on transport time, so a clock that jumps backwards pins it until the clock catches up. Worth knowing if you try this and see the send warning persist: let the transport run past where it was, or reload.
 
 ## Motion is not on the loop
 
-`sweep1` is a free-running LFO and `bed1` is a moving 4D noise, so the picture animates whether or not a helper is anywhere near it. That is a requirement rather than a nicety: every headless gate renders this file with no device attached, so an example whose only motion came from the round trip would read as a still to all of them — and, worse, would look broken to anybody who opened it before starting the helper.
+`lfo_sweep` is a free-running LFO and `noise_bed` is a moving 4D noise, so the picture animates whether or not a helper is anywhere near it. That is a requirement rather than a nicety: every headless gate renders this file with no device attached, so an example whose only motion came from the round trip would read as a still to all of them — and, worse, would look broken to anybody who opened it before starting the helper.
 
 Measured through the look instrument's own arithmetic: mean |Δ| linear luma between frame 60 and frame 180 is **0.03841**, the 0.1st-to-99.9th percentile luma span is **0.4071**, and the gallery card's brightest pixel is **0.3945** against a 0.0018 floor. All four are the file's committed look baseline.
 
 ## The window is painted because a sensor you cannot see is a sensor nobody believes
 
-`gate1` and `win1` are the same four numbers — the marker is derived from the crop rather than typed twice — and the marker is composited **before** `dim1`, so the controller scales it along with everything else it measures. A marker outside the loop would be a constant the loop could not see, and the reader would have to be told that instead of watching it.
+`rectangle_gate` and `crop_win` are the same four numbers — the marker is derived from the crop rather than typed twice — and the marker is composited **before** `level_dim`, so the controller scales it along with everything else it measures. A marker outside the loop would be a constant the loop could not see, and the reader would have to be told that instead of watching it.
 
 Two conventions meet at that derivation and both were learned by rendering the crop on its own and looking at where it landed: `crop` measures v from the **bottom** while the generators measure their centre from the **top**, and `rectangle`'s size is a **half-extent**, not a width.
 

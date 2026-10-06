@@ -91,23 +91,32 @@ export class Plate {
     this.remove(id);
   }
 
-  /** Remove a label from a space-separated label list parameter (a Render's scenes or lights). */
+  /** Remove a name from a space-separated name list parameter (a Render's scenes or lights). */
   dropFromList(id: string, parameter: string, label: string): void {
     const list = String(this.node(id).parameters[parameter] ?? "").split(" ").filter((entry) => entry !== "" && entry !== label);
     this.set(id, { [parameter]: list.join(" ") });
   }
 
   /**
-   * Every node and edge, ids and labels prefixed so two plates share one graph. A label is
-   * referenced by other nodes (op('cam1') in expressions, a Render's `scenes`, a Feedback's
-   * `source`), so every single-line string in every parameter has its label tokens renamed
-   * too; multi-line strings are WGSL and are left alone.
+   * Every node and edge, ids and names prefixed so two plates share one graph. A name keeps
+   * its kind and takes the prefix on its role (T1593b): `render_shot` is `render_carshot`, and
+   * a node named for its kind alone (`camera1`) takes the prefix as its role (`camera_car`).
+   * A name is referenced by other nodes (op('camera1') in expressions, a Render's `scenes`, a
+   * Feedback's `source`), so every single-line string in every parameter has its name tokens
+   * renamed too; multi-line strings are WGSL and are left alone.
    */
   prefixed(prefix: string): { nodes: GraphNode[]; edges: GraphEdge[] } {
-    const labels = [...this.nodes.values()].map((entry) => entry.label).filter((label): label is string => label !== undefined);
-    const pattern = labels.length === 0 ? undefined : new RegExp(`(?<![A-Za-z0-9_])(${labels.sort((a, b) => b.length - a.length).map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![A-Za-z0-9_])`, "g");
+    const names = new Map<string, string>();
+    for (const entry of this.nodes.values()) {
+      if (entry.label === undefined) continue;
+      // the kind is the name up to its first underscore, or all of it but a number
+      const at = entry.label.indexOf("_");
+      names.set(entry.label, at < 0 ? `${entry.label.replace(/[0-9]+$/, "")}_${prefix}` : `${entry.label.slice(0, at)}_${prefix}${entry.label.slice(at + 1)}`);
+    }
+    if (new Set(names.values()).size !== names.size) throw new Error(`plate: two nodes would share a name under the prefix "${prefix}" (two numbered nodes of one kind?).`);
+    const pattern = names.size === 0 ? undefined : new RegExp(`(?<![A-Za-z0-9_])(${[...names.keys()].sort((a, b) => b.length - a.length).map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![A-Za-z0-9_])`, "g");
     const rename = (value: unknown): unknown => {
-      if (typeof value === "string") return pattern === undefined || value.includes("\n") ? value : value.replace(pattern, `${prefix}$1`);
+      if (typeof value === "string") return pattern === undefined || value.includes("\n") ? value : value.replace(pattern, (name) => names.get(name) ?? name);
       if (Array.isArray(value)) return value.map(rename);
       if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, rename(entry)]));
       return value;
@@ -115,7 +124,7 @@ export class Plate {
     const nodes = [...this.nodes.values()].map((entry): GraphNode => ({
       ...entry,
       id: `${prefix}_${entry.id}`,
-      ...(entry.label === undefined ? {} : { label: `${prefix}${entry.label}` }),
+      ...(entry.label === undefined ? {} : { label: names.get(entry.label) ?? entry.label }),
       parameters: rename(entry.parameters) as GraphNode["parameters"],
     }));
     const edges = [...this.edges.values()].map((entry): GraphEdge => ({
@@ -140,7 +149,7 @@ export function soleCycFigure(plate: Plate): string {
   for (const id of skins.slice(1)) {
     const figure = id.slice("skin_".length);
     plate.remove(id, `geo_${figure}`);
-    plate.dropFromList("shot", "scenes", `geo${figure}1`);
+    plate.dropFromList("shot", "scenes", `geometry_${figure}`);
   }
   const skin = plate.node(kept);
   const parameters = Object.fromEntries(Object.entries(skin.parameters).filter(([key]) => ["capacity", "attributes", "kernel"].includes(key)));
@@ -159,7 +168,7 @@ export function cycKey(plate: Plate, parameters: Record<string, StoredParameter>
   if (first === undefined) throw new Error("plate: the cyc graph has no key lights (did shots/cyc.ts change?).");
   for (const id of keys.slice(1)) {
     plate.remove(id);
-    plate.dropFromList("shot", "lights", `${id}1`);
+    plate.dropFromList("shot", "lights", `light_${id}`);
   }
   plate.set(first, parameters);
 }

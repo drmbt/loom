@@ -9,7 +9,7 @@ import type { Pointer } from "./helpers.ts";
 describe("E13 Prism", () => {
   const { document, plan } = example("E13-Prism.loom.json");
 
-  /** The scene draws, in the order `shot1.scenes` lists them. */
+  /** The scene draws, in the order `render_shot.scenes` lists them. */
   const sceneDraws = (source: CompiledGraph): readonly DrawPassDescriptor[] =>
     source.passes.filter(
       (entry): entry is DrawPassDescriptor => entry.kind === "draw" && entry.id.includes(":scene:"),
@@ -26,7 +26,7 @@ describe("E13 Prism", () => {
   /**
    * THE MESH AND THE OPTICS READ ONE NUMBER, and nothing in the compiler checks that.
    *
-   * `form1` builds the prism and `optics1` solves Snell's law against the plane its two
+   * `kernel_form` builds the prism and `kernel_optics` solves Snell's law against the plane its two
    * refracting faces lie in. They agree only because a rounded triangle's straight run
    * sits at d·cos(60°) + ρ from the axis, and with d = RC − 2ρ that is RC/2 for EVERY
    * corner radius — a sharp triangle's inradius, unmoved by the rounding that makes the
@@ -52,7 +52,7 @@ describe("E13 Prism", () => {
    * ONE SOURCE, TWO READINGS (§V471.1), traced through the plan rather than read off the
    * node names.
    *
-   * `optics1` writes one pointset and two Geometries draw it, so the structure is a
+   * `kernel_optics` writes one pointset and two Geometries draw it, so the structure is a
    * SELECTION and not more nodes. What makes that checkable without a picture is the
    * `group_role` binding: a draw pass acquires it only because a group predicate names an
    * attribute, so it is present exactly when the split exists — and the surface draw must
@@ -297,7 +297,7 @@ describe("E13 Prism", () => {
   /**
    * THE BODY TILTS WITH THE SAME POINTER THAT AIMS THE BEAM (T928 — §T914 assessed this
    * as "zero gap" and it then went unbuilt; this gate is what keeps that from happening
-   * silently again). form1's value1/value2 ride follow1 exactly as the optics' do: one
+   * silently again). kernel_form's value1/value2 ride lag_follow exactly as the optics' do: one
    * hand, two reads, both positional, both decay-free (T915b's property holds here by
    * construction — same lag, same axes).
    */
@@ -321,7 +321,7 @@ describe("E13 Prism", () => {
 
   /**
    * T934 — THE DRIFT AND THE AIM ARE SEPARATE CHANNELS, and the T915b property survives
-   * the body coming back to life. With the pointer PARKED: form1's drift slots genuinely
+   * the body coming back to life. With the pointer PARKED: kernel_form's drift slots genuinely
    * oscillate (the owner's passive movement — two sines at incommensurate frequencies,
    * a clock, not an RNG), while the aim does not move by a millionth. This is the gate
    * that keeps T934 from quietly undoing T915.
@@ -352,7 +352,7 @@ describe("E13 Prism", () => {
    * ordered rather than merely colourful.
    *
    * `t` indexes the band; n = 1.50 + value2·t decides how far it bends, and the SAME `t`
-   * samples `spectrum1` for its colour. Break the tie — colour the bands from anything
+   * samples `ramp_spectrum` for its colour. Break the tie — colour the bands from anything
    * else — and the picture is a rainbow that is not a spectrum, which is the failure that
    * looks like success. The tie is a wire (the ramp reaches the kernel's `field` input,
    * so `fieldAt` is legal at all) plus one line of arithmetic, and both are checked here;
@@ -388,7 +388,7 @@ describe("E13 Prism", () => {
   /**
    * THE DISPERSIVE POWER IS A DOCUMENT PARAMETER, not a constant buried in the kernel.
    *
-   * `optics1.value2` is the whole span of n across the band. It has to reach the dispatch
+   * `kernel_optics.value2` is the whole span of n across the band. It has to reach the dispatch
    * as a number for the gate that mutes it to mean anything — a mute that changed nothing
    * because the kernel had its own hard-coded span would pass and prove the opposite of
    * what it claims (§V655).

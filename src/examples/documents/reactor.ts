@@ -10,13 +10,13 @@ import { REACTOR_HAZE_WGSL, REACTOR_WGSL } from "../shaders/reactor.wgsl.ts";
  * laser-ish, audio-reactive to a degree, and parametric enough to tune divisions, layers
  * and the rest from the top.
  *
- *   bed1(noise) ─► reactor1(customWgsl: the nested-shell raymarcher) ─► add1 ─► grade1(hsv) ─► out1
+ *   noise_bed(noise) ─► wgsl_reactor(customWgsl: the nested-shell raymarcher) ─► add1 ─► hsv_grade(hsv) ─► output1
  *                                  │                                     ▲
- *                                  └─► cut1(level) ─► blur1 ─► gain1(level) ┘   (the bloom)
+ *                                  └─► level_cut(level) ─► blur1 ─► level_gain1(level) ┘   (the bloom)
  *
- *   music1(audioPattern) ─► source1(valueSwitch) ─► env1(valueLag) ─► levelx1 ─► levelb1 ┄level┄► reactor1.coreGain
- *   track1(audioFileIn)  ─┘                                         ├► lowx1   ─► lowb1   ┄low┄►   reactor1.laserGain
- *                                                                   └► highx1  ─► highb1  ┄highMid┄► reactor1.facet
+ *   pattern_music(audioPattern) ─► switch_source(valueSwitch) ─► lag_env1(valueLag) ─► math_levelx ─► math_levelb ┄level┄► wgsl_reactor.coreGain
+ *   audiofile_track(audioFileIn)  ─┘                                         ├► math_lowx   ─► math_lowb   ┄low┄►   wgsl_reactor.laserGain
+ *                                                                   └► math_highx  ─► math_highb  ┄highMid┄► wgsl_reactor.facet
  *
  * ## Why one shader and not the scene pipeline
  *
@@ -24,7 +24,7 @@ import { REACTOR_HAZE_WGSL, REACTOR_WGSL } from "../shaders/reactor.wgsl.ts";
  * pipeline's `materialGlass` is one screen-space read of what the opaque pass already drew,
  * so glass behind glass does not refract, and its lights are directional or point with no
  * medium for a beam to be seen in. Faking a light-emitting nested ball out of additive beams
- * and bloom would be pretending. `reactor1` is E46 Lantern's lane taken into 3D: analytic
+ * and bloom would be pretending. `wgsl_reactor` is E46 Lantern's lane taken into 3D: analytic
  * sphere crossings for the shells (no sphere-tracing artefacts on the glass), a Worley
  * partition of the direction for the organic frame, Fresnel-split facets for the disco
  * reading, and two volume integrals — the emissive core and the shell-gated haze that turns
@@ -33,7 +33,7 @@ import { REACTOR_HAZE_WGSL, REACTOR_WGSL } from "../shaders/reactor.wgsl.ts";
  * ## The knobs ARE the shader's `struct Params` (T880)
  *
  * There is no project-level publish surface (§T1143 records the gap, found here and by
- * §T1125 the same night), so the top level IS `reactor1`'s own page: every art-direction
+ * §T1125 the same night), so the top level IS `wgsl_reactor`'s own page: every art-direction
  * decision — `layers`, `divisions`, `frameWidth`, `shellGap`, the glass (`ior`, `dispersion`,
  * `facet`), the light (`coreGain`, `coreColor`, `edgeColor`, `laserGain`, `laserCount`,
  * `haze`), the motion (`spin`, `turbulence`, `orbit`), and `frameColor`, `distance`,
@@ -50,9 +50,9 @@ import { REACTOR_HAZE_WGSL, REACTOR_WGSL } from "../shaders/reactor.wgsl.ts";
  *
  * ## Audio, the catalogue's fixed shape (E31/E35/E51)
  *
- * `music1` is the synthetic pattern — no microphone, no asset, replayable by construction —
- * and `track1` is your own file one drop away, with `source1` choosing between them so the
- * two never merge onto one port. `env1` smooths; each `valueMath` pair is an affine map from
+ * `pattern_music` is the synthetic pattern — no microphone, no asset, replayable by construction —
+ * and `audiofile_track` is your own file one drop away, with `switch_source` choosing between them so the
+ * two never merge onto one port. `lag_env1` smooths; each `valueMath` pair is an affine map from
  * a band's real range (measured on the shipped pattern, see the pair docblocks) onto the
  * range the knob wants, so silence sits at a picture and a hit lands where it should.
  *
@@ -200,14 +200,14 @@ import { REACTOR_HAZE_WGSL, REACTOR_WGSL } from "../shaders/reactor.wgsl.ts";
  * hash sits under `blocked`·(k/n)² rather than a tenth of metal plates.
  *
  * DUTY (§V903/§V914 — 3600 frames of the pattern through the lanes):
- *   coreGain    = 4.2·level    + 0.5   (env1) → 0.733..2.671, mean 1.14, above retained 75%, hold 0
- *   laserGain   = 4.7·low      − 3.0   (env1) → 0.307..1.583, mean 0.63, retained 0.6 ≈ mean, hold 0
- *   facet       = 1.5·highMid  − 0.05  (env1) → 0.393..1.018, mean 0.71, above retained 74%, hold 0
- *   frameWidth  = 0.25·low     − 0.12  (env2) → 0.064..0.124, mean 0.074, retained 0.07 ≈ median, hold 1
- *   shellGap    = 0.17·highMid + 0.118 (env2) → 0.170..0.239, mean 0.20, above retained 73%, hold 1
- *   swell       = 0.23·level   + 0.96  (env3) → 0.980..1.079, mean 1.00, above retained 28%, hold 1
- *   gain1.brightness = 6·level + 0.1   (env3) → the escalation; retained 1.3 inside the range
- *   shieldOuter = lag(min(clamp(−28.6·slope(env3) − 2.43), arm)) → 0..0.992, mean 0.16, shut
+ *   coreGain    = 4.2·level    + 0.5   (lag_env1) → 0.733..2.671, mean 1.14, above retained 75%, hold 0
+ *   laserGain   = 4.7·low      − 3.0   (lag_env1) → 0.307..1.583, mean 0.63, retained 0.6 ≈ mean, hold 0
+ *   facet       = 1.5·highMid  − 0.05  (lag_env1) → 0.393..1.018, mean 0.71, above retained 74%, hold 0
+ *   frameWidth  = 0.25·low     − 0.12  (lag_env2) → 0.064..0.124, mean 0.074, retained 0.07 ≈ median, hold 1
+ *   shellGap    = 0.17·highMid + 0.118 (lag_env2) → 0.170..0.239, mean 0.20, above retained 73%, hold 1
+ *   swell       = 0.23·level   + 0.96  (lag_env3) → 0.980..1.079, mean 1.00, above retained 28%, hold 1
+ *   level_gain1.brightness = 6·level + 0.1   (lag_env3) → the escalation; retained 1.3 inside the range
+ *   shieldOuter = lag(min(clamp(−28.6·slope(lag_env3) − 2.43), arm)) → 0..0.992, mean 0.16, shut
  *                 (>0.5) 11.9% of the minute, longest shut run 67 frames (1.1 s); the
  *                 180-frame hold is the arm at 0 — open, the rest state (§V914)
  *   shieldInner = the same on a 0.16 s rise / 12× release → 0..0.773, shut 9.7%, longest 65
@@ -215,7 +215,7 @@ import { REACTOR_HAZE_WGSL, REACTOR_WGSL } from "../shaders/reactor.wgsl.ts";
  * value sits inside its driven range. `laserGain`'s retained value was 1 in the first draft
  * — brighter than 99% of what the music delivered — and is 0.6 now, the driven mean.
  *
- * THE DEAD BLOOM (the owner found it in the graph, after three rounds of tuning it): `cut1`
+ * THE DEAD BLOOM (the owner found it in the graph, after three rounds of tuning it): `level_cut`
  * shipped with `brightness: 0`, a multiplier, so every preview from the cut onward was black
  * and both bloom widths added zero. Measured before the fix: the reactor's linear peak 2.0,
  * mean 0.046; at `blacklevel` 0.5 the remap keeps 0.67% of the pixels. Fixed with a clamp
@@ -232,7 +232,7 @@ import { REACTOR_HAZE_WGSL, REACTOR_WGSL } from "../shaders/reactor.wgsl.ts";
  *   - round one's blue: a per-crossing transmission tint that was right once and, stacked
  *     across six crossings, filtered the orange core to white (checked at one shell, where
  *     the same tint had been invisible, and at four); it ships at a fifth of the strength.
- *   - colour evolution as `lfo → grade1.hueoffset` (E35's idiom) turned the background
+ *   - colour evolution as `lfo → hsv_grade.hueoffset` (E35's idiom) turned the background
  *     olive with the ball and opened the file at −180°; the hue turns inside the shader.
  */
 export const reactorDocument = document(
@@ -245,43 +245,43 @@ export const reactorDocument = document(
          background carries a whisper of texture instead of a flat fill. */
       node("bed", "noise", [-1200, 0], {
         type: "perlin2d", period: 0.6, amp: 0.1, offset: 0.04,
-      }, { label: "bed1" }),
+      }, { label: "noise_bed" }),
 
       /* T1150 — THE FRONT HAZE AT HALF RESOLUTION. The medium outside the ball was the
          whole frame's cost (15 ms of 31 at 1080p), and a volumetric is low-frequency, so
          this pass draws only the straight ray's haze up to the first thing it hits, at
          `scale 0.5` of its input through the node's own resolution override (the seam the
-         compiler already had — no new node). `reactor1` reads it back bilinearly, which is
+         compiler already had — no new node). `wgsl_reactor` reads it back bilinearly, which is
          the softening the owner asked for and what settles round one's grain. Every knob it
-         needs MIRRORS `reactor1`'s by expression (`op().par` reads the RESOLVED value, driven
+         needs MIRRORS `wgsl_reactor`'s by expression (`op().par` reads the RESOLVED value, driven
          lanes included — §V148), so the two passes cannot disagree about the shells; its
-         colour is applied by `reactor1`, so it carries no palette at all. */
+         colour is applied by `wgsl_reactor`, so it carries no palette at all. */
       node("haze", "customWgsl", [-900, 0], {
         source: REACTOR_HAZE_WGSL,
       }, {
-        label: "haze1",
+        label: "wgsl_haze",
         resolution: { mode: "scale", factor: 0.5 },
         parameters: {
-          layers: expressionSlot("op('reactor1').par.layers", 3),
-          divisions: expressionSlot("op('reactor1').par.divisions", 3),
-          shieldOuter: expressionSlot("op('reactor1').par.shieldOuter", 0),
-          shieldInner: expressionSlot("op('reactor1').par.shieldInner", 0),
-          stations: expressionSlot("op('reactor1').par.stations", 1),
-          travel: expressionSlot("op('reactor1').par.travel", 96),
-          frameWidth: expressionSlot("op('reactor1').par.frameWidth", 0.07),
-          blocked: expressionSlot("op('reactor1').par.blocked", 0.1),
-          strutDepth: expressionSlot("op('reactor1').par.strutDepth", 0.04),
-          shellGap: expressionSlot("op('reactor1').par.shellGap", 0.26),
-          swell: expressionSlot("op('reactor1').par.swell", 1),
-          coreGain: expressionSlot("op('reactor1').par.coreGain", 1),
-          laserGain: expressionSlot("op('reactor1').par.laserGain", 0.6),
-          laserCount: expressionSlot("op('reactor1').par.laserCount", 3),
-          haze: expressionSlot("op('reactor1').par.haze", 0.35),
-          spin: expressionSlot("op('reactor1').par.spin", 1),
-          morph: expressionSlot("op('reactor1').par.morph", 0.6),
-          wobble: expressionSlot("op('reactor1').par.wobble", 0.035),
-          orbit: expressionSlot("op('reactor1').par.orbit", 1),
-          distance: expressionSlot("op('reactor1').par.distance", 3.2),
+          layers: expressionSlot("op('wgsl_reactor').par.layers", 3),
+          divisions: expressionSlot("op('wgsl_reactor').par.divisions", 3),
+          shieldOuter: expressionSlot("op('wgsl_reactor').par.shieldOuter", 0),
+          shieldInner: expressionSlot("op('wgsl_reactor').par.shieldInner", 0),
+          stations: expressionSlot("op('wgsl_reactor').par.stations", 1),
+          travel: expressionSlot("op('wgsl_reactor').par.travel", 96),
+          frameWidth: expressionSlot("op('wgsl_reactor').par.frameWidth", 0.07),
+          blocked: expressionSlot("op('wgsl_reactor').par.blocked", 0.1),
+          strutDepth: expressionSlot("op('wgsl_reactor').par.strutDepth", 0.04),
+          shellGap: expressionSlot("op('wgsl_reactor').par.shellGap", 0.26),
+          swell: expressionSlot("op('wgsl_reactor').par.swell", 1),
+          coreGain: expressionSlot("op('wgsl_reactor').par.coreGain", 1),
+          laserGain: expressionSlot("op('wgsl_reactor').par.laserGain", 0.6),
+          laserCount: expressionSlot("op('wgsl_reactor').par.laserCount", 3),
+          haze: expressionSlot("op('wgsl_reactor').par.haze", 0.35),
+          spin: expressionSlot("op('wgsl_reactor').par.spin", 1),
+          morph: expressionSlot("op('wgsl_reactor').par.morph", 0.6),
+          wobble: expressionSlot("op('wgsl_reactor').par.wobble", 0.035),
+          orbit: expressionSlot("op('wgsl_reactor').par.orbit", 1),
+          distance: expressionSlot("op('wgsl_reactor').par.distance", 3.2),
         },
       }),
 
@@ -316,24 +316,24 @@ export const reactorDocument = document(
         /* Colour evolution (round three): one hue angle turns core, glass and beams
            together, inside the shader, so the sky stays deep and the core/glass contrast
            is invariant — 150°/min is one revolution every two and a half minutes — a turn inside any real viewing (40°/min, nine minutes a turn, was "not coming through": nobody watches a loop for nine minutes): moved when you look
-           back, never visibly cycling. A `hueoffset` LFO on `grade1` was tried first and
+           back, never visibly cycling. A `hueoffset` LFO on `hsv_grade` was tried first and
            refused: it turned the background olive with the ball. */
         hueDrift: 150,
         hueSwing: 55,
       }, {
-        label: "reactor1",
+        label: "wgsl_reactor",
         // The geometry pass draws at the PROJECT resolution; without this it would inherit
         // the half-res haze it reads.
         resolution: { mode: "project" },
         parameters: {
-          coreGain: drivenSlot("levelb1:level", 1),
-          laserGain: drivenSlot("lowb1:low", 0.6),
-          facet: drivenSlot("highb1:highMid", 0.7),
-          swell: drivenSlot("swellb1:level", 1),
-          frameWidth: drivenSlot("barb1:low", 0.07),
-          shellGap: drivenSlot("gapb1:highMid", 0.26),
-          shieldOuter: drivenSlot("shieldo1:level", 0),
-          shieldInner: drivenSlot("shieldi1:level", 0),
+          coreGain: drivenSlot("math_levelb:level", 1),
+          laserGain: drivenSlot("math_lowb:low", 0.6),
+          facet: drivenSlot("math_highb:highMid", 0.7),
+          swell: drivenSlot("math_swellb:level", 1),
+          frameWidth: drivenSlot("math_barb:low", 0.07),
+          shellGap: drivenSlot("math_gapb:highMid", 0.26),
+          shieldOuter: drivenSlot("lag_shieldo:level", 0),
+          shieldInner: drivenSlot("lag_shieldi:level", 0),
         },
       }),
 
@@ -342,7 +342,7 @@ export const reactorDocument = document(
          OFF (the owner's "blinded at the core" note is about the roll-off, not the dot).
 
          ⚑ THIS BRANCH SHIPPED DEAD for three rounds (the owner found it: "nothing ever
-         reaches the cuts"). `cut1` carried `brightness: 0` — copied from E35, where that
+         reaches the cuts"). `level_cut` carried `brightness: 0` — copied from E35, where that
          key is DRIVEN and the static 0 is never read — and Level's brightness MULTIPLIES,
          so every preview from here on was black and `add1` was the base render plus zero.
          Round one's "more intense bloom" and the second width changed nothing. Measured
@@ -350,93 +350,93 @@ export const reactorDocument = document(
          0.5 the remap keeps 0.67% of the pixels — the core and the hottest shafts.
 
          And Level is a REMAP, not a clip: below the black point the signal goes NEGATIVE,
-         and an additive composite of a blurred negative field is a dark halo. `clamp1`
+         and an additive composite of a blurred negative field is a dark halo. `limit_clamp`
          floors it at zero before the blur, which is what a bloom's bright pass is. The
          claim that would have caught the dead branch — cutting it must change the frame —
          is in the claims now. */
       node("cut", "level", [-300, 200], {
         blacklevel: 0.45, whitelevel: 1, brightness: 1, contrast: 1, gamma1: 1, invert: 0, opacity: 1,
-      }, { label: "cut1" }),
-      node("clamp", "limit", [0, 200], { mode: "clamp", low: 0, high: 8 }, { label: "clamp1" }),
+      }, { label: "level_cut" }),
+      node("clamp", "limit", [0, 200], { mode: "clamp", low: 0, high: 8 }, { label: "limit_clamp" }),
       node("blur", "blur", [300, 200], { filter: "gaussian", size: 42, extend: "hold" }, { label: "blur1" }),
       node("gain", "level", [600, 200], {
         blacklevel: 0, whitelevel: 1, contrast: 1, gamma1: 1, invert: 0, opacity: 1,
-      }, { label: "gain1", parameters: { brightness: drivenSlot("blowb1:level", 1.3) } }),
+      }, { label: "level_gain1", parameters: { brightness: drivenSlot("math_blowb:level", 1.3) } }),
       node("blur2", "blur", [600, 400], { filter: "gaussian", size: 42, extend: "hold" }, { label: "blur2" }),
       node("gain2", "level", [900, 400], {
         blacklevel: 0, whitelevel: 1, brightness: 0.6, contrast: 1, gamma1: 1, invert: 0, opacity: 1,
-      }, { label: "gain2" }),
+      }, { label: "level_gain2" }),
       node("add", "add", [900, 0], { opacity: 1 }, { label: "add1" }),
       node("add2", "add", [1200, 0], { opacity: 1 }, { label: "add2" }),
-      node("grade", "hsv", [1500, 0], { hueoffset: 0, saturation: 1.1, value: 1 }, { label: "grade1" }),
-      node("out", "output", [1800, 0], { toneMap: "filmic" }, { label: "out1" }),
+      node("grade", "hsv", [1500, 0], { hueoffset: 0, saturation: 1.1, value: 1 }, { label: "hsv_grade" }),
+      node("out", "output", [1800, 0], { toneMap: "filmic" }, { label: "output1" }),
 
       /* The drive, in the catalogue's fixed shape. */
-      node("music", "audioPattern", [-1500, 600], { amount: 1, bpm: 112 }, { label: "music1" }),
+      node("music", "audioPattern", [-1500, 600], { amount: 1, bpm: 112 }, { label: "pattern_music" }),
       node("track", "audioFileIn", [-1500, 800], {
         cue: false, cuePoint: 0, extend: "loop", file: "", monitor: true, play: true,
         playMode: "freeRun", speed: 1, trimEnd: 0, trimStart: 0, volume: 1,
-      }, { label: "track1" }),
-      node("source", "valueSwitch", [-1200, 700], { index: 0 }, { label: "source1" }),
-      node("env", "valueLag", [-900, 700], { lag: 0.08 }, { label: "env1" }),
+      }, { label: "audiofile_track" }),
+      node("source", "valueSwitch", [-1200, 700], { index: 0 }, { label: "switch_source" }),
+      node("env", "valueLag", [-900, 700], { lag: 0.08 }, { label: "lag_env1" }),
       /* Two slower envelopes for the FORM (the owner's round two: the audio drove light and
          not shape). The bars and the gaps ride a 0.35 s lag; the outer shell's swell rides
          0.7 s, the slowest and largest response, so the shells answer at different speeds
          and read as separate bodies rather than pulsing in unison. */
-      node("env2", "valueLag", [-900, 900], { lag: 0.35 }, { label: "env2" }),
-      node("env3", "valueLag", [-900, 1100], { lag: 0.7 }, { label: "env3" }),
+      node("env2", "valueLag", [-900, 900], { lag: 0.35 }, { label: "lag_env2" }),
+      node("env3", "valueLag", [-900, 1100], { lag: 0.7 }, { label: "lag_env3" }),
 
-      /* The three affine pairs, each calibrated on the shipped pattern through `env1` (lag
+      /* The three affine pairs, each calibrated on the shipped pattern through `lag_env1` (lag
          0.08): level 0.056..0.517 → coreGain 0.905..2.198; low 0.704..0.975 → laserGain
          0.307..1.583; highMid 0.295..0.712 → facet 0.393..1.018. Every pair maps ALL the
-         channels, and the slot picks one by name (`levelb1:level`), so retuning a lane is
+         channels, and the slot picks one by name (`math_levelb:level`), so retuning a lane is
          two numbers in one pair and nothing else. */
-      node("levelx", "valueMath", [-600, 600], { operand: 4.2, operation: "multiply" }, { label: "levelx1" }),
-      node("levelb", "valueMath", [-300, 600], { operand: 0.5, operation: "add" }, { label: "levelb1" }),
-      node("lowx", "valueMath", [-600, 800], { operand: 4.7, operation: "multiply" }, { label: "lowx1" }),
-      node("lowb", "valueMath", [-300, 800], { operand: -3.0, operation: "add" }, { label: "lowb1" }),
-      node("highx", "valueMath", [-600, 1000], { operand: 1.5, operation: "multiply" }, { label: "highx1" }),
-      node("highb", "valueMath", [-300, 1000], { operand: -0.05, operation: "add" }, { label: "highb1" }),
-      node("barx", "valueMath", [-600, 1200], { operand: 0.25, operation: "multiply" }, { label: "barx1" }),
-      node("barb", "valueMath", [-300, 1200], { operand: -0.12, operation: "add" }, { label: "barb1" }),
-      node("gapx", "valueMath", [-600, 1400], { operand: 0.2, operation: "multiply" }, { label: "gapx1" }),
-      node("gapb", "valueMath", [-300, 1400], { operand: 0.16, operation: "add" }, { label: "gapb1" }),
-      node("swellx", "valueMath", [-600, 1600], { operand: 0.23, operation: "multiply" }, { label: "swellx1" }),
-      node("swellb", "valueMath", [-300, 1600], { operand: 0.96, operation: "add" }, { label: "swellb1" }),
+      node("levelx", "valueMath", [-600, 600], { operand: 4.2, operation: "multiply" }, { label: "math_levelx" }),
+      node("levelb", "valueMath", [-300, 600], { operand: 0.5, operation: "add" }, { label: "math_levelb" }),
+      node("lowx", "valueMath", [-600, 800], { operand: 4.7, operation: "multiply" }, { label: "math_lowx" }),
+      node("lowb", "valueMath", [-300, 800], { operand: -3.0, operation: "add" }, { label: "math_lowb" }),
+      node("highx", "valueMath", [-600, 1000], { operand: 1.5, operation: "multiply" }, { label: "math_highx" }),
+      node("highb", "valueMath", [-300, 1000], { operand: -0.05, operation: "add" }, { label: "math_highb" }),
+      node("barx", "valueMath", [-600, 1200], { operand: 0.25, operation: "multiply" }, { label: "math_barx" }),
+      node("barb", "valueMath", [-300, 1200], { operand: -0.12, operation: "add" }, { label: "math_barb" }),
+      node("gapx", "valueMath", [-600, 1400], { operand: 0.2, operation: "multiply" }, { label: "math_gapx" }),
+      node("gapb", "valueMath", [-300, 1400], { operand: 0.16, operation: "add" }, { label: "math_gapb" }),
+      node("swellx", "valueMath", [-600, 1600], { operand: 0.23, operation: "multiply" }, { label: "math_swellx" }),
+      node("swellb", "valueMath", [-300, 1600], { operand: 0.96, operation: "add" }, { label: "math_swellb" }),
       /* THE SHUTTERS (the owner's headline: "react much more aggressively to drops … contrast
          between full radiation and something shielded inside … shielded inside the second
          level"). A drop is a TRANSITION, not a quiet level — quiet would hold the shields
-         shut, which is the wrong picture — so the detector is the envelope's SLOPE: `drop1`
-         differentiates `env1`, `dropx1` flips and scales the fall so a drop lands at 1,
-         `dropc1` clamps to 0..1, and two lags with a fast rise and a slow release close the
+         shut, which is the wrong picture — so the detector is the envelope's SLOPE: `slope_drop`
+         differentiates `lag_env1`, `math_dropx` flips and scales the fall so a drop lands at 1,
+         `limit_dropc` clamps to 0..1, and two lags with a fast rise and a slow release close the
          outer shell first and the inner shells later, and open them in the same order. In
          silence the slope is 0 and the shields are OPEN (§V914 — the rest state is the
          radiating one, and it is what every thumbnail captures). */
-      node("drop", "valueSlope", [-900, 1300], {}, { label: "drop1" }),
-      /* Calibrated on the shipped pattern AFTER the arm point (f150..1800): env3's fall
+      node("drop", "valueSlope", [-900, 1300], {}, { label: "slope_drop" }),
+      /* Calibrated on the shipped pattern AFTER the arm point (f150..1800): lag_env3's fall
          (−slope) is 0.055 at the median (a beat's decay), 0.104 at p97 and peaks at 0.127 on
          the pattern's pulled-back bars — so 0.085..0.12 maps onto 0..1: beats never fire it,
-         a pulled-back bar shuts it fully. `dropx1`/`dropb1` ARE the sensitivity: a real track
+         a pulled-back bar shuts it fully. `math_dropx`/`math_dropb` ARE the sensitivity: a real track
          has its own numbers, and these two are where to retune them. */
-      node("dropx", "valueMath", [-600, 1800], { operand: -28.6, operation: "multiply" }, { label: "dropx1" }),
-      node("dropb", "valueMath", [-300, 1800], { operand: -2.43, operation: "add" }, { label: "dropb1" }),
-      node("dropc", "valueLimit", [0, 1800], { minimum: 0, maximum: 1 }, { label: "dropc1" }),
+      node("dropx", "valueMath", [-600, 1800], { operand: -28.6, operation: "multiply" }, { label: "math_dropx" }),
+      node("dropb", "valueMath", [-300, 1800], { operand: -2.43, operation: "add" }, { label: "math_dropb" }),
+      node("dropc", "valueLimit", [0, 1800], { minimum: 0, maximum: 1 }, { label: "limit_dropc" }),
       /* ARMED AFTER TWO SECONDS. The pattern opens on a hit whose decay is, to the detector,
          a drop — so the first thing the file did was slam shut, and the card frame (60) was
          three-quarters shielded, which is the §V914 mistake in geometry: a rest state the
-         music never returns to. `arm1` holds the shield at min(drop, ramp) where the ramp is
+         music never returns to. `math_arm` holds the shield at min(drop, ramp) where the ramp is
          a timer from 3 s to 4 s, so the shutters cannot fire on the opening transient — nor inside the look row's f60–180 window. */
-      node("armt", "timer", [-900, 1500], { delay: 3, speed: 1 }, { label: "armt1" }),
-      node("armc", "valueLimit", [-600, 2200], { minimum: 0, maximum: 1 }, { label: "armc1" }),
-      node("arm", "valueMath", [300, 2100], { operand: 1, operation: "minimum" }, { label: "arm1" }),
-      node("shieldo", "valueLag", [600, 1700], { lag: 0.04, releaseRatio: 70 }, { label: "shieldo1" }),
-      node("shieldi", "valueLag", [600, 1900], { lag: 0.16, releaseRatio: 28 }, { label: "shieldi1" }),
+      node("armt", "timer", [-900, 1500], { delay: 3, speed: 1 }, { label: "timer_armt" }),
+      node("armc", "valueLimit", [-600, 2200], { minimum: 0, maximum: 1 }, { label: "limit_armc" }),
+      node("arm", "valueMath", [300, 2100], { operand: 1, operation: "minimum" }, { label: "math_arm" }),
+      node("shieldo", "valueLag", [600, 1700], { lag: 0.04, releaseRatio: 70 }, { label: "lag_shieldo" }),
+      node("shieldi", "valueLag", [600, 1900], { lag: 0.16, releaseRatio: 28 }, { label: "lag_shieldi" }),
       /* THE ESCALATION (the owner: "more bloom on the centre that can escalate and sometimes
          blow up"): the tight bloom's gain rides the slowest envelope with an aggressive
          range, so a sustained loud passage blows the core out and a quiet one lets it
          settle back; the retained 1.3 sits inside the driven range (§V914). */
-      node("blowx", "valueMath", [-600, 2000], { operand: 11, operation: "multiply" }, { label: "blowx1" }),
-      node("blowb", "valueMath", [-300, 2000], { operand: -0.4, operation: "add" }, { label: "blowb1" }),
+      node("blowx", "valueMath", [-600, 2000], { operand: 11, operation: "multiply" }, { label: "math_blowx" }),
+      node("blowb", "valueMath", [-300, 2000], { operand: -0.4, operation: "add" }, { label: "math_blowb" }),
     ],
     [
       edge("e-bed-haze", ["bed", "out"], ["haze", "input"]),

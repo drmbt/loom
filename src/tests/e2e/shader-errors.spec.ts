@@ -140,7 +140,7 @@ test("with no device the app says so, and invents no compile result (§V12)", as
 /**
  * BLOCKED, not skipped. Needs a WebGPU adapter, which the headless lane does not have
  * (T1086), so `useGraphCompile` never runs (§V12) and no compiler diagnostic can reach
- * the panel. The headed `chromium-headed-gpu` lane HAS an adapter; moving this there
+ * the panel. The `chromium-gpu` lane HAS an adapter; moving this there
  * would make it a real test.
  *
  * What it would assert: a Custom WGSL node whose required input is unconnected produces a
@@ -150,7 +150,7 @@ test("with no device the app says so, and invents no compile result (§V12)", as
  * missing here is only that it reaches the two places a user looks.
  */
 test.fixme(
-  "a compiler error reaches the problems tab and the node badge (§V27) — needs a WebGPU adapter, absent in the headless lane (T1086: the headed lane has one)",
+  "a compiler error reaches the problems tab and the node badge (§V27) — needs a WebGPU adapter, absent in the default lane (T1086: the `chromium-gpu` lane has one; T1621b)",
   () => {
     // Intentionally empty: a body that skipped itself would report this as a pass.
   },
@@ -160,8 +160,8 @@ test.fixme(
  * BLOCKED, not skipped. Recorded as a fixme so the runner prints it every run.
  *
  * Needs: a WebGPU adapter in the browser under test, which this HEADLESS lane never gets
- * (`requestAdapter()` null — measured 2026-09-03, see `app.ts`, §V895). The headed
- * `chromium-headed-gpu` lane (T1086) does get one, so this can now become a real spec
+ * (`requestAdapter()` null — measured 2026-09-03, see `app.ts`, §V895). The
+ * `chromium-gpu` lane (T1086) does get one, so this can now become a real spec
  * there; nothing in the app needs to change for it.
  *
  * The steps it would take: select the Custom WGSL node, replace its source with WGSL that
@@ -170,7 +170,7 @@ test.fixme(
  * valid source and assert the error clears and the image updates.
  */
 test.fixme(
-  "an invalid shader keeps the last valid image and shows an error, then recovers (§V9) — needs a WebGPU adapter, absent in the headless lane (T1086: the headed lane has one)",
+  "an invalid shader keeps the last valid image and shows an error, then recovers (§V9) — needs a WebGPU adapter, absent in the default lane (T1086: the `chromium-gpu` lane has one; T1621b)",
   () => {
     // Intentionally empty: see the note above. Writing a body that skips itself would
     // report this as a pass.

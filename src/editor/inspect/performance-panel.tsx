@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { UNAVAILABLE_COST } from "@runtime/telemetry/index.ts";
 import type {
   CategoryRollup,
@@ -10,9 +10,9 @@ import type {
   TelemetrySource,
 } from "@runtime/telemetry/index.ts";
 import { useStoreSelector } from "@ui/hooks/use-store-selector.ts";
-import { useVisibleSubscribe } from "@ui/hooks/use-visible-subscribe.ts";
+import { isElementVisible, useVisibleSubscribe } from "@ui/hooks/use-visible-subscribe.ts";
 import type { Subscribe } from "@ui/hooks/use-visible-subscribe.ts";
-import { formatBytes, formatCost, formatMs } from "./format.ts";
+import { formatBytes, formatCost, formatMs, formatPassMs } from "./format.ts";
 import { PerfTimeline } from "./perf-timeline.tsx";
 import type { FormattedMs } from "./format.ts";
 import styles from "./inspect.module.css";
@@ -81,6 +81,44 @@ export interface PerformancePanelProps {
   readonly onCookPolicyChange?: ((policy: CookPolicyValue) => void) | undefined;
   /** §T1392b: the project's frame rate, for the timeline's budget line. Default 60. */
   readonly fps?: number | undefined;
+  /**
+   * T1652b: how many value writes took the values lane and how many were compiled in
+   * full instead, with why the last one was. Read on this panel's own tick; absent where
+   * no lane exists (a test, an embed).
+   */
+  readonly valueWrites?: (() => ValueWriteStats) | undefined;
+}
+
+/** The composition root's count of value writes (`revision-watch.ts`), restated so this module imports nothing above it. */
+export interface ValueWriteStats {
+  readonly values: number;
+  readonly escalated: number;
+  readonly lastEscalation: string | null;
+}
+
+/**
+ * T1652b — a value write that was COMPILED IN FULL, said where a slow control is looked
+ * for. A moved slider normally costs the nodes that read it; when the lane could not
+ * prove that (a diagnostic changed, a structural key is driven by the value, a component
+ * instance was written) the whole document is compiled for it, and that is the difference
+ * between a control that follows the finger and one that drags. Absent while no write has
+ * been escalated: a line saying "all on the lane" on every document is noise (§V91).
+ *
+ * It is a count SINCE THE DOCUMENT WAS OPENED, with the reason of the last one, and it
+ * stays: a performer looks after the drag, not during it. Opening another document starts
+ * it again (the source belongs to the document's runtime).
+ */
+function ValueWritesNote({ source, read }: { source: SnapshotSource; read: () => ValueWriteStats }) {
+  const text = useStoreSelector(source.subscribe, source.snapshot, () => {
+    const stats = read();
+    if (stats.escalated === 0) return "";
+    return `${String(stats.escalated)} of ${String(stats.values + stats.escalated)} value writes compiled in full — ${stats.lastEscalation ?? ""}`;
+  });
+  return text === "" ? null : (
+    <p className={styles.note} data-testid="value-write-escalations">
+      {text}
+    </p>
+  );
 }
 
 function Stat({
@@ -161,6 +199,7 @@ export function PerformancePanel({
   cookPolicy,
   onCookPolicyChange,
   fps = 60,
+  valueWrites,
 }: PerformancePanelProps) {
   const root = useRef<HTMLDivElement>(null);
   const subscribe = useVisibleSubscribe(
@@ -174,6 +213,35 @@ export function PerformancePanel({
     () => (telemetry === null ? null : { subscribe, snapshot: () => telemetry.snapshot() }),
     [telemetry, subscribe],
   );
+  /*
+   * T1604b: this panel shows a GPU figure PER PASS, and by default a run of a node's draws
+   * is one device render pass with one span. So while the panel (and the timeline in it) is
+   * ON SCREEN it asks for one pass per draw; the picture is the same, and hiding the panel
+   * gives the cheaper frame back. On screen, not mounted: a dock pane stays mounted while
+   * hidden (§V96), and a demand held by a hidden tab would cost every frame for nobody.
+   * Checked on the gated subscription (which fires the instant the pane is shown) and on
+   * the hub's own tick (which is how a pane that was hidden is noticed).
+   */
+  useEffect(() => {
+    if (telemetry === null || telemetry.demandPassDetail === undefined) return;
+    let release: (() => void) | null = null;
+    const sync = (): void => {
+      const shown = root.current !== null && isElementVisible(root.current);
+      if (shown && release === null) release = telemetry.demandPassDetail?.() ?? null;
+      if (!shown && release !== null) {
+        release();
+        release = null;
+      }
+    };
+    sync();
+    const offShown = subscribe(sync);
+    const offTick = telemetry.subscribe(sync);
+    return () => {
+      offShown();
+      offTick();
+      release?.();
+    };
+  }, [telemetry, subscribe]);
 
   if (source === null) {
     return (
@@ -192,6 +260,7 @@ export function PerformancePanel({
         source={source}
         {...(cookPolicy === undefined ? {} : { cookPolicy })}
         {...(onCookPolicyChange === undefined ? {} : { onCookPolicyChange })}
+        {...(valueWrites === undefined ? {} : { valueWrites })}
       />
     </div>
   );
@@ -253,12 +322,7 @@ function PassMsCell({ source, passId }: { source: SnapshotSource; passId: string
       const row = rowIndex(snapshot).passes.get(passId);
       return row === undefined
         ? formatMs({ availability: "unavailable", gpuMs: null, passCount: 1, nodeCount: 0 })
-        : formatMs({
-            availability: row.availability,
-            gpuMs: row.gpuMs,
-            passCount: 1,
-            nodeCount: row.nodeId === null ? 0 : 1,
-          });
+        : formatPassMs(row);
     },
     sameText,
   );
@@ -542,10 +606,12 @@ function PerformanceSections({
   source,
   cookPolicy,
   onCookPolicyChange,
+  valueWrites,
 }: {
   source: SnapshotSource;
   cookPolicy?: CookPolicyValue | undefined;
   onCookPolicyChange?: ((policy: CookPolicyValue) => void) | undefined;
+  valueWrites?: (() => ValueWriteStats) | undefined;
 }) {
   const snapshot = useStoreSelector(source.subscribe, source.snapshot, identity, sameStructure);
   const { plan, build } = snapshot;
@@ -592,6 +658,7 @@ function PerformanceSections({
             full compile every frame — {snapshot.frameCompileReason}
           </p>
         )}
+        {valueWrites === undefined ? null : <ValueWritesNote source={source} read={valueWrites} />}
       </section>
 
       <CostSection source={source} snapshot={snapshot} />

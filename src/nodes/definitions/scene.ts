@@ -1,20 +1,27 @@
-import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
+import type { CompiledNodeDescription, NodeDefinition, ScratchRequest } from "../../domain/types/node-definition.ts";
+import type { ParameterSchema } from "../../domain/types/parameters.ts";
+import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import { instanceShapeIndex, parseInstanceShape } from "./render-instances.ts";
-import type { DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
+import type { BufferBindingDescriptor, BufferWritePassDescriptor, DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
 import { relocated, type WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
 import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
-import type { CameraPayload, GeometryPayload, LightPayload, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
+import type { CameraPayload, GeometryPayload, LightPayload, MapExtend, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
-import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, projectorDepthRange, projectorMatrix } from "../../domain/geometry/camera.ts";
-import { gridCellCounts, gridPointCount, parseTopology } from "../../points/topology.ts";
+import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorDepthRange, projectorMatrix } from "../../domain/geometry/camera.ts";
+import { identityMatrix, normalMatrix, objectMatrix } from "../../domain/geometry/transform.ts";
+import { gridPointCount, gridSheets, gridVertexCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
 import { DANGLING_CAMERA_SUGGESTION, danglingCameraRefusal } from "./camera-reference.ts";
 import { readColor, readNumber, readVector } from "./parameter-readers.ts";
 import { countedDrawSupport, resolveColorMap, resolveScalarMap } from "./points.ts";
 import { attributeBinding } from "./point-storage.ts";
+import { instanceRecordStorage, isPackedType, packedGroups } from "./instance-records.ts";
+import { instanceResolveWgsl, RESOLVE_ARGS_BINDING, RESOLVE_LIVE_BINDING, RESOLVE_RECORDS_BINDING, RESOLVE_SOURCE_PREFIX, resolveWorkgroups, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
+import { bindInstanceAttributes } from "./instance-attributes.ts";
 import { applyMaterialOverrides } from "./material-overrides.ts";
+import { compileLightPoints, lightMapRefusal, lightSpotDraw, lightSpotUnbuilt, lightTablePlan, type LightTablePlan, type NamedLight, type PointLightSource } from "./light-points.ts";
 import {
   GLASS_BLIT_WGSL,
   SSAA_RESOLVE_WGSL,
@@ -28,6 +35,8 @@ import {
   glassSurfaceWgsl,
   sceneInstancesWgsl,
   sceneSurfaceModule,
+  INSTANCED_BINDING_PREFIX,
+  type SceneInstancedOption,
   type SceneShadingOptions,
   type SceneSurfaceModule,
   shadowInstancesWgsl,
@@ -333,6 +342,231 @@ export const projectorNode: NodeDefinition = {
   },
 };
 
+/**
+ * T1589b: why the shadow rows of a Light in Points mode are not read. Inactive and ignored,
+ * never a refusal: flipping Mode on a casting Light must not stop the render.
+ */
+const pointsCastNothing = (values: Readonly<Record<string, unknown>>): string | null =>
+  values["mode"] === "points" ? "A shadow map belongs to one light: a Light in Single mode casts, the lights of a pointset do not." : null;
+
+/**
+ * T1623b slice 3: a spot is a kind of ROW of a Render's light table, and a CASTING Light in
+ * Single mode is not a row yet (slices 4 and 5): it shines as a point light, its two cone
+ * rows say so, and the Light says so by name (`lightSpotUnbuilt`).
+ */
+const CASTING_SPOT = "A casting Light has no cone yet: with Cast Shadows on this light shines as a Point light, in every direction.";
+/** A point light and a spot stand at a place: they have a Position, a Falloff and a Range. */
+const lightIsPlaced = (values: Readonly<Record<string, unknown>>): boolean => values["kind"] === "point" || values["kind"] === "spot";
+const spotInactive = (values: Readonly<Record<string, unknown>>): string | null =>
+  values["kind"] !== "spot" ? "Only a Spot has a cone." : values["mode"] !== "points" && values["shadows"] === true ? CASTING_SPOT : null;
+
+/**
+ * The Light's DECLARED parameters, hoisted (T1589b) so `parametersFor` can derive the schema
+ * one placed node carries without reading the node back off itself (§T903's funnel), as
+ * `GEOMETRY_PARAMETERS` is.
+ */
+const LIGHT_PARAMETERS: ParameterSchema = {
+  kind: {
+    type: "enum",
+    label: "Type",
+    default: "directional",
+    options: [
+      { value: "directional", label: "Directional" },
+      { value: "point", label: "Point" },
+      { value: "spot", label: "Spot" },
+    ],
+    description:
+      "Directional travels along Direction from infinitely far. Point sits at Position and shines every way. Spot (T1589b) sits there and shines along Direction inside its Cone. A VALUE: changing it rebuilds nothing. A Spot that casts shadows has no cone yet: it shines as a Point light and the Light says so, until casting Lights become rows of the Render's light table (T1623b).",
+  },
+  /*
+   * T1589b — ONE LIGHT, OR ONE AT EVERY POINT (docs/lights-from-pointset-design-2026-10-06.md).
+   * Structural: a Light in Points mode owns a pass and a buffer, and a Render culls its
+   * lights on the GPU instead of unrolling a block for it.
+   */
+  mode: {
+    type: "enum",
+    label: "Mode",
+    default: "single",
+    compileTime: true,
+    options: [
+      { value: "single", label: "Single" },
+      { value: "points", label: "Points" },
+    ],
+    description:
+      "Single is one light, at Position. Points repeats this light at every point of the Points input: N lights from ONE node, each standing at its point's position. In Map mode Color takes a vec4f attribute and Intensity, Range and Cone an f32 (or one channel of a float vector), each MULTIPLYING the value here per point, so the number stays live for the whole set; Position, Direction and Orient in Map mode take an attribute IN PLACE of the value (a vec3f place, a vec3f way to travel, a vec4f quaternion). A light whose intensity, mapped range or mapped cone is zero is off, and so is a dead point of a counted pointset. A Render culls these lights by their Range on the GPU, so give them one. With Type: Directional the set is that many suns, each travelling along its direction; a directional light reaches every pixel, so none of them is culled. A Render's light table holds at most 1,024 rows, every slot of the set counted (see Points).",
+  },
+  color: { type: "color", label: "Color", default: [1, 1, 1, 1], space: "display" },
+  intensity: { type: "number", label: "Intensity", default: 1, min: 0, range: "floor" },
+  direction: {
+    type: "vector",
+    size: 3,
+    label: "Direction",
+    default: [-0.4, -0.8, -0.45],
+    description:
+      "The way the light travels: a Directional light's direction, a Spot's axis. Any length. In Points mode in Map mode a vec3f attribute, in world space, is each light's direction in place of this one.",
+    inactiveWhen: (values) => (values["kind"] === "point" ? "A point light shines everywhere." : null),
+  },
+  /*
+   * T1589b slice 2 — WHICH WAY EACH LIGHT OF A SET SHINES. `aim = R(orient) · direction`, the
+   * Geometry's Orient (T723): a unit quaternion, right-handed and active. As a value it turns
+   * Direction for the whole set; in Map mode each point brings its own, which is what lets a
+   * lamp along a path shine along the path's own frame.
+   */
+  orient: {
+    type: "vector",
+    size: 4,
+    label: "Orient",
+    default: [0, 0, 0, 1],
+    description:
+      "Mode: Points. A unit quaternion (x, y, z, w) that TURNS Direction, right-handed and active as a Geometry's Orient: (0, 0, sin45, cos45) is a quarter turn about +Z and carries +X to +Y. As a value it turns the direction of every light of the set; in Map mode a vec4f attribute turns it per point. With Direction (0, −1, 0) and the orient of Curve Frames, each lamp along a path shines along its own frame's down.",
+    inactiveWhen: (values) =>
+      values["mode"] !== "points"
+        ? "One light has one Direction: Orient turns it per point, in Mode: Points."
+        : values["kind"] === "point"
+          ? "A point light shines everywhere."
+          : null,
+  },
+  cone: {
+    type: "number",
+    label: "Cone",
+    default: 60,
+    min: 1,
+    max: 360,
+    range: "bounded",
+    description:
+      "T1589b: a Spot's cone, in degrees: the FULL angle at which its light reaches zero. 359 or more is every direction, so a set can mix spots and bare lamps by one attribute. In Map mode an f32 (or one channel of a float vector) multiplies it per point. A Render culls a spot by its Range, not by its cone: a narrow spot is still walked by every pixel in its range (T1625b).",
+    inactiveWhen: (values) => spotInactive(values),
+  },
+  coneSoftness: {
+    type: "number",
+    label: "Cone Softness",
+    default: 0.4,
+    min: 0,
+    max: 1,
+    range: "bounded",
+    description:
+      "T1589b: the share of the cone's half-angle over which a Spot fades. The light is whole inside (1 − softness) × Cone ÷ 2 and falls smoothly to zero at Cone ÷ 2. 0 is a hard edge; 1 fades from the axis out.",
+    inactiveWhen: (values) => spotInactive(values),
+  },
+  position: {
+    type: "vector",
+    size: 3,
+    label: "Position",
+    default: [1, 2, 1.5],
+    inactiveWhen: (values) =>
+      values["mode"] === "points"
+        ? "Each light stands at its point's position. In Map mode a vec3f attribute is its place instead."
+        : values["kind"] === "directional"
+          ? "A directional light is infinitely far."
+          : null,
+  },
+  falloff: {
+    type: "enum",
+    label: "Falloff",
+    default: "soft",
+    options: [
+      { value: "soft", label: "Soft 1/(1+d²)" },
+      { value: "inverseSquare", label: "Inverse Square 1/d²" },
+    ],
+    description:
+      "T1437b: how a point light dims with distance d. Soft, 1/(1+d²), is nearly flat inside a metre, so a lamp close to a subject lights its near and far side almost alike. Inverse Square, 1/d², is the physical law: a lamp at 30 cm lights a surface at 60 cm a quarter as much, which is what makes a close key read as close. Distance is held at 1 cm or more. Far from the light the two agree; inside a metre Inverse Square is brighter and much steeper.",
+    inactiveWhen: (values) => (lightIsPlaced(values) ? null : "A directional light does not fall off."),
+  },
+  range: {
+    type: "number",
+    label: "Range",
+    default: 0,
+    min: 0,
+    range: "floor",
+    description:
+      "T1437b: how far a point light reaches, in world units. The falloff is multiplied by (1 − (d/range)⁴)², so it reaches exactly zero at the range and is barely touched inside half of it. 0 is unlimited. The Range is what a Render culls a light by (T1589b, T1623b): a light with one is shaded only by the pixels it reaches, and a light with none by every lit pixel. In Points mode it defaults to 10, so that a set of lamps does not cost every pixel every lamp.",
+    inactiveWhen: (values) => (lightIsPlaced(values) ? null : "A directional light is infinitely far."),
+  },
+  shadows: {
+    type: "boolean",
+    label: "Cast Shadows",
+    default: false,
+    compileTime: true,
+    description:
+      "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible. Shadow Casters and Shadow Exclude choose which geometries those passes draw (T1598b).",
+    inactiveWhen: pointsCastNothing,
+  },
+  shadowExtent: {
+    type: "number",
+    label: "Shadow Extent",
+    default: 8,
+    min: 0.1,
+    range: "floor",
+    description:
+      "Directional: world-units half-extent of the shadow volume around its Shadow Centre (the origin by default). Point (T1362b): the shadow RANGE in world units — casters and receivers beyond it are unshadowed, and depth precision is spread over it, so keep it close to how far the light visibly reaches. Explicit on purpose: nothing knows your scene's bounds, and a guessed box would crop shadows plausibly-wrong (V426).",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
+  },
+  shadowCenter: {
+    type: "vector",
+    size: 3,
+    label: "Shadow Centre",
+    default: [0, 0, 0],
+    description:
+      "T1405b: the world point a directional light's shadow volume is framed around — Shadow Extent either side of it. Put it on the set (a set away from the origin otherwise gets no sun shadows at all), or drive it by expression to follow the camera or the subject. Moving it does not rebuild anything.",
+    inactiveWhen: (values) =>
+      pointsCastNothing(values) ?? (lightIsPlaced(values) ? "A point light's shadow is centred on the light." : values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
+  },
+  shadowSoftness: {
+    type: "number",
+    label: "Shadow Softness",
+    default: 2,
+    min: 0,
+    max: 4,
+    step: 1,
+    range: "bounded",
+    compileTime: true,
+    description:
+      "T1285: PCF radius in SHADOW MAP TEXELS — (2r+1)² taps per lit fragment this light reaches, averaged, giving a penumbra 2r+1 texels wide instead of a hard staircase. Priced per tap in the MAIN pass, not a second sweep. 0 is the single-tap hard edge; turn it down if the shot cannot afford 25 loads.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has an edge to soften."),
+  },
+  shadowBias: {
+    type: "number",
+    label: "Shadow Bias",
+    default: 0,
+    min: 0,
+    range: "floor",
+    compileTime: true,
+    description:
+      "T1438b: extra distance, in world units, a surface may sit behind the shadow map before it counts as shadowed — added to the built-in bias (one shadow-map texel plus a slope term). Raise it when a lit surface speckles or stripes with its own shadow (acne): a coarse mesh whose smoothed normals say it faces the light more than its facets do, or a large Shadow Extent spreading the map thin. Too much and a thin caster's shadow detaches from its base (peter-panning). 0 is the built-in bias alone. A compile-time knob: changing it rebuilds the shader.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has a shadow to bias."),
+  },
+  shadowCasters: {
+    type: "string",
+    label: "Shadow Casters",
+    default: "",
+    description:
+      "T1598b: space-separated geometry names — the ONLY geometries that cast this light's shadow. Empty: every geometry the Render draws casts. A geometry left out is still lit by this light, still receives its shadows and still casts for other lights. A casting light draws each caster again (a point light six times), so leave out what only ever receives: a floor, a wall, a tunnel.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has casters."),
+  },
+  shadowExclude: {
+    type: "string",
+    label: "Shadow Exclude",
+    default: "",
+    description:
+      "T1598b: space-separated geometry names that do NOT cast this light's shadow — taken out of Shadow Casters, or out of everything when that is empty. The shorter list to write when one big receiver is the only thing to leave out.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has casters."),
+  },
+};
+
+/**
+ * T1589b: the schema a Light in POINTS mode carries. One row differs, and the funnel
+ * (`parametersFor`, §T880) is what hands every reader the right one: Range defaults to 10.
+ * The declared 0 is "unlimited", and a light with no range is in every cell of a Render's
+ * grid: right for one light, the wrong default for a set.
+ *
+ * Type is a VALUE in both modes (T1623b): it is a field of each row, so changing it writes a
+ * float and compiles nothing, and a pointset of directional lights is legal.
+ */
+const LIGHT_POINTS_PARAMETERS: ParameterSchema = {
+  ...LIGHT_PARAMETERS,
+  range: { ...LIGHT_PARAMETERS["range"], default: 10 } as ParameterSchema[string],
+};
+
 /** T377 — a light: directional or point, colour and intensity, all drivable. */
 export const lightNode: NodeDefinition = {
   type: "light",
@@ -340,118 +574,55 @@ export const lightNode: NodeDefinition = {
   title: "Light",
   category: "render",
   description:
-    "A light other nodes reference by NAME — a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; point lights sit at Position with distance falloff (soft or inverse-square, and an optional range). Colour, intensity and placement are all drivable.",
-  tags: ["3d", "scene", "light", "shading"],
-  inputs: [],
+    "A light other nodes reference by NAME: a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; Point lights sit at Position with distance falloff (soft or inverse-square, and an optional range); Spot lights sit there and shine along Direction inside Cone. Mode: POINTS repeats the light at every point of the Points input, N lights from ONE node, never N nodes: each stands at its point's position, and Color, Intensity, Range, Direction, Orient and Cone take a per-point attribute in Map mode. A Render culls such lights by their Range on the GPU, so a lamp every few metres of a long set costs what the lamps near each pixel cost; give them a Range. A Spot that casts shadows has no cone yet: it shines as a Point light and says so. Colour, intensity and placement are all drivable. Only a light in Single mode casts shadows.",
+  tags: ["3d", "scene", "light", "shading", "points", "lamps"],
+  inputs: [
+    {
+      // T1589b: a real WIRE, because points are GPU data (§V372). Read in Points mode only.
+      id: "points",
+      label: "Points",
+      optional: true,
+      type: { kind: "pointset", requires: [{ name: "position", type: "vec3f" }] },
+      description:
+        "Mode: Points — the pointset this light is repeated over: one light at each point's position. A Point Grid, a Point Kernel, a Resample along a curve. A counted pointset lights only its live points. Not read in Single mode. A Render's light table holds at most 1,024 rows: every point of capacity of its Lights in Points mode, lit or not, and a step of 32 for its Lights in Single mode that do not cast.",
+    },
+    // T1598b: reference-fed, as a Render's Scenes is — the two list parameters name the
+    // geometries; the compiler synthesizes these edges; a wire is refused.
+    { id: "shadowCasters", label: "Shadow Casters", optional: true, variadic: true, type: { kind: "scene" } },
+    { id: "shadowExclude", label: "Shadow Exclude", optional: true, variadic: true, type: { kind: "scene" } },
+  ],
   outputs: [{ id: "out", label: "Out", type: { kind: "light" } }],
-  parameters: {
-    kind: {
-      type: "enum",
-      label: "Type",
-      default: "directional",
-      options: [
-        { value: "directional", label: "Directional" },
-        { value: "point", label: "Point" },
-      ],
-    },
-    color: { type: "color", label: "Color", default: [1, 1, 1, 1], space: "display" },
-    intensity: { type: "number", label: "Intensity", default: 1, min: 0, range: "floor" },
-    direction: {
-      type: "vector",
-      size: 3,
-      label: "Direction",
-      default: [-0.4, -0.8, -0.45],
-      inactiveWhen: (values) => (values["kind"] === "point" ? "A point light shines everywhere." : null),
-    },
-    position: {
-      type: "vector",
-      size: 3,
-      label: "Position",
-      default: [1, 2, 1.5],
-      inactiveWhen: (values) => (values["kind"] === "directional" ? "A directional light is infinitely far." : null),
-    },
-    falloff: {
-      type: "enum",
-      label: "Falloff",
-      default: "soft",
-      options: [
-        { value: "soft", label: "Soft 1/(1+d²)" },
-        { value: "inverseSquare", label: "Inverse Square 1/d²" },
-      ],
-      description:
-        "T1437b: how a point light dims with distance d. Soft, 1/(1+d²), is nearly flat inside a metre, so a lamp close to a subject lights its near and far side almost alike. Inverse Square, 1/d², is the physical law: a lamp at 30 cm lights a surface at 60 cm a quarter as much, which is what makes a close key read as close. Distance is held at 1 cm or more. Far from the light the two agree; inside a metre Inverse Square is brighter and much steeper.",
-      inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light does not fall off."),
-    },
-    range: {
-      type: "number",
-      label: "Range",
-      default: 0,
-      min: 0,
-      range: "floor",
-      description:
-        "T1437b: how far a point light reaches, in world units. The falloff is multiplied by (1 − (d/range)⁴)², so it reaches exactly zero at the range and is barely touched inside half of it. 0 is unlimited.",
-      inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light is infinitely far."),
-    },
-    shadows: {
-      type: "boolean",
-      label: "Cast Shadows",
-      default: false,
-      compileTime: true,
-      description:
-        "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible.",
-    },
-    shadowExtent: {
-      type: "number",
-      label: "Shadow Extent",
-      default: 8,
-      min: 0.1,
-      range: "floor",
-      description:
-        "Directional: world-units half-extent of the shadow volume around its Shadow Centre (the origin by default). Point (T1362b): the shadow RANGE in world units — casters and receivers beyond it are unshadowed, and depth precision is spread over it, so keep it close to how far the light visibly reaches. Explicit on purpose: nothing knows your scene's bounds, and a guessed box would crop shadows plausibly-wrong (V426).",
-      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
-    },
-    shadowCenter: {
-      type: "vector",
-      size: 3,
-      label: "Shadow Centre",
-      default: [0, 0, 0],
-      description:
-        "T1405b: the world point a directional light's shadow volume is framed around — Shadow Extent either side of it. Put it on the set (a set away from the origin otherwise gets no sun shadows at all), or drive it by expression to follow the camera or the subject. Moving it does not rebuild anything.",
-      inactiveWhen: (values) =>
-        values["kind"] === "point" ? "A point light's shadow is centred on the light." : values["shadows"] === true ? null : "Only a casting light frames a shadow volume.",
-    },
-    shadowSoftness: {
-      type: "number",
-      label: "Shadow Softness",
-      default: 2,
-      min: 0,
-      max: 4,
-      step: 1,
-      range: "bounded",
-      compileTime: true,
-      description:
-        "T1285: PCF radius in SHADOW MAP TEXELS — (2r+1)² taps per lit fragment this light reaches, averaged, giving a penumbra 2r+1 texels wide instead of a hard staircase. Priced per tap in the MAIN pass, not a second sweep. 0 is the single-tap hard edge; turn it down if the shot cannot afford 25 loads.",
-      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has an edge to soften."),
-    },
-    shadowBias: {
-      type: "number",
-      label: "Shadow Bias",
-      default: 0,
-      min: 0,
-      range: "floor",
-      compileTime: true,
-      description:
-        "T1438b: extra distance, in world units, a surface may sit behind the shadow map before it counts as shadowed — added to the built-in bias (one shadow-map texel plus a slope term). Raise it when a lit surface speckles or stripes with its own shadow (acne): a coarse mesh whose smoothed normals say it faces the light more than its facets do, or a large Shadow Extent spreading the map thin. Too much and a thin caster's shadow detaches from its base (peter-panning). 0 is the built-in bias alone. A compile-time knob: changing it rebuilds the shader.",
-      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has a shadow to bias."),
-    },
+  sourceReferences: [
+    { parameter: "shadowCasters", input: "shadowCasters", list: true },
+    { parameter: "shadowExclude", input: "shadowExclude", list: true },
+  ],
+  parameters: LIGHT_PARAMETERS,
+  /** T1589b: a Light in Points mode has its own Range default. */
+  parametersFor(stored) {
+    return storedStaticValue(stored["mode"] as never) === "points" ? LIGHT_POINTS_PARAMETERS : LIGHT_PARAMETERS;
   },
   compile(context): CompiledNodeDescription {
-    const { parameters } = readCompileInputs(context);
+    const { nodeId, inputs, parameters, parameterMaps } = readCompileInputs(context);
+    const pointsMode = parameters["mode"] === "points";
+    /* T1589b, §V288: a map this Light cannot honour refuses by name. In Single mode that is
+       every map: one light has no points to read a per-point value from. */
+    const unhonoured = lightMapRefusal(nodeId, parameterMaps, pointsMode);
+    if (unhonoured !== undefined) return unhonoured;
     const color = readColor(parameters, "color", [1, 1, 1, 1]);
+    /* T1598b: the two lists as the ids of the nodes the names resolved to. A Render matches
+       them against the geometries it draws, so a light shared by two Renders casts in each
+       from what that Render has. */
+    const named = (portId: string): string[] =>
+      ((context as { inputs?: Record<string, ReadonlyArray<{ sourceNodeId?: string }>> }).inputs?.[portId] ?? []).flatMap((binding) =>
+        binding.sourceNodeId === undefined ? [] : [binding.sourceNodeId],
+      );
+    const casters = named("shadowCasters");
+    const excluded = named("shadowExclude");
     const payload: LightPayload = {
       kind: "light",
       light: {
-        type: parameters["kind"] === "point" ? "point" : "directional",
+        /* A spot stands at a place, as a point light does. */
+        type: parameters["kind"] === "point" || parameters["kind"] === "spot" ? "point" : "directional",
         color: [color[0] ?? 1, color[1] ?? 1, color[2] ?? 1],
         intensity: readNumber(parameters, "intensity", 1),
         direction: vec3(parameters, "direction", [-0.4, -0.8, -0.45]),
@@ -461,12 +632,363 @@ export const lightNode: NodeDefinition = {
         shadowSoftness: readNumber(parameters, "shadowSoftness", 2),
         shadowBias: Math.max(0, readNumber(parameters, "shadowBias", 0)),
         shadowCenter: vec3(parameters, "shadowCenter", [0, 0, 0]),
+        ...(casters.length === 0 ? {} : { shadowCasters: casters }),
+        ...(excluded.length === 0 ? {} : { shadowExclude: excluded }),
         falloff: parameters["falloff"] === "inverseSquare" ? "inverseSquare" : "soft",
         range: Math.max(0, readNumber(parameters, "range", 0)),
+        /* T1623b: a spot's cone, for the row this Light is in a Render's table. */
+        ...(parameters["kind"] === "spot" ? { spot: { cone: readNumber(parameters, "cone", 60), softness: readNumber(parameters, "coneSoftness", 0.4) } } : {}),
       },
     };
-    return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
+    /* T1589b: one light at every point of the Points input, resolved once a frame into
+       records a Render culls (light-points.ts). */
+    if (pointsMode) return compileLightPoints({ nodeId, points: inputs["points"], parameters, parameterMaps, light: payload.light });
+    const single = { passes: [], scene: { out: payload } } as CompiledNodeDescription;
+    /* T1623b slice 3: a Light in Single mode that does not cast is a row of each Render's
+       light table, and a spot is a kind of row. A CASTING one is still a block of the lit
+       shader, which takes no cone: it shines as a point light and SAYS so. A warning and
+       never a refusal: Type is a value, and a value does not decide what compiles. Goes with
+       the last block (T1623b slice 5). */
+    return parameters["kind"] === "spot" && payload.light.shadows ? { ...single, diagnostics: [lightSpotUnbuilt(nodeId)] } : single;
   },
+};
+
+/**
+ * T1598b: a sphere through an object matrix (column-major, the Transform group's: translate
+ * × rotate × scale about a pivot). The centre is transformed; the radius grows by the
+ * largest axis scale, which for that matrix is its longest column — exact for a rotation
+ * times a scale, and it is never anything else here.
+ */
+function transformedSphere(
+  sphere: { readonly center: readonly [number, number, number]; readonly radius: number },
+  matrix: ReadonlyArray<number>,
+): { center: [number, number, number]; radius: number } {
+  const at = (index: number): number => matrix[index] ?? 0;
+  const [x, y, z] = sphere.center;
+  const column = (first: number): number => Math.hypot(at(first), at(first + 1), at(first + 2));
+  return {
+    center: [
+      at(0) * x + at(4) * y + at(8) * z + at(12),
+      at(1) * x + at(5) * y + at(9) * z + at(13),
+      at(2) * x + at(6) * y + at(10) * z + at(14),
+    ],
+    radius: sphere.radius * Math.max(column(0), column(4), column(8)),
+  };
+}
+
+/** T1581b: Instances mode drawing a MESH (the Shape Mesh input) at every point. */
+const meshInstances = (values: Readonly<Record<string, unknown>>): boolean => values["mode"] === "instances" && values["shape"] === "mesh";
+
+/**
+ * T1588b, §V146: which geometries the object Transform reaches. A Surface draws by the
+ * model matrix and a mesh instance by its record; primitive instances, points and beams
+ * draw through generators that have no matrix until slice G of T1588b.
+ *
+ * There the four rows are INACTIVE AND IGNORED, and never a refusal. A refusal would be
+ * decided by a VALUE, and a value never decides the plan's structure (§V453): an object
+ * whose Translate is driven would leave the values-only frame path on the first frame it
+ * left the identity, and stop drawing. The row says it is ignored; the draw is the
+ * identity's.
+ */
+const transformInactive = (values: Readonly<Record<string, unknown>>): string | null =>
+  values["mode"] === undefined || values["mode"] === "surface" || meshInstances(values)
+    ? null
+    : "Ignored here: the Transform moves a Surface or mesh instances. Primitive instances, points and beams do not take it yet and draw as if it were not set.";
+
+/**
+ * The Geometry's DECLARED parameters, hoisted (T1581b) so `parametersFor` can derive the
+ * schema one placed node carries without reading the node back off itself (§T903's funnel;
+ * `switch.ts` has the same shape).
+ */
+const GEOMETRY_PARAMETERS: ParameterSchema = {
+  material: {
+    type: "string",
+    label: "Material",
+    default: "",
+    description: "Name of a material node. Empty = the default lambert material.",
+  },
+  shadowOnly: {
+    type: "boolean",
+    label: "Shadow Only",
+    default: false,
+    compileTime: true,
+    description:
+      "T1414b: this object casts shadows (and blocks projectors) but the camera never sees it — no colour, depth, normal, albedo or shadow matte, no ambient occlusion. A stand-in that throws the shadow of something not in the shot, or the performer's shadow on a wall he is composited in front of. Surface and Instances bodies of a lit, opaque material only: nothing else casts.",
+  },
+  materialOverrides: {
+    type: "string",
+    label: "Material Overrides",
+    default: "",
+    description:
+      "T1415b: this object's own values for the material it wears, the material itself untouched: one `name = value` per line (or `;`), e.g. `roughness = 0.2` or a Material · WGSL field `heatColor = 1 0.5 0.2`. roughness, metallic and any field of the material's struct Params; an unknown name refuses by name.",
+  },
+  /*
+   * T1588b — THE OBJECT TRANSFORM (docs/mesh-instancing-design-2026-10-05.md, D5/D6):
+   *
+   *     Object = T(translate) · T(pivot) · R(rotate) · S(scale) · T(−pivot)
+   *
+   * composed on the CPU (`objectMatrix`) and carried in the payload, so every pass of
+   * every Render draws by the same matrix. All four are VALUES: a moving object is a
+   * uniform write, never a rebuild (§V5).
+   */
+  translate: {
+    type: "vector",
+    size: 3,
+    label: "Translate",
+    group: "Transform",
+    default: [0, 0, 0],
+    inactiveWhen: transformInactive,
+    description:
+      "Moves the whole object, in scene units, after its scale and its turn. Drive it to fly a hull through the shot: the vertices are not rewritten, the draw takes a matrix. The four Transform rows move a Surface and mesh instances; primitive instances, points and beams IGNORE them (the rows show as inactive) and draw as if they were not set.",
+  },
+  rotate: {
+    type: "vector",
+    size: 3,
+    label: "Rotate",
+    group: "Transform",
+    default: [0, 0, 0],
+    inactiveWhen: transformInactive,
+    description:
+      "Turns the object about its Pivot, in DEGREES, applied X then Y then Z. Each is a right-handed turn about its axis: a positive Z carries +X toward +Y. Its normals turn with it, so it is lit for the way it faces.",
+  },
+  objectScale: {
+    type: "vector",
+    size: 3,
+    label: "Scale",
+    group: "Transform",
+    default: [1, 1, 1],
+    inactiveWhen: transformInactive,
+    description: "Grows or shrinks the object about its Pivot, per axis, before the turn. This is the object's own scale; Size below is the size of one instance, billboard or beam.",
+  },
+  pivot: {
+    type: "vector",
+    size: 3,
+    label: "Pivot",
+    group: "Transform",
+    default: [0, 0, 0],
+    inactiveWhen: transformInactive,
+    description: "The point of the object, in its own coordinates, that Rotate and Scale leave where it is. With no turn and a scale of 1 it changes nothing.",
+  },
+  mode: {
+    type: "enum",
+    label: "Mode",
+    default: "surface",
+    compileTime: true,
+    options: [
+      { value: "surface", label: "Surface" },
+      { value: "instances", label: "Instances" },
+      /* T647: camera-facing billboards — cheap reading markers with per-point colour,
+         lit through the same camera and depth buffer, honoring the same group
+         predicate. They cast no shadow (a screen-aligned card has no light-facing
+         geometry). */
+      { value: "points", label: "Points" },
+      /* T680: one quad per point, spanning `position` → the Endpoint attribute. The
+         third member of the billboard family and the one that carries a BEARING:
+         beams, streaks, trails — anything whose reading is a SEGMENT rather than a
+         dot. Casts no shadow, for §V610's reason. */
+      { value: "beam", label: "Beam" },
+    ],
+  },
+  endpoint: {
+    type: "string",
+    label: "Endpoint",
+    default: "",
+    compileTime: true,
+    inactiveWhen: (values) => (values["mode"] === "beam" ? null : "Only a beam has a far end."),
+    description:
+      "Beam mode: the name of a vec3f attribute holding the FAR end of each segment. The near end is `position`. A ray's `hitPosition`, a previous frame's position, `position + velocity` — whatever the data already knows.",
+  },
+  spherical: {
+    type: "boolean",
+    label: "Spherical",
+    default: false,
+    compileTime: true,
+    description:
+      "T940b: points mode — each billboard reads as a tiny lit sphere: round soft splat plus a shaded side, lit from the azimuth the tint attribute's ALPHA carries (radians; a kernel writes the direction light arrives from). Squares become motes.",
+    inactiveWhen: (values) => (values["mode"] === "points" ? null : "Only points draw spherical splats."),
+  },
+  taper: {
+    type: "number",
+    label: "Taper",
+    default: 1,
+    min: 0,
+    max: 1,
+    range: "bounded",
+    inactiveWhen: (values) => (values["mode"] === "beam" ? null : "Only a beam has two ends to size differently."),
+    description:
+      "Beam mode: the share of the width the beam keeps at its ORIGIN. 1 is a parallel-sided ribbon; 0 pinches the near end to a point, which is what a divergent beam does — and what keeps many beams sharing one origin from fusing into a solid wedge there.",
+  },
+  /**
+   * T917 — the SOFT PROFILE (§T845's gap, third sighting: E41 rounds quads with bloom,
+   * E45's stay hard, E44's boxes read as a wall). §T845's AA-disc formula on the
+   * primitive's own across axis: 0 is today's hard edge, bit-identical; above it the
+   * edge falls off over that share of the half-width. The colour carries the coverage
+   * (premultiplied), so an additive draw sums light without fringing.
+   */
+  soft: {
+    type: "number",
+    label: "Soft",
+    default: 0,
+    min: 0,
+    max: 1,
+    range: "bounded",
+    inactiveWhen: (values) =>
+      values["mode"] === "beam" || values["mode"] === "points"
+        ? null
+        : "The soft profile falls off across a beam's width or a point's billboard.",
+    description:
+      "Edge falloff, as a share of the half-width. 0 is a hard edge (unchanged); 1 falls off from the centreline. Pairs with Blend: Additive for beams that read as light.",
+  },
+  /**
+   * T917 — additive light. The plan and backend have carried per-draw blend since T295
+   * (\`pass.blend\`); this is the missing knob. Additive draws also stop WRITING depth
+   * (they still test it): light does not occlude light, and 61 fan beams at one depth
+   * must sum rather than fight the z-buffer.
+   */
+  blend: {
+    type: "enum",
+    label: "Blend",
+    default: "opaque",
+    compileTime: true,
+    options: [
+      { value: "opaque", label: "Opaque" },
+      { value: "additive", label: "Additive" },
+    ],
+    description:
+      "Additive adds this geometry's colour onto what is already drawn — light on light — and stops writing depth so overlapping light sums instead of occluding. In every mode it is light, not a body: it still hides behind what is in front of it, and it leaves the Render's Depth output, its shadows and its ambient occlusion to what it glows over (In Depth Output brings back the first). A Surface drawn additively (T1411b) also comes after every opaque and glass geometry and writes no Normal or Albedo; points, beams and primitive instances draw in Scenes order, so list them after what they glow over.",
+  },
+  inDepthOutput: {
+    type: "boolean",
+    label: "In Depth Output",
+    default: false,
+    compileTime: true,
+    description:
+      "B256, additive geometry only. Off: the Render's Depth output holds what this light glows over, which is what haze, focus and screen-space occlusion want of dust, sparks and glows. On: its own depth is written there, though it still hides nothing and casts nothing — for a light-only Render whose depth a later pass composites by (a beam placed in front of or behind a raymarched room).",
+    inactiveWhen: (values) => (values["blend"] === "additive" ? null : "An opaque geometry is always in the Depth output."),
+  },
+  shape: {
+    type: "enum",
+    label: "Shape",
+    default: "box",
+    compileTime: true,
+    options: [
+      { value: "quad", label: "Quad" },
+      { value: "box", label: "Box" },
+      { value: "octahedron", label: "Octahedron" },
+      /* T1581b: any mesh — the pointset on the Shape Mesh input, drawn once per point. */
+      { value: "mesh", label: "Mesh" },
+    ],
+    inactiveWhen: (values) => (values["mode"] === "instances" ? null : "Only instances wear a primitive."),
+    description:
+      "What Instances mode draws at every point. Quad, Box and Octahedron are built in. Mesh draws the pointset wired to Shape Mesh — a Mesh File In with Frame: Object, or anything downstream that keeps its triangles — with the mesh's own normals, uv, colour and surface values, lit, shadowed and written to the Normal and Albedo outputs as a Surface is, and under a Material · WGSL too.",
+  },
+  /*
+   * T1581b — WHERE EACH INSTANCE STANDS (docs/mesh-instancing-design-2026-10-05.md, D5/D7):
+   *
+   *     Instance = T(place + Instance Translate) · R(orient) · S(Size · size)
+   *
+   * `place` is the points' own `position` unless this is in Map mode, when it is whichever
+   * vec3f attribute the map names. The value ADDS to it either way — the rule every target
+   * with both a value and an attribute follows: they compose, and the default is neutral.
+   */
+  instanceTranslate: {
+    type: "vector",
+    size: 3,
+    label: "Instance Translate",
+    default: [0, 0, 0],
+    inactiveWhen: (values) => (meshInstances(values) ? null : "Only mesh instances take a mapped place; a primitive stands at its point's position."),
+    description:
+      "Mesh instances: an offset added to every instance's place, in the object's own frame. In Map mode a vec3f attribute IS each instance's place instead of `position` — a second set of positions a kernel wrote — and this value still adds to it.",
+  },
+  scale: {
+    type: "number",
+    /* T1588b: labelled Size since the object's own per-axis Scale arrived (the key is
+       unchanged, so every stored document reads as it did). */
+    label: "Size",
+    default: 0.05,
+    min: 0,
+    range: "floor",
+    inactiveWhen: (values) =>
+      values["mode"] === "instances" || values["mode"] === "points" || values["mode"] === "beam"
+        ? null
+        : "Size sizes instances and point billboards; a surface spans its grid.",
+    description:
+      "Instances: the primitive's size; a MESH instance's scale, which defaults to 1 — the mesh's own size. Points: the billboard's. Beam: its HALF-WIDTH — a beam takes its length from the data, so this is the only dimension left to set. In Map mode an f32 attribute (or one channel of a float vector) MULTIPLIES this per point, so the number here stays the object's size and the attribute is a factor — size by depth for a circle of confusion, by age, by confidence.",
+  },
+  /*
+   * T723 — ORIENTATION, as a unit QUATERNION, and the map is the whole of it.
+   *
+   * Why a quaternion and not Euler angles or a forward direction: `ATTRIBUTE_STRIDES`
+   * makes `vec3f` and `vec4f` both SIXTEEN BYTES — WGSL aligns a vec3 to 16 — so all
+   * three candidates cost one attribute of §V588's four and exactly the same memory.
+   * There is no cheap option, which leaves only what each CANNOT do. Euler angles
+   * cannot compose (adding angles is not composing rotations), cannot interpolate and
+   * gimbal; a forward direction cannot express ROLL and pops through a half turn when
+   * it crosses the implied up. A quaternion does all of it, and the asymmetry decides
+   * it: a direction is recoverable from a quaternion, roll is not recoverable from a
+   * direction. T287 already declared the `quaternion` qualifier on vec4f with exactly
+   * this semantic and it has had no consumer until now.
+   *
+   * The value here is the IDENTITY and the compiler refuses any other — see the
+   * refusal below. A per-object turn is a separate feature; when it arrives it
+   * composes by quaternion multiply, which is what the qualifier already says.
+   */
+  orient: {
+    type: "vector",
+    size: 4,
+    label: "Orient",
+    default: [0, 0, 0, 1],
+    inactiveWhen: (values) =>
+      values["mode"] === "instances"
+        ? null
+        : "Only instances have a frame to turn: a billboard faces the camera, a beam takes its axis from its endpoints, and a surface has no per-point anything.",
+    description:
+      "Instances only, and MAP MODE only: a vec4f attribute holding a unit quaternion (x, y, z, w) turns each primitive — and its normals with it, so a turned box is lit for the way up it actually has. Write one in a kernel to point a tile down its own velocity or along a flow. Right-handed and active: (0, 0, sin45, cos45) is a +90° turn about +Z and carries +X to +Y.",
+  },
+  tint: {
+    type: "color",
+    label: "Tint",
+    default: [1, 1, 1, 1],
+    space: "display",
+    description:
+      "Multiplier on the material's base colour: per object as a value, PER POINT in Map mode (a vec4f attribute — T478). White = inherit, either way.",
+  },
+  /*
+   * T1581b (D9) — CUSTOM INSTANCE ATTRIBUTES. The material says what it reads per instance
+   * (`struct Instance`); the points say what they carry; the two meet BY NAME. This text is
+   * only for the cases a name does not settle — another attribute, or one channel of one.
+   * Structural: which attributes a draw reads is its bindings.
+   */
+  instanceAttributes: {
+    type: "string",
+    label: "Instance Attributes",
+    default: "",
+    compileTime: true,
+    inactiveWhen: (values) => (meshInstances(values) ? null : "Only mesh instances hand the material per-instance values; on any other geometry its Instance fields read their defaults."),
+    description:
+      "Mesh instances under a Material · WGSL that declares `struct Instance`: each field already takes the points' attribute of the SAME NAME and type, so most scenes leave this empty. One `field = attribute` per line (or `;`) binds another attribute, and `field = attribute.x` takes one channel of a float vector into an f32 field. A field nothing binds reads its `// @default`. A field the material does not declare, an attribute the points do not carry, a type that does not match, and a field with neither attribute nor default each refuse by name.",
+  },
+  /*
+   * The description's last sentence is a COST, said where the choice is made (F1): a mesh
+   * instance geometry with a Group compacts, and its draws are indirect — about 0.05 ms of
+   * GPU a pass on the machine it was measured on (docs/geometry-cost-profile-2026-10-05.md).
+   * The first consumer's documents carried a Group that rejected nothing on thirteen
+   * geometries, fifteen passes each.
+   */
+  group: {
+    type: "string",
+    label: "Group",
+    default: "",
+    compileTime: true,
+    description:
+      "T642/T333: draw only matching points — a WGSL predicate over p.<attribute>, e.g. p.hit > 0.5. Instances, Points and Beam modes; referenced attributes bind on demand from the edge. Empty = all. On mesh instances it is decided once per instance (not per vertex), and two Geometries over one pointset with complementary predicates draw two shapes. A rejected mesh instance is in no draw and costs nothing: a big mesh may keep one point of many. The Group itself is not free there: the instance count is then read on the GPU, an indirect draw in every pass, so leave it empty on a geometry that draws every point.",
+  },
+};
+
+/** T1581b: the schema a mesh-instancing Geometry carries — the declared one, its Size defaulting to 1. */
+const GEOMETRY_MESH_INSTANCE_PARAMETERS: ParameterSchema = {
+  ...GEOMETRY_PARAMETERS,
+  scale: { ...GEOMETRY_PARAMETERS["scale"], default: 1 } as ParameterSchema[string],
 };
 
 /**
@@ -492,7 +1014,7 @@ export const geometryNode: NodeDefinition = {
    * for on every call, for all 107 nodes.
    */
   description:
-    "Binds a point set and a material into one nameable renderable object — a Render lists geometries by name. Mode decides what the points become: Surface skins them into a mesh over their grid topology; INSTANCES draws one primitive at every point — N copies of one shape from ONE node, never N nodes — with Scale, Orient and Tint taking per-point values in Map mode; Points draws a camera-facing billboard per point; Beam draws a quad spanning position to the Endpoint attribute, for streaks and rays. Tint multiplies the material's base colour per object (1,1,1,1 = inherit, visibly).",
+    "Binds a point set and a material into one renderable object a Render lists by name. Mode decides what the points become: Surface skins them into a mesh over their grid topology; INSTANCES draws one primitive at every point — N copies of one shape from ONE node, never N nodes — a quad, box or octahedron, or with Shape: Mesh ANY MESH wired to Shape Mesh (a Mesh File In with Frame: Object), lit, shadowed and Material · WGSL-shaded as a Surface is; Size, Orient, Tint and Instance Translate take per-point values in Map mode; Points draws a camera-facing billboard per point; Beam draws a quad spanning position to the Endpoint attribute, for streaks and rays. Tint multiplies the material's base colour per object (1,1,1,1 = inherit, visibly). Translate, Rotate, Scale and Pivot move a Surface or mesh instances as ONE OBJECT: a matrix on every draw (colour, G-buffer, shadows), not a kernel; primitives, points and beams ignore them. Blend: Opaque is a body; Additive is light: no depth, no shadow.",
   // T1214: the tags named one of the four modes. A library search for "instances" or
   // "beam" found Render Instances and nothing else — this node does both.
   tags: ["3d", "scene", "geometry", "material", "surface", "instances", "points", "beam"],
@@ -501,7 +1023,21 @@ export const geometryNode: NodeDefinition = {
       id: "points",
       label: "Points",
       type: { kind: "pointset", requires: [{ name: "position", type: "vec3f" }] },
-      description: "Surface mode needs analytic grid topology on the edge.",
+      description:
+        "Surface mode needs analytic grid topology on the edge. A vec2f attribute named uv on the points is the texture coordinate its material reads, in place of the grid's columns and rows.",
+    },
+    {
+      // T1581b: the instance SHAPE. AFTER `points`, which stays the first pointset input:
+      // every Map on this node resolves against it (§V306).
+      id: "mesh",
+      label: "Shape Mesh",
+      optional: true,
+      /* Only `position` is required of the EDGE, as on `points`: a kernel between the file
+         and this port declares no more than that, and the compile checks the triangles and
+         the normal itself, with a sentence each. */
+      type: { kind: "pointset", requires: [{ name: "position", type: "vec3f" }] },
+      description:
+        "Instances mode, Shape: Mesh — the mesh drawn at every point of Points: a Mesh File In (set its Frame to Object, so the shape is in its own frame rather than where the file placed it), or anything downstream that keeps its triangles. Read in no other mode.",
     },
     {
       // T447: reference-fed — the `material` PARAMETER names the node; the compiler
@@ -514,187 +1050,17 @@ export const geometryNode: NodeDefinition = {
   ],
   outputs: [{ id: "out", label: "Out", type: { kind: "scene" } }],
   sourceReferences: [{ parameter: "material", input: "material" }],
-  parameters: {
-    material: {
-      type: "string",
-      label: "Material",
-      default: "",
-      description: "Name of a material node. Empty = the default lambert material.",
-    },
-    shadowOnly: {
-      type: "boolean",
-      label: "Shadow Only",
-      default: false,
-      compileTime: true,
-      description:
-        "T1414b: this object casts shadows (and blocks projectors) but the camera never sees it — no colour, depth, normal, albedo or shadow matte, no ambient occlusion. A stand-in that throws the shadow of something not in the shot, or the performer's shadow on a wall he is composited in front of. Surface and Instances bodies of a lit, opaque material only: nothing else casts.",
-    },
-    materialOverrides: {
-      type: "string",
-      label: "Material Overrides",
-      default: "",
-      description:
-        "T1415b: this object's own values for the material it wears, the material itself untouched: one `name = value` per line (or `;`), e.g. `roughness = 0.2` or a Material · WGSL field `heatColor = 1 0.5 0.2`. roughness, metallic and any field of the material's struct Params; an unknown name refuses by name.",
-    },
-    mode: {
-      type: "enum",
-      label: "Mode",
-      default: "surface",
-      compileTime: true,
-      options: [
-        { value: "surface", label: "Surface" },
-        { value: "instances", label: "Instances" },
-        /* T647: camera-facing billboards — cheap reading markers with per-point colour,
-           lit through the same camera and depth buffer, honoring the same group
-           predicate. They cast no shadow (a screen-aligned card has no light-facing
-           geometry). */
-        { value: "points", label: "Points" },
-        /* T680: one quad per point, spanning `position` → the Endpoint attribute. The
-           third member of the billboard family and the one that carries a BEARING:
-           beams, streaks, trails — anything whose reading is a SEGMENT rather than a
-           dot. Casts no shadow, for §V610's reason. */
-        { value: "beam", label: "Beam" },
-      ],
-    },
-    endpoint: {
-      type: "string",
-      label: "Endpoint",
-      default: "",
-      compileTime: true,
-      inactiveWhen: (values) => (values["mode"] === "beam" ? null : "Only a beam has a far end."),
-      description:
-        "Beam mode: the name of a vec3f attribute holding the FAR end of each segment. The near end is `position`. A ray's `hitPosition`, a previous frame's position, `position + velocity` — whatever the data already knows.",
-    },
-    spherical: {
-      type: "boolean",
-      label: "Spherical",
-      default: false,
-      compileTime: true,
-      description:
-        "T940b: points mode — each billboard reads as a tiny lit sphere: round soft splat plus a shaded side, lit from the azimuth the tint attribute's ALPHA carries (radians; a kernel writes the direction light arrives from). Squares become motes.",
-      inactiveWhen: (values) => (values["mode"] === "points" ? null : "Only points draw spherical splats."),
-    },
-    taper: {
-      type: "number",
-      label: "Taper",
-      default: 1,
-      min: 0,
-      max: 1,
-      range: "bounded",
-      inactiveWhen: (values) => (values["mode"] === "beam" ? null : "Only a beam has two ends to size differently."),
-      description:
-        "Beam mode: the share of the width the beam keeps at its ORIGIN. 1 is a parallel-sided ribbon; 0 pinches the near end to a point, which is what a divergent beam does — and what keeps many beams sharing one origin from fusing into a solid wedge there.",
-    },
-    /**
-     * T917 — the SOFT PROFILE (§T845's gap, third sighting: E41 rounds quads with bloom,
-     * E45's stay hard, E44's boxes read as a wall). §T845's AA-disc formula on the
-     * primitive's own across axis: 0 is today's hard edge, bit-identical; above it the
-     * edge falls off over that share of the half-width. The colour carries the coverage
-     * (premultiplied), so an additive draw sums light without fringing.
-     */
-    soft: {
-      type: "number",
-      label: "Soft",
-      default: 0,
-      min: 0,
-      max: 1,
-      range: "bounded",
-      inactiveWhen: (values) =>
-        values["mode"] === "beam" || values["mode"] === "points"
-          ? null
-          : "The soft profile falls off across a beam's width or a point's billboard.",
-      description:
-        "Edge falloff, as a share of the half-width. 0 is a hard edge (unchanged); 1 falls off from the centreline. Pairs with Blend: Additive for beams that read as light.",
-    },
-    /**
-     * T917 — additive light. The plan and backend have carried per-draw blend since T295
-     * (\`pass.blend\`); this is the missing knob. Additive draws also stop WRITING depth
-     * (they still test it): light does not occlude light, and 61 fan beams at one depth
-     * must sum rather than fight the z-buffer.
-     */
-    blend: {
-      type: "enum",
-      label: "Blend",
-      default: "opaque",
-      compileTime: true,
-      options: [
-        { value: "opaque", label: "Opaque" },
-        { value: "additive", label: "Additive" },
-      ],
-      description:
-        "Additive adds this geometry's colour onto what is already drawn — light on light — and stops writing depth so overlapping light sums instead of occluding. A Surface drawn additively (T1411b) comes after every opaque and glass geometry, still hides behind what is in front of it, and leaves the Render's Depth, Normal and Albedo outputs and its shadows to what it glows over.",
-    },
-    shape: {
-      type: "enum",
-      label: "Shape",
-      default: "box",
-      compileTime: true,
-      options: [
-        { value: "quad", label: "Quad" },
-        { value: "box", label: "Box" },
-        { value: "octahedron", label: "Octahedron" },
-      ],
-      inactiveWhen: (values) => (values["mode"] === "instances" ? null : "Only instances wear a primitive."),
-    },
-    scale: {
-      type: "number",
-      label: "Scale",
-      default: 0.05,
-      min: 0,
-      range: "floor",
-      inactiveWhen: (values) =>
-        values["mode"] === "instances" || values["mode"] === "points" || values["mode"] === "beam"
-          ? null
-          : "Scale sizes instances and point billboards; a surface spans its grid.",
-      description:
-        "Instances: the primitive's size. Points: the billboard's. Beam: its HALF-WIDTH — a beam takes its length from the data, so this is the only dimension left to set. In Map mode an f32 attribute (or one channel of a float vector) MULTIPLIES this per point, so the number here stays the object's size and the attribute is a factor — size by depth for a circle of confusion, by age, by confidence.",
-    },
-    /*
-     * T723 — ORIENTATION, as a unit QUATERNION, and the map is the whole of it.
-     *
-     * Why a quaternion and not Euler angles or a forward direction: `ATTRIBUTE_STRIDES`
-     * makes `vec3f` and `vec4f` both SIXTEEN BYTES — WGSL aligns a vec3 to 16 — so all
-     * three candidates cost one attribute of §V588's four and exactly the same memory.
-     * There is no cheap option, which leaves only what each CANNOT do. Euler angles
-     * cannot compose (adding angles is not composing rotations), cannot interpolate and
-     * gimbal; a forward direction cannot express ROLL and pops through a half turn when
-     * it crosses the implied up. A quaternion does all of it, and the asymmetry decides
-     * it: a direction is recoverable from a quaternion, roll is not recoverable from a
-     * direction. T287 already declared the `quaternion` qualifier on vec4f with exactly
-     * this semantic and it has had no consumer until now.
-     *
-     * The value here is the IDENTITY and the compiler refuses any other — see the
-     * refusal below. A per-object turn is a separate feature; when it arrives it
-     * composes by quaternion multiply, which is what the qualifier already says.
-     */
-    orient: {
-      type: "vector",
-      size: 4,
-      label: "Orient",
-      default: [0, 0, 0, 1],
-      inactiveWhen: (values) =>
-        values["mode"] === "instances"
-          ? null
-          : "Only instances have a frame to turn: a billboard faces the camera, a beam takes its axis from its endpoints, and a surface has no per-point anything.",
-      description:
-        "Instances only, and MAP MODE only: a vec4f attribute holding a unit quaternion (x, y, z, w) turns each primitive — and its normals with it, so a turned box is lit for the way up it actually has. Write one in a kernel to point a tile down its own velocity or along a flow. Right-handed and active: (0, 0, sin45, cos45) is a +90° turn about +Z and carries +X to +Y.",
-    },
-    tint: {
-      type: "color",
-      label: "Tint",
-      default: [1, 1, 1, 1],
-      space: "display",
-      description:
-        "Multiplier on the material's base colour: per object as a value, PER POINT in Map mode (a vec4f attribute — T478). White = inherit, either way.",
-    },
-    group: {
-      type: "string",
-      label: "Group",
-      default: "",
-      compileTime: true,
-      description:
-        "T642/T333: draw only matching points — a WGSL predicate over p.<attribute>, e.g. p.hit > 0.5. Instances, Points and Beam modes; referenced attributes bind on demand from the edge. Empty = all.",
-    },
+  parameters: GEOMETRY_PARAMETERS,
+  /**
+   * T1581b (O3): a MESH instance's Size defaults to 1, the mesh's own size. The declared
+   * 0.05 is a primitive's half-extent, and on a mesh it would be a twentieth of the file —
+   * a trap. The schema is per instance (§T880), so every reader gets the right default
+   * through the one funnel.
+   */
+  parametersFor(stored) {
+    return storedStaticValue(stored["mode"] as never) === "instances" && storedStaticValue(stored["shape"] as never) === "mesh"
+      ? GEOMETRY_MESH_INSTANCE_PARAMETERS
+      : GEOMETRY_PARAMETERS;
   },
   compile(context): CompiledNodeDescription {
     const { nodeId, inputs, parameters, parameterMaps } = readCompileInputs(context);
@@ -735,7 +1101,7 @@ export const geometryNode: NodeDefinition = {
     // retained static. `tint` (T478), `scale` (T721) and `orient` (T723) are the
     // mappable ones — and this list is the reason a new map cannot be half-added: a
     // parameter that grows a map binding without appearing here refuses itself.
-    const MAPPABLE = new Set(["tint", "scale", "orient"]);
+    const MAPPABLE = new Set(["tint", "scale", "orient", "instanceTranslate"]);
     const unhonoured = Object.keys(parameterMaps).filter((key) => !MAPPABLE.has(key)).sort();
     if (unhonoured.length > 0) {
       return {
@@ -743,9 +1109,25 @@ export const geometryNode: NodeDefinition = {
         diagnostics: unhonoured.map((key) => ({
           severity: "error" as const,
           code: "node.parameter.map",
-          message: `Node "${nodeId}": ${key} is in map mode, but geometry maps only "tint", "scale" and "orient".`,
+          message: `Node "${nodeId}": ${key} is in map mode, but geometry maps only "tint", "scale", "orient" and "instanceTranslate".`,
           nodeId,
           suggestion: "Switch it back to Constant, or drive it through the value graph instead.",
+        })),
+      };
+    }
+    /* T1581b, §V306: this node has two pointset inputs now, and a Map reads ONE of them —
+       the points, where the per-instance values are. A map that names the shape is refused
+       with the reason, not resolved against the wrong pointset. */
+    const onShape = Object.entries(parameterMaps).filter(([, binding]) => binding.port === "mesh").map(([key]) => key).sort();
+    if (onShape.length > 0) {
+      return {
+        passes: [],
+        diagnostics: onShape.map((key) => ({
+          severity: "error" as const,
+          code: "node.parameter.map",
+          message: `Node "${nodeId}": ${key} maps port "mesh", but a Map reads a per-instance value and those are on the Points input; Shape Mesh is the shape every instance draws.`,
+          nodeId,
+          suggestion: "Map an attribute of the Points input (drop the port), or write the value into the points with a kernel.",
         })),
       };
     }
@@ -787,6 +1169,27 @@ export const geometryNode: NodeDefinition = {
        instance is true of a billboard and of a beam — a scale, a group predicate, no
        uv, no grid. Only `surface` is the odd one. */
     const perPoint = mode === "instances" || mode === "points" || mode === "beam";
+    /* T1581b: Instances mode drawing the Shape Mesh input at every point. */
+    const meshShape = mode === "instances" && parameters["shape"] === "mesh";
+    /* Instance Translate is the mesh instance's target. MAPPED on anything else it could
+       only be dropped, so the map refuses by name (§V288) — the node's rule for a map this
+       mode cannot honour, as Size's on a surface. Its constant VALUE there is inactive and
+       says so (§V146): a value is never what decides the plan's structure (§V453). */
+    const instanceTranslate = vec3(parameters, "instanceTranslate", [0, 0, 0]);
+    if (!meshShape && parameterMaps["instanceTranslate"] !== undefined) {
+      return {
+        passes: [],
+        diagnostics: [
+          {
+            severity: "error",
+            code: "node.parameter.map",
+            message: `Node "${nodeId}": instanceTranslate is in map mode, but it places mesh instances (Mode: Instances, Shape: Mesh); this geometry is ${mode === "instances" ? `${String(parameters["shape"] ?? "box")} instances` : `a ${mode}`} and would ignore it.`,
+            nodeId,
+            suggestion: "Set Shape to Mesh and wire a mesh to Shape Mesh, or set Instance Translate back to Constant.",
+          },
+        ],
+      };
+    }
     /* T1414b: Shadow Only keeps exactly the casting half of a body — so a body that casts
        nothing (a billboard, a beam, light laid on additively, glass, an unlit marker) would
        draw nothing at all. Refused by name rather than silently invisible (§V288). */
@@ -834,7 +1237,7 @@ export const geometryNode: NodeDefinition = {
             code: "node.parameter.map",
             message: `Node "${nodeId}": scale is in map mode, but a surface spans its grid and has no per-point size.`,
             nodeId,
-            suggestion: "Switch the mode to instances, points or beam, or set Scale back to Constant.",
+            suggestion: "Switch the mode to instances, points or beam, or set Size back to Constant.",
           },
         ],
       };
@@ -981,11 +1384,159 @@ export const geometryNode: NodeDefinition = {
       }
       endpointPair = { ...carried, type: "vec3f" };
     }
+    /* T1588b: the object matrix, composed HERE and nowhere downstream. */
+    const transform = objectMatrix({
+      translate: vec3(parameters, "translate", [0, 0, 0]),
+      rotate: vec3(parameters, "rotate", [0, 0, 0]),
+      scale: vec3(parameters, "objectScale", [1, 1, 1]),
+      pivot: vec3(parameters, "pivot", [0, 0, 0]),
+    });
+    /* Primitive instances, points and beams draw through generators that take no matrix
+       until T1588b's slice G: only a surface draw and the mesh-instance resolve read
+       `transform`. The rows are inactive there and say so (§V146). Never a refusal: see
+       `transformInactive`. */
+    /*
+     * T1581b — MESH INSTANCES. The shape arrives on the Shape Mesh input; each instance's
+     * transform is RESOLVED ONCE A FRAME, here, by one compute pass this node owns, into a
+     * record every draw of every Render reads (instance-resolve.wgsl.ts says why). The
+     * mapped attributes, the Group predicate and the object matrix all end in that record,
+     * so nothing downstream evaluates any of them again.
+     */
+    let instanceMesh: GeometryPayload["instanceMesh"];
+    let resolve: { pass: DispatchPassDescriptor; scratch: ScratchRequest[] } | undefined;
+    if (meshShape) {
+      const refuseShape = (message: string, suggestion: string): CompiledNodeDescription => ({
+        passes: [],
+        diagnostics: [{ severity: "error", code: "node.scene.shape", message: `Node "${nodeId}": ${message}`, nodeId, suggestion }],
+      });
+      const shape = inputs["mesh"]?.pointset;
+      if (shape === undefined) {
+        return refuseShape(
+          "Shape: Mesh draws the mesh on the Shape Mesh input at every point, and no mesh arrives on it.",
+          "Wire a Mesh File In (Frame: Object) to Shape Mesh, or pick Quad, Box or Octahedron.",
+        );
+      }
+      const shapeTopology = typeof shape.topology === "string" ? parseTopology(shape.topology) : null;
+      if (shapeTopology === null || shapeTopology.kind !== "mesh") {
+        return refuseShape(
+          `the Shape Mesh input carries ${shapeTopology === null ? "an unreadable topology" : shapeTopology.kind === "grid" ? "a grid" : "points with no triangles"}, and an instance shape needs a mesh's triangles.`,
+          "Wire a Mesh File In, or something downstream of one that keeps its mesh topology.",
+        );
+      }
+      const shapeNormal = shape.pairs["normal"];
+      if (shape.pairs["position"]?.type !== "vec3f" || shapeNormal === undefined || shapeNormal.type !== "vec3f") {
+        return refuseShape(
+          "the Shape Mesh input is a mesh without a vec3f `position` and `normal`; an instance is placed and lit by them.",
+          "Keep position and normal through any kernel between the Mesh File In and the Geometry.",
+        );
+      }
+      /* The compound-head resolver again (see Orient): one vec3f attribute is the whole place. */
+      const resolvedPlace = resolveColorMap(nodeId, parameterMaps["instanceTranslate"], pointset, "points", "instanceTranslate", "vec3f");
+      if ("refusal" in resolvedPlace) return resolvedPlace.refusal;
+      const place = resolvedPlace.map ?? pointset.pairs["position"];
+      if (place === undefined) return { passes: [], diagnostics: [missingCompileResource(nodeId, "the points' position attribute")] };
+      /* D9: the material's `struct Instance` fields, bound to the points by name. */
+      const custom = bindInstanceAttributes(
+        nodeId,
+        typeof parameters["instanceAttributes"] === "string" ? (parameters["instanceAttributes"] as string) : "",
+        material.custom?.instance ?? [],
+        pointset.pairs,
+      );
+      if ("diagnostics" in custom) return { passes: [], diagnostics: custom.diagnostics };
+      /*
+       * F1: can this geometry leave an instance out? Only then does it compact — list and
+       * count what it draws, and draw indirect. A geometry that draws every point keeps a
+       * literal count: an indirect draw is not free (instance-resolve.wgsl.ts has the figure),
+       * and a Render draws a geometry in up to fifteen passes.
+       */
+      const compact = resolvedGroup !== undefined || pointset.count !== undefined;
+      const records = instanceRecordStorage(nodeId, pointset.capacity, {
+        tint: tintMap !== undefined,
+        compact,
+        fields: custom.bound.map((field) => ({ name: field.name, type: field.type })),
+      });
+      if (!records.ok) return refuseShape(records.errors.join(" "), "Lower the point capacity.");
+      const sources = packedGroups();
+      const unreadable = [
+        ...(scaleMap === undefined || isPackedType(scaleMap.type) ? [] : [`scale (${scaleMap.type})`]),
+        ...(resolvedGroup === undefined ? [] : resolvedGroup.binds.filter((bind) => !isPackedType(bind.type)).map((bind) => `p.${bind.attribute} (${bind.type})`)),
+      ];
+      if (unreadable.length > 0) {
+        return refuseShape(`mesh instances cannot read ${unreadable.join(", ")}: not a point attribute type.`, "Use an f32, vec2f, vec3f, vec4f, u32 or vec4u attribute.");
+      }
+      const reads: InstanceResolveOptions = {
+        translate: sources.read(place, "vec3f"),
+        ...(orientMap === undefined ? {} : { orient: sources.read(orientMap, "vec4f") }),
+        ...(scaleMap === undefined || !isPackedType(scaleMap.type)
+          ? {}
+          : { scale: { ...sources.read(scaleMap, scaleMap.type), ...(scaleMap.channel === undefined ? {} : { channel: scaleMap.channel }) } }),
+        ...(tintMap === undefined ? {} : { tint: sources.read(tintMap, "vec4f") }),
+        ...(resolvedGroup === undefined
+          ? {}
+          : {
+              group: {
+                expression: resolvedGroup.expression,
+                binds: resolvedGroup.binds.flatMap((bind) => (isPackedType(bind.type) ? [{ attribute: bind.attribute, read: sources.read(bind, bind.type) }] : [])),
+              },
+            }),
+        ...(custom.bound.length === 0
+          ? {}
+          : { fields: custom.bound.map((field) => ({ name: field.name, read: sources.read(field.source, field.sourceType), ...(field.channel === undefined ? {} : { channel: field.channel }) })) }),
+        /* F1: a counted pointset's dead slots are rejected here, with the Group's. */
+        ...(pointset.count === undefined ? {} : { counted: true }),
+        record: records.offsets,
+        groups: 0,
+      };
+      /* The object matrix as the three rows of its 3×4 (column-major in, rows out). */
+      const objectRow = (row: number): number[] => [0, 1, 2, 3].map((column) => transform[column * 4 + row] as number);
+      resolve = {
+        pass: {
+          kind: "dispatch",
+          id: `${nodeId}:instances:resolve`,
+          shader: instanceResolveWgsl({ ...reads, groups: sources.count }),
+          entryPoint: "main",
+          /* F1: compacting, ONE workgroup — its invocations share the count of what they
+             accept, which is what lets one dispatch resolve, compact and count. */
+          workgroups: resolveWorkgroups(compact, pointset.capacity),
+          buffers: [
+            { binding: RESOLVE_RECORDS_BINDING, resourceId: records.resourceId },
+            ...(records.args === undefined ? [] : [{ binding: RESOLVE_ARGS_BINDING, resourceId: records.args.resourceId }]),
+            ...(pointset.count === undefined ? [] : [{ binding: RESOLVE_LIVE_BINDING, resourceId: pointset.count.buffer }]),
+            ...sources.bindings(RESOLVE_SOURCE_PREFIX),
+          ],
+          uniforms: {
+            object0: objectRow(0),
+            object1: objectRow(1),
+            object2: objectRow(2),
+            translate: [...instanceTranslate, 0],
+            scale: [readNumber(parameters, "scale", 1), 0, 0, 0],
+            count: pointset.capacity,
+            vertexCount: shapeTopology.triangles * 3,
+          },
+          uniformBinding: "params",
+          nodeId,
+        },
+        scratch: [records.scratch, ...(records.args === undefined ? [] : [records.args.scratch])],
+      };
+      instanceMesh = {
+        pairs: shape.pairs,
+        triangles: shapeTopology.triangles,
+        indexBuffer: shapeTopology.indexBuffer,
+        ...(records.args === undefined ? {} : { drawArgs: records.args.resourceId }),
+        records: { buffer: records.resourceId, ...records.offsets },
+      };
+    }
     const shapeParameter = parameters["shape"];
     const payload: GeometryPayload = {
       kind: "geometry",
       pairs: pointset.pairs,
       capacity: pointset.capacity,
+      objectMatrix: transform,
+      /* T1598b: a Surface draws its points through `transform` and nothing else, so the
+         pointset's own sphere, turned by it, holds the draw. Every other mode places
+         something at each point (a shape, a card, a ribbon) and has no bound here. */
+      ...(mode === "surface" && pointset.bounds !== undefined ? { bounds: transformedSphere(pointset.bounds, transform) } : {}),
+      ...(instanceMesh === undefined ? {} : { instanceMesh }),
       ...(pointset.topology === undefined ? {} : { topology: pointset.topology }),
       mode,
       /*
@@ -1011,22 +1562,77 @@ export const geometryNode: NodeDefinition = {
           }
         : {}),
       ...(parameters["blend"] === "additive" ? { blend: "additive" as const } : {}),
+      ...(parameters["inDepthOutput"] === true ? { ownDepth: true as const } : {}),
       ...(parameters["shadowOnly"] === true ? { castOnly: true as const } : {}),
       ...(endpointPair === undefined ? {} : { endpoint: endpointPair }),
-      ...(tintMap === undefined ? {} : { colorAttribute: { ...tintMap, type: "vec4f" } }),
-      ...(scaleMap === undefined || !perPoint ? {} : { scaleAttribute: scaleMap }),
+      /* T1581b: a mesh instance's tint, size, turn and group are already in its records
+         (the resolve pass above), so none of them rides the payload for a draw to read twice. */
+      ...(tintMap === undefined || meshShape ? {} : { colorAttribute: { ...tintMap, type: "vec4f" } }),
+      ...(scaleMap === undefined || !perPoint || meshShape ? {} : { scaleAttribute: scaleMap }),
       /* T723: instances only — the refusal above has already turned away every other
          mode, so reaching here with a map means the frame is genuinely free to turn. */
-      ...(orientMap === undefined || mode !== "instances"
+      ...(orientMap === undefined || mode !== "instances" || meshShape
         ? {}
         : { orientAttribute: orientMap }),
-      ...(resolvedGroup === undefined ? {} : { group: resolvedGroup }),
+      ...(resolvedGroup === undefined || meshShape ? {} : { group: resolvedGroup }),
       ...(pointset.count === undefined ? {} : { count: { buffer: pointset.count.buffer } }),
       material,
     };
+    if (resolve !== undefined) {
+      return { passes: [resolve.pass], scratch: resolve.scratch, scene: { out: payload } } as CompiledNodeDescription;
+    }
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
   },
 };
+
+/**
+ * F1 — how many instances a mesh-instance draw runs, in every pass of every Render: the
+ * count its geometry resolved this frame (the live points its Group keeps), read by the GPU
+ * from the geometry's own arguments; or, for a geometry that leaves nothing out, every slot.
+ */
+function meshInstanceCount(payload: GeometryPayload): DrawPassDescriptor["instances"] {
+  const drawArgs = payload.instanceMesh?.drawArgs;
+  return drawArgs === undefined ? payload.capacity : { indirect: drawArgs };
+}
+
+/**
+ * T1581b — what a MESH-INSTANCE draw binds and reads: the shape's vertex attributes and the
+ * instance records, each buffer bound once and whole (`packedGroups`), plus the index list.
+ * The depth sweeps need the position and the records alone; the passes that shade take
+ * every attribute the shape carries. Both come from this one function, so the sweep and the
+ * lit draw cannot place an instance differently.
+ */
+function meshInstanceStorage(
+  mesh: NonNullable<GeometryPayload["instanceMesh"]>,
+  shading: boolean,
+): { readonly option: SceneInstancedOption; readonly buffers: BufferBindingDescriptor[] } | undefined {
+  const position = mesh.pairs["position"];
+  const normal = mesh.pairs["normal"];
+  if (position === undefined || normal === undefined) return undefined;
+  const groups = packedGroups();
+  const typed = (name: string, type: "vec2f" | "vec3f" | "vec4f") => {
+    const pair = shading ? mesh.pairs[name] : undefined;
+    return pair !== undefined && pair.type === type ? { [name]: groups.read(pair, type) } : {};
+  };
+  const shape = {
+    position: groups.read(position, "vec3f"),
+    normal: groups.read(normal, "vec3f"),
+    ...typed("uv", "vec2f"),
+    ...typed("color", "vec4f"),
+    ...typed("surface", "vec4f"),
+    ...typed("emissive", "vec3f"),
+  };
+  const { buffer, fields, ...offsets } = mesh.records;
+  /* The fields only where something shades: a depth sweep reads the matrix alone. */
+  const bound = shading
+    ? Object.fromEntries(Object.entries(fields ?? {}).flatMap(([name, field]) => (isPackedType(field.type) ? [[name, { offset: field.offset, type: field.type }] as const] : [])))
+    : {};
+  const record = { group: groups.whole(buffer), ...offsets, ...(Object.keys(bound).length === 0 ? {} : { fields: bound }) };
+  return {
+    option: { ...shape, record, groups: groups.count },
+    buffers: [...groups.bindings(INSTANCED_BINDING_PREFIX), { binding: "meshIndices", resourceId: mesh.indexBuffer }],
+  };
+}
 
 /**
  * T1406b — the Render's SAMPLED-TEXTURE LEDGER. The compiler already refuses a pass that
@@ -1051,7 +1657,7 @@ const TEXTURE_CATEGORIES: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 function textureLedger(
   nodeId: string,
-  passes: ReadonlyArray<DrawPassDescriptor | DispatchPassDescriptor>,
+  passes: ReadonlyArray<DrawPassDescriptor | DispatchPassDescriptor | BufferWritePassDescriptor>,
 ): NonNullable<CompiledNodeDescription["diagnostics"]>[number] | undefined {
   let worst: { id: string; bindings: string[] } | undefined;
   for (const pass of passes) {
@@ -1155,7 +1761,7 @@ export const renderNode: NodeDefinition = {
       label: "Normal",
       type: DATA_TEXTURE,
       description:
-        "World-space shaded normal as data, encoded n·0.5+0.5 in rgb, and roughness in a (0 = no surface). Surface geometry only; enable with Normal Output — off, this port produces nothing. Feed it, with Depth, to reflections, occlusion and edge passes.",
+        "World-space shaded normal as data, encoded n·0.5+0.5 in rgb, and roughness in a (0 = no surface). Surface geometry and mesh instances; enable with Normal Output — off, this port produces nothing. Feed it, with Depth, to reflections, occlusion and edge passes.",
     },
     {
       /* T1380b — the G-buffer's colour half: with depth and normal it is everything a
@@ -1164,7 +1770,7 @@ export const renderNode: NodeDefinition = {
       label: "Albedo",
       type: DATA_TEXTURE,
       description:
-        "The shaded base colour as data — linear rgb after the material — and metallic in a. Surface geometry only; enable with Albedo Output — off, this port produces nothing. With Depth and Normal, a deferred pass can light the frame from any number of lamps.",
+        "The shaded base colour as data — linear rgb after the material — and metallic in a. Surface geometry and mesh instances; enable with Albedo Output — off, this port produces nothing. With Depth and Normal, a deferred pass can light the frame from any number of lamps.",
     },
     {
       /* T1417b — the LIGHT'S OWN VIEW of its occluders, for a march that needs to know. */
@@ -1180,7 +1786,7 @@ export const renderNode: NodeDefinition = {
       label: "Shadow",
       type: DATA_TEXTURE,
       description:
-        "The shadow matte as data: r, g, b = how shadowed each surface the camera sees is from the first three CASTING lights in the Lights list (1 = fully in shadow, 0 = lit, the lit pass's own shadow test and softness), a = 1 where a surface drew (0 = nothing). Surface geometry only; enable with Shadow Output — off, this port produces nothing.",
+        "The shadow matte as data: r, g, b = how shadowed each surface the camera sees is from the first three CASTING lights in the Lights list (1 = fully in shadow, 0 = lit, the lit pass's own shadow test and softness), a = 1 where a surface drew (0 = nothing). Surface geometry and mesh instances; enable with Shadow Output — off, this port produces nothing.",
     },
   ],
   depthOutputs: ["out", "depth", "normal", "albedo", "shadow", "lightDepth"],
@@ -1315,7 +1921,7 @@ export const renderNode: NodeDefinition = {
       default: false,
       compileTime: true,
       description:
-        "T1371b: renders the shaded world normal and roughness into the Normal output — one extra pass per SURFACE geometry, through the same material code as the lit draw. Instances, points and beams do not write it. Off, the port allocates nothing.",
+        "T1371b: renders the shaded world normal and roughness into the Normal output — one extra pass per SURFACE geometry (and per mesh-instance geometry, T1581b), through the same material code as the lit draw. Primitive instances, points and beams do not write it. Off, the port allocates nothing.",
     },
     albedoOutput: {
       type: "boolean",
@@ -1323,7 +1929,7 @@ export const renderNode: NodeDefinition = {
       default: false,
       compileTime: true,
       description:
-        "T1380b: renders the shaded base colour (rgb) and metallic (a) into the Albedo output — one extra pass per SURFACE geometry, through the same material code as the lit draw. Instances, points and beams do not write it. Off, the port allocates nothing.",
+        "T1380b: renders the shaded base colour (rgb) and metallic (a) into the Albedo output — one extra pass per SURFACE geometry (and per mesh-instance geometry, T1581b), through the same material code as the lit draw. Primitive instances, points and beams do not write it. Off, the port allocates nothing.",
     },
     shadowOutput: {
       type: "boolean",
@@ -1331,7 +1937,7 @@ export const renderNode: NodeDefinition = {
       default: false,
       compileTime: true,
       description:
-        "T1414b: renders the shadow matte into the Shadow output — per surface pixel, how shadowed it is from each of the first three casting lights — one extra pass per SURFACE geometry, through the same material and the same shadow test as the lit draw. Off, the port allocates nothing.",
+        "T1414b: renders the shadow matte into the Shadow output — per surface pixel, how shadowed it is from each of the first three casting lights — one extra pass per SURFACE geometry (and per mesh-instance geometry, T1581b), through the same material and the same shadow test as the lit draw. Off, the port allocates nothing.",
     },
     lightDepthOutput: {
       type: "boolean",
@@ -1413,7 +2019,20 @@ export const renderNode: NodeDefinition = {
 
     // LIGHTS, in LIST order (§V131 carries the token order through the synthetic edges).
     const lights: LightPayload["light"][] = [];
+    /** T1598b: the light NODES, beside their payloads — a diagnostic about a light names it. */
+    const lightSources: string[] = [];
+    /**
+     * T1589b: the Lights in POINTS mode. Each is many lights, rows of a table this Render
+     * culls on the GPU, and so it is NOT among `lights`, whose every entry is a block
+     * unrolled into each lit shader.
+     */
+    const pointLights: PointLightSource[] = [];
+    /** T1589b: a Light's place in the list, which every row of a set carries as its source number (the lists will test it). */
+    let lightNumber = -1;
+    /** T1623b: that place for each of `lights`, by its index there. */
+    const lightNumbers: number[] = [];
     for (const binding of sceneOf("lights")) {
+      lightNumber += 1;
       if (binding.scene?.kind !== "light") {
         return refuse(
           "node.scene.reference",
@@ -1421,7 +2040,13 @@ export const renderNode: NodeDefinition = {
           "Lights must name light nodes.",
         );
       }
+      if (binding.scene.points !== undefined) {
+        pointLights.push({ nodeId: binding.source?.nodeId ?? "?", points: binding.scene.points, number: lightNumber });
+        continue;
+      }
       lights.push(binding.scene.light);
+      lightSources.push(binding.source?.nodeId ?? "?");
+      lightNumbers.push(lightNumber);
     }
 
     // T704: PROJECTORS, in LIST order — referenced exactly as lights are.
@@ -1489,6 +2114,23 @@ export const renderNode: NodeDefinition = {
       );
     const shadowTargetOf = (slot: number): string => `scratch:${nodeId}:shadow${casting[slot]?.index ?? slot}`;
     const castingIndices = casting.map(({ index }) => index);
+    /*
+     * T1623b slice 3 — WHICH LIGHT IS WHAT, for the two generators.
+     *
+     * The SURFACE generator unrolls a block for a CASTING Light and for no other: block i is
+     * casting slot i. A Light in Single mode that does not cast is a ROW of this Render's
+     * light table (`named`), walked by the lit draw with the lights of every pointset.
+     *
+     * The INSTANCES generator (primitive instances, points, beams) has no table yet (slice 7):
+     * it still unrolls a block for EVERY Light in Single mode, casting or not, and reads their
+     * uniforms. So a named Light that does not cast is in this Render twice, as a row and as
+     * three uniform rows of each such draw, from the same payload.
+     */
+    const blockLights = casting.map(({ light }) => light);
+    const blockShadows = casting.map((_, slot) => slot);
+    const named: NamedLight[] = lights.flatMap((light, index) => (light.shadows ? [] : [{ nodeId: lightSources[index] ?? "?", light, number: lightNumbers[index] ?? index }]));
+    /** The spots among them, by name: what a draw with no cone says (`lightSpotDraw`). */
+    const namedSpots = named.filter((entry) => entry.light.spot !== undefined).map((entry) => entry.nodeId);
     /* T1285: the PCF radius per casting slot, in the same slot order `shadowMatrices`
        uses. Clamped to the parameter's own range here rather than in the shader, because
        an expression can drive it past the slider and a generated loop is not a place to
@@ -1518,7 +2160,7 @@ export const renderNode: NodeDefinition = {
 
     const diagnostics: NonNullable<CompiledNodeDescription["diagnostics"]> = [];
     const background = readColor(parameters, "background", [0, 0, 0, 1]);
-    const passes: Array<DrawPassDescriptor | DispatchPassDescriptor> = [];
+    const passes: Array<DrawPassDescriptor | DispatchPassDescriptor | BufferWritePassDescriptor> = [];
     /** T478: one indirect-args scratch buffer per COUNTED geometry. */
     const scratch: Array<
       | NonNullable<ReturnType<typeof countedDrawSupport>>["scratch"]
@@ -1529,6 +2171,8 @@ export const renderNode: NodeDefinition = {
       | { key: string; scale: number; depth: true }
       // T1427b: the prefiltered environment's levels and atlas — HDR, no depth.
       | { key: string; scale: number; format: "rgba16float" }
+      // T1589b: the light table — the pointset Lights' records and the grid's cells.
+      | LightTablePlan["scratch"][number]
     > = [];
     if (ssaa) scratch.push({ key: "ss", scale: 2, depth: true });
     /** T481: counted draw support emitted once (in the shadow phase when one exists),
@@ -1570,6 +2214,19 @@ export const renderNode: NodeDefinition = {
     ] as const;
 
     /*
+     * T1588b — THE ONE PLACE A PASS GETS ITS MODEL MATRIX: the geometry's own
+     * `objectMatrix` (composed by the Geometry node) and, for the passes that light,
+     * its normal matrix. Every surface draw below spreads one of these two.
+     */
+    const modelOf = (payload: GeometryPayload): { model: number[] } => ({
+      model: [...(payload.objectMatrix ?? identityMatrix())],
+    });
+    const modelAndNormalOf = (payload: GeometryPayload): { model: number[]; modelNormal: number[] } => {
+      const model = modelOf(payload).model;
+      return { model, modelNormal: normalMatrix(model) };
+    };
+
+    /*
      * T481/T624 — ONE depth-only sweep of the scene, parameterised. The shadow phase
      * runs it per casting light (light matrix, light-space clip depth); the AO prepass
      * runs it once from the camera (camera matrix, linear view distance over the far
@@ -1581,6 +2238,14 @@ export const renderNode: NodeDefinition = {
     const emitDepthSweep = (options: {
       readonly prefix: string;
       readonly target: string;
+      /** T1598b: a LIGHT's sweep draws only its casters — one entry per geometry, false = not in this sweep. */
+      readonly casters?: ReadonlyArray<boolean>;
+      /**
+       * T1598b: a caster this sweep CANNOT REACH THIS FRAME (false). Its draws stay in the
+       * plan, since where a light and a geometry stand is a value and a value never changes
+       * the pass list (§V453), and carry `skip`, so nothing is encoded for them.
+       */
+      readonly reaches?: (payload: GeometryPayload) => boolean;
       readonly matrix: Float32Array | undefined;
       readonly linearDepth: boolean;
       /** Camera visibility includes transmissive and emissive surfaces, unlike occlusion. */
@@ -1615,13 +2280,20 @@ export const renderNode: NodeDefinition = {
         ...(options.linearDepth ? { linearDepth: true } : {}),
         ...(options.perspective === true ? { perspective: true } : {}),
       };
-      geometries.forEach(({ payload }, geometryIndex) => {
+      const sweepGeometry = ({ payload }: (typeof geometries)[number], geometryIndex: number): void => {
         const position = payload.pairs["position"];
         if (position === undefined) return; // the lit loop refuses this by name
         /* T1411b: an ADDITIVE surface is light laid over the picture, not a body — it
            occludes nothing, so it casts no shadow, encloses no AO, blocks no projector,
-           and the exported depth is the depth of what it glows over. */
-        if (additiveSurface(payload)) return;
+           and the exported depth is the depth of what it glows over.
+           B256: and so is additive geometry of EVERY kind. The rule stopped at surfaces, so
+           an additive billboard, beam or primitive instance still went into the camera's
+           sweep (6,000 dust motes read as walls by everything that read the Depth output),
+           and a lit additive instance into the lights' and the occlusion prepass's.
+           The one way back in is asked for: `ownDepth`, and only into the Depth OUTPUT (the
+           one sweep that states visibility rather than occlusion) — a light-only Render
+           whose depth a later pass composites by needs to know where the light is. */
+        if (additiveLight(payload) && !(options.visibility === true && payload.ownDepth === true)) return;
         if (options.fromCamera === true && payload.castOnly === true) return;
         /* T647: a points-mode billboard casts NO shadow, deliberately — a camera-facing
            card has no light-facing geometry, so a shadow from it would be a lie (and
@@ -1722,6 +2394,32 @@ export const renderNode: NodeDefinition = {
          * cannot stop it. Its visible surface still belongs in camera depth.
          */
         if (!options.visibility && payload.material.model === "unlit") return;
+        /* T1581b: MESH instances sweep through the mesh generator — the indexed mesh's own
+           depth contract, each instance placed by its record exactly as the lit draw places it. */
+        if (payload.instanceMesh !== undefined) {
+          const storage = meshInstanceStorage(payload.instanceMesh, false);
+          if (storage === undefined) return; // the lit loop refuses this by name
+          const vertexCount = payload.instanceMesh.triangles * 3;
+          passes.push({
+            kind: "draw",
+            id: `${nodeId}:${options.prefix}:${geometryIndex}`,
+            nodeId,
+            shader: depthShader(shadowMeshWgsl({ ...depthOptions, instanced: storage.option })),
+            target: options.target,
+            topology: "triangle-list",
+            instances: meshInstanceCount(payload),
+            vertexCount,
+            buffers: storage.buffers,
+            uniforms: {
+              lightViewProjection: Array.from(options.matrix ?? []),
+              ...options.extraUniforms,
+              ...cubeUniforms,
+            },
+            uniformBinding: "params",
+            clear: false,
+          });
+          return;
+        }
         if (payload.mode === "instances") {
           let counted = countedByIndex.get(geometryIndex);
           if (counted === undefined && payload.count !== undefined) {
@@ -1804,6 +2502,7 @@ export const renderNode: NodeDefinition = {
             buffers: [attributeBinding("positions", position), { binding: "meshIndices", resourceId: topology.indexBuffer }],
             uniforms: {
               lightViewProjection: Array.from(options.matrix ?? []),
+              ...modelOf(payload),
               ...options.extraUniforms,
               ...cubeUniforms,
             },
@@ -1814,19 +2513,20 @@ export const renderNode: NodeDefinition = {
         }
         if (topology === null || topology.kind !== "grid") return; // lit loop refuses
         if (gridPointCount(topology) > payload.capacity) return;
-        const { cellsU, cellsV } = gridCellCounts(topology);
         passes.push({
           kind: "draw",
           id: `${nodeId}:${options.prefix}:${geometryIndex}`,
           nodeId,
-          shader: depthShader(shadowSurfaceWgsl(depthOptions)),
+          /* T1587b: a grid of several sheets is still this ONE draw, of every sheet's cells. */
+          shader: depthShader(shadowSurfaceWgsl(gridSheets(topology) > 1 ? { ...depthOptions, sheets: true } : depthOptions)),
           target: options.target,
           topology: "triangle-list",
           instances: 1,
-          vertexCount: cellsU * cellsV * 6,
+          vertexCount: gridVertexCount(topology),
           buffers: [attributeBinding("positions", position)],
           uniforms: {
             lightViewProjection: Array.from(options.matrix ?? []),
+            ...modelOf(payload),
             grid: [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0],
             ...options.extraUniforms,
               ...cubeUniforms,
@@ -1834,8 +2534,55 @@ export const renderNode: NodeDefinition = {
           uniformBinding: "params",
           clear: false,
         });
+      };
+      geometries.forEach((geometry, geometryIndex) => {
+        // T1598b: left out of this light's casters — it is in no draw of the sweep, and it
+        // still receives, because receiving is the lit pass reading the map.
+        if (options.casters?.[geometryIndex] === false) return;
+        const first = passes.length;
+        sweepGeometry(geometry, geometryIndex);
+        if (options.reaches === undefined || options.reaches(geometry.payload)) return;
+        // Out of this sweep's reach this frame: every draw it just emitted is provably
+        // empty. (A counted geometry's args dispatch is not a draw and is left alone.)
+        for (let index = first; index < passes.length; index += 1) {
+          const pass = passes[index];
+          if (pass !== undefined && pass.kind === "draw") passes[index] = { ...pass, skip: true };
+        }
       });
     };
+
+    /*
+     * T1598b — WHICH GEOMETRIES CAST FOR EACH CASTING LIGHT, by slot: the light's Shadow
+     * Casters (empty = all) less its Shadow Exclude, matched against what THIS Render
+     * draws. The lists are the author's knowledge that a geometry never casts for that
+     * light (a floor, a tunnel wall); nothing measured could find it out.
+     */
+    const castersBySlot = casting.map(({ light, index }) => {
+      const only = light.shadowCasters === undefined ? undefined : new Set(light.shadowCasters);
+      const never = new Set(light.shadowExclude ?? []);
+      const cast = geometries.map(({ source }) => (only === undefined || only.has(source)) && !never.has(source));
+      if (!cast.includes(true)) {
+        // The map is still cleared and still sampled by every lit fragment: a cost with no
+        // shadow to show for it, which is worth saying once (§V369's sibling).
+        diagnostics.push({
+          severity: "warning",
+          code: "node.scene.shadowCasters",
+          message: `Node "${nodeId}": light "${lightSources[index] ?? "?"}" casts no shadow here — its Shadow Casters and Shadow Exclude leave none of this Render's geometries.`,
+          nodeId,
+          suggestion: "Name a geometry this Render draws in the light's Shadow Casters, shorten its Shadow Exclude, or turn Cast Shadows off.",
+        });
+      }
+      return cast;
+    });
+
+    /*
+     * T1598b — WHAT ONE FACE OF A POINT LIGHT'S CUBE CAN REACH THIS FRAME: a geometry whose
+     * world sphere lies wholly beyond the shadow range, or wholly outside the face's
+     * quarter of space. A geometry with no bound (kernel-moved, instanced) is always
+     * reached. The same range the face matrices and the lit lookup use.
+     */
+    const reachOf = (light: LightPayload["light"], face: number) => (payload: GeometryPayload): boolean =>
+      payload.bounds === undefined || pointShadowFaceReaches(light.position, Math.max(0.1, light.shadowExtent), face, payload.bounds);
 
     /* T481: the shadow phase — every map is rendered BEFORE the lit draws that read it.
        Zero casting lights emits nothing here and nothing below changes: §V309 holds as
@@ -1854,6 +2601,8 @@ export const renderNode: NodeDefinition = {
             emitDepthSweep({
               prefix: `shadow:${lightIndex}:face${face}`,
               target: shadowTargetOf(slot),
+              casters: castersBySlot[slot] ?? [],
+              reaches: reachOf(light, face),
               matrix,
               linearDepth: false,
               extraUniforms: {},
@@ -1870,6 +2619,7 @@ export const renderNode: NodeDefinition = {
         emitDepthSweep({
           prefix: `shadow:${lightIndex}`,
           target: shadowTargetOf(slot),
+          casters: castersBySlot[slot] ?? [],
           matrix: shadowMatrices[slot],
           linearDepth: false,
           extraUniforms: {},
@@ -1877,6 +2627,38 @@ export const renderNode: NodeDefinition = {
       });
     };
     emitShadowPasses();
+
+    /*
+     * T1589b, T1623b — THE LIGHT TABLE: this Render's named Lights that do not cast and the
+     * lights of every Light in Points mode, as rows of one buffer; the rows with a range
+     * sorted into a grid over this Render's view, on the GPU, every frame (light-points.ts).
+     * Its passes stand HERE: ahead of the backdrop, so they do not split the run of draws
+     * into the colour target (T1604b).
+     *
+     * EVERY Render that draws a lit Surface has one, lights or none: a lit Surface's text
+     * walks the table whatever it holds, so the first Light added to a Render is a write and
+     * compiles nothing. A Render with no such draw has none.
+     */
+    const walksTable = geometries.some(({ payload }) => litSurfaceDraw(payload));
+    const plannedLights = !walksTable
+      ? undefined
+      : lightTablePlan({
+            nodeId,
+            named,
+            sources: pointLights,
+            resolution,
+            /* What the lit draws render into: twice the output under SSAA. */
+            surface: [resolution[0] * (ssaa ? 2 : 1), resolution[1] * (ssaa ? 2 : 1)],
+            camera,
+            viewProjection: viewProjectionMatrix,
+          });
+    if (plannedLights !== undefined && "diagnostics" in plannedLights) return { passes: [], diagnostics: plannedLights.diagnostics };
+    const lightTable: LightTablePlan | undefined = plannedLights;
+    if (lightTable !== undefined) {
+      scratch.push(...lightTable.scratch);
+      passes.push(...lightTable.passes);
+      diagnostics.push(...lightTable.warnings);
+    }
 
     /* T1417b: the first casting light's map again, into the Light Depth port — the same
        sweeps at the port's own size, so a reader rebuilds the layout from the light alone. */
@@ -1897,6 +2679,8 @@ export const renderNode: NodeDefinition = {
           emitDepthSweep({
             prefix: `lightDepth:face${face}`,
             target: lightDepthTarget,
+            casters: castersBySlot[0] ?? [],
+            reaches: reachOf(first.light, face),
             matrix,
             linearDepth: false,
             extraUniforms: {},
@@ -1908,7 +2692,7 @@ export const renderNode: NodeDefinition = {
           });
         });
       } else {
-        emitDepthSweep({ prefix: "lightDepth", target: lightDepthTarget, matrix: shadowMatrices[0], linearDepth: false, extraUniforms: {} });
+        emitDepthSweep({ prefix: "lightDepth", target: lightDepthTarget, casters: castersBySlot[0] ?? [], matrix: shadowMatrices[0], linearDepth: false, extraUniforms: {} });
       }
     }
 
@@ -2208,23 +2992,40 @@ export const renderNode: NodeDefinition = {
         ["shadow", parameters["shadowOutput"] === true ? outputs["shadow"] : undefined],
       ] as const
     ).flatMap(([layer, target]) => (target === undefined ? [] : [{ layer, target }]));
-    for (const { layer, target } of gbufferTargets) {
-      passes.push({
-        kind: "draw",
-        id: layer === "normal" ? `${nodeId}:gbuffer:clear` : `${nodeId}:gbuffer:${layer}:clear`,
-        nodeId,
-        shader: GBUFFER_CLEAR_WGSL,
-        target,
-        topology: "triangle-list",
-        instances: 1,
-        vertexCount: 6,
-        clear: true,
-      } as DrawPassDescriptor);
-    }
+    /*
+     * T1604b — EACH LAYER'S DRAWS, KEPT TOGETHER and emitted after everything that draws the
+     * colour (see where they are pushed, below the additive phase). A layer has its own
+     * target and its own depth, and nothing here reads one, so when its draws run moves no
+     * pixel; what it changes is how many device render passes the frame is. Emitted beside
+     * each geometry's lit draw, as they were, the targets alternated: lit, Normal, lit,
+     * Normal — and a run of draws ends where the target changes (`renderPassRuns`), so every
+     * one of those draws was a pass of its own. Together, the lit draws are one pass and
+     * each layer is one: its clear and then its geometries, in Scenes order as before.
+     */
+    const layerDraws = new Map<(typeof gbufferTargets)[number]["layer"], DrawPassDescriptor[]>(
+      gbufferTargets.map(({ layer, target }) => [
+        layer,
+        [
+          {
+            kind: "draw",
+            id: layer === "normal" ? `${nodeId}:gbuffer:clear` : `${nodeId}:gbuffer:${layer}:clear`,
+            nodeId,
+            shader: GBUFFER_CLEAR_WGSL,
+            target,
+            topology: "triangle-list",
+            instances: 1,
+            vertexCount: 6,
+            clear: true,
+          } as DrawPassDescriptor,
+        ],
+      ]),
+    );
     const emitGeometry = ({ payload, source }: { payload: GeometryPayload; source: string }, index: number): void => {
       /* T1414b: a shadow-only body is in the light sweeps above and in nothing the camera draws. */
       if (payload.castOnly === true) return;
-      if (payload.mode === "instances" || payload.mode === "points" || payload.mode === "beam") {
+      /* T1581b: MESH instances are surface citizens — they take the surface branch below. */
+      const instanceMesh = payload.instanceMesh;
+      if ((payload.mode === "instances" && instanceMesh === undefined) || payload.mode === "points" || payload.mode === "beam") {
         /* T1355b: a Material · WGSL is placed into the SURFACE generator; these three draw
            through another one, and a material whose code silently did not run would teach
            that the code is broken. Refused by name. */
@@ -2232,9 +3033,9 @@ export const renderNode: NodeDefinition = {
           diagnostics.push({
             severity: "error",
             code: "node.scene.material",
-            message: `Node "${nodeId}": geometry "${source}" is drawn as ${payload.mode} but wears a Material · WGSL, which runs on surface geometry only.`,
+            message: `Node "${nodeId}": geometry "${source}" is drawn as ${payload.mode === "instances" ? "primitive instances" : payload.mode} but wears a Material · WGSL, which runs on surface geometry and mesh instances only.`,
             nodeId,
-            suggestion: "Switch the Geometry to Surface mode, or give it a stock material.",
+            suggestion: "Switch the Geometry to Surface mode, or to Instances with Shape: Mesh, or give it a stock material.",
           });
           return;
         }
@@ -2273,6 +3074,23 @@ export const renderNode: NodeDefinition = {
             nodeId,
           });
         }
+        /* T1589b: the lights of a pointset reach Surface geometry and mesh instances, which
+           draw through the surface generator. These three draw through another one and take
+           them with the row's fourth slice; until then that is SAID, not a silent dark body. */
+        if (material.model !== "unlit" && pointLights.length > 0) {
+          diagnostics.push({
+            severity: "warning",
+            code: "node.scene.lightDraw",
+            message: `Node "${nodeId}": geometry "${source}" is drawn as ${payload.mode === "instances" ? "primitive instances" : payload.mode}, which the lights of a Light in Points mode (${pointLights.map((light) => `"${light.nodeId}"`).join(", ")}) do not light yet: they light Surface geometry and mesh instances.`,
+            nodeId,
+            suggestion: "Draw it as a Surface or as mesh instances (Shape: Mesh), or light it with a Light in Single mode.",
+          });
+        }
+        /* T1623b slice 3: this generator still reads every Light in Single mode as a block,
+           and a block takes no cone (slice 7). A spot that does not cast has its cone on
+           every Surface of this Render and none here, which is SAID. A casting one has none
+           anywhere, and its Light says that. */
+        if (material.model !== "unlit" && namedSpots.length > 0) diagnostics.push(lightSpotDraw(nodeId, source, payload.mode, namedSpots));
         const model =
         material.model === "unlit"
           ? "unlit"
@@ -2446,7 +3264,15 @@ export const renderNode: NodeDefinition = {
         });
         return;
       }
-      const topology = typeof payload.topology === "string" ? parseTopology(payload.topology) : null;
+      /* T1581b: the SHAPE this draw fetches — the instance mesh's own pointset and triangles,
+         or the geometry's points and their topology. Everything below reads the shape. */
+      const shapePairs = instanceMesh?.pairs ?? payload.pairs;
+      const topology =
+        instanceMesh !== undefined
+          ? ({ kind: "mesh", triangles: instanceMesh.triangles, indexBuffer: instanceMesh.indexBuffer } as const)
+          : typeof payload.topology === "string"
+            ? parseTopology(payload.topology)
+            : null;
       if (topology === null || (topology.kind !== "grid" && topology.kind !== "mesh")) {
         diagnostics.push({
           severity: "error",
@@ -2460,7 +3286,7 @@ export const renderNode: NodeDefinition = {
          normal is an attribute, so a mesh without one is refused by name — a surface
          lit by a zero normal is black in a way that reads as broken lights. */
       const meshTopology = topology.kind === "mesh" ? topology : undefined;
-      const meshNormal = meshTopology === undefined ? undefined : payload.pairs["normal"];
+      const meshNormal = meshTopology === undefined ? undefined : shapePairs["normal"];
       if (meshTopology !== undefined && (meshNormal === undefined || meshNormal.type !== "vec3f")) {
         diagnostics.push({
           severity: "error",
@@ -2480,8 +3306,10 @@ export const renderNode: NodeDefinition = {
         });
         return;
       }
-      const position = payload.pairs["position"];
-      if (position === undefined) {
+      const position = shapePairs["position"];
+      /* T1581b: a mesh-instance draw binds whole buffers and reads by offset. */
+      const instancedStorage = instanceMesh === undefined ? undefined : meshInstanceStorage(instanceMesh, true);
+      if (position === undefined || (instanceMesh !== undefined && instancedStorage === undefined)) {
         diagnostics.push({
           severity: "error",
           code: "node.scene.geometry",
@@ -2491,7 +3319,7 @@ export const renderNode: NodeDefinition = {
         return;
       }
       const material = payload.material;
-      if (material.model !== "unlit" && lights.length === 0) {
+      if (material.model !== "unlit" && lights.length === 0 && pointLights.length === 0) {
         // §V369's cousin: a lit material under zero lights is the flat-ambient look
         // wearing a finished face. Render it (the floor exists for exactly this), but
         // SAY it.
@@ -2502,10 +3330,13 @@ export const renderNode: NodeDefinition = {
           nodeId,
         });
       }
-      const vertexCount =
-        topology.kind === "mesh" ? topology.triangles * 3 : gridCellCounts(topology).cellsU * gridCellCounts(topology).cellsV * 6;
+      const vertexCount = topology.kind === "mesh" ? topology.triangles * 3 : gridVertexCount(topology);
+      /* T1587b: a grid of several sheets (ten tubes swept from ten strips) is still ONE draw
+         in every pass that draws it, so it adds no pass to any run (T1604b). The generator
+         reads the sheet off the vertex index, in a variant only such a grid emits. */
+      const sheetsOption = topology.kind === "grid" && gridSheets(topology) > 1 ? { sheets: true } : {};
       const meshAttribute = (name: string, type: string): ScenePairRef | undefined => {
-        const pair = payload.pairs[name];
+        const pair = shapePairs[name];
         return pair !== undefined && pair.type === type ? pair : undefined;
       };
       const meshUv = meshTopology === undefined ? undefined : meshAttribute("uv", "vec2f");
@@ -2514,6 +3345,10 @@ export const renderNode: NodeDefinition = {
       /* A mesh's attributes ARE its material (the file's, flattened per vertex), so its
          `color` tints by default; an explicit tint map on the Geometry still wins. */
       const tintAttribute = payload.colorAttribute ?? (meshTopology === undefined ? undefined : meshAttribute("color", "vec4f"));
+      /* T1581b: an instance's tint is the shape's colour times its record's — either makes
+         the fragment multiply by the vertex tint. */
+      const tinted = instancedStorage === undefined ? tintAttribute !== undefined : instancedStorage.option.color !== undefined || instancedStorage.option.record.tint !== undefined;
+      const instancedOption = instancedStorage === undefined ? {} : { instanced: instancedStorage.option };
       const model =
         material.model === "unlit"
           ? "unlit"
@@ -2552,16 +3387,43 @@ export const renderNode: NodeDefinition = {
         ...(material.maps.albedo === undefined ? {} : { albedo: true }),
         ...(material.maps.roughness === undefined ? {} : { roughness: true }),
       };
+      /* T1618b: Map Extend, where the material says an axis tiles. Absent, the maps are read
+         by the text they always were. */
+      const mapExtendOption = material.mapExtend === undefined ? {} : { mapExtend: material.mapExtend };
+      /* T1618b: a grid whose pointset carries a vec2f `uv` hands it to the material as its
+         texture coordinate, in place of the grid's own. Bound and read only where a coordinate
+         IS read: a map is wired, or the Material · WGSL's source names the member. A sweep
+         whose material patterns by world position keeps the program and the bindings it had. */
+      const gridUv =
+        topology.kind === "grid" &&
+        (material.maps.albedo !== undefined || material.maps.roughness !== undefined || (material.custom !== undefined && SURFACE_UV_REFERENCE.test(material.custom.code)))
+          ? meshAttribute("uv", "vec2f")
+          : undefined;
+      const gridUvOption = gridUv === undefined ? {} : { gridUv: true };
+      /* The author's surface, as the generator takes it: one object for every variant below. */
+      const customOption =
+        material.custom === undefined
+          ? {}
+          : {
+              custom: {
+                code: material.custom.code,
+                paramsDeclaration: material.custom.paramsDeclaration,
+                fields: material.custom.fields,
+                ...(material.custom.instance === undefined ? {} : { instance: material.custom.instance }),
+              },
+            };
       const surfaceMaterialOptions = {
         model: model as "unlit" | "lambert" | "phong" | "pbr",
         maps,
-        ...(tintAttribute === undefined ? {} : { pointColor: true }),
+        ...mapExtendOption,
+        ...instancedOption,
+        ...(tinted ? { pointColor: true } : {}),
+        ...sheetsOption,
+        ...gridUvOption,
         ...(meshTopology === undefined
           ? {}
           : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
-        ...(material.custom === undefined
-          ? {}
-          : { custom: { code: material.custom.code, paramsDeclaration: material.custom.paramsDeclaration, fields: material.custom.fields } }),
+        ...customOption,
       };
       /* T1411b: an additive surface sums onto what is drawn and stops writing depth (it
          still tests — a wall in front still hides it). */
@@ -2570,7 +3432,10 @@ export const renderNode: NodeDefinition = {
          moved to where the generator put the texts, sends a device error in it back to the
          material node and the author's line. Every surface variant below carries its own. */
       const surface = (options: SceneShadingOptions): Pick<DrawPassDescriptor, "shader" | "sourceMap"> => {
-        const module = sceneSurfaceModule(options);
+        /* T1589b: the draw that LIGHTS walks the light table. A G-buffer layer lights nothing,
+           and an unlit material takes no light of any kind. */
+        const walks = lightTable !== undefined && options.gbuffer === undefined && options.model !== "unlit";
+        const module = sceneSurfaceModule(walks ? { ...options, lightGrid: true } : options);
         const map = material.custom?.sourceMap;
         return { shader: module.wgsl, ...(map === undefined ? {} : { sourceMap: customSurfaceSourceMap(map, module.placed) }) };
       };
@@ -2581,41 +3446,48 @@ export const renderNode: NodeDefinition = {
         ...(additive ? { blend: "additive" as const, depthWrite: false } : {}),
         ...surface({
           model,
-          lightCount: lights.length,
+          /* T1623b: the casting Lights, each a block; the others are rows of the table. */
+          lightCount: blockLights.length,
           ...(additive ? { additive: true } : {}),
           maps,
-          ...(tintAttribute === undefined ? {} : { pointColor: true }),
-          ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, shadowBias, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
+          ...mapExtendOption,
+          ...instancedOption,
+          ...(tinted ? { pointColor: true } : {}),
+          ...sheetsOption,
+          ...gridUvOption,
+          ...(blockShadows.length === 0 ? {} : { shadows: blockShadows, shadowSoftness, shadowBias, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
           ...(environmentResource === undefined ? {} : { environment: true, environmentTaps, ...(environmentPrefiltered ? { environmentPrefiltered: true } : {}) }),
           ...(aoActive ? { ambientOcclusion: true } : {}),
           ...(projActive ? { projectors: projectorOptions } : {}),
           ...(meshTopology === undefined
             ? {}
             : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
-          ...(material.custom === undefined
-            ? {}
-            : { custom: { code: material.custom.code, paramsDeclaration: material.custom.paramsDeclaration, fields: material.custom.fields } }),
+          ...customOption,
         }),
         ...(material.custom === undefined ? {} : { sharedBinding: CUSTOM_SURFACE_FRAME_BINDING }),
         target,
         topology: "triangle-list",
-        instances: 1,
+        instances: instanceMesh === undefined ? 1 : meshInstanceCount(payload),
         vertexCount,
-        buffers: [
-          attributeBinding("positions", position),
-          ...(tintAttribute === undefined
-            ? []
-            : [attributeBinding("pointColors", tintAttribute)]),
-          ...(meshTopology === undefined
-            ? []
+        buffers:
+          instancedStorage !== undefined
+            ? instancedStorage.buffers
             : [
-                { binding: "meshIndices", resourceId: meshTopology.indexBuffer },
-                attributeBinding("meshNormals", meshNormal as ScenePairRef),
-                ...(meshUv === undefined ? [] : [attributeBinding("meshUvs", meshUv)]),
-                ...(meshSurfacePair === undefined ? [] : [attributeBinding("meshSurface", meshSurfacePair)]),
-                ...(meshEmissive === undefined ? [] : [attributeBinding("meshEmissive", meshEmissive)]),
-              ]),
-        ],
+                attributeBinding("positions", position),
+                ...(tintAttribute === undefined
+                  ? []
+                  : [attributeBinding("pointColors", tintAttribute)]),
+                ...(gridUv === undefined ? [] : [attributeBinding("gridUvs", gridUv)]),
+                ...(meshTopology === undefined
+                  ? []
+                  : [
+                      { binding: "meshIndices", resourceId: meshTopology.indexBuffer },
+                      attributeBinding("meshNormals", meshNormal as ScenePairRef),
+                      ...(meshUv === undefined ? [] : [attributeBinding("meshUvs", meshUv)]),
+                      ...(meshSurfacePair === undefined ? [] : [attributeBinding("meshSurface", meshSurfacePair)]),
+                      ...(meshEmissive === undefined ? [] : [attributeBinding("meshEmissive", meshEmissive)]),
+                    ]),
+              ],
         ...(material.maps.albedo === undefined &&
         material.maps.roughness === undefined &&
         casting.length === 0 &&
@@ -2650,6 +3522,8 @@ export const renderNode: NodeDefinition = {
             }),
         uniforms: {
           viewProjection: Array.from(viewProjectionMatrix),
+          /* T1581b: an instance's record already holds the object matrix. */
+          ...(instancedStorage === undefined ? modelAndNormalOf(payload) : {}),
           eye: [camera.eye[0], camera.eye[1], camera.eye[2], 0],
           ambientColor: [ambient[0] ?? 1, ambient[1] ?? 1, ambient[2] ?? 1, ambientIntensity],
           baseColor: [...material.baseColor],
@@ -2662,7 +3536,7 @@ export const renderNode: NodeDefinition = {
               )),
           grid: topology.kind === "grid" ? [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0] : [0, 0, 0, 0],
           ...Object.fromEntries(
-            lights.flatMap((light, lightIndex) => [
+            blockLights.flatMap((light, lightIndex) => [
               [`light${lightIndex}Meta`, lightMetaUniform(light)],
               [`light${lightIndex}Color`, [...light.color, 0]],
               [`light${lightIndex}Vector`, [...(light.type === "point" ? light.position : light.direction), 0]],
@@ -2679,7 +3553,13 @@ export const renderNode: NodeDefinition = {
         uniformBinding: "params",
         clear: false,
       };
-      passes.push(litPass);
+      /* T1589b: the lit draw binds the light table, with the grid's three rows. The layers
+         below spread `litPass` itself, so they bind neither. */
+      passes.push(
+        lightTable === undefined || model === "unlit"
+          ? litPass
+          : { ...litPass, buffers: [...(litPass.buffers ?? []), lightTable.buffer], uniforms: { ...litPass.uniforms, ...lightTable.uniforms } },
+      );
       /* T1371b/T1380b: the same surface into each G-buffer layer — same material, same
          buffers, only the uniforms that generator declares (no lights, shadows, environment
          or projectors). T1411b: an additive surface is light, not a surface a screen-space
@@ -2689,14 +3569,14 @@ export const renderNode: NodeDefinition = {
         if (layer === "shadow") {
           /* T1414b: the matte runs the lit draw's own shadow test — the lights and their
              maps bound, nothing else (no environment, AO or projectors). */
-          passes.push({
+          layerDraws.get(layer)?.push({
             ...litPass,
             id: `${nodeId}:gbuffer:shadow:${index}`,
             ...surface({
               ...surfaceMaterialOptions,
-              lightCount: lights.length,
+              lightCount: blockLights.length,
               gbuffer: "shadow",
-              ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
+              ...(blockShadows.length === 0 ? {} : { shadows: blockShadows, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
             }),
             target,
             textures: [
@@ -2709,7 +3589,7 @@ export const renderNode: NodeDefinition = {
           continue;
         }
         const lighting = /^(light\d|shadow\d|environment|projector)/;
-        passes.push({
+        layerDraws.get(layer)?.push({
           ...litPass,
           id: layer === "normal" ? `${nodeId}:gbuffer:${index}` : `${nodeId}:gbuffer:${layer}:${index}`,
           ...surface({ ...surfaceMaterialOptions, lightCount: 0, gbuffer: layer }),
@@ -2846,6 +3726,18 @@ export const renderNode: NodeDefinition = {
           glassB: [glass.absorption[0], glass.absorption[1], glass.absorption[2], environmentIntensity],
           fallback: [background[0] ?? 0, background[1] ?? 0, background[2] ?? 0, 0],
         };
+        if (payload.instanceMesh !== undefined) {
+          /* T1581b: glass on mesh instances is its own row; a draw that fell through to the
+             primitives' glass would refract a box nobody asked for (§V288). */
+          diagnostics.push({
+            severity: "error",
+            code: "node.scene.glass",
+            message: `Node "${nodeId}": geometry "${source}" wears glass as mesh instances, which is not built yet — glass refracts a Surface, or Quad, Box and Octahedron instances.`,
+            nodeId,
+            suggestion: "Give the mesh instances a lit material, or draw the glass body as a Surface.",
+          });
+          continue;
+        }
         if (payload.mode === "instances") {
           let counted = countedByIndex.get(index);
           if (counted === undefined) {
@@ -2911,7 +3803,7 @@ export const renderNode: NodeDefinition = {
               attributeBinding("meshNormals", normal),
             ],
             textures: glassTextures,
-            uniforms: glassUniforms,
+            uniforms: { ...glassUniforms, ...modelAndNormalOf(payload) },
             uniformBinding: "params",
             clear: false,
           });
@@ -2935,20 +3827,21 @@ export const renderNode: NodeDefinition = {
           });
           continue;
         }
-        const { cellsU, cellsV } = gridCellCounts(topology);
         passes.push({
           kind: "draw",
           id: `${nodeId}:glass:${index}`,
           nodeId,
-          shader: glassSurfaceWgsl(glassShaderOptions),
+          // T1587b: several sheets, as the lit grid draws them.
+          shader: glassSurfaceWgsl(gridSheets(topology) > 1 ? { ...glassShaderOptions, sheets: true } : glassShaderOptions),
           target,
           topology: "triangle-list",
           instances: 1,
-          vertexCount: cellsU * cellsV * 6,
+          vertexCount: gridVertexCount(topology),
           buffers: [attributeBinding("positions", position)],
           textures: glassTextures,
           uniforms: {
             ...glassUniforms,
+            ...modelAndNormalOf(payload),
             grid: [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0],
           },
           uniformBinding: "params",
@@ -2969,6 +3862,11 @@ export const renderNode: NodeDefinition = {
       if (entry.payload.material.model === "glass" || !additiveSurface(entry.payload)) return;
       emitGeometry(entry, index);
     });
+
+    /* T1604b: the layers, each whole (see `layerDraws`). After the additive phase, so that
+       with no glass in the scene the backdrop, the opaque draws and the additive ones are
+       ONE run into the colour, with nothing of another target between them. */
+    for (const draws of layerDraws.values()) passes.push(...draws);
 
     if (ssaa) {
       /* T939 — the resolve: the LAST pass, averaging each 2x2 supersampled block into
@@ -3024,13 +3922,39 @@ export const renderNode: NodeDefinition = {
 const envLit = (model: string): boolean => model === "phong" || model === "pbr";
 
 /**
+ * T1618b — DOES A MATERIAL · WGSL READ THE TEXTURE COORDINATE? Its source is the author's,
+ * and a read of the member has to spell it: `s.uv`, or `.uv` on a copy of the struct handed
+ * to a helper. So the member's name after a dot is the whole test, the way a kernel's
+ * `ctx.dim` is found (`points/codegen.ts`). A match in a comment costs one binding; a read
+ * cannot be missed. The stock materials read it exactly where a map is wired.
+ */
+const SURFACE_UV_REFERENCE = /\.\s*uv\b/;
+
+/**
  * T1411b — a SURFACE (grid or mesh) drawn with Blend: Additive. One predicate for the
  * three places that must agree: the lit loop defers it, the lit pass blends it, and every
  * depth sweep (shadow, AO, projector, the Depth output) leaves it out. The per-point
  * modes keep T917's own additive rules; glass has its own phase.
  */
 const additiveSurface = (payload: GeometryPayload): boolean =>
-  payload.mode === "surface" && payload.blend === "additive" && payload.material.model !== "glass";
+  (payload.mode === "surface" || payload.instanceMesh !== undefined) && additiveLight(payload);
+
+/**
+ * T1623b: a geometry the SURFACE generator draws with a lit model: a Surface or mesh
+ * instances, in a material that takes light. Glass has its own phase and generators, which
+ * take none. Such a draw walks the Render's light table, so a Render with one has a table.
+ */
+const litSurfaceDraw = (payload: GeometryPayload): boolean =>
+  (payload.mode === "surface" || payload.instanceMesh !== undefined) && payload.material.model !== "glass" && payload.material.model !== "unlit";
+
+/**
+ * B256 — geometry of ANY mode drawn with Blend: Additive: light laid over the picture, not
+ * a body. One predicate for every depth sweep, so a new mode cannot be a body by omission.
+ * Glass keeps its own path (it refracts what is behind it, and its Blend is not read).
+ */
+function additiveLight(payload: GeometryPayload): boolean {
+  return payload.blend === "additive" && payload.material.model !== "glass";
+}
 
 function materialCompile(model: MaterialPayload["model"]) {
   return (context: Parameters<NodeDefinition["compile"]>[0]): CompiledNodeDescription => {
@@ -3039,6 +3963,8 @@ function materialCompile(model: MaterialPayload["model"]) {
     const specular = readColor(parameters, "specular", [1, 1, 1, 1]);
     const albedoMap = inputs["albedo"]?.resource;
     const roughnessMap = inputs["roughness"]?.resource;
+    const extendU = readMapExtend(parameters["mapExtendU"]);
+    const extendV = readMapExtend(parameters["mapExtendV"]);
     const payload: MaterialPayload = {
       kind: "material",
       model,
@@ -3051,10 +3977,38 @@ function materialCompile(model: MaterialPayload["model"]) {
         ...(albedoMap === undefined ? {} : { albedo: albedoMap }),
         ...(roughnessMap === undefined ? {} : { roughness: roughnessMap }),
       },
+      // T1618b: said only when an axis tiles, so a material that holds is the payload it was.
+      ...(extendU === "hold" && extendV === "hold" ? {} : { mapExtend: { u: extendU, v: extendV } }),
     };
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
   };
 }
+
+const readMapExtend = (value: unknown): MapExtend => (value === "repeat" || value === "mirror" ? value : "hold");
+
+/**
+ * T1618b — MAP EXTEND: what a map reads where the texture coordinate leaves 0 to 1, an axis
+ * at a time (TouchDesigner's Extend U and V on a MAT's maps, Notch's Texture Wrap Mode U and
+ * V on a material). Structural: it picks the text of the map read. Hold is the text a map
+ * always had, so no material that shipped reads its maps any differently.
+ */
+const mapExtendParameter = (label: string, axis: string, tiled: string): ParameterSchema[string] => ({
+  type: "enum",
+  label,
+  default: "hold",
+  compileTime: true,
+  // §V831: APPEND only — a stored value whose row moved resolves to the default.
+  options: [
+    { value: "hold", label: "Hold" },
+    { value: "repeat", label: "Repeat" },
+    { value: "mirror", label: "Mirror" },
+  ],
+  description: `How the maps are read where the texture coordinate ${axis} leaves 0 to 1. Hold: the map's edge carries on. Repeat: the map tiles, ${tiled}. Mirror: it tiles with every other tile turned round, so no tile shows a seam. On an open edge under MSAA a tiled axis shows a hairline of the map's far edge (the pixel's centre is past the surface there): keep Hold on an axis that does not tile.`,
+});
+const MAP_EXTEND_PARAMETERS: ParameterSchema = {
+  mapExtendU: mapExtendParameter("Map Extend U", "across (u: a grid's columns, the way round a Sweep's profile)", "once for each whole number the coordinate passes"),
+  mapExtendV: mapExtendParameter("Map Extend V", "along (v: a grid's rows, the way along a Sweep's path)", "which is what a Sweep with UV Along: Metres wants: a tile every Tile Length"),
+};
 
 const MATERIAL_OUT = { id: "out", label: "Out", type: { kind: "material", model: "custom" } as const };
 const ALBEDO_IN = {
@@ -3062,14 +4016,15 @@ const ALBEDO_IN = {
   label: "Albedo Map",
   optional: true,
   type: RGBA_TEXTURE,
-  description: "Multiplies the base colour, sampled by the surface's grid uv. A render output plugs in here (E25).",
+  description:
+    "Multiplies the base colour, read at the surface's texture coordinate: a vec2f attribute named uv on its points where they carry one (a Sweep writes one, a mesh file brings its own), else a grid's own, 0 to 1 across its columns and along its rows, once round a wrapped axis. A render output plugs in here (E25).",
 };
 const ROUGHNESS_IN = {
   id: "roughness",
   label: "Roughness Map",
   optional: true,
   type: RGBA_TEXTURE,
-  description: "Red channel multiplies roughness, sampled by the surface's grid uv.",
+  description: "Red channel multiplies roughness, read at the same texture coordinate as the Albedo Map: the points' uv attribute, else the grid's own.",
 };
 
 export const materialUnlitNode: NodeDefinition = {
@@ -3083,6 +4038,7 @@ export const materialUnlitNode: NodeDefinition = {
   outputs: [MATERIAL_OUT],
   parameters: {
     color: { type: "color", label: "Color", default: [0.8, 0.8, 0.8, 1], space: "display" },
+    ...MAP_EXTEND_PARAMETERS,
   },
   compile: materialCompile("unlit"),
 };
@@ -3102,6 +4058,7 @@ export const materialPhongNode: NodeDefinition = {
     specular: { type: "color", label: "Specular", default: [1, 1, 1, 1], space: "display" },
     shininess: { type: "number", label: "Shininess", default: 48, min: 2, max: 512, range: "floor" },
     roughness: { type: "number", label: "Roughness", default: 0.35, min: 0, max: 1, range: "bounded" },
+    ...MAP_EXTEND_PARAMETERS,
   },
   compile: materialCompile("phong"),
 };
@@ -3120,6 +4077,7 @@ export const materialPbrNode: NodeDefinition = {
     color: { type: "color", label: "Base Color", default: [0.8, 0.8, 0.8, 1], space: "display" },
     metallic: { type: "number", label: "Metallic", default: 0, min: 0, max: 1, range: "bounded" },
     roughness: { type: "number", label: "Roughness", default: 0.5, min: 0, max: 1, range: "bounded" },
+    ...MAP_EXTEND_PARAMETERS,
   },
   compile: materialCompile("pbr"),
 };

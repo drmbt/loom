@@ -97,13 +97,13 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "camera1",
         "parameters": {
           "eye.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drift1').chan.value"
+                "source": "op('lfo_drift').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -130,7 +130,7 @@
       "drift": {
         "definitionVersion": 1,
         "id": "drift",
-        "label": "drift1",
+        "label": "lfo_drift",
         "parameters": {
           "amplitude": 0.5,
           "frequency": 0.03,
@@ -147,7 +147,7 @@
       "floorLay": {
         "definitionVersion": 1,
         "id": "floorLay",
-        "label": "floorlay1",
+        "label": "kernel_floorlay",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 768,
@@ -162,7 +162,7 @@
       "floorPts": {
         "definitionVersion": 1,
         "id": "floorPts",
-        "label": "floorpts1",
+        "label": "grid_floor",
         "parameters": {
           "cols": 32,
           "count": 768,
@@ -179,9 +179,9 @@
       "ground": {
         "definitionVersion": 1,
         "id": "ground",
-        "label": "ground1",
+        "label": "geometry_ground",
         "parameters": {
-          "material": "matground1",
+          "material": "material_ground",
           "mode": "surface"
         },
         "position": {
@@ -193,7 +193,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "light_key",
         "parameters": {
           "color": [
             1,
@@ -220,7 +220,7 @@
       "matGround": {
         "definitionVersion": 1,
         "id": "matGround",
-        "label": "matground1",
+        "label": "material_ground",
         "parameters": {
           "color": [
             0.36,
@@ -246,7 +246,7 @@
       "matStone": {
         "definitionVersion": 1,
         "id": "matStone",
-        "label": "matstone1",
+        "label": "material_stone",
         "parameters": {
           "color": [
             0.58,
@@ -272,7 +272,7 @@
       "matSun": {
         "definitionVersion": 1,
         "id": "matSun",
-        "label": "matsun1",
+        "label": "material_sun",
         "parameters": {
           "color": [
             1,
@@ -298,7 +298,7 @@
       "orbX": {
         "definitionVersion": 1,
         "id": "orbX",
-        "label": "orbx1",
+        "label": "lfo_orbx",
         "parameters": {
           "amplitude": 1.7,
           "frequency": 0.04,
@@ -315,7 +315,7 @@
       "orbZ": {
         "definitionVersion": 1,
         "id": "orbZ",
-        "label": "orbz1",
+        "label": "lfo_orbz",
         "parameters": {
           "amplitude": 1.7,
           "frequency": 0.04,
@@ -332,7 +332,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 280,
@@ -343,7 +343,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0.4,
@@ -358,10 +358,10 @@
             0.12,
             1
           ],
-          "camera": "cam1",
+          "camera": "camera1",
           "environmentIntensity": 1,
-          "lights": "key1",
-          "scenes": "ground1 stones1 sun1"
+          "lights": "light_key",
+          "scenes": "geometry_ground geometry_stones geometry_sun"
         },
         "position": {
           "x": 0,
@@ -377,7 +377,7 @@
       "sky": {
         "definitionVersion": 2,
         "id": "sky",
-        "label": "sky1",
+        "label": "ramp_sky",
         "parameters": {
           "interp": "linear",
           "period": 1,
@@ -440,7 +440,7 @@
       "stoneLay": {
         "definitionVersion": 1,
         "id": "stoneLay",
-        "label": "stonelay1",
+        "label": "kernel_stonelay",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 3,
@@ -455,7 +455,7 @@
       "stonePts": {
         "definitionVersion": 1,
         "id": "stonePts",
-        "label": "stonepts1",
+        "label": "grid_stone",
         "parameters": {
           "cols": 3,
           "count": 3,
@@ -472,9 +472,9 @@
       "stones": {
         "definitionVersion": 1,
         "id": "stones",
-        "label": "stones1",
+        "label": "geometry_stones",
         "parameters": {
-          "material": "matstone1",
+          "material": "material_stone",
           "mode": "instances",
           "scale": 0.4,
           "shape": "box"
@@ -488,9 +488,9 @@
       "sun": {
         "definitionVersion": 1,
         "id": "sun",
-        "label": "sun1",
+        "label": "geometry_sun",
         "parameters": {
-          "material": "matsun1",
+          "material": "material_sun",
           "mode": "instances",
           "scale": 0.34,
           "shape": "octahedron"
@@ -504,7 +504,7 @@
       "sunOrbit": {
         "definitionVersion": 1,
         "id": "sunOrbit",
-        "label": "sunorbit1",
+        "label": "kernel_sunorbit",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 1,
@@ -513,7 +513,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbx1').chan.value"
+                "source": "op('lfo_orbx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -526,7 +526,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbz1').chan.value"
+                "source": "op('lfo_orbz').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -545,7 +545,7 @@
       "sunPt": {
         "definitionVersion": 1,
         "id": "sunPt",
-        "label": "sunpt1",
+        "label": "grid_sunpt",
         "parameters": {
           "cols": 1,
           "count": 1,

@@ -5,8 +5,13 @@ import { fileURLToPath } from "node:url";
 import { useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { componentNodeType } from "@domain/components/index.ts";
+import type { FrameInputs } from "@domain/types/backend.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import { expressionSlot } from "@/examples/documents/builders.ts";
+import { ANALYSIS_COMPONENT_ID, analysisComponentDefinition } from "../../tests/fixtures/analysis-component.ts";
 import { isParameterSlot, withMode } from "@domain/parameters/slots.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import type { PhoneDoorView } from "./phone-door-copy.ts";
@@ -258,5 +263,80 @@ describe("T1513b — the controls show their state", () => {
     const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "panel-surface.module.css"), "utf8");
     const grid = /\.grid\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(grid).toMatch(/grid-template-columns:\s*repeat\(auto-fill,\s*minmax\([^,]+,\s*1fr\)\)/);
+  });
+});
+
+/**
+ * §T1559b — A DRIVEN WIDGET SHOWS WHAT IT PUBLISHES, also when what drives it is a component
+ * instance's channel.
+ *
+ * The pane reads a driven widget through the one read path, over the authored document (the
+ * widget is an authored node). It built that read with `NO_FLATTENING`, which carries no
+ * instances, so `op('analysis1').chan.level` failed there and the Slider sat on its retained
+ * value, although the inspector's row for the same slot reads the flattening's instances
+ * (T1485b). Everything here is real: the app runtime's flattening, the value graph over it,
+ * and the pane handed that evaluation's channels and frame as `app.tsx` hands them.
+ */
+describe("§T1559b — a widget driven by a component instance's channel", () => {
+  it("shows the value the Slider publishes, and follows it", async () => {
+    const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "tester", label: "Tester" } });
+    // `level = frame / 10` on the instance's `levels` output.
+    runtime.components.register(analysisComponentDefinition("frame / 10"));
+    const result = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "setup",
+        operations: [
+          { op: "addNode", ref: "$inst", type: componentNodeType(ANALYSIS_COMPONENT_ID, 1), position: { x: 0, y: 0 }, label: "analysis1" },
+          {
+            op: "addNode",
+            ref: "$fader",
+            type: "slider",
+            position: { x: 240, y: 0 },
+            label: "fader1",
+            parameters: { caption: "Heat", min: 0, max: 1, value: expressionSlot("op('analysis1').chan.level", 0.25) },
+          },
+        ],
+      } as never,
+      runtime.invocation,
+    );
+    expect(result.output.status, JSON.stringify(result.output.diagnostics)).toBe("applied");
+    // As the composition root does (`use-graph-compile.ts`): the bus reads the runtime's flattening.
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current());
+
+    const at = (frameIndex: number) => {
+      const frame = { timeSeconds: frameIndex / 60, deltaSeconds: 1 / 60, frameIndex, mode: "offline", randomSeed: 1 } as const;
+      const flattened = runtime.flattened.current();
+      const evaluated = createValueGraphSession(runtime.registry).evaluate(flattened.graph, frame, { flattening: flattened });
+      const inputs: FrameInputs = { frame, pointer: { x: 0, y: 0, buttons: 0 }, resolution: [16, 16] };
+      return {
+        published: evaluated.byId.get(node(runtime, "fader1").id),
+        pane: (
+          <ControlsPane
+            graph={runtime.bus.store.getGraph()}
+            registry={runtime.registry}
+            bus={runtime.bus}
+            invocation={runtime.invocation}
+            channels={evaluated.resolver}
+            latestFrame={() => inputs}
+          />
+        ),
+      };
+    };
+
+    const five = at(5);
+    expect(five.published).toEqual({ value: 0.5 });
+    const view = render(five.pane);
+    const slider = () => screen.getByRole("slider", { name: "Heat" });
+    // Read without the instances the pane shows the retained 0.25 while the Slider publishes 0.5.
+    expect(slider().getAttribute("aria-valuenow")).toBe("0.5");
+
+    // The cut-the-wire question: the instance moves, the Slider's bag moves, the display follows.
+    const eight = at(8);
+    expect(eight.published).toEqual({ value: 0.8 });
+    view.rerender(eight.pane);
+    expect(slider().getAttribute("aria-valuenow")).toBe("0.8");
+    runtime.dispose();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cameraPayloadMatrix, identity, lookAt, multiply, perspective, projectorMatrix, transformPoint, viewProjection } from "./camera.ts";
+import { cameraPayloadMatrix, identity, lookAt, multiply, perspective, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix, transformPoint, viewProjection } from "./camera.ts";
 
 /**
  * §V198: the composition order is PUBLISHED (clip = projection × view × world,
@@ -214,5 +214,77 @@ describe("T704 — the projector's matrix speaks the lens sheet", () => {
     const pz = project(m, [0, 0, 1]);
     expect(Math.hypot(px[0], px[1])).toBeGreaterThan(0.01);
     expect(Math.hypot(px[0] - pz[0], px[1] - pz[1])).toBeGreaterThan(0.01);
+  });
+});
+
+/*
+ * T1598b: `pointShadowFaceReaches` decides which shadow draws are LEFT OUT, so the one way
+ * it may be wrong is by answering true. A false for a sphere any part of which the face's
+ * sweep would have drawn is a shadow that silently goes missing.
+ */
+describe("what one face of a point light's cube can reach (T1598b)", () => {
+  const LIGHT: [number, number, number] = [1, 2, -0.5];
+  const RANGE = 6;
+  const reached = (center: readonly [number, number, number], radius: number): number[] =>
+    [0, 1, 2, 3, 4, 5].filter((face) => pointShadowFaceReaches(LIGHT, RANGE, face, { center, radius }));
+  const from = (x: number, y: number, z: number): [number, number, number] => [LIGHT[0] + x, LIGHT[1] + y, LIGHT[2] + z];
+
+  it("a small sphere straight down an axis is in that face and no other (atlas order +X −X +Y −Y +Z −Z)", () => {
+    expect(reached(from(3, 0, 0), 0.5)).toEqual([0]);
+    expect(reached(from(-3, 0, 0), 0.5)).toEqual([1]);
+    expect(reached(from(0, 3, 0), 0.5)).toEqual([2]);
+    expect(reached(from(0, -3, 0), 0.5)).toEqual([3]);
+    expect(reached(from(0, 0, 3), 0.5)).toEqual([4]);
+    expect(reached(from(0, 0, -3), 0.5)).toEqual([5]);
+  });
+
+  it("a sphere beyond the range is in no face, and one that reaches back into it still is", () => {
+    expect(reached(from(RANGE + 1.01, 0, 0), 1)).toEqual([]);
+    expect(reached(from(RANGE + 0.99, 0, 0), 1)).toEqual([0]);
+    // Far out on a diagonal: beyond the range by distance, though inside two faces' planes.
+    expect(reached(from(5, 5, 0), 0.5)).toEqual([]);
+  });
+
+  it("a sphere across the seam of two faces is in both, and one holding the light is in all six", () => {
+    expect(reached(from(2, 2, 0), 0.25)).toEqual([0, 2]);
+    expect(reached(from(0.2, 0, 0), 1)).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it("never answers false for a sphere the face's own matrix can see (5,000 spheres against the sweep's projection)", () => {
+    const matrices = pointShadowFaceMatrices(LIGHT, RANGE);
+    // A deterministic generator: the claim must not depend on a lucky seed.
+    let state = 0x2545f491;
+    const random = (): number => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state / 0x100000000;
+    };
+    let left = 0;
+    for (let trial = 0; trial < 5000; trial += 1) {
+      const center = from((random() - 0.5) * 18, (random() - 0.5) * 18, (random() - 0.5) * 18);
+      const radius = random() * random() * 3;
+      for (let face = 0; face < 6; face += 1) {
+        if (pointShadowFaceReaches(LIGHT, RANGE, face, { center, radius })) continue;
+        left += 1;
+        // Left out: then no point of the sphere may be something the sweep keeps — inside
+        // the face's frustum AND within range of the light.
+        for (let sample = 0; sample < 40; sample += 1) {
+          const u = random() * 2 - 1;
+          const phi = random() * Math.PI * 2;
+          const ring = Math.sqrt(1 - u * u);
+          const length = radius * Math.cbrt(random());
+          const point: [number, number, number] = [
+            center[0] + length * ring * Math.cos(phi),
+            center[1] + length * ring * Math.sin(phi),
+            center[2] + length * u,
+          ];
+          const clip = transformPoint(matrices[face]!, point);
+          const inFace = clip[3] > 0 && Math.abs(clip[0]) <= clip[3] && Math.abs(clip[1]) <= clip[3];
+          const inRange = Math.hypot(point[0] - LIGHT[0], point[1] - LIGHT[1], point[2] - LIGHT[2]) <= RANGE;
+          if (inFace && inRange) throw new Error(`face ${String(face)} was left out of a sphere at ${center.join(",")} r ${String(radius)} that it can see at ${point.join(",")}`);
+        }
+      }
+    }
+    // The test is only worth its name if it leaves a good share out: 30,000 pairs, most unreachable.
+    expect(left).toBeGreaterThan(15000);
   });
 });

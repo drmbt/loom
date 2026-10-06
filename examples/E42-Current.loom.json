@@ -165,7 +165,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "noise_bed",
         "parameters": {
           "amp": 1.5,
           "aspectcorrect": true,
@@ -192,7 +192,7 @@
       "clip": {
         "definitionVersion": 1,
         "id": "clip",
-        "label": "clip1",
+        "label": "movie_clip",
         "parameters": {
           "file": "",
           "playMode": "freeRun",
@@ -207,7 +207,7 @@
       "facet": {
         "definitionVersion": 1,
         "id": "facet",
-        "label": "facet1",
+        "label": "material_facet",
         "parameters": {
           "color": [
             0.82,
@@ -233,7 +233,7 @@
       "flow": {
         "definitionVersion": 1,
         "id": "flow",
-        "label": "flow1",
+        "label": "kernel_flow",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"orient\",\"type\":\"vec4f\",\"qualifier\":\"quaternion\",\"default\":[0,0,0,1]}]",
           "capacity": 1296,
@@ -250,7 +250,7 @@
       "gain": {
         "definitionVersion": 1,
         "id": "gain",
-        "label": "gain1",
+        "label": "level_gain",
         "parameters": {
           "blacklevel": 0,
           "brightness": 1,
@@ -286,7 +286,7 @@
       "moved": {
         "definitionVersion": 1,
         "id": "moved",
-        "label": "moved1",
+        "label": "difference_moved",
         "parameters": {},
         "position": {
           "x": -1620,
@@ -297,7 +297,7 @@
       "orb": {
         "definitionVersion": 1,
         "id": "orb",
-        "label": "orb1",
+        "label": "circle_orb",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -314,7 +314,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('pathx1').chan.value"
+                "source": "op('lfo_pathx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -327,7 +327,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('pathy1').chan.value"
+                "source": "op('lfo_pathy').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -358,7 +358,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 180,
@@ -369,7 +369,7 @@
       "pack": {
         "definitionVersion": 1,
         "id": "pack",
-        "label": "pack1",
+        "label": "reorder_pack",
         "parameters": {
           "outa": "in2lum",
           "outb": "in1b",
@@ -385,7 +385,7 @@
       "past": {
         "definitionVersion": 1,
         "id": "past",
-        "label": "past1",
+        "label": "cache_past",
         "parameters": {
           "frames": 8,
           "index": 6,
@@ -400,7 +400,7 @@
       "pathx": {
         "definitionVersion": 1,
         "id": "pathx",
-        "label": "pathx1",
+        "label": "lfo_pathx",
         "parameters": {
           "amplitude": 0.33,
           "frequency": 0.29,
@@ -417,7 +417,7 @@
       "pathy": {
         "definitionVersion": 1,
         "id": "pathy",
-        "label": "pathy1",
+        "label": "lfo_pathy",
         "parameters": {
           "amplitude": 0.3,
           "frequency": 0.203,
@@ -434,7 +434,7 @@
       "pick": {
         "definitionVersion": 1,
         "id": "pick",
-        "label": "pick1",
+        "label": "switch_pick",
         "parameters": {
           "index": 0
         },
@@ -447,7 +447,7 @@
       "rake": {
         "definitionVersion": 1,
         "id": "rake",
-        "label": "rake1",
+        "label": "light_rake",
         "parameters": {
           "color": [
             1,
@@ -473,7 +473,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             1,
@@ -488,9 +488,9 @@
             0.016,
             1
           ],
-          "camera": "view1",
-          "lights": "rake1",
-          "scenes": "tiles1"
+          "camera": "camera_view",
+          "lights": "light_rake",
+          "scenes": "geometry_tiles"
         },
         "position": {
           "x": -120,
@@ -501,7 +501,7 @@
       "stand": {
         "definitionVersion": 1,
         "id": "stand",
-        "label": "stand1",
+        "label": "add_stand",
         "parameters": {
           "opacity": 1
         },
@@ -514,9 +514,9 @@
       "tiles": {
         "definitionVersion": 1,
         "id": "tiles",
-        "label": "tiles1",
+        "label": "geometry_tiles",
         "parameters": {
-          "material": "facet1",
+          "material": "material_facet",
           "mode": "instances",
           "orient": {
             "bindings": {
@@ -579,7 +579,7 @@
       "view": {
         "definitionVersion": 1,
         "id": "view",
-        "label": "view1",
+        "label": "camera_view",
         "parameters": {
           "eye": [
             0,

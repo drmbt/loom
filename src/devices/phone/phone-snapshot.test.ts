@@ -777,4 +777,82 @@ describe("T1505b — a look's instance bank on the phone", () => {
       reason: "A phone tried to move a control that is not published to the phone door.",
     });
   });
+
+  /*
+   * T1593b (ruled 2026-10-05): the phone captions a bank by the ROLE of its name, and a
+   * look's instance is a bank from outside. Its kind is its COMPONENT'S name ("Look"), so
+   * the instance renamed `downtown` is `look_downtown` in the document and `downtown` on
+   * the phone. The rename is the real one, so the board follows it and the item stays.
+   */
+  it("captions the instance by the role of its name, read against its component's name", async () => {
+    const { bus, components, city } = await stage();
+    const renamed = await bus.execute("node.rename", { nodeId: city, label: "downtown" }, contextFor(alice));
+    expect(renamed.status).toBe("applied");
+    expect(bus.store.getGraph().nodes[city]?.label).toBe("look_downtown");
+
+    const [item] = buildPhoneSnapshot(bus.store.getGraph(), 1, undefined, components).panels[0]?.board?.items ?? [];
+    expect(item).toMatchObject({ kind: "widget", widget: { kind: "preset", handle: city, caption: "downtown" } });
+    // A refusal names the member by the caption the phone drew it under.
+    const refused = vetPhoneSet(bus.store.getGraph(), set(city, { recall: "nope" }), components);
+    expect(refused.ok ? "" : refused.reason).toContain("“downtown” has no preset by the name a phone asked for");
+  });
+});
+
+/**
+ * T1593b (ruled 2026-10-05) — THE PHONE CAPTIONS A BANK, A LAYER AND A CUE LIST BY THE ROLE.
+ *
+ * A node's name is `kind_role`, and the phone draws a bank as a row of presets, a layer as
+ * a switch and a cue list as GO: the kind in front of the caption would be the same fact
+ * again on the smallest screen in the room. So `presets_looks` is `looks` there. The
+ * handle a phone writes to is the node's id, and is untouched by any of this.
+ */
+describe("T1593b — the phone captions a member by the role of its name", () => {
+  const LOOKS = serializePresetBank({ version: 1, presets: [{ name: "soft", values: { blur1: { size: 4 } } }] });
+  const board = (members: readonly string[]): string =>
+    serializePanelBoard({ columns: 8, items: members.map((member, index) => ({ member, rect: { x: 0, y: index, w: 4, h: 1 } })) });
+  const show = (bank: string, layer: string, cues: string, panel: string, title: string): GraphPatchOperation[] => [
+    add("blur", "blur", "blur1", { size: 9 }),
+    add("looks", "presets", bank, { targets: "blur1", presets: LOOKS }),
+    add("fx", "layer", layer),
+    add("set", "cueList", cues, { cues: serializeCueList({ version: 1, cues: [{ name: "1", bank, preset: "soft" }] }) }),
+    add("stage", "panel", panel, { title, remote: true, board: board([bank, layer, cues]) }),
+  ];
+  const captions = (graph: GraphDocument): Array<readonly [string, string]> =>
+    (buildPhoneSnapshot(graph, 1).panels[0]?.board?.items ?? []).flatMap((item) =>
+      item.kind === "widget" && "caption" in item.widget ? [[item.widget.kind, item.widget.caption] as const] : [],
+    );
+
+  it("shows the role of a name that carries its kind, and the Panel's role as its title", async () => {
+    const { bus, ids } = await documentWith(show("presets_looks", "layer_fx", "cuelist_set", "panel_show", ""));
+    const snapshot = buildPhoneSnapshot(bus.store.getGraph(), 1);
+
+    expect(captions(bus.store.getGraph())).toEqual([["preset", "looks"], ["layer", "fx"], ["cueList", "set"]]);
+    expect(snapshot.panels.map((panel) => panel.title)).toEqual(["show"]);
+    // The caption is not the address: a phone still writes to the node's id.
+    const handles = (snapshot.panels[0]?.board?.items ?? []).flatMap((item) => (item.kind === "widget" ? [item.widget.handle] : []));
+    expect(handles).toEqual([ids["$looks"], ids["$fx"], ids["$set"]]);
+  });
+
+  it("shows a name the rule did not make exactly as it is", async () => {
+    const legacy = await documentWith(show("looks", "fx", "set", "stage", ""));
+    expect(captions(legacy.bus.store.getGraph())).toEqual([["preset", "looks"], ["layer", "fx"], ["cueList", "set"]]);
+
+    const numbered = await documentWith(show("presets1", "layer1", "cuelist1", "panel1", ""));
+    expect(captions(numbered.bus.store.getGraph())).toEqual([["preset", "presets1"], ["layer", "layer1"], ["cueList", "cuelist1"]]);
+    expect(buildPhoneSnapshot(numbered.bus.store.getGraph(), 1).panels.map((panel) => panel.title)).toEqual(["panel1"]);
+  });
+
+  it("names the member by that caption when it refuses a write, so the phone can show the sentence on it", async () => {
+    const { bus, ids } = await documentWith(show("presets_looks", "layer_fx", "cuelist_set", "panel_show", "Show"));
+    const vet = vetPhoneSet(bus.store.getGraph(), set(ids["$looks"]!, { recall: "nope" }));
+    expect(vet.ok ? "" : vet.reason).toBe("“looks” has no preset by the name a phone asked for; it was renamed or deleted since the phone drew it.");
+    // And an accepted layer write carries the same caption back.
+    expect(vetPhoneSet(bus.store.getGraph(), set(ids["$fx"]!, { on: false }))).toEqual({
+      ok: true,
+      action: "layerOn",
+      nodeId: ids["$fx"],
+      caption: "fx",
+      on: false,
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import { useGraphCanvas, useNodeRuntime } from "@editor/graph-canvas/canvas-context.ts";
 import { cssVars } from "@editor/graph-canvas/css-vars.ts";
@@ -48,9 +48,16 @@ export const NodeTimingOverlay = memo(function NodeTimingOverlay({
 }: {
   readonly nodeId: NodeId;
 }) {
-  const { runtime, timingScale } = useGraphCanvas();
+  const { runtime, timingScale, kindLabels } = useGraphCanvas();
   const snapshot = useNodeRuntime(runtime, nodeId);
   const raw = snapshot.gpuMs;
+  /**
+   * B258 — below 70 % zoom the node's kind label rises out of the top of the node, into
+   * the room this readout stands in. So the readout is told the zoom the same way the
+   * label is (`kind-label.ts`: written on the element, nothing rendered), and its
+   * stylesheet moves it up by what the label takes.
+   */
+  const joinKindLabels = useCallback((overlay: HTMLDivElement) => kindLabels.register(overlay), [kindLabels]);
 
   /**
    * The smoothing accumulator, advanced ONCE PER DISTINCT SAMPLE.
@@ -83,7 +90,7 @@ export const NodeTimingOverlay = memo(function NodeTimingOverlay({
   const percent = Math.round(share * 100);
 
   return (
-    <div className={styles.overlay} data-testid={`node-timing-${nodeId}`}>
+    <div ref={joinKindLabels} className={styles.overlay} data-testid={`node-timing-${nodeId}`}>
       <div
         className={styles.track}
         role="img"

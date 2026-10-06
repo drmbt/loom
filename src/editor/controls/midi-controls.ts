@@ -5,7 +5,8 @@ import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { storedStaticValue, isParameterSlot } from "@domain/parameters/slots.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import { placeFree } from "@domain/graph/layout.ts";
-import { renumberedName, uniqueNodeName } from "@domain/graph/names.ts";
+import { freeRoleName, nodeNames, renumberedName, uniqueNodeName } from "@domain/graph/names.ts";
+import { kindOfType } from "@domain/graph/node-kinds.ts";
 import { parseMidiMapping, serialiseMidiMapping, type MidiBinding, type MidiSource } from "@domain/midi/midi-mapping.ts";
 import { controlNameOf } from "@nodes/definitions/controls.ts";
 import { channelFromLabel, controlReadSource, controlSlot, unbindOperations, type ControlPlan } from "./parameter-controls.ts";
@@ -96,7 +97,8 @@ export function learnControlMidiPlan(
 
   const operations: GraphPatchOperation[] = [];
   const midiId = midi?.id ?? "$controlMidi";
-  const midiName = midi === undefined ? uniqueNodeName(graph, "midi") : controlNameOf(midi);
+  // T1593b: named under the node's kind, as any new node is (`midiin1`).
+  const midiName = midi === undefined ? uniqueNodeName(graph, kindOfType("midiIn")) : controlNameOf(midi);
   const midiDefinition = registry.get("midiIn");
   if (midiDefinition === undefined) return refuse("control.midi.unavailable", "MIDI In is not installed in this node registry.");
   const existing = parsed.bindings.find((binding) => previous === midiRead(control, midiName, binding.channel));
@@ -129,7 +131,9 @@ export function learnControlMidiPlan(
       const incoming = Object.values(graph.edges).filter((edge) => edge.target.nodeId === node.id && edge.target.portId === "in");
       return incoming.length === 1 && incoming[0]?.source.nodeId === midiId && incoming[0]?.source.portId === "out";
     });
-    const countName = count === undefined ? uniqueNodeName(placed, "midiCount") : controlNameOf(count);
+    // T1593b: `count_midi`, the Count's kind and what it counts.
+    const placedNames = new Set(nodeNames(placed).keys());
+    const countName = count === undefined ? freeRoleName("valueCount", "midi", (name) => placedNames.has(name)) : controlNameOf(count);
     if (count === undefined) {
       const countId = "$controlMidiCount";
       operations.push({ op: "addNode", ref: countId, type: "valueCount", label: countName, position: placeFree(placed, registry, "valueCount"), parameters: { threshold: 0.5, holdoff: 0 } });

@@ -341,7 +341,7 @@
       "baseL": {
         "definitionVersion": 1,
         "id": "baseL",
-        "label": "baseL1",
+        "label": "add_baseL",
         "parameters": {
           "opacity": 1
         },
@@ -354,7 +354,7 @@
       "baseR": {
         "definitionVersion": 1,
         "id": "baseR",
-        "label": "baseR1",
+        "label": "add_baseR",
         "parameters": {
           "opacity": 1
         },
@@ -367,7 +367,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "noise_bed",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -394,7 +394,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "webcam1",
         "parameters": {},
         "position": {
           "x": -2220,
@@ -405,7 +405,7 @@
       "dim": {
         "definitionVersion": 1,
         "id": "dim",
-        "label": "dim1",
+        "label": "level_dim",
         "parameters": {
           "brightness": 0.18
         },
@@ -418,7 +418,7 @@
       "gateL": {
         "definitionVersion": 2,
         "id": "gateL",
-        "label": "gateL1",
+        "label": "ramp_gateL",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -454,7 +454,7 @@
       "gateR": {
         "definitionVersion": 2,
         "id": "gateR",
-        "label": "gateR1",
+        "label": "ramp_gateR",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -490,7 +490,7 @@
       "halfL": {
         "definitionVersion": 1,
         "id": "halfL",
-        "label": "halfL1",
+        "label": "multiply_halfL",
         "parameters": {
           "opacity": 1
         },
@@ -503,7 +503,7 @@
       "halfR": {
         "definitionVersion": 1,
         "id": "halfR",
-        "label": "halfR1",
+        "label": "multiply_halfR",
         "parameters": {
           "opacity": 1
         },
@@ -516,7 +516,7 @@
       "hazeC": {
         "definitionVersion": 1,
         "id": "hazeC",
-        "label": "hazeC1",
+        "label": "noise_hazeC",
         "parameters": {
           "amp": 0.7,
           "aspectcorrect": true,
@@ -543,7 +543,7 @@
       "hazeW": {
         "definitionVersion": 1,
         "id": "hazeW",
-        "label": "hazeW1",
+        "label": "noise_hazeW",
         "parameters": {
           "amp": 0.7,
           "aspectcorrect": true,
@@ -570,7 +570,7 @@
       "inkC": {
         "definitionVersion": 1,
         "id": "inkC",
-        "label": "inkC1",
+        "label": "solid_inkC",
         "parameters": {
           "color": [
             0.1,
@@ -588,7 +588,7 @@
       "inkW": {
         "definitionVersion": 1,
         "id": "inkW",
-        "label": "inkW1",
+        "label": "solid_inkW",
         "parameters": {
           "color": [
             1,
@@ -606,7 +606,7 @@
       "keyM": {
         "definitionVersion": 1,
         "id": "keyM",
-        "label": "keyM1",
+        "label": "multiply_keyM",
         "parameters": {
           "opacity": 1
         },
@@ -619,7 +619,7 @@
       "keyV": {
         "definitionVersion": 1,
         "id": "keyV",
-        "label": "keyV1",
+        "label": "multiply_keyV",
         "parameters": {
           "opacity": 1
         },
@@ -632,7 +632,7 @@
       "leftC": {
         "definitionVersion": 1,
         "id": "leftC",
-        "label": "leftC1",
+        "label": "over_leftC",
         "parameters": {
           "opacity": 1
         },
@@ -656,7 +656,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 180,
@@ -667,7 +667,7 @@
       "rightC": {
         "definitionVersion": 1,
         "id": "rightC",
-        "label": "rightC1",
+        "label": "over_rightC",
         "parameters": {
           "opacity": 1
         },
@@ -680,7 +680,7 @@
       "seg": {
         "definitionVersion": 1,
         "id": "seg",
-        "label": "seg1",
+        "label": "personmask_seg",
         "parameters": {
           "invert": false,
           "rateLimit": 0.1
@@ -694,7 +694,7 @@
       "src": {
         "definitionVersion": 1,
         "id": "src",
-        "label": "src1",
+        "label": "switch_src",
         "parameters": {
           "index": 0
         },
@@ -707,7 +707,7 @@
       "sum": {
         "definitionVersion": 1,
         "id": "sum",
-        "label": "sum1",
+        "label": "add_sum",
         "parameters": {
           "opacity": 1
         },
@@ -720,7 +720,7 @@
       "tintC": {
         "definitionVersion": 1,
         "id": "tintC",
-        "label": "tintC1",
+        "label": "multiply_tintC",
         "parameters": {
           "opacity": 1
         },
@@ -733,7 +733,7 @@
       "tintW": {
         "definitionVersion": 1,
         "id": "tintW",
-        "label": "tintW1",
+        "label": "multiply_tintW",
         "parameters": {
           "opacity": 1
         },
@@ -746,13 +746,13 @@
       "washC": {
         "definitionVersion": 1,
         "id": "washC",
-        "label": "washC1",
+        "label": "level_washC",
         "parameters": {
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.55 + op('seg1').chan.coverage * 3"
+                "source": "0.55 + op('personmask_seg').chan.coverage * 3"
               },
               "static": {
                 "kind": "static",
@@ -771,7 +771,7 @@
       "washW": {
         "definitionVersion": 1,
         "id": "washW",
-        "label": "washW1",
+        "label": "level_washW",
         "parameters": {
           "brightness": {
             "bindings": {

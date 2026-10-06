@@ -9,40 +9,40 @@ empty. **A moving subject sheds motes and a still one sheds none** — that sent
 example, and it is asserted as numbers on frame pairs, because no still frame can testify
 about it.
 
-This is the "particles from video" example: point `clip1` at real footage
-(`pick1.index = 1`) and the same scouts shed embers off whatever moves in it.
+This is the "particles from video" example: point `movie_clip` at real footage
+(`switch_pick.index = 1`) and the same scouts shed embers off whatever moves in it.
 
 ## Graph
 
 ```
-bed1(noise 4d, nearly still) ─┐
-orb1(circle ┄ pathx1/pathy1) ─┴─► stand1(add) ─┐ order 0
-clip1(movieFileIn) ─────────────────────────────┴─► pick1(switch) ─┬─► past1(cache, 6 back)
-                                                                   │        │
-under1(level, night-dims) ◄── pick1                                ▼        ▼
-                                                              moved1(difference)
-pick1 ─► pack1.in1 (rgb = colour)      gain1(level) ◄──────────────┘
-gain1 ─► pack1.in2 (a = motion)   ─►  pack1(reorder) ─► cloud1.field
+noise_bed(noise 4d, nearly still) ────────┐
+circle_orb(circle ┄ lfo_pathx/lfo_pathy) ─┴─► add_stand(add) ─┐ order 0
+movie_clip(movieFileIn) ───────────────────────────────────────┴─► switch_pick(switch) ─┬─► cache_past(cache, 6 back)
+                                                                                        │             │
+level_under(level, night-dims) ◄── switch_pick                                          ▼             ▼
+                                                              difference_moved(difference)
+switch_pick ─► reorder_pack.in1 (rgb = colour)      level_gain(level) ◄─────────────────────┘
+level_gain ─► reorder_pack.in2 (a = motion)   ─►  reorder_pack(reorder) ─► kernel_cloud.field
 
-cloud1(pointKernelAdvanced: scouts spawn where the picture moves) ─► motes1(geometry, instances)
-flare1(materialUnlit) ── by name ──► motes1 ─► shot1(render ◄ view1) ─► halo1(blur) ─► burn1(add)
-under1 ─► lay1(add ◄ burn1) ─► out1
+kernel_cloud(pointKernelAdvanced: scouts spawn where the picture moves) ─► geometry_motes(geometry, instances)
+material_flare(materialUnlit) ── by name ──► geometry_motes ─► render_shot(render ◄ camera_view) ─► blur_halo(blur) ─► add_burn(add)
+level_under ─► add_lay(add ◄ add_burn) ─► output1
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `pack1` | `reorder` | THE design decision: rgb = the source's colour (in1), alpha = the motion (in2lum) — a kernel has one field input, and this makes one `fieldAt` answer *where is it moving* and *what colour is it there* |
-| `past1` → `moved1` | `cache`, `difference` | E40's motion instrument, reused as a SPAWN FIELD rather than a picture |
-| `cloud1` | `pointKernelAdvanced` | the T322 lifecycle on a T744 field: invisible scouts spawn where motion clears the threshold; children die and are compacted, and the live count meters the motion |
-| `motes1` | `geometry` | counted `instances` (quads — a counted set draws indirectly off the live count, T478); `tint` mapped from the kernel, `scale` from `tint.w` (T721) — size IS the local motion, faded by age |
-| `flare1` | `materialUnlit` | motes are light: they cast nothing and take nothing (§V617/§V666) |
-| `gain1` | `level` | ranges the difference with `whitelevel` alone — no subtractive offset anywhere in this file (§V694) |
-| `bed1`, `orb1` | `noise`, `circle` | the understudy that MOVES (§V411/§V687): a warm orb on two free-running LFOs over a nearly-still bed — something must hold still for shed-on-motion to mean anything |
+| `reorder_pack` | `reorder` | THE design decision: rgb = the source's colour (in1), alpha = the motion (in2lum) — a kernel has one field input, and this makes one `fieldAt` answer *where is it moving* and *what colour is it there* |
+| `cache_past` → `difference_moved` | `cache`, `difference` | E40's motion instrument, reused as a SPAWN FIELD rather than a picture |
+| `kernel_cloud` | `pointKernelAdvanced` | the T322 lifecycle on a T744 field: invisible scouts spawn where motion clears the threshold; children die and are compacted, and the live count meters the motion |
+| `geometry_motes` | `geometry` | counted `instances` (quads — a counted set draws indirectly off the live count, T478); `tint` mapped from the kernel, `scale` from `tint.w` (T721) — size IS the local motion, faded by age |
+| `material_flare` | `materialUnlit` | motes are light: they cast nothing and take nothing (§V617/§V666) |
+| `level_gain` | `level` | ranges the difference with `whitelevel` alone — no subtractive offset anywhere in this file (§V694) |
+| `noise_bed`, `circle_orb` | `noise`, `circle` | the understudy that MOVES (§V411/§V687): a warm orb on two free-running LFOs over a nearly-still bed — something must hold still for shed-on-motion to mean anything |
 
 ## The packed field
 
 A point kernel has exactly one field input. Instead of choosing between "read the motion"
-and "read the picture", `pack1` carries both: `outr/g/b` from the source, `outa` from the
+and "read the picture", `reorder_pack` carries both: `outr/g/b` from the source, `outa` from the
 difference's luminance. A scout probes the alpha; a live mote samples the rgb under
 its own position every frame, so its colour is the video *live* — drift across a boundary
 in the footage and the ember changes colour mid-flight.
@@ -146,12 +146,12 @@ example's subject is *behaviour over time*, so `cinder-claims.gpu.test.ts` asser
 
 ## Where the seams show
 
-- **The motes are square.** Instanced quads; the bloom (`halo1` + `burn1`, no Level in
+- **The motes are square.** Instanced quads; the bloom (`blur_halo` + `add_burn`, no Level in
   the chain, §V694) is what rounds them into embers at viewing distance. A soft-sprite
   mode would replace the bloom; it does not exist yet.
 - **Birth rate is scouts × hit-area.** 96 probes per frame set how hard a moving region
   sheds, fitted against the understudy's measured difference field (§V696); very small
-  or very fast footage may want a different `gain1.whitelevel` or scout count.
+  or very fast footage may want a different `level_gain.whitelevel` or scout count.
 - **Capacity still caps a frame with enormous motion** — spawns beyond the allocation
   are dropped by the lifecycle machinery rather than growing the buffer; steady footage
   never approaches it.

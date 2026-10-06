@@ -309,6 +309,14 @@ for (const shot of shots) {
     subframes: sub,
     outputNodeId: "out",
     animate: true,
+    // A FINAL RENDER (§T1641b slice 3): it stops, by the node's name, on everything
+    // `stopsFinalRender` names, AT ANY FRAME. An error; a thing that can never take effect (an
+    // unknown function once froze a camera move without a word); a thing still waiting, such
+    // as a read of a channel not published at that frame; an expression with no finite answer
+    // at a frame, where the stored value standing in is a wrong picture that looks plausible.
+    // This was a filter over the result's diagnostics here, which held the structural plan's
+    // only: a warning that first appeared on frame 40 was read by nobody.
+    strict: true,
     meshes,
     ...(track === undefined ? {} : { audio: track.seam(fps * sub, audioStart - warm / fps) }),
     ...(hdri !== undefined && nodes["hdri"] !== undefined ? { pictures: { hdri: (size: readonly [number, number]) => rgbmBytes(hdri, size) } } : {}),
@@ -321,13 +329,11 @@ for (const shot of shots) {
       if (!stdin.write(Buffer.from(out))) await new Promise((resolve) => stdin.once("drain", resolve));
     },
   });
-  // An expression that fails to evaluate is only a warning to the app (it holds the retained
-  // value); here it is an error — an unknown function once froze a camera move without a word.
+  // What is left after `strict` is what a final render may carry: a clamp, a fallback that
+  // says what stands in. Printed, with the frame each first appeared at.
   // T1436b: name the node — a component diagnostic's message names the key, not the node
   const line = (d: { code: string; message: string; nodeId?: string }): string => `${d.code}${d.nodeId === undefined ? "" : ` [${d.nodeId}]`}: ${d.message}`;
-  const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error" || d.code === "parameter.expression").map(line))];
-  if (errors.length > 0) throw new Error(`the ${shot} graph has errors:\n${errors.join("\n")}`);
-  const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map(line))];
+  const warnings = [...new Set(result.findings.filter((found) => found.diagnostic.severity === "warning").map((found) => `${found.frame === null ? "" : `frame ${found.frame}: `}${line(found.diagnostic)}`))];
   if (warnings.length > 0) console.log(warnings.slice(0, 10).join("\n"));
   if (encoder !== undefined) {
     encoder.stdin?.end();

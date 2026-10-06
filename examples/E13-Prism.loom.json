@@ -253,7 +253,7 @@
       "band": {
         "definitionVersion": 1,
         "id": "band",
-        "label": "band1",
+        "label": "circle_band",
         "parameters": {
           "aspectcorrect": false,
           "bgcolor": [
@@ -288,7 +288,7 @@
       "bar": {
         "definitionVersion": 1,
         "id": "bar",
-        "label": "bar1",
+        "label": "tube_bar",
         "parameters": {
           "cols": 240,
           "count": 10800,
@@ -303,14 +303,14 @@
       "beamglow": {
         "definitionVersion": 1,
         "id": "beamglow",
-        "label": "beamglow1",
+        "label": "wgsl_beamglow",
         "parameters": {
           "gain": 2.2,
           "lampPhi": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "3.2289 - 6.2832 * clamp(op('follow1').chan.x, 0, 1)"
+                "source": "3.2289 - 6.2832 * clamp(op('lag_follow').chan.x, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -330,7 +330,7 @@
       "clip": {
         "definitionVersion": 1,
         "id": "clip",
-        "label": "clip1",
+        "label": "limit_clip",
         "parameters": {
           "high": 6,
           "low": 0,
@@ -346,12 +346,12 @@
       "core": {
         "definitionVersion": 1,
         "id": "core",
-        "label": "core1",
+        "label": "geometry_core",
         "parameters": {
           "blend": "additive",
           "endpoint": "tip",
           "group": "p.role > 0.25 && p.role < 0.75",
-          "material": "flare1",
+          "material": "material_flare",
           "mode": "beam",
           "scale": {
             "bindings": {
@@ -397,7 +397,7 @@
       "cut": {
         "definitionVersion": 1,
         "id": "cut",
-        "label": "cut1",
+        "label": "level_cut",
         "parameters": {
           "blacklevel": 0.32,
           "brightness": 1,
@@ -415,7 +415,7 @@
       "driftnod": {
         "definitionVersion": 1,
         "id": "driftnod",
-        "label": "driftnod1",
+        "label": "lfo_driftnod",
         "parameters": {
           "frequency": 0.021,
           "phase": 0.71,
@@ -430,7 +430,7 @@
       "driftyaw": {
         "definitionVersion": 1,
         "id": "driftyaw",
-        "label": "driftyaw1",
+        "label": "lfo_driftyaw",
         "parameters": {
           "frequency": 0.013,
           "phase": 0.13,
@@ -445,7 +445,7 @@
       "dust": {
         "definitionVersion": 1,
         "id": "dust",
-        "label": "dust1",
+        "label": "kernel_dust",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"size\",\"type\":\"f32\",\"default\":[1]}]",
           "capacity": 650,
@@ -456,7 +456,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('follow1').chan.y, 0, 1) * 0.22 - 0.05 + clamp(op('driftnod1').chan.value, -1, 1) * 0.03"
+                "source": "clamp(op('lag_follow').chan.y, 0, 1) * 0.22 - 0.05 + clamp(op('lfo_driftnod').chan.value, -1, 1) * 0.03"
               },
               "static": {
                 "kind": "static",
@@ -469,7 +469,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('follow1').chan.x, 0, 1) * 0.44 - 0.10 + clamp(op('driftyaw1').chan.value, -1, 1) * 0.05"
+                "source": "clamp(op('lag_follow').chan.x, 0, 1) * 0.44 - 0.10 + clamp(op('lfo_driftyaw').chan.value, -1, 1) * 0.05"
               },
               "static": {
                 "kind": "static",
@@ -482,7 +482,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('follow1').chan.y"
+                "source": "op('lag_follow').chan.y"
               },
               "static": {
                 "kind": "static",
@@ -496,7 +496,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('follow1').chan.x"
+                "source": "op('lag_follow').chan.x"
               },
               "static": {
                 "kind": "static",
@@ -515,7 +515,7 @@
       "eye": {
         "definitionVersion": 1,
         "id": "eye",
-        "label": "eye1",
+        "label": "camera_eye",
         "parameters": {
           "eye": [
             0,
@@ -541,12 +541,12 @@
       "fan": {
         "definitionVersion": 1,
         "id": "fan",
-        "label": "fan1",
+        "label": "geometry_fan",
         "parameters": {
           "blend": "additive",
           "endpoint": "tip",
           "group": "p.role > 0.5",
-          "material": "flare1",
+          "material": "material_flare",
           "mode": "beam",
           "scale": {
             "bindings": {
@@ -592,7 +592,7 @@
       "flare": {
         "definitionVersion": 1,
         "id": "flare",
-        "label": "flare1",
+        "label": "material_flare",
         "parameters": {
           "color": [
             1,
@@ -610,7 +610,7 @@
       "follow": {
         "definitionVersion": 1,
         "id": "follow",
-        "label": "follow1",
+        "label": "lag_follow",
         "parameters": {
           "lag": 0.18
         },
@@ -623,7 +623,7 @@
       "form": {
         "definitionVersion": 1,
         "id": "form",
-        "label": "form1",
+        "label": "kernel_form",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 10800,
@@ -632,7 +632,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('follow1').chan.y, 0, 1) * 0.22 - 0.05 + clamp(op('driftnod1').chan.value, -1, 1) * 0.03"
+                "source": "clamp(op('lag_follow').chan.y, 0, 1) * 0.22 - 0.05 + clamp(op('lfo_driftnod').chan.value, -1, 1) * 0.03"
               },
               "static": {
                 "kind": "static",
@@ -645,7 +645,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('follow1').chan.x, 0, 1) * 0.44 - 0.10 + clamp(op('driftyaw1').chan.value, -1, 1) * 0.05"
+                "source": "clamp(op('lag_follow').chan.x, 0, 1) * 0.44 - 0.10 + clamp(op('lfo_driftyaw').chan.value, -1, 1) * 0.05"
               },
               "static": {
                 "kind": "static",
@@ -664,7 +664,7 @@
       "glass": {
         "definitionVersion": 1,
         "id": "glass",
-        "label": "glass1",
+        "label": "material_glass",
         "parameters": {
           "absorption": [
             0.06,
@@ -686,7 +686,7 @@
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
-        "label": "glow1",
+        "label": "add_glow",
         "parameters": {},
         "position": {
           "x": 360,
@@ -697,7 +697,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -712,7 +712,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "light_key",
         "parameters": {
           "color": [
             0.8,
@@ -738,10 +738,10 @@
       "motes": {
         "definitionVersion": 1,
         "id": "motes",
-        "label": "motes1",
+        "label": "geometry_motes",
         "parameters": {
           "blend": "additive",
-          "material": "flare1",
+          "material": "material_flare",
           "mode": "points",
           "scale": {
             "bindings": {
@@ -797,7 +797,7 @@
       "optics": {
         "definitionVersion": 1,
         "id": "optics",
-        "label": "optics1",
+        "label": "kernel_optics",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tip\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"role\",\"type\":\"f32\",\"default\":[1]}]",
           "capacity": 1649,
@@ -806,7 +806,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('follow1').chan.y, 0, 1) * 0.22 - 0.05 + clamp(op('driftnod1').chan.value, -1, 1) * 0.03"
+                "source": "clamp(op('lag_follow').chan.y, 0, 1) * 0.22 - 0.05 + clamp(op('lfo_driftnod').chan.value, -1, 1) * 0.03"
               },
               "static": {
                 "kind": "static",
@@ -819,7 +819,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('follow1').chan.x, 0, 1) * 0.44 - 0.10 + clamp(op('driftyaw1').chan.value, -1, 1) * 0.05"
+                "source": "clamp(op('lag_follow').chan.x, 0, 1) * 0.44 - 0.10 + clamp(op('lfo_driftyaw').chan.value, -1, 1) * 0.05"
               },
               "static": {
                 "kind": "static",
@@ -832,7 +832,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('follow1').chan.y"
+                "source": "op('lag_follow').chan.y"
               },
               "static": {
                 "kind": "static",
@@ -846,7 +846,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('follow1').chan.x"
+                "source": "op('lag_follow').chan.x"
               },
               "static": {
                 "kind": "static",
@@ -865,7 +865,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 680,
@@ -876,12 +876,12 @@
       "shaft": {
         "definitionVersion": 1,
         "id": "shaft",
-        "label": "shaft1",
+        "label": "geometry_shaft",
         "parameters": {
           "blend": "additive",
           "endpoint": "tip",
           "group": "p.role < 0.5",
-          "material": "flare1",
+          "material": "material_flare",
           "mode": "beam",
           "scale": 0.006,
           "soft": 0.85,
@@ -907,14 +907,14 @@
         },
         "position": {
           "x": -1240,
-          "y": -80
+          "y": -96
         },
         "type": "geometry"
       },
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0,
@@ -930,10 +930,10 @@
             0,
             1
           ],
-          "camera": "eye1",
+          "camera": "camera_eye",
           "environmentIntensity": 0.7,
-          "lights": "key1",
-          "scenes": "wall1 solid1 core1 fan1 shaft1 motes1",
+          "lights": "light_key",
+          "scenes": "geometry_wall geometry_solid geometry_core geometry_fan geometry_shaft geometry_motes",
           "showEnvironment": false
         },
         "position": {
@@ -945,7 +945,7 @@
       "sky": {
         "definitionVersion": 2,
         "id": "sky",
-        "label": "sky1",
+        "label": "ramp_sky",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -995,9 +995,9 @@
       "solid": {
         "definitionVersion": 1,
         "id": "solid",
-        "label": "solid1",
+        "label": "geometry_solid",
         "parameters": {
-          "material": "glass1",
+          "material": "material_glass",
           "mode": "surface",
           "tint": [
             1,
@@ -1015,7 +1015,7 @@
       "spectrum": {
         "definitionVersion": 2,
         "id": "spectrum",
-        "label": "spectrum1",
+        "label": "ramp_spectrum",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -1101,7 +1101,7 @@
       "studio": {
         "definitionVersion": 1,
         "id": "studio",
-        "label": "studio1",
+        "label": "add_studio",
         "parameters": {},
         "position": {
           "x": -1560,
@@ -1117,9 +1117,9 @@
       "wall": {
         "definitionVersion": 1,
         "id": "wall",
-        "label": "wall1",
+        "label": "geometry_wall",
         "parameters": {
-          "material": "flare1",
+          "material": "material_flare",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -1149,7 +1149,7 @@
       "wallgrid": {
         "definitionVersion": 1,
         "id": "wallgrid",
-        "label": "wallgrid1",
+        "label": "grid_wall",
         "parameters": {
           "cols": 48,
           "count": 1296,
@@ -1164,7 +1164,7 @@
       "wallplace": {
         "definitionVersion": 1,
         "id": "wallplace",
-        "label": "wallplace1",
+        "label": "kernel_wallplace",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 1296,
@@ -1180,7 +1180,7 @@
       "wallramp": {
         "definitionVersion": 2,
         "id": "wallramp",
-        "label": "wallramp1",
+        "label": "ramp_wall",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -1248,7 +1248,7 @@
       "wallskin": {
         "definitionVersion": 1,
         "id": "wallskin",
-        "label": "wallskin1",
+        "label": "sample_wallskin",
         "parameters": {
           "count": 1296
         },

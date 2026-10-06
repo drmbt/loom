@@ -6,22 +6,22 @@ you would fit a projection onto a wall. The network carries the same explanation
 note boxes beside the nodes.
 
 ```
-rings1(ramp) ─► level1(level) ─► hue1(hsv) ─► pin1(cornerPin) ─► lay1(over) ─► out1(output)
-                                                     bg1(solid) ─► lay1(over)
+ramp_rings(ramp) ─► level1(level) ─► hsv_hue(hsv) ─► cornerpin1(cornerPin) ─► over_lay(over) ─► output1(output)
+                                                     solid_background(solid) ─► over_lay(over)
 
-heat(slider)    drives level1 brightness
-invert(toggle)  drives level1 invert
-flash(button)   drives hue1 hueoffset, a quarter turn per press
-warp(xyPad)     drives pin1's top-right corner
+slider_heat(slider)    drives level1 brightness
+toggle_invert(toggle)  drives level1 invert
+button_flash(button)   drives hsv_hue hueoffset, a quarter turn per press
+xypad_warp(xyPad)      drives cornerpin1's top-right corner
 
-heat(slider) ─► panel1(panel)
-invert(toggle) ─► panel1(panel)
-flash(button) ─► panel1(panel)
-warp(xyPad) ─► panel1(panel)     wired in this order, with Phone on
+slider_heat(slider) ─► panel1(panel)
+toggle_invert(toggle) ─► panel1(panel)
+button_flash(button) ─► panel1(panel)
+xypad_warp(xyPad) ─► panel1(panel)     wired in this order, with Phone on
 ```
 
-`rings1` drifts slowly on its own, so the picture moves with nobody at the controls. `lay1`
-puts the pinned picture over `bg1`, a black Solid, so everything outside the corners is black,
+`ramp_rings` drifts slowly on its own, so the picture moves with nobody at the controls. `over_lay`
+puts the pinned picture over `solid_background`, a black Solid, so everything outside the corners is black,
 the way a projector shows it.
 
 ## Controls
@@ -30,11 +30,11 @@ A widget is a value node. It makes no picture; it holds one number you set by ha
 publishes that number under its Channel name. Drag the control on the node itself, or on the
 Panel. Slider, Toggle, Button and XY Pad are all in the node library.
 
-- `heat` is a Slider from 0 to 2. Its channel is `heat`, and it is the picture's brightness.
-- `invert` is a Toggle, 1 when on and 0 when off. It flips the picture.
-- `flash` is a Button. `flash` is 1 while you hold it, and `flashCount` counts the presses.
+- `slider_heat` is a Slider from 0 to 2. Its channel is `slider_heat`, and it is the picture's brightness.
+- `toggle_invert` is a Toggle, 1 when on and 0 when off. It flips the picture.
+- `button_flash` is a Button. `button_flash` is 1 while you hold it, and `flashCount` counts the presses.
   Each press turns the hue a quarter.
-- `warp` is an XY Pad. It publishes `warpX` and `warpY`, and drags the picture's top-right
+- `xypad_warp` is an XY Pad. It publishes `warpX` and `warpY`, and drags the picture's top-right
   corner.
 
 ## Mapping a parameter to a control
@@ -49,18 +49,18 @@ Mapping starts from the parameter you want to move:
 
 A bound parameter shows a chip with the control's caption, such as **← Heat**; its × unbinds it.
 
-Underneath, the binding is an expression that reads the channel: `op('heat').chan.heat`. You
+Underneath, the binding is an expression that reads the channel: `op('slider_heat').chan.heat`. You
 can type one yourself, and because it is maths you can scale or combine what a control sends.
-`hue1`'s Hue Offset is `op('flash').chan.flashCount * 90`, so every press turns the hue by a
+`hsv_hue`'s Hue Offset is `op('button_flash').chan.flashCount * 90`, so every press turns the hue by a
 quarter, and four presses bring it back. Each binding keeps the value the parameter had
 before, so the file still renders the same picture where no controls are running.
 
 ## Mapping to a surface
 
-`pin1` is a Corner Pin. It pins the picture's four corners onto any four points of the output.
+`cornerpin1` is a Corner Pin. It pins the picture's four corners onto any four points of the output.
 Select it and drag the pins on its preview tile until the picture fits your wall. Here the
-top-right pin follows the pad: its Pin Top Right x is `op('warp').chan.warpX` and its y is
-`op('warp').chan.warpY`. Pin Top Right is a pair, so **Control from Panel** on it makes an
+top-right pin follows the pad: its Pin Top Right x is `op('xypad_warp').chan.warpX` and its y is
+`op('xypad_warp').chan.warpY`. Pin Top Right is a pair, so **Control from Panel** on it makes an
 XY pad that drives both.
 
 ## The Panel
@@ -68,7 +68,7 @@ XY pad that drives both.
 `panel1` is the surface. A widget joins it by a wire: the widget's `out` into the Panel's
 **Controls** input. Dropping a widget node onto the Panel makes the same wire. A new widget
 lands in the first free spot of the Panel's board; here the board is arranged: the pad a
-square on the right, `heat` a bar under a "Picture" label, `invert` and `flash` side by side.
+square on the right, `slider_heat` a bar under a "Picture" label, `toggle_invert` and `button_flash` side by side.
 Press the pencil on the Panel's header, or in the Controls tab, to arrange it yourself: drag a
 control to move it, drag its corner to resize it, add labels.
 

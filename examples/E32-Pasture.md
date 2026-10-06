@@ -29,32 +29,32 @@ write the field that steers them**, and both halves of the machinery were alread
 by T512), and `renderPoints → texture → the reaction's input` closes the other side.
 
 ```
-                    ┌───────────────── the loop ─────────────────┐
-                    ▼                                            │
- state1(feedback ← pack1, 640×360) ─► rd1..rd8 (Gray-Scott ×8) ─┬─► sowin1(screen) ─► eat1(multiply) ─► pack1(reorder) ─┘
-                                                                │        ▲                  ▲
-                                          smell1(blur 8) ◄──────┘        │                  │
-                                                │                    sow1(deposit)     chew1(1 − bite)
-                                                ▼                        ▲                  ▲
-                                          herd1.field                    │                  │
-                                                │                        │              bite1(renderPoints
-                                      herd1(pointKernel, 12 000) ────────┴───────────────┴─  group: fed)
-                                                │
-                     ┌──────────────────────────┼──────────────────────────┐   ONE cloud,
-                     ▼                          ▼                          ▼   FIVE readings
-              scout1(renderPoints)       graze1(renderPoints)       find1(renderPoints)
-              famine > 0.45              fed > 0.30                 found > 0.30
-              deep blue, 0.9 px          amber, size ┄ graze.w      cyan, size ┄ spark1:high
+                            ┌───────────────── the loop ───────────────────────────────────┐
+                            ▼                                                              │
+ feedback_state(feedback ← reorder_pack, 640×360) ─► wgsl_reaction1..8 (Gray-Scott ×8) ───┬─► screen_sowin(screen) ─► multiply_eat(multiply) ─► reorder_pack(reorder) ─┘
+                                                                                          │        ▲                                ▲
+                                          blur_smell(blur 8) ◄────────────────────────────┘        │                                │
+                                                      │                    points_sow(deposit)     level_chew(1 − bite)
+                                                      ▼                              ▲                       ▲
+                                          kernel_herd.field                          │                       │
+                                                      │                              │              points_bite(renderPoints
+                                      kernel_herd(pointKernel, 12 000) ──────────────┴───────────────┴─  group: fed)
+                                                            │
+                           ┌────────────────────────────────┼────────────────────────────────┐   ONE cloud,
+                           ▼                                ▼                                ▼   FIVE readings
+              points_scout(renderPoints)       points_graze(renderPoints)       points_find(renderPoints)
+              famine > 0.45                    fed > 0.30                       found > 0.30
+              deep blue, 0.9 px                amber, size ┄ graze.w            cyan, size ┄ math_spark:high
 
- eat1 ─┐
-       ├─► look1(add, PINNED 1280×720) ─► tint1(lookup ◄ palette1, scale ┄ grade1:highMid)
- chem1 ┘        │
-                ├─► liftscout1 ─► liftgraze1 ─► liftfind1 ─┬─► halo1(blur 18) ─┐
-                                                           └───────────────────┴─► burn1(add, opacity ┄ glow1:level)
-                                     ─► mixtrail1(screen) ◄─ loop1(feedback ← hue1, persistence ┄ trail1:level)
-                                     ─► hue1(hsv, hue ┄ drift1 @ 0.028 Hz, ±24°) ─► spin1(transform, sway ┄ sway1) ─► out1
+ multiply_eat ─┐
+               ├─► add_look(add, PINNED 1280×720) ─► lookup_tint(lookup ◄ ramp_palette, scale ┄ math_grade:highMid)
+ level_chem    ┘           │
+                           ├─► screen_liftscout ─► screen_liftgraze ─► screen_liftfind ─┬─► blur_halo(blur 18) ─┐
+                                                                                        └───────────────────────┴─► add_burn(add, opacity ┄ math_glow:level)
+                                     ─► screen_mixtrail(screen) ◄─ feedback_loop(feedback ← hsv_hue, persistence ┄ math_trail:level)
+                                     ─► hsv_hue(hsv, hue ┄ lfo_drift @ 0.028 Hz, ±24°) ─► transform_spin(transform, sway ┄ lfo_sway) ─► output1
 
- source1 ─► hitsel1(valueSelect onsetCount) ─► hit1(valueBeat, 0.4 s tail) ┄ sowin1(screen, the deposit, + 0.35 on the hit)
+ switch_source ─► select_hit(valueSelect onsetCount) ─► beat_hit(valueBeat, 0.4 s tail) ┄ screen_sowin(screen, the deposit, + 0.35 on the hit)
 ```
 
 Read the cycle as a sentence: **the animals deposit where they walk, the deposit reacts, and
@@ -71,7 +71,7 @@ field at frame 900 measures **mean V = 0.00000 with zero texels above 0.05** —
 kernel answers a cleared pair with a *bare* plate (U = 1, V = 0) rather than the sprinkled
 one E2 uses, so the herd is the only seed there is. With the deposit on, 17.7% of the grid
 carries V above 0.05 at the same frame. And the sign of the coupling is the interesting
-part: taking the herd's footprint at frame 900 (the 6 280 texels `sow1` covers) and watching
+part: taking the herd's footprint at frame 900 (the 6 280 texels `points_sow` covers) and watching
 the next ninety frames, V falls by **−0.396** inside that footprint and rises by **+0.016**
 outside it. Where the herd has been, the field is eaten; where it has not, the field grows
 back.
@@ -80,7 +80,7 @@ back.
 and nothing else, and the reaction rate under the herd falls from **2.31×** the frame's mean
 to **1.95×** (mean of frames 600, 900 and 1200 — per frame it is 1.87/2.84/2.21 against
 1.81/1.85/2.18). That test is confounded, though — the herd makes the field it is standing
-on — so there is a second one with the confound removed: hand the herd `terrain1`, a
+on — so there is a second one with the confound removed: hand the herd `noise_terrain`, a
 field it cannot write, and ask whether it ends up on the high ground. Steering on, the herd
 sits at **1.054×** the frame mean; steering deleted, **0.997×**, which is chance — and the
 steered herd is higher at each of the three frames, not only on average. Its footprint also
@@ -95,7 +95,7 @@ roost. Everything that looks like a decision is those four lines meeting a field
 
 **From E31 Corona (§V471, the bar).** One cloud read **five** ways, three of them by group
 predicate on attributes the kernel wrote (§V471.1/.2) — and two of the five are not pictures
-at all: `sow1` is the simulation's input and `bite1` is its mouth. Ten **gain-and-bias pairs**,
+at all: `points_sow` is the simulation's input and `points_bite` is its mouth. Ten **gain-and-bias pairs**,
 one band to one property (§V471.3), with the bias as the rest state and the gain as the swing
 (§V477). A seven-stop ramp that goes somewhere (§V471.6). And a long cycle (§V471.8) — noting
 that §V471.8 is marked *inert* in Corona itself, because `lfoValue` returns
@@ -113,33 +113,33 @@ simulation and only four are on the picture — and the beat's one is inside too
 
 | band | property | half |
 | --- | --- | --- |
-| `low` → `pace1` | walking speed, 0.18…0.52 clip units/s | the herd |
-| `high` → `reach1` | how far ahead an animal smells, 11…25 px | the herd |
-| `onsetCount` → `burst1` | a scatter ANGLE, ±0.01 rad at rest, ±1.7 on the beat | the herd |
-| `level` → `drop1` | how much spore a footstep leaves | the field |
-| `lowMid` → `warm1` | the chemistry map's white point — whole regions change regime | the field |
-| `low` → `gnaw1` | how big a mouthful is, 2…4 px | the field |
-| `highMid` → `grade1` | the palette's scale — the ramp breathes | the picture |
-| `high` → `spark1` | the pioneers' size | the picture |
-| `level` → `glow1` | the bloom's weight | the picture |
-| `level` → `trail1` | the trail's persistence | the picture |
-| `onsetCount` → `hit1` → `sowin1` | +0.35 on the deposit: a hit lays a thicker footstep where the herds stand | the field |
+| `low` → `math_pace` | walking speed, 0.18…0.52 clip units/s | the herd |
+| `high` → `math_reach` | how far ahead an animal smells, 11…25 px | the herd |
+| `onsetCount` → `math_burst` | a scatter ANGLE, ±0.01 rad at rest, ±1.7 on the beat | the herd |
+| `level` → `math_drop` | how much spore a footstep leaves | the field |
+| `lowMid` → `math_warm` | the chemistry map's white point — whole regions change regime | the field |
+| `low` → `math_gnaw` | how big a mouthful is, 2…4 px | the field |
+| `highMid` → `math_grade` | the palette's scale — the ramp breathes | the picture |
+| `high` → `math_spark` | the pioneers' size | the picture |
+| `level` → `math_glow` | the bloom's weight | the picture |
+| `level` → `math_trail` | the trail's persistence | the picture |
+| `onsetCount` → `beat_hit` → `screen_sowin` | +0.35 on the deposit: a hit lays a thicker footstep where the herds stand | the field |
 
 A beat is therefore visible at three timescales at once. The herd scatters **this frame**; the
 spore that scatter lays becomes structure over the next few **seconds**; and the regime it
-lands in was set by the **bar** before. §V509 is why `trig1` reaches `burst1` with nothing in
+lands in was set by the **bar** before. §V509 is why `trigger1` reaches `math_burst` with nothing in
 between: a one-pole answers a single-frame impulse with `1−exp(−Δt/τ)`, which at τ = 0.35 s is
 **0.047** — a trigger through an envelope-sized smoother is a trigger you deleted.
 
-The fourth timescale is the one you see without knowing any of that. `env1` is a deviation
+The fourth timescale is the one you see without knowing any of that. `limit_env` is a deviation
 from a five-second average — right for a swell, and nearly silent on a steady beat (0.018 on
-average over the pattern's run), which is why the audio used to read as a 2% tint. `hit1` is
-a Beat node on the same onsets `trig1` fires on — 1 on the hit, a 0.4-second exponential
+average over the pattern's run), which is why the audio used to read as a 2% tint. `beat_hit` is
+a Beat node on the same onsets `trigger1` fires on — 1 on the hit, a 0.4-second exponential
 tail, a 0.2-second hold-off — and it lands on ONE thing, the deposit. A hit lays a thicker
 footstep, so the herds' fronts flare up the palette on the beat and the fresh spore grows on
 after the flash is gone; the dark ground and the spot colonies never hear it.
 
-That is the second cut. The first put `hit1` on four frame-wide things — the palette scale,
+That is the second cut. The first put `beat_hit` on four frame-wide things — the palette scale,
 the bloom, the camera's scale and the medium's advection — and every hit pumped the whole
 picture at once. Measured by 40-pixel blocks, the share of lit blocks whose brightness
 follows the onsets (correlation above 0.3) was 63% for that cut; it is 1.0% for this one,
@@ -149,19 +149,19 @@ against 0.3% before T1399b.
 
 The kernel writes three numbers per animal and the picture slices on all three (§V471.2):
 
-- **`graze.x` — FED**: a short lag of the reaction rate under its feet. `graze1` draws these
+- **`graze.x` — FED**: a short lag of the reaction rate under its feet. `points_graze` draws these
   in amber, and their **sprite size is mapped per point** from `graze.w` (T286's pscale), so
   a grazer is drawn at how much it is eating rather than at one number for the whole layer.
 - **`graze.y` — FAMINE**: seconds since the last proper mouthful, over a 1.6-second scale.
-  `scout1` draws these, and **the kernel reads it back as its own exploration policy** — a fed
+  `points_scout` draws these, and **the kernel reads it back as its own exploration policy** — a fed
   animal walks its front, a hungry one random-walks, and that random walk is the only thing in
   the file that ever finds the next colony.
-- **`graze.z` — FOUND**: set on the step a long-starved animal eats, decaying after. `find1`
+- **`graze.z` — FOUND**: set on the step a long-starved animal eats, decaying after. `points_find`
   draws these — the pioneers, marking where the colony is about to be rather than where it
   already is.
 
-`sow1` is every animal, drawn white-green into the simulation's own grid: the deposit.
-`bite1` is the fed ones drawn again into a mask that is multiplied *out* of the state: the
+`points_sow` is every animal, drawn white-green into the simulation's own grid: the deposit.
+`points_bite` is the fed ones drawn again into a mask that is multiplied *out* of the state: the
 mouth. Without that fifth reading there is no negative term anywhere in the loop, and a
 deposit that grows into a colony stays a colony — measured, the pasture filled its disc and
 the composition froze into a carpet by frame 900.
@@ -177,8 +177,8 @@ chemistry that stopped. This example ships its own band for that reason, chosen 
 Pearson's map and measured the same way.
 
 **And the T657 re-measurement of that band was measuring a defect.** Until T1399b the
-reaction shader wrote blue — the chemistry coordinate — back as **0**, so `rd1` read the map
-and `rd2`…`rd8` read zero: seven steps in eight ran the rich corner everywhere, whatever the
+reaction shader wrote blue — the chemistry coordinate — back as **0**, so `wgsl_reaction1` read the map
+and `wgsl_reaction2`…`wgsl_reaction8` read zero: seven steps in eight ran the rich corner everywhere, whatever the
 map said. One chemistry everywhere is exactly what packs into a regular lattice, and that is
 the "very regular" the owner kept seeing outside the herd. Measured on the T671 file at
 frame 1800, the share of texels with V > 0.2 was 0.22 at chemistry 0 and still 0.19 at
@@ -190,8 +190,8 @@ as the coordinate rises, sparse spots to ~0.85, dead above — texels with V > 0
 the ramp: 0.40 0.34 0.29 0.25 0.23 0.19 0.18 0.14 0.04 0.00.
 
 The outskirts used to sit at **0.9989**, one value across the whole region (median, p90,
-p99 and p999 all identical), because `screen(coast1, shape1)` composited a WHITE disc
-background and `screen(1, x) = 1`: `terrain1`'s drift was already wired and was being
+p99 and p999 all identical), because `screen(displace_coast, level_shape)` composited a WHITE disc
+background and `screen(1, x) = 1`: `noise_terrain`'s drift was already wired and was being
 thrown away. T657 widened the disc's falloff so the outskirts run down through the band
 instead, widened the herd's grazing circuit so the disturbance reaches them, and left the
 background white — putting the far outskirts ON the death line was tried at 0.86 and 0.92
@@ -233,18 +233,18 @@ colour instead, where it can only touch what a sprite covers.
 ## Resolution is pinned twice, and neither number is the other's
 
 §V533 says a loop closed through a Composite rides the output resolution. This file has two
-things that must not: the **simulation** (`state1`, `rd1`..`rd8`, `smell1`, `sow1`, `bite1`,
-`sowin1`, `eat1`, `pack1`, `bowl1`, `swell1`, `terrain1`) is fixed at **640×360**, and the
-**picture** (`look1` onward, plus the three caste renders) is fixed at **1280×720**, with the
+things that must not: the **simulation** (`feedback_state`, `wgsl_reaction1`..`wgsl_reaction8`, `blur_smell`, `points_sow`, `points_bite`,
+`screen_sowin`, `multiply_eat`, `reorder_pack`, `circle_bowl`, `noise_swell`, `noise_terrain`) is fixed at **640×360**, and the
+**picture** (`add_look` onward, plus the three caste renders) is fixed at **1280×720**, with the
 Output node scaling a finished frame.
 
 The second pin is the one E24 did not need. Two things here are measured in *output pixels* —
-`sizePixels` on the caste renders and `halo1`'s blur radius — and at T521's 192×108 liveness
+`sizePixels` on the caste renders and `blur_halo`'s blur radius — and at T521's 192×108 liveness
 probe a 0.9 px scout becomes a six-pixel blob and an 18 px bloom becomes nine percent of the
 frame across. Unpinned, the herd rendered as one saturated white mass at the probe and as a
 faint sprinkle at full size: the same file, two different pictures.
 
-`sow1` is **alpha**-blended for a related reason. A deposit answers "is there spore on this
+`points_sow` is **alpha**-blended for a related reason. A deposit answers "is there spore on this
 texel", which is bounded; two animals standing together cannot leave twice as much. Additive,
 they do — five thousand sprites in the opening frame overlapped three deep, the screen took V
 straight to 1 across the whole herd, and frame 0 rendered as a solid white disc.
@@ -252,7 +252,7 @@ straight to 1 across the whole herd, and frame 0 rendered as a solid white disc.
 ## Substeps are structurally unavailable here, and the reason is the example itself
 
 A feedback loop's substep body is *every node on a current-frame path from a consumer of the
-Feedback's output back into the Feedback*. The herd reads `rd1` and writes `pack1`, so **the
+Feedback's output back into the Feedback*. The herd reads `wgsl_reaction1` and writes `reorder_pack`, so **the
 herd is in the loop** — structurally, not by choice, and that sentence is the example. It also
 means the point kernel's own ping-pong swaps sit inside the span the substep repartition would
 reorder across, and §V288's guard refuses that rather than land a swap on the wrong side of
@@ -275,8 +275,8 @@ sees — this file ran three builds believing substeps worked.
 ## Playing it
 
 It opens on the deterministic `audioPattern` at 104 bpm, so it plays with no asset (§V363).
-Drop a track on `track1` and set `source1`'s index to 1: nothing downstream changes, because
-everything downstream reads `source1`, and the Switch is exclusive by construction (T508) —
+Drop a track on `audiofile_track` and set `switch_source`'s index to 1: nothing downstream changes, because
+everything downstream reads `switch_source`, and the Switch is exclusive by construction (T508) —
 two value sources on one port would merge and one of them would silently vanish.
 
 Frame 0 is a faint sprinkle of fresh spore on bare ground, which is the honest first frame of
@@ -288,23 +288,23 @@ A hexagonal lattice is what Gray-Scott produces at a *uniform* feed, so more con
 does not cure it. What cures it is denying the pattern the stationary substrate it needs,
 and three of T671's four changes are that one idea:
 
-- **Advection.** `flow1` displaces the state along a slow flow between the feedback and
-  the reaction. The chemistry map does **not** move with it — `pack1` repaints it *after*
+- **Advection.** `displace_flow` displaces the state along a slow flow between the feedback and
+  the reaction. The chemistry map does **not** move with it — `reorder_pack` repaints it *after*
   the reaction — so this is advection through a static parameter field, which shears the
   lattice apart. A rigid rotation would turn the lattice and leave it a lattice. Its
   weight is the density knob: at 0.006 the dark fraction hits 71% and the pasture visibly
   shrinks, because the flow carries V away faster than a low-feed regime regrows it.
-- **Weather.** `front1` is a fertile ring expanding on the herd's own 83-second lap; it
+- **Weather.** `ramp_front` is a fertile ring expanding on the herd's own 83-second lap; it
   multiplies the chemistry down as it passes, walking a region out of the lattice band
   and back again.
-- **The camera.** `sway1` rotates the picture on that same clock — a sine, not `range1`'s
+- **The camera.** `lfo_sway` rotates the picture on that same clock — a sine, not `lfo_range`'s
   saw, because a saw is right for an angle the herd *walks* and would snap a rotation back
   once a lap. Outside the trail loop, or the trails would spiral.
 
-And the blink, which is temporal and was measured rather than judged: `env1`'s lag goes
+And the blink, which is temporal and was measured rather than judged: `limit_env`'s lag goes
 0.07 → 0.16 s so a high band stops arriving as a per-frame pulse on two sprite castes'
 size, and the `found` caste's decay slows so points stop dithering across its threshold.
-The **trigger** is untouched — it reaches `burst1` on its own wire, never through the lag,
+The **trigger** is untouched — it reaches `math_burst` on its own wire, never through the lag,
 so a beat is still an event.
 
 Measured on the T671 file: blob-area spread in the outskirts 0.872 → 1.132, mean blob
@@ -321,7 +321,7 @@ activity center right now looks awesome. maybe we need more of those."* Measured
 that file, over 30 seconds at 1280×720 with the pattern:
 
 - **The audio was a tint.** The frame's mean brightness swung **7.5%** rms against its own
-  one-second average and correlated **0.09** with an onset envelope. Everything rode `env1`,
+  one-second average and correlated **0.09** with an onset envelope. Everything rode `limit_env`,
   a deviation from a five-second average, which a steady beat barely leaves.
 - **The motion lived in one place.** The median 40-pixel block of the frame moved 0.0015 per
   frame against 0.0204 in the busiest, and only 17% of blocks moved more than a quarter of
@@ -331,9 +331,9 @@ that file, over 30 seconds at 1280×720 with the pattern:
 
 What changed, each one the owner's sentence: **four roosts** and 12 000 animals, so there
 are four activity centres, each with the density the single one had; the chemistry reaching
-all eight steps, with a map (`shape1` over `terrain1`, `bowl1` centred as a vignette) that
+all eight steps, with a map (`level_shape` over `noise_terrain`, `circle_bowl` centred as a vignette) that
 puts the band's dead corner inside the frame — so the surround is islands of worms and spot
-colonies drifting with the terrain, between dark ground that opens and closes; and **`hit1`**
+colonies drifting with the terrain, between dark ground that opens and closes; and **`beat_hit`**
 on the deposit, so the beat shows up where the herds are and nowhere else.
 
 Measured on this file, same run, same instrument (the before numbers are the T671 file):
@@ -341,7 +341,7 @@ Measured on this file, same run, same instrument (the before numbers are the T67
 | | before | after |
 | --- | --- | --- |
 | brightness vs onset envelope, pattern | 0.09 | 0.28 |
-| brightness vs onset envelope, the shipped showcase clip on `track1` | 0.34 | 0.49 |
+| brightness vs onset envelope, the shipped showcase clip on `audiofile_track` | 0.34 | 0.49 |
 | lit 40-px blocks following the onsets (correlation > 0.3), pattern | 0.3% | 1.0% |
 | median block's onset correlation, pattern | 0.11 | 0.09 |
 | median block motion per frame | 0.0015 | 0.0040 |

@@ -939,7 +939,7 @@
       "analysis": {
         "definitionVersion": 1,
         "id": "analysis",
-        "label": "analysis1",
+        "label": "audioanalysis1",
         "parameters": {
           "envelope": 0.08,
           "hitDecay": 250,
@@ -955,7 +955,7 @@
       "band": {
         "definitionVersion": 1,
         "id": "band",
-        "label": "band1",
+        "label": "lfo_band",
         "parameters": {
           "amplitude": 0.5,
           "frequency": 0.0125,
@@ -971,7 +971,7 @@
       "blend": {
         "definitionVersion": 1,
         "id": "blend",
-        "label": "blend1",
+        "label": "add_blend",
         "parameters": {},
         "position": {
           "x": 60,
@@ -982,13 +982,13 @@
       "born": {
         "definitionVersion": 1,
         "id": "born",
-        "label": "crest1",
+        "label": "add_crest",
         "parameters": {
           "opacity": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.02 + 0.6 * op('trig1').chan.onsetCount"
+                "source": "0.02 + 0.6 * op('trigger1').chan.onsetCount"
               },
               "static": {
                 "kind": "static",
@@ -1007,7 +1007,7 @@
       "bowl": {
         "definitionVersion": 1,
         "id": "bowl",
-        "label": "bowl1",
+        "label": "circle_bowl",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -1042,7 +1042,7 @@
       "broad": {
         "definitionVersion": 1,
         "id": "broad",
-        "label": "broad1",
+        "label": "noise_broad",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -1069,7 +1069,7 @@
       "cap": {
         "definitionVersion": 1,
         "id": "cap",
-        "label": "cap1",
+        "label": "limit_cap",
         "parameters": {
           "high": 1,
           "low": 0,
@@ -1084,7 +1084,7 @@
       "chem": {
         "definitionVersion": 1,
         "id": "chem",
-        "label": "chem1",
+        "label": "level_chem",
         "parameters": {
           "blacklevel": 0,
           "brightness": 0.17,
@@ -1119,7 +1119,7 @@
       "detail": {
         "definitionVersion": 1,
         "id": "detail",
-        "label": "detail1",
+        "label": "noise_detail",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -1146,7 +1146,7 @@
       "dish": {
         "definitionVersion": 1,
         "id": "dish",
-        "label": "dish1",
+        "label": "screen_dish",
         "parameters": {
           "opacity": 1
         },
@@ -1159,7 +1159,7 @@
       "drift": {
         "definitionVersion": 1,
         "id": "drift",
-        "label": "drift1",
+        "label": "lfo_drift",
         "parameters": {
           "amplitude": 15,
           "frequency": 0.033,
@@ -1176,7 +1176,7 @@
       "echo": {
         "definitionVersion": 1,
         "id": "echo",
-        "label": "echo1",
+        "label": "feedback_echo",
         "parameters": {
           "clearColor": [
             0,
@@ -1185,7 +1185,7 @@
             1
           ],
           "persistence": 0.987,
-          "source": "crest1"
+          "source": "add_crest"
         },
         "position": {
           "x": 840,
@@ -1196,7 +1196,7 @@
       "fade": {
         "definitionVersion": 1,
         "id": "fade",
-        "label": "dim1",
+        "label": "level_dim",
         "parameters": {
           "blacklevel": 0.0005,
           "brightness": 1,
@@ -1214,7 +1214,7 @@
       "fringe": {
         "definitionVersion": 1,
         "id": "fringe",
-        "label": "fringe1",
+        "label": "reorder_fringe",
         "parameters": {
           "outa": "in1a",
           "outb": "in2b",
@@ -1230,7 +1230,7 @@
       "fringeRG": {
         "definitionVersion": 1,
         "id": "fringeRG",
-        "label": "fringerg1",
+        "label": "reorder_fringerg",
         "parameters": {
           "outa": "in1a",
           "outb": "in1b",
@@ -1246,7 +1246,7 @@
       "gate": {
         "definitionVersion": 1,
         "id": "gate",
-        "label": "gate1",
+        "label": "threshold_gate",
         "parameters": {
           "channel": "luminance",
           "compare": "greater",
@@ -1255,7 +1255,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "2 - 1.28 * op('trig1').chan.onsetCount"
+                "source": "2 - 1.28 * op('trigger1').chan.onsetCount"
               },
               "static": {
                 "kind": "static",
@@ -1274,14 +1274,14 @@
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
-        "label": "glow1",
+        "label": "level_glow",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.94 + 0.3 * op('hit1').chan.onsetCount"
+                "source": "0.94 + 0.3 * op('select_hit').chan.onsetCount"
               },
               "static": {
                 "kind": "static",
@@ -1305,7 +1305,7 @@
       "grain": {
         "definitionVersion": 1,
         "id": "grain",
-        "label": "grain1",
+        "label": "lfo_grain",
         "parameters": {
           "amplitude": 0.3,
           "frequency": 0.0061,
@@ -1321,7 +1321,7 @@
       "grow": {
         "definitionVersion": 1,
         "id": "grow",
-        "label": "grow1",
+        "label": "transform_grow",
         "parameters": {
           "aspectcorrect": true,
           "extend": "zero",
@@ -1338,7 +1338,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.008 + 0.021 * op('lvl1').chan.low"
+                "source": "1.008 + 0.021 * op('select_lvl').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -1351,7 +1351,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.008 + 0.021 * op('lvl1').chan.low"
+                "source": "1.008 + 0.021 * op('select_lvl').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -1375,7 +1375,7 @@
       "hit": {
         "definitionVersion": 1,
         "id": "hit",
-        "label": "hit1",
+        "label": "select_hit",
         "parameters": {
           "channels": "*"
         },
@@ -1388,13 +1388,13 @@
       "hue": {
         "definitionVersion": 1,
         "id": "hue",
-        "label": "hue1",
+        "label": "hsv_hue",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drift1').chan.value"
+                "source": "op('lfo_drift').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1415,7 +1415,7 @@
       "inject": {
         "definitionVersion": 1,
         "id": "inject",
-        "label": "inject1",
+        "label": "screen_inject",
         "parameters": {
           "opacity": 0.6
         },
@@ -1433,7 +1433,7 @@
       "lensA": {
         "definitionVersion": 1,
         "id": "lensA",
-        "label": "lensa1",
+        "label": "noise_lensa",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -1460,7 +1460,7 @@
       "lensB": {
         "definitionVersion": 1,
         "id": "lensB",
-        "label": "lensb1",
+        "label": "noise_lensb",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -1487,7 +1487,7 @@
       "lvl": {
         "definitionVersion": 1,
         "id": "lvl",
-        "label": "lvl1",
+        "label": "select_lvl",
         "parameters": {
           "channels": "*"
         },
@@ -1500,7 +1500,7 @@
       "music": {
         "definitionVersion": 1,
         "id": "music",
-        "label": "music1",
+        "label": "pattern_music",
         "parameters": {
           "amount": 1,
           "bpm": 112
@@ -1524,7 +1524,7 @@
       "pack": {
         "definitionVersion": 1,
         "id": "pack",
-        "label": "pack1",
+        "label": "reorder_pack",
         "parameters": {
           "outa": "in1a",
           "outb": "in2lum",
@@ -1540,7 +1540,7 @@
       "palette": {
         "definitionVersion": 2,
         "id": "palette",
-        "label": "palette1",
+        "label": "ramp_palette",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -1621,13 +1621,13 @@
       "rd": {
         "definitionVersion": 1,
         "id": "rd",
-        "label": "rd1",
+        "label": "wgsl_reaction",
         "parameters": {
           "anisotropy": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('grain1').chan.value"
+                "source": "op('lfo_grain').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1640,7 +1640,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.6 * op('stencil1').chan.value"
+                "source": "0.6 * op('lfo_stencil').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1657,7 +1657,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('band1').chan.value"
+                "source": "op('lfo_band').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1670,7 +1670,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('stencil1').chan.value"
+                "source": "op('lfo_stencil').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1690,7 +1690,7 @@
       "rim": {
         "definitionVersion": 1,
         "id": "rim",
-        "label": "rim1",
+        "label": "level_rim",
         "parameters": {
           "blacklevel": 0,
           "brightness": 1,
@@ -1709,7 +1709,7 @@
       "rings": {
         "definitionVersion": 2,
         "id": "rings",
-        "label": "rings1",
+        "label": "ramp_rings",
         "parameters": {
           "interp": "smooth",
           "period": 8,
@@ -1793,7 +1793,7 @@
       "shape": {
         "definitionVersion": 1,
         "id": "shape",
-        "label": "shape1",
+        "label": "level_shape",
         "parameters": {
           "blacklevel": 0.451,
           "brightness": 1,
@@ -1803,7 +1803,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.48 + 0.07 * op('lvl1').chan.lowMid"
+                "source": "0.48 + 0.07 * op('select_lvl').chan.lowMid"
               },
               "static": {
                 "kind": "static",
@@ -1822,7 +1822,7 @@
       "show": {
         "definitionVersion": 1,
         "id": "show",
-        "label": "show1",
+        "label": "add_show",
         "parameters": {},
         "position": {
           "x": 1880,
@@ -1833,7 +1833,7 @@
       "source": {
         "definitionVersion": 1,
         "id": "source",
-        "label": "source1",
+        "label": "switch_source",
         "parameters": {
           "index": 0
         },
@@ -1846,7 +1846,7 @@
       "sow": {
         "definitionVersion": 1,
         "id": "sow",
-        "label": "sow1",
+        "label": "multiply_sow",
         "parameters": {
           "opacity": 1
         },
@@ -1859,7 +1859,7 @@
       "spark": {
         "definitionVersion": 1,
         "id": "spark",
-        "label": "spark1",
+        "label": "noise_spark",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -1886,7 +1886,7 @@
       "stamp": {
         "definitionVersion": 1,
         "id": "stamp",
-        "label": "stamp1",
+        "label": "add_stamp",
         "parameters": {
           "opacity": 0.32
         },
@@ -1911,12 +1911,12 @@
             0
           ],
           "persistence": 1,
-          "source": "pack1",
+          "source": "reorder_pack",
           "substeps": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(8 + 24 * op('lvl1').chan.low, 1, 34)"
+                "source": "clamp(8 + 24 * op('select_lvl').chan.low, 1, 34)"
               },
               "static": {
                 "kind": "static",
@@ -1940,7 +1940,7 @@
       "stencil": {
         "definitionVersion": 1,
         "id": "stencil",
-        "label": "stencil1",
+        "label": "lfo_stencil",
         "parameters": {
           "amplitude": 1,
           "frequency": 0.0083,
@@ -1956,7 +1956,7 @@
       "swell": {
         "definitionVersion": 1,
         "id": "swell",
-        "label": "swell1",
+        "label": "noise_swell",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -1988,7 +1988,7 @@
       "tapB": {
         "definitionVersion": 1,
         "id": "tapB",
-        "label": "tapb1",
+        "label": "cache_tapb",
         "parameters": {
           "frames": 8,
           "index": 7,
@@ -2003,7 +2003,7 @@
       "tapG": {
         "definitionVersion": 1,
         "id": "tapG",
-        "label": "tapg1",
+        "label": "cache_tapg",
         "parameters": {
           "frames": 5,
           "index": 4,
@@ -2018,7 +2018,7 @@
       "tapR": {
         "definitionVersion": 1,
         "id": "tapR",
-        "label": "tapr1",
+        "label": "cache_tapr",
         "parameters": {
           "frames": 4,
           "index": 2,
@@ -2033,7 +2033,7 @@
       "tint": {
         "definitionVersion": 1,
         "id": "tint",
-        "label": "tint1",
+        "label": "lookup_tint",
         "parameters": {
           "channel": "green",
           "offset": {
@@ -2054,7 +2054,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.6 + 1.3 * op('lvl1').chan.highMid"
+                "source": "1.6 + 1.3 * op('select_lvl').chan.highMid"
               },
               "static": {
                 "kind": "static",
@@ -2073,7 +2073,7 @@
       "track": {
         "definitionVersion": 1,
         "id": "track",
-        "label": "track1",
+        "label": "audiofile_track",
         "parameters": {
           "monitor": true
         },
@@ -2086,7 +2086,7 @@
       "trig": {
         "definitionVersion": 1,
         "id": "trig",
-        "label": "trig1",
+        "label": "trigger1",
         "parameters": {
           "threshold": 0.5
         },
@@ -2099,7 +2099,7 @@
       "warp": {
         "definitionVersion": 1,
         "id": "warp",
-        "label": "warp1",
+        "label": "displace_warp",
         "parameters": {
           "extend": "mirror",
           "offset": [
@@ -2122,7 +2122,7 @@
       "warpA": {
         "definitionVersion": 1,
         "id": "warpA",
-        "label": "warpa1",
+        "label": "displace_warpa",
         "parameters": {
           "extend": "mirror",
           "offset": [
@@ -2135,7 +2135,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.14 * op('hit1').chan.kickCount"
+                "source": "0.14 * op('select_hit').chan.kickCount"
               },
               "static": {
                 "kind": "static",
@@ -2148,7 +2148,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.14 * op('hit1').chan.kickCount"
+                "source": "0.14 * op('select_hit').chan.kickCount"
               },
               "static": {
                 "kind": "static",
@@ -2167,7 +2167,7 @@
       "warpB": {
         "definitionVersion": 1,
         "id": "warpB",
-        "label": "warpb1",
+        "label": "displace_warpb",
         "parameters": {
           "extend": "mirror",
           "offset": [
@@ -2180,7 +2180,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.06 * op('hit1').chan.snareCount"
+                "source": "0.06 * op('select_hit').chan.snareCount"
               },
               "static": {
                 "kind": "static",
@@ -2193,7 +2193,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.06 * op('hit1').chan.snareCount"
+                "source": "0.06 * op('select_hit').chan.snareCount"
               },
               "static": {
                 "kind": "static",
@@ -2212,7 +2212,7 @@
       "warpC": {
         "definitionVersion": 1,
         "id": "warpC",
-        "label": "warpc1",
+        "label": "displace_warpc",
         "parameters": {
           "extend": "mirror",
           "offset": [
@@ -2225,7 +2225,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.02 * op('hit1').chan.hatCount"
+                "source": "0.02 * op('select_hit').chan.hatCount"
               },
               "static": {
                 "kind": "static",
@@ -2238,7 +2238,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.02 * op('hit1').chan.hatCount"
+                "source": "0.02 * op('select_hit').chan.hatCount"
               },
               "static": {
                 "kind": "static",
@@ -2257,7 +2257,7 @@
       "wind": {
         "definitionVersion": 1,
         "id": "wind",
-        "label": "wind1",
+        "label": "displace_wind",
         "parameters": {
           "extend": "hold",
           "offset": [

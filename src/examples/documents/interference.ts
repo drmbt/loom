@@ -3,14 +3,14 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
 /**
  * E26 — Interference (T475).
  *
- *   rings1(circle: distance) ─► gain1(level) ─► wrap1(limit: zigzag) ─┬──────► beat1.in1
+ *   circle_rings(circle: distance) ─► level_gain(level) ─► limit_wrap(limit: zigzag) ─┬──────► difference_beat.in1
  *                                                                     │
- *                                          warp1(transform) ◄─────────┘
- *                                                │  t.x ┄ driftx1, t.y ┄ drifty1
- *                                                └───────────────────────► beat1.in2
- *   beat1(difference) ─► tint1(lookup) ◄─ palette1(ramp) ─► out1
+ *                                          transform_warp(transform) ◄─────────┘
+ *                                                │  t.x ┄ lfo_driftx, t.y ┄ lfo_drifty
+ *                                                └───────────────────────► difference_beat.in2
+ *   difference_beat(difference) ─► lookup_tint(lookup) ◄─ ramp_palette(ramp) ─► output1
  *
- * THE WHOLE EXAMPLE IS THE FAN-OUT. `wrap1` is generated ONCE and consumed TWICE — once
+ * THE WHOLE EXAMPLE IS THE FAN-OUT. `limit_wrap` is generated ONCE and consumed TWICE — once
  * as itself, once through a Transform — and the output is the difference between those
  * two readings. Nothing in this file oscillates faster than 0.05 Hz and nothing in it is
  * bigger than a few pixels, yet the picture carries enormous rosettes and hyperbolic fans
@@ -64,7 +64,7 @@ export const interferenceDocument = document(
           bgcolor: [0, 0, 0, 0],
           aspectcorrect: true,
         },
-        { label: "rings1" },
+        { label: "circle_rings" },
       ),
       node(
         "gain",
@@ -90,7 +90,7 @@ export const interferenceDocument = document(
           brightness: 1,
           opacity: 1,
         },
-        { label: "gain1" },
+        { label: "level_gain" },
       ),
       node(
         "wrap",
@@ -99,7 +99,7 @@ export const interferenceDocument = document(
         // Zigzag: `abs(fract(v/2)*2 - 1)`, which is a continuous triangle. Loop would be a
         // sawtooth with a hard edge on every ring, and hard edges at this pitch crawl.
         { mode: "zigzag", low: 0, high: 1, steps: 4 },
-        { label: "wrap1" },
+        { label: "limit_wrap" },
       ),
       node(
         "warp",
@@ -126,10 +126,10 @@ export const interferenceDocument = document(
           aspectcorrect: true,
         },
         {
-          label: "warp1",
+          label: "transform_warp",
           parameters: {
-            "t.x": drivenSlot("driftx1", 0),
-            "t.y": drivenSlot("drifty1", 0),
+            "t.x": drivenSlot("lfo_driftx", 0),
+            "t.y": drivenSlot("lfo_drifty", 0),
           },
         },
       ),
@@ -138,7 +138,7 @@ export const interferenceDocument = document(
         "difference",
         [-120, 0],
         {},
-        { label: "beat1" },
+        { label: "difference_beat" },
       ),
       node(
         "palette",
@@ -173,7 +173,7 @@ export const interferenceDocument = document(
             { position: 1, color: [1, 0.97, 0.85, 1] },
           ],
         },
-        { label: "palette1", definitionVersion: 2 },
+        { label: "ramp_palette", definitionVersion: 2 },
       ),
       node(
         "tint",
@@ -182,14 +182,14 @@ export const interferenceDocument = document(
         // RED, not luminance: the whole chain carries its value in red and leaves green
         // and blue at zero, so a luminance index would read the beat at 21% strength.
         { channel: "red", row: 0.5, offset: 0, scale: 1 },
-        { label: "tint1" },
+        { label: "lookup_tint" },
       ),
       node(
         "driftx",
         "lfo",
         [-640, 240],
         { shape: "sine", frequency: 0.05, amplitude: 0.05, offset: 0, phase: 0 },
-        { label: "driftx1" },
+        { label: "lfo_driftx" },
       ),
       node(
         "drifty",
@@ -198,9 +198,9 @@ export const interferenceDocument = document(
         // Not 0.05: two commensurate rates trace a closed ellipse and the piece loops in
         // twenty seconds. 0.031 against 0.05 does not close.
         { shape: "sine", frequency: 0.031, amplitude: 0.05, offset: 0, phase: 0.25 },
-        { label: "drifty1" },
+        { label: "lfo_drifty" },
       ),
-      node("out", "output", [400, 0], {}, { label: "out1" }),
+      node("out", "output", [400, 0], {}, { label: "output1" }),
     ],
     [
       edge("e-rings-gain", ["rings", "out"], ["gain", "input"]),
