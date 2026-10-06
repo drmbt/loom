@@ -119,9 +119,11 @@ export interface AppShellProps {
   /** Replaces the whole top bar. Defaults to the stock transport/metrics bar. */
   topBar?: ReactNode;
   /**
-   * App-wide notices, rendered under the header and above everything else: autosave
-   * unavailable, a halted GPU, a restorable snapshot. Full width because each one is a
-   * decision the user has to be able to see and act on from anywhere in the app.
+   * App-wide notices, rendered as the foot of the window, under every pane: autosave
+   * unavailable, a halted GPU, a restorable snapshot, a stale output. Full width because
+   * each one is a decision the user has to be able to see and act on from anywhere in the
+   * app. At the foot and not under the header since B265: there, one arriving moved every
+   * pane (see the note where it is rendered).
    */
   notices?: ReactNode;
   nodeLibrary?: ReactNode;
@@ -709,10 +711,6 @@ export function AppShell({
             </div>
           </header>
 
-          {/* Always present so the grid keeps three rows: an empty strip is 0 tall, and
-              the body row stays `1fr` whether or not anything needs saying. */}
-          <div className={styles.notices}>{notices}</div>
-
           <div className={styles.bodyWrap}>
             {body}
             {/* T494, door two: while a tab drags, absent edges become drop zones. The
@@ -739,6 +737,28 @@ export function AppShell({
                 ))
               : null}
           </div>
+
+          {/*
+            B265 — THE NOTICES ARE THE FOOT OF THE WINDOW, NOT A ROW ABOVE THE PANES.
+
+            They were the grid's second row, between the top bar and the body, 0 tall when
+            empty. So a notice arriving or leaving moved every pane's top edge by its own
+            height, 43 px for one notice. And the commonest notice is "Output stale", which
+            comes and goes with the document's compile errors: it leaves at the moment a
+            node gets its first input. The port slid out from under the pointer as the
+            wire landed in it.
+
+            Nothing that reports on the graph may move the graph. The strip still takes
+            room of its own (it holds decisions with buttons, and one of them can stay for
+            a whole session, so it cannot lie over a pane's tabs or its last row), but it
+            takes it from the BOTTOM: the body row above it ends sooner, and no pane's
+            origin moves. What is under the pointer stays under it.
+
+            Always present, so the grid keeps three rows: an empty strip is 0 tall. After
+            the body in the DOM because that is where it is on screen (focus order follows
+            what is seen); it is a live region, so a notice is announced wherever it sits.
+          */}
+          <div className={styles.notices}>{notices}</div>
         </div>
       </PaneHostProvider>
     </TooltipProvider>

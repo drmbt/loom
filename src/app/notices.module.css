@@ -1,10 +1,12 @@
 /* App-wide notices. Every colour is a token (V17). */
 
+/* The foot of the window (B265, `app-shell.tsx`): the panes are above it, so the rule
+   that parts it from them is on its top edge. */
 .strip {
   display: flex;
   flex-direction: column;
   gap: var(--hairline);
-  border-bottom: var(--border-hairline);
+  border-top: var(--border-hairline);
   background: var(--bg-panel);
 }
 

@@ -14,9 +14,13 @@ import { defineConfig, devices } from "@playwright/test";
  * one project structurally unable to run it and failed on "no WebGPU adapter" for a whole
  * session while looking like a product bug. One regex, two readers, no way to add a spec to
  * half the split.
+ *
+ * B265: `wire-snap` is here though it reads no pixel. The "Output stale" notice exists only
+ * once a plan has been installed on a device, so the page that jumped when a first
+ * connection cleared it never jumped in the lane without an adapter.
  */
 const NEEDS_A_REAL_ADAPTER =
-  /(canvas-render|presentation-pixels|still-pixels|example-parity|node-layering-pixels|mediapipe-matte|viewer-aspect|max-zoom-orbit-tile|pane-resize-hold|value-card-dom)\.spec\.ts$/;
+  /(canvas-render|presentation-pixels|still-pixels|example-parity|node-layering-pixels|mediapipe-matte|viewer-aspect|max-zoom-orbit-tile|pane-resize-hold|value-card-dom|wire-snap)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: "./src/tests/e2e",

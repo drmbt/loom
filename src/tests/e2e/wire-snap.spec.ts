@@ -23,12 +23,27 @@ import { addNode, focusGraph, handle, modKey, openApp, viewportSettled } from ".
  *
  * ## How "no box moves" is kept from being a statement about something else
  *
- * A node that gains its first input changes by itself: its diagnostic row goes, and the
- * page's layout shifts when the compile errors clear. That is the document changing the
- * node, not the effect. So the wire under test lands in an input that is ALREADY fed, and
- * replaces the wire that was there (§V14a): the node is fed before and after, and the only
- * thing that differs between the measurements is the effect. Pulling a wire off and
- * putting it back changes nothing in the document at all, and is measured the same way.
+ * A node that gains its first input changes by itself: its diagnostic row goes and it is
+ * shorter. That is the document changing the node, not the effect. So in the four tests
+ * that measure whole boxes the wire lands in an input that is ALREADY fed, and replaces
+ * the wire that was there (§V14a): the node is fed before and after, and the only thing
+ * that differs between the measurements is the effect. Pulling a wire off and putting it
+ * back changes nothing in the document at all, and is measured the same way.
+ *
+ * The gate has been seen red against a broken effect, and one jsdom cannot see because it
+ * is a stylesheet's: the snap's box given 6 px of layout (`position: relative; height:
+ * 6px`) made the node's wrapper 154 px tall instead of 148 for the length of the snap.
+ *
+ * ## A FIRST connection, and the page that used to jump under it (B265)
+ *
+ * The moment the snap exists for is a node getting its first input, and for as long as
+ * this file has existed it could not be tested: the document stops having errors, the
+ * "Output stale" notice goes, and that notice was a row of the app's layout ABOVE the
+ * panes, so every pane moved 43 px and the port left the pointer while the snap played.
+ * The last test here is that connection, and its claim is about PORTS: every port on the
+ * canvas is at the same place on the page before, on every frame of the snap, after the
+ * errors have cleared, and again when the wire is pulled off and they come back. A node's
+ * own height may change (its error rows are below its ports); where its ports are may not.
  *
  * ## The snap is read inside the page, one sample per frame
  *
@@ -37,8 +52,13 @@ import { addNode, focusGraph, handle, modKey, openApp, viewportSettled } from ".
  * share this one. So a probe in the page samples every animation frame from before the
  * release until after the effect has gone, and the assertions read that record.
  *
- * Headless, in the default lane: no pixel is read. Port ids are the definitions' own
- * (`out`, `input`).
+ * ## Why this is in the GPU lane though it reads no pixel
+ *
+ * The notice is shown only once a plan has been installed on a device ("it never claims a
+ * picture is stale when there has never been one", T1121). The default lane has no
+ * adapter, installs nothing, and so never shows it: B265 cannot happen there, and a
+ * first-connection test would pass on a page that had nothing to move. Headless either
+ * way (T1616b). Port ids are the definitions' own (`out`, `input`).
  */
 
 interface Point {
@@ -50,6 +70,8 @@ interface Point {
 interface Frame {
   /** Every node's box, serialised (see `boxes`). */
   readonly boxes: string;
+  /** Where every port's dot is on the PAGE, serialised (see `ports`). */
+  readonly ports: string;
   /** The ids of the nodes that carry a snap box as a direct child of their wrapper. */
   readonly snapOn: readonly string[];
   /** Snap elements that are NOT where they belong: inside a node's own element. */
@@ -72,6 +94,7 @@ interface Frame {
 
 interface Probe {
   boxes: () => string[];
+  ports: () => string[];
   start: () => void;
   stop: () => Frame[];
 }
@@ -149,20 +172,25 @@ async function middleOf(page: Page, testId: string): Promise<Point & { width: nu
  *
  * A node's box is read the way the layout model and React Flow each read it: the
  * wrapper's unscaled size and its position, the node's own element's size and offset, and
- * both rects on screen. "On screen" is measured from the canvas's own corner, so a strip
- * arriving above the pane (the page does that when compile errors come and go) is not
- * read as every node having moved, while a camera move or a node move still is.
+ * both rects on screen. "On screen" is the PAGE, not the canvas's own corner: it was the
+ * canvas's corner while a notice above the panes could move the canvas (B265), which made
+ * these tests blind to exactly that. A node that moves on the page has moved, whatever
+ * moved it.
  */
 async function installProbe(page: Page): Promise<void> {
   await page.evaluate(() => {
     const round = (value: number): number => Math.round(value * 100) / 100;
     const rect = (element: Element | null): number[] => {
-      const canvas = document.querySelector('[data-testid="graph-canvas"]');
-      if (element === null || canvas === null) return [];
-      const origin = canvas.getBoundingClientRect();
+      if (element === null) return [];
       const r = element.getBoundingClientRect();
-      return [round(r.x - origin.x), round(r.y - origin.y), round(r.width), round(r.height)];
+      return [round(r.x), round(r.y), round(r.width), round(r.height)];
     };
+    /** Every port's dot: whose it is, and its rect on the page. */
+    const ports = (): string[] =>
+      [...document.querySelectorAll<HTMLElement>(".react-flow__handle")].map(
+        (dot) =>
+          `${dot.dataset["nodeid"] ?? ""}:${dot.dataset["handleid"] ?? ""}:${dot.classList.contains("source") ? "out" : "in"}@${rect(dot).join(",")}`,
+      );
     const boxes = (): string[] =>
       [...document.querySelectorAll<HTMLElement>(".react-flow__node")].map((wrapper) => {
         const own = wrapper.querySelector<HTMLElement>(':scope > [data-testid^="node-"]');
@@ -180,6 +208,7 @@ async function installProbe(page: Page): Promise<void> {
       const ring = document.querySelector("[data-wire-snap] circle");
       return {
         boxes: JSON.stringify(boxes()),
+        ports: JSON.stringify(ports()),
         snapOn: [...document.querySelectorAll<HTMLElement>(".react-flow__node")]
           .filter((wrapper) => wrapper.querySelector(":scope > [data-wire-snap]") !== null)
           .map((wrapper) => wrapper.dataset["id"] ?? ""),
@@ -207,6 +236,7 @@ async function installProbe(page: Page): Promise<void> {
     };
     (window as unknown as { __wireProbe?: unknown }).__wireProbe = {
       boxes,
+      ports,
       start: () => {
         log = [];
         recording = true;
@@ -222,6 +252,9 @@ async function installProbe(page: Page): Promise<void> {
 
 const boxes = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as unknown as { __wireProbe: Probe }).__wireProbe.boxes());
+
+const ports = (page: Page): Promise<string[]> =>
+  page.evaluate(() => (window as unknown as { __wireProbe: Probe }).__wireProbe.ports());
 
 /** Records every frame from now until the snap has had time to play and go, and returns the record. */
 async function recordRelease(page: Page): Promise<Frame[]> {
@@ -251,11 +284,8 @@ interface Staged {
   readonly level: string;
 }
 
-/**
- * Two Noises on the left, one Level on the right at 1:1, and the first Noise already wired
- * into the Level, so the wire under test REPLACES one (see the docblock).
- */
-async function stage(page: Page): Promise<Staged> {
+/** Two Noises on the left and one Level on the right, at 1:1, with no wire between them. */
+async function arrange(page: Page): Promise<Staged> {
   await openApp(page);
   const canvas = await page.getByTestId("graph-canvas").boundingBox();
   if (canvas === null) throw new Error("the canvas has no box");
@@ -273,19 +303,43 @@ async function stage(page: Page): Promise<Staged> {
   await expect.poll(() => zoomOf(page)).toBeCloseTo(1, 2);
   const level = await addNode(page, "color", "Level");
   const second = await addNode(page, "generator", "Noise");
-  /*
-   * All three are added BEFORE any is placed, and then given a moment. An unfed Level
-   * reports compile errors, and the strip that says so pushes the whole pane down by some
-   * 40 px. Placed one by one as they arrived, the first node was put down before that
-   * strip and the others after it, and the layout was 40 px out of true once the Level was
-   * fed and the strip left. Placed together, they move together.
-   */
+  // All three are added before any is placed, and given a moment: the unfed Level's
+  // compile errors arrive a beat after it does, and with them whatever the app shows for
+  // a document that has errors. The nodes are put down on a page that has stopped changing.
   await page.waitForTimeout(700);
   // Last added first: a new node lands over the one before, and the one on top is the
   // one a press reaches.
   await place(page, second, cx - 330, cy + 30);
   await place(page, level, cx + 60, cy - 80);
   await place(page, first, cx - 330, cy - 190);
+  return { first, second, level };
+}
+
+/** Installs the probe and waits until the effect is over and no box on the page is changing. */
+async function settle(page: Page): Promise<void> {
+  await installProbe(page);
+  await expect
+    .poll(() => page.evaluate(() => document.querySelectorAll('[data-wire-snap], [data-testid="wire-in-flight"]').length))
+    .toBe(0);
+  let previous = JSON.stringify([await boxes(page), await ports(page)]);
+  await expect
+    .poll(async () => {
+      await page.waitForTimeout(200);
+      const now = JSON.stringify([await boxes(page), await ports(page)]);
+      const same = now === previous;
+      previous = now;
+      return same;
+    })
+    .toBe(true);
+}
+
+/**
+ * `arrange`, and then the first Noise wired into the Level, so the wire under test
+ * REPLACES one (see the docblock).
+ */
+async function stage(page: Page): Promise<Staged> {
+  const staged = await arrange(page);
+  const { first, level } = staged;
 
   // The first wire, by the gesture itself.
   const from = await dot(page, first, "out", "source");
@@ -298,22 +352,8 @@ async function stage(page: Page): Promise<Staged> {
   await page.mouse.up();
   await expect(page.locator(`.react-flow__edge[aria-label="Edge from ${first} to ${level}"]`)).toHaveCount(1);
 
-  // Settled: the effect is over, and the page has stopped shifting under the nodes.
-  await installProbe(page);
-  await expect
-    .poll(() => page.evaluate(() => document.querySelectorAll('[data-wire-snap], [data-testid="wire-in-flight"]').length))
-    .toBe(0);
-  let previous = await boxes(page);
-  await expect
-    .poll(async () => {
-      await page.waitForTimeout(200);
-      const now = await boxes(page);
-      const same = JSON.stringify(now) === JSON.stringify(previous);
-      previous = now;
-      return same;
-    })
-    .toBe(true);
-  return { first, second, level };
+  await settle(page);
+  return staged;
 }
 
 /** A point `pixels` screen px from a port: 0.8 of it to the left and 0.6 below. */
@@ -573,4 +613,80 @@ test("reduced motion: the ring and the colour stay, nothing crackles and nothing
     expect(frame.elements).toBe(0);
     expect(frame.animations).toBe(0);
   }
+});
+
+test("a FIRST connection: every port stays where it is while the node's errors clear, and when they come back (B265)", async ({
+  page,
+}) => {
+  const { first, level } = await arrange(page);
+  await settle(page);
+  const stale = page.locator('[data-notice="output-stale"]');
+  const edge = page.locator(`.react-flow__edge[aria-label="Edge from ${first} to ${level}"]`);
+  const flight = page.getByTestId("wire-in-flight");
+  const canvas = page.getByTestId("graph-canvas");
+
+  // THE PREMISE: the Level has no input, the document has errors, and the app says so,
+  // where it can be read without opening anything (T1121).
+  await expect(stale).toBeVisible();
+  const notice = await stale.boundingBox();
+  const pane = await canvas.boundingBox();
+  const viewport = page.viewportSize();
+  if (notice === null || pane === null || viewport === null) throw new Error("the notice or the canvas has no box");
+  expect(notice.y).toBeGreaterThanOrEqual(0);
+  expect(notice.y + notice.height).toBeLessThanOrEqual(viewport.height);
+  // And it takes nothing from the graph to say it: it does not lie over the canvas.
+  const apart =
+    notice.y + notice.height <= pane.y ||
+    notice.y >= pane.y + pane.height ||
+    notice.x + notice.width <= pane.x ||
+    notice.x >= pane.x + pane.width;
+  expect(apart).toBe(true);
+
+  const portsAtRest = await ports(page);
+  // Both Noises' outputs and the Level's input and output.
+  expect(portsAtRest).toHaveLength(4);
+
+  // The wire, held where it sparks, 30 px from the Level's input.
+  const to = await dot(page, level, "input", "target");
+  await carry(page, await dot(page, first, "out", "source"), offPort(to, 30));
+  await expect(flight).toHaveAttribute("data-wire-state", "live");
+  expect(await ports(page)).toEqual(portsAtRest);
+
+  // RELEASE. The Level is fed, the document has no errors, and the notice goes: the thing
+  // that used to move the page has happened.
+  const frames = await recordRelease(page);
+  await expect(edge).toHaveCount(1);
+  await expect(stale).toHaveCount(0);
+
+  // The snap played on the Level, and on every frame of it, and after it, every port on
+  // the canvas was where it had been. The port is still where the wire was let go.
+  const during = frames.filter((frame) => frame.snapOn.length > 0);
+  // Fewer frames than the other tests ask for: a first connection is also the first
+  // compile of the node's pass, and the frames around it are long (7 were seen here).
+  expect(during.length).toBeGreaterThan(3);
+  for (const frame of during) expect(frame.snapOn).toEqual([level]);
+  for (const frame of frames) expect(JSON.parse(frame.ports)).toEqual(portsAtRest);
+  expect(await ports(page)).toEqual(portsAtRest);
+  expect(await dot(page, level, "input", "target")).toEqual(to);
+  const paneAfter = await canvas.boundingBox();
+  expect([paneAfter?.x, paneAfter?.y]).toEqual([pane.x, pane.y]);
+  const last = frames.slice(-5);
+  for (const frame of last) {
+    expect(frame.elements).toBe(0);
+    expect(frame.animations).toBe(0);
+  }
+
+  // AND BACK: the wire pulled off and let go in the open. The errors return, the notice
+  // with them, and nothing moves then either.
+  await page.mouse.move(to.x, to.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x - 5, to.y + 3, { steps: 3 });
+  await page.mouse.move(to.x - 130, to.y + 100, { steps: 8 });
+  await expect(flight).toHaveAttribute("data-wire-state", "free");
+  const off = await recordRelease(page);
+  await expect(edge).toHaveCount(0);
+  await expect(stale).toBeVisible();
+  for (const frame of off) expect(JSON.parse(frame.ports)).toEqual(portsAtRest);
+  expect(await ports(page)).toEqual(portsAtRest);
+  expect(await dot(page, level, "input", "target")).toEqual(to);
 });
