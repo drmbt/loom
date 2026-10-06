@@ -92,8 +92,13 @@ import { ZERO_SEGMENT_SQUARED } from "./curve.ts";
  *    radius takes, the limit cannot be met and its rows push the strand against its own pins.
  *    A step that ends with a segment beyond Max Stretch is solved again from where its points
  *    were placed with no joint in the system; where that cannot be finished either, a third
- *    time as it was the first. What is NOT closed: short of that, a strand in such a pose
- *    does not come to rest (the design's 17.8).
+ *    time as it was the first.
+ *  - WHERE THE LIMIT CANNOT BE MET IT GIVES (D41, slice 4b), and the strand comes to rest.
+ *    Each joint keeps an OPENING from step to step, the radians its limit is let out by. A
+ *    joint that gives more than a yield for longer than a wait, or pushes at all on a strand
+ *    whose step could not bring its lengths within tolerance, has its limit opened; the
+ *    opening closes when the pose lets it. The rule, its constants and its fixed point are
+ *    at `ROPE_BEND_YIELD`.
  *  - It is another program, behind a switch: with Bend Limit off a step is the tridiagonal
  *    one below, with none of this in it.
  *
@@ -119,6 +124,13 @@ import { ZERO_SEGMENT_SQUARED } from "./curve.ts";
  *  - `M` IS THE MASS THE ANCHOR CARRIES (the design's D19): the strand's, for a station, and
  *    the point's own for a pin attribute, where every point is held and carries only itself.
  *    Sized by one point's mass, a strand of 55 hangs 3.4 m below a half-weighted anchor.
+ *  - LETTING GO IS SPEEDLESS (D38, slice 4b). In the step a segment that two hard pins held
+ *    comes free, the over-length it was held at is taken up in positions only: from the
+ *    first point after it, a point is stored with the speed it was predicted with, and the
+ *    guard takes that segment and those after it to their own lengths, not to Max Stretch
+ *    (the solve's pin softening leaves a whole strand's contraction to later steps, which
+ *    would carry it as speed). A weight under 1 holds no segment long: it is a pull, and
+ *    the segment between two pulled points is in the solve.
  *  - THE EARLIER PIN WINS (the design's 4.6), across points the solve can move. A target
  *    further from the nearest earlier hard pin than the rope between them, times
  *    `1 + Max Stretch`, is drawn in to that reach along the line to it: length is kept and
@@ -188,6 +200,72 @@ export const ROPE_BEND_BAND = 2 ** -10;
  * spacing can put into a second difference, two to four metres along a strand.
  */
 export const ROPE_BEND_FLOOR = 2 ** -21;
+
+/**
+ * THE LIMIT GIVES WHERE IT CANNOT BE MET (the design's D41). A joint GIVES by its compliance
+ * times what it has pushed: how far past its limit it stands for what it carries, in
+ * radians. Each joint keeps an OPENING, the radians its limit is let out by, from step to
+ * step; and it is in TROUBLE in a step in which it gives more than `ROPE_BEND_YIELD`, or
+ * pushes at all while the step could not bring the strand's lengths within their tolerance.
+ * After `ROPE_BEND_YIELD_WAIT` seconds of trouble, step after step:
+ *
+ *   over the yield   the limit opens, by half of what the joint gives beyond half the
+ *                    yield, at most `ROPE_BEND_OPEN_MOST` a step, until it gives less;
+ *   under it         the limit is put where the joint stands, `ROPE_BEND_GAP` beyond it,
+ *                    and LEFT ALONE: it asks nothing more of a strand that cannot finish
+ *                    its step, until the joint has come in by more than the gap.
+ *
+ * A step that had to be solved without the limit (length before bend, D36) opens toward
+ * where that left the joint, at most `ROPE_BEND_OPEN_AGAIN` a step. And an open limit
+ * CLOSES: at once behind a joint that straightens, and by `ROPE_BEND_CLOSE` a step onto a
+ * joint that gives less than half the yield, in a step the solve finished at its first
+ * attempt.
+ *
+ * WHY. Between two held ends with less rope than a turn of the radius takes, nothing can
+ * meet the limit, and a row that is nearly rigid pushes with whatever that takes, every step
+ * from nothing: measured, pushes of 9 to 40 times the yield and a strand thrown at 2.7 to
+ * 240 m/s, in steps most of which the solve FINISHED. What bounds the yield from the other
+ * side is what a limit has to hold: a resting loop of 250 points at 240 steps a second
+ * gives 0.65 of it, and a loop swept at 4 m/s gives more than it only in bursts shorter
+ * than the wait. It does NOT clear every strand: one too fine for its step gives more than
+ * the yield under its own weight (1,024 points at 960 steps a second: 1.5 of it), and its
+ * limit opens too. No rule tried tells that weight from a pose that cannot be met without
+ * leaving the second to thrash (the design's section 18.3).
+ *
+ * THE FIXED POINT. Where the limit can be met, no joint is in trouble and nothing opens.
+ * Where it cannot, a joint's limit opens until the joint gives no more than the yield in a
+ * step the solve finishes, or stands off the joint altogether; in either state the step is
+ * the plain solve of a strand whose limits it CAN meet, which is the solve of every pose
+ * that rests today. A limit that is left alone does not come back by itself: there is no
+ * probe to disturb a strand at rest.
+ *
+ * 2⁻⁸ rad is 0.22°: the give of a joint whose row has pushed four times what would turn the
+ * joint a radian on its own.
+ */
+export const ROPE_BEND_YIELD = 2 ** -8;
+
+/** Seconds a joint has to have been in trouble, step after step, before its limit moves: 1/32. */
+export const ROPE_BEND_YIELD_WAIT = 2 ** -5;
+
+/** Radians a step: the most a limit opens by in a step, to half of what its joint gives beyond half the yield. */
+export const ROPE_BEND_OPEN_MOST = 2 ** -8;
+
+/** Radians a step: the most it opens by in a step that had to be solved without the limit, toward where the joint is. */
+export const ROPE_BEND_OPEN_AGAIN = 2 ** -4;
+
+/**
+ * Radians: how far beyond its joint an open limit is left when it is put where the joint
+ * is, and how far inside it a joint has to have straightened before the limit follows it in.
+ * Wider than the band a joint is held in (`ROPE_BEND_BAND`), so a limit put there asks
+ * nothing of the strand.
+ */
+export const ROPE_BEND_GAP = 2 ** -8;
+
+/** Radians a step: what an open limit closes by, onto a joint that gives less than half the yield. */
+export const ROPE_BEND_CLOSE = 2 ** -10;
+
+/** In a joint's `yielding`: its limit was put where the joint stands, and is left alone until the joint comes in. */
+const LEFT_ALONE = -1;
 
 /** A pivot of the banded system is kept at least this share of its row's own diagonal. */
 export const ROPE_PIVOT_FLOOR = 2 ** -12;
@@ -285,6 +363,19 @@ export interface RopeState {
    * point, once a frame; not part of what a step carries from run to run.
    */
   readonly kept: Float32Array;
+  /**
+   * Per point, 1 where the point was a hard pin at the last step (the design's D38): what
+   * tells a segment that two held points were holding from one that has just come free. The
+   * device reads it off the inverse mass the last step left in its scratch.
+   */
+  readonly held: Float32Array;
+  /**
+   * Per joint, at its point's slot, with Bend Limit on (D41): how far its limit is open,
+   * radians, and for how many seconds it has given more than the yield. The device keeps the
+   * first in the spare word of what it keeps a point, and the second in its scratch.
+   */
+  readonly opening: Float32Array;
+  readonly yielding: Float32Array;
 }
 
 export function createRopeState(cols: number, rows: number): RopeState {
@@ -296,6 +387,9 @@ export function createRopeState(cols: number, rows: number): RopeState {
     velocity: new Float32Array(points * 4),
     tension: new Float32Array(points),
     kept: new Float32Array(points * 8),
+    held: new Float32Array(points),
+    opening: new Float32Array(points),
+    yielding: new Float32Array(points),
   };
 }
 
@@ -320,6 +414,8 @@ export interface RopeRun {
   readonly substeps: number;
   /** The state was just created or cleared: this run seeds. */
   readonly firstRun: boolean;
+  /** A test's counter: every Newton step of every strand adds one. The device has none. */
+  readonly tally?: { newton: number };
 }
 
 /** What a run writes: the three regions of the node's packed pair, for every strand. */
@@ -360,6 +456,10 @@ function seedStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, b
     put(state.kept, slot * 2, here);
     state.kept[slot * 8 + 3] = rest;
     put(state.kept, slot * 2 + 1, [0, 0, 0]);
+    // A seeded strand has no last step: nothing was held in it, and no limit is open.
+    state.held[slot] = 0;
+    state.opening[slot] = 0;
+    state.yielding[slot] = 0;
   }
 }
 
@@ -520,6 +620,18 @@ function stepStrand(
   let free = false;
   /** The last hard pin on the strand, by point; −1 when it has none. */
   let lastPin = -1;
+  /**
+   * THE SPEEDLESS TAKE-UP (the design's D38). Two held points that are neighbours hold the
+   * segment between them at whatever length they are told (D31). In the step one of them
+   * comes free, that segment is the rope's again and takes its own length back; and what the
+   * solve moves to do it is POSITIONS ONLY, as the Max Stretch guard is. `released` is the
+   * first point after such a segment, or `cols`: from it on, a point is stored with the speed
+   * it was predicted with and not with what this step's corrections would add.
+   */
+  let released = cols;
+  /** Whether the point before the one being placed was a hard pin at the last step, and is one in this. */
+  let heldBefore = false;
+  let heldBehind = false;
 
   /**
    * Predict point `i`, pull it by its anchor, and hand the solve its working position and its
@@ -587,8 +699,20 @@ function stepStrand(
       }
     }
     if (weighs > 0) free = true;
+    const wasHeld = (state.held[slot] as number) === 1;
+    const isHeld = !(weighs > 0);
+    if (i > 0 && released === cols && heldBefore && wasHeld && !(heldBehind && isHeld)) released = i;
+    heldBefore = wasHeld;
+    heldBehind = isHeld;
+    state.held[slot] = isHeld ? 1 : 0;
     work[i] = placed;
     inverse[i] = weighs;
+  };
+  /** The speed point `i` is stored with, moved to `moved` by the step. */
+  const speedOf = (i: number, moved: Vec3): Vec3 => {
+    if (i < released) return divide(sub(moved, startOf(i)), h);
+    const v = scale(at(state.velocity, base + i), keep);
+    return [v[0], f(v[1] - f(drop / h)), v[2]];
   };
 
   place(0);
@@ -623,6 +747,13 @@ function stepStrand(
           f(f(f((inverse[j - 1] as number) * f(near * near)) + f((inverse[j] as number) * f(both * both))) + f((inverse[j + 1] as number) * f(far * far))),
       );
     };
+    /** The joint's limit with its opening (D41), as twice the sine of half of it. */
+    const limitOf = (j: number, a: number, b: number): number => {
+      const plain = mostOf(a, b);
+      const opening = state.opening[base + j] as number;
+      if (!(opening > 0)) return plain;
+      return f(Math.min(2, f(2 * f(Math.sin(f(f(Math.min(Math.PI, f(f(2 * f(Math.asin(f(plain / 2)))) + opening))) / 2))))));
+    };
     /** λ of the joint at each point, summed over the Newton steps: below zero, it has pushed the strand straighter. */
     const turned = new Float32Array(cols);
     /** Per row — the joint at point k is row 2k, the segment after it row 2k + 1 — the solved right-hand side and four multipliers. */
@@ -638,10 +769,19 @@ function stepStrand(
     // Where that step cannot be finished either — a step too coarse for the strand, limit or
     // no limit — the first answer is the better one to hand the guard, and it is solved a
     // third time as it was the first.
+    let withLimit = true;
+    /** Whether the last Newton step run left a segment out of its tolerance; whether it left anything out of its own. */
+    let lengthsOpen = false;
+    let finished = true;
+    /** Whether the step was solved more than once. */
+    let again = false;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const limited = attempt !== 1;
+      withLimit = limited;
+      again = attempt > 0;
       if (attempt > 0) work[0] = placedAt[0] as Vec3;
       for (let iteration = 0; iteration < iterations; iteration += 1) {
+        if (run.tally !== undefined) run.tally.newton += 1;
         // The elimination's window: the last four rows' pivots, right-hand sides, and the
         // multipliers between them. Before the first row it is four rows of the identity.
         let d1 = 1;
@@ -733,7 +873,7 @@ function stepStrand(
           if (limited && k > 0 && restWas > 0 && rest > 0 && f(f(wBefore + wLow) + wHigh) > 0) {
             const apart = sub(direction, directionWas);
             const gap = dot(apart, apart);
-            const most = mostOf(restWas, rest);
+            const most = limitOf(k, restWas, rest);
             const nearly = f(most * f(1 - ROPE_BEND_BAND));
             const pushed = turned[k] as number;
             // Past its limit; or it has pushed in this step; or it is within the band and has not yet been let go.
@@ -789,6 +929,7 @@ function stepStrand(
         // Back: substitute row by row, move each point, store it, and look at what is left.
         let converged = true;
         exceeded = false;
+        lengthsOpen = false;
         const look = (k: number, low: Vec3, high: Vec3): void => {
           if (!(f((inverse[k] as number) + (inverse[k + 1] as number)) > 0)) return;
           const rest = restOf(k);
@@ -799,7 +940,10 @@ function stepStrand(
           if (squared > f(most * most) || squared < f(least * least)) exceeded = true;
           const off = rest > 0 ? f(f(squared - f(rest * rest)) / f(2 * rest)) : f(Math.sqrt(squared));
           const residual = Math.abs(f(off + f(softness(rest) * (multiplier[k] as number))));
-          if (!(residual <= f(f(ROPE_TOLERANCE * rest) + ROPE_TOLERANCE_FLOOR))) converged = false;
+          if (!(residual <= f(f(ROPE_TOLERANCE * rest) + ROPE_TOLERANCE_FLOOR))) {
+            converged = false;
+            lengthsOpen = true;
+          }
         };
         /** Is the joint at point j, between these three points, within its tolerance of its limit? */
         const lookAt = (j: number, low: Vec3, middle: Vec3, high: Vec3): void => {
@@ -811,7 +955,7 @@ function stepStrand(
           const far = f(1 / b);
           const kappa = sub(scale(sub(high, middle), far), scale(sub(middle, low), near));
           // Its limit, its tolerance, and what it gives by for what it has pushed.
-          const allowed = f(f(f(mostOf(a, b) * f(1 + ROPE_BEND_TOLERANCE)) + f(ROPE_BEND_FLOOR * f(near + far))) + f(giveOf(j, a, b) * f(Math.max(f(-(turned[j] as number)), 0))));
+          const allowed = f(f(f(limitOf(j, a, b) * f(1 + ROPE_BEND_TOLERANCE)) + f(ROPE_BEND_FLOOR * f(near + far))) + f(giveOf(j, a, b) * f(Math.max(f(-(turned[j] as number)), 0))));
           if (dot(kappa, kappa) > f(allowed * allowed)) converged = false;
         };
         let p1 = 0;
@@ -872,7 +1016,7 @@ function stepStrand(
           if (turnHere !== 0 && pushed > 0) converged = false;
           if ((inverse[k + 1] as number) > 0) {
             put(next.position, base + k + 1, add(moved, origin));
-            put(next.velocity, base + k + 1, divide(sub(moved, startOf(k + 1)), h));
+            put(next.velocity, base + k + 1, speedOf(k + 1, moved));
           }
           next.tension[base + k] = f(f(-total) / hh);
           if (k + 1 < segments) look(k + 1, moved, aboveNow);
@@ -897,14 +1041,71 @@ function stepStrand(
         }
         look(0, solved, aboveNow);
         if (segments > 1) lookAt(1, solved, aboveNow, aboveNext);
+        finished = converged;
         if (converged) break;
       }
       if (!exceeded) break;
+    }
+
+    // ── The hinge (D41): a limit that cannot be met is opened; one whose joint has straightened follows it in ──
+    for (let j = 1; j < segments; j += 1) {
+      if (!(f(f((inverse[j - 1] as number) + (inverse[j] as number)) + (inverse[j + 1] as number)) > 0)) continue;
+      const a = restOf(j - 1);
+      const b = restOf(j);
+      if (!(a > 0 && b > 0)) continue;
+      let opening = state.opening[base + j] as number;
+      let yielding = state.yielding[base + j] as number;
+      const gave = withLimit ? f(giveOf(j, a, b) * f(Math.max(f(-(turned[j] as number)), 0))) : 0;
+      // How far past its limit, as it is with nothing open, the joint stands.
+      const first = segment(work[j - 1] as Vec3, work[j] as Vec3, a);
+      const second = segment(work[j] as Vec3, work[j + 1] as Vec3, b);
+      const apart = sub(second.direction, first.direction);
+      const together = add(second.direction, first.direction);
+      const turn = f(2 * f(Math.atan2(f(Math.sqrt(dot(apart, apart))), f(Math.sqrt(dot(together, together))))));
+      const excess = f(turn - f(2 * f(Math.asin(f(mostOf(a, b) / 2)))));
+      if (!withLimit) {
+        // The step was solved without the limit: toward where that left the joint.
+        yielding = 0;
+        if (excess > opening) opening = f(Math.min(excess, f(opening + ROPE_BEND_OPEN_AGAIN)));
+      } else if (gave > ROPE_BEND_YIELD || (gave > 0 && lengthsOpen)) {
+        // In trouble: it gives more than the yield, or it pushes on a strand that could not keep its lengths.
+        yielding = f(f(Math.max(yielding, 0)) + h);
+        if (yielding > ROPE_BEND_YIELD_WAIT) {
+          if (gave > ROPE_BEND_YIELD) {
+            opening = f(opening + f(Math.min(f(f(gave - f(ROPE_BEND_YIELD / 2)) / 2), ROPE_BEND_OPEN_MOST)));
+          } else {
+            // To where the joint stands, with a gap, and left alone: it asks nothing more of the strand.
+            opening = f(Math.max(opening, f(excess + ROPE_BEND_GAP)));
+            yielding = LEFT_ALONE;
+          }
+        }
+      } else if (!(yielding < 0)) {
+        yielding = 0;
+        // An open limit closes onto a joint that gives less than half the yield, a step at a time, while the solve finishes.
+        if (opening > 0 && gave < f(ROPE_BEND_YIELD / 2) && finished && !again) opening = f(Math.max(0, f(opening - ROPE_BEND_CLOSE)));
+      }
+      if (yielding < 0) {
+        // Left alone: its limit follows the joint in only once the joint has come in by more than the gap, and is then left alone no longer.
+        if (f(excess + f(2 * ROPE_BEND_GAP)) < opening) {
+          opening = f(Math.max(0, f(excess + ROPE_BEND_GAP)));
+          yielding = 0;
+        }
+      } else if (opening > 0 && f(excess + ROPE_BEND_GAP) < opening) {
+        // …and at once behind a joint that has straightened.
+        opening = f(Math.max(0, f(excess + ROPE_BEND_GAP)));
+      }
+      if (!(excess > 0)) {
+        opening = 0;
+        if (yielding < 0) yielding = 0;
+      }
+      state.opening[base + j] = opening;
+      state.yielding[base + j] = yielding;
     }
   }
 
   // ── Stretch: Newton steps on the tridiagonal system ──
   for (let iteration = 0; iteration < (bend ? 0 : iterations); iteration += 1) {
+    if (run.tally !== undefined) run.tally.newton += 1;
     // Forward: eliminate. The first time through, each point is predicted as the sweep
     // reaches it. Segment k's upper coefficient is known when segment k + 1's direction is.
     let previousDirection: Vec3 = [0, 0, 0];
@@ -976,7 +1177,7 @@ function stepStrand(
       multiplier[k] = total;
       if ((inverse[k + 1] as number) > 0) {
         put(next.position, base + k + 1, add(moved, origin));
-        put(next.velocity, base + k + 1, divide(sub(moved, startOf(k + 1)), h));
+        put(next.velocity, base + k + 1, speedOf(k + 1, moved));
       }
       next.tension[base + k] = f(f(-total) / hh);
       if (k + 1 < segments) look(k + 1, moved, aboveNow);
@@ -995,15 +1196,19 @@ function stepStrand(
     if (converged) break;
   }
 
-  // ── The guard: only on a step that left a segment beyond Max Stretch. Positions only. ──
-  if (!exceeded) return;
-  /** A point set no nearer and no further from `from` than its segment may be. */
-  const within = (solved: Vec3, from: Vec3, rest: number): Vec3 => {
+  // ── The guard: only on a step that left a segment beyond Max Stretch, or let one go. Positions only. ──
+  if (!exceeded && released === cols) return;
+  /**
+   * A point set no nearer and no further from `from` than its segment may be. The segment
+   * that ends at point `i` is taken up to its own length, not to Max Stretch, in the step it
+   * is let go (D38): what a held segment was over-long by is no stretch the rope has earned.
+   */
+  const within = (solved: Vec3, from: Vec3, rest: number, i: number): Vec3 => {
     const span = sub(solved, from);
     const squared = dot(span, span);
     if (!(squared > ZERO_SEGMENT_SQUARED)) return solved;
     const size = f(Math.sqrt(squared));
-    const most = f(rest * f(1 + limit));
+    const most = i >= released ? rest : f(rest * f(1 + limit));
     const least = f(rest * shortest);
     if (size > most) return add(from, scale(span, f(most / size)));
     if (size < least) return add(from, scale(span, f(least / size)));
@@ -1021,7 +1226,7 @@ function stepStrand(
     for (let i = lastPin - 1; i >= 0; i -= 1) {
       let placed = work[i] as Vec3;
       if ((inverse[i] as number) > 0) {
-        placed = within(placed, ahead, restOf(i));
+        placed = within(placed, ahead, restOf(i), i + 1);
         work[i] = placed;
       }
       ahead = placed;
@@ -1031,7 +1236,7 @@ function stepStrand(
   let settled = work[0] as Vec3;
   for (let i = 1; i < cols; i += 1) {
     let placed = work[i] as Vec3;
-    if ((inverse[i] as number) > 0) placed = within(placed, settled, restOf(i - 1));
+    if ((inverse[i] as number) > 0) placed = within(placed, settled, restOf(i - 1), i);
     settled = placed;
     // A pinned point keeps the target it was stored at.
     if ((inverse[i] as number) > 0) put(next.position, base + i, add(placed, origin));
@@ -1060,7 +1265,7 @@ export function advanceRope(
   state: RopeState,
   incoming: Float32Array,
   parameters: RopeParameters,
-  frame: { readonly deltaSeconds: number; readonly substeps: number; readonly firstRun?: boolean },
+  frame: { readonly deltaSeconds: number; readonly substeps: number; readonly firstRun?: boolean; readonly tally?: { newton: number } },
   maps: RopeMaps = {},
 ): void {
   const substeps = Math.max(1, Math.round(frame.substeps));
@@ -1069,7 +1274,13 @@ export function advanceRope(
       state,
       incoming,
       parameters,
-      { deltaSeconds: frame.deltaSeconds / substeps, substep, substeps, firstRun: frame.firstRun === true && substep === 0 },
+      {
+        deltaSeconds: frame.deltaSeconds / substeps,
+        substep,
+        substeps,
+        firstRun: frame.firstRun === true && substep === 0,
+        ...(frame.tally === undefined ? {} : { tally: frame.tally }),
+      },
       maps,
     );
   }
