@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cameraFrame, cameraPayloadMatrix, identity, inCameraFrame, lookAt, multiply, perspective, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix, transformPoint, viewProjection } from "./camera.ts";
+import { cameraFrame, cameraPayloadMatrix, guardedRolledUp, identity, inCameraFrame, worldUpInCameraFrame, lookAt, multiply, perspective, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix, transformPoint, viewProjection } from "./camera.ts";
 
 /**
  * §V198: the composition order is PUBLISHED (clip = projection × view × world,
@@ -323,5 +323,80 @@ describe("a camera's parent frame (T1656b)", () => {
     for (const heading of [[0, 0, 0], [0, 9, 0], [1e-9, 0, -1e-9]] as const) {
       expect(inCameraFrame(cameraFrame([0, 0, 0], heading), point)).toBe(point);
     }
+  });
+});
+
+/**
+ * §T1671b — the AIMED frame: Heading read whole. The level frame above is the default and
+ * is untouched by it (the shipped documents are pinned separately).
+ */
+describe("a camera's aimed frame (T1671b)", () => {
+  const near = (a: readonly number[], b: readonly number[]): void => {
+    for (let index = 0; index < 3; index += 1) expect(a[index]).toBeCloseTo(b[index]!, 12);
+  };
+
+  it("its forward IS Heading, climbing included, and its up is the world's up made perpendicular", () => {
+    // A 3-4-5 heading, climbing: forward (0, 0.6, −0.8).
+    const frame = cameraFrame([0, 0, 0], [0, 3, -4], "aimed");
+    near(frame.back, [0, -0.6, 0.8]);
+    near(frame.right, [1, 0, 0]);
+    near(frame.up, [0, 0.8, 0.6]);
+    // "d along the shot" is Look At 0, 0, −d: five along (0, 0.6, −0.8) is (0, 3, −4).
+    near(inCameraFrame(cameraFrame([2, 1, -1], [0, 3, -4], "aimed"), [0, 0, -5]), [2, 4, -5]);
+    // The SAME vector read level is a frame that does not climb at all.
+    expect(cameraFrame([0, 0, 0], [0, 3, -4]).up).toEqual([0, 1, 0]);
+    expect(inCameraFrame(cameraFrame([2, 1, -1], [0, 3, -4]), [0, 0, -5])).toEqual([2, 1, -6]);
+  });
+
+  it("is rigid: right, up and back are unit and perpendicular for any heading", () => {
+    for (const heading of [[1, 2, 3], [-4, 0.3, 0.1], [0.2, -5, 0.2], [0, 0.999, 0.01], [3, 0, 0]] as const) {
+      const { right, up, back } = cameraFrame([0, 0, 0], heading, "aimed");
+      const dot = (a: readonly number[], b: readonly number[]): number => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+      for (const axis of [right, up, back]) expect(dot(axis, axis)).toBeCloseTo(1, 12);
+      expect(dot(right, up)).toBeCloseTo(0, 12);
+      expect(dot(right, back)).toBeCloseTo(0, 12);
+      expect(dot(up, back)).toBeCloseTo(0, 12);
+      // Right-handed, as the level frame is: right × up = back.
+      near([right[1] * up[2] - right[2] * up[1], right[2] * up[0] - right[0] * up[2], right[0] * up[1] - right[1] * up[0]], back);
+    }
+  });
+
+  it("⚑ THE POLE HAS A RULE: straight up or down takes world +z as its up, and nothing is NaN", () => {
+    const down = cameraFrame([0, 0, 0], [0, -7, 0], "aimed");
+    near(down.back, [0, 1, 0]);
+    near(down.up, [0, 0, 1]);
+    near(down.right, [-1, 0, 0]);
+    const up = cameraFrame([0, 0, 0], [0, 2, 0], "aimed");
+    near(up.back, [0, -1, 0]);
+    near(up.up, [0, 0, 1]);
+    for (const frame of [down, up]) for (const axis of [frame.right, frame.up, frame.back]) for (const value of axis) expect(Number.isFinite(value)).toBe(true);
+    /*
+     * It is the camera's OWN rule and threshold, not a second one: a camera looking down a
+     * heading that steep builds its view from the same up reference, so the frame's up and
+     * the picture's up are one vector on both sides of the threshold.
+     */
+    for (const heading of [[0.001, -1, 0.0005], [0.2, -1, 0.1]] as const) {
+      const frame = cameraFrame([0, 0, 0], heading, "aimed");
+      const reference = guardedRolledUp([0, 0, 0], heading, 0);
+      const along = reference[0] * frame.back[0] + reference[1] * frame.back[1] + reference[2] * frame.back[2];
+      const flat = [reference[0] - along * frame.back[0], reference[1] - along * frame.back[1], reference[2] - along * frame.back[2]];
+      const span = Math.hypot(flat[0]!, flat[1]!, flat[2]!);
+      near(frame.up, [flat[0]! / span, flat[1]! / span, flat[2]! / span]);
+    }
+  });
+
+  it("a heading of no length is no heading, and a heading down −z is the untouched frame", () => {
+    const point = [4, 2, 7] as const;
+    expect(inCameraFrame(cameraFrame([0, 0, 0], [0, 0, 0], "aimed"), point)).toBe(point);
+    expect(inCameraFrame(cameraFrame([0, 0, 0], [0, 0, -3], "aimed"), point)).toBe(point);
+  });
+
+  it("says where the world's up is in the frame's own coordinates: +y when level, tilted when the frame climbs", () => {
+    expect(worldUpInCameraFrame(cameraFrame([5, 5, 5], [3, 9, 1]))).toEqual([0, 1, 0]);
+    // The 3-4-5 frame: the world's up has 0.8 of the frame's up and −0.6 of its back.
+    near(worldUpInCameraFrame(cameraFrame([0, 0, 0], [0, 3, -4], "aimed")), [0, 0.8, -0.6]);
+    // And composing that direction back gives the world's up: the two are inverse.
+    const frame = cameraFrame([0, 0, 0], [1, 2, -3], "aimed");
+    near(inCameraFrame(frame, worldUpInCameraFrame(frame) as [number, number, number]), [0, 1, 0]);
   });
 });

@@ -4,6 +4,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { buildProjectFile } from "@domain/project/project-file.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import { FLY_BOOST, FLY_RADII_PER_SECOND } from "@editor/viewer/orbit-gestures.ts";
 import { document, edge, expressionSlot, graph, named, settings } from "@/examples/documents/builders.ts";
 import { APP_VIEWPORT, fitAll, focusGraph, modKey, openApp, selectNode, viewportSettled } from "./app.ts";
 
@@ -160,6 +161,53 @@ async function view(page: Page, nodeId: string, stock = false): Promise<Locator>
     })
     .toBeLessThan(STILL);
   return canvas;
+}
+
+/**
+ * THE CLOCK A FLIGHT IS INTEGRATED OVER, recorded in the page: every animation frame's time,
+ * and, for each key event, how many frames had run before it. Installed before the app
+ * loads. A held key moves the camera by pace × the seconds of the frames it was held for,
+ * so the test reads those frames instead of trusting that two holds of its own clock were
+ * equal (they are not, on a machine other sessions share).
+ */
+async function recordFlightClock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const clock = { frames: [] as number[], keys: [] as Array<{ type: string; key: string; frame: number; at: number }> };
+    (window as unknown as { __flightClock: typeof clock }).__flightClock = clock;
+    const tick = (at: number): void => {
+      clock.frames.push(at);
+      window.requestAnimationFrame(tick);
+    };
+    window.requestAnimationFrame(tick);
+    for (const type of ["keydown", "keyup"]) {
+      window.addEventListener(type, (event) => {
+        const pressed = event as KeyboardEvent;
+        if (!pressed.repeat) clock.keys.push({ type, key: pressed.key.toLowerCase(), frame: clock.frames.length, at: performance.now() });
+      }, true);
+    }
+  });
+}
+
+/**
+ * The seconds the LAST hold of `key` flew for, as the pane integrates them: the first frame
+ * after the key goes down starts the clock, every later frame until it comes up adds its
+ * own length, and a frame longer than 0.1 s counts as 0.1 (`MAX_FRAME_SECONDS`).
+ */
+async function flownSeconds(page: Page, key: string): Promise<{ seconds: number; frames: number; wall: number }> {
+  return page.evaluate((held) => {
+    const clock = (window as unknown as { __flightClock: { frames: number[]; keys: Array<{ type: string; key: string; frame: number; at: number }> } }).__flightClock;
+    const last = (type: string): { frame: number; at: number } => {
+      const found = clock.keys.filter((entry) => entry.type === type && entry.key === held).at(-1);
+      if (found === undefined) throw new Error(`no ${type} of ${held} was seen`);
+      return found;
+    };
+    const [down, up] = [last("keydown"), last("keyup")];
+    let seconds = 0;
+    for (let index = down.frame + 1; index < up.frame; index += 1) {
+      seconds += Math.min(0.1, (clock.frames[index]! - clock.frames[index - 1]!) / 1000);
+    }
+    return { seconds, frames: up.frame - down.frame, wall: (up.at - down.at) / 1000 };
+  }, key);
 }
 
 async function undo(page: Page): Promise<void> {
@@ -533,7 +581,8 @@ test("a Render Surface that NAMES a camera offers that camera, and its own Eye s
   expect(await storedPose(page, "surface_cloth", "Camera Eye")).toEqual(inline);
 });
 
-test("locked: the wheel dollies the camera toward what it looks at, and shift flies faster", async ({ page }) => {
+test("locked: the wheel dollies the camera toward what it looks at, and a held key flies at the pace the rule gives, four times it with shift", async ({ page }) => {
+  await recordFlightClock(page);
   const { nodes, wires } = shot(named("shot", "camera", at(0, 1), { eye: [0, 0.5, 3], lookAt: [0, 0, 0] }));
   await open(page, "wheel", nodes, wires);
   const start = await storedPose(page, "camera_shot");
@@ -563,25 +612,39 @@ test("locked: the wheel dollies the camera toward what it looks at, and shift fl
   await undo(page);
   expect(await storedPose(page, "camera_shot")).toEqual(start);
 
-  // SHIFT IS THE THROTTLE. The same hold, with and without it, from the same pose.
-  const fly = async (shift: boolean): Promise<number> => {
+  /*
+   * THE PACE, AND SHIFT AS THE THROTTLE. Each hold is held against ITS OWN frames: the
+   * distance the stored pose moved is the pace × the distance to Look At × the seconds of
+   * the frames the key was held for (read from the page), × four with shift. This was a
+   * ratio of two real holds ("more than 2.2 times as far"), and two equal holds gave 2.36
+   * and 1.68 on a loaded machine: that measured the machine. `use-viewer-fly.test.tsx`
+   * holds the same rule on a clock it owns.
+   *
+   * It is also the literal sequence of a bug this found: a flight AFTER AN UNDONE DOLLY. The
+   * wheel's idle commit kept its local pose, so the flight started from the dollied eye and
+   * landed the dolly's length too far (1.45 times the rule's distance here, in both holds,
+   * which is why a ratio of the two never saw it).
+   */
+  const reach = size(minus(start.eye, start.lookAt));
+  const fly = async (shift: boolean): Promise<{ flown: number; byRule: number; held: string }> => {
     await canvas.focus();
     if (shift) await page.keyboard.down("Shift");
     await page.keyboard.down("w");
     await page.waitForTimeout(500);
     await page.keyboard.up("w");
     if (shift) await page.keyboard.up("Shift");
+    const held = await flownSeconds(page, "w");
     const flown = await storedPose(page, "camera_shot");
     await undo(page);
     expect(await storedPose(page, "camera_shot")).toEqual(start);
-    return size(minus(flown.eye, start.eye));
+    return { flown: size(minus(flown.eye, start.eye)), byRule: FLY_RADII_PER_SECOND * reach * held.seconds * (shift ? FLY_BOOST : 1), held: JSON.stringify(held) };
   };
   const cruise = await fly(false);
+  expect(cruise.flown).toBeGreaterThan(0.2);
+  // Six digits are stored a frame; over a hold that is well inside one part in a thousand.
+  expect(cruise.flown / cruise.byRule, `cruise flew ${String(cruise.flown)}, the rule gives ${String(cruise.byRule)} for ${cruise.held}`).toBeCloseTo(1, 3);
   const boosted = await fly(true);
-  expect(cruise).toBeGreaterThan(0.2);
-  // Four times the pace by rule (FLY_BOOST). Two holds of a real clock are not equal to the
-  // millisecond, so the claim is the one a pilot would notice: clearly more than double.
-  expect(boosted / cruise, `cruise ${String(cruise)}, with shift ${String(boosted)}`).toBeGreaterThan(2.2);
+  expect(boosted.flown / boosted.byRule, `with shift it flew ${String(boosted.flown)}, the rule gives ${String(boosted.byRule)} for ${boosted.held}`).toBeCloseTo(1, 3);
 });
 
 test("at the default window the bar keeps its pickers whole beside a named button, which is not clipped", async ({ page }) => {
@@ -611,4 +674,146 @@ test("at the default window the bar keeps its pickers whole beside a named butto
   expect(clipped).toBeLessThanOrEqual(1);
   // And the Output picker still shows which node it is (it used to read "render_s").
   expect(await widthOf(page.locator("#viewer-output"))).toBeGreaterThan(110);
+});
+
+test("⚑ a directed shot on an Aimed frame is flown whole: nothing stays driven, W runs down the directed view, E up the picture, a drag is a turntable about the world's vertical", async ({ page }) => {
+  /*
+   * THE CONSUMER'S SHAPE (§T1671b). A table of directed shots: where the camera is, on
+   * Origin; where it looks, on Heading, read WHOLE (Frame: Aimed), so the aim is straight
+   * down the frame and Look At is 0, 0, −d as a plain number. On a Level frame the aim's
+   * height and distance had to stay in Look At as expressions, and two of the six channels
+   * a flight writes were driven. Here all six are free.
+   *
+   * The shot: from (0, −3, 4), below and in front of the grid, looking up a 3-4-5 climb at
+   * its centre, five away.
+   */
+  const rig = {
+    "origin.x": expressionSlot("0", 0),
+    "origin.y": expressionSlot("0 - 3", -3),
+    "origin.z": expressionSlot("4", 4),
+    "heading.x": expressionSlot("0", 0),
+    "heading.y": expressionSlot("3", 3),
+    "heading.z": expressionSlot("0 - 4", -4),
+  };
+  const { nodes, wires } = shot(named("rig", "camera", at(0, 1), { frame: "aimed", eye: [0, 0, 0], lookAt: [0, 0, -5], ...rig } as never));
+  // The same pose placed by hand on a plain camera, and a Render through it.
+  nodes.push(named("plain", "camera", at(0, 2), { eye: [0, -3, 4], lookAt: [0, 0, 0] }), named("plain", "render", at(1, 2)));
+  wires.push(["geometry_boxes", "render_plain", "scenes"], ["camera_plain", "render_plain", "camera"], ["light_key", "render_plain", "lights"]);
+  await open(page, "aimed", nodes, wires);
+  const start = await storedPose(page, "camera_rig");
+  expect(start).toEqual({ eye: [0, 0, 0], lookAt: [0, 0, -5] });
+
+  // THE FRAME REACHES THE PICTURE: the directed Render draws what the hand-placed one draws.
+  /* The pointer over each picture FIRST: the viewer then shows its pixel line and keeps it
+     for that output, and the picture sits 8 px higher for it. The drag below would bring that line in half
+     way through, and a shot from before it is not the same box as one from after. */
+  const probed = async (canvas: Locator): Promise<Locator> => {
+    await canvas.hover();
+    await expect(page.getByTestId("viewer-readout")).toContainText("pixel");
+    return canvas;
+  };
+  const byHand = await (await probed(await view(page, "render_plain"))).screenshot();
+  const canvas = await probed(await view(page, "render_shot"));
+  const before = await canvas.screenshot();
+  expect(await changed(page, byHand, before), "the Aimed frame did not place the camera").toBeLessThan(STILL);
+
+  const button = page.getByTestId("viewer-fly-camera");
+  await expect(button).toHaveText("Fly camera_rig");
+  await button.click();
+  // NOTHING STAYS DRIVEN: the sentence ends where it does for a plain camera.
+  await expect(page.getByTestId("viewer-camera-note")).toHaveText("Flying camera_rig: every move is an edit, undo steps back.");
+
+  // W RUNS DOWN THE DIRECTED VIEW: the frame's own −z, Look At with it, nothing to the side or up.
+  await page.keyboard.down("w");
+  await page.waitForTimeout(600);
+  await page.keyboard.up("w");
+  await expect.poll(async () => changed(page, before, await canvas.screenshot()), { message: "the picture did not move with the flight" }).toBeGreaterThan(MOVED);
+  const flown = await storedPose(page, "camera_rig");
+  const advanced = minus(flown.eye, start.eye);
+  expect(advanced[2], "W did not advance along the directed view").toBeLessThan(-0.3);
+  expect(Math.hypot(advanced[0], advanced[1]), "W left the directed view").toBeLessThan(1e-4);
+  expect(size(minus(minus(flown.lookAt, start.lookAt), advanced)), "Look At did not travel with the eye").toBeLessThan(1e-4);
+
+  // E RISES ALONG THE PICTURE'S UP. The shot looks down its frame, so that is the frame's
+  // +y. Along the WORLD's up, (0, 0.8, −0.6) in this frame, it would also have gone −z.
+  await canvas.focus();
+  await page.keyboard.down("e");
+  await page.waitForTimeout(500);
+  await page.keyboard.up("e");
+  const risen = await storedPose(page, "camera_rig");
+  const rose = minus(risen.eye, flown.eye);
+  expect(rose[1], "E did not raise the camera").toBeGreaterThan(0.3);
+  expect(Math.hypot(rose[0], rose[2]), "E did not run along the picture's up").toBeLessThan(1e-4);
+  expect(size(minus(minus(risen.lookAt, flown.lookAt), rose))).toBeLessThan(1e-4);
+
+  // A SIDEWAYS DRAG IS A TURNTABLE ABOUT THE WORLD'S VERTICAL through Look At: the eye goes
+  // round the aim at the distance and at the WORLD height it had. About the frame's own up,
+  // which is what every other pose turns about, its world height would have changed.
+  const box = await canvas.boundingBox();
+  if (box === null) throw new Error("the viewer's picture has no box");
+  const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.mouse.move(centre.x, centre.y);
+  await page.mouse.down();
+  await page.mouse.move(centre.x + box.width * 0.25, centre.y, { steps: 8 });
+  await page.mouse.up();
+  const orbited = await storedPose(page, "camera_rig");
+  const WORLD_UP: Vec3 = [0, 0.8, -0.6];
+  const height = (offset: Vec3): number => offset[0] * WORLD_UP[0] + offset[1] * WORLD_UP[1] + offset[2] * WORLD_UP[2];
+  const [from, to] = [minus(risen.eye, risen.lookAt), minus(orbited.eye, orbited.lookAt)];
+  expect(orbited.lookAt).toEqual(risen.lookAt);
+  expect(Math.abs(to[0] - from[0]), "the drag did not carry the eye round").toBeGreaterThan(0.3);
+  expect(size(to)).toBeCloseTo(size(from), 4);
+  expect(height(to), "the orbit was not about the world's vertical").toBeCloseTo(height(from), 4);
+  // The premise of that line: the same turn about the frame's +y changes the world height by this much.
+  const turned = Math.atan2(to[0], to[2]);
+  expect(Math.abs(height([size(from) * Math.sin(turned), 0, size(from) * Math.cos(turned)]) - height(from))).toBeGreaterThan(0.05);
+
+  // THE RIG STANDS, as the saved file holds it, and the Frame is still Aimed.
+  const saved = await savedParameters(page, "camera_rig");
+  for (const [key, slot] of Object.entries(rig)) expect([key, saved[key]], "a gesture replaced a channel of the rig").toEqual([key, slot]);
+  expect(saved["frame"]).toBe("aimed");
+  for (const key of ["eye.x", "eye.y", "eye.z", "lookAt.x", "lookAt.y", "lookAt.z"]) expect([key, saved[key]]).toEqual([key, undefined]);
+
+  // UNDO RETURNS, a step a gesture: the drag, the rise, the advance, and the picture with them.
+  await undo(page);
+  expect(await storedPose(page, "camera_rig")).toEqual(risen);
+  await undo(page);
+  expect(await storedPose(page, "camera_rig")).toEqual(flown);
+  await undo(page);
+  expect(await storedPose(page, "camera_rig")).toEqual(start);
+  await expect.poll(async () => changed(page, before, await canvas.screenshot()), { message: "undo did not put the picture back" }).toBeLessThan(STILL);
+});
+
+test("⚑ v pressed in the same breath as a click shows the node just clicked, not the one selected before", async ({ page }) => {
+  /*
+   * Found by this file failing under load, on the line every test here starts with: click a
+   * node's name, press `v`. The keymap read the selection the app had last RENDERED, which
+   * lands one commit after the click, so a key that arrived first opened the viewer on the
+   * node selected BEFORE the click (and did nothing at all when nothing was). Sent with
+   * nothing between them, the click and the key lost that race every time, on an idle
+   * machine. The keymap now reads the selection the canvas last reported.
+   */
+  const { nodes, wires } = shot(named("shot", "camera", at(0, 1), { eye: [0, 0.5, 3], lookAt: [0, 0, 0] }));
+  await open(page, "breath", nodes, wires);
+  const select = page.getByTestId("viewer-output-select");
+  const centreOf = async (nodeId: string): Promise<{ x: number; y: number }> => {
+    const box = await page.getByTestId(`node-name-${nodeId}`).boundingBox();
+    if (box === null) throw new Error(`${nodeId} has no name on screen`);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+  await selectNode(page, "camera_shot");
+  await page.keyboard.press("v");
+  await expect(select).toHaveValue("camera_shot:out");
+
+  // Another node selected before: the click and the key go down the wire together.
+  const render = await centreOf("render_shot");
+  await Promise.all([page.mouse.click(render.x, render.y), page.keyboard.press("v")]);
+  await expect(select).toHaveValue("render_shot:out");
+
+  // Nothing selected before: the same.
+  const source = await centreOf("grid_source");
+  await page.locator(".react-flow__pane").click({ position: { x: 20, y: 20 } });
+  await expect(page.locator(".react-flow__node.selected")).toHaveCount(0);
+  await Promise.all([page.mouse.click(source.x, source.y), page.keyboard.press("v")]);
+  await expect(select).toHaveValue("grid_source:out");
 });

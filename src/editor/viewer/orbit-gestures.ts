@@ -100,6 +100,35 @@ export interface FlyFrame {
 }
 
 /**
+ * §T1671b — the axes a flight runs along for a pose whose up is NOT +y: a camera stored in
+ * a frame that pitches, where the world's up is some other direction in the pose's own
+ * coordinates. Same construction as the +y form every other pose uses (`orbitFrame`):
+ * `back` is eye − lookAt, `right` is up × back, and `up` is the picture's own up, back ×
+ * right, which is what E and Q rise along.
+ */
+export function flyFrameAbout(
+  up: readonly [number, number, number],
+  eye: readonly [number, number, number],
+  lookAt: readonly [number, number, number],
+): FlyFrame {
+  const dx = eye[0] - lookAt[0];
+  const dy = eye[1] - lookAt[1];
+  const dz = eye[2] - lookAt[2];
+  const span = Math.max(1e-6, Math.hypot(dx, dy, dz));
+  const back = [dx / span, dy / span, dz / span] as const;
+  const rx = up[1] * back[2] - up[2] * back[1];
+  const ry = up[2] * back[0] - up[0] * back[2];
+  const rz = up[0] * back[1] - up[1] * back[0];
+  const across = Math.max(1e-6, Math.hypot(rx, ry, rz));
+  const right = [rx / across, ry / across, rz / across] as const;
+  return {
+    right,
+    up: [back[1] * right[2] - back[2] * right[1], back[2] * right[0] - back[0] * right[2], back[0] * right[1] - back[1] * right[0]],
+    back,
+  };
+}
+
+/**
  * Held directions + elapsed time → a world-space step, in stock-radius units.
  *
  * `null` when nothing is held, or when the held axes cancel (W and S together): that is

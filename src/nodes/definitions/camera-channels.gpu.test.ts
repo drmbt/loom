@@ -38,6 +38,7 @@ struct Params {
   seenRight: vec3f,
   seenUp: vec3f,
   seenFov: f32,
+  seenCeiling: f32, // @default 0  The height of a second plane of tiles overhead; 0 is none.
 };
 
 @group(0) @binding(0) var inputSampler: sampler;
@@ -53,8 +54,11 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let above = (1.0 - uv.y * 2.0) * reach;
   let ray = normalize(params.seenAhead + params.seenRight * across + params.seenUp * above);
   // Above the horizon there is no floor: the input, which is black.
-  if (ray.y > -0.001) { return vec4f(under.rgb * frameU.resolution.x * 0.0, 1.0); }
-  let hit = params.seenFrom + ray * (-params.seenFrom.y / ray.y);
+  // A view that climbs sees no floor: with a ceiling stated there are tiles overhead too.
+  let overhead = params.seenCeiling > 0.0 && ray.y > 0.001;
+  if (ray.y > -0.001 && !overhead) { return vec4f(under.rgb * frameU.resolution.x * 0.0, 1.0); }
+  let plane = select(0.0, params.seenCeiling, overhead);
+  let hit = params.seenFrom + ray * ((plane - params.seenFrom.y) / ray.y);
   let tile = floor(hit.xz);
   let odd = abs(tile.x + tile.y) % 2.0;
   return vec4f(0.25 + 0.5 * odd, fract(hit.x), fract(hit.z), 1.0);
@@ -67,7 +71,7 @@ const BY_CHANNEL: Read = (channel) => `op('camera_rig').chan.${channel}`;
 const EYE_BY_PARAMETER: Read = (channel) =>
   channel.startsWith("eye") ? `op('camera_rig').par.eye.${channel.slice(3).toLowerCase()}` : BY_CHANNEL(channel);
 
-function floor(camera: Record<string, unknown>, read: Read): GraphDocument {
+function floor(camera: Record<string, unknown>, read: Read, ceiling = 0): GraphDocument {
   const from = (field: string, part: string): Record<string, unknown> =>
     Object.fromEntries((["x", "y", "z"] as const).map((axis) => [`${field}.${axis}`, expressionSlot(read(`${part}${axis.toUpperCase()}`), 0)]));
   return graph(
@@ -85,6 +89,7 @@ function floor(camera: Record<string, unknown>, read: Read): GraphDocument {
           ...from("seenRight", "right"),
           ...from("seenUp", "up"),
           seenFov: expressionSlot(read("fov"), 0),
+          seenCeiling: ceiling,
         } as never,
       ),
       named("final", "output", [800, 0]),
@@ -189,5 +194,51 @@ describe("T1674b on a real device — a view ray rebuilt from the camera's chann
     // Facing +z, behind is −z: Eye (2, 1.75, −4), Look At (2, 1.25, −1).
     const byHand = await render(floor({ eye: [2, 1.75, -4], lookAt: [2, 1.25, -1], fov: 50 }, BY_CHANNEL));
     expect(differing(north.bytes, byHand.bytes)).toBe(0);
+  }, 120_000);
+});
+
+/**
+ * §T1671b — THE SAME CLAIM IN AN AIMED FRAME, WITH NOTHING CHANGED ON THE CONSUMER'S SIDE.
+ *
+ * The pass above is untouched: the same expressions on the same channels. The camera opts
+ * into Frame: Aimed, its Heading CLIMBS, and the picture is still the bytes of the same pose
+ * written plainly. That is the point of reading the pose from the engine: the consumer's
+ * second saying of the frame would have been wrong for this camera.
+ *
+ * A directed shot: Origin (2, 1.75, −1) is where the camera is, Heading (0, 3, −4) is where
+ * it looks (a 3-4-5 climb, so the arithmetic is exact), Eye 0 and Look At 0, 0, −5 plain.
+ * Five along (0, 0.6, −0.8) is (0, 3, −4):
+ *   Eye     = (2, 1.75, −1)
+ *   Look At = (2, 4.75, −5)
+ * A view that climbs 37° sees no floor, so there are tiles overhead at 6.
+ */
+const DIRECTED = { frame: "aimed", eye: [0, 0, 0], lookAt: [0, 0, -5], origin: [2, 1.75, -1], heading: [0, 3, -4], fov: 50 };
+const DIRECTED_BY_HAND = { eye: [2, 1.75, -1], lookAt: [2, 4.75, -5], fov: 50 };
+const CEILING = 6;
+
+describe("T1671b on a real device — the channels follow an Aimed frame whose Heading climbs", () => {
+  it("⚑ the directed shot and the same pose written plainly draw the same pixels, through the same pass", async () => {
+    requireDawn();
+    const aimed = await render(floor(DIRECTED, BY_CHANNEL, CEILING));
+    const byHand = await render(floor(DIRECTED_BY_HAND, BY_CHANNEL, CEILING));
+    expect(differing(aimed.bytes, byHand.bytes)).toBe(0);
+    // Not vacuous: the tiles overhead fill a real share of the picture.
+    expect(floored(aimed.bytes)).toBeGreaterThan(1000);
+    expect(notComposed(aimed.diagnostics)).toEqual([]);
+    // The premise: read Level, the same numbers look straight ahead, at another picture.
+    const level = await render(floor({ ...DIRECTED, frame: "level" }, BY_CHANNEL, CEILING));
+    expect(differing(aimed.bytes, level.bytes)).toBeGreaterThan(1000);
+    // Level is Eye (2, 1.75, −1) looking at (2, 1.75, −6): held too, so "another picture" is the right one.
+    const levelByHand = await render(floor({ eye: [2, 1.75, -1], lookAt: [2, 1.75, -6], fov: 50 }, BY_CHANNEL, CEILING));
+    expect(differing(level.bytes, levelByHand.bytes)).toBe(0);
+  }, 120_000);
+
+  it("and a Heading that dives: the floor, from the same pass", async () => {
+    requireDawn();
+    // Five along (0, −0.6, −0.8) from (2, 3.75, −1) is (2, 0.75, −5).
+    const aimed = await render(floor({ ...DIRECTED, origin: [2, 3.75, -1], heading: [0, -3, -4] }, BY_CHANNEL));
+    const byHand = await render(floor({ eye: [2, 3.75, -1], lookAt: [2, 0.75, -5], fov: 50 }, BY_CHANNEL));
+    expect(differing(aimed.bytes, byHand.bytes)).toBe(0);
+    expect(floored(aimed.bytes)).toBeGreaterThan(1000);
   }, 120_000);
 });

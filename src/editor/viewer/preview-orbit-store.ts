@@ -88,7 +88,12 @@ export interface PreviewOrbitStore {
    * deltas. The viewer's flight asks this for the axes W and D run along; the inspection
    * store has no use for it (its pose is `orbitPose(basis, get(nodeId))`).
    */
-  pose?(nodeId: NodeId): { readonly eye: readonly [number, number, number]; readonly lookAt: readonly [number, number, number] } | null;
+  pose?(nodeId: NodeId): {
+    readonly eye: readonly [number, number, number];
+    readonly lookAt: readonly [number, number, number];
+    /** §T1671b: the world's up in the pose's coordinates, when it is not +y (`CameraPose.up`). */
+    readonly up?: readonly [number, number, number];
+  } | null;
   reset(nodeId: NodeId): void;
   /**
    * T379 — home to MEASURED CONTENT: enter adjustable with a content frame under zero

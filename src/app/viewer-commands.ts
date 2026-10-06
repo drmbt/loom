@@ -210,7 +210,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
   bus.registerCommand({
     name: "viewer.cameraHome",
     inputSchema: NO_INPUT,
-    description: "Return the viewer's inspection camera to its baked framing.",
+    description: "Return the viewer's inspection camera to its baked framing. While the viewer is locked to a camera, leave the lock instead: nothing is edited.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();
       if (holder.current === null) return cameraRefusal(revision);

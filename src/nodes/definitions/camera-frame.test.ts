@@ -164,3 +164,72 @@ describe("T1656b — a camera's Eye and Look At are offsets in the frame Origin 
     expect(same(seen[1]!, seen[2]!)).toBe(false);
   });
 });
+
+/**
+ * §T1671b — FRAME: AIMED. Heading read whole, so a directed shot is Origin (where the
+ * camera is), Heading (where it looks) and plain offsets. The same "cut the edge" form as
+ * above: what the Render draws through an aimed camera is exactly what it draws through a
+ * plain camera placed at the composed pose.
+ */
+describe("T1671b — an aimed frame's forward is Heading, climbing and diving included", () => {
+  it("Level stays the default: a climbing Heading with no Frame stated draws what it drew", () => {
+    const level = matrices(shot({ eye: [0, 0.5, 3], lookAt: [0, 0, 0], heading: [0, 3, -4] }));
+    // Only the horizontal part: (0, 3, −4) read level is the frame's own −z, no turn at all.
+    expect(same(level.render, plain([0, 0.5, 3], [0, 0, 0]).render)).toBe(true);
+    expect(same(matrices(shot({ eye: [0, 0.5, 3], lookAt: [0, 0, 0], heading: [0, 3, -4], frame: "level" })).render, level.render)).toBe(true);
+  });
+
+  it("⚑ a directed shot: Eye 0, Look At 0, 0, −d draws what a plain camera at Origin looking d along Heading draws", () => {
+    // The 3-4-5 heading, climbing. Five along it from (2, 1, −1) is (2, 4, −5).
+    const aimed = matrices(shot({ eye: [0, 0, 0], lookAt: [0, 0, -5], origin: [2, 1, -1], heading: [0, 3, -4], frame: "aimed" }));
+    const byHand = plain([2, 1, -1], [2, 4, -5]);
+    expect(same(aimed.render, byHand.render)).toBe(true);
+    expect(same(aimed.tile, byHand.tile)).toBe(true);
+    // The premise: read level, the same numbers are another picture.
+    expect(same(aimed.render, matrices(shot({ eye: [0, 0, 0], lookAt: [0, 0, -5], origin: [2, 1, -1], heading: [0, 3, -4] })).render)).toBe(false);
+  });
+
+  it("an offset to the side and above follows the frame's own right and up", () => {
+    // right (1, 0, 0), up (0, 0.8, 0.6), back (0, −0.6, 0.8): Eye (1, 2, 5) is
+    // (1, 1.6 − 3, 1.2 + 4) = (1, −1.4, 5.2) from the Origin.
+    const aimed = matrices(shot({ eye: [1, 2, 5], lookAt: [0, 0, 0], origin: [2, 1, -1], heading: [0, 3, -4], frame: "aimed" }));
+    const frame = { right: [1, 0, 0], up: [0, 0.8, 0.6], back: [0, -0.6, 0.8] } as const;
+    const eye: Vec3 = [2 + 1, 1 + frame.up[1] * 2 + frame.back[1] * 5, -1 + frame.up[2] * 2 + frame.back[2] * 5];
+    const byHand = plain(eye, [2, 1, -1]);
+    for (let index = 0; index < 16; index += 1) expect(aimed.render[index]).toBeCloseTo(byHand.render[index]!, 10);
+  });
+
+  it("straight down has a picture and it is the plain camera's: the pole is a rule, not a NaN", () => {
+    const aimed = matrices(shot({ eye: [0, 0, 0], lookAt: [0, 0, -3], origin: [0.5, 4, 0.25], heading: [0, -1, 0], frame: "aimed" }));
+    for (const value of aimed.render) expect(Number.isFinite(value)).toBe(true);
+    const byHand = plain([0.5, 4, 0.25], [0.5, 1, 0.25]);
+    expect(same(aimed.render, byHand.render)).toBe(true);
+  });
+
+  it("⚑ THE CONSUMER'S SHAPE: a table of directed shots on Origin and Heading, Eye and Look At plain, at three moments", () => {
+    // The directed eye and aim are expressions; Heading is aim minus eye, as the peer moves the rig.
+    const rig = {
+      "origin.x": expression("4 * cos(time)", 4),
+      "origin.y": expression("1 + 0.5 * sin(time * 2)", 1),
+      "origin.z": expression("4 * sin(time)", 0),
+      "heading.x": expression("0 - 4 * cos(time)", -4),
+      "heading.y": expression("0.25 - (1 + 0.5 * sin(time * 2))", -0.75),
+      "heading.z": expression("0 - 4 * sin(time)", 0),
+    };
+    const document = shot({ eye: [0, 0, 0], lookAt: [0, 0, -2], frame: "aimed" }, rig);
+    const seen: number[][] = [];
+    for (const seconds of [0, 0.5, 1.25]) {
+      const eye: Vec3 = [4 * Math.cos(seconds), 1 + 0.5 * Math.sin(seconds * 2), 4 * Math.sin(seconds)];
+      const heading: Vec3 = [0 - 4 * Math.cos(seconds), 0.25 - (1 + 0.5 * Math.sin(seconds * 2)), 0 - 4 * Math.sin(seconds)];
+      const span = Math.hypot(heading[0], heading[1], heading[2]);
+      // Two along the directed view from the directed eye.
+      const aim: Vec3 = [eye[0] + (heading[0] / span) * 2, eye[1] + (heading[1] / span) * 2, eye[2] + (heading[2] / span) * 2];
+      const framed = matrices(document, seconds);
+      const byHand = matrices(shot({ eye: [...eye], lookAt: [...aim] }), seconds);
+      for (let index = 0; index < 16; index += 1) expect(framed.render[index]).toBeCloseTo(byHand.render[index]!, 10);
+      seen.push(framed.render);
+    }
+    expect(same(seen[0]!, seen[1]!)).toBe(false);
+    expect(same(seen[1]!, seen[2]!)).toBe(false);
+  });
+});

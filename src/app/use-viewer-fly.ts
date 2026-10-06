@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import { isTextEntryTarget, strokeFromEvent, useOptionalKeymap } from "@editor/keymap/index.ts";
-import { flyDeltaFor, flyStepFor, isFlyAxis } from "@editor/viewer/orbit-gestures.ts";
-import type { FlyAxis } from "@editor/viewer/orbit-gestures.ts";
+import { flyDeltaFor, flyFrameAbout, flyStepFor, isFlyAxis } from "@editor/viewer/orbit-gestures.ts";
+import type { FlyAxis, FlyFrame } from "@editor/viewer/orbit-gestures.ts";
 import type { PreviewOrbitStore } from "@editor/viewer/index.ts";
 import { DEFAULT_PREVIEW_ORBIT, orbitFrame, orbitPose } from "@runtime/previews/index.ts";
 import type { OrbitCameraBasis, OrbitPose } from "@runtime/previews/index.ts";
@@ -14,10 +14,16 @@ import type { OrbitCameraBasis, OrbitPose } from "@runtime/previews/index.ts";
  * the flight in progress) answers; the inspection store is a stock framing moved by deltas,
  * and its pose is derived from the compiler's basis. Null means there is nothing to fly.
  */
-function poseOf(orbits: PreviewOrbitStore, nodeId: NodeId, basis: OrbitCameraBasis | null): OrbitPose | null {
+type FlownPose = OrbitPose & { readonly up?: readonly [number, number, number] };
+
+function poseOf(orbits: PreviewOrbitStore, nodeId: NodeId, basis: OrbitCameraBasis | null): FlownPose | null {
   if (orbits.pose !== undefined) return orbits.pose(nodeId);
   return basis === null ? null : orbitPose(basis, orbits.get(nodeId) ?? DEFAULT_PREVIEW_ORBIT);
 }
+
+/** The axes W, D and E run along. §T1671b: about the pose's own up when it says it is not +y. */
+const axesOf = (pose: FlownPose): FlyFrame =>
+  pose.up === undefined ? orbitFrame(pose) : flyFrameAbout(pose.up, pose.eye, pose.lookAt);
 
 /**
  * §T1311b(b) — THE VIEWER FLIES.
@@ -166,7 +172,7 @@ export function useViewerFly(options: {
       // a drag, W must go where the picture points, and after a flight it must keep going
       // from the new position rather than re-resolving against the author's framing.
       const seconds = Math.min(MAX_FRAME_SECONDS, (at - previous) / 1000);
-      const delta = flyDeltaFor(held.current.values(), seconds, orbitFrame(pose), {
+      const delta = flyDeltaFor(held.current.values(), seconds, axesOf(pose), {
         boost: boosted.current,
       });
       if (delta !== null) orbits.fly(nodeId, delta);
@@ -248,7 +254,7 @@ export function useViewerFly(options: {
     orbits.setMode(nodeId, "adjustable");
     const pose = poseOf(orbits, nodeId, basis);
     if (pose === null) return false;
-    const delta = flyStepFor(direction, orbitFrame(pose));
+    const delta = flyStepFor(direction, axesOf(pose));
     if (delta === null) return false;
     orbits.fly(nodeId, delta);
     // One discrete step is a whole flight: a document-writing store closes its undo step.

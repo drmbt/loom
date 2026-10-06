@@ -357,6 +357,17 @@ exactly as it was). Values only: an Aimed rig animates as a uniform write.
 - **A gesture on a rig whose Heading turns while it is dragged** uses the world-up axis the
   gesture started with; re-reading the frame per pointer event would be exact.
 
+**As built (2026-10-06, after section 10).** The Frame is read in the one function the
+payload and section 10's channels are built by, so a reader of `chan.eyeX` changes nothing
+when a camera opts in: a pass that rebuilds the view ray from the channels draws the same
+bytes for a directed shot whose Heading climbs as for the same pose written plainly (Dawn).
+The Frame's own description says the two gesture rulings, where the owner chooses it. The
+store's turntable and truck have a second form about a given axis, taken only when the pose
+says the world's up is not its +y (an Aimed frame whose Heading climbs or dives); a pose
+with no such axis runs the lines it always ran. Held in the app on the consumer's shape:
+nothing stays driven, W runs down the directed view, E rises along the picture's up, a
+sideways drag keeps the eye's world height, each is one undo step.
+
 ## 10. The composed pose, read by an expression (§T1674b)
 
 **The hole.** Section 4 said every consumer of the payload gets world values and none

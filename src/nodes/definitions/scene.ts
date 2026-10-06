@@ -98,9 +98,15 @@ const samePose = (a: CameraPose, b: CameraPose): boolean =>
  * §T1656b: Eye and Look At are offsets in the frame Origin and Heading make. THE ONE
  * COMPOSITION: the payload carries these world positions (so no consumer of a camera knows
  * the frame exists) and §T1674b's channels are these same numbers, read by an expression.
+ * §T1671b: the Frame is read HERE, so an Aimed frame reaches the payload and the channels by
+ * the one function, and a reader of the channels changes nothing when a camera opts in.
  */
 function composedCameraPose(values: Readonly<Record<string, unknown>>): CameraPose {
-  const frame = cameraFrame(vec3(values, "origin", [0, 0, 0]), vec3(values, "heading", [0, 0, 0]));
+  const frame = cameraFrame(
+    vec3(values, "origin", [0, 0, 0]),
+    vec3(values, "heading", [0, 0, 0]),
+    values["frame"] === "aimed" ? "aimed" : "level",
+  );
   return {
     eye: inCameraFrame(frame, vec3(values, "eye", [0, 0.5, 3])),
     lookAt: inCameraFrame(frame, vec3(values, "lookAt", [0, 0, 0])),
@@ -150,7 +156,7 @@ const cameraChannels: NonNullable<NodeDefinition["parameterChannels"]> = {
     distance: "From the camera to the point it looks at",
     fov: "The field of view, in degrees",
   },
-  reads: ["eye", "lookAt", "origin", "heading", "fov", "roll"],
+  reads: ["eye", "lookAt", "origin", "heading", "frame", "fov", "roll"],
   evaluate(values) {
     const pose = composedCameraPose(values);
     const basis = cameraBasis(pose.eye, pose.lookAt, pose.roll);
@@ -208,7 +214,18 @@ export const cameraNode: NodeDefinition = {
       label: "Heading",
       default: [0, 0, 0],
       description:
-        "The direction the subject faces, as a vector. Eye and Look At turn with it about the vertical axis, so an offset behind the subject stays behind it: the frame's forward is its −z, the way the default camera looks. Only the horizontal part is read, so the camera rises with the subject and never tilts with it. At 0, 0, 0 nothing turns and only Origin's position is inherited.",
+        "The direction the frame faces, as a vector: the frame's forward is its −z, the way the default camera looks, so an offset behind the subject stays behind it. With Frame on Level only the horizontal part is read: Eye and Look At turn about the vertical, and the camera rises with the subject and never tilts with it. With Frame on Aimed it is read whole. At 0, 0, 0 nothing turns and only Origin's position is inherited.",
+    },
+    frame: {
+      type: "enum",
+      label: "Frame",
+      default: "level",
+      options: [
+        { value: "level", label: "Level" },
+        { value: "aimed", label: "Aimed" },
+      ],
+      description:
+        "How Heading is read. Level: only its horizontal part, so the frame turns about the vertical and never tilts (a chase camera keeps its own horizon). Aimed: whole, so the frame's forward is Heading itself and Look At 0, 0, −d is d along it (a directed shot: drive Origin with where the camera is and Heading with where it looks, and Eye and Look At stay plain numbers that a flight can write). A Heading within about 2.6° of straight up or down takes world +z as its up, as the camera's own view does. Flying it keeps its world meaning in either frame: a drag orbits Look At about the world's vertical, a turntable, and E and Q rise and fall along the picture's up. Bank the picture with Roll.",
     },
     fov: { type: "number", label: "FOV", default: 55, min: 1, max: 179, range: "bounded", unit: "degrees" },
     near: { type: "number", label: "Near", default: 0.1, min: 0.001, range: "floor" },

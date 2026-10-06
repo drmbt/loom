@@ -325,3 +325,70 @@ describe("T1674b — the finding: an expression that reads the offset of a camer
     expect(found(document)).toHaveLength(1);
   });
 });
+
+/**
+ * §T1671b — THE CENTRE OF THE SLICE: a camera that opts into an Aimed frame changes nothing
+ * on the side of whoever reads its pose. The channels come from the function the payload is
+ * built by, and that function reads the Frame.
+ */
+describe("T1671b — the channels follow an Aimed frame, with no change on the reader's side", () => {
+  // A directed shot: where the camera is on Origin, where it looks on Heading (a 3-4-5
+  // climb), and Eye 0, Look At 0, 0, −5 plain. Five along (0, 0.6, −0.8) is (0, 3, −4).
+  const DIRECTED = { frame: "aimed", eye: [0, 0, 0], lookAt: [0, 0, -5], origin: [2, 1, -1], heading: [0, 3, -4], fov: 40 };
+
+  it("⚑ eye is Origin and aim is d along Heading, climb included; rebuilt from them, the matrix is the Render's own", () => {
+    const document = shot(DIRECTED);
+    expect(vector(document, "eye")).toEqual([2, 1, -1]);
+    expect(vector(document, "aim")).toEqual([2, 4, -5]);
+    expect(read(document, "distance").value).toBe(5);
+    const forward = vector(document, "forward");
+    [0, 0.6, -0.8].forEach((value, index) => expect(forward[index]).toBeCloseTo(value, 12));
+    const fromChannels = cameraPayloadMatrix(
+      { eye: vector(document, "eye"), lookAt: vector(document, "aim"), fovDeg: read(document, "fov").value as number, near: 0.1, far: 100, ortho: false, orthoHeight: 2, roll: 0 },
+      ASPECT,
+    );
+    expect(Array.from(fromChannels)).toEqual(drawnThrough(document));
+    // The premise: read Level, the same numbers are another pose (the aim does not climb).
+    const level = shot({ ...DIRECTED, frame: "level" });
+    expect(vector(level, "aim")).toEqual([2, 1, -6]);
+    expect(drawnThrough(level)).not.toEqual(drawnThrough(document));
+  });
+
+  it("a table of directed shots, moving: at three moments the channels are the pose the Render draws through", () => {
+    const document = shot({
+      frame: "aimed",
+      eye: [0, 0, 0],
+      lookAt: [0, 0, -2],
+      "origin.x": expressionSlot("4 * cos(time)", 4),
+      "origin.y": expressionSlot("1 + 0.5 * sin(time * 2)", 1),
+      "origin.z": expressionSlot("4 * sin(time)", 0),
+      "heading.x": expressionSlot("0 - 4 * cos(time)", -4),
+      "heading.y": expressionSlot("0.25 - (1 + 0.5 * sin(time * 2))", -0.75),
+      "heading.z": expressionSlot("0 - 4 * sin(time)", 0),
+    });
+    const seen: number[][] = [];
+    for (const seconds of [0, 0.5, 1.25]) {
+      const eye = vector(document, "eye", seconds);
+      const aim = vector(document, "aim", seconds);
+      // Where the camera is IS the directed eye, and the aim is two along the directed view.
+      const directed = [4 * Math.cos(seconds), 1 + 0.5 * Math.sin(seconds * 2), 4 * Math.sin(seconds)];
+      directed.forEach((value, index) => expect(eye[index]).toBeCloseTo(value, 12));
+      expect(read(document, "distance", seconds).value).toBeCloseTo(2, 12);
+      // The directed aim is (0, 0.25, 0): the view passes through it.
+      const toward = [0 - eye[0], 0.25 - eye[1], 0 - eye[2]];
+      const span = Math.hypot(toward[0]!, toward[1]!, toward[2]!);
+      const forward = vector(document, "forward", seconds);
+      toward.forEach((value, index) => expect(forward[index]).toBeCloseTo(value / span, 12));
+      const fromChannels = cameraPayloadMatrix({ eye, lookAt: aim, fovDeg: 55, near: 0.1, far: 100, ortho: false, orthoHeight: 2, roll: 0 }, ASPECT);
+      expect(Array.from(fromChannels)).toEqual(drawnThrough(document, seconds));
+      seen.push(Array.from(fromChannels));
+    }
+    expect(seen[0]).not.toEqual(seen[1]);
+  });
+
+  it("the finding is the same finding: a read of par.lookAt on an Aimed rig is the offset, and is said", () => {
+    const compiled = compileGraph({ graph: shot(DIRECTED, { lens: "op('camera_rig').par.lookAt.z" }), settings: SETTINGS, registry, capabilities: TIER_B_CAPABILITIES } as never);
+    const said = compiled.diagnostics.filter((entry) => entry.code === "parameter.reference.notComposed");
+    expect(said.map((entry) => entry.suggestion)).toEqual(["Read op('camera_rig').chan.aimZ for the point it looks at in the world."]);
+  });
+});

@@ -10,7 +10,7 @@ import { listExamples } from "../../examples/catalogue.ts";
 import { exampleRegistry } from "../../examples/runner.ts";
 import { cameraPoseAt, cameraPoseDrivenSentence, cameraPoseSaid, movableChannels, poseFromFacts, readCameraPoseFacts } from "./camera-pose.ts";
 import { createDomainBus } from "@domain/commands/index.ts";
-import { STORED_READ } from "@domain/parameters/resolve.ts";
+import { effectiveParameterSchema, STORED_READ } from "@domain/parameters/resolve.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
 import { graphChannelResolver } from "@domain/channels/graph-channels.ts";
 
@@ -315,5 +315,94 @@ describe("T970 — a rig on Origin and Heading leaves Eye and Look At to be flow
       "lookAt.z": expression("0", 0),
     });
     expect(cameraPoseSaid(all.camera, definition, all.scope)).toEqual({ driven: "Driven by expressions (Eye, Look At).", held: "" });
+  });
+});
+
+/**
+ * §T1671b — THE CONSUMER'S SHAPE: an AIMED frame, the rig on Origin and Heading, and Eye and
+ * Look At plain numbers. Every channel a flight writes is free, and the pose says which way
+ * the world's up points where its numbers are stored.
+ */
+describe("T1671b — an aimed rig leaves all six channels free, and its pose carries the world's up", () => {
+  const expression = (source: string, retained: number): ParameterSlot => ({
+    mode: "expression",
+    bindings: { static: { kind: "static", value: retained }, expression: { kind: "expression", source } },
+  });
+  const cameraWith = (parameters: GraphNode["parameters"]): { camera: GraphNode; scope: Parameters<typeof cameraPoseAt>[2] } => {
+    const camera: GraphNode = {
+      id: "cam" as GraphNode["id"],
+      type: "camera",
+      label: "camera_rig",
+      definitionVersion: definition?.version ?? 1,
+      position: { x: 0, y: 0 },
+      parameters,
+    };
+    const graph: GraphDocument = { revision: 1, nodes: { cam: camera }, edges: {}, groups: {} };
+    const { bus } = createDomainBus({ store: createGraphStore({ initialGraph: graph }), registry: nodes });
+    return { camera, scope: { ...bus.readScope(), graph: authoredGraph(graph) } };
+  };
+  // A directed shot whose heading climbs: the 3-4-5 direction (0, 3, −4), by expressions.
+  const RIG = {
+    "origin.x": expression("2", 2),
+    "origin.y": expression("1", 1),
+    "origin.z": expression("0 - 1", -1),
+    "heading.x": expression("0", 0),
+    "heading.y": expression("3", 3),
+    "heading.z": expression("0 - 4", -4),
+  };
+
+  it("nothing stays driven, and the pose is the plain offset with the world's up beside it", () => {
+    const { camera, scope } = cameraWith({ frame: "aimed", eye: [0, 0, 0], lookAt: [0, 0, -5], ...RIG });
+    expect(cameraPoseSaid(camera, definition, scope)).toEqual({ driven: null, held: "" });
+    const pose = cameraPoseAt(camera, definition, scope);
+    expect(pose?.eye).toEqual([0, 0, 0]);
+    expect(pose?.lookAt).toEqual([0, 0, -5]);
+    expect(pose?.eyeMask).toEqual([true, true, true]);
+    expect(pose?.lookAtMask).toEqual([true, true, true]);
+    // Read from the DRIVEN heading (its expression's value, not its retained number).
+    expect(pose?.up?.[0]).toBeCloseTo(0, 12);
+    expect(pose?.up?.[1]).toBeCloseTo(0.8, 12);
+    expect(pose?.up?.[2]).toBeCloseTo(-0.6, 12);
+  });
+
+  it("the same rig read LEVEL, and an aimed frame that does not climb, carry no axis: the +y maths is theirs", () => {
+    const level = cameraWith({ eye: [0, 0, 0], lookAt: [0, 0, -5], ...RIG });
+    expect(cameraPoseAt(level.camera, definition, level.scope)?.up).toBeUndefined();
+    const flat = cameraWith({ frame: "aimed", eye: [0, 0, 0], lookAt: [0, 0, -5], heading: [1, 0, 1] });
+    expect(cameraPoseAt(flat.camera, definition, flat.scope)?.up).toBeUndefined();
+  });
+});
+
+/**
+ * The sentences name the fields a reader will look for, so they take the names from the
+ * node's own parameters. A Render Surface and a Render Instances call their eye "Camera
+ * Eye"; the sentence said "Eye" on all of them, which is a field those nodes do not have.
+ */
+describe("the pose sentences use the node's own labels", () => {
+  const expression = (source: string, retained: number): ParameterSlot => ({
+    mode: "expression",
+    bindings: { static: { kind: "static", value: retained }, expression: { kind: "expression", source } },
+  });
+  const nodeOf = (type: string, parameters: GraphNode["parameters"]): { node: GraphNode; scope: Parameters<typeof cameraPoseAt>[2]; definition: ReturnType<typeof nodes.get> } => {
+    const node: GraphNode = { id: "n" as GraphNode["id"], type, label: "n", definitionVersion: nodes.get(type)?.version ?? 1, position: { x: 0, y: 0 }, parameters };
+    const graph: GraphDocument = { revision: 1, nodes: { n: node }, edges: {}, groups: {} };
+    const { bus } = createDomainBus({ store: createGraphStore({ initialGraph: graph }), registry: nodes });
+    return { node, scope: { ...bus.readScope(), graph: authoredGraph(graph) }, definition: nodes.get(type) };
+  };
+  const ALL = Object.fromEntries(["eye.x", "eye.y", "eye.z", "lookAt.x", "lookAt.y", "lookAt.z"].map((key) => [key, expression("1", 1)]));
+
+  it.each([
+    ["camera", "Eye", "Look At"],
+    ["projector", "Eye", "Look At"],
+    ["renderSurface", "Camera Eye", "Look At"],
+    ["renderInstances", "Camera Eye", "Look At"],
+  ])("%s: its own names, in the driven sentence and in what stays driven", (type, eye, lookAt) => {
+    const all = nodeOf(type, ALL);
+    // The premise: these ARE what the node's own fields are called.
+    const schema = effectiveParameterSchema(all.definition, all.node.parameters);
+    expect([schema?.["eye"]?.label, schema?.["lookAt"]?.label]).toEqual([eye, lookAt]);
+    expect(cameraPoseSaid(all.node, all.definition, all.scope).driven).toBe(`Driven by expressions (${eye}, ${lookAt}).`);
+    const some = nodeOf(type, { "eye.x": expression("1", 1), "lookAt.z": expression("1", 1) });
+    expect(cameraPoseSaid(some.node, some.definition, some.scope).held).toBe(`Stays driven: ${eye} x (Expression), ${lookAt} z (Expression).`);
   });
 });

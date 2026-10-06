@@ -135,3 +135,57 @@ describe("T1656b on a real device — Origin and Heading place the camera, to th
     expect(drawn(carried)).toBeGreaterThan(100);
   }, 120_000);
 });
+
+/**
+ * §T1671b — FRAME: AIMED, ON A REAL DEVICE. Heading is read whole, so a directed shot is
+ * Origin (where the camera is), Heading (where it looks) and plain offsets; the Render
+ * draws the bytes of a camera placed by hand at the composed pose.
+ */
+describe("T1671b on a real device — an Aimed frame's forward is Heading, climbing and diving", () => {
+  it("⚑ a directed shot whose Heading climbs draws the same pixels as a hand-placed camera at the composed pose", async () => {
+    requireDawn();
+    /*
+     * From below and in front of the grid, looking up at its centre. Heading (0, 3, −4) is
+     * a 3-4-5 climb; Look At 0, 0, −5 is five along it:
+     *   Eye     = Origin                          = (0, −3, 4)
+     *   Look At = (0, −3 + 3, 4 − 4)              = (0, 0, 0)
+     */
+    const aimed = await render({ frame: "aimed", eye: [0, 0, 0], lookAt: [0, 0, -5], origin: [0, -3, 4], heading: [0, 3, -4] });
+    const byHand = await render({ eye: [0, -3, 4], lookAt: [0, 0, 0] });
+    expect(differing(aimed, byHand)).toBe(0);
+    expect(drawn(aimed)).toBeGreaterThan(200);
+    // Read LEVEL, the same numbers look straight ahead from under the grid: another picture,
+    // and the one a hand-placed level camera draws (Look At (0, −3, −1)).
+    const level = await render({ eye: [0, 0, 0], lookAt: [0, 0, -5], origin: [0, -3, 4], heading: [0, 3, -4] });
+    expect(differing(aimed, level)).toBeGreaterThan(200);
+    expect(differing(level, await render({ eye: [0, -3, 4], lookAt: [0, -3, -1] }))).toBe(0);
+  }, 120_000);
+
+  it("an offset in an Aimed frame follows the frame's own right and up", async () => {
+    requireDawn();
+    /*
+     * The frame's right is (1, 0, 0), its up (0, 0.8, 0.6). Eye (1, 5, 0), one to the side and
+     * five up the frame: 5 × 0.8 and 5 × 0.6 are 4 and 3 with no rounding, so
+     *   Eye = (0 + 1, −3 + 4, 4 + 3) = (1, 1, 7)
+     */
+    const directed = { frame: "aimed", lookAt: [0, 0, -5], origin: [0, -3, 4], heading: [0, 3, -4] };
+    const offset = await render({ ...directed, eye: [1, 5, 0] });
+    expect(differing(offset, await render({ eye: [1, 1, 7], lookAt: [0, 0, 0] }))).toBe(0);
+    expect(drawn(offset)).toBeGreaterThan(100);
+    // And it is not the shot with no offset.
+    expect(differing(offset, await render({ ...directed, eye: [0, 0, 0] }))).toBeGreaterThan(200);
+  }, 120_000);
+
+  it("⚑ THE POLE: a Heading straight down has a picture, and it is the hand-placed camera's", async () => {
+    requireDawn();
+    // Straight down from over the grid's edge: Look At 0, 0, −1.5 is 1.5 below the Origin.
+    const down = await render({ frame: "aimed", eye: [0, 0, 0], lookAt: [0, 0, -1.5], origin: [0.45, 2, 0.3], heading: [0, -1, 0] });
+    const byHand = await render({ eye: [0.45, 2, 0.3], lookAt: [0.45, 0.5, 0.3] });
+    expect(differing(down, byHand)).toBe(0);
+    expect(drawn(down)).toBeGreaterThan(20);
+    // And straight up, from under it.
+    const up = await render({ frame: "aimed", eye: [0, 0, 0], lookAt: [0, 0, -1.5], origin: [0.45, -2, 0.3], heading: [0, 7, 0] });
+    expect(differing(up, await render({ eye: [0.45, -2, 0.3], lookAt: [0.45, -0.5, 0.3] }))).toBe(0);
+    expect(drawn(up)).toBeGreaterThan(20);
+  }, 120_000);
+});

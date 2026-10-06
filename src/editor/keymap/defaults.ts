@@ -101,7 +101,10 @@ const TD_GRAPH_BINDINGS: readonly KeyBinding[] = [
     keys: "h",
     context: "viewer",
     command: "viewer.cameraHome",
-    label: "Home camera — baked framing",
+    // §T970: it is also the way OUT of a camera lock, and the label did not say so.
+    label: "Home camera — baked framing, or leave a camera lock",
+    description:
+      "Returns the viewer's own camera to its baked framing. While the viewer is locked to a camera it leaves the lock instead and edits nothing: the flown pose stands, and undo is the way back.",
   },
   {
     id: "viewer.frameContent",

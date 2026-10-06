@@ -1,8 +1,9 @@
-import { resolveParameters, type ParameterReadOptions } from "@domain/parameters/resolve.ts";
+import { effectiveParameterSchema, resolveParameters, type ParameterReadOptions } from "@domain/parameters/resolve.ts";
 import type { GraphNode } from "@domain/types/graph.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { parameterReadOptions, type ParameterReadContext } from "@domain/parameters/node-references.ts";
 import type { CameraPose } from "./camera-gizmo-store.ts";
+import { cameraFrame, worldUpInCameraFrame } from "@domain/geometry/camera.ts";
 import { MODE_LABELS } from "@ui/controls/parameter-slot.ts";
 
 /**
@@ -63,6 +64,8 @@ export interface CameraChannel {
 export interface CameraPoseFacts {
   readonly eye: readonly CameraChannel[];
   readonly lookAt: readonly CameraChannel[];
+  /** §T1671b: the world's up in the pose's own coordinates, when it is not +y (`CameraPose.up`). */
+  readonly up?: readonly [number, number, number] | undefined;
   /**
    * §V830 — what the gesture will do INCLUDING what it refuses, in the label's own voice.
    * Empty when nothing is held, so the caller adds no chrome for the ordinary case.
@@ -98,12 +101,37 @@ const poseChannels = (
   node: GraphNode,
   definition: NodeDefinition | undefined,
   read: ParameterReadOptions,
-): { eye: readonly CameraChannel[]; lookAt: readonly CameraChannel[] } => {
+): { eye: readonly CameraChannel[]; lookAt: readonly CameraChannel[]; up: readonly [number, number, number] | undefined } => {
   const resolved = resolveParameters(node, definition, read);
+  /*
+   * §T1671b: a camera whose Frame is Aimed stores its pose down a Heading that may climb,
+   * so the world's up is not the pose's +y. Read here, with the pose and by the same
+   * resolution, so the axis a gesture turns about is the one its numbers were read in.
+   */
+  let up: readonly [number, number, number] | undefined;
+  if (resolved.get("frame")?.value === "aimed") {
+    const heading = vectorChannels(resolved.get("heading"), [0, 0, 0]).map((channel) => channel.value);
+    // A Heading that neither climbs nor dives is a level frame: no axis, the +y maths exactly.
+    if ((heading[1] ?? 0) !== 0) {
+      up = worldUpInCameraFrame(cameraFrame([0, 0, 0], [heading[0] ?? 0, heading[1] ?? 0, heading[2] ?? 0], "aimed"));
+    }
+  }
   return {
     eye: vectorChannels(resolved.get("eye"), [0, 0.5, 3]),
     lookAt: vectorChannels(resolved.get("lookAt"), [0, 0, 0]),
+    up,
   };
+};
+
+/**
+ * What THIS node calls the two vectors of its pose. A Camera's are "Eye" and "Look At"; a
+ * Render Surface and a Render Instances call the first "Camera Eye". The sentences below
+ * name the fields a reader will go and look for, so they take the names from the node's own
+ * parameters: one rule, and a node that relabels its pose is followed.
+ */
+const poseLabels = (node: GraphNode, definition: NodeDefinition | undefined): { readonly eye: string; readonly lookAt: string } => {
+  const schema = definition === undefined ? undefined : effectiveParameterSchema(definition, node.parameters);
+  return { eye: schema?.["eye"]?.label ?? "Eye", lookAt: schema?.["lookAt"]?.label ?? "Look At" };
 };
 
 /**
@@ -135,7 +163,8 @@ export function cameraPoseDrivenSentence(
       ? "expressions"
       : [...drivers].sort().join(" and ");
   // Two short lines on a tile: what decides the pose, and the two parameters it is decided in.
-  return `Driven by ${by} (Eye, Look At).`;
+  const labels = poseLabels(node, definition);
+  return `Driven by ${by} (${labels.eye}, ${labels.lookAt}).`;
 }
 
 /**
@@ -159,20 +188,21 @@ export function readCameraPoseFacts(
   /** §T1557b: `parameterReadOptions(…)` for where the camera IS; `STORED_READ` for the document. */
   read: ParameterReadOptions,
 ): CameraPoseFacts | null {
-  const { eye, lookAt } = poseChannels(node, definition, read);
+  const { eye, lookAt, up } = poseChannels(node, definition, read);
   const free = [...eye, ...lookAt].some((channel) => channel.drivenBy === null);
   if (!free) return null;
 
   const heldParts: string[] = [];
+  const labels = poseLabels(node, definition);
   for (const [label, channels] of [
-    ["Eye", eye],
-    ["Look At", lookAt],
+    [labels.eye, eye],
+    [labels.lookAt, lookAt],
   ] as const) {
     for (const channel of channels) {
       if (channel.drivenBy !== null) heldParts.push(`${label} ${channel.name} (${channel.drivenBy})`);
     }
   }
-  return { eye, lookAt, held: heldParts.length === 0 ? "" : `Stays driven: ${heldParts.join(", ")}.` };
+  return { eye, lookAt, ...(up === undefined ? {} : { up }), held: heldParts.length === 0 ? "" : `Stays driven: ${heldParts.join(", ")}.` };
 }
 
 /**
@@ -218,5 +248,11 @@ export function cameraPoseAt(node: GraphNode, definition: NodeDefinition | undef
   const facts = readCameraPoseFacts(node, definition, parameterReadOptions(scope));
   if (facts === null) return null;
   const { eye, lookAt } = poseFromFacts(facts);
-  return { eye, lookAt, eyeMask: movableChannels(facts.eye), lookAtMask: movableChannels(facts.lookAt) };
+  return {
+    eye,
+    lookAt,
+    eyeMask: movableChannels(facts.eye),
+    lookAtMask: movableChannels(facts.lookAt),
+    ...(facts.up === undefined ? {} : { up: facts.up }),
+  };
 }
