@@ -339,7 +339,16 @@ describe("rope: a pose the limit cannot meet comes to rest, with the limit givin
    * more (it shows 0.002 to 0.026 m/s: a strand under gravity 8 still settling). Measured:
    * 0.000 m/s on twelve rows of sixteen at Update Rate 240 and at most 0.023 on the rest; at
    * 960, 0.000 on fifteen and 0.089 at d = 11, which is 3.9 times its strand with no limit
-   * and a tenth of a millimetre a step: one joint going in and out of the system.
+   * and a tenth of a millimetre a step.
+   *
+   * WHAT THAT ROW DOES (slice 4c, read from the device step by step; the design's 19.4). The
+   * hinge is idle: the openings of its two open joints do not move and no clock runs. Those
+   * two joints rest giving 0.98 and 0.81 of the yield, inside the band between half the yield
+   * and the yield where a limit neither opens nor closes; and a step that rebuilds that much
+   * push from nothing does not land on the same point twice on this device. It lands on a
+   * cycle of three frames, in the strand beyond the bend. Neither the gap nor the closing
+   * rate acts on a joint in that band. The one constant that bounds the band is the yield,
+   * which every row's opening hangs on, so the bound stands as it is and the row is filed.
    * SLICE 4, measured on the reference's same table: from d = 7.5 to 11.5, 2.7 to 66 m/s at
    * four steps a frame, and to d = 12, 11 to 239 at sixteen; further out it folded flat at
    * its second point and lay still, thrown at up to 280 m/s on the way.
@@ -376,24 +385,40 @@ describe("rope: a pose the limit cannot meet comes to rest, with the limit givin
    * THE LIMIT COMES BACK. One strand walked OUT to d = 11, held two seconds, and walked BACK
    * over one second to d = 6, where the turn fits the radius. The limit that opened closes:
    * three seconds on, no joint is past it by more than a resting bend gives.
+   *
+   * AND WITH A MAX STRETCH OF NOTHING (slice 4c, B277). An open limit closes onto its joint
+   * only in a step the solve finished at its first attempt, and at a Max Stretch of nothing
+   * no step was: length before bend (D36) asked the guard's exact test, a rounding failed it,
+   * and every step was solved two or three times. The limit that gave at d = 11 stayed given
+   * (reference: 2.02 and 2.31 of the limit back at d = 6), and a step cost 3.1 to 5.7 times
+   * one at a Max Stretch of 0.02 (measured by the timing rule; 1.15 now). D36 now asks for a
+   * segment beyond Max Stretch by more than the solve's own tolerance of a length.
    */
-  it.each([240, 960])("at Update Rate %i a limit that gave at d = 11 is the limit again back at d = 6, and the strand is at rest", async (updateRate) => {
+  it.each([
+    [240, 0.02],
+    [960, 0.02],
+    [240, 0],
+    [960, 0],
+  ] as const)("at Update Rate %i, Max Stretch %f, a limit that gave at d = 11 is the limit again back at d = 6, and the strand is at rest", async (updateRate, maxStretch) => {
     const behind = `select(select(11.0 - 5.0 * ${ease("t - 5.0")}, 4.0 + 7.0 * ${ease("t - 2.0")}, t < 5.0), 4.0, t < 2.0)`;
     const fixture: RopeFixture = {
       cols: POINTS,
       pose: { wgsl: `select(vec3f(f32(i) * ${REST}, 0.0, 0.0), select(${carriedRound.replace("f32(j)", "0.0")}, vec3f(${REST} - ${behind} * ${REST}, 0.0, 0.0), t >= 2.0), i == 16u && t > 0.0)`, at: () => [0, 0, 0] },
-      rope: { gravity: 8, damping: 2, anchorSecond: 1, anchorLast: 1, segmentLength: REST, iterations: 8, minBendRadius: RADIUS, updateRate, bendLimit: true },
+      rope: { gravity: 8, damping: 2, anchorSecond: 1, anchorLast: 1, segmentLength: REST, iterations: 8, minBendRadius: RADIUS, updateRate, bendLimit: true, maxStretch },
     };
     const frames = await play(fixture, { frames: 60 * 9 + 1, from: 60 * 4 });
     const out = turnsOf(frames.filter((frame) => frame.frame <= 60 * 5), POINTS).worst;
     const back = frames.filter((frame) => frame.frame > 60 * 8);
     let fastest = 0;
     for (const frame of back) for (let point = 2; point < POINTS - 1; point += 1) fastest = Math.max(fastest, Math.hypot(...pointOf(frame.velocity, point)));
-    note(`out and back, Update Rate ${updateRate}: at d = 11 the largest turn is ${(out / LIMIT).toFixed(2)} of the limit; back at d = 6, ${(turnsOf(back, POINTS).worst / LIMIT).toFixed(3)}; fastest point ${fastest.toFixed(3)} m/s`);
+    note(`out and back, Update Rate ${updateRate}, Max Stretch ${maxStretch}: at d = 11 the largest turn is ${(out / LIMIT).toFixed(2)} of the limit; back at d = 6, ${(turnsOf(back, POINTS).worst / LIMIT).toFixed(3)}; fastest point ${fastest.toFixed(3)} m/s`);
     expect(out / LIMIT).toBeGreaterThan(2);
-    // Seen red with an open limit that never closes.
+    // Seen red with an open limit that never closes; and, at a Max Stretch of nothing, with D36 asking the guard's exact test.
     expect(turnsOf(back, POINTS).worst / LIMIT).toBeLessThanOrEqual(1.02);
-    expect(fastest).toBeLessThan(0.03);
+    // At rest. At a Max Stretch of nothing it is NEARLY so and no more is claimed: the guard's
+    // own test is still exact there, so it walks the strand to its lengths in every step, and
+    // with the limit on that shows (measured 0.035 m/s at Update Rate 240; the design's 19.3).
+    expect(fastest).toBeLessThan(maxStretch === 0 ? 0.1 : 0.03);
   }, 600_000);
 
   /*

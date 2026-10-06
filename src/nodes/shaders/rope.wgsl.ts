@@ -366,6 +366,20 @@ fn substitute(at: u32) -> f32 {
   return lambda;
 }
 
+/* Is segment k between these two points beyond Max Stretch by more than the solve's own
+   tolerance of its length (B277)? Asked only of a segment the guard's exact test has already
+   found beyond it: this is what asks for a step to be solved again, and at a Max Stretch of
+   nothing a rounding fails the exact test in every step. */
+fn past(base: u32, k: u32, low: vec3f, high: vec3f) -> bool {
+  let rest = restOf(base + k);
+  let span = high - low;
+  let squared = dot(span, span);
+  let slack = TOLERANCE * rest + TOLERANCE_FLOOR;
+  let longest = rest * (1.0 + params.maxStretch) + slack;
+  let shorter = max(0.0, rest * max(0.0, 1.0 - params.maxStretch) - slack);
+  return squared > longest * longest || squared < shorter * shorter;
+}
+
 /* Is the joint at point j, between these three points, still beyond its tolerance of its limit? */
 fn lookAt(base: u32, j: u32, low: vec3f, middle: vec3f, high: vec3f) -> bool {
   let at = (base + j) * 20u;
@@ -532,13 +546,15 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
      joint in the system: the rope keeps its length and its pins, and the bend gives.
      Where that step cannot be finished either (a step too coarse for the strand, limit or
      no limit) the first answer is the better one to hand the guard, and it is solved a
-     third time as it was the first. */
+     third time as it was the first. "Beyond" here is beyond by more than the solve's own
+     tolerance of a length (B277); the guard's test stays exact. */
   storePlaced(base, loadWork(base));
   /* What the hinge is told of the last Newton step run: whether the limit was in it, whether
      it left a segment out of its tolerance, whether it left anything out of its own, whether
      the step was solved more than once, whether a joint pushed, and whether one gave more
      than the yield. */
   var withLimit = true;
+  var beyond = false;
   var lengthsOpen = false;
   var finished = true;
   var again = false;
@@ -684,6 +700,7 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
       /* Back: substitute row by row, move each point, store it, and look at what is left. */
       var converged = true;
       exceeded = false;
+      beyond = false;
       lengthsOpen = false;
       pushing = false;
       over = false;
@@ -756,6 +773,9 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
           let left = look(base, k + 1u, moved, aboveNow, hh);
           if (left.x == 1u) {
             exceeded = true;
+            if (past(base, k + 1u, moved, aboveNow)) {
+              beyond = true;
+            }
           }
           if (left.y == 1u) {
             converged = false;
@@ -788,6 +808,9 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
       let left = look(base, 0u, solved, aboveNow, hh);
       if (left.x == 1u) {
         exceeded = true;
+        if (past(base, 0u, solved, aboveNow)) {
+          beyond = true;
+        }
       }
       if (left.y == 1u) {
         converged = false;
@@ -803,7 +826,7 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
         break;
       }
     }
-    if (!exceeded) {
+    if (!beyond) {
       break;
     }
   }

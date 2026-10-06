@@ -92,7 +92,9 @@ import { ZERO_SEGMENT_SQUARED } from "./curve.ts";
  *    radius takes, the limit cannot be met and its rows push the strand against its own pins.
  *    A step that ends with a segment beyond Max Stretch is solved again from where its points
  *    were placed with no joint in the system; where that cannot be finished either, a third
- *    time as it was the first.
+ *    time as it was the first. "Beyond" there is beyond by more than the solve's own
+ *    tolerance of a length (B277): the guard's test is exact, and at a Max Stretch of nothing
+ *    a rounding is past it in every step.
  *  - WHERE THE LIMIT CANNOT BE MET IT GIVES (D41, slice 4b), and the strand comes to rest.
  *    Each joint keeps an OPENING from step to step, the radians its limit is let out by. A
  *    joint that gives more than a yield for longer than a wait, or pushes at all on a strand
@@ -770,6 +772,13 @@ function stepStrand(
     // no limit — the first answer is the better one to hand the guard, and it is solved a
     // third time as it was the first.
     let withLimit = true;
+    /**
+     * Whether the last Newton step run left a segment beyond Max Stretch by more than the
+     * solve's own tolerance of its length (B277). The guard's test, `exceeded`, is exact, and
+     * is not what asks for another solve: at a Max Stretch of nothing a rounding fails it in
+     * every step, and every step was then solved two or three times.
+     */
+    let past = false;
     /** Whether the last Newton step run left a segment out of its tolerance; whether it left anything out of its own. */
     let lengthsOpen = false;
     let finished = true;
@@ -929,6 +938,7 @@ function stepStrand(
         // Back: substitute row by row, move each point, store it, and look at what is left.
         let converged = true;
         exceeded = false;
+        past = false;
         lengthsOpen = false;
         const look = (k: number, low: Vec3, high: Vec3): void => {
           if (!(f((inverse[k] as number) + (inverse[k + 1] as number)) > 0)) return;
@@ -937,7 +947,13 @@ function stepStrand(
           const squared = dot(span, span);
           const most = f(rest * f(1 + limit));
           const least = f(rest * shortest);
-          if (squared > f(most * most) || squared < f(least * least)) exceeded = true;
+          if (squared > f(most * most) || squared < f(least * least)) {
+            exceeded = true;
+            const slack = f(f(ROPE_TOLERANCE * rest) + ROPE_TOLERANCE_FLOOR);
+            const longest = f(most + slack);
+            const shorter = f(Math.max(0, f(least - slack)));
+            if (squared > f(longest * longest) || squared < f(shorter * shorter)) past = true;
+          }
           const off = rest > 0 ? f(f(squared - f(rest * rest)) / f(2 * rest)) : f(Math.sqrt(squared));
           const residual = Math.abs(f(off + f(softness(rest) * (multiplier[k] as number))));
           if (!(residual <= f(f(ROPE_TOLERANCE * rest) + ROPE_TOLERANCE_FLOOR))) {
@@ -1044,7 +1060,7 @@ function stepStrand(
         finished = converged;
         if (converged) break;
       }
-      if (!exceeded) break;
+      if (!past) break;
     }
 
     // ── The hinge (D41): a limit that cannot be met is opened; one whose joint has straightened follows it in ──

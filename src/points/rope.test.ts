@@ -1501,6 +1501,11 @@ describe("rope reference: a limit that gave comes back when the pose lets it (T1
    * d = 6, where it fits. The limit that opened closes: behind each joint as it straightens,
    * and onto one that still stands past it. Three seconds on, no joint is past its limit by
    * more than a resting bend gives.
+   *
+   * AND WITH A MAX STRETCH OF NOTHING (slice 4c, B277). An open limit closes onto its joint
+   * only in a step the solve finished at its first attempt, and at a Max Stretch of nothing
+   * no step was: every one was solved again, on a rounding. So the limit that gave at d = 11
+   * stayed given: 2.02 and 2.31 of the limit back at d = 6, for good.
    */
   const rest = 1 / 16;
   const LIMIT = 2 * Math.asin(rest / 0.3);
@@ -1513,8 +1518,13 @@ describe("rope reference: a limit that gave comes back when the pose lets it (T1
     return strand(POINTS, (i) => (i === LINKS && t > 0 ? [rest + Math.cos(Math.PI * way) * reach, -Math.sin(Math.PI * way) * reach * 0.8, 0] : [i * rest, 0, 0]));
   };
 
-  it.each([4, 16])("at %i steps a frame: out at d = 11 the limit has given by twice; back at d = 6 every joint is within its limit again, and the strand is at rest", (substeps) => {
-    const parameters = rope({ damping: 2, anchorSecond: 1, anchorLast: 1, segmentLength: rest, iterations: 8, minBendRadius: 0.15, bendLimit: true });
+  it.each([
+    [4, 0.02],
+    [16, 0.02],
+    [4, 0],
+    [16, 0],
+  ])("at %i steps a frame, Max Stretch %f: out at d = 11 the limit has given by twice; back at d = 6 every joint is within its limit again, and the strand is at rest", (substeps, maxStretch) => {
+    const parameters = rope({ damping: 2, anchorSecond: 1, anchorLast: 1, segmentLength: rest, iterations: 8, minBendRadius: 0.15, bendLimit: true, maxStretch });
     const state = seeded(carried(0), parameters);
     let out = 0;
     let back = 0;
@@ -1529,7 +1539,8 @@ describe("rope reference: a limit that gave comes back when the pose lets it (T1
       if (t > 8) for (let point = 2; point < LINKS; point += 1) fastest = Math.max(fastest, Math.hypot(...pointOf(state.velocity, point)));
     }
     expect(out / LIMIT).toBeGreaterThan(2);
-    // Measured 1.00 of the limit. Seen red at 1.3 and more with an open limit that never closes.
+    // Measured 1.00 of the limit. Seen red at 1.3 and more with an open limit that never closes,
+    // and at 2.02 and 2.31 at a Max Stretch of nothing with D36 asking the guard's exact test.
     expect(back / LIMIT).toBeLessThanOrEqual(1.02);
     expect(fastest).toBeLessThan(0.03);
   });
@@ -1852,5 +1863,93 @@ describe("rope reference: what holding a joint at its limit buys (T1585b slice 4
     expect(atLimit).toBeGreaterThanOrEqual(4);
     // Seen red at 1.8 with the band at nothing, and with a joint in the band never let go.
     expect(tally.newton / (read * 64 * 16)).toBeLessThanOrEqual(1.05);
+  });
+});
+
+describe("rope reference: Bend Limit with a Max Stretch of nothing solves a step once (T1585b slice 4c, B277)", () => {
+  /*
+   * LENGTH BEFORE BEND (D36) solves a step again, without the limit, when it ends with a
+   * segment beyond Max Stretch. Its test was the guard's, which is exact: at a Max Stretch
+   * of nothing a rounding is beyond it in every step, so every step was solved two or three
+   * times over. It now asks only for a segment beyond Max Stretch by more than the solve's
+   * own tolerance of a length. The claim is a COUNT: Newton steps a step, at four steps a
+   * frame and at sixteen.
+   *
+   *                                         before          after     (Max Stretch 0.02)
+   *   the consumer's loop at rest         10.0,  3.0      1.0, 1.0        1.0, 1.0
+   *   that loop swept at 4 m/s            16.1, 11.8      4.2, 2.5        4.1, 2.5
+   *   the consumer's strand, claw 2.9 m   11.1, 12.0      2.0, 2.0        2.0, 2.0
+   *
+   * WHAT IT DOES NOT CHANGE, AND THIS TEST DOES NOT CLAIM: the guard itself still runs in
+   * every step at a Max Stretch of nothing, on the same roundings, and walks the strand to
+   * its exact lengths; with the limit on that leaves the consumer's strand moving at 0.06 to
+   * 0.3 m/s where it rests at 0.000 with a Max Stretch of 0.02 (the design's 19.3).
+   */
+  const ease = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10));
+  const LENGTH = 3.24;
+  const links = 54;
+  const pitch = LENGTH / links;
+  const limit = 2 * Math.asin(pitch / 0.3);
+  /** The first consumer's loop: carried up over six seconds, and from twelve swept at `peak` m/s when there is one. */
+  const loop = (peak: number) => (t: number): Float32Array => {
+    const way = ease(t / 6);
+    const centre = peak > 0 ? 0.9 : 0.5;
+    let far: Vec3 = [centre * way, -LENGTH * (1 - way), 0];
+    if (peak > 0 && t > 12) {
+      const swing = (peak / (2 * Math.PI * 2)) * Math.sin(2 * Math.PI * 2 * (t - 12));
+      far = [centre + swing, 0.3 * swing, 0];
+    }
+    return strand(links + 1, (i) => (i === links && t > 0 ? far : [0, -i * pitch, 0]));
+  };
+  const counted = (incoming: (t: number) => Float32Array, parameters: RopeParameters, seconds: number, read: number, substeps: number): { newton: number; worst: number; state: RopeState } => {
+    const state = seeded(incoming(0), parameters);
+    const tally = { newton: 0 };
+    let worst = 0;
+    for (let frame = 1; frame <= seconds * 64; frame += 1) {
+      if (frame === (seconds - read) * 64 + 1) tally.newton = 0;
+      advanceRope(state, incoming(frame / 64), parameters, { deltaSeconds: FRAME, substeps, tally });
+      if (frame > (seconds - read) * 64) for (let j = 1; j < state.cols - 1; j += 1) worst = Math.max(worst, turnAt(state.position, j));
+    }
+    return { newton: tally.newton / (read * 64 * substeps), worst, state };
+  };
+  const held = (more: Partial<RopeParameters>): RopeParameters => ({ ...ROPE_DEFAULTS, anchorLast: 1, minBendRadius: 0.15, segmentLength: pitch, bendLimit: true, iterations: 8, maxStretch: 0, ...more });
+
+  it.each([4, 16])("at %i steps a frame the loop at rest takes one Newton step a step, as it does with a Max Stretch of 0.02, and is the same loop", (substeps) => {
+    const none = counted(loop(0), held({ damping: 2 }), 26, 2, substeps);
+    const some = counted(loop(0), held({ damping: 2, maxStretch: 0.02 }), 26, 2, substeps);
+    // Seen red at 10 and at 3 with D36 asking the guard's exact test.
+    expect(none.newton).toBeLessThanOrEqual(1.05);
+    expect(some.newton).toBeLessThanOrEqual(1.05);
+    // The limit holds on it as it does with a Max Stretch: at its limit, and not past it.
+    expect(none.worst / limit).toBeGreaterThan(0.999);
+    expect(none.worst / limit).toBeLessThanOrEqual(1.0005);
+    // Its ends are their incoming points. Every segment is its length within a thousandth: the
+    // guard, which walks this strand in every step, leaves what it could not place on the
+    // segment before the far pin (0.05 % at four steps a frame, before this change and after).
+    expect(pointOf(none.state.position, links)).toEqual(pointOf(loop(0)(26), links));
+    for (let k = 0; k < links; k += 1) expect(Math.abs(lengthOf(none.state.position, k) - pitch), `segment ${k}`).toBeLessThanOrEqual(0.001 * pitch);
+  });
+
+  it.each([4, 16])("at %i steps a frame the loop swept at 4 m/s takes no more Newton steps a step than with a Max Stretch of 0.02, within a tenth", (substeps) => {
+    const none = counted(loop(4), held({}), 16, 4, substeps);
+    const some = counted(loop(4), held({ maxStretch: 0.02 }), 16, 4, substeps);
+    // Seen red at 16.1 against 4.1, and at 11.8 against 2.5.
+    expect(none.newton).toBeLessThanOrEqual(1.1 * some.newton);
+    expect(some.newton).toBeGreaterThan(2);
+  });
+
+  it.each([4, 16])("at %i steps a frame the consumer's strand with the claw 2.9 m off, its limit given, takes two", (substeps) => {
+    const COLS = 54;
+    const PITCH = 0.06;
+    const reaching = (t: number): Float32Array => {
+      const way = ease(t / 4);
+      const reach = 3.12 - 0.22 * way;
+      return strand(COLS, (i) => (i === COLS - 1 && t > 0 ? [Math.cos(Math.PI * (1 - way)) * reach, Math.sin(Math.PI * (1 - way)) * reach * 0.6, 0] : [-i * PITCH, 0, 0]));
+    };
+    const none = counted(reaching, { ...ROPE_DEFAULTS, gravity: 1.5, damping: 1.5, anchorSecond: 1, anchorLast: 1, segmentLength: PITCH, iterations: 8, minBendRadius: 0.15, bendLimit: true, maxStretch: 0 }, 12, 2, substeps);
+    // The limit has given: the joint after the held pair stands far past 23°.
+    expect(none.worst).toBeGreaterThan(1);
+    // Seen red at 11 and at 12.
+    expect(none.newton).toBeLessThanOrEqual(3);
   });
 });
