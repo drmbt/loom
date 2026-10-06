@@ -1,20 +1,21 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Browser, type BrowserContext, type CDPSession, type Page } from "@playwright/test";
 
 import { createPhoneWrites } from "@/app/phone-writes.ts";
 import { createPhoneDoor } from "@devices/phone/phone-door.ts";
-import type { PhoneSet } from "@devices/phone/phone-protocol.ts";
+import type { PhoneSet, PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
 import { buildPhoneSnapshot } from "@devices/phone/phone-snapshot.ts";
 import { createDomainBus } from "@domain/commands/index.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
-import { parseProjectDocument } from "@domain/project/serialize.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { controlNodeDefinitions, parsePanelBoard, serializePanelBoard, type StoredBoardItem } from "@nodes/definitions/controls.ts";
+import { controlNodeDefinitions, serializePanelBoard, type StoredBoardItem } from "@nodes/definitions/controls.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
+
+import { FROZEN_PANELS } from "./phone-touch.fixture.ts";
 
 /**
  * §T1607b — THE PHONE PAGE UNDER A REAL TOUCH. Owner: "we can still scroll with touch on the
@@ -32,6 +33,11 @@ import { createNodeRegistry } from "@nodes/registry/registry.ts";
  * certificate, token, event stream) serving the real page, and every write the door
  * receives vetted and applied through `createPhoneWrites`, as the editor does. So "nothing
  * was written" is asserted where it matters — on the wire AND in the document.
+ *
+ * THIS SPEC READS NO PROJECT (§T1647b). Its boards are its own: one built here (the tall
+ * board), three frozen in `phone-touch.fixture.ts` — copies of a real project's phone Panels
+ * at named commits. It used to read that project's shipped file and went red three times
+ * for layout changes nobody ran it for. A project's panels may now change freely.
  *
  * NOT covered, and not coverable here: iOS Safari and Android Chrome on a phone. Chromium's
  * touch emulation uses a 15 px slop; a real phone's is its platform's.
@@ -55,14 +61,17 @@ interface Stage {
   readonly writes: PhoneSet[];
   /** Every sentence the vet or the bus refused a write with. A correct page causes none. */
   readonly refused: string[];
-  graph(): GraphDocument;
   /** Resolves when every write received so far is in the document. */
   settled(): Promise<void>;
   close(): void;
 }
 
-/** The helper's door on loopback, publishing `graph()` and (with `apply`) writing what phones send. */
-async function openStage(graph: () => GraphDocument, apply: (phone: string, set: PhoneSet) => Promise<void>, onChange: (publish: () => void) => () => void): Promise<Stage> {
+/** The helper's door on loopback, publishing what `snapshot` says and (with `apply`) writing what phones send. */
+async function openStage(
+  snapshot: (seq: number) => PhoneSnapshot,
+  apply: (phone: string, set: PhoneSet) => Promise<void>,
+  onChange: (publish: () => void) => () => void,
+): Promise<Stage> {
   const door = createPhoneDoor({ lanAddress: () => "127.0.0.1", port: 0, certDir, firewall: () => Promise.resolve(null) });
   const writes: PhoneSet[] = [];
   const refused: string[] = [];
@@ -77,14 +86,13 @@ async function openStage(graph: () => GraphDocument, apply: (phone: string, set:
   });
   if (!state.open) throw new Error(`the phone door did not open: ${state.reason}`);
   let seq = 0;
-  const publish = (): void => door.publish(buildPhoneSnapshot(graph(), (seq += 1)));
+  const publish = (): void => door.publish(snapshot((seq += 1)));
   publish();
   const stop = onChange(publish);
   return {
     url: state.url,
     writes,
     refused,
-    graph,
     settled: () => pending,
     close: () => {
       stop();
@@ -103,7 +111,7 @@ const SLIDERS = 40;
 const sliderName = (index: number): string => `slider_row${String(index).padStart(2, "0")}`;
 const sliderCaption = (index: number): string => `Row ${String(index).padStart(2, "0")}`;
 
-async function tallStage(): Promise<Stage & { node(name: string): GraphNode }> {
+async function tallStage(): Promise<Stage & { graph(): GraphDocument; node(name: string): GraphNode }> {
   const store = createGraphStore();
   const { bus } = createDomainBus({ store, registry: createNodeRegistry(controlNodeDefinitions).view() });
   const operations: GraphPatchOperation[] = [];
@@ -138,7 +146,7 @@ async function tallStage(): Promise<Stage & { node(name: string): GraphNode }> {
   const refused: string[] = [];
   const phoneWrites = createPhoneWrites({ bus, invocation: DESK, onRefused: (_phone, reason) => refused.push(reason) });
   const stage = await openStage(
-    () => bus.store.getGraph(),
+    (seq) => buildPhoneSnapshot(bus.store.getGraph(), seq),
     async (phone, set) => {
       await phoneWrites.write(phone, set);
       await phoneWrites.settled();
@@ -148,6 +156,7 @@ async function tallStage(): Promise<Stage & { node(name: string): GraphNode }> {
   return {
     ...stage,
     refused,
+    graph: () => bus.store.getGraph(),
     node: (name) => {
       const found = Object.values(bus.store.getGraph().nodes).find((node) => node.label === name);
       if (found === undefined) throw new Error(`no node named ${name}`);
@@ -161,33 +170,22 @@ async function tallStage(): Promise<Stage & { node(name: string): GraphNode }> {
 }
 
 /**
- * The shipped sentinel-bot document, AS SHIPPED: the Panels it publishes to the phone are the ones a phone gets.
- * (It used to switch Phone on for every Panel of the file. The file now has a fourth, `panel_all`, a two-column
- * board for the desk that it deliberately keeps off the phone; forced on, it was a fifth tab and a second pad.)
+ * The three frozen Panels (`phone-touch.fixture.ts`), published as a phone would get them.
+ * No bus behind this one: what it is asked is whether anything is SENT.
  */
-async function sentinelStage(): Promise<Stage> {
-  const parsed = parseProjectDocument(readFileSync("projects/sentinel-bot/sentinel.loom.json", "utf8"));
-  if (!parsed.ok) throw new Error(`sentinel.loom.json did not load: ${parsed.reason}`);
-  const graph = parsed.document.graph as GraphDocument;
-  // No bus behind this one: what it is asked is whether anything is SENT.
+function frozenStage(): Promise<Stage> {
   return openStage(
-    () => graph,
+    (seq) => ({ seq, panels: FROZEN_PANELS }),
     () => Promise.resolve(),
     () => () => undefined,
   );
 }
 
-/**
- * How many things a shipped sentinel Panel's board holds: labels and members alike. Read off the
- * file, so the project can add a control without an engine test going red (the count was a
- * literal, and went red the day a Saved bank joined the Scene Panel).
- */
-function sentinelBoardCells(panelName: string): number {
-  const parsed = parseProjectDocument(readFileSync("projects/sentinel-bot/sentinel.loom.json", "utf8"));
-  if (!parsed.ok) throw new Error(`sentinel.loom.json did not load: ${parsed.reason}`);
-  const panel = Object.values(parsed.document.graph.nodes).find((node) => node.type === "panel" && node.label === panelName);
-  if (panel === undefined) throw new Error(`sentinel.loom.json has no Panel named ${panelName}`);
-  return parsePanelBoard(panel.parameters["board"]).items.length;
+/** A frozen Panel's board, by its title. */
+function frozenBoard(title: string) {
+  const board = FROZEN_PANELS.find((panel) => panel.title === title)?.board;
+  if (board === undefined) throw new Error(`the fixture has no board titled ${title}`);
+  return board;
 }
 
 interface Phone {
@@ -640,48 +638,47 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
 });
 
 /*
- * THE CONSUMER, AS SHIPPED: sentinel-bot's three published Panels, every control most of the
- * board's width with a bare strip beside it — three tabs, each taller than a small phone's screen. (The owner, on a real
- * phone after this page's scrolling had landed: "still pretty hard to not screw with the sliders
- * when scrolling on mobile". So the project now leaves the right quarter of each board bare, as
- * somewhere to scroll from. A flick that STARTS on a slider must still scroll and write nothing:
- * that is what this holds.)
+ * A REAL PROJECT'S PHONE PANELS, FROZEN (`phone-touch.fixture.ts`, §T1647b): three tabs, each
+ * taller than a small phone's screen. Lights is every slider the board's full width — nowhere
+ * to scroll from but a slider. Robot and Scene are inset, a bare strip beside the controls:
+ * what the project did after the owner, on a real phone, found it "still pretty hard to not
+ * screw with the sliders when scrolling on mobile". Either way a flick that STARTS on a slider
+ * must scroll and write nothing: that is what this holds.
  */
-test.describe("§T1607b the phone page under a real touch — sentinel-bot's Panels as shipped", () => {
+test.describe("§T1607b the phone page under a real touch — a project's Panels, frozen", () => {
   const VIEWPORT = { width: 375, height: 600 };
   const tabNames = (page: Page): Promise<string[]> => page.locator("#tabs [role=tab]").allTextContents();
   const pageNames = (page: Page): Promise<string[]> => page.locator("#pager [role=tab]").allTextContents();
   const chosenPage = (page: Page): Promise<string[]> => page.locator("#pager [aria-selected=true]").allTextContents();
   const shownCells = (page: Page): Promise<number> => page.locator("section.panel:not([hidden]) .board > :not([hidden])").count();
 
-  test("each tab scrolls from a flick that starts on a full-width slider, and nothing is written", async ({ browser }) => {
-    const stage = await sentinelStage();
+  test("each tab scrolls from a flick that starts on a slider — full width or inset — and nothing is written", async ({ browser }) => {
+    const stage = await frozenStage();
     const phone = await openPhone(browser, stage.url, VIEWPORT);
     try {
       await expect(phone.page.locator("#tabs [role=tab]")).toHaveCount(4);
       expect(await tabNames(phone.page)).toEqual(["Lights", "Robot", "Scene", "Camera"]);
-      const scrolled: string[] = [];
-      for (const name of ["Lights", "Robot", "Scene"]) {
+      for (const [name, fullWidth] of [["Lights", true], ["Robot", false], ["Scene", false]] as const) {
         await phone.page.locator("#tabs [role=tab]", { hasText: name }).tap();
         await expect(phone.page.locator("#tabs [aria-selected=true]")).toHaveText(name);
-        // The premise: taller than the screen, and its sliders run most of the board's width (a bare strip beside them).
-        // (A Panel that fits the screen has nothing to scroll: the project's rows are lower now and its shortest
-        // Panel fits. The longest must still need it, or this case holds nothing.)
+        // The premise, which a frozen board cannot lose: taller than the screen, and sliders of the shape named.
         const end = await scrollEnd(phone.page);
-        if (end === 0) continue;
-        scrolled.push(name);
+        expect(end, `${name} must need scrolling`).toBeGreaterThan(0);
         const widths = await phone.page.evaluate(() => {
           const board = document.querySelector("section.panel:not([hidden]) .board")!.getBoundingClientRect().width;
           return [...document.querySelectorAll("section.panel:not([hidden]) .track")].map((track) => track.getBoundingClientRect().width / board);
         });
         expect(widths.length).toBeGreaterThanOrEqual(8);
-        expect(Math.min(...widths), `${name}: every slider is most of the board's width`).toBeGreaterThan(0.7);
-        expect(Math.max(...widths), `${name}: and none reaches into the bare strip beside them`).toBeLessThan(0.85);
+        if (fullWidth) {
+          expect(Math.min(...widths), `${name}: every slider is the board's full width`).toBeCloseTo(1, 3);
+        } else {
+          expect(Math.min(...widths), `${name}: every slider is most of the board's width`).toBeGreaterThan(0.7);
+          expect(Math.max(...widths), `${name}: and none reaches into the bare strip beside them`).toBeLessThan(0.85);
+        }
 
         await flickFromSlider(phone, 240, true);
         expect(await atEnd(phone.page, end), `${name} must scroll to its end`).toBe(true);
       }
-      expect(scrolled).toContain("Robot");
       await phone.page.waitForTimeout(300);
       expect(stage.writes).toEqual([]);
       expect(phone.errors).toEqual([]);
@@ -692,7 +689,7 @@ test.describe("§T1607b the phone page under a real touch — sentinel-bot's Pan
   });
 
   test("pages switch and remember: the Scene Panel's sections, each Panel's place, and the choice on the next visit", async ({ browser }) => {
-    const stage = await sentinelStage();
+    const stage = await frozenStage();
     const phone = await openPhone(browser, stage.url, VIEWPORT);
     try {
       const tab = (name: string) => phone.page.locator("#tabs [role=tab]", { hasText: name });
@@ -703,8 +700,8 @@ test.describe("§T1607b the phone page under a real touch — sentinel-bot's Pan
       expect(await pageNames(phone.page)).toEqual(["All", "Scene", "Camera"]);
       expect(await chosenPage(phone.page)).toEqual(["All"]);
       // All of the Panel's board: its two labels and every member under them.
-      const whole = sentinelBoardCells("panel_scene");
-      expect(whole).toBeGreaterThan(4);
+      const whole = frozenBoard("Scene").items.length;
+      expect(whole).toBe(16);
       expect(await shownCells(phone.page)).toBe(whole);
 
       await chip("Camera").tap();
