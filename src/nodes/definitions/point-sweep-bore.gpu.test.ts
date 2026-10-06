@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import type { GraphDocument } from "../../domain/types/graph.ts";
-import { CHAMBERS, PATH, chamberAt, pathAt, pathWgsl } from "../../projects/sentinel-bot/path.ts";
-import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS } from "../../projects/sentinel-bot/tunnel.ts";
+import {
+  BORE_ATTRIBUTES,
+  BORE_CHAMBERS as CHAMBERS,
+  BORE_COLUMNS,
+  BORE_KERNEL,
+  BORE_PATH as PATH,
+  BORE_PATH_WGSL,
+  BORE_ROWS,
+  boreChamberAt as chamberAt,
+  borePathAt as pathAt,
+} from "./point-sweep-bore.fixture.ts";
 import { curveEdge, curveGraph, curveNode, drawnTo, mappedTo, onDawn } from "./curve-test-support.ts";
 import { curveAttributes } from "./point-curve.ts";
 import { curveFramesAttributes } from "./point-curve-frames.ts";
@@ -11,8 +20,12 @@ import { sweepAttributes } from "./point-sweep.ts";
 
 /**
  * T1587b — THE WORKED CHECK: the sentinel tunnel's bore, laid by the stock nodes and held
- * against the project's own kernel-bent grid (`src/projects/sentinel-bot/tunnel.ts`, read
- * and never edited).
+ * against the hand-written kernel-bent grid it would replace.
+ *
+ * That grid is the sentinel-bot project's, FROZEN in `point-sweep-bore.fixture.ts` as it stood
+ * when this check was made (the fixture names the files, the commits and the date). This file
+ * imports nothing from the project: it proves a fact about a fixed input, and a later change
+ * to the project's bore neither reddens it nor is covered by it.
  *
  * The bore is one grid of 256 × 768 vertices that a kernel bends: for every vertex it works
  * out the centre line's frame at the row's distance from a closed form, and puts the vertex
@@ -22,7 +35,7 @@ import { sweepAttributes } from "./point-sweep.ts";
  *
  * ## What was measured (Dawn on Metal, 2026-10-06), and what explains it
  *
- * 1. ON THE BORE'S OWN ROWS (the path's points from the project's formula): the worst vertex
+ * 1. ON THE BORE'S OWN ROWS (the path's points from the bore's own formula): the worst vertex
  *    of the 766 inner rings is 0.11 mm from the bore's. It is rounding: the frame's tangent
  *    is measured from points a 32-bit float holds to 0.004 mm, across a 0.15 m chord, and a
  *    hall's 5 m radius multiplies that angle. The first ring is 2.7 mm off and the last
@@ -106,7 +119,7 @@ const resolves = (reach: number): number => 2 ** (Math.ceil(Math.log2(reach)) - 
 const at = (floats: Float32Array, index: number): V3 => [floats[index * 4]!, floats[index * 4 + 1]!, floats[index * 4 + 2]!];
 
 describe("T1587b: the sentinel tunnel's bore from Curve Frames and a Sweep, on the bore's own rows", () => {
-  /** The project's bore as a plain pipe: no relief, and a deck too low to cut it. */
+  /** The frozen bore as a plain pipe: no relief, and a deck too low to cut it. */
   const boreGraph = (): GraphDocument => {
     const sink = drawnTo("kernel_bore", 16);
     return curveGraph(
@@ -118,8 +131,8 @@ describe("T1587b: the sentinel tunnel's bore from Curve Frames and a Sweep, on t
       [curveEdge(["grid_bore", "out"], ["kernel_bore", "in"]), ...sink.edges],
     );
   };
-  /* The path: the bore's rows at travel 0, by the project's own centre line, with the hall's radius beside each. */
-  const PATH_KERNEL = `${pathWgsl()}
+  /* The path: the bore's rows at travel 0, by the bore's own centre line, with the hall's radius beside each. */
+  const PATH_KERNEL = `${BORE_PATH_WGSL}
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
   let z = (f32(ctx.index) - ${ROWS_BEHIND}.0) * ${ROW.toFixed(5)};
@@ -162,12 +175,20 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   };
 
   it("lays the kernel-bent grid's vertices: every inner ring to a float's rounding, the two end rings to their one chord", async () => {
-    /* The fixture reads three numbers off the project's kernel. If the project changes them
-       this says so, rather than comparing two different tunnels. */
+    /* Three numbers of this file are the frozen kernel's own, and the float64 centre line is
+       the WGSL one: the fixture agrees with itself, so the two sides below are one tunnel. */
     expect(BORE_KERNEL).toContain(`const ROW: f32 = ${ROW.toFixed(5)};`);
     expect(BORE_KERNEL).toContain(`- ${ROWS_BEHIND}.0) * ROW`);
     expect(BORE_KERNEL).toContain(`let liner = bore + ${LINER};`);
     expect([COLUMNS, ROWS]).toEqual([256, 768]);
+    const nine = (value: number): string => (Number.isInteger(value) ? value.toFixed(1) : String(Number(value.toPrecision(9))));
+    for (const term of [...PATH.x, ...PATH.y]) {
+      expect(BORE_PATH_WGSL).toContain(`${nine(term.amplitude)} * sin(${nine(wave(term.cycles))} * z + ${nine(term.phase)})`);
+    }
+    expect(BORE_PATH_WGSL).toContain(`const PATH_PERIOD: f32 = ${nine(PATH.period)};`);
+    expect(BORE_PATH_WGSL).toContain(`const CHAMBER_SWELL: f32 = ${nine(CHAMBERS.swell)};`);
+    expect(BORE_PATH_WGSL).toContain(`let along = z - ${nine(CHAMBERS.spacing)} * floor(z / ${nine(CHAMBERS.spacing)});`);
+    expect(BORE_PATH_WGSL).toContain(`smoothstep(${nine(CHAMBERS.reach - CHAMBERS.flare)}, ${nine(CHAMBERS.reach)}, abs(along - ${nine(CHAMBERS.spacing / 2)}))`);
 
     const bore = await onDawn(boreGraph(), async (session) => new Float32Array((await session.read("kernel_bore", JSON.parse(BORE_ATTRIBUTES), COLUMNS * ROWS, "position")).floats));
     // The grid is the tunnel: its seam is two columns in one place.
@@ -230,7 +251,7 @@ describe("T1587b: the bore through a Curve and a Resample, and its repeated tail
   const WINDOW_FROM = ORIGIN - Math.round(27 / (SPACING / SEGMENTS));
   const SIDES = COLUMNS - 1;
 
-  const CONTROL_KERNEL = `${pathWgsl()}
+  const CONTROL_KERNEL = `${BORE_PATH_WGSL}
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
   let turn = (i32(ctx.index) - ${BEFORE} + ${PER_PERIOD}) / ${PER_PERIOD} - 1;
@@ -239,7 +260,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   q.position = vec3f(on.x, on.y, on.z + f32(turn) * PATH_PERIOD);
   return q;
 }`;
-  const HALL_KERNEL = `${pathWgsl()}
+  const HALL_KERNEL = `${BORE_PATH_WGSL}
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
   q.hall = ${BORE} * (1.0 + CHAMBER_SWELL * chamberAt(p.position.z)) + ${LINER};
