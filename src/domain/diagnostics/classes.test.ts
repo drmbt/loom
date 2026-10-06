@@ -173,7 +173,7 @@ const SPLITS_OWED: readonly string[] = [
 const RETIRED: Readonly<Record<string, readonly string[]>> = {
   // Slice 1: split by failure kind into `parameter.expression.*` and `parameter.reference.*`.
   // The consumer session owns this script; its guard moves to the class (`diagnosticClass`).
-  "parameter.expression": ["src/projects/sentinel-bot/render.ts"],
+  "parameter.expression": [],
 };
 
 interface CensusOptions {

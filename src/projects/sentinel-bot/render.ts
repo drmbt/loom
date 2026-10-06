@@ -4,6 +4,7 @@ import { renderHeadless, type RenderedFrame } from "../../tests/headless/render-
 import { nodeGpuHost } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { encodePng } from "../../runtime/export/png.ts";
 import { toRgba8At } from "../../runtime/export/image.ts";
+import { stopsFinalRender } from "../../domain/diagnostics/classes.ts";
 import { walkTrack } from "../furnace/load-audio.ts";
 import { PACK, sentinelDocument, type SentinelTrack } from "./document.ts";
 import { loadKit } from "./load-kit.ts";
@@ -118,12 +119,13 @@ const result = await renderHeadless({
       }),
 });
 // An ERROR is a broken graph: stop loud, before reading a picture of a robot parked on its rest pose.
-// An expression that does not evaluate is only a warning to the engine (the parameter falls back to its stored
-// value), and here it is a wrong picture that looks plausible: three lamps once sat at their stored strength
-// behind a function the grammar does not have. So it stops the render.
-// The same for a value driven under a key the node does not declare (`compiler/parameter-unknown`): a colour's
-// parts written x, y, z went nowhere for a day.
-const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error" || d.code === "parameter.expression" || d.code === "compiler/parameter-unknown").map((d) => `${d.code}: ${d.message}`))];
+// So is anything in the document that can never take effect (§T1641b: `stopsFinalRender` is an error, or a
+// finding of the class never, not yet or unclassified). Two of those once shipped from this file as warnings:
+// three lamps sat at their stored strength behind a function the grammar does not have, and a colour's parts
+// written x, y, z went nowhere for a day.
+// …and an expression whose value fails at a frame (a division by zero): the editor falls back to the stored
+// value and says so, which is right for an editor and a wrong picture that looks plausible in a film frame.
+const errors = [...new Set(result.diagnostics.filter((d) => stopsFinalRender(d) || d.code === "parameter.expression.value").map((d) => `${d.code}: ${d.message}`))];
 if (errors.length > 0) throw new Error(`the sentinel graph has errors:\n${errors.join("\n")}`);
 const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map((d) => `warning ${d.code}: ${d.message}`))];
 if (warnings.length > 0) console.log(warnings.slice(0, 12).join("\n"));
