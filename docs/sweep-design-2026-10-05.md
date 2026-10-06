@@ -12,7 +12,7 @@ Read for this: the two designs above, the reference survey (`docs/td-notch-mecha
 
 - **A sweep is a pointset.** One compute pass writes a ring of points at every point of a curve, and publishes them with a grid claim: columns round the profile, rows along the curve. The Render's Surface path draws a grid today, so the sweep is lit, shadowed, G-buffered and Material · WGSL-shaded with no new draw.
 - **A kernel can stand between the sweep and the Geometry.** A grid's normals are worked out from its points on every draw, so a kernel that pushes the wall in and out (the tunnel's ribs, pipes and deck) is lit correctly without knowing what a normal is. A mesh's normals are an attribute and would go stale. This decides the representation.
-- **One Geometry for many tubes.** A Geometry costs about 0.3 ms of device time however small it is: seven draws with one point light casting, fifteen in the consumer's document (section 2.3: forty tubes as forty Geometries take 12.6 ms, as one 0.7 ms). So the sweep of several strips is one pointset and one draw. A grid claim holds one sheet, so the claim gains a third number: `grid:{cols}x{rows}x{sheets}`. That is a change of a few lines in each of the Render's three grid vertex chunks.
+- **One Geometry for many tubes.** A Geometry costs about 0.3 ms of device time however small it is: seven draws with one point light casting, fifteen in the consumer's document (section 2.3: forty tubes as forty Geometries take 12.6 ms, as one 0.7 ms). (Those figures are from before T1604b, which made a node's consecutive draws into one target one device pass; section 3.5 says what is left of the argument.) So the sweep of several strips is one pointset and one draw. A grid claim holds one sheet, so the claim gains a third number: `grid:{cols}x{rows}x{sheets}`. That is a change of a few lines in each of the Render's three grid vertex chunks.
 - **The sweep reads the curve family's attributes and adds none to it.** It takes `orient` from Curve Frames, so twist, roll and the closing of a loop are that node's and a sweep and the instances beside it agree. It takes `distance` and `curveU` for the texture coordinate along its length. Padding sweeps to rings of no length and triangles of no area.
 - **Hard edges and caps are repeated columns and rows.** A corner that should be sharp is two columns in one place; a cap is the end ring repeated and then drawn in to its centre. The grid's normal rule then gives each face its own normal. No index list.
 - **Two slices matter.** Slice 1 is the node for one strip, which draws through today's Render untouched: the tunnel's bore. Slice 2 is the sheet in the claim and the Render, which is cables and the tentacle's skin, and waits for the shadow work in `scene.ts`.
@@ -152,22 +152,38 @@ Three changes, each small, all in the Render's grid chunks and `points/topology.
 
 - Slot = `(sheet × rows + row) × cols + col`. `rows` is the rows of ONE sheet.
 - A wrap is per sheet: `wrapU` closes each sheet round its columns, `wrapV` along its rows.
-- **The shader needs no new uniform.** The vertex count the plan passes is `sheets × cells × 6`. In the vertex stage the sheet is `(quad ÷ cellsU) ÷ cellsV` and the row is the remainder, where today the row is `quad ÷ cellsU` alone. The neighbours for the normal are clamped or wrapped inside the sheet, as today inside the grid.
-- Readers: the three grid vertex chunks (`surfaceMeshWgsl`, `shadowSurfaceWgsl`, and Render Surface's own), the three places that size a grid draw (the Render in `scene.ts`, the preview tile in `compile.ts`, and `render-surface.ts`), `parseTopology`, `formatTopology`, `gridCellCounts`, `gridPointCount`, the Topology node (a Sheets parameter), and `stripsOf`, for which every row of every sheet is a strip.
-- A kernel's `ctx.dim` gains `sheet` and `sheets` beside `i`, `j`, `cols`, `rows`.
+- **The draw is ONE draw, vertex-pulled as every grid is.** The plan passes `sheets × cells × 6` vertices; in the vertex stage the sheet is the vertex's cell ÷ a sheet's cells, and the row and column are the remainder. No cell joins two sheets, so there are no join triangles, degenerate or otherwise. The neighbours for the normal are clamped or wrapped inside the sheet. No new uniform: the shader has `cols`, `rows` and the wrap flags.
+  - Not an indexed draw with restarts: the grid path has no index buffer, which is its point (2.1).
+  - Not an instanced grid (one instance a sheet): it is the same single draw call and the same vertex work, with the sheet read from `instance_index` in place of one integer division. It would give a grid draw a second meaning for `instances`, which a mesh draw uses for mesh instances.
+- **The sheeted text is a VARIANT, emitted only for a claim of more than one sheet** (changed 2026-10-06; the first draft changed the grid chunks for every grid). Two shader programs can round one expression differently (found in the curve row's slice 6), so a one-sheet grid keeps the program it has, to the byte, and every shipped grid keeps its picture by construction. A test pins the one-sheet programs by their text.
+- Readers: the two grid vertex chunks of the Render (`surfaceMeshWgsl`, which the lit draw, the G-buffer layers and glass share, and `shadowSurfaceWgsl`, which every depth sweep shares) and Render Surface's own; the places that size a grid draw (the Render's lit, depth and glass draws in `scene.ts`, the preview tile in `compile.ts`, `render-surface.ts`), all through one `gridVertexCount`; `parseTopology`, `formatTopology`, `gridCellCounts`, `gridPointCount`; the Topology node (a Sheets parameter); and `stripsOf`, for which every row of every sheet is a strip.
+- **A kernel's `ctx.dim` describes ONE sheet**: `cols`, `rows`, `i` and `j` are the sheet's, so a kernel written for one tube runs the same on each of ten. It gains `sheet` and `sheets`. A kernel over a one-sheet edge that names neither keeps its text.
 
-**A grid reads a `uv` attribute when its points carry one**, as a mesh does. Without one the texture coordinate is the grid coordinate, as now.
+**Not in slice 2 (changed 2026-10-06): a grid reading a `uv` attribute.** It was in this slice; it is now slice 2b, with B255.
 
-- On a wrapped axis the corner past the seam reads the first column again, whose coordinate is back at the start. So it continues it: `u₀ + ⌈u_last − u₀⌉`. For a coordinate that goes once round that is `u₀ + 1`; for one that goes round `N` whole times it is `u₀ + N`. The sweep only ever writes coordinates with a whole period on a wrapped axis (4.6), so the rule has nothing to guess.
-- The alternative is the textbook one: repeat the seam column, so the claim is not wrapped and both ends of the seam have their own coordinate, and tell the grid that the first and last columns are one place so its normal is still smooth across it. That needs a second kind of closure in the claim, and a kernel that moves the two seam columns differently opens a crack. It is decision D2.
+- It changes what a grid's texture coordinate IS wherever a pointset carries a `uv`, and B255 changes the same expression (`gx ÷ cells` on a wrapped axis). Both move textures on grids that draw today and need the same list of affected documents; done together they are one change to one line of each chunk and one set of re-derived pixel claims.
+- Until then the Render shows the grid coordinate on a sweep (per sheet: 0 to 1 round and 0 to 1 along), and the sweep's `uv` reaches a material the way the tunnel's bore passes its own: a kernel copies it into the attribute the Geometry's Tint is mapped to.
+- The rule is as ruled (D2). On a wrapped axis the corner past the seam reads the first column again, whose coordinate is back at the start, so the grid continues it: `u₀ + ⌈u_last − u₀⌉`. For a coordinate that goes once round that is `u₀ + 1`; for one that goes round `N` whole times it is `u₀ + N`. The sweep only ever writes coordinates with a whole period on a wrapped axis (4.6), so the rule has nothing to guess.
+- The alternative was the textbook one: repeat the seam column, so the claim is not wrapped and both ends of the seam have their own coordinate, and tell the grid that the first and last columns are one place so its normal is still smooth across it. That needs a second kind of closure in the claim, and a kernel that moves the two seam columns differently opens a crack.
 
-**The grid coordinate reaches 1 on a wrapped axis.** Today `u = gx ÷ (cols − 1)`, which on a wrapped axis ends at `cols ÷ (cols − 1)`: a texture goes round a Tube or a Torus slightly more than once (section 9). It becomes `gx ÷ cells`. This moves the texture on shipped wrapped grids by up to one column's share, so it is listed as its own decision (D9) and can be left out.
+**The grid coordinate reaches 1 on a wrapped axis.** Today `u = gx ÷ (cols − 1)`, which on a wrapped axis ends at `cols ÷ (cols − 1)`: a texture goes round a Tube or a Torus slightly more than once (section 9). It becomes `gx ÷ cells`. This is bug row B255, with slice 2b.
 
 ### 3.4 What the claim does not need
 
 - **No count.** A strip shorter than its slots repeats its end point (§V788), Curve Frames gives the repeats the end's frame, and so the sweep's rings there are one ring many times: cells of no area. A cap at that end sits on the last real ring.
 - **No normal attribute for the draw.** The sweep publishes its own `normal` for kernels (4.3); the grid path does not read it.
 - **Nothing per pass.** The claim and the points are all a depth sweep needs.
+
+### 3.5 Slice 2 against the Render as it is (2026-10-06)
+
+Re-read after T1604b (one device pass per run of a node's draws) and T1598b (shadow caster lists, reach).
+
+- **Runs (T1604b).** A sheeted geometry is still one draw in each pass that draws it, with more vertices. It adds no plan pass and moves none, so every run is the run it was (`renderPassRuns`).
+- **What is left of "one Geometry for many tubes".** Section 2.3's 0.31 ms per added Geometry was mostly per device pass, and N Geometries into one single-sampled target are now ONE device pass of N draws. What N Geometries still cost over one is N draws' encoding and uniforms in every pass, and a device pass each on a multisampled target, where the rule keeps one pass per draw. Measured for the consumer's shape in section 11.3.
+- **The reason that does not depend on cost.** Several strips arrive in ONE pointset: ten strands from a rope node, a pipe run from one kernel. A Geometry draws a pointset, so without sheets there is nothing to wire: the strips could not be split into ten Geometries without ten nodes that each select one.
+- **Shadow caster lists (T1598b).** A list names a Geometry. A sheeted sweep is one Geometry, so it is named, kept or excluded whole, as any other. Nothing changes.
+- **Reach.** A bound exists only where it is known without reading the GPU, and a sweep's points are placed on the GPU: it publishes none and is always drawn, which is the safe direction. Unchanged.
+- **The preview tile and Render Surface** draw a grid with their own sizing; both take the sheet count through the same function.
 
 ## 4. The node
 
@@ -396,7 +412,8 @@ As built for slices 1 and 3. On Dawn through the compiler and the backend; exact
 | | Slice | Contents | What it unblocks | Touches the Render |
 |---|---|---|---|---|
 | 1 | Sweep, one strip | the node; Ring, Square, Strip; `sides`, `smooth`, `radius` and its map, `facing`; the carried attributes; `normal` and `uv` published; a plain `grid:` claim; `src/points/sweep.ts` | the tunnel's bore | no |
-| 2 | Sheets | `grid:CxRxS` in the claim, the three grid chunks, the draw's size, the Topology node, `ctx.dim`; the grid reads `uv`; several strips | cables; the tentacle's skin; any set of tubes as one Geometry | yes: after the shadow work in `scene.ts` |
+| 2 | Sheets | `grid:CxRxS` in the claim, a sheeted variant of the grid chunks, the draw's size, the Topology node, `ctx.dim`; several strips | cables; the tentacle's skin; pipes; any set of tubes as one Geometry | yes |
+| 2b | A grid's texture coordinate | the grid reads a `uv` attribute (D2); the wrapped-axis coordinate (B255) | a texture that keeps its size along a swept tube | yes, and shipped Tube and Torus grids |
 | 3 | Caps and the custom profile | the cap rows; the Profile input | closed ends; rails, gutters, any outline | no |
 
 - **Slices 1 and 3 are built** (2026-10-06). Slice 2 is not: until it is, a path of several strips is refused by name, pointing at this row.
