@@ -29,6 +29,12 @@ declare module "@domain/types/commands.ts" {
 }
 
 /**
+ * The one input shape `runtime.resetFeedback` takes. Both registrations below declare it
+ * (T1556b): the document's command, and the forward a component session bus carries.
+ */
+export const RESET_FEEDBACK_INPUT = z.object({ nodeIds: nodeIdsInput.optional() }).strict();
+
+/**
  * T597: the registration as a PURE function, so the headless MCP server registers the
  * SAME command from the same body (§V39) — the hook below wraps it with refs.
  */
@@ -44,7 +50,7 @@ export function registerResetFeedbackCommand(
   if (bus.hasCommand("runtime.resetFeedback")) return;
   bus.registerCommand({
       name: "runtime.resetFeedback",
-      inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
+      inputSchema: RESET_FEEDBACK_INPUT,
       description: "Clear temporal (feedback) history — one node's pair, or all of them.",
       handler: (input) => {
         const backend = sources.backend();
@@ -125,6 +131,7 @@ export function registerForwardedResetFeedback(
   if (session.hasCommand("runtime.resetFeedback")) return;
   session.registerCommand({
     name: "runtime.resetFeedback",
+    inputSchema: RESET_FEEDBACK_INPUT,
     description: "Clear temporal (feedback) history for the component instance being edited.",
     handler: async (input, context) => {
       const prefix = path().join(COMPONENT_ID_SEPARATOR);
