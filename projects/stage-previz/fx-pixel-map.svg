@@ -1,0 +1,208 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" font-family="Helvetica" font-size="11">
+<rect width="1920" height="1080" fill="#000"/>
+<line x1="0" y1="540" x2="1920" y2="540" stroke="#666"/>
+<text x="8" y="16" fill="#aaa" font-size="14">TOP HALF: ACME Pixel Line IP x 63, front elevation (64 px/ft across; one texel row per bar row)</text>
+<text x="8" y="558" fill="#aaa" font-size="14">BOTTOM HALF: GLP JDC Burst 1 x 38, plan, downstage at the bottom (40 px/ft across, 22.5 px/ft deep)</text>
+<rect x="2" y="30" width="208" height="3" fill="#ff2626"/>
+<text x="5" y="26" fill="#ff2626">P1.1</text>
+<rect x="216" y="30" width="207" height="3" fill="#8c1515"/>
+<text x="219" y="26" fill="#8c1515">P1.2</text>
+<rect x="429" y="30" width="208" height="3" fill="#ff2626"/>
+<text x="432" y="26" fill="#ff2626">P1.3</text>
+<rect x="642" y="30" width="208" height="3" fill="#8c1515"/>
+<text x="645" y="26" fill="#8c1515">P1.4</text>
+<rect x="856" y="30" width="207" height="3" fill="#ff2626"/>
+<text x="859" y="26" fill="#ff2626">P1.5</text>
+<rect x="1069" y="30" width="208" height="3" fill="#8c1515"/>
+<text x="1072" y="26" fill="#8c1515">P1.6</text>
+<rect x="1282" y="30" width="208" height="3" fill="#ff2626"/>
+<text x="1285" y="26" fill="#ff2626">P1.7</text>
+<rect x="1496" y="30" width="207" height="3" fill="#8c1515"/>
+<text x="1499" y="26" fill="#8c1515">P1.8</text>
+<rect x="1709" y="30" width="208" height="3" fill="#ff2626"/>
+<text x="1712" y="26" fill="#ff2626">P1.9</text>
+<rect x="2" y="126" width="208" height="3" fill="#ffe026"/>
+<text x="5" y="122" fill="#ffe026">P2.1</text>
+<rect x="216" y="126" width="207" height="3" fill="#8c7b15"/>
+<text x="219" y="122" fill="#8c7b15">P2.2</text>
+<rect x="429" y="126" width="208" height="3" fill="#ffe026"/>
+<text x="432" y="122" fill="#ffe026">P2.3</text>
+<rect x="642" y="126" width="208" height="3" fill="#8c7b15"/>
+<text x="645" y="122" fill="#8c7b15">P2.4</text>
+<rect x="856" y="126" width="207" height="3" fill="#ffe026"/>
+<text x="859" y="122" fill="#ffe026">P2.5</text>
+<rect x="1069" y="126" width="208" height="3" fill="#8c7b15"/>
+<text x="1072" y="122" fill="#8c7b15">P2.6</text>
+<rect x="1282" y="126" width="208" height="3" fill="#ffe026"/>
+<text x="1285" y="122" fill="#ffe026">P2.7</text>
+<rect x="1496" y="126" width="207" height="3" fill="#8c7b15"/>
+<text x="1499" y="122" fill="#8c7b15">P2.8</text>
+<rect x="1709" y="126" width="208" height="3" fill="#ffe026"/>
+<text x="1712" y="122" fill="#ffe026">P2.9</text>
+<rect x="2" y="221" width="208" height="3" fill="#64ff26"/>
+<text x="5" y="217" fill="#64ff26">P3.1</text>
+<rect x="216" y="221" width="207" height="3" fill="#378c15"/>
+<text x="219" y="217" fill="#378c15">P3.2</text>
+<rect x="429" y="221" width="208" height="3" fill="#64ff26"/>
+<text x="432" y="217" fill="#64ff26">P3.3</text>
+<rect x="642" y="221" width="208" height="3" fill="#378c15"/>
+<text x="645" y="217" fill="#378c15">P3.4</text>
+<rect x="856" y="221" width="207" height="3" fill="#64ff26"/>
+<text x="859" y="217" fill="#64ff26">P3.5</text>
+<rect x="1069" y="221" width="208" height="3" fill="#378c15"/>
+<text x="1072" y="217" fill="#378c15">P3.6</text>
+<rect x="1282" y="221" width="208" height="3" fill="#64ff26"/>
+<text x="1285" y="217" fill="#64ff26">P3.7</text>
+<rect x="1496" y="221" width="207" height="3" fill="#378c15"/>
+<text x="1499" y="217" fill="#378c15">P3.8</text>
+<rect x="1709" y="221" width="208" height="3" fill="#64ff26"/>
+<text x="1712" y="217" fill="#64ff26">P3.9</text>
+<rect x="2" y="316" width="208" height="3" fill="#26ffa2"/>
+<text x="5" y="312" fill="#26ffa2">P4.1</text>
+<rect x="216" y="316" width="207" height="3" fill="#158c59"/>
+<text x="219" y="312" fill="#158c59">P4.2</text>
+<rect x="429" y="316" width="208" height="3" fill="#26ffa2"/>
+<text x="432" y="312" fill="#26ffa2">P4.3</text>
+<rect x="642" y="316" width="208" height="3" fill="#158c59"/>
+<text x="645" y="312" fill="#158c59">P4.4</text>
+<rect x="856" y="316" width="207" height="3" fill="#26ffa2"/>
+<text x="859" y="312" fill="#26ffa2">P4.5</text>
+<rect x="1069" y="316" width="208" height="3" fill="#158c59"/>
+<text x="1072" y="312" fill="#158c59">P4.6</text>
+<rect x="1282" y="316" width="208" height="3" fill="#26ffa2"/>
+<text x="1285" y="312" fill="#26ffa2">P4.7</text>
+<rect x="1496" y="316" width="207" height="3" fill="#158c59"/>
+<text x="1499" y="312" fill="#158c59">P4.8</text>
+<rect x="1709" y="316" width="208" height="3" fill="#26ffa2"/>
+<text x="1712" y="312" fill="#26ffa2">P4.9</text>
+<rect x="2" y="377" width="208" height="3" fill="#26a2ff"/>
+<text x="5" y="373" fill="#26a2ff">P5.1</text>
+<rect x="216" y="377" width="207" height="3" fill="#15598c"/>
+<text x="219" y="373" fill="#15598c">P5.2</text>
+<rect x="429" y="377" width="208" height="3" fill="#26a2ff"/>
+<text x="432" y="373" fill="#26a2ff">P5.3</text>
+<rect x="642" y="377" width="208" height="3" fill="#15598c"/>
+<text x="645" y="373" fill="#15598c">P5.4</text>
+<rect x="856" y="377" width="207" height="3" fill="#26a2ff"/>
+<text x="859" y="373" fill="#26a2ff">P5.5</text>
+<rect x="1069" y="377" width="208" height="3" fill="#15598c"/>
+<text x="1072" y="373" fill="#15598c">P5.6</text>
+<rect x="1282" y="377" width="208" height="3" fill="#26a2ff"/>
+<text x="1285" y="373" fill="#26a2ff">P5.7</text>
+<rect x="1496" y="377" width="207" height="3" fill="#15598c"/>
+<text x="1499" y="373" fill="#15598c">P5.8</text>
+<rect x="1709" y="377" width="208" height="3" fill="#26a2ff"/>
+<text x="1712" y="373" fill="#26a2ff">P5.9</text>
+<rect x="2" y="443" width="208" height="3" fill="#6426ff"/>
+<text x="5" y="439" fill="#6426ff">P6.1</text>
+<rect x="216" y="443" width="207" height="3" fill="#37158c"/>
+<text x="219" y="439" fill="#37158c">P6.2</text>
+<rect x="429" y="443" width="208" height="3" fill="#6426ff"/>
+<text x="432" y="439" fill="#6426ff">P6.3</text>
+<rect x="642" y="443" width="208" height="3" fill="#37158c"/>
+<text x="645" y="439" fill="#37158c">P6.4</text>
+<rect x="856" y="443" width="207" height="3" fill="#6426ff"/>
+<text x="859" y="439" fill="#6426ff">P6.5</text>
+<rect x="1069" y="443" width="208" height="3" fill="#37158c"/>
+<text x="1072" y="439" fill="#37158c">P6.6</text>
+<rect x="1282" y="443" width="208" height="3" fill="#6426ff"/>
+<text x="1285" y="439" fill="#6426ff">P6.7</text>
+<rect x="1496" y="443" width="207" height="3" fill="#37158c"/>
+<text x="1499" y="439" fill="#37158c">P6.8</text>
+<rect x="1709" y="443" width="208" height="3" fill="#6426ff"/>
+<text x="1712" y="439" fill="#6426ff">P6.9</text>
+<rect x="2" y="507" width="208" height="3" fill="#ff26e0"/>
+<text x="5" y="503" fill="#ff26e0">P7.1</text>
+<rect x="216" y="507" width="207" height="3" fill="#8c157b"/>
+<text x="219" y="503" fill="#8c157b">P7.2</text>
+<rect x="429" y="507" width="208" height="3" fill="#ff26e0"/>
+<text x="432" y="503" fill="#ff26e0">P7.3</text>
+<rect x="642" y="507" width="208" height="3" fill="#8c157b"/>
+<text x="645" y="503" fill="#8c157b">P7.4</text>
+<rect x="856" y="507" width="207" height="3" fill="#ff26e0"/>
+<text x="859" y="503" fill="#ff26e0">P7.5</text>
+<rect x="1069" y="507" width="208" height="3" fill="#8c157b"/>
+<text x="1072" y="503" fill="#8c157b">P7.6</text>
+<rect x="1282" y="507" width="208" height="3" fill="#ff26e0"/>
+<text x="1285" y="503" fill="#ff26e0">P7.7</text>
+<rect x="1496" y="507" width="207" height="3" fill="#8c157b"/>
+<text x="1499" y="503" fill="#8c157b">P7.8</text>
+<rect x="1709" y="507" width="208" height="3" fill="#ff26e0"/>
+<text x="1712" y="503" fill="#ff26e0">P7.9</text>
+<rect x="45" y="1052" width="71" height="19" fill="#ff3232"/>
+<text x="45" y="1049" fill="#ddd">S1 (80,1061)</text>
+<rect x="398" y="1052" width="71" height="19" fill="#ffff32"/>
+<text x="398" y="1049" fill="#ddd">S2 (433,1061)</text>
+<rect x="751" y="1052" width="71" height="19" fill="#32ff32"/>
+<text x="751" y="1049" fill="#ddd">S3 (786,1061)</text>
+<rect x="1105" y="1052" width="71" height="19" fill="#32ffff"/>
+<text x="1105" y="1049" fill="#ddd">S4 (1140,1061)</text>
+<rect x="1458" y="1052" width="71" height="19" fill="#3232ff"/>
+<text x="1458" y="1049" fill="#ddd">S5 (1493,1061)</text>
+<rect x="1811" y="1052" width="71" height="19" fill="#ff32ff"/>
+<text x="1811" y="1049" fill="#ddd">S6 (1846,1061)</text>
+<rect x="45" y="982" width="71" height="19" fill="#e02c2c"/>
+<text x="45" y="979" fill="#ddd">S7 (80,991)</text>
+<rect x="398" y="982" width="71" height="19" fill="#e0e02c"/>
+<text x="398" y="979" fill="#ddd">S8 (433,991)</text>
+<rect x="751" y="982" width="71" height="19" fill="#2ce02c"/>
+<text x="751" y="979" fill="#ddd">S9 (786,991)</text>
+<rect x="1105" y="982" width="71" height="19" fill="#2ce0e0"/>
+<text x="1105" y="979" fill="#ddd">S10 (1140,991)</text>
+<rect x="1458" y="982" width="71" height="19" fill="#2c2ce0"/>
+<text x="1458" y="979" fill="#ddd">S11 (1493,991)</text>
+<rect x="1811" y="982" width="71" height="19" fill="#e02ce0"/>
+<text x="1811" y="979" fill="#ddd">S12 (1846,991)</text>
+<rect x="45" y="913" width="71" height="19" fill="#c12626"/>
+<text x="45" y="910" fill="#ddd">S13 (80,922)</text>
+<rect x="398" y="913" width="71" height="19" fill="#c1c126"/>
+<text x="398" y="910" fill="#ddd">S14 (433,922)</text>
+<rect x="751" y="913" width="71" height="19" fill="#26c126"/>
+<text x="751" y="910" fill="#ddd">S15 (786,922)</text>
+<rect x="1105" y="913" width="71" height="19" fill="#26c1c1"/>
+<text x="1105" y="910" fill="#ddd">S16 (1140,922)</text>
+<rect x="1458" y="913" width="71" height="19" fill="#2626c1"/>
+<text x="1458" y="910" fill="#ddd">S17 (1493,922)</text>
+<rect x="1811" y="913" width="71" height="19" fill="#c126c1"/>
+<text x="1811" y="910" fill="#ddd">S18 (1846,922)</text>
+<rect x="45" y="844" width="71" height="19" fill="#a32020"/>
+<text x="45" y="841" fill="#ddd">S19 (80,853)</text>
+<rect x="398" y="844" width="71" height="19" fill="#a3a320"/>
+<text x="398" y="841" fill="#ddd">S20 (433,853)</text>
+<rect x="751" y="844" width="71" height="19" fill="#20a320"/>
+<text x="751" y="841" fill="#ddd">S21 (786,853)</text>
+<rect x="1105" y="844" width="71" height="19" fill="#20a3a3"/>
+<text x="1105" y="841" fill="#ddd">S22 (1140,853)</text>
+<rect x="1458" y="844" width="71" height="19" fill="#2020a3"/>
+<text x="1458" y="841" fill="#ddd">S23 (1493,853)</text>
+<rect x="1811" y="844" width="71" height="19" fill="#a320a3"/>
+<text x="1811" y="841" fill="#ddd">S24 (1846,853)</text>
+<rect x="45" y="774" width="71" height="19" fill="#841a1a"/>
+<text x="45" y="771" fill="#ddd">S25 (80,783)</text>
+<rect x="398" y="774" width="71" height="19" fill="#84841a"/>
+<text x="398" y="771" fill="#ddd">S26 (433,783)</text>
+<rect x="751" y="774" width="71" height="19" fill="#1a841a"/>
+<text x="751" y="771" fill="#ddd">S27 (786,783)</text>
+<rect x="1105" y="774" width="71" height="19" fill="#1a8484"/>
+<text x="1105" y="771" fill="#ddd">S28 (1140,783)</text>
+<rect x="1458" y="774" width="71" height="19" fill="#1a1a84"/>
+<text x="1458" y="771" fill="#ddd">S29 (1493,783)</text>
+<rect x="1811" y="774" width="71" height="19" fill="#841a84"/>
+<text x="1811" y="771" fill="#ddd">S30 (1846,783)</text>
+<rect x="365" y="621" width="71" height="19" fill="#ffeabf"/>
+<text x="365" y="618" fill="#ddd">R1 (400,630)</text>
+<rect x="525" y="621" width="71" height="19" fill="#ffeabf"/>
+<text x="525" y="618" fill="#ddd">R2 (560,630)</text>
+<rect x="685" y="621" width="71" height="19" fill="#ffeabf"/>
+<text x="685" y="618" fill="#ddd">R3 (720,630)</text>
+<rect x="845" y="621" width="71" height="19" fill="#ffeabf"/>
+<text x="845" y="618" fill="#ddd">R4 (880,630)</text>
+<rect x="1005" y="621" width="71" height="19" fill="#ffeabf"/>
+<text x="1005" y="618" fill="#ddd">R5 (1040,630)</text>
+<rect x="1165" y="621" width="71" height="19" fill="#ffeabf"/>
+<text x="1165" y="618" fill="#ddd">R6 (1200,630)</text>
+<rect x="1325" y="621" width="71" height="19" fill="#ffeabf"/>
+<text x="1325" y="618" fill="#ddd">R7 (1360,630)</text>
+<rect x="1484" y="621" width="71" height="19" fill="#ffeabf"/>
+<text x="1484" y="618" fill="#ddd">R8 (1519,630)</text>
+</svg>
