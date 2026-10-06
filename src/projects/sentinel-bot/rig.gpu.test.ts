@@ -191,8 +191,11 @@ describe("the sentinel's rig — every joint, across two strides", () => {
         }
       }
     }
-    // Nearly every ring of every tentacle at every instant was out and measured, so the bounds below are not vacuous.
-    expect(measured).toBeGreaterThan(0.9 * steps.instants * TENTACLES * (FACTS.ringCount - 2));
+    // Most rings of every tentacle at every instant were out and measured, so the bounds below are not vacuous.
+    // (Three quarters: a holding tentacle winds its slack into the body rather than bow more than 92 degrees, and
+    // in this bore that is a quarter of its rings on average. It was over nine tenths while a tentacle might bow
+    // through a half circle.)
+    expect(measured).toBeGreaterThan(0.7 * steps.instants * TENTACLES * (FACTS.ringCount - 2));
     expect(most).toBeLessThanOrEqual(pitch + RESOLUTION);
     expect(least).toBeGreaterThanOrEqual(shortest - RESOLUTION);
     expect(tightest).toBeGreaterThanOrEqual(TIGHTEST);
@@ -419,10 +422,11 @@ describe("the sentinel's rig — every joint, across two strides", () => {
       if (socket === undefined || claw === undefined) throw new Error("a tentacle is stowed in the hall");
       expect(hall.slip(0, tentacle, FACTS.ringCount)).toBe(0);
       expect(socket[2] - claw[2]).toBeGreaterThan(1.5);
-      // In the bore it walks: most wrists are abreast of the body or ahead of it, not streaming aft.
+      // In the bore it walks: most wrists are within a step of the body, ahead of it or not far behind, not streaming
+      // aft. (From the socket's own place: a walking tentacle's first rings are wound into the body.)
       const walking = bore.at(0, tentacle, FACTS.ringCount);
-      const from = bore.at(0, tentacle, 0);
-      if (walking !== undefined && from !== undefined && from[2] - walking[2] < 1.5) held += 1;
+      const from = bore.socket(0, tentacle);
+      if (walking !== undefined && from[2] - walking[2] < 1.5) held += 1;
     }
     expect(held).toBeGreaterThan(TENTACLES / 2);
   }, 120_000);

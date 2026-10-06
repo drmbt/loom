@@ -152,7 +152,9 @@ const ROBOT: readonly Slider[] = [
   // Six of the ten on the wall: the rest trail, reach and feel about, and which six moves round the body (rig.ts).
   { name: "slider_crawl", caption: "Crawl", value: 0.6, min: 0, max: 1 },
   { name: "slider_swim", caption: "Swim", value: 0, min: 0, max: 1 },
-  { name: "slider_stride", caption: "Stride", value: 3.2, min: 1.6, max: 4.4 },
+  // A long step, planted well ahead: a walker reaches, takes hold and comes past its own hand.
+  { name: "slider_stride", caption: "Stride", value: 5, min: 1.6, max: 6 },
+  { name: "slider_reach", caption: "Reach ahead", value: 1.3, min: 0, max: 1.6 },
   { name: "slider_flare", caption: "Flare", value: 0.25, min: 0, max: 1 },
   { name: "slider_wave", caption: "Wave", value: 0.05, min: 0, max: 0.3 },
   { name: "slider_grip", caption: "Grip", value: 1, min: 0, max: 1 },
@@ -482,14 +484,15 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const robotSliders = ropes ? [...ROBOT, ...ROPE_LEGS] : ROBOT;
   const robotToggles = ["toggle_perch", "toggle_follow", ...(ropes ? ["toggle_ropes"] : [])];
   const sliders = [...robotSliders, ...SCENE, ...LIGHTS];
+  // Each control carries the value it ships with as its default too: what the engine's Reset puts it back to (§T1619b).
   const controls: GraphNode[] = [
-    ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
-    node("toggle_perch", "toggle", [-3600, 3500], { channel: "perch", caption: "Perch", on: false }, { label: "toggle_perch" }),
-    node("xypad_view", "xyPad", [-3300, 3500], { channel: "view", caption: "Chase side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "xypad_view" }),
-    node("slider_shot", "slider", [-3000, 3500], { channel: "shot", caption: `Shot (0 to ${SHOTS.length - 1})`, value: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
-    node("toggle_cuts", "toggle", [-2700, 3500], { channel: "cuts", caption: "Cut on the bars", on: true }, { label: "toggle_cuts" }),
-    node("toggle_follow", "toggle", [-3600, 3750], { channel: "follow", caption: "Follow the track", on: true }, { label: "toggle_follow" }),
-    ...(ropes ? [node("toggle_ropes", "toggle", [-3300, 3750], { channel: "ropes", caption: "Rope legs", on: false }, { label: "toggle_ropes" })] : []),
+    ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, defaultValue: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
+    node("toggle_perch", "toggle", [-3600, 3500], { channel: "perch", caption: "Perch", on: false, defaultOn: false }, { label: "toggle_perch" }),
+    node("xypad_view", "xyPad", [-3300, 3500], { channel: "view", caption: "Side / height", x: 1.1, y: 0.6, defaultX: 1.1, defaultY: 0.6, min: -2, max: 2 }, { label: "xypad_view" }),
+    node("slider_shot", "slider", [-3000, 3500], { channel: "shot", caption: `Shot (0 to ${SHOTS.length - 1})`, value: 0, defaultValue: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
+    node("toggle_cuts", "toggle", [-2700, 3500], { channel: "cuts", caption: "Auto camera (cuts by itself)", on: true, defaultOn: true }, { label: "toggle_cuts" }),
+    node("toggle_follow", "toggle", [-3600, 3750], { channel: "follow", caption: "Auto direction (follows the track)", on: true, defaultOn: true }, { label: "toggle_follow" }),
+    ...(ropes ? [node("toggle_ropes", "toggle", [-3300, 3750], { channel: "ropes", caption: "Rope legs", on: false, defaultOn: false }, { label: "toggle_ropes" })] : []),
   ];
   /**
    * THREE PANELS, not one board: the phone draws a tab for each (§T1517b), and a board taller than
@@ -744,7 +747,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       chasePhase: expressionSlot(`${STROKE} * ${track.beatsPerBar}`, 0),
       spark: expressionSlot(`${on("slider_spark")} * ${HAT}`, 0),
       ...swimming,
-      stride: expressionSlot(on("slider_stride"), 3.2),
+      stride: expressionSlot(on("slider_stride"), 5),
+      lead: expressionSlot(on("slider_reach"), 1.3),
       flare: expressionSlot(on("slider_flare"), 0.25),
       // The low end runs down the tentacles.
       wave: expressionSlot(on("slider_wave"), 0.05),

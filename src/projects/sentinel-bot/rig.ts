@@ -278,9 +278,9 @@ export function jointKernel(facts: KitFacts, robots: readonly Vec3[], pick: Pick
 struct Params {
 ${PLACE_PARAMS}
   crawl: f32, // @default 1  How many of the tentacles walk the wall: 0 none (all trail behind), 1 every one.
-  stride: f32, // @default 3.2  Metres the body travels per step of a tentacle.
+  stride: f32, // @default 5  Metres the body travels per step of a tentacle: the longer, the further a planted claw is left behind before it lets go.
   duty: f32, // @default 0.54  Share of a step the claw stays planted, at most (each tentacle has its own, down to 0.14 less). The rest it is in the air, reaching for the next rung: the longer that is, the slower the claw has to go.
-  lead: f32, // @default 0.75  Metres ahead of the body a claw plants.
+  lead: f32, // @default 1.3  Metres ahead of the body a claw plants: it reaches forward, takes its rung, and the body comes past it. (0.75 planted it all but abreast, and held it there. Much over 1.3 and a rung is out of a tentacle's reach from the sockets furthest back.)
   lift: f32, // @default 0.35  How far a swinging claw pulls in off the wall, as a share of the way to the axis.
   bore: f32, // @default 2.6  Radius of the wall the claws plant on, metres.
   flare: f32, // @default 0.25  How far the trailing tentacles splay outward.
@@ -352,7 +352,12 @@ fn chance(a: u32, b: u32, c: u32) -> f32 {
 const NECK: f32 = LENGTH * 0.4;
 const ARM: f32 = LENGTH - NECK;
 // The half-turn at which slack starts to stow: past a quarter circle each side a bow swells beyond its own ends, by 5 cm here.
-const BOW_LIMIT: f32 = 1.9;
+// How far a holding tentacle may bow, as half the angle its arc turns through, radians: past it, slack is wound
+// into the body. (It was 1.9, which winds in nothing a tentacle in this bore has: every leg stood out in a half
+// circle and the robot walked on bent wrists. The owner, 2026-10-06, with a picture of it: "weirdly bending its
+// legs so that they fit instead of stepping further forward … it tries to keep its hands in place with its body
+// causing it to like hand walk". At 0.8 an arc turns 92 degrees at the most.)
+const BOW_LIMIT: f32 = 0.8;
 
 fn sinc(x: f32) -> f32 {
   if (abs(x) < 1e-3) { return 1.0 - x * x / 6.0; }

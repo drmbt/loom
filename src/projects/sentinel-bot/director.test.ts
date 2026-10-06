@@ -9,7 +9,7 @@ import { TIER_B_CAPABILITIES } from "../../examples/runner.ts";
 import { shippedClipAudio } from "../../examples/shipped-clip-audio.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { FIELD_BARS, FIELD_EVERY, PACK_BARS, PHRASE_BARS, against, fieldTurn, pace, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
+import { FIELD_BARS, FIELD_EVERY, PACK_BARS, PACK_SHARE, PHRASE_BARS, against, fieldTurn, pace, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import { sentinelDocument } from "./document.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
@@ -135,9 +135,9 @@ describe("the sentinel follows the track", () => {
     expect([0, 1, 2, 3, 4].map((bar) => read(phrasePause("follow", "intensity", "draw", "bar"), { follow: 1, intensity: 0.6, draw: 0.2, bar }))).toEqual([1, 1, 0, 0, 1]);
     expect(read(phrasePause("follow", "intensity", "draw", "bar"), { follow: 1, intensity: 0.6, draw: 0.3, bar: 0 })).toBe(0);
     expect(read(phrasePause("follow", "intensity", "draw", "bar"), { follow: 1, intensity: 0.9, draw: 0, bar: 0 })).toBe(0);
-    // The pack: the leader alone, except for three eight-bar turns in ten; never without the switch. By the turn's
+    // The pack: the leader alone, except for about one eight-bar turn in five; never without the switch. By the turn's
     // draw and nothing that moves inside a turn, so it is called on a bar line, where the camera cuts.
-    expect([0.1, 0.29, 0.31, 0.9].map((draw) => read(packSize("follow", "draw", 3), { follow: 1, draw }))).toEqual([3, 3, 1, 1]);
+    expect([0.1, PACK_SHARE - 0.01, PACK_SHARE + 0.01, 0.9].map((draw) => read(packSize("follow", "draw", 3), { follow: 1, draw }))).toEqual([3, 3, 1, 1]);
     expect(read(packSize("follow", "draw", 3), { follow: 0, draw: 0 })).toBe(1);
     // Its turns are eight bars long: the same draw from bar 0 to 7, another from 8.
     const turns = [0, 7, 8].map((bar) => read(phraseDraw("bar", 6, PACK_BARS), { bar }));
