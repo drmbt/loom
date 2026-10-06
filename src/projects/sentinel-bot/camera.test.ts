@@ -150,7 +150,7 @@ describe("the sentinel camera", () => {
     expect(order).toEqual([...FIELD_ORDER]);
     for (const [turn, pick] of order.entries()) expect(pick).toBe(shotAtTurn(turn, true, true));
     const ofTheFields = SHOT_TABLE.map((shot, at) => ({ shot, at })).filter(({ shot }) => shot.subject === "field");
-    expect(ofTheFields.map(({ shot }) => shot.name)).toEqual(["fieldwide", "fieldside", "fieldlow", "fieldhigh"]);
+    expect(ofTheFields.map(({ shot }) => shot.name)).toEqual(["fieldfront", "fieldside", "fieldlow", "fieldhigh"]);
     for (const { at } of ofTheFields) expect(order).toContain(at);
     // The place changes on a cut: no shot of the fields' order is in the robot's or the pack's, so whichever shot
     // the tunnel was on and whichever the fields begin with, they are two shots. (They shared four; on the owner's
@@ -174,6 +174,14 @@ describe("the sentinel camera", () => {
         // …and within the heights that test looks at.
         expect([shot.name, Math.abs(out["up"] as number) < 30]).toEqual([shot.name, true]);
         expectAllSeenApart(shot, out, afield);
+        // The robots are what the shot is of (the owner, 2026-10-06: not "a handful of pixels in the distance"):
+        // the nearest one's body, 1.2 m of it, is a seventh of the frame's height or more, and the furthest a twentieth.
+        const eye = [out["right"] as number, out["up"] as number, out["ahead"] as number] as const;
+        const toward = [0 - eye[0], 0 - eye[1], shot.aim - eye[2]] as const;
+        const depths = afield.map((body) => body.reduce((sum, part, axis) => sum + (part - (eye[axis] as number)) * ((toward[axis] as number) / Math.hypot(...toward)), 0));
+        const tall = (depth: number): number => 1.2 / (2 * depth * Math.tan(((shot.lens / 2) * Math.PI) / 180));
+        expect([shot.name, tall(Math.min(...depths)) >= 1 / 7]).toEqual([shot.name, true]);
+        expect([shot.name, tall(Math.max(...depths)) >= 0.05]).toEqual([shot.name, true]);
       }
     }
   });

@@ -1,5 +1,3 @@
-import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
-import { CAMERA_PARAMS, VIEW } from "../furnace/screen-space.ts";
 import { CHAMBERS, PATH, chamberAt, chamberExpression, chamberWgsl, pathExpression, pathWgsl } from "./path.ts";
 
 /**
@@ -130,7 +128,7 @@ export function lampToneExpression(station: string): readonly [string, string, s
 const wgslTone = (tone: readonly number[]): string => `vec3f(${tone.map((component) => component.toFixed(4)).join(", ")})`;
 
 /** The rule as WGSL, for the wall's material and the motes. Needs `chamberAt` beside it. */
-const LAMP_TONE_WGSL = `const LAMP: f32 = ${LAMP_SPACING.toFixed(5)};
+export const LAMP_TONE_WGSL = `const LAMP: f32 = ${LAMP_SPACING.toFixed(5)};
 const LAMP_GAIN = array<f32, ${LAMP_GAINS.length}>(${LAMP_GAINS.map((gain) => gain.toFixed(2)).join(", ")});
 // The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,
 // every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.
@@ -418,7 +416,7 @@ export function lampHeightExpression(z: string, bore: string): string {
 }
 export const LAMPS_MIRRORED = 2;
 /** The lamps a pass is handed: the station the robot is under and `LAMPS_MIRRORED` either side. */
-const NEAR_LAMPS = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => index);
+export const NEAR_LAMPS = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => index);
 /** The parameter that carries where lamp `index` of those hangs (document.ts drives it from the lights' own expression). */
 export const lampParameter = (index: number): string => `lamp${index}`;
 /** Those parameters, as lines of a WGSL Params struct. */
@@ -462,111 +460,6 @@ fn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft:
   return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);
 }
 `;
-
-/**
- * AIR. Two things, in one pass over the lit frame and the Render's Depth:
- *
- *   haze   the far wall goes into a cold murk that is never quite black, so what stands in
- *          front of it has an outline;
- *   glow   the air itself is lit under every lamp and round the robot's face: what each pixel's
- *          ray picks up on its way to the wall, in even air. Both have a closed form, so there
- *          is no marching. The face is a point (the integral of 1/d² along a line is an
- *          arctangent): a halo. A lamp is a plate that shines down (the cube of the cosine off
- *          straight down, which integrates without an arctangent): a cone hanging from the
- *          plate, and nothing above it. No shadows in either: not shafts between the ribs.
- *
- * (The owner, 2026-10-05: "volumetric light or an approximation could be neat"; "we still
- * missing some haze or something. it looks too clean".) Until a stock haze exists (§T1402b)
- * this is the piece's own; the view helpers are the furnace's.
- */
-export const HAZE_WGSL = `${SHARED_UNIFORMS_WGSL}
-struct Params {
-${CAMERA_PARAMS}
-  density: f32, // @default 0.04  How fast the air closes in, per metre.
-  color: vec3f, // @default [0.016, 0.04, 0.044]  What the far end of the tunnel fades to: never black.
-  glow: f32, // @default 0.002  How much of a light the air between throws at the lens.
-${LAMP_PARAMS_WGSL}
-  lamp: f32, // @default 26  The lamps' intensity, as their lights have it.
-  eyesAt: vec3f, // @default [0, 0, 0.9]  Where the robot's face is.
-  eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its light's colour.
-  eyes: f32, // @default 1.6  …and intensity, as its light has it.
-};
-
-@group(0) @binding(0) var inputSampler: sampler;
-@group(0) @binding(1) var inputTexture: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> frameU: SharedFrame;
-@group(0) @binding(3) var<uniform> params: Params;
-@group(0) @binding(4) var inputTexture1: texture_2d<f32>;
-${VIEW}
-${chamberWgsl()}${LAMP_TONE_WGSL}
-// A lamp's light hangs this far under its plate (document.ts, lampAt); its lit air starts at the plate.
-const LAMP_HANGS: f32 = ${LAMP_HANGS.toFixed(2)};
-const BEAM_GAIN: f32 = ${BEAM_GAIN.toFixed(2)};
-// How much of a point light at \`light\` the air along a ray throws back, per unit of the light and of the air's
-// own share: the integral of 1/d² from the lens out to \`reach\` metres, dimmed by the air it then crosses.
-fn airlight(origin: vec3f, ray: vec3f, reach: f32, light: vec3f) -> f32 {
-  let q = origin - light;
-  let b = dot(ray, q);
-  // No nearer than a lamp is wide: a ray through the lamp itself is a bright core, not infinity.
-  let c = sqrt(max(dot(q, q) - b * b, 0.03));
-  let nearest = clamp(-b, 0.0, reach);
-  return (atan((reach + b) / c) - atan(b / c)) / c * exp(-nearest * params.density);
-}
-
-// The same for a LAMP, which is not a point: it is a plate in the crown that shines down, most straight down
-// and nothing above its own height (the cube of the cosine off straight down). So its lit air is a cone
-// hanging from the plate, not a ball round a point under it. That integral is closed too, and has no
-// arctangent in it: with s the distance along the ray from its nearest point to the plate, c that nearest
-// distance, and the depth under the plate there under + sink * s, it is the integral of
-// (under + sink * s)³ / (s² + c²)^(5/2), taken over the part of the ray that is below the plate.
-// A hall's lamp is the bigger lamp, by how much higher it hangs (document.ts, lampAt).
-fn hallLamp(z: f32) -> f32 {
-  return 1.0 + CHAMBER_SWELL * chamberAt(z);
-}
-
-fn beamUpTo(s: f32, c2: f32, under: f32, sink: f32) -> f32 {
-  let r2 = s * s + c2;
-  let r3 = r2 * sqrt(r2);
-  let j0 = s / (3.0 * c2 * r3) + 2.0 * s / (3.0 * c2 * c2 * sqrt(r2));
-  let j1 = -1.0 / (3.0 * r3);
-  let j2 = s * s * s / (3.0 * c2 * r3);
-  let j3 = -(3.0 * s * s + 2.0 * c2) / (3.0 * r3);
-  return under * under * under * j0 + 3.0 * under * under * sink * j1 + 3.0 * under * sink * sink * j2 + sink * sink * sink * j3;
-}
-
-fn beamlight(origin: vec3f, ray: vec3f, reach: f32, plate: vec3f) -> f32 {
-  let q = origin - plate;
-  let b = dot(ray, q);
-  let c2 = max(dot(q, q) - b * b, 0.03);
-  let sink = -ray.y;
-  let under = b * ray.y - q.y;
-  var s0 = b;
-  var s1 = reach + b;
-  if (sink > 1e-4) {
-    s0 = max(s0, -under / sink);
-  } else if (sink < -1e-4) {
-    s1 = min(s1, -under / sink);
-  } else if (under <= 0.0) {
-    return 0.0;
-  }
-  if (s1 <= s0) { return 0.0; }
-  let nearest = clamp(-b, s0 - b, s1 - b);
-  return max(beamUpTo(s1, c2, under, sink) - beamUpTo(s0, c2, under, sink), 0.0) * BEAM_GAIN * exp(-nearest * params.density);
-}
-
-@fragment
-fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
-  let view = makeView();
-  let ray = rayAt(view, uv);
-  let z = viewDepth(uv);
-  // Nothing drawn here: the tunnel's own dark, all haze.
-  let reach = select(z / max(dot(ray, view.forward), 1e-4), params.far, z < 0.0);
-  let clear = exp(-reach * params.density);
-  var air = params.eyeColor * params.eyes * airlight(params.eye, ray, reach, params.eyesAt);
-${NEAR_LAMPS.map((index) => `  air = air + lampTone(params.station + ${(index - LAMPS_MIRRORED).toFixed(1)}) * params.lamp * hallLamp(params.${lampParameter(index)}.z) * beamlight(params.eye, ray, reach, params.${lampParameter(index)} + vec3f(0.0, LAMP_HANGS, 0.0));`).join("\n")}
-  return vec4f(mix(params.color, lit.rgb, clear) + air * params.glow, lit.a);
-}`;
 
 /**
  * THE CROWN LAMPS AS LIGHTS: one point for every lamp station of the lap, each where its lamp hangs, for a

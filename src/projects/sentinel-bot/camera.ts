@@ -62,13 +62,19 @@ export const SHOT_TABLE: readonly Shot[] = [
   { name: "packquarter", what: "close ahead and above on the left: the leader under the lens, the others strung out behind", ahead: "2", right: "(0 - 1.2)", up: "1.6", lens: 60, aim: -4, ride: 0.4, subject: "pack" },
   { name: "packrear", what: "a long lens from well behind, clear of the last one's tail (it ends 15 m behind the leader): three tails stepped up the tunnel", ahead: "(0 - 19.5)", right: "0.5", up: "0.4", lens: 32, aim: -5.5, ride: 0.3, subject: "pack" },
   { name: "packunder", what: "from low on the right just ahead of them, looking back and up as they come over", ahead: "1", right: "1.5", up: "(0 - 1.3)", lens: 70, aim: -4, ride: 0.3, subject: "pack" },
-  // ── The fields (field.ts): no bore to stay inside, so the camera stands off as far as the avenue between the
-  // towers lets it (12 m either side of the line) and the place is what the shot is of. The pack is wider
-  // apart out here, and each of these holds all three ──
-  { name: "fieldwide", what: "far behind and above on the right: the three small in the avenue, the towers going on ahead", ahead: "(0 - 26)", right: "(8 + 0.6 * sin(abstime * 0.11))", up: "6", lens: 62, aim: -2, ride: 0.2, subject: "field" },
-  { name: "fieldside", what: "abreast of them from the edge of the avenue: they cross the towers behind", ahead: "(0 - 4)", right: "9.5", up: "(0.8 + 0.5 * sin(abstime * 0.13))", lens: 64, aim: -5, ride: 0.2, subject: "field" },
-  { name: "fieldlow", what: "from well below and ahead, looking back and up: they come over against the towers' tops", ahead: "8", right: "(0 - 5)", up: "(0 - 8)", lens: 66, aim: -5, ride: 0.2, subject: "field" },
-  { name: "fieldhigh", what: "from high behind, looking down past them into the dark the towers come up out of", ahead: "(0 - 23)", right: "(0 - 4)", up: "12", lens: 58, aim: -5.5, ride: 0.2, subject: "field" },
+  // ── The fields (field.ts): no bore to stay inside, and the place is behind every one of these. But the
+  // robots are what a shot is OF: the nearest of the three is close enough to be a creature and not a mark
+  // (the owner, 2026-10-06, of these four when each stood twenty metres off: "most of the framings actually
+  // show the creatures from too far away … a handful of pixels in the distance … it might even help to be
+  // closer to them to establish the scene because we have more reference as to what is even going on").
+  // And each is from ahead or abreast, where their lights are: out here a robot seen from behind is black
+  // steel on dark air (tried: over the last one's shoulder, it was a dark shape at the frame's edge and two
+  // specks). From behind, the fields have their shots of the tails, below. The pack is wider apart out here,
+  // and each of these holds all three, stepped away from the lens ──
+  { name: "fieldfront", what: "close ahead of the leader on the left, looking back: its face large, the two behind it stepped away up the avenue between the towers", ahead: "4.2", right: "(0 - 1.6 + 0.2 * sin(abstime * 0.11))", up: "0.3", lens: 56, aim: -2, ride: 0.2, subject: "field" },
+  { name: "fieldside", what: "abreast of them from the right, close on the nearest: the others cross the towers behind it", ahead: "(0 - 6.5)", right: "8.2", up: "(0.9 + 0.3 * sin(abstime * 0.13))", lens: 56, aim: -5.5, ride: 0.2, subject: "field" },
+  { name: "fieldlow", what: "from under the leader's nose, looking back and up: it comes over large, the others behind it against the towers' tops", ahead: "3.8", right: "(0 - 1)", up: "(0 - 2.6)", lens: 64, aim: -4, ride: 0.2, subject: "field" },
+  { name: "fieldhigh", what: "from above and ahead of the leader, looking back and down on the three, the mist the towers come up out of under them", ahead: "5", right: "1.5", up: "4.5", lens: 50, aim: -4, ride: 0.2, subject: "field" },
   // …and the fields' own close shots: of the tail and from behind, as the tunnel's are and a little off them.
   // Shots of their own and not the tunnel's used again, because the place changes on a cut: were the shot before
   // the change and the one after it ever the same shot, the towers would turn to tunnel in the middle of it.
@@ -103,7 +109,7 @@ export const PACK_ORDER: readonly number[] = ["packfront", "tail", "packquarter"
  * It shares NO shot with the two orders above (the test holds that), so going into the fields and coming out
  * of them is always a cut.
  */
-export const FIELD_ORDER: readonly number[] = ["fieldwide", "fieldtail", "fieldside", "fieldchase", "fieldlow", "fieldtips", "fieldhigh", "fieldwake"].map(index);
+export const FIELD_ORDER: readonly number[] = ["fieldfront", "fieldtail", "fieldside", "fieldchase", "fieldlow", "fieldtips", "fieldhigh", "fieldwake"].map(index);
 
 export function shotAtTurn(turn: number, pack = false, field = false): number {
   const order = field ? FIELD_ORDER : pack ? PACK_ORDER : ROBOT_ORDER;

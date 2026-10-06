@@ -1,9 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "../../tests/headless/render-harness.ts";
+import { srgbToLinear } from "../../domain/parameters/resolve.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
-import { CHAMBERS, chamberAt } from "./path.ts";
-import { BEAM_GAIN, HAZE_WGSL, LAMPS_MIRRORED, LAMP_HANGS, LAMP_TONES, lampParameter } from "./tunnel.ts";
+import { HAZE_WGSL } from "./air.ts";
+import { strikeAt } from "./field.ts";
+import { CHAMBERS, chamberAt, pathAt } from "./path.ts";
+import { BEAM_GAIN, LAMPS_MIRRORED, LAMP_HANGS, LAMP_TONES, lampParameter } from "./tunnel.ts";
 
 /**
  * T1561b — THE LIT AIR HANGS FROM THE LAMP'S PLATE, on a real GPU.
@@ -37,7 +40,7 @@ const LAMP = 1.4;
 const AWAY: Vec = [0, -500, 0];
 
 /** The middle pixel of the air pass over an empty frame: only what the one lamp's plate at `plate` lights. */
-async function middlePixel(eye: Vec, aim: Vec, plate: Vec, overrides: Record<string, number> = {}): Promise<number[]> {
+async function middlePixel(eye: Vec, aim: Vec, plate: Vec, overrides: Record<string, number | number[]> = {}): Promise<number[]> {
   if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
   // The pass is handed where the LIGHT hangs, which is under its plate.
   const hung: Vec = [plate[0], plate[1] - LAMP_HANGS, plate[2]];
@@ -132,4 +135,68 @@ describe("the sentinel's lit air hangs from the lamp's plate (T1561b)", () => {
     const up: Vec = [0, 5, 7];
     expect(await middlePixel(low, up, plate)).toEqual(expected(low, up, plate));
   }, 120_000);
+});
+
+/**
+ * THE FIELDS' AIR (air.ts, fieldAir): thin, with mist lying low, and lightning in it.
+ *
+ * The owner, 2026-10-06, of the fields without it: "a bit lost on the bottom. maybe needs some haze or fog down
+ * there." The claims are what the mist is FOR: a view down into it is closed and a view up out of it is open;
+ * lightning lights the air where it struck and not elsewhere; and with no air at all the pass adds nothing.
+ * The mist's top is in billows, so what a closed view holds is not one number: it is the mist's own colour
+ * somewhere in the range the billows give it, and the bounds here are that range.
+ */
+describe("the fields' air: mist low down, and lightning in it (T1561b)", () => {
+  /** The air's colour as the parameter is written: four numbers, encoded. The pass is handed it linear. */
+  const AIR = [0.2, 0.4, 0.6];
+  /** On the line, a hundred metres along: the height the robots fly at. */
+  const Z = 100;
+  const ON_THE_LINE: Vec = [pathAt(Z)[0], pathAt(Z)[1], Z];
+  const down: Vec = [ON_THE_LINE[0], ON_THE_LINE[1] - 100, ON_THE_LINE[2] + 30];
+  const up: Vec = [ON_THE_LINE[0], ON_THE_LINE[1] + 100, ON_THE_LINE[2] + 30];
+  /** The fields with nothing lit but the air itself: no lamp, no pods' light, no lightning. */
+  const fields = { place: 1, lamp: 0, color: [...AIR, 1], podColor: [0, 0, 0, 1], flash: 0, travel: 0, strike: 0 };
+
+  it("a view down into the mist is closed by it, a view up out of it is nearly open, and with no mist both are", async () => {
+    const [closed, open] = [await middlePixel(ON_THE_LINE, down, AWAY, { ...fields, mist: 1 }), await middlePixel(ON_THE_LINE, up, AWAY, { ...fields, mist: 1 })];
+    // Closed: the pixel is the mist's own colour, between its darkest (0.4 of the air's) and its brightest (2.7).
+    for (const [channel, written] of AIR.entries()) {
+      const air = srgbToLinear(written);
+      expect([channel, (closed[channel] as number) >= Math.floor(0.4 * air * 255)]).toEqual([channel, true]);
+      expect([channel, (closed[channel] as number) <= Math.ceil(Math.min(1, 2.7 * air) * 255)]).toEqual([channel, true]);
+    }
+    // Open: the mist's top is FIELD.mistTop below the line and it thins by e every FIELD.mistFade metres up, so a ray going up crosses next to none of it.
+    expect(open[2] as number).toBeLessThan((closed[2] as number) / 4);
+    // Cut the mist and nothing closes either view: the pass adds nothing to an empty frame.
+    expect(await middlePixel(ON_THE_LINE, down, AWAY, { ...fields, mist: 0 })).toEqual([0, 0, 0]);
+    expect(await middlePixel(ON_THE_LINE, up, AWAY, { ...fields, mist: 0 })).toEqual([0, 0, 0]);
+    // …and in the tunnel there is no mist to look down into, whatever the slider says.
+    expect(await middlePixel(ON_THE_LINE, down, AWAY, { ...fields, place: 0, mist: 1 })).toEqual([0, 0, 0]);
+  }, 240_000);
+
+  it("lightning lights the air where it struck: a lens held on the strike sees it, and sees nothing of a strike that is somewhere else", async () => {
+    const [strike, travel] = [2, 300];
+    const ruled = strikeAt(strike, travel);
+    const middle = ruled.start.map((part, axis) => (part + (ruled.end[axis] as number)) / 2) as [number, number, number];
+    // Thirty metres off, level with it, looking past it twelve metres over its middle (straight at it the air is
+    // white); no mist, so only the strike's own glow is there to see.
+    const eye: Vec = [middle[0], middle[1], middle[2] - 30];
+    const past: Vec = [middle[0], middle[1] + 12, middle[2]];
+    const at = { ...fields, mist: 0, color: [0, 0, 0, 1], travel };
+    const lit = await middlePixel(eye, past, AWAY, { ...at, strike, flash: 1 });
+    expect(lit[2] as number).toBeGreaterThan(15);
+    // Cold light: more blue in it than red.
+    expect(lit[2] as number).toBeGreaterThan(lit[0] as number);
+    // Cut the flash, and the air is dark.
+    expect(await middlePixel(eye, past, AWAY, { ...at, strike, flash: 0 })).toEqual([0, 0, 0]);
+    // Another strike is in another place: this lens sees a small part of its glow. (The first after it that is a
+    // hundred metres or more from this one: lit air falls off slowly, as one over the distance a ray passes at.)
+    const far = Array.from({ length: 40 }, (_, index) => strike + 1 + index).find((number) => {
+      const there = strikeAt(number, travel);
+      return Math.hypot(...there.start.map((part, axis) => (part + (there.end[axis] as number)) / 2 - (middle[axis] as number))) > 100;
+    });
+    if (far === undefined) throw new Error("no strike of the next forty is a hundred metres from this one");
+    const other = await middlePixel(eye, past, AWAY, { ...at, strike: far, flash: 1 });
+    expect(other[2] as number).toBeLessThan((lit[2] as number) / 4);
+  }, 240_000);
 });
