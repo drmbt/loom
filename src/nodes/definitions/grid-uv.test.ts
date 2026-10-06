@@ -1,7 +1,19 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { compileGraph } from "../../compiler/index.ts";
+import { flattenComponents } from "../../compiler/flatten.ts";
+import { graphChannelResolver } from "../../domain/channels/graph-channels.ts";
+import { createComponentSystem } from "../../domain/components/index.ts";
+import { loadProject } from "../../domain/project/index.ts";
 import type { GraphNode } from "../../domain/types/graph.ts";
+import { TIER_B_CAPABILITIES } from "../../examples/runner.ts";
+import { createNodeRegistry } from "../registry/registry.ts";
 import { authoredPoints, curveEdge, curveGraph, curveNode, compileCurveGraph, type AuthoredAttribute, type ReadPort } from "./curve-test-support.ts";
+import { SHARED_WGSL_MODULES } from "../shaders/shared-modules.ts";
+import { allNodeDefinitions } from "./index.ts";
+import { materialPbrNode, materialPhongNode, materialUnlitNode } from "./scene.ts";
+import { planFingerprint } from "./test-support.ts";
 
 /**
  * §T1618b at the plan level — WHICH DRAWS BIND A GRID'S `uv`, and that the rest are the
@@ -34,7 +46,7 @@ interface Material {
   /** Material inputs to wire a texture into. */
   readonly maps?: ReadonlyArray<"albedo" | "roughness">;
 }
-const stock = (type: string, maps: ReadonlyArray<"albedo" | "roughness"> = []): Material => ({ node: curveNode("material_skin", type, {}), maps });
+const stock = (type: string, maps: ReadonlyArray<"albedo" | "roughness"> = [], parameters: Record<string, unknown> = {}): Material => ({ node: curveNode("material_skin", type, parameters), maps });
 const wgsl = (body: string): Material => ({
   node: curveNode("material_skin", "materialWgsl", { model: "pbr", source: `fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n${body}\n  return o;\n}` }),
 });
@@ -133,3 +145,106 @@ describe("§T1618b: a grid's `uv` is bound where a texture coordinate is read, a
     expect(drawsOf(points([UV]), stock("materialUnlit", ["albedo"]))[0]!.shader).toContain("return gridUvs[row * cols + column];");
   });
 });
+
+describe("§T1618b: Map Extend picks how a map is read past its edge, and Hold is the read it always was", () => {
+  const HELD = "textureLoad(albedoMap, vec2i(clamp(input.uv, vec2f(0.0), vec2f(1.0)) * (vec2f(textureDimensions(albedoMap)) - vec2f(1.0))), 0)";
+  const both = ["albedo", "roughness"] as const;
+
+  it("Hold on both axes, said or left alone, is the text a mapped Surface had: no fold, no address function", () => {
+    const plain = drawsOf(points([]), stock("materialPbr", both), ["normal"]);
+    const said = drawsOf(points([]), stock("materialPbr", both, { mapExtendU: "hold", mapExtendV: "hold" }), ["normal"]);
+    expect(plain).toHaveLength(2);
+    expect(said.map((draw) => draw.shader)).toEqual(plain.map((draw) => draw.shader));
+    for (const draw of plain) {
+      expect(draw.shader).toContain(HELD);
+      expect(draw.shader).not.toContain("mapTexel");
+      expect(draw.shader).not.toContain("extendRepeat");
+    }
+  });
+
+  it("an axis that tiles sends every map of the material through one address, the shared module's two folds pasted once", () => {
+    const draws = drawsOf(points([]), stock("materialPbr", both, { mapExtendV: "repeat" }), ["normal", "albedo"]);
+    expect(draws).toHaveLength(3);
+    for (const draw of draws) {
+      expect(draw.shader).not.toContain("clamp(input.uv");
+      expect(draw.shader.match(/mapTexel\(input\.uv, vec2f\(textureDimensions\((albedoMap|roughnessMap)\)\)\)/g)).toHaveLength(2);
+      expect(draw.shader.match(/fn mapTexel\(/g)).toHaveLength(1);
+      // ONE text for the folds: the module a Material · WGSL pulls in with `// @use extend`.
+      expect(draw.shader.split(SHARED_WGSL_MODULES["extend"]!.source)).toHaveLength(2);
+      // Across is held by the address it always had; along is the fraction over all the texels.
+      expect(draw.shader).toContain("return vec2i(i32(clamp(uv.x, 0.0, 1.0) * (size.x - 1.0)), i32(min(floor(extendRepeat(uv.y) * size.y), size.y - 1.0)));");
+    }
+  });
+
+  it("each axis takes its own: nine texts, and a material with no map wired has none of them", () => {
+    const texts = new Set<string>();
+    for (const u of ["hold", "repeat", "mirror"]) {
+      for (const v of ["hold", "repeat", "mirror"]) {
+        const [draw] = drawsOf(points([]), stock("materialUnlit", ["albedo"], { mapExtendU: u, mapExtendV: v }));
+        texts.add(draw!.shader);
+        const fold = (extend: string, axis: string): string =>
+          extend === "hold" ? `i32(clamp(uv.${axis}, 0.0, 1.0) * (size.${axis} - 1.0))` : `i32(min(floor(${extend === "repeat" ? "extendRepeat" : "extendMirror"}(uv.${axis}) * size.${axis}), size.${axis} - 1.0))`;
+        if (u !== "hold" || v !== "hold") expect(draw!.shader, `${u}, ${v}`).toContain(`return vec2i(${fold(u, "x")}, ${fold(v, "y")});`);
+      }
+    }
+    expect(texts.size).toBe(9);
+    const unmapped = drawsOf(points([]), stock("materialPbr", [], { mapExtendU: "repeat", mapExtendV: "mirror" }));
+    expect(unmapped.map((draw) => draw.shader)).toEqual(drawsOf(points([]), stock("materialPbr")).map((draw) => draw.shader));
+  });
+
+  it("is two structural enums on each stock material, Hold by default", () => {
+    for (const definition of [materialUnlitNode, materialPhongNode, materialPbrNode]) {
+      for (const key of ["mapExtendU", "mapExtendV"]) {
+        const parameter = definition.parameters[key] as { type: string; default: unknown; compileTime?: boolean; options?: ReadonlyArray<{ value: string }> };
+        expect([definition.type, key, parameter.type, parameter.default, parameter.compileTime]).toEqual([definition.type, key, "enum", "hold", true]);
+        expect(parameter.options?.map((option) => option.value)).toEqual(["hold", "repeat", "mirror"]);
+      }
+    }
+  });
+});
+
+/**
+ * THE SHIPPED EXAMPLES THAT WEAR A STOCK MAP ON A GRID SURFACE, pinned by their whole plan:
+ * every pass's id, shader text, bindings and uniform values (`planFingerprint`). Taken on
+ * 2026-10-06 at `fcf60408`, with §B255 and the `uv` read in and BEFORE a material could say
+ * how a map is read past its edge.
+ *
+ * It is how "Map Extend: Hold is the program a mapped Surface always had" is held: E75
+ * multisamples a Render whose mapped grids have open edges in frame, and an automatic repeat
+ * outside 0 to 1 moved 571 of its pixels (a partly covered pixel reads its coordinate at
+ * the pixel centre, outside the triangle). The same plan is the same bytes.
+ */
+const MAPPED: ReadonlyArray<readonly [example: string, fingerprint: string]> = [
+  ["E20-Gooeyball", "524da1380e9f7f65"],
+  ["E25-Stage", "3ea3923714e496b7"],
+  ["E34-Lidar", "c73ed3113401e002"],
+  ["E75-Resonance", "b48273dc56455b40"],
+  ["E76-Verdant-Lotus", "a05741c9165a6c6f"],
+];
+
+const registry = createNodeRegistry(allNodeDefinitions).view();
+function examplePlan(name: string) {
+  const text = readFileSync(new URL(`../../../examples/${name}.loom.json`, import.meta.url), "utf8");
+  const system = createComponentSystem(registry);
+  const loaded = loadProject(text, { nodes: system.nodes });
+  if (!loaded.ok) throw new Error(`${name} does not load`);
+  for (const definition of loaded.components) system.components.register(definition);
+  const components = system.components.view();
+  const flattened = flattenComponents({ graph: loaded.document.graph, registry: system.nodes, components });
+  const channels = graphChannelResolver(flattened.graph, system.nodes);
+  return compileGraph({ graph: loaded.document.graph, settings: loaded.document.settings, registry: system.nodes, capabilities: TIER_B_CAPABILITIES, components, flattened, resolution: { channels } });
+}
+
+describe("a shipped Surface that wears a map keeps its plan: the map is read as it always was", () => {
+  for (const [name, fingerprint] of MAPPED) {
+    it(`${name}: every pass, its shader text, its bindings and its uniforms`, () => {
+      const plan = examplePlan(name);
+      expect(plan.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
+      // The claim is about a path that runs: a draw of the example binds a stock map.
+      const mapped = (plan.passes as unknown as Pass[]).filter((pass) => (pass.textures ?? []).some((texture) => texture.binding === "albedoMap" || texture.binding === "roughnessMap"));
+      expect(mapped.length).toBeGreaterThan(0);
+      expect(planFingerprint(plan)).toBe(fingerprint);
+    });
+  }
+});
+

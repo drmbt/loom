@@ -398,6 +398,10 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
     reason: `${TYPE_ONLY_UNIT_TEST} T1587b's one read is each parameter's own \`inactiveWhen\`: which profile Sides and Smooth apply to.`,
     reads: ["pointSweepNode.parameters"],
   },
+  "src/nodes/definitions/grid-uv.test.ts": {
+    reason: `${TYPE_ONLY_UNIT_TEST} T1618b's one read is the declared shape of Map Extend on the three stock materials: two structural enums, Hold by default.`,
+    reads: ["definition.parameters"],
+  },
   "src/nodes/definitions/point-topology.test.ts": {
     reason: `${TYPE_ONLY_UNIT_TEST} T1587b's one read is Sheets' own \`inactiveWhen\`: only a Grid is cut into sheets.`,
     reads: ["pointTopologyNode.parameters"],

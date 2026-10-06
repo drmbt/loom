@@ -179,7 +179,7 @@ export const materialWgslNode: NodeDefinition = {
       default: MATERIAL_WGSL_DEFAULT_SOURCE,
       compileTime: true,
       description:
-        "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut, run per pixel before lighting. Its struct Params fields (with // @default and a describing comment) become this node's controls, read as p.<name>. `// @use hash` or `grid` pulls in shared helpers. A `struct Instance { glow: f32, // @default 0 }` is what the material reads PER INSTANCE, as s.instance.glow: on a mesh-instancing Geometry each field is the points' attribute of that name and type (the Geometry's Instance Attributes renames one or takes a channel), and on any other draw its @default.",
+        "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut, run per pixel before lighting. Its struct Params fields (with // @default and a describing comment) become this node's controls, read as p.<name>. `// @use hash` or `grid` pulls in shared helpers; `// @use extend` gives extendRepeat and extendMirror, the folds a stock material's Map Extend tiles a map by, for a pattern keyed to s.uv. A `struct Instance { glow: f32, // @default 0 }` is what the material reads PER INSTANCE, as s.instance.glow: on a mesh-instancing Geometry each field is the points' attribute of that name and type (the Geometry's Instance Attributes renames one or takes a channel), and on any other draw its @default.",
     },
   }),
   parametersFor(stored) {

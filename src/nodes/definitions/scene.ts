@@ -5,7 +5,7 @@ import { instanceShapeIndex, parseInstanceShape } from "./render-instances.ts";
 import type { BufferBindingDescriptor, DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
 import { relocated, type WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
 import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
-import type { CameraPayload, GeometryPayload, LightPayload, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
+import type { CameraPayload, GeometryPayload, LightPayload, MapExtend, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
 import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix } from "../../domain/geometry/camera.ts";
@@ -3333,6 +3333,9 @@ export const renderNode: NodeDefinition = {
         ...(material.maps.albedo === undefined ? {} : { albedo: true }),
         ...(material.maps.roughness === undefined ? {} : { roughness: true }),
       };
+      /* T1618b: Map Extend, where the material says an axis tiles. Absent, the maps are read
+         by the text they always were. */
+      const mapExtendOption = material.mapExtend === undefined ? {} : { mapExtend: material.mapExtend };
       /* T1618b: a grid whose pointset carries a vec2f `uv` hands it to the material as its
          texture coordinate, in place of the grid's own. Bound and read only where a coordinate
          IS read: a map is wired, or the Material · WGSL's source names the member. A sweep
@@ -3358,6 +3361,7 @@ export const renderNode: NodeDefinition = {
       const surfaceMaterialOptions = {
         model: model as "unlit" | "lambert" | "phong" | "pbr",
         maps,
+        ...mapExtendOption,
         ...instancedOption,
         ...(tinted ? { pointColor: true } : {}),
         ...sheetsOption,
@@ -3391,6 +3395,7 @@ export const renderNode: NodeDefinition = {
           lightCount: lights.length,
           ...(additive ? { additive: true } : {}),
           maps,
+          ...mapExtendOption,
           ...instancedOption,
           ...(tinted ? { pointColor: true } : {}),
           ...sheetsOption,
@@ -3895,6 +3900,8 @@ function materialCompile(model: MaterialPayload["model"]) {
     const specular = readColor(parameters, "specular", [1, 1, 1, 1]);
     const albedoMap = inputs["albedo"]?.resource;
     const roughnessMap = inputs["roughness"]?.resource;
+    const extendU = readMapExtend(parameters["mapExtendU"]);
+    const extendV = readMapExtend(parameters["mapExtendV"]);
     const payload: MaterialPayload = {
       kind: "material",
       model,
@@ -3907,10 +3914,38 @@ function materialCompile(model: MaterialPayload["model"]) {
         ...(albedoMap === undefined ? {} : { albedo: albedoMap }),
         ...(roughnessMap === undefined ? {} : { roughness: roughnessMap }),
       },
+      // T1618b: said only when an axis tiles, so a material that holds is the payload it was.
+      ...(extendU === "hold" && extendV === "hold" ? {} : { mapExtend: { u: extendU, v: extendV } }),
     };
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
   };
 }
+
+const readMapExtend = (value: unknown): MapExtend => (value === "repeat" || value === "mirror" ? value : "hold");
+
+/**
+ * T1618b — MAP EXTEND: what a map reads where the texture coordinate leaves 0 to 1, an axis
+ * at a time (TouchDesigner's Extend U and V on a MAT's maps, Notch's Texture Wrap Mode U and
+ * V on a material). Structural: it picks the text of the map read. Hold is the text a map
+ * always had, so no material that shipped reads its maps any differently.
+ */
+const mapExtendParameter = (label: string, axis: string, tiled: string): ParameterSchema[string] => ({
+  type: "enum",
+  label,
+  default: "hold",
+  compileTime: true,
+  // §V831: APPEND only — a stored value whose row moved resolves to the default.
+  options: [
+    { value: "hold", label: "Hold" },
+    { value: "repeat", label: "Repeat" },
+    { value: "mirror", label: "Mirror" },
+  ],
+  description: `How the maps are read where the texture coordinate ${axis} leaves 0 to 1. Hold: the map's edge carries on. Repeat: the map tiles, ${tiled}. Mirror: it tiles with every other tile turned round, so no tile shows a seam. On an open edge under MSAA a tiled axis shows a hairline of the map's far edge (the pixel's centre is past the surface there): keep Hold on an axis that does not tile.`,
+});
+const MAP_EXTEND_PARAMETERS: ParameterSchema = {
+  mapExtendU: mapExtendParameter("Map Extend U", "across (u: a grid's columns, the way round a Sweep's profile)", "once for each whole number the coordinate passes"),
+  mapExtendV: mapExtendParameter("Map Extend V", "along (v: a grid's rows, the way along a Sweep's path)", "which is what a Sweep with UV Along: Metres wants: a tile every Tile Length"),
+};
 
 const MATERIAL_OUT = { id: "out", label: "Out", type: { kind: "material", model: "custom" } as const };
 const ALBEDO_IN = {
@@ -3940,6 +3975,7 @@ export const materialUnlitNode: NodeDefinition = {
   outputs: [MATERIAL_OUT],
   parameters: {
     color: { type: "color", label: "Color", default: [0.8, 0.8, 0.8, 1], space: "display" },
+    ...MAP_EXTEND_PARAMETERS,
   },
   compile: materialCompile("unlit"),
 };
@@ -3959,6 +3995,7 @@ export const materialPhongNode: NodeDefinition = {
     specular: { type: "color", label: "Specular", default: [1, 1, 1, 1], space: "display" },
     shininess: { type: "number", label: "Shininess", default: 48, min: 2, max: 512, range: "floor" },
     roughness: { type: "number", label: "Roughness", default: 0.35, min: 0, max: 1, range: "bounded" },
+    ...MAP_EXTEND_PARAMETERS,
   },
   compile: materialCompile("phong"),
 };
@@ -3977,6 +4014,7 @@ export const materialPbrNode: NodeDefinition = {
     color: { type: "color", label: "Base Color", default: [0.8, 0.8, 0.8, 1], space: "display" },
     metallic: { type: "number", label: "Metallic", default: 0, min: 0, max: 1, range: "bounded" },
     roughness: { type: "number", label: "Roughness", default: 0.5, min: 0, max: 1, range: "bounded" },
+    ...MAP_EXTEND_PARAMETERS,
   },
   compile: materialCompile("pbr"),
 };

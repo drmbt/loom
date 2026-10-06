@@ -1,7 +1,7 @@
 import { generatedOnce, wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
-import { declaredNames } from "./shared-modules.ts";
+import { SHARED_WGSL_MODULES, declaredNames } from "./shared-modules.ts";
 import type { WgslPosition } from "../../runtime/backend/wgsl-source-map.ts";
 import { advance, endOf } from "../../runtime/backend/wgsl-source-map.ts";
 import { packedAccessorWgsl, packedBindingsWgsl, type InstanceRecordOffsets, type PackedRead } from "./instance-resolve.wgsl.ts";
@@ -31,6 +31,13 @@ export interface SceneShadingOptions {
   /** Lights the shader is compiled for. 0 is legal: ambient floor only. */
   readonly lightCount: number;
   readonly maps?: { readonly albedo?: boolean; readonly roughness?: boolean };
+  /**
+   * T1618b: how the maps are read past their edge, an axis at a time (the material's Map
+   * Extend). Absent, or Hold on both axes, emits the text a map was always read by, to the
+   * byte: the coordinate clamped to 0..1. Otherwise the maps are read through `mapTexel`,
+   * which folds each axis by the shared module `extend`.
+   */
+  readonly mapExtend?: { readonly u: "hold" | "repeat" | "mirror"; readonly v: "hold" | "repeat" | "mirror" };
   /** T478: a vec4f attribute multiplies the base colour per point (the mapped tint). */
   readonly pointColor?: boolean;
   /**
@@ -1450,6 +1457,39 @@ export interface SceneSurfaceModule {
   readonly placed: { readonly params?: WgslPosition; readonly code?: WgslPosition };
 }
 
+/**
+ * T1618b — THE TEXEL A MAP IS READ AT WHEN AN AXIS TILES (the stock materials' Map Extend).
+ *
+ * ⚑ WHY THIS IS A PARAMETER AND NOT A RULE ABOUT THE COORDINATE. "Repeat whatever leaves
+ * 0..1" was built first and moved a shipped picture (E75): under multisampling a partly
+ * covered pixel interpolates its coordinate at the pixel centre, which lies OUTSIDE the
+ * triangle, so at every open edge of a surface whose own coordinate is in range the
+ * fragment sees one that is not. The clamp absorbed that; a repeat puts the map's opposite
+ * edge there. A fragment cannot tell a coordinate that tiles from an open edge, so tiling is
+ * said by the material, an axis at a time, and Hold stays the read it always was.
+ *
+ *  - Hold: the coordinate clamped to 0..1, times the size less one, as ever. The last texel
+ *    is read only at exactly 1 (a known oddity of this address, recorded and not changed).
+ *  - Repeat: `floor(extendRepeat(c) × size)`. A tile is all `size` texels, and one tile
+ *    length further on reads the same texel.
+ *  - Mirror: `floor(extendMirror(c) × size)`: every odd tile is read backwards.
+ * The two folds are the shared module `extend`, pasted, so a Material · WGSL that asks for
+ * it tiles the same way. The `min` keeps a fold that rounds up to 1 inside the map.
+ */
+function mapTexelWgsl(u: "hold" | "repeat" | "mirror", v: "hold" | "repeat" | "mirror"): string {
+  const axis = (extend: "hold" | "repeat" | "mirror", coordinate: string, size: string): string =>
+    extend === "hold"
+      ? `i32(clamp(${coordinate}, 0.0, 1.0) * (${size} - 1.0))`
+      : `i32(min(floor(${extend === "repeat" ? "extendRepeat" : "extendMirror"}(${coordinate}) * ${size}), ${size} - 1.0))`;
+  return `${SHARED_WGSL_MODULES["extend"]!.source}
+
+/* T1618b: Map Extend, across: ${u}; along: ${v}. */
+fn mapTexel(uv: vec2f, size: vec2f) -> vec2i {
+  return vec2i(${axis(u, "uv.x", "size.x")}, ${axis(v, "uv.y", "size.y")});
+}
+`;
+}
+
 export const sceneSurfaceModule = generatedOnce("sceneSurfaceModule", buildSceneSurfaceModule);
 function buildSceneSurfaceModule(options: SceneShadingOptions): SceneSurfaceModule {
   const lightCount = Math.max(0, Math.floor(options.lightCount));
@@ -1527,13 +1567,21 @@ ${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradianc
 
   /* Maps read with textureLoad (the T262 bridge's precedent): draw passes carry no
      sampler slot, and a texel fetch keeps unfilterable formats working on Tier B. */
+  /* T1618b: Map Extend. Hold on both axes is the read a map always had, and the text below
+     is then the text it was; an axis that tiles sends every map through `mapTexel`. */
+  const extendU = options.mapExtend?.u ?? "hold";
+  const extendV = options.mapExtend?.v ?? "hold";
+  const extended = (albedoMap || roughnessMap) && (extendU !== "hold" || extendV !== "hold");
   const mapBindings = [
     albedoMap ? `@group(0) @binding(3) var albedoMap: texture_2d<f32>;\n` : "",
     roughnessMap ? `@group(0) @binding(${albedoMap ? 4 : 3}) var roughnessMap: texture_2d<f32>;\n` : "",
+    extended ? mapTexelWgsl(extendU, extendV) : "",
   ].join("");
 
   const mapLoad = (name: string): string =>
-    `textureLoad(${name}, vec2i(clamp(input.uv, vec2f(0.0), vec2f(1.0)) * (vec2f(textureDimensions(${name})) - vec2f(1.0))), 0)`;
+    extended
+      ? `textureLoad(${name}, mapTexel(input.uv, vec2f(textureDimensions(${name}))), 0)`
+      : `textureLoad(${name}, vec2i(clamp(input.uv, vec2f(0.0), vec2f(1.0)) * (vec2f(textureDimensions(${name})) - vec2f(1.0))), 0)`;
 
   const albedoExpr = `${albedoMap ? `params.baseColor * ${mapLoad("albedoMap")}` : "params.baseColor"}${pointColor ? " * input.tint" : ""}`;
   /* T1353b: a mesh with a `surface` row carries its OWN roughness and metallic per

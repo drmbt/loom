@@ -240,7 +240,7 @@ export const pointSweepNode: NodeDefinition = {
       // §V831: APPEND only.
       options: [...UV_OPTIONS],
       description:
-        "uv.y, the coordinate along the path. Stretch: 0 at the path's start, 1 at its end, by distance. Metres: distance ÷ Tile Length, so a pattern keeps its size whatever the spacing of the rings. Points: the row over the rows. Stretch and Metres read Curve Frames' Metrics.",
+        "uv.y, the coordinate along the path. Stretch: 0 at the path's start, 1 at its end, by distance. Metres: distance ÷ Tile Length, so a pattern keeps its size whatever the spacing of the rings; a stock material's map tiles along it with Map Extend V: Repeat. Points: the row over the rows. Stretch and Metres read Curve Frames' Metrics.",
     },
     uvLength: {
       type: "number",

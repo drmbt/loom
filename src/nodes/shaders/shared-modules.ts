@@ -363,9 +363,39 @@ export function hashLotReference(hash: number, n: number): number {
   return (Math.imul(hash >>> 16, n) >>> 16) >>> 0;
 }
 
+/**
+ * T1618b — A COORDINATE FOLDED INTO ONE TILE: how a map is read past its edge.
+ *
+ * A texture coordinate from 0 to 1 covers a map once. What a coordinate outside that reads
+ * is a choice about the SAMPLING, not about the coordinate: the map carries on tile after
+ * tile (repeat), or every other tile is turned round so no tile shows a seam (mirror). Each
+ * function takes one axis's coordinate and returns where in the tile it reads, 0 to 1.
+ *
+ * ⚑ ONE TEXT, TWO READERS. The stock materials' Map Extend reads its maps through exactly
+ * this (`scene-render.wgsl.ts` pastes this source), and a Material · WGSL or a Custom WGSL
+ * that says `// @use extend` gets the same two functions: a procedural pattern keyed to
+ * `s.uv` then tiles where a stock map on the same surface does.
+ *
+ * `extendRepeat` is the coordinate's fraction: 1.25 reads what 0.25 reads, −0.25 what 0.75
+ * does, and a whole number reads the tile's start. `extendMirror` turns every odd tile
+ * round: 1.25 reads what 0.75 reads, and a whole number is an edge the two tiles share.
+ */
+const EXTEND_MODULE: SharedWgslModule = {
+  summary: "extendRepeat(c), extendMirror(c): a coordinate folded into one tile, 0..1 — how a stock material's Map Extend tiles",
+  source: `fn extendRepeat(coordinate: f32) -> f32 {
+  return fract(coordinate);
+}
+
+fn extendMirror(coordinate: f32) -> f32 {
+  let turn = coordinate - 2.0 * floor(coordinate * 0.5);
+  return 1.0 - abs(1.0 - turn);
+}`,
+};
+
 export const SHARED_WGSL_MODULES: Readonly<Record<string, SharedWgslModule>> = {
   hash: HASH_MODULE,
   lot: LOT_MODULE,
+  extend: EXTEND_MODULE,
   grid: GRID_MODULE,
   "surface-detail": SURFACE_DETAIL_MODULE,
   "light-depth": LIGHT_DEPTH_MODULE,

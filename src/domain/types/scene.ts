@@ -331,6 +331,9 @@ export interface GeometryPayload {
   readonly material: MaterialPayload;
 }
 
+/** T1618b: what a map reads past its edge. Hold carries the edge texel on; Repeat tiles; Mirror tiles, every other tile turned round. */
+export type MapExtend = "hold" | "repeat" | "mirror";
+
 export interface MaterialPayload {
   readonly kind: "material";
   readonly model: "unlit" | "lambert" | "phong" | "pbr" | "glass";
@@ -345,6 +348,13 @@ export interface MaterialPayload {
     readonly albedo?: string;
     readonly roughness?: string;
   };
+  /**
+   * T1618b: how the maps are read where the texture coordinate leaves 0 to 1, an axis at a
+   * time. Absent is Hold on both: the edge texel carries on, which is what a map always did.
+   * Present only when an axis is not Hold, so a material that does not tile is the payload
+   * it was.
+   */
+  readonly mapExtend?: { readonly u: MapExtend; readonly v: MapExtend };
   /**
    * T725 — present exactly when model === "glass": screen-space transmission. The
    * surface SAMPLES what was already rendered behind it (§V644: sampled light, never
