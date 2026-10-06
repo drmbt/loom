@@ -19,7 +19,8 @@ import { loadKit } from "./load-kit.ts";
  *     [--audio track.wav]           the track the piece hears, muxed into a clip; without it every lane rests
  *     [--bpm 134 --offset 0 --beats 4]   that track's tempo, when it is not the shipped beat: the camera cuts on its bars
  *     [--bitrate 14M]               a clip's video bitrate (default 40M: a long clip wants less)
- *     [--set kernel_ring.crawl=0.5,slider_speed.value=6]   parameter overrides by node id
+ *     [--set kernel_ring.crawl=0.5,slider_speed.value=6]   parameter overrides by node id (a vector in square brackets:
+ *                                   camera_rig.eye=[0.8,0.3,1.5] is the camera flown that far off its shot)
  *     [--cam=-7.5,1.1,0.6]          the chase shot, placed: metres ahead of the robot, right, up
  *     [--robots 1]                  build only the first N of the pack (document.ts, PACK); default all of it
  *     [--tier offline]              shadows and hinged claws (document.ts, tier); default live, what the app runs
@@ -50,7 +51,8 @@ const first = strip?.[0] ?? Number(flag("at") ?? 4);
 const count = strip?.[1] ?? 1;
 const gap = strip?.[2] ?? 0;
 const tag = flag("tag") ?? "sentinel";
-const overrides = (flag("set") ?? "").split(",").filter((entry) => entry !== "").map((entry) => {
+// (A comma inside square brackets is a vector's: --set camera_rig.eye=[0.8,0.3,1.5] is one override.)
+const overrides = (flag("set") ?? "").split(/,(?![^[]*\])/).filter((entry) => entry !== "").map((entry) => {
   const match = /^([^.=]+)\.([^=]+)=(.+)$/.exec(entry);
   if (match === null) throw new Error(`--set expects node.param=value, got "${entry}".`);
   return { nodeId: match[1]!, parameter: match[2]!, value: JSON.parse(match[3]!) as unknown };

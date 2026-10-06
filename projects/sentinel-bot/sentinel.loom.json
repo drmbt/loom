@@ -2713,49 +2713,10 @@
         "label": "camera_rig",
         "parameters": {
           "eye": [
-            1.1,
-            0.6,
-            -7.5
+            0,
+            0,
+            0
           ],
-          "eye.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + op('expression_camera').chan.right + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)) + 0.02 * sin(abstime * 2.3)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 1.1
-              }
-            },
-            "mode": "expression"
-          },
-          "eye.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + op('expression_camera').chan.up + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)) + 0.015 * sin(abstime * 1.7 + 1)"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.6
-              }
-            },
-            "mode": "expression"
-          },
-          "eye.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))"
-              },
-              "static": {
-                "kind": "static",
-                "value": -7.5
-              }
-            },
-            "mode": "expression"
-          },
           "far": 520,
           "fov": {
             "bindings": {
@@ -2770,33 +2731,51 @@
             },
             "mode": "expression"
           },
-          "lookAt": [
+          "heading": [
+            -1.1,
             0,
-            0,
-            3.3
+            10.8
           ],
-          "lookAt.x": {
+          "heading.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (op('expression_camera').chan.aim < 1) * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))"
+                "source": "(((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (op('expression_camera').chan.aim < 1) * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))) - ((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + op('expression_camera').chan.right + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)) + 0.02 * sin(abstime * 2.3)))"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": -1.1
               }
             },
             "mode": "expression"
           },
+          "heading.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5)))))) - (op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5)))))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 10.8
+              }
+            },
+            "mode": "expression"
+          },
+          "lookAt": [
+            0,
+            -0.6,
+            -10.855873986004076
+          ],
           "lookAt.y": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (op('expression_camera').chan.aim < 1) * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))"
+                "source": "(((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (op('expression_camera').chan.aim < 1) * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))) - ((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + op('expression_camera').chan.up + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)) + 0.015 * sin(abstime * 1.7 + 1)))"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": -0.6
               }
             },
             "mode": "expression"
@@ -2805,16 +2784,60 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))"
+                "source": "(0 - ((((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (op('expression_camera').chan.aim < 1) * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))) - ((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + op('expression_camera').chan.right + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)) + 0.02 * sin(abstime * 2.3))) ^ 2 + ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5)))))) - (op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) ^ 2) ^ 0.5)"
               },
               "static": {
                 "kind": "static",
-                "value": 3.3
+                "value": -10.855873986004076
               }
             },
             "mode": "expression"
           },
-          "near": 0.05
+          "near": 0.05,
+          "origin": [
+            1.1,
+            0.6,
+            -7.5
+          ],
+          "origin.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + op('expression_camera').chan.right + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)) + 0.02 * sin(abstime * 2.3))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.1
+              }
+            },
+            "mode": "expression"
+          },
+          "origin.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + op('expression_camera').chan.up + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)) + 0.015 * sin(abstime * 1.7 + 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.6
+              }
+            },
+            "mode": "expression"
+          },
+          "origin.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -7.5
+              }
+            },
+            "mode": "expression"
+          }
         },
         "position": {
           "x": -2100,
@@ -3235,7 +3258,7 @@
         },
         "position": {
           "x": -1680,
-          "y": 6000
+          "y": 6075
         },
         "type": "cueList"
       },
@@ -6777,7 +6800,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))"
+                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)))"
               },
               "static": {
                 "kind": "static",
@@ -6790,7 +6813,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))"
+                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)))"
               },
               "static": {
                 "kind": "static",
@@ -7178,7 +7201,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000))"
+                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000)))"
               },
               "static": {
                 "kind": "static",
@@ -7191,7 +7214,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000))"
+                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000)))"
               },
               "static": {
                 "kind": "static",
@@ -7295,7 +7318,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650))"
+                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650)))"
               },
               "static": {
                 "kind": "static",
@@ -7308,7 +7331,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500))"
+                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500)))"
               },
               "static": {
                 "kind": "static",
@@ -7766,7 +7789,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))"
+                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)))"
               },
               "static": {
                 "kind": "static",
@@ -7779,7 +7802,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))"
+                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)))"
               },
               "static": {
                 "kind": "static",
@@ -8498,7 +8521,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))"
+                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)))"
               },
               "static": {
                 "kind": "static",
@@ -8511,7 +8534,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))"
+                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)))"
               },
               "static": {
                 "kind": "static",
@@ -8636,7 +8659,7 @@
         "id": "panel_all",
         "label": "panel_all",
         "parameters": {
-          "board": "{\n  \"columns\": 18,\n  \"items\": [\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":0,\"w\":17,\"h\":1}},\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_robot\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_reach\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spiral\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_attack\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pack\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_weight\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_drag\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_follow\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":19,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_ropes\",\"rect\":{\"x\":0,\"y\":20,\"w\":8,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":9,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":9,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":9,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":9,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lampchase\",\"rect\":{\"x\":9,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":9,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":9,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":9,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":9,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":9,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":9,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":9,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":9,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":9,\"y\":14,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":9,\"y\":15,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":9,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":9,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":10,\"y\":18,\"w\":6,\"h\":6}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":9,\"y\":24,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":9,\"y\":25,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":9,\"y\":26,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":9,\"y\":27,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":9,\"y\":28,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":9,\"y\":29,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":9,\"y\":30,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_search\",\"rect\":{\"x\":9,\"y\":31,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":9,\"y\":32,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyefeed\",\"rect\":{\"x\":9,\"y\":33,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":9,\"y\":34,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":9,\"y\":35,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":9,\"y\":36,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":9,\"y\":37,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":9,\"y\":38,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":9,\"y\":39,\"w\":8,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 18,\n  \"items\": [\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":0,\"w\":17,\"h\":1}},\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_robot\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_reach\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spiral\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_attack\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pack\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_weight\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_drag\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_follow\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":19,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_ropes\",\"rect\":{\"x\":0,\"y\":20,\"w\":8,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":9,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":9,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":9,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":9,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lampchase\",\"rect\":{\"x\":9,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":9,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":9,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":9,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":9,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":9,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":9,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":9,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":9,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":9,\"y\":14,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":9,\"y\":15,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_camera\",\"rect\":{\"x\":9,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":9,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":9,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":10,\"y\":19,\"w\":6,\"h\":6}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":9,\"y\":25,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":9,\"y\":26,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":9,\"y\":27,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":9,\"y\":28,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":9,\"y\":29,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":9,\"y\":30,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":9,\"y\":31,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_search\",\"rect\":{\"x\":9,\"y\":32,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":9,\"y\":33,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyefeed\",\"rect\":{\"x\":9,\"y\":34,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":9,\"y\":35,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":9,\"y\":36,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":9,\"y\":37,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":9,\"y\":38,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":9,\"y\":39,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":9,\"y\":40,\"w\":8,\"h\":1}}\n  ]\n}",
           "remote": false,
           "title": "All"
         },
@@ -8681,7 +8704,7 @@
         "id": "panel_scene",
         "label": "panel_scene",
         "parameters": {
-          "board": "{\n  \"columns\": 9,\n  \"items\": [\n    {\"label\":\"Scene\",\"rect\":{\"x\":0,\"y\":0,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lampchase\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":15,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":1,\"y\":18,\"w\":6,\"h\":6}}\n  ]\n}",
+          "board": "{\n  \"columns\": 9,\n  \"items\": [\n    {\"label\":\"Scene\",\"rect\":{\"x\":0,\"y\":0,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lampchase\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":15,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_camera\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":1,\"y\":19,\"w\":6,\"h\":6}}\n  ]\n}",
           "remote": true,
           "title": "Scene"
         },
@@ -8711,12 +8734,26 @@
         "id": "presets_all",
         "label": "presets_all",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_all\",\n      \"values\": {\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_crawl\": {\n          \"value\": 0.6\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"slider_stride\": {\n          \"value\": 5\n        },\n        \"slider_reach\": {\n          \"value\": 1.3\n        },\n        \"slider_flare\": {\n          \"value\": 0.25\n        },\n        \"slider_wave\": {\n          \"value\": 0.05\n        },\n        \"slider_grip\": {\n          \"value\": 1\n        },\n        \"slider_gesture\": {\n          \"value\": 0.6\n        },\n        \"slider_spiral\": {\n          \"value\": 0\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_weight\": {\n          \"value\": 0\n        },\n        \"slider_drag\": {\n          \"value\": 1.5\n        },\n        \"slider_follow\": {\n          \"value\": 0.4\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"toggle_follow\": {\n          \"on\": true\n        },\n        \"toggle_ropes\": {\n          \"on\": false\n        },\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_lampchase\": {\n          \"value\": 0.5\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        },\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_search\": {\n          \"value\": 0\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyefeed\": {\n          \"value\": 1\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "slider_speed.value slider_crawl.value slider_swim.value slider_stride.value slider_reach.value slider_flare.value slider_wave.value slider_grip.value slider_gesture.value slider_spiral.value slider_attack.value slider_pack.value slider_weight.value slider_drag.value slider_follow.value toggle_perch.on toggle_follow.on toggle_ropes.on slider_bore.value slider_lamp.value slider_lampchase.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_search.value slider_glow.value slider_eyefeed.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_all\",\n      \"values\": {\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_crawl\": {\n          \"value\": 0.6\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"slider_stride\": {\n          \"value\": 5\n        },\n        \"slider_reach\": {\n          \"value\": 1.3\n        },\n        \"slider_flare\": {\n          \"value\": 0.25\n        },\n        \"slider_wave\": {\n          \"value\": 0.05\n        },\n        \"slider_grip\": {\n          \"value\": 1\n        },\n        \"slider_gesture\": {\n          \"value\": 0.6\n        },\n        \"slider_spiral\": {\n          \"value\": 0\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_weight\": {\n          \"value\": 0\n        },\n        \"slider_drag\": {\n          \"value\": 1.5\n        },\n        \"slider_follow\": {\n          \"value\": 0.4\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"toggle_follow\": {\n          \"on\": true\n        },\n        \"toggle_ropes\": {\n          \"on\": false\n        },\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_lampchase\": {\n          \"value\": 0.5\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        },\n        \"camera_rig\": {\n          \"eye\": [\n            0,\n            0,\n            0\n          ],\n          \"lookAt\": [\n            0,\n            -0.6,\n            -10.855873986004076\n          ]\n        },\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_search\": {\n          \"value\": 0\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyefeed\": {\n          \"value\": 1\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "slider_speed.value slider_crawl.value slider_swim.value slider_stride.value slider_reach.value slider_flare.value slider_wave.value slider_grip.value slider_gesture.value slider_spiral.value slider_attack.value slider_pack.value slider_weight.value slider_drag.value slider_follow.value toggle_perch.on toggle_follow.on toggle_ropes.on slider_bore.value slider_lamp.value slider_lampchase.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y camera_rig.eye camera_rig.lookAt slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_search.value slider_glow.value slider_eyefeed.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
         },
         "position": {
           "x": -2100,
-          "y": 5775
+          "y": 5850
+        },
+        "type": "presets"
+      },
+      "presets_camera": {
+        "definitionVersion": 1,
+        "id": "presets_camera",
+        "label": "presets_camera",
+        "parameters": {
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_camera\",\n      \"values\": {\n        \"camera_rig\": {\n          \"eye\": [\n            0,\n            0,\n            0\n          ],\n          \"lookAt\": [\n            0,\n            -0.6,\n            -10.855873986004076\n          ]\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "camera_rig.eye camera_rig.lookAt"
+        },
+        "position": {
+          "x": -1260,
+          "y": 5850
         },
         "type": "presets"
       },
@@ -8730,7 +8767,7 @@
         },
         "position": {
           "x": -2520,
-          "y": 5775
+          "y": 5850
         },
         "type": "presets"
       },
@@ -8744,7 +8781,7 @@
         },
         "position": {
           "x": -3360,
-          "y": 5775
+          "y": 5850
         },
         "type": "presets"
       },
@@ -8753,12 +8790,12 @@
         "id": "presets_scene",
         "label": "presets_scene",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_scene\",\n      \"values\": {\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_lampchase\": {\n          \"value\": 0.5\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "slider_bore.value slider_lamp.value slider_lampchase.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_scene\",\n      \"values\": {\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_lampchase\": {\n          \"value\": 0.5\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        },\n        \"camera_rig\": {\n          \"eye\": [\n            0,\n            0,\n            0\n          ],\n          \"lookAt\": [\n            0,\n            -0.6,\n            -10.855873986004076\n          ]\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "slider_bore.value slider_lamp.value slider_lampchase.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y camera_rig.eye camera_rig.lookAt"
         },
         "position": {
           "x": -2940,
-          "y": 5775
+          "y": 5850
         },
         "type": "presets"
       },
@@ -8772,7 +8809,7 @@
         },
         "position": {
           "x": -1680,
-          "y": 5775
+          "y": 5850
         },
         "type": "presets"
       },
@@ -10403,7 +10440,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.x"
+                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -10416,7 +10453,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.y"
+                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -10429,11 +10466,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 3.3
               }
             },
             "mode": "expression"
@@ -10460,11 +10497,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.x"
+                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 1.1
               }
             },
             "mode": "expression"
@@ -10473,11 +10510,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.y"
+                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.eye.y"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 0.6
               }
             },
             "mode": "expression"
@@ -10486,11 +10523,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": -7.5
               }
             },
             "mode": "expression"
@@ -10500,7 +10537,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(((op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) * (op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) + op('expression_camera').chan.right * op('expression_camera').chan.right + op('expression_camera').chan.up * op('expression_camera').chan.up) ^ 0.5, 0.6)"
+                "source": "max(((op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) * (op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) + op('expression_camera').chan.right * op('expression_camera').chan.right + op('expression_camera').chan.up * op('expression_camera').chan.up) ^ 0.5 * (((op('camera_rig').par.lookAt.x - op('camera_rig').par.eye.x) ^ 2 + (op('camera_rig').par.lookAt.y - op('camera_rig').par.eye.y) ^ 2 + (op('camera_rig').par.lookAt.z - op('camera_rig').par.eye.z) ^ 2) ^ 0.5 / max((op('camera_rig').par.lookAt.y ^ 2 + op('camera_rig').par.lookAt.z ^ 2) ^ 0.5, 0.01)), 0.6)"
               },
               "static": {
                 "kind": "static",
@@ -10579,7 +10616,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.x"
+                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -10592,7 +10629,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.y"
+                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -10605,11 +10642,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 3.3
               }
             },
             "mode": "expression"
@@ -10720,11 +10757,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.x"
+                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 1.1
               }
             },
             "mode": "expression"
@@ -10733,11 +10770,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.y"
+                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.eye.y"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 0.6
               }
             },
             "mode": "expression"
@@ -10746,11 +10783,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": -7.5
               }
             },
             "mode": "expression"
@@ -10822,7 +10859,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))"
+                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)))"
               },
               "static": {
                 "kind": "static",
@@ -10835,7 +10872,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))"
+                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)))"
               },
               "static": {
                 "kind": "static",
@@ -11241,7 +11278,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.x"
+                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -11254,7 +11291,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.y"
+                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -11267,11 +11304,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 3.3
               }
             },
             "mode": "expression"
@@ -11285,11 +11322,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.x"
+                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 1.1
               }
             },
             "mode": "expression"
@@ -11298,11 +11335,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.y"
+                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.eye.y"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 0.6
               }
             },
             "mode": "expression"
@@ -11311,11 +11348,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": -7.5
               }
             },
             "mode": "expression"
@@ -11363,7 +11400,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.x"
+                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -11376,7 +11413,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.y"
+                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -11389,11 +11426,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 3.3
               }
             },
             "mode": "expression"
@@ -11407,11 +11444,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.x"
+                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 1.1
               }
             },
             "mode": "expression"
@@ -11420,11 +11457,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.y"
+                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.eye.y"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": 0.6
               }
             },
             "mode": "expression"
@@ -11433,11 +11470,11 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
               },
               "static": {
                 "kind": "static",
-                "value": 0
+                "value": -7.5
               }
             },
             "mode": "expression"

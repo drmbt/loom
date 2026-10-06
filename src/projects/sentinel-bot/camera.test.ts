@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { PACK } from "./document.ts";
+import { PACK, cameraWorldExpression, flownReachExpression, sentinelDocument } from "./document.ts";
+import { cameraFrame, inCameraFrame } from "../../domain/geometry/camera.ts";
+import { evaluateExpression } from "../../domain/expressions/evaluate.ts";
+import { KIT_FIXTURE } from "./kit.fixture.ts";
+import { STORED_READ } from "../../domain/parameters/resolve.ts";
+import { readCameraPoseFacts } from "../../editor/viewer/camera-pose.ts";
+import { cameraNode } from "../../nodes/definitions/scene.ts";
 import { ZERO_FRAME, frameFromClock } from "../../domain/types/frame.ts";
 import { valueExpressionNode } from "../../nodes/definitions/value-structure-nodes.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, CUT_DEFAULTS, CUT_PACE, FIELD_ORDER, GLIMPSE_SHOTS, PACK_ORDER, ROBOT_ORDER, SHOTS, SHOT_TABLE, cutStatements, shotAtTurn, type Shot } from "./camera.ts";
@@ -231,5 +237,91 @@ describe("the sentinel camera", () => {
     // …and the robot does pass it: it starts ahead of the robot and ends behind.
     expect(rig({ value: 0.5, shot: 3, cuts: 0 }, 0)["ahead"] as number).toBeGreaterThan(0);
     expect(rig({ value: 25, shot: 3, cuts: 0 }, 0)["ahead"] as number).toBeLessThan(0);
+  });
+});
+
+/**
+ * THE CAMERA'S FRAME (document.ts, cameraPose). The directed pose is the camera's Origin and Heading, its own Eye a
+ * plain 0 0 0, so the Viewer can fly it; and the screen-space passes read the composed pose off the node.
+ */
+describe("the sentinel's camera can be flown, and what reads it reads where it is (T1561b)", () => {
+  type Triple = readonly [number, number, number];
+  type Camera = { origin: Triple; heading: Triple; eye: Triple; lookAt: Triple };
+  /** What an expression that reads the camera node gives, for a camera with these parameters. */
+  const read = (camera: Camera, source: string): number => {
+    const result = evaluateExpression(source, {}, (name, path) => {
+      const [par, key, axis] = path;
+      const value = name === "camera_rig" && par === "par" ? (camera as Record<string, Triple>)[key ?? ""]?.[["x", "y", "z"].indexOf(axis ?? "")] : undefined;
+      return value === undefined ? ({ ok: false, reason: `no ${name}.${path.join(".")}` } as const) : ({ ok: true, value } as const);
+    });
+    if (!result.ok) throw new Error(`${source} does not evaluate`);
+    return result.value;
+  };
+  /** The pose `cameraWorldExpression` says that camera has. */
+  const said = (camera: Camera, point: "eye" | "lookAt"): number[] => {
+    const expressions = cameraWorldExpression("camera_rig", point);
+    return (["x", "y", "z"] as const).map((axis) => read(camera, expressions[axis]));
+  };
+
+  it("the pose the passes read is the pose the engine composes: the directed one, and a flown one", () => {
+    const cameras = [
+      // A directed pose as the document writes it: nothing of its own but the aim's height and distance.
+      { origin: [3, 1.2, 40], heading: [-2, 0.7, 9], eye: [0, 0, 0], lookAt: [0, -0.6, -9.2] },
+      // Flown: the eye off to the side, up and back, and the aim trucked across.
+      { origin: [3, 1.2, 40], heading: [-2, 0.7, 9], eye: [0.8, 0.3, 1.5], lookAt: [-0.4, -0.6, -9.2] },
+      // Facing the other way down the tunnel, and across it.
+      { origin: [-5, 0, 12], heading: [1, 0, -6], eye: [0.2, -0.1, 0.7], lookAt: [0, 0.4, -4] },
+      { origin: [0, 2, 0], heading: [7, 0, 0.01], eye: [-1, 0, 2], lookAt: [0.5, 0, -3] },
+    ] as const;
+    for (const camera of cameras) {
+      const frame = cameraFrame(camera.origin, camera.heading);
+      for (const point of ["eye", "lookAt"] as const) {
+        const engine = inCameraFrame(frame, camera[point]);
+        expect(said(camera, point).map((value, axis) => Math.abs(value - (engine[axis] as number)) < 1e-9)).toEqual([true, true, true]);
+      }
+    }
+    // …and a trim is in it: the flown eye is somewhere else in the world than the directed one.
+    const [directed, flown] = [said(cameras[0], "eye"), said(cameras[1], "eye")];
+    expect(Math.hypot(...directed.map((value, axis) => value - (flown[axis] as number)))).toBeCloseTo(Math.hypot(0.8, 0.3, 1.5), 9);
+  });
+
+  it("the focus goes with a flown camera: by nothing with no trim, and by as much as the eye is nearer its aim or farther", () => {
+    const directed: Camera = { origin: [3, 1.2, 40], heading: [-2, 0.7, 9], eye: [0, 0, 0], lookAt: [0, -0.6, -9.2] };
+    const reach = flownReachExpression("camera_rig");
+    // No trim: exactly 1, so the focus is the directed shot's to the float and no picture moved.
+    expect(read(directed, reach)).toBe(1);
+    // Pulled back as far again along its own axis, the eye is twice as far from the aim's distance ahead…
+    expect(read({ ...directed, eye: [0, 0, 9.2] }, reach)).toBeCloseTo(Math.hypot(0.6, 18.4) / Math.hypot(0.6, 9.2), 12);
+    // …and pushed half way in, half as far.
+    expect(read({ ...directed, eye: [0, -0.3, -4.6] }, reach)).toBeCloseTo(0.5, 12);
+  });
+
+  it("in the document the camera's Eye is a plain offset of nothing, and every pass that reads the camera reads the composed pose", () => {
+    const built = sentinelDocument(KIT_FIXTURE).graph;
+    const camera = (built.nodes["camera_rig" as never] as unknown as { parameters: Record<string, unknown> }).parameters;
+    // What a flight writes is free: Eye, all of it, and Look At across. No expression on any of them.
+    expect(camera["eye"]).toEqual([0, 0, 0]);
+    expect(Object.keys(camera).filter((key) => key.startsWith("eye.") || key === "lookAt.x")).toEqual([]);
+    expect((camera["lookAt"] as number[])[0]).toBe(0);
+    // The directed pose is the frame.
+    for (const key of ["origin.x", "origin.y", "origin.z", "heading.x", "heading.z", "lookAt.y", "lookAt.z"]) expect(typeof camera[key]).toBe("object");
+    // …and the editor's own answer, the one its "Fly camera_rig" button is offered by: there is a pose to fly, and it
+    // says which two channels a flight leaves to the director. (All six driven, it offers nothing: what this file was.)
+    const facts = readCameraPoseFacts(built.nodes["camera_rig" as never] as never, cameraNode, STORED_READ);
+    expect(facts?.held).toBe("Stays driven: Look At y (Expression), Look At z (Expression).");
+    // No parameter of any node reads the camera's Eye or Look At bare: that is the offset now, not where the camera is.
+    const composed = new Set([...Object.values(cameraWorldExpression("camera_rig", "eye")), ...Object.values(cameraWorldExpression("camera_rig", "lookAt"))]);
+    const bare: string[] = [];
+    for (const node of Object.values(built.nodes) as unknown as Array<{ id: string; parameters: Record<string, unknown> }>) {
+      for (const [key, value] of Object.entries(node.parameters)) {
+        const source = (value as { bindings?: { expression?: { source?: string } } } | null)?.bindings?.expression?.source;
+        // (How far a flown camera is from its aim is a ratio of the two, not a place: the focus reads that.)
+        if (source !== undefined && /op\('camera_rig'\)\.par\.(eye|lookAt)/.test(source.split(flownReachExpression("camera_rig")).join("")) && !composed.has(source)) bare.push(`${node.id}.${key}`);
+      }
+    }
+    expect(bare).toEqual([]);
+    // …and some do read it composed (the air, the focus): the claim above is of something.
+    const readers = (Object.values(built.nodes) as unknown as Array<{ id: string; parameters: Record<string, unknown> }>).filter((node) => Object.values(node.parameters).some((value) => composed.has((value as { bindings?: { expression?: { source?: string } } } | null)?.bindings?.expression?.source ?? "")));
+    expect(readers.length).toBeGreaterThan(0);
   });
 });

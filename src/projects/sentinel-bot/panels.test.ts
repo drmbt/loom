@@ -31,7 +31,7 @@ const KEYS: Readonly<Record<string, readonly string[]>> = { slider: ["value"], t
 
 const built = (): GraphDocument => structuredClone(sentinelDocument(KIT_FIXTURE).graph);
 /** A bank node's presets, as the app reads them. */
-function readPresetBank(bank: GraphNode): { presets: ReadonlyArray<{ name: string }> } {
+function readPresetBank(bank: GraphNode): { presets: ReadonlyArray<{ name: string; values: Readonly<Record<string, Readonly<Record<string, unknown>>>> }> } {
   const parsed = parsePresetBank(storedStaticValue(bank.parameters["presets"]));
   if (!parsed.ok) throw new Error(`${bank.label ?? bank.id} holds no readable bank`);
   return parsed.bank;
@@ -83,8 +83,9 @@ describe("the sentinel's panels", () => {
       // The board as the desk and the phone derive it: a named member whose node is gone is dropped there.
       const board = panelBoard(graph, named(graph, `panel_${panel}`));
       const members = (board?.items ?? []).flatMap((item) => (item.kind === "widget" ? [item.node.label as string] : []));
-      // What the board draws is the panel's controls, its own reset and the reset for everything; nothing else and nothing missing.
-      expect([...members].sort()).toEqual([...controlsOf(graph, panel), `presets_${panel}`, "presets_all"].sort());
+      // What the board draws is the panel's controls, its own reset and the reset for everything; nothing else and nothing
+      // missing. (The Scene panel has the camera's own reset as well, under Camera: see below.)
+      expect([...members].sort()).toEqual([...controlsOf(graph, panel), `presets_${panel}`, "presets_all", ...(panel === "scene" ? ["presets_camera"] : [])].sort());
       // …and a reset reads as one: the button is named for what it does.
       expect(readPresetBank(named(graph, `presets_${panel}`)).presets.map((preset) => preset.name)).toEqual([`reset_${panel}`]);
       // The phone shows it only if the Phone switch is on.
@@ -96,8 +97,20 @@ describe("the sentinel's panels", () => {
     // ALL: every control and every bank again, on one board for the desk, in two columns, and not on the phone.
     const everything = panelBoard(graph, named(graph, "panel_all"));
     const shown = (everything?.items ?? []).flatMap((item) => (item.kind === "widget" ? [item.node.label as string] : []));
-    expect([...shown].sort()).toEqual([...all, ...PANELS.map((panel) => `presets_${panel}`), "presets_all"].sort());
+    expect([...shown].sort()).toEqual([...all, ...PANELS.map((panel) => `presets_${panel}`), "presets_all", "presets_camera"].sort());
     expect(readPresetBank(named(graph, "presets_all")).presets.map((preset) => preset.name)).toEqual(["reset_all"]);
+    // THE CAMERA'S RESET takes off what a flight in the Viewer put on the director's shot, and nothing else: the
+    // camera's own Eye back to no offset and its Look At back to straight ahead (their stored vectors; the height and
+    // distance of the aim stay the expressions they are). The Scene's reset and the reset for everything do it too.
+    const untrim = readPresetBank(named(graph, "presets_camera")).presets;
+    expect(untrim.map((preset) => preset.name)).toEqual(["reset_camera"]);
+    expect(Object.keys(untrim[0]?.values ?? {})).toEqual(["camera_rig"]);
+    expect(untrim[0]?.values["camera_rig"]?.["eye"]).toEqual([0, 0, 0]);
+    expect((untrim[0]?.values["camera_rig"]?.["lookAt"] as number[])[0]).toBe(0);
+    const camera = named(graph, "camera_rig").parameters;
+    expect(untrim[0]?.values["camera_rig"]?.["eye"]).toEqual(camera["eye"]);
+    expect(untrim[0]?.values["camera_rig"]?.["lookAt"]).toEqual(camera["lookAt"]);
+    for (const bank of ["presets_scene", "presets_all"]) expect(readPresetBank(named(graph, bank)).presets[0]?.values["camera_rig"]).toEqual(untrim[0]?.values["camera_rig"]);
     expect([...controlsOf(graph, "all")].sort()).toEqual([...all].sort());
     expect(everything?.columns).toBe(18);
     const columnsUsed = new Set((everything?.items ?? []).map((item) => (item.rect.x < 9 ? "left" : "right")));

@@ -314,6 +314,41 @@ const SWIM = "op('lag_swim').chan.value";
 const WAY = `clamp(op('lag_rate').chan.value / ${SWIM_WAY}, 0, 1)`;
 
 /** The camera's far plane, metres: past the furthest tower of the fields (field.ts: 430 m ahead, 250 m to a side). */
+/**
+ * A Camera's Eye or Look At IN THE WORLD, as three expressions that read the camera node's own parameters.
+ *
+ * A camera's Eye and Look At are offsets in the frame its Origin and Heading make (§T1656b), and the engine composes
+ * them where it builds the camera's payload: a Render gets world positions and knows nothing of the frame. A TEXTURE
+ * PASS takes no camera, so what it reads off the node (`op('camera').par.eye`) is the offset. This says the engine's
+ * composition again (src/domain/geometry/camera.ts, `cameraFrame` and `inCameraFrame`: the frame turns about the
+ * vertical, its forward is its -z), and camera.test.ts holds the two together. One case is not the engine's: a
+ * Heading with no level part leaves the engine's axes the world's; here the point's x and z are dropped. (A camera
+ * looking straight down its own frame. Asked of the engine as a row: a camera's composed pose as channels.)
+ */
+export function cameraWorldExpression(camera: string, point: "eye" | "lookAt"): Record<"x" | "y" | "z", string> {
+  const par = (key: string): string => `op('${camera}').par.${key}`;
+  const span = `max((${par("heading.x")} ^ 2 + ${par("heading.z")} ^ 2) ^ 0.5, 0.000001)`;
+  // The frame's back (its +z) is against the heading; its right is up × back.
+  const back = { x: `(0 - ${par("heading.x")} / ${span})`, z: `(0 - ${par("heading.z")} / ${span})` };
+  return {
+    x: `${par("origin.x")} + ${back.z} * ${par(`${point}.x`)} + ${back.x} * ${par(`${point}.z`)}`,
+    y: `${par("origin.y")} + ${par(`${point}.y`)}`,
+    z: `${par("origin.z")} - ${back.x} * ${par(`${point}.x`)} + ${back.z} * ${par(`${point}.z`)}`,
+  };
+}
+
+/**
+ * How much farther from its aim a flown camera is than the directed one, as an expression reading the camera node:
+ * the length from its Eye to its Look At over the length to its Look At from no trim (Eye 0 0 0, Look At's x 0).
+ * Exactly 1 with no trim. The focus is drawn out or in by it, so what was sharp in the shot is sharp from where the
+ * camera has been flown to.
+ */
+export function flownReachExpression(camera: string): string {
+  const par = (key: string): string => `op('${camera}').par.${key}`;
+  const between = (["x", "y", "z"] as const).map((axis) => `(${par(`lookAt.${axis}`)} - ${par(`eye.${axis}`)}) ^ 2`).join(" + ");
+  return `((${between}) ^ 0.5 / max((${par("lookAt.y")} ^ 2 + ${par("lookAt.z")} ^ 2) ^ 0.5, 0.01))`;
+}
+
 const FAR = 520;
 /** The eyes' light: how wide the cone out of a face is, degrees across; and how far its spill on the face itself reaches, metres. */
 const EYE_CONE = 130;
@@ -344,11 +379,16 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     "look.x": expressionSlot(`(0.14 + 0.45 * ${PERCHED}) * (0.7 * sin(abstime * 0.31) + 0.3 * sin(abstime * 0.83 + 1.2)) + 0.4 * smoothstep(0.8, 0.97, sin(abstime * 0.21 + 2)) * sin(abstime * 0.071 + 0.5)`, 0),
     "look.y": expressionSlot(`(0.05 + 0.2 * ${PERCHED}) * sin(abstime * 0.27 + 1)`, 0),
   };
-  /** A point of the tunnel's centreline `ahead` metres from the robot, moved by (dx, dy): three expressions, and what a host with no value graph shows. */
-  const onPath = (ahead: string, dx: string, dy: string, retained: readonly [number, number, number]): Record<"x" | "y" | "z", StoredParameter> => {
+  /** A point of the tunnel's centreline `ahead` metres from the robot, moved by (dx, dy), as three bare expressions. */
+  const pathPoint = (ahead: string, dx: string, dy: string): Record<"x" | "y" | "z", string> => {
     const z = `(${TRAVEL} + ${ahead})`;
     const at = pathExpression(z);
-    return { x: expressionSlot(`${at.x} + ${dx}`, retained[0]), y: expressionSlot(`${at.y} + ${dy}`, retained[1]), z: expressionSlot(z, retained[2]) };
+    return { x: `(${at.x} + ${dx})`, y: `(${at.y} + ${dy})`, z };
+  };
+  /** …the same as three parameters, with what a host with no value graph shows. */
+  const onPath = (ahead: string, dx: string, dy: string, retained: readonly [number, number, number]): Record<"x" | "y" | "z", StoredParameter> => {
+    const at = pathPoint(ahead, dx, dy);
+    return { x: expressionSlot(at.x, retained[0]), y: expressionSlot(at.y, retained[1]), z: expressionSlot(at.z, retained[2]) };
   };
   // Where the camera rides is the rig's (camera.ts); a hand never holds a camera dead still.
   const RIG = (channel: string): string => `op('expression_camera').chan.${channel}`;
@@ -361,10 +401,34 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const lunge = `(${adrift} * (${adriftAheadExpression} + ${swimLungeExpression(STROKE, 0, WAY)}))`;
   // A close shot rides with it (the rig's `ride`), along the tunnel as well as across it: a long lens two metres
   // off a robot that had drifted a metre up the tunnel had it in a corner of the frame.
-  const eye = onPath(`(${RIG("ahead")} + ${RIG("ride")} * ${lunge})`, `${RIG("right")} + ${RIG("ride")} * ${wander.x} + 0.02 * sin(abstime * 2.3)`, `${RIG("up")} + ${RIG("ride")} * ${wander.y} + 0.015 * sin(abstime * 1.7 + 1)`, [1.1, 0.6, -7.5]);
+  const eye = pathPoint(`(${RIG("ahead")} + ${RIG("ride")} * ${lunge})`, `${RIG("right")} + ${RIG("ride")} * ${wander.x} + 0.02 * sin(abstime * 2.3)`, `${RIG("up")} + ${RIG("ride")} * ${wander.y} + 0.015 * sin(abstime * 1.7 + 1)`);
   // From behind it looks down the tunnel past the robot; from anywhere else at the robot, wherever it has wandered.
   const near = `(${RIG("aim")} < 1)`;
-  const aim = onPath(`(${RIG("aim")} + ${near} * ${lunge})`, `${near} * ${wander.x}`, `${near} * ${wander.y}`, [0, 0, 3.3]);
+  const aim = pathPoint(`(${RIG("aim")} + ${near} * ${lunge})`, `${near} * ${wander.x}`, `${near} * ${wander.y}`);
+  /**
+   * THE CAMERA CAN BE FLOWN (the owner, 2026-10-06: "i m still missing a way to actually change the position of
+   * the camera in the camera node via flying around in that preview instead of manually having to deal with it").
+   * A pose that is all expressions cannot be: a flight would have to replace them. So the DIRECTED pose (the shot the
+   * director has, where the robot is) is the camera's FRAME (§T1656b): its Origin is the directed eye and its
+   * Heading the way from that eye to the directed aim. In that frame the camera's own Eye is 0 0 0, a plain number,
+   * and its Look At is the aim: nothing across, as high over the eye as the aim is, as far ahead as it is on the
+   * level. With Eye at zero that is the directed eye and aim to the float, so no picture moved.
+   * What a flight writes (the Viewer's "Fly camera_rig", or key c) is Eye and Look At's x: a TRIM on whatever shot
+   * is up, which travels with the robot and stays through a cut, until the Scene panel's reset_camera takes it off.
+   * Look At's height and distance stay driven because the frame turns about the vertical only and does not pitch
+   * (§T1671b: with a frame that pitches they are 0 and minus the distance).
+   */
+  const CAMERA_REST = { eye: [1.1, 0.6, -7.5], aim: [0, 0, 3.3] } as const;
+  const toAim = { x: `(${aim.x} - ${eye.x})`, y: `(${aim.y} - ${eye.y})`, z: `(${aim.z} - ${eye.z})` };
+  const restToAim = CAMERA_REST.aim.map((part, axis) => part - (CAMERA_REST.eye[axis] as number)) as [number, number, number];
+  const UNTRIMMED = { eye: [0, 0, 0], lookAt: [0, restToAim[1], -Math.hypot(restToAim[0], restToAim[2])] };
+  const cameraPose: Record<string, StoredParameter> = {
+    origin: [...CAMERA_REST.eye], "origin.x": expressionSlot(eye.x, CAMERA_REST.eye[0]), "origin.y": expressionSlot(eye.y, CAMERA_REST.eye[1]), "origin.z": expressionSlot(eye.z, CAMERA_REST.eye[2]),
+    // Only its level part is read: the way the camera faces on the ground.
+    heading: [restToAim[0], 0, restToAim[2]], "heading.x": expressionSlot(toAim.x, restToAim[0]), "heading.z": expressionSlot(toAim.z, restToAim[2]),
+    eye: [...UNTRIMMED.eye],
+    lookAt: [...UNTRIMMED.lookAt], "lookAt.y": expressionSlot(toAim.y, UNTRIMMED.lookAt[1] as number), "lookAt.z": expressionSlot(`(0 - (${toAim.x} ^ 2 + ${toAim.z} ^ 2) ^ 0.5)`, UNTRIMMED.lookAt[2] as number),
+  };
   // The face's light hangs a hand's breadth in front of the foremost lens (the kit's own measure): clear of
   // the hull, which casts its shadow, and not out in the air ahead where its glow read as a ball the robot chased.
   const face = facts.eyes.length > 0 ? Math.max(...facts.eyes.map((lens) => lens.position[2])) + 0.2 : 0.65;
@@ -428,11 +492,15 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       tone: lampToneExpression(station),
     };
   };
-  /** What every screen-space pass needs of the camera to turn a pixel back into a ray: read off the camera node itself. */
+  /**
+   * What every screen-space pass needs of the camera to turn a pixel back into a ray: read off the camera node
+   * itself, IN THE WORLD (cameraWorldExpression), so a flown trim is in the air and the focus as it is in the picture.
+   */
+  const [seenFrom, seenToward] = [cameraWorldExpression("camera_rig", "eye"), cameraWorldExpression("camera_rig", "lookAt")];
   const lens: Record<string, StoredParameter> = {
-    eye: [1.1, 0.6, -7.5],
-    aim: [0, 0, 3.3],
-    ...Object.fromEntries((["x", "y", "z"] as const).flatMap((axis) => [[`eye.${axis}`, expressionSlot(`op('camera_rig').par.eye.${axis}`, 0)], [`aim.${axis}`, expressionSlot(`op('camera_rig').par.lookAt.${axis}`, 0)]])),
+    eye: [...CAMERA_REST.eye],
+    aim: [...CAMERA_REST.aim],
+    ...Object.fromEntries((["x", "y", "z"] as const).flatMap((axis, index) => [[`eye.${axis}`, expressionSlot(seenFrom[axis], CAMERA_REST.eye[index] as number)], [`aim.${axis}`, expressionSlot(seenToward[axis], CAMERA_REST.aim[index] as number)]])),
     fov: expressionSlot("op('camera_rig').par.fov", 55),
     far: FAR,
     roll: 0,
@@ -674,9 +742,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    * puts that panel back. (One control at a time is the engine's to add; the lead has the row.)
    */
   const slidersSaved = (list: readonly Slider[]): Record<string, Record<string, number | boolean>> => Object.fromEntries(list.map((slider) => [slider.name, { value: slider.value }]));
-  const saved: ReadonlyArray<Record<string, Record<string, number | boolean>>> = [
+  /** The camera as the director has it: nothing flown onto its shot (cameraPose). */
+  const untrimmed: Record<string, Record<string, number[]>> = { camera_rig: { eye: [...UNTRIMMED.eye], lookAt: [...UNTRIMMED.lookAt] } };
+  const saved: ReadonlyArray<Record<string, Record<string, number | boolean | number[]>>> = [
     { ...slidersSaved(robotSliders), toggle_perch: { on: false }, toggle_follow: { on: true }, ...(ropes ? { toggle_ropes: { on: false } } : {}) },
-    { ...slidersSaved(SCENE), slider_shot: { value: 0 }, toggle_cuts: { on: true }, xypad_view: { x: 1.1, y: 0.6 } },
+    { ...slidersSaved(SCENE), slider_shot: { value: 0 }, toggle_cuts: { on: true }, xypad_view: { x: 1.1, y: 0.6 }, ...untrimmed },
     slidersSaved(LIGHTS),
   ];
   const bankOf = (panel: string): string => `presets_${panel}`;
@@ -697,9 +767,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       row(bankOf("scene"), 1),
       ...SCENE.map((slider, index) => row(slider.name, 2 + index)),
       heading("Camera", 2 + SCENE.length),
-      row("slider_shot", 3 + SCENE.length),
-      row("toggle_cuts", 4 + SCENE.length),
-      { member: "xypad_view", rect: { x: 1, y: 5 + SCENE.length, w: 6, h: 6 } },
+      // What a flight in the Viewer put on the shot ("Fly camera_rig"), taken off again: the camera is the director's.
+      row(bankOf("camera"), 3 + SCENE.length),
+      row("slider_shot", 4 + SCENE.length),
+      row("toggle_cuts", 5 + SCENE.length),
+      { member: "xypad_view", rect: { x: 1, y: 6 + SCENE.length, w: 6, h: 6 } },
     ],
     lights: [heading("Lights", 0), row(bankOf("lights"), 1), ...LIGHTS.map((slider, index) => row(slider.name, 2 + index))],
   };
@@ -741,13 +813,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       items: [{ member: bankOf("all"), rect: { x: 0, y: 0, w: COLUMNS * 2 - 1, h: 1 } }, ...shifted(boards.robot, 0, 1), ...shifted(boards.scene, COLUMNS, 1), ...shifted(boards.lights, COLUMNS, 1 + rowsOf(boards.scene))] as never,
     }),
   };
-  const targetsOf = (values: Record<string, Record<string, number | boolean>>): string => Object.entries(values).flatMap(([name, held]) => Object.keys(held).map((key) => `${name}.${key}`)).join(" ");
-  const savedAll: Record<string, Record<string, number | boolean>> = Object.assign({}, ...saved);
+  const targetsOf = (values: Record<string, Record<string, number | boolean | number[]>>): string => Object.entries(values).flatMap(([name, held]) => Object.keys(held).map((key) => `${name}.${key}`)).join(" ");
+  const savedAll: Record<string, Record<string, number | boolean | number[]>> = Object.assign({}, ...saved);
   const banks: GraphNode[] = [
     ...["robot", "scene", "lights"].map((panel, index) =>
-      node(bankOf(panel), "presets", [-2400 + index * 300, 3850], { targets: targetsOf(saved[index] ?? {}), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf(panel), values: saved[index] ?? {} }] }) }, { label: bankOf(panel) }),
+      node(bankOf(panel), "presets", [-2400 + index * 300, 3900], { targets: targetsOf(saved[index] ?? {}), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf(panel), values: saved[index] ?? {} }] }) }, { label: bankOf(panel) }),
     ),
-    node(bankOf("all"), "presets", [-1500, 3850], { targets: targetsOf(savedAll), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf("all"), values: savedAll }] }) }, { label: bankOf("all") }),
+    node(bankOf("all"), "presets", [-1500, 3900], { targets: targetsOf(savedAll), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf("all"), values: savedAll }] }) }, { label: bankOf("all") }),
+    node(bankOf("camera"), "presets", [-900, 3900], { targets: targetsOf(untrimmed), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf("camera"), values: untrimmed }] }) }, { label: bankOf("camera") }),
   ];
 
   /**
@@ -791,8 +864,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     { name: "dock", note: "dock: pack, from abreast", values: scene(2, "fieldside", { pack: 3, swim: 1, speed: 5 }) },
     { name: "temple", note: "temple: pack among fires", values: scene(3, "fieldlow", { pack: 3, swim: 1, search: 1 }) },
   ];
-  const sceneBank = node(bankOf("scenes"), "presets", [-1200, 3850], { targets: targetsOf(SCENES[1]?.values ?? {}), presets: serializePresetBank({ version: 1, presets: SCENES.map(({ name, values }) => ({ name, values })) }) }, { label: bankOf("scenes") });
-  const sceneList = node("cuelist_scenes", "cueList", [-1200, 4000], { cues: serializeCueList({ version: 1, cues: SCENES.map(({ name, note }) => ({ name, bank: bankOf("scenes"), preset: name, note })) }), wrap: true }, { label: "cuelist_scenes" });
+  const sceneBank = node(bankOf("scenes"), "presets", [-1200, 3900], { targets: targetsOf(SCENES[1]?.values ?? {}), presets: serializePresetBank({ version: 1, presets: SCENES.map(({ name, values }) => ({ name, values })) }) }, { label: bankOf("scenes") });
+  const sceneList = node("cuelist_scenes", "cueList", [-1200, 4050], { cues: serializeCueList({ version: 1, cues: SCENES.map(({ name, note }) => ({ name, bank: bankOf("scenes"), preset: name, note })) }), wrap: true }, { label: "cuelist_scenes" });
   const scenesPanel = node("panel_scenes", "panel", [-1200, 3500], {
     // "Presets" and not "Scenes": the panel beside it is "Scene", and on a phone's tab bar the two are one word.
     title: "Presets",
@@ -1112,7 +1185,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // The lens holds its length. (A kick used to punch it in 2.5 degrees; the owner, 2026-10-06: "the very prominent
     // and constant camera punching … feels a bit irritating as it's not necessarily only tracking the kick … a bit
     // jarring". What answers the kick now is the focus, some phrases, and the robot and the place themselves.)
-    node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} + 7 * ${RUSHING}`, 55), near: 0.05, far: FAR }, { label: "camera_rig" }),
+    node("camera_rig", "camera", [-1500, -600], { ...cameraPose, fov: expressionSlot(`${RIG("lens")} + 7 * ${RUSHING}`, 55), near: 0.05, far: FAR }, { label: "camera_rig" }),
     // THE EYES' LIGHT, of every robot of the pack: a wide cone out of its face, the way the face looks (the owner,
     // 2026-10-06: "some of the light emitted from the eyes has the same spherical issue as the ceiling lamps had … not
     // really shaping their radiance as we would expect, like circular, kind of a wide-angle spot"). It was one point
@@ -1277,7 +1350,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       source: DOF_WGSL,
       ...lens,
       // On the robot's face, or on the tail when that is what the shot looks at.
-      focusDistance: expressionSlot(`max(((${RIG("ahead")} - min(${RIG("aim")}, 0.4)) * (${RIG("ahead")} - min(${RIG("aim")}, 0.4)) + ${RIG("right")} * ${RIG("right")} + ${RIG("up")} * ${RIG("up")}) ^ 0.5, 0.6)`, 7.5),
+      // …from where the camera IS: a camera flown off its shot (cameraPose) is nearer the robot or farther by as much.
+      focusDistance: expressionSlot(`max(((${RIG("ahead")} - min(${RIG("aim")}, 0.4)) * (${RIG("ahead")} - min(${RIG("aim")}, 0.4)) + ${RIG("right")} * ${RIG("right")} + ${RIG("up")} * ${RIG("up")}) ^ 0.5 * ${flownReachExpression("camera_rig")}, 0.6)`, 7.5),
       // …and some phrases (nearly half of them) the kick opens the lens: what is not the robot goes softer for a
       // moment and comes back, in place of the punch (the owner: "maybe occasionally we drive DOF instead").
       aperture: expressionSlot(`${on("slider_focus")} * 55 / ${RIG("lens")} * (1 + ${on("slider_pump")} * 1.4 * ${KICK} * (${phraseDraw(BAR, 11)} < 0.45))`, 0.5),
