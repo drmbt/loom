@@ -5,7 +5,8 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { EdgeId, GroupId, NodeId, PortId } from "../types/ids.ts";
 import { isDefaultChannelMask, MIN_NODE_SIZE } from "../types/graph.ts";
 import { supportsChannelMask } from "../graph/channel-mask.ts";
-import { isComponentInstance } from "../components/instance.ts";
+import { COMPONENT_OVERRIDES_STATE_KEY, internalParameterPath, isComponentInstance, readComponentInstance } from "../components/instance.ts";
+import { enteredThrough } from "../components/addressing.ts";
 import { INTERNAL_CHANNEL_MASKS_KEY, internalChannelMasks } from "../components/internal-channel-masks.ts";
 import type { GraphDocument, GraphEdge, GraphNode } from "../types/graph.ts";
 import type { StoredParameter } from "../types/parameters.ts";
@@ -693,6 +694,31 @@ function executeOperation(
 
     case "setParameters": {
       const node = requireNode(operation.nodeId);
+      if (operation.internalNodeId !== undefined) {
+        // VN33: the instance's own override of one internal node (see the op's type). The
+        // definition is not in this context, so the values are not schema-checked here:
+        // flattening writes each onto the internal node, and the compile's parameter checks
+        // read it there like any other stored value.
+        if (!isComponentInstance(node)) {
+          fail("parameter.internal.notComponent", `node "${node.id}" is not a component instance, so it has no internal node "${operation.internalNodeId}".`, { nodeId: node.id });
+        }
+        const nested = enteredThrough(operation.internalNodeId);
+        if (nested !== undefined) {
+          fail("parameter.internal.nested", `"${operation.internalNodeId}" is inside a nested component of "${node.id}"; an instance's parameter overrides reach its own internal nodes only.`, {
+            nodeId: node.id,
+            suggestion: `Write the override on the nested instance "${nested.instance}" inside the component's definition.`,
+          });
+        }
+        const overrides: Record<string, StoredParameter> = { ...readComponentInstance(node)?.overrides };
+        for (const [key, value] of Object.entries(operation.parameters)) {
+          const path = internalParameterPath(operation.internalNodeId, key);
+          const existing = overrides[path];
+          // §V108: the same rule as a node's own parameters, below.
+          overrides[path] = isParameterSlot(existing) && !isParameterSlot(value) ? withBinding(existing, { kind: "static", value: value as ParameterValue }) : value;
+        }
+        node.state = { ...node.state, [COMPONENT_OVERRIDES_STATE_KEY]: overrides };
+        return;
+      }
       const definition = registry.get(node.type);
       if (definition === undefined) {
         fail(

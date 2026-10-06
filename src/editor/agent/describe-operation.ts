@@ -1,4 +1,5 @@
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import { toInstance } from "@domain/components/addressing.ts";
 
 /**
  * One patch operation, flattened for display (T60).
@@ -41,7 +42,7 @@ export function describeOperation(operation: GraphPatchOperation): OperationRow 
     case "setParameters":
       return {
         kind: operation.op,
-        targets: [operation.nodeId],
+        targets: [operation.internalNodeId === undefined ? operation.nodeId : toInstance([operation.nodeId], operation.internalNodeId)],
         detail: Object.keys(operation.parameters).sort().join(", "),
       };
     case "removeParameters":
