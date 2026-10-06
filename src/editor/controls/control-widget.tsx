@@ -328,7 +328,8 @@ function XYPad({ nodeId, parameters, values, live, write, caption, className, si
         {homeX === null || homeY === null ? null : (
           <div className={`${styles.home} ${away ? styles.away : ""}`} style={{ left: `${homeX * 100}%`, bottom: `${homeY * 100}%` }} data-default-mark={away ? "away" : "at"} aria-hidden="true" />
         )}
-        <div className={styles.puck} style={{ left: `${((x - min) / span) * 100}%`, bottom: `${((y - min) / span) * 100}%` }} />
+        {/* T1669b: where the puck is DRAWN in a box that does not move (`.puck`). */}
+        <div className={styles.puck} style={{ backgroundPosition: `${((x - min) / span) * 100}% ${(1 - (y - min) / span) * 100}%` }} />
       </div>
     </div>
   );

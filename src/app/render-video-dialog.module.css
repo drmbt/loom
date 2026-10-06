@@ -86,11 +86,12 @@
   border: var(--border-hairline);
 }
 
+/* The track's size, always: how far along it is drawn is `ShareFill`'s (T1669b). */
 .progressFill {
   display: block;
   height: 100%;
-  background: var(--signal);
-  transition: width 80ms linear;
+  background-color: var(--signal);
+  transition: padding 80ms linear;
 }
 
 .progressText {

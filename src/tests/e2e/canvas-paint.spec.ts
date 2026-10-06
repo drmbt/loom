@@ -12,6 +12,7 @@ import type { ProjectDocument } from "@domain/types/graph.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { SCHEMA_VERSION } from "@domain/types/schemas.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
+import { serializePresetBank } from "@domain/presets/bank.ts";
 import { serializePanelBoard } from "@nodes/definitions/controls.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 
@@ -42,20 +43,19 @@ import { APP_VIEWPORT, openApp, selectNode } from "./app.ts";
  * Counts, never a clock. The lane is the GPU one because that is the app a performer
  * runs: the frame loop is drawing while the values move.
  *
- * Not held here: the preset's fade bar (the same primitive; it needs a fade in flight) and
- * the XY pad's puck, which is a point and still moves as geometry (`share-geometry.test.ts`
- * names both).
+ * The XY pad's puck is not a share (a point in two axes) and is held here by the same
+ * count: it is drawn by a background's position in a box that does not move (T1669b).
  */
 
 test.use({ viewport: APP_VIEWPORT });
 
-const CATEGORIES = ["devtools.timeline", "blink", "disabled-by-default-blink.invalidation"];
+const CATEGORIES = ["devtools.timeline", "blink", "disabled-by-default-blink.invalidation", "disabled-by-default-devtools.timeline.invalidationTracking"];
 
 interface TraceEvent {
   readonly name?: string;
   readonly ph?: string;
   readonly cat?: string;
-  readonly args?: { readonly object?: string };
+  readonly args?: { readonly object?: string; readonly data?: { readonly nodeName?: string; readonly reason?: string; readonly stackTrace?: ReadonlyArray<{ readonly functionName?: string; readonly url?: string; readonly lineNumber?: number }> } };
 }
 
 interface PaintCounts {
@@ -65,12 +65,30 @@ interface PaintCounts {
   readonly nodeVisits: number;
   /** Any object under the canvas it visited: nodes, their insides, edges. */
   readonly canvasVisits: number;
+  /**
+   * WHAT WAS LAID OUT AGAIN in those seconds, by Chromium's own account (element and reason):
+   * a full update is forced by geometry that changed, so this is where to look when the
+   * count above is not zero. Said in every failure message.
+   */
+  readonly laidOut: string;
 }
 
 function count(buffer: Buffer): PaintCounts {
   const events = (JSON.parse(buffer.toString("utf8")) as { traceEvents: TraceEvent[] }).traceEvents;
   const visited = events.filter((event) => event.ph === "X" && event.name === "PaintInvalidator::InvalidatePaint()").map((event) => event.args?.object ?? "");
+  const layouts = new Map<string, number>();
+  for (const event of events) {
+    if (event.name !== "LayoutInvalidationTracking") continue;
+    const reason = event.args?.data?.reason ?? "?";
+    // A node that came or went was put there by script: say whose (the app's own frames, not React's).
+    const by = /Added|Removed/.test(reason)
+      ? (event.args?.data?.stackTrace ?? []).filter((frame) => /\/src\//.test(frame.url ?? "")).slice(0, 2).map((frame) => `${frame.functionName ?? "?"}@${(frame.url ?? "").split("/src/")[1]?.split("?")[0] ?? "?"}:${String(frame.lineNumber)}`).join(" < ")
+      : "";
+    const what = `${event.args?.data?.nodeName ?? "?"} (${reason}${by === "" ? "" : `, by ${by}`})`.replace(/_[a-z0-9]{5}_\d+/g, "");
+    layouts.set(what, (layouts.get(what) ?? 0) + 1);
+  }
   return {
+    laidOut: [...layouts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([what, times]) => `${String(times)}x ${what}`).join("; ") || "nothing",
     fullUpdates: events.filter((event) => event.ph === "X" && event.name === "PaintArtifactCompositor::Update").length,
     nodeVisits: visited.filter((name) => /class='react-flow__node /.test(name)).length,
     canvasVisits: visited.filter((name) => /react-flow__(node|edge|handle)/.test(name)).length,
@@ -82,6 +100,18 @@ async function traced(browser: Browser, page: Page, act: () => Promise<void>): P
   await act();
   return count(await browser.stopTracing());
 }
+
+/**
+ * After the FIRST writes of a gesture, before anything is counted: the document became
+ * dirty, a control left its default, the Controls header gained its count — real geometry,
+ * once, and under a busy machine React commits it some frames after the write that caused
+ * it (seen: three text nodes added inside a traced drag, two runs in four). Not a sleep in
+ * place of a condition on the claim: the claim is about the writes AFTER this.
+ */
+const firstWritesSettled = async (page: Page): Promise<void> => {
+  await page.waitForTimeout(400);
+  await drawn(page);
+};
 
 /** Two animation frames: what was just written has been drawn, and nothing of it is left for the next write's frame. */
 const drawn = (page: Page): Promise<void> => page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -98,8 +128,21 @@ async function documentOf(levels: number): Promise<{ path: string; slider: strin
   const operations: unknown[] = [
     { op: "addNode", ref: "$src", type: "noise", position: { x: 0, y: 0 }, label: "noise_src" },
     { op: "addNode", ref: "$slider", type: "slider", position: { x: -800, y: 0 }, label: "slider_gain", parameters: { caption: "Gain", channel: "gain", value: 0.5, min: 0, max: 1, step: 0, defaultValue: 0.5 } },
-    { op: "addNode", ref: "$panel", type: "panel", position: { x: -800, y: 400 }, label: "panel_desk", parameters: { title: "Desk", board: serializePanelBoard({ columns: 8, items: [{ member: "slider_gain", rect: { x: 0, y: 0, w: 8, h: 1 } }] }) } },
+    { op: "addNode", ref: "$pad", type: "xyPad", position: { x: -800, y: 900 }, label: "xypad_aim", parameters: { caption: "Aim" } },
+    // A bank over the slider, three seconds a recall: a fade in flight draws the bank's fade bar.
+    {
+      op: "addNode", ref: "$bank", type: "presets", position: { x: -800, y: 1500 }, label: "presets_looks",
+      parameters: { targets: "slider_gain", morph: 3, presets: serializePresetBank({ version: 1, presets: [{ name: "low", values: { slider_gain: { value: 0.1 } } }, { name: "high", values: { slider_gain: { value: 0.9 } } }] }) },
+    },
+    {
+      op: "addNode", ref: "$panel", type: "panel", position: { x: -800, y: 400 }, label: "panel_desk",
+      parameters: {
+        title: "Desk",
+        board: serializePanelBoard({ columns: 8, items: [{ member: "slider_gain", rect: { x: 0, y: 0, w: 8, h: 1 } }, { member: "presets_looks", rect: { x: 0, y: 1, w: 8, h: 1 } }, { member: "xypad_aim", rect: { x: 0, y: 2, w: 4, h: 4 } }] }),
+      },
+    },
     { op: "connect", source: { nodeId: "$slider", portId: "out" }, target: { nodeId: "$panel", portId: "controls" } },
+    { op: "connect", source: { nodeId: "$pad", portId: "out" }, target: { nodeId: "$panel", portId: "controls" } },
   ];
   let previous = "$src";
   for (let index = 0; index < levels; index += 1) {
@@ -152,6 +195,7 @@ async function holdSlider(page: Page): Promise<{ slider: Locator; to: (share: nu
   // The first write makes the document dirty and takes the control off its default: both change real geometry, once.
   await to(0.64);
   await to(0.66);
+  await firstWritesSettled(page);
   return { slider, to, release: () => page.mouse.up() };
 }
 
@@ -186,7 +230,7 @@ for (const levels of [50, 200]) {
     // 1. Bounded by what shows the value: the SAME bound at 50 nodes and at 200.
     expect(counts.nodeVisits, `the paint invalidator visited ${String(counts.nodeVisits)} canvas nodes for ${String(MOVES.length)} writes on a ${String(levels)}-node document`).toBeLessThanOrEqual(MAY_REPAINT);
     // 2. THE SLIDER'S FILL and THE VALUE BAR of its node: a share that moved is not a box that moved.
-    expect(counts.fullUpdates, `writing the Controls SLIDER (its fill, and its node's VALUE BAR) forced ${String(counts.fullUpdates)} full compositor updates in ${String(MOVES.length)} writes`).toBe(0);
+    expect(counts.fullUpdates, `writing the Controls SLIDER (its fill, and its node's VALUE BAR) forced ${String(counts.fullUpdates)} full compositor updates in ${String(MOVES.length)} writes; laid out again: ${counts.laidOut}`).toBe(0);
   });
 }
 
@@ -197,7 +241,7 @@ test("a document whose values do not change repaints nothing on the canvas, fram
     await page.waitForTimeout(1000);
   });
   expect(counts.canvasVisits, `the paint invalidator visited ${String(counts.canvasVisits)} canvas objects in an idle second`).toBe(0);
-  expect(counts.fullUpdates, "an idle second forced a full compositor update").toBe(0);
+  expect(counts.fullUpdates, `an idle second forced a full compositor update; laid out again: ${counts.laidOut}`).toBe(0);
 });
 
 test("a number field dragged in the inspector forces no full compositor update: its fill is a share too", async ({ browser, page }) => {
@@ -220,6 +264,7 @@ test("a number field dragged in the inspector forces no full compositor update: 
     await page.mouse.move(x - back, y);
     await drawn(page);
   }
+  await firstWritesSettled(page);
   const before = await fill.evaluate((element) => (element as HTMLElement).style.paddingInlineEnd);
 
   const counts = await traced(browser, page, async () => {
@@ -232,5 +277,56 @@ test("a number field dragged in the inspector forces no full compositor update: 
   await page.mouse.up();
 
   expect(after, "the field's fill did not move: the drag wrote nothing").not.toBe(before);
-  expect(counts.fullUpdates, `dragging a NUMBER FIELD forced ${String(counts.fullUpdates)} full compositor updates in 10 writes`).toBe(0);
+  expect(counts.fullUpdates, `dragging a NUMBER FIELD forced ${String(counts.fullUpdates)} full compositor updates in 10 writes; laid out again: ${counts.laidOut}`).toBe(0);
+});
+
+test("an XY pad dragged forces no full compositor update: its puck is drawn, not moved (T1669b)", async ({ browser, page }) => {
+  const built = await documentOf(50);
+  await openDocument(page, built.path);
+  await page.getByRole("tab", { name: "controls" }).click();
+  const pad = page.locator('[data-controls-pane] [data-control="xy"] [role="group"]');
+  await expect(pad).toBeVisible();
+  await pad.scrollIntoViewIfNeeded();
+  const box = await pad.boundingBox();
+  if (box === null) throw new Error("the pad has no box");
+  const under = await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x as number, y as number); return `${e?.tagName ?? "?"}.${String(e?.className ?? "")} in ${e?.closest("[data-control]")?.getAttribute("data-control") ?? "no control"}`; }, [box.x + box.width * 0.4, box.y + box.height * 0.4]);
+  const at = (u: number, v: number): Promise<void> => page.mouse.move(box.x + box.width * u, box.y + box.height * v).then(() => drawn(page));
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.4);
+  await page.mouse.down();
+  // The first writes make the document dirty and take the pad off its default: geometry, once.
+  await at(0.42, 0.42);
+  await at(0.44, 0.44);
+  await firstWritesSettled(page);
+  const puck = pad.locator("div").last();
+  const before = await puck.evaluate((element) => (element as HTMLElement).style.backgroundPosition);
+
+  const counts = await traced(browser, page, async () => {
+    for (let step = 1; step <= 10; step += 1) await at(0.44 + step * 0.04, 0.44 + step * 0.03);
+  });
+  const after = await puck.evaluate((element) => (element as HTMLElement).style.backgroundPosition);
+  await page.mouse.up();
+
+  expect(after, `the puck did not move: the drag wrote nothing (the press landed on ${under}; box ${JSON.stringify(box)})`).not.toBe(before);
+  expect(counts.fullUpdates, `dragging the XY PAD forced ${String(counts.fullUpdates)} full compositor updates in 10 writes; laid out again: ${counts.laidOut}`).toBe(0);
+});
+
+test("a preset's fade in flight forces no full compositor update: its bar and the slider it carries are shares", async ({ browser, page }) => {
+  const built = await documentOf(50);
+  await openDocument(page, built.path);
+  await page.getByRole("tab", { name: "controls" }).click();
+  const pane = page.locator("[data-controls-pane]");
+  const bar = pane.locator("[data-morph-progress]");
+  await pane.locator('[data-preset="high"]').click();
+  // The fade is three seconds of PLAYBACK: it is in flight once its bar is there and moving.
+  await expect(bar).toHaveCount(1);
+  const early = Number(await bar.getAttribute("data-morph-progress"));
+  await expect.poll(async () => Number(await bar.getAttribute("data-morph-progress")), { message: "the fade is not advancing: the transport is not running" }).toBeGreaterThan(early);
+
+  const counts = await traced(browser, page, async () => {
+    await page.waitForTimeout(700);
+  });
+  // Still in flight when the trace ended, so every frame of it was a frame of the fade.
+  await expect(bar).toHaveCount(1);
+  expect(Number(await bar.getAttribute("data-morph-progress"))).toBeLessThan(1);
+  expect(counts.fullUpdates, `a preset's FADE BAR in flight forced ${String(counts.fullUpdates)} full compositor updates in 0.7 s; laid out again: ${counts.laidOut}`).toBe(0);
 });

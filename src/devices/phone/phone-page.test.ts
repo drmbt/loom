@@ -3217,3 +3217,134 @@ describe("T1647b phone page — the Touch trial", () => {
     });
   });
 });
+
+/**
+ * T1669b — A SNAPSHOT REDRAWS ONLY THE CONTROL IT SAYS SOMETHING NEW ABOUT.
+ *
+ * Loom answers every value a finger sends with a snapshot of EVERY published control, at
+ * the rate the finger moves. The page used to redraw them all for each: measured on a
+ * project of 55 controls, 202 DOM writes for one move of one slider, 194 of them on
+ * controls nothing had happened to.
+ *
+ * Counted, not timed: the DOM writes a snapshot makes (a MutationObserver's own records),
+ * for ONE control of EVERY kind the protocol has — the kinds are read off
+ * `PHONE_WRITABLE_KEYS`, which the protocol types as a row per kind, so a kind added
+ * without a row here fails. And what the rule must not swallow: a snapshot that does say
+ * something new is drawn, a finger's own drawing is drawn at once, and a control whose
+ * finger-drawn value Loom has answered goes to what the snapshot holds even when the
+ * snapshot says nothing new about it.
+ */
+describe("T1669b phone page — a snapshot redraws only the control it says something new about", () => {
+  type Page = ReturnType<typeof openPage>;
+  /** One control of each kind, and one field of it that a snapshot can move. */
+  const CONTROLS: Record<keyof typeof PHONE_WRITABLE_KEYS, { widget: Record<string, unknown>; moved: Record<string, unknown> }> = {
+    slider: { widget: { kind: "slider", handle: "h-slider", caption: "Gain", value: 0.25, min: 0, max: 1, step: 0 }, moved: { value: 0.75 } },
+    toggle: { widget: { kind: "toggle", handle: "h-toggle", caption: "Arm", on: false }, moved: { on: true } },
+    button: { widget: { kind: "button", handle: "h-button", caption: "Flash", held: false }, moved: { held: true } },
+    xyPad: { widget: { kind: "xyPad", handle: "h-pad", caption: "Aim", x: 0.25, y: 0.5, min: 0, max: 1 }, moved: { x: 0.6 } },
+    preset: { widget: { kind: "preset", handle: "h-looks", caption: "looks", presets: ["soft", "hard"], current: "soft", morphing: false, structure: [] }, moved: { current: "hard" } },
+    layer: { widget: { kind: "layer", handle: "h-fx", caption: "fx", on: true, opacity: 0.5, opacityWritable: true, picture: "", structure: [] }, moved: { opacity: 0.8 } },
+    cueList: { widget: { kind: "cueList", handle: "h-set", caption: "set", cues: ["1", "2", "3"], notes: ["", "", ""], current: "1", next: "2", canGo: true, canBack: false, following: false, structure: [] }, moved: { current: "2", next: "3", canBack: true } },
+  };
+  const KINDS = Object.keys(PHONE_WRITABLE_KEYS) as Array<keyof typeof PHONE_WRITABLE_KEYS>;
+
+  function board(seq: number, over: Record<string, Record<string, unknown>> = {}): PhoneSnapshot {
+    return {
+      seq,
+      panels: [
+        {
+          title: "All",
+          rows: [],
+          board: {
+            columns: 8,
+            rows: KINDS.length * 3,
+            items: KINDS.map((kind, index) => {
+              const widget = CONTROLS[kind].widget;
+              return { kind: "widget", rect: { x: 0, y: index * 3, w: 8, h: 3 }, widget: { ...widget, ...(over[widget["handle"] as string] ?? {}) } };
+            }),
+          },
+        },
+      ],
+    } as unknown as PhoneSnapshot;
+  }
+  /** The element a control is drawn in: the `.w` its handle's view owns. */
+  const drawnIn = (page: Page, kind: string): HTMLElement => {
+    const found = page.doc.querySelector<HTMLElement>(`.w.${kind}`);
+    if (found === null) throw new Error(`no control of kind ${kind} is drawn`);
+    return found;
+  };
+  /** Every DOM write `act` makes, as the kind of the control it landed in ("" for anything else). */
+  function writesOf(page: Page, act: () => void): string[] {
+    const Observer = (page.win as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver;
+    const observer = new Observer(() => undefined);
+    observer.observe(page.doc.body, { subtree: true, attributes: true, childList: true, characterData: true });
+    act();
+    const records = observer.takeRecords();
+    observer.disconnect();
+    return records.map((record) => {
+      const element = (record.target.nodeType === 1 ? record.target : record.target.parentElement) as Element | null;
+      const owner = element?.closest(".w") ?? null;
+      return KINDS.find((kind) => owner?.classList.contains(kind) === true) ?? "";
+    });
+  }
+
+  it("there is a control here for every kind the protocol has", () => {
+    expect(Object.keys(CONTROLS).sort()).toEqual([...KINDS].sort());
+    const page = openPage();
+    page.snapshot(board(1));
+    for (const kind of KINDS) expect(drawnIn(page, kind)).toBeDefined();
+  });
+
+  it("a snapshot that says nothing new writes nothing — the echo of somebody else's edit elsewhere, or of this phone's own", () => {
+    const page = openPage();
+    page.snapshot(board(1));
+    expect(writesOf(page, () => page.snapshot(board(2)))).toEqual([]);
+  });
+
+  for (const kind of KINDS) {
+    it(`a snapshot that moves the ${kind} writes inside the ${kind} and nowhere else — and it is drawn`, () => {
+      const page = openPage();
+      page.snapshot(board(1));
+      const handle = CONTROLS[kind].widget["handle"] as string;
+      const before = drawnIn(page, kind).outerHTML;
+      const writes = writesOf(page, () => page.snapshot(board(2, { [handle]: CONTROLS[kind].moved })));
+      expect(writes.length, `the ${kind}'s new value was not drawn`).toBeGreaterThan(0);
+      expect([...new Set(writes)], `a snapshot that moved only the ${kind} also wrote in: ${[...new Set(writes)].join(", ")}`).toEqual([kind]);
+      expect(drawnIn(page, kind).outerHTML).not.toBe(before);
+    });
+  }
+
+  it("a value a finger drew gives way to the snapshot once Loom has answered it, even when the snapshot says nothing new of that control", async () => {
+    const page = openPage({ touch: "now" });
+    page.snapshot(board(1));
+    const slider = page.doc.querySelector<HTMLElement>('.w.slider [role="slider"]');
+    if (slider === null) throw new Error("no slider");
+    // The finger takes it away from 0.25 and lifts; the document does not move: its next snapshot still says 0.25.
+    grab(page, slider, 30);
+    page.pointer("pointermove", slider, 160);
+    page.frame();
+    page.pointer("pointerup", slider, 160);
+    expect(slider.getAttribute("aria-valuenow")).not.toBe("0.25");
+    await page.drain();
+    // The same words as the snapshot before the touch: the slider is redrawn all the same, back to the document's.
+    const writes = writesOf(page, () => page.snapshot(board(2)));
+    expect(slider.getAttribute("aria-valuenow")).toBe("0.25");
+    expect([...new Set(writes)]).toEqual(["slider"]);
+  });
+
+  it("while a finger holds a control, the echo of its own move writes nothing at all: the finger's drawing stands", () => {
+    const page = openPage({ touch: "now" });
+    page.snapshot(board(1));
+    const slider = page.doc.querySelector<HTMLElement>('.w.slider [role="slider"]');
+    if (slider === null) throw new Error("no slider");
+    grab(page, slider, 30);
+    page.pointer("pointermove", slider, 100);
+    page.frame();
+    const held = slider.getAttribute("aria-valuenow");
+    // Loom's answer to that move says the slider is somewhere: what the slider SHOWS is still the finger's.
+    expect(writesOf(page, () => page.snapshot(board(2, { "h-slider": { value: 0.6 } })))).toEqual([]);
+    expect(slider.getAttribute("aria-valuenow")).toBe(held);
+    // The same echo moving ANOTHER control draws that one, and still not the one in hand.
+    expect([...new Set(writesOf(page, () => page.snapshot(board(3, { "h-slider": { value: 0.61 }, "h-toggle": { on: true } }))))]).toEqual(["toggle"]);
+  });
+});

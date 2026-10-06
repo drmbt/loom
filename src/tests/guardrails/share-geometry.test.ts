@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
  * measurements and the rule). The primitive is what draws a share; this gate is what keeps
  * the next control from growing a width.
  *
- * Derived, not listed: every component under `src/ui` and `src/editor` is read, and every
+ * Derived, not listed: every component under `src/ui`, `src/editor` and `src/app` is read, and every
  * place it writes GEOMETRY FROM A VALUE in an inline style is found — a percentage built
  * from an expression on a size or an inset, a `scale(…)` or a `clip-path` built from one,
  * and the same written imperatively (`element.style.width = …`). Each must be the
@@ -26,7 +26,7 @@ import { describe, expect, it } from "vitest";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, "../..");
-const SCANNED = ["ui", "editor"];
+const SCANNED = ["ui", "editor", "app"];
 const PRIMITIVE = "ui/primitives/share-fill.tsx";
 
 const GEOMETRY = "width|inlineSize|height|blockSize|left|right|top|bottom|insetInlineStart|insetInlineEnd|insetBlockStart|insetBlockEnd|flexBasis|paddingInlineStart|paddingInlineEnd|paddingLeft|paddingRight";
@@ -48,14 +48,14 @@ const NOT_A_SHARE: readonly Exemption[] = [
   {
     file: "editor/controls/control-widget.tsx",
     property: "left",
-    writes: 3,
-    why: "Two are MARKS, not values: the slider's default tick and the XY pad's home, which move when the stored default or the range is edited and not when the control is played. The third is the XY pad's puck: a point moving in two axes, not a share of a track. It does force a full compositor update per write (measured, T1653b) and is listed on that row as not done; do not add a fourth here for a new control.",
+    writes: 2,
+    why: "MARKS, not values: the slider's default tick and the XY pad's home ring, which move when the stored default or the range is edited and not when the control is played. (The pad's PUCK is drawn by a background's position in a box that does not move, T1669b.)",
   },
   {
     file: "editor/controls/control-widget.tsx",
     property: "bottom",
-    writes: 2,
-    why: "The XY pad's home mark and its puck, as above.",
+    writes: 1,
+    why: "The XY pad's home ring, as above.",
   },
   {
     file: "editor/nodes/value-bars.tsx",
@@ -72,6 +72,30 @@ const NOT_A_SHARE: readonly Exemption[] = [
   {
     file: "editor/viewer/viewer-axis-gizmo.tsx",
     property: "top",
+    writes: 1,
+    why: "As above.",
+  },
+  {
+    file: "app/perform-mapping-overlay.ts",
+    property: "left",
+    writes: 1,
+    why: "A mapping HANDLE over the picture (Corner Pin, Grid Warp), placed where its corner is: a handle the hand drags in two axes, in the perform window or the viewer, not a share of a track.",
+  },
+  {
+    file: "app/perform-mapping-overlay.ts",
+    property: "top",
+    writes: 1,
+    why: "As above.",
+  },
+  {
+    file: "app/side-panes.tsx",
+    property: "width",
+    writes: 1,
+    why: "The viewer's picture box, sized to the letterbox when the pane or the output changes size: layout of the pane, not a value being played.",
+  },
+  {
+    file: "app/side-panes.tsx",
+    property: "height",
     writes: 1,
     why: "As above.",
   },
@@ -139,9 +163,9 @@ describe("T1653b — a value is drawn as a share of a fixed box, in one place", 
     expect(text).not.toMatch(/\b(width|inlineSize|transform|clipPath)\s*:/);
   });
 
-  it("scans a real tree, and sees the four that use the primitive", () => {
+  it("scans a real tree, and sees the five that use the primitive", () => {
     expect(files.length).toBeGreaterThan(200);
     const users = files.filter((path) => /<ShareFill\b/.test(code(readFileSync(path, "utf8")))).map((path) => relative(SRC, path).split("\\").join("/")).sort();
-    expect(users).toEqual(["editor/controls/board-members.tsx", "editor/controls/control-widget.tsx", "editor/nodes/value-bars.tsx", "ui/controls/number-field.tsx"]);
+    expect(users).toEqual(["app/render-video-dialog.tsx", "editor/controls/board-members.tsx", "editor/controls/control-widget.tsx", "editor/nodes/value-bars.tsx", "ui/controls/number-field.tsx"]);
   });
 });

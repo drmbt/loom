@@ -1114,7 +1114,7 @@ ${PHONE_PAGE_LOGIC}
     if (holding(handle)) return;
     if (pending(handle)) return;
     delete overrides[handle];
-    v.update();
+    redraw(handle);
   }
 
   /* --------------------------------------------------------------------------- widgets */
@@ -1138,7 +1138,7 @@ ${PHONE_PAGE_LOGIC}
     if (!o) o = overrides[handle] = { values: {}, acked: false };
     o.acked = false;
     for (var k in values) o.values[k] = values[k];
-    views[handle].update();
+    redraw(handle);
   }
   function box(node) { return node.getBoundingClientRect(); }
   function share(v, min, max) { return max === min ? 0 : clamp01((v - min) / (max - min)); }
@@ -1712,12 +1712,36 @@ ${PHONE_PAGE_LOGIC}
     for (var h in views) if (views[h].follow) views[h].follow();
   }
 
+  /*
+   * T1669b: A CONTROL IS REDRAWN WHEN WHAT IT SHOWS HAS CHANGED, and not otherwise.
+   *
+   * Loom answers every value a finger sends with a snapshot of EVERY published control, at
+   * the rate the finger moves. Each one used to redraw them all: on a project of 55
+   * controls, 202 DOM writes for every move of one slider (measured, T1669b), 194 of them
+   * on controls nothing had happened to, and as much script again as the move itself.
+   *
+   * What a control shows is current(handle): what the last snapshot says of it, under what
+   * a finger has drawn ahead of Loom. redraw() is the ONE way a view is drawn after it is
+   * built, and it draws only when that has changed since the view last drew. So a snapshot
+   * that says nothing new of a control writes nothing; the echo of a finger's own move
+   * writes nothing either (the finger's drawing stands over it); and a control whose
+   * finger-drawn value Loom has answered goes to the snapshot's, because what it shows
+   * changed when the finger's drawing was let go.
+   */
+  function redraw(handle) {
+    var v = views[handle];
+    var now = JSON.stringify(current(handle));
+    if (now === v.drew) return;
+    v.drew = now;
+    v.update();
+  }
+
   function place(handle, w, rect) {
     var build = BUILDERS[w.kind];
     if (!build) return null;
     var view = build(w, rect);
     views[handle] = view;
-    view.update();
+    redraw(handle);
     // T1526b: a refusal still showing stays on its control through a redraw.
     drawRefusal(handle);
     return view.el;
@@ -1983,7 +2007,10 @@ ${PHONE_PAGE_LOGIC}
     if (next === signature) {
       panels.forEach(function (p) {
         widgetsOf(p).forEach(function (w) {
-          if (views[w.handle]) { views[w.handle].widget = w; views[w.handle].update(); }
+          if (!views[w.handle]) return;
+          views[w.handle].widget = w;
+          // T1669b: only where what the control shows has changed (see redraw).
+          redraw(w.handle);
         });
       });
       follow();

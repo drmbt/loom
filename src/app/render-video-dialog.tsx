@@ -7,6 +7,7 @@ import { ResolutionControl } from "@ui/controls/resolution-control.tsx";
 import { BooleanField } from "@ui/controls/boolean-field.tsx";
 import type { EditPhase, NumericSpec } from "@ui/controls/types.ts";
 import { Button } from "@ui/primitives/button.tsx";
+import { ShareFill } from "@ui/primitives/share-fill.tsx";
 import {
   DialogContent,
   DialogDescription,
@@ -211,7 +212,7 @@ export function RenderVideoDialog({
                   "aria-valuenow": progressPercent,
                 })}
               >
-                <span className={styles.progressFill} style={{ width: `${String(progressPercent ?? 100)}%` }} />
+                <ShareFill className={styles.progressFill} end={(progressPercent ?? 100) / 100} />
               </div>
               <span className={styles.progressText}>
                 {progressText}
