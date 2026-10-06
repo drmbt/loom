@@ -27,6 +27,54 @@ const ROWS_BEHIND = 180;
 /** Metres between ribs, and between the lamps in the crown. */
 export const RIB_SPACING = 1.6;
 export const LAMP_SPACING = 12.8;
+/**
+ * THE TUNNEL'S OTHER LAMPS: where they are and which of them still work. One every other rib bay: a bulkhead
+ * lamp at shoulder height in the plain bore, on alternate walls, in the middle of the second bay of its pair;
+ * and in a hall a tube along each shoulder, in the middle of the first. Whether one works is a lot drawn from
+ * its number in the lap: a whole number from 0 to 99, by 32-bit arithmetic that the CPU and the GPU do alike.
+ * So whoever else has to know which lamp is lit (a test today, the kernel that makes them lights when a
+ * pointset can feed a Light, §T1589b) reads the same answer the wall's material does. (A run of fifteen, as the
+ * crown lamps have, would not do here: a hall comes round every thirty of these, so every hall would be lit alike.)
+ */
+export const FIXTURES = {
+  /** Metres from one bulkhead, or one tube on a wall, to the next. */
+  spacing: RIB_SPACING * 2,
+  /** How far round from the crown each stands, as a share of a turn. */
+  bulkheadSide: 0.2,
+  tubeSide: 0.21,
+  /** Where in its pair of bays each stands, as a share of the spacing: clear of the ribs. */
+  bulkheadAlong: 0.75,
+  tubeAlong: 0.25,
+  /** Of a hundred lots: under `dead` it is dark, from `failing` up it cannot hold its light, between them it is lit. */
+  bulkheads: { dead: 45, failing: 88 },
+  tubes: { dead: 42, failing: 86 },
+} as const;
+const FIXTURE_COUNT = Math.round(PATH.period / FIXTURES.spacing);
+if (Math.abs(FIXTURE_COUNT * FIXTURES.spacing - PATH.period) > 1e-6) throw new Error(`tunnel.ts: the fixtures' spacing does not divide the path's ${PATH.period} m period, so the wrap would relight them.`);
+/** The draws: one for the bulkheads, one for each wall's tubes. */
+const FIXTURE_SALT = { bulkhead: 1, tubeLeft: 2, tubeRight: 3 } as const;
+/**
+ * A fixture's lot, 0 to 99. The same line is `fixtureLot` in the wall's material.
+ *
+ * The top sixteen bits of a wrapping multiply, scaled to a hundred by another multiply and shift, and NOT by
+ * `% 100`: on this machine's GPU (Dawn on Metal) an unsigned `%` or `/` of a value that came out of a wrapping
+ * multiply and a shift returns garbage (for place 5 of the right wall's tubes, 35899 / 97 came back 386, and
+ * `% 97` and `% 100` with it), while the multiply, the shift, `&` and this scaling all agree with the CPU to the
+ * bit. Measured through the material itself; the test beside this file holds the two readers together.
+ */
+function fixtureLot(index: number, salt: number): number {
+  const place = index - FIXTURE_COUNT * Math.floor(index / FIXTURE_COUNT);
+  return ((Math.imul(place + salt * 977, 2654435761) >>> 16) * 100) >>> 16;
+}
+const fixtureState = (lot: number, odds: { readonly dead: number; readonly failing: number }): number => (lot < odds.dead ? 0 : lot < odds.failing ? 1 : 2);
+/** Bulkhead `index` along the tunnel (it stands at (index + bulkheadAlong) × spacing): 0 dead, 1 lit, 2 failing; and which wall, −1 or 1 (the sign of `around − 0.5`). */
+export function bulkheadAt(index: number): { state: number; wall: -1 | 1 } {
+  return { state: fixtureState(fixtureLot(index, FIXTURE_SALT.bulkhead), FIXTURES.bulkheads), wall: index - 2 * Math.floor(index / 2) === 1 ? 1 : -1 };
+}
+/** Tube `index` on `wall` (−1 or 1): 0 dead, 1 lit, 2 failing. */
+export function tubeAt(index: number, wall: -1 | 1): number {
+  return fixtureState(fixtureLot(index, wall === 1 ? FIXTURE_SALT.tubeRight : FIXTURE_SALT.tubeLeft), FIXTURES.tubes);
+}
 
 /**
  * WHAT COLOUR A LAMP IS, by its station along the tunnel. Cold in the bore, sodium in the
@@ -190,9 +238,41 @@ struct Params {
   wet: f32, // @default 0.4  How much water still runs: the tracks down the wall and the pools on the deck.
   grime: f32, // @default 0.85  Rust, soot and silt.
   lamp: f32, // @default 14  Radiance of the lamp plates in the crown.
+  bore: f32, // @default 2.6  The tunnel's radius, metres: how far round the wall a share of a turn is.
+  fixtures: f32, // @default 1  The tunnel's other lamps (bulkheads, a hall's tubes, beacons): 0 none.
 };
 
 ${chamberWgsl()}${LAMP_TONE_WGSL}
+// THE TUNNEL'S OTHER LAMPS (the owner, 2026-10-06: "the tunnels could use a bit more detail work too, different
+// lights at different positions in the tube"): bulkheads in the bore, tubes in a hall, a turning beacon either
+// side of every alarm lamp (tunnel.ts, FIXTURES). They are drawn here: a lens that glows, and the pool it throws
+// on the wall round it, painted. They light nothing else, the robot least of all. A lamp that lights is a Light,
+// and this tunnel has several hundred of these: they become Lights fed by a pointset when that exists (§T1589b).
+const FIXTURE: f32 = ${FIXTURES.spacing.toFixed(5)};
+const FIXTURE_COUNT: f32 = ${FIXTURE_COUNT}.0;
+// A fixture's lot, 0 to 99, drawn from its number in the lap: tunnel.ts, fixtureLot, the same line (and why
+// it scales by a multiply and a shift and never divides).
+fn fixtureLot(index: f32, salt: u32) -> u32 {
+  let place = u32(index - FIXTURE_COUNT * floor(index / FIXTURE_COUNT) + 0.5);
+  return ((((place + salt * 977u) * 2654435761u) >> 16u) * 100u) >> 16u;
+}
+// 0 dead, 1 lit, 2 failing.
+fn fixtureState(lot: u32, dead: u32, failing: u32) -> f32 {
+  return select(select(2.0, 1.0, lot < failing), 0.0, lot < dead);
+}
+const WALL_TONE = vec3f(1.0, 0.5, 0.16);
+const TUBE_TONE = vec3f(0.62, 1.0, 0.78);
+
+// What a small lamp standing \`proud\` metres off a wall throws on it, as a share of what falls at its foot:
+// the cosine law over the distance squared. \`away2\` is the distance along the wall from its foot, squared.
+fn poolOf(away2: f32, proud: f32) -> f32 {
+  let d2 = away2 + proud * proud;
+  return proud * proud * proud / (d2 * sqrt(d2));
+}
+
+fn fixtureLuck(n: f32, salt: f32) -> f32 {
+  return fract(sin(n * 91.3458 + salt * 17.13) * 47453.5453);
+}
 
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
@@ -264,6 +344,49 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   let nerve = fract(sin(station * 12.9898) * 43758.5453);
   let flicker = 1.0 - step(0.82, nerve) * step(0.6, fract(sin(floor(s.absTime * 11.0) * 78.233 + station) * 43758.5453)) * 0.8;
   o.emissive = o.emissive + lampTone(station) * p.lamp * onPlate * flicker;
+
+  // ── The other lamps: what each lens gives off, and what it throws on the wall round it ──
+  let hall = chamberAt(along);
+  let girth = 6.2831853 * p.bore * (1.0 + CHAMBER_SWELL * hall);
+  let wallward = sign(around - 0.5);
+  var lenses = vec3f(0.0);
+  var thrown = vec3f(0.0);
+
+  // A fixture's state (0 dead, 1 lit, 2 failing) as how much of its light it gives now: a failing one drops out nine times a second, by chance.
+  let pair = floor(along / FIXTURE);
+  let stutter = step(0.55, fixtureLuck(floor(s.absTime * 9.0), pair + 3.0 * wallward));
+
+  // Bulkheads: in the plain bore, amber.
+  let bulkheadSide = 2.0 * (pair - 2.0 * floor(pair * 0.5)) - 1.0;
+  let bulkheadOff = vec2f(along - (pair + ${FIXTURES.bulkheadAlong}) * FIXTURE, (around - (0.5 + ${FIXTURES.bulkheadSide} * bulkheadSide)) * girth);
+  let bulkhead = fixtureState(fixtureLot(pair, ${FIXTURE_SALT.bulkhead}u), ${FIXTURES.bulkheads.dead}u, ${FIXTURES.bulkheads.failing}u);
+  let bulkheadOn = min(bulkhead, 1.0) * (1.0 - 0.85 * step(1.5, bulkhead) * stutter) * (1.0 - smoothstep(0.25, 0.6, hall));
+  let bulkheadLens = (1.0 - smoothstep(0.09, 0.11, abs(bulkheadOff.x))) * (1.0 - smoothstep(0.05, 0.065, abs(bulkheadOff.y)));
+  lenses = lenses + WALL_TONE * (bulkheadOn * bulkheadLens * 0.4);
+  thrown = thrown + WALL_TONE * (bulkheadOn * poolOf(dot(bulkheadOff, bulkheadOff), 0.4) * 0.22);
+
+  // A hall's tubes: along both shoulders, 1.2 m of light between two ribs.
+  let beside = (around - (0.5 + ${FIXTURES.tubeSide} * wallward)) * girth;
+  let lengthways = abs(along - (pair + ${FIXTURES.tubeAlong}) * FIXTURE);
+  let tube = fixtureState(fixtureLot(pair, select(${FIXTURE_SALT.tubeLeft}u, ${FIXTURE_SALT.tubeRight}u, wallward > 0.0)), ${FIXTURES.tubes.dead}u, ${FIXTURES.tubes.failing}u);
+  let tubeOn = min(tube, 1.0) * (1.0 - 0.9 * step(1.5, tube) * stutter) * smoothstep(0.5, 0.9, hall);
+  let tubeLens = (1.0 - smoothstep(0.02, 0.035, abs(beside))) * (1.0 - smoothstep(0.58, 0.62, lengthways));
+  // A line of light: what it throws falls with the distance from the line, and off its ends.
+  let tubePool = 0.09 / (beside * beside + 0.09) * (1.0 - smoothstep(0.5, 1.8, lengthways));
+  lenses = lenses + TUBE_TONE * (tubeOn * tubeLens * 0.5);
+  thrown = thrown + TUBE_TONE * (tubeOn * tubePool * 0.1);
+
+  // A beacon either side of every alarm lamp, low on the wall, turning: each wall sees it come round half a turn after the other.
+  let turn = station - ${LAMP_TONES.alarmEvery}.0 * floor(station / ${LAMP_TONES.alarmEvery}.0);
+  let alarmed = 1.0 - step(0.5, abs(turn - ${LAMP_TONES.alarmAt}.0));
+  let beaconOff = vec2f(along - (station + 0.5) * LAMP, (around - (0.5 + 0.3 * wallward)) * girth);
+  let sweep = pow(0.5 + 0.5 * sin(s.absTime * 4.2 + 1.5707963 * wallward), 6.0);
+  let beaconLens = 1.0 - smoothstep(0.07, 0.1, length(beaconOff));
+  lenses = lenses + ${wgslTone(LAMP_TONES.alarm)} * (alarmed * beaconLens * (0.12 + sweep));
+  thrown = thrown + ${wgslTone(LAMP_TONES.alarm)} * (alarmed * poolOf(dot(beaconOff, beaconOff), 0.7) * sweep * 0.5);
+
+  // A lens under years of soot gives less; the wall shows what is thrown on it in its own colour.
+  o.emissive = o.emissive + (lenses * (1.0 - 0.5 * dirt) + thrown * albedo) * (p.lamp * p.fixtures);
   return o;
 }`;
 

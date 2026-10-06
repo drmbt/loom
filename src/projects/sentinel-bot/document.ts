@@ -585,7 +585,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // ── The tunnel: one grid bent into the bore, a window of it riding with the robot ──
     node("grid_bore", "pointGrid", [-2400, 1200], { cols: BORE_COLUMNS, rows: BORE_ROWS, count: BORE_COLUMNS * BORE_ROWS, sizeX: 2, sizeY: 2 }, { label: "grid_bore" }),
     node("kernel_bore", "pointKernel", [-2100, 1200], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("slider_bore"), 2.6) }, { label: "kernel_bore" }),
-    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * (0.7 + ${LOW} * 0.8)`, 14) }, { label: "material_bore" }),
+    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * (0.7 + ${LOW} * 0.8)`, 14), bore: expressionSlot(on("slider_bore"), 2.6) }, { label: "material_bore" }),
     node("geometry_bore", "geometry", [-1800, 1200], { mode: "surface", material: "material_bore", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bore" }),
 
     // ── Air: dust that the lamps and the eyes light on its way to a wall ──
