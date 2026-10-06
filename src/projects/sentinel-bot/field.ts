@@ -20,6 +20,13 @@ import { HUE_WGSL } from "./surface.ts";
  *
  * `place` is 0 in the tunnel and 1 in the fields. Out of the fields every strip is drawn in to one
  * point with no radius: nothing to draw.
+ *
+ * What it costs (measured 2026-10-06 in the app, headless Chromium on the real GPU, three documents
+ * alternated in one browser on a loaded machine, smallest of five header readings a visit; a direction,
+ * not a number to quote). In the tunnel, with nothing of it to draw, the two Sweeps still run over
+ * their 37,000 path points: about 1 ms a frame (7.4 to 7.8 ms without these nodes, 8.2 to 8.3 with).
+ * In the fields with the pack of three out: 11.8 to 12.4 ms, against 11.3 ms for three robots in the
+ * tunnel, so the place costs about what the wall it replaces does.
  */
 export const FIELD = {
   /** Metres from one cell of the ground plan to the next. Divides the path's period. */
