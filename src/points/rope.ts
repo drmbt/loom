@@ -29,7 +29,8 @@ import { ZERO_SEGMENT_SQUARED } from "./curve.ts";
  * ## What one step does (the design's section 2.5)
  *
  *   predict    x̂ = x + h·v ÷ (1 + damping·h) + h²·gravity
- *   anchor     the first point of a strand is pulled to its target by its weight
+ *   anchor     each anchored point is pulled to its target by its weight; a target out of
+ *              reach of an earlier pin is drawn in to the rope's length
  *   stretch    Newton steps on the chain system, until every segment is within
  *              `ROPE_TOLERANCE` of its length or `iterations` have run
  *   velocity   v = (x̂ − x) ÷ h
@@ -50,9 +51,30 @@ import { ZERO_SEGMENT_SQUARED } from "./curve.ts";
  * which is nearly every step, is then exactly two loops along the strand. More Newton steps
  * are two loops each, and the guard is a third loop only on a step that needs it.
  *
- * SLICE 1 holds one anchor, the strand's first point. The pull is written in its general
- * form for it (a weight between 0 and 1), with the strength and damping the anchor
- * parameters of slice 2 will default to.
+ * ## Anchors (the design's section 4, as built in slice 2)
+ *
+ * Three STATIONS of a strand may be anchored — its first point, its second and its last —
+ * each by a weight from 0 to 1 that is a number or, mapped, an attribute read at that
+ * strand's own station: a weight per strand. A PIN ATTRIBUTE is a weight on every point. A
+ * point takes the larger of the two.
+ *
+ *  - The TARGET of an anchored point is the incoming point of its own slot, walked in a
+ *    straight line across a frame's steps. Its history is kept for the three stations (and
+ *    for every point under a pin attribute) whether or not the weight is above zero, so a
+ *    weight that rises from nothing finds a target that was already being followed.
+ *  - HARD, a weight of 1 is the target itself: the point has no inverse mass, and what is
+ *    stored for it is the target, to the bit. Below 1 it is a spring of stiffness
+ *    `M·(2π·strength)²·a ÷ (1 − a)`, which stiffens without bound as the weight nears 1.
+ *    SOFT, the stiffness is `M·(2π·strength)²·a` and a weight of 1 is still a spring.
+ *  - `M` IS THE MASS THE ANCHOR CARRIES (the design's D19): the strand's, for a station, and
+ *    the point's own for a pin attribute, where every point is held and carries only itself.
+ *    Sized by one point's mass, a strand of 55 hangs 3.4 m below a half-weighted anchor.
+ *  - THE EARLIER PIN WINS (the design's 4.6). A target further from the nearest earlier
+ *    hard pin than the rope between them, times `1 + Max Stretch`, is drawn in to that reach
+ *    along the line to it: length is kept and the target is not.
+ *  - Between two anchors a taut, straight strand makes the chain system singular, so with
+ *    two or more anchored stations (or a pin attribute) each pivot carries `ROPE_PIN_SOFTENING`.
+ *    With one anchor or none it is zero, and a hanging strand is an exact fixed point.
  */
 
 /** A segment is at its length when within this share of it: 1/8192, 7 µm on a 60 mm segment. */
@@ -67,9 +89,12 @@ export const ROPE_MAX_ITERATIONS = 8;
 /** The longest strand one walk covers (the design's R1): the curve family's block. */
 export const ROPE_MAX_STRAND_POINTS = 1024;
 
-/** How fast a partly weighted anchor draws its point in, in Hz, and its damping ratio. Slice 2 makes both parameters. */
-export const ROPE_ANCHOR_STRENGTH_HZ = 2;
-export const ROPE_ANCHOR_DAMPING_RATIO = 1;
+/**
+ * What each pivot of the chain system is raised by, as a share of it, on a strand with two
+ * or more anchors: 2⁻¹². A taut, straight strand between two pins has a tension the
+ * constraints do not determine, and the system is then singular without it.
+ */
+export const ROPE_PIN_SOFTENING = 2 ** -12;
 
 const f = Math.fround;
 const TAU = f(6.283185307179586);
@@ -86,7 +111,9 @@ export interface RopeParameters {
   readonly damping: number;
   /** Kilograms per point. */
   readonly mass: number;
-  /** Multiplies every measured rest length. */
+  /** Metres between a point and the next. 0 takes each segment's length as measured when the strand was seeded. */
+  readonly segmentLength: number;
+  /** Multiplies every rest length. */
   readonly restLengthScale: number;
   /** Compliance: the fraction a segment lengthens per newton of tension. 0 does not stretch. */
   readonly stretch: number;
@@ -94,6 +121,16 @@ export interface RopeParameters {
   readonly maxStretch: number;
   /** How firmly each strand's first point is held to its incoming point, 0 to 1. */
   readonly anchorFirst: number;
+  /** The same for its second point: with the first, the direction the strand leaves in. */
+  readonly anchorSecond: number;
+  /** The same for its last point. */
+  readonly anchorLast: number;
+  /** Hard: a weight of 1 is the target itself. Soft: a weight of 1 is a spring of `anchorStrength`. */
+  readonly anchorMode: "hard" | "soft";
+  /** How fast a soft or partly weighted anchor draws its strand in, in Hz. */
+  readonly anchorStrength: number;
+  /** The damping ratio of that pull; 1 arrives without springing. */
+  readonly anchorDamping: number;
   /** Holds the rope on its incoming points, at rest, for as long as it is on. */
   readonly reset: boolean;
   /** Metres an anchored first point's target may move in one frame before the strand is teleported. 0 is never. */
@@ -108,10 +145,16 @@ export const ROPE_DEFAULTS: RopeParameters = {
   gravity: 9.81,
   damping: 0.5,
   mass: 1,
+  segmentLength: 0,
   restLengthScale: 1,
   stretch: 0,
   maxStretch: 0.02,
   anchorFirst: 1,
+  anchorSecond: 0,
+  anchorLast: 0,
+  anchorMode: "hard",
+  anchorStrength: 2,
+  anchorDamping: 1,
   reset: false,
   teleportDistance: 0,
   teleportMode: "carry",
@@ -149,6 +192,18 @@ export function createRopeState(cols: number, rows: number): RopeState {
     tension: new Float32Array(points),
     kept: new Float32Array(points * 8),
   };
+}
+
+/**
+ * What a step reads per point besides the incoming position: the attributes a parameter in
+ * Map mode names, one float a point as the device reads them (a station's map is read at
+ * that strand's own station), and the pin attribute, a weight on every point.
+ */
+export interface RopeMaps {
+  readonly anchorFirst?: Float32Array;
+  readonly anchorSecond?: Float32Array;
+  readonly anchorLast?: Float32Array;
+  readonly pin?: Float32Array;
 }
 
 /** One run of the step: the backend's numbers for one dispatch of a stepped pass. */
@@ -222,7 +277,15 @@ function segment(lower: Vec3, upper: Vec3, rest: number): { readonly direction: 
   return { direction: divide(span, size), error: f(size - rest) };
 }
 
-function stepStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, parameters: RopeParameters, run: RopeRun, strand: number): void {
+function stepStrand(
+  state: RopeState,
+  next: RopeWrite,
+  incoming: Float32Array,
+  parameters: RopeParameters,
+  run: RopeRun,
+  strand: number,
+  maps: RopeMaps,
+): void {
   const cols = state.cols;
   const base = strand * cols;
   const segments = cols - 1;
@@ -236,46 +299,54 @@ function stepStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, p
     return;
   }
 
-  // ── The first point's anchor: its target now, and where the target was a frame ago ──
-  const weight = f(Math.min(1, Math.max(0, parameters.anchorFirst)));
-  const targetNow = at(incoming, base);
-  let before = at(state.kept, base * 2);
+  // ── The strand's three stations: how firmly each is held, as a number or by its map ──
+  const held = (raw: number): number => f(Math.min(1, Math.max(0, raw)));
+  const firstWeight = held(maps.anchorFirst === undefined ? parameters.anchorFirst : (maps.anchorFirst[base] as number));
+  const secondWeight = segments > 0 ? held(maps.anchorSecond === undefined ? parameters.anchorSecond : (maps.anchorSecond[base + 1] as number)) : 0;
+  const lastWeight = segments > 0 ? held(maps.anchorLast === undefined ? parameters.anchorLast : (maps.anchorLast[base + segments] as number)) : 0;
+  const pinned = maps.pin !== undefined;
+  const hard = parameters.anchorMode !== "soft";
+  let stations = 0;
+  if (firstWeight > 0) stations += 1;
+  if (secondWeight > 0) stations += 1;
+  if (lastWeight > 0) stations += 1;
+  const anchored = stations > 0 || pinned;
+  // Two anchors can hold a taut strand between them, whose tension the constraints leave open.
+  const softening = stations > 1 || pinned ? f(ROPE_PIN_SOFTENING) : 0;
+
+  // ── A teleport is judged on the first point's target: where it is now, and a frame ago ──
+  const targetFirst = at(incoming, base);
+  let beforeFirst = at(state.kept, base * 2);
   const rateWas = at(state.kept, base * 2 + 1);
   let jump: Vec3 = [0, 0, 0];
-  const reach = f(parameters.teleportDistance);
+  let jumped = false;
+  const teleport = f(parameters.teleportDistance);
   // The frame's whole step: an anchor's target moves in frame time, whatever Simulation Speed is.
   const frameSeconds = f(f(run.deltaSeconds) * run.substeps);
-  if (weight > 0 && run.substep === 0 && reach > 0) {
-    const moved = sub(targetNow, before);
-    if (dot(moved, moved) > f(reach * reach)) {
+  if (anchored && run.substep === 0 && teleport > 0) {
+    const moved = sub(targetFirst, beforeFirst);
+    if (dot(moved, moved) > f(teleport * teleport)) {
       if (parameters.teleportMode === "reset") {
         seedStrand(state, next, incoming, base);
         return;
       }
-      // Carry: the strand goes with the jump, and its anchor is not dragged across it. What
-      // the anchor travels in this frame at the speed it had is NOT part of the jump: the
-      // target is taken to have come from where that speed puts it, so a body that wraps
-      // its world while moving keeps moving through the wrap.
-      const start = sub(targetNow, scale(rateWas, frameSeconds));
-      jump = sub(start, before);
-      before = start;
+      // Carry: the strand goes with the jump, and its anchors are not dragged across it. What
+      // the first target travels in this frame at the speed it had is NOT part of the jump:
+      // it is taken to have come from where that speed puts it, so a body that wraps its
+      // world while moving keeps moving through the wrap. Every other target's history goes
+      // with the strand, by the same jump.
+      const start = sub(targetFirst, scale(rateWas, frameSeconds));
+      jump = sub(start, beforeFirst);
+      beforeFirst = start;
+      jumped = true;
     }
   }
   const lastSubstep = run.substep + 1 === run.substeps;
-  const travelled = sub(targetNow, before);
-  const targetHere = lastSubstep ? targetNow : add(before, scale(travelled, f((run.substep + 1) / run.substeps)));
-  const targetWas = add(before, scale(travelled, f(run.substep / run.substeps)));
-  // Kept for the next frame's steps: where the target stood when this frame ended, and
-  // how fast it had moved to get there.
-  put(state.kept, base * 2, lastSubstep ? targetNow : before);
-  if (lastSubstep) put(state.kept, base * 2 + 1, divide(travelled, frameSeconds));
 
   // The walk works relative to the strand's first point, so a strand far from the origin
   // does the arithmetic of one at it.
   const originWas = at(state.position, base);
   const origin = add(originWas, jump);
-  const targetLocal = sub(targetHere, origin);
-  const targetWasLocal = sub(targetWas, origin);
 
   const inverseMass = f(1 / parameters.mass);
   const keep = f(1 / f(1 + f(f(parameters.damping) * h)));
@@ -286,6 +357,8 @@ function stepStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, p
   const limit = f(parameters.maxStretch);
   // A segment cannot be shorter than nothing: past a Max Stretch of 1 only the long side limits.
   const shortest = f(Math.max(0, f(1 - limit)));
+  const turn = f(f(TAU * f(parameters.anchorStrength)) * h);
+  const ratio = f(2 * f(parameters.anchorDamping));
 
   // The device's scratch: the working copy, each point's inverse mass, and per segment the
   // elimination's two coefficients and the multiplier summed over the Newton steps.
@@ -302,40 +375,86 @@ function stepStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, p
     const v = scale(at(state.velocity, base + i), keep);
     return [f(x[0] + f(v[0] * h)), f(f(x[1] + f(v[1] * h)) - drop), f(x[2] + f(v[2] * h))];
   };
-  const restOf = (k: number): number => f((state.kept[(base + k) * 8 + 3] as number) * restScale);
+  const given = f(parameters.segmentLength);
+  const restOf = (k: number): number => f((given > 0 ? given : (state.kept[(base + k) * 8 + 3] as number)) * restScale);
   const softness = (rest: number): number => f(f(stretch * rest) / hh);
 
-  // ── The first point: predicted, then pulled by its anchor ──
-  let first = predict(0);
-  let firstInverse = inverseMass;
-  let pinned = false;
-  if (weight > 0) {
-    if (weight >= 1) {
-      first = targetLocal;
-      firstInverse = 0;
-      pinned = true;
-    } else {
-      // A spring to the target, stepped implicitly: part of the way there, and heavier.
-      const gain = f(weight / f(1 - weight));
-      const turn = f(f(TAU * f(ROPE_ANCHOR_STRENGTH_HZ)) * h);
-      const pull = f(f(turn * turn) * gain);
-      const drag = f(f(f(2 * f(ROPE_ANCHOR_DAMPING_RATIO)) * turn) * f(Math.sqrt(gain)));
-      const total = f(f(1 + pull) + drag);
-      const damper = add(startOf(0), sub(targetLocal, targetWasLocal));
-      first = divide(add(add(first, scale(targetLocal, pull)), scale(damper, drag)), total);
-      firstInverse = f(firstInverse / total);
-    }
-  }
-  work[0] = first;
-  inverse[0] = firstInverse;
-  next.tension[base + segments] = 0;
+  /** The nearest hard pin the walk has passed, and how much rope there is from it to here. */
+  let pinAt: Vec3 = [0, 0, 0];
+  let hasPin = false;
+  let reach = 0;
 
-  const storeFirst = (solved: Vec3): void => {
-    put(next.position, base, pinned ? targetHere : add(solved, origin));
-    put(next.velocity, base, divide(sub(solved, startOf(0)), h));
+  /**
+   * Predict point `i`, pull it by its anchor, and hand the solve its working position and its
+   * inverse mass. A hard pin is STORED here, as its target, and the solve does not move it.
+   */
+  const place = (i: number): void => {
+    const slot = base + i;
+    const start = startOf(i);
+    let placed = predict(i);
+    let weighs = inverseMass;
+    const station = i === 0 ? firstWeight : Math.max(i === 1 ? secondWeight : 0, i === segments ? lastWeight : 0);
+    const isStation = i <= 1 || i === segments;
+    if (isStation || pinned) {
+      // The target's history is kept whatever the weight is, so one that rises from nothing
+      // finds a target that was already being followed.
+      const now = at(incoming, slot);
+      const before = i === 0 ? beforeFirst : jumped ? add(at(state.kept, slot * 2), jump) : at(state.kept, slot * 2);
+      const travelled = sub(now, before);
+      const here = lastSubstep ? now : add(before, scale(travelled, f((run.substep + 1) / run.substeps)));
+      const was = add(before, scale(travelled, f(run.substep / run.substeps)));
+      if (lastSubstep) put(state.kept, slot * 2, now);
+      else if (jumped || i === 0) put(state.kept, slot * 2, before);
+      if (i === 0 && lastSubstep) put(state.kept, slot * 2 + 1, divide(travelled, frameSeconds));
+
+      const pin = pinned ? held((maps.pin as Float32Array)[slot] as number) : 0;
+      const weight = Math.max(station, pin);
+      if (weight > 0) {
+        const hereLocal = sub(here, origin);
+        let goal = hereLocal;
+        let drawnIn = false;
+        if (hasPin) {
+          // The earlier pin wins: a target out of its reach is drawn in along the line to it.
+          const span = sub(goal, pinAt);
+          const squared = dot(span, span);
+          if (squared > f(reach * reach)) {
+            goal = add(pinAt, scale(span, f(reach / f(Math.sqrt(squared)))));
+            drawnIn = true;
+          }
+        }
+        if (hard && weight >= 1) {
+          placed = goal;
+          weighs = 0;
+          put(next.position, slot, drawnIn ? add(goal, origin) : here);
+          put(next.velocity, slot, divide(sub(goal, start), h));
+          pinAt = goal;
+          hasPin = true;
+          reach = 0;
+        } else {
+          // A spring to the target, stepped implicitly: part of the way there, and heavier.
+          // Sized for the mass it carries: the strand's for a station, the point's for a pin.
+          const gain = hard ? f(weight / f(1 - weight)) : weight;
+          const carried = station > 0 && station >= pin ? f(cols) : 1;
+          const pull = f(f(f(turn * turn) * gain) * carried);
+          const drag = f(f(f(ratio * turn) * f(Math.sqrt(gain))) * carried);
+          const total = f(f(1 + pull) + drag);
+          const damper = add(start, sub(hereLocal, sub(was, origin)));
+          placed = divide(add(add(placed, scale(goal, pull)), scale(damper, drag)), total);
+          weighs = f(weighs / total);
+        }
+      }
+    }
+    work[i] = placed;
+    inverse[i] = weighs;
   };
+
+  place(0);
+  next.tension[base + segments] = 0;
   if (segments === 0) {
-    storeFirst(first);
+    if ((inverse[0] as number) > 0) {
+      put(next.position, base, add(work[0] as Vec3, origin));
+      put(next.velocity, base, divide(sub(work[0] as Vec3, startOf(0)), h));
+    }
     return;
   }
 
@@ -351,13 +470,13 @@ function stepStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, p
     let carried = 0;
     let lower = work[0] as Vec3;
     for (let k = 0; k < segments; k += 1) {
+      const rest = restOf(k);
       if (iteration === 0) {
-        work[k + 1] = predict(k + 1);
-        inverse[k + 1] = inverseMass;
+        reach = f(reach + f(rest * f(1 + limit)));
+        place(k + 1);
         multiplier[k] = 0;
       }
       const higher = work[k + 1] as Vec3;
-      const rest = restOf(k);
       const { direction, error } = segment(lower, higher, rest);
       const sum = f((inverse[k] as number) + (inverse[k + 1] as number));
       if (sum > 0) {
@@ -369,7 +488,7 @@ function stepStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, p
           above = f(coupling / pivot);
           upper[k - 1] = above;
         }
-        pivot = f(f(sum + alpha) - f(coupling * above));
+        pivot = f(f(f(sum * f(1 + softening)) + alpha) - f(coupling * above));
         carried = f(f(f(f(-error) - f(alpha * (multiplier[k] as number))) - f(coupling * carried)) / pivot);
         reduced[k] = carried;
         previousActive = true;
@@ -412,8 +531,10 @@ function stepStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, p
       work[k + 1] = moved;
       const total = f((multiplier[k] as number) + lambda);
       multiplier[k] = total;
-      put(next.position, base + k + 1, add(moved, origin));
-      put(next.velocity, base + k + 1, divide(sub(moved, startOf(k + 1)), h));
+      if ((inverse[k + 1] as number) > 0) {
+        put(next.position, base + k + 1, add(moved, origin));
+        put(next.velocity, base + k + 1, divide(sub(moved, startOf(k + 1)), h));
+      }
       next.tension[base + k] = f(f(-total) / hh);
       if (k + 1 < segments) look(k + 1, moved, aboveNow);
       aboveNow = moved;
@@ -423,7 +544,10 @@ function stepStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, p
     }
     const solved = add(higherWas, scale(scale(nextDirection, f(-nextMultiplier)), inverse[0] as number));
     work[0] = solved;
-    storeFirst(solved);
+    if ((inverse[0] as number) > 0) {
+      put(next.position, base, add(solved, origin));
+      put(next.velocity, base, divide(sub(solved, startOf(0)), h));
+    }
     look(0, solved, aboveNow);
     if (converged) break;
   }
@@ -447,18 +571,20 @@ function stepStrand(state: RopeState, next: RopeWrite, incoming: Float32Array, p
       }
     }
     settled = placed;
-    put(next.position, base + i, add(placed, origin));
+    // A pinned point keeps the target it was stored at.
+    if ((inverse[i] as number) > 0) put(next.position, base + i, add(placed, origin));
   }
 }
 
 /**
  * One run of the solver step over every strand: what one dispatch of the Rope's pass does.
- * `incoming` is the upstream pointset's `position` region (four floats a point).
+ * `incoming` is the upstream pointset's `position` region (four floats a point); `maps`
+ * holds the attribute of every parameter in Map mode, and the pin attribute.
  */
-export function stepRope(state: RopeState, incoming: Float32Array, parameters: RopeParameters, run: RopeRun): void {
+export function stepRope(state: RopeState, incoming: Float32Array, parameters: RopeParameters, run: RopeRun, maps: RopeMaps = {}): void {
   const points = state.cols * state.rows;
   const next: RopeWrite = { position: new Float32Array(points * 4), velocity: new Float32Array(points * 4), tension: new Float32Array(points) };
-  for (let strand = 0; strand < state.rows; strand += 1) stepStrand(state, next, incoming, parameters, run, strand);
+  for (let strand = 0; strand < state.rows; strand += 1) stepStrand(state, next, incoming, parameters, run, strand, maps);
   state.position = next.position;
   state.velocity = next.velocity;
   state.tension = next.tension;
@@ -473,14 +599,16 @@ export function advanceRope(
   incoming: Float32Array,
   parameters: RopeParameters,
   frame: { readonly deltaSeconds: number; readonly substeps: number; readonly firstRun?: boolean },
+  maps: RopeMaps = {},
 ): void {
   const substeps = Math.max(1, Math.round(frame.substeps));
   for (let substep = 0; substep < substeps; substep += 1) {
-    stepRope(state, incoming, parameters, {
-      deltaSeconds: frame.deltaSeconds / substeps,
-      substep,
-      substeps,
-      firstRun: frame.firstRun === true && substep === 0,
-    });
+    stepRope(
+      state,
+      incoming,
+      parameters,
+      { deltaSeconds: frame.deltaSeconds / substeps, substep, substeps, firstRun: frame.firstRun === true && substep === 0 },
+      maps,
+    );
   }
 }

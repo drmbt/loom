@@ -5,7 +5,7 @@ import { frameFromClock } from "../../domain/types/frame.ts";
 import type { GraphDocument } from "../../domain/types/graph.ts";
 import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
 import { kernelParamUniformKey } from "../../points/codegen.ts";
-import type { RopeParameters, RopeState } from "../../points/rope.ts";
+import type { RopeMaps, RopeParameters, RopeState } from "../../points/rope.ts";
 import { ROPE_DEFAULTS, advanceRope, createRopeState } from "../../points/rope.ts";
 import { rateSubsteps } from "../../runtime/backend/plan.ts";
 // The sanctioned Dawn host: `src/runtime/backend/vgpu/` is the only place a `vgpu` import
@@ -13,10 +13,10 @@ import { rateSubsteps } from "../../runtime/backend/plan.ts";
 import { createVgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
 import type { VgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
-import { CURVE_TEST_REGISTRY, curveEdge, curveGraph, curveNode } from "./curve-test-support.ts";
+import { CURVE_TEST_REGISTRY, curveEdge, curveGraph, curveNode, mappedTo } from "./curve-test-support.ts";
 import { ROPE_KEPT_KEY, ropeAttributes } from "./point-rope.ts";
 import { pointStorageId } from "./point-storage.ts";
-import { pointRegionSlice } from "./test-support.ts";
+import { kernelRegionSlice, pointRegionSlice } from "./test-support.ts";
 
 /**
  * T1585b — what the Rope's Dawn tests share: a strand whose incoming points are AUTHORED
@@ -61,10 +61,28 @@ type Vec3 = readonly [number, number, number];
 
 /** Where station `i` of strand `j` is before the shift: the same formula for the device and for the reference. */
 export interface RopePose {
-  /** A WGSL expression of `i` and `j` (both u32), of type vec3f. */
+  /**
+   * A WGSL expression of `i` and `j` (both u32) and `t` (f32), of type vec3f. `t` is the
+   * ABSOLUTE clock in seconds (§V436): a target that moves with time must not jump back when
+   * the timeline laps. No fixture here laps, so it is the frame's time.
+   */
   readonly wgsl: string;
-  readonly at: (i: number, j: number) => Vec3;
+  readonly at: (i: number, j: number, t: number) => Vec3;
 }
+
+/**
+ * An f32 attribute the anchor kernel writes beside its positions — a hold weight, a pin
+ * weight — as the same formula twice, like a pose. A station's map reads it at that strand's
+ * own station, and `pinAttribute` reads it on every point.
+ */
+export interface RopeWeight {
+  readonly name: string;
+  /** A WGSL expression of `i`, `j` and `t`, of type f32. */
+  readonly wgsl: string;
+  readonly at: (i: number, j: number, t: number) => number;
+}
+
+export type RopeStation = "anchorFirst" | "anchorSecond" | "anchorLast";
 
 /** A strand hanging straight down from the origin, `rest` between its points; strands a unit apart along X. */
 export const hanging = (rest: number): RopePose => ({
@@ -147,7 +165,20 @@ export interface RopeFixture {
   readonly pose: RopePose;
   /** The Rope node's stored parameters. */
   readonly rope?: Readonly<Record<string, unknown>>;
+  /** Weights the anchor kernel writes beside its positions. */
+  readonly weights?: ReadonlyArray<RopeWeight>;
+  /** Which station's weight is in Map mode, and the attribute it reads. */
+  readonly maps?: Readonly<Partial<Record<RopeStation, string>>>;
+  /** A grid claim cut into this many sheets in place of the strips claim: `rows` is then every sheet's rows together. */
+  readonly sheets?: number;
 }
+
+/** The anchor kernel's attributes for a fixture: the layout its buffer is sliced with. */
+const anchorAttributes = (fixture: RopeFixture): string =>
+  JSON.stringify([
+    { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+    ...(fixture.weights ?? []).map((weight) => ({ name: weight.name, type: "f32", default: [0] })),
+  ]);
 
 export function ropeGraph(fixture: RopeFixture): GraphDocument {
   const rows = fixture.rows ?? 1;
@@ -160,19 +191,27 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
   let i = ctx.index % ${fixture.cols}u;
   let j = ctx.index / ${fixture.cols}u;
+  let t = ctx.absTime;
   q.position = ${fixture.pose.wgsl} + ctx.params.shift;
+${(fixture.weights ?? []).map((weight) => `  q.${weight.name} = ${weight.wgsl};`).join("\n")}
   return q;
 }`;
+  const sheets = fixture.sheets ?? 1;
+  const claim =
+    sheets > 1
+      ? { connectivity: "grid", cols: fixture.cols, rows: rows / sheets, sheets }
+      : { connectivity: "strips", cols: fixture.cols, rows };
+  const mapped = Object.fromEntries(Object.entries(fixture.maps ?? {}).map(([station, attribute]) => [station, mappedTo(attribute, 0)]));
   return curveGraph(
     [
       curveNode(ANCHOR, "pointKernel", {
         capacity: count,
         seed: 7,
-        attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
+        attributes: anchorAttributes(fixture),
         kernel,
       }),
-      curveNode("topology_strand", "pointTopology", { connectivity: "strips", cols: fixture.cols, rows }),
-      curveNode(ROPE, "pointRope", { ...(fixture.rope ?? {}) }),
+      curveNode("topology_strand", "pointTopology", claim),
+      curveNode(ROPE, "pointRope", { ...(fixture.rope ?? {}), ...mapped }),
       curveNode("points_probe", "renderPoints", { count, sizePixels: 1 }),
       curveNode("output_probe", "output"),
     ],
@@ -196,6 +235,8 @@ export interface RopeFrame {
 }
 
 export interface RopeRead {
+  /** The incoming points this frame, as the anchor kernel wrote them: four floats a point. */
+  readonly incoming: Float32Array;
   /** Four floats a point. */
   readonly position: Float32Array;
   readonly velocity: Float32Array;
@@ -285,10 +326,11 @@ export async function onRope<T>(fixture: RopeFixture, body: (session: RopeSessio
         const packed = await backend.readBuffer(pointStorageId(ROPE));
         const kept = await backend.readBuffer(scratchResourceId(ROPE, ROPE_KEPT_KEY));
         const region = (name: string): Float32Array => new Float32Array(pointRegionSlice(packed, attributes, capacity, name).floats);
+        const incoming = incomingOf(await backend.readBuffer(pointStorageId(ANCHOR)), fixture);
         const bytes = new Uint8Array(packed.byteLength + kept.byteLength);
         bytes.set(new Uint8Array(packed), 0);
         bytes.set(new Uint8Array(kept), packed.byteLength);
-        return { position: region("position"), velocity: region("velocity"), tension: tension ? region("tension") : new Float32Array(0), bytes };
+        return { incoming, position: region("position"), velocity: region("velocity"), tension: tension ? region("tension") : new Float32Array(0), bytes };
       },
     });
   } finally {
@@ -296,9 +338,22 @@ export async function onRope<T>(fixture: RopeFixture, body: (session: RopeSessio
   }
 }
 
+/** The incoming `position` region of a fixture's anchor kernel, out of that kernel's own buffer: four floats a point. */
+export function incomingOf(raw: ArrayBuffer, fixture: RopeFixture): Float32Array {
+  const node = { type: "pointKernel", parameters: { capacity: fixture.cols * (fixture.rows ?? 1), attributes: anchorAttributes(fixture) } };
+  return new Float32Array(kernelRegionSlice(node, raw, "position").floats);
+}
+
+/** A region of a Rope's own packed buffer for a fixture: `position`, `velocity`, or `tension` when it is published. */
+export function ropeRegionOf(raw: ArrayBuffer, fixture: RopeFixture, name: "position" | "velocity" | "tension"): Float32Array {
+  const attributes = ropeAttributes({ tension: fixture.rope?.["tensionOutput"] === true });
+  return new Float32Array(pointRegionSlice(raw, attributes, fixture.cols * (fixture.rows ?? 1), name).floats);
+}
+
 /**
- * The CPU reference stepped the way a session is: the same pose, the same shifts, the same
- * frames, and the step count the backend derives for each frame (`rateSubsteps`).
+ * The CPU reference stepped the way a session is: the same pose, the same weights, the same
+ * shifts, the same frames, and the step count the backend derives for each frame
+ * (`rateSubsteps`).
  */
 export interface RopeTwin {
   readonly state: RopeState;
@@ -317,10 +372,16 @@ export function ropeTwin(fixture: RopeFixture): RopeTwin {
     gravity: number("gravity", ROPE_DEFAULTS.gravity),
     damping: number("damping", ROPE_DEFAULTS.damping),
     mass: number("mass", ROPE_DEFAULTS.mass),
+    segmentLength: number("segmentLength", ROPE_DEFAULTS.segmentLength),
     restLengthScale: number("restLengthScale", ROPE_DEFAULTS.restLengthScale),
     stretch: number("stretch", ROPE_DEFAULTS.stretch),
     maxStretch: number("maxStretch", ROPE_DEFAULTS.maxStretch),
     anchorFirst: number("anchorFirst", ROPE_DEFAULTS.anchorFirst),
+    anchorSecond: number("anchorSecond", ROPE_DEFAULTS.anchorSecond),
+    anchorLast: number("anchorLast", ROPE_DEFAULTS.anchorLast),
+    anchorMode: stored["anchorMode"] === "soft" ? "soft" : "hard",
+    anchorStrength: number("anchorStrength", ROPE_DEFAULTS.anchorStrength),
+    anchorDamping: number("anchorDamping", ROPE_DEFAULTS.anchorDamping),
     reset: stored["reset"] === true,
     teleportDistance: number("teleportDistance", ROPE_DEFAULTS.teleportDistance),
     teleportMode: stored["teleportMode"] === "reset" ? "reset" : "carry",
@@ -329,11 +390,32 @@ export function ropeTwin(fixture: RopeFixture): RopeTwin {
   const state = createRopeState(fixture.cols, rows);
   let shift: Vec3 = [0, 0, 0];
   let frameIndex = 0;
+  let time = 0;
+  /** One float a point for a named weight, at this frame's time. */
+  const weightOf = (name: string | undefined): Float32Array | undefined => {
+    const weight = (fixture.weights ?? []).find((entry) => entry.name === name);
+    if (weight === undefined) return undefined;
+    const out = new Float32Array(fixture.cols * rows);
+    for (let j = 0; j < rows; j += 1) for (let i = 0; i < fixture.cols; i += 1) out[j * fixture.cols + i] = weight.at(i, j, Math.fround(time));
+    return out;
+  };
+  const maps = (): RopeMaps => {
+    const first = weightOf(fixture.maps?.anchorFirst);
+    const second = weightOf(fixture.maps?.anchorSecond);
+    const last = weightOf(fixture.maps?.anchorLast);
+    const pin = weightOf(typeof stored["pinAttribute"] === "string" ? stored["pinAttribute"] : undefined);
+    return {
+      ...(first === undefined ? {} : { anchorFirst: first }),
+      ...(second === undefined ? {} : { anchorSecond: second }),
+      ...(last === undefined ? {} : { anchorLast: last }),
+      ...(pin === undefined ? {} : { pin }),
+    };
+  };
   const incoming = (): Float32Array => {
     const out = new Float32Array(fixture.cols * rows * 4);
     for (let j = 0; j < rows; j += 1) {
       for (let i = 0; i < fixture.cols; i += 1) {
-        const at = fixture.pose.at(i, j);
+        const at = fixture.pose.at(i, j, Math.fround(time));
         const slot = (j * fixture.cols + i) * 4;
         // The device adds two f32 vectors: round the pose, then the sum.
         out[slot] = Math.fround(Math.fround(at[0]) + Math.fround(shift[0]));
@@ -347,9 +429,12 @@ export function ropeTwin(fixture: RopeFixture): RopeTwin {
     state,
     parameters,
     render: (frame = {}) => {
-      const delta = frameIndex === 0 ? 0 : (frame.delta ?? ROPE_FRAME);
-      advanceRope(state, incoming(), twin.parameters, { deltaSeconds: delta, substeps: rateSubsteps(delta, rate), firstRun: frameIndex === 0 });
+      const step = frame.delta ?? ROPE_FRAME;
+      const delta = frameIndex === 0 ? 0 : step;
+      advanceRope(state, incoming(), twin.parameters, { deltaSeconds: delta, substeps: rateSubsteps(delta, rate), firstRun: frameIndex === 0 }, maps());
       frameIndex += 1;
+      // The session's clock: a frame is rendered at the time the frames before it added up to.
+      time += step;
     },
     shift: (by) => {
       shift = by;

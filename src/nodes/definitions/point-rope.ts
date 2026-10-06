@@ -1,15 +1,20 @@
-import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
+import type { CompiledNodeDescription, NodeDefinition, PointsetAttributeRef } from "../../domain/types/node-definition.ts";
 import type { DispatchPassDescriptor } from "../../runtime/backend/plan.ts";
 import { MAX_KERNEL_SUBSTEPS } from "../../runtime/backend/plan.ts";
 import { scratchResourceId } from "../../compiler/resources.ts";
-import type { PointAttributeSchema } from "../../points/attributes.ts";
+import type { PointAttributeSchema, PointAttributeType } from "../../points/attributes.ts";
+import { ATTRIBUTE_STRIDES } from "../../points/attributes.ts";
+import { MAX_KERNEL_STORAGE_BINDINGS } from "../../points/codegen.ts";
 import { regionAccessorWgsl, regionStoreWgsl } from "../../points/packing.ts";
 import { ROPE_DEFAULTS, ROPE_MAX_ITERATIONS, ROPE_MAX_STRAND_POINTS } from "../../points/rope.ts";
 import { ropeStepWgsl } from "../shaders/rope.wgsl.ts";
+import type { RopeScalarRegion } from "../shaders/rope.wgsl.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { readFlag, readNumber } from "./parameter-readers.ts";
-import { attributeBinding, packedPointStorage } from "./point-storage.ts";
+import { packedPointStorage } from "./point-storage.ts";
 import { stripsOnEdge } from "./point-strips.ts";
+import { resolveScalarMap } from "./points.ts";
+import type { ScalarMap } from "./points.ts";
 
 /**
  * Rope (T1585b) — STRANDS THAT HANG, LAG AND WHIP.
@@ -45,13 +50,22 @@ import { stripsOnEdge } from "./point-strips.ts";
  * here (§V662), and the node reads the frame's delta and no clock: delta-driven (§V436).
  *
  * STATE (§V46): position and velocity (and tension) in one packed pair, stepped from run to
- * run; and, in a buffer of its own that only seeding and an anchor write, each segment's
- * measured length and where each anchor's target stood a frame ago. Seeded on the run that
+ * run; and, in a buffer of its own that only seeding and a station write, each segment's
+ * measured length and where each station's target stood a frame ago — kept whatever the
+ * station's weight is, so that a weight rising from nothing finds a target already followed. Seeded on the run that
  * finds its storage fresh (a load, a seek, a structural edit), so a backward seek replays
  * from the incoming pose (§V170).
  *
- * SLICE 1 of the design's plan: the strand and its time. One anchor (the first point); no
- * colliders, no bend, no mapped parameters yet.
+ * ⚑ ANCHORS (slice 2). Three stations of a strand may be held — its first point, its
+ * second and its last — each by a weight that is a number or, in Map mode, an attribute
+ * read at that strand's own station: a weight per strand, which is "this claw lets go and
+ * that one holds". A Pin Attribute is a weight on every point. Hard, a weight of 1 is the
+ * incoming point itself and anything less is a spring that stiffens toward it; Soft, 1 is
+ * still a spring. Two anchors further apart than the rope is long: the earlier holds, and
+ * the later falls short (the Curve node's Arc, in the same words).
+ *
+ * SLICES 1 AND 2 of the design's plan: the strand, its time and its anchors. No colliders
+ * and no bend yet.
  */
 
 /** What the node steps and publishes, in the order its packed buffer lays it out. `tension` only when it is asked for. */
@@ -82,6 +96,12 @@ export const ROPE_KEPT_KEY = "kept";
 
 const CODE = "node.points.rope";
 
+/** The three weights that take Map mode: each is read at its own station of each strand. */
+const STATIONS = ["anchorFirst", "anchorSecond", "anchorLast"] as const;
+
+/** The step's own buffers beside what it reads upstream: both halves of the pair, kept, scratch. */
+const OWN_BINDINGS = 4;
+
 /** The names the shader's accessors go by, per region. */
 const ACCESSOR: Readonly<Record<string, string>> = {
   position: "Position",
@@ -95,7 +115,7 @@ export const pointRopeNode: NodeDefinition = {
   title: "Rope",
   category: "points",
   description:
-    "Simulates every strip of a pointset as a rope that keeps its length: it hangs, lags behind what moves it, and whips. Each strand starts on its incoming points and takes its segment lengths from them; Anchor First holds a strand's first point to the incoming point, so whatever animates the incoming strip drags the rope. Publishes position and velocity (and tension when asked). Update Rate with Min and Max Update Steps sets how many solver steps a frame runs; a strand whose anchor jumps further than Teleport Distance in one frame is moved whole (Carry) or put back on its incoming points (Reset). Put Curve Frames after it to instance or sweep along the rope.",
+    "Simulates every strip of a pointset as a rope that keeps its length: it hangs, lags behind what moves it, and whips. Each strand starts on its incoming points and takes its segment lengths from them. Anchor First, Anchor Second and Anchor Last hold a strand's first, second and last point to the incoming point of the same slot, so whatever animates the incoming strip drags the rope; each is a weight from 0 to 1, and in Map mode an attribute gives it per strand. Hard, a weight of 1 is the incoming point itself and less is a pull toward it; Soft, it is always a spring. Two anchors further apart than the rope is long: the earlier one holds. Publishes position and velocity (and tension when asked). Update Rate with Min and Max Update Steps sets how many solver steps a frame runs; a strand whose first point jumps further than Teleport Distance in one frame is moved whole (Carry) or put back on its incoming points (Reset). Put Curve Frames after it to instance or sweep along the rope.",
   tags: ["points", "rope", "chain", "cable", "tentacle", "strand", "hair", "physics", "simulation", "strips", "curve", "verlet", "xpbd"],
   inputs: [
     {
@@ -203,6 +223,18 @@ export const pointRopeNode: NodeDefinition = {
       range: "floor",
       description: "Kilograms per point. It scales the tension the rope reports and how much a Stretch gives; a rope of one mass moves the same whatever it weighs.",
     },
+    segmentLength: {
+      type: "number",
+      label: "Segment Length",
+      group: "Rope",
+      default: ROPE_DEFAULTS.segmentLength,
+      min: 0,
+      max: 10,
+      step: 0.001,
+      range: "floor",
+      description:
+        "Metres between a point and the next, for every segment. 0 measures each segment of the incoming strip when the rope is seeded, which is right when the incoming strip is laid out at the rope's own spacing. Give the number when it is not: when the strip's last point is already where a claw should go, or the strip is a straight line shorter than the rope.",
+    },
     restLengthScale: {
       type: "number",
       label: "Rest Length Scale",
@@ -211,7 +243,7 @@ export const pointRopeNode: NodeDefinition = {
       min: 0,
       max: 4,
       range: "floor",
-      description: "Multiplies the length every segment was measured at: below 1 the rope draws itself in, above 1 it pays out.",
+      description: "Multiplies every segment's rest length, measured or given: below 1 the rope draws itself in, above 1 it pays out.",
     },
     stretch: {
       type: "number",
@@ -244,7 +276,73 @@ export const pointRopeNode: NodeDefinition = {
       max: 1,
       range: "bounded",
       description:
-        "How firmly the first point of each strand is held to its incoming point. 1 is the incoming point itself; 0 lets go; in between is a pull that tightens as it nears 1, so a weight that ramps moves the point without a jump.",
+        "How firmly the first point of each strand is held to its incoming point. 1 is the incoming point itself; 0 lets go; in between is a pull that tightens as it nears 1, so a weight that ramps moves the point without a jump. In Map mode an f32 attribute (or one channel of a float vector) is the weight, read at each strand's first point: a weight per strand.",
+    },
+    anchorSecond: {
+      type: "number",
+      label: "Anchor Second",
+      group: "Anchors",
+      default: ROPE_DEFAULTS.anchorSecond,
+      min: 0,
+      max: 1,
+      range: "bounded",
+      description:
+        "The same for the second point of each strand. Held with the first, it fixes the direction the strand leaves in: put the incoming second point one segment along the way a socket faces. In Map mode the attribute is read at each strand's second point.",
+    },
+    anchorLast: {
+      type: "number",
+      label: "Anchor Last",
+      group: "Anchors",
+      default: ROPE_DEFAULTS.anchorLast,
+      min: 0,
+      max: 1,
+      range: "bounded",
+      description:
+        "The same for the last point of each strand: a rope held at both ends hangs between them. In Map mode the attribute is read at each strand's last point, so one strand can hold while its neighbour lets go. A target further from an earlier held point than the rope is long is not reached: the rope keeps its length and its end falls short.",
+    },
+    anchorMode: {
+      type: "enum",
+      label: "Anchor Mode",
+      group: "Anchors",
+      default: ROPE_DEFAULTS.anchorMode,
+      // §V831: APPEND only.
+      options: [
+        { value: "hard", label: "Hard" },
+        { value: "soft", label: "Soft" },
+      ],
+      description:
+        "What a weight means. Hard: 1 is the incoming point itself, and a weight below 1 is a spring that stiffens without limit as it nears 1, so 0.3 to 0.5 follows a wandering target with a lag and a ramp to 1 lands on it. Soft: a weight of 1 is a spring of Anchor Strength, which lags a moving target and never pins.",
+    },
+    anchorStrength: {
+      type: "number",
+      label: "Anchor Strength",
+      group: "Anchors",
+      default: ROPE_DEFAULTS.anchorStrength,
+      min: 0.05,
+      max: 30,
+      range: "floor",
+      unit: "hz",
+      description:
+        "How fast a soft or partly weighted anchor draws its strand in: the frequency, in hertz, the whole strand would swing at on that spring at a Hard weight of 0.5 or a Soft weight of 1. Under gravity the held point then rests g ÷ (2π × strength)² below its target: 62 mm at 2 Hz, 16 mm at 4. A point held at weight 1 under Hard does not read it.",
+    },
+    anchorDamping: {
+      type: "number",
+      label: "Anchor Damping",
+      group: "Anchors",
+      default: ROPE_DEFAULTS.anchorDamping,
+      min: 0,
+      max: 4,
+      range: "floor",
+      description: "The damping ratio of that pull. 1 arrives at the target without springing past it; less overshoots and rings; 0 is a bare spring.",
+    },
+    pinAttribute: {
+      type: "string",
+      label: "Pin Attribute",
+      group: "Anchors",
+      default: "",
+      compileTime: true,
+      description:
+        "The name of an f32 attribute that is a weight on EVERY point, 0 to 1: a cable clipped along its length. A point takes the larger of this and its Anchor weight. A pull from this attribute is sized for the point's own mass, where an Anchor's is sized for the strand's. Empty reads none.",
     },
     reset: {
       type: "boolean",
@@ -341,14 +439,35 @@ export const pointRopeNode: NodeDefinition = {
         "node.points.input",
       );
     }
-    // §V288: a map this slice cannot honour refuses BY NAME rather than reading the static.
-    const mapped = Object.keys(parameterMaps).sort();
-    if (mapped.length > 0) {
+    // §V288: a map this node cannot honour refuses BY NAME rather than reading the static.
+    const unhonoured = Object.keys(parameterMaps).filter((key) => !(STATIONS as ReadonlyArray<string>).includes(key)).sort();
+    if (unhonoured.length > 0) {
       return refuse(
-        `${mapped.join(", ")} ${mapped.length === 1 ? "is" : "are"} in map mode, and no Rope parameter reads an attribute yet.`,
+        `${unhonoured.join(", ")} ${unhonoured.length === 1 ? "is" : "are"} in map mode, and a Rope maps only Anchor First, Anchor Second and Anchor Last.`,
         "Switch it back to Constant, or drive it through the value graph instead.",
         "node.parameter.map",
       );
+    }
+    const stationMaps: Partial<Record<(typeof STATIONS)[number], ScalarMap>> = {};
+    for (const key of STATIONS) {
+      const resolved = resolveScalarMap(nodeId, parameterMaps[key], upstream, "in", key);
+      if ("refusal" in resolved) return resolved.refusal;
+      if (resolved.map !== undefined) stationMaps[key] = resolved.map;
+    }
+    const pinName = typeof parameters["pinAttribute"] === "string" ? parameters["pinAttribute"].trim() : "";
+    let pinPair: PointsetAttributeRef | undefined;
+    if (pinName !== "") {
+      const carried = upstream.pairs[pinName];
+      if (carried === undefined || carried.type !== "f32") {
+        return refuse(
+          carried === undefined
+            ? `Pin Attribute names "${pinName}", which the incoming pointset does not carry.`
+            : `Pin Attribute names "${pinName}", which is ${carried.type ?? "untyped"}; a pin weight is an f32.`,
+          `It provides: ${Object.keys(upstream.pairs).sort().join(", ")}.`,
+          "node.parameter.map",
+        );
+      }
+      pinPair = carried;
     }
 
     const tension = parameters["tensionOutput"] === true;
@@ -379,50 +498,106 @@ export const pointRopeNode: NodeDefinition = {
       .join("\n\n");
     const solveId = scratchResourceId(nodeId, ROPE_SOLVE_KEY);
     const keptId = scratchResourceId(nodeId, ROPE_KEPT_KEY);
+
+    /* One binding per upstream BUFFER, whole, read by offset (T1076): the incoming points
+       first, then whatever a mapped weight or the pin attribute reads. A weight the same
+       kernel wrote beside its positions is the same buffer and costs no binding. */
+    const groups: Array<{ readonly resourceId: string; readonly half: "read" | "write" }> = [];
+    const groupOf = (ref: PointsetAttributeRef): number => {
+      const found = groups.findIndex((group) => group.resourceId === ref.buffer && group.half === ref.half);
+      if (found >= 0) return found;
+      groups.push({ resourceId: ref.buffer, half: ref.half });
+      return groups.length - 1;
+    };
+    const scalarRegion = (ref: PointsetAttributeRef, type: string, channel: string | undefined): RopeScalarRegion => ({
+      group: groupOf(ref),
+      word: ref.offset / 4,
+      strideWords: ATTRIBUTE_STRIDES[type as PointAttributeType] / 4,
+      component: channel === undefined ? 0 : ["x", "y", "z", "w"].indexOf(channel),
+    });
+    const positionRegion = { group: groupOf(position), word: position.offset / 4 };
+    const stationRegions: Partial<Record<(typeof STATIONS)[number], RopeScalarRegion>> = {};
+    for (const key of STATIONS) {
+      const map = stationMaps[key];
+      if (map !== undefined) stationRegions[key] = scalarRegion(map, map.type, map.channel);
+    }
+    const pinRegion = pinPair === undefined ? undefined : scalarRegion(pinPair, "f32", undefined);
+    /* §V588: a stage binds eight storage buffers, and four of them are this step's own. */
+    if (groups.length + OWN_BINDINGS > MAX_KERNEL_STORAGE_BINDINGS) {
+      return refuse(
+        `the incoming points and the attributes its weights read come from ${groups.length} producers, and a pass binds ${MAX_KERNEL_STORAGE_BINDINGS} buffers with this node's own ${OWN_BINDINGS} (§V588).`,
+        "Gather the weights onto the strands in one kernel before the Rope, so they come from one producer.",
+      );
+    }
+
+    /* The uniform block, as ONE list the shader's struct and the pass's record both read.
+       The first four are the backend's, written for every run of the stepped dispatch
+       (`dispatchStepUniforms`): reserved here because vgpu matches uniforms by name. */
+    const members: Array<{ name: string; type: "f32" | "u32"; value: number }> = [
+      { name: "deltaSeconds", type: "f32", value: 0 },
+      { name: "substep", type: "u32", value: 0 },
+      { name: "substeps", type: "u32", value: 1 },
+      { name: "firstRun", type: "u32", value: 0 },
+      { name: "cols", type: "u32", value: strips.cols },
+      { name: "rows", type: "u32", value: strips.rows },
+      /* The Iterations parameter, under ANOTHER name on purpose. The backend writes a
+         stepped dispatch's own `iterations` (runs per substep, 1 here) into any member of
+         that name, so a block that called its Newton cap `iterations` read 1 whatever the
+         parameter said — found by the sway test, which stood at two tolerances. */
+      { name: "solves", type: "u32", value: Math.min(ROPE_MAX_ITERATIONS, Math.max(1, Math.round(readNumber(parameters, "iterations", ROPE_DEFAULTS.iterations)))) },
+      { name: "reset", type: "u32", value: readFlag(parameters, "reset", false) },
+      { name: "teleportMode", type: "u32", value: parameters["teleportMode"] === "reset" ? 1 : 0 },
+      // A flag, not structure (§V453): Hard and Soft are one program.
+      { name: "anchorMode", type: "u32", value: parameters["anchorMode"] === "soft" ? 1 : 0 },
+      { name: "speed", type: "f32", value: Math.max(0, readNumber(parameters, "speed", ROPE_DEFAULTS.speed)) },
+      { name: "gravity", type: "f32", value: readNumber(parameters, "gravity", ROPE_DEFAULTS.gravity) },
+      { name: "damping", type: "f32", value: Math.max(0, readNumber(parameters, "damping", ROPE_DEFAULTS.damping)) },
+      { name: "inverseMass", type: "f32", value: 1 / Math.max(0.001, readNumber(parameters, "mass", ROPE_DEFAULTS.mass)) },
+      { name: "segmentLength", type: "f32", value: Math.max(0, readNumber(parameters, "segmentLength", ROPE_DEFAULTS.segmentLength)) },
+      { name: "restLengthScale", type: "f32", value: Math.max(0, readNumber(parameters, "restLengthScale", ROPE_DEFAULTS.restLengthScale)) },
+      { name: "stretch", type: "f32", value: Math.max(0, readNumber(parameters, "stretch", ROPE_DEFAULTS.stretch)) },
+      { name: "maxStretch", type: "f32", value: Math.max(0, readNumber(parameters, "maxStretch", ROPE_DEFAULTS.maxStretch)) },
+      { name: "anchorFirst", type: "f32", value: readNumber(parameters, "anchorFirst", ROPE_DEFAULTS.anchorFirst) },
+      { name: "anchorSecond", type: "f32", value: readNumber(parameters, "anchorSecond", ROPE_DEFAULTS.anchorSecond) },
+      { name: "anchorLast", type: "f32", value: readNumber(parameters, "anchorLast", ROPE_DEFAULTS.anchorLast) },
+      { name: "anchorStrength", type: "f32", value: Math.max(0, readNumber(parameters, "anchorStrength", ROPE_DEFAULTS.anchorStrength)) },
+      { name: "anchorDamping", type: "f32", value: Math.max(0, readNumber(parameters, "anchorDamping", ROPE_DEFAULTS.anchorDamping)) },
+      { name: "teleportDistance", type: "f32", value: Math.max(0, readNumber(parameters, "teleportDistance", ROPE_DEFAULTS.teleportDistance)) },
+    ];
+
     const pass: DispatchPassDescriptor = {
       kind: "dispatch",
-      /* Everything in the id changes the program's text (§V62b): the Tension switch decides
-         which regions exist, and the capacity moves every region's offset. */
-      id: `${nodeId}:rope:step:${tension ? "t" : ""}:${String(capacity)}`,
-      shader: ropeStepWgsl({ loadFunctions, storeFunctions, tension }),
+      /* What a person would want to read of what the program's text depends on: the Tension
+         switch decides which regions exist, a mapped station (f, s, l) and a pin attribute
+         (p) each read a buffer, and the capacity moves every region's offset. */
+      id: [
+        `${nodeId}:rope:step`,
+        `${tension ? "t" : ""}${stationRegions.anchorFirst === undefined ? "" : "f"}${stationRegions.anchorSecond === undefined ? "" : "s"}${stationRegions.anchorLast === undefined ? "" : "l"}${pinRegion === undefined ? "" : "p"}`,
+        String(capacity),
+      ].join(":"),
+      shader: ropeStepWgsl({
+        loadFunctions,
+        storeFunctions,
+        tension,
+        members: members.map(({ name, type }) => ({ name, type })),
+        groups: groups.length,
+        position: positionRegion,
+        ...stationRegions,
+        ...(pinRegion === undefined ? {} : { pin: pinRegion }),
+      }),
       entryPoint: "main",
       // One invocation per STRAND: each walks its own strand.
       workgroups: [Math.ceil(strips.rows / 64), 1, 1],
       buffers: [
-        // The producer's region, WRITE half: this frame's incoming points, in plan order (§V168).
-        attributeBinding("in_position", position),
+        // Each producer's buffer at the half its edge names: this frame's values, in plan order (§V168).
+        ...groups.map((group, index) => ({ binding: `pk_${index}`, resourceId: group.resourceId, half: group.half })),
         // The WHOLE packed buffer, both halves: the walk addresses regions by offset (T1076).
         { binding: "state_in", resourceId: storage.resourceId, half: "read" as const },
         { binding: "state_out", resourceId: storage.resourceId, half: "write" as const },
         { binding: "kept", resourceId: keptId },
         { binding: "scratch", resourceId: solveId },
       ],
-      uniforms: {
-        /* The backend's four, written for every run of the stepped dispatch
-           (`dispatchStepUniforms`): reserved here because vgpu matches uniforms by name. */
-        deltaSeconds: 0,
-        substep: 0,
-        substeps: 1,
-        firstRun: 0,
-        cols: strips.cols,
-        rows: strips.rows,
-        /* The Iterations parameter, under ANOTHER name on purpose. The backend writes a
-           stepped dispatch's own `iterations` (runs per substep, 1 here) into any member of
-           that name, so a block that called its Newton cap `iterations` read 1 whatever the
-           parameter said — found by the sway test, which stood at two tolerances. */
-        solves: Math.min(ROPE_MAX_ITERATIONS, Math.max(1, Math.round(readNumber(parameters, "iterations", ROPE_DEFAULTS.iterations)))),
-        reset: readFlag(parameters, "reset", false),
-        teleportMode: parameters["teleportMode"] === "reset" ? 1 : 0,
-        speed: Math.max(0, readNumber(parameters, "speed", ROPE_DEFAULTS.speed)),
-        gravity: readNumber(parameters, "gravity", ROPE_DEFAULTS.gravity),
-        damping: Math.max(0, readNumber(parameters, "damping", ROPE_DEFAULTS.damping)),
-        inverseMass: 1 / Math.max(0.001, readNumber(parameters, "mass", ROPE_DEFAULTS.mass)),
-        restLengthScale: Math.max(0, readNumber(parameters, "restLengthScale", ROPE_DEFAULTS.restLengthScale)),
-        stretch: Math.max(0, readNumber(parameters, "stretch", ROPE_DEFAULTS.stretch)),
-        maxStretch: Math.max(0, readNumber(parameters, "maxStretch", ROPE_DEFAULTS.maxStretch)),
-        anchorFirst: readNumber(parameters, "anchorFirst", ROPE_DEFAULTS.anchorFirst),
-        teleportDistance: Math.max(0, readNumber(parameters, "teleportDistance", ROPE_DEFAULTS.teleportDistance)),
-      },
+      uniforms: Object.fromEntries(members.map((member) => [member.name, member.value])),
       uniformBinding: "params",
       nodeId,
     };

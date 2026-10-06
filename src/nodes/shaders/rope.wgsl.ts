@@ -1,13 +1,7 @@
 import { wgsl } from "../../runtime/backend/wgsl.ts";
 import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 import { ZERO_SEGMENT_SQUARED } from "../../points/curve.ts";
-import {
-  ROPE_ANCHOR_DAMPING_RATIO,
-  ROPE_ANCHOR_STRENGTH_HZ,
-  ROPE_MAX_ITERATIONS,
-  ROPE_TOLERANCE,
-  ROPE_TOLERANCE_FLOOR,
-} from "../../points/rope.ts";
+import { ROPE_MAX_ITERATIONS, ROPE_PIN_SOFTENING, ROPE_TOLERANCE, ROPE_TOLERANCE_FLOOR } from "../../points/rope.ts";
 
 /**
  * T1585b — the Rope's solver step: ONE INVOCATION PER STRAND WALKS ITS STRAND.
@@ -29,8 +23,9 @@ import {
  *  - what the solver keeps for itself and writes rarely — each segment's measured length,
  *    where each anchor's target stood when the last frame ended, and how fast it was moving
  *    then — is therefore NOT in the pair. It lives in `kept`, one buffer of two vec4f a
- *    point, written when a strand is seeded and once a frame for an anchored point. In the
- *    pair it would be copied across by every run;
+ *    point, written when a strand is seeded and once a frame for each of its three stations
+ *    (for every point, under a pin attribute). In the pair it would be copied across by
+ *    every run;
  *  - `scratch` is the working copy of a step, eight floats a point: the point's
  *    strand-relative position while the Newton steps move it, its inverse mass, and for the
  *    segment after it the elimination's two coefficients and the multiplier summed over
@@ -59,11 +54,33 @@ import {
  * points as 18,181 strands of 55 are 1.4 to 1.5 ms a step: bound by throughput, three
  * times a plain per-point kernel, because `scratch` is read and written per point per loop.
  *
+ * Taken again with a fixed reference pass timed beside every frame (section 16.3; the GPU
+ * clock here follows its recent load, §B260): one 55-point strand's calm step is 0.83 of
+ * Curve Frames' two walks, anchors at the three stations cost nothing that can be measured,
+ * and a pin attribute doubles a step, because every point then follows its target.
+ *
  * The uniform block's first four members are the backend's, written for every run of a
  * stepped dispatch (`dispatchStepUniforms`): the frame's step divided by the substep count,
  * which substep this is and of how many, and `firstRun` on run 0 of a frame whose storage
  * is fresh.
+ *
+ * ## What it reads from upstream (slice 2)
+ *
+ * The incoming points and every attribute a parameter in Map mode names may come from
+ * several producers (a kernel's position, a weight gathered on after it). Each producer's
+ * buffer is bound WHOLE, once, as `pk_N`, and a region is read by its word offset (T1076) —
+ * so a weight in the same buffer as the positions costs no binding. `place` is the one
+ * place a point meets its anchor: it is called for the first point before the walk and for
+ * each later point as the forward sweep reaches it, and a hard pin is stored there.
  */
+
+/** A scalar attribute upstream: which bound buffer, the word its region starts at, a point's stride in words, and the component read. */
+export interface RopeScalarRegion {
+  readonly group: number;
+  readonly word: number;
+  readonly strideWords: number;
+  readonly component: number;
+}
 
 export interface RopeShaderOptions {
   /** Load functions over `state_in`: `loadPosition`, `loadVelocity`, and `loadTension` when it is stored. */
@@ -72,7 +89,22 @@ export interface RopeShaderOptions {
   readonly storeFunctions: string;
   /** The node publishes `tension`, so the state carries it. */
   readonly tension: boolean;
+  /** The uniform block's members, in order: the one list the struct and the pass's values are both made from. */
+  readonly members: ReadonlyArray<{ readonly name: string; readonly type: "f32" | "u32" }>;
+  /** How many upstream buffers are bound, as `pk_0` to `pk_{groups − 1}`. */
+  readonly groups: number;
+  /** The incoming `position` (vec3f, four words a point). */
+  readonly position: { readonly group: number; readonly word: number };
+  /** The attribute each station's weight is mapped to; absent, the weight is the parameter. */
+  readonly anchorFirst?: RopeScalarRegion;
+  readonly anchorSecond?: RopeScalarRegion;
+  readonly anchorLast?: RopeScalarRegion;
+  /** The pin attribute: a weight on every point. */
+  readonly pin?: RopeScalarRegion;
 }
+
+const scalarAt = (region: RopeScalarRegion, slot: string): string =>
+  `bitcast<f32>(pk_${region.group}[${region.word}u + ${slot} * ${region.strideWords}u + ${region.component}u])`;
 
 const literal = (value: number): string => {
   const text = String(value);
@@ -81,33 +113,26 @@ const literal = (value: number): string => {
 
 export function ropeStepWgsl(options: RopeShaderOptions): EmittedWgsl {
   const tension = (statement: string): string => (options.tension ? statement : "");
+  const struct = options.members.map((member) => `  ${member.name}: ${member.type},`).join("\n");
+  const upstream = Array.from({ length: options.groups }, (_unused, group) => `@group(0) @binding(${group + 1}) var<storage, read> pk_${group}: array<u32>;`).join("\n");
+  const own = options.groups + 1;
+  const position = options.position;
+  /** A station's weight at a slot: its mapped attribute, or the parameter. */
+  const station = (key: "anchorFirst" | "anchorSecond" | "anchorLast", slot: string): string => {
+    const region = options[key];
+    return region === undefined ? `params.${key}` : scalarAt(region, slot);
+  };
+  const pinned = options.pin !== undefined;
   return wgsl`struct RopeParams {
-  deltaSeconds: f32,
-  substep: u32,
-  substeps: u32,
-  firstRun: u32,
-  cols: u32,
-  rows: u32,
-  solves: u32,
-  reset: u32,
-  teleportMode: u32,
-  speed: f32,
-  gravity: f32,
-  damping: f32,
-  inverseMass: f32,
-  restLengthScale: f32,
-  stretch: f32,
-  maxStretch: f32,
-  anchorFirst: f32,
-  teleportDistance: f32,
+${struct}
 };
 
 @group(0) @binding(0) var<uniform> params: RopeParams;
-@group(0) @binding(1) var<storage, read> in_position: array<vec3f>;
-@group(0) @binding(2) var<storage, read> state_in: array<u32>;
-@group(0) @binding(3) var<storage, read_write> state_out: array<u32>;
-@group(0) @binding(4) var<storage, read_write> kept: array<vec4f>;
-@group(0) @binding(5) var<storage, read_write> scratch: array<f32>;
+${upstream}
+@group(0) @binding(${own}) var<storage, read> state_in: array<u32>;
+@group(0) @binding(${own + 1}) var<storage, read_write> state_out: array<u32>;
+@group(0) @binding(${own + 2}) var<storage, read_write> kept: array<vec4f>;
+@group(0) @binding(${own + 3}) var<storage, read_write> scratch: array<f32>;
 
 /* A segment at or below this squared length has no direction. */
 const ZERO_SEGMENT_SQUARED: f32 = ${ZERO_SEGMENT_SQUARED};
@@ -115,10 +140,17 @@ const ZERO_SEGMENT_SQUARED: f32 = ${ZERO_SEGMENT_SQUARED};
 const TOLERANCE: f32 = ${literal(ROPE_TOLERANCE)};
 const TOLERANCE_FLOOR: f32 = ${ROPE_TOLERANCE_FLOOR};
 const MAX_ITERATIONS: u32 = ${ROPE_MAX_ITERATIONS}u;
-/* A partly weighted anchor's pull: its natural frequency in turns a second, and its damping ratio. */
-const ANCHOR_TURNS: f32 = ${literal(ROPE_ANCHOR_STRENGTH_HZ)};
-const ANCHOR_RATIO: f32 = ${literal(ROPE_ANCHOR_DAMPING_RATIO)};
+/* What each pivot is raised by, as a share of it, on a strand with two or more anchors. */
+const PIN_SOFTENING: f32 = ${literal(ROPE_PIN_SOFTENING)};
+/* A pin attribute is named: every point may be anchored, and keeps its target's history. */
+const PINNED: bool = ${pinned ? "true" : "false"};
 const TAU: f32 = 6.283185307179586;
+
+/* The incoming point of a slot: the pose a strand is seeded on, and its anchors' target. */
+fn incomingAt(slot: u32) -> vec3f {
+  let o = ${position.word}u + slot * 4u;
+  return bitcast<vec3f>(vec3u(pk_${position.group}[o], pk_${position.group}[o + 1u], pk_${position.group}[o + 2u]));
+}
 
 ${options.loadFunctions}
 
@@ -160,16 +192,26 @@ fn segmentOf(lower: vec3f, upper: vec3f, rest: f32) -> Segment {
   return Segment(span / size, size - rest);
 }
 
+/* The rest length of the segment after a slot: the Segment Length when one is given, else
+   the length measured when the strand was seeded; times the Rest Length Scale. */
+fn restOf(slot: u32) -> f32 {
+  var rest = kept[slot * 2u].w;
+  if (params.segmentLength > 0.0) {
+    rest = params.segmentLength;
+  }
+  return rest * params.restLengthScale;
+}
+
 /* A strand on its incoming points, at rest, its segments measured. */
 fn seedStrand(base: u32, cols: u32) {
   for (var i = 0u; i < cols; i = i + 1u) {
     let slot = base + i;
-    let here = in_position[slot];
+    let here = incomingAt(slot);
     storePosition(slot, here);
     storeVelocity(slot, vec3f(0.0));
 ${tension("    storeTension(slot, 0.0);\n")}    var rest = 0.0;
     if (i + 1u < cols) {
-      let span = in_position[slot + 1u] - here;
+      let span = incomingAt(slot + 1u) - here;
       rest = sqrt(dot(span, span));
     }
     kept[slot * 2u] = vec4f(here, rest);
@@ -193,7 +235,7 @@ fn look(base: u32, k: u32, low: vec3f, high: vec3f, hh: f32) -> vec2u {
   if (!(scratch[at + INVERSE] + scratch[at + 8u + INVERSE] > 0.0)) {
     return vec2u(0u, 0u);
   }
-  let rest = kept[(base + k) * 2u].w * params.restLengthScale;
+  let rest = restOf(base + k);
   let span = high - low;
   let squared = dot(span, span);
   let most = rest * (1.0 + params.maxStretch);
@@ -216,6 +258,127 @@ fn look(base: u32, k: u32, low: vec3f, high: vec3f, hh: f32) -> vec2u {
   return vec2u(beyond, open);
 }
 
+/* What place() needs of the strand it is walking, set once by main(). */
+var<private> s_base: u32;
+var<private> s_cols: u32;
+var<private> s_segments: u32;
+var<private> s_h: f32;
+var<private> s_keep: f32;
+var<private> s_drop: f32;
+var<private> s_turn: f32;
+var<private> s_ratio: f32;
+var<private> s_frameSeconds: f32;
+var<private> s_lastSubstep: bool;
+var<private> s_hard: bool;
+var<private> s_firstWeight: f32;
+var<private> s_secondWeight: f32;
+var<private> s_lastWeight: f32;
+var<private> s_originWas: vec3f;
+var<private> s_origin: vec3f;
+var<private> s_beforeFirst: vec3f;
+var<private> s_jump: vec3f;
+var<private> s_jumped: bool;
+/* The nearest hard pin the walk has passed, and how much rope there is from it to here. */
+var<private> s_pinAt: vec3f;
+var<private> s_hasPin: bool;
+var<private> s_reach: f32;
+
+/* Predict point i, pull it by its anchor, and hand the solve its working position (xyz) and
+   its inverse mass (w). A hard pin is STORED here, as its target, and the solve does not
+   move it. */
+fn place(i: u32) -> vec4f {
+  let slot = s_base + i;
+  let start = loadPosition(slot) - s_originWas;
+  let v = loadVelocity(slot) * s_keep;
+  var placed = vec3f(start.x + v.x * s_h, (start.y + v.y * s_h) - s_drop, start.z + v.z * s_h);
+  var weighs = params.inverseMass;
+  var station = 0.0;
+  if (i == 0u) {
+    station = s_firstWeight;
+  } else {
+    if (i == 1u) {
+      station = s_secondWeight;
+    }
+    if (i == s_segments) {
+      station = max(station, s_lastWeight);
+    }
+  }
+  if (PINNED || i <= 1u || i == s_segments) {
+    /* The target's history is kept whatever the weight is, so one that rises from nothing
+       finds a target that was already being followed. */
+    let now = incomingAt(slot);
+    let keptHere = kept[slot * 2u];
+    var before = keptHere.xyz;
+    if (i == 0u) {
+      before = s_beforeFirst;
+    } else if (s_jumped) {
+      before = keptHere.xyz + s_jump;
+    }
+    let travelled = now - before;
+    var here = now;
+    if (!s_lastSubstep) {
+      here = before + travelled * (f32(params.substep + 1u) / f32(params.substeps));
+    }
+    let was = before + travelled * (f32(params.substep) / f32(params.substeps));
+    if (s_lastSubstep) {
+      kept[slot * 2u] = vec4f(now, keptHere.w);
+    } else if (s_jumped || i == 0u) {
+      kept[slot * 2u] = vec4f(before, keptHere.w);
+    }
+    if (i == 0u && s_lastSubstep) {
+      kept[slot * 2u + 1u] = vec4f(travelled / s_frameSeconds, 0.0);
+    }
+
+    let pin = ${pinned ? `clamp(${scalarAt(options.pin as RopeScalarRegion, "slot")}, 0.0, 1.0)` : "0.0"};
+    let weight = max(station, pin);
+    if (weight > 0.0) {
+      let hereLocal = here - s_origin;
+      var goal = hereLocal;
+      var drawnIn = false;
+      if (s_hasPin) {
+        /* The earlier pin wins: a target out of its reach is drawn in along the line to it. */
+        let span = goal - s_pinAt;
+        let squared = dot(span, span);
+        if (squared > s_reach * s_reach) {
+          goal = s_pinAt + span * (s_reach / sqrt(squared));
+          drawnIn = true;
+        }
+      }
+      if (s_hard && weight >= 1.0) {
+        placed = goal;
+        weighs = 0.0;
+        var stored = here;
+        if (drawnIn) {
+          stored = goal + s_origin;
+        }
+        storePosition(slot, stored);
+        storeVelocity(slot, (goal - start) / s_h);
+        s_pinAt = goal;
+        s_hasPin = true;
+        s_reach = 0.0;
+      } else {
+        /* A spring to the target, stepped implicitly: part of the way there, and heavier.
+           Sized for the mass it carries: the strand's for a station, the point's for a pin. */
+        var gain = weight;
+        if (s_hard) {
+          gain = weight / (1.0 - weight);
+        }
+        var carried = 1.0;
+        if (station > 0.0 && station >= pin) {
+          carried = f32(s_cols);
+        }
+        let pull = ((s_turn * s_turn) * gain) * carried;
+        let drag = ((s_ratio * s_turn) * sqrt(gain)) * carried;
+        let total = (1.0 + pull) + drag;
+        let damper = start + (hereLocal - (was - s_origin));
+        placed = ((placed + goal * pull) + damper * drag) / total;
+        weighs = weighs / total;
+      }
+    }
+  }
+  return vec4f(placed, weighs);
+}
+
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3u) {
   let strand = gid.x;
@@ -235,93 +398,100 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
-  /* The first point's anchor: its target now, and where the target was a frame ago. */
-  let weight = clamp(params.anchorFirst, 0.0, 1.0);
-  let targetNow = in_position[base];
-  let keptFirst = kept[base * 2u];
+  /* The strand's three stations: how firmly each is held, as a number or by its map. */
+  let firstWeight = clamp(${station("anchorFirst", "base")}, 0.0, 1.0);
+  var secondWeight = 0.0;
+  var lastWeight = 0.0;
+  if (segments > 0u) {
+    secondWeight = clamp(${station("anchorSecond", "(base + 1u)")}, 0.0, 1.0);
+    lastWeight = clamp(${station("anchorLast", "(base + segments)")}, 0.0, 1.0);
+  }
+  var stations = 0u;
+  if (firstWeight > 0.0) {
+    stations = stations + 1u;
+  }
+  if (secondWeight > 0.0) {
+    stations = stations + 1u;
+  }
+  if (lastWeight > 0.0) {
+    stations = stations + 1u;
+  }
+  let anchored = stations > 0u || PINNED;
+  /* Two anchors can hold a taut strand between them, whose tension the constraints leave open. */
+  var softening = 0.0;
+  if (stations > 1u || PINNED) {
+    softening = PIN_SOFTENING;
+  }
+
+  /* A teleport is judged on the first point's target: where it is now, and a frame ago. */
+  let targetFirst = incomingAt(base);
   let rateWas = kept[base * 2u + 1u].xyz;
-  var before = keptFirst.xyz;
+  var beforeFirst = kept[base * 2u].xyz;
   var jump = vec3f(0.0);
-  let reach = params.teleportDistance;
+  var jumped = false;
+  let teleport = params.teleportDistance;
   /* The frame's whole step: an anchor's target moves in frame time, whatever Simulation Speed is. */
   let frameSeconds = params.deltaSeconds * f32(params.substeps);
-  if (weight > 0.0 && params.substep == 0u && reach > 0.0) {
-    let moved = targetNow - before;
-    if (dot(moved, moved) > reach * reach) {
+  if (anchored && params.substep == 0u && teleport > 0.0) {
+    let moved = targetFirst - beforeFirst;
+    if (dot(moved, moved) > teleport * teleport) {
       if (params.teleportMode == 1u) {
         seedStrand(base, cols);
         return;
       }
-      /* Carry: the strand goes with the jump, and its anchor is not dragged across it. What
-         the anchor travels in this frame at the speed it had is NOT part of the jump: the
-         target is taken to have come from where that speed puts it, so a body that wraps
-         its world while moving keeps moving through the wrap. */
-      let start = targetNow - rateWas * frameSeconds;
-      jump = start - before;
-      before = start;
+      /* Carry: the strand goes with the jump, and its anchors are not dragged across it.
+         What the first target travels in this frame at the speed it had is NOT part of the
+         jump: it is taken to have come from where that speed puts it, so a body that wraps
+         its world while moving keeps moving through the wrap. Every other target's history
+         goes with the strand, by the same jump. */
+      let start = targetFirst - rateWas * frameSeconds;
+      jump = start - beforeFirst;
+      beforeFirst = start;
+      jumped = true;
     }
-  }
-  let lastSubstep = params.substep + 1u == params.substeps;
-  let travelled = targetNow - before;
-  var targetHere = targetNow;
-  if (!lastSubstep) {
-    targetHere = before + travelled * (f32(params.substep + 1u) / f32(params.substeps));
-  }
-  let targetWas = before + travelled * (f32(params.substep) / f32(params.substeps));
-  /* Kept for the next frame's steps: where the target stood when this frame ended, and
-     how fast it had moved to get there. */
-  kept[base * 2u] = vec4f(before, keptFirst.w);
-  if (lastSubstep) {
-    kept[base * 2u] = vec4f(targetNow, keptFirst.w);
-    kept[base * 2u + 1u] = vec4f(travelled / frameSeconds, 0.0);
   }
 
   /* The walk works relative to the strand's first point, so a strand far from the origin
      does the arithmetic of one at it. */
   let originWas = loadPosition(base);
   let origin = originWas + jump;
-  let targetLocal = targetHere - origin;
-  let targetWasLocal = targetWas - origin;
-
-  let keep = 1.0 / (1.0 + params.damping * h);
-  let drop = (params.gravity * h) * h;
-  let restScale = params.restLengthScale;
   let hh = h * h;
   let limit = params.maxStretch;
 
+  s_base = base;
+  s_cols = cols;
+  s_segments = segments;
+  s_h = h;
+  s_keep = 1.0 / (1.0 + params.damping * h);
+  s_drop = (params.gravity * h) * h;
+  s_turn = (TAU * params.anchorStrength) * h;
+  s_ratio = 2.0 * params.anchorDamping;
+  s_frameSeconds = frameSeconds;
+  s_lastSubstep = params.substep + 1u == params.substeps;
+  s_hard = params.anchorMode == 0u;
+  s_firstWeight = firstWeight;
+  s_secondWeight = secondWeight;
+  s_lastWeight = lastWeight;
+  s_originWas = originWas;
+  s_origin = origin;
+  s_beforeFirst = beforeFirst;
+  s_jump = jump;
+  s_jumped = jumped;
+  s_pinAt = vec3f(0.0);
+  s_hasPin = false;
+  s_reach = 0.0;
+
   /* The first point: predicted, then pulled by its anchor. */
   let firstStart = loadPosition(base) - originWas;
-  let firstVelocity = loadVelocity(base) * keep;
-  var first = vec3f(firstStart.x + firstVelocity.x * h, (firstStart.y + firstVelocity.y * h) - drop, firstStart.z + firstVelocity.z * h);
-  var firstInverse = params.inverseMass;
-  var pinned = false;
-  if (weight > 0.0) {
-    if (weight >= 1.0) {
-      first = targetLocal;
-      firstInverse = 0.0;
-      pinned = true;
-    } else {
-      /* A spring to the target, stepped implicitly: part of the way there, and heavier. */
-      let gain = weight / (1.0 - weight);
-      let turn = (TAU * ANCHOR_TURNS) * h;
-      let pull = (turn * turn) * gain;
-      let drag = ((2.0 * ANCHOR_RATIO) * turn) * sqrt(gain);
-      let total = (1.0 + pull) + drag;
-      let damper = firstStart + (targetLocal - targetWasLocal);
-      first = ((first + targetLocal * pull) + damper * drag) / total;
-      firstInverse = firstInverse / total;
-    }
-  }
-  storeWork(base, first);
-  scratch[base * 8u + INVERSE] = firstInverse;
+  let first = place(0u);
+  storeWork(base, first.xyz);
+  scratch[base * 8u + INVERSE] = first.w;
 ${tension("  storeTension(base + segments, 0.0);\n")}
   if (segments == 0u) {
-    var alone = first + origin;
-    if (pinned) {
-      alone = targetHere;
+    if (first.w > 0.0) {
+      storePosition(base, first.xyz + origin);
+      storeVelocity(base, (first.xyz - firstStart) / h);
     }
-    storePosition(base, alone);
-    storeVelocity(base, (first - firstStart) / h);
     return;
   }
 
@@ -341,13 +511,15 @@ ${tension("  storeTension(base + segments, 0.0);\n")}
     for (var k = 0u; k < segments; k = k + 1u) {
       let slot = base + k;
       let at = slot * 8u;
+      let rest = restOf(slot);
       var higher = vec3f(0.0);
-      var higherInverse = params.inverseMass;
+      var higherInverse = 0.0;
       var gathered = 0.0;
       if (iteration == 0u) {
-        let x = loadPosition(slot + 1u) - originWas;
-        let v = loadVelocity(slot + 1u) * keep;
-        higher = vec3f(x.x + v.x * h, (x.y + v.y * h) - drop, x.z + v.z * h);
+        s_reach = s_reach + rest * (1.0 + limit);
+        let placed = place(k + 1u);
+        higher = placed.xyz;
+        higherInverse = placed.w;
         storeWork(slot + 1u, higher);
         scratch[at + 8u + INVERSE] = higherInverse;
         scratch[at + MULTIPLIER] = 0.0;
@@ -356,7 +528,6 @@ ${tension("  storeTension(base + segments, 0.0);\n")}
         higherInverse = scratch[at + 8u + INVERSE];
         gathered = scratch[at + MULTIPLIER];
       }
-      let rest = kept[slot * 2u].w * restScale;
       let here = segmentOf(lower, higher, rest);
       let sum = lowerInverse + higherInverse;
       if (sum > 0.0) {
@@ -368,7 +539,7 @@ ${tension("  storeTension(base + segments, 0.0);\n")}
           above = coupling / pivot;
           scratch[at - 8u + UPPER] = above;
         }
-        pivot = (sum + alpha) - coupling * above;
+        pivot = (sum * (1.0 + softening) + alpha) - coupling * above;
         carried = ((-here.error - alpha * gathered) - coupling * carried) / pivot;
         scratch[at + REDUCED] = carried;
         previousActive = true;
@@ -400,14 +571,16 @@ ${tension("  storeTension(base + segments, 0.0);\n")}
       let slot = base + k;
       let at = slot * 8u;
       let lowerWas = loadWork(slot);
-      let here = segmentOf(lowerWas, higherWas, kept[slot * 2u].w * restScale);
+      let here = segmentOf(lowerWas, higherWas, restOf(slot));
       let lambda = scratch[at + REDUCED] - scratch[at + UPPER] * nextMultiplier;
       let moved = higherWas + (here.direction * lambda - nextDirection * nextMultiplier) * scratch[at + 8u + INVERSE];
       storeWork(slot + 1u, moved);
       let total = scratch[at + MULTIPLIER] + lambda;
       scratch[at + MULTIPLIER] = total;
-      storePosition(slot + 1u, moved + origin);
-      storeVelocity(slot + 1u, (moved - (loadPosition(slot + 1u) - originWas)) / h);
+      if (scratch[at + 8u + INVERSE] > 0.0) {
+        storePosition(slot + 1u, moved + origin);
+        storeVelocity(slot + 1u, (moved - (loadPosition(slot + 1u) - originWas)) / h);
+      }
 ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segments) {
         let left = look(base, k + 1u, moved, aboveNow, hh);
         if (left.x == 1u) {
@@ -424,12 +597,10 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
     }
     let solved = higherWas + (nextDirection * (-nextMultiplier)) * scratch[base * 8u + INVERSE];
     storeWork(base, solved);
-    var placedFirst = solved + origin;
-    if (pinned) {
-      placedFirst = targetHere;
+    if (scratch[base * 8u + INVERSE] > 0.0) {
+      storePosition(base, solved + origin);
+      storeVelocity(base, (solved - firstStart) / h);
     }
-    storePosition(base, placedFirst);
-    storeVelocity(base, (solved - firstStart) / h);
     let left = look(base, 0u, solved, aboveNow, hh);
     if (left.x == 1u) {
       exceeded = true;
@@ -452,7 +623,7 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
     let solved = loadWork(slot);
     var placed = solved;
     if (scratch[slot * 8u + INVERSE] > 0.0) {
-      let rest = kept[(slot - 1u) * 2u].w * restScale;
+      let rest = restOf(slot - 1u);
       let span = solved - resting;
       let squared = dot(span, span);
       if (squared > ZERO_SEGMENT_SQUARED) {
@@ -467,7 +638,10 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
       }
     }
     resting = placed;
-    storePosition(slot, placed + origin);
+    /* A pinned point keeps the target it was stored at. */
+    if (scratch[slot * 8u + INVERSE] > 0.0) {
+      storePosition(slot, placed + origin);
+    }
   }
 }`;
 }

@@ -1,6 +1,6 @@
 # A rope solver node: strands that hang, lag and whip (T1585b)
 
-**Status, 2026-10-06: slice 1 (the strand and its time) is built and measured on a device. Sections 1 to 13 are the design as ruled on 2026-10-05; section 14 is what slice 1 built, measured and changed; section 15 is what the first consumer's review added (a bend limit above all) and is not built.** Where a sentence in sections 1 to 13 is no longer true, it says so and points at 14 or 15.
+**Status, 2026-10-06: slices 1 (the strand and its time) and 2 (the second pin and the anchors) are built and measured on a device. Sections 1 to 13 are the design as ruled on 2026-10-05; section 14 is what slice 1 built, measured and changed; section 15 is what the first consumer's review added (a bend limit above all), of which 15.3 to 15.5 are now built; section 16 is what slice 2 built, measured and changed.** Where a sentence in sections 1 to 13 is no longer true, it says so and points at 14 or 15.
 
 The row asks for a Rope node over a strips pointset, in Notch's vocabulary, with anchors that pin to the incoming animated position, collision, and cloth as a later sibling. The owner's standard for it (2026-10-05): consider how TouchDesigner and Notch do this, and build the good and right thing, not a brittle, unscalable or slow shortcut. The first consumer is sentinel-bot (T1561b), whose tentacles the owner called "very stiff and not floppy ropey", then "flight mode still looks too stiff", and whose motion must not "glitch around and teleport".
 
@@ -413,7 +413,7 @@ Stretch and Bend Stiffness are each written in the form whose zero is a rope: a 
 | `live` f32 | when the edge carries it | a segment touching a padding slot has no length, so padding stays collapsed on its live end, as the curve family's R4 says |
 | whatever a Map names | per parameter | weights, mass, lengths, thickness, force, wind |
 
-After the seeding frame the incoming position of a point is read only while that point's anchor weight is above zero, and of every point on a Reset or a teleport that resets.
+After the seeding frame the incoming position of a point is read only while that point's anchor weight is above zero, and of every point on a Reset or a teleport that resets. (As built: the three stations' incoming points are read every frame whatever their weights, and every point's when a Pin Attribute is named, so that a weight rising from 0 finds a target already followed; 16.1, item 2.)
 
 **Published on `out`:**
 
@@ -518,6 +518,7 @@ A strand pinned at both ends with slack is the consumer's holding tentacle and t
 - Model: 3.24 m of rope, the far target eased out to 4 m, Max Stretch 0. The last point stops at x = 3.240000 m.
 - With Max Stretch at 0.1 the rope gives a tenth before the target is lost; with a Stretch compliance it gives like a bungee up to that.
 - The gap is the consumer's `slip`. It is not published in v1.
+- **As built** (16.1, item 5): the reach is measured from the nearest earlier hard pin. **A finding** (16.5): past the step limit the Max Stretch guard leaves what the solve did not close on the segment before the far pin, and the reach rule does not bound that.
 
 ### 4.7 Teleports
 
@@ -988,6 +989,7 @@ Each is shippable and each is a prefix of the whole: the names, the attributes, 
 - **For the consumer the order is 1, 2, then 5 by way of 3.** After slice 2 its tentacles are ropes with no walls, which works under water with low gravity and is wrong the moment one hangs.
 - **Changed after the consumer's review** (15.1): the order is 1, 2, 4 with the bend limit, 5, 3. Slice 5 no longer depends on slice 3, and slice 6 is not planned. Slice 4 gains Bend Limit and Min Bend Radius; slice 2 gains Length Out.
 - **Slice 1 as built is narrower than its row**, by the coordinator's brief: no Force, Wind, Segment Length or Stretch Damping, and Reset and Teleport moved up from slice 2 (14).
+- **Slice 2 as built** (16): the row's contents, with Segment Length as a number added and Length Out left to its own slice.
 
 ### 11.2 Accepted limitations, as follow-up rows
 
@@ -1032,7 +1034,7 @@ Each with the recommendation.
 - **D13. Gravity and forces.** Recommended: Gravity a number toward −Y as Notch's, and Force a vec3 with Map mode for everything else. Alternative: one vec3.
 - **D14. Closed strips** refused in v1 (R7), and a grid's rows taken as separate strands.
 - **D15. Pre-roll** as a follow-up (R5), with the incoming strip as the starting pose.
-- **D1 to D15 were ruled as recommended on 2026-10-05**, D3 without a full-suite run. **D16 to D23**, from the consumer's review and from slice 1, are in 15.8.
+- **D1 to D15 were ruled as recommended on 2026-10-05**, D3 without a full-suite run. **D16 to D23**, from the consumer's review and from slice 1, are in 15.8 and were ruled as recommended on 2026-10-06. **D24 to D29**, from slice 2, are in 16.10.
 
 ### 11.4 What this design has not verified
 
@@ -1319,6 +1321,8 @@ The worst turn over four seconds, as a multiple of the limit, and the share of f
 - **So the node holds no reference axis and there is no tie-break**, because there is no choice to break. The side a slack strand bows to at its seed is whatever the incoming strip gave it. An incoming strip built by an Arc carries the Arc's own stated hand (the Curve node's Bow); the consumer's kernel carries the rig's.
 - **Where a choice could enter later, and the rule for it.** A strand seeded SHORTER than its rest lengths between two pins (Rest Length Scale above 1, or the winch of 15.7 paying out against a far pin) has slack and no shape for it. The node still builds nothing: it seeds the incoming points, and the solve pays the slack out under the forces present. Gravity bows it downward, continuously in the chord's direction, through a hairpin of no width where the chord is vertical. With no force across the chord (no gravity, or a chord exactly along it, and the strand exactly straight) nothing moves it sideways and it stays straight and short until something does. That is a rope with nowhere to go, and it is not a flip. Slice 2 tests that case when it builds the second pin.
 
+**Run, in slice 2** (16.6): a strand seeded short between two pins, in every direction. It has no hand, to the bit. It also has one direction, exactly along gravity, where the strand stays straight while its neighbours fall into a loop: measured, and offered as D29.
+
 **Built, in slice 1:** on the reference and on Dawn, a slack arc turned so that its chord sweeps a whole turn (in three families: the bow in the plane of the sweep and through gravity's axis; across the sweep; along gravity), seeded by a fresh state, by Reset and by Teleport with Reset. The device test lays 128 strands, one a direction, four of them exactly on an axis, with dyadic coordinates. Each seed is the incoming arc to the bit, and between neighbouring directions no point moves further than the sweep itself moves it. Seen red against a seed that bows its slack across a projected axis.
 
 ### 15.4 A weight between 0 and 1, under Hard
@@ -1333,6 +1337,8 @@ The worst turn over four seconds, as a multiple of the limit, and the share of f
 - Then the rest offset under the strand's full weight is `g ÷ ((2π·strength)²·g(a))`, whatever the strand's length: 62 mm at 0.5 and 145 mm at 0.3 at 2 Hz; 16 mm and 36 mm at 4 Hz. Anchor Strength then means what its unit says: the frequency of the strand on its anchor.
 - The pull stays one formula and stays unconditionally stable; only `κ` and `δ` are larger.
 
+**Built in slice 2** (16.7): 62.12 mm and 144.95 mm on the consumer's 55 points, on the reference and on Dawn; a wandering target followed 10 to 44 mm behind at weights 0.5 to 0.3; Hard at 0.5 equal to Soft at 1 byte for byte.
+
 **Stated in the description, and tested in slice 2:**
 
 - The rest offset in closed form, at weights 0.3 and 0.5, at three step counts.
@@ -1342,7 +1348,7 @@ The worst turn over four seconds, as a multiple of the limit, and the share of f
 
 ### 15.5 Slice 2's measurement
 
-- **A fast pin at weight 1.** The claw's target crosses about 4 m/s in every stride and about 8 m/s in an attack. Slice 2 measures a far-end pin swept at both, on Dawn, and reports the worst segment at 2, 4, 8 and 16 steps a frame beside 14.6's figures for the first point.
+- **A fast pin at weight 1.** The claw's target crosses about 4 m/s in every stride and about 8 m/s in an attack. Slice 2 measures a far-end pin swept at both, on Dawn, and reports the worst segment at 2, 4, 8 and 16 steps a frame beside 14.6's figures for the first point. **Measured** (16.4): 0.0072% at the stride and 0.0125% at the attack at Update Rate 240, the held points on their targets to the bit; the attack needs two steps a frame.
 - **The hold weight is one mapped weight** on a strand's last point, `anchorLast = map(hold)`.
 - **Anchor Second at weight 1, one pitch along the way the socket faces, is the direction the strand leaves in.** Confirmed by the consumer. With the first two points pinned, the first segment has both ends held and is skipped (2.5), and the bend limit of 15.2 acts from the third point.
 
@@ -1396,7 +1402,14 @@ Model: 54 segments of 60 mm hanging from a socket, reeled in 2 m, held, paid out
 - A parked point that is released comes out along the strand as it is, so the node still builds no pose (15.3).
 - **Segment Length in Map mode stays**, for strands whose segments differ, and is read when seeded and on Reset. It is no longer read every frame. A value of 0 there is still a weld (2.5).
 
-It belongs with the anchors and is the last part of slice 2, after the second pin, and is measured on Dawn there before its description is written.
+**What the consumer relies on, and what slice 2 leaves in place for it:**
+
+1. **A point keeps its identity whatever the length.** Ring `k` is always ring `k`: point `k` of a strand is slot `k`, wound in or out. A parked point is still its slot, with `live` 0; nothing is renumbered and nothing is compacted. Slice 2 addresses its stations by slot (the first, the second, the last) and keeps each point's history in its own slot, so this holds as built.
+2. **The parked end is the Anchor First end.** Wound-in points park on the first anchor, and the last point is the free one or the second pin. Slice 2's walk runs from the first point outward, and its reach rule and its guard both count from the first end, which is the order parking needs.
+
+One thing the winch slice has to decide: **Anchor Second reads the strand's second slot**, and once points are parked that slot is on the socket with the rest. The direction a strand leaves in then has to be held on the first live segment, one past the last parked point.
+
+It is its own slice, after the bend limit, and is measured on Dawn before its description is written.
 
 ### 15.8 Decisions to rule
 
@@ -1416,6 +1429,148 @@ It belongs with the anchors and is the last part of slice 2, after the second pi
 - **The second pin**, ε, the reach rule and the weld: slice 2.
 - **A strand seeded short between two pins** (15.3): stated, not run.
 - **Whether the active rows' switching at rest shows.** 26 µm in the model.
+
+## 16. Slice 2 as built (2026-10-06)
+
+The second pin and the anchors. Everything here was run on Dawn (Metal, this machine) unless it says reference (the CPU reference, single precision) or model.
+
+**Added to the node:** Anchor Second and Anchor Last; Map mode on Anchor First, Second and Last (a weight per strand); Anchor Mode (Hard, Soft), Anchor Strength, Anchor Damping; Pin Attribute; Segment Length as a number; the rule for two anchors out of reach; the softened pivots for a strand with two anchors (2.5's ε).
+
+**Not in this slice:** Segment Length in Map mode, Force, Wind, Stretch Damping, Mass in Map mode, `live` and the weld, Length Out (the winch, 15.7), colliders, bend.
+
+### 16.1 What was decided in building it
+
+1. **An anchor's stiffness is sized for the strand's mass** (D19), built as ruled. A station's pull is `N·(2π·strength)²·gain` with `N` the strand's point count; a Pin Attribute's is sized for one point. A point with both takes the station's when the station's weight is at least the pin's.
+2. **A target's history is kept whether or not its weight is above zero.** 3.3 said the incoming position is read only while a weight is above zero. Built that way, a weight that rises from 0 finds a target last seen when the strand was seeded, and the pull's damper takes the whole distance since as one frame of motion. Measured: the last point's target runs away at 4 m/s for two seconds, then its weight becomes 0.01. The tip gains 2.1 m/s in that frame with the history kept, which is under what the spring itself gives (3.4 m/s), and 46 m/s without. So the three stations always follow their targets, and every point does when a Pin Attribute is named.
+3. **A teleport is judged on the first point's incoming position**, while any station's weight is above zero or a Pin Attribute is named. Every anchor's history then goes with the strand by the same jump. 4.7 said "the first anchored point"; the first point is always tracked, and a body that wraps carries every station with it.
+4. **The pivots are softened on a strand with two or more stations above zero, or a Pin Attribute.** 2.5 said two or more anchored points. With one anchor or none nothing is softened.
+5. **The reach is measured from the nearest earlier hard pin**, and a pin drawn in is stored at the reach, on the line to its target. A soft anchor's target is drawn in the same way.
+6. **A hard pin is stored where the forward sweep places it**, as its target, and neither the back substitution nor the Max Stretch guard writes it again. That is what keeps "the pinned point is the incoming point" true to the bit on any device.
+7. **A weight in Map mode replaces the parameter.** With the map cut, every strand takes the parameter.
+8. **The incoming side is bound as whole producer buffers**, read by offset. The incoming points and a weight the same kernel wrote are one binding. The step's own four buffers leave room for four producers; a fifth is refused by name.
+9. **Segment Length (a number) was added**, though the brief did not list it. The first consumer's incoming strip is a straight run with its last point already where the claw goes. Measured from that, the rope has one segment as long as the distance to the claw. With the number every segment is the number. Two tests hold it, on the reference and on Dawn.
+10. **Weights are per frame.** They are not walked across a frame's steps (4.4), and the hand-over below does not need it.
+
+### 16.2 What the device changed
+
+- **The hanging strand is no longer exact to the bit on Dawn at 4 and 8 steps a frame.** Slice 1's program kept it exact at 1, 4 and 8. Slice 2's program does the same arithmetic for a free point inside a larger text. The first stepped frame reads a top tension of 128.00009 N where 128 is exact: one last place of the top segment's stretch, so of its square root. Metal compiles with fast math (§B260), and which square root becomes a reciprocal estimate is the compiler's choice, made again whenever the text changes. Two rewrites (a division per component; the unsoftened pivot written out) did not bring it back.
+  - The test now uses the fallback section 10 wrote for it: every segment within the solver's exit tolerance, and the tension within what that carries. The reference is still exact, and is asserted exact.
+  - Slice 1's other exact tests still pass exactly on the new program: the falls, the tow, the step counts, the byte comparisons, the lap, the seeds.
+- **With two anchors a step solves to the tolerance and not to the last place**, on the reference too. That is the softening (item 4), by design. The two pins themselves are exact.
+- **Exact on Dawn in this slice:** every hard pin against the incoming point of the same frame; Hard at 0.5 against Soft at 1, byte for byte; a chord and its mirror image (16.6); a sheeted grid's free fall.
+- **Device against reference** on a strand hung between two pins, and on one with a pin in its middle: within 10⁻⁴ m of a one-metre strand, as in slice 1.
+
+### 16.3 Cost (measured by the GPU timing rule)
+
+The GPU clock on this machine follows its recent load, so each figure is the node's own pass divided by a fixed reference compute pass timed beside the same frame. All five variants of a layout were alive in one process and visited in turn for three rounds of 240 frames, the first again last. One step of 1/240 s a frame, strands at rest. The timer's quantum is 0.066 ms, so these are means over 720 frames.
+
+| Strands × points | | Curve Frames, two walks | Rope, first point held | first, second and last held | last weight from an attribute | Pin Attribute named |
+|---|---|---|---|---|---|---|
+| 1 × 55 | span ÷ reference | 0.128 (0.131 again) | 0.107 | 0.107 | 0.108 | 0.237 |
+| | raw, ms | 0.086 (0.098) | 0.076 | 0.082 | 0.078 | 0.182 |
+| 10 × 55 | span ÷ reference | 0.163 (0.162) | 0.151 | 0.148 | 0.151 | 0.277 |
+| | raw, ms | 0.105 (0.121) | 0.103 | 0.097 | 0.109 | 0.180 |
+| 1,818 × 55 | span ÷ reference | 0.234 (0.235) | 0.261 | 0.253 | 0.258 | 0.569 |
+| | raw, ms | 0.144 (0.141) | 0.157 | 0.165 | 0.163 | 0.356 |
+| 400 × 250 | span ÷ reference | 0.570 (0.550) | 1.603 | 1.185 | 1.161 | 2.583 |
+| | raw, ms | 0.356 (0.368) | 1.017 | 0.750 | 0.732 | 1.557 |
+
+The reference pass ran between 0.52 ms and 1.06 ms during the run; multiply a ratio by 0.524 for milliseconds at its fastest.
+
+- **The one figure the design leans on, taken this way:** one 55-point strand's calm step is 0.83 of Curve Frames' two walks (0.107 against 0.128 and 0.131). D11 stands.
+- **Anchors at the three stations cost nothing that can be measured**, mapped or not: within 2% of the strand held at its first point.
+- **A Pin Attribute doubles a step** (1.8 to 2.2 times). Every point then reads its incoming point and its kept target, and writes the target back once a frame; at one step a frame that is every step, which is its worst case.
+- **At 250 points a calm step is 2.1 times Curve Frames** (1.16 to 1.19 against 0.55 to 0.57). Slice 1's figure, taken without a reference, was 1.7.
+- The strands held only at their first point were still swinging at 250 points when timed (1.60), so that cell is a busier step and not a dearer program.
+
+### 16.4 The far pin at speed
+
+The first consumer's stride, on Dawn through the frame driver at 60 frames a second, read every frame for six seconds with the harness's per-frame probe. A tentacle of 54 segments of 62.5 mm, its first two points on a socket that moves down the tunnel, its last point held to a target that stands on a rung for 70% of a step and crosses 2 m to the next in the other 30%.
+
+| Claw's fastest | Steps a frame | Worst segment | Held points off their targets |
+|---|---|---|---|
+| 4 m/s, the stride | 4 (Update Rate 240) | 0.0072% | 0, to the bit |
+| 8 m/s, the attack | 4 (Update Rate 240) | 0.0125% | 0 |
+| 8 m/s | 1 | 177%, on the last segment | 0 |
+| 8 m/s | 2 (Min Update Steps 2) | 0.0125% | 0 |
+| 16 m/s | 4 (Update Rate 240) | 0.0130% | 0 |
+
+- **The attack needs two steps a frame.** Update Rate 240 gives four, and holds twice the attack's speed. Min Update Steps 2 matters only where the rate has been turned down.
+- **Two steps hold it only because the target is walked across them** (4.1). With the target put at its end in a frame's first step, the same two steps leave a segment 30 tolerances out.
+- The solver's tolerance is 0.0122% of a segment plus 0.1 µm; the last 0.0003% is the stored position's spacing 16 m down the tunnel.
+
+### 16.5 A finding: the stretch guard with a far pin
+
+Past the step limit Max Stretch holds every segment but one. The guard walks out from the first point and moves each segment's later point, and it leaves a point that is pinned (2.5). So on a strand held at both ends, whatever the solve did not close lands on the segment before the far pin: 177% in the attack at one step a frame, with every other segment within 2%.
+
+- It shows only past the step limit, which Update Rate 240 is two speeds away from.
+- 2.5 said the reach rule bounds that segment. It does not: the reach rule answers a target the rope cannot reach, and this is a solve that did not finish.
+- **Proposed (D24):** between two hard pins the guard is one pass back from the later pin and one pass out from the earlier one, positions only, on a step that needs it. That is two more loops on such a step and none on any other. Not built: it changes D5 as ruled.
+
+### 16.6 A strand seeded short between two pins
+
+The rule of 15.3 was run as written: the node builds no pose. The seed is the incoming points, and the solve pays the slack out under what acts on it. Sixteen segments on a straight chord of 0.5 m, asked to be half as long again (Rest Length Scale 1.5), both ends held, gravity 8.
+
+- **The seed is the incoming chord to the bit, in every direction** (128 directions on Dawn, four of them exactly an axis).
+- **Nothing has a hand.** A chord and its mirror image across the vertical stay mirror images to the bit, at 1, 16 and 384 frames, on the reference and on Dawn. A seed that bowed its slack toward an axis would put both on one side; that is what the test was seen red against.
+- **Gravity takes the slack to the low side.** On the reference, on chords at least 11° from vertical and settled for six seconds, no point lies further from its place under the next direction than the far pin itself moved.
+- **A chord exactly along gravity has no low side, and the strand stays on it**, straight and short, on neither side: every point's sideways coordinate is 0 to the bit. That is the tie-break: there is none, and nothing is chosen.
+- **That one direction is not the limit of its neighbours.** A few degrees from vertical the slack is a narrow loop beside the lower pin, and it swings to the other side faster than the chord turns. Settled (the same after 6 s and after 24 s, reference): points are 60 mm apart between the chords 3.8° and 1.8° from vertical, whose far pins are 22 mm apart. And the chord exactly on the vertical, straight, is 248 mm from its neighbour at 1.8°, which has fallen into its loop. 15.3 said the slack passes "through a hairpin of no width where the chord is vertical"; the neighbours do tend to that, and the vertical strand itself does not get there.
+- **Without gravity nothing decides, and rounding does** (reference): neighbouring directions end 104 to 150 mm apart.
+- **It is a violent start**: points reach 4 m/s, and the segment before the far pin is 37% long while it lasts (16.5).
+
+So: a strand seeded short is an impossible pose, resolved without a hand and without grace, and with one direction (exactly along gravity) where it is not resolved at all. Hand the node a pose that already holds its slack (the Curve node's Arc at the rope's length), or give Segment Length the spacing the strip really has.
+
+### 16.7 A weight between 0 and 1
+
+- **The rest offset** (D19) on the consumer's 55 points at 60 mm, gravity 9.81, Anchor Strength 2 Hz: 62.12 mm at weight 0.5 and 144.95 mm at 0.3 in closed form. The reference and Dawn rest there within the solver's tolerance carried through the spring (0.03 mm and 0.07 mm). Sized for one point's mass, Dawn reads 3.42 m and 7.96 m.
+- **A target that moves steadily is followed with no lag** (reference): the pull's damper acts on the motion relative to the target.
+- **Feeling about** (D20), on Dawn, per frame: a tip drawn toward a target that wanders a quarter of a metre each way at 0.3 to 0.8 Hz.
+
+| Weight | The tip is behind its target by | Allowed by the closed form |
+|---|---|---|
+| 0.3 | 23 to 44 mm | 196 mm |
+| 0.4 | 15 to 30 mm | 130 mm |
+| 0.5 | 10 to 22 mm | 88 mm |
+
+  - The closed form allows the strand's whole weight on the spring; the tip carries less of it, which is why the bound is loose.
+  - At weight 1 the tip is the target on every frame, to the bit. At 0 it is never within 0.3 m.
+  - The largest move in a frame at 64 frames a second is 1.999 times that at 128: it moves without a pop.
+- **Hard at 0.5 is Soft at 1**, byte for byte on Dawn. Anchor Mode stays one parameter.
+- **The hand-over** (4.5), on Dawn, per frame: the last point's weight on a quintic over three seconds. The tip's largest move in a frame halves when the frame does (the ratio is between 1.8 and 2.2, and reads 1.99 on the reference). From the frame the weight is 1 the tip is its target to the bit, and a tenth of a second before it is within a millimetre.
+
+### 16.8 A grid of several sheets as input
+
+T1587b's claim `grid:{cols}x{rows}x{sheets}` reaches the Rope through `stripsOf`, which gives it rows × sheets strips. **It works as that many strands**, and the claim passes through unchanged. Sheet `s`, row `y` is strand `s × rows + y`, which is the slot order the walk already follows. Tested on the definition (the strand count, the claim, and a claim for more points than the edge carries refused) and on Dawn (two sheets of two rows: all four strands fall by the closed form).
+
+### 16.9 Tests as built
+
+| File | Tests | What slice 2 added |
+|---|---|---|
+| `src/points/rope.test.ts` | 51 (22 new) | D19 in closed form on 17 and on the consumer's 55 points; a pin sized for a point; Hard against Soft; a steady target followed with no lag; a weight that rises from nothing; two pins with slack; a taut strand; out of reach, and the nearest pin; Segment Length; a weight per strand with its wire cut; a pin attribute; the hand-over; the lap with both ends held; a strand seeded short |
+| `src/nodes/definitions/point-rope-anchors.gpu.test.ts` | 13 (new file) | the same on Dawn, and a sheeted grid |
+| `src/tests/headless/rope-anchors.gpu.test.ts` | 10 (new file) | per frame through the frame driver: the stride and the attack; the hand-over; a weight that rises from nothing; feeling about |
+| `src/nodes/definitions/point-rope.test.ts` | 20 (5 new, 1 replaced) | the bindings by producer; the three maps and where each is read; the pin attribute; every new refusal; a sheeted grid |
+| `src/nodes/definitions/point-rope.gpu.test.ts` | 24 | unchanged but for the hanging strand, now on its fallback (16.2) |
+
+Red-verified by edit and restored by edit: 12 mutations of the shader and 11 of the reference.
+
+### 16.10 Decisions to rule
+
+- **D24. The stretch guard between two hard pins** walks back from the later pin and then out from the earlier one (16.5). Alternative: leave it, and say that a strand held at both ends past its step limit shows it in the segment before the far pin.
+- **D25. A target's history is kept at any weight** (16.1, item 2), already built. Alternative: 3.3 as written, with a kick when a weight rises from 0.
+- **D26. A teleport is judged on the first point's incoming position** (item 3), already built.
+- **D27. Segment Length as a number is in** (item 9), already built, because the consumer's seed needs it.
+- **D28. A Pin Attribute's cost** (16.3). It doubles a step because every point's target is followed every frame. Alternative: follow a pinned point's target only while its weight is above zero, and accept the kick of item 2 for a pin weight that rises from 0.
+- **D29. A strand seeded short exactly along gravity stays straight** (16.6). Recommended: leave it, and say so in Segment Length's and Rest Length Scale's descriptions. Alternative: tip such a strand toward a fixed world axis by a last place, so that it falls into the loop its neighbours have. That is a hand, at that one direction only.
+
+### 16.11 What this slice has not verified
+
+- **Two anchors in single precision on long strands.** The softened pivots were run at 17 and 55 points.
+- **A Pin Attribute with many pins**, beyond one in the middle of a strand and every point at once.
+- **The hanging strand's exactness on another device.** It held on this one until the program changed.
+- **A strand seeded short without gravity on Dawn.** Reference only.
+- **The look.** The consumer's to judge.
 
 ## Appendix A. The model
 

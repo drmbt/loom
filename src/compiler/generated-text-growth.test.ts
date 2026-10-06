@@ -1073,6 +1073,7 @@ const LEDGER: Readonly<Record<string, Row>> = {
   "pointSweep.profile": flat("the profile's positions are read by name."),
   "pointSweep.sides": literal(PACKED_OFFSETS),
   "pointRope.in": flat(BY_REFERENCE),
+  "pointRope.pinAttribute": notACount(A_NAME),
   "pointTransform.points": flat(BY_REFERENCE),
   "pointRange.points": flat("it reads the one attribute it is told to."),
   "pointRange.attribute": notACount(A_NAME),

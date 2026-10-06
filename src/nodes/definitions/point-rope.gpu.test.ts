@@ -72,25 +72,46 @@ describe("rope: a strand hung from its first point (T1585b, the design's section
    *
    * The relaxation kernel on this same fixture (`kernel-steps.gpu.test.ts`) sags
    * 128·g·h²: a quarter of the strand's length at one step a frame, 2⁻⁸ at eight.
+   *
+   * ON THE DEVICE THIS IS THE DESIGN'S FALLBACK, SINCE SLICE 2. Slice 1's program kept the
+   * fixed point to the bit at all three step counts. Slice 2's — the same arithmetic for a
+   * free point, in a larger program — does not at four and eight: the first stepped frame
+   * reads a tension of 128.00009 N, which is one last place of the top segment's stretch
+   * (2⁻¹³ m) and so of its square root. Metal compiles with fast math, and which square root
+   * becomes a reciprocal estimate is its choice, made again whenever the text changes (two
+   * rewrites of the direction and of the pivot did not move it). So the device is held to
+   * what the solver's own exit allows: every segment within τ = rest ÷ 8192 + 10⁻⁷ m of its
+   * length, so point k within k·τ of its place and moving at most 2k·τ a step, and segment
+   * k's tension within what (16 − k) points each 2τ out of place in a step would add. The
+   * REFERENCE is exact, here and in `points/rope.test.ts`.
    */
-  it.each([1, 4, 8])("is a fixed point of the step at %i steps a frame: sag 0 to the bit, and each segment carries the weight below it", async (steps) => {
+  it.each([1, 4, 8])("hangs at its length at %i steps a frame: sag within the solver's tolerance, and each segment carries the weight below it", async (steps) => {
     const fixture: RopeFixture = { cols: POINTS, pose: hanging(REST), rope: stepping(steps, { tensionOutput: true }) };
     await onRope(fixture, async (rope) => {
       await frames(rope, 64);
       const read = await rope.read();
-      // Seen red with the back substitution moving nothing: every segment 2% long, which is
-      // where Max Stretch then holds it (the second point at −0.000996).
-      expect(ys(read.position)).toEqual(hangs());
-      expect(xs(read.position)).toEqual(every(0));
-      expect(ys(read.velocity)).toEqual(every(0));
-      // 128 newtons at the top, 8 at the tip, and none past the last point.
-      expect(Array.from(read.tension)).toEqual(Array.from({ length: POINTS }, (_unused, point) => (point < LINKS ? (LINKS - point) * GRAVITY : 0)));
+      const tau = ROPE_TOLERANCE * REST + ROPE_TOLERANCE_FLOOR;
+      const h = ROPE_FRAME / steps;
+      for (let point = 0; point < POINTS; point += 1) {
+        // Seen red with the back substitution moving nothing: every segment 2% long, which is
+        // where Max Stretch then holds it (the second point at −0.000996, 80 tolerances out).
+        expect(Math.abs(component(read.position, point, 1) - hung(point)), `point ${point}`).toBeLessThanOrEqual(point * tau);
+        expect(Math.abs(component(read.position, point, 0)), `point ${point}`).toBe(0);
+        expect(Math.abs(component(read.velocity, point, 1)), `point ${point}`).toBeLessThanOrEqual((2 * point * tau) / h);
+        // 128 newtons at the top, 8 at the tip, and none past the last point.
+        const weightBelow = point < LINKS ? (LINKS - point) * GRAVITY : 0;
+        expect(Math.abs((read.tension[point] as number) - weightBelow), `segment ${point}`).toBeLessThanOrEqual(((LINKS - point) * 2 * tau) / (h * h));
+      }
+      // The pinned point is the incoming point, to the bit, whatever the rest did.
+      expect(component(read.position, 0, 1)).toBe(0);
+      expect(read.tension[LINKS]).toBe(0);
 
-      // The reference, stepped on the same frames, is the same words.
+      // The reference, stepped on the same frames, is the closed form to the bit.
       const twin = ropeTwin(fixture);
       for (let frame = 0; frame < 64; frame += 1) twin.render();
-      expect(Array.from(read.position)).toEqual(Array.from(twin.state.position));
-      expect(Array.from(read.tension)).toEqual(Array.from(twin.state.tension));
+      expect(ys(twin.state.position)).toEqual(hangs());
+      expect(ys(twin.state.velocity)).toEqual(every(0));
+      expect(Array.from(twin.state.tension)).toEqual(Array.from({ length: POINTS }, (_unused, point) => (point < LINKS ? (LINKS - point) * GRAVITY : 0)));
     });
   }, 120_000);
 
@@ -143,7 +164,7 @@ describe("rope: a seed is the incoming points, whichever way the strand lies (T1
       Array.from({ length: SWEEP_DIRECTIONS * POINTS * 4 }, (_unused, word) => {
         const slot = Math.floor(word / 4);
         const axis = word % 4;
-        return axis === 3 ? 0 : (pose.at(slot % POINTS, Math.floor(slot / POINTS))[axis] as number) + (shift[axis] as number);
+        return axis === 3 ? 0 : (pose.at(slot % POINTS, Math.floor(slot / POINTS), 0)[axis] as number) + (shift[axis] as number);
       });
     /** The furthest any point lies from the same point of the strand one direction on. */
     const furthest = (position: Float32Array): number => {

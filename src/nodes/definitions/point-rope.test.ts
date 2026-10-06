@@ -120,6 +120,22 @@ describe("Rope — what it publishes (T1585b)", () => {
     expect(passOf(result).uniforms).toMatchObject({ cols: 55, rows: 10 });
     expect(result.pointsets?.["out"]?.topology).toBe("grid:55x10");
   });
+
+  /*
+   * T1587b: a grid may be several SHEETS, one after another in the buffer, and `stripsOf`
+   * gives it rows × sheets strips. The Rope takes it as that many strands — sheet s, row y
+   * is strand s × rows + y, which is the slot order it already walks — and hands the same
+   * claim on, so a Surface after it still draws ten separate sheets.
+   */
+  it("a grid of several sheets is rows × sheets strands, and the claim passes through", () => {
+    const result = compile({}, { topology: "grid:55x5x2" });
+    expect(result.diagnostics ?? []).toEqual([]);
+    expect(passOf(result).uniforms).toMatchObject({ cols: 55, rows: 10 });
+    expect(passOf(result).workgroups).toEqual([1, 1, 1]);
+    expect(result.pointsets?.["out"]?.topology).toBe("grid:55x5x2");
+    // A claim for more points than the edge carries is refused, sheets counted.
+    expect(errorOf(compile({}, { topology: "grid:55x5x3" }))).toMatchObject({ code: "node.points.strips", passes: 0 });
+  });
 });
 
 describe("Rope — its one pass (T1585b)", () => {
@@ -130,8 +146,9 @@ describe("Rope — its one pass (T1585b)", () => {
     expect(passOf(compile({}, { topology: "strips:2x65", capacity: 130, pairs: fixturePairs("kernel_strands", [{ name: "position", type: "vec3f" }], 130) as Pairs })).workgroups).toEqual([2, 1, 1]);
     const own = pointStorageId("rope_tentacles");
     expect(pass.buffers.map((buffer) => [buffer.binding, buffer.resourceId, buffer.half])).toEqual([
-      // The incoming points, as the producer wrote them this frame (§V168).
-      ["in_position", "scratch:kernel_strands:@points", "write"],
+      // The producer's buffer, whole, as it wrote it this frame (§V168): the incoming points
+      // are read out of it by their offset.
+      ["pk_0", "scratch:kernel_strands:@points", "write"],
       // The stepped pair, both halves and whole: what the loop region swaps between runs.
       ["state_in", own, "read"],
       ["state_out", own, "write"],
@@ -139,9 +156,9 @@ describe("Rope — its one pass (T1585b)", () => {
       ["kept", scratchResourceId("rope_tentacles", ROPE_KEPT_KEY), undefined],
       ["scratch", scratchResourceId("rope_tentacles", ROPE_SOLVE_KEY), undefined],
     ]);
-    // The region binds whole buffers except the incoming position, which is one attribute's.
-    expect(pass.buffers[0]).toMatchObject({ offset: STRANDS["position"]?.offset, bytes: STRANDS["position"]?.bytes });
-    expect(pass.buffers.slice(1).every((buffer) => buffer.offset === undefined)).toBe(true);
+    // Every buffer is bound whole: regions are addressed by word offset in the text (T1076).
+    expect(pass.buffers.every((buffer) => buffer.offset === undefined)).toBe(true);
+    expect(pass.shader).toContain(`let o = ${String((STRANDS["position"]?.offset ?? 0) / 4)}u + slot * 4u;`);
   });
 
   it("allocates two vec4f a point to keep and eight floats a point to solve in, beside the pair", () => {
@@ -183,10 +200,16 @@ describe("Rope — its one pass (T1585b)", () => {
       gravity: 9.81,
       damping: 0.5,
       inverseMass: 1,
+      segmentLength: 0,
       restLengthScale: 1,
       stretch: 0,
       maxStretch: 0.02,
       anchorFirst: 1,
+      anchorSecond: 0,
+      anchorLast: 0,
+      anchorMode: 0,
+      anchorStrength: 2,
+      anchorDamping: 1,
       teleportDistance: 0,
     });
     const set = passOf(compile({ iterations: 99, mass: 0, damping: -3, speed: -1, reset: true, teleportMode: "reset", teleportDistance: 100, maxStretch: -1 })).uniforms;
@@ -195,6 +218,95 @@ describe("Rope — its one pass (T1585b)", () => {
     // None of them is structure: the same pass, the same text.
     expect(passOf(compile({ gravity: 2, damping: 1.5, teleportMode: "reset", reset: true })).id).toBe(passOf(compile()).id);
     expect(passOf(compile({ gravity: 2, damping: 1.5, teleportMode: "reset", reset: true })).shader).toBe(passOf(compile()).shader);
+    // Nor are the anchors' numbers, or Hard against Soft (§V453): one program reads a flag.
+    const anchored = passOf(compile({ anchorSecond: 1, anchorLast: 0.4, anchorMode: "soft", anchorStrength: 4, anchorDamping: 0.5 }));
+    expect(anchored.uniforms).toMatchObject({ anchorSecond: 1, anchorLast: 0.4, anchorMode: 1, anchorStrength: 4, anchorDamping: 0.5 });
+    expect(anchored.shader).toBe(passOf(compile()).shader);
+    expect(anchored.id).toBe(passOf(compile()).id);
+  });
+});
+
+describe("Rope — weights from attributes (T1585b slice 2)", () => {
+  /** A weight the strands' own kernel wrote beside its positions: the same buffer. */
+  const HELD = fixturePairs(
+    "kernel_strands",
+    [
+      { name: "position", type: "vec3f" },
+      { name: "hold", type: "f32" },
+      { name: "aim", type: "vec3f" },
+    ],
+    550,
+  ) as Pairs;
+  /** One a second kernel gathered on afterwards: another producer's buffer. */
+  const ELSEWHERE = { ...HELD, ...fixturePairs("kernel_gait", [{ name: "grip", type: "f32" }], 550) } as Pairs;
+  const wordOf = (pairs: Pairs, name: string): number => (pairs[name]?.offset ?? 0) / 4;
+
+  it("a station in Map mode reads its attribute at that strand's own station, and the same producer costs no binding", () => {
+    const plain = passOf(compile({}, { pairs: HELD }));
+    const mapped = passOf(compile({}, { pairs: HELD, maps: { anchorLast: { attribute: "hold" } } }));
+    // Read at base + segments: the strand's LAST point, one float a point.
+    expect(mapped.shader).toContain(`lastWeight = clamp(bitcast<f32>(pk_0[${wordOf(HELD, "hold")}u + (base + segments) * 1u + 0u]), 0.0, 1.0);`);
+    expect(plain.shader).toContain("lastWeight = clamp(params.anchorLast, 0.0, 1.0);");
+    expect(mapped.buffers.map((buffer) => buffer.binding)).toEqual(["pk_0", "state_in", "state_out", "kept", "scratch"]);
+    // A different program, and an id that says which station reads a buffer.
+    expect(mapped.id).toBe("rope_tentacles:rope:step:l:550");
+    expect(plain.id).toBe("rope_tentacles:rope:step::550");
+    // First and second read theirs at their own points.
+    const all = passOf(compile({}, { pairs: HELD, maps: { anchorFirst: { attribute: "hold" }, anchorSecond: { attribute: "aim", channel: "y" }, anchorLast: { attribute: "hold" } } }));
+    expect(all.shader).toContain(`let firstWeight = clamp(bitcast<f32>(pk_0[${wordOf(HELD, "hold")}u + base * 1u + 0u]), 0.0, 1.0);`);
+    // One channel of a float vector: four words a point, the second of them.
+    expect(all.shader).toContain(`secondWeight = clamp(bitcast<f32>(pk_0[${wordOf(HELD, "aim")}u + (base + 1u) * 4u + 1u]), 0.0, 1.0);`);
+    expect(all.id).toBe("rope_tentacles:rope:step:fsl:550");
+  });
+
+  it("a weight from another producer binds that producer's buffer, once", () => {
+    const pass = passOf(compile({ pinAttribute: "grip" }, { pairs: ELSEWHERE, maps: { anchorLast: { attribute: "grip" } } }));
+    expect(pass.buffers.map((buffer) => [buffer.binding, buffer.resourceId])).toEqual([
+      ["pk_0", "scratch:kernel_strands:@points"],
+      ["pk_1", "scratch:kernel_gait:@points"],
+      ["state_in", pointStorageId("rope_tentacles")],
+      ["state_out", pointStorageId("rope_tentacles")],
+      ["kept", scratchResourceId("rope_tentacles", ROPE_KEPT_KEY)],
+      ["scratch", scratchResourceId("rope_tentacles", ROPE_SOLVE_KEY)],
+    ]);
+    expect(pass.shader).toContain("const PINNED: bool = true;");
+    expect(pass.shader).toContain(`let pin = clamp(bitcast<f32>(pk_1[${wordOf(ELSEWHERE, "grip")}u + slot * 1u + 0u]), 0.0, 1.0);`);
+    expect(pass.id).toBe("rope_tentacles:rope:step:lp:550");
+    // Without a pin attribute the text says so, and reads none.
+    expect(passOf(compile({}, { pairs: ELSEWHERE })).shader).toContain("const PINNED: bool = false;");
+    expect(passOf(compile({ pinAttribute: "  " }, { pairs: ELSEWHERE })).shader).toContain("let pin = 0.0;");
+  });
+
+  it("refuses, by name: a map on any other parameter, an attribute the edge does not carry, a vector with no channel, a pin that is not an f32", () => {
+    const other = errorOf(compile({}, { pairs: HELD, maps: { gravity: { attribute: "hold" }, damping: { attribute: "hold" } } }));
+    expect(other).toMatchObject({ code: "node.parameter.map", passes: 0 });
+    expect(other.message).toBe('Node "rope_tentacles": damping, gravity are in map mode, and a Rope maps only Anchor First, Anchor Second and Anchor Last.');
+    const missing = errorOf(compile({}, { pairs: HELD, maps: { anchorLast: { attribute: "grip" } } }));
+    expect(missing).toMatchObject({ code: "node.parameter.map", passes: 0 });
+    expect(missing.message).toBe('Node "rope_tentacles": anchorLast maps attribute "grip", which the incoming pointset does not carry.');
+    expect(missing.suggestion).toBe("It provides: aim, hold, position.");
+    expect(errorOf(compile({}, { pairs: HELD, maps: { anchorFirst: { attribute: "aim" } } })).message).toBe(
+      'Node "rope_tentacles": anchorFirst maps vec3f attribute "aim" and needs a channel (x/y/z).',
+    );
+    const noPin = errorOf(compile({ pinAttribute: "grip" }, { pairs: HELD }));
+    expect(noPin).toMatchObject({ code: "node.parameter.map", passes: 0 });
+    expect(noPin.message).toBe('Node "rope_tentacles": Pin Attribute names "grip", which the incoming pointset does not carry.');
+    expect(errorOf(compile({ pinAttribute: "aim" }, { pairs: HELD })).message).toBe('Node "rope_tentacles": Pin Attribute names "aim", which is vec3f; a pin weight is an f32.');
+  });
+
+  it("refuses a fifth producer: four of a pass's eight buffers are the step's own (§V588)", () => {
+    const from = (producer: string, name: string): Pairs => fixturePairs(producer, [{ name, type: "f32" }], 550) as Pairs;
+    const four = { ...HELD, ...from("kernel_a", "first"), ...from("kernel_b", "second"), ...from("kernel_c", "last") } as Pairs;
+    const maps = { anchorFirst: { attribute: "first" }, anchorSecond: { attribute: "second" }, anchorLast: { attribute: "last" } };
+    // The guard's legitimate case: the points and three weights from four producers is exactly eight.
+    expect(passOf(compile({}, { pairs: four, maps })).buffers).toHaveLength(8);
+    const five = { ...four, ...from("kernel_d", "pin") } as Pairs;
+    const refused = errorOf(compile({ pinAttribute: "pin" }, { pairs: five, maps }));
+    expect(refused).toMatchObject({ code: "node.points.rope", passes: 0 });
+    expect(refused.message).toBe(
+      'Node "rope_tentacles": the incoming points and the attributes its weights read come from 5 producers, and a pass binds 8 buffers with this node\'s own 4 (§V588).',
+    );
+    expect(refused.suggestion).toBe("Gather the weights onto the strands in one kernel before the Rope, so they come from one producer.");
   });
 });
 
@@ -248,12 +360,6 @@ describe("Rope — what it refuses, by name (T1585b, §V288)", () => {
     const refused = errorOf(compile({}, { count: { buffer: "scratch:kernel_strands:live" } }));
     expect(refused).toMatchObject({ code: "node.points.input", passes: 0 });
     expect(refused.message).toContain("carries a GPU live count");
-  });
-
-  it("a parameter in map mode, which no Rope parameter reads yet", () => {
-    const refused = errorOf(compile({}, { maps: { anchorFirst: { attribute: "charge" } } }));
-    expect(refused).toMatchObject({ code: "node.parameter.map", passes: 0 });
-    expect(refused.message).toBe('Node "rope_tentacles": anchorFirst is in map mode, and no Rope parameter reads an attribute yet.');
   });
 
   it("an attribute of its own name in another type, rather than changing it under whoever mapped it", () => {
