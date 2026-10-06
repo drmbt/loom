@@ -48,11 +48,16 @@ const full = (scene: TextureScene): GraphDocument => textureScene({ lights: "lig
  * id, text, bindings and uniforms), on each draw that can wear one. Taken on 2026-10-06 at
  * `b194894a`, BEFORE the node had an input or the generator a texture: the promise is that
  * such a material compiles to the text it had (§V309).
+ *
+ * RE-TAKEN ONCE, at `ddc9a1fc` (§T1623b slice 4): the sun's shadow sweep draws into a layer
+ * of the Render's layered target and the bindings name that layer, so the plan's shape
+ * moved (they were `1b9f9d47c300ad8e`, `9dc86227c139b818`, `5dd360d1008ce7fc`). Every
+ * pass's TEXT was measured the same on both sides of that commit, for all three shapes.
  */
 const UNTEXTURED: ReadonlyArray<readonly [shape: TextureScene["shape"], fingerprint: string]> = [
-  ["quad", "1b9f9d47c300ad8e"],
-  ["mesh", "9dc86227c139b818"],
-  ["instances", "5dd360d1008ce7fc"],
+  ["quad", "587b29c3e464c2b3"],
+  ["mesh", "fb6ba5abec0c52ca"],
+  ["instances", "3e046c5b19915366"],
 ];
 
 describe("T1658b: a Material · WGSL that names no texture is the program it was", () => {
