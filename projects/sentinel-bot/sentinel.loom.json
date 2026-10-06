@@ -640,6 +640,17 @@
           "portId": "in"
         }
       },
+      "eyes-body": {
+        "id": "eyes-body",
+        "source": {
+          "nodeId": "kernel_hull",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "kernel_eyelights",
+          "portId": "in"
+        }
+      },
       "eyes-feed": {
         "id": "eyes-feed",
         "source": {
@@ -649,6 +660,28 @@
         "target": {
           "nodeId": "material_hull",
           "portId": "texture1"
+        }
+      },
+      "eyes-light": {
+        "id": "eyes-light",
+        "source": {
+          "nodeId": "kernel_eyelights",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "light_eyes",
+          "portId": "points"
+        }
+      },
+      "eyes-spill": {
+        "id": "eyes-spill",
+        "source": {
+          "nodeId": "kernel_eyelights",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "light_face",
+          "portId": "points"
         }
       },
       "fires-glow": {
@@ -4472,6 +4505,62 @@
         },
         "type": "pointKernel"
       },
+      "kernel_eyelights": {
+        "definitionVersion": 1,
+        "id": "kernel_eyelights",
+        "label": "kernel_eyelights",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,1]},{\"name\":\"power\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"aim\",\"type\":\"vec3f\",\"default\":[0,0,1]},{\"name\":\"kind\",\"type\":\"f32\",\"default\":[-1]},{\"name\":\"orient\",\"type\":\"vec4f\",\"qualifier\":\"quaternion\",\"default\":[0,0,0,1]}]",
+          "capacity": 3,
+          "face": 0.6766669869422912,
+          "kernel": "// T1561b — a light at each robot's face (src/projects/sentinel-bot/searchlight.ts).\n// Points In: the hull's points, one a robot. A light stands at that body's face and shines the way it faces.\nstruct Params {\n  level0: f32, // @default 0  How bright robot 0's is, 0 to 1.\n  level1: f32, // @default 0  How bright robot 1's is, 0 to 1.\n  level2: f32, // @default 0  How bright robot 2's is, 0 to 1.\n  face: f32, // @default 0.65  How far ahead of its body's middle a robot's face is, metres.\n  power: f32, // @default 110  The light's intensity at full.\n};\n// How bright a robot's beam is: what it is told, and nothing for a robot that is not out (the rig's kind).\nfn robotLevelOf(robot: u32, kind: f32, p: Params) -> f32 {\n  var level = 0.0;\n  if (robot == 0u) { level = p.level0; }\n  if (robot == 1u) { level = p.level1; }\n  if (robot == 2u) { level = p.level2; }\n  return level * step(-0.5, kind);\n}\n\n// A vector of the body's own frame (+Z forward, +Y up), in the world: turned by the body's quaternion (x y z w).\nfn turned(by: vec4f, v: vec3f) -> vec3f {\n  return v + 2.0 * cross(by.xyz, cross(by.xyz, v) + by.w * v);\n}\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let forward = turned(p.orient, vec3f(0.0, 0.0, 1.0));\n  q.position = p.position + forward * ctx.params.face;\n  q.tint = vec4f(0.82, 0.9, 1.0, 1.0);\n  q.power = ctx.params.power * robotLevelOf(ctx.index, p.kind, ctx.params);\n  q.aim = forward;\n  return q;\n}",
+          "level0": 1,
+          "level1": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "level2": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "power": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_glow').chan.glow * 0.9 * (0.75 + (op('lag_levels').chan.high * op('slider_react').chan.react) * 0.6) * (((1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.snareCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.hatCount * op('slider_react').chan.react) - 0.75))) / 3)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 8
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -2520,
+          "y": -525
+        },
+        "type": "pointKernel"
+      },
       "kernel_fires": {
         "definitionVersion": 1,
         "id": "kernel_fires",
@@ -5693,7 +5782,7 @@
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"girth\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,0]},{\"name\":\"kind\",\"type\":\"f32\",\"default\":[-1]},{\"name\":\"along\",\"type\":\"f32\",\"default\":[0]}]",
           "capacity": 24,
-          "kernel": "// T1561b — the robots' searchlights, as cones of lit air (src/projects/sentinel-bot/searchlight.ts).\n// Points In: the rig's points along each robot's nose. Where a beam is and which way it goes is theirs.\nstruct Params {\n  level0: f32, // @default 0  How bright robot 0's beam is, 0 to 1.\n  level1: f32, // @default 0  How bright robot 1's beam is, 0 to 1.\n  level2: f32, // @default 0  How bright robot 2's beam is, 0 to 1.\n};\n// How bright a robot's beam is: what it is told, and nothing for a robot that is not out (the rig's kind).\nfn searchLevelOf(robot: u32, kind: f32, p: Params) -> f32 {\n  var level = 0.0;\n  if (robot == 0u) { level = p.level0; }\n  if (robot == 1u) { level = p.level1; }\n  if (robot == 2u) { level = p.level2; }\n  return level * step(-0.5, kind);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let level = searchLevelOf(ctx.index / 8u, p.kind, ctx.params);\n  if (level < 0.01) {\n    q.position = vec3f(p.position.x, -4000.0, p.position.z);\n    q.girth = 0.0;\n    q.tint = vec4f(0.0);\n    return q;\n  }\n  // A lens at the face, opening to two and a half metres across at the far end.\n  q.girth = 0.1 + 1.15 * p.along;\n  q.tint = vec4f(level, 0.0, 0.0, p.along);\n  return q;\n}",
+          "kernel": "// T1561b — the robots' searchlights, as cones of lit air (src/projects/sentinel-bot/searchlight.ts).\n// Points In: the rig's points along each robot's nose. Where a beam is and which way it goes is theirs.\nstruct Params {\n  level0: f32, // @default 0  How bright robot 0's is, 0 to 1.\n  level1: f32, // @default 0  How bright robot 1's is, 0 to 1.\n  level2: f32, // @default 0  How bright robot 2's is, 0 to 1.\n};\n// How bright a robot's beam is: what it is told, and nothing for a robot that is not out (the rig's kind).\nfn robotLevelOf(robot: u32, kind: f32, p: Params) -> f32 {\n  var level = 0.0;\n  if (robot == 0u) { level = p.level0; }\n  if (robot == 1u) { level = p.level1; }\n  if (robot == 2u) { level = p.level2; }\n  return level * step(-0.5, kind);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let level = robotLevelOf(ctx.index / 8u, p.kind, ctx.params);\n  if (level < 0.01) {\n    q.position = vec3f(p.position.x, -4000.0, p.position.z);\n    q.girth = 0.0;\n    q.tint = vec4f(0.0);\n    return q;\n  }\n  // A lens at the face, opening to two and a half metres across at the far end.\n  q.girth = 0.1 + 1.15 * p.along;\n  q.tint = vec4f(level, 0.0, 0.0, p.along);\n  return q;\n}",
           "level0": {
             "bindings": {
               "expression": {
@@ -5748,7 +5837,7 @@
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,1]},{\"name\":\"power\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"aim\",\"type\":\"vec3f\",\"default\":[0,0,1]},{\"name\":\"kind\",\"type\":\"f32\",\"default\":[-1]},{\"name\":\"orient\",\"type\":\"vec4f\",\"qualifier\":\"quaternion\",\"default\":[0,0,0,1]}]",
           "capacity": 3,
           "face": 0.6766669869422912,
-          "kernel": "// T1561b — the robots' searchlights, as lights (src/projects/sentinel-bot/searchlight.ts).\n// Points In: the hull's points, one a robot. A Spot stands at that body's face and shines the way it faces.\nstruct Params {\n  level0: f32, // @default 0  How bright robot 0's beam is, 0 to 1.\n  level1: f32, // @default 0  How bright robot 1's beam is, 0 to 1.\n  level2: f32, // @default 0  How bright robot 2's beam is, 0 to 1.\n  face: f32, // @default 0.65  How far ahead of its body's middle a robot's face is, metres.\n  power: f32, // @default 110  A searchlight's intensity at full.\n};\n// How bright a robot's beam is: what it is told, and nothing for a robot that is not out (the rig's kind).\nfn searchLevelOf(robot: u32, kind: f32, p: Params) -> f32 {\n  var level = 0.0;\n  if (robot == 0u) { level = p.level0; }\n  if (robot == 1u) { level = p.level1; }\n  if (robot == 2u) { level = p.level2; }\n  return level * step(-0.5, kind);\n}\n\n// A vector of the body's own frame (+Z forward, +Y up), in the world: turned by the body's quaternion (x y z w).\nfn turned(by: vec4f, v: vec3f) -> vec3f {\n  return v + 2.0 * cross(by.xyz, cross(by.xyz, v) + by.w * v);\n}\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let forward = turned(p.orient, vec3f(0.0, 0.0, 1.0));\n  q.position = p.position + forward * ctx.params.face;\n  q.tint = vec4f(0.82, 0.9, 1.0, 1.0);\n  q.power = ctx.params.power * searchLevelOf(ctx.index, p.kind, ctx.params);\n  q.aim = forward;\n  return q;\n}",
+          "kernel": "// T1561b — a light at each robot's face (src/projects/sentinel-bot/searchlight.ts).\n// Points In: the hull's points, one a robot. A light stands at that body's face and shines the way it faces.\nstruct Params {\n  level0: f32, // @default 0  How bright robot 0's is, 0 to 1.\n  level1: f32, // @default 0  How bright robot 1's is, 0 to 1.\n  level2: f32, // @default 0  How bright robot 2's is, 0 to 1.\n  face: f32, // @default 0.65  How far ahead of its body's middle a robot's face is, metres.\n  power: f32, // @default 110  The light's intensity at full.\n};\n// How bright a robot's beam is: what it is told, and nothing for a robot that is not out (the rig's kind).\nfn robotLevelOf(robot: u32, kind: f32, p: Params) -> f32 {\n  var level = 0.0;\n  if (robot == 0u) { level = p.level0; }\n  if (robot == 1u) { level = p.level1; }\n  if (robot == 2u) { level = p.level2; }\n  return level * step(-0.5, kind);\n}\n\n// A vector of the body's own frame (+Z forward, +Y up), in the world: turned by the body's quaternion (x y z w).\nfn turned(by: vec4f, v: vec3f) -> vec3f {\n  return v + 2.0 * cross(by.xyz, cross(by.xyz, v) + by.w * v);\n}\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let forward = turned(p.orient, vec3f(0.0, 0.0, 1.0));\n  q.position = p.position + forward * ctx.params.face;\n  q.tint = vec4f(0.82, 0.9, 1.0, 1.0);\n  q.power = ctx.params.power * robotLevelOf(ctx.index, p.kind, ctx.params);\n  q.aim = forward;\n  return q;\n}",
           "level0": {
             "bindings": {
               "expression": {
@@ -6851,69 +6940,119 @@
             },
             "mode": "expression"
           },
+          "cone": 130,
+          "coneSoftness": 0.8,
+          "direction": {
+            "bindings": {
+              "map": {
+                "attribute": "aim",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  0,
+                  0,
+                  1
+                ]
+              }
+            },
+            "mode": "map"
+          },
           "falloff": "inverseSquare",
           "intensity": {
             "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('slider_glow').chan.glow * 0.9 * (0.75 + (op('lag_levels').chan.high * op('slider_react').chan.react) * 0.6) * (((1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.snareCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.hatCount * op('slider_react').chan.react) - 0.75))) / 3)"
+              "map": {
+                "attribute": "power",
+                "kind": "map"
               },
               "static": {
                 "kind": "static",
-                "value": 8
+                "value": 1
               }
             },
-            "mode": "expression"
+            "mode": "map"
           },
-          "kind": "point",
-          "position": [
-            0,
-            0,
-            0.9
-          ],
-          "position.x": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "position.y": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0
-              }
-            },
-            "mode": "expression"
-          },
-          "position.z": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "(op('speed_travel').chan.value + (0.677 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))"
-              },
-              "static": {
-                "kind": "static",
-                "value": 0.6766669869422912
-              }
-            },
-            "mode": "expression"
-          },
+          "kind": "spot",
+          "mode": "points",
           "range": 16
         },
         "position": {
           "x": -2100,
+          "y": -450
+        },
+        "type": "light"
+      },
+      "light_face": {
+        "definitionVersion": 1,
+        "id": "light_face",
+        "label": "light_face",
+        "parameters": {
+          "color": [
+            1,
+            0.04,
+            0.04,
+            1
+          ],
+          "color.b": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(((1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) - 0.75)) * (clamp(abs(fract(((op('slider_huefrom').chan.huefrom + op('lag_hue').chan.value) + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.16666666666666666 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.333333) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.snareCount * op('slider_react').chan.react) - 0.75)) * (clamp(abs(fract(((op('slider_huefrom').chan.huefrom + op('lag_hue').chan.value) + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.5 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.333333) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.hatCount * op('slider_react').chan.react) - 0.75)) * (clamp(abs(fract(((op('slider_huefrom').chan.huefrom + op('lag_hue').chan.value) + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.8333333333333334 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.333333) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) / max(((1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.snareCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.hatCount * op('slider_react').chan.react) - 0.75))), 0.001))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.04
+              }
+            },
+            "mode": "expression"
+          },
+          "color.g": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(((1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) - 0.75)) * (clamp(abs(fract(((op('slider_huefrom').chan.huefrom + op('lag_hue').chan.value) + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.16666666666666666 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.666667) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.snareCount * op('slider_react').chan.react) - 0.75)) * (clamp(abs(fract(((op('slider_huefrom').chan.huefrom + op('lag_hue').chan.value) + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.5 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.666667) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.hatCount * op('slider_react').chan.react) - 0.75)) * (clamp(abs(fract(((op('slider_huefrom').chan.huefrom + op('lag_hue').chan.value) + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.8333333333333334 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.666667) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) / max(((1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.snareCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.hatCount * op('slider_react').chan.react) - 0.75))), 0.001))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.04
+              }
+            },
+            "mode": "expression"
+          },
+          "color.r": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(((1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) - 0.75)) * (clamp(abs(fract(((op('slider_huefrom').chan.huefrom + op('lag_hue').chan.value) + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.16666666666666666 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.000000) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.snareCount * op('slider_react').chan.react) - 0.75)) * (clamp(abs(fract(((op('slider_huefrom').chan.huefrom + op('lag_hue').chan.value) + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.5 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.000000) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.hatCount * op('slider_react').chan.react) - 0.75)) * (clamp(abs(fract(((op('slider_huefrom').chan.huefrom + op('lag_hue').chan.value) + (op('slider_hueto').chan.hueto - op('slider_huefrom').chan.huefrom) * clamp(0.8333333333333334 * op('slider_spread').chan.spread + (op('slider_hueshift').chan.hueshift * (op('lag_levels').chan.level * op('slider_react').chan.react)), 0, 1)) + 0.000000) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) / max(((1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.snareCount * op('slider_react').chan.react) - 0.75)) + (1 + op('slider_eyehits').chan.eyehits * (2.6 * (op('lag_hits').chan.hatCount * op('slider_react').chan.react) - 0.75))), 0.001))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "map": {
+                "attribute": "power",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "map"
+          },
+          "kind": "point",
+          "mode": "points",
+          "range": 1.6
+        },
+        "position": {
+          "x": -1680,
           "y": -450
         },
         "type": "light"
@@ -8683,7 +8822,7 @@
           ],
           "camera": "camera_rig",
           "depthOutput": true,
-          "lights": "light_eyes light_body light_follower1 light_follower2 light_lamps light_strike light_storm light_docklamps light_beams light_fires light_search",
+          "lights": "light_eyes light_face light_body light_follower1 light_follower2 light_lamps light_strike light_storm light_docklamps light_beams light_fires light_search",
           "normalOutput": true,
           "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore geometry_towers geometry_bolts geometry_hall geometry_bridges geometry_cave geometry_formations geometry_beams geometry_flames geometry_fireglow geometry_search geometry_motes"
         },

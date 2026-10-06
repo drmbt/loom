@@ -1,5 +1,5 @@
 import { HAZE_WGSL } from "./air.ts";
-import { SEARCH, SEARCH_KERNEL, SEARCH_LIGHT_ATTRIBUTES, SEARCH_LIGHT_KERNEL, SEARCH_STRIP_ATTRIBUTES, searchLevel } from "./searchlight.ts";
+import { FACE_LIGHT_ATTRIBUTES, FACE_LIGHT_KERNEL, SEARCH, SEARCH_KERNEL, SEARCH_STRIP_ATTRIBUTES, robotLevel } from "./searchlight.ts";
 import { GLITCH_WGSL } from "./glitch.ts";
 import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
@@ -86,6 +86,7 @@ export interface SentinelDocumentOptions {
    * A point light's shadow is six more sweeps of every piece, and each piece is a draw of its
    * own in each sweep; per-light caster lists and culled instances (§T1598b, §T1592b) are
    * what bring the shadow and the articulated claw back to the live tier.
+   * (The eyes' light casts in neither tier since it is a cone out of the face, on the rig's points: see `light_eyes`.)
    */
   readonly tier?: "live" | "offline";
   /** The track it plays to. Default: the shipped beat, which is what the committed project and the tests hear. */
@@ -93,7 +94,7 @@ export interface SentinelDocumentOptions {
   /**
    * The two things a tier decides, each on its own, for measuring one without the other. Unset, the tier decides.
    * `shadows`: whether EVERYTHING casts (the wall's ribs and pipes too). Off, the robot's body and tentacles
-   * still cast, from the eyes' light and the lamp overhead.
+   * still cast, from the light of its own tentacles.
    */
   readonly shadows?: boolean;
   readonly hingedClaws?: boolean;
@@ -314,6 +315,9 @@ const WAY = `clamp(op('lag_rate').chan.value / ${SWIM_WAY}, 0, 1)`;
 
 /** The camera's far plane, metres: past the furthest tower of the fields (field.ts: 430 m ahead, 250 m to a side). */
 const FAR = 520;
+/** The eyes' light: how wide the cone out of a face is, degrees across; and how far its spill on the face itself reaches, metres. */
+const EYE_CONE = 130;
+const FACE_SPILL = 1.6;
 
 export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptions = {}): ProjectDocument {
   const travel = expressionSlot(TRAVEL, 0);
@@ -403,8 +407,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     Array.from({ length: SEARCH.robots }, (_, robot) => {
       const follower = robot === 0 ? undefined : followers[robot - 1];
       // A robot the pack does not have (a render of one): no beam.
-      if (robot > 0 && follower === undefined) return [searchLevel(robot), 0] as const;
-      return [searchLevel(robot), expressionSlot(follower === undefined ? SEARCHING : `(${SEARCHING} * ${follower.out})`, 0)] as const;
+      if (robot > 0 && follower === undefined) return [robotLevel(robot), 0] as const;
+      return [robotLevel(robot), expressionSlot(follower === undefined ? SEARCHING : `(${SEARCHING} * ${follower.out})`, 0)] as const;
     }),
   );
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
@@ -1069,7 +1073,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("sweep_search", "pointSweep", [-2700, 10600], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_search" }),
     node("material_search", "materialWgsl", [-2700, 10800], { model: "pbr", source: BEAM_SURFACE_WGSL, glow: 0.35 }, { label: "material_search" }),
     node("geometry_search", "geometry", [-2400, 10600], { mode: "surface", material: "material_search", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_search" }),
-    node("kernel_searchlights", "pointKernel", [-3600, 11050], { capacity: robots.length, attributes: SEARCH_LIGHT_ATTRIBUTES, kernel: SEARCH_LIGHT_KERNEL, ...beaming, face, power: 110 }, { label: "kernel_searchlights" }),
+    node("kernel_searchlights", "pointKernel", [-3600, 11050], { capacity: robots.length, attributes: FACE_LIGHT_ATTRIBUTES, kernel: FACE_LIGHT_KERNEL, ...beaming, face, power: 110 }, { label: "kernel_searchlights" }),
     node("light_search", "light", [-3300, 11050], { kind: "spot", mode: "points", direction: map("aim", [0, 0, 1]), cone: 16, coneSoftness: 0.6, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_search" }),
     // Lightning: an arc between two towers and its forks (field.ts, BOLT_KERNEL), and a Light where it is.
     node("kernel_bolts", "pointKernel", [-3600, 5700], { capacity: BOLT_CAPACITY, attributes: BOLT_ATTRIBUTES, kernel: BOLT_KERNEL, ...striking }, { label: "kernel_bolts" }),
@@ -1109,8 +1113,27 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // and constant camera punching … feels a bit irritating as it's not necessarily only tracking the kick … a bit
     // jarring". What answers the kick now is the focus, some phrases, and the robot and the place themselves.)
     node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} + 7 * ${RUSHING}`, 55), near: 0.05, far: FAR }, { label: "camera_rig" }),
-    // The eyes throw the tentacles' shadows down the walls (which of the scene casts them: see `robotCasts`).
-    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 16, ...(shadows ? { shadows: true, shadowExtent: 16, shadowSoftness: 1 } : {}) }, { label: "light_eyes" }),
+    // THE EYES' LIGHT, of every robot of the pack: a wide cone out of its face, the way the face looks (the owner,
+    // 2026-10-06: "some of the light emitted from the eyes has the same spherical issue as the ceiling lamps had … not
+    // really shaping their radiance as we would expect, like circular, kind of a wide-angle spot"). It was one point
+    // light, the leader's, placed by an expression that said again where the robot is: it lit the wall behind the
+    // face as much as the tunnel ahead, and stood off the face when the rig turned the head. Now it stands on the
+    // rig's own points (searchlight.ts, FACE_LIGHT_KERNEL over the hull's points): at the face, turning with it.
+    // A Light of a pointset casts no shadow (§T1589b), and this one has none to cast that matters: what is in a cone
+    // out of the face is ahead of the robot, and its tentacles are behind it.
+    node("kernel_eyelights", "pointKernel", [-1800, -350], {
+      capacity: robots.length, attributes: FACE_LIGHT_ATTRIBUTES, kernel: FACE_LIGHT_KERNEL, face,
+      // The leader's always; a follower's as far as it is out.
+      ...Object.fromEntries(Array.from({ length: SEARCH.robots }, (_, robot) => {
+        const follower = robot === 0 ? undefined : followers[robot - 1];
+        return [robotLevel(robot), robot === 0 ? 1 : follower === undefined ? 0 : expressionSlot(follower.out, 0)] as const;
+      })),
+      power: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8),
+    }, { label: "kernel_eyelights" }),
+    node("light_eyes", "light", [-1500, -300], { kind: "spot", mode: "points", direction: map("aim", [0, 0, 1]), cone: EYE_CONE, coneSoftness: 0.8, color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: map("power", 1), falloff: "inverseSquare", range: 16 }, { label: "light_eyes" }),
+    // …and what of it spills on the face itself, the housings round the lenses: the same points, every way, an arm's
+    // length and no further. No wall is that near a face, so nothing of the old ball of light is left on one.
+    node("light_face", "light", [-1200, -300], { kind: "point", mode: "points", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: map("power", 1), falloff: "inverseSquare", range: FACE_SPILL }, { label: "light_face" }),
     // The light of its own tentacles, from the middle of the body. It lights the bore round the robot wherever
     // the robot is, lamp or no lamp, and throws each tentacle's shadow out along the wall to meet the claw that
     // holds it: that meeting is what says the robot is IN the tunnel. (The owner, 2026-10-05: without it "a very
@@ -1172,7 +1195,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // The dust is last: additive geometry is light, drawn over what it glows on (and out of the Depth output since B256).
       scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_towers", "geometry_bolts", "geometry_hall", "geometry_bridges", "geometry_cave", "geometry_formations", "geometry_beams", "geometry_flames", "geometry_fireglow", "geometry_search", "geometry_motes"].join(" "),
       camera: "camera_rig",
-      lights: ["light_eyes", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), "light_lamps", "light_strike", "light_storm", "light_docklamps", "light_beams", "light_fires", "light_search", ...namedLamps.map((_, index) => `light_lamp${index}`)].join(" "),
+      lights: ["light_eyes", "light_face", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), "light_lamps", "light_strike", "light_storm", "light_docklamps", "light_beams", "light_fires", "light_search", ...namedLamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
       // A little cold fill and no more: an unlit stretch may be black (the owner, 2026-10-05).
       // …and in the fields more of it: there is no wall to be black against, and the towers have only this, the
@@ -1351,6 +1374,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("fires-light", ["kernel_fires", "out"], ["light_fires", "points"]),
     edge("fires-glow", ["kernel_fires", "out"], ["geometry_fireglow", "points"]),
     edge("search-ease", ["constant_search", "out"], ["lag_search", "in"]),
+    // The eyes' light is the rig's: a point at each hull's face, read by a cone out of it and by its spill.
+    edge("eyes-body", ["kernel_hull", "out"], ["kernel_eyelights", "in"]),
+    edge("eyes-light", ["kernel_eyelights", "out"], ["light_eyes", "points"]),
+    edge("eyes-spill", ["kernel_eyelights", "out"], ["light_face", "points"]),
     // A searchlight is the rig's: its Spot reads the hull's points, its cone the rig's points along the nose.
     edge("search-body", ["kernel_hull", "out"], ["kernel_searchlights", "in"]),
     edge("search-line", ["kernel_searchline", "out"], ["kernel_search", "in"]),

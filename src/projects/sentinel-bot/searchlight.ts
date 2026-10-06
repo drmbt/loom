@@ -28,15 +28,15 @@ export const SEARCH = {
 
 const each = (line: (robot: number) => string): string => Array.from({ length: SEARCH.robots }, (_, robot) => line(robot)).join("\n");
 
-/** The parameter that says how bright robot `robot`'s beam is. */
-export const searchLevel = (robot: number): string => `level${robot}`;
+/** The parameter that says how bright robot `robot`'s light is (its beam; its eyes). */
+export const robotLevel = (robot: number): string => `level${robot}`;
 
-const SEARCH_PARAMS_WGSL = each((robot) => `  ${searchLevel(robot)}: f32, // @default 0  How bright robot ${robot}'s beam is, 0 to 1.`);
+const SEARCH_PARAMS_WGSL = each((robot) => `  ${robotLevel(robot)}: f32, // @default 0  How bright robot ${robot}'s is, 0 to 1.`);
 
 const SEARCH_WGSL = `// How bright a robot's beam is: what it is told, and nothing for a robot that is not out (the rig's kind).
-fn searchLevelOf(robot: u32, kind: f32, p: Params) -> f32 {
+fn robotLevelOf(robot: u32, kind: f32, p: Params) -> f32 {
   var level = 0.0;
-${each((robot) => `  if (robot == ${robot}u) { level = p.${searchLevel(robot)}; }`)}
+${each((robot) => `  if (robot == ${robot}u) { level = p.${robotLevel(robot)}; }`)}
   return level * step(-0.5, kind);
 }
 `;
@@ -54,8 +54,8 @@ export const SEARCH_STRIP_ATTRIBUTES = JSON.stringify([
   ...RIG_POINT,
   { name: "along", type: "f32", default: [0] },
 ]);
-/** The Spots' points, for a Light in Points mode, and of the rig's what a Spot reads (how the body is turned). */
-export const SEARCH_LIGHT_ATTRIBUTES = JSON.stringify([
+/** A face's light point, for a Light in Points mode, and of the rig's what it reads (how the body is turned). */
+export const FACE_LIGHT_ATTRIBUTES = JSON.stringify([
   { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
   { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 1] },
   { name: "power", type: "f32", default: [0] },
@@ -76,7 +76,7 @@ ${SEARCH_PARAMS_WGSL}
 ${SEARCH_WGSL}
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
-  let level = searchLevelOf(ctx.index / ${SEARCH.points}u, p.kind, ctx.params);
+  let level = robotLevelOf(ctx.index / ${SEARCH.points}u, p.kind, ctx.params);
   if (level < 0.01) {
     q.position = vec3f(p.position.x, -4000.0, p.position.z);
     q.girth = 0.0;
@@ -90,15 +90,19 @@ fn process(p: Point, ctx: PointCtx) -> Point {
 }`;
 
 /**
- * One point a robot: where its Spot stands (at its face), which way it shines, how strong. POINTS IN: the hull's
- * points, one a robot (the rig's body pick): where the body is drawn and how it is turned.
+ * A LIGHT AT EACH ROBOT'S FACE: one point a robot, where the light stands (at its face), which way it shines (the way
+ * the face looks), how strong. POINTS IN: the hull's points, one a robot (the rig's body pick): where the body is
+ * drawn and how it is turned. A searchlight's Spot is one of these, and so is the light of the eyes themselves (the
+ * owner, 2026-10-06: the eyes' light "has the same spherical issue as the ceiling lamps had … not really shaping
+ * their radiance as we would expect, like circular, kind of a wide-angle spot": it was a point light, placed by an
+ * expression): a Light in Points mode over this is a cone out of the face, turning with it.
  */
-export const SEARCH_LIGHT_KERNEL = `// T1561b — the robots' searchlights, as lights (src/projects/sentinel-bot/searchlight.ts).
-// Points In: the hull's points, one a robot. A Spot stands at that body's face and shines the way it faces.
+export const FACE_LIGHT_KERNEL = `// T1561b — a light at each robot's face (src/projects/sentinel-bot/searchlight.ts).
+// Points In: the hull's points, one a robot. A light stands at that body's face and shines the way it faces.
 struct Params {
 ${SEARCH_PARAMS_WGSL}
   face: f32, // @default 0.65  How far ahead of its body's middle a robot's face is, metres.
-  power: f32, // @default 110  A searchlight's intensity at full.
+  power: f32, // @default 110  The light's intensity at full.
 };
 ${SEARCH_WGSL}
 // A vector of the body's own frame (+Z forward, +Y up), in the world: turned by the body's quaternion (x y z w).
@@ -110,7 +114,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let forward = turned(p.orient, vec3f(0.0, 0.0, 1.0));
   q.position = p.position + forward * ctx.params.face;
   q.tint = vec4f(0.82, 0.9, 1.0, 1.0);
-  q.power = ctx.params.power * searchLevelOf(ctx.index, p.kind, ctx.params);
+  q.power = ctx.params.power * robotLevelOf(ctx.index, p.kind, ctx.params);
   q.aim = forward;
   return q;
 }`;

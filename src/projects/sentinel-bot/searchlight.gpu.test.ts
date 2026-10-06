@@ -6,7 +6,7 @@ import { sentinelDocument } from "./document.ts";
 import { kernelPoints, type KernelSource, type Vec } from "./kernel-points.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 import { JOINT_ATTRIBUTES, jointKernel } from "./rig.ts";
-import { SEARCH, SEARCH_KERNEL, SEARCH_LIGHT_ATTRIBUTES, SEARCH_LIGHT_KERNEL, SEARCH_STRIP_ATTRIBUTES, searchLevel } from "./searchlight.ts";
+import { SEARCH, SEARCH_KERNEL, FACE_LIGHT_ATTRIBUTES, FACE_LIGHT_KERNEL, SEARCH_STRIP_ATTRIBUTES, robotLevel } from "./searchlight.ts";
 
 /**
  * T1561b — THE ROBOTS' SEARCHLIGHTS, on a real GPU: read off the points their kernels write, and off a lit wall.
@@ -34,7 +34,7 @@ const FORWARD: Vec = [0, 0, 1];
 /** A pack of three in its places, the middle one half bright, the last not searching. */
 const ROBOTS: readonly Vec[] = [[0, 0, 0], [1.6, 0.5, -5.5], [-1.4, -0.6, -11]];
 const LEVELS = [1, 0.5, 0] as const;
-const LEVEL_PARAMETERS: Record<string, number> = Object.fromEntries(LEVELS.map((level, robot) => [searchLevel(robot), level]));
+const LEVEL_PARAMETERS: Record<string, number> = Object.fromEntries(LEVELS.map((level, robot) => [robotLevel(robot), level]));
 /** How far ahead of a body's middle its face is, here. */
 const FACE = 0.7;
 const POWER = 110;
@@ -52,7 +52,7 @@ const INSTANTS = [1, 40, 173] as const;
 const hull = (rig: Record<string, number | number[]>, robots: readonly Vec[] = ROBOTS): KernelSource => ({ kernel: jointKernel(KIT_FIXTURE, robots, "body"), attributes: JOINT_ATTRIBUTES, parameters: rig, names: ["orient", "kind"] });
 /** The rig's points along each nose: what the cones read. */
 const noses = (rig: Record<string, number | number[]>): KernelSource => ({ kernel: jointKernel(KIT_FIXTURE, ROBOTS, { axis: [FACE, FACE + SEARCH.length], count: SEARCH.points }), attributes: JOINT_ATTRIBUTES, parameters: rig, names: ["kind", "along"] });
-const spotsOver = (rig: Record<string, number | number[]>, frames = 1) => kernelPoints(SEARCH_LIGHT_KERNEL, SEARCH_LIGHT_ATTRIBUTES, ROBOTS.length, { ...LEVEL_PARAMETERS, face: FACE, power: POWER }, ["power", "aim", "tint"], hull(rig), frames);
+const spotsOver = (rig: Record<string, number | number[]>, frames = 1) => kernelPoints(FACE_LIGHT_KERNEL, FACE_LIGHT_ATTRIBUTES, ROBOTS.length, { ...LEVEL_PARAMETERS, face: FACE, power: POWER }, ["power", "aim", "tint"], hull(rig), frames);
 const conesOver = (rig: Record<string, number | number[]>, frames = 1) => kernelPoints(SEARCH_KERNEL, SEARCH_STRIP_ATTRIBUTES, ROBOTS.length * SEARCH.points, LEVEL_PARAMETERS, ["girth", "tint"], noses(rig), frames);
 
 describe("the robots' searchlights (T1561b)", () => {
@@ -127,80 +127,11 @@ describe("the robots' searchlights (T1561b)", () => {
    * ahead of one robot, square to the way it rides, seen from behind it. The lit patch is where the FACE looks.
    */
   it("the lit patch on a wall goes where the head turns, and only while the Spots read the hull's points", async () => {
-    const dawnError = (await probeDawn()).error;
-    if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
-    const ONE: readonly Vec[] = [[0, 0, 0]];
     const SIZE = 65;
     const AHEAD = 12;
     const BEHIND = 6;
     const TURN = 0.3;
-    // Where the body is and how it sits, at rest: the wall and the camera are placed by that.
-    const rest = await kernelPoints(jointKernel(KIT_FIXTURE, ONE, "body"), JOINT_ATTRIBUTES, 1, REST, ["orient"]);
-    const [body, orient] = [rest.position(0), rest.of("orient", 0)];
-    const [right, up, forward] = [turned(orient, [1, 0, 0]), turned(orient, [0, 1, 0]), turned(orient, FORWARD)];
-    const wall = add(body, forward, AHEAD);
-    const light = sentinelDocument(KIT_FIXTURE).graph.nodes["light_search" as never] as unknown as { parameters: Record<string, unknown> };
-    /** Where the light is in the frame (the mean column of it, 0 at the left), and how much there is. `half`: only the wall's half on the body's +x is there, lit by the room. */
-    const seen = async (look: number, options: { wired?: boolean; half?: boolean } = {}): Promise<{ column: number; light: number }> => {
-      const result = await renderHeadless({
-        host: nodeGpuHost(),
-        graph: graph(
-          [
-            node("kernel_hull", "pointKernel", [0, 0], { capacity: 1, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(KIT_FIXTURE, ONE, "body"), ...REST, look: [look, 0] }),
-            node("kernel_searchlights", "pointKernel", [0, 0], { capacity: 1, attributes: SEARCH_LIGHT_ATTRIBUTES, kernel: SEARCH_LIGHT_KERNEL, [searchLevel(0)]: 1, face: FACE, power: 4000 }),
-            node("light_search", "light", [0, 0], light.parameters as never, { label: "light_search" }),
-            node("grid_wall", "pointGrid", [0, 0], { cols: 24, rows: 24, count: 576, sizeX: 2, sizeY: 2 }),
-            node("kernel_wall", "pointKernel", [0, 0], {
-              capacity: 576,
-              attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
-              kernel: `struct Params {
-  middle: vec3f, // @default [0, 0, 0]
-  right: vec3f, // @default [1, 0, 0]
-  up: vec3f, // @default [0, 1, 0]
-  half: f32, // @default 0
-};
-fn process(p: Point, ctx: PointCtx) -> Point {
-  var q = p;
-  let across = mix(p.position.x, abs(p.position.x), ctx.params.half);
-  q.position = ctx.params.middle + ctx.params.right * across * 14.0 + ctx.params.up * p.position.y * 14.0;
-  return q;
-}`,
-              middle: wall,
-              right,
-              up,
-              half: options.half === true ? 1 : 0,
-            }),
-            node("material_wall", "materialPbr", [0, 0], { color: [1, 1, 1, 1], roughness: 1, metallic: 0 }, { label: "material_wall" }),
-            node("geometry_wall", "geometry", [0, 0], { mode: "surface", material: "material_wall" }, { label: "geometry_wall" }),
-            node("camera_behind", "camera", [0, 0], { eye: add(body, forward, -BEHIND), lookAt: wall, fov: 60, near: 0.1, far: 200 }, { label: "camera_behind" }),
-            node("render_shot", "render", [0, 0], { scenes: "geometry_wall", camera: "camera_behind", lights: options.half === true ? "" : "light_search", ambientColor: [1, 1, 1, 1], ambientIntensity: options.half === true ? 1 : 0, background: [0, 0, 0, 1] }, { label: "render_shot" }),
-            node("output_frame", "output", [0, 0], {}, { label: "output_frame" }),
-          ],
-          [
-            ...(options.wired === false ? [] : [edge("search-body", ["kernel_hull", "out"], ["kernel_searchlights", "in"])]),
-            edge("search-light", ["kernel_searchlights", "out"], ["light_search", "points"]),
-            edge("grid-wall", ["grid_wall", "out"], ["kernel_wall", "in"]),
-            edge("wall-geo", ["kernel_wall", "out"], ["geometry_wall", "points"]),
-            edge("shot-out", ["render_shot", "out"], ["output_frame", "input"]),
-          ],
-        ),
-        settings: settings({ outputResolution: { width: SIZE, height: SIZE }, workingFormat: "rgba8unorm" }),
-        frames: 1,
-        outputNodeId: "render_shot",
-        outputPortId: "out",
-      });
-      const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
-      if (errors.length > 0) throw new Error(errors.map((diagnostic) => diagnostic.message).join("; "));
-      const frame = result.frames[0];
-      if (frame === undefined) throw new Error("no frame");
-      let [sum, weighted] = [0, 0];
-      for (let pixel = 0; pixel < SIZE * SIZE; pixel += 1) {
-        const value = frame.bytes[pixel * 4 + 1] ?? 0;
-        sum += value;
-        weighted += value * (pixel % SIZE);
-      }
-      return { column: sum === 0 ? Number.NaN : weighted / sum, light: sum };
-    };
+    const seen = (look: number, options: { wired?: boolean; half?: boolean } = {}) => wallSeen({ size: SIZE, wallAt: AHEAD, cameraAt: -BEHIND, lights: ["light_search"], power: 4000, look, ...options });
     const middle = (SIZE - 1) / 2;
     // Which side of the frame the body's +x is on, from behind it: the half of the wall that is there, lit by the room.
     const side = Math.sign((await seen(0, { half: true })).column - middle);
@@ -224,19 +155,156 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   }, 480_000);
 });
 
-describe("the searchlights are told nothing of where a robot is (T1561b)", () => {
+/**
+ * THE EYES' OWN LIGHT. The owner, 2026-10-06: "some of the light emitted from the eyes has the same spherical issue
+ * as the ceiling lamps had and are not really shaping their radiance as we would expect like circular kind a
+ * wideangle spot of sorts". It was a point light: it lit the tunnel behind the face as it lit the tunnel ahead. What
+ * it owes now, with the document's own two Lights (`light_eyes`, the cone; `light_face`, its spill on the housings):
+ * ahead of the face is lit, behind the robot is not, and the spill reaches the face and no wall.
+ */
+describe("the eyes' light is a cone out of the face (T1561b)", () => {
+  const POWER = 40;
+  const BOTH = ["light_eyes", "light_face"] as const;
+
+  it("it lights what is ahead of the face, and nothing behind the robot, where a point light would", async () => {
+    // A wall four metres ahead of the face, seen from behind the robot: lit.
+    const ahead = await wallSeen({ wallAt: FACE + 4, cameraAt: -6, lights: BOTH, power: POWER });
+    expect(ahead.light).toBeGreaterThan(1000);
+    // A wall four metres behind the robot's middle, seen from ahead of it: dark, all of it.
+    expect((await wallSeen({ wallAt: -4, cameraAt: 6, lights: BOTH, power: POWER })).light).toBe(0);
+    // …and it is the cone that keeps it dark, not the wall or where it is seen from: a ball of light at the face
+    // (what the eyes' light was) lights that same wall.
+    expect((await wallSeen({ wallAt: -4, cameraAt: 6, lights: [], ball: true, power: POWER })).light).toBeGreaterThan(1000);
+  }, 480_000);
+
+  it("its spill lights the face's own housing, a hand's breadth behind the light, and reaches no further than an arm", async () => {
+    // A plate half a metre behind where the light stands, facing it (the housings round the lenses), seen from ahead.
+    const housing = { wallAt: FACE - 0.5, cameraAt: 6, power: POWER };
+    // The cone alone leaves it dark: it is behind the light.
+    expect((await wallSeen({ ...housing, lights: ["light_eyes"] })).light).toBe(0);
+    // The spill lights it.
+    expect((await wallSeen({ ...housing, lights: ["light_face"] })).light).toBeGreaterThan(1000);
+    // Two metres behind the light, the spill is spent: the old ball of light reached the wall of the bore.
+    expect((await wallSeen({ wallAt: FACE - 2, cameraAt: 6, lights: ["light_face"], power: POWER })).light).toBe(0);
+  }, 480_000);
+});
+
+/**
+ * One robot on its rails, and a wall square to the way it rides: `wallAt` metres ahead of the robot's middle (behind
+ * it, when negative), seen from `cameraAt` metres ahead of the middle. The wall is lit by these of the DOCUMENT'S
+ * OWN Lights (their nodes as it builds them, less what drives their colour), standing on the points a face-light
+ * kernel makes of the hull's points. Returns how much light is in the frame and its mean column (0 the left).
+ */
+async function wallSeen(options: {
+  readonly wallAt: number;
+  readonly cameraAt: number;
+  readonly lights: readonly string[];
+  readonly power: number;
+  /** The head's turn (the rig's Look x), radians. */
+  readonly look?: number;
+  /** false: the face-light kernel is not wired to the hull's points. */
+  readonly wired?: boolean;
+  /** Only the wall's half on the body's +x is there, and the room lights it: which side of the frame that is. */
+  readonly half?: boolean;
+  /** A plain point light at the face instead: what a light that shines every way does to this wall. */
+  readonly ball?: boolean;
+  readonly size?: number;
+}): Promise<{ column: number; light: number }> {
+  const dawnError = (await probeDawn()).error;
+  if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
+  const ONE: readonly Vec[] = [[0, 0, 0]];
+  const SIZE = options.size ?? 65;
+  // Where the body is and how it sits, at rest: the wall and the camera are placed by that.
+  const rest = await kernelPoints(jointKernel(KIT_FIXTURE, ONE, "body"), JOINT_ATTRIBUTES, 1, REST, ["orient"]);
+  const [body, orient] = [rest.position(0), rest.of("orient", 0)];
+  const [right, up, forward] = [turned(orient, [1, 0, 0]), turned(orient, [0, 1, 0]), turned(orient, FORWARD)];
+  const wall = add(body, forward, options.wallAt);
+  const built = sentinelDocument(KIT_FIXTURE).graph.nodes as unknown as Record<string, { parameters: Record<string, unknown> }>;
+  // A Light of the document, as built; its colour's expressions read the piece's value graph, which is not here.
+  const own = (id: string) => node(id, "light", [0, 0], Object.fromEntries(Object.entries(built[id]!.parameters).filter(([name]) => !name.startsWith("color."))) as never, { label: id });
+  const lit = options.half === true ? [] : options.ball === true ? ["light_ball"] : options.lights;
+  const result = await renderHeadless({
+    host: nodeGpuHost(),
+    graph: graph(
+      [
+        node("kernel_hull", "pointKernel", [0, 0], { capacity: 1, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(KIT_FIXTURE, ONE, "body"), ...REST, look: [options.look ?? 0, 0] }),
+        node("kernel_facelights", "pointKernel", [0, 0], { capacity: 1, attributes: FACE_LIGHT_ATTRIBUTES, kernel: FACE_LIGHT_KERNEL, [robotLevel(0)]: 1, face: FACE, power: options.power }),
+        ...options.lights.map(own),
+        ...(options.ball === true ? [node("light_ball", "light", [0, 0], { kind: "point", position: add(body, forward, FACE), color: [1, 1, 1, 1], intensity: options.power, falloff: "inverseSquare", range: 16 }, { label: "light_ball" })] : []),
+        node("grid_wall", "pointGrid", [0, 0], { cols: 24, rows: 24, count: 576, sizeX: 2, sizeY: 2 }),
+        node("kernel_wall", "pointKernel", [0, 0], {
+          capacity: 576,
+          attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
+          kernel: `struct Params {
+  middle: vec3f, // @default [0, 0, 0]
+  right: vec3f, // @default [1, 0, 0]
+  up: vec3f, // @default [0, 1, 0]
+  half: f32, // @default 0
+};
+fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  let across = mix(p.position.x, abs(p.position.x), ctx.params.half);
+  q.position = ctx.params.middle + ctx.params.right * across * 14.0 + ctx.params.up * p.position.y * 14.0;
+  return q;
+}`,
+          middle: wall,
+          right,
+          up,
+          half: options.half === true ? 1 : 0,
+        }),
+        node("material_wall", "materialPbr", [0, 0], { color: [1, 1, 1, 1], roughness: 1, metallic: 0 }, { label: "material_wall" }),
+        node("geometry_wall", "geometry", [0, 0], { mode: "surface", material: "material_wall" }, { label: "geometry_wall" }),
+        node("camera_wall", "camera", [0, 0], { eye: add(body, forward, options.cameraAt), lookAt: wall, fov: 60, near: 0.1, far: 200 }, { label: "camera_wall" }),
+        node("render_shot", "render", [0, 0], { scenes: "geometry_wall", camera: "camera_wall", lights: lit.join(" "), ambientColor: [1, 1, 1, 1], ambientIntensity: options.half === true ? 1 : 0, background: [0, 0, 0, 1] }, { label: "render_shot" }),
+        node("output_frame", "output", [0, 0], {}, { label: "output_frame" }),
+      ],
+      [
+        ...(options.wired === false ? [] : [edge("face-body", ["kernel_hull", "out"], ["kernel_facelights", "in"])]),
+        ...options.lights.map((id) => edge(`points-${id}`, ["kernel_facelights", "out"], [id, "points"])),
+        edge("grid-wall", ["grid_wall", "out"], ["kernel_wall", "in"]),
+        edge("wall-geo", ["kernel_wall", "out"], ["geometry_wall", "points"]),
+        edge("shot-out", ["render_shot", "out"], ["output_frame", "input"]),
+      ],
+    ),
+    settings: settings({ outputResolution: { width: SIZE, height: SIZE }, workingFormat: "rgba8unorm" }),
+    frames: 1,
+    outputNodeId: "render_shot",
+    outputPortId: "out",
+  });
+  const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (errors.length > 0) throw new Error(errors.map((diagnostic) => diagnostic.message).join("; "));
+  const frame = result.frames[0];
+  if (frame === undefined) throw new Error("no frame");
+  let [sum, weighted] = [0, 0];
+  for (let pixel = 0; pixel < SIZE * SIZE; pixel += 1) {
+    const value = frame.bytes[pixel * 4 + 1] ?? 0;
+    sum += value;
+    weighted += value * (pixel % SIZE);
+  }
+  return { column: sum === 0 ? Number.NaN : weighted / sum, light: sum };
+}
+
+describe("the robots' own lights are told nothing of where a robot is (T1561b)", () => {
   it("in the document their kernels read the rig's points, and the only thing driven on them is how bright each is", () => {
     const built = sentinelDocument(KIT_FIXTURE).graph;
     const wires = Object.values(built.edges).map((wire) => `${wire.source.nodeId}.${wire.source.portId} > ${wire.target.nodeId}.${wire.target.portId}`);
-    // The Spots over the hull's own points; the cones over the rig's points along the nose.
+    // The Spots and the eyes' lights over the hull's own points; the cones over the rig's points along the nose.
     expect(wires).toContain("kernel_hull.out > kernel_searchlights.in");
+    expect(wires).toContain("kernel_hull.out > kernel_eyelights.in");
     expect(wires).toContain("kernel_searchline.out > kernel_search.in");
-    const levels = Array.from({ length: SEARCH.robots }, (_, robot) => searchLevel(robot));
-    for (const id of ["kernel_search", "kernel_searchlights"]) {
-      const parameters = (built.nodes[id as never] as unknown as { parameters: Record<string, unknown> }).parameters;
-      // Anything on them that is not a plain value is an expression or a binding: a second saying of something.
-      const driven = Object.entries(parameters).filter(([, value]) => typeof value === "object" && value !== null && !Array.isArray(value)).map(([name]) => name);
-      expect(driven.filter((name) => !levels.includes(name))).toEqual([]);
+    const parametersOf = (id: string) => (built.nodes[id as never] as unknown as { parameters: Record<string, unknown> }).parameters;
+    /** Anything on a node that is not a plain value is an expression or a binding: a second saying of something. */
+    const driven = (id: string): string[] => Object.entries(parametersOf(id)).filter(([, value]) => typeof value === "object" && value !== null && !Array.isArray(value)).map(([name]) => name);
+    const levels = Array.from({ length: SEARCH.robots }, (_, robot) => robotLevel(robot));
+    expect(driven("kernel_search").filter((name) => !levels.includes(name))).toEqual([]);
+    expect(driven("kernel_searchlights").filter((name) => !levels.includes(name))).toEqual([]);
+    // (The eyes' brightness is the panel's and the track's.)
+    expect(driven("kernel_eyelights").filter((name) => !levels.includes(name))).toEqual(["power"]);
+    // …and their Lights stand on those points: nothing places one, and a direction is the point's own.
+    for (const [id, from] of [["light_search", "kernel_searchlights"], ["light_eyes", "kernel_eyelights"], ["light_face", "kernel_eyelights"]] as const) {
+      expect(wires).toContain(`${from}.out > ${id}.points`);
+      expect(parametersOf(id)["mode"]).toBe("points");
+      expect(Object.keys(parametersOf(id)).filter((name) => name.startsWith("position") || name.startsWith("direction."))).toEqual([]);
     }
   });
 });
