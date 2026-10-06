@@ -1,6 +1,6 @@
 import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/graph.ts";
 import type { ParameterSlot, ParameterValue } from "../../domain/types/parameters.ts";
-import { chan, follow, shadowFovSource, viewSlots, type Slots } from "./slots.ts";
+import { chan, follow, grey, shadowFovSource, viewSlots, type Slots } from "./slots.ts";
 import { applyRig } from "./rig.ts";
 import { LIMITS, document, edge, expressionSlot, graph, node, settings } from "../../examples/documents/builders.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
@@ -64,10 +64,10 @@ export function stageDocument(facts: StageFacts): ProjectDocument {
     ["work", "Work light", 0.15, 0, 1, 0],
   ];
   controls.forEach(([label, caption, value, min, max, step], index) => {
-    add(labelled(label, "slider", [COL.tests + (index % 3) * 300, -900 + Math.floor(index / 3) * 170], { channel: label, caption, value, min, max, step }));
+    add(labelled(label, "slider", [COL.tests + (index % 3) * 300, -900 + Math.floor(index / 3) * 170], { channel: label, caption, value, defaultValue: value, min, max, step }));
     wire(`e-${label}-desk`, [label, "out"], ["desk", "controls"], index);
   });
-  add(labelled("talent", "toggle", [COL.tests + 600, -900 + 3 * 170], { channel: "talent", caption: "Talent stand-ins", on: true }));
+  add(labelled("talent", "toggle", [COL.tests + 600, -900 + 3 * 170], { channel: "talent", caption: "Talent stand-ins", on: true, defaultOn: true }));
   wire("e-talent-desk", ["talent", "out"], ["desk", "controls"], controls.length);
   add(labelled("desk", "panel", [COL.tests + 960, -900], {
     title: "Stage previz",
@@ -156,7 +156,7 @@ export function stageDocument(facts: StageFacts): ProjectDocument {
   /* White base: the GLB's own factors (colour, roughness, metallic) ride the mesh and win. */
   add(labelled("matSurface", "materialPbr", [COL.kernels, 2620], { color: [1, 1, 1, 1], metallic: 0, roughness: 0.5 }));
   /* Unlit: LED faces are light, not lit — and an unlit surface takes no projector light and casts no projector shadow. */
-  add(labelled("matLed", "materialUnlit", [COL.kernels, 2780], {}, { parameters: { color: expressionSlot(`${chan("leds")} * 3`, 1.8) } }));
+  add(labelled("matLed", "materialUnlit", [COL.kernels, 2780], {}, { parameters: { color: expressionSlot(`${chan("leds")} * 3`, grey(1.8)) } }));
 
   add(labelled("workKey", "light", [COL.scene, 1300], {
     kind: "directional", direction: [0.35, -0.75, -0.55], color: [1, 0.94, 0.86, 1], shadows: false,

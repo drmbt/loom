@@ -4,7 +4,8 @@ import { edge, expressionSlot, node } from "../../examples/documents/builders.ts
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { slotFromValue } from "../../domain/parameters/slots.ts";
 import type { ProjectorFacts, ProjectorName, StageFacts, Vec3 } from "./facts.ts";
-import { chan, fmt, shadowFovSource, vecSlots, viewSlots, type Slots } from "./slots.ts";
+import { chan, fmt, grey, shadowFovSource, vecSlots, viewSlots, type Slots } from "./slots.ts";
+import { conformNames, workingNames } from "./names.ts";
 import { beamShader, compositeShader } from "./haze.ts";
 import { applyFx } from "./fx.ts";
 
@@ -274,7 +275,9 @@ const DESK_ORDER = 100;
  * the projectors driven through them, and the parts of the session that read the GLB's
  * measured sizes and cameras brought up to date with it.
  */
-export function applyRig(document: ProjectDocument, facts: StageFacts, options: { readonly reset?: readonly string[] } = {}): ProjectDocument {
+export function applyRig(saved: ProjectDocument, facts: StageFacts, options: { readonly reset?: readonly string[] } = {}): ProjectDocument {
+  // T1593b: the rig is written in working names and conformed at the end (names.ts).
+  const document = workingNames(saved);
   const nodes: Record<string, GraphNode> = { ...document.graph.nodes };
   const edges = { ...document.graph.edges };
   const put = (entry: GraphNode): void => {
@@ -286,7 +289,7 @@ export function applyRig(document: ProjectDocument, facts: StageFacts, options: 
     const kept = existing?.parameters["value"];
     const value = typeof kept === "number" && options.reset?.includes(fader.label) !== true ? kept : fader.value;
     const position = existing === undefined ? ([-4400 + index * 300, FADER_ROW] as const) : ([existing.position.x, existing.position.y] as const);
-    put(node(fader.label, "slider", position, { channel: fader.label, caption: fader.caption, value, min: fader.min, max: fader.max, step: fader.step }, { label: fader.label }));
+    put(node(fader.label, "slider", position, { channel: fader.label, caption: fader.caption, value, defaultValue: fader.value, min: fader.min, max: fader.max, step: fader.step }, { label: fader.label }));
     const wire = edge(`e-${fader.label}-desk`, [fader.label, "out"], ["desk", "controls"], DESK_ORDER + index);
     edges[wire.id] = wire;
   });
@@ -355,7 +358,7 @@ export function applyRig(document: ProjectDocument, facts: StageFacts, options: 
   // wherever the stage is (the house view and each projector's own view of its occluders).
   const deck = facts.areas.deck;
   put(node("meshDeck", "meshFileIn", DECK_POSITIONS.mesh, { file: facts.glbUrl, select: deck.select, vertices: deck.vertices, triangles: deck.triangles }, { label: "meshDeck" }));
-  put(node("matDeck", "materialPbr", DECK_POSITIONS.material, { metallic: 0, roughness: 0.6 }, { label: "matDeck", parameters: { color: expressionSlot(chan("deckTone"), 0.6) } }));
+  put(node("matDeck", "materialPbr", DECK_POSITIONS.material, { metallic: 0, roughness: 0.6 }, { label: "matDeck", parameters: { color: expressionSlot(chan("deckTone"), grey(0.6)) } }));
   put(node("geoDeck", "geometry", DECK_POSITIONS.geometry, { mode: "surface", material: "matDeck" }, { label: "geoDeck" }));
   const deckWire = edge("e-meshDeck-geoDeck", ["meshDeck", "out"], ["geoDeck", "points"]);
   edges[deckWire.id] = deckWire;
@@ -367,7 +370,7 @@ export function applyRig(document: ProjectDocument, facts: StageFacts, options: 
 
   // The scrim and the kabuki: lit, but additive — see the header — in their own material, the
   // Scrim fader: how much of the light falling on them they send back.
-  put(node("matDrape", "materialPbr", DRAPE_POSITIONS.material, { metallic: 0, roughness: 0.5 }, { label: "matDrape", parameters: { color: expressionSlot(chan("scrim"), SCRIM_DEFAULT) } }));
+  put(node("matDrape", "materialPbr", DRAPE_POSITIONS.material, { metallic: 0, roughness: 0.5 }, { label: "matDrape", parameters: { color: expressionSlot(chan("scrim"), grey(SCRIM_DEFAULT)) } }));
   for (const id of ["geoCurtain", "geoKabuki"]) {
     const drape = nodes[id];
     if (drape !== undefined) put({ ...drape, parameters: { ...drape.parameters, blend: "additive", material: "matDrape" } });
@@ -451,5 +454,5 @@ export function applyRig(document: ProjectDocument, facts: StageFacts, options: 
   // The pixel lines and strobes on one feed (fx.ts).
   applyFx(nodes, edges, facts);
 
-  return { ...document, graph: { ...document.graph, nodes, edges } };
+  return conformNames({ ...document, graph: { ...document.graph, nodes, edges } });
 }

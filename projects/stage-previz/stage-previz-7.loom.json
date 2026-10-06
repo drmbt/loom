@@ -35,7 +35,7 @@
             "fxaa": {
               "definitionVersion": 1,
               "id": "fxaa",
-              "label": "fxaa1",
+              "label": "wgsl_fxaa",
               "parameters": {
                 "amount": 1,
                 "source": "struct Params {\n  amount: f32, // @default 1  0 is the input exactly, 1 is full FXAA.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> params: Params;\n\nconst SPAN_MAX: f32 = 8.0;\nconst REDUCE_MUL: f32 = 0.125;\nconst REDUCE_MIN: f32 = 0.0078125;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn luma(c: vec3f) -> f32 {\n  let t = max(c, vec3f(0.0)) / (vec3f(1.0) + max(c, vec3f(0.0)));\n  return dot(t, vec3f(0.299, 0.587, 0.114));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let px = 1.0 / vec2f(textureDimensions(inputTexture));\n  let centre = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let m = centre.rgb;\n  let lM = luma(m);\n  let lNW = luma(tap(uv + vec2f(-1.0, -1.0) * px));\n  let lNE = luma(tap(uv + vec2f(1.0, -1.0) * px));\n  let lSW = luma(tap(uv + vec2f(-1.0, 1.0) * px));\n  let lSE = luma(tap(uv + vec2f(1.0, 1.0) * px));\n  let lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  let lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n\n  var dir = vec2f(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  let reduce = max((lNW + lNE + lSW + lSE) * 0.25 * REDUCE_MUL, REDUCE_MIN);\n  let rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);\n  dir = clamp(dir * rcpMin, vec2f(-SPAN_MAX), vec2f(SPAN_MAX)) * px;\n\n  let a = 0.5 * (tap(uv + dir * (1.0 / 3.0 - 0.5)) + tap(uv + dir * (2.0 / 3.0 - 0.5)));\n  let b = a * 0.5 + 0.25 * (tap(uv - dir * 0.5) + tap(uv + dir * 0.5));\n  let lB = luma(b);\n  let smoothed = select(b, a, (lB < lMin) || (lB > lMax));\n  // Alpha passes through untouched: an edge-smoothing pass has no business deciding coverage\n  // (T1276 found the first version writing 1 over a plate that carried 0).\n  return vec4f(mix(m, smoothed, params.amount), centre.a);\n}"
@@ -1198,7 +1198,7 @@
             "cut": {
               "definitionVersion": 1,
               "id": "cut",
-              "label": "cut1",
+              "label": "mask_cut",
               "parameters": {
                 "apply": "colour",
                 "channel": "red"
@@ -1234,7 +1234,7 @@
             "matte": {
               "definitionVersion": 1,
               "id": "matte",
-              "label": "matte1",
+              "label": "wgsl_matte",
               "parameters": {
                 "feather": 0.12,
                 "invert": 0,
@@ -1406,7 +1406,7 @@
             "carve": {
               "definitionVersion": 1,
               "id": "carve",
-              "label": "carve1",
+              "label": "kernel_carve",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,
@@ -1478,7 +1478,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "kernel_paint",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,
@@ -2640,7 +2640,7 @@
             "cut": {
               "definitionVersion": 1,
               "id": "cut",
-              "label": "cut1",
+              "label": "mask_cut",
               "parameters": {
                 "apply": "alpha",
                 "channel": "red"
@@ -2654,7 +2654,7 @@
             "history": {
               "definitionVersion": 1,
               "id": "history",
-              "label": "history1",
+              "label": "cache_history",
               "parameters": {
                 "frames": 24,
                 "index": {
@@ -3294,7 +3294,7 @@
             "break": {
               "definitionVersion": 1,
               "id": "break",
-              "label": "break1",
+              "label": "wgsl_break",
               "parameters": {
                 "amount": 0.35,
                 "grid": [
@@ -3305,7 +3305,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3318,7 +3318,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3340,7 +3340,7 @@
             "churnx": {
               "definitionVersion": 1,
               "id": "churnx",
-              "label": "churnx1",
+              "label": "lfo_churnx",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.062,
@@ -3357,7 +3357,7 @@
             "churny": {
               "definitionVersion": 1,
               "id": "churny",
-              "label": "churny1",
+              "label": "lfo_churny",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.041,
@@ -3374,7 +3374,7 @@
             "crush": {
               "definitionVersion": 1,
               "id": "crush",
-              "label": "crush1",
+              "label": "level_crush",
               "parameters": {
                 "blacklevel": 0.03,
                 "brightness": 1,
@@ -3393,7 +3393,7 @@
             "fit": {
               "definitionVersion": 1,
               "id": "fit",
-              "label": "fit1",
+              "label": "transform_fit",
               "parameters": {
                 "aspectcorrect": false,
                 "extend": "hold",
@@ -3410,7 +3410,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churnx1').chan.value) / max(1, op('churny1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churnx').chan.value) / max(1, op('lfo_churny').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -3423,7 +3423,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churny1').chan.value) / max(1, op('churnx1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churny').chan.value) / max(1, op('lfo_churnx').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -3447,7 +3447,7 @@
             "grid": {
               "definitionVersion": 1,
               "id": "grid",
-              "label": "grid1",
+              "label": "tile_grid",
               "parameters": {
                 "mirrorx": false,
                 "mirrory": false,
@@ -3463,7 +3463,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3476,7 +3476,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3500,7 +3500,7 @@
             "guard": {
               "definitionVersion": 1,
               "id": "guard",
-              "label": "guard1",
+              "label": "limit_guard",
               "parameters": {
                 "high": 1,
                 "low": 0,
@@ -3538,7 +3538,7 @@
             "map": {
               "definitionVersion": 1,
               "id": "map",
-              "label": "map1",
+              "label": "wgsl_map",
               "parameters": {
                 "grid": [
                   3,
@@ -3548,7 +3548,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3561,7 +3561,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3584,7 +3584,7 @@
             "mix": {
               "definitionVersion": 1,
               "id": "mix",
-              "label": "mix1",
+              "label": "cross_mix",
               "parameters": {
                 "cross": 0.55
               },
@@ -3608,7 +3608,7 @@
             "pack": {
               "definitionVersion": 1,
               "id": "pack",
-              "label": "pack1",
+              "label": "reorder_pack",
               "parameters": {
                 "outa": "in2lum",
                 "outb": "in1b",
@@ -3629,7 +3629,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "solid_paint",
               "parameters": {
                 "color": [
                   1,
@@ -3652,7 +3652,7 @@
             "palette": {
               "definitionVersion": 2,
               "id": "palette",
-              "label": "palette1",
+              "label": "ramp_palette",
               "parameters": {
                 "interp": "smooth",
                 "period": 1,
@@ -3750,7 +3750,7 @@
             "scan": {
               "definitionVersion": 1,
               "id": "scan",
-              "label": "scan1",
+              "label": "slitscan1",
               "parameters": {
                 "depth": 1,
                 "frames": 61,
@@ -3765,7 +3765,7 @@
             "sweep": {
               "definitionVersion": 1,
               "id": "sweep",
-              "label": "sweep1",
+              "label": "wgsl_sweep",
               "parameters": {
                 "amount": 0.5,
                 "grid": [
@@ -3776,7 +3776,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3789,7 +3789,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3810,7 +3810,7 @@
             "tint": {
               "definitionVersion": 1,
               "id": "tint",
-              "label": "tint1",
+              "label": "multiply_tint",
               "parameters": {
                 "opacity": 1
               },
@@ -3823,7 +3823,7 @@
             "tone": {
               "definitionVersion": 1,
               "id": "tone",
-              "label": "tone1",
+              "label": "lookup_tone",
               "parameters": {
                 "channel": "luminance",
                 "offset": 0.08,
@@ -5049,13 +5049,13 @@
       "atmosphere": {
         "definitionVersion": 1,
         "id": "atmosphere",
-        "label": "atmosphere",
+        "label": "wgsl_atmosphere",
         "parameters": {
           "aim.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.x"
+                "source": "op('camera_view').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -5068,7 +5068,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.y"
+                "source": "op('camera_view').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -5081,7 +5081,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.z"
+                "source": "op('camera_view').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -5099,7 +5099,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('haze').chan.haze * 0.06"
+                "source": "op('slider_haze').chan.haze * 0.06"
               },
               "static": {
                 "kind": "static",
@@ -5112,7 +5112,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.x"
+                "source": "op('camera_view').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -5125,7 +5125,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.y"
+                "source": "op('camera_view').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -5138,7 +5138,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.z"
+                "source": "op('camera_view').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -5151,7 +5151,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.far"
+                "source": "op('camera_view').par.far"
               },
               "static": {
                 "kind": "static",
@@ -5164,7 +5164,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.fov"
+                "source": "op('camera_view').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -5179,7 +5179,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.roll"
+                "source": "op('camera_view').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -5199,13 +5199,13 @@
       "beamDS": {
         "definitionVersion": 1,
         "id": "beamDS",
-        "label": "beamDS",
+        "label": "wgsl_beamDS",
         "parameters": {
           "aim.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.x"
+                "source": "op('camera_view').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -5218,7 +5218,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.y"
+                "source": "op('camera_view').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -5231,7 +5231,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.z"
+                "source": "op('camera_view').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -5245,7 +5245,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.aspect"
+                "source": "op('projector_DS').par.aspect"
               },
               "static": {
                 "kind": "static",
@@ -5258,7 +5258,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.brightness"
+                "source": "op('projector_DS').par.brightness"
               },
               "static": {
                 "kind": "static",
@@ -5271,7 +5271,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('haze').chan.haze * 0.06"
+                "source": "op('slider_haze').chan.haze * 0.06"
               },
               "static": {
                 "kind": "static",
@@ -5285,7 +5285,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.x"
+                "source": "op('camera_view').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -5298,7 +5298,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.y"
+                "source": "op('camera_view').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -5311,7 +5311,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.z"
+                "source": "op('camera_view').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -5324,7 +5324,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.far"
+                "source": "op('camera_view').par.far"
               },
               "static": {
                 "kind": "static",
@@ -5338,7 +5338,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('fog').chan.fog * 0.3"
+                "source": "op('slider_fog').chan.fog * 0.3"
               },
               "static": {
                 "kind": "static",
@@ -5352,7 +5352,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.fov"
+                "source": "op('camera_view').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -5365,7 +5365,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('beams').chan.beams * 40"
+                "source": "op('slider_beams').chan.beams * 40"
               },
               "static": {
                 "kind": "static",
@@ -5378,7 +5378,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.keystoneH"
+                "source": "op('projector_DS').par.keystoneH"
               },
               "static": {
                 "kind": "static",
@@ -5391,7 +5391,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.keystoneV"
+                "source": "op('projector_DS').par.keystoneV"
               },
               "static": {
                 "kind": "static",
@@ -5404,7 +5404,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.eye.x"
+                "source": "op('projector_DS').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -5417,7 +5417,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.eye.y"
+                "source": "op('projector_DS').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -5430,7 +5430,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.eye.z"
+                "source": "op('projector_DS').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -5443,7 +5443,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.lookAt.x"
+                "source": "op('projector_DS').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -5456,7 +5456,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.lookAt.y"
+                "source": "op('projector_DS').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -5469,7 +5469,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.lookAt.z"
+                "source": "op('projector_DS').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -5483,7 +5483,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.roll"
+                "source": "op('camera_view').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -5496,7 +5496,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('shadowCamDS').par.far"
+                "source": "op('camera_shadowCamDS').par.far"
               },
               "static": {
                 "kind": "static",
@@ -5509,7 +5509,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('shadowCamDS').par.fov"
+                "source": "op('camera_shadowCamDS').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -5522,7 +5522,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.shiftX"
+                "source": "op('projector_DS').par.shiftX"
               },
               "static": {
                 "kind": "static",
@@ -5535,7 +5535,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.shiftY"
+                "source": "op('projector_DS').par.shiftY"
               },
               "static": {
                 "kind": "static",
@@ -5549,7 +5549,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.roll"
+                "source": "op('projector_DS').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -5562,7 +5562,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.throwRatio"
+                "source": "op('projector_DS').par.throwRatio"
               },
               "static": {
                 "kind": "static",
@@ -5586,13 +5586,13 @@
       "beamSL": {
         "definitionVersion": 1,
         "id": "beamSL",
-        "label": "beamSL",
+        "label": "wgsl_beamSL",
         "parameters": {
           "aim.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.x"
+                "source": "op('camera_view').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -5605,7 +5605,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.y"
+                "source": "op('camera_view').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -5618,7 +5618,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.z"
+                "source": "op('camera_view').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -5632,7 +5632,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.aspect"
+                "source": "op('projector_SL').par.aspect"
               },
               "static": {
                 "kind": "static",
@@ -5645,7 +5645,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.brightness"
+                "source": "op('projector_SL').par.brightness"
               },
               "static": {
                 "kind": "static",
@@ -5658,7 +5658,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('haze').chan.haze * 0.06"
+                "source": "op('slider_haze').chan.haze * 0.06"
               },
               "static": {
                 "kind": "static",
@@ -5672,7 +5672,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.x"
+                "source": "op('camera_view').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -5685,7 +5685,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.y"
+                "source": "op('camera_view').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -5698,7 +5698,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.z"
+                "source": "op('camera_view').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -5711,7 +5711,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.far"
+                "source": "op('camera_view').par.far"
               },
               "static": {
                 "kind": "static",
@@ -5725,7 +5725,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('fog').chan.fog * 0.3"
+                "source": "op('slider_fog').chan.fog * 0.3"
               },
               "static": {
                 "kind": "static",
@@ -5739,7 +5739,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.fov"
+                "source": "op('camera_view').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -5752,7 +5752,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('beams').chan.beams * 40"
+                "source": "op('slider_beams').chan.beams * 40"
               },
               "static": {
                 "kind": "static",
@@ -5765,7 +5765,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.keystoneH"
+                "source": "op('projector_SL').par.keystoneH"
               },
               "static": {
                 "kind": "static",
@@ -5778,7 +5778,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.keystoneV"
+                "source": "op('projector_SL').par.keystoneV"
               },
               "static": {
                 "kind": "static",
@@ -5791,7 +5791,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.eye.x"
+                "source": "op('projector_SL').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -5804,7 +5804,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.eye.y"
+                "source": "op('projector_SL').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -5817,7 +5817,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.eye.z"
+                "source": "op('projector_SL').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -5830,7 +5830,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.lookAt.x"
+                "source": "op('projector_SL').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -5843,7 +5843,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.lookAt.y"
+                "source": "op('projector_SL').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -5856,7 +5856,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.lookAt.z"
+                "source": "op('projector_SL').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -5870,7 +5870,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.roll"
+                "source": "op('camera_view').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -5883,7 +5883,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('shadowCamSL').par.far"
+                "source": "op('camera_shadowCamSL').par.far"
               },
               "static": {
                 "kind": "static",
@@ -5896,7 +5896,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('shadowCamSL').par.fov"
+                "source": "op('camera_shadowCamSL').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -5909,7 +5909,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.shiftX"
+                "source": "op('projector_SL').par.shiftX"
               },
               "static": {
                 "kind": "static",
@@ -5922,7 +5922,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.shiftY"
+                "source": "op('projector_SL').par.shiftY"
               },
               "static": {
                 "kind": "static",
@@ -5936,7 +5936,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.roll"
+                "source": "op('projector_SL').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -5949,7 +5949,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.throwRatio"
+                "source": "op('projector_SL').par.throwRatio"
               },
               "static": {
                 "kind": "static",
@@ -5973,13 +5973,13 @@
       "beamSR": {
         "definitionVersion": 1,
         "id": "beamSR",
-        "label": "beamSR",
+        "label": "wgsl_beamSR",
         "parameters": {
           "aim.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.x"
+                "source": "op('camera_view').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -5992,7 +5992,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.y"
+                "source": "op('camera_view').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -6005,7 +6005,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.lookAt.z"
+                "source": "op('camera_view').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -6019,7 +6019,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.aspect"
+                "source": "op('projector_SR').par.aspect"
               },
               "static": {
                 "kind": "static",
@@ -6032,7 +6032,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.brightness"
+                "source": "op('projector_SR').par.brightness"
               },
               "static": {
                 "kind": "static",
@@ -6045,7 +6045,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('haze').chan.haze * 0.06"
+                "source": "op('slider_haze').chan.haze * 0.06"
               },
               "static": {
                 "kind": "static",
@@ -6059,7 +6059,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.x"
+                "source": "op('camera_view').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -6072,7 +6072,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.y"
+                "source": "op('camera_view').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -6085,7 +6085,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.eye.z"
+                "source": "op('camera_view').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -6098,7 +6098,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.far"
+                "source": "op('camera_view').par.far"
               },
               "static": {
                 "kind": "static",
@@ -6112,7 +6112,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('fog').chan.fog * 0.3"
+                "source": "op('slider_fog').chan.fog * 0.3"
               },
               "static": {
                 "kind": "static",
@@ -6126,7 +6126,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.fov"
+                "source": "op('camera_view').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -6139,7 +6139,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('beams').chan.beams * 40"
+                "source": "op('slider_beams').chan.beams * 40"
               },
               "static": {
                 "kind": "static",
@@ -6152,7 +6152,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.keystoneH"
+                "source": "op('projector_SR').par.keystoneH"
               },
               "static": {
                 "kind": "static",
@@ -6165,7 +6165,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.keystoneV"
+                "source": "op('projector_SR').par.keystoneV"
               },
               "static": {
                 "kind": "static",
@@ -6178,7 +6178,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.eye.x"
+                "source": "op('projector_SR').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -6191,7 +6191,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.eye.y"
+                "source": "op('projector_SR').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -6204,7 +6204,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.eye.z"
+                "source": "op('projector_SR').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -6217,7 +6217,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.lookAt.x"
+                "source": "op('projector_SR').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -6230,7 +6230,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.lookAt.y"
+                "source": "op('projector_SR').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -6243,7 +6243,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.lookAt.z"
+                "source": "op('projector_SR').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -6257,7 +6257,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('view').par.roll"
+                "source": "op('camera_view').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -6270,7 +6270,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('shadowCamSR').par.far"
+                "source": "op('camera_shadowCamSR').par.far"
               },
               "static": {
                 "kind": "static",
@@ -6283,7 +6283,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('shadowCamSR').par.fov"
+                "source": "op('camera_shadowCamSR').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -6296,7 +6296,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.shiftX"
+                "source": "op('projector_SR').par.shiftX"
               },
               "static": {
                 "kind": "static",
@@ -6309,7 +6309,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.shiftY"
+                "source": "op('projector_SR').par.shiftY"
               },
               "static": {
                 "kind": "static",
@@ -6323,7 +6323,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.roll"
+                "source": "op('projector_SR').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -6336,7 +6336,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.throwRatio"
+                "source": "op('projector_SR').par.throwRatio"
               },
               "static": {
                 "kind": "static",
@@ -6358,12 +6358,13 @@
         "type": "customWgslMulti"
       },
       "beams": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "beams",
-        "label": "beams",
+        "label": "slider_beams",
         "parameters": {
           "caption": "Beam visibility",
           "channel": "beams",
+          "defaultValue": 0.5,
           "max": 1,
           "min": 0,
           "step": 0,
@@ -6378,7 +6379,7 @@
       "blank": {
         "definitionVersion": 1,
         "id": "blank",
-        "label": "blank",
+        "label": "solid_blank",
         "parameters": {
           "color": [
             0,
@@ -6399,12 +6400,13 @@
         "type": "solid"
       },
       "deckTone": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "deckTone",
-        "label": "deckTone",
+        "label": "slider_deckTone",
         "parameters": {
           "caption": "Deck tone",
           "channel": "deckTone",
+          "defaultValue": 0.6,
           "max": 1,
           "min": 0,
           "step": 0.01,
@@ -6419,9 +6421,9 @@
       "desk": {
         "definitionVersion": 1,
         "id": "desk",
-        "label": "desk",
+        "label": "panel_desk",
         "parameters": {
-          "board": "{\n  \"columns\": 6,\n  \"items\": [\n    {\"label\":\"Feeds and view\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"source\",\"rect\":{\"x\":0,\"y\":1,\"w\":3,\"h\":1}},\n    {\"member\":\"shot\",\"rect\":{\"x\":3,\"y\":1,\"w\":3,\"h\":1}},\n    {\"label\":\"Stage\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"kabuki\",\"rect\":{\"x\":0,\"y\":4,\"w\":2,\"h\":1}},\n    {\"member\":\"leds\",\"rect\":{\"x\":2,\"y\":4,\"w\":2,\"h\":1}},\n    {\"member\":\"work\",\"rect\":{\"x\":4,\"y\":4,\"w\":2,\"h\":1}},\n    {\"label\":\"Atmosphere\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"haze\",\"rect\":{\"x\":0,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"fog\",\"rect\":{\"x\":2,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"beams\",\"rect\":{\"x\":4,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"talent\",\"rect\":{\"x\":0,\"y\":7,\"w\":2,\"h\":1}},\n    {\"member\":\"index\",\"rect\":{\"x\":2,\"y\":7,\"w\":4,\"h\":1}},\n    {\"member\":\"presets1\",\"rect\":{\"x\":0,\"y\":14,\"w\":4,\"h\":1}},\n    {\"member\":\"orbit\",\"rect\":{\"x\":0,\"y\":2,\"w\":3,\"h\":1}},\n    {\"member\":\"zoom\",\"rect\":{\"x\":3,\"y\":2,\"w\":3,\"h\":1}},\n    {\"label\":\"Projectors\",\"rect\":{\"x\":0,\"y\":15,\"w\":6,\"h\":1}},\n    {\"member\":\"dsThrow\",\"rect\":{\"x\":0,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"dsOffset\",\"rect\":{\"x\":2,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"dsTilt\",\"rect\":{\"x\":4,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"dsKeyV\",\"rect\":{\"x\":0,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"dsKeyH\",\"rect\":{\"x\":3,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"sideTilt\",\"rect\":{\"x\":0,\"y\":18,\"w\":2,\"h\":1}},\n    {\"member\":\"sideThrow\",\"rect\":{\"x\":2,\"y\":18,\"w\":2,\"h\":1}},\n    {\"member\":\"sideRoll\",\"rect\":{\"x\":4,\"y\":18,\"w\":2,\"h\":1}},\n    {\"member\":\"sideKeyV\",\"rect\":{\"x\":0,\"y\":19,\"w\":3,\"h\":1}},\n    {\"member\":\"sideKeyH\",\"rect\":{\"x\":3,\"y\":19,\"w\":3,\"h\":1}},\n    {\"member\":\"deckTone\",\"rect\":{\"x\":0,\"y\":20,\"w\":2,\"h\":1}},\n    {\"member\":\"scrim\",\"rect\":{\"x\":2,\"y\":20,\"w\":2,\"h\":1}},\n    {\"member\":\"strobes\",\"rect\":{\"x\":4,\"y\":20,\"w\":2,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 6,\n  \"items\": [\n    {\"label\":\"Feeds and view\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_source\",\"rect\":{\"x\":0,\"y\":1,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":3,\"y\":1,\"w\":3,\"h\":1}},\n    {\"label\":\"Stage\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_kabuki\",\"rect\":{\"x\":0,\"y\":4,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_leds\",\"rect\":{\"x\":2,\"y\":4,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_work\",\"rect\":{\"x\":4,\"y\":4,\"w\":2,\"h\":1}},\n    {\"label\":\"Atmosphere\",\"rect\":{\"x\":0,\"y\":5,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_fog\",\"rect\":{\"x\":2,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_beams\",\"rect\":{\"x\":4,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"toggle_talent\",\"rect\":{\"x\":0,\"y\":7,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_index\",\"rect\":{\"x\":2,\"y\":7,\"w\":4,\"h\":1}},\n    {\"member\":\"presets1\",\"rect\":{\"x\":0,\"y\":14,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_orbit\",\"rect\":{\"x\":0,\"y\":2,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_zoom\",\"rect\":{\"x\":3,\"y\":2,\"w\":3,\"h\":1}},\n    {\"label\":\"Projectors\",\"rect\":{\"x\":0,\"y\":15,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_dsThrow\",\"rect\":{\"x\":0,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsOffset\",\"rect\":{\"x\":2,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsTilt\",\"rect\":{\"x\":4,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsKeyV\",\"rect\":{\"x\":0,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_dsKeyH\",\"rect\":{\"x\":3,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_sideTilt\",\"rect\":{\"x\":0,\"y\":18,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideThrow\",\"rect\":{\"x\":2,\"y\":18,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideRoll\",\"rect\":{\"x\":4,\"y\":18,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideKeyV\",\"rect\":{\"x\":0,\"y\":19,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_sideKeyH\",\"rect\":{\"x\":3,\"y\":19,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_deckTone\",\"rect\":{\"x\":0,\"y\":20,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_scrim\",\"rect\":{\"x\":2,\"y\":20,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_strobes\",\"rect\":{\"x\":4,\"y\":20,\"w\":2,\"h\":1}}\n  ]\n}",
           "layout": "",
           "remote": false,
           "title": "Stage previz"
@@ -6435,7 +6437,7 @@
       "drapeDepth": {
         "definitionVersion": 1,
         "id": "drapeDepth",
-        "label": "drapeDepth",
+        "label": "render_drapeDepth",
         "parameters": {
           "ambientIntensity": 0,
           "background": [
@@ -6444,10 +6446,10 @@
             0,
             1
           ],
-          "camera": "view",
+          "camera": "camera_view",
           "depthOutput": true,
           "lights": "",
-          "scenes": "geoCurtainDepth geoKabukiDepth"
+          "scenes": "geometry_curtainDepth geometry_kabukiDepth"
         },
         "position": {
           "x": -3800,
@@ -6461,12 +6463,13 @@
         "type": "render"
       },
       "dsKeyH": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "dsKeyH",
-        "label": "dsKeyH",
+        "label": "slider_dsKeyH",
         "parameters": {
           "caption": "DS keystone H, °",
           "channel": "dsKeyH",
+          "defaultValue": 0,
           "max": 30,
           "min": -30,
           "step": 0.1,
@@ -6479,12 +6482,13 @@
         "type": "slider"
       },
       "dsKeyV": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "dsKeyV",
-        "label": "dsKeyV",
+        "label": "slider_dsKeyV",
         "parameters": {
           "caption": "DS keystone V, °",
           "channel": "dsKeyV",
+          "defaultValue": 0,
           "max": 30,
           "min": -30,
           "step": 0.1,
@@ -6497,12 +6501,13 @@
         "type": "slider"
       },
       "dsOffset": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "dsOffset",
-        "label": "dsOffset",
+        "label": "slider_dsOffset",
         "parameters": {
           "caption": "DS truss Z, ft",
           "channel": "dsOffset",
+          "defaultValue": 0,
           "max": 40,
           "min": -10,
           "step": 0.5,
@@ -6515,12 +6520,13 @@
         "type": "slider"
       },
       "dsThrow": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "dsThrow",
-        "label": "dsThrow",
+        "label": "slider_dsThrow",
         "parameters": {
           "caption": "DS throw ratio",
           "channel": "dsThrow",
+          "defaultValue": 0.37,
           "max": 2.5,
           "min": 0.3,
           "step": 0.01,
@@ -6533,12 +6539,13 @@
         "type": "slider"
       },
       "dsTilt": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "dsTilt",
-        "label": "dsTilt",
+        "label": "slider_dsTilt",
         "parameters": {
           "caption": "DS tilt, ° down",
           "channel": "dsTilt",
+          "defaultValue": 25.6,
           "max": 60,
           "min": -20,
           "step": 0.1,
@@ -6553,14 +6560,14 @@
       "feedDS": {
         "definitionVersion": 1,
         "id": "feedDS",
-        "label": "feedDS",
+        "label": "switch_feedDS",
         "parameters": {
           "crossfade": true,
           "index": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('index').chan.index"
+                "source": "op('slider_index').chan.index"
               },
               "static": {
                 "kind": "static",
@@ -6579,13 +6586,13 @@
       "feedFX": {
         "definitionVersion": 1,
         "id": "feedFX",
-        "label": "feedFX",
+        "label": "switch_feedFX",
         "parameters": {
           "index": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('source').chan.source"
+                "source": "op('slider_source').chan.source"
               },
               "static": {
                 "kind": "static",
@@ -6604,13 +6611,13 @@
       "feedSL": {
         "definitionVersion": 1,
         "id": "feedSL",
-        "label": "feedSL",
+        "label": "switch_feedSL",
         "parameters": {
           "index": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('source').chan.source"
+                "source": "op('slider_source').chan.source"
               },
               "static": {
                 "kind": "static",
@@ -6629,13 +6636,13 @@
       "feedSR": {
         "definitionVersion": 1,
         "id": "feedSR",
-        "label": "feedSR",
+        "label": "switch_feedSR",
         "parameters": {
           "index": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('source').chan.source"
+                "source": "op('slider_source').chan.source"
               },
               "static": {
                 "kind": "static",
@@ -6654,7 +6661,7 @@
       "flipSL": {
         "definitionVersion": 1,
         "id": "flipSL",
-        "label": "flipSL",
+        "label": "flip_SL",
         "parameters": {
           "flipx": true,
           "flipy": false
@@ -6669,12 +6676,13 @@
         }
       },
       "fog": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "fog",
-        "label": "fog",
+        "label": "slider_fog",
         "parameters": {
           "caption": "Low fog",
           "channel": "fog",
+          "defaultValue": 0.35,
           "max": 1,
           "min": 0,
           "step": 0,
@@ -6689,7 +6697,7 @@
       "fxMap": {
         "definitionVersion": 1,
         "id": "fxMap",
-        "label": "fxMap",
+        "label": "movie_fxMap",
         "parameters": {
           "file": "media/stage-previz/fx-pixel-map.png"
         },
@@ -6702,10 +6710,10 @@
       "geoCurtain": {
         "definitionVersion": 1,
         "id": "geoCurtain",
-        "label": "geoCurtain",
+        "label": "geometry_curtain",
         "parameters": {
           "blend": "additive",
-          "material": "matDrape",
+          "material": "material_drape",
           "mode": "surface"
         },
         "position": {
@@ -6717,9 +6725,9 @@
       "geoCurtainDepth": {
         "definitionVersion": 1,
         "id": "geoCurtainDepth",
-        "label": "geoCurtainDepth",
+        "label": "geometry_curtainDepth",
         "parameters": {
-          "material": "matSurface",
+          "material": "material_surface",
           "mode": "surface"
         },
         "position": {
@@ -6731,9 +6739,9 @@
       "geoDeck": {
         "definitionVersion": 1,
         "id": "geoDeck",
-        "label": "geoDeck",
+        "label": "geometry_deck",
         "parameters": {
-          "material": "matDeck",
+          "material": "material_deck",
           "mode": "surface"
         },
         "position": {
@@ -6745,9 +6753,9 @@
       "geoGrid": {
         "definitionVersion": 1,
         "id": "geoGrid",
-        "label": "geoGrid",
+        "label": "geometry_grid",
         "parameters": {
-          "material": "matSurface",
+          "material": "material_surface",
           "mode": "surface"
         },
         "position": {
@@ -6759,10 +6767,10 @@
       "geoKabuki": {
         "definitionVersion": 1,
         "id": "geoKabuki",
-        "label": "geoKabuki",
+        "label": "geometry_kabuki",
         "parameters": {
           "blend": "additive",
-          "material": "matDrape",
+          "material": "material_drape",
           "mode": "surface"
         },
         "position": {
@@ -6774,9 +6782,9 @@
       "geoKabukiDepth": {
         "definitionVersion": 1,
         "id": "geoKabukiDepth",
-        "label": "geoKabukiDepth",
+        "label": "geometry_kabukiDepth",
         "parameters": {
-          "material": "matSurface",
+          "material": "material_surface",
           "mode": "surface"
         },
         "position": {
@@ -6788,9 +6796,9 @@
       "geoLed": {
         "definitionVersion": 1,
         "id": "geoLed",
-        "label": "geoLed",
+        "label": "geometry_led",
         "parameters": {
-          "material": "matLed",
+          "material": "material_led",
           "mode": "surface"
         },
         "position": {
@@ -6802,9 +6810,9 @@
       "geoRig": {
         "definitionVersion": 1,
         "id": "geoRig",
-        "label": "geoRig",
+        "label": "geometry_rig",
         "parameters": {
-          "material": "matSurface",
+          "material": "material_surface",
           "mode": "surface"
         },
         "position": {
@@ -6816,9 +6824,9 @@
       "geoStage": {
         "definitionVersion": 1,
         "id": "geoStage",
-        "label": "geoStage",
+        "label": "geometry_stage",
         "parameters": {
-          "material": "matSurface",
+          "material": "material_surface",
           "mode": "surface"
         },
         "position": {
@@ -6830,9 +6838,9 @@
       "geoStrobe": {
         "definitionVersion": 1,
         "id": "geoStrobe",
-        "label": "geoStrobe",
+        "label": "geometry_strobe",
         "parameters": {
-          "material": "matStrobe",
+          "material": "material_strobe",
           "mode": "surface"
         },
         "position": {
@@ -6844,9 +6852,9 @@
       "geoTalent": {
         "definitionVersion": 1,
         "id": "geoTalent",
-        "label": "geoTalent",
+        "label": "geometry_talent",
         "parameters": {
-          "material": "matSurface",
+          "material": "material_surface",
           "mode": "surface"
         },
         "position": {
@@ -6856,12 +6864,13 @@
         "type": "geometry"
       },
       "haze": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "haze",
-        "label": "haze",
+        "label": "slider_haze",
         "parameters": {
           "caption": "Haze",
           "channel": "haze",
+          "defaultValue": 0.5,
           "max": 1,
           "min": 0,
           "step": 0,
@@ -6874,12 +6883,13 @@
         "type": "slider"
       },
       "kabuki": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "kabuki",
-        "label": "kabuki",
+        "label": "slider_kabuki",
         "parameters": {
           "caption": "Kabuki: in → out",
           "channel": "kabuki",
+          "defaultValue": 1,
           "max": 1,
           "min": 0,
           "step": 0,
@@ -6894,14 +6904,14 @@
       "kabukiFly": {
         "definitionVersion": 1,
         "id": "kabukiFly",
-        "label": "kabukiFly",
+        "label": "kernel_kabukiFly",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('meshKabuki').par.vertices"
+                "source": "op('mesh_kabuki').par.vertices"
               },
               "static": {
                 "kind": "static",
@@ -6915,7 +6925,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('kabuki').chan.kabuki"
+                "source": "op('slider_kabuki').chan.kabuki"
               },
               "static": {
                 "kind": "static",
@@ -6932,12 +6942,13 @@
         "type": "pointKernel"
       },
       "leds": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "leds",
-        "label": "leds",
+        "label": "slider_leds",
         "parameters": {
           "caption": "LEDs",
           "channel": "leds",
+          "defaultValue": 0.6,
           "max": 1,
           "min": 0,
           "step": 0,
@@ -6952,17 +6963,22 @@
       "matDeck": {
         "definitionVersion": 1,
         "id": "matDeck",
-        "label": "matDeck",
+        "label": "material_deck",
         "parameters": {
           "color": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('deckTone').chan.deckTone"
+                "source": "op('slider_deckTone').chan.deckTone"
               },
               "static": {
                 "kind": "static",
-                "value": 0.6
+                "value": [
+                  0.6,
+                  0.6,
+                  0.6,
+                  1
+                ]
               }
             },
             "mode": "expression"
@@ -6979,17 +6995,22 @@
       "matDrape": {
         "definitionVersion": 1,
         "id": "matDrape",
-        "label": "matDrape",
+        "label": "material_drape",
         "parameters": {
           "color": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('scrim').chan.scrim"
+                "source": "op('slider_scrim').chan.scrim"
               },
               "static": {
                 "kind": "static",
-                "value": 0.35
+                "value": [
+                  0.35,
+                  0.35,
+                  0.35,
+                  1
+                ]
               }
             },
             "mode": "expression"
@@ -7006,17 +7027,22 @@
       "matLed": {
         "definitionVersion": 1,
         "id": "matLed",
-        "label": "matLed",
+        "label": "material_led",
         "parameters": {
           "color": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('leds').chan.leds * 2"
+                "source": "op('slider_leds').chan.leds * 2"
               },
               "static": {
                 "kind": "static",
-                "value": 2
+                "value": [
+                  2,
+                  2,
+                  2,
+                  1
+                ]
               }
             },
             "mode": "expression"
@@ -7031,17 +7057,22 @@
       "matStrobe": {
         "definitionVersion": 1,
         "id": "matStrobe",
-        "label": "matStrobe",
+        "label": "material_strobe",
         "parameters": {
           "color": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('strobes').chan.strobes * 4"
+                "source": "op('slider_strobes').chan.strobes * 4"
               },
               "static": {
                 "kind": "static",
-                "value": 2
+                "value": [
+                  2,
+                  2,
+                  2,
+                  1
+                ]
               }
             },
             "mode": "expression"
@@ -7056,7 +7087,7 @@
       "matSurface": {
         "definitionVersion": 1,
         "id": "matSurface",
-        "label": "matSurface",
+        "label": "material_surface",
         "parameters": {
           "color": [
             1,
@@ -7076,7 +7107,7 @@
       "meshCurtain": {
         "definitionVersion": 1,
         "id": "meshCurtain",
-        "label": "meshCurtain",
+        "label": "mesh_curtain",
         "parameters": {
           "clipFrames": 0,
           "clips": "",
@@ -7096,7 +7127,7 @@
       "meshDeck": {
         "definitionVersion": 1,
         "id": "meshDeck",
-        "label": "meshDeck",
+        "label": "mesh_deck",
         "parameters": {
           "file": "media/stage-previz/stage.glb",
           "parts": "1:ds_truss 2:proj_DS 3:proj_SL 4:proj_SR",
@@ -7113,7 +7144,7 @@
       "meshGrid": {
         "definitionVersion": 1,
         "id": "meshGrid",
-        "label": "meshGrid",
+        "label": "mesh_grid",
         "parameters": {
           "clipFrames": 0,
           "clips": "",
@@ -7133,7 +7164,7 @@
       "meshKabuki": {
         "definitionVersion": 1,
         "id": "meshKabuki",
-        "label": "meshKabuki",
+        "label": "mesh_kabuki",
         "parameters": {
           "clipFrames": 0,
           "clips": "",
@@ -7153,7 +7184,7 @@
       "meshLed": {
         "definitionVersion": 1,
         "id": "meshLed",
-        "label": "meshLed",
+        "label": "mesh_led",
         "parameters": {
           "clipFrames": 0,
           "clips": "",
@@ -7173,7 +7204,7 @@
       "meshRig": {
         "definitionVersion": 1,
         "id": "meshRig",
-        "label": "meshRig",
+        "label": "mesh_rig",
         "parameters": {
           "file": "media/stage-previz/stage.glb",
           "parts": "1:ds_truss 2:proj_DS 3:proj_SL 4:proj_SR",
@@ -7190,7 +7221,7 @@
       "meshStage": {
         "definitionVersion": 1,
         "id": "meshStage",
-        "label": "meshStage",
+        "label": "mesh_stage",
         "parameters": {
           "clipFrames": 0,
           "clips": "",
@@ -7210,7 +7241,7 @@
       "meshStrobe": {
         "definitionVersion": 1,
         "id": "meshStrobe",
-        "label": "meshStrobe",
+        "label": "mesh_strobe",
         "parameters": {
           "clipFrames": 0,
           "clips": "",
@@ -7230,7 +7261,7 @@
       "meshTalent": {
         "definitionVersion": 1,
         "id": "meshTalent",
-        "label": "meshTalent",
+        "label": "mesh_talent",
         "parameters": {
           "clipFrames": 0,
           "clips": "",
@@ -7248,12 +7279,13 @@
         "type": "meshFileIn"
       },
       "nd_1ba0b1fe2e5d9": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "nd_1ba0b1fe2e5d9",
-        "label": "index",
+        "label": "slider_index",
         "parameters": {
           "caption": "Index",
           "channel": "index",
+          "defaultValue": 0,
           "max": 1,
           "min": 0,
           "step": 1,
@@ -7319,9 +7351,9 @@
           "curve": "smooth",
           "morph": 0,
           "morphs": "{\n  \"version\": 1,\n  \"records\": []\n}\n",
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"ds37\",\n      \"values\": {\n        \"source\": {\n          \"value\": 0\n        },\n        \"shot\": {\n          \"value\": 4\n        },\n        \"kabuki\": {\n          \"value\": 1\n        },\n        \"leds\": {\n          \"value\": 1\n        },\n        \"work\": {\n          \"value\": 0\n        },\n        \"haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"talent\": {\n          \"on\": true\n        },\n        \"index\": {\n          \"value\": 0\n        },\n        \"orbit\": {\n          \"value\": -41\n        },\n        \"zoom\": {\n          \"value\": -50\n        },\n        \"dsThrow\": {\n          \"value\": 0.37\n        },\n        \"dsOffset\": {\n          \"value\": 0\n        },\n        \"dsTilt\": {\n          \"value\": 32.1\n        },\n        \"dsKeyV\": {\n          \"value\": 30\n        },\n        \"dsKeyH\": {\n          \"value\": 0\n        },\n        \"sideTilt\": {\n          \"value\": 52.29\n        },\n        \"sideThrow\": {\n          \"value\": 1.05\n        },\n        \"sideRoll\": {\n          \"value\": 90\n        },\n        \"sideKeyV\": {\n          \"value\": 0\n        },\n        \"sideKeyH\": {\n          \"value\": 16.22\n        },\n        \"deckTone\": {\n          \"value\": 0.6\n        },\n        \"scrim\": {\n          \"value\": 0.35\n        },\n        \"strobes\": {\n          \"value\": 0.5\n        }\n      }\n    },\n    {\n      \"name\": \"ds74\",\n      \"values\": {\n        \"source\": {\n          \"value\": 0\n        },\n        \"shot\": {\n          \"value\": 4\n        },\n        \"kabuki\": {\n          \"value\": 1\n        },\n        \"leds\": {\n          \"value\": 1\n        },\n        \"work\": {\n          \"value\": 0\n        },\n        \"haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"talent\": {\n          \"on\": true\n        },\n        \"index\": {\n          \"value\": 0\n        },\n        \"orbit\": {\n          \"value\": -3\n        },\n        \"zoom\": {\n          \"value\": -50\n        },\n        \"dsThrow\": {\n          \"value\": 0.74\n        },\n        \"dsOffset\": {\n          \"value\": 16.5\n        },\n        \"dsTilt\": {\n          \"value\": 25.1\n        },\n        \"dsKeyV\": {\n          \"value\": 10.3\n        },\n        \"dsKeyH\": {\n          \"value\": 0\n        },\n        \"sideTilt\": {\n          \"value\": 52.29\n        },\n        \"sideThrow\": {\n          \"value\": 1.05\n        },\n        \"sideRoll\": {\n          \"value\": 90\n        },\n        \"sideKeyV\": {\n          \"value\": 0\n        },\n        \"sideKeyH\": {\n          \"value\": 16.22\n        },\n        \"deckTone\": {\n          \"value\": 0.6\n        },\n        \"scrim\": {\n          \"value\": 0.35\n        },\n        \"strobes\": {\n          \"value\": 0.5\n        }\n      }\n    }\n  ]\n}\n",
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"ds37\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_index\": {\n          \"value\": 0\n        },\n        \"slider_orbit\": {\n          \"value\": -41\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.37\n        },\n        \"slider_dsOffset\": {\n          \"value\": 0\n        },\n        \"slider_dsTilt\": {\n          \"value\": 32.1\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 30\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 52.29\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.05\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 16.22\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        }\n      }\n    },\n    {\n      \"name\": \"ds74\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_index\": {\n          \"value\": 0\n        },\n        \"slider_orbit\": {\n          \"value\": -3\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": 16.5\n        },\n        \"slider_dsTilt\": {\n          \"value\": 25.1\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 10.3\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 52.29\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.05\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 16.22\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        }\n      }\n    }\n  ]\n}\n",
           "select": "",
-          "targets": "source.value shot.value kabuki.value leds.value work.value haze.value fog.value beams.value talent.on index.value orbit.value zoom.value dsThrow.value dsOffset.value dsTilt.value dsKeyV.value dsKeyH.value sideTilt.value sideThrow.value sideRoll.value sideKeyV.value sideKeyH.value deckTone.value scrim.value strobes.value"
+          "targets": "slider_source.value slider_shot.value slider_kabuki.value slider_leds.value slider_work.value slider_haze.value slider_fog.value slider_beams.value toggle_talent.on slider_index.value slider_orbit.value slider_zoom.value slider_dsThrow.value slider_dsOffset.value slider_dsTilt.value slider_dsKeyV.value slider_dsKeyH.value slider_sideTilt.value slider_sideThrow.value slider_sideRoll.value slider_sideKeyV.value slider_sideKeyH.value slider_deckTone.value slider_scrim.value slider_strobes.value"
         },
         "position": {
           "x": -3142.1314325069784,
@@ -7350,7 +7382,7 @@
       "nd_9b04bc5bd9e6x": {
         "definitionVersion": 1,
         "id": "nd_9b04bc5bd9e6x",
-        "label": "syphonDS1",
+        "label": "syphonin_FX",
         "parameters": {
           "source": "info.v002.Syphon.F3118306-361C-4024-8EEC-A03D909269A7"
         },
@@ -7371,7 +7403,7 @@
       "noteFX": {
         "definitionVersion": 1,
         "id": "noteFX",
-        "label": "noteFX",
+        "label": "note_FX",
         "parameters": {
           "body": "Resolume → Syphon: pick the server in syphonFX. ONE 1920 x 1080 stream drives all 63 pixel lines and 38 strobes.\nTop half: the pixel lines seen from the house (30' across = 1920 px; one texel row per bar row).\nBottom half: the strobes in plan, downstage at the bottom (48' across = 1920 px; the riser's back edge at the middle).\nTemplate: fx-pixel-map.png (+ .svg labelled, .csv every texel) beside the session — Source 2 shows it on the rig.\nLevels: LEDs (pixel lines), Strobe level (strobes).",
           "color": "input",
@@ -7390,9 +7422,9 @@
       "noteFeeds": {
         "definitionVersion": 1,
         "id": "noteFeeds",
-        "label": "noteFeeds",
+        "label": "note_feeds",
         "parameters": {
-          "body": "Resolume → Syphon: select each server in syphonSR / syphonSL / syphonDS (inspector, Source). Desktop app on macOS only.\nSource switch: 0 live Syphon, 1 test content, 2 alignment grid. Stage left (projSL) is flipped horizontally after the switch.\nSending one feed to both sides? Pick the same Syphon server in syphonSR and syphonSL: the flip makes them mirror.",
+          "body": "Resolume → Syphon: select each server in syphonin_SR / syphonin_SL / syphonin_DS (inspector, Source). Desktop app on macOS only.\nSource switch: 0 live Syphon, 1 test content, 2 alignment grid. Stage left (projSL) is flipped horizontally after the switch.\nSending one feed to both sides? Pick the same Syphon server in syphonin_SR and syphonin_SL: the flip makes them mirror.",
           "color": "input",
           "title": "Feeds"
         },
@@ -7407,12 +7439,13 @@
         "type": "annotate"
       },
       "orbit": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "orbit",
-        "label": "orbit",
+        "label": "slider_orbit",
         "parameters": {
           "caption": "Orbit, °",
           "channel": "orbit",
+          "defaultValue": 0,
           "max": 180,
           "min": -180,
           "step": 1,
@@ -7427,7 +7460,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": -2000,
@@ -7438,7 +7471,7 @@
       "projDS": {
         "definitionVersion": 1,
         "id": "projDS",
-        "label": "projDS",
+        "label": "projector_DS",
         "parameters": {
           "aspect": 1.6,
           "brightness": 1.1,
@@ -7470,7 +7503,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "9.28 - 0.185 * cos(op('dsTilt').chan.dsTilt * 0.0174532925) - 0.495 * sin(op('dsTilt').chan.dsTilt * 0.0174532925)"
+                "source": "9.28 - 0.185 * cos(op('slider_dsTilt').chan.dsTilt * 0.0174532925) - 0.495 * sin(op('slider_dsTilt').chan.dsTilt * 0.0174532925)"
               },
               "static": {
                 "kind": "static",
@@ -7483,7 +7516,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.0218 + op('dsOffset').chan.dsOffset * 0.3048 + 0.185 * sin(op('dsTilt').chan.dsTilt * 0.0174532925) - 0.495 * cos(op('dsTilt').chan.dsTilt * 0.0174532925)"
+                "source": "1.0218 + op('slider_dsOffset').chan.dsOffset * 0.3048 + 0.185 * sin(op('slider_dsTilt').chan.dsTilt * 0.0174532925) - 0.495 * cos(op('slider_dsTilt').chan.dsTilt * 0.0174532925)"
               },
               "static": {
                 "kind": "static",
@@ -7497,7 +7530,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('dsKeyH').chan.dsKeyH"
+                "source": "op('slider_dsKeyH').chan.dsKeyH"
               },
               "static": {
                 "kind": "static",
@@ -7510,7 +7543,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('dsKeyV').chan.dsKeyV"
+                "source": "op('slider_dsKeyV').chan.dsKeyV"
               },
               "static": {
                 "kind": "static",
@@ -7541,7 +7574,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "9.28 - 0.185 * cos(op('dsTilt').chan.dsTilt * 0.0174532925) - 0.495 * sin(op('dsTilt').chan.dsTilt * 0.0174532925) - sin(op('dsTilt').chan.dsTilt * 0.0174532925) / cos(op('dsTilt').chan.dsTilt * 0.0174532925) * (1.0218 + op('dsOffset').chan.dsOffset * 0.3048 + 0.185 * sin(op('dsTilt').chan.dsTilt * 0.0174532925) - 0.495 * cos(op('dsTilt').chan.dsTilt * 0.0174532925) - (-4.35))"
+                "source": "9.28 - 0.185 * cos(op('slider_dsTilt').chan.dsTilt * 0.0174532925) - 0.495 * sin(op('slider_dsTilt').chan.dsTilt * 0.0174532925) - sin(op('slider_dsTilt').chan.dsTilt * 0.0174532925) / cos(op('slider_dsTilt').chan.dsTilt * 0.0174532925) * (1.0218 + op('slider_dsOffset').chan.dsOffset * 0.3048 + 0.185 * sin(op('slider_dsTilt').chan.dsTilt * 0.0174532925) - 0.495 * cos(op('slider_dsTilt').chan.dsTilt * 0.0174532925) - (-4.35))"
               },
               "static": {
                 "kind": "static",
@@ -7571,7 +7604,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('dsThrow').chan.dsThrow"
+                "source": "op('slider_dsThrow').chan.dsThrow"
               },
               "static": {
                 "kind": "static",
@@ -7590,7 +7623,7 @@
       "projSL": {
         "definitionVersion": 1,
         "id": "projSL",
-        "label": "projSL",
+        "label": "projector_SL",
         "parameters": {
           "aspect": 1.6,
           "brightness": 1.6,
@@ -7610,7 +7643,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1 * op('sideKeyH').chan.sideKeyH"
+                "source": "1 * op('slider_sideKeyH').chan.sideKeyH"
               },
               "static": {
                 "kind": "static",
@@ -7623,7 +7656,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sideKeyV').chan.sideKeyV"
+                "source": "op('slider_sideKeyV').chan.sideKeyV"
               },
               "static": {
                 "kind": "static",
@@ -7641,7 +7674,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "8.15 + -1 * 6.6928 * cos(max(op('sideTilt').chan.sideTilt, 5) * 0.0174532925) / sin(max(op('sideTilt').chan.sideTilt, 5) * 0.0174532925)"
+                "source": "8.15 + -1 * 6.6928 * cos(max(op('slider_sideTilt').chan.sideTilt, 5) * 0.0174532925) / sin(max(op('slider_sideTilt').chan.sideTilt, 5) * 0.0174532925)"
               },
               "static": {
                 "kind": "static",
@@ -7667,7 +7700,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "2.3152 + 0 * 6.6928 * cos(max(op('sideTilt').chan.sideTilt, 5) * 0.0174532925) / sin(max(op('sideTilt').chan.sideTilt, 5) * 0.0174532925)"
+                "source": "2.3152 + 0 * 6.6928 * cos(max(op('slider_sideTilt').chan.sideTilt, 5) * 0.0174532925) / sin(max(op('slider_sideTilt').chan.sideTilt, 5) * 0.0174532925)"
               },
               "static": {
                 "kind": "static",
@@ -7681,7 +7714,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-(op('sideRoll').chan.sideRoll)"
+                "source": "-(op('slider_sideRoll').chan.sideRoll)"
               },
               "static": {
                 "kind": "static",
@@ -7712,7 +7745,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sideThrow').chan.sideThrow"
+                "source": "op('slider_sideThrow').chan.sideThrow"
               },
               "static": {
                 "kind": "static",
@@ -7731,7 +7764,7 @@
       "projSR": {
         "definitionVersion": 1,
         "id": "projSR",
-        "label": "projSR",
+        "label": "projector_SR",
         "parameters": {
           "aspect": 1.6,
           "brightness": 1.6,
@@ -7751,7 +7784,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-1 * op('sideKeyH').chan.sideKeyH"
+                "source": "-1 * op('slider_sideKeyH').chan.sideKeyH"
               },
               "static": {
                 "kind": "static",
@@ -7764,7 +7797,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sideKeyV').chan.sideKeyV"
+                "source": "op('slider_sideKeyV').chan.sideKeyV"
               },
               "static": {
                 "kind": "static",
@@ -7782,7 +7815,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-8.15 + 1 * 6.6928 * cos(max(op('sideTilt').chan.sideTilt, 5) * 0.0174532925) / sin(max(op('sideTilt').chan.sideTilt, 5) * 0.0174532925)"
+                "source": "-8.15 + 1 * 6.6928 * cos(max(op('slider_sideTilt').chan.sideTilt, 5) * 0.0174532925) / sin(max(op('slider_sideTilt').chan.sideTilt, 5) * 0.0174532925)"
               },
               "static": {
                 "kind": "static",
@@ -7808,7 +7841,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "2.3152 + 0 * 6.6928 * cos(max(op('sideTilt').chan.sideTilt, 5) * 0.0174532925) / sin(max(op('sideTilt').chan.sideTilt, 5) * 0.0174532925)"
+                "source": "2.3152 + 0 * 6.6928 * cos(max(op('slider_sideTilt').chan.sideTilt, 5) * 0.0174532925) / sin(max(op('slider_sideTilt').chan.sideTilt, 5) * 0.0174532925)"
               },
               "static": {
                 "kind": "static",
@@ -7822,7 +7855,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sideRoll').chan.sideRoll"
+                "source": "op('slider_sideRoll').chan.sideRoll"
               },
               "static": {
                 "kind": "static",
@@ -7853,7 +7886,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sideThrow').chan.sideThrow"
+                "source": "op('slider_sideThrow').chan.sideThrow"
               },
               "static": {
                 "kind": "static",
@@ -7872,14 +7905,14 @@
       "rigMotion": {
         "definitionVersion": 1,
         "id": "rigMotion",
-        "label": "rigMotion",
+        "label": "kernel_rigMotion",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"surface\",\"type\":\"vec4f\",\"default\":[1,0,0,0]}]",
           "capacity": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('meshRig').par.vertices"
+                "source": "op('mesh_rig').par.vertices"
               },
               "static": {
                 "kind": "static",
@@ -7892,7 +7925,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('dsOffset').chan.dsOffset * 0.3048"
+                "source": "op('slider_dsOffset').chan.dsOffset * 0.3048"
               },
               "static": {
                 "kind": "static",
@@ -7905,7 +7938,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('dsTilt').chan.dsTilt"
+                "source": "op('slider_dsTilt').chan.dsTilt"
               },
               "static": {
                 "kind": "static",
@@ -7919,7 +7952,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sideRoll').chan.sideRoll"
+                "source": "op('slider_sideRoll').chan.sideRoll"
               },
               "static": {
                 "kind": "static",
@@ -7932,7 +7965,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sideTilt').chan.sideTilt"
+                "source": "op('slider_sideTilt').chan.sideTilt"
               },
               "static": {
                 "kind": "static",
@@ -7949,12 +7982,13 @@
         "type": "pointKernel"
       },
       "scrim": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "scrim",
-        "label": "scrim",
+        "label": "slider_scrim",
         "parameters": {
           "caption": "Scrim",
           "channel": "scrim",
+          "defaultValue": 0.35,
           "max": 1,
           "min": 0,
           "step": 0.01,
@@ -7969,13 +8003,13 @@
       "shadowCamDS": {
         "definitionVersion": 1,
         "id": "shadowCamDS",
-        "label": "shadowCamDS",
+        "label": "camera_shadowCamDS",
         "parameters": {
           "eye.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.eye.x"
+                "source": "op('projector_DS').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -7988,7 +8022,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.eye.y"
+                "source": "op('projector_DS').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -8001,7 +8035,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.eye.z"
+                "source": "op('projector_DS').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -8015,7 +8049,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "2 * atan2(0.575 * (1 + 2 * max(abs(op('projDS').par.shiftX), abs(op('projDS').par.shiftY))) / max(0.25, 1 - abs(sin(op('projDS').par.keystoneH * 0.0174532925) / cos(op('projDS').par.keystoneH * 0.0174532925)) - abs(sin(op('projDS').par.keystoneV * 0.0174532925) / cos(op('projDS').par.keystoneV * 0.0174532925))), op('projDS').par.throwRatio * op('projDS').par.aspect) * 57.29578"
+                "source": "2 * atan2(0.575 * (1 + 2 * max(abs(op('projector_DS').par.shiftX), abs(op('projector_DS').par.shiftY))) / max(0.25, 1 - abs(sin(op('projector_DS').par.keystoneH * 0.0174532925) / cos(op('projector_DS').par.keystoneH * 0.0174532925)) - abs(sin(op('projector_DS').par.keystoneV * 0.0174532925) / cos(op('projector_DS').par.keystoneV * 0.0174532925))), op('projector_DS').par.throwRatio * op('projector_DS').par.aspect) * 57.29578"
               },
               "static": {
                 "kind": "static",
@@ -8028,7 +8062,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.lookAt.x"
+                "source": "op('projector_DS').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -8041,7 +8075,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.lookAt.y"
+                "source": "op('projector_DS').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -8054,7 +8088,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.lookAt.z"
+                "source": "op('projector_DS').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -8069,7 +8103,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projDS').par.roll"
+                "source": "op('projector_DS').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -8088,13 +8122,13 @@
       "shadowCamSL": {
         "definitionVersion": 1,
         "id": "shadowCamSL",
-        "label": "shadowCamSL",
+        "label": "camera_shadowCamSL",
         "parameters": {
           "eye.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.eye.x"
+                "source": "op('projector_SL').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -8107,7 +8141,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.eye.y"
+                "source": "op('projector_SL').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -8120,7 +8154,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.eye.z"
+                "source": "op('projector_SL').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -8134,7 +8168,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "2 * atan2(0.575 * (1 + 2 * max(abs(op('projSL').par.shiftX), abs(op('projSL').par.shiftY))) / max(0.25, 1 - abs(sin(op('projSL').par.keystoneH * 0.0174532925) / cos(op('projSL').par.keystoneH * 0.0174532925)) - abs(sin(op('projSL').par.keystoneV * 0.0174532925) / cos(op('projSL').par.keystoneV * 0.0174532925))), op('projSL').par.throwRatio * op('projSL').par.aspect) * 57.29578"
+                "source": "2 * atan2(0.575 * (1 + 2 * max(abs(op('projector_SL').par.shiftX), abs(op('projector_SL').par.shiftY))) / max(0.25, 1 - abs(sin(op('projector_SL').par.keystoneH * 0.0174532925) / cos(op('projector_SL').par.keystoneH * 0.0174532925)) - abs(sin(op('projector_SL').par.keystoneV * 0.0174532925) / cos(op('projector_SL').par.keystoneV * 0.0174532925))), op('projector_SL').par.throwRatio * op('projector_SL').par.aspect) * 57.29578"
               },
               "static": {
                 "kind": "static",
@@ -8147,7 +8181,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.lookAt.x"
+                "source": "op('projector_SL').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -8160,7 +8194,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.lookAt.y"
+                "source": "op('projector_SL').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -8173,7 +8207,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.lookAt.z"
+                "source": "op('projector_SL').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -8188,7 +8222,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSL').par.roll"
+                "source": "op('projector_SL').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -8207,13 +8241,13 @@
       "shadowCamSR": {
         "definitionVersion": 1,
         "id": "shadowCamSR",
-        "label": "shadowCamSR",
+        "label": "camera_shadowCamSR",
         "parameters": {
           "eye.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.eye.x"
+                "source": "op('projector_SR').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -8226,7 +8260,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.eye.y"
+                "source": "op('projector_SR').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -8239,7 +8273,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.eye.z"
+                "source": "op('projector_SR').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -8253,7 +8287,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "2 * atan2(0.575 * (1 + 2 * max(abs(op('projSR').par.shiftX), abs(op('projSR').par.shiftY))) / max(0.25, 1 - abs(sin(op('projSR').par.keystoneH * 0.0174532925) / cos(op('projSR').par.keystoneH * 0.0174532925)) - abs(sin(op('projSR').par.keystoneV * 0.0174532925) / cos(op('projSR').par.keystoneV * 0.0174532925))), op('projSR').par.throwRatio * op('projSR').par.aspect) * 57.29578"
+                "source": "2 * atan2(0.575 * (1 + 2 * max(abs(op('projector_SR').par.shiftX), abs(op('projector_SR').par.shiftY))) / max(0.25, 1 - abs(sin(op('projector_SR').par.keystoneH * 0.0174532925) / cos(op('projector_SR').par.keystoneH * 0.0174532925)) - abs(sin(op('projector_SR').par.keystoneV * 0.0174532925) / cos(op('projector_SR').par.keystoneV * 0.0174532925))), op('projector_SR').par.throwRatio * op('projector_SR').par.aspect) * 57.29578"
               },
               "static": {
                 "kind": "static",
@@ -8266,7 +8300,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.lookAt.x"
+                "source": "op('projector_SR').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -8279,7 +8313,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.lookAt.y"
+                "source": "op('projector_SR').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -8292,7 +8326,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.lookAt.z"
+                "source": "op('projector_SR').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -8307,7 +8341,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('projSR').par.roll"
+                "source": "op('projector_SR').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -8326,13 +8360,13 @@
       "shadowDS": {
         "definitionVersion": 1,
         "id": "shadowDS",
-        "label": "shadowDS",
+        "label": "render_shadowDS",
         "parameters": {
           "ambientIntensity": 0,
-          "camera": "shadowCamDS",
+          "camera": "camera_shadowCamDS",
           "depthOutput": true,
-          "lights": "workKey",
-          "scenes": "geoStage geoGrid geoCurtain geoKabuki geoTalent geoDeck"
+          "lights": "light_workKey",
+          "scenes": "geometry_stage geometry_grid geometry_curtain geometry_kabuki geometry_talent geometry_deck"
         },
         "position": {
           "x": -2900,
@@ -8348,13 +8382,13 @@
       "shadowSL": {
         "definitionVersion": 1,
         "id": "shadowSL",
-        "label": "shadowSL",
+        "label": "render_shadowSL",
         "parameters": {
           "ambientIntensity": 0,
-          "camera": "shadowCamSL",
+          "camera": "camera_shadowCamSL",
           "depthOutput": true,
-          "lights": "workKey",
-          "scenes": "geoStage geoGrid geoCurtain geoKabuki geoTalent geoDeck"
+          "lights": "light_workKey",
+          "scenes": "geometry_stage geometry_grid geometry_curtain geometry_kabuki geometry_talent geometry_deck"
         },
         "position": {
           "x": -2900,
@@ -8370,13 +8404,13 @@
       "shadowSR": {
         "definitionVersion": 1,
         "id": "shadowSR",
-        "label": "shadowSR",
+        "label": "render_shadowSR",
         "parameters": {
           "ambientIntensity": 0,
-          "camera": "shadowCamSR",
+          "camera": "camera_shadowCamSR",
           "depthOutput": true,
-          "lights": "workKey",
-          "scenes": "geoStage geoGrid geoCurtain geoKabuki geoTalent geoDeck"
+          "lights": "light_workKey",
+          "scenes": "geometry_stage geometry_grid geometry_curtain geometry_kabuki geometry_talent geometry_deck"
         },
         "position": {
           "x": -2900,
@@ -8390,12 +8424,13 @@
         "type": "render"
       },
       "shot": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "shot",
-        "label": "shot",
+        "label": "slider_shot",
         "parameters": {
           "caption": "Shot: FOH · iso · wing · proj · wide",
           "channel": "shot",
+          "defaultValue": 0,
           "max": 4,
           "min": 0,
           "step": 1,
@@ -8408,12 +8443,13 @@
         "type": "slider"
       },
       "sideKeyH": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "sideKeyH",
-        "label": "sideKeyH",
+        "label": "slider_sideKeyH",
         "parameters": {
           "caption": "Side keystone H, °",
           "channel": "sideKeyH",
+          "defaultValue": 25.03,
           "max": 45,
           "min": -45,
           "step": 0.01,
@@ -8426,12 +8462,13 @@
         "type": "slider"
       },
       "sideKeyV": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "sideKeyV",
-        "label": "sideKeyV",
+        "label": "slider_sideKeyV",
         "parameters": {
           "caption": "Side keystone V, °",
           "channel": "sideKeyV",
+          "defaultValue": 0,
           "max": 30,
           "min": -30,
           "step": 0.1,
@@ -8444,12 +8481,13 @@
         "type": "slider"
       },
       "sideRoll": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "sideRoll",
-        "label": "sideRoll",
+        "label": "slider_sideRoll",
         "parameters": {
           "caption": "Side roll, °",
           "channel": "sideRoll",
+          "defaultValue": 90,
           "max": 180,
           "min": -180,
           "step": 1,
@@ -8462,12 +8500,13 @@
         "type": "slider"
       },
       "sideThrow": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "sideThrow",
-        "label": "sideThrow",
+        "label": "slider_sideThrow",
         "parameters": {
           "caption": "Side throw ratio",
           "channel": "sideThrow",
+          "defaultValue": 1.4323,
           "max": 4,
           "min": 0.5,
           "step": 0.01,
@@ -8480,12 +8519,13 @@
         "type": "slider"
       },
       "sideTilt": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "sideTilt",
-        "label": "sideTilt",
+        "label": "slider_sideTilt",
         "parameters": {
           "caption": "Side tilt, ° down",
           "channel": "sideTilt",
+          "defaultValue": 36.79,
           "max": 89,
           "min": 10,
           "step": 0.01,
@@ -8498,12 +8538,13 @@
         "type": "slider"
       },
       "source": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "source",
-        "label": "source",
+        "label": "slider_source",
         "parameters": {
           "caption": "Source: live · test · grid",
           "channel": "source",
+          "defaultValue": 1,
           "max": 2,
           "min": 0,
           "step": 1,
@@ -8518,7 +8559,7 @@
       "stage": {
         "definitionVersion": 1,
         "id": "stage",
-        "label": "stage",
+        "label": "render_stage",
         "parameters": {
           "ambientColor": [
             0.6,
@@ -8534,11 +8575,11 @@
             0,
             1
           ],
-          "camera": "view",
+          "camera": "camera_view",
           "depthOutput": true,
-          "lights": "workKey workRim",
-          "projectors": "projSR projSL projDS",
-          "scenes": "geoStage geoGrid geoCurtain geoKabuki geoTalent geoLed geoRig geoDeck geoStrobe"
+          "lights": "light_workKey light_workRim",
+          "projectors": "projector_SR projector_SL projector_DS",
+          "scenes": "geometry_stage geometry_grid geometry_curtain geometry_kabuki geometry_talent geometry_led geometry_rig geometry_deck geometry_strobe"
         },
         "position": {
           "x": -2900,
@@ -8547,12 +8588,13 @@
         "type": "render"
       },
       "strobes": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "strobes",
-        "label": "strobes",
+        "label": "slider_strobes",
         "parameters": {
           "caption": "Strobe level",
           "channel": "strobes",
+          "defaultValue": 0.5,
           "max": 1,
           "min": 0,
           "step": 0.01,
@@ -8567,7 +8609,7 @@
       "syphonDS": {
         "definitionVersion": 1,
         "id": "syphonDS",
-        "label": "syphonDS",
+        "label": "syphonin_DS",
         "parameters": {
           "source": "info.v002.Syphon.D08031AE-9529-4744-8737-91D45521E8BC"
         },
@@ -8583,7 +8625,7 @@
       "syphonSL": {
         "definitionVersion": 1,
         "id": "syphonSL",
-        "label": "syphonSL",
+        "label": "syphonin_SL",
         "parameters": {
           "source": "info.v002.Syphon.CB90C220-0A7E-432E-92EE-507B60C7A037"
         },
@@ -8596,7 +8638,7 @@
       "syphonSR": {
         "definitionVersion": 1,
         "id": "syphonSR",
-        "label": "syphonSR",
+        "label": "syphonin_SR",
         "parameters": {
           "source": "info.v002.Syphon.C4BA3005-279B-446C-BD5A-8842E5AD8AB9"
         },
@@ -8607,12 +8649,13 @@
         "type": "syphonIn"
       },
       "talent": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "talent",
-        "label": "talent",
+        "label": "toggle_talent",
         "parameters": {
           "caption": "Talent stand-ins",
           "channel": "talent",
+          "defaultOn": true,
           "on": true
         },
         "position": {
@@ -8624,14 +8667,14 @@
       "talentShow": {
         "definitionVersion": 1,
         "id": "talentShow",
-        "label": "talentShow",
+        "label": "kernel_talentShow",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('meshTalent').par.vertices"
+                "source": "op('mesh_talent').par.vertices"
               },
               "static": {
                 "kind": "static",
@@ -8645,7 +8688,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('talent').chan.talent"
+                "source": "op('toggle_talent').chan.talent"
               },
               "static": {
                 "kind": "static",
@@ -8664,7 +8707,7 @@
       "testBeams": {
         "definitionVersion": 1,
         "id": "testBeams",
-        "label": "testBeams",
+        "label": "wgsl_testBeams",
         "parameters": {
           "hold": 8,
           "hue": 0,
@@ -8681,7 +8724,7 @@
       "testFX": {
         "definitionVersion": 1,
         "id": "testFX",
-        "label": "testFX",
+        "label": "wgsl_testFX",
         "parameters": {
           "level": 1,
           "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// Stage previz — FX feed test content (generated by src/projects/stage-previz/test-content.ts).\nstruct Params {\n  speed: f32, // @default 0.25  Cycles per second.\n  level: f32, // @default 1  Overall brightness.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn hue(h: f32) -> vec3f {\n  return clamp(abs(fract(h + vec3f(0.0, 0.6666667, 0.3333333)) * 6.0 - 3.0) - 1.0, vec3f(0.0), vec3f(1.0));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let keep = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).a * 0.0;\n  let t = frameU.time * params.speed;\n  var c = vec3f(0.0);\n  if (uv.y < 0.5) {\n    let up = 1.0 - uv.y * 2.0;                      // 0 at the lowest rack row, 1 at the top truss row\n    let band = 1.0 - smoothstep(0.0, 0.16, abs(fract(t * 0.5) - up));\n    c = hue(fract(uv.x * 0.8 - t)) * (0.3 + 0.7 * band);\n  } else {\n    let upstage = 1.0 - (uv.y - 0.5) * 2.0;         // 0 at the downstage edge, 1 at the riser's back\n    let phase = fract(t - uv.x * 0.7 - upstage * 0.3);\n    let flash = select(0.0, 1.0, phase < 0.06);\n    c = hue(fract(t * 0.3 + upstage * 0.25)) * 0.22 + vec3f(flash);\n  }\n  return vec4f(c * params.level + keep, 1.0);\n}\n",
@@ -8696,7 +8739,7 @@
       "testGrid": {
         "definitionVersion": 1,
         "id": "testGrid",
-        "label": "testGrid",
+        "label": "wgsl_testGrid",
         "parameters": {
           "cells": 16,
           "level": 1,
@@ -8711,7 +8754,7 @@
       "testVideo": {
         "definitionVersion": 1,
         "id": "testVideo",
-        "label": "testVideo",
+        "label": "movie_testVideo",
         "parameters": {
           "extend": "loop",
           "file": "media/shibuya-crossing.mp4",
@@ -8733,7 +8776,7 @@
       "view": {
         "definitionVersion": 1,
         "id": "view",
-        "label": "view",
+        "label": "camera_view",
         "parameters": {
           "eye": [
             0,
@@ -8744,7 +8787,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0 + 0.2351 * (op('shot').chan.shot >= 0.5) + 0.0158 * (op('shot').chan.shot >= 1.5) + -0.251 * (op('shot').chan.shot >= 2.5) + -0.0403 * (op('shot').chan.shot >= 3.5) + max(0.05, 1 + op('zoom').chan.zoom * 0.3048 / (14.875 + 14.1592 * (op('shot').chan.shot >= 0.5) + -11.9509 * (op('shot').chan.shot >= 1.5) + -12.7915 * (op('shot').chan.shot >= 2.5) + 30.4943 * (op('shot').chan.shot >= 3.5))) * ((0 + -17.2351 * (op('shot').chan.shot >= 0.5) + 1.4842 * (op('shot').chan.shot >= 1.5) + 15.751 * (op('shot').chan.shot >= 2.5) + 6.0403 * (op('shot').chan.shot >= 3.5)) * cos(op('orbit').chan.orbit * 0.0174532925) + (14.6111 + 7.1862 * (op('shot').chan.shot >= 0.5) + -15.3117 * (op('shot').chan.shot >= 1.5) + -2.4652 * (op('shot').chan.shot >= 2.5) + 30.2082 * (op('shot').chan.shot >= 3.5)) * sin(op('orbit').chan.orbit * 0.0174532925))"
+                "source": "0 + 0.2351 * (op('slider_shot').chan.shot >= 0.5) + 0.0158 * (op('slider_shot').chan.shot >= 1.5) + -0.251 * (op('slider_shot').chan.shot >= 2.5) + -0.0403 * (op('slider_shot').chan.shot >= 3.5) + max(0.05, 1 + op('slider_zoom').chan.zoom * 0.3048 / (14.875 + 14.1592 * (op('slider_shot').chan.shot >= 0.5) + -11.9509 * (op('slider_shot').chan.shot >= 1.5) + -12.7915 * (op('slider_shot').chan.shot >= 2.5) + 30.4943 * (op('slider_shot').chan.shot >= 3.5))) * ((0 + -17.2351 * (op('slider_shot').chan.shot >= 0.5) + 1.4842 * (op('slider_shot').chan.shot >= 1.5) + 15.751 * (op('slider_shot').chan.shot >= 2.5) + 6.0403 * (op('slider_shot').chan.shot >= 3.5)) * cos(op('slider_orbit').chan.orbit * 0.0174532925) + (14.6111 + 7.1862 * (op('slider_shot').chan.shot >= 0.5) + -15.3117 * (op('slider_shot').chan.shot >= 1.5) + -2.4652 * (op('slider_shot').chan.shot >= 2.5) + 30.2082 * (op('slider_shot').chan.shot >= 3.5)) * sin(op('slider_orbit').chan.orbit * 0.0174532925))"
               },
               "static": {
                 "kind": "static",
@@ -8757,7 +8800,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "4.5394 + -0.4542 * (op('shot').chan.shot >= 0.5) + 0.4119 * (op('shot').chan.shot >= 1.5) + 2.3811 * (op('shot').chan.shot >= 2.5) + -2.2877 * (op('shot').chan.shot >= 3.5) + max(0.05, 1 + op('zoom').chan.zoom * 0.3048 / (14.875 + 14.1592 * (op('shot').chan.shot >= 0.5) + -11.9509 * (op('shot').chan.shot >= 1.5) + -12.7915 * (op('shot').chan.shot >= 2.5) + 30.4943 * (op('shot').chan.shot >= 3.5))) * (-2.7894 + 11.2042 * (op('shot').chan.shot >= 0.5) + -9.7119 * (op('shot').chan.shot >= 1.5) + 2.7989 * (op('shot').chan.shot >= 2.5) + -0.0923 * (op('shot').chan.shot >= 3.5))"
+                "source": "4.5394 + -0.4542 * (op('slider_shot').chan.shot >= 0.5) + 0.4119 * (op('slider_shot').chan.shot >= 1.5) + 2.3811 * (op('slider_shot').chan.shot >= 2.5) + -2.2877 * (op('slider_shot').chan.shot >= 3.5) + max(0.05, 1 + op('slider_zoom').chan.zoom * 0.3048 / (14.875 + 14.1592 * (op('slider_shot').chan.shot >= 0.5) + -11.9509 * (op('slider_shot').chan.shot >= 1.5) + -12.7915 * (op('slider_shot').chan.shot >= 2.5) + 30.4943 * (op('slider_shot').chan.shot >= 3.5))) * (-2.7894 + 11.2042 * (op('slider_shot').chan.shot >= 0.5) + -9.7119 * (op('slider_shot').chan.shot >= 1.5) + 2.7989 * (op('slider_shot').chan.shot >= 2.5) + -0.0923 * (op('slider_shot').chan.shot >= 3.5))"
               },
               "static": {
                 "kind": "static",
@@ -8770,7 +8813,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.3889 + -1.1862 * (op('shot').chan.shot >= 0.5) + 1.8117 * (op('shot').chan.shot >= 1.5) + -3.013 * (op('shot').chan.shot >= 2.5) + 1.77 * (op('shot').chan.shot >= 3.5) + max(0.05, 1 + op('zoom').chan.zoom * 0.3048 / (14.875 + 14.1592 * (op('shot').chan.shot >= 0.5) + -11.9509 * (op('shot').chan.shot >= 1.5) + -12.7915 * (op('shot').chan.shot >= 2.5) + 30.4943 * (op('shot').chan.shot >= 3.5))) * ((14.6111 + 7.1862 * (op('shot').chan.shot >= 0.5) + -15.3117 * (op('shot').chan.shot >= 1.5) + -2.4652 * (op('shot').chan.shot >= 2.5) + 30.2082 * (op('shot').chan.shot >= 3.5)) * cos(op('orbit').chan.orbit * 0.0174532925) - (0 + -17.2351 * (op('shot').chan.shot >= 0.5) + 1.4842 * (op('shot').chan.shot >= 1.5) + 15.751 * (op('shot').chan.shot >= 2.5) + 6.0403 * (op('shot').chan.shot >= 3.5)) * sin(op('orbit').chan.orbit * 0.0174532925))"
+                "source": "0.3889 + -1.1862 * (op('slider_shot').chan.shot >= 0.5) + 1.8117 * (op('slider_shot').chan.shot >= 1.5) + -3.013 * (op('slider_shot').chan.shot >= 2.5) + 1.77 * (op('slider_shot').chan.shot >= 3.5) + max(0.05, 1 + op('slider_zoom').chan.zoom * 0.3048 / (14.875 + 14.1592 * (op('slider_shot').chan.shot >= 0.5) + -11.9509 * (op('slider_shot').chan.shot >= 1.5) + -12.7915 * (op('slider_shot').chan.shot >= 2.5) + 30.4943 * (op('slider_shot').chan.shot >= 3.5))) * ((14.6111 + 7.1862 * (op('slider_shot').chan.shot >= 0.5) + -15.3117 * (op('slider_shot').chan.shot >= 1.5) + -2.4652 * (op('slider_shot').chan.shot >= 2.5) + 30.2082 * (op('slider_shot').chan.shot >= 3.5)) * cos(op('slider_orbit').chan.orbit * 0.0174532925) - (0 + -17.2351 * (op('slider_shot').chan.shot >= 0.5) + 1.4842 * (op('slider_shot').chan.shot >= 1.5) + 15.751 * (op('slider_shot').chan.shot >= 2.5) + 6.0403 * (op('slider_shot').chan.shot >= 3.5)) * sin(op('slider_orbit').chan.orbit * 0.0174532925))"
               },
               "static": {
                 "kind": "static",
@@ -8784,7 +8827,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "45.7473 + -8.4483 * (op('shot').chan.shot >= 0.5) + 16.4025 * (op('shot').chan.shot >= 1.5) + -7.9543 * (op('shot').chan.shot >= 2.5) + -8.4483 * (op('shot').chan.shot >= 3.5)"
+                "source": "45.7473 + -8.4483 * (op('slider_shot').chan.shot >= 0.5) + 16.4025 * (op('slider_shot').chan.shot >= 1.5) + -7.9543 * (op('slider_shot').chan.shot >= 2.5) + -8.4483 * (op('slider_shot').chan.shot >= 3.5)"
               },
               "static": {
                 "kind": "static",
@@ -8802,7 +8845,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0 + 0.2351 * (op('shot').chan.shot >= 0.5) + 0.0158 * (op('shot').chan.shot >= 1.5) + -0.251 * (op('shot').chan.shot >= 2.5) + -0.0403 * (op('shot').chan.shot >= 3.5)"
+                "source": "0 + 0.2351 * (op('slider_shot').chan.shot >= 0.5) + 0.0158 * (op('slider_shot').chan.shot >= 1.5) + -0.251 * (op('slider_shot').chan.shot >= 2.5) + -0.0403 * (op('slider_shot').chan.shot >= 3.5)"
               },
               "static": {
                 "kind": "static",
@@ -8815,7 +8858,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "4.5394 + -0.4542 * (op('shot').chan.shot >= 0.5) + 0.4119 * (op('shot').chan.shot >= 1.5) + 2.3811 * (op('shot').chan.shot >= 2.5) + -2.2877 * (op('shot').chan.shot >= 3.5)"
+                "source": "4.5394 + -0.4542 * (op('slider_shot').chan.shot >= 0.5) + 0.4119 * (op('slider_shot').chan.shot >= 1.5) + 2.3811 * (op('slider_shot').chan.shot >= 2.5) + -2.2877 * (op('slider_shot').chan.shot >= 3.5)"
               },
               "static": {
                 "kind": "static",
@@ -8828,7 +8871,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.3889 + -1.1862 * (op('shot').chan.shot >= 0.5) + 1.8117 * (op('shot').chan.shot >= 1.5) + -3.013 * (op('shot').chan.shot >= 2.5) + 1.77 * (op('shot').chan.shot >= 3.5)"
+                "source": "0.3889 + -1.1862 * (op('slider_shot').chan.shot >= 0.5) + 1.8117 * (op('slider_shot').chan.shot >= 1.5) + -3.013 * (op('slider_shot').chan.shot >= 2.5) + 1.77 * (op('slider_shot').chan.shot >= 3.5)"
               },
               "static": {
                 "kind": "static",
@@ -8849,12 +8892,13 @@
         "type": "camera"
       },
       "work": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "work",
-        "label": "work",
+        "label": "slider_work",
         "parameters": {
           "caption": "Work light",
           "channel": "work",
+          "defaultValue": 0.15,
           "max": 1,
           "min": 0,
           "step": 0,
@@ -8869,7 +8913,7 @@
       "workKey": {
         "definitionVersion": 1,
         "id": "workKey",
-        "label": "workKey",
+        "label": "light_workKey",
         "parameters": {
           "color": [
             1,
@@ -8886,7 +8930,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('work').chan.work * 0.9"
+                "source": "op('slider_work').chan.work * 0.9"
               },
               "static": {
                 "kind": "static",
@@ -8907,7 +8951,7 @@
       "workRim": {
         "definitionVersion": 1,
         "id": "workRim",
-        "label": "workRim",
+        "label": "light_workRim",
         "parameters": {
           "color": [
             0.7,
@@ -8924,7 +8968,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('work').chan.work * 0.5"
+                "source": "op('slider_work').chan.work * 0.5"
               },
               "static": {
                 "kind": "static",
@@ -8943,12 +8987,13 @@
         "type": "light"
       },
       "zoom": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "zoom",
-        "label": "zoom",
+        "label": "slider_zoom",
         "parameters": {
           "caption": "Zoom, ft",
           "channel": "zoom",
+          "defaultValue": 0,
           "max": 80,
           "min": -80,
           "step": 0.5,

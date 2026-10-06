@@ -1,7 +1,7 @@
 import type { GraphEdge, GraphNode } from "../../domain/types/graph.ts";
 import { edge, expressionSlot, node } from "../../examples/documents/builders.ts";
 import type { StageFacts } from "./facts.ts";
-import { chan } from "./slots.ts";
+import { chan, grey } from "./slots.ts";
 import { TEST_FX_WGSL } from "./test-content.ts";
 
 /**
@@ -49,13 +49,13 @@ export function applyFx(nodes: Record<string, GraphNode>, edges: Record<string, 
 
   // The pixel lines: the `led` area the session already draws, now reading the feed.
   const matLed = nodes["matLed"];
-  if (matLed !== undefined) put({ ...matLed, parameters: { ...matLed.parameters, color: expressionSlot(`${chan("leds")} * 2`, 2) } });
+  if (matLed !== undefined) put({ ...matLed, parameters: { ...matLed.parameters, color: expressionSlot(`${chan("leds")} * 2`, grey(2)) } });
   wire(edge("e-feedFX-matLed", ["feedFX", "out"], ["matLed", "albedo"]));
 
   // The strobes: their windows on the grated decks, a mesh area of their own.
   const strobe = facts.areas.strobe;
   put(node("meshStrobe", "meshFileIn", FX_POSITIONS.strobeMesh, { file: facts.glbUrl, select: strobe.select, vertices: strobe.vertices, triangles: strobe.triangles }, { label: "meshStrobe" }));
-  put(node("matStrobe", "materialUnlit", FX_POSITIONS.strobeMaterial, {}, { label: "matStrobe", parameters: { color: expressionSlot(`${chan("strobes")} * 4`, 2) } }));
+  put(node("matStrobe", "materialUnlit", FX_POSITIONS.strobeMaterial, {}, { label: "matStrobe", parameters: { color: expressionSlot(`${chan("strobes")} * 4`, grey(2)) } }));
   put(node("geoStrobe", "geometry", FX_POSITIONS.strobeGeometry, { mode: "surface", material: "matStrobe" }, { label: "geoStrobe" }));
   wire(edge("e-meshStrobe-geoStrobe", ["meshStrobe", "out"], ["geoStrobe", "points"]));
   wire(edge("e-feedFX-matStrobe", ["feedFX", "out"], ["matStrobe", "albedo"]));

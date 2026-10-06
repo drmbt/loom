@@ -75,3 +75,12 @@ export function viewSlots(facts: StageFacts): Slots {
     fov: expressionSlot(shot((s) => s.fov), first.fov),
   };
 }
+
+/**
+ * T1641b: the colour a scalar expression stands for, as a colour. A colour parameter driven by
+ * `chan(...) * k` broadcasts the number to grey, so the static it falls back to has to be that
+ * grey with full alpha, not the bare number (which a colour cannot take, and so never applied).
+ */
+export function grey(level: number): [number, number, number, number] {
+  return [level, level, level, 1];
+}
