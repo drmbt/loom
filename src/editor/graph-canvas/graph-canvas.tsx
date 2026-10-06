@@ -31,7 +31,7 @@ import { arePortsCompatible } from "@domain/graph/port-compat.ts";
 import { parseHandleId } from "@domain/graph/edge-order.ts";
 import type { CommandResult, InvocationContext } from "@domain/types/commands.ts";
 import type { ComponentRegistryView } from "@domain/components/index.ts";
-import type { GraphEdge } from "@domain/types/graph.ts";
+import type { GraphDocument, GraphEdge } from "@domain/types/graph.ts";
 import type { EdgeId, NodeId } from "@domain/types/ids.ts";
 import type { GraphPatch, GraphPatchOperation } from "@domain/types/patch.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
@@ -191,6 +191,15 @@ export interface GraphCanvasProps {
   underlay?: ReactNode;
   /** T603: the component catalogue — instance nodes read version/upgrade marks off it. */
   components?: ComponentRegistryView;
+  /**
+   * T1652b: the document as of its last STRUCTURAL revision — the same nodes, wires, modes
+   * and names as the store's, with values that may be older — as an external store. What
+   * the reference lines are derived from: a line is who reads whom, and a moved value
+   * changes no reference. The host builds it (`revision-watch.ts`, which lives above this
+   * layer); a host that passes none gets the store's document and every revision, which is
+   * what this did before.
+   */
+  structure?: { subscribe(listener: () => void): () => void; get(): GraphDocument };
 }
 
 export function GraphCanvas({
@@ -208,6 +217,7 @@ export function GraphCanvas({
   underlay,
   onHoveredNodeChange,
   onNodeLayoutChange,
+  structure,
 }: GraphCanvasProps) {
   const registry = bus.registry;
   const domainNodes = useStore(bus.store, (state) => state.graph.nodes);
@@ -246,6 +256,10 @@ export function GraphCanvas({
    *
    * Computed only while they are SHOWN: a hidden line costs one boolean, not a walk of
    * every expression in the document on every revision.
+   *
+   * T1652b: and derived per STRUCTURAL revision, not per revision. On a document of 150
+   * nodes and 1200 `op()` reads this walk was 10 000 expression nodes, and every moved
+   * slider ran it and re-rendered all 300 lines — for a picture a value cannot change.
    */
   const referenceLines = useMemo(() => registerReferenceLinesCommand(bus), [bus]);
   const showReferenceLines = useSyncExternalStore(referenceLines.subscribe, referenceLines.get);
@@ -258,10 +272,10 @@ export function GraphCanvas({
   // The map's DOM lands here (see `graph-minimap.tsx`); state, not a ref, so the portal
   // renders once the host exists.
   const [minimapHost, setMinimapHost] = useState<HTMLDivElement | null>(null);
-  const domainGraph = useStore(bus.store, (state) => state.graph);
+  const referenceGraph = useSyncExternalStore(structure?.subscribe ?? bus.store.subscribe, structure?.get ?? bus.store.getGraph);
   const dependencies = useMemo(
-    () => (showReferenceLines ? [...parameterDependencies(domainGraph).values()].flat() : []),
-    [showReferenceLines, domainGraph],
+    () => (showReferenceLines ? [...parameterDependencies(referenceGraph).values()].flat() : []),
+    [showReferenceLines, referenceGraph],
   );
 
   const [viewNodes, setViewNodes] = useState<LoomNode[]>(() => projectNodes(domainNodes));

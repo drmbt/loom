@@ -98,8 +98,23 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
   },
   {
     file: "app/graph-pane.tsx",
-    reads: 3,
-    why: "Canvas gesture handling — an edge drop and its before/after edge count. A gesture is a pointer event, not a frame, and it addresses the nodes the USER can see, which are the authored ones.",
+    reads: 5,
+    why: "Canvas gesture handling — an edge drop and its before/after edge count. A gesture is a pointer event, not a frame, and it addresses the nodes the USER can see, which are the authored ones. T1652b, two more, each on demand and never per frame: the camera pose a viewport gesture starts from, and the node an agent's `render_preview` names. Both used to read the pane's `graph` prop, which no longer moves for a values-only revision; the store's document is the one that holds the value just written.",
+  },
+  {
+    file: "app/revision-watch.ts",
+    reads: 4,
+    why: "T1652b: NOT per frame — once per REVISION (the store's own notification), to classify it as values-only or structural, and three times to take the document the next revision is compared with (at creation, when the first listener attaches, and when `structure()` is asked while nothing listens). It compares AUTHORED documents because a revision is an authored edit; what a frame path reads is still `runtime.flattened.current()`.",
+  },
+  {
+    file: "app/use-live-graph.ts",
+    reads: 2,
+    why: "T1652b: the `useSyncExternalStore` snapshot pair of a PANE that shows values (the canvas, the inspector, the Controls pane). A React value for presentation, taken on a revision the pane shows and never in a frame; the panes lay out and write AUTHORED nodes.",
+  },
+  {
+    file: "app/use-viewer-mapping.ts",
+    reads: 1,
+    why: "T1652b: NOT per frame — when the edit-mapping layer re-derives (a toggle, a document change, a new plan, a resize), to find the Corner Pin / Grid Warp whose handles it draws. AUTHORED nodes, whose parameters a drag writes; it was the pane's `graph` prop until that stopped moving for a values-only revision, which is what a dragged handle is.",
   },
   {
     file: "app/dock-panes.tsx",

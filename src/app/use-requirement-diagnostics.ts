@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import { resolveStored } from "@domain/parameters/index.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FlatGraph } from "@domain/types/graph.ts";
@@ -12,6 +12,8 @@ import {
 } from "@domain/types/requirements.ts";
 import type { OscBridgeState } from "@domain/osc/osc-status.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
+import type { AppRuntime } from "./app-runtime.ts";
+import { revisionWatchFor } from "./revision-watch.ts";
 
 /**
  * T1340b — THE NODE CARRIES ITS OWN LIMITATION, as a diagnostic and not as new chrome.
@@ -143,8 +145,8 @@ export function requirementDiagnostics(
 }
 
 /**
- * The session's requirement warnings, recomputed when the document or the component
- * catalogue changes and at no other time.
+ * The session's requirement warnings, recomputed when the document's STRUCTURE or the
+ * component catalogue changes and at no other time.
  *
  * It reads the store itself rather than taking `compile.graph`, and that is a sequencing
  * fact rather than a preference: `sessionNodeDiagnostics` is an INPUT to `useGraphCompile`
@@ -152,33 +154,44 @@ export function requirementDiagnostics(
  * available before the compile, which `compile.graph` is not. `flattened.current()` is the
  * composition root's memo — the same one the compile reads — so this costs a map lookup,
  * not a second flattening (§V529).
+ *
+ * T1652b: keyed on structure (`revision-watch.ts`), not on every revision. A requirement is
+ * a property of a node's TYPE, or of a value its definition CHOOSES it from (`requires` as
+ * a function) — and a write to a node of that second kind is not a values-only revision
+ * (`classifyRevision` refuses it by rule), so no value can move this list without this hook
+ * hearing of it. It used to be keyed on the flattening, which is a new object per revision:
+ * every moved slider resolved every node of the document here (4 ms of each write on a
+ * 152-node document).
  */
 export function useRequirementDiagnostics(
-  runtime: {
-    readonly bus: { readonly store: { subscribe(listener: () => void): () => void } };
-    readonly components: { subscribe(listener: () => void): () => void };
-    readonly flattened: { current(): { readonly graph: FlatGraph } };
-    readonly registry: NodeRegistryView;
-  },
+  runtime: Pick<AppRuntime, "bus" | "components" | "flattened" | "registry">,
   host: HostFacts,
 ): readonly RuntimeDiagnostic[] {
+  const watch = useMemo(() => revisionWatchFor(runtime.bus.store, runtime.registry), [runtime.bus.store, runtime.registry]);
+  /** Bumped by each notification: the snapshot is a count, stable while nothing structural moved. */
+  const version = useRef(0);
   const subscribe = useCallback(
     (listener: () => void) => {
+      const moved = (): void => {
+        version.current += 1;
+        listener();
+      };
       // §V210(c): a component's INTERNALS can change with the host document untouched —
       // same nodes, same edges, same revision. A Syphon node added inside a component
       // definition must still light its instance, so both notifications are wired.
-      const offStore = runtime.bus.store.subscribe(listener);
-      const offCatalogue = runtime.components.subscribe(listener);
-      return () => { offStore(); offCatalogue(); };
+      const offStructure = watch.subscribeStructure(moved);
+      const offCatalogue = runtime.components.subscribe(moved);
+      return () => { offStructure(); offCatalogue(); };
     },
-    [runtime],
+    [runtime.components, watch],
   );
-  // `current()` is memoized on (document, catalogue revision) and returns the SAME object
-  // when neither moved, which is exactly the stable snapshot `useSyncExternalStore` needs.
-  const snapshot = useCallback(() => runtime.flattened.current(), [runtime]);
-  const flattened = useSyncExternalStore(subscribe, snapshot, snapshot);
+  const read = useCallback(() => version.current, []);
+  const structure = useSyncExternalStore(subscribe, read, read);
   return useMemo(
-    () => requirementDiagnostics(flattened.graph, runtime.registry, host),
-    [flattened, runtime.registry, host],
+    () => {
+      void structure;
+      return requirementDiagnostics(runtime.flattened.current().graph, runtime.registry, host);
+    },
+    [structure, runtime.flattened, runtime.registry, host],
   );
 }

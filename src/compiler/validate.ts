@@ -70,6 +70,12 @@ export interface ResolvedNode {
   readonly parameters: Readonly<Record<string, ParameterValue>>;
   /** T286 (§V287): parameters whose active mode is `map` — the consumer compiles from this. */
   readonly parameterMaps: Readonly<Record<string, ParameterMapBinding>>;
+  /**
+   * T1652b: what resolving THIS node's parameters reported, in the order it was pushed
+   * onto the compilation's list. Kept per node so a values-only revision can ask whether
+   * a node says something different about its new value (`rebaseOnValues`).
+   */
+  readonly said: ReadonlyArray<RuntimeDiagnostic>;
 }
 
 export interface ValidatedGraph {
@@ -269,6 +275,7 @@ export function validateGraph(
         ),
       );
     }
+    const saidFrom = diagnostics.length;
     const resolvedParameters = resolveNodeParameters(
       node,
       // T880: the node's EFFECTIVE schema — a customWgsl reflects its own shader's struct, so
@@ -289,6 +296,7 @@ export function validateGraph(
       definition,
       parameters: { ...resolvedParameters.values },
       parameterMaps: resolvedParameters.maps,
+      said: diagnostics.slice(saidFrom),
     });
   }
 

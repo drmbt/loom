@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { EditPhase } from "@ui/controls/types.ts";
@@ -77,15 +77,24 @@ function useControlValues({ nodeId, type, parameters }: ControlWidgetProps) {
   const [sample, setSample] = useState<LiveValues | null>(null);
   const retained = useMemo(() => Object.fromEntries(Object.entries(parameters).map(([key, value]) =>
     [key, isParameterSlot(value) ? storedStaticValue(value) : value])), [parameters]);
+  /** Whether a sample has been set since the control was last undriven: the only time there is one to clear. */
+  const sampled = useRef(false);
   useEffect(() => {
     if (!active || reader === null) {
-      setSample(null);
+      // T1652b: only when there IS a sample. This effect runs on every write of the control
+      // (its `parameters` are another object), and clearing a sample that is already clear
+      // made React render the widget a second time on every other write to find that out.
+      if (sampled.current) {
+        sampled.current = false;
+        setSample(null);
+      }
       return;
     }
     const tick = () => {
       const resolved = reader.read(nodeId);
       // Keep primitive value samples: a reader may reuse its record between frames.
       const values = Object.fromEntries(keys.map((key) => [key, resolved[key]]));
+      sampled.current = true;
       setSample((previous) => previous?.reader === reader && previous.nodeId === nodeId
         && keys.every((key) => Object.is(previous.values[key], values[key]))
         ? previous : { reader, nodeId, values });
@@ -331,7 +340,21 @@ const WIDGETS: Readonly<Record<string, (props: WidgetProps) => ReturnType<typeof
   xyPad: XYPad,
 };
 
-export function ControlWidget(props: ControlWidgetProps) {
+/**
+ * T1652b — A WIDGET RENDERS WHEN ITS OWN CONTROL DOES, and for nothing else.
+ *
+ * Everything a widget draws comes from its node's stored `parameters` (the value, the
+ * caption, the range, the default its mark stands at, whether a key is driven) and from
+ * the two props that say how big it is drawn. The store hands an untouched node the SAME
+ * `parameters` object across revisions, so comparing the props is comparing exactly what
+ * is shown: one slider written renders one widget, on every surface that draws it.
+ *
+ * It used not to be memoised, and a board is a list: a Panel of forty controls rendered
+ * forty widgets for each one moved (measured: 124 widgets a write on a document with four
+ * Panels, on every write from the desk or a phone). A driven control's live number is its
+ * own state (`useControlValues`), sampled by the widget, and does not come through here.
+ */
+export const ControlWidget = memo(function ControlWidget(props: ControlWidgetProps) {
   const display = useControlValues(props);
   const Widget = WIDGETS[props.type];
   if (Widget === undefined) return null;
@@ -339,4 +362,4 @@ export function ControlWidget(props: ControlWidgetProps) {
   const className = `${styles.widget} ${props.size === "panel" ? styles.panel : props.size === "board" ? styles.board : styles.node}`;
   const defaults = controlDefaultState({ type: props.type, parameters: props.parameters as Record<string, StoredParameter> });
   return <Widget {...props} values={display.values} live={display.live} caption={caption} className={className} defaults={defaults} />;
-}
+});

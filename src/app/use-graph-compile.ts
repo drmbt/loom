@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { compileGraphRetaining, compileLayerWarmPlan, prepareFrameCompiler, timelineStructureRequest } from "@compiler/index.ts";
+import { compileGraphRetaining, compileLayerWarmPlan, prepareFrameCompiler, rebaseOnValues, timelineStructureRequest } from "@compiler/index.ts";
 import { humanizeDiagnostics } from "@domain/graph/index.ts";
 import { classifyGraphChange, isValuesOnly } from "./classify-revision.ts";
 import type {
@@ -42,12 +42,17 @@ import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import { registerCompileCommand } from "./compile-command.ts";
 import type { CompileResultView } from "./compile-command.ts";
+import { revisionWatchFor } from "./revision-watch.ts";
+import type { ValuesRevision } from "./revision-watch.ts";
 
 /**
  * Compiles the document and routes the result to the two places that need it: the
  * problems tab (whole-graph diagnostics) and each node's badge (§V27).
  *
- * The compiler is pure and cheap, so it runs on every revision. Its diagnostics reach a
+ * The compiler is pure, and it runs in full on every STRUCTURAL revision. (T1652b: not on a
+ * values-only one — "cheap" stopped being true at 150 nodes and 1200 references, where the
+ * full compile was 10.8 ms of every moved slider. Such a revision takes `valuesLane` below.)
+ * Its diagnostics reach a
  * node through the runtime channel, NOT through the document — per-node status is
  * derived state and must not enter the store or re-render the tree (§V16). Each node
  * component subscribes to its own id, so a diagnostic on one node repaints one node.
@@ -163,6 +168,38 @@ export interface GraphCompileResult {
    * structural overrides at the playhead the frame loop last asked for — and this says which.
    */
   readonly timeline?: TimelineStructureLink | null | undefined;
+  /**
+   * T1652b — where a VALUES-ONLY revision's plan arrives, without a render.
+   *
+   * `graph`, `flatGraph`, `compiled` and `animate` above are the document and plan AS OF
+   * THIS HOOK'S LAST RENDER, and the hook does not render for a revision that only moved
+   * values: their VALUES may be older than the store's. What reaches the device is not —
+   * the lane hands each such revision's plan and `animate` to whoever attached here (the
+   * frame loop), and a surface that shows a value reads the store (`useLiveGraph`).
+   * The same object for the life of the hook.
+   */
+  readonly values?: ValuesHandoff | undefined;
+  /**
+   * T1652b — the revision `diagnostics` ANSWERS FOR, read when it is asked.
+   *
+   * `graph.revision` is the revision this hook last RENDERED for. A values-only revision
+   * after it was compiled on the lane, which refuses a revision whose diagnostics would
+   * differ — so the list above is that later revision's list too, and a reader asking
+   * "did you look at my edit" (§V338, the agent's `get_diagnostics`) must be told the later
+   * number, not the one of the last render.
+   */
+  readonly answersFor?: (() => number) | undefined;
+}
+
+/** One values-only revision, compiled: its plan and the `animate` bound to it. */
+export interface ValuesPlan {
+  readonly compiled: CompiledGraph;
+  readonly animate: ((frame: FrameEvaluationInput) => CompiledGraph | null) | null;
+}
+
+export interface ValuesHandoff {
+  /** `sink` answers whether the backend took the plan as a uniform write; false sends the revision down the structural road. */
+  attach(sink: (plan: ValuesPlan) => boolean): () => void;
 }
 
 /**
@@ -354,6 +391,112 @@ function compileSafely(
   }
 }
 
+/** The structural compile a frame compiler splices over, with the request it was compiled for. */
+interface CompileBase {
+  readonly request: CompileRequest;
+  readonly result: CompileGraphResult;
+}
+
+/**
+ * `GraphCompileResult.animate` for ONE request: null when nothing in its document animates.
+ *
+ * A function rather than the body of a memo since T1652b: a values-only revision is
+ * compiled on the lane, outside a render, and the frames after it need an `animate` bound
+ * to THAT revision's request exactly as a rendered one is. One factory, so the two cannot
+ * come to mean different things.
+ */
+function frameAnimator(input: {
+  readonly request: CompileRequest;
+  readonly flattened: FlattenedGraph;
+  readonly channels: ChannelResolver;
+  readonly runtime: AppRuntime;
+  /** The newest structural or rebased compile; used only when it is for `request` itself. */
+  readonly base: { readonly current: CompileBase | null };
+}): ((frame: FrameEvaluationInput) => CompiledGraph | null) | null {
+  const { request, flattened, channels, runtime } = input;
+  const flatGraph = flattened.graph;
+  // T615: the gate reads the FLAT document. This is the largest half of the defect and
+  // the least obvious: with a document whose only animation lives inside a component,
+  // `hasAnimatedParameters(raw)` answered FALSE, so `animate` was null, so there was no
+  // per-frame compile at all — which killed the component's internal EXPRESSIONS too,
+  // even though flattening preserves those perfectly. Nothing was broken about the
+  // expression; nothing was ever asked to evaluate it.
+  if (!hasAnimatedParameters(flatGraph)) return null;
+  /**
+   * T1497b — A FADE ENDS, AND THEN THE DOCUMENT IS STILL AGAIN (the design doc §5.3).
+   *
+   * A morph record stays in its bank until the next recall tidies it, so "does this
+   * revision hold a record" would keep an otherwise still document re-resolving every
+   * frame for the rest of the session. When the records are the ONLY thing that
+   * animates, each frame is first asked whether any of them is still fading — and one
+   * frame more is compiled after the last, because that is the frame that pushes the
+   * END value: the fold never reaches p = 1 on a frame it still calls "running", so
+   * stopping with it would leave the GPU one step short of the destination.
+   */
+  const morphs = flattened.morphs;
+  const morphsOnly = !Object.values(flatGraph.nodes).some(nodeHasAnimatedParameters);
+  let landingOwed = false;
+  /**
+   * T1182 — the per-frame compile is VALUES-ONLY wherever the compiler can prove it.
+   *
+   * `prepareFrameCompiler` compiles once in full and, when no animated parameter is
+   * structural (derived from the definitions: `compileTime`, resolution-policy
+   * inputs), re-runs only the animating nodes per frame and splices their passes over
+   * that base. Every frame is still verified against the base's structure keys
+   * (§V936): a frame it cannot prove returns null and the full compile below is the
+   * safety net (§T1176) — the same call as before, unchanged.
+   *
+   * Built LAZILY, on the first frame that asks, and never more than once per animator:
+   * a document that never reaches a frame pays nothing, and a knob drag whose
+   * revisions outrun the display rate prepares one compiler per FRAME, not one per
+   * revision — the one that was superseded before any frame asked builds nothing.
+   * Bound to exactly this request, so a new flat-graph revision (§V935) is a new
+   * compiler: the base it splices over IS the plan the structural compile (or, T1652b,
+   * the values lane) produced for this same `request` (T1254 — handed over through
+   * `base`, so the revision is compiled once, not once per path), which is what
+   * `isUniformOnlyChange` in `animate-parameters.ts` checks against — B95's sink-set
+   * rule, made by construction through one `compileRequest`.
+   *
+   * The compiler's `reason` — why frames compile in full, naming node and key — goes
+   * to the telemetry hub for the performance pane (T1254), when the compiler is
+   * prepared and again when a frame degrades it (§V936).
+   */
+  let frameCompiler: FrameCompiler | null | undefined;
+  const prepare = (): FrameCompiler | null => {
+    try {
+      const shared = input.base.current;
+      return prepareFrameCompiler(request, shared !== null && shared.request === request ? shared.result : undefined);
+    } catch {
+      // A compiler crash is reported by the full compile's own path below, once per
+      // frame as before — not swallowed here, and not thrown into the frame loop.
+      return null;
+    }
+  };
+  return (frame: FrameEvaluationInput): CompiledGraph | null => {
+    if (morphsOnly) {
+      const fading = morphs.activeAt(frame);
+      if (!fading && !landingOwed) return null;
+      landingOwed = fading;
+    }
+    if (frameCompiler === undefined) {
+      frameCompiler = prepare();
+      runtime.telemetry.setFrameCompileReason(frameCompiler?.reason ?? null);
+    }
+    if (frameCompiler !== null) {
+      try {
+        const spliced = frameCompiler.compileFrame({ frame, channels });
+        if (spliced !== null) return spliced;
+        runtime.telemetry.setFrameCompileReason(frameCompiler.reason);
+      } catch {
+        // The fast path may be wrong as long as it detects that it is and pays the
+        // full price (§V936) — a throw is detection; the full compile reports it.
+        frameCompiler = null;
+      }
+    }
+    return compileSafely({ ...request, resolution: { frame, channels } }).compiled;
+  };
+}
+
 /** Publishes per-node diagnostic counts onto the runtime channel (§V16, §V27). */
 function publishNodeStatus(
   store: NodeRuntimeStore,
@@ -451,8 +594,19 @@ export function useGraphCompile(
   sessionDiagnostics: readonly RuntimeDiagnostic[] = NO_SESSION_DIAGNOSTICS,
   settings: ProjectSettings = runtime.settings,
 ): GraphCompileResult {
+  /**
+   * T1652b — THE DOCUMENT THIS HOOK RENDERS FROM: notified for STRUCTURE only.
+   *
+   * It was `store.subscribe`, so every revision re-rendered `App` — and a moved slider is a
+   * revision. A values-only one (`classifyRevision`) is now taken by `valuesLane` below
+   * without a render, so the subscription that re-renders the root is the watch's
+   * structural one. The SNAPSHOT is still the store's own document: when the root renders
+   * for any other reason (a selection, a sink set, a settings edit) it compiles what the
+   * store holds, never a document a value has since moved on from.
+   */
+  const watch = useMemo(() => revisionWatchFor(runtime.bus.store, runtime.registry), [runtime.bus.store, runtime.registry]);
   const graph = useSyncExternalStore<GraphDocument>(
-    runtime.bus.store.subscribe,
+    watch.subscribeStructure,
     runtime.bus.store.getGraph,
     runtime.bus.store.getGraph,
   );
@@ -556,7 +710,23 @@ export function useGraphCompile(
     // value graph, and a backstop that cannot see inside a component is not one.
     // T1524b: with the morph index of the same flattening, so a source parameter a bank is
     // fading publishes the fading value here too, not its destination.
-    const graphChannels = graphChannelResolver(flatGraph, runtime.registry, flattened.morphs);
+    /*
+     * T1652b: ONE resolver for the life of the runtime, reading the flattening the store is
+     * on when it is ASKED. It used to be rebuilt per revision over that revision's flat
+     * graph, which made it one more thing a moved slider replaced — and a values-only
+     * revision is compiled on the lane with THIS reader, so it must be the same object the
+     * base was compiled with (`rebaseOnValues` refuses a base read through another one).
+     * The value graph beside it has always read the live flattening (`use-value-graph.ts`);
+     * the shorthand now does too, rebuilt only when the flattening is another object.
+     */
+    let shorthand: { flattened: FlattenedGraph; resolver: ChannelResolver } | null = null;
+    const graphChannels: ChannelResolver = (channel, context) => {
+      const live = runtime.flattened.current();
+      if (shorthand === null || shorthand.flattened !== live) {
+        shorthand = { flattened: live, resolver: graphChannelResolver(live.graph, runtime.registry, live.morphs) };
+      }
+      return shorthand.resolver(channel, context);
+    };
     if (extraChannels.length === 0) return graphChannels;
     const merged: ChannelResolver = (channel, context) => {
       for (const resolver of extraChannels) {
@@ -569,7 +739,7 @@ export function useGraphCompile(
       return graphChannels(channel, context);
     };
     return merged;
-  }, [extraChannels, flatGraph, flattened, runtime]);
+  }, [extraChannels, runtime]);
 
   /**
    * The SAME object, published to the bus (T593, B121, §V61).
@@ -627,6 +797,31 @@ export function useGraphCompile(
    * DERIVED from the one store both compiles read, so they cannot disagree again.
    */
   /**
+   * The structural memo's retained compile, for the frame compiler (T1254). Written
+   * during render by the `result` memo below, read at the first FRAME — after commit —
+   * by the `animate` closure, and only when it was compiled for that closure's own
+   * `request` (a discarded render, §V904, or an editor-only revision that reused the
+   * previous plan leaves a base for some other request here, and then the frame
+   * compiler compiles its own, exactly as before this ref existed).
+   *
+   * T1652b: and written by the values lane, with the revision it rebased onto.
+   */
+  const baseRef = useRef<CompileBase | null>(null);
+  /** T1652b: where the lane's plan goes — the frame loop attaches itself (`GraphCompileResult.values`). */
+  const valuesSink = useRef<((plan: ValuesPlan) => boolean) | null>(null);
+  const values = useMemo<ValuesHandoff>(
+    () => ({
+      attach(sink) {
+        valuesSink.current = sink;
+        return () => {
+          if (valuesSink.current === sink) valuesSink.current = null;
+        };
+      },
+    }),
+    [],
+  );
+
+  /**
    * THE request, built once per set of inputs for BOTH compiles (T1182, T1254).
    *
    * The structural memo below compiles it in full and keeps the retained form; the
@@ -636,18 +831,31 @@ export function useGraphCompile(
    * verifier both rest on the two paths never compiling different requests.
    */
   const request = useMemo(
-    () =>
-      capabilities === null
-        ? null
-        : compileRequest(
-            graph,
-            flattened,
-            runtime,
-            settings,
-            capabilities,
-            { channels },
-            previewSinks === undefined ? undefined : scheduledPreviews,
-          ),
+    () => {
+      if (capabilities === null) return null;
+      const sinks = previewSinks === undefined ? undefined : scheduledPreviews;
+      /*
+       * T1652b: the values lane compiled this very document outside a render, for a request
+       * of its own (the last rendered one with the document moved on). When a render then
+       * asks for the request of the same inputs, it is THAT object: the retained base in
+       * `baseRef` was compiled for it, and a second, equal request would make the next
+       * frame's compiler refuse the base and compile the document in full.
+       */
+      const held = baseRef.current?.request;
+      if (
+        held !== undefined &&
+        held.graph === graph &&
+        held.flattened === flattened &&
+        held.settings === settings &&
+        held.capabilities === capabilities &&
+        held.registry === runtime.registry &&
+        held.resolution?.channels === channels &&
+        (sinks === undefined || held.sinks === sinks)
+      ) {
+        return held;
+      }
+      return compileRequest(graph, flattened, runtime, settings, capabilities, { channels }, sinks);
+    },
     [capabilities, channels, flattened, graph, runtime, settings, previewSinks, scheduledPreviews],
   );
   /**
@@ -676,99 +884,10 @@ export function useGraphCompile(
     };
   }, [structure, segment, segmentStore]);
 
-  /**
-   * The structural memo's retained compile, for the frame compiler (T1254). Written
-   * during render by the `result` memo below, read at the first FRAME — after commit —
-   * by the `animate` closure, and only when it was compiled for that closure's own
-   * `request` (a discarded render, §V904, or an editor-only revision that reused the
-   * previous plan leaves a base for some other request here, and then the frame
-   * compiler compiles its own, exactly as before this ref existed).
-   */
-  const baseRef = useRef<{ request: CompileRequest; result: CompileGraphResult } | null>(null);
-
-  const animate = useMemo(() => {
-    // T615: the gate reads the FLAT document. This is the largest half of the defect and
-    // the least obvious: with a document whose only animation lives inside a component,
-    // `hasAnimatedParameters(raw)` answered FALSE, so `animate` was null, so there was no
-    // per-frame compile at all — which killed the component's internal EXPRESSIONS too,
-    // even though flattening preserves those perfectly. Nothing was broken about the
-    // expression; nothing was ever asked to evaluate it.
-    if (segmentRequest === null || !hasAnimatedParameters(flatGraph)) return null;
-    const request = segmentRequest;
-    /**
-     * T1497b — A FADE ENDS, AND THEN THE DOCUMENT IS STILL AGAIN (the design doc §5.3).
-     *
-     * A morph record stays in its bank until the next recall tidies it, so "does this
-     * revision hold a record" would keep an otherwise still document re-resolving every
-     * frame for the rest of the session. When the records are the ONLY thing that
-     * animates, each frame is first asked whether any of them is still fading — and one
-     * frame more is compiled after the last, because that is the frame that pushes the
-     * END value: the fold never reaches p = 1 on a frame it still calls "running", so
-     * stopping with it would leave the GPU one step short of the destination.
-     */
-    const morphs = flattened.morphs;
-    const morphsOnly = !Object.values(flatGraph.nodes).some(nodeHasAnimatedParameters);
-    let landingOwed = false;
-    /**
-     * T1182 — the per-frame compile is VALUES-ONLY wherever the compiler can prove it.
-     *
-     * `prepareFrameCompiler` compiles once in full and, when no animated parameter is
-     * structural (derived from the definitions: `compileTime`, resolution-policy
-     * inputs), re-runs only the animating nodes per frame and splices their passes over
-     * that base. Every frame is still verified against the base's structure keys
-     * (§V936): a frame it cannot prove returns null and the full compile below is the
-     * safety net (§T1176) — the same call as before, unchanged.
-     *
-     * Built LAZILY, on the first frame that asks, and never more than once per memo:
-     * a document that never reaches a frame pays nothing, and a knob drag whose
-     * revisions outrun the display rate prepares one compiler per FRAME, not one per
-     * revision — the memo that was superseded before any frame asked builds nothing.
-     * Keyed on exactly this memo's inputs, so a new flat-graph revision (§V935) is a
-     * new compiler: the base it splices over IS the plan the structural compile below
-     * produced for this same `request` (T1254 — handed over through `baseRef`, so the
-     * revision is compiled once, not once per path), which is what `isUniformOnlyChange`
-     * in `animate-parameters.ts` checks against — B95's sink-set rule, made by
-     * construction through one `compileRequest`.
-     *
-     * The compiler's `reason` — why frames compile in full, naming node and key — goes
-     * to the telemetry hub for the performance pane (T1254), when the compiler is
-     * prepared and again when a frame degrades it (§V936).
-     */
-    let frameCompiler: FrameCompiler | null | undefined;
-    const prepare = (): FrameCompiler | null => {
-      try {
-        const shared = baseRef.current;
-        return prepareFrameCompiler(request, shared !== null && shared.request === request ? shared.result : undefined);
-      } catch {
-        // A compiler crash is reported by the full compile's own path below, once per
-        // frame as before — not swallowed here, and not thrown into the frame loop.
-        return null;
-      }
-    };
-    return (frame: FrameEvaluationInput): CompiledGraph | null => {
-      if (morphsOnly) {
-        const fading = morphs.activeAt(frame);
-        if (!fading && !landingOwed) return null;
-        landingOwed = fading;
-      }
-      if (frameCompiler === undefined) {
-        frameCompiler = prepare();
-        runtime.telemetry.setFrameCompileReason(frameCompiler?.reason ?? null);
-      }
-      if (frameCompiler !== null) {
-        try {
-          const spliced = frameCompiler.compileFrame({ frame, channels });
-          if (spliced !== null) return spliced;
-          runtime.telemetry.setFrameCompileReason(frameCompiler.reason);
-        } catch {
-          // The fast path may be wrong as long as it detects that it is and pays the
-          // full price (§V936) — a throw is detection; the full compile reports it.
-          frameCompiler = null;
-        }
-      }
-      return compileSafely({ ...request, resolution: { frame, channels } }).compiled;
-    };
-  }, [segmentRequest, channels, flatGraph, flattened, runtime]);
+  const animate = useMemo(
+    () => (segmentRequest === null ? null : frameAnimator({ request: segmentRequest, flattened, channels, runtime, base: baseRef })),
+    [segmentRequest, channels, flattened, runtime],
+  );
 
   // Nothing animates: no frame compiler, no reason to show (T1254).
   useEffect(() => {
@@ -865,6 +984,10 @@ export function useGraphCompile(
    * input change; `deps.length` catches the arity half of that mistake.
    */
   const memoized = useRef<{ deps: readonly unknown[]; result: GraphCompileResult } | null>(null);
+  /** T1652b: `GraphCompileResult.answersFor` — the last revision compiled, by a render or by the lane. */
+  const renderedRevision = useRef(graph.revision);
+  renderedRevision.current = graph.revision;
+  const answersFor = useCallback(() => Math.max(lastCompile.current?.graph.revision ?? 0, renderedRevision.current), []);
 
   const result = useMemo<GraphCompileResult>(() => {
     const deps: readonly unknown[] = [
@@ -912,6 +1035,8 @@ export function useGraphCompile(
         resetFeedback: false,
         documentBoundary: false,
         timeline: null,
+        values,
+        answersFor,
       });
     }
     const previous = lastCompile.current;
@@ -958,6 +1083,8 @@ export function useGraphCompile(
         resetFeedback: false,
         documentBoundary: false,
         timeline,
+        values,
+        answersFor,
       });
     }
 
@@ -1031,12 +1158,80 @@ export function useGraphCompile(
         return compileLayerWarmPlan(segmentRequest);
       },
       timeline,
+      values,
+      answersFor,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `request` is `segmentRequest`'s base; the segment cache and store are refs.
   }, [animate, segmentRequest, timeline, channels, flatGraph, flattened, graph, runtime, capabilities, previewSinks, scheduledPreviews, catalogueRevision, settings]);
 
   const capabilitiesRef = useRef(capabilities);
   capabilitiesRef.current = capabilities;
+
+  /**
+   * T1652b — THE VALUES LANE: a values-only revision, compiled and handed to the backend
+   * WITHOUT A RENDER.
+   *
+   * `classifyRevision` says a revision moved values only; the watch asks this before it
+   * tells anyone else. What a render used to do for such a revision — a structural compile
+   * of the whole document, to learn the new uniform values of a handful of passes — is
+   * `rebaseOnValues` here: the written nodes and what reads them, re-run under the
+   * per-frame compile's verifier, spliced over the plan before. Then the same things the
+   * structural memo leaves behind move to the revision: the retained base the next frame
+   * splices over, the document the next revision is classified against, the view
+   * `project.compile` answers with, and — through `values` — the uniforms on the device and
+   * the `animate` the frame loop calls.
+   *
+   * It returns WHY whenever it cannot do all of that, and the watch then sends the
+   * revision down the structural road, which is this hook rendering as it always did:
+   *
+   *  - nothing compiled yet, or the compile on hand is for another revision or document;
+   *  - the timeline cuts structure (the plan is one segment's; §T1537b's road is the render);
+   *  - the compiler could not prove the rebase (its own list, `rebaseOnValues`);
+   *  - no frame loop took the plan, or the backend could not take it as a uniform write
+   *    (no plan installed yet, or a structural one on its way).
+   *
+   * Refs only, so it is one function for the life of the runtime and sees what the latest
+   * render and the latest lane pass left.
+   */
+  const channelsNow = useRef(channels);
+  channelsNow.current = channels;
+  useEffect(() => {
+    const lane = (revision: ValuesRevision): string | null => {
+      const base = baseRef.current;
+      const last = lastCompile.current;
+      if (base === null || last === null || last.view.compiled === null) return "No plan has been compiled for this document yet.";
+      if (last.documentIdentity !== runtime.documentIdentity) return "The compile on hand belongs to another document.";
+      if (structureRef.current !== null) return "A cue list on the timeline cuts structure, so each revision is compiled in its segment.";
+      if (base.request.graph !== revision.previous || last.graph !== revision.previous) return "The compile on hand is not of the revision before this value.";
+      const sink = valuesSink.current;
+      if (sink === null) return "No frame loop is attached to take the values.";
+      const flattened = runtime.flattened.current();
+      const request: CompileRequest = { ...base.request, graph: revision.graph, flattened };
+      let rebased: CompileGraphResult | string;
+      try {
+        rebased = rebaseOnValues(base.result, request, revision.written);
+      } catch (error) {
+        return `The values lane threw: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      if (typeof rebased === "string") return rebased;
+      /*
+       * The backend first, and only then what this hook holds: a refusal must leave the
+       * hook exactly as the render before left it, because the structural road it is sent
+       * down starts from there. `animate` reads `baseRef` when a frame calls it, never here.
+       */
+      const animate = frameAnimator({ request, flattened, channels: channelsNow.current, runtime, base: baseRef });
+      if (!sink({ compiled: rebased.compiled, animate })) {
+        return "The backend could not take the values as a uniform write (no plan installed yet, or one on its way).";
+      }
+      // The verifier held, so the diagnostics are the base's (`rebaseOnValues` refuses a node that says something new).
+      const view: CompileResultView = { compiled: rebased.compiled, diagnostics: last.view.diagnostics };
+      baseRef.current = { request, result: rebased };
+      lastCompile.current = { ...last, graph: revision.graph, view };
+      cacheRef.current = { documentIdentity: runtime.documentIdentity, revision: revision.graph.revision, segment: last.segment, view };
+      return null;
+    };
+    return watch.setLane(lane);
+  }, [runtime, watch]);
 
   /**
    * What `project.compile` answers with (T220).

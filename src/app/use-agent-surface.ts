@@ -143,7 +143,7 @@ export interface AgentSurfaceState {
    * look current — including one taken before the compile that would have found the
    * problem. This is the revision the list actually saw.
    */
-  readonly diagnosticsRevision: Revision;
+  readonly diagnosticsRevision: Revision | (() => Revision);
   /**
    * T1299: the bags the app's one per-frame value evaluation last published (§V275).
    * Absent where no value graph runs, and then `values.channels` is never registered.
@@ -164,7 +164,9 @@ export function useAgentSurface(
       selection: () => ({ nodeIds: [...stateRef.current.selection], edgeIds: [] }),
       diagnostics: () => ({
         diagnostics: stateRef.current.diagnostics,
-        revision: stateRef.current.diagnosticsRevision,
+        // T1652b: a function is read HERE, when the surface is asked — the list is also
+        // the list of every values-only revision compiled since the root last rendered.
+        revision: typeof stateRef.current.diagnosticsRevision === "function" ? stateRef.current.diagnosticsRevision() : stateRef.current.diagnosticsRevision,
       }),
       metrics: (): AgentRuntimeMetrics => {
         // §V16: sampled from the hub on demand. Nothing is pushed, and no per-frame data

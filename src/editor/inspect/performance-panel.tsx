@@ -81,6 +81,40 @@ export interface PerformancePanelProps {
   readonly onCookPolicyChange?: ((policy: CookPolicyValue) => void) | undefined;
   /** §T1392b: the project's frame rate, for the timeline's budget line. Default 60. */
   readonly fps?: number | undefined;
+  /**
+   * T1652b: how many value writes took the values lane and how many were compiled in
+   * full instead, with why the last one was. Read on this panel's own tick; absent where
+   * no lane exists (a test, an embed).
+   */
+  readonly valueWrites?: (() => ValueWriteStats) | undefined;
+}
+
+/** The composition root's count of value writes (`revision-watch.ts`), restated so this module imports nothing above it. */
+export interface ValueWriteStats {
+  readonly values: number;
+  readonly escalated: number;
+  readonly lastEscalation: string | null;
+}
+
+/**
+ * T1652b — a value write that was COMPILED IN FULL, said where a slow control is looked
+ * for. A moved slider normally costs the nodes that read it; when the lane could not
+ * prove that (a diagnostic changed, a structural key is driven by the value, a component
+ * instance was written) the whole document is compiled for it, and that is the difference
+ * between a control that follows the finger and one that drags. Absent while no write has
+ * been escalated: a line saying "all on the lane" on every document is noise (§V91).
+ */
+function ValueWritesNote({ source, read }: { source: SnapshotSource; read: () => ValueWriteStats }) {
+  const text = useStoreSelector(source.subscribe, source.snapshot, () => {
+    const stats = read();
+    if (stats.escalated === 0) return "";
+    return `${String(stats.escalated)} of ${String(stats.values + stats.escalated)} value writes compiled in full — ${stats.lastEscalation ?? ""}`;
+  });
+  return text === "" ? null : (
+    <p className={styles.note} data-testid="value-write-escalations">
+      {text}
+    </p>
+  );
 }
 
 function Stat({
@@ -161,6 +195,7 @@ export function PerformancePanel({
   cookPolicy,
   onCookPolicyChange,
   fps = 60,
+  valueWrites,
 }: PerformancePanelProps) {
   const root = useRef<HTMLDivElement>(null);
   const subscribe = useVisibleSubscribe(
@@ -221,6 +256,7 @@ export function PerformancePanel({
         source={source}
         {...(cookPolicy === undefined ? {} : { cookPolicy })}
         {...(onCookPolicyChange === undefined ? {} : { onCookPolicyChange })}
+        {...(valueWrites === undefined ? {} : { valueWrites })}
       />
     </div>
   );
@@ -566,10 +602,12 @@ function PerformanceSections({
   source,
   cookPolicy,
   onCookPolicyChange,
+  valueWrites,
 }: {
   source: SnapshotSource;
   cookPolicy?: CookPolicyValue | undefined;
   onCookPolicyChange?: ((policy: CookPolicyValue) => void) | undefined;
+  valueWrites?: (() => ValueWriteStats) | undefined;
 }) {
   const snapshot = useStoreSelector(source.subscribe, source.snapshot, identity, sameStructure);
   const { plan, build } = snapshot;
@@ -616,6 +654,7 @@ function PerformanceSections({
             full compile every frame — {snapshot.frameCompileReason}
           </p>
         )}
+        {valueWrites === undefined ? null : <ValueWritesNote source={source} read={valueWrites} />}
       </section>
 
       <CostSection source={source} snapshot={snapshot} />

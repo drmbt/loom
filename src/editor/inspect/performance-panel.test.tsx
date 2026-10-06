@@ -385,3 +385,23 @@ describe("T1604b — the panel asks for per-pass figures only while it is on scr
     expect(sharer).not.toMatch(/\d ms/);
   });
 });
+
+/**
+ * T1652b — a value write the lane could not follow is compiled in full. That is the
+ * difference between a control that follows the finger and one that drags, so the panel
+ * where a slow control is looked for says how many there were and why the last one was.
+ */
+describe("T1652b — the panel says when value writes were compiled in full", () => {
+  it("says nothing while every write took the lane; then the count and the last reason", () => {
+    const hub = fakeSource(snapshot(3.5, 120));
+    let stats: { values: number; escalated: number; lastEscalation: string | null } = { values: 12, escalated: 0, lastEscalation: null };
+    render(<PerformancePanel telemetry={hub.source} valueWrites={() => stats} />);
+    expect(screen.queryByTestId("value-write-escalations")).toBeNull();
+
+    stats = { values: 12, escalated: 3, lastEscalation: 'Node "level_grade" says something different about its new value, so the revision is compiled in full.' };
+    hub.tick(snapshot(3.5, 121));
+    const line = screen.getByTestId("value-write-escalations");
+    expect(line.textContent).toMatch(/^3 of 15 value writes compiled in full/);
+    expect(line.textContent).toContain('Node "level_grade" says something different');
+  });
+});

@@ -280,3 +280,67 @@ describe("a draw that enters or leaves its light's reach is pushed like a unifor
     expect(calls).toHaveLength(1);
   });
 });
+
+/**
+ * T1652b — a plan REBASED on a value (`rebaseOnValues`) is pushed pass by pass.
+ *
+ * The rebase hands back the plan before it with the passes a written value could reach
+ * re-emitted, and every other pass the SAME OBJECT. `push` would compare each block of
+ * that plan with what was pushed last — and for a pass that animates, what was pushed last
+ * is the last FRAME's value while the plan carries the frameless one it was compiled with.
+ * So one moved slider rewrote every animating pass of the document with a value the next
+ * frame wrote over again. `pushRebased` looks at the passes that are other objects, and
+ * leaves on the device what the device has for the rest.
+ */
+describe("a rebased plan's push (T1652b)", () => {
+  /** `next` with the pass `moved` re-emitted and every other pass the base's own object. */
+  const rebased = (base: CompiledGraph, moved: string, uniforms: UniformValues): CompiledGraph =>
+    ({ ...base, passes: base.passes.map((pass) => (pass.id === moved ? { ...pass, uniforms } : pass)) }) as CompiledGraph;
+
+  it("writes the pass a value reached, and does not restate a pass a frame has since animated", () => {
+    const { backend, writes } = recordingBackend();
+    const animator = createUniformAnimator();
+    const base = plan([
+      { id: "reader", uniforms: { level: 0.5 } },
+      { id: "animated", uniforms: { phase: 0 } },
+      { id: "still", uniforms: { level: 2 } },
+    ]);
+    // A frame: the animated pass is now at its frame value on the device.
+    animator.push(backend, base, plan([
+      { id: "reader", uniforms: { level: 0.5 } },
+      { id: "animated", uniforms: { phase: 0.75 } },
+      { id: "still", uniforms: { level: 2 } },
+    ]));
+    writes.length = 0;
+
+    // A value: the rebased plan still carries `phase: 0` for the pass it did not touch.
+    const next = rebased(base, "reader", { level: 0.9 });
+    expect(animator.pushRebased(backend, base, next)).toBe(1);
+    expect(writes).toEqual([{ passId: "reader", values: { level: 0.9 } }]);
+
+    // The next frame diffs against what is REALLY on the device: `phase` did not go back to 0.
+    writes.length = 0;
+    animator.push(backend, next, plan([
+      { id: "reader", uniforms: { level: 0.9 } },
+      { id: "animated", uniforms: { phase: 0.75 } },
+      { id: "still", uniforms: { level: 2 } },
+    ]));
+    expect(writes).toEqual([]);
+  });
+
+  it("writes nothing when the re-emitted pass says what the device already has", () => {
+    const { backend, writes } = recordingBackend();
+    const animator = createUniformAnimator();
+    const base = plan([{ id: "reader", uniforms: { level: 0.5 } }]);
+    expect(animator.pushRebased(backend, base, rebased(base, "reader", { level: 0.5 }))).toBe(0);
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses a plan that is not a values-only variation, and touches nothing", () => {
+    const { backend, writes } = recordingBackend();
+    const animator = createUniformAnimator();
+    const base = plan([{ id: "a", uniforms: { level: 0 } }]);
+    expect(animator.pushRebased(backend, base, plan([{ id: "a", uniforms: { level: 1 } }, { id: "b", uniforms: { level: 1 } }]))).toBeNull();
+    expect(writes).toEqual([]);
+  });
+});

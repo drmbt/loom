@@ -862,6 +862,13 @@ export interface RetainedCompile {
   readonly morphs: ParameterMorphs;
   /** T1485b: the component instances this compile's `op()` reads could name, kept as `morphs` is. */
   readonly instances: InstanceChannelSources | undefined;
+  /**
+   * T1652b: what each node SAID about its own values in this compile, by id: the
+   * diagnostics of resolving its parameters, then those its `compile` returned. Only
+   * nodes that said something are in it. `rebaseOnValues` compares a node's new answer
+   * against this one, so a value that changes what a diagnostic says is never spliced.
+   */
+  readonly said: ReadonlyMap<NodeId, ReadonlyArray<RuntimeDiagnostic>>;
 }
 
 export interface CompileGraphResult {
@@ -1179,6 +1186,11 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   const sceneInfoByOutput = new Map<string, ScenePayload>();
   /** T1182: what each compiled node leaves for the per-frame values-only path. */
   const retainedNodes = new Map<NodeId, RetainedNodeCompile>();
+  /** T1652b: what each node said about its values — resolving them here, compiling them below. */
+  const said = new Map<NodeId, RuntimeDiagnostic[]>();
+  for (const [nodeId, resolved] of validatedRaw.nodes) {
+    if (resolved.said.length > 0) said.set(nodeId, [...resolved.said]);
+  }
   /** T1432b: authored pixels -> output pixels, 1 when the project names no reference width. */
   const pixelScale = outputPixelScale(settings);
   for (const nodeId of topology.order) {
@@ -1304,6 +1316,9 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       continue;
     }
     diagnostics.push(...(description.diagnostics ?? []));
+    if (description.diagnostics !== undefined && description.diagnostics.length > 0) {
+      said.set(nodeId, [...(said.get(nodeId) ?? []), ...description.diagnostics]);
+    }
 
     // T147: scratch targets — node-private intermediates for multi-pass work (a
     // separable blur's horizontal leg). Read structurally so the frozen
@@ -2627,7 +2642,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       signature: structure.signature,
       estimatedResourceBytes,
     },
-    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput, morphs, instances },
+    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput, morphs, instances, said },
   };
 }
 

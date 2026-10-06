@@ -3,6 +3,7 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { ComponentPath, GraphComponentDefinition } from "@domain/types/components.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
+import { revisionWatchFor } from "./revision-watch.ts";
 import { openComponentSession } from "@domain/components/session.ts";
 import type { ComponentSession } from "@domain/components/session.ts";
 import type { Breadcrumb, ResolvedComponentPath } from "@domain/components/navigation.ts";
@@ -86,8 +87,16 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
   const store = useMemo(() => createComponentNavigationStore(), []);
   const path = useSyncExternalStore(store.subscribe, store.getPath, store.getPath);
 
+  /*
+   * T1652b: both documents this hook holds are read for their STRUCTURE — where a path
+   * leads, which graph the canvas edits — so both are notified for structure only
+   * (`revision-watch.ts`): a moved slider is not a reason to render `App` from here. The
+   * snapshot stays the store's own document, so a render for anything else reads what the
+   * store holds. The panes that show values take theirs through `LiveGraph` (`app.tsx`).
+   */
+  const rootWatch = useMemo(() => revisionWatchFor(runtime.bus.store, runtime.registry), [runtime.bus.store, runtime.registry]);
   const rootGraph = useSyncExternalStore<GraphDocument>(
-    runtime.bus.store.subscribe,
+    rootWatch.subscribeStructure,
     runtime.bus.store.getGraph,
     runtime.bus.store.getGraph,
   );
@@ -264,8 +273,9 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
     // `reopened`: an outside write to an ancestor's definition rebases its session too (§T1540b).
   }, [ancestorIdentity, onStale, readRoot, reopened, runtime.components, runtime.registry]);
 
+  const editWatch = useMemo(() => revisionWatchFor(editBus.store, runtime.registry), [editBus.store, runtime.registry]);
   const graph = useSyncExternalStore<GraphDocument>(
-    editBus.store.subscribe,
+    editWatch.subscribeStructure,
     editBus.store.getGraph,
     editBus.store.getGraph,
   );

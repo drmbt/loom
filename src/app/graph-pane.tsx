@@ -51,6 +51,7 @@ import { registerViewCommands } from "./view-commands.ts";
 import { useNodePreviews } from "./use-node-previews.ts";
 import type { NodeStackBox } from "./use-node-previews.ts";
 import { useGraphBackground } from "./use-graph-background.ts";
+import { revisionWatchFor } from "./revision-watch.ts";
 import styles from "./panes.module.css";
 
 /**
@@ -400,8 +401,6 @@ function GraphPaneInner({
     }, [compiledOutputs]),
   );
 
-  const graphRef = useRef(graph);
-  graphRef.current = graph;
   /**
    * The document's pose, read at gesture start (§V657) — RESOLVED, and per channel.
    *
@@ -414,12 +413,17 @@ function GraphPaneInner({
    * §T1557b: the read comes off the BUS (`readScope`: the channel resolver, the frame on
    * screen and the flattening, attached by the composition root), over the graph this pane
    * shows — so `op('k1').chan.value` on an eye channel reads where the camera actually is.
+   *
+   * T1652b: off the STORE at the gesture, not off the `graph` this pane last rendered with.
+   * A camera's eye is a number, a drag of it is a run of values-only revisions, and the pane
+   * is not rendered for one it draws nothing of — so the prop can be a pose behind.
    */
   const readCameraPose = useCallback(
     (nodeId: NodeId): CameraPose | null => {
-      const node = graphRef.current.nodes[nodeId];
+      const current = bus.store.getGraph();
+      const node = current.nodes[nodeId];
       if (node === undefined) return null;
-      return cameraPoseAt(node, registry.get(node.type), { ...bus.readScope(), graph: authoredGraph(graphRef.current), registry });
+      return cameraPoseAt(node, registry.get(node.type), { ...bus.readScope(), graph: authoredGraph(current), registry });
     },
     [bus, registry],
   );
@@ -428,6 +432,11 @@ function GraphPaneInner({
     () => createParameterEditor({ bus, context: invocation }),
     [bus, invocation],
   );
+  /** T1652b: this pane's document as of its last structural revision, for the canvas's reference lines. */
+  const structure = useMemo(() => {
+    const watch = revisionWatchFor(bus.store, registry);
+    return { subscribe: watch.subscribeStructure, get: watch.structure };
+  }, [bus, registry]);
   useEffect(() => () => parameterEditor.dispose(), [parameterEditor]);
   /**
    * T1388b — a live control's body IS the control: a slider, toggle, button or XY pad on
@@ -551,12 +560,15 @@ function GraphPaneInner({
    */
   const renderPreview = useCallback(
     (nodeId: NodeId) => {
-      // T714: the REF, so this function's identity does not move with the document.
-      // It is called during a node's own render, and a node re-renders on its own slice
-      // of the store (§V16) — so the read is as fresh as the render that asks for it,
-      // while closing over `graph` instead would re-key the canvas context on every
-      // revision and repaint all of them.
-      const type = graphRef.current.nodes[nodeId]?.type;
+      // T714: read where it is asked, so this function's identity does not move with the
+      // document. It is called during a node's own render, and a node re-renders on its
+      // own slice of the store (§V16) — so the read is as fresh as the render that asks
+      // for it, while closing over `graph` instead would re-key the canvas context on
+      // every revision and repaint all of them. T1652b: off the STORE, which is what the
+      // node's own slice is a slice of; the pane's `graph` prop is not rendered anew for a
+      // control's value, and a plot's source would be a value behind.
+      const current = bus.store.getGraph();
+      const type = current.nodes[nodeId]?.type;
       const definition = type === undefined ? undefined : registry.get(type);
       // T438 (§V316): the DECLARED channel, not the category shelf — audio moved to
       // "input" and must keep its plot; a camera never earns one.
@@ -566,7 +578,7 @@ function GraphPaneInner({
         // whether it has a curve. The pure/stateful split lives THERE, in one place, so
         // there is exactly one thing to get right and one thing to test — a second copy
         // of the condition here would be redundant and, being redundant, untested.
-        const node = graphRef.current.nodes[nodeId];
+        const node = current.nodes[nodeId];
         const source =
           node === undefined
             ? null
@@ -585,7 +597,7 @@ function GraphPaneInner({
                  * hundred times a minute, jumping the whole trace vertically each time,
                  * while the signal itself was clean.
                  */
-                chain: resolveValuePlotChain(graphRef.current, nodeId, registry),
+                chain: resolveValuePlotChain(current, nodeId, registry),
                 registry,
               };
         /*
@@ -1081,6 +1093,8 @@ function GraphPaneInner({
           renderPreview={renderPreview}
           renderControls={renderControls}
           renderHeaderControls={renderHeaderControls}
+          // T1652b: who reads whom is structure; the lines are not re-derived for a value.
+          structure={structure}
           previewLens={previewLens}
           onSelectionChange={onSelectionChange}
           onHoveredNodeChange={onHoveredNodeChange}

@@ -346,6 +346,8 @@ export function InspectorPane({
   const nodeInspector = (
     <Inspector
       bus={bus}
+      // T1652b: this pane's own document (live for what it shows), so the panel renders when the pane does.
+      graph={graph}
       context={invocation}
       components={components}
       flattened={readFlattened}
