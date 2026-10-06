@@ -193,7 +193,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let reach = select(z / max(dot(ray, view.forward), 1e-4), params.far, z < 0.0);
   let clear = exp(-reach * params.density);
   var air = params.eyeColor * params.eyes * airlight(params.eye, ray, reach, params.eyesAt);
-${NEAR_LAMPS.map((index) => `  air = air + lampTone(params.station + ${(index - LAMPS_MIRRORED).toFixed(1)}) * params.lamp * hallLamp(params.${lampParameter(index)}.z) * beamlight(params.eye, ray, reach, params.${lampParameter(index)} + vec3f(0.0, LAMP_HANGS, 0.0));`).join("\n")}
+${NEAR_LAMPS.map((index) => `  air = air + lampTone(params.station + ${(index - LAMPS_MIRRORED).toFixed(1)}) * lampChase(params.station + ${(index - LAMPS_MIRRORED).toFixed(1)}, params.chaseAt, params.chase) * params.lamp * hallLamp(params.${lampParameter(index)}.z) * beamlight(params.eye, ray, reach, params.${lampParameter(index)} + vec3f(0.0, LAMP_HANGS, 0.0));`).join("\n")}
   if (params.place > 0.5) {
     let field = fieldAir(params.eye, ray, reach);
     return vec4f(lit.rgb * field.clear + field.light + air * params.glow, lit.a);

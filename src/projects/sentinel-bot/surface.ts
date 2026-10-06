@@ -197,7 +197,7 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   // Looking down, it is the deck's own mirror image of the same lamps, dimmer.
   let up = vec3f(mirror.x, max(abs(mirror.y), 0.02), mirror.z);
   var seen = vec3f(0.0);
-${MIRRORED.map((index) => `  seen = seen + lampSeen(up, s.world, p.${lampParameter(index)}, p.station + ${(index - LAMPS_MIRRORED).toFixed(1)}, p.pool, soft);`).join("\n")}
+${MIRRORED.map((index) => `  seen = seen + lampSeen(up, s.world, p.${lampParameter(index)}, p.station + ${(index - LAMPS_MIRRORED).toFixed(1)}, p.pool, soft) * lampChase(p.station + ${(index - LAMPS_MIRRORED).toFixed(1)}, p.chaseAt, p.chase);`).join("\n")}
   seen = seen * select(p.deck, 1.0, mirror.y > 0.0);
   // Schlick: at a grazing angle any metal is a full mirror.
   let graze = pow(1.0 - max(dot(-view, s.normal), 0.0), 5.0);

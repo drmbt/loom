@@ -127,6 +127,26 @@ export function lampToneExpression(station: string): readonly [string, string, s
 
 const wgslTone = (tone: readonly number[]): string => `vec3f(${tone.map((component) => component.toFixed(4)).join(", ")})`;
 
+/**
+ * THE CHASE: a lamp's strength just now against its own. The owner, 2026-10-06: "we can play with the lights a
+ * little bit more in the tunnel to be audio reactive to certain other features of the song, maybe the hats,
+ * without getting too flickery". So nothing blinks: one lamp in every four is up and the rest a little down,
+ * and WHICH is up glides down the tunnel one station a beat (`at` is the beat's count and how far through the
+ * beat it is, so it moves smoothly: a lamp swells as the bright place reaches it and falls as it goes on). Over
+ * any four lamps the strengths sum to what they were: the tunnel is no brighter, its light travels. `depth` is
+ * how much of it, 0 none: the top of the track drives it.
+ */
+// (`wide` 1: the bright place is shared between the two lamps it is between in the proportion of where it is,
+// so their sum is always one lamp's worth. At 0.9 four lamps summed to 4.12 between beats.)
+export const CHASE = { every: 4, wide: 1, up: 2, down: 0.5 } as const;
+/** The same in plain arithmetic, for a test. */
+export function lampChase(station: number, at: number, depth: number): number {
+  const turn = station - at;
+  const off = turn - CHASE.every * Math.round(turn / CHASE.every);
+  return 1 + depth * (CHASE.up * Math.max(0, 1 - Math.abs(off) / CHASE.wide) - CHASE.down);
+}
+if (Math.abs((CHASE.up * CHASE.wide) / CHASE.every - CHASE.down) > 1e-9) throw new Error("tunnel.ts: the chase must leave the lamps' sum as it was: up × wide ÷ every = down.");
+
 /** The rule as WGSL, for the wall's material and the motes. Needs `chamberAt` beside it. */
 export const LAMP_TONE_WGSL = `const LAMP: f32 = ${LAMP_SPACING.toFixed(5)};
 const LAMP_GAIN = array<f32, ${LAMP_GAINS.length}>(${LAMP_GAINS.map((gain) => gain.toFixed(2)).join(", ")});
@@ -137,6 +157,12 @@ fn lampTone(station: f32) -> vec3f {
   if (abs(turn - ${LAMP_TONES.alarmAt}.0) < 0.5) { return ${wgslTone(LAMP_TONES.alarm)}; }
   let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, ${LAMP_GAINS.length - 1}.5))];
   return mix(${wgslTone(LAMP_TONES.bore)}, ${wgslTone(LAMP_TONES.hall)}, step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;
+}
+// The chase (tunnel.ts, CHASE): this lamp's strength just now against its own.
+fn lampChase(station: f32, at: f32, depth: f32) -> f32 {
+  let turn = station - at;
+  let off = turn - ${CHASE.every}.0 * round(turn / ${CHASE.every}.0);
+  return 1.0 + depth * (${CHASE.up.toFixed(2)} * max(0.0, 1.0 - abs(off) / ${CHASE.wide.toFixed(2)}) - ${CHASE.down.toFixed(2)});
 }
 `;
 
@@ -246,6 +272,8 @@ struct Params {
   lamp: f32, // @default 14  Radiance of the lamp plates in the crown.
   bore: f32, // @default 2.6  The tunnel's radius, metres: how far round the wall a share of a turn is.
   fixtures: f32, // @default 1  The tunnel's other lamps (bulkheads, a hall's tubes, beacons): 0 none.
+  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.
+  chase: f32, // @default 0  …and how much of it, 0 none.
 };
 
 ${chamberWgsl()}${LAMP_TONE_WGSL}
@@ -349,7 +377,7 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   let onPlate = (1.0 - smoothstep(0.3, 0.36, abs(along - (station + 0.5) * LAMP))) * (1.0 - smoothstep(0.012, 0.016, abs(around - 0.5)));
   let nerve = fract(sin(station * 12.9898) * 43758.5453);
   let flicker = 1.0 - step(0.82, nerve) * step(0.6, fract(sin(floor(s.absTime * 11.0) * 78.233 + station) * 43758.5453)) * 0.8;
-  o.emissive = o.emissive + lampTone(station) * p.lamp * onPlate * flicker;
+  o.emissive = o.emissive + lampTone(station) * p.lamp * onPlate * flicker * lampChase(station, p.chaseAt, p.chase);
 
   // ── The other lamps: what each lens gives off, and what it throws on the wall round it ──
   let hall = chamberAt(along);
@@ -421,7 +449,9 @@ export const NEAR_LAMPS = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, ind
 export const lampParameter = (index: number): string => `lamp${index}`;
 /** Those parameters, as lines of a WGSL Params struct. */
 export const LAMP_PARAMS_WGSL = `${NEAR_LAMPS.map((index) => `  ${lampParameter(index)}: vec3f, // @default [0, 2.25, ${((index - LAMPS_MIRRORED + 0.5) * LAMP_SPACING).toFixed(1)}]  Where the lamp ${index - LAMPS_MIRRORED} stations on from the robot's own hangs.`).join("\n")}
-  station: f32, // @default 37  The station the robot is under: which lamp is which tone.`;
+  station: f32, // @default 37  The station the robot is under: which lamp is which tone.
+  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.
+  chase: f32, // @default 0  …and how much of it, 0 none.`;
 
 /**
  * THE TUNNEL AS A GLOSSY THING IN IT SEES IT. Blackened steel has no diffuse, so between two
@@ -483,6 +513,8 @@ struct Params {
   bore: f32, // @default 2.6  The tunnel's radius, metres.
   lamp: f32, // @default 26  A whole lamp's strength, as a Light's Intensity has it.
   named: f32, // @default 0  1 when the three stations nearest the robot have Lights of their own (the ones that cast): those are dimmed here by as much as those are lit, so no lamp is lit twice.
+  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.
+  chase: f32, // @default 0  …and how much of it, 0 none.
 };
 ${pathWgsl()}${LAMP_TONE_WGSL}
 fn process(p: Point, ctx: PointCtx) -> Point {
@@ -497,7 +529,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // How much of its own Light a named station has (document.ts, lampAt: 1 within half a spacing, 0 a spacing and a half off).
   let near = clamp(1.5 - abs(z - ctx.params.travel) / LAMP, 0.0, 1.0);
   // A hall's lamp is the bigger lamp, by how much higher it hangs.
-  q.power = ctx.params.lamp * high * (1.0 - clamp(ctx.params.named, 0.0, 1.0) * near);
+  q.power = ctx.params.lamp * high * (1.0 - clamp(ctx.params.named, 0.0, 1.0) * near) * lampChase(station, ctx.params.chaseAt, ctx.params.chase);
   return q;
 }`;
 
@@ -526,6 +558,8 @@ struct Params {
   eyes: f32, // @default 8  The eyes' light, as its light has it.
   eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its colour.
   amount: f32, // @default 1  How much of the dust shows: 0 none.
+  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.
+  chase: f32, // @default 0  …and how much of it, 0 none.
 };
 ${pathWgsl()}${LAMP_TONE_WGSL}
 fn moteHash(a: u32, b: u32) -> f32 {
@@ -559,7 +593,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let toLamp = lampAt.origin + lampAt.up * (ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt((station + 0.5) * LAMP)) - ${LAMP_HANGS.toFixed(2)}) - q.position;
   let eyesAt = pathAt(ctx.params.travel + 0.9);
   let toEyes = eyesAt - q.position;
-  let lit = lampTone(station) * ctx.params.lamp / (1.0 + dot(toLamp, toLamp)) + ctx.params.eyeColor * ctx.params.eyes / (0.3 + dot(toEyes, toEyes));
+  let lit = lampTone(station) * (ctx.params.lamp * lampChase(station, ctx.params.chaseAt, ctx.params.chase)) / (1.0 + dot(toLamp, toLamp)) + ctx.params.eyeColor * ctx.params.eyes / (0.3 + dot(toEyes, toEyes));
   let twinkle = 0.55 + 0.45 * sin(ctx.absTime * (0.8 + nerve * 2.5) + nerve * 60.0);
   q.tint = vec4f(lit * (0.006 * ctx.params.amount * twinkle), 0.5 + nerve);
   return q;

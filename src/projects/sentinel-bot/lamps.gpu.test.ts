@@ -6,7 +6,7 @@ import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host
 import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
 import { CHAMBERS, PATH, chamberAt, pathAt } from "./path.ts";
-import { LAMP_ATTRIBUTES, LAMP_COUNT, LAMP_GAINS, LAMP_KERNEL, LAMP_SPACING, lampHeightExpression, lampTone } from "./tunnel.ts";
+import { CHASE, LAMP_ATTRIBUTES, LAMP_COUNT, LAMP_GAINS, LAMP_KERNEL, LAMP_SPACING, lampChase, lampHeightExpression, lampTone } from "./tunnel.ts";
 
 /**
  * T1561b — THE CROWN LAMPS AS LIGHTS, read off the points a Light in Points mode stands its
@@ -32,9 +32,9 @@ interface Lamps {
   power(index: number): number;
 }
 
-async function lamps(travel: number, named = 0): Promise<Lamps> {
+async function lamps(travel: number, named = 0, chase: { at: number; depth: number } = { at: 0, depth: 0 }): Promise<Lamps> {
   if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
-  const points = node("kernel_lamps", "pointKernel", [0, 0], { capacity: LAMP_COUNT, attributes: LAMP_ATTRIBUTES, kernel: LAMP_KERNEL, travel, bore: BORE, lamp: LAMP, named });
+  const points = node("kernel_lamps", "pointKernel", [0, 0], { capacity: LAMP_COUNT, attributes: LAMP_ATTRIBUTES, kernel: LAMP_KERNEL, travel, bore: BORE, lamp: LAMP, named, chaseAt: chase.at, chase: chase.depth });
   const result = await renderHeadless({
     host: nodeGpuHost(),
     graph: graph(
@@ -108,6 +108,41 @@ describe("the crown lamps as lights (T1561b)", () => {
       expect(halls).toBeGreaterThan(5);
     }
     expect(LAMP_GAINS.filter((gain) => gain <= 0.06).length).toBeGreaterThan(0);
+  }, 240_000);
+
+  it("the chase: one lamp in four is up and which one glides down the tunnel a station a beat; the lamps' sum is what it was; at no depth nothing moves", async () => {
+    // The owner, 2026-10-06: the tunnel's lights "audio reactive to certain other features of the song, maybe the
+    // hats, without getting too flickery".
+    const travel = 300;
+    const first = Math.floor(travel / LAMP_SPACING) - Math.floor(LAMP_COUNT / 2);
+    const still = await lamps(travel);
+    const DEPTH = 0.6;
+    for (const at of [40, 40.25, 40.5, 41, 43.7]) {
+      const run = await lamps(travel, 0, { at, depth: DEPTH });
+      for (let index = 0; index < LAMP_COUNT; index += 1) {
+        // Each lamp: its own strength times the rule's, to a float.
+        expect(run.power(index)).toBeCloseTo(still.power(index) * lampChase(first + index, at, DEPTH), 3);
+        // Its colour and its place are its own, chase or no chase.
+        expect(run.tint(index)).toEqual(still.tint(index));
+        expect(run.position(index)).toEqual(still.position(index));
+      }
+    }
+    // The rule itself. On a beat the lamp at that station is at its most and the two either side of it at their least…
+    expect([lampChase(40, 40, DEPTH), lampChase(39, 40, DEPTH), lampChase(41, 40, DEPTH), lampChase(42, 40, DEPTH)].map((value) => Math.round(value * 1000) / 1000)).toEqual([1 + DEPTH * (CHASE.up - CHASE.down), 1 - DEPTH * CHASE.down, 1 - DEPTH * CHASE.down, 1 - DEPTH * CHASE.down].map((value) => Math.round(value * 1000) / 1000));
+    // …a beat later it is the next lamp down the tunnel, and every fourth lamp is as it is.
+    expect(lampChase(41, 41, DEPTH)).toBe(lampChase(40, 40, DEPTH));
+    expect(lampChase(44, 40, DEPTH)).toBeCloseTo(lampChase(40, 40, DEPTH), 12);
+    // It glides: half way through the beat the two lamps it is between are level, and neither is at the most.
+    expect(lampChase(40, 40.5, DEPTH)).toBeCloseTo(lampChase(41, 40.5, DEPTH), 12);
+    expect(lampChase(40, 40.5, DEPTH)).toBeLessThan(lampChase(40, 40, DEPTH));
+    // Never a blink: through a whole beat in sixty steps no lamp's strength moves by a twentieth of itself at a step.
+    for (let station = 38; station < 44; station += 1) {
+      for (let step = 0; step < 60; step += 1) expect(Math.abs(lampChase(station, 40 + (step + 1) / 60, DEPTH) - lampChase(station, 40 + step / 60, DEPTH))).toBeLessThan(0.05);
+    }
+    // The tunnel is no brighter for it: any four lamps in a row sum to four, wherever the chase is.
+    for (const at of [40, 40.3, 41.77]) expect(lampChase(10, at, DEPTH) + lampChase(11, at, DEPTH) + lampChase(12, at, DEPTH) + lampChase(13, at, DEPTH)).toBeCloseTo(4, 9);
+    // No depth: every lamp is itself, wherever the chase is.
+    expect(lampChase(40, 40, 0)).toBe(1);
   }, 240_000);
 
   it("does not light a lamp twice: the three stations that have Lights of their own are dimmed by as much as those are lit", async () => {

@@ -1163,7 +1163,7 @@
       },
       "panel_all-slider_chase": {
         "id": "panel_all-slider_chase",
-        "order": 43,
+        "order": 44,
         "source": {
           "nodeId": "slider_chase",
           "portId": "out"
@@ -1187,7 +1187,7 @@
       },
       "panel_all-slider_distance": {
         "id": "panel_all-slider_distance",
-        "order": 20,
+        "order": 21,
         "source": {
           "nodeId": "slider_distance",
           "portId": "out"
@@ -1211,7 +1211,7 @@
       },
       "panel_all-slider_eyehits": {
         "id": "panel_all-slider_eyehits",
-        "order": 39,
+        "order": 40,
         "source": {
           "nodeId": "slider_eyehits",
           "portId": "out"
@@ -1223,7 +1223,7 @@
       },
       "panel_all-slider_eyesweep": {
         "id": "panel_all-slider_eyesweep",
-        "order": 40,
+        "order": 41,
         "source": {
           "nodeId": "slider_eyesweep",
           "portId": "out"
@@ -1235,7 +1235,7 @@
       },
       "panel_all-slider_fields": {
         "id": "panel_all-slider_fields",
-        "order": 26,
+        "order": 27,
         "source": {
           "nodeId": "slider_fields",
           "portId": "out"
@@ -1259,7 +1259,7 @@
       },
       "panel_all-slider_focus": {
         "id": "panel_all-slider_focus",
-        "order": 23,
+        "order": 24,
         "source": {
           "nodeId": "slider_focus",
           "portId": "out"
@@ -1295,7 +1295,7 @@
       },
       "panel_all-slider_glitch": {
         "id": "panel_all-slider_glitch",
-        "order": 28,
+        "order": 29,
         "source": {
           "nodeId": "slider_glitch",
           "portId": "out"
@@ -1307,7 +1307,7 @@
       },
       "panel_all-slider_glow": {
         "id": "panel_all-slider_glow",
-        "order": 38,
+        "order": 39,
         "source": {
           "nodeId": "slider_glow",
           "portId": "out"
@@ -1319,7 +1319,7 @@
       },
       "panel_all-slider_grain": {
         "id": "panel_all-slider_grain",
-        "order": 25,
+        "order": 26,
         "source": {
           "nodeId": "slider_grain",
           "portId": "out"
@@ -1343,7 +1343,7 @@
       },
       "panel_all-slider_haze": {
         "id": "panel_all-slider_haze",
-        "order": 22,
+        "order": 23,
         "source": {
           "nodeId": "slider_haze",
           "portId": "out"
@@ -1355,7 +1355,7 @@
       },
       "panel_all-slider_huefrom": {
         "id": "panel_all-slider_huefrom",
-        "order": 32,
+        "order": 33,
         "source": {
           "nodeId": "slider_huefrom",
           "portId": "out"
@@ -1367,7 +1367,7 @@
       },
       "panel_all-slider_hueshift": {
         "id": "panel_all-slider_hueshift",
-        "order": 36,
+        "order": 37,
         "source": {
           "nodeId": "slider_hueshift",
           "portId": "out"
@@ -1379,7 +1379,7 @@
       },
       "panel_all-slider_hueto": {
         "id": "panel_all-slider_hueto",
-        "order": 33,
+        "order": 34,
         "source": {
           "nodeId": "slider_hueto",
           "portId": "out"
@@ -1391,7 +1391,7 @@
       },
       "panel_all-slider_hueturn": {
         "id": "panel_all-slider_hueturn",
-        "order": 34,
+        "order": 35,
         "source": {
           "nodeId": "slider_hueturn",
           "portId": "out"
@@ -1413,9 +1413,21 @@
           "portId": "controls"
         }
       },
+      "panel_all-slider_lampchase": {
+        "id": "panel_all-slider_lampchase",
+        "order": 20,
+        "source": {
+          "nodeId": "slider_lampchase",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_all",
+          "portId": "controls"
+        }
+      },
       "panel_all-slider_legs": {
         "id": "panel_all-slider_legs",
-        "order": 41,
+        "order": 42,
         "source": {
           "nodeId": "slider_legs",
           "portId": "out"
@@ -1427,7 +1439,7 @@
       },
       "panel_all-slider_meter": {
         "id": "panel_all-slider_meter",
-        "order": 42,
+        "order": 43,
         "source": {
           "nodeId": "slider_meter",
           "portId": "out"
@@ -1439,7 +1451,7 @@
       },
       "panel_all-slider_mist": {
         "id": "panel_all-slider_mist",
-        "order": 27,
+        "order": 28,
         "source": {
           "nodeId": "slider_mist",
           "portId": "out"
@@ -1463,7 +1475,7 @@
       },
       "panel_all-slider_pump": {
         "id": "panel_all-slider_pump",
-        "order": 24,
+        "order": 25,
         "source": {
           "nodeId": "slider_pump",
           "portId": "out"
@@ -1487,7 +1499,7 @@
       },
       "panel_all-slider_react": {
         "id": "panel_all-slider_react",
-        "order": 21,
+        "order": 22,
         "source": {
           "nodeId": "slider_react",
           "portId": "out"
@@ -1499,7 +1511,7 @@
       },
       "panel_all-slider_search": {
         "id": "panel_all-slider_search",
-        "order": 37,
+        "order": 38,
         "source": {
           "nodeId": "slider_search",
           "portId": "out"
@@ -1511,7 +1523,7 @@
       },
       "panel_all-slider_shot": {
         "id": "panel_all-slider_shot",
-        "order": 29,
+        "order": 30,
         "source": {
           "nodeId": "slider_shot",
           "portId": "out"
@@ -1523,7 +1535,7 @@
       },
       "panel_all-slider_spark": {
         "id": "panel_all-slider_spark",
-        "order": 44,
+        "order": 45,
         "source": {
           "nodeId": "slider_spark",
           "portId": "out"
@@ -1559,7 +1571,7 @@
       },
       "panel_all-slider_spread": {
         "id": "panel_all-slider_spread",
-        "order": 35,
+        "order": 36,
         "source": {
           "nodeId": "slider_spread",
           "portId": "out"
@@ -1619,7 +1631,7 @@
       },
       "panel_all-toggle_cuts": {
         "id": "panel_all-toggle_cuts",
-        "order": 30,
+        "order": 31,
         "source": {
           "nodeId": "toggle_cuts",
           "portId": "out"
@@ -1667,7 +1679,7 @@
       },
       "panel_all-xypad_view": {
         "id": "panel_all-xypad_view",
-        "order": 31,
+        "order": 32,
         "source": {
           "nodeId": "xypad_view",
           "portId": "out"
@@ -2063,7 +2075,7 @@
       },
       "panel_scene-slider_distance": {
         "id": "panel_scene-slider_distance",
-        "order": 2,
+        "order": 3,
         "source": {
           "nodeId": "slider_distance",
           "portId": "out"
@@ -2075,7 +2087,7 @@
       },
       "panel_scene-slider_fields": {
         "id": "panel_scene-slider_fields",
-        "order": 8,
+        "order": 9,
         "source": {
           "nodeId": "slider_fields",
           "portId": "out"
@@ -2087,7 +2099,7 @@
       },
       "panel_scene-slider_focus": {
         "id": "panel_scene-slider_focus",
-        "order": 5,
+        "order": 6,
         "source": {
           "nodeId": "slider_focus",
           "portId": "out"
@@ -2099,7 +2111,7 @@
       },
       "panel_scene-slider_glitch": {
         "id": "panel_scene-slider_glitch",
-        "order": 10,
+        "order": 11,
         "source": {
           "nodeId": "slider_glitch",
           "portId": "out"
@@ -2111,7 +2123,7 @@
       },
       "panel_scene-slider_grain": {
         "id": "panel_scene-slider_grain",
-        "order": 7,
+        "order": 8,
         "source": {
           "nodeId": "slider_grain",
           "portId": "out"
@@ -2123,7 +2135,7 @@
       },
       "panel_scene-slider_haze": {
         "id": "panel_scene-slider_haze",
-        "order": 4,
+        "order": 5,
         "source": {
           "nodeId": "slider_haze",
           "portId": "out"
@@ -2145,9 +2157,21 @@
           "portId": "controls"
         }
       },
+      "panel_scene-slider_lampchase": {
+        "id": "panel_scene-slider_lampchase",
+        "order": 2,
+        "source": {
+          "nodeId": "slider_lampchase",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
       "panel_scene-slider_mist": {
         "id": "panel_scene-slider_mist",
-        "order": 9,
+        "order": 10,
         "source": {
           "nodeId": "slider_mist",
           "portId": "out"
@@ -2159,7 +2183,7 @@
       },
       "panel_scene-slider_pump": {
         "id": "panel_scene-slider_pump",
-        "order": 6,
+        "order": 7,
         "source": {
           "nodeId": "slider_pump",
           "portId": "out"
@@ -2171,7 +2195,7 @@
       },
       "panel_scene-slider_react": {
         "id": "panel_scene-slider_react",
-        "order": 3,
+        "order": 4,
         "source": {
           "nodeId": "slider_react",
           "portId": "out"
@@ -2183,7 +2207,7 @@
       },
       "panel_scene-slider_shot": {
         "id": "panel_scene-slider_shot",
-        "order": 11,
+        "order": 12,
         "source": {
           "nodeId": "slider_shot",
           "portId": "out"
@@ -2195,7 +2219,7 @@
       },
       "panel_scene-toggle_cuts": {
         "id": "panel_scene-toggle_cuts",
-        "order": 12,
+        "order": 13,
         "source": {
           "nodeId": "toggle_cuts",
           "portId": "out"
@@ -2207,7 +2231,7 @@
       },
       "panel_scene-xypad_view": {
         "id": "panel_scene-xypad_view",
-        "order": 13,
+        "order": 14,
         "source": {
           "nodeId": "xypad_view",
           "portId": "out"
@@ -4962,7 +4986,33 @@
             "mode": "expression"
           },
           "capacity": 75,
-          "kernel": "// T1561b — the tunnel's crown lamps, as points for a Light (src/projects/sentinel-bot/tunnel.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  bore: f32, // @default 2.6  The tunnel's radius, metres.\n  lamp: f32, // @default 26  A whole lamp's strength, as a Light's Intensity has it.\n  named: f32, // @default 0  1 when the three stations nearest the robot have Lights of their own (the ones that cast): those are dimmed here by as much as those are lit, so no lamp is lit twice.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let station = floor(ctx.params.travel / LAMP) + f32(ctx.index) - 37.0;\n  let z = (station + 0.5) * LAMP;\n  let high = 1.0 + CHAMBER_SWELL * chamberAt(z);\n  // Under its plate, wherever the wall there holds it (lampHeightExpression: the same height).\n  q.position = pathAt(z) + vec3f(0.0, ctx.params.bore * high - 0.35, 0.0);\n  // The colour is written as a display colour (LAMP_TONES), as a Light's own Color is read; a point's is linear.\n  q.tint = vec4f(pow(lampTone(station), vec3f(2.2)), 1.0);\n  // How much of its own Light a named station has (document.ts, lampAt: 1 within half a spacing, 0 a spacing and a half off).\n  let near = clamp(1.5 - abs(z - ctx.params.travel) / LAMP, 0.0, 1.0);\n  // A hall's lamp is the bigger lamp, by how much higher it hangs.\n  q.power = ctx.params.lamp * high * (1.0 - clamp(ctx.params.named, 0.0, 1.0) * near);\n  return q;\n}",
+          "chase": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_lampchase').chan.lampchase * (op('lag_levels').chan.high * op('slider_react').chan.react)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "chaseAt": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "kernel": "// T1561b — the tunnel's crown lamps, as points for a Light (src/projects/sentinel-bot/tunnel.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  bore: f32, // @default 2.6  The tunnel's radius, metres.\n  lamp: f32, // @default 26  A whole lamp's strength, as a Light's Intensity has it.\n  named: f32, // @default 0  1 when the three stations nearest the robot have Lights of their own (the ones that cast): those are dimmed here by as much as those are lit, so no lamp is lit twice.\n  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.\n  chase: f32, // @default 0  …and how much of it, 0 none.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n// The chase (tunnel.ts, CHASE): this lamp's strength just now against its own.\nfn lampChase(station: f32, at: f32, depth: f32) -> f32 {\n  let turn = station - at;\n  let off = turn - 4.0 * round(turn / 4.0);\n  return 1.0 + depth * (2.00 * max(0.0, 1.0 - abs(off) / 1.00) - 0.50);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let station = floor(ctx.params.travel / LAMP) + f32(ctx.index) - 37.0;\n  let z = (station + 0.5) * LAMP;\n  let high = 1.0 + CHAMBER_SWELL * chamberAt(z);\n  // Under its plate, wherever the wall there holds it (lampHeightExpression: the same height).\n  q.position = pathAt(z) + vec3f(0.0, ctx.params.bore * high - 0.35, 0.0);\n  // The colour is written as a display colour (LAMP_TONES), as a Light's own Color is read; a point's is linear.\n  q.tint = vec4f(pow(lampTone(station), vec3f(2.2)), 1.0);\n  // How much of its own Light a named station has (document.ts, lampAt: 1 within half a spacing, 0 a spacing and a half off).\n  let near = clamp(1.5 - abs(z - ctx.params.travel) / LAMP, 0.0, 1.0);\n  // A hall's lamp is the bigger lamp, by how much higher it hangs.\n  q.power = ctx.params.lamp * high * (1.0 - clamp(ctx.params.named, 0.0, 1.0) * near) * lampChase(station, ctx.params.chaseAt, ctx.params.chase);\n  return q;\n}",
           "lamp": {
             "bindings": {
               "expression": {
@@ -5017,6 +5067,32 @@
             "mode": "expression"
           },
           "capacity": 6000,
+          "chase": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_lampchase').chan.lampchase * (op('lag_levels').chan.high * op('slider_react').chan.react)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "chaseAt": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
           "eyeColor": [
             1,
             0.04,
@@ -5075,7 +5151,7 @@
             },
             "mode": "expression"
           },
-          "kernel": "// T1561b — dust in the tunnel's air (src/projects/sentinel-bot/tunnel.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  bore: f32, // @default 2.6  The tunnel's radius, metres.\n  lamp: f32, // @default 26  The lamps' intensity, as their lights have it.\n  eyes: f32, // @default 8  The eyes' light, as its light has it.\n  eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its colour.\n  amount: f32, // @default 1  How much of the dust shows: 0 none.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n\nfn moteHash(a: u32, b: u32) -> f32 {\n  let x = (a * 747796405u) ^ (b * 2891336453u + 12345u);\n  let w = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;\n  return f32((w >> 22u) ^ w) / 4294967295.0;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let start = ctx.params.travel - 14.0;\n  // Its own place along the tunnel, in whichever span of it the window is over now.\n  let home = moteHash(ctx.index, 1u) * 60.0;\n  let z = start + (home - start) - 60.0 * floor((home - start) / 60.0);\n  let wall = pathFrame(z);\n  let reach = ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt(z)) * 0.9;\n  let angle = moteHash(ctx.index, 2u) * 6.2831853;\n  let radius = sqrt(moteHash(ctx.index, 3u)) * reach;\n  let nerve = moteHash(ctx.index, 4u);\n  // It hangs, and drifts a hand's width on a slow count of its own.\n  let drift = vec2f(sin(ctx.absTime * (0.11 + nerve * 0.2) + nerve * 40.0), cos(ctx.absTime * (0.09 + nerve * 0.17) + nerve * 23.0)) * 0.12;\n  var across = vec2f(cos(angle), sin(angle)) * radius + drift;\n  // Nothing hangs under the deck.\n  across.y = max(across.y, -ctx.params.bore * 0.7);\n  q.position = wall.origin + wall.right * across.x + wall.up * across.y;\n\n  // The lamp it is nearest, and the robot's eyes: inverse square, as the lights themselves fall off.\n  let station = floor(z / LAMP);\n  let lampAt = pathFrame((station + 0.5) * LAMP);\n  // Under the plate, wherever the wall there holds it: a hall's crown is higher (CHAMBERS).\n  let toLamp = lampAt.origin + lampAt.up * (ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt((station + 0.5) * LAMP)) - 0.35) - q.position;\n  let eyesAt = pathAt(ctx.params.travel + 0.9);\n  let toEyes = eyesAt - q.position;\n  let lit = lampTone(station) * ctx.params.lamp / (1.0 + dot(toLamp, toLamp)) + ctx.params.eyeColor * ctx.params.eyes / (0.3 + dot(toEyes, toEyes));\n  let twinkle = 0.55 + 0.45 * sin(ctx.absTime * (0.8 + nerve * 2.5) + nerve * 60.0);\n  q.tint = vec4f(lit * (0.006 * ctx.params.amount * twinkle), 0.5 + nerve);\n  return q;\n}",
+          "kernel": "// T1561b — dust in the tunnel's air (src/projects/sentinel-bot/tunnel.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the tunnel, metres.\n  bore: f32, // @default 2.6  The tunnel's radius, metres.\n  lamp: f32, // @default 26  The lamps' intensity, as their lights have it.\n  eyes: f32, // @default 8  The eyes' light, as its light has it.\n  eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its colour.\n  amount: f32, // @default 1  How much of the dust shows: 0 none.\n  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.\n  chase: f32, // @default 0  …and how much of it, 0 none.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n// The chase (tunnel.ts, CHASE): this lamp's strength just now against its own.\nfn lampChase(station: f32, at: f32, depth: f32) -> f32 {\n  let turn = station - at;\n  let off = turn - 4.0 * round(turn / 4.0);\n  return 1.0 + depth * (2.00 * max(0.0, 1.0 - abs(off) / 1.00) - 0.50);\n}\n\nfn moteHash(a: u32, b: u32) -> f32 {\n  let x = (a * 747796405u) ^ (b * 2891336453u + 12345u);\n  let w = ((x >> ((x >> 28u) + 4u)) ^ x) * 277803737u;\n  return f32((w >> 22u) ^ w) / 4294967295.0;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let start = ctx.params.travel - 14.0;\n  // Its own place along the tunnel, in whichever span of it the window is over now.\n  let home = moteHash(ctx.index, 1u) * 60.0;\n  let z = start + (home - start) - 60.0 * floor((home - start) / 60.0);\n  let wall = pathFrame(z);\n  let reach = ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt(z)) * 0.9;\n  let angle = moteHash(ctx.index, 2u) * 6.2831853;\n  let radius = sqrt(moteHash(ctx.index, 3u)) * reach;\n  let nerve = moteHash(ctx.index, 4u);\n  // It hangs, and drifts a hand's width on a slow count of its own.\n  let drift = vec2f(sin(ctx.absTime * (0.11 + nerve * 0.2) + nerve * 40.0), cos(ctx.absTime * (0.09 + nerve * 0.17) + nerve * 23.0)) * 0.12;\n  var across = vec2f(cos(angle), sin(angle)) * radius + drift;\n  // Nothing hangs under the deck.\n  across.y = max(across.y, -ctx.params.bore * 0.7);\n  q.position = wall.origin + wall.right * across.x + wall.up * across.y;\n\n  // The lamp it is nearest, and the robot's eyes: inverse square, as the lights themselves fall off.\n  let station = floor(z / LAMP);\n  let lampAt = pathFrame((station + 0.5) * LAMP);\n  // Under the plate, wherever the wall there holds it: a hall's crown is higher (CHAMBERS).\n  let toLamp = lampAt.origin + lampAt.up * (ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt((station + 0.5) * LAMP)) - 0.35) - q.position;\n  let eyesAt = pathAt(ctx.params.travel + 0.9);\n  let toEyes = eyesAt - q.position;\n  let lit = lampTone(station) * (ctx.params.lamp * lampChase(station, ctx.params.chaseAt, ctx.params.chase)) / (1.0 + dot(toLamp, toLamp)) + ctx.params.eyeColor * ctx.params.eyes / (0.3 + dot(toEyes, toEyes));\n  let twinkle = 0.55 + 0.45 * sin(ctx.absTime * (0.8 + nerve * 2.5) + nerve * 60.0);\n  q.tint = vec4f(lit * (0.006 * ctx.params.amount * twinkle), 0.5 + nerve);\n  return q;\n}",
           "lamp": {
             "bindings": {
               "expression": {
@@ -7401,6 +7477,32 @@
             },
             "mode": "expression"
           },
+          "chase": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_lampchase').chan.lampchase * (op('lag_levels').chan.high * op('slider_react').chan.react)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "chaseAt": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
           "lamp": {
             "bindings": {
               "expression": {
@@ -7415,7 +7517,7 @@
             "mode": "expression"
           },
           "model": "pbr",
-          "source": "// @use surface-detail\nstruct Params {\n  wet: f32, // @default 0.4  How much water still runs: the tracks down the wall and the pools on the deck.\n  grime: f32, // @default 0.85  Rust, soot and silt.\n  lamp: f32, // @default 14  Radiance of the lamp plates in the crown.\n  bore: f32, // @default 2.6  The tunnel's radius, metres: how far round the wall a share of a turn is.\n  fixtures: f32, // @default 1  The tunnel's other lamps (bulkheads, a hall's tubes, beacons): 0 none.\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n\n// THE TUNNEL'S OTHER LAMPS (the owner, 2026-10-06: \"the tunnels could use a bit more detail work too, different\n// lights at different positions in the tube\"): bulkheads in the bore, tubes in a hall, a turning beacon either\n// side of every alarm lamp (tunnel.ts, FIXTURES). They are drawn here: a lens that glows, and the pool it throws\n// on the wall round it, painted. They light nothing else, the robot least of all. A lamp that lights is a Light,\n// and this tunnel has several hundred of these: they become Lights fed by a pointset when that exists (§T1589b).\nconst FIXTURE: f32 = 3.20000;\nconst FIXTURE_COUNT: f32 = 300.0;\n// A fixture's lot, 0 to 99, drawn from its number in the lap: tunnel.ts, fixtureLot, the same line (and why\n// it scales by a multiply and a shift and never divides).\nfn fixtureLot(index: f32, salt: u32) -> u32 {\n  let place = u32(index - FIXTURE_COUNT * floor(index / FIXTURE_COUNT) + 0.5);\n  return ((((place + salt * 977u) * 2654435761u) >> 16u) * 100u) >> 16u;\n}\n// 0 dead, 1 lit, 2 failing.\nfn fixtureState(lot: u32, dead: u32, failing: u32) -> f32 {\n  return select(select(2.0, 1.0, lot < failing), 0.0, lot < dead);\n}\nconst WALL_TONE = vec3f(1.0, 0.5, 0.16);\nconst TUBE_TONE = vec3f(0.62, 1.0, 0.78);\n\n// What a small lamp standing `proud` metres off a wall throws on it, as a share of what falls at its foot:\n// the cosine law over the distance squared. `away2` is the distance along the wall from its foot, squared.\nfn poolOf(away2: f32, proud: f32) -> f32 {\n  let d2 = away2 + proud * proud;\n  return proud * proud * proud / (d2 * sqrt(d2));\n}\n\nfn fixtureLuck(n: f32, salt: f32) -> f32 {\n  return fract(sin(n * 91.3458 + salt * 17.13) * 47453.5453);\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let what = s.tint.r;\n  let own = s.tint.g;\n  let around = s.tint.b;\n  let along = s.tint.a;\n  // 0 at the crown, 1 at the bottom of the bore.\n  let low = abs(around - 0.5) * 2.0;\n  let stain = detailFbm(s.world * 0.55, 4, s.footprint);\n  let spall = detailFbm(s.world * 4.3, 4, s.footprint);\n  let grit = detailFbm(s.world * 31.0, 3, s.footprint);\n  // Water comes down the wall: tracks a hand wide that run the long way round it.\n  let track = detailFbm(vec3f(along * 7.0, around * 2.2, 3.0), 3, s.footprint).value;\n  // Not on the deck: there the angle round the bore barely changes across three metres of plate and jumps at the\n  // seam under its middle, so a track was a stripe from wall to wall that stopped dead on the centre line\n  // (the owner, 2026-10-06: \"the floor has some stripey issues\"). On the deck water stands: the pools, below.\n  let run = smoothstep(0.6, 0.72, track) * (0.35 + 0.65 * low) * step(what, 2.5);\n  let dirt = p.grime * smoothstep(0.3, 0.72, stain.value);\n  let pit = smoothstep(0.52, 0.8, spall.value);\n\n  // The liner: concrete segments, each cast on its own day.\n  var albedo = mix(vec3f(0.03, 0.03, 0.032), vec3f(0.16, 0.135, 0.105), 0.25 + 0.75 * own) * (0.55 + 0.6 * stain.value);\n  var rough = 0.9;\n  var metal = 0.0;\n  var relief = 0.14;\n  if (what > 2.5) {\n    // The deck: plate steel under silt.\n    albedo = mix(vec3f(0.04, 0.038, 0.036), vec3f(0.09, 0.066, 0.04), dirt);\n    rough = 0.78;\n    metal = 0.5 * (1.0 - dirt);\n    relief = 0.09;\n  } else if (what > 1.5) {\n    // Pipes and cable runs: ochre, oxide green or red lead, flaking to the iron.\n    let paint = mix(mix(vec3f(0.13, 0.105, 0.03), vec3f(0.03, 0.07, 0.052), step(0.34, own)), vec3f(0.12, 0.03, 0.02), step(0.67, own));\n    albedo = mix(paint, vec3f(0.06, 0.05, 0.046), pit);\n    rough = 0.66;\n    metal = 0.55 * pit;\n    relief = 0.06;\n  } else if (what > 0.5) {\n    // Ribs: iron, mostly rust.\n    albedo = mix(vec3f(0.05, 0.048, 0.05), vec3f(0.16, 0.066, 0.026), 0.35 + 0.65 * smoothstep(0.25, 0.7, spall.value) * p.grime);\n    rough = 0.74;\n    metal = 0.6 * (1.0 - pit);\n    relief = 0.08;\n  }\n  // Rust and soot: brown where water has carried it, black where nothing has washed it.\n  albedo = mix(albedo, vec3f(0.15, 0.062, 0.024), run * p.grime * 0.75);\n  albedo = mix(albedo, vec3f(0.014, 0.014, 0.015), dirt * 0.55);\n  // Silt at the foot of the wall.\n  let silt = p.grime * smoothstep(0.62, 0.86, low + (stain.value - 0.5) * 0.25) * step(what, 2.5);\n  albedo = mix(albedo, vec3f(0.07, 0.052, 0.034), silt * 0.8);\n  // What still shines: the running tracks, and pools where the deck dips.\n  let pool = step(2.5, what) * smoothstep(0.5, 0.62, stain.value);\n  let film = clamp(p.wet * max(run * 0.9, pool), 0.0, 1.0);\n  rough = mix(rough + 0.08 * (grit.value - 0.5), 0.12, film);\n  albedo = albedo * (1.0 - 0.35 * film);\n\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.06, 1.0);\n  o.metallic = metal * (1.0 - film);\n  // Pitted and spalled where dry; water lies flat.\n  // (Fine grit in the normal made every lit metre of wall sparkle: it roughens, it does not glint.)\n  o.normal = detailBump(s.normal, stain.gradient * 0.55 * 0.4 + spall.gradient * 4.3 * 0.42 + grit.gradient * 31.0 * 0.025, relief * (1.0 - 0.85 * film));\n\n  // A lamp plate in the crown at every lamp station; each has its own steadiness.\n  let station = floor(along / LAMP);\n  let onPlate = (1.0 - smoothstep(0.3, 0.36, abs(along - (station + 0.5) * LAMP))) * (1.0 - smoothstep(0.012, 0.016, abs(around - 0.5)));\n  let nerve = fract(sin(station * 12.9898) * 43758.5453);\n  let flicker = 1.0 - step(0.82, nerve) * step(0.6, fract(sin(floor(s.absTime * 11.0) * 78.233 + station) * 43758.5453)) * 0.8;\n  o.emissive = o.emissive + lampTone(station) * p.lamp * onPlate * flicker;\n\n  // ── The other lamps: what each lens gives off, and what it throws on the wall round it ──\n  let hall = chamberAt(along);\n  let girth = 6.2831853 * p.bore * (1.0 + CHAMBER_SWELL * hall);\n  let wallward = sign(around - 0.5);\n  var lenses = vec3f(0.0);\n  var thrown = vec3f(0.0);\n\n  // A fixture's state (0 dead, 1 lit, 2 failing) as how much of its light it gives now: a failing one drops out nine times a second, by chance.\n  let pair = floor(along / FIXTURE);\n  let stutter = step(0.55, fixtureLuck(floor(s.absTime * 9.0), pair + 3.0 * wallward));\n\n  // Bulkheads: in the plain bore, amber.\n  let bulkheadSide = 2.0 * (pair - 2.0 * floor(pair * 0.5)) - 1.0;\n  let bulkheadOff = vec2f(along - (pair + 0.75) * FIXTURE, (around - (0.5 + 0.2 * bulkheadSide)) * girth);\n  let bulkhead = fixtureState(fixtureLot(pair, 1u), 45u, 88u);\n  let bulkheadOn = min(bulkhead, 1.0) * (1.0 - 0.85 * step(1.5, bulkhead) * stutter) * (1.0 - smoothstep(0.25, 0.6, hall));\n  let bulkheadLens = (1.0 - smoothstep(0.09, 0.11, abs(bulkheadOff.x))) * (1.0 - smoothstep(0.05, 0.065, abs(bulkheadOff.y)));\n  lenses = lenses + WALL_TONE * (bulkheadOn * bulkheadLens * 0.4);\n  thrown = thrown + WALL_TONE * (bulkheadOn * poolOf(dot(bulkheadOff, bulkheadOff), 0.4) * 0.22);\n\n  // A hall's tubes: along both shoulders, 1.2 m of light between two ribs.\n  let beside = (around - (0.5 + 0.21 * wallward)) * girth;\n  let lengthways = abs(along - (pair + 0.25) * FIXTURE);\n  let tube = fixtureState(fixtureLot(pair, select(2u, 3u, wallward > 0.0)), 42u, 86u);\n  let tubeOn = min(tube, 1.0) * (1.0 - 0.9 * step(1.5, tube) * stutter) * smoothstep(0.5, 0.9, hall);\n  let tubeLens = (1.0 - smoothstep(0.02, 0.035, abs(beside))) * (1.0 - smoothstep(0.58, 0.62, lengthways));\n  // A line of light: what it throws falls with the distance from the line, and off its ends.\n  let tubePool = 0.09 / (beside * beside + 0.09) * (1.0 - smoothstep(0.5, 1.8, lengthways));\n  lenses = lenses + TUBE_TONE * (tubeOn * tubeLens * 0.5);\n  thrown = thrown + TUBE_TONE * (tubeOn * tubePool * 0.1);\n\n  // A beacon either side of every alarm lamp, low on the wall, turning: each wall sees it come round half a turn after the other.\n  let turn = station - 15.0 * floor(station / 15.0);\n  let alarmed = 1.0 - step(0.5, abs(turn - 7.0));\n  let beaconOff = vec2f(along - (station + 0.5) * LAMP, (around - (0.5 + 0.3 * wallward)) * girth);\n  let sweep = pow(0.5 + 0.5 * sin(s.absTime * 4.2 + 1.5707963 * wallward), 6.0);\n  let beaconLens = 1.0 - smoothstep(0.07, 0.1, length(beaconOff));\n  lenses = lenses + vec3f(1.0000, 0.1000, 0.0600) * (alarmed * beaconLens * (0.12 + sweep));\n  thrown = thrown + vec3f(1.0000, 0.1000, 0.0600) * (alarmed * poolOf(dot(beaconOff, beaconOff), 0.7) * sweep * 0.5);\n\n  // A lens under years of soot gives less; the wall shows what is thrown on it in its own colour.\n  o.emissive = o.emissive + (lenses * (1.0 - 0.5 * dirt) + thrown * albedo) * (p.lamp * p.fixtures);\n  return o;\n}"
+          "source": "// @use surface-detail\nstruct Params {\n  wet: f32, // @default 0.4  How much water still runs: the tracks down the wall and the pools on the deck.\n  grime: f32, // @default 0.85  Rust, soot and silt.\n  lamp: f32, // @default 14  Radiance of the lamp plates in the crown.\n  bore: f32, // @default 2.6  The tunnel's radius, metres: how far round the wall a share of a turn is.\n  fixtures: f32, // @default 1  The tunnel's other lamps (bulkheads, a hall's tubes, beacons): 0 none.\n  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.\n  chase: f32, // @default 0  …and how much of it, 0 none.\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n// The chase (tunnel.ts, CHASE): this lamp's strength just now against its own.\nfn lampChase(station: f32, at: f32, depth: f32) -> f32 {\n  let turn = station - at;\n  let off = turn - 4.0 * round(turn / 4.0);\n  return 1.0 + depth * (2.00 * max(0.0, 1.0 - abs(off) / 1.00) - 0.50);\n}\n\n// THE TUNNEL'S OTHER LAMPS (the owner, 2026-10-06: \"the tunnels could use a bit more detail work too, different\n// lights at different positions in the tube\"): bulkheads in the bore, tubes in a hall, a turning beacon either\n// side of every alarm lamp (tunnel.ts, FIXTURES). They are drawn here: a lens that glows, and the pool it throws\n// on the wall round it, painted. They light nothing else, the robot least of all. A lamp that lights is a Light,\n// and this tunnel has several hundred of these: they become Lights fed by a pointset when that exists (§T1589b).\nconst FIXTURE: f32 = 3.20000;\nconst FIXTURE_COUNT: f32 = 300.0;\n// A fixture's lot, 0 to 99, drawn from its number in the lap: tunnel.ts, fixtureLot, the same line (and why\n// it scales by a multiply and a shift and never divides).\nfn fixtureLot(index: f32, salt: u32) -> u32 {\n  let place = u32(index - FIXTURE_COUNT * floor(index / FIXTURE_COUNT) + 0.5);\n  return ((((place + salt * 977u) * 2654435761u) >> 16u) * 100u) >> 16u;\n}\n// 0 dead, 1 lit, 2 failing.\nfn fixtureState(lot: u32, dead: u32, failing: u32) -> f32 {\n  return select(select(2.0, 1.0, lot < failing), 0.0, lot < dead);\n}\nconst WALL_TONE = vec3f(1.0, 0.5, 0.16);\nconst TUBE_TONE = vec3f(0.62, 1.0, 0.78);\n\n// What a small lamp standing `proud` metres off a wall throws on it, as a share of what falls at its foot:\n// the cosine law over the distance squared. `away2` is the distance along the wall from its foot, squared.\nfn poolOf(away2: f32, proud: f32) -> f32 {\n  let d2 = away2 + proud * proud;\n  return proud * proud * proud / (d2 * sqrt(d2));\n}\n\nfn fixtureLuck(n: f32, salt: f32) -> f32 {\n  return fract(sin(n * 91.3458 + salt * 17.13) * 47453.5453);\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let what = s.tint.r;\n  let own = s.tint.g;\n  let around = s.tint.b;\n  let along = s.tint.a;\n  // 0 at the crown, 1 at the bottom of the bore.\n  let low = abs(around - 0.5) * 2.0;\n  let stain = detailFbm(s.world * 0.55, 4, s.footprint);\n  let spall = detailFbm(s.world * 4.3, 4, s.footprint);\n  let grit = detailFbm(s.world * 31.0, 3, s.footprint);\n  // Water comes down the wall: tracks a hand wide that run the long way round it.\n  let track = detailFbm(vec3f(along * 7.0, around * 2.2, 3.0), 3, s.footprint).value;\n  // Not on the deck: there the angle round the bore barely changes across three metres of plate and jumps at the\n  // seam under its middle, so a track was a stripe from wall to wall that stopped dead on the centre line\n  // (the owner, 2026-10-06: \"the floor has some stripey issues\"). On the deck water stands: the pools, below.\n  let run = smoothstep(0.6, 0.72, track) * (0.35 + 0.65 * low) * step(what, 2.5);\n  let dirt = p.grime * smoothstep(0.3, 0.72, stain.value);\n  let pit = smoothstep(0.52, 0.8, spall.value);\n\n  // The liner: concrete segments, each cast on its own day.\n  var albedo = mix(vec3f(0.03, 0.03, 0.032), vec3f(0.16, 0.135, 0.105), 0.25 + 0.75 * own) * (0.55 + 0.6 * stain.value);\n  var rough = 0.9;\n  var metal = 0.0;\n  var relief = 0.14;\n  if (what > 2.5) {\n    // The deck: plate steel under silt.\n    albedo = mix(vec3f(0.04, 0.038, 0.036), vec3f(0.09, 0.066, 0.04), dirt);\n    rough = 0.78;\n    metal = 0.5 * (1.0 - dirt);\n    relief = 0.09;\n  } else if (what > 1.5) {\n    // Pipes and cable runs: ochre, oxide green or red lead, flaking to the iron.\n    let paint = mix(mix(vec3f(0.13, 0.105, 0.03), vec3f(0.03, 0.07, 0.052), step(0.34, own)), vec3f(0.12, 0.03, 0.02), step(0.67, own));\n    albedo = mix(paint, vec3f(0.06, 0.05, 0.046), pit);\n    rough = 0.66;\n    metal = 0.55 * pit;\n    relief = 0.06;\n  } else if (what > 0.5) {\n    // Ribs: iron, mostly rust.\n    albedo = mix(vec3f(0.05, 0.048, 0.05), vec3f(0.16, 0.066, 0.026), 0.35 + 0.65 * smoothstep(0.25, 0.7, spall.value) * p.grime);\n    rough = 0.74;\n    metal = 0.6 * (1.0 - pit);\n    relief = 0.08;\n  }\n  // Rust and soot: brown where water has carried it, black where nothing has washed it.\n  albedo = mix(albedo, vec3f(0.15, 0.062, 0.024), run * p.grime * 0.75);\n  albedo = mix(albedo, vec3f(0.014, 0.014, 0.015), dirt * 0.55);\n  // Silt at the foot of the wall.\n  let silt = p.grime * smoothstep(0.62, 0.86, low + (stain.value - 0.5) * 0.25) * step(what, 2.5);\n  albedo = mix(albedo, vec3f(0.07, 0.052, 0.034), silt * 0.8);\n  // What still shines: the running tracks, and pools where the deck dips.\n  let pool = step(2.5, what) * smoothstep(0.5, 0.62, stain.value);\n  let film = clamp(p.wet * max(run * 0.9, pool), 0.0, 1.0);\n  rough = mix(rough + 0.08 * (grit.value - 0.5), 0.12, film);\n  albedo = albedo * (1.0 - 0.35 * film);\n\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.06, 1.0);\n  o.metallic = metal * (1.0 - film);\n  // Pitted and spalled where dry; water lies flat.\n  // (Fine grit in the normal made every lit metre of wall sparkle: it roughens, it does not glint.)\n  o.normal = detailBump(s.normal, stain.gradient * 0.55 * 0.4 + spall.gradient * 4.3 * 0.42 + grit.gradient * 31.0 * 0.025, relief * (1.0 - 0.85 * film));\n\n  // A lamp plate in the crown at every lamp station; each has its own steadiness.\n  let station = floor(along / LAMP);\n  let onPlate = (1.0 - smoothstep(0.3, 0.36, abs(along - (station + 0.5) * LAMP))) * (1.0 - smoothstep(0.012, 0.016, abs(around - 0.5)));\n  let nerve = fract(sin(station * 12.9898) * 43758.5453);\n  let flicker = 1.0 - step(0.82, nerve) * step(0.6, fract(sin(floor(s.absTime * 11.0) * 78.233 + station) * 43758.5453)) * 0.8;\n  o.emissive = o.emissive + lampTone(station) * p.lamp * onPlate * flicker * lampChase(station, p.chaseAt, p.chase);\n\n  // ── The other lamps: what each lens gives off, and what it throws on the wall round it ──\n  let hall = chamberAt(along);\n  let girth = 6.2831853 * p.bore * (1.0 + CHAMBER_SWELL * hall);\n  let wallward = sign(around - 0.5);\n  var lenses = vec3f(0.0);\n  var thrown = vec3f(0.0);\n\n  // A fixture's state (0 dead, 1 lit, 2 failing) as how much of its light it gives now: a failing one drops out nine times a second, by chance.\n  let pair = floor(along / FIXTURE);\n  let stutter = step(0.55, fixtureLuck(floor(s.absTime * 9.0), pair + 3.0 * wallward));\n\n  // Bulkheads: in the plain bore, amber.\n  let bulkheadSide = 2.0 * (pair - 2.0 * floor(pair * 0.5)) - 1.0;\n  let bulkheadOff = vec2f(along - (pair + 0.75) * FIXTURE, (around - (0.5 + 0.2 * bulkheadSide)) * girth);\n  let bulkhead = fixtureState(fixtureLot(pair, 1u), 45u, 88u);\n  let bulkheadOn = min(bulkhead, 1.0) * (1.0 - 0.85 * step(1.5, bulkhead) * stutter) * (1.0 - smoothstep(0.25, 0.6, hall));\n  let bulkheadLens = (1.0 - smoothstep(0.09, 0.11, abs(bulkheadOff.x))) * (1.0 - smoothstep(0.05, 0.065, abs(bulkheadOff.y)));\n  lenses = lenses + WALL_TONE * (bulkheadOn * bulkheadLens * 0.4);\n  thrown = thrown + WALL_TONE * (bulkheadOn * poolOf(dot(bulkheadOff, bulkheadOff), 0.4) * 0.22);\n\n  // A hall's tubes: along both shoulders, 1.2 m of light between two ribs.\n  let beside = (around - (0.5 + 0.21 * wallward)) * girth;\n  let lengthways = abs(along - (pair + 0.25) * FIXTURE);\n  let tube = fixtureState(fixtureLot(pair, select(2u, 3u, wallward > 0.0)), 42u, 86u);\n  let tubeOn = min(tube, 1.0) * (1.0 - 0.9 * step(1.5, tube) * stutter) * smoothstep(0.5, 0.9, hall);\n  let tubeLens = (1.0 - smoothstep(0.02, 0.035, abs(beside))) * (1.0 - smoothstep(0.58, 0.62, lengthways));\n  // A line of light: what it throws falls with the distance from the line, and off its ends.\n  let tubePool = 0.09 / (beside * beside + 0.09) * (1.0 - smoothstep(0.5, 1.8, lengthways));\n  lenses = lenses + TUBE_TONE * (tubeOn * tubeLens * 0.5);\n  thrown = thrown + TUBE_TONE * (tubeOn * tubePool * 0.1);\n\n  // A beacon either side of every alarm lamp, low on the wall, turning: each wall sees it come round half a turn after the other.\n  let turn = station - 15.0 * floor(station / 15.0);\n  let alarmed = 1.0 - step(0.5, abs(turn - 7.0));\n  let beaconOff = vec2f(along - (station + 0.5) * LAMP, (around - (0.5 + 0.3 * wallward)) * girth);\n  let sweep = pow(0.5 + 0.5 * sin(s.absTime * 4.2 + 1.5707963 * wallward), 6.0);\n  let beaconLens = 1.0 - smoothstep(0.07, 0.1, length(beaconOff));\n  lenses = lenses + vec3f(1.0000, 0.1000, 0.0600) * (alarmed * beaconLens * (0.12 + sweep));\n  thrown = thrown + vec3f(1.0000, 0.1000, 0.0600) * (alarmed * poolOf(dot(beaconOff, beaconOff), 0.7) * sweep * 0.5);\n\n  // A lens under years of soot gives less; the wall shows what is thrown on it in its own colour.\n  o.emissive = o.emissive + (lenses * (1.0 - 0.5 * dirt) + thrown * albedo) * (p.lamp * p.fixtures);\n  return o;\n}"
         },
         "position": {
           "x": -2100,
@@ -7635,6 +7737,32 @@
               "static": {
                 "kind": "static",
                 "value": 0.27
+              }
+            },
+            "mode": "expression"
+          },
+          "chase": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_lampchase').chan.lampchase * (op('lag_levels').chan.high * op('slider_react').chan.react)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "chaseAt": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
               }
             },
             "mode": "expression"
@@ -8036,7 +8164,7 @@
             },
             "mode": "expression"
           },
-          "source": "// @use surface-detail\nstruct Params {\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.\n  pool: f32, // @default 0.05  Radiance of the lit liner round a plate, as a share of the plate's.\n  deck: f32, // @default 0.2  How much of all that the wet deck throws back up.\n  air: f32, // @default 0  Radiance of an open place as the steel shows it (what lies below it, lit; and the lights all round): none in the tunnel.\n  airColor: vec3f, // @default [0.27, 0.61, 1]  What lies below it out there: the fields' mist, cold; the dock's deck under its lamps, warm.\n  podColor: vec3f, // @default [1, 0.04, 0.04]  The lights all round it out there: the fields' pods, the dock's lamps.\n  gloss: f32, // @default 0.42  Roughness of the shell where nothing has worn or soiled it.\n  steel: f32, // @default 0.3  How much of what it faces the shell throws back: 0.04 is enamel, 0.6 bare steel.\n  wear: f32, // @default 0.8  How old it is: rubbed edges, rust, dust. 0 is as the kit left the works.\n  hueFrom: f32, // @default 0  The lights' colour range starts at this hue, 0 to 1 round the wheel (0 red).\n  hueTo: f32, // @default 0.03  …and ends at this one.\n  spread: f32, // @default 0.6  How much of the range the lights are spread over: 0 all one colour, 1 the lenses (and the length of a tentacle) cover it all.\n  shift: f32, // @default 0  Moves every light along the range, 0 to 1. Drive it from a level.\n  eyeGlow: f32, // @default 9  Radiance of the eye lenses.\n  eyeHits: f32, // @default 0  How much the lenses answer the drums instead of burning steadily: a third of them each to kick, snare and hat.\n  kick: f32, // @default 0  The kick, 0 to 1 as it decays.\n  snare: f32, // @default 0  The snare.\n  hat: f32, // @default 0  The hat.\n  eyeSweep: f32, // @default 0  How much a band of light crossing the face takes over from the steady glow.\n  sweepPhase: f32, // @default 0  Where that band is: it crosses once for each whole number. Drive it from the beat.\n  coreGlow: f32, // @default 0.07  Radiance of a tentacle's light segments at rest: low, so the segmenting shows and no more.\n  pulseGlow: f32, // @default 1.6  Radiance of a segment fully charged.\n};\n\n// What each drawn piece brings of its own: the rig's point attributes of the same names (rig.ts).\nstruct Instance {\n  charge: f32, // @default 0  How lit this piece's light segment is by what runs along the tentacle: 0 at rest, 1 fully.\n  seed: f32, // @default 0  Which piece it is, 0 to 1: its wear is its own.\n  along: f32, // @default 0  How far along its tentacle it is, 0 at the body to 1 at the claw: its place in the colour range.\n  matte: f32, // @default 0  1 on a tentacle's rings: the dark segments between its lights.\n};\n\nfn hueColour(hue: f32) -> vec3f {\n  let wheel = clamp(abs(fract(vec3f(hue) + vec3f(0.000000, 0.666667, 0.333333)) * 6.0 - 3.0) - 1.0, vec3f(0.0), vec3f(1.0));\n  return wheel * 0.96 + 0.04;\n}\n\n// The colour of the light at a place (0 to 1) in the range.\nfn lightColour(place: f32, p: Params) -> vec3f {\n  return hueColour(mix(p.hueFrom, p.hueTo, clamp(place * p.spread + p.shift, 0.0, 1.0)));\n}\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n\n// What a ray going up (d.y > 0) from `here` sees of the lamp of `station` hanging at `lampAt`, in the level\n// plane it hangs in. `pool` is the lit liner round the plate as a share of the plate's radiance; `soft`\n// widens the plate's edge, metres (a rough mirror).\nfn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft: f32) -> vec3f {\n  let lamp = lampAt - here;\n  // The tunnel climbs and falls: a lamp below this height is round a bend of it.\n  if (lamp.y < 0.3) { return vec3f(0.0); }\n  let hit = d * (lamp.y / d.y);\n  let across = hit.x - lamp.x;\n  let along = hit.z - lamp.z;\n  let plate = (1.0 - smoothstep(0.2, 0.26 + soft, abs(across))) * (1.0 - smoothstep(0.3, 0.36 + soft, abs(along)));\n  let lit = exp(-(across * across + along * along) / 3.0) * pool;\n  // Air between: a far lamp is a dim one.\n  return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let role = s.attr.z;\n  var albedo = vec3f(p.steel * 0.92, p.steel * 0.96, p.steel * 1.05);\n  var rough = p.gloss;\n  var metal = 1.0;\n  // Whether it ages, and whether it is a mirror to the lamps.\n  var ages = 1.0;\n  var mirrors = 1.0;\n  if (role > 0.9) {\n    // A lens: black glass over a lamp, brightest where it faces the viewer.\n    let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);\n    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.\n    let lens = floor(s.local * 7.0);\n    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);\n    let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);\n    albedo = vec3f(0.006, 0.006, 0.006);\n    rough = 0.08;\n    metal = 0.0;\n    // The drums: a third of the lenses each to kick, snare and hat. With Eye Hits up a lens sits low and flashes on its own drum.\n    let drum = select(select(p.hat, p.snare, nerve < 0.667), p.kick, nerve < 0.333);\n    let struck = mix(1.0, 0.25 + 2.6 * drum, clamp(p.eyeHits, 0.0, 1.0));\n    // A band of light crossing the face from one side to the other, once for each whole number of the phase.\n    let band = pow(0.5 + 0.5 * cos(6.2831853 * (s.local.x * 0.9 - p.sweepPhase)), 3.0);\n    let swept = mix(1.0, 0.2 + 2.4 * band, clamp(p.eyeSweep, 0.0, 1.0));\n    o.emissive = lightColour(nerve, p) * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life * struck * swept;\n    ages = 0.0;\n    mirrors = 0.0;\n  } else if (role > 0.7) {\n    // The spine between the rings is the tentacle's light: a segment of it shows between every two\n    // rings, so a tentacle is lit, dark, lit, dark all the way down (the owner, 2026-10-05: that\n    // segmenting is the look). Lit from inside by what runs along the tentacle, over a low glow at\n    // rest. Not a mirror: as one, every segment found a lamp whatever the tentacle was doing.\n    albedo = vec3f(0.022, 0.02, 0.02);\n    rough = 0.72;\n    metal = 0.2;\n    o.emissive = lightColour(s.instance.along, p) * (p.coreGlow + p.pulseGlow * s.instance.charge);\n    ages = 0.3;\n    mirrors = 0.0;\n  } else if (role > 0.5) {\n    // Red lead paint.\n    albedo = vec3f(0.11, 0.012, 0.009);\n    rough = 0.5;\n    metal = 0.25;\n  } else if (role > 0.3) {\n    // Brass, long tarnished.\n    albedo = vec3f(0.3, 0.2, 0.08);\n    rough = 0.45;\n  } else if (role > 0.1) {\n    // Bright steel that has not been bright for years.\n    albedo = vec3f(0.34, 0.345, 0.36);\n    rough = 0.36;\n  }\n\n  // A tentacle's rings are the DARK segments between its lights, and must stay dark from every\n  // angle (the owner: \"the not lit up segments were taking on too much light color so they did\n  // not appear as a segment\"). As polished steel they mirrored the light beside them; they are\n  // matt black instead, and show no lamp.\n  if (role <= 0.1 && s.instance.matte > 0.5) {\n    albedo = vec3f(0.012, 0.012, 0.013);\n    rough = 0.88;\n    metal = 0.0;\n    ages = 0.25;\n    mirrors = 0.0;\n  }\n\n  // ── Age ──\n  let wear = p.wear * ages;\n  var pitted = s.normal;\n  if (wear > 0.0) {\n    let skin = s.local + vec3f(17.0, 31.0, 7.0) * s.instance.seed;\n    let blotch = detailFbm(skin * 2.6, 4, s.footprint).value;\n    let wet = detailFbm(skin * 1.4 + vec3f(41.0, 13.0, 29.0), 3, s.footprint).value;\n    let grain = detailFbm(skin * 48.0, 3, s.footprint);\n    // Scores and scratches: long thin marks the way things have dragged along it, each a hair wide.\n    let score = detailFbm(vec3f(skin.x * 55.0, skin.y * 55.0, skin.z * 2.5) + vec3f(9.0), 3, s.footprint).value;\n    let scratched = wear * smoothstep(0.7, 0.76, score);\n    // Edges and raised detail, rubbed through to the metal.\n    let rubbed = clamp(wear * detailEdgeWear(s.curvature, 18.0, grain.value) + scratched * 0.85, 0.0, 1.0);\n    albedo = mix(albedo, vec3f(0.55, 0.53, 0.5), rubbed * 0.8);\n    rough = mix(rough, 0.3, rubbed * 0.7);\n    metal = mix(metal, 1.0, rubbed);\n    // Rust where it has stood wet, pitted.\n    let rust = wear * smoothstep(0.46, 0.7, wet) * (0.4 + 0.6 * grain.value) * (1.0 - rubbed);\n    albedo = mix(albedo, vec3f(0.17, 0.062, 0.022), rust);\n    rough = mix(rough, 0.9, rust);\n    metal = mix(metal, 0.0, rust);\n    // Soot and oil baked on, in patches: darker and duller, still metal underneath.\n    let soot = wear * smoothstep(0.38, 0.62, blotch) * (1.0 - rubbed);\n    albedo = albedo * (1.0 - 0.6 * soot);\n    rough = mix(rough, 0.78, soot * 0.7);\n    // Dust lying on what faces up.\n    let dust = wear * smoothstep(0.5, 0.75, 1.0 - blotch) * max(s.normal.y, 0.0) * (1.0 - rubbed);\n    albedo = mix(albedo, vec3f(0.05, 0.045, 0.038), dust * 0.8);\n    rough = mix(rough, 0.96, dust * 0.8);\n    metal = mix(metal, 0.0, dust * 0.8);\n    // And no patch of it quite as smooth as the next; pitted all over.\n    rough = rough + wear * (grain.value - 0.5) * 0.3;\n    pitted = detailBump(s.normal, grain.gradient * 48.0, 0.0035 * wear);\n  }\n  o.normal = pitted;\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.05, 1.0);\n  o.metallic = metal;\n\n  // A mirror shows what is along its mirror direction: the lamps overhead, and their smear in the wet deck\n  // below (tunnel.ts). Metal only, and hardly at all once it is rough.\n  let view = normalize(s.world - s.eye);\n  let mirror = reflect(view, s.normal);\n  let soft = o.roughness * 0.6;\n  // Looking down, it is the deck's own mirror image of the same lamps, dimmer.\n  let up = vec3f(mirror.x, max(abs(mirror.y), 0.02), mirror.z);\n  var seen = vec3f(0.0);\n  seen = seen + lampSeen(up, s.world, p.lamp0, p.station + -2.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp1, p.station + -1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp2, p.station + 0.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp3, p.station + 1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp4, p.station + 2.0, p.pool, soft);\n  seen = seen * select(p.deck, 1.0, mirror.y > 0.0);\n  // Schlick: at a grazing angle any metal is a full mirror.\n  let graze = pow(1.0 - max(dot(-view, s.normal), 0.0), 5.0);\n  let polish = (1.0 - o.roughness) * (1.0 - o.roughness);\n  o.emissive = o.emissive + seen * p.lamps * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * polish * mirrors;\n  // Out of the tunnel there is no crown lamp to show and the steel is not black for that. What is round it in\n  // the fields (field.ts, air.ts): mist below, lit cold, so what faces down shows it bright and what faces up\n  // shows the dark overhead; and towers all round at its own height, red with pods, which polished steel shows\n  // as red glints. In the dock (dock.ts) the same two things are the lit deck below and the gantries' lamps.\n  // So a robot has an underside, a top and edges, from any side, and is not a hole in the picture when the lens\n  // is behind it and its own lights face away. (Rough steel shows the mist too, only without an image.)\n  let below = smoothstep(0.35, -0.55, mirror.y);\n  let towers = (1.0 - smoothstep(0.25, 0.7, abs(mirror.y))) * smoothstep(0.5, 0.68, detailFbm(mirror * 7.0, 2, 0.0).value);\n  let fields = p.airColor * (0.1 + 1.5 * below) * (0.3 + 0.7 * polish) + p.podColor * (2.2 * towers * polish);\n  o.emissive = o.emissive + fields * p.air * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * mirrors;\n  return o;\n}",
+          "source": "// @use surface-detail\nstruct Params {\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.\n  chase: f32, // @default 0  …and how much of it, 0 none.\n  lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.\n  pool: f32, // @default 0.05  Radiance of the lit liner round a plate, as a share of the plate's.\n  deck: f32, // @default 0.2  How much of all that the wet deck throws back up.\n  air: f32, // @default 0  Radiance of an open place as the steel shows it (what lies below it, lit; and the lights all round): none in the tunnel.\n  airColor: vec3f, // @default [0.27, 0.61, 1]  What lies below it out there: the fields' mist, cold; the dock's deck under its lamps, warm.\n  podColor: vec3f, // @default [1, 0.04, 0.04]  The lights all round it out there: the fields' pods, the dock's lamps.\n  gloss: f32, // @default 0.42  Roughness of the shell where nothing has worn or soiled it.\n  steel: f32, // @default 0.3  How much of what it faces the shell throws back: 0.04 is enamel, 0.6 bare steel.\n  wear: f32, // @default 0.8  How old it is: rubbed edges, rust, dust. 0 is as the kit left the works.\n  hueFrom: f32, // @default 0  The lights' colour range starts at this hue, 0 to 1 round the wheel (0 red).\n  hueTo: f32, // @default 0.03  …and ends at this one.\n  spread: f32, // @default 0.6  How much of the range the lights are spread over: 0 all one colour, 1 the lenses (and the length of a tentacle) cover it all.\n  shift: f32, // @default 0  Moves every light along the range, 0 to 1. Drive it from a level.\n  eyeGlow: f32, // @default 9  Radiance of the eye lenses.\n  eyeHits: f32, // @default 0  How much the lenses answer the drums instead of burning steadily: a third of them each to kick, snare and hat.\n  kick: f32, // @default 0  The kick, 0 to 1 as it decays.\n  snare: f32, // @default 0  The snare.\n  hat: f32, // @default 0  The hat.\n  eyeSweep: f32, // @default 0  How much a band of light crossing the face takes over from the steady glow.\n  sweepPhase: f32, // @default 0  Where that band is: it crosses once for each whole number. Drive it from the beat.\n  coreGlow: f32, // @default 0.07  Radiance of a tentacle's light segments at rest: low, so the segmenting shows and no more.\n  pulseGlow: f32, // @default 1.6  Radiance of a segment fully charged.\n};\n\n// What each drawn piece brings of its own: the rig's point attributes of the same names (rig.ts).\nstruct Instance {\n  charge: f32, // @default 0  How lit this piece's light segment is by what runs along the tentacle: 0 at rest, 1 fully.\n  seed: f32, // @default 0  Which piece it is, 0 to 1: its wear is its own.\n  along: f32, // @default 0  How far along its tentacle it is, 0 at the body to 1 at the claw: its place in the colour range.\n  matte: f32, // @default 0  1 on a tentacle's rings: the dark segments between its lights.\n};\n\nfn hueColour(hue: f32) -> vec3f {\n  let wheel = clamp(abs(fract(vec3f(hue) + vec3f(0.000000, 0.666667, 0.333333)) * 6.0 - 3.0) - 1.0, vec3f(0.0), vec3f(1.0));\n  return wheel * 0.96 + 0.04;\n}\n\n// The colour of the light at a place (0 to 1) in the range.\nfn lightColour(place: f32, p: Params) -> vec3f {\n  return hueColour(mix(p.hueFrom, p.hueTo, clamp(place * p.spread + p.shift, 0.0, 1.0)));\n}\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n// The chase (tunnel.ts, CHASE): this lamp's strength just now against its own.\nfn lampChase(station: f32, at: f32, depth: f32) -> f32 {\n  let turn = station - at;\n  let off = turn - 4.0 * round(turn / 4.0);\n  return 1.0 + depth * (2.00 * max(0.0, 1.0 - abs(off) / 1.00) - 0.50);\n}\n\n// What a ray going up (d.y > 0) from `here` sees of the lamp of `station` hanging at `lampAt`, in the level\n// plane it hangs in. `pool` is the lit liner round the plate as a share of the plate's radiance; `soft`\n// widens the plate's edge, metres (a rough mirror).\nfn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft: f32) -> vec3f {\n  let lamp = lampAt - here;\n  // The tunnel climbs and falls: a lamp below this height is round a bend of it.\n  if (lamp.y < 0.3) { return vec3f(0.0); }\n  let hit = d * (lamp.y / d.y);\n  let across = hit.x - lamp.x;\n  let along = hit.z - lamp.z;\n  let plate = (1.0 - smoothstep(0.2, 0.26 + soft, abs(across))) * (1.0 - smoothstep(0.3, 0.36 + soft, abs(along)));\n  let lit = exp(-(across * across + along * along) / 3.0) * pool;\n  // Air between: a far lamp is a dim one.\n  return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let role = s.attr.z;\n  var albedo = vec3f(p.steel * 0.92, p.steel * 0.96, p.steel * 1.05);\n  var rough = p.gloss;\n  var metal = 1.0;\n  // Whether it ages, and whether it is a mirror to the lamps.\n  var ages = 1.0;\n  var mirrors = 1.0;\n  if (role > 0.9) {\n    // A lens: black glass over a lamp, brightest where it faces the viewer.\n    let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);\n    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.\n    let lens = floor(s.local * 7.0);\n    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);\n    let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);\n    albedo = vec3f(0.006, 0.006, 0.006);\n    rough = 0.08;\n    metal = 0.0;\n    // The drums: a third of the lenses each to kick, snare and hat. With Eye Hits up a lens sits low and flashes on its own drum.\n    let drum = select(select(p.hat, p.snare, nerve < 0.667), p.kick, nerve < 0.333);\n    let struck = mix(1.0, 0.25 + 2.6 * drum, clamp(p.eyeHits, 0.0, 1.0));\n    // A band of light crossing the face from one side to the other, once for each whole number of the phase.\n    let band = pow(0.5 + 0.5 * cos(6.2831853 * (s.local.x * 0.9 - p.sweepPhase)), 3.0);\n    let swept = mix(1.0, 0.2 + 2.4 * band, clamp(p.eyeSweep, 0.0, 1.0));\n    o.emissive = lightColour(nerve, p) * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life * struck * swept;\n    ages = 0.0;\n    mirrors = 0.0;\n  } else if (role > 0.7) {\n    // The spine between the rings is the tentacle's light: a segment of it shows between every two\n    // rings, so a tentacle is lit, dark, lit, dark all the way down (the owner, 2026-10-05: that\n    // segmenting is the look). Lit from inside by what runs along the tentacle, over a low glow at\n    // rest. Not a mirror: as one, every segment found a lamp whatever the tentacle was doing.\n    albedo = vec3f(0.022, 0.02, 0.02);\n    rough = 0.72;\n    metal = 0.2;\n    o.emissive = lightColour(s.instance.along, p) * (p.coreGlow + p.pulseGlow * s.instance.charge);\n    ages = 0.3;\n    mirrors = 0.0;\n  } else if (role > 0.5) {\n    // Red lead paint.\n    albedo = vec3f(0.11, 0.012, 0.009);\n    rough = 0.5;\n    metal = 0.25;\n  } else if (role > 0.3) {\n    // Brass, long tarnished.\n    albedo = vec3f(0.3, 0.2, 0.08);\n    rough = 0.45;\n  } else if (role > 0.1) {\n    // Bright steel that has not been bright for years.\n    albedo = vec3f(0.34, 0.345, 0.36);\n    rough = 0.36;\n  }\n\n  // A tentacle's rings are the DARK segments between its lights, and must stay dark from every\n  // angle (the owner: \"the not lit up segments were taking on too much light color so they did\n  // not appear as a segment\"). As polished steel they mirrored the light beside them; they are\n  // matt black instead, and show no lamp.\n  if (role <= 0.1 && s.instance.matte > 0.5) {\n    albedo = vec3f(0.012, 0.012, 0.013);\n    rough = 0.88;\n    metal = 0.0;\n    ages = 0.25;\n    mirrors = 0.0;\n  }\n\n  // ── Age ──\n  let wear = p.wear * ages;\n  var pitted = s.normal;\n  if (wear > 0.0) {\n    let skin = s.local + vec3f(17.0, 31.0, 7.0) * s.instance.seed;\n    let blotch = detailFbm(skin * 2.6, 4, s.footprint).value;\n    let wet = detailFbm(skin * 1.4 + vec3f(41.0, 13.0, 29.0), 3, s.footprint).value;\n    let grain = detailFbm(skin * 48.0, 3, s.footprint);\n    // Scores and scratches: long thin marks the way things have dragged along it, each a hair wide.\n    let score = detailFbm(vec3f(skin.x * 55.0, skin.y * 55.0, skin.z * 2.5) + vec3f(9.0), 3, s.footprint).value;\n    let scratched = wear * smoothstep(0.7, 0.76, score);\n    // Edges and raised detail, rubbed through to the metal.\n    let rubbed = clamp(wear * detailEdgeWear(s.curvature, 18.0, grain.value) + scratched * 0.85, 0.0, 1.0);\n    albedo = mix(albedo, vec3f(0.55, 0.53, 0.5), rubbed * 0.8);\n    rough = mix(rough, 0.3, rubbed * 0.7);\n    metal = mix(metal, 1.0, rubbed);\n    // Rust where it has stood wet, pitted.\n    let rust = wear * smoothstep(0.46, 0.7, wet) * (0.4 + 0.6 * grain.value) * (1.0 - rubbed);\n    albedo = mix(albedo, vec3f(0.17, 0.062, 0.022), rust);\n    rough = mix(rough, 0.9, rust);\n    metal = mix(metal, 0.0, rust);\n    // Soot and oil baked on, in patches: darker and duller, still metal underneath.\n    let soot = wear * smoothstep(0.38, 0.62, blotch) * (1.0 - rubbed);\n    albedo = albedo * (1.0 - 0.6 * soot);\n    rough = mix(rough, 0.78, soot * 0.7);\n    // Dust lying on what faces up.\n    let dust = wear * smoothstep(0.5, 0.75, 1.0 - blotch) * max(s.normal.y, 0.0) * (1.0 - rubbed);\n    albedo = mix(albedo, vec3f(0.05, 0.045, 0.038), dust * 0.8);\n    rough = mix(rough, 0.96, dust * 0.8);\n    metal = mix(metal, 0.0, dust * 0.8);\n    // And no patch of it quite as smooth as the next; pitted all over.\n    rough = rough + wear * (grain.value - 0.5) * 0.3;\n    pitted = detailBump(s.normal, grain.gradient * 48.0, 0.0035 * wear);\n  }\n  o.normal = pitted;\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.05, 1.0);\n  o.metallic = metal;\n\n  // A mirror shows what is along its mirror direction: the lamps overhead, and their smear in the wet deck\n  // below (tunnel.ts). Metal only, and hardly at all once it is rough.\n  let view = normalize(s.world - s.eye);\n  let mirror = reflect(view, s.normal);\n  let soft = o.roughness * 0.6;\n  // Looking down, it is the deck's own mirror image of the same lamps, dimmer.\n  let up = vec3f(mirror.x, max(abs(mirror.y), 0.02), mirror.z);\n  var seen = vec3f(0.0);\n  seen = seen + lampSeen(up, s.world, p.lamp0, p.station + -2.0, p.pool, soft) * lampChase(p.station + -2.0, p.chaseAt, p.chase);\n  seen = seen + lampSeen(up, s.world, p.lamp1, p.station + -1.0, p.pool, soft) * lampChase(p.station + -1.0, p.chaseAt, p.chase);\n  seen = seen + lampSeen(up, s.world, p.lamp2, p.station + 0.0, p.pool, soft) * lampChase(p.station + 0.0, p.chaseAt, p.chase);\n  seen = seen + lampSeen(up, s.world, p.lamp3, p.station + 1.0, p.pool, soft) * lampChase(p.station + 1.0, p.chaseAt, p.chase);\n  seen = seen + lampSeen(up, s.world, p.lamp4, p.station + 2.0, p.pool, soft) * lampChase(p.station + 2.0, p.chaseAt, p.chase);\n  seen = seen * select(p.deck, 1.0, mirror.y > 0.0);\n  // Schlick: at a grazing angle any metal is a full mirror.\n  let graze = pow(1.0 - max(dot(-view, s.normal), 0.0), 5.0);\n  let polish = (1.0 - o.roughness) * (1.0 - o.roughness);\n  o.emissive = o.emissive + seen * p.lamps * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * polish * mirrors;\n  // Out of the tunnel there is no crown lamp to show and the steel is not black for that. What is round it in\n  // the fields (field.ts, air.ts): mist below, lit cold, so what faces down shows it bright and what faces up\n  // shows the dark overhead; and towers all round at its own height, red with pods, which polished steel shows\n  // as red glints. In the dock (dock.ts) the same two things are the lit deck below and the gantries' lamps.\n  // So a robot has an underside, a top and edges, from any side, and is not a hole in the picture when the lens\n  // is behind it and its own lights face away. (Rough steel shows the mist too, only without an image.)\n  let below = smoothstep(0.35, -0.55, mirror.y);\n  let towers = (1.0 - smoothstep(0.25, 0.7, abs(mirror.y))) * smoothstep(0.5, 0.68, detailFbm(mirror * 7.0, 2, 0.0).value);\n  let fields = p.airColor * (0.1 + 1.5 * below) * (0.3 + 0.7 * polish) + p.podColor * (2.2 * towers * polish);\n  o.emissive = o.emissive + fields * p.air * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * mirrors;\n  return o;\n}",
           "spread": {
             "bindings": {
               "expression": {
@@ -8364,7 +8492,7 @@
         "id": "panel_all",
         "label": "panel_all",
         "parameters": {
-          "board": "{\n  \"columns\": 18,\n  \"items\": [\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":0,\"w\":17,\"h\":1}},\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_robot\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_reach\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spiral\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_attack\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pack\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_weight\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_drag\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_follow\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":19,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_ropes\",\"rect\":{\"x\":0,\"y\":20,\"w\":8,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":9,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":9,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":9,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":9,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":9,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":9,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":9,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":9,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":9,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":9,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":9,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":9,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":9,\"y\":13,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":9,\"y\":14,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":9,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":9,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":10,\"y\":17,\"w\":6,\"h\":6}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":9,\"y\":23,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":9,\"y\":24,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":9,\"y\":25,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":9,\"y\":26,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":9,\"y\":27,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":9,\"y\":28,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":9,\"y\":29,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_search\",\"rect\":{\"x\":9,\"y\":30,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":9,\"y\":31,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":9,\"y\":32,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":9,\"y\":33,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":9,\"y\":34,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":9,\"y\":35,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":9,\"y\":36,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":9,\"y\":37,\"w\":8,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 18,\n  \"items\": [\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":0,\"w\":17,\"h\":1}},\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_robot\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_reach\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spiral\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_attack\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pack\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_weight\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_drag\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_follow\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":19,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_ropes\",\"rect\":{\"x\":0,\"y\":20,\"w\":8,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":9,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":9,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":9,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":9,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lampchase\",\"rect\":{\"x\":9,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":9,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":9,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":9,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":9,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":9,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":9,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":9,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":9,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":9,\"y\":14,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":9,\"y\":15,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":9,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":9,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":10,\"y\":18,\"w\":6,\"h\":6}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":9,\"y\":24,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":9,\"y\":25,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":9,\"y\":26,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":9,\"y\":27,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":9,\"y\":28,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":9,\"y\":29,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":9,\"y\":30,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_search\",\"rect\":{\"x\":9,\"y\":31,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":9,\"y\":32,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":9,\"y\":33,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":9,\"y\":34,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":9,\"y\":35,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":9,\"y\":36,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":9,\"y\":37,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":9,\"y\":38,\"w\":8,\"h\":1}}\n  ]\n}",
           "remote": false,
           "title": "All"
         },
@@ -8409,7 +8537,7 @@
         "id": "panel_scene",
         "label": "panel_scene",
         "parameters": {
-          "board": "{\n  \"columns\": 9,\n  \"items\": [\n    {\"label\":\"Scene\",\"rect\":{\"x\":0,\"y\":0,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":14,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":1,\"y\":17,\"w\":6,\"h\":6}}\n  ]\n}",
+          "board": "{\n  \"columns\": 9,\n  \"items\": [\n    {\"label\":\"Scene\",\"rect\":{\"x\":0,\"y\":0,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lampchase\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":15,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":1,\"y\":18,\"w\":6,\"h\":6}}\n  ]\n}",
           "remote": true,
           "title": "Scene"
         },
@@ -8424,8 +8552,8 @@
         "id": "presets_all",
         "label": "presets_all",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_all\",\n      \"values\": {\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_crawl\": {\n          \"value\": 0.6\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"slider_stride\": {\n          \"value\": 5\n        },\n        \"slider_reach\": {\n          \"value\": 1.3\n        },\n        \"slider_flare\": {\n          \"value\": 0.25\n        },\n        \"slider_wave\": {\n          \"value\": 0.05\n        },\n        \"slider_grip\": {\n          \"value\": 1\n        },\n        \"slider_gesture\": {\n          \"value\": 0.6\n        },\n        \"slider_spiral\": {\n          \"value\": 0\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_weight\": {\n          \"value\": 0\n        },\n        \"slider_drag\": {\n          \"value\": 1.5\n        },\n        \"slider_follow\": {\n          \"value\": 0.4\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"toggle_follow\": {\n          \"on\": true\n        },\n        \"toggle_ropes\": {\n          \"on\": false\n        },\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        },\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_search\": {\n          \"value\": 0\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "slider_speed.value slider_crawl.value slider_swim.value slider_stride.value slider_reach.value slider_flare.value slider_wave.value slider_grip.value slider_gesture.value slider_spiral.value slider_attack.value slider_pack.value slider_weight.value slider_drag.value slider_follow.value toggle_perch.on toggle_follow.on toggle_ropes.on slider_bore.value slider_lamp.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_search.value slider_glow.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_all\",\n      \"values\": {\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_crawl\": {\n          \"value\": 0.6\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"slider_stride\": {\n          \"value\": 5\n        },\n        \"slider_reach\": {\n          \"value\": 1.3\n        },\n        \"slider_flare\": {\n          \"value\": 0.25\n        },\n        \"slider_wave\": {\n          \"value\": 0.05\n        },\n        \"slider_grip\": {\n          \"value\": 1\n        },\n        \"slider_gesture\": {\n          \"value\": 0.6\n        },\n        \"slider_spiral\": {\n          \"value\": 0\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_weight\": {\n          \"value\": 0\n        },\n        \"slider_drag\": {\n          \"value\": 1.5\n        },\n        \"slider_follow\": {\n          \"value\": 0.4\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"toggle_follow\": {\n          \"on\": true\n        },\n        \"toggle_ropes\": {\n          \"on\": false\n        },\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_lampchase\": {\n          \"value\": 0.5\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        },\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_search\": {\n          \"value\": 0\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "slider_speed.value slider_crawl.value slider_swim.value slider_stride.value slider_reach.value slider_flare.value slider_wave.value slider_grip.value slider_gesture.value slider_spiral.value slider_attack.value slider_pack.value slider_weight.value slider_drag.value slider_follow.value toggle_perch.on toggle_follow.on toggle_ropes.on slider_bore.value slider_lamp.value slider_lampchase.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_search.value slider_glow.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
         },
         "position": {
           "x": -1500,
@@ -8466,8 +8594,8 @@
         "id": "presets_scene",
         "label": "presets_scene",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_scene\",\n      \"values\": {\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "slider_bore.value slider_lamp.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_scene\",\n      \"values\": {\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_lampchase\": {\n          \"value\": 0.5\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "slider_bore.value slider_lamp.value slider_lampchase.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y"
         },
         "position": {
           "x": -2100,
@@ -8749,7 +8877,7 @@
           "value": 0.3
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 3750
         },
         "type": "slider"
@@ -8787,7 +8915,7 @@
           "value": 7.5
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 2500
         },
         "type": "slider"
@@ -8825,7 +8953,7 @@
           "value": 0.6
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 3500
         },
         "type": "slider"
@@ -8844,7 +8972,7 @@
           "value": 0.25
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 3500
         },
         "type": "slider"
@@ -8863,8 +8991,8 @@
           "value": 0
         },
         "position": {
-          "x": -2700,
-          "y": 2750
+          "x": -3600,
+          "y": 3000
         },
         "type": "slider"
       },
@@ -8901,7 +9029,7 @@
           "value": 0.5
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 2750
         },
         "type": "slider"
@@ -8958,7 +9086,7 @@
           "value": 0
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 3000
         },
         "type": "slider"
@@ -8977,7 +9105,7 @@
           "value": 9
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 3500
         },
         "type": "slider"
@@ -8996,7 +9124,7 @@
           "value": 0.06
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 2750
         },
         "type": "slider"
@@ -9034,8 +9162,8 @@
           "value": 0.04
         },
         "position": {
-          "x": -2700,
-          "y": 2500
+          "x": -3600,
+          "y": 2750
         },
         "type": "slider"
       },
@@ -9053,7 +9181,7 @@
           "value": 0
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 3000
         },
         "type": "slider"
@@ -9072,7 +9200,7 @@
           "value": 0.4
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 3250
         },
         "type": "slider"
@@ -9091,8 +9219,8 @@
           "value": 0.07
         },
         "position": {
-          "x": -2700,
-          "y": 3000
+          "x": -3600,
+          "y": 3250
         },
         "type": "slider"
       },
@@ -9110,7 +9238,7 @@
           "value": 0
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 3250
         },
         "type": "slider"
@@ -9134,6 +9262,25 @@
         },
         "type": "slider"
       },
+      "slider_lampchase": {
+        "definitionVersion": 2,
+        "id": "slider_lampchase",
+        "label": "slider_lampchase",
+        "parameters": {
+          "caption": "Lamp chase (hats)",
+          "channel": "lampchase",
+          "defaultValue": 0.5,
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 0.5
+        },
+        "position": {
+          "x": -3300,
+          "y": 2500
+        },
+        "type": "slider"
+      },
       "slider_legs": {
         "definitionVersion": 2,
         "id": "slider_legs",
@@ -9148,8 +9295,8 @@
           "value": 1
         },
         "position": {
-          "x": -2700,
-          "y": 3500
+          "x": -3600,
+          "y": 3750
         },
         "type": "slider"
       },
@@ -9167,7 +9314,7 @@
           "value": 0.7
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 3750
         },
         "type": "slider"
@@ -9186,7 +9333,7 @@
           "value": 1
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 3000
         },
         "type": "slider"
@@ -9224,7 +9371,7 @@
           "value": 0.6
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 2750
         },
         "type": "slider"
@@ -9262,7 +9409,7 @@
           "value": 1
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 2500
         },
         "type": "slider"
@@ -9281,8 +9428,8 @@
           "value": 0
         },
         "position": {
-          "x": -2700,
-          "y": 3250
+          "x": -3600,
+          "y": 3500
         },
         "type": "slider"
       },
@@ -9319,7 +9466,7 @@
           "value": 0.6
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 3750
         },
         "type": "slider"
@@ -9376,7 +9523,7 @@
           "value": 0.6
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 3250
         },
         "type": "slider"
@@ -10264,6 +10411,32 @@
             },
             "mode": "expression"
           },
+          "chase": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_lampchase').chan.lampchase * (op('lag_levels').chan.high * op('slider_react').chan.react)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "chaseAt": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
           "color": [
             0.016,
             0.04,
@@ -10788,7 +10961,7 @@
             "mode": "expression"
           },
           "roll": 0,
-          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\nstruct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  density: f32, // @default 0.04  How fast the air closes in, per metre.\n  color: vec3f, // @default [0.016, 0.04, 0.044]  What the far end of the tunnel fades to: never black.\n  glow: f32, // @default 0.002  How much of a light the air between throws at the lens.\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  lamp: f32, // @default 26  The lamps' intensity, as their lights have it.\n  eyesAt: vec3f, // @default [0, 0, 0.9]  Where the robot's face is.\n  eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its light's colour.\n  eyes: f32, // @default 1.6  …and intensity, as its light has it.\n  place: f32, // @default 0  0 the tunnel, 1 the fields: thin air, mist low down, a sky.\n  mist: f32, // @default 1  How much mist lies low in the fields.\n  podColor: vec3f, // @default [1, 0.04, 0.04]  The pods' light, which is in the mist a little.\n  travel: f32, // @default 0  Distance travelled along the line, metres: the lightning is placed by it.\n  strike: f32, // @default 0  Which strike of lightning (field.ts, strikeOf).\n  flash: f32, // @default 0  How bright it is now, 0 to 1.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues, right-handed about the camera's +z: the angle is negated about forward),\n// exactly as camera.ts guardedRolledUp builds the render's view (T1433b).\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(-rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst FIELD_CELL: f32 = 24.00000;\nconst WINDOW_ACROSS: u32 = 21u;\nconst WINDOW_BEHIND: i32 = 4;\nconst FIELD_LAP: i32 = 40;\nconst FIELD_AVENUE: f32 = 12.00000;\nconst TOWER_SWELL: f32 = 1.60000;\n\n// A cell's lot, 0 to 1 (field.ts, fieldLot: the same line).\nfn fieldLot(across: i32, along: i32, salt: u32) -> f32 {\n  let n = (u32(across + 4096) * 73856093u) ^ (u32(along + 4096) * 19349663u) ^ (salt * 83492791u);\n  let m = (n ^ (n >> 15u)) * 2246822519u;\n  return f32((m ^ (m >> 13u)) >> 8u) / 16777216.0;\n}\n\nstruct Tower {\n  cell: vec2i, // its cell of the ground plan: across, and along within the lap\n  foot: vec3f, // where it crosses the height of the line: x, the line's y abreast of it, z\n  radius: f32,\n  lean: vec2f, // how far its top has gone over, metres across and along\n  count: f32, // its own count, 0 to 1\n  stands: f32, // 0 in the avenue: not there\n};\n\n// The tower of cell (`across`, `along`) of the ground plan.\nfn towerIn(across: i32, along: i32) -> Tower {\n  // Its lots are drawn from its place in the lap, so the lap's end does not change the field.\n  let lap = along - FIELD_LAP * i32(floor(f32(along) / f32(FIELD_LAP)));\n  var t: Tower;\n  t.cell = vec2i(across, lap);\n  let z = (f32(along) + 0.5 + (fieldLot(across, lap, 1u) - 0.5) * 0.6) * FIELD_CELL;\n  let x = (f32(across) + 0.5 + (fieldLot(across, lap, 2u) - 0.5) * 0.6) * FIELD_CELL;\n  let line = pathAt(z);\n  t.foot = vec3f(x, line.y, z);\n  t.radius = 2.4 + 2.6 * fieldLot(across, lap, 3u);\n  t.lean = (vec2f(fieldLot(across, lap, 4u), fieldLot(across, lap, 5u)) - 0.5) * 9.0;\n  t.count = fieldLot(across, lap, 6u);\n  t.stands = step(FIELD_AVENUE + t.radius * TOWER_SWELL, abs(x - line.x));\n  return t;\n}\n\n// The tower in slot `slot` of the window, with the robot `travel` metres along.\nfn towerOf(slot: u32, travel: f32) -> Tower {\n  let across = i32(floor(pathAt(travel).x / FIELD_CELL)) + i32(slot % WINDOW_ACROSS) - i32(WINDOW_ACROSS / 2u);\n  let along = i32(floor(travel / FIELD_CELL)) + i32(slot / WINDOW_ACROSS) - WINDOW_BEHIND;\n  return towerIn(across, along);\n}\n\n// Its middle, `h` metres above the line: it goes over a little, more the higher.\nfn towerAxis(t: Tower, h: f32) -> vec3f {\n  let over = (h / 100.0) * abs(h / 100.0);\n  return t.foot + vec3f(t.lean.x * over, h, t.lean.y * over);\n}\n\n// How thick it is there: swellings a few tens of metres apart, and thinner toward the top.\nfn towerGirth(t: Tower, h: f32) -> f32 {\n  let swell = 1.0 + 0.24 * sin(h * 0.21 + t.count * 6.2831853) + 0.13 * sin(h * 0.63 + t.count * 17.0);\n  return t.radius * swell * mix(1.2, 0.72, clamp((h + 70.00000) / 170.00000, 0.0, 1.0));\n}\n\nconst STRIKE_TURNS = array<f32, 16>(0.6180340, 0.7548777, 0.4142136, 0.7320508, 0.2360680, 0.6457513, 0.3166248, 0.6055513, 0.3588989, 0.7958315, 0.3851648, 0.5677644, 0.4031242, 0.5574385, 0.8556546, 0.2801099);\nfn strikeLot(strike: f32, which: i32) -> f32 {\n  return fract(strike * STRIKE_TURNS[which] + f32(which) * 0.37);\n}\n\nstruct Strike {\n  start: vec3f,\n  end: vec3f,\n  live: f32, // 0 where a tower of it is not there (the avenue): no strike\n};\n\nfn strikeOf(strike: f32, travel: f32) -> Strike {\n  let mark = floor(travel / 48.00000) * 48.00000;\n  let z = mark + mix(18.0, 150.0, strikeLot(strike, 0));\n  let side = select(-1.0, 1.0, strikeLot(strike, 1) > 0.5);\n  let x = pathAt(z).x + side * mix(44.0, 100.0, strikeLot(strike, 2));\n  let across = i32(floor(x / FIELD_CELL));\n  let along = i32(floor(z / FIELD_CELL));\n  let kind = strikeLot(strike, 3);\n  let a = towerIn(across, along);\n  // Above the mist's top, where it can be seen.\n  let h = mix(-13.0, 4.0, strikeLot(strike, 4));\n  var s: Strike;\n  if (kind < 0.40000) {\n    // Up the flank of one tower, on the side that faces the line.\n    let top = h + mix(30.0, 55.0, strikeLot(strike, 5));\n    let face = vec3f(-side, 0.0, 0.0);\n    s.start = towerAxis(a, h) + face * (towerGirth(a, h) * 1.15);\n    s.end = towerAxis(a, top) + face * (towerGirth(a, top) * 1.15);\n    s.live = a.stands;\n    return s;\n  }\n  // To the next tower: outward, or along.\n  let outward = kind < 0.80000;\n  let b = towerIn(across + select(0, i32(side), outward), along + select(1, 0, outward));\n  s.start = towerAxis(a, h);\n  s.end = towerAxis(b, h + mix(-7.0, 7.0, strikeLot(strike, 5)));\n  s.live = a.stands * b.stands;\n  return s;\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n\n// A lamp's light hangs this far under its plate (document.ts, lampAt); its lit air starts at the plate.\nconst LAMP_HANGS: f32 = 0.35;\nconst BEAM_GAIN: f32 = 1.00;\n// How much of a point light at `light` the air along a ray throws back, per unit of the light and of the air's\n// own share: the integral of 1/d² from the lens out to `reach` metres, dimmed by the air it then crosses.\nfn airlight(origin: vec3f, ray: vec3f, reach: f32, light: vec3f) -> f32 {\n  let q = origin - light;\n  let b = dot(ray, q);\n  // No nearer than a lamp is wide: a ray through the lamp itself is a bright core, not infinity.\n  let c = sqrt(max(dot(q, q) - b * b, 0.03));\n  let nearest = clamp(-b, 0.0, reach);\n  return (atan((reach + b) / c) - atan(b / c)) / c * exp(-nearest * params.density);\n}\n\n// The same for a LAMP, which is not a point: it is a plate in the crown that shines down, most straight down\n// and nothing above its own height (the cube of the cosine off straight down). So its lit air is a cone\n// hanging from the plate, not a ball round a point under it. That integral is closed too, and has no\n// arctangent in it: with s the distance along the ray from its nearest point to the plate, c that nearest\n// distance, and the depth under the plate there under + sink * s, it is the integral of\n// (under + sink * s)³ / (s² + c²)^(5/2), taken over the part of the ray that is below the plate.\n// A hall's lamp is the bigger lamp, by how much higher it hangs (document.ts, lampAt).\nfn hallLamp(z: f32) -> f32 {\n  return 1.0 + CHAMBER_SWELL * chamberAt(z);\n}\n\nfn beamUpTo(s: f32, c2: f32, under: f32, sink: f32) -> f32 {\n  let r2 = s * s + c2;\n  let r3 = r2 * sqrt(r2);\n  let j0 = s / (3.0 * c2 * r3) + 2.0 * s / (3.0 * c2 * c2 * sqrt(r2));\n  let j1 = -1.0 / (3.0 * r3);\n  let j2 = s * s * s / (3.0 * c2 * r3);\n  let j3 = -(3.0 * s * s + 2.0 * c2) / (3.0 * r3);\n  return under * under * under * j0 + 3.0 * under * under * sink * j1 + 3.0 * under * sink * sink * j2 + sink * sink * sink * j3;\n}\n\nfn beamlight(origin: vec3f, ray: vec3f, reach: f32, plate: vec3f) -> f32 {\n  let q = origin - plate;\n  let b = dot(ray, q);\n  let c2 = max(dot(q, q) - b * b, 0.03);\n  let sink = -ray.y;\n  let under = b * ray.y - q.y;\n  var s0 = b;\n  var s1 = reach + b;\n  if (sink > 1e-4) {\n    s0 = max(s0, -under / sink);\n  } else if (sink < -1e-4) {\n    s1 = min(s1, -under / sink);\n  } else if (under <= 0.0) {\n    return 0.0;\n  }\n  if (s1 <= s0) { return 0.0; }\n  let nearest = clamp(-b, s0 - b, s1 - b);\n  return max(beamUpTo(s1, c2, under, sink) - beamUpTo(s0, c2, under, sink), 0.0) * BEAM_GAIN * exp(-nearest * params.density);\n}\n\n// ── THE FIELDS' AIR ──\nconst MIST_TOP: f32 = -20.0;\nconst MIST_FADE: f32 = 9.0;\n// How thick the mist is at its top, per metre.\nconst MIST_THICK: f32 = 0.035;\nconst STRIKE_TONE = vec3f(0.56, 0.74, 1.0);\n\nfn airHash(p: vec2f) -> f32 {\n  var q = fract(p * vec2f(0.1031, 0.1030));\n  q += dot(q, q.yx + 33.33);\n  return fract((q.x + q.y) * q.x);\n}\n\nfn airNoise(p: vec2f) -> f32 {\n  let cell = floor(p);\n  let f = fract(p);\n  let u = f * f * (3.0 - 2.0 * f);\n  return mix(mix(airHash(cell), airHash(cell + vec2f(1.0, 0.0)), u.x), mix(airHash(cell + vec2f(0.0, 1.0)), airHash(cell + vec2f(1.0, 1.0)), u.x), u.y);\n}\n\nfn airBillow(p: vec2f) -> f32 {\n  return 0.5 * airNoise(p) + 0.3 * airNoise(p * 2.13 + 7.1) + 0.2 * airNoise(p * 4.37 + 3.7);\n}\n\n// What is there where nothing is. Lighter low down all round (the air between here and the limit of sight),\n// dark overhead but for a ceiling of cloud, torn, that drifts; and lightning lights the cloud over where it struck.\nfn skyAt(ray: vec3f, toStrike: vec2f, live: f32) -> vec3f {\n  let band = exp(-abs(ray.y) * 4.0);\n  let ceiling = ray.xz / (max(ray.y, 0.0) + 0.22);\n  let cloud = airBillow(ceiling * 0.55 + vec2f(frameU.absTime * 0.012, 0.0));\n  let torn = smoothstep(0.42, 0.78, cloud) * smoothstep(0.0, 0.25, ray.y);\n  let toward = max(dot(normalize(ray.xz + vec2f(1e-5)), toStrike), 0.0);\n  return params.color * (0.3 + 0.75 * band + 0.9 * torn) + STRIKE_TONE * (live * (0.03 + 0.2 * cloud) * toward * toward * smoothstep(-0.05, 0.3, ray.y));\n}\n\nstruct Air {\n  clear: f32, // how much of what is drawn comes through\n  light: vec3f, // what the air itself sends\n};\n\nfn fieldAir(origin: vec3f, ray: vec3f, reach: f32) -> Air {\n  let strike = strikeOf(params.strike, params.travel);\n  let struck = mix(strike.start, strike.end, 0.5);\n  let live = params.flash * strike.live;\n  // Where this ray meets the mist's top (or, if it never does, where it ends): the top is in billows there.\n  let level = pathAt(origin.z).y + MIST_TOP;\n  var meets = min(reach, 300.0);\n  if (abs(ray.y) > 1e-4) {\n    let t = (level - origin.y) / ray.y;\n    if (t > 0.0) { meets = min(t, meets); }\n  }\n  let there = origin + ray * meets;\n  let billow = airBillow(there.xz * 0.02 + vec2f(frameU.absTime * 0.02, frameU.absTime * 0.013));\n  let top = level + (billow - 0.5) * 16.0;\n  // How much air the ray crosses: the thin air everywhere, and the mist, which is thicker by e every MIST_FADE\n  // metres down. Along a straight ray that is the integral of an exponential: closed.\n  let thin = reach * params.density;\n  let under = exp(clamp(-(origin.y - top) / MIST_FADE, -30.0, 3.0));\n  let sinks = ray.y / MIST_FADE;\n  var along = reach;\n  if (abs(sinks) > 1e-5) { along = (1.0 - exp(clamp(-sinks * reach, -30.0, 30.0))) / sinks; }\n  let thick = min(MIST_THICK * params.mist * under * along, 20.0);\n  var air: Air;\n  air.clear = exp(-(thin + thick));\n  // The mist is lit from behind and within: cold, more where it is piled up, a little by the pods, and by\n  // lightning, most near where it struck.\n  let near = 22.0 / (22.0 + distance(there, struck));\n  let mist = params.color * (0.4 + 2.3 * billow * billow) + params.podColor * (0.008 + 0.022 * billow) + STRIKE_TONE * (live * 0.6 * near * near);\n  let toStrike = normalize(struck.xz - origin.xz + vec2f(1e-4));\n  air.light = mix(skyAt(ray, toStrike, live), mist, thick / max(thin + thick, 1e-5)) * (1.0 - air.clear)\n    + STRIKE_TONE * (live * 0.4 * airlight(origin, ray, reach, struck));\n  return air;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let view = makeView();\n  let ray = rayAt(view, uv);\n  let z = viewDepth(uv);\n  // Nothing drawn here: the tunnel's own dark, all haze.\n  let reach = select(z / max(dot(ray, view.forward), 1e-4), params.far, z < 0.0);\n  let clear = exp(-reach * params.density);\n  var air = params.eyeColor * params.eyes * airlight(params.eye, ray, reach, params.eyesAt);\n  air = air + lampTone(params.station + -2.0) * params.lamp * hallLamp(params.lamp0.z) * beamlight(params.eye, ray, reach, params.lamp0 + vec3f(0.0, LAMP_HANGS, 0.0));\n  air = air + lampTone(params.station + -1.0) * params.lamp * hallLamp(params.lamp1.z) * beamlight(params.eye, ray, reach, params.lamp1 + vec3f(0.0, LAMP_HANGS, 0.0));\n  air = air + lampTone(params.station + 0.0) * params.lamp * hallLamp(params.lamp2.z) * beamlight(params.eye, ray, reach, params.lamp2 + vec3f(0.0, LAMP_HANGS, 0.0));\n  air = air + lampTone(params.station + 1.0) * params.lamp * hallLamp(params.lamp3.z) * beamlight(params.eye, ray, reach, params.lamp3 + vec3f(0.0, LAMP_HANGS, 0.0));\n  air = air + lampTone(params.station + 2.0) * params.lamp * hallLamp(params.lamp4.z) * beamlight(params.eye, ray, reach, params.lamp4 + vec3f(0.0, LAMP_HANGS, 0.0));\n  if (params.place > 0.5) {\n    let field = fieldAir(params.eye, ray, reach);\n    return vec4f(lit.rgb * field.clear + field.light + air * params.glow, lit.a);\n  }\n  return vec4f(mix(params.color, lit.rgb, clear) + air * params.glow, lit.a);\n}",
+          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\nstruct Params {\n  eye: vec3f, // @default 0  Camera position (drive from the camera).\n  aim: vec3f, // @default 0  Camera look-at (drive from the camera).\n  fov: f32, // @default 50  Camera vertical field of view, degrees.\n  far: f32, // @default 400  Camera far plane (depth arrives as distance ÷ far).\n  roll: f32, // @default 0  Camera roll, degrees (drive from the camera).\n  density: f32, // @default 0.04  How fast the air closes in, per metre.\n  color: vec3f, // @default [0.016, 0.04, 0.044]  What the far end of the tunnel fades to: never black.\n  glow: f32, // @default 0.002  How much of a light the air between throws at the lens.\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  chaseAt: f32, // @default 0  The chase (tunnel.ts, CHASE): the beat's count and how far through the beat it is.\n  chase: f32, // @default 0  …and how much of it, 0 none.\n  lamp: f32, // @default 26  The lamps' intensity, as their lights have it.\n  eyesAt: vec3f, // @default [0, 0, 0.9]  Where the robot's face is.\n  eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its light's colour.\n  eyes: f32, // @default 1.6  …and intensity, as its light has it.\n  place: f32, // @default 0  0 the tunnel, 1 the fields: thin air, mist low down, a sky.\n  mist: f32, // @default 1  How much mist lies low in the fields.\n  podColor: vec3f, // @default [1, 0.04, 0.04]  The pods' light, which is in the mist a little.\n  travel: f32, // @default 0  Distance travelled along the line, metres: the lightning is placed by it.\n  strike: f32, // @default 0  Which strike of lightning (field.ts, strikeOf).\n  flash: f32, // @default 0  How bright it is now, 0 to 1.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n// T1383b: the camera's right vector with its ROLL — world up turned about the view axis by\n// roll degrees (Rodrigues, right-handed about the camera's +z: the angle is negated about forward),\n// exactly as camera.ts guardedRolledUp builds the render's view (T1433b).\nfn rolledRight(forward: vec3f, rollDeg: f32) -> vec3f {\n  var up = select(vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(forward.y) > 0.999);\n  let t = radians(-rollDeg);\n  up = up * cos(t) + cross(forward, up) * sin(t) + forward * dot(forward, up) * (1.0 - cos(t));\n  return normalize(cross(forward, up));\n}\n\nstruct View {\n  forward: vec3f,\n  right: vec3f,\n  up: vec3f,\n  tanHalf: f32,\n  aspect: f32,\n};\n\nfn makeView() -> View {\n  var v: View;\n  v.forward = normalize(params.aim - params.eye);\n  v.right = rolledRight(v.forward, params.roll);\n  v.up = cross(v.right, v.forward);\n  v.tanHalf = tan(radians(params.fov) * 0.5);\n  v.aspect = frameU.resolution.x / max(frameU.resolution.y, 1.0);\n  return v;\n}\n\nfn rayAt(v: View, uv: vec2f) -> vec3f {\n  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  return normalize(v.forward + v.right * ndc.x * v.tanHalf * v.aspect + v.up * ndc.y * v.tanHalf);\n}\n\nfn depthTexel(uv: vec2f) -> vec2i {\n  let size = vec2f(textureDimensions(inputTexture1));\n  return clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1));\n}\n\n// View-plane distance at uv, or a negative number where there is no surface.\nfn viewDepth(uv: vec2f) -> f32 {\n  let d = textureLoad(inputTexture1, depthTexel(uv), 0).r;\n  return select(d * params.far, -1.0, d >= 0.9999 || d <= 0.0);\n}\n\nfn worldAt(v: View, uv: vec2f, z: f32) -> vec3f {\n  let ray = rayAt(v, uv);\n  return params.eye + ray * (z / max(dot(ray, v.forward), 1e-4));\n}\n\n// World point → (uv, view-plane distance); z ≤ 0 means behind the camera.\nfn project(v: View, world: vec3f) -> vec3f {\n  let rel = world - params.eye;\n  let z = dot(rel, v.forward);\n  let x = dot(rel, v.right) / (max(z, 1e-4) * v.tanHalf * v.aspect);\n  let y = dot(rel, v.up) / (max(z, 1e-4) * v.tanHalf);\n  return vec3f(x * 0.5 + 0.5, 0.5 - y * 0.5, z);\n}\n\nfn ignHash(pixel: vec2f) -> f32 {\n  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));\n}\n\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst FIELD_CELL: f32 = 24.00000;\nconst WINDOW_ACROSS: u32 = 21u;\nconst WINDOW_BEHIND: i32 = 4;\nconst FIELD_LAP: i32 = 40;\nconst FIELD_AVENUE: f32 = 12.00000;\nconst TOWER_SWELL: f32 = 1.60000;\n\n// A cell's lot, 0 to 1 (field.ts, fieldLot: the same line).\nfn fieldLot(across: i32, along: i32, salt: u32) -> f32 {\n  let n = (u32(across + 4096) * 73856093u) ^ (u32(along + 4096) * 19349663u) ^ (salt * 83492791u);\n  let m = (n ^ (n >> 15u)) * 2246822519u;\n  return f32((m ^ (m >> 13u)) >> 8u) / 16777216.0;\n}\n\nstruct Tower {\n  cell: vec2i, // its cell of the ground plan: across, and along within the lap\n  foot: vec3f, // where it crosses the height of the line: x, the line's y abreast of it, z\n  radius: f32,\n  lean: vec2f, // how far its top has gone over, metres across and along\n  count: f32, // its own count, 0 to 1\n  stands: f32, // 0 in the avenue: not there\n};\n\n// The tower of cell (`across`, `along`) of the ground plan.\nfn towerIn(across: i32, along: i32) -> Tower {\n  // Its lots are drawn from its place in the lap, so the lap's end does not change the field.\n  let lap = along - FIELD_LAP * i32(floor(f32(along) / f32(FIELD_LAP)));\n  var t: Tower;\n  t.cell = vec2i(across, lap);\n  let z = (f32(along) + 0.5 + (fieldLot(across, lap, 1u) - 0.5) * 0.6) * FIELD_CELL;\n  let x = (f32(across) + 0.5 + (fieldLot(across, lap, 2u) - 0.5) * 0.6) * FIELD_CELL;\n  let line = pathAt(z);\n  t.foot = vec3f(x, line.y, z);\n  t.radius = 2.4 + 2.6 * fieldLot(across, lap, 3u);\n  t.lean = (vec2f(fieldLot(across, lap, 4u), fieldLot(across, lap, 5u)) - 0.5) * 9.0;\n  t.count = fieldLot(across, lap, 6u);\n  t.stands = step(FIELD_AVENUE + t.radius * TOWER_SWELL, abs(x - line.x));\n  return t;\n}\n\n// The tower in slot `slot` of the window, with the robot `travel` metres along.\nfn towerOf(slot: u32, travel: f32) -> Tower {\n  let across = i32(floor(pathAt(travel).x / FIELD_CELL)) + i32(slot % WINDOW_ACROSS) - i32(WINDOW_ACROSS / 2u);\n  let along = i32(floor(travel / FIELD_CELL)) + i32(slot / WINDOW_ACROSS) - WINDOW_BEHIND;\n  return towerIn(across, along);\n}\n\n// Its middle, `h` metres above the line: it goes over a little, more the higher.\nfn towerAxis(t: Tower, h: f32) -> vec3f {\n  let over = (h / 100.0) * abs(h / 100.0);\n  return t.foot + vec3f(t.lean.x * over, h, t.lean.y * over);\n}\n\n// How thick it is there: swellings a few tens of metres apart, and thinner toward the top.\nfn towerGirth(t: Tower, h: f32) -> f32 {\n  let swell = 1.0 + 0.24 * sin(h * 0.21 + t.count * 6.2831853) + 0.13 * sin(h * 0.63 + t.count * 17.0);\n  return t.radius * swell * mix(1.2, 0.72, clamp((h + 70.00000) / 170.00000, 0.0, 1.0));\n}\n\nconst STRIKE_TURNS = array<f32, 16>(0.6180340, 0.7548777, 0.4142136, 0.7320508, 0.2360680, 0.6457513, 0.3166248, 0.6055513, 0.3588989, 0.7958315, 0.3851648, 0.5677644, 0.4031242, 0.5574385, 0.8556546, 0.2801099);\nfn strikeLot(strike: f32, which: i32) -> f32 {\n  return fract(strike * STRIKE_TURNS[which] + f32(which) * 0.37);\n}\n\nstruct Strike {\n  start: vec3f,\n  end: vec3f,\n  live: f32, // 0 where a tower of it is not there (the avenue): no strike\n};\n\nfn strikeOf(strike: f32, travel: f32) -> Strike {\n  let mark = floor(travel / 48.00000) * 48.00000;\n  let z = mark + mix(18.0, 150.0, strikeLot(strike, 0));\n  let side = select(-1.0, 1.0, strikeLot(strike, 1) > 0.5);\n  let x = pathAt(z).x + side * mix(44.0, 100.0, strikeLot(strike, 2));\n  let across = i32(floor(x / FIELD_CELL));\n  let along = i32(floor(z / FIELD_CELL));\n  let kind = strikeLot(strike, 3);\n  let a = towerIn(across, along);\n  // Above the mist's top, where it can be seen.\n  let h = mix(-13.0, 4.0, strikeLot(strike, 4));\n  var s: Strike;\n  if (kind < 0.40000) {\n    // Up the flank of one tower, on the side that faces the line.\n    let top = h + mix(30.0, 55.0, strikeLot(strike, 5));\n    let face = vec3f(-side, 0.0, 0.0);\n    s.start = towerAxis(a, h) + face * (towerGirth(a, h) * 1.15);\n    s.end = towerAxis(a, top) + face * (towerGirth(a, top) * 1.15);\n    s.live = a.stands;\n    return s;\n  }\n  // To the next tower: outward, or along.\n  let outward = kind < 0.80000;\n  let b = towerIn(across + select(0, i32(side), outward), along + select(1, 0, outward));\n  s.start = towerAxis(a, h);\n  s.end = towerAxis(b, h + mix(-7.0, 7.0, strikeLot(strike, 5)));\n  s.live = a.stands * b.stands;\n  return s;\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n// The chase (tunnel.ts, CHASE): this lamp's strength just now against its own.\nfn lampChase(station: f32, at: f32, depth: f32) -> f32 {\n  let turn = station - at;\n  let off = turn - 4.0 * round(turn / 4.0);\n  return 1.0 + depth * (2.00 * max(0.0, 1.0 - abs(off) / 1.00) - 0.50);\n}\n\n// A lamp's light hangs this far under its plate (document.ts, lampAt); its lit air starts at the plate.\nconst LAMP_HANGS: f32 = 0.35;\nconst BEAM_GAIN: f32 = 1.00;\n// How much of a point light at `light` the air along a ray throws back, per unit of the light and of the air's\n// own share: the integral of 1/d² from the lens out to `reach` metres, dimmed by the air it then crosses.\nfn airlight(origin: vec3f, ray: vec3f, reach: f32, light: vec3f) -> f32 {\n  let q = origin - light;\n  let b = dot(ray, q);\n  // No nearer than a lamp is wide: a ray through the lamp itself is a bright core, not infinity.\n  let c = sqrt(max(dot(q, q) - b * b, 0.03));\n  let nearest = clamp(-b, 0.0, reach);\n  return (atan((reach + b) / c) - atan(b / c)) / c * exp(-nearest * params.density);\n}\n\n// The same for a LAMP, which is not a point: it is a plate in the crown that shines down, most straight down\n// and nothing above its own height (the cube of the cosine off straight down). So its lit air is a cone\n// hanging from the plate, not a ball round a point under it. That integral is closed too, and has no\n// arctangent in it: with s the distance along the ray from its nearest point to the plate, c that nearest\n// distance, and the depth under the plate there under + sink * s, it is the integral of\n// (under + sink * s)³ / (s² + c²)^(5/2), taken over the part of the ray that is below the plate.\n// A hall's lamp is the bigger lamp, by how much higher it hangs (document.ts, lampAt).\nfn hallLamp(z: f32) -> f32 {\n  return 1.0 + CHAMBER_SWELL * chamberAt(z);\n}\n\nfn beamUpTo(s: f32, c2: f32, under: f32, sink: f32) -> f32 {\n  let r2 = s * s + c2;\n  let r3 = r2 * sqrt(r2);\n  let j0 = s / (3.0 * c2 * r3) + 2.0 * s / (3.0 * c2 * c2 * sqrt(r2));\n  let j1 = -1.0 / (3.0 * r3);\n  let j2 = s * s * s / (3.0 * c2 * r3);\n  let j3 = -(3.0 * s * s + 2.0 * c2) / (3.0 * r3);\n  return under * under * under * j0 + 3.0 * under * under * sink * j1 + 3.0 * under * sink * sink * j2 + sink * sink * sink * j3;\n}\n\nfn beamlight(origin: vec3f, ray: vec3f, reach: f32, plate: vec3f) -> f32 {\n  let q = origin - plate;\n  let b = dot(ray, q);\n  let c2 = max(dot(q, q) - b * b, 0.03);\n  let sink = -ray.y;\n  let under = b * ray.y - q.y;\n  var s0 = b;\n  var s1 = reach + b;\n  if (sink > 1e-4) {\n    s0 = max(s0, -under / sink);\n  } else if (sink < -1e-4) {\n    s1 = min(s1, -under / sink);\n  } else if (under <= 0.0) {\n    return 0.0;\n  }\n  if (s1 <= s0) { return 0.0; }\n  let nearest = clamp(-b, s0 - b, s1 - b);\n  return max(beamUpTo(s1, c2, under, sink) - beamUpTo(s0, c2, under, sink), 0.0) * BEAM_GAIN * exp(-nearest * params.density);\n}\n\n// ── THE FIELDS' AIR ──\nconst MIST_TOP: f32 = -20.0;\nconst MIST_FADE: f32 = 9.0;\n// How thick the mist is at its top, per metre.\nconst MIST_THICK: f32 = 0.035;\nconst STRIKE_TONE = vec3f(0.56, 0.74, 1.0);\n\nfn airHash(p: vec2f) -> f32 {\n  var q = fract(p * vec2f(0.1031, 0.1030));\n  q += dot(q, q.yx + 33.33);\n  return fract((q.x + q.y) * q.x);\n}\n\nfn airNoise(p: vec2f) -> f32 {\n  let cell = floor(p);\n  let f = fract(p);\n  let u = f * f * (3.0 - 2.0 * f);\n  return mix(mix(airHash(cell), airHash(cell + vec2f(1.0, 0.0)), u.x), mix(airHash(cell + vec2f(0.0, 1.0)), airHash(cell + vec2f(1.0, 1.0)), u.x), u.y);\n}\n\nfn airBillow(p: vec2f) -> f32 {\n  return 0.5 * airNoise(p) + 0.3 * airNoise(p * 2.13 + 7.1) + 0.2 * airNoise(p * 4.37 + 3.7);\n}\n\n// What is there where nothing is. Lighter low down all round (the air between here and the limit of sight),\n// dark overhead but for a ceiling of cloud, torn, that drifts; and lightning lights the cloud over where it struck.\nfn skyAt(ray: vec3f, toStrike: vec2f, live: f32) -> vec3f {\n  let band = exp(-abs(ray.y) * 4.0);\n  let ceiling = ray.xz / (max(ray.y, 0.0) + 0.22);\n  let cloud = airBillow(ceiling * 0.55 + vec2f(frameU.absTime * 0.012, 0.0));\n  let torn = smoothstep(0.42, 0.78, cloud) * smoothstep(0.0, 0.25, ray.y);\n  let toward = max(dot(normalize(ray.xz + vec2f(1e-5)), toStrike), 0.0);\n  return params.color * (0.3 + 0.75 * band + 0.9 * torn) + STRIKE_TONE * (live * (0.03 + 0.2 * cloud) * toward * toward * smoothstep(-0.05, 0.3, ray.y));\n}\n\nstruct Air {\n  clear: f32, // how much of what is drawn comes through\n  light: vec3f, // what the air itself sends\n};\n\nfn fieldAir(origin: vec3f, ray: vec3f, reach: f32) -> Air {\n  let strike = strikeOf(params.strike, params.travel);\n  let struck = mix(strike.start, strike.end, 0.5);\n  let live = params.flash * strike.live;\n  // Where this ray meets the mist's top (or, if it never does, where it ends): the top is in billows there.\n  let level = pathAt(origin.z).y + MIST_TOP;\n  var meets = min(reach, 300.0);\n  if (abs(ray.y) > 1e-4) {\n    let t = (level - origin.y) / ray.y;\n    if (t > 0.0) { meets = min(t, meets); }\n  }\n  let there = origin + ray * meets;\n  let billow = airBillow(there.xz * 0.02 + vec2f(frameU.absTime * 0.02, frameU.absTime * 0.013));\n  let top = level + (billow - 0.5) * 16.0;\n  // How much air the ray crosses: the thin air everywhere, and the mist, which is thicker by e every MIST_FADE\n  // metres down. Along a straight ray that is the integral of an exponential: closed.\n  let thin = reach * params.density;\n  let under = exp(clamp(-(origin.y - top) / MIST_FADE, -30.0, 3.0));\n  let sinks = ray.y / MIST_FADE;\n  var along = reach;\n  if (abs(sinks) > 1e-5) { along = (1.0 - exp(clamp(-sinks * reach, -30.0, 30.0))) / sinks; }\n  let thick = min(MIST_THICK * params.mist * under * along, 20.0);\n  var air: Air;\n  air.clear = exp(-(thin + thick));\n  // The mist is lit from behind and within: cold, more where it is piled up, a little by the pods, and by\n  // lightning, most near where it struck.\n  let near = 22.0 / (22.0 + distance(there, struck));\n  let mist = params.color * (0.4 + 2.3 * billow * billow) + params.podColor * (0.008 + 0.022 * billow) + STRIKE_TONE * (live * 0.6 * near * near);\n  let toStrike = normalize(struck.xz - origin.xz + vec2f(1e-4));\n  air.light = mix(skyAt(ray, toStrike, live), mist, thick / max(thin + thick, 1e-5)) * (1.0 - air.clear)\n    + STRIKE_TONE * (live * 0.4 * airlight(origin, ray, reach, struck));\n  return air;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let view = makeView();\n  let ray = rayAt(view, uv);\n  let z = viewDepth(uv);\n  // Nothing drawn here: the tunnel's own dark, all haze.\n  let reach = select(z / max(dot(ray, view.forward), 1e-4), params.far, z < 0.0);\n  let clear = exp(-reach * params.density);\n  var air = params.eyeColor * params.eyes * airlight(params.eye, ray, reach, params.eyesAt);\n  air = air + lampTone(params.station + -2.0) * lampChase(params.station + -2.0, params.chaseAt, params.chase) * params.lamp * hallLamp(params.lamp0.z) * beamlight(params.eye, ray, reach, params.lamp0 + vec3f(0.0, LAMP_HANGS, 0.0));\n  air = air + lampTone(params.station + -1.0) * lampChase(params.station + -1.0, params.chaseAt, params.chase) * params.lamp * hallLamp(params.lamp1.z) * beamlight(params.eye, ray, reach, params.lamp1 + vec3f(0.0, LAMP_HANGS, 0.0));\n  air = air + lampTone(params.station + 0.0) * lampChase(params.station + 0.0, params.chaseAt, params.chase) * params.lamp * hallLamp(params.lamp2.z) * beamlight(params.eye, ray, reach, params.lamp2 + vec3f(0.0, LAMP_HANGS, 0.0));\n  air = air + lampTone(params.station + 1.0) * lampChase(params.station + 1.0, params.chaseAt, params.chase) * params.lamp * hallLamp(params.lamp3.z) * beamlight(params.eye, ray, reach, params.lamp3 + vec3f(0.0, LAMP_HANGS, 0.0));\n  air = air + lampTone(params.station + 2.0) * lampChase(params.station + 2.0, params.chaseAt, params.chase) * params.lamp * hallLamp(params.lamp4.z) * beamlight(params.eye, ray, reach, params.lamp4 + vec3f(0.0, LAMP_HANGS, 0.0));\n  if (params.place > 0.5) {\n    let field = fieldAir(params.eye, ray, reach);\n    return vec4f(lit.rgb * field.clear + field.light + air * params.glow, lit.a);\n  }\n  return vec4f(mix(params.color, lit.rgb, clear) + air * params.glow, lit.a);\n}",
           "station": {
             "bindings": {
               "expression": {

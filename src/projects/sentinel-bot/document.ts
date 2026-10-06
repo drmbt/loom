@@ -181,6 +181,8 @@ const ROPE_LEGS: readonly Slider[] = [
 const SCENE: readonly Slider[] = [
   { name: "slider_bore", caption: "Tunnel", value: 2.6, min: 2.2, max: 3.4 },
   { name: "slider_lamp", caption: "Lamp", value: 26, min: 0, max: 80 },
+  // How much the tunnel's lamps run with the beat (tunnel.ts, CHASE), at the top of the track: 0 they all burn alike.
+  { name: "slider_lampchase", caption: "Lamp chase (hats)", value: 0.5, min: 0, max: 1 },
   { name: "slider_distance", caption: "Camera distance", value: 7.5, min: -9, max: 12 },
   { name: "slider_react", caption: "Listen", value: 1, min: 0, max: 2 },
   { name: "slider_haze", caption: "Haze", value: 0.04, min: 0, max: 0.12 },
@@ -254,6 +256,9 @@ const LIFT = "op('constant_lift').chan.value";
 const INTENSITY = "op('lag_intensity').chan.level";
 const BAR = "op('audiofile_track').chan.bar";
 const BEAT = "floor(op('audiofile_track').chan.beat)";
+// The tunnel's lamp chase (tunnel.ts, CHASE): where it is (the beat's count and how far through the beat) and how
+// much of it: the top of the track, by the panel's Lamp chase. In a kernel or a material these are `chasing`.
+const CHASE_AT = "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)";
 // The moves, eased: how much it is attacking, and how tight a corkscrew it walks.
 const ATTACK = "op('lag_attack').chan.value";
 const SPIRAL = "op('lag_spiral').chan.value";
@@ -478,6 +483,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const searching: Record<string, StoredParameter> = { ...docked, sweep: expressionSlot("abstime * 0.28", 0), level: expressionSlot(`${DOCKED} * (0.55 + 0.45 * ${HIGH})`, 0) };
   /** The dock's lamps breathe with the low end, as the tunnel's do. */
   const DOCK_BREATH = `(0.75 + 0.5 * ${LOW})`;
+  /** The tunnel's lamp chase, for everything that shows a lamp: its Light, its plate, its lit air, the dust under it, its picture in the steel. */
+  const chasing: Record<string, StoredParameter> = { chaseAt: expressionSlot(CHASE_AT, 0), chase: expressionSlot(`${on("slider_lampchase")} * ${HIGH}`, 0) };
   /** The temple's kernels: where the robot is, and whether this is the temple. */
   const templed: Record<string, StoredParameter> = { travel, place: expressionSlot(TEMPLED, 0) };
   /** …and its fires': they burn higher with the low end and flare on the kick. */
@@ -846,6 +853,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // They breathe as the lights do.
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
+      ...chasing,
       lamps: expressionSlot(`${on("slider_lamp")} * 0.23 * ${LAMP_BREATH} * (1 - ${OUT})`, 6),
       air: expressionSlot(`1.1 * ${PLACE} + 0.8 * ${DOCKED} + 0.8 * ${TEMPLED}`, 0),
       // What lies below it out there, and the lights all round it: the fields' cold mist and red pods, the dock's
@@ -902,7 +910,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // ── The tunnel: one grid bent into the bore, a window of it riding with the robot ──
     node("grid_bore", "pointGrid", [-2400, 1200], { cols: BORE_COLUMNS, rows: BORE_ROWS, count: BORE_COLUMNS * BORE_ROWS, sizeX: 2, sizeY: 2 }, { label: "grid_bore" }),
     node("kernel_bore", "pointKernel", [-2100, 1200], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("slider_bore"), 2.6), place: expressionSlot(OUT, 0) }, { label: "kernel_bore" }),
-    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * ${LAMP_BREATH} * (1 - ${OUT})`, 14), bore: expressionSlot(on("slider_bore"), 2.6) }, { label: "material_bore" }),
+    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * ${LAMP_BREATH} * (1 - ${OUT})`, 14), bore: expressionSlot(on("slider_bore"), 2.6), ...chasing }, { label: "material_bore" }),
     node("geometry_bore", "geometry", [-1800, 1200], { mode: "surface", material: "material_bore", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bore" }),
 
     // ── Air: dust that the lamps and the eyes light on its way to a wall ──
@@ -994,6 +1002,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       attributes: MOTE_ATTRIBUTES,
       kernel: MOTE_KERNEL,
       travel,
+      ...chasing,
       bore: expressionSlot(on("slider_bore"), 2.6),
       lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${OUT})`, 26),
       eyes: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8),
@@ -1041,6 +1050,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       attributes: LAMP_ATTRIBUTES,
       kernel: LAMP_KERNEL,
       travel,
+      ...chasing,
       bore: expressionSlot(on("slider_bore"), 2.6),
       lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${OUT})`, 26),
       named: namedLamps.length > 0 ? 1 : 0,
@@ -1123,6 +1133,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       glow: expressionSlot(`${on("slider_haze")} * 0.05`, 0.002),
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
+      ...chasing,
       lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${OUT})`, 26),
       eyesAt: [0, 0, 0.9],
       "eyesAt.x": glow.x,
