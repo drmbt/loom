@@ -24,19 +24,34 @@ node --import ./src/tooling/alias-hooks.ts src/projects/stage-previz/build.ts
 ```
 
 The first command takes about 5 s. The second copies the GLB to
-`public/media/stage-previz/stage.glb` and writes `projects/stage-previz/stage-previz.loom.json`.
-An existing session is kept, because it holds your saved edits (Syphon sources, added nodes).
-To bring a saved session up to a new export instead, upgrade it in place:
+`public/media/stage-previz/stage.glb` and writes `projects/stage-previz/stage-previz.loom.json`
+(a file already there is kept unless you pass `--force`).
+
+## The three sessions
+
+| File | What it is |
+| --- | --- |
+| `stage-previz.loom.json` | GENERATED: what `build.ts` writes from the committed GLB, and checked against it byte for byte (`src/projects/stage-previz/session.test.ts`). Do not save your own edits over it; save them under another name. |
+| `stage-previz-7.loom.json` | A session saved from the app: its owner's fader values, Syphon servers, presets, a cue list and nodes of their own. `upgrade.ts` keeps it up to date. |
+| `stage-previz-8.loom.json` | A session saved from the app, repackaged there into six components. `upgrade.ts` cannot reach inside components and refuses it, so it stays as it was saved. |
+
+After a change to the source or a new export, regenerate the base session, and bring a saved
+one along, against the committed GLB (which is read where it is and not rewritten):
 
 ```bash
-node --import ./src/tooling/alias-hooks.ts src/projects/stage-previz/upgrade.ts -- projects/stage-previz/stage-previz-7.loom.json
+node --import ./src/tooling/alias-hooks.ts src/projects/stage-previz/build.ts -- --glb public/media/stage-previz/stage.glb --force
+node --import ./src/tooling/alias-hooks.ts src/projects/stage-previz/upgrade.ts -- projects/stage-previz/stage-previz-7.loom.json --glb public/media/stage-previz/stage.glb
 ```
 
-It adds or refreshes the projector rig (below), the FX feed (below), the measured mesh sizes and
-the shot cameras, keeps your fader values and lens shifts, and leaves everything else in the file
-alone (the app's component library at the file's root included). It also copies the FX pixel map
-beside the session and into `public/media/stage-previz/`. Close the session in
-the app first: saving an already-open copy afterwards would overwrite the upgrade.
+The upgrade adds or refreshes the projector rig (below), the FX feed (below), the measured mesh
+sizes, the deck height the low fog sits on and the shot cameras, keeps your fader values and
+lens shifts, and leaves everything else in the file alone (the app's component library at the
+file's root included). What the session already has is found by its name, so an FX feed you
+rewired by hand stays as you wired it. A session that is already up to date is written back
+byte for byte. Without `--glb` it reads the Blender export in `renders/stage-previz/` and also
+copies the GLB and the FX pixel map into `public/media/stage-previz/` and the map beside the
+session. Close the session in the app first: saving an already-open copy afterwards would
+overwrite the upgrade.
 
 ## The projector rig
 
@@ -143,6 +158,10 @@ side (a bar row is three rows tall) so a feed a pixel off still lands. Send it a
 the frame. The build writes the map from `layout.py` as
 `fx-pixel-map.png` (a template to load as a reference layer in Resolume; in Loom it is Source 2
 on the FX feed), `fx-pixel-map.svg` (labelled) and `fx-pixel-map.csv` (every texel by fixture).
+The PNG is committed twice, the same bytes: `public/media/stage-previz/fx-pixel-map.png` is the
+one the app serves (a session's FX feed reads it), and `projects/stage-previz/fx-pixel-map.png`
+sits beside the sessions with the SVG and the CSV, where the note in each session sends you to
+pick it in Resolume. `upgrade.ts` writes both from one export.
 The same numbers are baked into the GLB as uvs: each pixel and strobe window is a quad whose uvs
 all name its texel, and Loom's unlit material reads its albedo map at the surface uv.
 

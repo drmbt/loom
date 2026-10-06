@@ -93,9 +93,10 @@ export function stageDocument(facts: StageFacts): ProjectDocument {
   add(labelled("noteFeeds", "annotate", [COL.tests + 1560, -900], {
     title: "Feeds",
     body: [
-      "Resolume → Syphon: select each server in syphonSR / syphonSL / syphonDS (inspector, Source). Desktop app on macOS only.",
-      "Source switch: 0 live Syphon, 1 test content, 2 alignment grid. Stage left (projSL) is flipped horizontally after the switch.",
-      "Sending one feed to both sides? Pick the same Syphon server in syphonSR and syphonSL: the flip makes them mirror.",
+      // (A note is prose, which the rename in names.ts does not rewrite: it names nodes as the session saves them.)
+      "Resolume → Syphon: select each server in syphonin_SR / syphonin_SL / syphonin_DS (inspector, Source). Desktop app on macOS only.",
+      "Source switch: 0 live Syphon, 1 test content, 2 alignment grid. Stage left (projector_SL) is flipped horizontally after the switch.",
+      "Sending one feed to both sides? Pick the same Syphon server in syphonin_SR and syphonin_SL: the flip makes them mirror.",
     ].join("\n"),
     color: "input",
   }, { size: { width: 560, height: 150 } }));

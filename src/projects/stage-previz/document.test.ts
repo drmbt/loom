@@ -4,7 +4,8 @@ import { createComponentSystem } from "../../domain/components/index.ts";
 import type { ChannelResolver } from "../../domain/parameters/resolve.ts";
 import { loadProject } from "../../domain/project/index.ts";
 import { serializeProjectDocument } from "../../domain/project/serialize.ts";
-import type { GraphDocument } from "../../domain/types/graph.ts";
+import type { GraphDocument, ProjectDocument } from "../../domain/types/graph.ts";
+import { edge, node } from "../../examples/documents/builders.ts";
 import { TIER_B_CAPABILITIES } from "../../examples/runner.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
@@ -43,9 +44,9 @@ const FACTS: StageFacts = {
   deckTop: 1.4,
 };
 
-function compiled(values: Readonly<Record<string, number>> = {}) {
+function compiled(values: Readonly<Record<string, number>> = {}, document: ProjectDocument = stageDocument(FACTS)) {
   const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
-  const loaded = loadProject(serializeProjectDocument(stageDocument(FACTS)), { nodes: system.nodes });
+  const loaded = loadProject(serializeProjectDocument(document), { nodes: system.nodes });
   if (!loaded.ok) throw new Error(`did not load: ${loaded.reason}`);
   // A channel arrives as `<name>:<channel>`. A fader is named `slider_<role>` and publishes its role as its channel (T1593b), so values are keyed by the channel.
   const channels: ChannelResolver = (name, context) => (context.definition.type === "number" ? (values[name.split(":")[1] ?? name] ?? 0.5) : undefined);
@@ -65,6 +66,37 @@ const into = (graph: GraphDocument, nodeId: string, portId: string) =>
     .filter((entry) => entry.target.nodeId === nodeId && entry.target.portId === portId)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .map((entry) => entry.source.nodeId);
+
+/** The deck's top in an export before the one `FACTS` stands for. */
+const EARLIER_DECK_TOP = 1.1;
+
+/**
+ * A session as the app saved it after its owner rebuilt the FX feed by hand, which is what
+ * `projects/stage-previz/stage-previz-7.loom.json` is: the FX Syphon is a node the app made
+ * (a minted id, the name `syphonin_FX`, its server chosen), it reaches the switch through a
+ * Transform of the owner's, and all three wires into the switch carry the app's ids. The app
+ * has measured the meshes and written what it found on them, and the beams still hold the
+ * deck height of an earlier export.
+ */
+function savedByHand(): ProjectDocument {
+  const built = stageDocument(FACTS);
+  const generated = new Set(["e-syphonFX-feedFX", "e-testFX-feedFX", "e-fxMap-feedFX"]);
+  const nodes = Object.fromEntries(Object.entries(built.graph.nodes).filter(([id]) => id !== "syphonFX"));
+  const edges = Object.fromEntries(Object.entries(built.graph.edges).filter(([id]) => !generated.has(id)));
+  nodes["nd_fx"] = { ...built.graph.nodes["syphonFX"]!, id: "nd_fx", parameters: { source: "Arena - FX" } };
+  nodes["nd_trim"] = node("nd_trim", "transform", [-4250, 3920], {}, { label: "transform_trim" });
+  for (const wire of [
+    edge("ed_1", ["nd_fx", "out"], ["nd_trim", "input"]),
+    edge("ed_2", ["nd_trim", "out"], ["feedFX", "inputs"], 0),
+    edge("ed_3", ["testFX", "out"], ["feedFX", "inputs"], 1),
+    edge("ed_4", ["fxMap", "out"], ["feedFX", "inputs"], 2),
+  ]) {
+    edges[wire.id] = wire;
+  }
+  for (const id of ["meshRig", "meshDeck", "meshStrobe", "meshStage"]) nodes[id] = { ...nodes[id]!, parameters: { ...nodes[id]!.parameters, clipFrames: 0, clips: "", joints: "" } };
+  for (const id of ["beamSR", "beamSL", "beamDS"]) nodes[id] = { ...nodes[id]!, parameters: { ...nodes[id]!.parameters, floorY: EARLIER_DECK_TOP } };
+  return { ...built, graph: { ...built.graph, nodes, edges } };
+}
 
 describe("stage previz session", () => {
   it("loads and compiles with no errors, with every pass the haze needs", () => {
@@ -430,5 +462,70 @@ describe("stage previz session", () => {
     expect(upgraded.graph.nodes["sideTilt"]!.parameters["value"]).toBeCloseTo(39.55, 2);
     expect(upgraded.graph.nodes["sideThrow"]!.parameters["value"]).toBe(1.2951);
     expect(upgraded.graph.nodes["dsTilt"]!.parameters["value"]).toBe(12);
+  });
+
+  it("upgrading finds the FX feed a session's owner rebuilt by hand, by its NAME: no second Syphon, no wire beside the owner's", () => {
+    // The `-7` session: looked up by the id this project would have given it, the owner's
+    // `syphonin_FX` was not found, so an upgrade added an empty second one and three more
+    // wires, and the switch read six inputs where Source picks among three.
+    const saved = savedByHand();
+    const upgraded = applyRig(saved, FACTS).graph;
+    const feeds = Object.values(upgraded.nodes).filter((entry) => entry.label === "syphonin_FX");
+    expect(feeds.map((entry) => [entry.id, entry.parameters["source"]])).toEqual([["nd_fx", "Arena - FX"]]);
+    // What Source picks among, in order: the owner's Transform still stands in slot 0.
+    expect(into(upgraded, "feedFX", "inputs")).toEqual(["nd_trim", "testFX", "fxMap"]);
+    expect(Object.keys(upgraded.nodes).sort()).toEqual(Object.keys(saved.graph.nodes).sort());
+    expect(Object.keys(upgraded.edges).sort()).toEqual(Object.keys(saved.graph.edges).sort());
+    // And it is still a session that renders: the feed reaches the pixel lines through the switch.
+    const { plan } = compiled({ source: 1 }, { ...saved, graph: upgraded });
+    expect(plan.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
+    expect(plan.passes.some((pass) => "nodeId" in pass && pass.nodeId === "nd_trim")).toBe(true);
+  });
+
+  it("upgrading twice is upgrading once, and upgrading an up-to-date session changes nothing in it", () => {
+    const once = applyRig(savedByHand(), FACTS);
+    expect(serializeProjectDocument(once)).not.toBe(serializeProjectDocument(savedByHand())); // it had something to bring up to date
+    expect(serializeProjectDocument(applyRig(once, FACTS))).toBe(serializeProjectDocument(once));
+    const fresh = stageDocument(FACTS);
+    expect(serializeProjectDocument(applyRig(fresh, FACTS))).toBe(serializeProjectDocument(fresh));
+  });
+
+  it("upgrading keeps what the app measured on a mesh, and brings the sizes this project measures up to date", () => {
+    // The app writes `clips`, `clipFrames` and `joints` on every Mesh File In it loads. An upgrade
+    // that rebuilt the rig, deck and strobe meshes from nothing dropped them, so a session the app
+    // had saved was never up to date for the tool, and one the tool had written never for the app.
+    const remeasured: StageFacts = { ...FACTS, areas: { ...FACTS.areas, rig: { ...FACTS.areas.rig, vertices: 1052, triangles: 956 } } };
+    const upgraded = applyRig(savedByHand(), remeasured).graph.nodes;
+    for (const id of ["meshRig", "meshDeck", "meshStrobe", "meshStage"]) expect(upgraded[id]!.parameters, id).toMatchObject({ clipFrames: 0, clips: "", joints: "" });
+    expect(upgraded["meshRig"]!.parameters).toMatchObject({ vertices: 1052, triangles: 956, select: "rig.*" });
+  });
+
+  it("the low fog sits on the deck the GLB measures: an upgrade brings the beams' floor up to the export, in all three passes", () => {
+    // Read where it is consumed: each beam pass's own `floorY`. A saved session kept the deck
+    // height of the export it was first built from, whatever the deck had since become.
+    const floor = (document: ProjectDocument) => {
+      const { plan } = compiled({}, document);
+      return ["beamSR", "beamSL", "beamDS"].map((id) => (plan.passes.find((pass) => "nodeId" in pass && pass.nodeId === id) as { uniforms?: Record<string, number> } | undefined)?.uniforms?.["floorY"]);
+    };
+    const saved = savedByHand();
+    expect(floor(saved)).toEqual([EARLIER_DECK_TOP, EARLIER_DECK_TOP, EARLIER_DECK_TOP]);
+    expect(floor(applyRig(saved, FACTS))).toEqual([FACTS.deckTop, FACTS.deckTop, FACTS.deckTop]);
+    // A beam whose shader its owner wrote has no floor of ours to move.
+    const own = { ...saved, graph: { ...saved.graph, nodes: { ...saved.graph.nodes, beamDS: { ...saved.graph.nodes["beamDS"]!, parameters: { source: "// mine", floorY: 7 } } } } };
+    expect(applyRig(own, FACTS).graph.nodes["beamDS"]!.parameters["floorY"]).toBe(7);
+  });
+
+  it("the session compiles with no warning: the drapes' depth-only render draws them unlit", () => {
+    // That render names no light, being read for its depth alone, and a lit material in it said
+    // "ambient floor only" twice in every session. The same holds for a session an upgrade wrote.
+    const warnings = (document: ProjectDocument) => compiled({}, document).plan.diagnostics.filter((entry) => entry.severity !== "info").map((entry) => `${entry.code} ${entry.nodeId ?? ""}`);
+    const { graph } = compiled();
+    for (const id of ["geoCurtainDepth", "geoKabukiDepth"]) expect(graph.nodes[id]!.parameters["material"]).toBe("material_depth");
+    expect(graph.nodes["matDepth"]!.type).toBe("materialUnlit");
+    expect(warnings(stageDocument(FACTS))).toEqual([]);
+    const saved = savedByHand();
+    const lit = { ...saved, graph: { ...saved.graph, nodes: { ...saved.graph.nodes, geoCurtainDepth: { ...saved.graph.nodes["geoCurtainDepth"]!, parameters: { mode: "surface", material: "material_surface" } } } } };
+    expect(warnings(lit)).toEqual(["node.scene.unlit drapeDepth"]);
+    expect(warnings(applyRig(lit, FACTS))).toEqual([]);
   });
 });

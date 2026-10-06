@@ -5333,7 +5333,7 @@
             },
             "mode": "expression"
           },
-          "floorY": 1.4,
+          "floorY": 1.8572,
           "fog": {
             "bindings": {
               "expression": {
@@ -5720,7 +5720,7 @@
             },
             "mode": "expression"
           },
-          "floorY": 1.4,
+          "floorY": 1.8572,
           "fog": {
             "bindings": {
               "expression": {
@@ -6107,7 +6107,7 @@
             },
             "mode": "expression"
           },
-          "floorY": 1.4,
+          "floorY": 1.8572,
           "fog": {
             "bindings": {
               "expression": {
@@ -6727,7 +6727,7 @@
         "id": "geoCurtainDepth",
         "label": "geometry_curtainDepth",
         "parameters": {
-          "material": "material_surface",
+          "material": "material_depth",
           "mode": "surface"
         },
         "position": {
@@ -6784,7 +6784,7 @@
         "id": "geoKabukiDepth",
         "label": "geometry_kabukiDepth",
         "parameters": {
-          "material": "material_surface",
+          "material": "material_depth",
           "mode": "surface"
         },
         "position": {
@@ -6991,6 +6991,17 @@
           "y": 3260
         },
         "type": "materialPbr"
+      },
+      "matDepth": {
+        "definitionVersion": 1,
+        "id": "matDepth",
+        "label": "material_depth",
+        "parameters": {},
+        "position": {
+          "x": -4400,
+          "y": 3700
+        },
+        "type": "materialUnlit"
       },
       "matDrape": {
         "definitionVersion": 1,
@@ -7405,7 +7416,7 @@
         "id": "noteFX",
         "label": "note_FX",
         "parameters": {
-          "body": "Resolume → Syphon: pick the server in syphonFX. ONE 1920 x 1080 stream drives all 63 pixel lines and 38 strobes.\nTop half: the pixel lines seen from the house (30' across = 1920 px; one texel row per bar row).\nBottom half: the strobes in plan, downstage at the bottom (48' across = 1920 px; the riser's back edge at the middle).\nTemplate: fx-pixel-map.png (+ .svg labelled, .csv every texel) beside the session — Source 2 shows it on the rig.\nLevels: LEDs (pixel lines), Strobe level (strobes).",
+          "body": "Resolume → Syphon: pick the server in syphonin_FX. ONE 1920 x 1080 stream drives all 63 pixel lines and 38 strobes.\nTop half: the pixel lines seen from the house (30' across = 1920 px; one texel row per bar row).\nBottom half: the strobes in plan, downstage at the bottom (48' across = 1920 px; the riser's back edge at the middle).\nTemplate: fx-pixel-map.png (+ .svg labelled, .csv every texel) beside the session — Source 2 shows it on the rig. Send it at 1920 x 1080, filling the frame.\nLevels: LEDs (pixel lines), Strobe level (strobes).",
           "color": "input",
           "title": "Pixel lines + strobes: one feed"
         },
