@@ -7,7 +7,7 @@ import { evaluateExpression } from "../../domain/expressions/evaluate.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 import { CHAMBERS, chamberAt, pathAt } from "./path.ts";
-import { JOINT_ATTRIBUTES, jointCount, jointKernel, spinePick } from "./rig.ts";
+import { FIELD_BERTH, JOINT_ATTRIBUTES, jointCount, jointKernel, spinePick } from "./rig.ts";
 import { BORE_ATTRIBUTES, BORE_KERNEL, LAMP_HANGS, lampHeightExpression } from "./tunnel.ts";
 
 /**
@@ -314,8 +314,8 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     // stroke), on rails so nothing wanders.
     const BERTHS = [[1.5, 0.9, -5.5], [-1.5, -0.85, -11]] as const;
     /** Where each follower stands off the leader, across the tunnel: at their sockets, and at their claws. */
-    const apart = async (travel: number): Promise<Array<{ sockets: [number, number]; claws: [number, number] }>> => {
-      const pack = await walk(3, { swim: 1, stroke: 0.55, carry: 0, company: 1, travel }, [[0, 0, 0], ...BERTHS]);
+    const apart = async (travel: number, afield = 0): Promise<Array<{ sockets: [number, number]; claws: [number, number] }>> => {
+      const pack = await walk(3, { swim: 1, stroke: 0.55, carry: 0, company: 1, travel, afield }, [[0, 0, 0], ...BERTHS]);
       const mean = (robot: number, station: number): [number, number] => {
         const sum: [number, number] = [0, 0];
         for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
@@ -361,6 +361,17 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     }
     // The leader is on the axis, so the lower one's middle is this far over the deck: a metre, not a hand.
     expect((hall[1]?.sockets[1] as number) + 2.6 * 0.74).toBeGreaterThan(0.9);
+    // Out in the fields (field.ts) there is neither wall nor deck: the places grow by more than any hall's, the
+    // one below as far down as the one above goes up, and the tails with them.
+    const afield = await apart(0, 1);
+    const open = 1 + CHAMBERS.swell * FIELD_BERTH;
+    expect(open).toBeGreaterThan(2);
+    for (const [index, berth] of BERTHS.entries()) {
+      for (const axis of [0, 1] as const) {
+        expect(Math.abs((afield[index]?.sockets[axis] as number) - berth[axis] * open)).toBeLessThan(0.06);
+        expect(Math.abs((afield[index]?.claws[axis] as number) - berth[axis] * open)).toBeLessThan(0.06);
+      }
+    }
   }, 120_000);
 
   it("crosses a chamber swimming: told to walk, in the middle of a hall every claw has let go and trails", async () => {

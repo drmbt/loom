@@ -20,7 +20,7 @@
  * keeps inside the bore and above the deck: the test evaluates these statements.
  */
 
-interface Shot {
+export interface Shot {
   readonly name: string;
   readonly what: string;
   /** Expressions over the rig's inputs: metres ahead of the robot, right and up of the axis. */
@@ -34,7 +34,7 @@ interface Shot {
   /** 0 to 1: how much the camera itself goes with a robot that is adrift. A close shot must, or it loses it. */
   readonly ride: number;
   /** What the shot is OF: the robot, its tail, or the pack (which is only worth cutting to when more than one is out). */
-  readonly subject: "robot" | "tail" | "pack";
+  readonly subject: "robot" | "tail" | "pack" | "field";
 }
 
 export const SHOT_TABLE: readonly Shot[] = [
@@ -62,6 +62,13 @@ export const SHOT_TABLE: readonly Shot[] = [
   { name: "packquarter", what: "close ahead and above on the left: the leader under the lens, the others strung out behind", ahead: "2", right: "(0 - 1.2)", up: "1.6", lens: 60, aim: -4, ride: 0.4, subject: "pack" },
   { name: "packrear", what: "a long lens from well behind, clear of the last one's tail (it ends 15 m behind the leader): three tails stepped up the tunnel", ahead: "(0 - 19.5)", right: "0.5", up: "0.4", lens: 32, aim: -5.5, ride: 0.3, subject: "pack" },
   { name: "packunder", what: "from low on the right just ahead of them, looking back and up as they come over", ahead: "1", right: "1.5", up: "(0 - 1.3)", lens: 70, aim: -4, ride: 0.3, subject: "pack" },
+  // ── The fields (field.ts): no bore to stay inside, so the camera stands off as far as the avenue between the
+  // towers lets it (12 m either side of the line) and the place is what the shot is of. The pack is wider
+  // apart out here, and each of these holds all three ──
+  { name: "fieldwide", what: "far behind and above on the right: the three small in the avenue, the towers going on ahead", ahead: "(0 - 26)", right: "(8 + 0.6 * sin(abstime * 0.11))", up: "6", lens: 62, aim: -2, ride: 0.2, subject: "field" },
+  { name: "fieldside", what: "abreast of them from the edge of the avenue: they cross the towers behind", ahead: "(0 - 4)", right: "9.5", up: "(0.8 + 0.5 * sin(abstime * 0.13))", lens: 64, aim: -5, ride: 0.2, subject: "field" },
+  { name: "fieldlow", what: "from well below and ahead, looking back and up: they come over against the towers' tops", ahead: "8", right: "(0 - 5)", up: "(0 - 8)", lens: 66, aim: -5, ride: 0.2, subject: "field" },
+  { name: "fieldhigh", what: "from high behind, looking down past them into the dark the towers come up out of", ahead: "(0 - 23)", right: "(0 - 4)", up: "12", lens: 58, aim: -5.5, ride: 0.2, subject: "field" },
 ];
 
 export const SHOTS: readonly string[] = SHOT_TABLE.map((shot) => shot.name);
@@ -80,8 +87,11 @@ export const SWIMMING_ORDER: readonly number[] = ["tail", "chase", "tailside", "
 export const PACK_ORDER: readonly number[] = ["packfront", "tail", "packquarter", "chase", "packrear", "tips", "packunder", "wake"].map(index);
 
 /** The shot cut to on the `turn`-th pair of bars. */
-export function shotAtTurn(turn: number, swimming = false, pack = false): number {
-  const order = pack ? PACK_ORDER : swimming ? SWIMMING_ORDER : WALKING_ORDER;
+/** …and in the fields: the place's own four between shots of the tails and the long chase, never two of a kind running. */
+export const FIELD_ORDER: readonly number[] = ["fieldwide", "tail", "fieldside", "chase", "fieldlow", "tips", "fieldhigh", "wake"].map(index);
+
+export function shotAtTurn(turn: number, swimming = false, pack = false, field = false): number {
+  const order = field ? FIELD_ORDER : pack ? PACK_ORDER : swimming ? SWIMMING_ORDER : WALKING_ORDER;
   return order[((turn % order.length) + order.length) % order.length] as number;
 }
 
@@ -96,13 +106,14 @@ const turnIn = (order: readonly number[]): string => `(turn - ${order.length} * 
 /**
  * Reads, by wire: `value` (distance travelled), `bar` (the track's bar count), `swim` (how
  * much it is swimming), `pack` (how many are out), `shot`, `cuts`, `distance`, `viewX`,
- * `viewY` (the panel). Writes
+ * `viewY` (the panel), `place` (0 the tunnel, 1 the fields). Writes
  * `pick`, `ahead`, `right`, `up`, `lens`, `aim`, `ride`, `z`.
  */
 export const CAMERA_STATEMENTS = [
   `turn = floor(bar / 2)`,
   `packed = (pack > 1.5)`,
-  `cut = packed * ${ordered(PACK_ORDER, turnIn(PACK_ORDER))} + (1 - packed) * ((swim > 0.5) * ${ordered(SWIMMING_ORDER, turnIn(SWIMMING_ORDER))} + (swim <= 0.5) * ${ordered(WALKING_ORDER, turnIn(WALKING_ORDER))})`,
+  `fielded = (place > 0.5)`,
+  `cut = fielded * ${ordered(FIELD_ORDER, turnIn(FIELD_ORDER))} + (1 - fielded) * (packed * ${ordered(PACK_ORDER, turnIn(PACK_ORDER))} + (1 - packed) * ((swim > 0.5) * ${ordered(SWIMMING_ORDER, turnIn(SWIMMING_ORDER))} + (swim <= 0.5) * ${ordered(WALKING_ORDER, turnIn(WALKING_ORDER))}))`,
   `pick = (cuts > 0.5) * cut + (cuts <= 0.5) * floor(shot + 0.5)`,
   `post = (floor(value / ${POST_SPACING}) + 0.5) * ${POST_SPACING}`,
   `ahead = ${picked((shot) => shot.ahead)}`,
@@ -115,4 +126,4 @@ export const CAMERA_STATEMENTS = [
 ].join(";\n");
 
 /** What a channel reads before anything is wired or playing: a silent host cuts on the clock instead of the bar. */
-export const CAMERA_DEFAULTS = ["bar = floor(abstime / 4)", "value = 0", "swim = 0", "pack = 1", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6"].join(";\n");
+export const CAMERA_DEFAULTS = ["bar = floor(abstime / 4)", "value = 0", "swim = 0", "pack = 1", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6", "place = 0"].join(";\n");

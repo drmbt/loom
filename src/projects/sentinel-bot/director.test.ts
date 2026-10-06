@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { compileGraph } from "../../compiler/compile.ts";
 import { flattenComponents } from "../../compiler/flatten.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { evaluateExpression, parseExpression } from "../../domain/expressions/evaluate.ts";
 import { starterComponentsView } from "../../examples/component-files.ts";
 import { SHOWCASE_BEAT, showcaseBarStart } from "../../examples/build-showcase-beat.ts";
+import { TIER_B_CAPABILITIES } from "../../examples/runner.ts";
 import { shippedClipAudio } from "../../examples/shipped-clip-audio.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { PACK_BARS, PHRASE_BARS, against, pace, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
+import { FIELD_BARS, FIELD_EVERY, PACK_BARS, PHRASE_BARS, against, fieldTurn, pace, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import { sentinelDocument } from "./document.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
@@ -40,6 +42,19 @@ describe("the sentinel's file", () => {
     // The walk really found them: the file is driven by hundreds.
     expect(expressions).toBeGreaterThan(200);
   });
+
+  it("drives no parameter a node does not have: a compile of it names none as unknown", () => {
+    // The other way a driven value is silently not driven: a slot under a key the node does not declare is a
+    // WARNING, and the node keeps the value it had. The air's colour and the dust's were written `eyeColor.x`
+    // for a day (a colour's parts are r, g and b), so the robot's light in the air stayed red whatever its
+    // lenses did, and the fields' air stayed black.
+    const built = sentinelDocument(KIT_FIXTURE);
+    const compiled = compileGraph({ graph: built.graph, settings: built.settings, registry: createNodeRegistry(allNodeDefinitions).view(), capabilities: TIER_B_CAPABILITIES });
+    expect(compiled.diagnostics.filter((entry) => entry.severity === "error").map((entry) => entry.message)).toEqual([]);
+    expect(compiled.diagnostics.filter((entry) => entry.code === "compiler/parameter-unknown").map((entry) => entry.message)).toEqual([]);
+    // It compiled the whole piece, not a stub of it.
+    expect(compiled.passes.length).toBeGreaterThan(20);
+  });
 });
 
 describe("the sentinel follows the track", () => {
@@ -61,6 +76,17 @@ describe("the sentinel follows the track", () => {
     expect(read(pace("follow", "energy"), { follow: 1, energy: 4 })).toBe(1.6);
     // Cut the switch and every passage is walked at the panel's own speed.
     expect([0.1, 0.8, 1.2, 4].map((value) => read(pace("follow", "energy"), { follow: 0, energy: value }))).toEqual([1, 1, 1, 1]);
+  });
+
+  it("goes out to the fields for sixteen bars of every forty-eight, on the bar count alone, and never opens there", () => {
+    const afield = (bar: number, follow = 1): number => read(fieldTurn("follow", "bar"), { follow, bar });
+    expect([FIELD_BARS, FIELD_EVERY]).toEqual([16, 3]);
+    // The first thirty-two bars are the tunnel's; then sixteen in the fields, to the bar; then the tunnel again.
+    for (let bar = 0; bar < 96; bar += 0.25) expect([bar, afield(bar)]).toEqual([bar, bar >= 32 && bar < 48 ? 1 : bar >= 80 ? 1 : 0]);
+    // It changes on a bar that is a multiple of two, which is where the camera cuts (camera.ts, `turn`).
+    expect([afield(31.999), afield(32), afield(47.999), afield(48)]).toEqual([0, 1, 1, 0]);
+    // Cut the switch and it never leaves the tunnel.
+    for (let bar = 0; bar < 96; bar += 1) expect(afield(bar, 0)).toBe(0);
   });
 
   it("perches only when a breakdown has gone nearly silent", () => {

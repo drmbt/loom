@@ -57,10 +57,11 @@ const FIXTURE_SALT = { bulkhead: 1, tubeLeft: 2, tubeRight: 3 } as const;
  * A fixture's lot, 0 to 99. The same line is `fixtureLot` in the wall's material.
  *
  * The top sixteen bits of a wrapping multiply, scaled to a hundred by another multiply and shift, and NOT by
- * `% 100`: on this machine's GPU (Dawn on Metal) an unsigned `%` or `/` of a value that came out of a wrapping
- * multiply and a shift returns garbage (for place 5 of the right wall's tubes, 35899 / 97 came back 386, and
- * `% 97` and `% 100` with it), while the multiply, the shift, `&` and this scaling all agree with the CPU to the
- * bit. Measured through the material itself; the test beside this file holds the two readers together.
+ * `% 100`: on this machine's GPU (Dawn on Metal) the whole high half of a 32-bit value, `x >> 16u`, used directly
+ * as the dividend of `/` or `%` by a constant that is not a power of two returns garbage (for place 5 of the
+ * right wall's tubes, 35899 / 97 came back 386, and `% 97` and `% 100` with it), while the multiply, the shift,
+ * `&` and this scaling all agree with the CPU to the bit (§B263: Apple's driver, not the WGSL). Measured through
+ * the material itself; the test beside this file holds the two readers together.
  */
 function fixtureLot(index: number, salt: number): number {
   const place = index - FIXTURE_COUNT * Math.floor(index / FIXTURE_COUNT);
@@ -166,6 +167,7 @@ struct Params {
   bore: f32, // @default 2.6  Radius the claws plant on, metres: the ribs' crests.
   relief: f32, // @default 1  How much of the ribs, pipes and plates stands off the liner: 0 is a plain pipe.
   deck: f32, // @default 0.74  How far below the axis the flat deck lies, as a share of the radius; 1 or more is no deck.
+  place: f32, // @default 0  0 the tunnel; 1 the fields (field.ts), where there is no tunnel: every point of the wall is drawn in to one.
 };
 ${pathWgsl()}
 const ROW: f32 = ${ROW_SPACING.toFixed(5)};
@@ -181,6 +183,12 @@ fn plate(a: u32, b: u32) -> f32 {
 
 fn process(p: Point, ctx: PointCtx) -> Point {
   var q = p;
+  if (ctx.params.place > 0.5) {
+    // Out in the fields the line goes on and the tunnel does not: a wall of no size, well under everything.
+    q.position = vec3f(0.0, -4000.0, 0.0);
+    q.tint = vec4f(0.0);
+    return q;
+  }
   // Rows stand at whole multiples of the row spacing, so the wall holds still while the window slides along it.
   let z = (floor(ctx.params.travel / ROW) + f32(ctx.dim.j) - ${ROWS_BEHIND}.0) * ROW;
   // The seam is under the deck: the first and last column are the same line.

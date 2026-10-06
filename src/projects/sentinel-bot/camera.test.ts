@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { PACK } from "./document.ts";
 import { ZERO_FRAME, frameFromClock } from "../../domain/types/frame.ts";
 import { valueExpressionNode } from "../../nodes/definitions/value-structure-nodes.ts";
-import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, PACK_ORDER, SHOTS, SHOT_TABLE, SWIMMING_ORDER, WALKING_ORDER, shotAtTurn } from "./camera.ts";
+import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, FIELD_ORDER, PACK_ORDER, SHOTS, SHOT_TABLE, SWIMMING_ORDER, WALKING_ORDER, shotAtTurn, type Shot } from "./camera.ts";
+import { FIELD } from "./field.ts";
+import { CHAMBERS } from "./path.ts";
+import { FIELD_BERTH } from "./rig.ts";
 
 /**
  * T1561b — the camera rig, run through the Expression node that runs it in the document.
@@ -12,6 +15,42 @@ function rig(inputs: Record<string, number>, seconds: number): Record<string, nu
   if (evaluate === undefined) throw new Error("the Expression node has no evaluator");
   const frame = frameFromClock({ timeSeconds: seconds, deltaSeconds: 1 / 60, frameIndex: Math.round(seconds * 60), mode: ZERO_FRAME.mode, randomSeed: 0, fps: 60 });
   return evaluate({ inputs: { in: inputs }, values: { expressions: CAMERA_STATEMENTS, defaults: CAMERA_DEFAULTS }, frame, state: {} } as never) as Record<string, number>;
+}
+
+/**
+ * Bodies seen through a shot's own camera: all in the frame, and no two nearer each other ACROSS the picture
+ * than a body is wide (0.85 m, at the distance of the nearer one), so neither hides the other. (A first
+ * version asked only for a tenth of the frame between centres, and passed a shot in which one robot stood
+ * behind another.)
+ */
+function expectAllSeenApart(shot: Shot, out: Record<string, number>, bodies: ReadonlyArray<readonly [number, number, number]>): void {
+  const eye = [out["right"] as number, out["up"] as number, out["ahead"] as number] as const;
+  const forward = [0 - eye[0], 0 - eye[1], shot.aim - eye[2]] as const;
+  const length = Math.hypot(...forward);
+  const f = forward.map((value) => value / length) as [number, number, number];
+  // Camera right and up from the world's up, as the Camera node builds them.
+  const flat = Math.hypot(f[0], f[2]);
+  const r = [f[2] / flat, 0, -f[0] / flat] as const;
+  const u = [f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0]] as const;
+  const half = Math.tan(((shot.lens / 2) * Math.PI) / 180);
+  const seen = bodies.map((body) => {
+    const to = [body[0] - eye[0], body[1] - eye[1], body[2] - eye[2]] as const;
+    const depth = to[0] * f[0] + to[1] * f[1] + to[2] * f[2];
+    return { depth, across: to[0] * r[0] + to[2] * r[2], up: to[0] * u[0] + to[1] * u[1] + to[2] * u[2] };
+  });
+  for (const body of seen) {
+    expect([shot.name, body.depth > 0.5]).toEqual([shot.name, true]);
+    expect([shot.name, Math.abs(body.across) < 0.92 * body.depth * half * (16 / 9) && Math.abs(body.up) < 0.92 * body.depth * half]).toEqual([shot.name, true]);
+  }
+  for (let a = 0; a < seen.length; a += 1) {
+    for (let b = a + 1; b < seen.length; b += 1) {
+      const [one, other] = [seen[a]!, seen[b]!];
+      const near = Math.min(one.depth, other.depth);
+      // Where each stands in the picture, as metres at the nearer one's distance.
+      const apart = Math.hypot((one.across / one.depth - other.across / other.depth) * near, (one.up / one.depth - other.up / other.depth) * near);
+      expect([shot.name, a, b, apart > 0.85]).toEqual([shot.name, a, b, true]);
+    }
+  }
 }
 
 describe("the sentinel camera", () => {
@@ -24,6 +63,8 @@ describe("the sentinel camera", () => {
       for (let seconds = 0; seconds < 60; seconds += 0.37) {
         const out = rig({ value: seconds * 3.2, shot, cuts: 0, distance: 7.5, viewX: 1.1, viewY: 0.6, bar: 99 }, seconds);
         expect(out["pick"]).toBe(shot);
+        // A shot of the fields is taken where there is no bore: it has the avenue to keep to instead (below).
+        if (SHOT_TABLE[shot]?.subject === "field") continue;
         // 0.3 m of air between the lens and the nearest steel.
         expect(Math.hypot(out["right"] as number, out["up"] as number)).toBeLessThan(RIB_CREST - 0.3);
         expect(out["up"] as number).toBeGreaterThan(-DECK + 0.3);
@@ -80,38 +121,36 @@ describe("the sentinel camera", () => {
     for (const { at } of ofThePack) expect(order).toContain(at);
     // One robot out: the pack's shots are not in the cut at all, swimming or walking.
     for (let bar = 0; bar < 40; bar += 2) for (const swim of [0, 1]) expect(SHOT_TABLE[rig({ value: 0, shot: 0, cuts: 1, bar, swim, pack: 1 }, 0)["pick"] as number]?.subject).not.toBe("pack");
-    // The formation the pack flies in (document.ts, PACK), seen through each of its shots: put the three bodies
-    // through the shot's own camera. All are in the frame, and no two are nearer each other ACROSS the picture than
-    // a body is wide (0.85 m, at the distance of the nearer one), so neither hides the other. (A first version
-    // asked only for a tenth of the frame between centres, and passed a shot in which one robot stood behind another.)
-    for (const { shot, at } of ofThePack) {
-      const out = rig({ value: 0, shot: at, cuts: 0, pack: 3 }, 0);
-      const eye = [out["right"] as number, out["up"] as number, out["ahead"] as number] as const;
-      const forward = [0 - eye[0], 0 - eye[1], shot.aim - eye[2]] as const;
-      const length = Math.hypot(...forward);
-      const f = forward.map((value) => value / length) as [number, number, number];
-      // Camera right and up from the world's up, as the Camera node builds them.
-      const flat = Math.hypot(f[0], f[2]);
-      const r = [f[2] / flat, 0, -f[0] / flat] as const;
-      const u = [f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0]] as const;
-      const half = Math.tan(((shot.lens / 2) * Math.PI) / 180);
-      const seen = PACK.map((body) => {
-        const to = [body[0] - eye[0], body[1] - eye[1], body[2] - eye[2]] as const;
-        const depth = to[0] * f[0] + to[1] * f[1] + to[2] * f[2];
-        return { depth, across: to[0] * r[0] + to[2] * r[2], up: to[0] * u[0] + to[1] * u[1] + to[2] * u[2] };
-      });
-      for (const body of seen) {
-        expect([shot.name, body.depth > 0.5]).toEqual([shot.name, true]);
-        expect([shot.name, Math.abs(body.across) < 0.92 * body.depth * half * (16 / 9) && Math.abs(body.up) < 0.92 * body.depth * half]).toEqual([shot.name, true]);
-      }
-      for (let a = 0; a < seen.length; a += 1) {
-        for (let b = a + 1; b < seen.length; b += 1) {
-          const [one, other] = [seen[a]!, seen[b]!];
-          const near = Math.min(one.depth, other.depth);
-          // Where each stands in the picture, as metres at the nearer one's distance.
-          const apart = Math.hypot((one.across / one.depth - other.across / other.depth) * near, (one.up / one.depth - other.up / other.depth) * near);
-          expect([shot.name, a, b, apart > 0.85]).toEqual([shot.name, a, b, true]);
-        }
+    // The formation the pack flies in (document.ts, PACK), seen through each of its shots.
+    for (const { shot, at } of ofThePack) expectAllSeenApart(shot, rig({ value: 0, shot: at, cuts: 0, pack: 3 }, 0), PACK);
+  });
+
+  it("in the fields, cuts through the place's own four shots between the tails and the long chase; each keeps inside the avenue and holds all three", () => {
+    const order: number[] = [];
+    for (let bar = 0; bar < 2 * FIELD_ORDER.length; bar += 2) order.push(rig({ value: 0, shot: 0, cuts: 1, bar, swim: 1, pack: 3, place: 1 }, 0)["pick"] as number);
+    expect(order).toEqual([...FIELD_ORDER]);
+    for (const [turn, pick] of order.entries()) expect(pick).toBe(shotAtTurn(turn, true, true, true));
+    const ofTheFields = SHOT_TABLE.map((shot, at) => ({ shot, at })).filter(({ shot }) => shot.subject === "field");
+    expect(ofTheFields.map(({ shot }) => shot.name)).toEqual(["fieldwide", "fieldside", "fieldlow", "fieldhigh"]);
+    for (const { at } of ofTheFields) expect(order).toContain(at);
+    // Never two of the place's wide shots running: between any two, a shot of the robots.
+    for (let turn = 0; turn < order.length; turn += 1) {
+      const [here, next] = [SHOT_TABLE[order[turn] as number], SHOT_TABLE[order[(turn + 1) % order.length] as number]];
+      expect(here?.subject === "field" && next?.subject === "field").toBe(false);
+    }
+    // In the tunnel none of them is ever in the cut, however it is going.
+    for (let bar = 0; bar < 40; bar += 2) for (const swim of [0, 1]) for (const pack of [1, 3]) expect(SHOT_TABLE[rig({ value: 0, shot: 0, cuts: 1, bar, swim, pack, place: 0 }, 0)["pick"] as number]?.subject).not.toBe("field");
+    // Out there the pack flies wider apart, below the line as well as above it (rig.ts, FIELD_BERTH).
+    const wider = 1 + CHAMBERS.swell * FIELD_BERTH;
+    const afield = PACK.map((body) => [body[0] * wider, body[1] * wider, body[2]] as const);
+    for (const { shot, at } of ofTheFields) {
+      for (let seconds = 0; seconds < 60; seconds += 1.7) {
+        const out = rig({ value: seconds * 3.2, shot: at, cuts: 0, pack: 3, place: 1 }, seconds);
+        // No tower's trunk comes within a metre of the avenue's edge (field.gpu.test.ts): the lens keeps another metre inside that.
+        expect([shot.name, Math.abs(out["right"] as number) < FIELD.avenue - 2]).toEqual([shot.name, true]);
+        // …and within the heights that test looks at.
+        expect([shot.name, Math.abs(out["up"] as number) < 30]).toEqual([shot.name, true]);
+        expectAllSeenApart(shot, out, afield);
       }
     }
   });
@@ -128,7 +167,7 @@ describe("the sentinel camera", () => {
         expect(shot.aim).toBeLessThanOrEqual(0);
         expect(Math.hypot(ahead - shot.aim, out["right"] as number, out["up"] as number)).toBeLessThan(4.5);
         expect(shot.ride).toBe(1);
-      } else if (shot.subject === "pack") {
+      } else if (shot.subject === "pack" || shot.subject === "field") {
         // At the middle of the echelon, which is some five metres behind the leader.
         expect(shot.aim).toBeLessThan(-1);
         expect(shot.aim).toBeGreaterThan(-8);

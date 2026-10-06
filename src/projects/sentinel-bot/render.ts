@@ -121,7 +121,9 @@ const result = await renderHeadless({
 // An expression that does not evaluate is only a warning to the engine (the parameter falls back to its stored
 // value), and here it is a wrong picture that looks plausible: three lamps once sat at their stored strength
 // behind a function the grammar does not have. So it stops the render.
-const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error" || d.code === "parameter.expression").map((d) => `${d.code}: ${d.message}`))];
+// The same for a value driven under a key the node does not declare (`compiler/parameter-unknown`): a colour's
+// parts written x, y, z went nowhere for a day.
+const errors = [...new Set(result.diagnostics.filter((d) => d.severity === "error" || d.code === "parameter.expression" || d.code === "compiler/parameter-unknown").map((d) => `${d.code}: ${d.message}`))];
 if (errors.length > 0) throw new Error(`the sentinel graph has errors:\n${errors.join("\n")}`);
 const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map((d) => `warning ${d.code}: ${d.message}`))];
 if (warnings.length > 0) console.log(warnings.slice(0, 12).join("\n"));

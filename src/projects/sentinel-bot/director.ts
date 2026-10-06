@@ -86,6 +86,22 @@ export function phrasePause(follow: string, intensity: string, draw: string, bar
   return `(${follow} * (${intensity} < 0.85) * (${draw} < 0.25) * (mod(${bar}, ${PHRASE_BARS}) < 2))`;
 }
 
+/**
+ * THE OTHER PLACE. The piece goes out of the tunnel into the fields (field.ts) for sixteen bars at a time,
+ * every third such turn, starting with the third: on the owner's 110 bars that is bars 32 to 48 and 80 to 96.
+ * By the bar count and nothing else. The track's loudness cannot choose it, because a place must not change
+ * in the middle of a shot and nothing here can hold a decision once taken: a rule that read the loudness
+ * would put the tunnel back whenever a passage dipped. Sixteen bars is eight of the camera's two-bar shots, so
+ * the place changes on a cut.
+ */
+export const FIELD_BARS = 16;
+export const FIELD_EVERY = 3;
+
+/** Whether the bar `bar` is spent in the fields: 0 or 1. */
+export function fieldTurn(follow: string, bar: string): string {
+  return `(${follow} * (mod(floor(${bar} / ${FIELD_BARS}), ${FIELD_EVERY}) == ${FIELD_EVERY - 1}))`;
+}
+
 /** A pack's turn is eight bars: the others take most of two to come up from behind and as long to fall back. */
 export const PACK_BARS = 8;
 

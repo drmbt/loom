@@ -128,6 +128,11 @@ export const ownCountOf = (offset: readonly [number, number, number]): number =>
 export const adriftExpression = (axis: "x" | "y", own = 0): string => `(${ADRIFT[axis].map(([metres, rate, scale, phase]) => `${metres} * sin(abstime * ${rate} + ${(own * scale + phase).toFixed(4)})`).join(" + ")})`;
 /** With company a robot wanders a fifth as far, and holds the ends of its tentacles in: three in a bore have no room for more. */
 export const PACK_WANDER = 0.2;
+/**
+ * How much further apart the pack flies out in the fields, as a hall's swell is reckoned: a hall is 1, and
+ * this many halls' worth puts the three 3.7 m either side of the leader and 2.2 m over and under it.
+ */
+export const FIELD_BERTH = 1.6;
 
 const ROBOT_FRAME = `${pathWgsl()}
 // How much it swims at z: what it is told, or a chamber's say-so, read a little way ahead so
@@ -255,6 +260,7 @@ ${PLACE_PARAMS}
   spiralTurn: f32, // @default 0  How far round it has got, in turns. Drive it from an integrator of Spiral x speed, so the rungs it holds stay put.
   attack: f32, // @default 0  The attack: every other tentacle lets go of the wall, coils by the face and strikes forward, again and again; the rest hold. 0 to 1.
   company: f32, // @default 0  Whether it has company, 0 to 1: with others beside it, it wanders a fifth as far and holds its tentacles' ends in.
+  afield: f32, // @default 0  1 out in the fields (field.ts), where the pack has all the room there is; 0 in the tunnel.
   pack: f32, // @default 1000  How many robots of the pack are out: 1 is the leader alone, 2 brings the second up from behind, and a part of one is one on its way. The default is all of them.
 };
 ${ROBOT_FRAME}
@@ -515,10 +521,12 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // panel's Tunnel turned up) the pack takes the room: its places across the tunnel grow with the radius there.
   // Not downward in a hall: a hall's walls and crown stand further off but its deck does not sink, and a
   // robot sent 1.9 times as far under the axis flew through the floor.
+  // Out in the fields (field.ts) there is neither wall nor deck: more room than any hall, below as well as above.
   let berth = ROBOT_OFFSET[robot];
   let wide = params.bore / 2.6;
-  let roomy = wide * (1.0 + CHAMBER_SWELL * chamberAt(params.travel + berth.z));
-  let offset = params.offset + vec3f(berth.x * roomy, berth.y * select(wide, roomy, berth.y > 0.0), berth.z - 45.0 * arriving);
+  let afield = step(0.5, params.afield);
+  let roomy = wide * (1.0 + CHAMBER_SWELL * max(chamberAt(params.travel + berth.z), ${FIELD_BERTH.toFixed(2)} * afield));
+  let offset = params.offset + vec3f(berth.x * roomy, berth.y * select(wide, roomy, berth.y > 0.0 || afield > 0.5), berth.z - 45.0 * arriving);
   let swimming = swimAt(params.swim, params.travel + offset.z);
   // Where the gait counts from: the rungs it plants on are a matter of how far it has come.
   let bodyZ = robotZ(params.travel, offset, params.swim, params.stroke);
