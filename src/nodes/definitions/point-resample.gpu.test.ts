@@ -473,7 +473,8 @@ describe("Resample on Dawn — input strips longer than one block (T1586b slice 
       placed.positions.forEach((point, k) => point.forEach((value, axis) => expect(rings[k]![axis], `ring ${k} axis ${axis}`).toBeCloseTo(value, 4)));
 
       const frameSchema = curveFramesAttributes({ frame: true, vectors: true, metrics: true });
-      const expected = frameStrip(rings, { closed: false, method: "minimiseTwist", up: [0, 1, 0] });
+      // Extrapolate Ends is on, as it is on a node a person places: the reference is asked for the same.
+      const expected = frameStrip(rings, { closed: false, method: "minimiseTwist", up: [0, 1, 0], extrapolateEnds: true });
       const tangent = (await session.read("frames_rings", frameSchema, 1500, "tangent")).floats;
       const normal = (await session.read("frames_rings", frameSchema, 1500, "normal")).floats;
       const distance = (await session.read("frames_rings", frameSchema, 1500, "distance")).floats;

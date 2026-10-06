@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { frameStrip, type Vec3 } from "../../points/curve.ts";
+import { endTangent, frameStrip, type Vec3 } from "../../points/curve.ts";
 import {
   authoredPoints,
   curveEdge,
@@ -41,6 +41,13 @@ import { curveFramesAttributes } from "./point-curve-frames.ts";
  *
  * Nothing here hands the node a dimension: the points are authored by a kernel, a Topology
  * node claims the strips, and Curve Frames reads the claim off the edge.
+ *
+ * ## The ends (§T1587b C13)
+ *
+ * Extrapolate Ends is on, as it is on a node a person places, so every comparison with the
+ * reference below holds the ends pass too. The by-hand fixtures that are paths of straight
+ * legs with a corner next to an end turn it off, which is what the switch is for: there an
+ * end's frame is its leg's. The last describe of the file is the ends' own.
  */
 
 const ALL = { frame: true, vectors: true, metrics: true } as const;
@@ -152,10 +159,11 @@ describe("Curve Frames on Dawn — metrics and the frame convention (T1586b)", (
    * Three unit steps along +X, +Y, +Z, seeded with the normal on +Y. The turn from X to Y
    * is a quarter turn about Z and carries the normal from +Y to −X; the turn from Y to Z is
    * a quarter turn about X and leaves −X alone. Each corner's own frame is half way through
-   * its turn, so its tangent is the bisector of its two sides.
+   * its turn, so its tangent is the bisector of its two sides. Straight legs: an end's frame
+   * is its leg's, so Extrapolate Ends is off.
    */
   it("three unit steps along X, Y, Z: two quarter turns, by hand", async () => {
-    const m = await measure([[0, 0, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1]], { cols: 4, rows: 1 });
+    const m = await measure([[0, 0, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1]], { cols: 4, rows: 1 }, { extrapolateEnds: false });
     expect(m.tangent[0]).toEqual([1, 0, 0]);
     expect(m.normal[0]).toEqual([0, 1, 0]);
     close(m.tangent[1]!, [H, H, 0], "corner 1 tangent");
@@ -284,7 +292,7 @@ describe("Curve Frames on Dawn — the frame is carried along the polyline (T158
     const stripA: Vec3[] = [[0, 0, 0], [1, 0.25, 0], [1.5, 1, 0.5], [1, 2, 1.5], [0, 2.5, 1], [-1, 2, 0]];
     const stripB: Vec3[] = [[4, 0, 0], [4, 1, 0], [5, 1, 1], [5, 3, 1], [3, 3, 2], [3, 0, -1]];
     const m = await measure([...stripA, ...stripB], { cols: 6, rows: 2 }, { roll: 20, twist: 75 });
-    const options = { closed: false, method: "minimiseTwist", up: UP_Y, roll: (20 * Math.PI) / 180, twist: (75 * Math.PI) / 180 } as const;
+    const options = { closed: false, method: "minimiseTwist", up: UP_Y, roll: (20 * Math.PI) / 180, twist: (75 * Math.PI) / 180, extrapolateEnds: true } as const;
     [frameStrip(stripA, options), frameStrip(stripB, options)].forEach((expected, strip) => {
       for (let i = 0; i < 6; i += 1) {
         const slot = strip * 6 + i;
@@ -419,10 +427,11 @@ describe("Curve Frames on Dawn — padding and Fixed Up (T1586b R4)", () => {
    * Fixed Up leans every normal toward Up with no carrying. Between two vertical segments
    * the tangent IS up, so there is no "up made square to the tangent": the point keeps the
    * normal of the point before it, squared to its own tangent. Past the vertical run the
-   * normal is back on +Y — a carried frame would still be leaning.
+   * normal is back on +Y — a carried frame would still be leaning. Straight legs again, so
+   * the ends are their legs'.
    */
   it("Fixed Up through vertical keeps the previous normal, recovers after, and is finite everywhere", async () => {
-    const m = await measure([[0, 0, 0], [1, 0, 0], [1, 1, 0], [1, 2, 0], [2, 2, 0]], { cols: 5, rows: 1 }, { method: "fixedUp" });
+    const m = await measure([[0, 0, 0], [1, 0, 0], [1, 1, 0], [1, 2, 0], [2, 2, 0]], { cols: 5, rows: 1 }, { method: "fixedUp", extrapolateEnds: false });
     expect(m.normal[0]).toEqual([0, 1, 0]);
     close(m.normal[1]!, [-H, H, 0], "the corner before the vertical run");
     close(m.tangent[2]!, [0, 1, 0], "the vertical point's tangent", 6);
@@ -675,7 +684,7 @@ describe("Curve Frames on Dawn — strips longer than one block (T1586b slice 6)
       const m = await measureFrom(wander, 7000, { cols: 3500, rows: 2, closed }, { roll: 20, twist: 75, up: [0.2, 1, -0.3] });
       for (const strip of [0, 1]) {
         const points = m.position.slice(strip * 3500, (strip + 1) * 3500);
-        const expected = frameStrip(points, { closed, method: "minimiseTwist", up: [0.2, 1, -0.3], roll: (20 * Math.PI) / 180, twist: (75 * Math.PI) / 180 });
+        const expected = frameStrip(points, { closed, method: "minimiseTwist", up: [0.2, 1, -0.3], roll: (20 * Math.PI) / 180, twist: (75 * Math.PI) / 180, extrapolateEnds: true });
         agree(m, expected, strip * 3500, `${closed ? "closed" : "open"} strip ${strip}`);
       }
       // The points of one run share ONE frame and one distance, to the bit, across the seam
@@ -695,7 +704,7 @@ describe("Curve Frames on Dawn — strips longer than one block (T1586b slice 6)
     const m = await measureFrom(wander, 7000, { cols: 3500, rows: 2 }, { method: "fixedUp", up: [0.2, 1, -0.3], twist: 40 });
     for (const strip of [0, 1]) {
       const points = m.position.slice(strip * 3500, (strip + 1) * 3500);
-      agree(m, frameStrip(points, { closed: false, method: "fixedUp", up: [0.2, 1, -0.3], twist: (40 * Math.PI) / 180 }), strip * 3500, `strip ${strip}`);
+      agree(m, frameStrip(points, { closed: false, method: "fixedUp", up: [0.2, 1, -0.3], twist: (40 * Math.PI) / 180, extrapolateEnds: true }), strip * 3500, `strip ${strip}`);
     }
   }, 240_000);
 
@@ -723,7 +732,7 @@ describe("Curve Frames on Dawn — strips longer than one block (T1586b slice 6)
     // The reversal is exact: out along +X, back along −X.
     close(m.tangent[1200]!, [1, 0, 0], "outward", 6);
     close(m.tangent[1350]!, [-1, 0, 0], "and back", 6);
-    agree(m, frameStrip(m.position, { closed: false, method: "minimiseTwist", up: [0.3, 1, 0.2] }), 0, "the whole strip");
+    agree(m, frameStrip(m.position, { closed: false, method: "minimiseTwist", up: [0.3, 1, 0.2], extrapolateEnds: true }), 0, "the whole strip");
   }, 120_000);
 
   /**
@@ -863,7 +872,7 @@ describe("Curve Frames on Dawn — strips longer than one block (T1586b slice 6)
       close(m.normal[1499]!, [0, 1, 0], "the handed normal before the reversal", 6);
       close(m.tangent[1500]!, [0, 1, 0], "the tangent at the reversal", 6);
       close(m.normal[1500]!, [1, 0, 0], "restarted from the world axis least aligned with it", 6);
-      agree(m, frameStrip(m.position, { closed: false, method: "fixedUp", up }), 0, "the whole strip");
+      agree(m, frameStrip(m.position, { closed: false, method: "fixedUp", up, extrapolateEnds: true }), 0, "the whole strip");
       // And this is the path it took: the fold knew what to hand the second block, not the third.
       const walk = await session.readScratch("frames_spine", "walk");
       expect(curveFramesHandedAt(walk, 1, 3, 0, 1).known).toBe(true);
@@ -903,4 +912,330 @@ describe("Curve Frames on Dawn — strips longer than one block (T1586b slice 6)
       expect(still, method).not.toEqual(direct);
     }
   }, 240_000);
+});
+
+/**
+ * T1587b C13 — EXTRAPOLATE ENDS: an open strip's two ends aimed by their two nearest
+ * segments.
+ *
+ * Two claims, and they are separate. WHAT an end is aimed at: the slope, at the end, of the
+ * parabola through the end's three nearest points — by hand on a right angle, in closed
+ * form on a circle, and against the reference everywhere above. And WHAT ELSE CHANGES:
+ * nothing. The ends are rewritten by a pass after the walk, so with the switch on and off
+ * every interior value of every attribute is the same WORD, and so is every metric at an
+ * end. That is asserted on bits, not digits, on a short strip and on one cut into blocks.
+ */
+describe("Curve Frames on Dawn — Extrapolate Ends (T1587b C13)", () => {
+  const SCHEMA = curveFramesAttributes(ALL);
+  const FRAME = ["orient", "tangent", "normal", "binormal"] as const;
+  const METRICS = ["distance", "curveU", "curveLength", "curvature"] as const;
+  const words = (name: string): number => (name === "orient" || name === "tangent" || name === "normal" || name === "binormal" ? 4 : 1);
+  /** Every attribute Curve Frames wrote, as the words in its buffer. */
+  const bitsOf = (source: Source, count: number, strips: Strips, parameters: Record<string, unknown>): Promise<Record<string, Uint32Array>> =>
+    onDawn(framesGraph(source, count, strips, parameters), async (session) => {
+      const read: Record<string, Uint32Array> = {};
+      for (const name of [...FRAME, ...METRICS]) read[name] = new Uint32Array((await session.read("frames_spine", SCHEMA, count, name)).words);
+      return read;
+    });
+  const slotOf = (bits: Record<string, Uint32Array>, name: string, slot: number): number[] => Array.from(bits[name]!.subarray(slot * words(name), (slot + 1) * words(name)));
+
+  /**
+   * A right angle with equal legs, in the XY plane, Up out of it. The parabola through
+   * (0,0), (1,0), (1,1) leaves its first point along 1.5 × (1,0) − 0.5 × (0,1) and arrives at
+   * its last along 1.5 × (0,1) − 0.5 × (1,0). The curve is planar and the frame is turned
+   * about the plane's own normal, so the normal stays +Z to the bit.
+   */
+  it("a right angle with equal legs: each end leans back by half the next leg, by hand", async () => {
+    const size = Math.hypot(1.5, 0.5);
+    const m = await measure([[0, 0, 0], [1, 0, 0], [1, 1, 0]], { cols: 3, rows: 1 }, { up: [0, 0, 1] });
+    close(m.tangent[0]!, [1.5 / size, -0.5 / size, 0], "the first point's tangent", 6);
+    close(m.tangent[2]!, [-0.5 / size, 1.5 / size, 0], "the last point's tangent", 6);
+    // The corner between them is the walk's: the bisector of its two legs.
+    close(m.tangent[1]!, [H, H, 0], "the corner's tangent", 6);
+    for (const slot of [0, 1, 2]) expect(m.normal[slot], `normal ${slot}`).toEqual([0, 0, 1]);
+    // Off, an end is its leg.
+    const off = await measure([[0, 0, 0], [1, 0, 0], [1, 1, 0]], { cols: 3, rows: 1 }, { up: [0, 0, 1], extrapolateEnds: false });
+    expect(off.tangent[0]).toEqual([1, 0, 0]);
+    expect(off.tangent[2]).toEqual([0, 1, 0]);
+  }, 60_000);
+
+  /**
+   * Unequal legs weigh by their lengths: the end's own leg h and the next one g give
+   * d + (d − e) × h ÷ (h + g). A first leg of 2 and a second of 1: (1,0) + ((1,0) − (0,1)) × ⅔
+   * = (5, −2) ÷ 3. Seen from the other end the legs are 1 and 2: (0,1) + ((0,1) − (1,0)) × ⅓
+   * = (−1, 4) ÷ 3.
+   */
+  it("unequal legs: the nearer segment's share is its own length over the two", async () => {
+    const m = await measure([[0, 0, 0], [2, 0, 0], [2, 1, 0]], { cols: 3, rows: 1 }, { up: [0, 0, 1] });
+    close(m.tangent[0]!, [5 / Math.hypot(5, 2), -2 / Math.hypot(5, 2), 0], "the first point's tangent", 6);
+    close(m.tangent[2]!, [-1 / Math.hypot(1, 4), 4 / Math.hypot(1, 4), 0], "the last point's tangent", 6);
+  }, 60_000);
+
+  /**
+   * WHY IT IS DONE. Nine points on a quarter circle, equal chords, each turning by φ. An
+   * end's chord points half a chord further round than the circle does at the end: off by
+   * φ ÷ 2. The extrapolated tangent is 1.5 × the first chord − 0.5 × the second, which is
+   * off by atan2(1.5 sin a − 0.5 sin 3a, 1.5 cos a − 0.5 cos 3a) with a = φ ÷ 2: about 2a³.
+   * Here that is 0.098 rad against 0.0019: fifty times nearer, and the same order as the
+   * points in between.
+   */
+  it("on a circle an end is off its own tangent by about 2a³ where its chord is off by a", async () => {
+    const angles = Array.from({ length: 9 }, (_, index) => (index / 8) * (Math.PI / 2));
+    const arc = angles.map((angle): Vec3 => [2 - 2 * Math.cos(angle), 0, 2 * Math.sin(angle)]);
+    const a = Math.PI / 2 / 8 / 2;
+    const residue = Math.atan2(1.5 * Math.sin(a) - 0.5 * Math.sin(3 * a), 1.5 * Math.cos(a) - 0.5 * Math.cos(3 * a));
+    expect(residue).toBeGreaterThan(0);
+    expect(residue).toBeLessThan(2.1 * a ** 3);
+    // The circle leaves along +Z and arrives along +X; angles are from +Z toward +X.
+    const heading = (tangent: readonly number[]): number => Math.atan2(tangent[0]!, tangent[2]!);
+    const on = await measure(arc, { cols: 9, rows: 1 });
+    expect(heading(on.tangent[0]!), "the first point").toBeCloseTo(residue, 6);
+    expect(heading(on.tangent[8]!), "the last point").toBeCloseTo(Math.PI / 2 - residue, 6);
+    const off = await measure(arc, { cols: 9, rows: 1 }, { extrapolateEnds: false });
+    expect(heading(off.tangent[0]!), "the first point, its chord").toBeCloseTo(a, 6);
+    expect(heading(off.tangent[8]!), "the last point, its chord").toBeCloseTo(Math.PI / 2 - a, 6);
+    // And the points in between, either way, are the circle's own to rounding.
+    for (let index = 1; index < 8; index += 1) expect(heading(on.tangent[index]!), `point ${index}`).toBeCloseTo(angles[index]!, 6);
+    // A planar curve under Up square to its plane: no end's normal leaves +Y.
+    for (let index = 0; index < 9; index += 1) close(on.normal[index]!, [0, 1, 0], `normal ${index}`, 6);
+  }, 60_000);
+
+  /** Two strips that leave their planes, each with its start repeated three times and its end four. */
+  const BENT: ReadonlyArray<Vec3> = [
+    [0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0.25, 0], [1.5, 1, 0.5], [1, 2, 1.5], [0, 2.5, 1], [-1, 2, 0], [-1, 2, 0], [-1, 2, 0], [-1, 2, 0], [-1, 2, 0],
+    [4, 0, 0], [4, 0, 0], [4, 0, 0], [4, 1, 0.5], [5, 1, 1], [5, 3, 1], [3, 3, 2], [3, 0, -1], [3, 0, -1], [3, 0, -1], [3, 0, -1], [3, 0, -1],
+  ];
+  /** A bank and a lean that differ at every slot, the repeats included. */
+  const BANK: AuthoredAttribute = { name: "bank", type: "f32", values: Array.from({ length: 24 }, (_, slot) => 5 + slot * 7) };
+  const LEAN: AuthoredAttribute = {
+    name: "lean",
+    type: "vec3f",
+    values: Array.from({ length: 24 }, (_, slot) => [0.25 * Math.sin(slot), 1, 0.25 * Math.cos(slot * 1.7)]),
+  };
+  const SEEDS: AuthoredAttribute = {
+    name: "orient",
+    type: "vec4f",
+    values: Array.from({ length: 24 }, (_, slot) => (slot < 12 ? [0.5, 0.5, 0.5, 0.5] : [0, Math.SQRT1_2, 0, Math.SQRT1_2])),
+  };
+  const CASES: ReadonlyArray<{ readonly name: string; readonly parameters: Record<string, unknown>; readonly reference: (strip: number) => Parameters<typeof frameStrip>[1] }> = [
+    {
+      name: "Minimise Twist, rolled, twisted and banked per point",
+      parameters: { roll: mappedTo("bank", 20), twist: 75, up: [0.2, 1, -0.3] },
+      reference: (strip) => ({
+        closed: false,
+        method: "minimiseTwist",
+        up: [0.2, 1, -0.3],
+        roll: (20 * Math.PI) / 180,
+        rollPerPoint: (BANK.values as number[]).slice(strip * 12, strip * 12 + 12).map((degrees) => (degrees * Math.PI) / 180),
+        twist: (75 * Math.PI) / 180,
+        extrapolateEnds: true,
+      }),
+    },
+    {
+      name: "Minimise Twist, seeded from a quaternion",
+      parameters: { seed: "orient", twist: -40 },
+      reference: (strip) => ({
+        closed: false,
+        method: "minimiseTwist",
+        up: UP_Y,
+        seedOrient: (strip === 0 ? [0.5, 0.5, 0.5, 0.5] : [0, Math.SQRT1_2, 0, Math.SQRT1_2]) as [number, number, number, number],
+        twist: (-40 * Math.PI) / 180,
+        extrapolateEnds: true,
+      }),
+    },
+    {
+      name: "Fixed Up, Up mapped per point, banked per point",
+      parameters: { method: "fixedUp", up: mappedTo("lean", [0, 1, 0]), roll: mappedTo("bank", -15), twist: 30 },
+      reference: (strip) => ({
+        closed: false,
+        method: "fixedUp",
+        up: (LEAN.values as number[][]).slice(strip * 12, strip * 12 + 12).map((lean) => lean.map((value) => Math.fround(value)) as unknown as Vec3),
+        roll: (-15 * Math.PI) / 180,
+        rollPerPoint: (BANK.values as number[]).slice(strip * 12, strip * 12 + 12).map((degrees) => (degrees * Math.PI) / 180),
+        twist: (30 * Math.PI) / 180,
+        extrapolateEnds: true,
+      }),
+    },
+  ];
+
+  for (const entry of CASES) {
+    it(`a short strip, ${entry.name}: the ends are the reference's, and nothing else moved a bit`, async () => {
+      const source = authoredPoints("kernel_source", BENT, [BANK, LEAN, SEEDS]);
+      const strips = { cols: 12, rows: 2 };
+
+      /* The ends, and every point, against the reference. */
+      const m = await measureFrom(source, 24, strips, entry.parameters);
+      for (const strip of [0, 1]) {
+        const expected = frameStrip(m.position.slice(strip * 12, strip * 12 + 12), entry.reference(strip));
+        for (let i = 0; i < 12; i += 1) {
+          const slot = strip * 12 + i;
+          close(m.tangent[slot]!, expected.tangent[i]!, `strip ${strip} tangent ${i}`);
+          close(m.normal[slot]!, expected.normal[i]!, `strip ${strip} normal ${i}`);
+          close(m.binormal[slot]!, expected.binormal[i]!, `strip ${strip} binormal ${i}`);
+          expect(Math.abs(m.orient[slot]!.reduce((sum, value, axis) => sum + value * expected.orient[i]![axis]!, 0)), `strip ${strip} orient ${i}`).toBeCloseTo(1, 5);
+        }
+      }
+
+      /* On against off, word for word. The first run is slots 0 to 2 (the start and its
+         two repeats), the last is slots 7 to 11. */
+      const on = await bitsOf(source, 24, strips, entry.parameters);
+      const off = await bitsOf(source, 24, strips, { ...entry.parameters, extrapolateEnds: false });
+      for (const strip of [0, 1]) {
+        for (let i = 0; i < 12; i += 1) {
+          const slot = strip * 12 + i;
+          const inEnd = i <= 2 || i >= 7;
+          for (const name of METRICS) expect(slotOf(on, name, slot), `${name}, strip ${strip} point ${i}`).toEqual(slotOf(off, name, slot));
+          for (const name of FRAME) {
+            if (inEnd) expect(slotOf(on, name, slot), `${name}, strip ${strip} point ${i}: an end`).not.toEqual(slotOf(off, name, slot));
+            else expect(slotOf(on, name, slot), `${name}, strip ${strip} point ${i}: inside`).toEqual(slotOf(off, name, slot));
+          }
+        }
+      }
+    }, 120_000);
+  }
+
+  /**
+   * A strip cut into blocks, most of it padding: the start is repeated through the whole
+   * first block and into the second, and the end through the fourth block's tail and all
+   * of the fifth. One pass per strip finds the two ends through the block summaries; every
+   * block rewrites its own share of the two runs.
+   */
+  it("a long strip, mostly padding: both runs are re-aimed whole, and every slot between them is the same word", async () => {
+    const COUNT = 4500;
+    const padded = formulaPoints(
+      "kernel_source",
+      COUNT * 2,
+      `  let j = i / ${COUNT}u;
+  let s = clamp(i % ${COUNT}u, 1100u, 3200u);
+  let t = f32(s) * 0.013 + f32(j) * 1.7;
+  q.position = vec3f(cos(t) * (1.0 + 0.3 * sin(t * 2.7)), sin(t * 1.3) * 0.8 + 0.2 * cos(t * 3.1), sin(t * 0.7) + f32(s) * 0.001);`,
+    );
+    const strips = { cols: COUNT, rows: 2 };
+    for (const [method, parameters] of [
+      ["minimiseTwist", { roll: 20, twist: 75, up: [0.2, 1, -0.3] }],
+      ["fixedUp", { method: "fixedUp", up: [0.2, 1, -0.3], twist: 40 }],
+    ] as const) {
+      const on = await bitsOf(padded, COUNT * 2, strips, parameters);
+      const off = await bitsOf(padded, COUNT * 2, strips, { ...parameters, extrapolateEnds: false });
+      for (const strip of [0, 1]) {
+        const base = strip * COUNT;
+        for (const name of METRICS) expect(Array.from(on[name]!.subarray(base, base + COUNT)), `${method} ${name}`).toEqual(Array.from(off[name]!.subarray(base, base + COUNT)));
+        for (const name of FRAME) {
+          // Inside: slots 1,101 to 3,199, across the seams at 2,048 and 3,072.
+          expect(Array.from(on[name]!.subarray((base + 1101) * 4, (base + 3200) * 4)), `${method} ${name}, inside`).toEqual(
+            Array.from(off[name]!.subarray((base + 1101) * 4, (base + 3200) * 4)),
+          );
+          // The first run, slots 0 to 1,100, and the last, 3,200 to 4,499: one frame each, to the bit, and not the chord's.
+          for (const [from, to] of [[0, 1100], [3200, COUNT - 1]] as const) {
+            const first = slotOf(on, name, base + from);
+            expect(first, `${method} ${name}, slot ${from}`).not.toEqual(slotOf(off, name, base + from));
+            for (let slot = from + 1; slot <= to; slot += 1) {
+              if (String(slotOf(on, name, base + slot)) !== String(first)) expect(slotOf(on, name, base + slot), `${method} ${name}, slot ${slot}`).toEqual(first);
+            }
+          }
+        }
+      }
+    }
+  }, 240_000);
+
+  /**
+   * Two points say nothing about how a curve turns, and neither does one segment with a
+   * length among repeats: the strip keeps its chord. With slots enough for a pass to exist
+   * (five), on and off are the same words everywhere.
+   */
+  it("fewer than two segments with a length: the strip keeps its chord, to the bit", async () => {
+    const one: ReadonlyArray<Vec3> = [[0, 0, 0], [0, 0, 0], [1, 2, 2], [1, 2, 2], [1, 2, 2]];
+    const source = authoredPoints("kernel_source", one);
+    const on = await bitsOf(source, 5, { cols: 5, rows: 1 }, {});
+    const off = await bitsOf(source, 5, { cols: 5, rows: 1 }, { extrapolateEnds: false });
+    for (const name of [...FRAME, ...METRICS]) expect(Array.from(on[name]!), name).toEqual(Array.from(off[name]!));
+    const m = await measure(one, { cols: 5, rows: 1 });
+    for (let slot = 0; slot < 5; slot += 1) close(m.tangent[slot]!, [1 / 3, 2 / 3, 2 / 3], `tangent ${slot}`, 6);
+    // And a strip of two points has no pass to run at all: its tangent is its one segment's.
+    const pair = await measure([[0, 0, 0], [1, 2, 2], [5, 0, 0], [5, 0, 3]], { cols: 2, rows: 2 });
+    close(pair.tangent[0]!, [1 / 3, 2 / 3, 2 / 3], "the first pair", 6);
+    expect(pair.tangent[3]).toEqual([0, 0, 1]);
+  }, 120_000);
+
+  /**
+   * A straight end is exact. Where an end's two segments run the same way to the bit there
+   * is nothing to extrapolate, and the end is left as the walk wrote it: here the first
+   * three points are on a line and the last three are not. The line runs along (1, 2, 2),
+   * whose direction is thirds and so is NOT a unit vector to the bit in f32: re-aiming it
+   * "at itself" would renormalise it and move its last digits.
+   */
+  it("an end whose two segments run the same way is left alone, to the bit; the other end is aimed", async () => {
+    const hook: ReadonlyArray<Vec3> = [[0, 0, 0], [1, 2, 2], [2, 4, 4], [3, 5, 4], [3, 6, 5]];
+    const source = authoredPoints("kernel_source", hook);
+    const parameters = { up: [0.3, 1, 0.2], roll: 25 };
+    const on = await bitsOf(source, 5, { cols: 5, rows: 1 }, parameters);
+    const off = await bitsOf(source, 5, { cols: 5, rows: 1 }, { ...parameters, extrapolateEnds: false });
+    for (const name of FRAME) {
+      expect(slotOf(on, name, 0), `${name}: the straight end`).toEqual(slotOf(off, name, 0));
+      expect(slotOf(on, name, 4), `${name}: the bent end`).not.toEqual(slotOf(off, name, 4));
+    }
+    close(vecAt(new Float32Array(on["tangent"]!.buffer), 0), [1 / 3, 2 / 3, 2 / 3], "the straight end's tangent", 6);
+  }, 60_000);
+
+  /**
+   * A long strip's ends are found through the walk's block summaries, and an end's two
+   * segments need not be in one block. Here the curve begins on the LAST segment of the
+   * first block (slot 1,023 to 1,024) and ends on the FIRST segment of the third (2,048 to
+   * 2,049): each end's own segment is the only one its block has, and the next one is read
+   * off the neighbouring block's summary.
+   */
+  it("a long strip whose end segments are alone in their blocks: the second one comes from the next block's summary", async () => {
+    const COUNT = 3000;
+    const straddle = formulaPoints(
+      "kernel_source",
+      COUNT,
+      `  let t = f32(clamp(i, 1023u, 2049u)) * 0.013;
+  q.position = vec3f(cos(t) * (1.0 + 0.3 * sin(t * 2.7)), sin(t * 1.3) * 0.8 + 0.2 * cos(t * 3.1), sin(t * 0.7) + t * 0.1);`,
+    );
+    const between = (m: Measured, k: number): Vec3 => [m.position[k + 1]![0] - m.position[k]![0], m.position[k + 1]![1] - m.position[k]![1], m.position[k + 1]![2] - m.position[k]![2]];
+    for (const method of ["minimiseTwist", "fixedUp"] as const) {
+      const m = await measureFrom(straddle, COUNT, { cols: COUNT, rows: 1 }, { method, up: [0.2, 1, -0.3] });
+      // The rule, from the points the device holds: segments 1,023 and 1,024 at the start, 2,048 and 2,047 at the end.
+      const head = endTangent(between(m, 1023), between(m, 1024)) as Vec3;
+      const tail = endTangent(between(m, 2048), between(m, 2047)) as Vec3;
+      for (const slot of [0, 500, 1023]) close(m.tangent[slot]!, head, `${method}: the first run, slot ${slot}`, 5);
+      for (const slot of [2049, 2500, COUNT - 1]) close(m.tangent[slot]!, tail, `${method}: the last run, slot ${slot}`, 5);
+      // And not the end segments' own directions, which is what they were.
+      const chord = between(m, 1023);
+      const size = Math.hypot(chord[0], chord[1], chord[2]);
+      expect(Math.abs(m.tangent[0]![0]! - chord[0] / size) + Math.abs(m.tangent[0]![1]! - chord[1] / size) + Math.abs(m.tangent[0]![2]! - chord[2] / size)).toBeGreaterThan(1e-4);
+      // The whole frame at both ends, against the reference.
+      const expected = frameStrip(m.position, { closed: false, method, up: [0.2, 1, -0.3], extrapolateEnds: true });
+      for (const slot of [0, 1023, 1024, 2048, 2049, COUNT - 1]) {
+        close(m.tangent[slot]!, expected.tangent[slot]!, `${method} tangent ${slot}`, 4);
+        close(m.normal[slot]!, expected.normal[slot]!, `${method} normal ${slot}`, 4);
+      }
+    }
+  }, 240_000);
+
+  /**
+   * Fixed Up at an end: the normal is Up made square to the NEW tangent, which is the
+   * method's own rule and not the old normal turned (the two differ by a roll on a climbing
+   * curve). And where Up runs along an end it cannot say which way to lean: that end keeps
+   * its chord's frame, and the other end is still aimed.
+   */
+  it("Fixed Up leans an end's normal toward Up about its new tangent, and leaves an end that runs along Up", async () => {
+    const climb: ReadonlyArray<Vec3> = [[0, 0, 0], [1, 0.5, 0], [1.5, 1.25, 0.75], [1.25, 2.25, 1.5], [0.5, 2.75, 2.5]];
+    const m = await measure(climb, { cols: 5, rows: 1 }, { method: "fixedUp" });
+    for (const slot of [0, 4]) {
+      const tangent = m.tangent[slot]!;
+      const leaning = [0, 1, 0].map((value, axis) => value - tangent[axis]! * tangent[1]!);
+      const size = Math.hypot(leaning[0]!, leaning[1]!, leaning[2]!);
+      close(m.normal[slot]!, leaning.map((value) => value / size), `the normal at slot ${slot}`, 6);
+    }
+    // The first leg runs straight up Up, then the path bends away.
+    const mast: ReadonlyArray<Vec3> = [[0, 0, 0], [0, 1, 0], [0.5, 2, 0], [1.5, 2.5, 0.5], [2.5, 2.5, 1.5]];
+    const source = authoredPoints("kernel_source", mast);
+    const on = await bitsOf(source, 5, { cols: 5, rows: 1 }, { method: "fixedUp" });
+    const off = await bitsOf(source, 5, { cols: 5, rows: 1 }, { method: "fixedUp", extrapolateEnds: false });
+    for (const name of FRAME) {
+      expect(slotOf(on, name, 0), `${name}: the end along Up`).toEqual(slotOf(off, name, 0));
+      expect(slotOf(on, name, 4), `${name}: the other end`).not.toEqual(slotOf(off, name, 4));
+    }
+  }, 120_000);
 });

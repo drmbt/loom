@@ -3,7 +3,7 @@ import type { BufferBindingDescriptor, DispatchPassDescriptor } from "../../runt
 import { scratchResourceId } from "../../compiler/resources.ts";
 import type { PointAttributeSchema } from "../../points/attributes.ts";
 import { STRIP_WALK_BLOCK } from "../../points/curve.ts";
-import { regionStoreWgsl } from "../../points/packing.ts";
+import { regionAccessorWgsl, regionStoreWgsl } from "../../points/packing.ts";
 import { curveFramesWgsl, type CurveFramesShaderOptions } from "../shaders/curve-frames.wgsl.ts";
 import {
   curveFramesBlockWgsl,
@@ -15,6 +15,14 @@ import {
   curveFramesWriteWgsl,
   type CurveFramesBlockedPass,
 } from "../shaders/curve-frames-blocked.wgsl.ts";
+import {
+  CURVE_FRAMES_ENDS_VECTORS,
+  curveFramesEndsFindWgsl,
+  curveFramesEndsWriteGroups,
+  curveFramesEndsWriteWgsl,
+  type CurveFramesEndsOptions,
+  type CurveFramesEndsPass,
+} from "../shaders/curve-frames-ends.wgsl.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { readFlag, readNumber, readVector } from "./parameter-readers.ts";
 import { attributeBinding, packedPointStorage } from "./point-storage.ts";
@@ -62,6 +70,16 @@ import { resolveScalarMap } from "./points.ts";
  * pass per strip between two passes per block to hand each block the state it starts from
  * (`nodes/shaders/curve-frames-blocked.wgsl.ts`). A strip that fits one block is walked by
  * the program it always was, so no curve that shipped reads back a different byte.
+ *
+ * ⚑ THE TWO ENDS OF AN OPEN STRIP ARE EXTRAPOLATED (§T1587b C13). An end point has one segment, and
+ * that segment's direction is the curve's half a segment further on: the first ring of a
+ * swept tunnel stood 2.7 mm off where every ring inside it was within 0.11. Extrapolate Ends
+ * takes each end's tangent from its two nearest segments instead, the slope at the end of
+ * the parabola through their three points — Houdini's Extrapolate End Tangents. It is a pass
+ * of its own AFTER the walk (`nodes/shaders/curve-frames-ends.wgsl.ts`), which rewrites the
+ * first and the last run of coincident points and nothing else, so every interior value is
+ * the walk's to the bit, on or off. Off, an end keeps its segment's frame: the thing to
+ * choose for a path of straight legs whose corner is next to its end.
  */
 
 /** What the node may publish, in the order its packed buffer lays them out. */
@@ -118,7 +136,7 @@ export const pointCurveFramesNode: NodeDefinition = {
   title: "Curve Frames",
   category: "points",
   description:
-    "Measures every strip of a pointset as a curve and publishes the result per point: distance from the start, curvature, and a frame — as a quaternion (orient: +Z down the curve, +Y the normal) and optionally as tangent, normal and binormal. Minimise Twist carries the frame along the curve from a seed; Fixed Up keeps the normal toward Up. Map orient onto a Geometry's Orient to instance along a curve. Put it after a Resample, not before.",
+    "Measures every strip of a pointset as a curve and publishes the result per point: distance from the start, curvature, and a frame — as a quaternion (orient: +Z down the curve, +Y the normal) and optionally as tangent, normal and binormal. Minimise Twist carries the frame along the curve from a seed; Fixed Up keeps the normal toward Up. An open strip's two ends are aimed by their two nearest segments (Extrapolate Ends), so the first and last ring of a tube sit square to the curve. Map orient onto a Geometry's Orient to instance along a curve. Put it after a Resample, not before.",
   tags: ["points", "curve", "strips", "frames", "tangent", "normal", "orient", "twist", "distance", "line", "spline"],
   inputs: [
     {
@@ -214,6 +232,15 @@ export const pointCurveFramesNode: NodeDefinition = {
       inactiveWhen: (values) => (fixedUp(values) ? "A Fixed Up frame depends only on where a point is, so a closed strip already meets itself." : null),
       description:
         "Closed strips: after one lap a carried frame comes back turned about the tangent by some angle. On, that angle is spread along the strip by distance, so the frame meets itself at the seam — what a sweep needs. Off, the seam shows the raw mismatch.",
+    },
+    extrapolateEnds: {
+      type: "boolean",
+      label: "Extrapolate Ends",
+      default: true,
+      compileTime: true,
+      inactiveWhen: (values) => (values["frame"] === false && values["vectors"] !== true ? "Only a frame has ends to aim: turn Frame or Vectors on." : null),
+      description:
+        "Open strips: aims the frame at each end by the end's two nearest segments, as the curve through their three points leaves it, in place of the end segment's own direction — which is the curve's half a segment further on. The first and last ring of a swept tube then sit square to the curve. Off, an end keeps its segment's frame: for a path of straight legs with a corner next to its end. Every other point is the same either way, and so is a closed strip, a straight end, and a strip of two points.",
     },
     frame: {
       type: "boolean",
@@ -388,6 +415,69 @@ export const pointCurveFramesNode: NodeDefinition = {
         .filter((part) => part !== "")
         .join(":");
     const positionBinding = attributeBinding("in_position", position);
+
+    /* ── Extrapolate Ends (§T1587b C13): the passes after the walk that re-aim an open strip's two
+       end runs. They exist only where there is an end and a frame to aim: an open strip of
+       three points or more, with Frame or Vectors on. ── */
+    const frameRegions = ["orient", "tangent", "normal", "binormal"].flatMap((name) => {
+      const region = storage.layout.byName.get(name);
+      return region === undefined ? [] : [region];
+    });
+    const extrapolates = parameters["extrapolateEnds"] !== false && !strips.closed && strips.cols >= 3 && frameRegions.length > 0;
+    const normalRegion = storage.layout.byName.get("normal");
+    const read = normalRegion ?? frameRegions[0];
+    const endsOptions: CurveFramesEndsOptions | undefined =
+      !extrapolates || read === undefined
+        ? undefined
+        : {
+            method,
+            upMapped: method === "fixedUp" && upPair !== undefined,
+            /* What the walk wrote at a slot: its normal, or the +Y of its quaternion where
+               only the quaternion is published. */
+            loadNormal:
+              normalRegion !== undefined
+                ? `${regionAccessorWgsl("load_normal", "out_points", normalRegion)}\n\nfn oldNormal(slot: u32) -> vec3f {\n  return load_normal(slot);\n}`
+                : `${regionAccessorWgsl("load_orient", "out_points", read)}\n\nfn oldNormal(slot: u32) -> vec3f {\n  return qrot(load_orient(slot), vec3f(0.0, 1.0, 0.0));\n}`,
+            storeFunctions: frameRegions.map((region) => regionStoreWgsl(`store_${region.name}`, "out_points", region)).join("\n\n"),
+            storeStatements: frameRegions.map((region) => `  store_${region.name}(slot, ${region.name});`).join("\n"),
+          };
+    const endsUp = endsOptions?.upMapped === true && upPair !== undefined ? [attributeBinding("in_up", upPair)] : [];
+    const endsBinding = { binding: "ends", resourceId: scratchResourceId(nodeId, "ends") };
+    const endsScratch = endsOptions === undefined ? [] : [{ key: "ends", kind: "buffer" as const, stride: 16, capacity: strips.rows * CURVE_FRAMES_ENDS_VECTORS }];
+    /* FIND per strip, then WRITE per chunk of slots: a run of any length is rewritten by many
+       threads at once. `blocked` is a strip longer than one block, whose FIND reads the walk's
+       summaries (`walk`) to step over whole blocks of padding. */
+    const endsPasses = (blocked: { readonly walk: BufferBindingDescriptor; readonly values: Readonly<Record<string, number | readonly number[]>> } | undefined): DispatchPassDescriptor[] =>
+      endsOptions === undefined
+        ? []
+        : [
+            endsStage(
+              "ends:find",
+              curveFramesEndsFindWgsl(blocked !== undefined),
+              [Math.ceil(strips.rows / 64), 1, 1],
+              [positionBinding, ...(blocked === undefined ? [] : [blocked.walk]), endsBinding],
+              blocked?.values ?? uniformValues,
+            ),
+            endsStage("ends:write", curveFramesEndsWriteWgsl(endsOptions), [curveFramesEndsWriteGroups(capacity), 1, 1], [...endsUp, endsBinding, outBinding], uniformValues),
+          ];
+    const endsStage = (
+      name: string,
+      emitted: CurveFramesEndsPass,
+      workgroups: [number, number, number],
+      buffers: ReadonlyArray<BufferBindingDescriptor>,
+      values: Readonly<Record<string, number | readonly number[]>>,
+    ): DispatchPassDescriptor => ({
+      kind: "dispatch",
+      id: programId(`frames:${name}`),
+      shader: emitted.shader,
+      entryPoint: "main",
+      workgroups,
+      buffers,
+      // The same list the shader's struct was written from: declared and set, both or neither.
+      uniforms: Object.fromEntries(emitted.uniforms.map((member) => [member, values[member] as number | readonly number[]])),
+      uniformBinding: "params",
+      nodeId,
+    });
     /* The strip's lean: at most one of the two, since a seed quaternion replaces Up. */
     const leanBindings = [
       ...(upPair === undefined ? [] : [attributeBinding("in_up", upPair)]),
@@ -461,8 +551,9 @@ export const pointCurveFramesNode: NodeDefinition = {
               ]
             : []),
           stage("write", curveFramesWriteWgsl(shaderOptions), perBlock, [positionBinding, ...leanBindings, ...rollBindings, walkBinding, outBinding]),
+          ...endsPasses({ walk: walkBinding, values: blockedValues }),
         ],
-        scratch: [{ key: "walk", kind: "buffer" as const, stride: 4, capacity: curveFramesWalkWords(strips.rows, blocks) }, storage.scratch],
+        scratch: [{ key: "walk", kind: "buffer" as const, stride: 4, capacity: curveFramesWalkWords(strips.rows, blocks) }, ...endsScratch, storage.scratch],
         pointsets,
       };
     }
@@ -480,6 +571,6 @@ export const pointCurveFramesNode: NodeDefinition = {
       nodeId,
     };
 
-    return { passes: [pass], scratch: [storage.scratch], pointsets };
+    return { passes: [pass, ...endsPasses(undefined)], scratch: [...endsScratch, storage.scratch], pointsets };
   },
 };

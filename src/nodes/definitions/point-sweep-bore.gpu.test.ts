@@ -38,8 +38,11 @@ import { sweepAttributes } from "./point-sweep.ts";
  * 1. ON THE BORE'S OWN ROWS (the path's points from the bore's own formula): the worst vertex
  *    of the 766 inner rings is 0.11 mm from the bore's. It is rounding: the frame's tangent
  *    is measured from points a 32-bit float holds to 0.004 mm, across a 0.15 m chord, and a
- *    hall's 5 m radius multiplies that angle. The first ring is 2.7 mm off and the last
- *    0.7 mm: a strip's end has one chord to take its tangent from.
+ *    hall's 5 m radius multiplies that angle. The two END rings are inside that too, 0.014 mm
+ *    and 0.040 mm, because Curve Frames aims an open strip's ends by their two nearest
+ *    segments (Extrapolate Ends, §T1587b C13). With that off the first ring is 2.7 mm off
+ *    and the last 0.7 mm: an end then has one chord to take its tangent from, and that was
+ *    the largest figure in this whole comparison.
  * 2. THROUGH A CURVE AND A RESAMPLE (control points on the formula every 1.2 m, eight
  *    segments, rows at the curve's own points): the centre line is within 0.12 mm, the wall
  *    within 0.9 mm of the bore's surface, and a vertex within 2.3 mm of the bore's vertex at
@@ -147,14 +150,14 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   q.position = vec3f(cos(theta), sin(theta), 0.0);
   return q;
 }`;
-  const sweptGraph = (variant: "outline" | "ring"): GraphDocument => {
+  const sweptGraph = (variant: "outline" | "ring", extrapolateEnds = true): GraphDocument => {
     const sink = drawnTo("sweep_bore", 16);
     return curveGraph(
       [
         curveNode("kernel_path", "pointKernel", { capacity: ROWS, seed: 7, attributes: JSON.stringify(WITH_HALL), kernel: PATH_KERNEL }),
         curveNode("topology_path", "pointTopology", { connectivity: "strips", cols: ROWS, rows: 1 }),
         // A Ring starts on the frame's +X and the bore straight down: a quarter turn of the frame.
-        curveNode("frames_path", "pointCurveFrames", { method: "fixedUp", vectors: true, roll: variant === "ring" ? -90 : 0 }),
+        curveNode("frames_path", "pointCurveFrames", { method: "fixedUp", vectors: true, roll: variant === "ring" ? -90 : 0, extrapolateEnds }),
         ...(variant === "outline"
           ? [
               curveNode("kernel_outline", "pointKernel", { capacity: COLUMNS, seed: 7, attributes: JSON.stringify([POSITION]), kernel: OUTLINE_KERNEL }),
@@ -174,7 +177,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
     );
   };
 
-  it("lays the kernel-bent grid's vertices: every inner ring to a float's rounding, the two end rings to their one chord", async () => {
+  it("lays the kernel-bent grid's vertices: every ring to a float's rounding, the two end rings included", async () => {
     /* Three numbers of this file are the frozen kernel's own, and the float64 centre line is
        the WGSL one: the fixture agrees with itself, so the two sides below are one tunnel. */
     expect(BORE_KERNEL).toContain(`const ROW: f32 = ${ROW.toFixed(5)};`);
@@ -199,36 +202,63 @@ fn process(p: Point, ctx: PointCtx) -> Point {
        times a hall's radius, is the most a vertex can be out. Plus the same rounding of the
        vertex itself, twice (the bore's and the sweep's). */
     const rounding = resolves(128) / 2;
-    const innerBound = HALL_RADIUS * ((2 * rounding * Math.sqrt(3)) / ROW) + 2 * rounding * Math.sqrt(3);
-    /* An end ring has one chord, whose direction is the curve's half a chord further on:
-       off the end's own tangent by half the turn across it. */
-    const endBound = HALL_RADIUS * ((ROW * MOST_BEND) / 2) + innerBound;
+    const roundedAngle = (2 * rounding * Math.sqrt(3)) / ROW;
+    const innerBound = HALL_RADIUS * roundedAngle + 2 * rounding * Math.sqrt(3);
+    /* An END ring, extrapolated: its tangent is one and a half of its own chord's direction
+       less half of the next, so the rounding counts twice. What the rule itself leaves is
+       the one-sided difference's h² f‴ ÷ 3, and, because it weighs the two chords by their
+       lengths and not by z, their difference in length times the turn between them: at
+       most (h f″)² ÷ 4. */
+    const aimedBound = HALL_RADIUS * (2 * roundedAngle + ROW ** 2 * (MOST_JERK / 3 + MOST_BEND ** 2 / 4)) + 2 * rounding * Math.sqrt(3);
+    /* An end ring on its one chord (Extrapolate Ends off): the chord's direction is the
+       curve's half a chord further on, off the end's own tangent by half the turn across it. */
+    const chordBound = HALL_RADIUS * ((ROW * MOST_BEND) / 2) + innerBound;
     expect(innerBound).toBeLessThan(0.0005);
+    expect(aimedBound).toBeLessThan(0.0012);
 
-    for (const variant of ["outline", "ring"] as const) {
+    /** The worst vertex of the inner rings, of the first ring and of the last, against the bore's. */
+    const against = async (variant: "outline" | "ring", extrapolateEnds: boolean): Promise<{ inner: number; first: number; last: number }> => {
       const columns = variant === "outline" ? COLUMNS : COLUMNS - 1;
-      const swept = await onDawn(sweptGraph(variant), async (session) => {
+      const swept = await onDawn(sweptGraph(variant, extrapolateEnds), async (session) => {
         const claim = session.plan.passes.find((pass) => pass.id.includes("sweep_bore:sweep"))?.id;
         // The bore as it is: 256 columns, the seam doubled. As a Ring: 255, the seam wrapped.
         expect(claim).toContain(variant === "outline" ? `${COLUMNS}x${ROWS}` : `${COLUMNS - 1}x${ROWS}`);
         return new Float32Array((await session.read("sweep_bore", sweepAttributes(named([...WITH_HALL, ...FRAMES])), columns * ROWS, "position")).floats);
       });
-      let inner = 0;
-      const ends = [0, 0];
+      const worst = { inner: 0, first: 0, last: 0 };
       for (let row = 0; row < ROWS; row += 1) {
         for (let column = 0; column < columns; column += 1) {
           const apart = size(minus(at(swept, row * columns + column), at(bore, row * COLUMNS + column)));
-          if (row === 0) ends[0] = Math.max(ends[0]!, apart);
-          else if (row === ROWS - 1) ends[1] = Math.max(ends[1]!, apart);
-          else inner = Math.max(inner, apart);
+          if (row === 0) worst.first = Math.max(worst.first, apart);
+          else if (row === ROWS - 1) worst.last = Math.max(worst.last, apart);
+          else worst.inner = Math.max(worst.inner, apart);
         }
       }
-      expect(inner, `${variant}: the worst inner vertex, metres (measured 0.00011)`).toBeLessThan(innerBound);
-      expect(ends[0], `${variant}: the first ring, metres (measured 0.0027)`).toBeLessThan(endBound);
-      expect(ends[1], `${variant}: the last ring, metres (measured 0.0007)`).toBeLessThan(endBound);
-      // The ends really are the worse for their one chord: the bound above is not slack on a thing that is exact.
-      expect(ends[0]).toBeGreaterThan(inner);
+      return worst;
+    };
+
+    for (const variant of ["outline", "ring"] as const) {
+      const aimed = await against(variant, true);
+      expect(aimed.inner, `${variant}: the worst inner vertex, metres (measured 0.00011)`).toBeLessThan(innerBound);
+      expect(aimed.first, `${variant}: the first ring, metres (measured 0.000014)`).toBeLessThan(aimedBound);
+      expect(aimed.last, `${variant}: the last ring, metres (measured 0.000040)`).toBeLessThan(aimedBound);
     }
+
+    /* The control, and the reason for the switch: on their one chord the end rings are the
+       worst of the whole wall, and the first is further out than an aimed end can be. Every
+       ring between them is the same either way, to the last digit: the ends are rewritten
+       by a pass after the walk, and nothing else is. */
+    const aimed = await against("ring", true);
+    const chord = await against("ring", false);
+    expect(chord.inner).toBe(aimed.inner);
+    expect(chord.first, "the first ring on its chord, metres (measured 0.0027)").toBeLessThan(chordBound);
+    expect(chord.last, "the last ring on its chord, metres (measured 0.0007)").toBeLessThan(chordBound);
+    expect(chord.first).toBeGreaterThan(aimedBound);
+    expect(chord.first).toBeGreaterThan(chord.inner);
+    expect(chord.last).toBeGreaterThan(chord.inner);
+    // More than ten times nearer at each end (measured 190 times and 18 times).
+    expect(aimed.first).toBeLessThan(chord.first / 10);
+    expect(aimed.last).toBeLessThan(chord.last / 10);
   }, 240_000);
 });
 
@@ -390,7 +420,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
     /* The wall is further out than its rows are: its frame is measured across a 0.15 m
        chord, so that rounding becomes an angle and a hall's radius multiplies it. */
     const frameRounding = (2 * resolves(1100)) / (SPACING / SEGMENTS);
-    expect(apartByAPeriod(head.vertices, tail.vertices, SIDES * ROWS), "the wall, metres (measured 0.0008)").toBeLessThan(HALL_RADIUS * frameRounding + 3 * resolves(1100));
+    expect(apartByAPeriod(head.vertices, tail.vertices, SIDES * ROWS), "the wall, metres (measured 0.0011, at an end ring: an aimed end counts the rounding twice)").toBeLessThan(HALL_RADIUS * frameRounding + 3 * resolves(1100));
   }, 240_000);
 
   it("rows by Distance: the same rows a period on when the Range starts a period on, and a period is not a whole number of 0.15 m rows", async () => {

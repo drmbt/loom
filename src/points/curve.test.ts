@@ -7,6 +7,7 @@ import {
   curvePointCount,
   curveSpans,
   curveStations,
+  endTangent,
   evaluateCurve,
   frameStrip,
   parseCurveTable,
@@ -240,6 +241,208 @@ describe("frameStrip — seeds, roll, twist, padding, Fixed Up", () => {
     expectVec(frames.normal[2]!, [-1, 0, 0]);
     expectVec(frames.normal[4]!, [0, 1, 0]);
     for (const q of frames.orient) for (const component of q) expect(Number.isFinite(component)).toBe(true);
+  });
+});
+
+/**
+ * T1587b C13 — Extrapolate Ends: an open strip's ends aimed by their two nearest segments.
+ * By hand: a right angle, a parabola sampled where its slope is known, a circle's closed
+ * form. And the property the GPU pass is built to keep: nothing but the two end runs moves.
+ */
+describe("endTangent and Extrapolate Ends (T1587b C13)", () => {
+  const unit = (v: Vec3): Vec3 => {
+    const size = Math.hypot(v[0], v[1], v[2]);
+    return [v[0] / size, v[1] / size, v[2] / size];
+  };
+
+  it("equal segments: one and a half of the end's own direction less half of the next", () => {
+    expectVec(endTangent([1, 0, 0], [0, 1, 0]) as Vec3, unit([1.5, -0.5, 0]));
+    // It is a direction: the segments' common length does not matter.
+    expectVec(endTangent([3, 0, 0], [0, 3, 0]) as Vec3, unit([1.5, -0.5, 0]));
+  });
+
+  it("unequal segments: the end's own leg h and the next one g give d + (d − e) × h ÷ (h + g)", () => {
+    // h = 2, g = 1: (1,0,0) + ((1,0,0) − (0,1,0)) × ⅔ = (5, −2, 0) ÷ 3.
+    expectVec(endTangent([2, 0, 0], [0, 1, 0]) as Vec3, unit([5, -2, 0]));
+    // h = 1, g = 2: (4, −1, 0) ÷ 3.
+    expectVec(endTangent([1, 0, 0], [0, 2, 0]) as Vec3, unit([4, -1, 0]));
+  });
+
+  it("is the one-sided difference (−3 p0 + 4 p1 − p2) ÷ 2h where the spacing is even", () => {
+    const p0: Vec3 = [0.5, -1, 2];
+    const p1: Vec3 = [1.25, -0.5, 2.75];
+    // The same distance on from p1 as p1 is from p0, in another direction.
+    const step = Math.hypot(0.75, 0.5, 0.75);
+    const p2: Vec3 = [p1[0] + step * 0.6, p1[1], p1[2] + step * 0.8];
+    const near: Vec3 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+    const far: Vec3 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]];
+    const stencil = unit([-3 * p0[0] + 4 * p1[0] - p2[0], -3 * p0[1] + 4 * p1[1] - p2[1], -3 * p0[2] + 4 * p1[2] - p2[2]]);
+    expectVec(endTangent(near, far) as Vec3, stencil);
+  });
+
+  it("is the slope, at the end, of the parabola through the three points a chord apart", () => {
+    /* The rule's own statement, worked the long way: put the three points at 0, h and h + g
+       along a parameter (h and g the two chords' lengths), take the quadratic through them,
+       and differentiate it at 0. */
+    const p0: Vec3 = [0, 0, 0];
+    const p1: Vec3 = [1, 1, 0];
+    const p2: Vec3 = [3, 9, 0];
+    const h = Math.hypot(1, 1);
+    const g = Math.hypot(2, 8);
+    // Lagrange through (0, p0), (h, p1), (h + g, p2), differentiated at 0.
+    const slope = (axis: number): number => (-(2 * h + g) / (h * (h + g))) * p0[axis]! + ((h + g) / (h * g)) * p1[axis]! - (h / (g * (h + g))) * p2[axis]!;
+    expectVec(endTangent([1, 1, 0], [2, 8, 0]) as Vec3, unit([slope(0), slope(1), slope(2)]));
+  });
+
+  it("on a circle of equal chords it is off the circle's own tangent by atan2(1.5 sin a − 0.5 sin 3a, 1.5 cos a − 0.5 cos 3a)", () => {
+    for (const turn of [0.4, 0.1, 0.02]) {
+      const at = (angle: number): Vec3 => [Math.sin(angle), 1 - Math.cos(angle), 0];
+      const [p0, p1, p2] = [at(0), at(turn), at(2 * turn)];
+      const tangent = endTangent([p1[0] - p0[0], p1[1] - p0[1], 0], [p2[0] - p1[0], p2[1] - p1[1], 0]) as Vec3;
+      const a = turn / 2;
+      const residue = Math.atan2(1.5 * Math.sin(a) - 0.5 * Math.sin(3 * a), 1.5 * Math.cos(a) - 0.5 * Math.cos(3 * a));
+      // The circle leaves along +X; the chord is a further round, the extrapolation about 2a³.
+      expect(Math.atan2(tangent[1], tangent[0])).toBeCloseTo(residue, 12);
+      expect(residue).toBeGreaterThan(0);
+      expect(residue).toBeLessThan(2.2 * a ** 3);
+    }
+  });
+
+  it("two segments that run the same way have nothing to extrapolate; a reversal is still a direction", () => {
+    expect(endTangent([0.5, 0, 0], [2, 0, 0])).toBeUndefined();
+    expect(endTangent([1, 2, 2], [2, 4, 4])).toBeUndefined();
+    // Straight back on itself: (1,0,0) + 2 × (1,0,0) × ½ = twice the end's own direction.
+    expectVec(endTangent([1, 0, 0], [-1, 0, 0]) as Vec3, [1, 0, 0]);
+  });
+
+  const BENT: Vec3[] = [[0, 0, 0], [1, 0.25, 0], [1.5, 1, 0.5], [1, 2, 1.5], [0, 2.5, 1], [-1, 2, 0]];
+  const segment = (points: ReadonlyArray<Vec3>, k: number): Vec3 => [points[k + 1]![0] - points[k]![0], points[k + 1]![1] - points[k]![1], points[k + 1]![2] - points[k]![2]];
+
+  it("re-aims the two ends and leaves every other value exactly as the walk wrote it", () => {
+    for (const method of ["minimiseTwist", "fixedUp"] as const) {
+      const options = { closed: false, method, up: [0.2, 1, -0.3] as Vec3, roll: 0.3, twist: 1.1 };
+      const off = frameStrip(BENT, options);
+      const on = frameStrip(BENT, { ...options, extrapolateEnds: true });
+      // The ends' tangents are the rule's.
+      expectVec(on.tangent[0]!, endTangent(segment(BENT, 0), segment(BENT, 1)) as Vec3);
+      expectVec(on.tangent[5]!, endTangent(segment(BENT, 4), segment(BENT, 3)) as Vec3);
+      for (let i = 1; i < 5; i += 1) {
+        expect(on.tangent[i], `${method} tangent ${i}`).toEqual(off.tangent[i]);
+        expect(on.normal[i], `${method} normal ${i}`).toEqual(off.normal[i]);
+        expect(on.binormal[i], `${method} binormal ${i}`).toEqual(off.binormal[i]);
+        expect(on.orient[i], `${method} orient ${i}`).toEqual(off.orient[i]);
+      }
+      // No metric moves, at an end or anywhere.
+      expect(on.distance).toEqual(off.distance);
+      expect(on.curveU).toEqual(off.curveU);
+      expect(on.curvature).toEqual(off.curvature);
+      expect(on.curveLength).toBe(off.curveLength);
+      // And an end's frame is still a frame: square, unit, right-handed, orient saying the same.
+      for (const i of [0, 5]) {
+        expect(dot(on.tangent[i]!, on.normal[i]!)).toBeCloseTo(0, 12);
+        expect(dot(on.normal[i]!, on.normal[i]!)).toBeCloseTo(1, 12);
+        expectVec(on.binormal[i]!, cross(on.tangent[i]!, on.normal[i]!));
+        expectVec(rotateByQuat(on.orient[i]!, [0, 0, 1]), on.tangent[i]!);
+        expectVec(rotateByQuat(on.orient[i]!, [0, 1, 0]), on.normal[i]!);
+      }
+    }
+  });
+
+  it("Minimise Twist: a planar curve's ends keep the plane's normal, and a roll comes with the frame", () => {
+    // A right angle in the XY plane, Up out of it: every turn is about Z, the ends' too.
+    const corner: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0]];
+    const flat = frameStrip(corner, { closed: false, method: "minimiseTwist", up: [0, 0, 1], extrapolateEnds: true });
+    for (const i of [0, 1, 2]) expectVec(flat.normal[i]!, [0, 0, 1]);
+    expectVec(flat.tangent[0]!, unit([1.5, -0.5, 0]));
+    expectVec(flat.tangent[2]!, unit([-0.5, 1.5, 0]));
+    // Rolled a quarter turn the normal is where the binormal was: tangent × Z, at each end's own tangent.
+    const rolled = frameStrip(corner, { closed: false, method: "minimiseTwist", up: [0, 0, 1], roll: Math.PI / 2, extrapolateEnds: true });
+    expectVec(rolled.normal[0]!, cross(flat.tangent[0]!, [0, 0, 1]));
+    expectVec(rolled.normal[2]!, cross(flat.tangent[2]!, [0, 0, 1]));
+  });
+
+  it("Fixed Up: an end's normal is Up made square to its NEW tangent, at the angle the walk left it", () => {
+    const climb: Vec3[] = [[0, 0, 0], [1, 0.5, 0], [1.5, 1.25, 0.75], [1.25, 2.25, 1.5], [0.5, 2.75, 2.5]];
+    const up: Vec3 = [0, 1, 0];
+    const leaning = (tangent: Vec3): Vec3 => unit([up[0] - tangent[0] * tangent[1], up[1] - tangent[1] * tangent[1], up[2] - tangent[2] * tangent[1]]);
+    const plain = frameStrip(climb, { closed: false, method: "fixedUp", up, extrapolateEnds: true });
+    for (const i of [0, 4]) expectVec(plain.normal[i]!, leaning(plain.tangent[i]!));
+    // A quarter turn of roll puts the normal on tangent × that.
+    const rolled = frameStrip(climb, { closed: false, method: "fixedUp", up, roll: Math.PI / 2, extrapolateEnds: true });
+    for (const i of [0, 4]) expectVec(rolled.normal[i]!, cross(rolled.tangent[i]!, leaning(rolled.tangent[i]!)));
+  });
+
+  it("Fixed Up: an end that runs along Up keeps its chord's frame; the other end is aimed", () => {
+    const mast: Vec3[] = [[0, 0, 0], [0, 1, 0], [0.5, 2, 0], [1.5, 2.5, 0.5], [2.5, 2.5, 1.5]];
+    const options = { closed: false, method: "fixedUp", up: [0, 1, 0] as Vec3 } as const;
+    const off = frameStrip(mast, options);
+    const on = frameStrip(mast, { ...options, extrapolateEnds: true });
+    expect(on.tangent[0]).toEqual(off.tangent[0]);
+    expect(on.normal[0]).toEqual(off.normal[0]);
+    expect(on.orient[0]).toEqual(off.orient[0]);
+    expect(on.tangent[4]).not.toEqual(off.tangent[4]);
+  });
+
+  it("the ends are RUNS: repeats of the start and of the end take the end's new frame, all of them", () => {
+    const padded: Vec3[] = [BENT[0]!, BENT[0]!, BENT[0]!, ...BENT, BENT[5]!, BENT[5]!];
+    const bare = frameStrip(BENT, { closed: false, method: "minimiseTwist", up: [0, 1, 0], extrapolateEnds: true });
+    const run = frameStrip(padded, { closed: false, method: "minimiseTwist", up: [0, 1, 0], extrapolateEnds: true });
+    for (const slot of [0, 1, 2, 3]) {
+      expect(run.tangent[slot], `head ${slot}`).toEqual(bare.tangent[0]);
+      expect(run.orient[slot], `head ${slot}`).toEqual(bare.orient[0]);
+    }
+    for (const slot of [8, 9, 10]) {
+      expect(run.tangent[slot], `tail ${slot}`).toEqual(bare.tangent[5]);
+      expect(run.orient[slot], `tail ${slot}`).toEqual(bare.orient[5]);
+    }
+    // A point's roll is its own, so within a run the frames differ by exactly their rolls.
+    const banked = frameStrip(padded, { closed: false, method: "minimiseTwist", up: [0, 1, 0], rollPerPoint: padded.map((_, slot) => slot * 0.1), extrapolateEnds: true });
+    for (const slot of [0, 1, 2, 3]) {
+      expect(banked.tangent[slot]).toEqual(bare.tangent[0]);
+      const angle = Math.atan2(dot(cross(bare.normal[0]!, banked.normal[slot]!), bare.tangent[0]!), dot(bare.normal[0]!, banked.normal[slot]!));
+      expect(angle, `the roll at slot ${slot}`).toBeCloseTo(slot * 0.1, 12);
+    }
+  });
+
+  it("fewer than two segments with a length keep the chord; a closed strip has no ends", () => {
+    const pair: Vec3[] = [[0, 0, 0], [1, 2, 2]];
+    expect(frameStrip(pair, { closed: false, method: "minimiseTwist", up: [0, 1, 0], extrapolateEnds: true })).toEqual(
+      frameStrip(pair, { closed: false, method: "minimiseTwist", up: [0, 1, 0] }),
+    );
+    const one: Vec3[] = [[0, 0, 0], [0, 0, 0], [1, 2, 2], [1, 2, 2], [1, 2, 2]];
+    expect(frameStrip(one, { closed: false, method: "fixedUp", up: [0, 1, 0], extrapolateEnds: true })).toEqual(frameStrip(one, { closed: false, method: "fixedUp", up: [0, 1, 0] }));
+    expect(frameStrip(BENT, { closed: true, method: "minimiseTwist", up: [0, 1, 0], extrapolateEnds: true })).toEqual(
+      frameStrip(BENT, { closed: true, method: "minimiseTwist", up: [0, 1, 0] }),
+    );
+  });
+
+  it("a straight end is exact: collinear first points leave the first frame untouched", () => {
+    const hook: Vec3[] = [[0, 0, 0], [0.5, 0, 0], [1, 0, 0], [1.5, 0.5, 0], [1.5, 1, 0.5]];
+    const off = frameStrip(hook, { closed: false, method: "minimiseTwist", up: [0, 1, 0] });
+    const on = frameStrip(hook, { closed: false, method: "minimiseTwist", up: [0, 1, 0], extrapolateEnds: true });
+    expect(on.tangent[0]).toEqual([1, 0, 0]);
+    expect(on.orient[0]).toEqual(off.orient[0]);
+    expect(on.tangent[4]).not.toEqual(off.tangent[4]);
+  });
+
+  it("the blocked walk's ends are the whole walk's: the rule does not know about blocks", () => {
+    const long: Vec3[] = Array.from({ length: 23 }, (_, i) => {
+      const t = Math.min(Math.max(i, 3), 18) * 0.31;
+      return [Math.cos(t) * (1 + 0.3 * Math.sin(t * 2.7)), Math.sin(t * 1.3), Math.sin(t * 0.7) + t * 0.1] as Vec3;
+    });
+    for (const method of ["minimiseTwist", "fixedUp"] as const) {
+      const options = { closed: false, method, up: [0.2, 1, -0.3] as Vec3, twist: 0.8, extrapolateEnds: true };
+      const whole = frameStrip(long, options);
+      const blocked = frameStrip(long, options, 4);
+      // The first run is slots 0 to 3, the last 18 to 22: whole blocks of padding either side.
+      for (const slot of [0, 1, 2, 3, 18, 19, 20, 21, 22]) {
+        expectVec(blocked.tangent[slot]!, whole.tangent[slot]!, 10);
+        expectVec(blocked.normal[slot]!, whole.normal[slot]!, 10);
+      }
+      expect(whole.tangent[0]).toEqual(whole.tangent[3]);
+      expect(whole.tangent[18]).toEqual(whole.tangent[22]);
+      expect(whole.tangent[0]).not.toEqual(frameStrip(long, { ...options, extrapolateEnds: false }).tangent[0]);
+    }
   });
 });
 

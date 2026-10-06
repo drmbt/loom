@@ -390,6 +390,10 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "pointSphereNode.parameters",
     ],
   },
+  "src/nodes/definitions/point-curve-frames.test.ts": {
+    reason: `${TYPE_ONLY_UNIT_TEST} §T1587b C13's one read is Extrapolate Ends' own \`inactiveWhen\`: it applies only where a frame is published.`,
+    reads: ["pointCurveFramesNode.parameters"],
+  },
   "src/nodes/definitions/point-sweep.test.ts": {
     reason: `${TYPE_ONLY_UNIT_TEST} T1587b's one read is each parameter's own \`inactiveWhen\`: which profile Sides and Smooth apply to.`,
     reads: ["pointSweepNode.parameters"],

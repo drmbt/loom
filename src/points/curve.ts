@@ -205,6 +205,8 @@ export interface StripFrameOptions {
   readonly twist?: number;
   /** Closed strips under Minimise Twist: spread the mismatch after one lap along the strip. */
   readonly closeTwist?: boolean;
+  /** Open strips: each end's tangent from its two nearest segments, not from its end segment alone (`endTangent`). */
+  readonly extrapolateEnds?: boolean;
 }
 
 export interface StripFrames {
@@ -287,7 +289,86 @@ function frameSink(cols: number, options: StripFrameOptions, total: number, clos
  * of eleven points into blocks of four; a node always uses `STRIP_WALK_BLOCK`.
  */
 export function frameStrip(points: ReadonlyArray<Vec3>, options: StripFrameOptions, block = STRIP_WALK_BLOCK): StripFrames {
-  return points.length > block ? frameStripBlocked(points, options, block) : frameStripWhole(points, options);
+  const frames = points.length > block ? frameStripBlocked(points, options, block) : frameStripWhole(points, options);
+  if (options.extrapolateEnds === true && !options.closed) extrapolateStripEnds(points, options, frames);
+  return frames;
+}
+
+/**
+ * THE TANGENT AT AN END OF AN OPEN STRIP, from the end's own segment (`near`) and the one
+ * next to it (`far`), both pointing the way the strip runs: the slope, at the end, of the
+ * parabola through their three points. For even spacing it is the familiar one-sided
+ * difference `(−3 p0 + 4 p1 − p2) ÷ 2h`.
+ *
+ * The walk gives an end point its end segment's direction, because that is the only
+ * direction the point has (rule 3). On points taken from a smooth curve that direction is
+ * the curve's half a segment further on: off the end's own by half the turn across the
+ * segment, where every interior tangent is off by the square of it. This is the same order
+ * as the interior's.
+ *
+ * `undefined` where the two segments run the same way to the bit: there is nothing to
+ * extrapolate, and the end keeps its segment's frame exactly. So a straight end is exact.
+ */
+export function endTangent(near: Vec3, far: Vec3): Vec3 | undefined {
+  const nearSize = length(near);
+  const nearDirection = scale(near, 1 / nearSize);
+  const lean = scale(sub(nearDirection, directionOf(far)), nearSize / (nearSize + length(far)));
+  if (dot(lean, lean) === 0) return undefined;
+  return unit(add(nearDirection, lean));
+}
+
+/**
+ * Extrapolate Ends: an open strip's first and last RUN of coincident points are given the
+ * frame of `endTangent` in place of the end segment's. Nothing else is touched: every
+ * interior point is what the walk wrote, which is how the GPU does it too (a pass of its own
+ * after the walk, `nodes/shaders/curve-frames-ends.wgsl.ts`).
+ *
+ * The frame is the walk's own, re-aimed: under Minimise Twist it is turned by the smallest
+ * rotation taking the end segment's direction onto the new tangent, so its roll and twist
+ * come with it; under Fixed Up the normal leans toward Up about the new tangent as it did
+ * about the old, keeping the angle it stood at. A strip with fewer than two segments of any
+ * length keeps its chord, and so does a Fixed Up point whose Up runs along its end.
+ */
+function extrapolateStripEnds(points: ReadonlyArray<Vec3>, options: StripFrameOptions, frames: StripFrames): void {
+  const cols = points.length;
+  const real: number[] = [];
+  for (let k = 0; k + 1 < cols; k += 1) {
+    const segment = segmentOf(points, k);
+    if (dot(segment, segment) > ZERO_SEGMENT_SQUARED) real.push(k);
+  }
+  if (real.length < 2) return;
+  const carried = options.method === "minimiseTwist";
+  const upAt = (index: number): Vec3 => (isPerPoint(options.up) ? (options.up[index] as Vec3) : options.up);
+
+  const rewrite = (from: number, to: number, chord: Vec3, tangent: Vec3): void => {
+    for (let index = from; index <= to; index += 1) {
+      const old = frames.normal[index] as Vec3;
+      let normal: Vec3;
+      if (carried) {
+        normal = unit(perpendicular(rotateByQuat(rotationBetween(chord, tangent), old), tangent));
+      } else {
+        const was = perpendicular(upAt(index), chord);
+        const now = perpendicular(upAt(index), tangent);
+        // Up runs along this end: it cannot say which way to lean, and the point keeps its chord's frame.
+        if (dot(was, was) < 1e-12 || dot(now, now) < 1e-12) continue;
+        const wasUnit = unit(was);
+        const nowUnit = unit(now);
+        // The angle the normal stood at about the old tangent (its roll and twist), kept about the new.
+        normal = unit(add(scale(nowUnit, dot(old, wasUnit)), scale(cross(tangent, nowUnit), dot(old, cross(chord, wasUnit)))));
+      }
+      frames.tangent[index] = tangent;
+      frames.normal[index] = normal;
+      frames.binormal[index] = cross(tangent, normal);
+      frames.orient[index] = quatFromFrame(cross(normal, tangent), normal, tangent);
+    }
+  };
+
+  const first = segmentOf(points, real[0] as number);
+  const head = endTangent(first, segmentOf(points, real[1] as number));
+  if (head !== undefined) rewrite(0, real[0] as number, directionOf(first), head);
+  const last = segmentOf(points, real[real.length - 1] as number);
+  const tail = endTangent(last, segmentOf(points, real[real.length - 2] as number));
+  if (tail !== undefined) rewrite((real[real.length - 1] as number) + 1, cols - 1, directionOf(last), tail);
 }
 
 /**

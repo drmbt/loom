@@ -665,3 +665,15 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 }`,
   };
 }
+
+/**
+ * What a pass outside this file needs to READ the walk's scratch (§T1587b C13, the ends of a long
+ * strip): the accessors as text, the binding, and where a block's own summary sits.
+ */
+export const CURVE_FRAMES_WALK = {
+  binding: WALK,
+  access: walkAccess(false),
+  HAS: AT.HAS,
+  FIRST: AT.FIRST,
+  LAST: AT.LAST,
+} as const;
