@@ -43,8 +43,6 @@ export const NO_DEFAULT_YET: Readonly<Record<string, number>> = {
   // T1400b: four sliders each, written before controls held a default.
   "projects/on-nothing/sleep-like-a-baby-2.loom.json": 4,
   "projects/on-nothing/sleep-like-a-baby.loom.json": 4,
-  // T1561b: 35 sliders, 4 toggles and the XY pad. Its session moves its panels onto defaults.
-  "projects/sentinel-bot/sentinel.loom.json": 40,
 };
 
 interface ShippedFile {
