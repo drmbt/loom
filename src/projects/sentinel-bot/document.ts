@@ -6,12 +6,12 @@ import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from 
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { serializePresetBank } from "../../domain/presets/bank.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
-import { against, pace, phraseAttack, phraseDraw, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
+import { PACK_BARS, against, pace, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "../furnace/screen-space.ts";
-import { JOINT_ATTRIBUTES, adriftAheadExpression, adriftExpression, jointCount, jointKernel, type Pick } from "./rig.ts";
+import { JOINT_ATTRIBUTES, PACK_WANDER, adriftAheadExpression, adriftExpression, ownCountOf, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { HULL_SURFACE_WGSL, hueExpression, lampParameter } from "./surface.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampToneExpression } from "./tunnel.ts";
 
@@ -58,7 +58,11 @@ export const SHIPPED_TRACK: SentinelTrack = {
 export interface SentinelDocumentOptions {
   readonly width?: number;
   readonly height?: number;
-  /** Each robot's place off the pack's own: right, up, ahead (metres). Default: the leader alone. The camera follows the first. */
+  /**
+   * Each robot's place off the pack's own: right, up, ahead (metres). Default: the whole pack (PACK). The camera follows
+   * the first. Every one of them is BUILT; how many are out is the panel's Pack and the track's say (the rig's `pack`),
+   * and one that is not out costs nothing to draw: its points are rejected by Group and never reach a draw (§T1581b F1).
+   */
   readonly robots?: readonly Vec3[];
   /**
    * What the frame may cost. `live` (the default) is what holds 60 frames a second in the app
@@ -97,8 +101,18 @@ export interface SentinelDocumentOptions {
  */
 export const PACK: readonly Vec3[] = [
   [0, 0, 0],
-  [0.7, 0.35, -8.4],
-  [-0.6, -0.25, -15.6],
+  // AN ECHELON, flown: the second up and well out to the leader's right, three metres back; the third down and
+  // well out to its left, six back. As far to the side as the bore lets a body go, and far enough back that
+  // no one's tentacles lie across another's body. Three formations before this did not read: a file down the
+  // axis (the owner saw one robot), a tight wedge (the leader's own tail hid the third), and three abreast
+  // ("wiggled into each other, overlapping … they need to space out a bit more to side and back"). In company
+  // each also wanders far less and holds its tentacles' ends closer (rig.ts, PACK_WANDER). camera.ts's pack
+  // shots are placed for exactly these numbers and its test projects them. A body this far off the axis cannot
+  // reach the far wall, so a pack does not walk: while more than one is out, they all swim (constant_swim).
+  // (The owner again, of 1.3 across and 0.45 up: "they could still spread out more horizontally and vertically,
+  // still too tight on each other". These are as far out as a body goes inside the ribs with a hand to spare.)
+  [1.5, 0.9, -3.4],
+  [-1.5, -0.85, -6.6],
 ];
 
 /** Parameters may be slots (expressions, maps); the shared builder's signature takes values only. */
@@ -133,6 +147,8 @@ const ROBOT: readonly Slider[] = [
   // Two moves of the repertoire, by hand; Follow the Track takes each a phrase at a time as well (director.ts).
   { name: "slider_spiral", caption: "Spiral (turns / 16 m)", value: 0, min: 0, max: 1.5 },
   { name: "slider_attack", caption: "Attack", value: 0, min: 0, max: 1 },
+  // How many of the pack are out, at least: 1 is the leader alone. Follow the Track brings the others up when it is loud.
+  { name: "slider_pack", caption: "Pack", value: 1, min: 1, max: PACK.length },
 ];
 const SCENE: readonly Slider[] = [
   { name: "slider_bore", caption: "Tunnel", value: 2.6, min: 2.2, max: 3.4 },
@@ -191,7 +207,7 @@ const SWIM = "op('lag_swim').chan.value";
 
 export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptions = {}): ProjectDocument {
   const travel = expressionSlot(TRAVEL, 0);
-  const robots = options.robots ?? PACK.slice(0, 1);
+  const robots = options.robots ?? PACK;
   const offline = options.tier === "offline";
   const shadows = options.shadows ?? offline;
   const hingedClaws = options.hingedClaws ?? offline;
@@ -200,8 +216,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const PERCHED = "op('lag_perched').chan.value";
   const look: Record<string, StoredParameter> = {
     look: [0, 0],
-    "look.x": expressionSlot(`${PERCHED} * (0.55 * sin(abstime * 0.5) + 0.2 * sin(abstime * 1.3))`, 0),
-    "look.y": expressionSlot(`${PERCHED} * 0.22 * sin(abstime * 0.37 + 1)`, 0),
+    // It looks about as it goes, slowly, and now and then turns its head well round to one side for a second or
+    // two; perched, it scans in earnest. (The owner, 2026-10-06: looking around "integrated into other moves".)
+    "look.x": expressionSlot(`(0.14 + 0.45 * ${PERCHED}) * (0.7 * sin(abstime * 0.31) + 0.3 * sin(abstime * 0.83 + 1.2)) + 0.4 * smoothstep(0.8, 0.97, sin(abstime * 0.21 + 2)) * sin(abstime * 0.071 + 0.5)`, 0),
+    "look.y": expressionSlot(`(0.05 + 0.2 * ${PERCHED}) * sin(abstime * 0.27 + 1)`, 0),
   };
   /** A point of the tunnel's centreline `ahead` metres from the robot, moved by (dx, dy): three expressions, and what a host with no value graph shows. */
   const onPath = (ahead: string, dx: string, dy: string, retained: readonly [number, number, number]): Record<"x" | "y" | "z", StoredParameter> => {
@@ -212,7 +230,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   // Where the camera rides is the rig's (camera.ts); a hand never holds a camera dead still.
   const RIG = (channel: string): string => `op('expression_camera').chan.${channel}`;
   // Where the robot has wandered to off the axis when nothing holds it (rig.ts): swimming, or in a hall.
-  const adrift = `max(${SWIM}, ${chamberExpression(`(${TRAVEL} + 2.5)`)})`;
+  // (In company it wanders less than half as far: rig.ts, PACK_WANDER.)
+  const COMPANY = "clamp(op('lag_pack').chan.value - 1, 0, 1)";
+  const adrift = `(max(${SWIM}, ${chamberExpression(`(${TRAVEL} + 2.5)`)}) * (1 - ${(1 - PACK_WANDER).toFixed(2)} * ${COMPANY}))`;
   const wander = { x: `${adrift} * ${adriftExpression("x")}`, y: `${adrift} * ${adriftExpression("y")}` };
   // A close shot rides with it (the rig's `ride`).
   const eye = onPath(RIG("ahead"), `${RIG("right")} + ${RIG("ride")} * ${wander.x} + 0.02 * sin(abstime * 2.3)`, `${RIG("up")} + ${RIG("ride")} * ${wander.y} + 0.015 * sin(abstime * 1.7 + 1)`, [1.1, 0.6, -7.5]);
@@ -227,6 +247,19 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const glow = onPath(`(${face.toFixed(3)} + ${adrift} * (${adriftAheadExpression} + 0.5 * sin(6.2831853 * (${STROKE} - 0.125))))`, wander.x, wander.y, [0, 0, face]);
   // The middle of the body, between the sockets: where the light of its own tentacles is.
   const core = onPath(`(-0.3 + ${adrift} * (${adriftAheadExpression} + 0.5 * sin(6.2831853 * (${STROKE} - 0.125))))`, wander.x, wander.y, [0, 0, -0.3]);
+  /**
+   * Where each follower of the pack is, and how far out (0 to 1), as expressions: what the rig does with `pack` for
+   * the robot of that index (its place off the leader's, 45 m further back while it is on its way, wandering on its own count).
+   */
+  const followers = robots.slice(1).map((offset, index) => {
+    const present = `clamp(op('lag_pack').chan.value - ${index + 1}, 0, 1)`;
+    const out = `(${present} * ${present} * (3 - 2 * ${present}))`;
+    const own = ownCountOf(offset);
+    return {
+      out,
+      at: onPath(`(${offset[2]} - 0.3 - 45 * (1 - ${out}) + ${adrift} * 0.5 * sin(6.2831853 * (${STROKE} - 0.125)))`, `${offset[0]} + ${adrift} * ${adriftExpression("x", own)}`, `${offset[1]} + ${adrift} * ${adriftExpression("y", own)}`, [offset[0], offset[1], offset[2]]),
+    };
+  });
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
   const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; tone: readonly [string, string, string] } => {
     const station = `(floor(${TRAVEL} / ${LAMP_SPACING}) + ${step})`;
@@ -319,8 +352,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         shape: "mesh",
         material: "material_hull",
         orient: map("orient", [0, 0, 0, 1]),
-        // A ring still stowed in the body is not drawn.
-        ...(piece.stows === true ? { group: "p.kind > -0.5" } : {}),
+        // Not drawn: a ring still stowed in the body, and every piece of a robot of the pack that is not out. With one
+        // robot built there is nothing of the second kind, and only the rings need the Group (a Group that rejects
+        // nothing costs an indirect draw a pass for nothing).
+        ...(piece.stows === true || robots.length > 1 ? { group: "p.kind > -0.5" } : {}),
       }, { label: `geometry_${piece.role}` }),
     ]);
 
@@ -445,7 +480,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
     // How much it swims: the panel's Swim, or the track coming back in (director.ts). Eased, so
     // letting go of the wall and taking hold again each take a moment.
-    node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(${on("slider_swim")}, max(${surge(FOLLOW, LIFT)}, ${phraseSwim(FOLLOW, INTENSITY, phraseDraw(BAR, 1))}) * (1 - ${phraseAttack(FOLLOW, INTENSITY, phraseDraw(BAR, 3))}))`, 0) }, { label: "constant_swim" }),
+    node("constant_swim", "constant", [-1500, 725], { value: expressionSlot(`max(max(${on("slider_swim")}, smoothstep(1.1, 1.6, op('lag_pack').chan.value)), max(${surge(FOLLOW, LIFT)}, ${phraseSwim(FOLLOW, INTENSITY, phraseDraw(BAR, 1))}) * (1 - ${phraseAttack(FOLLOW, INTENSITY, phraseDraw(BAR, 3))}))`, 0) }, { label: "constant_swim" }),
     // The attack and the corkscrew: the panel's, or the phrase's. The attack comes on in under a second; the
     // corkscrew winds up over several, because while it changes, the rungs a claw holds go round under it.
     node("constant_attack", "constant", [-1500, 975], { value: expressionSlot(`max(${on("slider_attack")}, ${phraseAttack(FOLLOW, INTENSITY, phraseDraw(BAR, 3))} * (${ENERGY} > 0))`, 0) }, { label: "constant_attack" }),
@@ -463,7 +498,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // The long view: the passage's loudness ranked against the last minute's, eased.
     node("normalize_intensity", "valueNormalize", [-2100, 850], { window: 60 }, { label: "normalize_intensity" }),
     node("lag_intensity", "valueLag", [-1800, 850], { lag: 2, releaseRatio: 1 }, { label: "lag_intensity" }),
-    node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(`max(${on("toggle_perch")}, max(${rest(FOLLOW, ENERGY)}, ${phrasePerch(FOLLOW, INTENSITY, phraseDraw(BAR, 2))} * (${ENERGY} > 0)))`, 0) }, { label: "constant_perch" }),
+    node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(`max(${on("toggle_perch")}, max(${rest(FOLLOW, ENERGY)}, max(${phrasePerch(FOLLOW, INTENSITY, phraseDraw(BAR, 2))}, ${phrasePause(FOLLOW, INTENSITY, phraseDraw(BAR, 5), BAR)}) * (${ENERGY} > 0)))`, 0) }, { label: "constant_perch" }),
+    // The pack: how many are out. A follower takes eight seconds to come up or fall back, so the number is eased.
+    node("constant_pack", "constant", [-1500, 1225], { value: expressionSlot(`max(${on("slider_pack")}, ${packSize(`(${FOLLOW} * (${ENERGY} > 0))`, INTENSITY, phraseDraw(BAR, 6, PACK_BARS), PACK.length)})`, 1) }, { label: "constant_pack" }),
+    node("lag_pack", "valueLag", [-1200, 1225], { lag: 4, releaseRatio: 1 }, { label: "lag_pack" }),
+    // Under a name of its own for the camera, which stands back behind however many are out (see expression_swimming).
+    node("expression_packed", "valueExpression", [-900, 1225], { expressions: "pack = value", defaults: "value = 1" }, { label: "expression_packed" }),
     node("lag_perched", "valueLag", [-2100, 1125], { lag: 0.6, releaseRatio: 1 }, { label: "lag_perched" }),
     node("speed_travel", "valueSpeed", [-1800, 1000], { minimum: 0, maximum: PATH.period, limit: "loop" }, { label: "speed_travel" }),
     // The swimming beat: one stroke per bar of the track.
@@ -513,6 +553,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // (dimly even in silence: it is never quite dark); the hats spark single cores.
       pulse: expressionSlot("op('count_kick').chan.kickCountSince", 100),
       attack: expressionSlot(ATTACK, 0),
+      pack: expressionSlot("op('lag_pack').chan.value", 1),
+      company: expressionSlot("clamp(op('lag_pack').chan.value - 1, 0, 1)", 0),
       spiral: expressionSlot(SPIRAL, 0),
       spiralTurn: expressionSlot("op('speed_winding').chan.value - 0.5", 0),
       meter: expressionSlot(`${on("slider_meter")} * ${LOW}`, 0),
@@ -568,6 +610,16 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       falloff: "inverseSquare", range: 12, shadows: true, shadowExtent: 12, shadowSoftness: 1.5,
       shadowCasters: hingedClaws ? "geometry_ring geometry_hub" : "geometry_ring geometry_claw",
     }, { label: "light_body" }),
+    // Each follower of the pack throws its own light too, or it is a row of dots in the dark and not a robot in a
+    // tunnel: one light at its middle, the legs' colour, as bright as it is out (and where it is: coming up from behind).
+    ...followers.map((follower, index) =>
+      node(`light_follower${index + 1}`, "light", [-1500 + (index + 1) * 300, -450], {
+        kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(legTone[0], 1), "color.g": expressionSlot(legTone[1], 0.04), "color.b": expressionSlot(legTone[2], 0.04),
+        intensity: expressionSlot(`${legLevel} * 2.6 * ${follower.out}`, 0),
+        position: [0, 0, 0], "position.x": follower.at.x, "position.y": follower.at.y, "position.z": follower.at.z,
+        falloff: "inverseSquare", range: 10,
+      }, { label: `light_follower${index + 1}` }),
+    ),
     // The three lamp plates nearest the robot, as lights; they breathe with the low end.
     ...lamps.map((lamp, index) =>
       node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {
@@ -591,7 +643,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // The dust is last: additive geometry is light, drawn over what it glows on (and out of the Depth output since B256).
       scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_motes"].join(" "),
       camera: "camera_rig",
-      lights: ["light_eyes", "light_body", ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
+      lights: ["light_eyes", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
       // A little cold fill and no more: an unlit stretch may be black (the owner, 2026-10-05).
       ambientIntensity: 0.1,
@@ -683,6 +735,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("loud-usual", ["lag_loud", "out"], ["lag_usual", "in"]),
     edge("loud-floor", ["lag_loud", "out"], ["lag_floor", "in"]),
     edge("attack-ease", ["constant_attack", "out"], ["lag_attack", "in"]),
+    edge("pack-ease", ["constant_pack", "out"], ["lag_pack", "in"]),
     edge("spiral-ease", ["constant_spiral", "out"], ["lag_spiral", "in"]),
     edge("winding-sum", ["constant_winding", "out"], ["speed_winding", "in"]),
     edge("loud-intensity", ["lag_loud", "out"], ["normalize_intensity", "in"]),
@@ -695,7 +748,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("perch-ease", ["constant_perch", "out"], ["lag_perched", "in"]),
     edge("stroke-rate", ["constant_stroke", "out"], ["speed_stroke", "in"]),
     // What the camera rig reads: how far the robot has come, the track's bars, and the panel.
-    ...["speed_travel", "audiofile_track", "slider_shot", "toggle_cuts", "slider_distance", "xypad_view", "expression_swimming"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
+    ...["speed_travel", "audiofile_track", "slider_shot", "toggle_cuts", "slider_distance", "xypad_view", "expression_swimming", "expression_packed"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
+    edge("pack-named", ["lag_pack", "out"], ["expression_packed", "in"]),
     edge("swim-named", ["lag_swim", "out"], ["expression_swimming", "in"]),
     ...pieces.flatMap((piece) => [
       edge(`${piece.role}-shape`, [`mesh_${piece.role}`, "out"], [`geometry_${piece.role}`, "mesh"]),

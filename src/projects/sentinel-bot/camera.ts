@@ -1,5 +1,5 @@
 /**
- * T1561b — THE CAMERA: fifteen ways of watching a robot in a tunnel, and what picks between them.
+ * T1561b — THE CAMERA: nineteen ways of watching a robot, or a pack of them, in a tunnel, and what picks between them.
  *
  * A shot is where the camera rides relative to the robot (metres ahead, right and up of the
  * tunnel's axis at that distance), its lens, how far ahead of the robot it looks, and how much
@@ -33,25 +33,34 @@ interface Shot {
   readonly aim: number;
   /** 0 to 1: how much the camera itself goes with a robot that is adrift. A close shot must, or it loses it. */
   readonly ride: number;
+  /** What the shot is OF: the robot, its tail, or the pack (which is only worth cutting to when more than one is out). */
+  readonly subject: "robot" | "tail" | "pack";
 }
 
 export const SHOT_TABLE: readonly Shot[] = [
-  { name: "chase", what: "behind, looking down the tunnel past the robot; the panel's distance and pad trim it", ahead: "(0 - distance)", right: "viewX", up: "viewY", lens: 55, aim: 3.3, ride: 0 },
-  { name: "lead", what: "ahead, looking back into the eyes", ahead: "5.5", right: "(0 - 0.9)", up: "0.35", lens: 48, aim: 0.3, ride: 0 },
-  { name: "flank", what: "beside it, close and wide: the tentacles pass the lens", ahead: "0.4", right: "2", up: "0.15", lens: 68, aim: 0.3, ride: 0 },
-  { name: "post", what: "planted low on the deck at a station ahead; the robot comes, passes and goes", ahead: "(post - value)", right: "1.6", up: "(0 - 1.3)", lens: 40, aim: 0.3, ride: 0 },
-  { name: "circle", what: "round the robot inside the bore", ahead: "1.5 * sin(abstime * 0.17)", right: "1.9 * cos(abstime * 0.3)", up: "1.3 * sin(abstime * 0.3)", lens: 60, aim: 0.3, ride: 0.5 },
-  { name: "face", what: "right in front of it, backing away: the eyes fill the frame", ahead: "2.7", right: "0.22 * sin(abstime * 0.23)", up: "(0 - 0.12)", lens: 34, aim: 0.7, ride: 0.85 },
-  { name: "shoulder", what: "over its shoulder, down the tunnel it is going into", ahead: "(0 - 1.7)", right: "0.8", up: "0.75", lens: 52, aim: 8, ride: 1 },
-  { name: "eye", what: "a long lens on the lenses, three-quarter on", ahead: "1.75", right: "0.7", up: "0.3", lens: 24, aim: 0.85, ride: 1 },
-  { name: "under", what: "from the deck, looking up at its belly as the tentacles work overhead", ahead: "0.9", right: "0.35", up: "(0 - 1.45)", lens: 64, aim: 0.2, ride: 0.6 },
+  { name: "chase", what: "behind, looking down the tunnel past the robot; the panel's distance and pad trim it. Behind the WHOLE pack: it stands back 3.1 m for each one more that is out", ahead: "(0 - distance - (pack - 1) * 3.1)", right: "viewX", up: "viewY", lens: 55, aim: 3.3, ride: 0, subject: "robot" },
+  { name: "lead", what: "ahead, looking back into the eyes", ahead: "5.5", right: "(0 - 0.9)", up: "0.35", lens: 48, aim: 0.3, ride: 0, subject: "robot" },
+  { name: "flank", what: "beside it, close and wide: the tentacles pass the lens", ahead: "0.4", right: "2", up: "0.15", lens: 68, aim: 0.3, ride: 0, subject: "robot" },
+  { name: "post", what: "planted low on the deck at a station ahead; the robot comes, passes and goes", ahead: "(post - value)", right: "1.6", up: "(0 - 1.3)", lens: 40, aim: 0.3, ride: 0, subject: "robot" },
+  { name: "circle", what: "round the robot inside the bore", ahead: "1.5 * sin(abstime * 0.17)", right: "1.9 * cos(abstime * 0.3)", up: "1.3 * sin(abstime * 0.3)", lens: 60, aim: 0.3, ride: 0.5, subject: "robot" },
+  { name: "face", what: "right in front of it, backing away: the eyes fill the frame", ahead: "2.7", right: "0.22 * sin(abstime * 0.23)", up: "(0 - 0.12)", lens: 34, aim: 0.7, ride: 0.85, subject: "robot" },
+  { name: "shoulder", what: "over its shoulder, down the tunnel it is going into", ahead: "(0 - 1.7)", right: "0.8", up: "0.75", lens: 52, aim: 8, ride: 1, subject: "robot" },
+  { name: "eye", what: "a long lens on the lenses, three-quarter on", ahead: "1.75", right: "0.7", up: "0.3", lens: 24, aim: 0.85, ride: 1, subject: "robot" },
+  { name: "under", what: "from the deck, looking up at its belly as the tentacles work overhead", ahead: "0.9", right: "0.35", up: "(0 - 1.45)", lens: 64, aim: 0.2, ride: 0.6, subject: "robot" },
   // ── The tail: what it trails, and the lights along it ──
-  { name: "tail", what: "behind the ends of the tentacles, looking up the bundle to the body", ahead: "(0 - 4.4)", right: "0.5", up: "0.3", lens: 40, aim: -1.4, ride: 1 },
-  { name: "wake", what: "in among the ends, wide: the tentacles stream past the lens toward the body", ahead: "(0 - 3.5)", right: "0.12 * sin(abstime * 0.21)", up: "0.1", lens: 74, aim: 0, ride: 1 },
-  { name: "tailside", what: "close beside the bundle, across it: the lit segments go by", ahead: "(0 - 2.2)", right: "1.05", up: "(0 - 0.2)", lens: 44, aim: -2.1, ride: 1 },
-  { name: "tailtop", what: "over the bundle, looking down it and forward", ahead: "(0 - 3)", right: "0.2", up: "1.2", lens: 50, aim: -1, ride: 1 },
-  { name: "tips", what: "a long lens from well behind: the ends large, the body small beyond them", ahead: "(0 - 6.8)", right: "0.8 * sin(abstime * 0.13)", up: "0.45", lens: 26, aim: -2.6, ride: 1 },
-  { name: "tailround", what: "slowly round the bundle, an arm's length off it", ahead: "(0 - 2.1 + 0.7 * sin(abstime * 0.19))", right: "1.15 * cos(abstime * 0.33)", up: "1.15 * sin(abstime * 0.33)", lens: 48, aim: -2, ride: 1 },
+  { name: "tail", what: "behind the ends of the tentacles, looking up the bundle to the body", ahead: "(0 - 4.4)", right: "0.5", up: "0.3", lens: 40, aim: -1.4, ride: 1, subject: "tail" },
+  { name: "wake", what: "in among the ends, wide: the tentacles stream past the lens toward the body", ahead: "(0 - 3.5)", right: "0.12 * sin(abstime * 0.21)", up: "0.1", lens: 74, aim: 0, ride: 1, subject: "tail" },
+  { name: "tailside", what: "close beside the bundle, across it: the lit segments go by", ahead: "(0 - 2.2)", right: "1.05", up: "(0 - 0.2)", lens: 44, aim: -2.1, ride: 1, subject: "tail" },
+  { name: "tailtop", what: "over the bundle, looking down it and forward", ahead: "(0 - 3)", right: "0.2", up: "1.2", lens: 50, aim: -1, ride: 1, subject: "tail" },
+  { name: "tips", what: "a long lens from well behind: the ends large, the body small beyond them", ahead: "(0 - 6.8)", right: "0.8 * sin(abstime * 0.13)", up: "0.45", lens: 26, aim: -2.6, ride: 1, subject: "tail" },
+  { name: "tailround", what: "slowly round the bundle, an arm's length off it", ahead: "(0 - 2.1 + 0.7 * sin(abstime * 0.19))", right: "1.15 * cos(abstime * 0.33)", up: "1.15 * sin(abstime * 0.33)", lens: 48, aim: -2, ride: 1, subject: "tail" },
+  // ── The pack: placed for the formation it flies in (document.ts, PACK: an echelon, the second up and out to the
+  // leader's right three metres back, the third down and out to its left six back), so that all of them are in the
+  // frame and a body's width apart. The test projects the three through each of these ──
+  { name: "packfront", what: "a long lens from well ahead, off to the left: three faces, stepped back across the frame", ahead: "10", right: "(0 - 0.85 + 0.12 * sin(abstime * 0.17))", up: "0.45", lens: 30, aim: -3, ride: 0.4, subject: "pack" },
+  { name: "packquarter", what: "ahead and above, wide: the three coming at the lens, one high, one low", ahead: "3.4", right: "0.2", up: "1.7", lens: 78, aim: -3, ride: 0.4, subject: "pack" },
+  { name: "packrear", what: "a long lens from well behind and high: three tails, and the tunnel they are going into", ahead: "(0 - 17)", right: "0.2", up: "1", lens: 30, aim: -3, ride: 0.3, subject: "pack" },
+  { name: "packunder", what: "from low on the right just ahead of them, wide, looking back and up as they come over (the place a search over the bore found that holds them furthest apart: 1.7 m)", ahead: "1", right: "1.4", up: "(0 - 1.5)", lens: 80, aim: -3, ride: 0.3, subject: "pack" },
 ];
 
 export const SHOTS: readonly string[] = SHOT_TABLE.map((shot) => shot.name);
@@ -66,10 +75,12 @@ const index = (name: string): number => {
 export const WALKING_ORDER: readonly number[] = ["chase", "circle", "under", "post", "eye", "flank", "shoulder", "lead", "face"].map(index);
 /** …and while it swims: every tail shot, with four of the others between so the tail is not all there is. */
 export const SWIMMING_ORDER: readonly number[] = ["tail", "chase", "tailside", "tips", "lead", "wake", "circle", "tailtop", "tailround", "flank"].map(index);
+/** …and while more than one of the pack is out: the four shots of the pack, with the tail and the chase between. */
+export const PACK_ORDER: readonly number[] = ["packfront", "tail", "packquarter", "chase", "packrear", "tips", "packunder", "wake"].map(index);
 
 /** The shot cut to on the `turn`-th pair of bars. */
-export function shotAtTurn(turn: number, swimming = false): number {
-  const order = swimming ? SWIMMING_ORDER : WALKING_ORDER;
+export function shotAtTurn(turn: number, swimming = false, pack = false): number {
+  const order = pack ? PACK_ORDER : swimming ? SWIMMING_ORDER : WALKING_ORDER;
   return order[((turn % order.length) + order.length) % order.length] as number;
 }
 
@@ -83,12 +94,14 @@ const turnIn = (order: readonly number[]): string => `(turn - ${order.length} * 
 
 /**
  * Reads, by wire: `value` (distance travelled), `bar` (the track's bar count), `swim` (how
- * much it is swimming), `shot`, `cuts`, `distance`, `viewX`, `viewY` (the panel). Writes
+ * much it is swimming), `pack` (how many are out), `shot`, `cuts`, `distance`, `viewX`,
+ * `viewY` (the panel). Writes
  * `pick`, `ahead`, `right`, `up`, `lens`, `aim`, `ride`, `z`.
  */
 export const CAMERA_STATEMENTS = [
   `turn = floor(bar / 2)`,
-  `cut = (swim > 0.5) * ${ordered(SWIMMING_ORDER, turnIn(SWIMMING_ORDER))} + (swim <= 0.5) * ${ordered(WALKING_ORDER, turnIn(WALKING_ORDER))}`,
+  `packed = (pack > 1.5)`,
+  `cut = packed * ${ordered(PACK_ORDER, turnIn(PACK_ORDER))} + (1 - packed) * ((swim > 0.5) * ${ordered(SWIMMING_ORDER, turnIn(SWIMMING_ORDER))} + (swim <= 0.5) * ${ordered(WALKING_ORDER, turnIn(WALKING_ORDER))})`,
   `pick = (cuts > 0.5) * cut + (cuts <= 0.5) * floor(shot + 0.5)`,
   `post = (floor(value / ${POST_SPACING}) + 0.5) * ${POST_SPACING}`,
   `ahead = ${picked((shot) => shot.ahead)}`,
@@ -101,4 +114,4 @@ export const CAMERA_STATEMENTS = [
 ].join(";\n");
 
 /** What a channel reads before anything is wired or playing: a silent host cuts on the clock instead of the bar. */
-export const CAMERA_DEFAULTS = ["bar = floor(abstime / 4)", "value = 0", "swim = 0", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6"].join(";\n");
+export const CAMERA_DEFAULTS = ["bar = floor(abstime / 4)", "value = 0", "swim = 0", "pack = 1", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6"].join(";\n");

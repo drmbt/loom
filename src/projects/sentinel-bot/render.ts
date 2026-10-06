@@ -21,7 +21,7 @@ import { loadKit } from "./load-kit.ts";
  *     [--bitrate 14M]               a clip's video bitrate (default 40M: a long clip wants less)
  *     [--set kernel_ring.crawl=0.5,slider_speed.value=6]   parameter overrides by node id
  *     [--cam=-7.5,1.1,0.6]          the chase shot, placed: metres ahead of the robot, right, up
- *     [--robots 3]                  the first N of the pack (document.ts, PACK); default the leader alone
+ *     [--robots 1]                  build only the first N of the pack (document.ts, PACK); default all of it
  *     [--tier offline]              shadows and hinged claws (document.ts, tier); default live, what the app runs
  *     [--shadows on|off] [--claws hinged|rigid]   one of the tier's two decisions on its own, for measuring it
  *     [--shot 3]                    hold one of the rig's shots (camera.ts): 0 chase, 1 lead, 2 flank, 3 post, 4 circle
@@ -57,7 +57,7 @@ const { facts, glb } = loadKit(glbPath, "media/sentinel-bot/sentinel.glb");
 const camera = flag("cam")?.split(",").map(Number);
 // A track other than the shipped beat brings its own tempo (the file's address does not matter here: a headless render hears --audio).
 const tempo: SentinelTrack | undefined = flag("bpm") === undefined ? undefined : { file: "media/sentinel-bot/track", bpm: Number(flag("bpm")), beatsPerBar: Number(flag("beats") ?? 4), beatOffset: Number(flag("offset") ?? 0) };
-const built = sentinelDocument(facts, { width, height, ...(tempo === undefined ? {} : { track: tempo }), robots: PACK.slice(0, Number(flag("robots") ?? 1)), tier: flag("tier") === "offline" ? "offline" : "live", ...(flag("shadows") === undefined ? {} : { shadows: flag("shadows") === "on" }), ...(flag("claws") === undefined ? {} : { hingedClaws: flag("claws") === "hinged" }) });
+const built = sentinelDocument(facts, { width, height, ...(tempo === undefined ? {} : { track: tempo }), robots: PACK.slice(0, Number(flag("robots") ?? PACK.length)), tier: flag("tier") === "offline" ? "offline" : "live", ...(flag("shadows") === undefined ? {} : { shadows: flag("shadows") === "on" }), ...(flag("claws") === undefined ? {} : { hingedClaws: flag("claws") === "hinged" }) });
 // The camera's place is the panel's: the chase shot held, its distance (metres behind) and its side / height pad.
 if (camera !== undefined) overrides.push({ nodeId: "toggle_cuts", parameter: "on", value: false }, { nodeId: "slider_shot", parameter: "value", value: 0 }, { nodeId: "slider_distance", parameter: "value", value: -(camera[0] ?? 0) }, { nodeId: "xypad_view", parameter: "x", value: camera[1] ?? 0 }, { nodeId: "xypad_view", parameter: "y", value: camera[2] ?? 0 });
 const shot = flag("shot");

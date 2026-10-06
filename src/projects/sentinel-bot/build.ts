@@ -13,8 +13,8 @@ import { loadKit } from "./load-kit.ts";
  * Reads public/media/sentinel-bot/sentinel.glb (gitignored: a build product of
  * tools/blender/sentinel-bot/ from a third-party FBX) and writes
  * projects/sentinel-bot/sentinel.loom.json through the real save path, pointing at it.
- * Open that file in the app. --robots N takes the first N of the pack (document.ts, PACK);
- * the default is the leader alone.
+ * Open that file in the app. --robots N builds the first N of the pack (document.ts, PACK);
+ * the default is all of it, and how many are out at a time is the panel's Pack and the track's.
  *
  * --track builds the same piece to another track: a file the app can fetch (a path under
  * public/) with its tempo declared. Such a file is somebody's music, so it lives in the
@@ -23,7 +23,7 @@ import { loadKit } from "./load-kit.ts";
  */
 const argv = process.argv.slice(2);
 const flag = (name: string): string | undefined => (argv.includes(`--${name}`) ? argv[argv.indexOf(`--${name}`) + 1] : undefined);
-const count = Number(flag("robots") ?? 1);
+const count = Number(flag("robots") ?? PACK.length);
 if (!Number.isInteger(count) || count < 1 || count > PACK.length) throw new Error(`--robots takes 1 to ${PACK.length}.`);
 const SHIPPED = "projects/sentinel-bot/sentinel.loom.json";
 const file = flag("track");

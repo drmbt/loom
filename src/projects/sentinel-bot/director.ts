@@ -62,9 +62,9 @@ export function surge(follow: string, lift: string): string {
  */
 export const PHRASE_BARS = 4;
 
-/** A number 0 to 1 for the phrase `bar` is in; `salt` gives each use its own draw. */
-export function phraseDraw(bar: string, salt: number): string {
-  return `fract(sin((floor(${bar} / ${PHRASE_BARS}) + ${salt}) * 12.9898) * 43758.5453)`;
+/** A number 0 to 1 for the phrase `bar` is in; `salt` gives each use its own draw. `bars` long: four unless said. */
+export function phraseDraw(bar: string, salt: number, bars: number = PHRASE_BARS): string {
+  return `fract(sin((floor(${bar} / ${bars}) + ${salt}) * 12.9898) * 43758.5453)`;
 }
 
 /** Whether it swims this phrase for the track's sake: never under 0.7 of intensity, two phrases in three at the top. */
@@ -72,9 +72,31 @@ export function phraseSwim(follow: string, intensity: string, draw: string): str
   return `(${follow} * (${draw} < (${intensity} - 0.7) * 2.2))`;
 }
 
-/** Whether it perches this phrase for the track's sake: only under 0.42 of intensity, and then every other phrase. */
+/** Whether it perches this phrase for the track's sake: only under half of intensity, and then three phrases in five. */
 export function phrasePerch(follow: string, intensity: string, draw: string): string {
-  return `(${follow} * (${intensity} < 0.42) * (${draw} < 0.5))`;
+  return `(${follow} * (${intensity} < 0.5) * (${draw} < 0.6))`;
+}
+
+/**
+ * A PAUSE: it stops for the first two bars of a phrase, holds, looks about, and goes on. A phrase in four,
+ * at any intensity short of the very top. (The owner, 2026-10-06: "perching and looking around could be
+ * more frequent or integrated into other moves".)
+ */
+export function phrasePause(follow: string, intensity: string, draw: string, bar: string): string {
+  return `(${follow} * (${intensity} < 0.85) * (${draw} < 0.25) * (mod(${bar}, ${PHRASE_BARS}) < 2))`;
+}
+
+/** A pack's turn is eight bars: the others take most of two to come up from behind and as long to fall back. */
+export const PACK_BARS = 8;
+
+/**
+ * How many of the pack are out, 1 or `most`: the leader alone, except for some eight-bar turns (`draw`, two
+ * in five of them) in the louder passages, when the rest come up from behind. An event, not a state: while a
+ * pack is out it flies, and a piece that flew whenever it was loud never walked (measured on the owner's
+ * track with the pack following the intensity itself: 157 of 198 seconds swimming).
+ */
+export function packSize(follow: string, intensity: string, draw: string, most: number): string {
+  return `(1 + ${follow} * ${most - 1} * (${intensity} > 0.6) * (${draw} < 0.4))`;
 }
 
 /** What the long view multiplies the pace by: 0.65 at the quietest of the last minute, 1.35 at the loudest. */

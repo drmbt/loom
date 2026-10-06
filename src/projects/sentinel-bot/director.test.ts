@@ -7,7 +7,7 @@ import { SHOWCASE_BEAT, showcaseBarStart } from "../../examples/build-showcase-b
 import { shippedClipAudio } from "../../examples/shipped-clip-audio.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { PHRASE_BARS, against, pace, phraseAttack, phraseDraw, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
+import { PACK_BARS, PHRASE_BARS, against, pace, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import { sentinelDocument } from "./document.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
@@ -66,7 +66,7 @@ describe("the sentinel follows the track", () => {
     expect(read(phraseSwim("follow", "intensity", "draw"), { follow: 1, intensity: 1, draw: 0.6 })).toBe(1);
     expect(read(phraseSwim("follow", "intensity", "draw"), { follow: 1, intensity: 1, draw: 0.7 })).toBe(0);
     expect(read(phraseSwim("follow", "intensity", "draw"), { follow: 0, intensity: 1, draw: 0 })).toBe(0);
-    // Perching: only under 0.42, and then every other phrase.
+    // Perching: only under half, and then three phrases in five.
     expect(read(phrasePerch("follow", "intensity", "draw"), { follow: 1, intensity: 0.3, draw: 0.4 })).toBe(1);
     expect(read(phrasePerch("follow", "intensity", "draw"), { follow: 1, intensity: 0.3, draw: 0.6 })).toBe(0);
     expect(read(phrasePerch("follow", "intensity", "draw"), { follow: 1, intensity: 0.5, draw: 0 })).toBe(0);
@@ -81,6 +81,17 @@ describe("the sentinel follows the track", () => {
     expect(read(phraseSpiral("follow", "intensity", "draw"), { follow: 1, intensity: 0.6, draw: 0.3 })).toBe(0);
     expect([0.4, 0.85].map((intensity) => read(phraseSpiral("follow", "intensity", "draw"), { follow: 1, intensity, draw: 0 }))).toEqual([0, 0]);
     expect(read(phraseAttack("follow", "intensity", "draw"), { follow: 0, intensity: 1, draw: 0 }) + read(phraseSpiral("follow", "intensity", "draw"), { follow: 0, intensity: 0.6, draw: 0 })).toBe(0);
+    // A pause: the first two bars of a phrase in four, at any intensity short of the very top.
+    expect([0, 1, 2, 3, 4].map((bar) => read(phrasePause("follow", "intensity", "draw", "bar"), { follow: 1, intensity: 0.6, draw: 0.2, bar }))).toEqual([1, 1, 0, 0, 1]);
+    expect(read(phrasePause("follow", "intensity", "draw", "bar"), { follow: 1, intensity: 0.6, draw: 0.3, bar: 0 })).toBe(0);
+    expect(read(phrasePause("follow", "intensity", "draw", "bar"), { follow: 1, intensity: 0.9, draw: 0, bar: 0 })).toBe(0);
+    // The pack: the leader alone, except for two eight-bar turns in five in the louder passages; never without the switch.
+    expect([0.3, 0.6, 0.7, 1].map((intensity) => read(packSize("follow", "intensity", "draw", 3), { follow: 1, intensity, draw: 0.2 }))).toEqual([1, 1, 3, 3]);
+    expect(read(packSize("follow", "intensity", "draw", 3), { follow: 1, intensity: 0.9, draw: 0.5 })).toBe(1);
+    expect(read(packSize("follow", "intensity", "draw", 3), { follow: 0, intensity: 1, draw: 0 })).toBe(1);
+    // Its turns are eight bars long: the same draw from bar 0 to 7, another from 8.
+    const turns = [0, 7, 8].map((bar) => read(phraseDraw("bar", 6, PACK_BARS), { bar }));
+    expect([turns[1] === turns[0], turns[2] === turns[0]]).toEqual([true, false]);
   });
 
   it("follows nothing in silence: a host with no track behaves as the panel says", () => {
@@ -117,6 +128,8 @@ interface Run {
   readonly perch: number[];
   /** How much it is attacking, per frame, eased: what the rig and the pace read. */
   readonly attack: number[];
+  /** How many of the pack are out, per frame, eased. */
+  readonly pack: number[];
   /** Metres travelled by the last frame. */
   readonly distance: number;
 }
@@ -139,6 +152,7 @@ async function run(follow: boolean, heard: boolean): Promise<Run> {
   const swim: number[] = [];
   const perch: number[] = [];
   const attack: number[] = [];
+  const pack: number[] = [];
   let first = Number.NaN;
   let last = Number.NaN;
   for (let index = 0; index < FRAMES; index += 1) {
@@ -163,10 +177,11 @@ async function run(follow: boolean, heard: boolean): Promise<Run> {
     swim.push(read("lag_swim:value"));
     perch.push(read("constant_perch:value"));
     attack.push(read("lag_attack:value"));
+    pack.push(read("lag_pack:value"));
     last = read("speed_travel:value");
     if (index === 0) first = last;
   }
-  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, distance: last - first };
+  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, pack, distance: last - first };
 }
 
 /** The frames of a stretch of the clip, in seconds. */
@@ -218,20 +233,26 @@ describe("the sentinel follows its own clip, through the document's value graph"
       if (Math.abs(margin) < 1e-9) continue;
       const byPhrase = margin > 0 ? 1 : 0;
       swimPhrases += byPhrase;
-      // Told to swim: the track coming back in (lift), or this phrase's turn at this intensity; never in a phrase it attacks.
+      // Told to swim: the track coming back in (lift), or this phrase's turn at this intensity; never in a phrase it
+      // attacks. And always while more than one of the pack is out: a pack flies, it does not walk.
       const attacking = followed.intensity[index]! > 0.85 && drawOf(followed.bar[index]!, 3) < 0.3 ? 1 : 0;
-      expect(followed.swimAsked[index]).toBeCloseTo(Math.max(smooth(1.5, 2.2, followed.lift[index]!), byPhrase) * (1 - attacking), 9);
-      // Perched: a breakdown gone nearly silent, or this phrase's turn at a low intensity; never for no track.
-      const low = followed.intensity[index]! < 0.42 && drawOf(followed.bar[index]!, 2) < 0.5 && sounding ? 1 : 0;
+      const flown = smooth(1.1, 1.6, followed.pack[index]!);
+      expect(followed.swimAsked[index]).toBeCloseTo(Math.max(flown, Math.max(smooth(1.5, 2.2, followed.lift[index]!), byPhrase) * (1 - attacking)), 9);
+      // Perched: a breakdown gone nearly silent, this phrase's turn at a low intensity, or a pause in its first two bars; never for no track.
+      const bar = followed.bar[index]!;
+      const low = followed.intensity[index]! < 0.5 && drawOf(bar, 2) < 0.6 && sounding ? 1 : 0;
+      const pause = followed.intensity[index]! < 0.85 && drawOf(bar, 5) < 0.25 && bar - PHRASE_BARS * Math.floor(bar / PHRASE_BARS) < 2 && sounding ? 1 : 0;
       const silent = sounding ? 1 - smooth(0.12, 0.3, followed.energy[index]!) : 0;
-      expect(followed.perch[index]).toBeCloseTo(Math.max(silent, low), 9);
+      expect(followed.perch[index]).toBeCloseTo(Math.max(silent, low, pause), 9);
     }
-    // In the last second of the silent bars it holds the wall; from two and a half seconds after the return it is swimming.
-    // Measured on the clip: under 0.001 before, 0.95 and over after.
-    expect(Math.max(...during(followed.swim, SILENT.to - 1, SILENT.to - 0.2))).toBeLessThan(0.02);
+    // From two and a half seconds after the return from the silent bars it is swimming (measured: 0.95 and over).
+    // (Before the pack existed this also said it held the wall through the silent bars. On this clip the pack is out
+    // by then, and a pack hovers when it stops: the frame-for-frame rule above is what says so.)
     expect(Math.min(...during(followed.swim, SILENT.to + 2.5, SILENT.to + 4))).toBeGreaterThan(0.9);
     // And the phrase rule did have its turn in these thirty seconds (88 frames of it on the clip), so the equality above read both branches.
     expect(swimPhrases).toBeGreaterThan(30);
+    // The pack never comes out without the switch.
+    expect(Math.max(...panel.pack)).toBe(1);
     // The switch is the difference: off, the panel's Swim (0) is all there is.
     expect(Math.max(...panel.swim)).toBe(0);
   });

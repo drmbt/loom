@@ -122,8 +122,12 @@ const ADRIFT_AHEAD = [0.7, 0.21] as const;
 /** How far ahead of its place the leader has drifted, fully adrift: metres, as an expression. */
 export const adriftAheadExpression = `(${ADRIFT_AHEAD[0]} * sin(abstime * ${ADRIFT_AHEAD[1]}))`;
 const adriftWgsl = (axis: "x" | "y"): string => ADRIFT[axis].map(([metres, rate, own, phase]) => `${metres} * sin(time * ${rate} + own * ${own} + ${phase})`).join(" + ");
-/** Where the pack's leader (no place of its own off the pack's) has wandered to, fully adrift: metres right or up, as an expression. */
-export const adriftExpression = (axis: "x" | "y"): string => `(${ADRIFT[axis].map(([metres, rate, , phase]) => `${metres} * sin(abstime * ${rate} + ${phase})`).join(" + ")})`;
+/** A robot's own count from its place off the pack's (right, up, ahead): what the rig's `ownCount` computes. */
+export const ownCountOf = (offset: readonly [number, number, number]): number => offset[2] * 1.3 + offset[0] * 2.1;
+/** Where a robot has wandered to, fully adrift: metres right or up, as an expression. The leader's by default (no place of its own off the pack's). */
+export const adriftExpression = (axis: "x" | "y", own = 0): string => `(${ADRIFT[axis].map(([metres, rate, scale, phase]) => `${metres} * sin(abstime * ${rate} + ${(own * scale + phase).toFixed(4)})`).join(" + ")})`;
+/** With company a robot wanders a fifth as far, and holds the ends of its tentacles in: three in a bore have no room for more. */
+export const PACK_WANDER = 0.2;
 
 const ROBOT_FRAME = `${pathWgsl()}
 // How much it swims at z: what it is told, or a chamber's say-so, read a little way ahead so
@@ -250,6 +254,8 @@ ${PLACE_PARAMS}
   spiral: f32, // @default 0  It walks a corkscrew round the bore: turns per 16 m of tunnel. 0 walks straight.
   spiralTurn: f32, // @default 0  How far round it has got, in turns. Drive it from an integrator of Spiral x speed, so the rungs it holds stay put.
   attack: f32, // @default 0  The attack: every other tentacle lets go of the wall, coils by the face and strikes forward, again and again; the rest hold. 0 to 1.
+  company: f32, // @default 0  Whether it has company, 0 to 1: with others beside it, it wanders a fifth as far and holds its tentacles' ends in.
+  pack: f32, // @default 1000  How many robots of the pack are out: 1 is the leader alone, 2 brings the second up from behind, and a part of one is one on its way. The default is all of them.
 };
 ${ROBOT_FRAME}
 const ROBOTS: u32 = ${robots.length}u;
@@ -492,7 +498,16 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let tentacle = place / PICK_COUNT;
   let station = PICK_FIRST + place % PICK_COUNT;
   let params = ctx.params;
-  let offset = params.offset + ROBOT_OFFSET[robot];
+  // How far out of the pack's back this robot is: 0 not there (nothing of it is drawn), 1 in its place. On its
+  // way it comes up the tunnel from 45 m behind, out of the haze, and goes back the same way: it never pops.
+  let present = clamp(params.pack - f32(robot), 0.0, 1.0);
+  if (present <= 0.0) {
+    q.position = vec3f(0.0);
+    q.kind = -1.0;
+    return q;
+  }
+  let arriving = 1.0 - present * present * (3.0 - 2.0 * present);
+  let offset = params.offset + ROBOT_OFFSET[robot] - vec3f(0.0, 0.0, 45.0 * arriving);
   let swimming = swimAt(params.swim, params.travel + offset.z);
   // Where the gait counts from: the rungs it plants on are a matter of how far it has come.
   let bodyZ = robotZ(params.travel, offset, params.swim, params.stroke);
@@ -505,7 +520,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let afoot = (1.0 - swimming) * params.carry;
   let woven = weave(bodyZ);
   let sway = vec3f(woven, 0.0) * afoot;
-  let adrift = swimming * params.carry;
+  // …and less far in company (PACK_WANDER): there is no room to wander three abreast.
+  let adrift = swimming * params.carry * mix(1.0, ${PACK_WANDER}, clamp(params.company, 0.0, 1.0));
   let frameZ = bodyZ + adrift * adriftZ(ctx.absTime, offset);
   // Walking a corkscrew, the body turns with the rungs it holds and rides a little toward the wall its back is to.
   let winding = spiralAt(bodyZ, params);
@@ -614,8 +630,9 @@ fn process(p: Point, ctx: PointCtx) -> Point {
     trail.up = body.up;
     trail.offset = vec2f(dot(off, axis.right), dot(off, axis.up));
     // Swimming flings the ends wide at the top of the beat and draws them in after it (trailRadius).
-    trail.flare = 0.18 + 0.7 * params.flare;
-    trail.swim = swimming;
+    // In company the ends are held in and the stroke flings them less wide: they would lie across the next robot.
+    trail.flare = (0.18 + 0.7 * params.flare) * mix(1.0, 0.5, clamp(params.company, 0.0, 1.0));
+    trail.swim = swimming * mix(1.0, 0.45, clamp(params.company, 0.0, 1.0));
     trail.stroke = params.stroke;
     trail.adrift = adrift;
     trail.own = ownCount(offset);
