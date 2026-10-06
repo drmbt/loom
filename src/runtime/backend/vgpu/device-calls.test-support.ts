@@ -50,6 +50,50 @@ export function countDeviceCalls(host: MockGpuHost): DeviceCalls {
   return seen;
 }
 
+/**
+ * T1623b: what a backend BUILDS and what it WRITES, from the call on — shader modules,
+ * pipelines of both kinds, and every `queue.writeBuffer` with its byte offset and its bytes.
+ * A value that changes must show up in `writes` and move neither count; a second counter
+ * rather than more fields on `DeviceCalls`, whose callers compare it whole.
+ */
+export interface DeviceBuilds {
+  /** Each write as the byte offset it went to and the bytes it carried, read as f32 and as u32. */
+  writes: Array<{ offset: number; floats: number[]; words: number[] }>;
+  modules: number;
+  /** Render and compute pipelines together. */
+  pipelines: number;
+  /** `queue.submit` calls: how many command buffers a frame is. */
+  submits: number;
+}
+
+export function countBuildsAndWrites(host: MockGpuHost): DeviceBuilds {
+  const device = host.device;
+  if (device === undefined) throw new Error("countBuildsAndWrites: the mock host has no device yet; initialize the backend first.");
+  const seen: DeviceBuilds = { writes: [], modules: 0, pipelines: 0, submits: 0 };
+  const submit = device.queue.submit.bind(device.queue);
+  vi.spyOn(device.queue, "submit").mockImplementation((buffers) => {
+    seen.submits += 1;
+    submit(buffers);
+  });
+  const write = device.queue.writeBuffer.bind(device.queue) as (...args: unknown[]) => void;
+  vi.spyOn(device.queue, "writeBuffer").mockImplementation(((...args: unknown[]) => {
+    const data = args[2] as ArrayBuffer | ArrayBufferView;
+    const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const copy = bytes.slice().buffer;
+    seen.writes.push({ offset: args[1] as number, floats: [...new Float32Array(copy)], words: [...new Uint32Array(copy)] });
+    write(...args);
+  }) as never);
+  for (const name of ["createShaderModule", "createComputePipeline", "createRenderPipeline"] as const) {
+    const create = (device[name] as (...args: unknown[]) => unknown).bind(device);
+    vi.spyOn(device, name).mockImplementation(((...args: unknown[]) => {
+      if (name === "createShaderModule") seen.modules += 1;
+      else seen.pipelines += 1;
+      return create(...args);
+    }) as never);
+  }
+  return seen;
+}
+
 /** What `run` asked of the device: the counters' movement across it. */
 export function during(seen: DeviceCalls, run: () => void): DeviceCalls {
   const before = { ...seen };

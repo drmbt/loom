@@ -41,6 +41,8 @@ import {
   createDiagnosticHub,
   describeError,
 } from "../diagnostics.ts";
+import { bufferRegionProblem, encodeBufferRows } from "../buffer-write.ts";
+import type { BufferRegionValues, BufferWritePassDescriptor } from "../plan.ts";
 import { createFrameGuard } from "../frame-guard.ts";
 import { createPacedGate } from "../frame-pacing.ts";
 import {
@@ -1006,10 +1008,72 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   /** Merges values into the live set and writes the buffer. The only way uniforms move. */
   function applyUniforms(target: Program, passId: string, values: UniformValues): void {
     const block = target.resources.passUniforms.get(passId);
-    if (!block) return;
+    if (!block) {
+      // T1623b: a `write` pass has no block. Its values are rows of a region of a buffer.
+      const region = regionPass(target, passId);
+      if (region !== undefined) applyRegionValues(target, region, values);
+      return;
+    }
     const merged = { ...(target.liveUniforms.get(passId) ?? {}), ...values };
     block.set(toMutable(merged));
     target.liveUniforms.set(passId, merged);
+  }
+
+  /*
+   * T1623b slice 2 — VALUES FOR A REGION OF A BUFFER (`BufferWritePassDescriptor`).
+   *
+   * The values live in `liveUniforms` beside every uniform block's, under the pass's own id,
+   * so a device rebuild flushes them and a values-only compile rolls them back with the
+   * rest. What is extra is WHEN they reach the device: not here, but once, ahead of the next
+   * frame's first pass (`writeBufferRegions`), from the set below. A program that has never
+   * been written, or whose buffers a boundary clear just zeroed, has no entry, which means
+   * every region it has.
+   */
+  const regionsToWrite = new WeakMap<Program, Set<string>>();
+  const regionPass = (target: Program, passId: string): BufferWritePassDescriptor | undefined => {
+    const pass = target.passes.find((entry) => entry.id === passId);
+    return pass?.kind === "write" ? pass : undefined;
+  };
+  function pendingRegions(target: Program): Set<string> {
+    let pending = regionsToWrite.get(target);
+    if (pending === undefined) {
+      pending = new Set(target.passes.flatMap((pass) => (pass.kind === "write" ? [pass.id] : [])));
+      regionsToWrite.set(target, pending);
+    }
+    return pending;
+  }
+  function applyRegionValues(target: Program, region: BufferWritePassDescriptor, values: UniformValues): void {
+    const merged = { ...(target.liveUniforms.get(region.id) ?? region.values), ...values };
+    // The one check the plan reader makes, made again for a value pushed on a values-only
+    // frame: rows past the capacity are refused by name and the rows already there stay.
+    const problem = bufferRegionProblem(region, merged);
+    if (problem !== undefined) {
+      hub.report(
+        backendDiagnostic(
+          "error",
+          BackendDiagnosticCode.planInvalid,
+          `Buffer values "${region.id}" for "${region.resourceId}": ${problem}. Not written; the rows already there stay.`,
+          region.nodeId === undefined ? {} : { nodeId: region.nodeId as never },
+        ),
+      );
+      return;
+    }
+    target.liveUniforms.set(region.id, merged);
+    pendingRegions(target).add(region.id);
+  }
+  function writeBufferRegions(active: Program): void {
+    const pending = pendingRegions(active);
+    for (const passId of pending) {
+      const region = regionPass(active, passId);
+      const buffer = region === undefined ? undefined : active.resources.buffers.get(region.resourceId);
+      const values = active.liveUniforms.get(passId) as BufferRegionValues | undefined;
+      if (region === undefined || buffer === undefined || values === undefined) continue;
+      // vgpu's storage buffer writes at an offset; its published interface names the data alone.
+      const at = buffer as StorageBuffer & { write(data: BufferSource, offset: number): void };
+      if (values.rows.length > 0) at.write(encodeBufferRows(region, values), region.offset);
+      if (region.countOffset !== undefined) at.write(new Uint32Array([values.count]), region.countOffset);
+    }
+    pending.clear();
   }
 
   function flushUniforms(target: Program): void {
@@ -1204,6 +1268,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       for (const buffer of activeProgram.resources.buffers.values()) {
         buffer.write(new Uint8Array(buffer.size));
       }
+      // T1623b: a region's rows were zeroed with the rest and are values, not history.
+      regionsToWrite.delete(activeProgram);
       // T1353b: a FED buffer was just zeroed with the rest, and its source's frameId has
       // not moved — reset the cursor with the bytes (T773's pairing, for buffers), or a
       // mesh would stay degenerate after every seek until its file was re-picked.
@@ -1792,7 +1858,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           current = [];
           deferred = false;
         }
-        if (pass.kind !== "dispatch") deferred = true;
+        // T1623b: a `write` pass encodes nothing, so there is nothing for a dispatch to overtake.
+        if (pass.kind !== "dispatch" && pass.kind !== "write") deferred = true;
         current.push(pass);
       }
       // The final frame always runs, even empty: it carries the presentations.
@@ -2992,7 +3059,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // view is one stable object; the head is a NUMBER, so it travels as uniform
       // VALUES (§V5) merged per frame exactly like the T172 frame fields.
       for (const pass of active.passes) {
-        if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop") continue;
+        if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop" || pass.kind === "write") continue;
         const arrayBinding = (pass.textures ?? []).find(
           (binding) => binding.array === true && active.resources.rings.has(binding.resourceId),
         );
@@ -3008,6 +3075,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       rebindDynamicTextures(active);
       const mediaDirty = uploadExternalTextures(active);
       uploadExternalBuffers(active, mediaDirty);
+      writeBufferRegions(active);
       active.mediaDirty = mediaDirty;
 
       // T254 (§V157): the whole-plan idle skip — the gate the census justified. A fully
@@ -3282,7 +3350,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         // A draw with no uniform block, or an update that moves nothing else, ends here.
         if (Object.keys(update.values).length === 0) return;
       }
-      if (!program.resources.passUniforms.has(update.passId)) {
+      if (!program.resources.passUniforms.has(update.passId) && regionPass(program, update.passId) === undefined) {
         hub.report(
           backendDiagnostic(
             "warning",
@@ -3873,7 +3941,7 @@ function planRequiresEveryFrame(
       kinds.get(id) === "externalTexture" ||
       kinds.get(id) === "ring");
   return passes.some((pass) => {
-    if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop") return false;
+    if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop" || pass.kind === "write") return false;
     if (pass.kind === "dispatch" && pass.uniformBinding !== undefined) return true;
     if ((pass.kind === "effect" || pass.kind === "draw") && pass.sharedBinding !== undefined) return true;
     if (pass.kind === "effect" && /frameU|SharedFrame/.test(pass.shader) && pass.sharedBinding === undefined) {
@@ -3951,7 +4019,7 @@ function computeCarryOver(
   const draws = new Map<string, NonNullable<ReturnType<ResourceSet["draws"]["get"]>>>();
   const passUniforms = new Map<string, NonNullable<ReturnType<ResourceSet["passUniforms"]["get"]>>>();
   for (const pass of nextPasses) {
-    if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop") continue;
+    if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop" || pass.kind === "write") continue;
     if (oldPassKeys.get(pass.id) !== passStructureKey(pass)) continue;
 
     const bound: string[] = [];

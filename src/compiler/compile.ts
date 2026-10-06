@@ -142,8 +142,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * know from inside its own compile). When the plan IR grows a `compute` kind this set and
  * `TARGETED_PASS_KINDS` are the two places that learn about it — scheduling, pruning and
  * ordering never look at a pass kind at all.
+ *
+ * T1623b: `write` is a node's table of rows as values (`BufferWritePassDescriptor`).
  */
-const NODE_EMITTABLE_PASS_KINDS: ReadonlySet<string> = new Set(["effect", "dispatch", "draw"]);
+const NODE_EMITTABLE_PASS_KINDS: ReadonlySet<string> = new Set(["effect", "dispatch", "draw", "write"]);
 
 /**
  * The default framing every pointset preview shares (T373): an isometric-ish orbit at
@@ -2504,7 +2506,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   }
   const float32Filterable = request.capabilities.features.includes("float32-filterable");
   for (const pass of read.passes) {
-    if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop") continue;
+    if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop" || pass.kind === "write") continue;
     for (const binding of pass.textures ?? []) {
       if (binding.sampled === "unfiltered") continue;
       if (formatById.get(binding.resourceId) !== "r32float" || float32Filterable) continue;

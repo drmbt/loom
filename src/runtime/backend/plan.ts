@@ -4,6 +4,7 @@ import type { TextureFormat } from "../../domain/types/node-definition.ts";
 import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
 import type { LogicalExecutionPlan } from "../../domain/types/backend.ts";
 import { BackendDiagnosticCode, backendDiagnostic } from "./diagnostics.ts";
+import { bufferWriteDiagnostics, readBufferWritePass } from "./buffer-write.ts";
 import type { EmittedWgsl } from "./wgsl.ts";
 import { wgslFromPlan } from "./wgsl.ts";
 import type { WgslSourceMap } from "./wgsl-source-map.ts";
@@ -534,13 +535,69 @@ export interface CounterPassDescriptor {
   readonly outputResourceId?: string;
 }
 
+/** T1623b: the type of one 32-bit word of a row a `write` pass carries. */
+export type BufferWord = "f32" | "u32" | "i32";
+
+/**
+ * T1623b: a region's values. `rows` is the live rows, row after row, one number a word;
+ * `count` is how many rows that is. A type and not an interface, so it is a `UniformValues`
+ * and travels every road a uniform block's values travel.
+ */
+export type BufferRegionValues = { readonly rows: readonly number[]; readonly count: number };
+
+/**
+ * T1623b slice 2 — VALUES FOR A REGION OF A BUFFER (`docs/light-cost-investigation-2026-10-06.md`
+ * section 13).
+ *
+ * A table of rows whose values are known on the CPU: a named Light's row of the Render's
+ * light table, a Ramp's stops. A uniform block cannot hold one without its length in the
+ * shader's text (`UniformValue` is a scalar or one flat vector, so tables became numbered
+ * members and numbered code, §B260, §T1640b). This pass is the table as VALUES: the backend
+ * writes `values.rows` into the region when the plan is installed and whenever they change,
+ * and the count beside them, exactly as it writes a uniform block.
+ *
+ * It is a pass and not a field of the buffer so that it has an id: `updateUniforms` addresses
+ * it, the uniform animator diffs and pushes it, and a values-only frame re-emits it, all by
+ * the roads a uniform block already takes. It encodes nothing: its bytes are in the buffer
+ * before the frame's first pass runs, wherever it stands in the list. It still ends a run of
+ * draws, as every pass that is not a draw does (`renderPassRuns`), so a node emits it ahead
+ * of its draws.
+ *
+ * STRUCTURE: the buffer, the offset, the row's words, the capacity, where the count goes.
+ * VALUES, never structure (§V5): the rows and how many of them are live. A count within the
+ * capacity is a write; a count over it is refused by name and the rows already there stay.
+ *
+ * A shader reads the region through an ordinary buffer binding (`offset` and `bytes`, T1076).
+ * WHAT A READER MUST KNOW: only the live rows are written. Rows past the count keep whatever
+ * they last held (a shrunken table's old rows, or zeros), so a reader walks `count` rows and
+ * never the capacity. Only this region's bytes are written, and only when its values move,
+ * so a dispatch may own other bytes of the same buffer.
+ */
+export interface BufferWritePassDescriptor {
+  readonly kind: "write";
+  readonly id: string;
+  readonly nodeId?: string;
+  /** A plain storage `buffer`: not a pair, not fed by a source. */
+  readonly resourceId: string;
+  /** Byte offset of the first row inside the buffer. A multiple of 4. */
+  readonly offset: number;
+  /** One row: the type of each of its 32-bit words, in order. A row is four bytes a word. */
+  readonly row: ReadonlyArray<BufferWord>;
+  /** Rows the region holds: what the buffer has room for, not what is live. */
+  readonly capacity: number;
+  /** Byte offset in the buffer where the live row count is written as one u32. Absent: it is not written. */
+  readonly countOffset?: number;
+  readonly values: BufferRegionValues;
+}
+
 export type PassDescriptor =
   | EffectPassDescriptor
   | SwapPassDescriptor
   | LoopPassDescriptor
   | DispatchPassDescriptor
   | DrawPassDescriptor
-  | CounterPassDescriptor;
+  | CounterPassDescriptor
+  | BufferWritePassDescriptor;
 
 export interface PlanReadResult {
   readonly resources: ReadonlyArray<ResourceDescriptor>;
@@ -767,6 +824,7 @@ export function readPass(value: unknown): PassDescriptor | undefined {
 
   if (kind === "dispatch") return readDispatchPass(id, value);
   if (kind === "draw") return readDrawPass(id, value);
+  if (kind === "write") return readBufferWritePass(id, value);
   if (kind !== "effect") return undefined;
 
   const shader = value["shader"];
@@ -1073,6 +1131,8 @@ export function readExecutionPlan(plan: LogicalExecutionPlan): PlanReadResult {
         ];
       case "counter":
         return [pass.resourceId, ...(pass.outputResourceId === undefined ? [] : [pass.outputResourceId])];
+      case "write":
+        return [pass.resourceId];
     }
   }
 
@@ -1095,6 +1155,7 @@ export function readExecutionPlan(plan: LogicalExecutionPlan): PlanReadResult {
 
   diagnostics.push(...loopStructureDiagnostics(passes));
   diagnostics.push(...kernelStepsDiagnostics(passes, resources));
+  diagnostics.push(...bufferWriteDiagnostics(passes, resources));
 
   const ok = diagnostics.every((diagnostic) => diagnostic.severity !== "error");
   return { resources, passes, diagnostics, ok };
@@ -1595,6 +1656,9 @@ function passKeyParts(pass: PassDescriptor): unknown[] {
         ];
       case "counter":
         return ["counter", pass.id, pass.op, pass.resourceId, pass.outputResourceId ?? null];
+      // T1623b: where the rows go and what a row is. The rows and their count are values.
+      case "write":
+        return ["write", pass.id, pass.resourceId, pass.offset, pass.row.join(","), pass.capacity, pass.countOffset ?? null];
   }
 }
 
@@ -1667,6 +1731,8 @@ export function planUniformValues(
     if ((pass.kind === "effect" || pass.kind === "dispatch" || pass.kind === "draw") && pass.uniforms) {
       out.set(pass.id, pass.uniforms as UniformValues);
     }
+    // T1623b: a region's rows travel with the uniform blocks, keyed by their own pass id.
+    if (pass.kind === "write") out.set(pass.id, pass.values);
   }
   return out;
 }

@@ -443,3 +443,63 @@ Scratch, not in the repository: `scratchpad/b260/` of the worker's tree, copied 
 | `png-diff.mjs` | the title pair |
 | `casting-array.ts` | the casting-lights prototype of section 11.3 |
 | `wgsl/`, `msl/` | the dumped texts |
+
+## 13. Slice 2 as built: values for a region of a buffer
+
+Built and tested; used by no product node yet. It is the seam section 11.2 asked for (ruling D4), and the mechanism T1640b wants for the other tables.
+
+**What it is.** A pass kind, `write` (`BufferWritePassDescriptor`, `src/runtime/backend/plan.ts`): a table of rows whose values are known on the CPU, written into a region of a storage buffer.
+
+| Field | Meaning | Structure or value |
+|---|---|---|
+| `resourceId` | a plain storage buffer: not a pair, not fed by a source | structure |
+| `offset` | byte offset of the first row, a multiple of 4 | structure |
+| `row` | one row as the type of each 32-bit word: `f32`, `u32` or `i32` | structure |
+| `capacity` | rows the region has room for | structure |
+| `countOffset` | where the live row count is written as one `u32`; absent, it is not written | structure |
+| `values.rows` | the live rows, row after row, one number a word | value |
+| `values.count` | how many rows that is | value |
+
+- **It is a pass so that it has an id.** Its values then take every road a uniform block's take, with no second mechanism: `planUniformValues` carries them, `updateUniforms({ passId })` addresses them, the uniform animator diffs and pushes them, a values-only compile applies them and rolls them back with the rest, and a device rebuild flushes them.
+- **It encodes nothing.** The bytes are written once, ahead of the next frame's first pass, wherever the pass stands in the list. It is no command buffer of its own (a frame with a table submits what the same frame submits without one). It does end a run of draws, as every pass that is not a draw does, so a node emits it ahead of its draws.
+- **Only the region's own bytes are written, and only when its values move.** A dispatch may own other bytes of the same buffer, which is what the Render's light table needs: pointset records written on the GPU beside named rows written here.
+- **Only the live rows are written.** Rows past the count keep what they last held. A reader walks `count` rows, never the capacity.
+- **A count within the capacity is a write.** A count over it is refused by name and the rows already there stay. One function decides what fits (`bufferRegionProblem`), for a plan being read and for a value pushed on a frame, so the two cannot disagree.
+- **A node may emit it.** `write` joined the pass kinds a definition may emit (`compile.ts`); the table is a scratch buffer of the node's own (`{ key, kind: "buffer", stride, capacity }`). A driven parameter that feeds a row keeps the document on the values-only frame path.
+- **Two things empty a buffer behind the plan's back, and both put the rows back**: a boundary clear (a seek, a document open) and a lost device.
+
+**Refused by name**, before anything is built: rows over the capacity; a count that is not the rows given; a word that is not of its type (a fraction or a negative number in a `u32`, a NaN anywhere); a region that ends past its buffer; a region that shares a byte with another; a count word inside its own rows; a target that is not a plain storage buffer (a pair, an indirect buffer, a buffer fed by a source). A pass a node emits carries the node's id, so the refusal reaches the Problems pane under the node.
+
+**Tests**, each seen red by one edit and restored by editing:
+
+| File | Holds | Seen red by |
+|---|---|---|
+| `runtime/backend/buffer-write.test.ts` | the reader: rows and count are outside the structure signature, where they go is inside it; every refusal above, word for word; the bytes | the count put into the structure key; every word encoded as a float; the rows left out of the plan's values |
+| `runtime/backend/vgpu/buffer-write.test.ts` (mock host, device calls counted) | the first frame writes rows and count at the region's bytes; a frame where nothing moved writes nothing; a pushed value, a values-only compile and the animator are writes with no shader module and no pipeline; no extra submit; over the capacity writes nothing; a boundary clear and a lost device put the rows back | the per-frame write removed (4 of 5); the capacity check removed; the re-arm after a clear removed; the animator's hunk removed; the frame-split rule removed (3 submits for 2) |
+| `runtime/backend/vgpu/buffer-write.gpu.test.ts` (Dawn) | a compute kernel reads two tables of one buffer, floats and mixed words, each at its own bytes with its own count; a pushed row is read on the next frame; over the capacity leaves the rows; a boundary clear brings them back | the per-frame write removed (every row reads "not live"); every word encoded as a float |
+| `compiler/buffer-write.test.ts` | a node's pass reaches the plan under the node's id; a driven row stays on the values-only path with no generator run and no text built (the counts `generated-text.test.ts` uses); the frame's passes equal a full compile's; the animator pushes on the frame a row moves and on no other; a driven Capacity is refused the fast path by name; rows that outgrow the table are refused by the node's name | `write` taken out of the kinds a node may emit (4 of 5); the animator's hunk removed |
+| `compiler/buffer-write.gpu.test.ts` (Dawn) | the whole road: an expression drives a parameter, the values-only compile and the animator carry it, a FRAGMENT shader sums the live rows. Gain 1 then 8, two rows then four: the pixel is (3, 0.75, 1), then (24, 0.75, 1), then (80, 2.5, 2), exactly. Thirteen rows are refused and the picture stays | the per-frame write removed (black); the animator's hunk removed (the pixel stays at frame 0's) |
+
+The fixture node is `compiler/buffer-write.fixture.ts` (a Table Probe: a scratch buffer, a `write` pass and a draw whose text holds no row and no count). The device-call counter is `countBuildsAndWrites` in `runtime/backend/vgpu/device-calls.test-support.ts`, beside the existing `countDeviceCalls`.
+
+**For the three tables of T1640b.** A row is words: a Ramp stop (a position and a colour) is five `f32`, and a curve point (x, y, z, scale, and its roll) five. Grid Warp's packing was not read.
+
+- **Grid Warp** is a draw and **the curve table**'s reader is a dispatch (read from their definitions). Both pass kinds bind buffers today. They can move as the seam stands.
+- **The Ramp is an effect pass, and an effect pass has no buffer bindings** (`EffectPassDescriptor` has textures and samplers). Moving the Ramp needs `buffers` on an effect pass first. Not built here.
+
+**For slice 3 of the one light path.** A named Light's record is one row of sixteen words; the Render emits one `write` pass for its named rows, into its light table at the offset behind the pointset records, with the count in the table's header.
+
+**Not built, and not checked.**
+
+- A region is rewritten whole when any of its rows moves: all the live rows, not the changed one. At 1,024 rows of 64 bytes that is 64 KB a changed frame. Not measured.
+- Bytes a dispatch writes are not checked against a region's. Two regions that overlap are refused; a dispatch that writes into a region is not seen.
+- With cook policy "auto" a frame in which only a row moved is encoded because every pushed value marks the plan dirty. Read from the code, not tested under that policy.
+- The pipeline inspector lists the pass as a utility row with its count and capacity. Not looked at in the app.
+- No browser run.
+
+**Hunks in files other sessions are in** (the Rope worker is in the first two):
+
+- `src/runtime/backend/plan.ts`: one import; `BufferWord`, `BufferRegionValues` and `BufferWritePassDescriptor` above `PassDescriptor`, and one more member of that union; one line in `readPass`; one case in `referencedResourceIds`; one line after `kernelStepsDiagnostics`; one case in `passKeyParts`; one line in `planUniformValues`.
+- `src/runtime/backend/vgpu/vgpu-backend.ts`: two imports; `applyUniforms` hands a pass with no block to the region path, and the region functions follow it (`regionsToWrite`, `regionPass`, `pendingRegions`, `applyRegionValues`, `writeBufferRegions`); one line in the boundary clear after the plain buffers are zeroed; `encodeSegmented`'s `deferred` rule leaves `write` out; one call after `uploadExternalBuffers`; `updateUniforms` accepts a region's pass id; `write` added to three lists of pass kinds that bind nothing.
+- `src/compiler/compile.ts`: `write` in `NODE_EMITTABLE_PASS_KINDS` and in one list of kinds with no textures. `src/app/animate-parameters.ts`: five lines in `blocksOf`. `src/editor/inspect/pipeline-model.ts`, `pipeline-panel.tsx`, `pipeline-track.tsx`: one case and two map entries, which the type checker asked for.
+- Everything else is in the new file `src/runtime/backend/buffer-write.ts`.

@@ -79,6 +79,11 @@ function blocksOf(plan: CompiledGraph): Map<string, UniformValues> {
       }
       continue;
     }
+    // T1623b: a table of rows written into a region of a buffer diffs and pushes as a block.
+    if (pass.kind === "write") {
+      blocks.set(pass.id, pass.values);
+      continue;
+    }
     const uniforms = "uniforms" in pass ? pass.uniforms : undefined;
     if (uniforms !== undefined) blocks.set(pass.id, uniforms);
   }
