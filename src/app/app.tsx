@@ -1,5 +1,6 @@
 import { createRenderCanvasCapture } from "./render-canvas-capture.ts";
 import { ControlsPane } from "@editor/controls/controls-pane.tsx";
+import { ContextMenuHost } from "@editor/menus/index.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { scopeFromFrame } from "@domain/expressions/index.ts";
 import type { ExpressionScope } from "@domain/expressions/index.ts";
@@ -2314,8 +2315,13 @@ export function App({
           terminal={terminalPane}
           controls={
             <ErrorBoundary name="Controls">
-              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation}
-                phone={phoneView} midi={midi} channels={compile.channels} latestFrame={frameLoop.latestFrame} />
+              {/* T1619b: the control menu (Reset, Set as default) is mounted HERE for the Controls
+                  tab; a Panel's body on the canvas is under the graph pane's host. No fallback
+                  surface: a right-click on the tab's chrome opens nothing. */}
+              <ContextMenuHost bus={runtime.bus}>
+                <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation}
+                  phone={phoneView} midi={midi} channels={compile.channels} latestFrame={frameLoop.latestFrame} />
+              </ContextMenuHost>
             </ErrorBoundary>
           }
         />

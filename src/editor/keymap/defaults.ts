@@ -582,6 +582,20 @@ const APP_BINDINGS: readonly KeyBinding[] = [
     description: "Fire the cue before the current one, on the cue list whose Keys switch is on.",
   },
   {
+    // T1619b: the selected controls back to their defaults; a selected Panel stands for the
+    // controls on it. A chord beside GO and BACK, not a bare letter: a reset in the middle
+    // of a show is seen by the room, so it is not a key a resting hand can brush. Never
+    // "everything when nothing is selected": with no selection the binding does not fire.
+    id: "control.reset",
+    keys: "mod+alt+r",
+    context: "global",
+    command: "control.reset",
+    inputFrom: { from: "selection", as: "nodeIds" },
+    when: "hasSelection",
+    label: "Reset selected controls",
+    description: "Send the selected Sliders, Toggles and XY Pads back to their defaults. A selected Panel resets the controls on it.",
+  },
+  {
     id: "runtime.resetFeedback",
     keys: "mod+shift+r",
     context: "global",

@@ -1,10 +1,10 @@
 # Reset a control, or all of them, to what was saved (§T1619b)
 
 2026-10-06. Owner: *"ways to reset controls individually or all according to what was saved or
-something should be something useful accessible on both phone and browser"*. Slice 1 of
-section 5 is built (the default and the two commands); the desk and the phone are not. Until
-they are, the way back is a preset written by hand (sentinel-bot's three `saved` banks,
-`2bc870d4`).
+something should be something useful accessible on both phone and browser"*. Slices 1 and 2
+of section 5 are built (the default and its commands; the desk). The phone, slices 3 and 4,
+is not: there the way back is still a preset written by hand (sentinel-bot's three `saved`
+banks, `2bc870d4`). Where the build departs from this design, "AS BUILT" says so.
 
 ## What established tools call "saved", and how they reset
 
@@ -50,8 +50,14 @@ As stored:
 - The three definitions go to version 2 with a `migrate` (the Ramp's lane, §V10): an older file
   loads with default := its stored value. An older build keeps the unknown keys (T91). A
   document SOURCE is written at the current version, so E81, E82 and sentinel-bot must author
-  the key (E81 and E82 do, as built). A gate that fails a shipped control storing none is NOT
-  built: it waits for sentinel-bot's source to author its defaults.
+  the key (E81 and E82 do, as built).
+- AS BUILT (the lead's ruling, 2026-10-06): A CONTROL THAT STORES NO DEFAULT HAS NONE. It
+  never reads the type's 0.5: `control.reset` refuses it by name (`control.default.missing`),
+  the desk draws no mark on it and counts it as neither at nor away, and "Set as default" is
+  what gives it one. A control made on the bus is born at its default (`bornWith`: the value
+  it is created with). `src/examples/control-defaults.test.ts` fails a shipped control that
+  stores none, with a ledger of exact counts for the three project files written before the
+  rule.
 - Each definition's `parametersFor` hands the stored default to its value key's schema default,
   so the inspector's existing "Reset to default" row, its `isOverridden` guard and the phone
   snapshot's `declared()` all mean this default. Today that row sends a Slider to 0.5 whatever
@@ -75,7 +81,7 @@ reads the opened graph, value only, and the snapshot is built with it. Sections 
 ## 2. One control
 
 **What you see.** A slider has a thin tick on its track at the default, an XY pad a ring; each
-brightens (`--signal`) while the value is away. A toggle shows a small dot while its state is
+brightens while the value is away. A toggle shows a small dot while its state is
 not its default. After a reset the thumb sits on the tick and the control is outlined for a
 moment. "Away" is further than 1/10000 of the range, one rule on both surfaces (the phone's
 half in `PHONE_PAGE_LOGIC`). A phone's Panel tab carries a dot while any control on it is away.
@@ -110,6 +116,15 @@ the canvas selection (`inputFrom` selection as `nodeIds`, `when` `hasSelection`)
 controls reset, a selected Panel resets its members. Both commands are in the palette. No
 default key is proposed: a chord macOS and Chromium both leave alone has to be tried in the app.
 
+AS BUILT. The tick is two notches, top and bottom of the track, so the caption and value
+written inside a board slider's bar are never crossed; bright is the text colour, because the
+signal colour is the fill it would vanish into. A toggle's dot sits in its corner, out of flow.
+On a control's own canvas node the nearest marker wins: a right-click ON THE WIDGET opens the
+control's menu, on the rest of the node the node's (whose menu is at its row cap). The chord is
+`mod+alt+r`, beside GO and BACK, tried in headless Chromium; the menu prints no chord beside
+Reset, because the chord acts on the canvas selection and the row on what was clicked. A
+control-click, which is a right-click on a Mac, no longer moves a slider on its way to the menu.
+
 ## 3. Reset all
 
 One rule for all of it: **nothing resets from one press.** One control takes two inputs on one
@@ -136,6 +151,8 @@ server, the e2e harness) has them; the editor's `control.*` are registered by th
 
     control.reset       { nodeIds: NodeId[] } | { all: true }
     control.setDefault  { nodeIds: NodeId[] } | { all: true }
+    control.resetAll, control.setAllDefaults   (AS BUILT: the whole document with no input,
+                                                for the palette, which runs a command bare)
 
 `nodeIds` holds controls and Panels; a Panel stands for its members (`panelMembers`). Each is
 ONE `GraphPatch`: one revision, one undo group (split, as a recall is, so a drag's transaction
@@ -175,13 +192,16 @@ S2 and S3 are independent after S1 (disjoint paths); S4 needs S3.
    on Value gives the same number. BUILT, with two things this list did not name: a control
    made from a parameter (`control.fromParameter`) is born at its default, and a preset whose
    target is a whole control holds only what a hand moves (§B261), so it cannot hold a default
-   either. The two commands have no door yet and say so in `COMMANDS_WITH_NO_INVOKER`; S2
-   and S3 delete those entries.
+   either. The two commands had no door until S2, which removed their entries from
+   `COMMANDS_WITH_NO_INVOKER`.
 2. **S2, the desk** (`src/editor/controls`, menus, keymap). ACCEPT, jsdom and one Playwright
    test: drag a slider on the Controls tab, the tick brightens; right-click, Reset: it reads the
    default, the audit gained exactly one `control.reset`, ⌘Z returns the dragged value. A wheel
    over the board, a drag, a click and a double click add none. ↺, then the popover's button:
-   the Panel is home in one undo group.
+   the Panel is home in one undo group. BUILT (`control-reset.test.tsx`,
+   `src/tests/e2e/control-reset.spec.ts`). "ONE patch" is read in the browser from the saved
+   document's revision. The palette lists all four commands; the two that act on a selection
+   need one the palette cannot pass (it runs every command with empty input).
 3. **S3, the phone's wire** (`phone-protocol`, `phone-snapshot`, `phone-writes`). ACCEPT,
    headless: the snapshot carries the defaults and the Panel's handle. A `reset` on a published
    slider runs `control.reset` as `remote-<phone>`, one audit entry; on a Panel's handle, that

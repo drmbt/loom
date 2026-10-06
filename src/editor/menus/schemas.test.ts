@@ -21,7 +21,8 @@ import { PLANNED_COMMANDS, TOGGLE_GUARD, addNodeSubmenu, menuSchemaFor } from ".
 
 const { bus } = createHarness();
 const registry = bus.registry;
-const SURFACES = ["canvas", "node", "port", "edge", "parameter"] as const;
+// T1619b: "control" — a live control's menu — is held to every rule below like the others.
+const SURFACES = ["canvas", "node", "port", "edge", "parameter", "control"] as const;
 
 const schemas: MenuSchema[] = SURFACES.map((surface) => menuSchemaFor(surface, registry));
 
@@ -316,7 +317,7 @@ describe("every guarded toggle can actually dispatch (B87)", () => {
  * from the target. An exemption is a claim, and a wrong one shows up here as a row that
  * cannot be exempted rather than as a silent dispatch of `{}`.
  */
-const TARGET_BEARING = ["node", "port", "edge", "parameter"] as const;
+const TARGET_BEARING = ["node", "port", "edge", "parameter", "control"] as const;
 
 /**
  * Commands that legitimately want NOTHING from the thing under the cursor, even though
@@ -354,5 +355,52 @@ describe("a row that needs its target has a builder to carry it (§B87, T720)", 
     );
     expect(checked.length).toBeGreaterThan(15);
     expect(TARGET_INDEPENDENT.size).toBeLessThan(checked.length / 5);
+  });
+});
+
+/**
+ * T1619b — a live control's menu. Short on purpose (it is opened mid-show), and every row is
+ * one of the control default commands; which Panel the second pair means is the document's.
+ */
+describe("the control menu (T1619b)", () => {
+  const graph = {
+    revision: 1,
+    groups: {},
+    nodes: {
+      heat: { id: "heat", type: "slider", definitionVersion: 2, position: { x: 0, y: 0 }, label: "slider_heat", parameters: { value: 1, defaultValue: 1 } },
+      desk: { id: "desk", type: "panel", definitionVersion: 1, position: { x: 0, y: 0 }, label: "panel_desk", parameters: { title: "Robot" } },
+    },
+    edges: { e: { id: "e", source: { nodeId: "heat", portId: "out" }, target: { nodeId: "desk", portId: "controls" }, order: 0 } },
+  };
+  const context = { graph, revision: 1, selection: [], registry };
+  const rows = (schema: MenuSchema) => items(schema.entries).map((item) => [item.label, item.command, item.input]);
+
+  it("on a Panel: Reset, Set as default, and the two rows for THAT Panel, named by its title", () => {
+    expect(rows(menuSchemaFor("control", registry, context, { surface: "control", nodeId: "heat", panelId: "desk" }))).toEqual([
+      ["Reset", "control.reset", { scope: "control" }],
+      ["Set as default", "control.setDefault", { scope: "control" }],
+      ["Reset all on Robot", "control.reset", { scope: "panel" }],
+      ["Set all as default on Robot", "control.setDefault", { scope: "panel" }],
+    ]);
+    // Clicked on its own node, it is on exactly one Panel: the same four.
+    expect(rows(menuSchemaFor("control", registry, context, { surface: "control", nodeId: "heat" })).map(([label]) => label)).toEqual([
+      "Reset",
+      "Set as default",
+      "Reset all on Robot",
+      "Set all as default on Robot",
+    ]);
+  });
+
+  it("on no Panel there is no \"this Panel\": the second pair is the whole document, by the commands that take no input", () => {
+    const alone = { ...context, graph: { ...graph, edges: {} } };
+    expect(rows(menuSchemaFor("control", registry, alone, { surface: "control", nodeId: "heat" })).slice(2)).toEqual([
+      ["Reset all controls", "control.resetAll", undefined],
+      ["Set all controls as default", "control.setAllDefaults", undefined],
+    ]);
+  });
+
+  it("prints no chord beside Reset: the chord resets the canvas selection, the row what was clicked", () => {
+    const reset = items(menuSchemaFor("control", registry, context, { surface: "control", nodeId: "heat", panelId: "desk" }).entries).filter((item) => item.command === "control.reset");
+    expect(reset.map((item) => item.noShortcut)).toEqual([true, true]);
   });
 });

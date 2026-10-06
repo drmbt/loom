@@ -131,7 +131,18 @@ describe("T1619b — a control's default, and whether it is away from it", () =>
   it("a control that stores a default and no value publishes the default: nothing stored IS at the default", () => {
     const out = evaluate({ s: { type: "slider", label: "slider_heat", parameters: { channel: "heat", min: 0, max: 2, defaultValue: 1.5 } } });
     expect(out.get("slider_heat")).toEqual({ heat: 1.5 });
-    expect(controlDefaultState(control("slider", { min: 0, max: 2, defaultValue: 1.5 }))).toEqual({ defaults: { value: 1.5 }, current: { value: 1.5 }, away: [], driven: [] });
+    expect(controlDefaultState(control("slider", { min: 0, max: 2, defaultValue: 1.5 }))).toEqual({ defaults: { value: 1.5 }, current: { value: 1.5 }, away: [], driven: [], missing: [] });
+  });
+
+  it("a control that stores no default HAS none: it is neither at a default nor away from one, and never reads the type's 0.5 as one", () => {
+    expect(controlDefaultState(control("slider", { value: 7, min: 0, max: 10 }))).toEqual({ defaults: {}, current: { value: 7 }, away: [], driven: [], missing: ["value"] });
+    // Nothing stored at all: it shows the declared value, and still holds no default.
+    expect(controlDefaultState(control("slider", {}))).toEqual({ defaults: {}, current: { value: 0.5 }, away: [], driven: [], missing: ["value"] });
+    expect(controlDefaultState(control("toggle", { on: true }))).toMatchObject({ defaults: {}, away: [], missing: ["on"] });
+    // A pad may hold one axis's default and not the other's.
+    expect(controlDefaultState(control("xyPad", { x: 0.1, y: 0.9, defaultX: 0.5 }))).toMatchObject({ defaults: { x: 0.5 }, away: ["x"], missing: ["y"] });
+    // A default an expression drives is not a stored default.
+    expect(controlDefaultState(control("slider", { value: 0.3, defaultValue: driven }))).toMatchObject({ defaults: {}, missing: ["value"] });
   });
 
   it("away is further than a ten-thousandth of the range: float noise is at the default, a hand's move is not", () => {
@@ -144,7 +155,7 @@ describe("T1619b — a control's default, and whether it is away from it", () =>
   });
 
   it("a toggle is away when its state is not its default; a pad per axis; a driven key is never away", () => {
-    expect(controlDefaultState(control("toggle", { on: true }))).toMatchObject({ defaults: { on: false }, away: ["on"] });
+    expect(controlDefaultState(control("toggle", { on: true, defaultOn: false }))).toMatchObject({ defaults: { on: false }, away: ["on"] });
     expect(controlDefaultState(control("toggle", { on: true, defaultOn: true }))?.away).toEqual([]);
     expect(controlDefaultState(control("xyPad", { x: 0.82, y: 0.1, defaultX: 0.82, defaultY: 0.78 }))?.away).toEqual(["y"]);
     expect(controlDefaultState(control("slider", { value: driven, defaultValue: 0.7 }))).toMatchObject({ away: [], driven: ["value"] });

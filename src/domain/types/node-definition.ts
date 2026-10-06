@@ -450,6 +450,20 @@ export interface NodeDefinition {
     written: Readonly<Record<string, StoredParameter>>,
   ): CoupledParameterWrites | null;
   /**
+   * T1619b: what a NEW node of this type stores beside its manifest defaults, given the
+   * parameters it was created with. Absent for almost every node. A control is the case
+   * that asked: it is BORN AT ITS DEFAULT, so the default it stores is the value it was
+   * made with. The manifest's own number there would be a default nobody chose — a Slider
+   * created at 7 that resets to 0.5.
+   *
+   * `graph.applyPatch`'s `addNode` lays these over the manifest defaults and under what the
+   * creator provided, so every way a node is made on the bus (the library, a paste, an
+   * agent's tool, "Control from Panel") gets it and an explicit entry always wins.
+   *
+   * Pure and headless (§V11, §V44): a function of its argument.
+   */
+  bornWith?(provided: Readonly<Record<string, StoredParameter>>): Record<string, StoredParameter>;
+  /**
    * Known variant keys intentionally retained in stored documents while absent from the
    * effective schema. They are not resolved or offered as controls in that variant.
    * Switching back restores the stored settings; other undeclared keys still warn.

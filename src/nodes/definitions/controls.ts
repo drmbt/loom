@@ -60,9 +60,10 @@ const captionParameter = {
  * the inspector edits it, and undo, the audit, copy and paste and a save carry it with
  * nothing built. A Button has none, because nothing of it is set by hand and left.
  *
- * `control.setDefault` copies the current value into it, and a control made from a
- * parameter is born with it (`controlFromParameterPlan`). A preset never stores or recalls
- * it (`presetHolds` below), so recalling a look cannot change what Reset means.
+ * `control.setDefault` copies the current value into it, and a control made on the bus is
+ * born with it (`bornAtDefault`). One that stores none has NO default (`controlDefaults`).
+ * A preset never stores or recalls it (`presetHolds` below), so recalling a look cannot
+ * change what Reset means.
  *
  * One table, read by the definitions' `parametersFor` and `migrate`, by the two commands
  * (`domain/commands/control-default-commands.ts`) and by the preset capture.
@@ -97,8 +98,15 @@ export function presetHolds(type: string, key: string, whole: boolean): boolean 
   return !whole || state === undefined || state.includes(key);
 }
 
-/** What a fresh Slider and each axis of a fresh XY Pad read, and so what their defaults read. */
+/** What a Slider and each axis of an XY Pad read while nothing is stored for them. */
 const UNSET_NUMBER = 0.5;
+
+/** What each value key of a control reads while nothing is stored for it: the type's own declared value. */
+const DECLARED_VALUES: Readonly<Record<string, Readonly<Record<string, number | boolean>>>> = {
+  slider: { value: UNSET_NUMBER },
+  toggle: { on: false },
+  xyPad: { x: UNSET_NUMBER, y: UNSET_NUMBER },
+};
 
 /**
  * A stored bound of a control's range: the number the document states, `declared` when
@@ -110,14 +118,7 @@ function storedBound(stored: unknown, declared: number): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** The default under `key`, inside the control's range. A range an expression drives does not clamp. */
-function rangedDefault(stored: Readonly<Record<string, unknown>>, key: string): number {
-  const held = plainValue(stored[key] as StoredParameter | undefined);
-  const value = typeof held === "number" && Number.isFinite(held) ? held : UNSET_NUMBER;
-  return clampToRange(stored, value);
-}
-
-/** A number as the control's channel carries it: inside Min..Max (`valueEvaluate`'s own rule). */
+/** A number as the control's channel carries it: inside Min..Max (`valueEvaluate`'s own rule). A range an expression drives does not clamp. */
 function clampToRange(stored: Readonly<Record<string, unknown>>, value: number): number {
   const lo = storedBound(stored["min"], 0);
   const hi = storedBound(stored["max"], 1);
@@ -126,29 +127,48 @@ function clampToRange(stored: Readonly<Record<string, unknown>>, value: number):
 }
 
 /**
- * THE DEFAULT OF EACH VALUE KEY of a control, from its stored parameters, or null for a
- * node that holds none (a Button, a Panel, anything else). A number is read clamped into
- * Min..Max and NOT snapped to Step: a reset restores what the author wrote (T652).
+ * THE DEFAULT OF EACH VALUE KEY that HOLDS one, from a control's stored parameters; null for
+ * a node type that holds none (a Button, a Panel, anything else).
+ *
+ * A KEY WITH NO STORED DEFAULT HAS NO DEFAULT (the lead's ruling, 2026-10-06, T1619b S2).
+ * It is absent here, never the type's 0.5: a control whose source authored no default
+ * would otherwise reset to a number nobody chose, silently. `control.setDefault` gives it
+ * one; a control made on the bus is born with one (`bornAtDefault`); the version 1 → 2
+ * `migrate` gives every older control the value in its file. A default an expression
+ * drives is not a stored default either.
+ *
+ * A number is read clamped into Min..Max and NOT snapped to Step: a reset restores what
+ * the author wrote (T652).
  */
 export function controlDefaults(type: string, stored: Readonly<Record<string, unknown>>): Readonly<Record<string, number | boolean>> | null {
-  if (type === "slider") return { value: rangedDefault(stored, "defaultValue") };
-  if (type === "toggle") return { on: plainValue(stored["defaultOn"] as StoredParameter | undefined) === true };
-  if (type === "xyPad") return { x: rangedDefault(stored, "defaultX"), y: rangedDefault(stored, "defaultY") };
-  return null;
+  const keys = CONTROL_DEFAULT_KEYS[type];
+  if (keys === undefined) return null;
+  const defaults: Record<string, number | boolean> = {};
+  for (const valueKey in keys) {
+    const held = plainValue(stored[keys[valueKey] as string] as StoredParameter | undefined);
+    if (type === "toggle") {
+      if (typeof held === "boolean") defaults[valueKey] = held;
+    } else if (typeof held === "number" && Number.isFinite(held)) {
+      defaults[valueKey] = clampToRange(stored, held);
+    }
+  }
+  return defaults;
 }
 
 /** How far a number may sit from its default and still be AT it, as a share of the range: float noise, nothing a hand can see. */
 const AT_DEFAULT_SHARE = 1 / 10_000;
 
 export interface ControlDefaultState {
-  /** Value key → the default it resets to. */
+  /** Value key → the default it resets to. A key that holds none is absent. */
   readonly defaults: Readonly<Record<string, number | boolean>>;
   /** Value key → what it holds now, as the channel carries it. A driven key is absent. */
   readonly current: Readonly<Record<string, number | boolean>>;
-  /** The value keys that are AWAY from their default. A driven key is never one. */
+  /** The value keys that are AWAY from their default. A driven key is never one, nor one with no default. */
   readonly away: readonly string[];
   /** The value keys the document drives (an expression, a MIDI learn): not a hand's to move. */
   readonly driven: readonly string[];
+  /** The hand-set value keys that hold NO default: neither at one nor away from one. */
+  readonly missing: readonly string[];
 }
 
 /**
@@ -158,39 +178,42 @@ export interface ControlDefaultState {
  */
 export function controlDefaultState(node: Pick<GraphNode, "type" | "parameters">): ControlDefaultState | null {
   const defaults = controlDefaults(node.type, node.parameters);
-  if (defaults === null) return null;
+  const declared = DECLARED_VALUES[node.type];
+  if (defaults === null || declared === undefined) return null;
   const lo = storedBound(node.parameters["min"], 0);
   const hi = storedBound(node.parameters["max"], 1);
   const slack = lo === null || hi === null ? 0 : Math.abs(hi - lo) * AT_DEFAULT_SHARE;
   const current: Record<string, number | boolean> = {};
   const away: string[] = [];
   const driven: string[] = [];
-  for (const [key, fallback] of Object.entries(defaults)) {
+  const missing: string[] = [];
+  for (const [key, unset] of Object.entries(declared)) {
     const stored = node.parameters[key];
     if (isParameterSlot(stored) && stored.mode !== "static") {
       driven.push(key);
       continue;
     }
-    // Nothing stored reads as the schema default, which IS this default (`parametersFor`).
+    // Nothing stored reads as the schema default: this key's own default when it holds
+    // one (`parametersFor`), the type's declared value when it does not.
     const held = plainValue(stored);
-    if (typeof fallback === "boolean") {
-      current[key] = held === undefined ? fallback : held === true;
-      if (current[key] !== fallback) away.push(key);
-      continue;
-    }
-    current[key] = typeof held === "number" && Number.isFinite(held) ? clampToRange(node.parameters, held) : fallback;
-    if (Math.abs((current[key] as number) - fallback) > slack) away.push(key);
+    const fallback = defaults[key] ?? unset;
+    const now = typeof unset === "boolean" ? (typeof held === "boolean" ? held : fallback) : typeof held === "number" && Number.isFinite(held) ? clampToRange(node.parameters, held) : fallback;
+    current[key] = now;
+    const target = defaults[key];
+    if (target === undefined) missing.push(key);
+    else if (typeof now === "number" && typeof target === "number" ? Math.abs(now - target) > slack : now !== target) away.push(key);
   }
-  return { defaults, current, away, driven };
+  return { defaults, current, away, driven, missing };
 }
 
 /**
  * A control's schema with its value keys' defaults set to the node's OWN stored defaults,
  * so "Reset to default" on its Value, the menu's `isOverridden` and every other reader of
  * a schema default mean the default Reset uses. Before this a Slider reset to 0.5 whatever
- * its range (§T1184's pattern). The declared schema is returned itself while the defaults
- * are the declared ones, and one schema is kept per distinct default: schemas are read per
- * frame, and their identity is what memoised readers key on.
+ * its range (§T1184's pattern). A key that holds no default keeps the declared one, and
+ * the declared schema is returned itself while every default is the declared one. One
+ * schema is kept per distinct default: schemas are read per frame, and their identity is
+ * what memoised readers key on.
  */
 function schemaWithDefaults(type: string, declared: ParameterSchema, kept: Map<string, ParameterSchema>, stored: Readonly<Record<string, unknown>>): ParameterSchema {
   const defaults = controlDefaults(type, stored) ?? {};
@@ -198,7 +221,7 @@ function schemaWithDefaults(type: string, declared: ParameterSchema, kept: Map<s
   let signature = "";
   for (const key in defaults) {
     if ((declared[key] as { default?: unknown } | undefined)?.default !== defaults[key]) asDeclared = false;
-    signature += `${String(defaults[key])} `;
+    signature += `${key}=${String(defaults[key])} `;
   }
   if (asDeclared) return declared;
   const found = kept.get(signature);
@@ -214,22 +237,49 @@ function schemaWithDefaults(type: string, declared: ParameterSchema, kept: Map<s
 /**
  * Version 1 → 2 (§V10): a control saved before it held a default takes the value in the
  * file as its default, so "what was saved" is what Reset returns to from the first open.
- * A value an expression drives gives its retained hand-set value; nothing stored leaves
- * the default unstored too, and both then read the same declared number.
+ * A value an expression drives gives its retained hand-set value. A value the file never
+ * stored gives the declared one, which is what that control showed. Only a driven value
+ * with nothing retained under it is left without a default.
  */
 function migrateControlDefaults(type: string, oldVersion: number, data: unknown): MigrationResult {
   const parameters: Record<string, unknown> = typeof data === "object" && data !== null ? { ...(data as Record<string, unknown>) } : {};
   if (oldVersion >= 2) return { parameters };
-  for (const [valueKey, defaultKey] of Object.entries(CONTROL_DEFAULT_KEYS[type] ?? {})) {
-    if (parameters[defaultKey] !== undefined) continue;
-    const value = storedStaticValue(parameters[valueKey] as StoredParameter | undefined);
-    const fits = type === "toggle" ? typeof value === "boolean" : typeof value === "number" && Number.isFinite(value);
-    if (fits) parameters[defaultKey] = value;
+  for (const [defaultKey, value] of Object.entries(defaultsFromValues(type, parameters))) {
+    if (parameters[defaultKey] === undefined) parameters[defaultKey] = value;
   }
   return { parameters };
 }
 
-const defaultDescription = (what: string): string => `Where Reset to default sends ${what}. A preset never stores or recalls it.`;
+/**
+ * Each default key of a control, holding the value its value key holds in `parameters`: the
+ * hand-set value (under an expression, the one retained), or the declared one when nothing
+ * is stored. A key with no such value is left out. The one rule behind the `migrate` above
+ * and `bornWith` below.
+ */
+function defaultsFromValues(type: string, parameters: Readonly<Record<string, unknown>>): Record<string, number | boolean> {
+  const defaults: Record<string, number | boolean> = {};
+  for (const [valueKey, defaultKey] of Object.entries(CONTROL_DEFAULT_KEYS[type] ?? {})) {
+    const stored = parameters[valueKey] as StoredParameter | undefined;
+    const value = stored === undefined ? DECLARED_VALUES[type]?.[valueKey] : storedStaticValue(stored);
+    if (type === "toggle" ? typeof value === "boolean" : typeof value === "number" && Number.isFinite(value)) defaults[defaultKey] = value as number | boolean;
+  }
+  return defaults;
+}
+
+/**
+ * A CONTROL IS BORN AT ITS DEFAULT (`NodeDefinition.bornWith`): made on the bus — from the
+ * library, by a paste, by an agent, from a parameter — the default it stores is the value
+ * it is made with. Without this the manifest's 0.5 would be stored for a Slider created at
+ * 7, and Reset would send it to a number nobody chose. A control that never went through
+ * the bus (a document source that authored none) stores no default, and has none.
+ */
+const bornAtDefault =
+  (type: string) =>
+  (provided: Readonly<Record<string, StoredParameter>>): Record<string, StoredParameter> =>
+    defaultsFromValues(type, provided);
+
+const defaultDescription = (what: string): string =>
+  `Where Reset sends ${what}. A control has no default until one is stored here: Set as default stores its current value. A preset never stores or recalls it.`;
 
 const SLIDER_PARAMETERS: ParameterSchema = {
   channel: channelParameter,
@@ -256,6 +306,7 @@ export const controlSliderNode: NodeDefinition = {
   parameters: SLIDER_PARAMETERS,
   parametersFor: (stored) => schemaWithDefaults("slider", SLIDER_PARAMETERS, SLIDER_SCHEMAS, stored),
   migrate: (oldVersion, data) => migrateControlDefaults("slider", oldVersion, data),
+  bornWith: bornAtDefault("slider"),
   valueEvaluate: ({ values }) => {
     const lo = num(values["min"], 0);
     const hi = num(values["max"], 1);
@@ -286,6 +337,7 @@ export const controlToggleNode: NodeDefinition = {
   parameters: TOGGLE_PARAMETERS,
   parametersFor: (stored) => schemaWithDefaults("toggle", TOGGLE_PARAMETERS, TOGGLE_SCHEMAS, stored),
   migrate: (oldVersion, data) => migrateControlDefaults("toggle", oldVersion, data),
+  bornWith: bornAtDefault("toggle"),
   valueEvaluate: ({ values }) => ({ [controlChannel(values)]: values["on"] === true ? 1 : 0 }),
   compile: noPasses,
 };
@@ -338,6 +390,7 @@ export const controlXYNode: NodeDefinition = {
   parameters: XY_PARAMETERS,
   parametersFor: (stored) => schemaWithDefaults("xyPad", XY_PARAMETERS, XY_SCHEMAS, stored),
   migrate: (oldVersion, data) => migrateControlDefaults("xyPad", oldVersion, data),
+  bornWith: bornAtDefault("xyPad"),
   valueEvaluate: ({ values }) => {
     const name = controlChannel(values);
     const lo = num(values["min"], 0);

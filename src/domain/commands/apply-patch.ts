@@ -456,7 +456,10 @@ function executeOperation(
         type: definition.type,
         definitionVersion: definition.version,
         position: { x: operation.position.x, y: operation.position.y },
-        parameters: { ...defaultParameters(creationSchema), ...provided },
+        // T1619b: `bornWith` between the two — what this type stores at birth beside its
+        // manifest defaults (a control's default is the value it is made with), under
+        // whatever the creator provided.
+        parameters: { ...defaultParameters(creationSchema), ...(definition.bornWith?.(provided) ?? {}), ...provided },
         // §V129: the label is the NAME — unique per graph, auto-numbered at creation
         // (`noise1`, `noise2`), which is what makes `op('name')` references resolvable.
         // T1593b: numbered under the type's KIND, so an unrenamed node already carries it

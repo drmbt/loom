@@ -7,9 +7,11 @@ import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { BankCatalogue } from "@domain/presets/bank-view.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
+import { CONTROL_SET_DEFAULT_COMMAND, planControlDefaults } from "@domain/commands/control-default-commands.ts";
 import {
   BOARD_MAX_COLUMNS,
   boardNamesMember,
+  CONTROL_DEFAULT_KEYS,
   CONTROL_WIDGET_TYPES,
   controlNameOf,
   surfaceNameOf,
@@ -295,6 +297,8 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
       : Object.values(graph.nodes)
           .filter((node) => panelLacks(graph, panel, node, catalogue))
           .sort((a, b) => controlNameOf(a).localeCompare(controlNameOf(b)));
+  // T1619b: what "Set all as default" would write, asked of the command's own plan.
+  const setAll = planControlDefaults("setDefault", graph, { nodeIds: [panelId] });
 
   return (
     <div className={styles.editor} data-board-editing>
@@ -343,6 +347,16 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
             </option>
           ))}
         </select>
+        {/* T1619b: authoring lives where arranging does — every control here takes its value as its default. */}
+        <button
+          type="button"
+          className={styles.tool}
+          disabled={setAll.refusal !== null}
+          title={setAll.refusal === null ? "Each control's value becomes its default" : (setAll.diagnostics[0]?.message ?? "Each value is its default already")}
+          onClick={() => void bus.execute(CONTROL_SET_DEFAULT_COMMAND, { nodeIds: [panelId] }, invocation)}
+        >
+          Set all as default
+        </button>
       </div>
       <div className={styles.workspace} ref={workspace} data-board-workspace>
         <div
@@ -417,6 +431,10 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
                   <ControlTargets graph={graph} registry={registry} widget={chosen.node} apply={apply} />
                 </>
               ) : null}
+              {/* T1619b: this one control's value becomes the value Reset returns it to. A Button holds none. */}
+              {CONTROL_DEFAULT_KEYS[chosen.node.type] === undefined ? null : (
+                <SetAsDefault graph={graph} nodeId={chosen.node.id} bus={bus} invocation={invocation} />
+              )}
               <button
                 type="button"
                 className={styles.tool}
@@ -442,6 +460,22 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
         </aside>
       </div>
     </div>
+  );
+}
+
+/** T1619b — "Set as default" for the selected control: greyed, with the command's own reason, when it would write nothing. */
+function SetAsDefault({ graph, nodeId, bus, invocation }: Pick<BoardPlay, "bus" | "invocation"> & { readonly graph: Pick<GraphDocument, "nodes" | "edges">; readonly nodeId: NodeId }) {
+  const plan = planControlDefaults("setDefault", graph, { nodeIds: [nodeId] });
+  return (
+    <button
+      type="button"
+      className={styles.tool}
+      disabled={plan.refusal !== null}
+      title={plan.refusal === null ? "Its value becomes its default" : (plan.diagnostics[0]?.message ?? "Its value is its default already")}
+      onClick={() => void bus.execute(CONTROL_SET_DEFAULT_COMMAND, { nodeIds: [nodeId] }, invocation)}
+    >
+      Set as default
+    </button>
   );
 }
 
