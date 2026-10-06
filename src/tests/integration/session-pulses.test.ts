@@ -263,6 +263,37 @@ describe("§T1695b — state the component stores: the button edits the componen
   });
 });
 
+describe("§T1696b (§B292) — one clipboard for a project and the components opened over it", () => {
+  /**
+   * Copy and paste were per bus, so a node copied in the project could not be pasted inside
+   * a component, or the reverse: two clipboards, and only the project's reached the system
+   * one. TouchDesigner copies between the networks of one project; so does this, now that
+   * what a command holds is kept at the root.
+   */
+  it("a node copied in the project pastes inside a component, and one copied inside pastes in the project", async () => {
+    const { runtime, session } = made;
+    const placed = await runtime.bus.execute(
+      "graph.applyPatch",
+      { baseRevision: runtime.bus.store.getRevision(), label: "add", operations: [{ op: "addNode", ref: "$n", type: "noise", label: "noise_root", position: { x: 0, y: 600 } }] },
+      runtime.invocation,
+    );
+    const rootNode = placed.output.createdIds["$n"] as NodeId;
+    const typesIn = (graph: { nodes: Record<string, GraphNode> }): string[] => Object.values(graph.nodes).map((each) => each.type).sort();
+
+    await runtime.bus.execute("graph.copySelection", { nodeIds: [rootNode] }, runtime.invocation);
+    const before = typesIn(session.store.view.getGraph());
+    const pastedInside = await session.bus.execute("graph.paste", {}, runtime.invocation);
+    expect(pastedInside.status, said(pastedInside as never)).toBe("applied");
+    expect(typesIn(session.store.view.getGraph())).toEqual([...before, "noise"].sort());
+
+    await session.bus.execute("graph.copySelection", { nodeIds: ["level_soft"] }, runtime.invocation);
+    const rootBefore = typesIn(runtime.bus.store.getGraph());
+    const pastedOutside = await runtime.bus.execute("graph.paste", {}, runtime.invocation);
+    expect(pastedOutside.status, said(pastedOutside as never)).toBe("applied");
+    expect(typesIn(runtime.bus.store.getGraph())).toEqual([...rootBefore, "level"].sort());
+  });
+});
+
 describe("§T1695b — an agent's command lands where a person's does", () => {
   /**
    * The agent surface and the MCP bridge execute on the PROJECT's bus (`use-agent-surface.ts`,

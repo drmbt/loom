@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { alice, contextFor } from "@domain/commands/test-support.ts";
+import { alice, contextFor, createHarness, patch } from "@domain/commands/test-support.ts";
+import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { DEFAULT_BINDINGS } from "@editor/keymap/defaults.ts";
@@ -40,9 +41,9 @@ beforeEach(async () => {
 });
 
 /** A stand-in for the canvas that renders React Flow's own DOM markers. */
-function setup(selection: readonly NodeId[] = []) {
+function setup(selection: readonly NodeId[] = [], keymapBus: LoomBus = fixture.bus) {
   return render(
-    <KeymapProvider bus={fixture.bus} store={store} invocationContext={contextFor(alice)}>
+    <KeymapProvider bus={keymapBus} store={store} invocationContext={contextFor(alice)}>
       <ContextMenuHost bus={fixture.bus} fallbackSurface="canvas" selection={selection}>
         <div data-testid="pane">
           <div className="react-flow__node" data-id={fixture.blur}>
@@ -143,6 +144,32 @@ describe("running an item (§V29)", () => {
       fireEvent.click(itemNamed("Delete"));
     });
     expect(fixture.bus.store.getGraph().edges[fixture.edgeId]).toBeUndefined();
+  });
+
+  /**
+   * §T1696b / §B286. The host read the graph, the selection and "is the command there" from
+   * its own bus, and ran the row on the KEYMAP's. They are two whenever a menu is over a
+   * document the keys are not on (a component's canvas while the keys were the project's;
+   * a project Panel while the keys are a component's), and the row then acted on a document
+   * it never looked at. Before the fix this row ran on the second bus below, which refused
+   * a node it does not hold, and the node under the cursor stayed.
+   */
+  it("runs a row on the bus it read its target from, not on the keymap's", async () => {
+    const elsewhere = createHarness("elsewhere");
+    const twin = await elsewhere.bus.execute(
+      "graph.applyPatch",
+      patch(0, [{ op: "addNode", ref: "$n", type: "test.blur", position: { x: 0, y: 0 } }]),
+      contextFor(alice),
+    );
+    const elsewhereNode = twin.output.createdIds["$n"] as NodeId;
+    setup([], elsewhere.bus);
+    openOn("node-title");
+    await act(async () => {
+      fireEvent.click(itemNamed("Delete"));
+    });
+    expect(fixture.bus.store.getGraph().nodes[fixture.blur]).toBeUndefined();
+    expect(elsewhere.bus.store.getGraph().nodes[elsewhereNode]).toBeDefined();
+    expect(elsewhere.bus.store.getAudit().map((entry) => entry.command)).toEqual(["graph.applyPatch"]);
   });
 });
 

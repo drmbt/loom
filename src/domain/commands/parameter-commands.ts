@@ -32,6 +32,7 @@ import {
 } from "../parameters/slots.ts";
 import { defaultParameterValue, undeclaredKeys, validateParameterValue } from "../parameters/validate.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
+import { sharedForBus } from "./command-holder.ts";
 import { encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
 import type { LoomClipboardPayload, SystemClipboard } from "./loom-clipboard.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
@@ -544,12 +545,17 @@ export interface ParameterCommandOptions {
   systemClipboard?: SystemClipboard | undefined;
 }
 
+/** §T1696b (§B292): the parameter clipboard, one for a project and every component session over it. */
+export function parameterClipboardFor(bus: LoomBus): { current: ParameterClipboard | null } {
+  return sharedForBus<{ current: ParameterClipboard | null }>(bus, "parameter.clipboard", () => ({ current: null }));
+}
+
 export function registerParameterCommands(
   bus: LoomBus,
   options: ParameterCommandOptions = {},
 ): void {
-  /** Per-bus, like the node clipboard. Never global: two buses are two documents. */
-  let clipboard: ParameterClipboard | null = null;
+  /** §T1696b (§B292): kept at the root, like the node clipboard: a session shares its project's. */
+  const held = parameterClipboardFor(bus);
   /** §T1393b: one string out, the whole copy beside it. */
   const mirrorOut = (text: string, payload: LoomClipboardPayload): void => {
     if (options.systemClipboard !== undefined) options.systemClipboard.write(text, encodeLoomClipboard(payload));
@@ -676,7 +682,7 @@ export function registerParameterCommands(
         };
       }
       if (!context.dryRun) {
-        clipboard = payload;
+        held.current = payload;
         mirrorOut(text, { kind: "parameter", parameter: { ...payload } });
       }
       return { status: context.dryRun ? ("validated" as const) : ("applied" as const), output: { text } };
@@ -742,7 +748,7 @@ export function registerParameterCommands(
       const payload = channelClipboard(name, input.channel, value);
       const text = payload.reference as string;
       if (!context.dryRun) {
-        clipboard = payload;
+        held.current = payload;
         mirrorOut(text, { kind: "channel", channel: { nodeName: name, channel: input.channel, value } });
       }
       return { status: context.dryRun ? ("validated" as const) : ("applied" as const), output: { text } };
@@ -777,7 +783,7 @@ export function registerParameterCommands(
           fromSystem = clipboardFromText(system.text);
         }
       }
-      const source = input.text === undefined ? (fromSystem ?? clipboard) : clipboardFromText(input.text);
+      const source = input.text === undefined ? (fromSystem ?? held.current) : clipboardFromText(input.text);
       if (source === null) {
         return {
           status: "rejected",

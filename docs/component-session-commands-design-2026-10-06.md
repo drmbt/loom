@@ -440,3 +440,20 @@ In the worktree's `scratchpad/` (gitignored; not committed), with a copy handed 
 - `collision.test.tsx`: E47 loaded through `loadProject`, a dive into DepthCut (session and canvas contents asserted in the output), the interior `cut` selected, the Delete key.
 - `collisions.mjs`: root ids against embedded definitions' interior ids over `examples/*.loom.json` (74 files, 13 with components, 2 colliding).
 - `census-static.mjs`, `table.mjs`: the registration sites, and the table of §1.7.
+
+## 8. As built (T1695b and T1696b, 2026-10-07)
+
+Slices 1 and 2 are built as §3 to §5 describe, with these differences and decisions.
+
+- **The field is `inSession`**, on `CommandRegistration` (`src/domain/commands/bus.ts`). The hand-up primitive is `context.session.handUp()`, present only on a session bus, and it throws for a registration that did not declare `handsUp`. Three commands declare it: `preset.recall` (a page bank, to the instance in view), `cue.go` and `cue.back` (no list named, to the show).
+- **G3 is also a registration-time refusal.** An `instance` command whose schema holds an undeclared string, or no node address, or that has no `rejectionOutput`, does not register. Pull request #1's own test double was the first thing it would have caught: with a plain `z.string()` schema its ids were not rewritten.
+- **A session does not register its own copy of a command it inherits** (the bus throws), so the double registrations cannot come back unnoticed.
+- **`sharedForBus` resolves to the root from slice 1**, not slice 2: with inheritance a pane's `if (bus.hasCommand(x)) return` guard stops registering on the session bus, so what the command holds has to be the root's from the same commit. `sharedForDocument` is the per-bus form, used by the preset catalogue holder.
+- **`ui.beginRename` asks the canvas which nodes it shows** (T1195's M1, for rename): inherited, it would otherwise have refused every node inside a component.
+- **Ruled 2026-10-06:** the four instance commands and a page bank's recall answer the same from the button inside and from an expression. An inner bank's recall and a cue list's GO and BACK edit the component from the button and are refused from a running instance by name (`preset.bank.inner`, `cue.list.inInstance`), because the state they write is the component's.
+- **Doors (slice 2):** the keymap, the palette, the component bar and the component library dispatch on the edit bus; `ContextMenuHost` runs a row on the bus it read its target from; `doorBuses`, `rootBus` and the 13 double registrations are gone; `control.*` and the component file picker reach sessions; the node and parameter clipboards are one per project (B292).
+- **Not built, as §3 says:** a declared `refused`; "every instance"; the audit's `via`; one undo timeline; output id mapping (no inherited command returns ids yet).
+- **Left for T1697b:** `node.openViewer`, `ui.showNodeInfo`, `preview.setView`, `preview.resetView` and `perform.toggle` are declared `app` with a note at each registration; the eleven files in `flat-id-joiner.test.ts`'s `OWED` list.
+- **Left for T1698b:** grants, the frame clock and the channel resolver on a session bus; queries.
+
+Under a model where a component is a folder of real nodes and only a LINKED component has a definition edited apart from its instances: `inSession`, the marked schemas and `addressing.ts` stay as they are (they are facts about commands and about names). The bus's `parent` and `scope`, `sharedForBus`'s root rule and `openComponentSession`'s three options stay for linked components and are not reached by a dive into a plain folder, which edits the project through the project's bus. Nothing in either slice assumes a dive opens a session: the doors take `editing.bus`, which is the project's bus whenever no session is live.

@@ -75,6 +75,9 @@ async function insideBloom(): Promise<Inside> {
   const { App } = await import("../../app/app.tsx");
   const { createAppRuntime } = await import("../../app/app-runtime.ts");
   const runtime = createAppRuntime({ identityStorage: null, actor: { kind: "human", id: "tester" } });
+  // §T1696b: a session's `component.import` reaches the host's file picker now, and a gate
+  // that runs every command for real must not open one: the person cancels.
+  vi.spyOn(runtime.componentFiles, "readFile").mockResolvedValue({ kind: "cancelled" });
   const placed = await runtime.bus.execute("component.instantiate", { componentId: "bloom", position: { x: 0, y: 0 } }, runtime.invocation);
   const instance = placed.output.nodeId as NodeId;
   const added = await runtime.bus.execute(
@@ -256,6 +259,9 @@ describe("§T1695b — every command, asked of the session the app opens on a di
     expect(root.getGraph()).toBe(before.graph);
     expect(root.getGraph().nodes[rootOnly]).toBeDefined();
     expect(root.getAudit().length).toBe(before.audit);
+    // §T1696b: and one of those calls was "Import component…" with no file in hand, which
+    // inside a component now asks the host's picker as it does at the root (it refused).
+    expect(runtime.componentFiles.readFile).toHaveBeenCalled();
   });
 
   it("G4, the mirror: an inherited command leaves the component's own store alone", async () => {

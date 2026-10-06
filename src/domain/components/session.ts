@@ -10,7 +10,7 @@ import type { InstancePath } from "./addressing.ts";
 import { createDomainBus } from "../commands/index.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { pruneComponentDefinition } from "./definition.ts";
-import { registerComponentCommands } from "./commands.ts";
+import { registerComponentCommands, type ComponentCommandOptions } from "./commands.ts";
 import type { ComponentRegistry } from "./registry.ts";
 
 /**
@@ -130,6 +130,12 @@ export interface ComponentSessionOptions {
    * this session's bus.
    */
   registerDocumentCommands?: (bus: LoomBus) => void;
+  /**
+   * §T1696b: the host's file picker, for `component.import` asked with no file in hand. A
+   * session's copy of the command had none, so "Import component…" inside a component
+   * refused where the same row at the root opened the picker.
+   */
+  files?: Pick<ComponentCommandOptions, "readFile" | "retainsPickedFiles">;
 }
 
 export const COMPONENT_SESSION_STALE_CODE = "component.session.stale";
@@ -183,6 +189,7 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
       if (lastPush?.id === undoGroupId) record(undoGroupId, lastPush.before);
     },
     ...(options.root === undefined ? {} : { rootGraph: options.root }),
+    ...(options.files ?? {}),
   });
   options.registerDocumentCommands?.(bus);
 

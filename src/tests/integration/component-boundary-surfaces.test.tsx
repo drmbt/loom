@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createMemoryStorage, installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { installFlowStubs } from "@editor/graph-canvas/testing.tsx";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { CommandName } from "@domain/types/commands.ts";
+import { inSessionKind, type LoomBus } from "@domain/commands/bus.ts";
+import type { ComponentSession } from "@domain/components/session.ts";
 import { App } from "../../app/app.tsx";
 import { createAppRuntime } from "../../app/app-runtime.ts";
 import type { AppRuntime } from "../../app/app-runtime.ts";
@@ -59,13 +61,34 @@ import type { GpuStatus } from "../../app/gpu-status.ts";
  * Both are §T1195's report to the owner.
  */
 
+/*
+ * §T1696b: the session the app itself opens on a dive, captured where the editing hook opens
+ * it. Its bus is the EDIT bus, which is what a key, the palette and a menu row dispatch on
+ * since that row; before it they dispatched on the project's and this gate asked there.
+ */
+const sessions: ComponentSession[] = [];
+vi.mock("@domain/components/session.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@domain/components/session.ts")>();
+  return {
+    ...original,
+    openComponentSession: (options: Parameters<typeof original.openComponentSession>[0]) => {
+      const session = original.openComponentSession(options);
+      sessions.push(session);
+      return session;
+    },
+  };
+});
+
 const NO_WEBGPU: GpuStatus = { kind: "unavailable", reason: "No WebGPU in this environment." };
 
 beforeAll(() => {
   installDomStubs();
   installFlowStubs();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  sessions.length = 0;
+});
 
 function newRuntime(): AppRuntime {
   return createAppRuntime({
@@ -203,28 +226,46 @@ describe("T1195 — no command loses its canvas at depth (derived from the bus r
    * both depths — and that is the point. The property is that the answer does not CHANGE,
    * not that it is good; a missing-canvas rejection is reached first either way.
    */
-  it("every command answers the same at the root and inside a component", async () => {
+  /*
+   * §T1696b — TURNED TO THE EDIT BUS, AND TO THE COMMANDS THE PROPERTY IS ABOUT.
+   *
+   * The doors dispatch on the edit bus now: the project's at the root, the component
+   * session's inside. So that is where each answer is asked. And the property "the answer
+   * does not change with depth" is about the APP's commands, the ones a session inherits
+   * (`"app"` and `"instance"`): a canvas, a panel, the transport are the same thing wherever
+   * the editor stands. A `"definition"` command answers about the graph in hand, which IS
+   * another graph inside a component (its undo history is empty, its layout is its own), so
+   * it differs by design; what it must never do is reach the project, and
+   * `session-commands.test.tsx` holds that for every one of them.
+   */
+  it("every command the app owns answers the same at the root and inside a component, on the bus a key dispatches on", async () => {
     const { runtime, instance } = await appAroundAnInstance();
-    const names = runtime.bus.listCommands();
+    const names = runtime.bus.listCommands().filter((name) => inSessionKind(runtime.bus.inSessionOf(name)!) !== "definition");
     // The registry IS the derivation, so an empty one would pass this gate vacuously.
     // Asserted rather than trusted (§V707).
-    expect(names.length).toBeGreaterThan(50);
+    expect(names.length).toBeGreaterThan(40);
 
     const dry = { ...runtime.invocation, dryRun: true };
-    const census = async () => {
+    const census = async (bus: LoomBus) => {
       const rows = new Map<string, string>();
       for (const name of names) {
-        const result = await act(async () => runtime.bus.execute(name as CommandName, {} as never, dry));
+        const result = await act(async () => bus.execute(name as CommandName, {} as never, dry));
         rows.set(name, `${result.status} [${result.diagnostics.map((d) => d.code).sort().join(", ")}]`);
       }
       return rows;
     };
 
-    const atRoot = await census();
+    const atRoot = await census(runtime.bus);
     await act(async () => {
       await runtime.bus.execute("graph.diveIn", { nodeId: instance }, runtime.invocation);
     });
-    const inside = await census();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    const session = sessions.at(-1);
+    if (session === undefined) throw new Error("the dive opened no session");
+    expect(session.bus.parent).toBe(runtime.bus);
+    const inside = await census(session.bus);
 
     // A NAMED difference, not a count: a failure says which command lost its surface and
     // what it answers instead, which is the whole of the diagnosis.

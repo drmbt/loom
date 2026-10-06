@@ -208,7 +208,8 @@ export function usePreviewViews(
   bus: LoomBus,
   selection: readonly NodeId[],
 ): PreviewViewStore {
-  const store = useMemo(() => registerPreviewViewCommands(bus), [bus]);
+  // §T1696b: the app's command, registered on the app's bus whichever bus the pane edits through.
+  const store = useMemo(() => registerPreviewViewCommands(bus.root), [bus]);
   const selected = selection.length === 1 ? selection[0] : undefined;
 
   useEffect(() => {

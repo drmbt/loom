@@ -617,21 +617,39 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_GO_COMMAND,
-    inSession: "definition",
+    // §T1696b: with a list named, the list is a node of the graph in hand. With none (the
+    // keys), the call is the performer's and the show's list is the project's: inside a
+    // component it goes up, unchanged.
+    inSession: {
+      definition: true,
+      handsUp: "With no cue list named (the GO and BACK keys), the call is for the show's list, which is the project's.",
+    },
     inputSchema: cueStepInputSchema,
     description:
       "GO: fire a cue list's standby cue — its preset recalled and the list advanced as one patch, one undo step (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
-    handler: (input, context) => fireCue(context, input?.nodeId, true, "GO", standbyCue, presetCatalogueOf(bus)),
+    handler: (input, context) =>
+      input?.nodeId === undefined && context.session !== undefined
+        ? context.session.handUp()
+        : fireCue(context, input?.nodeId, true, "GO", standbyCue, presetCatalogueOf(bus)),
     rejectionOutput: emptyFireOutput,
   });
 
   bus.registerCommand({
     name: CUE_BACK_COMMAND,
-    inSession: "definition",
+    // §T1696b: with a list named, the list is a node of the graph in hand. With none (the
+    // keys), the call is the performer's and the show's list is the project's: inside a
+    // component it goes up, unchanged.
+    inSession: {
+      definition: true,
+      handsUp: "With no cue list named (the GO and BACK keys), the call is for the show's list, which is the project's.",
+    },
     inputSchema: cueStepInputSchema,
     description:
       "BACK: fire the cue before a cue list's current one, with that cue's own morph (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
-    handler: (input, context) => fireCue(context, input?.nodeId, true, "BACK", previousCue, presetCatalogueOf(bus)),
+    handler: (input, context) =>
+      input?.nodeId === undefined && context.session !== undefined
+        ? context.session.handUp()
+        : fireCue(context, input?.nodeId, true, "BACK", previousCue, presetCatalogueOf(bus)),
     rejectionOutput: emptyFireOutput,
   });
 

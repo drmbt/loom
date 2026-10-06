@@ -3,6 +3,9 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { alice, contextFor, createHarness, patch } from "@domain/commands/test-support.ts";
+import { createDomainBus } from "@domain/commands/index.ts";
+import { createGraphStore } from "@domain/graph/store.ts";
+import { createSequentialIdFactory } from "@domain/graph/ids.ts";
 import { GraphCanvas } from "./graph-canvas.tsx";
 import { createNodeRuntimeStore } from "./node-runtime.ts";
 import { annotationHueKey, minimapNodeColor, minimapSizeOf } from "./minimap-model.ts";
@@ -34,8 +37,10 @@ const invocation = contextFor(alice);
 const MAP = '[data-testid="rf__minimap"]';
 
 async function mountCanvas() {
-  const { bus } = createHarness("m");
+  // §T1696b: the canvas edits through a component SESSION's bus, and a key or a menu row
+  // may dispatch on the project's: `door` is the parent the session inherits from.
   const { bus: door } = createHarness("door");
+  const { bus } = createDomainBus({ store: createGraphStore({ ids: createSequentialIdFactory("m") }), registry: door.registry, parent: door });
   const runtime = createNodeRuntimeStore({ intervalMs: 0 });
   const seeded = await bus.execute(
     "graph.applyPatch",
@@ -49,7 +54,7 @@ async function mountCanvas() {
     a: seeded.output.createdIds["$a"] as string,
     b: seeded.output.createdIds["$b"] as string,
   };
-  const view = render(<GraphCanvas bus={bus} doorBuses={[door]} invocation={invocation} runtime={runtime} />);
+  const view = render(<GraphCanvas bus={bus} invocation={invocation} runtime={runtime} />);
   return { ...view, bus, door, ids };
 }
 

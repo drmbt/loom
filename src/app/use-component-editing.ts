@@ -250,13 +250,14 @@ export function useComponentEditing(runtime: AppRuntime): ComponentEditing {
       parent: runtime.bus,
       instancePath: store.getPath,
       registerDocumentCommands: runtime.registerDocumentCommands,
+      files: runtime.componentFiles,
     });
     setSession(opened);
     return () => {
       opened.dispose();
       setSession(null);
     };
-  }, [componentId, onStale, readRoot, reopened, runtime.bus, runtime.components, runtime.registerDocumentCommands, runtime.registry, store, version]);
+  }, [componentId, onStale, readRoot, reopened, runtime.bus, runtime.components, runtime.componentFiles, runtime.registerDocumentCommands, runtime.registry, store, version]);
 
   const live = session !== null && session.componentId === componentId && session.version === version;
   const editBus = live && session !== null ? session.bus : runtime.bus;

@@ -1905,7 +1905,9 @@ export function App({
     () => (
       <ErrorBoundary name="Components">
         <ComponentLibrary
-          bus={runtime.bus}
+          // §T1696b: the edit bus. A component placed while the canvas shows a component's
+          // inside lands THERE; on the project's bus it landed in the project, out of sight.
+          bus={editing.bus}
           context={runtime.invocation}
           components={componentsView}
           selection={selection}
@@ -1913,7 +1915,7 @@ export function App({
         />
       </ErrorBoundary>
     ),
-    [componentsView, runtime.bus, runtime.invocation, selectNodes, selection],
+    [componentsView, editing.bus, runtime.invocation, selectNodes, selection],
   );
   const exampleLibrary = useMemo(
     () => (
@@ -2071,7 +2073,15 @@ export function App({
   return (
     <AppRuntimeContext.Provider value={runtime}>
       <KeymapProvider
-        bus={runtime.bus}
+        /*
+         * §T1696b (§B286): the EDIT bus. A key acts on what the canvas shows, and inside a
+         * component that is the component's graph, edited through its session's bus. The
+         * project's bus here sent the canvas's ids to the project: Cmd+Z undid the project
+         * and Delete removed the root node of the same id. A session's bus answers every
+         * command (it inherits the app's from this one's parent), so nothing a key reaches
+         * is lost by standing inside a component.
+         */
+        bus={editing.bus}
         invocationContext={runtime.invocation}
         environment={environment}
         onDispatch={onKeyDispatch}
@@ -2157,7 +2167,9 @@ export function App({
               fallbackNodeId={selectedNodeId}
             >
               <ComponentBar
-                bus={runtime.bus}
+                // §T1696b: the edit bus. "Save selection as component" inside a component
+                // saves THAT graph's selection; the project's bus was handed its ids.
+                bus={editing.bus}
                 context={runtime.invocation}
                 breadcrumbs={editing.breadcrumbs}
                 insideComponent={insideComponent}
@@ -2216,13 +2228,6 @@ export function App({
                 previewSinks={previewSinks}
                 valueHistory={valueHistory}
                 componentPath={editing.path}
-                /*
-                 * T969(b): the bus the KEYMAP dispatches on, which is the root one above
-                 * even while the pane edits a component through `editing.runtime.bus`.
-                 * Without it `mod+a` inside a component reached a bus the canvas had
-                 * vacated and refused with `selection.noCanvas`, silently.
-                 */
-                rootBus={runtime.bus}
                 /*
                  * T1051 follow-up (§V877): the LAST two insideComponent starvations,
                  * ungated now that the pane translates ids — orbits ride the shared

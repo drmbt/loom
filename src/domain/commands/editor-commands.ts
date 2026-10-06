@@ -8,6 +8,7 @@ import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
 import { nodeNames, renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
 import { conventionalName } from "../graph/node-kinds.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
+import { sharedForBus } from "./command-holder.ts";
 import { z } from "zod";
 import { idInput, nodeIdsInput, pointInput } from "./input-schema.ts";
 import { clipboardComponentsFor, encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
@@ -440,11 +441,23 @@ export interface EditorCommandOptions {
 }
 
 /**
- * Registers the editing commands on `bus`. The clipboard is per-bus and lives here: it
- * is scratch state, never document state, so it is neither serialized nor undoable.
+ * §T1696b (§B292) — THE NODE CLIPBOARD, kept at the root (`sharedForBus`): what was copied
+ * in the project can be pasted inside a component and the reverse, as between two networks
+ * of one TouchDesigner project. It was a variable of each bus's registration, so a
+ * component session had a clipboard of its own that nothing outside could reach. Two
+ * unrelated buses (two projects) still hold two.
+ */
+export function graphClipboardFor(bus: LoomBus): { current: Clipboard } {
+  return sharedForBus<{ current: Clipboard }>(bus, "graph.clipboard", () => ({ current: { nodes: [], edges: [] } }));
+}
+
+/**
+ * Registers the editing commands on `bus`. The clipboard is scratch state, never document
+ * state, so it is neither serialized nor undoable.
  */
 export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptions = {}): void {
-  let clipboard: Clipboard = { nodes: [], edges: [] };
+  // §T1696b (§B292): one clipboard for the project and every component session over it.
+  const held = graphClipboardFor(bus);
   let pasteCount = 0;
   /** The last payload THIS bus wrote, so its own paste keeps cascading (§V35). */
   let written: string | null = null;
@@ -500,7 +513,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
       }
       // A dry run must not disturb the clipboard any more than it disturbs the document.
       if (!context.dryRun) {
-        clipboard = copied;
+        held.current = copied;
         pasteCount = 0;
         mirror(copied);
       }
@@ -526,7 +539,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
       // The clipboard is only filled once the delete actually applied: a rejected cut
       // that still overwrote the clipboard would destroy the user's previous copy.
       if (outcome.status === "applied" && !context.dryRun) {
-        clipboard = copied;
+        held.current = copied;
         pasteCount = 0;
         mirror(copied);
       }
@@ -573,7 +586,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
           arriving = { clipboard: foreign, text: system.text, arrival };
         }
       }
-      const pasting = arriving?.clipboard ?? clipboard;
+      const pasting = arriving?.clipboard ?? held.current;
       if (pasting.nodes.length === 0) {
         return rejected(context.store.getRevision(), "The clipboard is empty.", "clipboard.empty");
       }
@@ -599,7 +612,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
         return outcome;
       }
       if (arriving !== null) {
-        clipboard = arriving.clipboard;
+        held.current = arriving.clipboard;
         written = arriving.text;
         pasteCount = 0;
       }
