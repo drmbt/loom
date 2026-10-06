@@ -388,25 +388,28 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    * the camera in the camera node via flying around in that preview instead of manually having to deal with it").
    * A pose that is all expressions cannot be: a flight would have to replace them. So the DIRECTED pose (the shot the
    * director has, where the robot is) is the camera's FRAME (§T1656b): its Origin is the directed eye and its
-   * Heading the way from that eye to the directed aim. In that frame the camera's own Eye is 0 0 0, a plain number,
-   * and its Look At is the aim: nothing across, as high over the eye as the aim is, as far ahead as it is on the
-   * level. With Eye at zero that is the directed eye and aim to the float, so no picture moved.
-   * What a flight writes (the Viewer's "Fly camera_rig", or key c) is Eye and Look At's x: a TRIM on whatever shot
-   * is up, which travels with the robot and stays through a cut, until the Scene panel's reset_camera takes it off.
-   * Look At's height and distance stay driven because the frame turns about the vertical only and does not pitch
-   * (§T1671b: with a frame that pitches they are 0 and minus the distance).
+   * Heading the whole way from that eye to the directed aim, and the frame is AIMED along it (§T1671b: it pitches
+   * with its Heading). In that frame the camera's own Eye is 0 0 0 and its Look At is straight ahead, as far off as
+   * the aim is: with no trim that is the directed eye and aim, so no picture moved.
+   * What a flight writes (the Viewer's "Fly camera_rig", or key c) is Eye and Look At's x and y: a TRIM on whatever
+   * shot is up, which travels with the robot and stays through a cut, until the Scene panel's reset_camera takes it
+   * off. Look At's distance alone stays the director's: it is where an orbit turns about and what a flight's pace and
+   * the focus are measured by, and a shot's aim is two metres off or thirty.
+   * (The frame was first LEVEL, turning about the vertical only, and Look At's height was driven as well.)
    */
   const CAMERA_REST = { eye: [1.1, 0.6, -7.5], aim: [0, 0, 3.3] } as const;
   const toAim = { x: `(${aim.x} - ${eye.x})`, y: `(${aim.y} - ${eye.y})`, z: `(${aim.z} - ${eye.z})` };
   const restToAim = CAMERA_REST.aim.map((part, axis) => part - (CAMERA_REST.eye[axis] as number)) as [number, number, number];
-  const UNTRIMMED = { eye: [0, 0, 0], lookAt: [0, restToAim[1], -Math.hypot(restToAim[0], restToAim[2])] };
+  const UNTRIMMED = { eye: [0, 0, 0], lookAt: [0, 0, -Math.hypot(...restToAim)] };
   const cameraPose: Record<string, StoredParameter> = {
+    frame: "aimed",
     origin: [...CAMERA_REST.eye], "origin.x": expressionSlot(eye.x, CAMERA_REST.eye[0]), "origin.y": expressionSlot(eye.y, CAMERA_REST.eye[1]), "origin.z": expressionSlot(eye.z, CAMERA_REST.eye[2]),
-    // The whole way to the aim. Only its level part turns the frame (the way the camera faces on the ground); its
-    // length is how far the directed aim is, which the focus reads (flownReachExpression).
+    // The whole way to the aim: its direction is the way the frame faces, its length how far off the aim is.
     heading: [...restToAim], "heading.x": expressionSlot(toAim.x, restToAim[0]), "heading.y": expressionSlot(toAim.y, restToAim[1]), "heading.z": expressionSlot(toAim.z, restToAim[2]),
     eye: [...UNTRIMMED.eye],
-    lookAt: [...UNTRIMMED.lookAt], "lookAt.y": expressionSlot(toAim.y, UNTRIMMED.lookAt[1] as number), "lookAt.z": expressionSlot(`(0 - (${toAim.x} ^ 2 + ${toAim.z} ^ 2) ^ 0.5)`, UNTRIMMED.lookAt[2] as number),
+    // Straight ahead, the Heading's own length off. (Said again in full: a parameter may not read another parameter
+    // of its own node, which the engine takes for a cycle, node by node: parameter.referenceCycle.)
+    lookAt: [...UNTRIMMED.lookAt], "lookAt.z": expressionSlot(`(0 - (${toAim.x} ^ 2 + ${toAim.y} ^ 2 + ${toAim.z} ^ 2) ^ 0.5)`, UNTRIMMED.lookAt[2] as number),
   };
   // The face's light hangs a hand's breadth in front of the foremost lens (the kit's own measure): clear of
   // the hull, which casts its shadow, and not out in the air ahead where its glow read as a ball the robot chased.
@@ -724,10 +727,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const slidersSaved = (list: readonly Slider[]): Record<string, Record<string, number | boolean>> => Object.fromEntries(list.map((slider) => [slider.name, { value: slider.value }]));
   /**
    * The camera as the director has it: nothing flown onto its shot (cameraPose). By the keys a flight writes
-   * (camera-gizmo-store.ts): Eye whole, and of Look At, whose height and distance are driven, the one free channel
-   * by its own key. (Writing Look At whole would leave a flown `lookAt.x` standing over it.)
+   * (camera-gizmo-store.ts): Eye whole, and of Look At, whose distance is driven, the two free channels each by its
+   * own key. (Writing Look At whole would leave a flown `lookAt.x` standing over it.)
    */
-  const untrimmed: Record<string, Record<string, number | number[]>> = { camera_rig: { eye: [...UNTRIMMED.eye], "lookAt.x": 0 } };
+  const untrimmed: Record<string, Record<string, number | number[]>> = { camera_rig: { eye: [...UNTRIMMED.eye], "lookAt.x": 0, "lookAt.y": 0 } };
   const saved: ReadonlyArray<Record<string, Record<string, number | boolean | number[]>>> = [
     { ...slidersSaved(robotSliders), toggle_perch: { on: false }, toggle_follow: { on: true }, ...(ropes ? { toggle_ropes: { on: false } } : {}) },
     { ...slidersSaved(SCENE), slider_shot: { value: 0 }, toggle_cuts: { on: true }, xypad_view: { x: 1.1, y: 0.6 }, ...untrimmed },

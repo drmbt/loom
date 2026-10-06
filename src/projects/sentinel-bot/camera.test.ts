@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PACK, flownReachExpression, sentinelDocument } from "./document.ts";
 import { compileGraph } from "../../compiler/compile.ts";
+import { cameraFrame, inCameraFrame } from "../../domain/geometry/camera.ts";
 import { evaluateExpression } from "../../domain/expressions/evaluate.ts";
 import { TIER_B_CAPABILITIES } from "../../examples/runner.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
@@ -277,20 +278,37 @@ describe("the sentinel's camera can be flown, and what reads it reads where it i
     expect(reach(directed / 2, heading)).toBeCloseTo(0.5, 12);
   });
 
+  it("an untrimmed camera in a frame aimed along the way to the aim is at the directed eye, looking at the directed aim", () => {
+    // What the document writes, with numbers for the director's expressions: Origin the eye, Heading the way to the
+    // aim, Eye nothing, Look At straight ahead the Heading's length off. Through the engine's own frame.
+    for (const [eye, aim] of [[[3, 1.2, 40], [1, 1.9, 49]], [[-5, 4, 12], [-4, -2, 6]], [[0, 0, 0], [7, 0.3, 0.01]]] as const) {
+      const heading = aim.map((part, axis) => part - (eye[axis] as number)) as [number, number, number];
+      const frame = cameraFrame(eye, heading, "aimed");
+      const [from, toward] = [inCameraFrame(frame, [0, 0, 0]), inCameraFrame(frame, [0, 0, -Math.hypot(...heading)])];
+      expect(from.map((value, axis) => Math.abs(value - (eye[axis] as number)) < 1e-12)).toEqual([true, true, true]);
+      expect(toward.map((value, axis) => Math.abs(value - (aim[axis] as number)) < 1e-9)).toEqual([true, true, true]);
+      // (A LEVEL frame with that Look At looks along the ground: at the aim only where the aim is no higher than the eye.)
+      const level = inCameraFrame(cameraFrame(eye, heading, "level"), [0, 0, -Math.hypot(...heading)]);
+      expect(Math.abs((level[1] as number) - (aim[1] as number))).toBeGreaterThan(0.2);
+    }
+  });
+
   it("in the document the camera's Eye is a plain offset of nothing, and whatever reads the camera's place reads the composed pose", () => {
     const built = sentinelDocument(KIT_FIXTURE);
     const graph = built.graph;
     const camera = (graph.nodes["camera_rig" as never] as unknown as { parameters: Record<string, unknown> }).parameters;
-    // What a flight writes is free: Eye, all of it, and Look At across. No expression on any of them.
+    // What a flight writes is free: Eye, all of it, and Look At across and up. No expression on any of them.
     expect(camera["eye"]).toEqual([0, 0, 0]);
-    expect(Object.keys(camera).filter((key) => key.startsWith("eye.") || key === "lookAt.x")).toEqual([]);
-    expect((camera["lookAt"] as number[])[0]).toBe(0);
-    // The directed pose is the frame. (Heading's y turns nothing in a level frame; it is there for its length.)
-    for (const key of ["origin.x", "origin.y", "origin.z", "heading.x", "heading.y", "heading.z", "lookAt.y", "lookAt.z"]) expect(typeof camera[key]).toBe("object");
+    expect(Object.keys(camera).filter((key) => key.startsWith("eye.") || key === "lookAt.x" || key === "lookAt.y")).toEqual([]);
+    expect((camera["lookAt"] as number[]).slice(0, 2)).toEqual([0, 0]);
+    // The directed pose is the frame, AIMED along its Heading (§T1671b): the camera looks straight down its own
+    // frame, and of its Look At only how far off the aim is stays the director's.
+    expect(camera["frame"]).toBe("aimed");
+    for (const key of ["origin.x", "origin.y", "origin.z", "heading.x", "heading.y", "heading.z", "lookAt.z"]) expect(typeof camera[key]).toBe("object");
     // …and the editor's own answer, the one its "Fly camera_rig" button is offered by: there is a pose to fly, and it
-    // says which two channels a flight leaves to the director. (All six driven, it offers nothing: what this file was.)
+    // says which one channel a flight leaves to the director. (All six driven, it offers nothing: what this file was.)
     const facts = readCameraPoseFacts(graph.nodes["camera_rig" as never] as never, cameraNode, STORED_READ);
-    expect(facts?.held).toBe("Stays driven: Look At y (Expression), Look At z (Expression).");
+    expect(facts?.held).toBe("Stays driven: Look At z (Expression).");
     // No parameter of any node reads the camera's Eye or Look At: with a frame those are offsets, not where the
     // camera is. (The first build read them so, and the haze went out.)
     const sources = sourcesOf(graph);
