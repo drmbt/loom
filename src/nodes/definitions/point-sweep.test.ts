@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { pointStorageId } from "./point-storage.ts";
 import { pointSweepNode, sweepAttributes } from "./point-sweep.ts";
-import { compileContext, fixturePairs } from "./test-support.ts";
+import { compileContext, fixturePairs, planFingerprint } from "./test-support.ts";
 
 /**
  * Sweep at the fixture level (T1587b): what it publishes on the edge, how its pass is
@@ -256,6 +256,105 @@ describe("Sweep — its pass (T1587b)", () => {
   });
 });
 
+/**
+ * T1587b slice 2 — A PATH OF ONE STRIP KEEPS ITS PROGRAM, TO THE BYTE.
+ *
+ * Several strips are swept by a variant of the pass that only they emit. A Ring along a
+ * straight path is the Tube generator's points to the bit, and the bore check holds a
+ * 196,608-vertex wall to a tenth of a millimetre; two programs can round one expression
+ * differently, so those proofs stand on the one-strip program not having changed at all.
+ * It is pinned here by its text — id, shader, bindings, dispatch and uniform values —
+ * recorded from main before the variant existed (692f5024). A change to a fingerprint below
+ * is a change to what one strip computes: make it on purpose, never to get this green.
+ */
+describe("Sweep — a path of one strip keeps its program, to the byte (T1587b slice 2)", () => {
+  const frozen: ReadonlyArray<readonly [string, Record<string, unknown>, Parameters<typeof compile>[1]?]> = [
+    ["e7ec2ac762a96a66", { profile: "ring", sides: 12 }],
+    ["9ba486be4e15c51c", { profile: "ring", sides: 255, uvAlong: "points" }, { maps: { radius: { attribute: "width" } } }],
+    ["8383080600da47ae", { profile: "ring", sides: 5, smooth: false, facing: "inward", uvAlong: "metres", uvLength: 0.75, caps: "start" }],
+    ["ebd19a9a7281097b", { profile: "square", caps: "both", uvAlong: "metres", uvLength: 2 }],
+    ["dce950fa29606d6d", { profile: "strip", sides: 3, facing: "inward", uvAlong: "stretch", caps: "end" }],
+    ["a8b966a8e4e834ea", { profile: "custom", uvAlong: "stretch" }, { outline: {} }],
+    ["c51c8aefbab4b930", { profile: "custom", smooth: false, facing: "inward", uvAlong: "points" }, { outline: { topology: "strips:6x1:closed" }, maps: { radius: { attribute: "color", channel: "y" } } }],
+    ["e4aeecbe1ffcd49f", { profile: "ring", sides: 12, uvAlong: "metres", caps: "both" }, { topology: "strips:20x1:closed" }],
+  ];
+  for (const [fingerprint, parameters, options] of frozen) {
+    it(`${JSON.stringify(parameters)}${options === undefined ? "" : ` on ${JSON.stringify(Object.keys(options))}`}`, () => {
+      const result = compile(parameters, options ?? {});
+      expect(result.diagnostics ?? []).toEqual([]);
+      expect(result.passes).toHaveLength(1);
+      expect(planFingerprint(result)).toBe(fingerprint);
+    });
+  }
+});
+
+/**
+ * T1587b slice 2 — SEVERAL STRIPS ARE SEVERAL SHEETS. Until this slice a path of several
+ * strips was refused by name, because one `grid:` claim would have joined each tube's end to
+ * the next one's start. The claim now says how many sheets it holds and the Render joins
+ * none to the next, so the refusal is the positive case.
+ */
+describe("Sweep — several strips, a sheet each (T1587b slice 2)", () => {
+  it("claims a sheet per strip: rows, caps and both wraps are ONE sheet's", () => {
+    // Four strips of five points, a Ring of twelve: four tubes.
+    expect(claimOf({ profile: "ring", sides: 12 }, { topology: "strips:5x4" })).toBe("grid:12x5x4:wrapU");
+    // A cap is two rows at its end of EVERY sheet.
+    expect(claimOf({ profile: "ring", sides: 12, caps: "both" }, { topology: "strips:5x4" })).toBe("grid:12x9x4:wrapU");
+    expect(claimOf({ profile: "square", caps: "end" }, { topology: "strips:5x4" })).toBe("grid:8x7x4:wrapU");
+    // Closed strips close each sheet along its rows, and have no ends to cap.
+    expect(claimOf({ profile: "ring", sides: 12, caps: "both" }, { topology: "strips:5x4:closed" })).toBe("grid:12x5x4:wrapUV");
+    expect(claimOf({ profile: "strip", sides: 3 }, { topology: "strips:5x4" })).toBe("grid:4x5x4");
+    // A grid's rows are strips too, each a sheet.
+    expect(claimOf({ profile: "ring", sides: 12 }, { topology: "grid:5x4" })).toBe("grid:12x5x4:wrapU");
+    // One strip is the plain claim it always was.
+    expect(claimOf({ profile: "ring", sides: 12 }, { topology: "strips:20x1" })).toBe("grid:12x20:wrapU");
+  });
+
+  it("owns a ring of vertices for every point of every strip", () => {
+    const out = compile({ profile: "ring", sides: 12, caps: "both" }, { topology: "strips:5x4" }).pointsets?.["out"];
+    expect(out?.capacity).toBe(12 * 9 * 4);
+    for (const ref of Object.values(out?.pairs ?? {})) expect(ref.buffer).toBe(pointStorageId("sweep_skin"));
+  });
+
+  it("is still one dispatch over every vertex, with the sheet count beside the sheet's own shape", () => {
+    const pass = passOf(compile({ profile: "ring", sides: 12, radius: 0.5, caps: "start" }, { topology: "strips:5x4" }));
+    expect(pass.workgroups).toEqual([Math.ceil((12 * 7 * 4) / 64), 1, 1]);
+    expect(pass.uniforms).toEqual({ cols: 12, rows: 7, pathPoints: 5, profilePoints: 12, startRows: 2, radius: 0.5, sheets: 4 });
+    expect(Object.keys(pass.uniforms)).toEqual(declared(pass.shader));
+    expect(pass.id).toBe("sweep_skin:sweep:ring:stretch:caps20:12x7x4");
+    // One strip has no such member: its block, and its program, are the ones it always had.
+    const one = passOf(compile({ profile: "ring", sides: 12, radius: 0.5, caps: "start" }, { topology: "strips:20x1" }));
+    expect(Object.keys(one.uniforms)).not.toContain("sheets");
+    expect(one.shader).not.toContain("params.sheets");
+  });
+
+  it("sets exactly the uniforms its shader declares, in every shape of the several-strip program", () => {
+    const shapes: Array<[Record<string, unknown>, Parameters<typeof compile>[1]]> = [
+      [{ profile: "ring" }, { topology: "strips:5x4" }],
+      [{ profile: "ring", smooth: false, facing: "inward", uvAlong: "metres", uvLength: 2, caps: "both" }, { topology: "strips:5x4" }],
+      [{ profile: "square", uvAlong: "metres" }, { topology: "strips:5x4:closed" }],
+      [{ profile: "strip", uvAlong: "points", caps: "end" }, { topology: "grid:5x4" }],
+      [{ profile: "custom", smooth: false }, { topology: "strips:5x4", outline: { topology: "strips:6x1:closed" }, maps: { radius: { attribute: "width" } } }],
+    ];
+    for (const [parameters, options] of shapes) {
+      const pass = passOf(compile(parameters, options));
+      expect(Object.keys(pass.uniforms), JSON.stringify(parameters)).toEqual(declared(pass.shader));
+      expect(pass.uniforms["sheets"]).toBe(4);
+    }
+  });
+
+  it("the ceiling counts every sheet", () => {
+    const many = fixturePairs("resample_path", [{ name: "position", type: "vec3f" }, { name: "orient", type: "vec4f" }], 6000);
+    const refused = errorOf(compile({ profile: "ring", sides: 256, uvAlong: "points" }, { pairs: many, capacity: 6000, topology: "strips:100x60" }));
+    expect(refused.code).toBe("node.points.capacity");
+    expect(refused.message).toBe(
+      'Node "sweep_skin": 256 columns round the profile by 100 rows along the path, for each of 60 strips, are 1536000 vertices, over the 1000000 a pointset holds.',
+    );
+    // Thirty-nine of them fit.
+    expect(compile({ profile: "ring", sides: 256, uvAlong: "points" }, { pairs: many, capacity: 6000, topology: "strips:100x39" }).diagnostics ?? []).toEqual([]);
+  });
+});
+
 describe("Sweep — what it refuses, by name (T1587b)", () => {
   it("a path that is not strips", () => {
     const refused = errorOf(compile({}, { topology: "points" }));
@@ -264,20 +363,9 @@ describe("Sweep — what it refuses, by name (T1587b)", () => {
     expect(refused.passes).toBe(0);
   });
 
-  it("several strips, until the grid claim has sheets", () => {
-    const refused = errorOf(compile({}, { topology: "strips:5x4" }));
-    expect(refused.code).toBe("node.points.sweep");
-    expect(refused.message).toBe(
-      'Node "sweep_skin": the path edge carries 4 strips, and a Sweep makes one sheet: in one grid the end of each tube would be joined to the start of the next.',
-    );
-    expect(refused.suggestion).toContain("§T1587b, slice 2");
-    expect(refused.passes).toBe(0);
-    // The same for a grid's rows: they are strips.
-    expect(errorOf(compile({}, { topology: "grid:5x4" })).message).toContain("carries 4 strips");
-  });
-
   it("a path of one point", () => {
     expect(errorOf(compile({}, { topology: "strips:1x1" })).message).toBe('Node "sweep_skin": the path has one point, and a sweep needs two to have a length.');
+    expect(errorOf(compile({}, { topology: "strips:1x20" })).message).toBe('Node "sweep_skin": each strip of the path has one point, and a sweep needs two to have a length.');
   });
 
   it("a path with a GPU live count", () => {

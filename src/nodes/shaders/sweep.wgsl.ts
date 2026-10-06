@@ -25,6 +25,13 @@ import type { SweepProfile, SweepUvAlong } from "../../points/sweep.ts";
  * one binding per producer. A path that has been through a Resample, a kernel and a Curve
  * Frames is three producers; a custom profile is one more.
  *
+ * ⚑ SEVERAL STRIPS ARE SEVERAL SHEETS (slice 2). Each strip of the path is swept into a
+ * sheet of its own, one after another in the buffer: slot `(strip × rows + row) × cols +
+ * column`, which is the grid claim's own order. It is a BRANCH in this one emitter, taken
+ * only for a path of more than one strip: with one, the text is the one that shipped, to the
+ * byte, because two programs can round one expression differently and a Ring along a
+ * straight path is the Tube generator's points to the bit (`point-sweep.test.ts` pins it).
+ *
  * ## What it costs, measured
  *
  * Dawn/Metal, best of 9 runs of 200 frames, over the same graph without the node, a Ring,
@@ -67,6 +74,8 @@ export interface SweepShaderOptions {
   readonly pathClosed: boolean;
   /** Whether either end has a cap: only then does a row's centre need its radius for `uv`. */
   readonly capped: boolean;
+  /** The path is several strips: each is a sheet of its own, and the uniform block has `sheets`. */
+  readonly sheets: boolean;
   readonly uvAlong: SweepUvAlong;
   /** The uniform block's members, in order: the node builds its uniform record from the same list. */
   readonly members: ReadonlyArray<{ readonly name: string; readonly type: string }>;
@@ -251,11 +260,11 @@ ${columnWgsl(options)}
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3u) {
   let slot = gid.x;
-  if (slot >= params.cols * params.rows) {
+  if (slot >= params.cols * params.rows${options.sheets ? " * params.sheets" : ""}) {
     return;
   }
   let column = slot % params.cols;
-  let row = slot / params.cols;
+  let row = ${options.sheets ? "(slot / params.cols) % params.rows" : "slot / params.cols"};
 
   /* Which point of the path this row stands on, and whether it is a cap's: the start's two
      rows come first (its centre, then its rim), the end's two last (its rim, then its centre). */
@@ -272,7 +281,13 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   } else {
     point = row - params.startRows;
   }
-
+${
+  options.sheets
+    ? `  /* Several strips: this sheet's own, whose points follow the strips before it. */
+  point = point + (slot / (params.cols * params.rows)) * params.pathPoints;
+`
+    : ""
+}
   let origin = pathPosition(point);
   let frame = pathOrient(point);
   let radius = params.radius${options.radius === undefined ? "" : " * pathScale(point)"};

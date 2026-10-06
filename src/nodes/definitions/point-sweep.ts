@@ -57,9 +57,12 @@ import { resolveScalarMap } from "./points.ts";
  * way round and the way along. Every other attribute of the path point is copied to each
  * vertex of its ring, except the frame's own.
  *
- * ⚑ ONE STRIP, UNTIL THE GRID CLAIM HAS SHEETS (§T1587b slice 2). Several strips in one
- * `grid:` claim would join each tube's end to the next one's start, so they are refused by
- * name here. That slice edits the Render; this node's passes do not change with it.
+ * ⚑ SEVERAL STRIPS ARE SEVERAL SHEETS (slice 2). Ten strands from a rope, a run of pipes
+ * from one kernel: each strip of the path is swept into a sheet of its own, and the claim
+ * says how many, `grid:{columns}x{rows}x{strips}`. A Geometry draws them all in ONE draw
+ * and joins none to the next. Rows, caps and both wraps are one sheet's; a strip shorter
+ * than its slots repeats its end, so its padding is rings of no area and draws nothing.
+ * One strip is the plain claim and the program it always was.
  *
  * STATELESS and clock-free: one thread per vertex, each from one path point and one profile
  * point (`nodes/shaders/sweep.wgsl.ts`), so there is nothing to reset on a seek (§V170).
@@ -135,7 +138,7 @@ export const pointSweepNode: NodeDefinition = {
   title: "Sweep",
   category: "points",
   description:
-    "Carries a profile along a curve and joins the copies into a surface: a tube, a tunnel, a cable, a ribbon, a rail. Path is one strip that carries orient, so put a Curve Frames before it; the profile sits in each frame's X and Y. Profile is a Ring (Sides round), a Square, a flat Strip, or Custom, the first strip of the Profile input. Radius is its half-width, and in Map mode an attribute of the path multiplies it per point: a taper. Caps close the ends. The output is a grid, columns round the profile and rows along the path, so a Geometry in Surface mode draws it lit and shadowed. Each vertex has a normal for a kernel to push along, a uv (round the profile, and along the path as Stretch, Metres or Points), and every attribute of its path point. A kernel after the sweep may move the vertices: the surface is lit by the shape it ends up with. One strip per Sweep.",
+    "Carries a profile along a curve and joins the copies into a surface: a tube, a tunnel, a cable, a ribbon, a rail. Path is strips that carry orient, so put a Curve Frames before it; the profile sits in each frame's X and Y, and each strip is swept into a tube of its own. Profile is a Ring (Sides round), a Square, a flat Strip, or Custom, the first strip of the Profile input. Radius is its half-width, and in Map mode an attribute of the path multiplies it per point: a taper. Caps close the ends. The output is a grid, columns round the profile and rows along the path, so a Geometry in Surface mode draws it lit and shadowed. Each vertex has a normal for a kernel to push along, a uv (round the profile, and along the path as Stretch, Metres or Points), and every attribute of its path point. A kernel after the sweep may move the vertices: the surface is lit by the shape it ends up with. Several strips make several sheets in one grid, which a Geometry draws in one draw.",
   tags: ["points", "curve", "sweep", "extrude", "tube", "tunnel", "cable", "ribbon", "pipe", "surface", "grid", "strips", "profile", "spline"],
   inputs: [
     {
@@ -143,7 +146,7 @@ export const pointSweepNode: NodeDefinition = {
       label: "Path",
       type: { kind: "pointset" as const, requires: [{ name: "position", type: "vec3f" as const }] },
       description:
-        "One strip to sweep along, carrying orient (a vec4f quaternion: +Z down the curve, +Y its normal): a Curve Frames, usually after a Resample. A closed strip makes a loop.",
+        "The strips to sweep along, each into a sheet of its own, carrying orient (a vec4f quaternion: +Z down the curve, +Y its normal): a Curve Frames, usually after a Resample. Closed strips make loops.",
     },
     {
       id: "profile",
@@ -160,7 +163,7 @@ export const pointSweepNode: NodeDefinition = {
       label: "Points",
       type: { kind: "pointset" as const, requires: [{ name: "position", type: "vec3f" as const }] },
       description:
-        "A grid: columns round the profile, rows along the path (a cap adds two rows at its end). position, normal (vec3f: the outline's own normal in the ring's plane, the end's on a cap, on the side Facing names), uv (vec2f) and every attribute of the path point except its frame, copied to each vertex of its ring.",
+        "A grid: columns round the profile, rows along the path (a cap adds two rows at its end), one sheet per strip of the path. position, normal (vec3f: the outline's own normal in the ring's plane, the end's on a cap, on the side Facing names), uv (vec2f) and every attribute of the path point except its frame, copied to each vertex of its ring. A kernel's ctx.dim reads one sheet's columns and rows, and ctx.dim.sheet says which sheet.",
     },
   ],
   parameters: {
@@ -279,17 +282,14 @@ export const pointSweepNode: NodeDefinition = {
         "Sweep a static producer, or a kernel behind a Topology node set to Strips.",
       );
     }
-    if (strips.rows > 1) {
-      /* One `grid:` claim holds one sheet: several strips in it would be joined end to
-         start by the Render. Refused by name until the claim has sheets (§T1587b slice 2). */
+    if (strips.cols < 2) {
       return refuse(
-        `the path edge carries ${strips.rows} strips, and a Sweep makes one sheet: in one grid the end of each tube would be joined to the start of the next.`,
-        "Sweep one strip per node for now, each into its own Geometry. Several tubes in one Geometry need the grid claim's sheets (§T1587b, slice 2).",
+        `${strips.rows === 1 ? "the path has" : "each strip of the path has"} one point, and a sweep needs two to have a length.`,
+        "Give the path more points: a Resample by Count.",
       );
     }
-    if (strips.cols < 2) {
-      return refuse("the path has one point, and a sweep needs two to have a length.", "Give the path more points: a Resample by Count.");
-    }
+    /* Slice 2: a strip is a sheet. Rows, caps and wraps below are ONE sheet's. */
+    const sheets = strips.rows;
 
     // §V288: a map this node cannot honour refuses BY NAME rather than reading the static.
     const unhonoured = Object.keys(parameterMaps).filter((key) => key !== "radius").sort();
@@ -383,10 +383,10 @@ export const pointSweepNode: NodeDefinition = {
 
     const cols = sweepColumnCount({ points: { length: outline.points }, closed: outline.closed, flat: outline.flat });
     const rows = capRows.start + strips.cols + capRows.end;
-    const capacity = cols * rows;
+    const capacity = cols * rows * sheets;
     if (capacity > MAX_POINTS) {
       return refuse(
-        `${cols} columns round the profile by ${rows} rows along the path are ${capacity} vertices, over the ${MAX_POINTS} a pointset holds.`,
+        `${cols} columns round the profile by ${rows} rows along the path${sheets === 1 ? "" : `, for each of ${sheets} strips,`} are ${capacity} vertices, over the ${MAX_POINTS} a pointset holds.`,
         `Lower ${profile === "custom" ? "the Profile's point count" : "Sides"}, or the path's points (a Resample with a wider Distance).`,
         "node.points.capacity",
       );
@@ -469,6 +469,8 @@ export const pointSweepNode: NodeDefinition = {
       { name: "radius", type: "f32", value: Math.max(0, readNumber(parameters, "radius", 0.1)) },
     ];
     if (uvAlong === "metres") members.push({ name: "uvLength", type: "f32", value: Math.max(readNumber(parameters, "uvLength", 1), 1e-6) });
+    // Only a path of several strips has the member: one strip's block is the one it always was.
+    if (sheets > 1) members.push({ name: "sheets", type: "u32", value: sheets });
 
     const shaderOptions: SweepShaderOptions = {
       profile,
@@ -477,6 +479,7 @@ export const pointSweepNode: NodeDefinition = {
       inward,
       pathClosed,
       capped,
+      sheets: sheets > 1,
       uvAlong,
       members: members.map(({ name, type }) => ({ name, type })),
       groups: groups.length,
@@ -500,7 +503,7 @@ export const pointSweepNode: NodeDefinition = {
         uvAlong,
         capped ? `caps${capRows.start}${capRows.end}` : "",
         radiusMap === undefined ? "" : "radius",
-        `${cols}x${rows}`,
+        `${cols}x${rows}${sheets === 1 ? "" : `x${sheets}`}`,
       ]
         .filter((part) => part !== "")
         .join(":"),
@@ -525,7 +528,7 @@ export const pointSweepNode: NodeDefinition = {
           // Every pair is this node's own: a sweep has a ring of vertices for each path point.
           pairs: storage.pairs,
           capacity,
-          topology: formatTopology({ kind: "grid", cols, rows, wrapU: outline.closed, wrapV: pathClosed }),
+          topology: formatTopology({ kind: "grid", cols, rows, wrapU: outline.closed, wrapV: pathClosed, ...(sheets > 1 ? { sheets } : {}) }),
         },
       },
     };
