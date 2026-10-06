@@ -50,7 +50,7 @@ The grab zone on a wire's end (`reconnectRadius`) is a different thing and stays
 ## 4. What attracts, what refuses
 
 - A port the validity rule accepts (`isValidConnection`, unchanged): the ring and the arc, in the colour of what the wire carries, which is the output port's type token (V26).
-- A port of the right side that the rule refuses: a dashed ring in `--text-dim`, no arc, no colour, and after a quarter of a second in range a caption in the words the Connections panel uses for the same refusal, `takes texture2d<float,data>`. It never sparks and a release there does nothing.
+- A port of the right side that the rule refuses: a dashed ring in `--text-dim`, no arc, no colour, and after a quarter of a second in range a caption in the words the Connections panel uses for the same refusal, `takes texture2d<float,data>`. It never sparks and a release connects nothing to it.
 - A handle that could never be the other end (an output when dragging from an output): nothing at all.
 
 React Flow takes the closest handle whatever it is, so a refusing port that is nearer than an accepting one wins the range. That is the library's rule and it is kept: the arc says what a release will do, and moving a few pixels towards the wanted port changes it.
@@ -60,8 +60,8 @@ React Flow takes the closest handle whatever it is, so a refusing port that is n
 Played when the command that made the connection is applied (a refused patch plays nothing), 0.72 s in all, against the reference's 0.75 to 1.0 s: Loom's nodes are half the size and its motion tokens are 60 to 220 ms.
 
 - Colour fill: the wire's curve drawn bright in the type colour, fading to the resting hairline over 0.42 s. The real edge arrives under it through the document.
-- Port: two rings from 8 px to 22 px over 0.46 s; the dot 1.5 x for 0.2 s.
-- Bar: one SVG rounded rectangle on the border line with `pathLength="1"`, drawn twice. Each copy is one dash of 6 % of the perimeter that starts at the port and moves half way round, one clockwise and one the other way, by a keyframed `stroke-dashoffset`. They grow from nothing in the first 90 ms, which is the single bar that splits. A wide blurred copy clipped to the node's box is the glow in the body.
+- Port: two rings from 8 px to 22 px over 0.46 s; the dot pulses to nearly twice its size for 0.22 s.
+- Bar: one SVG rounded rectangle on the border line with `pathLength="1"`, drawn twice. Each copy is one dash of 7 % of the perimeter that starts at the port and moves half way round, one clockwise and one the other way, by a keyframed `stroke-dashoffset`. They grow from nothing in the first 90 ms, which is the single bar that splits. A wide blurred copy clipped to the node's box is the glow in the body.
 - V389: every element is absolutely positioned in a box with `inset: 0`; nothing is added to the node's own element; the e2e spec compares every node's box before, during and after.
 - End: one timer removes the box and the path. Nothing is left in the DOM and no animation is running. A node deleted mid-effect takes its box with it.
 
@@ -88,3 +88,38 @@ Left out, on purpose:
 - **A colour per connection.** Loom's colour is the type's.
 - **The dot filling.** Loom's dots always carry their type colour; the dot pulses instead.
 - **A brighter resting wire.** Edges stay the quiet hairline they are.
+
+## 8. As built, and measured
+
+Sections 1 to 7 were written before the build and hold, with these additions.
+
+| | Reference | Built |
+| --- | --- | --- |
+| Range | 90 to 100 px (14 dot radii) | 48 px on screen at 100 % and below (14 dot radii), 48 graph px above |
+| Arc redraw | 15 Hz | 15 Hz (`ARC_TICK_MS = 66`), from one `requestAnimationFrame` loop that runs only while a port sparks |
+| Arc shape | a corner every 7 px, up to 8 % of the length off the line | a corner every 6 px, up to 14 % and never more than 4.5 px; one branch from past half way |
+| Ring | 2.2 dot radii, arrives in 66 ms | 8.5 px (2.4 dot radii), arrives in 70 ms |
+| Whole snap | 0.75 to 1.0 s | 0.72 s; 0.3 s still under reduced motion |
+| Rings at release | 1.7 to 5.5 dot radii in 470 ms | 8 to 22 px in 460 ms, the inner 5 to 15 px in 360 ms |
+| Bar | 45 to 60 px, both ways, half the border each | 7 % of the border (46 px on a 178 x 150 node), both ways, half the border each, linear, fading over the last 40 % |
+| Colour fill | in the release's frame, stays bright | bright at release, into the resting hairline over 0.42 s |
+
+**What a release means when the port in range refuses.** The dashed ring is a statement about the port. A new wire let go there still takes a wire under the pointer (V14b), as before; a pulled wire goes back to its port.
+
+**The colour is asked of the end in the hand.** A port that takes the wire has the same kind (V13), so the two ends of a live pair cannot differ and there is no "which end is the output" to get wrong.
+
+**The grab zone.** Every wire whose input end can be pulled carries the library's anchor, one transparent circle of 10 graph px on the wire's last pixels. A wire under the pointer there keeps its type colour and brightens to 0.85; the library's own rule painted it grey.
+
+**Cost, on E79 at its opening zoom** (79 nodes, vite dev build, headless Chromium on the machine's GPU, a wire held and moved once per frame for 600 frames, HEAD against the commit before, alternated in one process with the first variant repeated last and its cold first pass set aside):
+
+| | Frame interval, mean (p95) | One pointer move, mean |
+| --- | --- | --- |
+| Before, wire near a port | 14.5 ms (25.2) | 1.10 ms |
+| After, wire near a port, the arc coming and going | 15.4 and 15.7 ms (26.0, 25.1) | 1.28 and 1.30 ms |
+| After, reduced motion | 16.3 ms (26.0) | 1.47 ms |
+| Before, wire in the open | 9.3 ms (16.7) | 1.01 ms |
+| After, wire in the open | 9.6 and 9.6 ms (16.8, 17.1) | 1.06 and 1.08 ms |
+
+The frame intervals differ by less than the spread between two passes of the same variant (the reduced-motion pass, which does less, read highest). The steadier figure is the pointer move: 0.2 ms more near a port, which is the wider range search, the validity rule and the SVG writes together. That is the most an overlay canvas could win back, so the SVG stays.
+
+**Checked with a finger** by touch events in Chromium's emulation, not on a device: a wire carried to 30 px from a port sparks and connects when the finger lifts, and a finger on a connected input's dot pulls its wire off.

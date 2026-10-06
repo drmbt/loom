@@ -4,13 +4,15 @@ import "@xyflow/react/dist/style.css";
 import "./xyflow-theme.css";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode, TouchEvent as ReactTouchEvent } from "react";
 import {
   ConnectionLineType,
+  Position,
   ReactFlow,
   SelectionMode,
   applyEdgeChanges,
   applyNodeChanges,
+  getBezierPath,
   useKeyPress,
 } from "@xyflow/react";
 import type {
@@ -21,6 +23,7 @@ import type {
   IsValidConnection,
   NodeChange,
   NodeTypes,
+  OnConnectStartParams,
   ReactFlowInstance,
 } from "@xyflow/react";
 import { useStore } from "zustand";
@@ -28,7 +31,8 @@ import { arePortsCompatible } from "@domain/graph/port-compat.ts";
 import { parseHandleId } from "@domain/graph/edge-order.ts";
 import type { CommandResult, InvocationContext } from "@domain/types/commands.ts";
 import type { ComponentRegistryView } from "@domain/components/index.ts";
-import type { NodeId } from "@domain/types/ids.ts";
+import type { GraphEdge } from "@domain/types/graph.ts";
+import type { EdgeId, NodeId } from "@domain/types/ids.ts";
 import type { GraphPatch, GraphPatchOperation } from "@domain/types/patch.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { NodeView } from "@editor/nodes/node-view.tsx";
@@ -43,6 +47,11 @@ import {
 } from "@editor/edges/edge-geometry.ts";
 import { connectDropOperations } from "@editor/edges/connect-drop.ts";
 import { replaceEdgeOperations, spliceNodeOperations } from "@editor/edges/edge-drop.ts";
+import { edgeFamilyColor } from "@editor/edges/flow.ts";
+import { WireInFlight } from "@editor/edges/wire-in-flight.tsx";
+import { WIRE_GRAB_RADIUS, wireAnswer } from "@editor/edges/wire-range.ts";
+import { playWireLanding } from "@editor/edges/wire-snap.ts";
+import type { WireEnd } from "@editor/edges/wire-snap.ts";
 import { ReferenceLines } from "@editor/edges/reference-lines.tsx";
 import { registerReferenceLinesCommand } from "@editor/edges/reference-lines-command.ts";
 import { registerEdgeFlowCommand } from "@editor/edges/edge-flow-command.ts";
@@ -57,6 +66,7 @@ import { resolveMenuTarget } from "@editor/menus/target.ts";
 import { parameterDependencies } from "@domain/graph/parameter-dependencies.ts";
 import { GraphGrid } from "./graph-grid.tsx";
 import { KindLabelDriver } from "./kind-label-driver.tsx";
+import { WireRangeDriver } from "./wire-range-driver.tsx";
 import { GraphMinimap } from "./graph-minimap.tsx";
 import { registerMinimapCommand } from "./minimap-command.ts";
 import { GraphCanvasContext } from "./canvas-context.ts";
@@ -300,19 +310,32 @@ export function GraphCanvas({
     [bus],
   );
 
-  const dispatch = useCallback<GraphDispatch>(
-    (operations: GraphPatchOperation[], label: string) => {
-      if (operations.length === 0) return;
+  /**
+   * One patch on the bus, and whether it was applied. `dispatch` below is this with the
+   * answer dropped, which is all most gestures need; a wire landing wants the answer,
+   * because the snap is played for a connection that was MADE and not for one that was
+   * asked for (T1639b: a refused patch plays nothing).
+   */
+  const apply = useCallback(
+    async (operations: GraphPatchOperation[], label: string): Promise<boolean> => {
+      if (operations.length === 0) return false;
       const patch: GraphPatch = {
         baseRevision: bus.store.getRevision(),
         operations,
         label,
       };
-      void bus
-        .execute("graph.applyPatch", patch, invocation)
-        .then((result) => onPatchResult?.(result));
+      const result = await bus.execute("graph.applyPatch", patch, invocation);
+      onPatchResult?.(result);
+      return result.status === "applied";
     },
     [bus, invocation, onPatchResult],
+  );
+
+  const dispatch = useCallback<GraphDispatch>(
+    (operations: GraphPatchOperation[], label: string) => {
+      void apply(operations, label);
+    },
+    [apply],
   );
 
   /**
@@ -561,6 +584,56 @@ export function GraphCanvas({
   );
 
   /**
+   * T1639b — which end of the wire is in the hand: React Flow's type of the handle the
+   * drag started from (`source` is our output). For a wire pulled off an input it is the
+   * edge's OTHER end, the output, because that is where the library's connection starts.
+   * A ref: it is read once, when the wire lands.
+   */
+  const heldEnd = useRef<"source" | "target" | null>(null);
+  const onConnectStart = useCallback((_event: unknown, params: OnConnectStartParams) => {
+    heldEnd.current = params.handleType;
+  }, []);
+
+  /**
+   * T1639b — the snap, for a wire that now exists between `source` and `target`.
+   *
+   * `on` names the end the wire's tip was let go at, which is where the rings and the
+   * bar play: the input for a wire dragged from an output, the output for one dragged
+   * backwards. The colour is what the wire carries, the output port's family (§V26).
+   * Everything on screen about it is `wire-snap.ts`'s; this only says which wire.
+   */
+  const land = useCallback(
+    (source: WireEnd, target: WireEnd, on: "source" | "target") => {
+      const canvas = canvasRef.current;
+      const flow = flowRef.current;
+      if (canvas === null || flow === null) return;
+      const node = bus.store.getGraph().nodes[source.nodeId];
+      const port =
+        node === undefined ? undefined : registry.port(node.type, parseHandleId(source.handleId).portId, "output");
+      playWireLanding({
+        canvas,
+        toGraph: (point) => flow.screenToFlowPosition(point),
+        // The same call `SignalEdge` makes, so the fill lies on the edge arriving under it.
+        curve: (from, to) =>
+          getBezierPath({
+            sourceX: from.x,
+            sourceY: from.y,
+            sourcePosition: Position.Right,
+            targetX: to.x,
+            targetY: to.y,
+            targetPosition: Position.Left,
+          })[0],
+        zoom: flow.getZoom(),
+        color: edgeFamilyColor(port?.type.kind),
+        source,
+        target,
+        on,
+      });
+    },
+    [bus, registry],
+  );
+
+  /**
    * A completed connect gesture is a request, not a fact: it goes to the bus, and the
    * edge only appears once the patch comes back through the projection (§V1, §V29).
    */
@@ -568,6 +641,10 @@ export function GraphCanvas({
     (connection: Connection) => {
       const { source, target, sourceHandle, targetHandle } = connection;
       if (sourceHandle === null || targetHandle === null) return;
+      // Read now: the gesture is over by the time the patch answers.
+      const landedOn = heldEnd.current === "target" ? "source" : "target";
+      const landing = (): void =>
+        land({ nodeId: source, handleId: sourceHandle }, { nodeId: target, handleId: targetHandle }, landedOn);
 
       // T695: a variadic input's handles are addressed by SLOT, so the handle id is not
       // the port id. Everything below works in port-and-slot terms from here.
@@ -589,11 +666,186 @@ export function GraphCanvas({
         source: { nodeId: source, portId: sourcePortId },
         target: { nodeId: target, portId: targetPortId, ...(slot === undefined ? {} : { slot }) },
       });
+      // The wire that is already there, let go on its own socket: nothing to say to the
+      // document, and the wire is in the port, which is what the snap means.
+      if (drop.kind === "unchanged") landing();
       if (drop.kind !== "connect") return;
-      dispatch(drop.operations, drop.label);
+      void apply(drop.operations, drop.label).then((applied) => {
+        if (applied) landing();
+      });
     },
-    [dispatch, domainEdges, domainNodes, registry],
+    [apply, land, domainEdges, domainNodes, registry],
   );
+
+  /**
+   * §V14b/§V14c — the wire under a release, or `null`.
+   *
+   * The hit test of a connection let go over a WIRE rather than over a port, shared by a
+   * new wire (`onConnectEnd`) and a pulled one (`onReconnectEnd`) so the two cannot come
+   * to mean different things by a wire's hit area.
+   */
+  const edgeUnderRelease = useCallback(
+    (event: MouseEvent | TouchEvent): GraphEdge | null => {
+      const flow = flowRef.current;
+      if (flow === null) return null;
+      const client = "changedTouches" in event ? event.changedTouches[0] : event;
+      if (client === undefined) return null;
+      const point = flow.screenToFlowPosition({ x: client.clientX, y: client.clientY });
+      // The tolerance is a SCREEN measurement (§V14c), so it is divided by the zoom to
+      // stay the same size under the cursor however far the camera is pulled back.
+      const zoom = flow.getZoom();
+      if (!(zoom > 0)) return null;
+      const edgeId = edgeGeometry.nearest(point, EDGE_HIT_TOLERANCE_PX / zoom);
+      if (edgeId === null) return null;
+      return bus.store.getGraph().edges[edgeId] ?? null;
+    },
+    [bus, edgeGeometry],
+  );
+
+  /** The handle an edge's input end is drawn to: a variadic socket has a slot (T695). */
+  const inputEndOf = useCallback(
+    (edge: GraphEdge): WireEnd => ({
+      nodeId: edge.target.nodeId,
+      handleId: flowRef.current?.getEdge(edge.id)?.targetHandle ?? edge.target.portId,
+    }),
+    [],
+  );
+
+  /**
+   * T1639b — a connected wire's input end, pulled off its port (React Flow's reconnect).
+   *
+   * While it is in the hand the library hides the edge and draws the connection line from
+   * the edge's output, so it is the same white wire, the same ring and arc, and the same
+   * range as a new one. The document is not touched until the release, which is one patch
+   * and one undo entry whatever it means (§V15, §V32):
+   *
+   *  - on a port that takes it: `onReconnect`, the move;
+   *  - back on its own port: nothing, and the snap, because the wire is in the port;
+   *  - on a wire: that wire's input, as a new wire does (§V14b), with its own disconnect;
+   *  - on a port that refuses, with no wire under it: nothing, the wire goes back;
+   *  - anywhere else: the wire comes off (`disconnect`).
+   *
+   * `pulled` is the edge in the hand, set for the length of the gesture. `onConnectEnd`
+   * reads it and stands aside: the library calls both ends for a reconnect, and two
+   * handlers each dispatching a patch for one release is two undo entries and a race.
+   */
+  const pulled = useRef<EdgeId | null>(null);
+  const onReconnectStart = useCallback((_event: unknown, edge: LoomEdge) => {
+    pulled.current = edge.id as EdgeId;
+  }, []);
+
+  const onReconnect = useCallback(
+    (oldEdge: LoomEdge, connection: Connection) => {
+      const { source, target, sourceHandle, targetHandle } = connection;
+      if (sourceHandle === null || targetHandle === null) return;
+      const landing = (): void =>
+        land({ nodeId: source, handleId: sourceHandle }, { nodeId: target, handleId: targetHandle }, "target");
+      if (target === oldEdge.target && targetHandle === oldEdge.targetHandle) {
+        landing();
+        return;
+      }
+      const { portId: targetPortId, slot } = parseHandleId(targetHandle);
+      const drop = connectDropOperations({
+        graph: bus.store.getGraph(),
+        registry,
+        source: { nodeId: source, portId: parseHandleId(sourceHandle).portId },
+        target: { nodeId: target, portId: targetPortId, ...(slot === undefined ? {} : { slot }) },
+        moving: oldEdge.id as EdgeId,
+      });
+      if (drop.kind === "unchanged") landing();
+      if (drop.kind !== "connect") return;
+      void apply(drop.operations, drop.label).then((applied) => {
+        if (applied) landing();
+      });
+    },
+    [apply, bus, land, registry],
+  );
+
+  const onReconnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, edge: LoomEdge, _handleType: unknown, state: FinalConnectionState) => {
+      pulled.current = null;
+      // Let go on a port that takes it: `onReconnect` has already answered.
+      if (state.isValid === true) return;
+      const graph = bus.store.getGraph();
+      const moving = graph.edges[edge.id];
+      if (moving === undefined) return;
+
+      const hit = edgeUnderRelease(event);
+      if (hit !== null && hit.id !== moving.id) {
+        const replace = replaceEdgeOperations(graph, registry, hit, {
+          nodeId: moving.source.nodeId,
+          portId: moving.source.portId,
+          direction: "output",
+        });
+        if (replace.length > 0) {
+          const source = { nodeId: moving.source.nodeId, handleId: moving.source.portId };
+          const target = inputEndOf(hit);
+          void apply([{ op: "disconnect", edgeIds: [moving.id] }, ...replace], "Move connection").then((applied) => {
+            if (applied) land(source, target, "target");
+          });
+          return;
+        }
+      }
+      // A port in range that refuses the wire: nothing happens, and the edge is drawn again.
+      if (wireAnswer(state) === "refused") return;
+      dispatch([{ op: "disconnect", edgeIds: [moving.id] }], "Disconnect");
+    },
+    [apply, bus, dispatch, edgeUnderRelease, inputEndOf, land, registry],
+  );
+
+  /**
+   * T1639b — a press ON a connected input's dot picks up the wire that ends there.
+   *
+   * React Flow's own grab zone is a circle on the wire's last pixels, in the edge layer,
+   * UNDER the nodes. The dot is a handle on the node, above it, so a press on the dot
+   * never reached that circle: it started a second wire out of the input and left the
+   * first one where it was. The reference's gesture, and the owner's, is to take hold of
+   * the wire at the port.
+   *
+   * So the press is re-aimed, and that is all this does: it finds the one edge drawn into
+   * that handle and hands the same press to that edge's reconnect anchor. From there the
+   * gesture is entirely the library's (the hidden edge, the range, `onReconnect`). It runs
+   * in the CAPTURE phase and stops the press, so neither the handle's own connection nor a
+   * node drag starts from it.
+   *
+   * Left alone, and so behaving as before: an input with no wire, an input whose wire
+   * cannot be told from its siblings (the Panel's one socket holds many, T1518b), every
+   * output (an output fans out), and anything but the primary button.
+   */
+  const grabConnectedEnd = useCallback((event: ReactMouseEvent<HTMLDivElement> | ReactTouchEvent<HTMLDivElement>) => {
+    const canvas = canvasRef.current;
+    const flow = flowRef.current;
+    if (canvas === null || flow === null || !(event.target instanceof Element)) return;
+    const dot = event.target.closest<HTMLElement>(".react-flow__handle.target");
+    if (dot === null) return;
+    if ("button" in event && event.button !== 0) return;
+    const point = "touches" in event ? event.touches[0] : event;
+    if (point === undefined) return;
+
+    const nodeId = dot.dataset["nodeid"];
+    const handleId = dot.dataset["handleid"];
+    const ending = flow
+      .getEdges()
+      .filter((edge) => edge.target === nodeId && edge.targetHandle === handleId && edge.reconnectable !== false);
+    const only = ending.length === 1 ? ending[0] : undefined;
+    if (only === undefined) return;
+    let anchor: Element | null = null;
+    for (const edge of canvas.querySelectorAll(".react-flow__edge")) {
+      if (edge.getAttribute("data-id") === only.id) anchor = edge.querySelector(".react-flow__edgeupdater-target");
+    }
+    if (anchor === null) return;
+
+    event.stopPropagation();
+    anchor.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: point.clientX,
+        clientY: point.clientY,
+      }),
+    );
+  }, []);
 
   /**
    * §V14b/§V14c — an EDGE is a drop target for a connection.
@@ -611,39 +863,40 @@ export function GraphCanvas({
    */
   const onConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      // T1639b: a wire pulled off its port is `onReconnectEnd`'s, which is called next.
+      if (pulled.current !== null) return;
       if (state.isValid === true) return;
       const from = state.fromHandle;
-      const flow = flowRef.current;
-      if (from === null || from === undefined || flow === null) return;
+      if (from === null || from === undefined) return;
       // A handle with no id belongs to a node that declares a single unnamed port; ours
       // always name their ports, so there is nothing to reconnect.
       const fromPortId = from.id;
       if (fromPortId === null || fromPortId === undefined) return;
 
-      const client = "changedTouches" in event ? event.changedTouches[0] : event;
-      if (client === undefined) return;
-      const point = flow.screenToFlowPosition({ x: client.clientX, y: client.clientY });
-      // The tolerance is a SCREEN measurement (§V14c), so it is divided by the zoom to
-      // stay the same size under the cursor however far the camera is pulled back.
-      const zoom = flow.getZoom();
-      if (!(zoom > 0)) return;
-      const edgeId = edgeGeometry.nearest(point, EDGE_HIT_TOLERANCE_PX / zoom);
-      if (edgeId === null) return;
-
+      const edge = edgeUnderRelease(event);
+      if (edge === null) return;
       const graph = bus.store.getGraph();
-      const edge = graph.edges[edgeId];
-      if (edge === undefined) return;
+      // React Flow's "source" handle is our output; "target" is our input.
+      const direction = from.type === "source" ? "output" : "input";
       const operations = replaceEdgeOperations(graph, registry, edge, {
         nodeId: from.nodeId,
         // T695 — the grabbed end may be one SOCKET of a variadic input; what the document
         // records is the port.
         portId: parseHandleId(fromPortId).portId,
-        // React Flow's "source" handle is our output; "target" is our input.
-        direction: from.type === "source" ? "output" : "input",
+        direction,
       });
-      dispatch(operations, "Replace connection");
+      // T1639b: the snap plays on the input that was just fed. Read before the patch: the
+      // wire that was hit is gone once it applies.
+      const source =
+        direction === "output"
+          ? { nodeId: from.nodeId, handleId: fromPortId }
+          : { nodeId: edge.source.nodeId, handleId: edge.source.portId };
+      const target = direction === "output" ? inputEndOf(edge) : { nodeId: from.nodeId, handleId: fromPortId };
+      void apply(operations, "Replace connection").then((applied) => {
+        if (applied) land(source, target, "target");
+      });
     },
-    [bus, dispatch, edgeGeometry, registry],
+    [apply, bus, edgeUnderRelease, inputEndOf, land, registry],
   );
 
   /**
@@ -943,6 +1196,11 @@ export function GraphCanvas({
         data-pan-key={panKeyHeld ? "held" : undefined}
         ref={canvasRef}
         onDoubleClick={onCanvasDoubleClick}
+        // T1639b: capture, so a press on a connected input's dot is re-aimed before the
+        // handle or the node under it hears of it. Both events, as the library listens
+        // to both.
+        onMouseDownCapture={grabConnectedEnd}
+        onTouchStartCapture={grabConnectedEnd}
       >
         <ReactFlow<LoomNode, LoomEdge>
           nodes={viewNodes}
@@ -951,10 +1209,20 @@ export function GraphCanvas({
           edgeTypes={EDGE_TYPES}
           defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
           connectionLineType={ConnectionLineType.Bezier}
+          // T1639b: the wire in the hand, its tip, and the ring and arc of the port in
+          // range. No `connectionRadius` here: `WireRangeDriver` below owns that number.
+          connectionLineComponent={WireInFlight}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onConnectStart={onConnectStart}
           onConnect={onConnect}
           onConnectEnd={onConnectEnd}
+          // T1639b: a connected wire's input end can be pulled off and put elsewhere.
+          // `derive.ts` says which edges and which end; this is the size of the grab zone.
+          onReconnectStart={onReconnectStart}
+          onReconnect={onReconnect}
+          onReconnectEnd={onReconnectEnd}
+          reconnectRadius={WIRE_GRAB_RADIUS}
           onInit={onInit}
           isValidConnection={isValidConnection}
           onSelectionChange={reportSelection}
@@ -989,6 +1257,8 @@ export function GraphCanvas({
           <GraphGrid />
           {/* T1597b: hands the zoom to the low-zoom kind labels. Renders nothing, and re-renders nothing. */}
           <KindLabelDriver registry={kindLabels} />
+          {/* T1639b: keeps the range a wire connects from the same size on screen. Renders nothing. */}
+          <WireRangeDriver />
           {underlay}
           <ReferenceLines dependencies={dependencies} />
           {showMinimap ? <GraphMinimap host={minimapHost} /> : null}
