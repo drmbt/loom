@@ -183,7 +183,7 @@ export function valueGraphRun(document: ProjectDocument) {
    * instance read "publishes no channel" — silent until §B231 surfaced component-slot
    * diagnostics, and then E51's churn LFOs inside `wall1` failed step 0.
    */
-  const flat = flattenComponents({ graph: document.graph, registry: nodes, components }).graph;
+  const flattened = flattenComponents({ graph: document.graph, registry: nodes, components });
   let frameIndex = 0;
 
   const frameAt = (index: number): FrameEvaluationInput =>
@@ -201,7 +201,8 @@ export function valueGraphRun(document: ProjectDocument) {
     step(pointer: Pointer): { plan: CompiledGraph; frame: FrameEvaluationInput } {
       const frame = frameAt(frameIndex);
       frameIndex += 1;
-      const { resolver } = session.evaluate(flat, frame, { pointer: { ...pointer } });
+      // §T1559b: the flattening whole, as the app's value graph is handed it.
+      const { resolver } = session.evaluate(flattened.graph, frame, { flattening: flattened, pointer: { ...pointer } });
       const plan = requireLivePlan(
         compileGraph({
           graph: document.graph,

@@ -258,7 +258,7 @@
       "beam": {
         "definitionVersion": 1,
         "id": "beam",
-        "label": "beam1",
+        "label": "circle_beam",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -275,7 +275,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sweep1').chan.value"
+                "source": "op('lfo_sweep').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -306,7 +306,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "noise_bed",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -333,7 +333,7 @@
       "bedclip": {
         "definitionVersion": 1,
         "id": "bedclip",
-        "label": "bedclip1",
+        "label": "limit_bedclip",
         "parameters": {
           "high": 4,
           "low": 0,
@@ -349,7 +349,7 @@
       "ctl": {
         "definitionVersion": 1,
         "id": "ctl",
-        "label": "ctl1",
+        "label": "math_ctl",
         "parameters": {
           "fromHigh": 1,
           "fromLow": 0,
@@ -367,14 +367,14 @@
       "dim": {
         "definitionVersion": 1,
         "id": "dim",
-        "label": "dim1",
+        "label": "level_dim",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('ctl1').chan.level"
+                "source": "op('math_ctl').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -398,7 +398,7 @@
       "field": {
         "definitionVersion": 1,
         "id": "field",
-        "label": "field1",
+        "label": "add_field",
         "parameters": {
           "opacity": 1
         },
@@ -411,7 +411,7 @@
       "gate": {
         "definitionVersion": 1,
         "id": "gate",
-        "label": "gate1",
+        "label": "rectangle_gate",
         "parameters": {
           "aspectcorrect": false,
           "bgcolor": [
@@ -447,7 +447,7 @@
       "hear": {
         "definitionVersion": 1,
         "id": "hear",
-        "label": "hear1",
+        "label": "oscin_hear",
         "parameters": {
           "controls": "level",
           "levelAddress": "/loom/relay",
@@ -463,7 +463,7 @@
       "hist": {
         "definitionVersion": 1,
         "id": "hist",
-        "label": "hist1",
+        "label": "feedback_hist",
         "parameters": {
           "clearColor": [
             0,
@@ -473,7 +473,7 @@
           ],
           "persistence": 1,
           "reset": false,
-          "source": "tape1",
+          "source": "over_tape",
           "substeps": 1
         },
         "position": {
@@ -485,7 +485,7 @@
       "ink": {
         "definitionVersion": 1,
         "id": "ink",
-        "label": "ink1",
+        "label": "over_ink",
         "parameters": {
           "opacity": 1
         },
@@ -498,7 +498,7 @@
       "meter": {
         "definitionVersion": 1,
         "id": "meter",
-        "label": "meter1",
+        "label": "analyze_meter",
         "parameters": {
           "channel": "luminance",
           "operation": "maximum"
@@ -512,7 +512,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 1800,
@@ -523,7 +523,7 @@
       "panel": {
         "definitionVersion": 1,
         "id": "panel",
-        "label": "panel1",
+        "label": "rectangle_panel",
         "parameters": {
           "aspectcorrect": false,
           "bgcolor": [
@@ -559,7 +559,7 @@
       "penA": {
         "definitionVersion": 1,
         "id": "penA",
-        "label": "penA1",
+        "label": "math_penA",
         "parameters": {
           "fromHigh": 1,
           "fromLow": 0,
@@ -577,7 +577,7 @@
       "penB": {
         "definitionVersion": 1,
         "id": "penB",
-        "label": "penB1",
+        "label": "math_penB",
         "parameters": {
           "fromHigh": 1,
           "fromLow": 0,
@@ -595,7 +595,7 @@
       "pena": {
         "definitionVersion": 1,
         "id": "pena",
-        "label": "pena1",
+        "label": "circle_pena",
         "parameters": {
           "aspectcorrect": false,
           "bgcolor": [
@@ -612,7 +612,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('penA1').chan.value"
+                "source": "op('math_penA').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -643,7 +643,7 @@
       "penb": {
         "definitionVersion": 1,
         "id": "penb",
-        "label": "penb1",
+        "label": "circle_penb",
         "parameters": {
           "aspectcorrect": false,
           "bgcolor": [
@@ -660,7 +660,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('penB1').chan.level"
+                "source": "op('math_penB').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -691,7 +691,7 @@
       "plate": {
         "definitionVersion": 1,
         "id": "plate",
-        "label": "plate1",
+        "label": "over_plate",
         "parameters": {
           "opacity": 1
         },
@@ -704,9 +704,9 @@
       "probe": {
         "definitionVersion": 1,
         "id": "probe",
-        "label": "probe1",
+        "label": "channelin_probe",
         "parameters": {
-          "channel": "meter1",
+          "channel": "analyze_meter",
           "fallback": 0.16125
         },
         "position": {
@@ -718,7 +718,7 @@
       "roll": {
         "definitionVersion": 1,
         "id": "roll",
-        "label": "roll1",
+        "label": "transform_roll",
         "parameters": {
           "aspectcorrect": false,
           "extend": "zero",
@@ -745,7 +745,7 @@
       "send": {
         "definitionVersion": 1,
         "id": "send",
-        "label": "send1",
+        "label": "oscout_send",
         "parameters": {
           "address": "/loom/relay",
           "host": "127.0.0.1",
@@ -761,7 +761,7 @@
       "sweep": {
         "definitionVersion": 1,
         "id": "sweep",
-        "label": "sweep1",
+        "label": "lfo_sweep",
         "parameters": {
           "amplitude": 0.42,
           "frequency": 0.33,
@@ -778,7 +778,7 @@
       "tape": {
         "definitionVersion": 1,
         "id": "tape",
-        "label": "tape1",
+        "label": "over_tape",
         "parameters": {
           "opacity": 1
         },
@@ -791,7 +791,7 @@
       "wash": {
         "definitionVersion": 2,
         "id": "wash",
-        "label": "wash1",
+        "label": "ramp_wash",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -835,7 +835,7 @@
       "win": {
         "definitionVersion": 1,
         "id": "win",
-        "label": "win1",
+        "label": "crop_win",
         "parameters": {
           "bottom": 0.34,
           "left": 0.33,
@@ -851,7 +851,7 @@
       "wire": {
         "definitionVersion": 1,
         "id": "wire",
-        "label": "wire1",
+        "label": "math_wire",
         "parameters": {
           "fromHigh": 0.42,
           "fromLow": 0.075,

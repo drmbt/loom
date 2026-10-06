@@ -12,9 +12,9 @@ import { renderHeadless } from "./render-harness.ts";
  * §B231 — AN EXPRESSION ON ONE COMPONENT OF A COMPOUND KNOB FAILED IN SILENCE.
  *
  * The report came from the On Nothing shots: an unknown function in an expression on a
- * shader-declared knob held the retained value, and the headless render — which treats
- * `parameter.expression` as an error — did not stop. The same mistake on a SCALAR knob did
- * stop it. The difference is the key, not the node: the silent knobs were written per
+ * shader-declared knob held the retained value, and the headless render (whose script
+ * stopped on an expression failure, then all one code, `parameter.expression`) did not
+ * stop. The same mistake on a SCALAR knob did stop it. The difference is the key, not the node: the silent knobs were written per
  * component (`place.x` on a kernel's `vec3f`, `tint.r` here on a Custom WGSL `vec3f`), and
  * the resolver's per-component verdict never reached `plan.diagnostics` — the compiler read
  * each parameter's bare-key diagnostic and dropped its components' (§V288, §V109).
@@ -23,6 +23,11 @@ import { renderHeadless } from "./render-harness.ts";
  * Dawn underneath, `animate` on as it is there. The value is asserted from PIXELS, against
  * renders of the same graph with the knob static — byte-identical, so no colour-space
  * arithmetic has to be restated here to know which number reached the shader.
+ *
+ * §T1641b: an unknown function can never evaluate, so it is an ERROR now and stops a
+ * headless render by itself. This file is a fallback's own test, so it names the finding it
+ * renders through (`expectedFindings`). A failure of arithmetic at these inputs is still a
+ * warning that travels with the frames.
  */
 
 let dawnError: string | undefined;
@@ -58,11 +63,11 @@ function tinted(red: StoredParameter): GraphDocument {
   };
 }
 
-async function render(red: StoredParameter) {
-  const result = await renderHeadless({ host: nodeGpuHost(), graph: tinted(red), settings, frames: 2, animate: true });
+async function render(red: StoredParameter, expectedFindings: readonly string[] = []) {
+  const result = await renderHeadless({ host: nodeGpuHost(), graph: tinted(red), settings, frames: 2, animate: true, expectedFindings });
   const frame = result.frames[0];
   if (frame === undefined) throw new Error("no frame captured");
-  return { bytes: Buffer.from(frame.bytes), expression: result.diagnostics.filter((d) => d.code === "parameter.expression") };
+  return { bytes: Buffer.from(frame.bytes), expression: result.diagnostics.filter((d) => d.code.startsWith("parameter.expression.")) };
 }
 
 describe("§B231 — a failing expression on one component of a WGSL-declared knob", () => {
@@ -71,8 +76,11 @@ describe("§B231 — a failing expression on one component of a WGSL-declared kn
     const retained = await render(0.25);
 
     // `saturate` is real WGSL/HLSL an author reaches for; the grammar does not have it.
-    const unknown = await render(expressionSlot("saturate(abstime)", 0.25));
+    await expect(render(expressionSlot("saturate(abstime)", 0.25))).rejects.toThrow(/"tint\.r".*unknown function "saturate"/);
+    const unknown = await render(expressionSlot("saturate(abstime)", 0.25), ["parameter.expression.syntax"]);
     expect(unknown.expression).toHaveLength(1);
+    expect([unknown.expression[0]?.severity, unknown.expression[0]?.code]).toEqual(["error", "parameter.expression.syntax"]);
+    expect(unknown.expression[0]?.suggestion).toBe("Write clamp(abstime, 0, 1).");
     expect(unknown.expression[0]?.nodeId).toBe("fx");
     expect(unknown.expression[0]?.message).toContain('"tint.r"');
     expect(unknown.expression[0]?.message).toContain('unknown function "saturate"');
@@ -82,6 +90,7 @@ describe("§B231 — a failing expression on one component of a WGSL-declared kn
     // The EVALUATION half: it parses, and fails only once it runs.
     const evaluation = await render(expressionSlot("mod(abstime, 0)", 0.25));
     expect(evaluation.expression).toHaveLength(1);
+    expect([evaluation.expression[0]?.severity, evaluation.expression[0]?.code]).toEqual(["warning", "parameter.expression.value"]);
     expect(evaluation.expression[0]?.nodeId).toBe("fx");
     expect(evaluation.expression[0]?.message).toContain('"tint.r"');
     expect(evaluation.expression[0]?.message).toContain("mod(): the period is zero");

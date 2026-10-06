@@ -36,6 +36,16 @@ import {
   panelChoices,
 } from "@editor/controls/parameter-controls.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
+// T1619b: the control menu's four rows. The constants, from the domain module that owns the
+// commands; which Panel "all on this Panel" means, from the controls editor's pure module.
+import {
+  CONTROL_RESET_ALL_COMMAND,
+  CONTROL_RESET_COMMAND,
+  CONTROL_SET_ALL_DEFAULTS_COMMAND,
+  CONTROL_SET_DEFAULT_COMMAND,
+} from "@domain/commands/control-default-commands.ts";
+import { controlPanelOf } from "@editor/controls/control-defaults.ts";
+import { panelTitle } from "@nodes/definitions/controls.ts";
 import type { MenuContext, MenuGuardName } from "./guards.ts";
 
 /**
@@ -427,6 +437,47 @@ const CHANNEL_MENU: MenuSchema = {
   entries: [{ command: "channel.copy", label: "Copy channel" }],
 };
 
+/**
+ * T1619b — A LIVE CONTROL'S MENU: a right-click on a Slider, a Toggle or an XY Pad, on a
+ * Panel board or on its own node (`docs/control-reset-design-2026-10-06.md`). Short on
+ * purpose: it is opened in the middle of playing.
+ *
+ *   Reset · Set as default
+ *   Reset all on <Panel> · Set all as default on <Panel>
+ *
+ * The second pair acts on the Panel whose board the control was clicked on, or the one Panel
+ * it is on (`controlPanelOf`); a control on no Panel has no "this Panel", so the pair is the
+ * whole document there. Built on open, because the Panel's title is the document's.
+ *
+ * No `when` guards: each row asks the command's own plan (`input.ts`), so a row that could
+ * only refuse — the control is at its default, holds none, or is driven — is greyed and
+ * says why in the command's sentence (§V288). Reset is never a plain press: it takes a
+ * right-click and then a row (the design's "nothing resets from one press").
+ */
+export function controlMenu(context?: MenuContext, target?: MenuTarget): MenuSchema {
+  const panel = context === undefined || target === undefined ? null : controlPanelOf(context.graph, target);
+  const all: MenuItem[] =
+    panel === null
+      ? [
+          { command: CONTROL_RESET_ALL_COMMAND, label: "Reset all controls" },
+          { command: CONTROL_SET_ALL_DEFAULTS_COMMAND, label: "Set all controls as default" },
+        ]
+      : [
+          { command: CONTROL_RESET_COMMAND, input: { scope: "panel" }, label: `Reset all on ${panelTitle(panel)}`, noShortcut: true },
+          { command: CONTROL_SET_DEFAULT_COMMAND, input: { scope: "panel" }, label: `Set all as default on ${panelTitle(panel)}` },
+        ];
+  return {
+    surface: "control",
+    entries: [
+      // `noShortcut`: the command's chord resets the CANVAS SELECTION, not what was clicked.
+      { command: CONTROL_RESET_COMMAND, input: { scope: "control" }, label: "Reset", noShortcut: true },
+      { command: CONTROL_SET_DEFAULT_COMMAND, input: { scope: "control" }, label: "Set as default" },
+      { separator: true },
+      ...all,
+    ],
+  };
+}
+
 /** The one menu offered for a surface. Built on open, never precomputed per node. */
 export function menuSchemaFor(
   surface: MenuTarget["surface"],
@@ -451,5 +502,7 @@ export function menuSchemaFor(
       };
     case "channel":
       return CHANNEL_MENU;
+    case "control":
+      return controlMenu(context, target);
   }
 }

@@ -91,7 +91,7 @@ export const reactionDiffusionDocument = document(
         t4d: 0.37, // T535: off the 4D lattice plane, where t4d=0 collapses amplitude — frame 0 (the thumbnail) was flatter than every frame after it
         s4d: 1,
         speed: 0.05,
-      }, { label: "broad1" }),
+      }, { label: "noise_broad" }),
       node("detail", "noise", [-900, 121], {
         type: "perlin4d",
         seed: 19,
@@ -108,7 +108,7 @@ export const reactionDiffusionDocument = document(
         t4d: 0.37, // T535: off the 4D lattice plane, where t4d=0 collapses amplitude — frame 0 (the thumbnail) was flatter than every frame after it
         s4d: 1,
         speed: 0.09,
-      }, { label: "detail1" }),
+      }, { label: "noise_detail" }),
       /*
        * The PROCESSING BETWEEN the noises. Displace reads `detail` as signed uv offsets
        * (offset 0.5 is "a 0..1 field means no motion") and drags `broad` around by them, so
@@ -121,7 +121,7 @@ export const reactionDiffusionDocument = document(
         sourcex: "red",
         sourcey: "green",
         extend: "mirror",
-      }, { label: "warp1" }),
+      }, { label: "displace_warp" }),
       /*
        * SHAPING. The kernel walks a straight line across the (feed, kill) band as this
        * value goes 0 -> 1, so the DISTRIBUTION of this number is the distribution of
@@ -135,7 +135,7 @@ export const reactionDiffusionDocument = document(
         contrast: 1.6,
         brightness: 1,
         gamma1: 1,
-      }, { label: "shape1" }),
+      }, { label: "level_shape" }),
       /*
        * T734 — AND NOT A TRAVELLING FRONT, which was built, measured and REJECTED here.
        * E32's second half (§V625) is weather: an LFO-driven ramp multiplied into the map so
@@ -158,7 +158,7 @@ export const reactionDiffusionDocument = document(
         "feedback",
         [-120, 124],
         // T350 (§V285): the simulation loop is a NAME, not a wired back-edge.
-        { source: "pack1", persistence: 1, clearColor: [0, 0, 0, 0], substeps: 20 },
+        { source: "reorder_pack", persistence: 1, clearColor: [0, 0, 0, 0], substeps: 20 },
         {
           resolution: { mode: "fixed", width: 512, height: 512 },
           format: { mode: "fixed", format: "rgba16float" },
@@ -169,7 +169,7 @@ export const reactionDiffusionDocument = document(
        * pattern. Gray-Scott's spot lattice is stable because its substrate is stationary;
        * carrying the state along a slow flow while the chemistry map underneath it stays
        * PUT shears the lattice apart, and a rigid rotation would only turn it and leave it
-       * a lattice. `pack1` repaints blue from the map AFTER the reaction, which is what
+       * a lattice. `reorder_pack` repaints blue from the map AFTER the reaction, which is what
        * makes this advection THROUGH a static parameter field: the field moves, its
        * parameters do not.
        *
@@ -199,7 +199,7 @@ export const reactionDiffusionDocument = document(
         t4d: 0.37, // T535: off the 4D lattice plane, where t4d=0 collapses amplitude
         s4d: 1,
         speed: 0.035, // slower than either map noise: the flow should outlive the shapes it carries
-      }, { label: "swell1", resolution: { mode: "fixed", width: 512, height: 512 } }),
+      }, { label: "noise_swell", resolution: { mode: "fixed", width: 512, height: 512 } }),
       node("flow", "displace", [-120, 388], {
         weight: [0.00035, 0.00035],
         offset: [0.5, 0.5],
@@ -208,7 +208,7 @@ export const reactionDiffusionDocument = document(
         // `hold` and not `mirror`: the state's edge is a boundary condition of the
         // simulation, and mirroring it folds chemistry back in as a phantom neighbour.
         extend: "hold",
-      }, { label: "flow1", resolution: { mode: "fixed", width: 512, height: 512 } }),
+      }, { label: "displace_flow", resolution: { mode: "fixed", width: 512, height: 512 } }),
       /*
        * THE KNOBS (T1237) are stored, not inherited: every one is the constant it replaced,
        * so E2 computes what it computed before (`reaction-diffusion-claims.gpu.test.ts`
@@ -218,7 +218,7 @@ export const reactionDiffusionDocument = document(
       node("rd", "customWgsl", [140, 124], {
         [SHADER_SOURCE_PARAMETER]: GRAY_SCOTT_WGSL,
         ...GRAY_SCOTT_DEFAULTS,
-      }, { label: "rd1" }),
+      }, { label: "wgsl_reaction" }),
       /*
        * THE PACK. Red and green are the chemicals the kernel just stepped; blue is the
        * chemistry coordinate for the NEXT step, read from the noise chain's luminance;
@@ -229,7 +229,7 @@ export const reactionDiffusionDocument = document(
         outg: "in1g",
         outb: "in2lum",
         outa: "in1a",
-      }, { label: "pack1" }),
+      }, { label: "reorder_pack" }),
       /*
        * VALUE -> COLOUR (T389). The V concentration is a number, not light, so it indexes a
        * palette rather than being shown as green. `scale: 2.4` spreads V's roughly 0..0.4
@@ -248,12 +248,12 @@ export const reactionDiffusionDocument = document(
           { position: 0.82, color: [0.95, 0.76, 0.3, 1] },
           { position: 1, color: [1, 0.97, 0.9, 1] },
         ],
-      }, { label: "palette1", definitionVersion: 2 }),
+      }, { label: "ramp_palette", definitionVersion: 2 }),
       node("cycle", "lfo", [140, 649], { shape: "sine", frequency: 0.05, amplitude: 0.06, offset: 0 }, {
         label: "lfo1",
       }),
       node("tint", "lookup", [400, 401], { channel: "green", row: 0.5, scale: 2.4 }, {
-        label: "tint1",
+        label: "lookup_tint",
         parameters: {
           // §V107/§V108: the retained static is what a host with no channel attached
           // resolves to, so it has to be a sane picture on its own — here, no shift.

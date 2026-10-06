@@ -132,7 +132,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "camera1",
         "parameters": {
           "eye": [
             120,
@@ -157,9 +157,9 @@
       "cardGeo": {
         "definitionVersion": 1,
         "id": "cardGeo",
-        "label": "cardgeo1",
+        "label": "geometry_card",
         "parameters": {
-          "material": "typesurf1",
+          "material": "material_typesurf",
           "mode": "surface"
         },
         "position": {
@@ -171,7 +171,7 @@
       "cardMesh": {
         "definitionVersion": 1,
         "id": "cardMesh",
-        "label": "cardmesh1",
+        "label": "mesh_card",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "parts": "1:car2 2:car2_wheel_fl 3:car2_wheel_fr 4:car2_wheel_rl 5:car2_wheel_rr 6:cabin 7:cabin_door",
@@ -188,7 +188,7 @@
       "cocoon": {
         "definitionVersion": 1,
         "id": "cocoon",
-        "label": "cocoon1",
+        "label": "wgsl_cocoon",
         "parameters": {
           "source": "struct Params {\n  t: f32, // @default 0  The card's clock, seconds.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\nfn toLinear(c: vec3f) -> vec3f {\n  return select(pow((c + vec3f(0.055)) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045));\n}\nfn toDisplay(c: vec3f) -> vec3f {\n  return select(1.055 * pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.4)) - vec3f(0.055), c * 12.92, c <= vec3f(0.0031308));\n}\nfn grainAt(p: vec2f, t: f32) -> f32 {\n  let q = fract(sin(dot(floor(p) + vec2f(t * 37.0, t * 91.0), vec2f(12.9898, 78.233))) * 43758.5453);\n  return q - 0.5;\n}\n\n// the hairlines' x (reference px): C, O (two), C, O (two), O (two), then the N's two\nconst LINES = array<f32, 10>(374.5, 591.5, 650.5, 811.5, 1028.5, 1087.5, 1249.5, 1307.5, 1471.0, 1524.0);\nconst BASE = 385.0;\n\nfn hairline(p: vec2f, x: f32, len: f32, level: f32) -> f32 {\n  let k = BASE - p.y;\n  if (k < 0.0 || len <= 0.0) { return 0.0; }\n  let across = exp(-(p.x - x) * (p.x - x) / (2.0 * 1.6 * 1.6));\n  // brighter at the letter, easing off upward, a soft top\n  let along = (0.6 + 0.4 * (1.0 - clamp(k / max(len, 1.0), 0.0, 1.0))) * smoothstep(len, len - 14.0, k);\n  return level * across * along;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let p = uv * vec2f(1920.0, 818.0);\n  let f = floor(params.t * 24.0 + 0.001);\n  // the strobe-off tail\n  let off = f == 49.0 || f == 51.0 || f == 53.0 || f >= 55.0;\n  var shown = select(1.0, 0.0, off);\n  let type_ = toDisplay(textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb).r * 0.976;\n  // C and O: climbing from 145 px a little slower than the N, fading out over the first 15 frames\n  let fade = clamp(1.0 - f / 15.0, 0.0, 1.0);\n  var lines = 0.0;\n  for (var i = 0; i < 8; i = i + 1) {\n    lines = max(lines, hairline(p, LINES[i], min(145.0 + 23.0 * f, BASE), 0.29 * fade));\n  }\n  // N: climbing to the top by frame 9, holding, snapping back at 16 and settling;\n  // the two flash frames (52, 54) throw the full lines back\n  var nLen = 11.0 + 21.0 * exp(-(f - 16.0) / 7.0);\n  if (f < 16.0) { nLen = min(145.0 + 27.5 * f, BASE); }\n  if (f == 52.0 || f == 54.0) { nLen = BASE; }\n  let nLevel = select(0.6, 0.45, f >= 16.0 && f != 52.0 && f != 54.0);\n  lines = max(lines, hairline(p, LINES[8], nLen, nLevel));\n  lines = max(lines, hairline(p, LINES[9], nLen, nLevel));\n  let grain = grainAt(p, params.t) * 0.006;\n  let display = clamp(max(type_, lines) * shown + grain + 0.002, 0.0, 1.0);\n  return vec4f(toLinear(vec3f(display)), 1.0);\n}",
           "t": {
@@ -217,7 +217,7 @@
       "envSeed": {
         "definitionVersion": 2,
         "id": "envSeed",
-        "label": "envseed1",
+        "label": "ramp_envseed",
         "parameters": {},
         "position": {
           "x": -3000,
@@ -233,7 +233,7 @@
       "look": {
         "definitionVersion": 1,
         "id": "look",
-        "label": "look1",
+        "label": "wgsl_look",
         "parameters": {
           "contrast": 0.95,
           "grain": 0.006,
@@ -275,7 +275,7 @@
       "lookDown": {
         "definitionVersion": 1,
         "id": "lookDown",
-        "label": "lookdown1",
+        "label": "wgsl_lookdown",
         "parameters": {
           "source": "struct Params {\n  gain: f32, // @default 1  Scales the downsampled picture.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  // one output texel's footprint in uv\n  let foot = vec2f(abs(dpdx(uv).x), abs(dpdy(uv).y));\n  var sum = vec3f(0.0);\n  for (var j = 0; j < 4; j = j + 1) {\n    for (var i = 0; i < 4; i = i + 1) {\n      let o = (vec2f(f32(i), f32(j)) + 0.5) / 4.0 - 0.5;\n      sum = sum + max(textureSampleLevel(inputTexture, inputSampler, uv + o * foot, 0.0).rgb, vec3f(0.0));\n    }\n  }\n  return vec4f(sum / 16.0 * params.gain, 1.0);\n}"
         },
@@ -293,7 +293,7 @@
       "lookNear": {
         "definitionVersion": 1,
         "id": "lookNear",
-        "label": "looknear1",
+        "label": "blur_looknear",
         "parameters": {
           "size": 4
         },
@@ -306,7 +306,7 @@
       "lookWide": {
         "definitionVersion": 1,
         "id": "lookWide",
-        "label": "lookwide1",
+        "label": "blur_lookwide",
         "parameters": {
           "size": 24
         },
@@ -319,7 +319,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "none"
         },
@@ -332,7 +332,7 @@
       "type": {
         "definitionVersion": 1,
         "id": "type",
-        "label": "type1",
+        "label": "render_type",
         "parameters": {
           "ambientColor": [
             1,
@@ -348,12 +348,12 @@
             0,
             1
           ],
-          "camera": "cam1",
+          "camera": "camera1",
           "environmentIntensity": 0,
           "environmentTaps": 4,
           "lights": "",
           "projectors": "",
-          "scenes": "cardgeo1"
+          "scenes": "geometry_card"
         },
         "position": {
           "x": -2600,
@@ -367,7 +367,7 @@
       "typeEnv": {
         "definitionVersion": 1,
         "id": "typeEnv",
-        "label": "typeenv1",
+        "label": "wgsl_typeenv",
         "parameters": {
           "bars": 0,
           "floor": 0,
@@ -388,7 +388,7 @@
       "typesurf": {
         "definitionVersion": 1,
         "id": "typesurf",
-        "label": "typesurf1",
+        "label": "material_typesurf",
         "parameters": {
           "gain": 1,
           "model": "pbr",

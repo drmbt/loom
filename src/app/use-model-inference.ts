@@ -430,7 +430,7 @@ export interface ModelInferenceBinding {
   readonly settle: (frameIndex: number) => Promise<void>;
   /** Acquire offline ownership; release after success, failure, or cancellation. */
   readonly prepareForRender: () => Promise<() => void>;
-  /** Consent, progress and failure, for the strip under the top bar. */
+  /** Consent, progress and failure, for the notice strip at the foot of the window. */
   readonly notices: readonly Notice[];
   /**
    * §T976 — the fourth resolver in the composition root's `externalChannels` merge.

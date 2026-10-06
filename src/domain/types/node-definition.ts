@@ -57,11 +57,53 @@ export interface TemporalDefinition {
    * Naming the key here is what lets the compiler read it without guessing, and what makes
    * a node that has no such parameter structurally incapable of claiming substeps.
    *
-   * The key it names MUST be `compileTime: true`: the count is a plan STRUCTURE fact
-   * (§V5) — it changes how many times the region is encoded, and no uniform write can
-   * express that.
+   * The key it names is a per-frame VALUE since T425 (it was `compileTime` under T387):
+   * the loop REGION is plan structure, the count is read live by the encoder (§V358).
    */
   substeps?: string;
+}
+
+/**
+ * T1583b — KERNEL STEPS: this node's one dispatch may run several times per displayed
+ * frame over its own buffer pair, each run reading what the run before it wrote.
+ *
+ * Two parameter keys, named here for the reason `TemporalDefinition.substeps` gives: the
+ * compiler reads numbers out of a node whose parameters are otherwise its own business.
+ *
+ *  - `substeps` DIVIDES TIME: the dispatch's `deltaSeconds` is the frame's divided by it.
+ *  - `iterations` repeats inside one substep at the same time step.
+ *
+ * Dispatches per frame = substeps × iterations. Both are per-frame VALUES and must NOT be
+ * `compileTime` (§V358): the compiler emits the region at count 1 so that driving either
+ * from 1 to 3 is a value write, never a rebuild.
+ *
+ * Not `temporal.substeps`, though both end as a loop region. That key says "iterate the
+ * feedback LOOP this node closes" — a cycle of several nodes, found on the graph, with the
+ * pair's swap inside it. This says "iterate this node's own pass", and it divides time.
+ *
+ * T1585b — two more shapes, for a solver node:
+ *
+ *  - `substeps` may be a RATE (`KernelStepRateDeclaration`) in place of a count: three
+ *    parameter keys, and the count is `clamp(round(delta × rate), min, max)` of whichever
+ *    frame is being rendered. Notch's Update Frame Rate with Min and Max Update Steps.
+ *  - `iterations` may be left out, which is one run per substep. A solver that repeats
+ *    inside its own shader has no use for a second dispatch count.
+ */
+export interface KernelStepsDeclaration {
+  readonly substeps: string | KernelStepRateDeclaration;
+  readonly iterations?: string;
+}
+
+/**
+ * T1585b — the parameter keys a rate-driven step count is read from. All three are
+ * per-frame VALUES, for the reason the counts are (§V358).
+ */
+export interface KernelStepRateDeclaration {
+  /** Solver steps per second of the piece. */
+  readonly rate: string;
+  /** Fewest and most substeps one displayed frame may run. */
+  readonly min: string;
+  readonly max: string;
 }
 
 export interface CapabilityRequirement {
@@ -255,6 +297,20 @@ export interface PointsetAttributeRef {
   type?: string;
 }
 
+/**
+ * T1598b — a SPHERE that holds every point of a pointset, in the frame its positions are in.
+ *
+ * It rides a pointset edge only where it is KNOWN EXACTLY WITHOUT READING THE GPU: a Mesh
+ * File In measures it from the file. A node that moves points on the GPU (a kernel, a clip)
+ * publishes none, and it is never carried through by default — a node builds its own edge
+ * description, so forgetting this field loses the bound, which is the safe direction. A
+ * consumer without one must assume the points can be anywhere (§V426: no guessed bounds).
+ */
+export interface PointsetBounds {
+  readonly center: readonly [number, number, number];
+  readonly radius: number;
+}
+
 export interface CompiledNodeDescription {
   passes: ReadonlyArray<unknown>;
   /** Scratch resources this node's passes use between each other. */
@@ -275,6 +331,8 @@ export interface CompiledNodeDescription {
         capacity: number;
         topology?: string;
         count?: { buffer: string };
+        /** T1598b: the sphere holding every point, when the producer knows it exactly. */
+        bounds?: PointsetBounds;
       }
     >
   >;
@@ -370,6 +428,15 @@ export interface NodeDefinition {
    */
   parametersFor?(stored: Readonly<Record<string, unknown>>): ParameterSchema;
   /**
+   * §T1641b slice 2 (§B264 (2)): how this node's parameter keys come about, when its AUTHOR
+   * wrote them and the rule is not visible where they wrote. A reflecting node turns its
+   * shader's `struct Params` into controls, and a `vec3f` there is a colour (parts r, g, b)
+   * or a vector (parts x, y, z) by the field's NAME. One sentence, said beside a refusal of
+   * a stored key the node does not declare, at the write gate and at rest. Absent for a node
+   * whose keys are fixed by its type: the refusal lists them.
+   */
+  parameterKeysNote?: string;
+  /**
    * T1532b: parameters that must change TOGETHER with an edit. Absent for almost every node.
    * Grid Warp is the case that asked: its points are one parameter per point of the
    * CURRENT grid, so changing Columns must rewrite every point (the warp resampled onto the
@@ -392,6 +459,20 @@ export interface NodeDefinition {
     written: Readonly<Record<string, StoredParameter>>,
   ): CoupledParameterWrites | null;
   /**
+   * T1619b: what a NEW node of this type stores beside its manifest defaults, given the
+   * parameters it was created with. Absent for almost every node. A control is the case
+   * that asked: it is BORN AT ITS DEFAULT, so the default it stores is the value it was
+   * made with. The manifest's own number there would be a default nobody chose — a Slider
+   * created at 7 that resets to 0.5.
+   *
+   * `graph.applyPatch`'s `addNode` lays these over the manifest defaults and under what the
+   * creator provided, so every way a node is made on the bus (the library, a paste, an
+   * agent's tool, "Control from Panel") gets it and an explicit entry always wins.
+   *
+   * Pure and headless (§V11, §V44): a function of its argument.
+   */
+  bornWith?(provided: Readonly<Record<string, StoredParameter>>): Record<string, StoredParameter>;
+  /**
    * Known variant keys intentionally retained in stored documents while absent from the
    * effective schema. They are not resolved or offered as controls in that variant.
    * Switching back restores the stored settings; other undeclared keys still warn.
@@ -400,6 +481,8 @@ export interface NodeDefinition {
   resolutionPolicy?: ResolutionPolicy;
   formatPolicy?: FormatPolicy;
   temporal?: TemporalDefinition;
+  /** T1583b: this node's dispatch may step several times per frame — see the type. */
+  steps?: KernelStepsDeclaration;
   stateful?: StatefulDeclaration;
   /**
    * T949: does this node ACT ON THE WORLD? Absent means `"none"` — see `SideEffect` above

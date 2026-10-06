@@ -174,7 +174,7 @@
       "bcap": {
         "definitionVersion": 1,
         "id": "bcap",
-        "label": "bore1",
+        "label": "limit_bore",
         "parameters": {
           "maximum": 0.5,
           "minimum": 0
@@ -188,7 +188,7 @@
       "beat": {
         "definitionVersion": 1,
         "id": "beat",
-        "label": "beat1",
+        "label": "pattern_beat",
         "parameters": {
           "amount": 1,
           "bpm": 120
@@ -202,7 +202,7 @@
       "bgain": {
         "definitionVersion": 1,
         "id": "bgain",
-        "label": "bgain1",
+        "label": "math_bgain",
         "parameters": {
           "operand": 1.8397,
           "operation": "multiply"
@@ -216,7 +216,7 @@
       "bnorm": {
         "definitionVersion": 1,
         "id": "bnorm",
-        "label": "bnorm1",
+        "label": "math_bnorm",
         "parameters": {
           "operand": -1.2437,
           "operation": "add"
@@ -230,7 +230,7 @@
       "bridge": {
         "definitionVersion": 1,
         "id": "bridge",
-        "label": "bridge1",
+        "label": "sample_bridge",
         "parameters": {
           "count": 10560
         },
@@ -243,7 +243,7 @@
       "burn": {
         "definitionVersion": 1,
         "id": "burn",
-        "label": "burn1",
+        "label": "add_burn",
         "parameters": {},
         "position": {
           "x": 600,
@@ -254,7 +254,7 @@
       "eye": {
         "definitionVersion": 1,
         "id": "eye",
-        "label": "eye1",
+        "label": "camera_eye",
         "parameters": {
           "eye": [
             0,
@@ -265,7 +265,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sway1').chan.value"
+                "source": "op('lfo_sway').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -278,7 +278,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('rise1').chan.value"
+                "source": "op('lfo_rise').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -306,7 +306,7 @@
       "glass": {
         "definitionVersion": 1,
         "id": "glass",
-        "label": "glass1",
+        "label": "material_glass",
         "parameters": {
           "color": [
             1,
@@ -324,7 +324,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -339,7 +339,7 @@
       "haze": {
         "definitionVersion": 1,
         "id": "haze",
-        "label": "haze1",
+        "label": "level_haze",
         "parameters": {
           "blacklevel": 0,
           "brightness": 0.7,
@@ -357,7 +357,7 @@
       "lcap": {
         "definitionVersion": 1,
         "id": "lcap",
-        "label": "lum1",
+        "label": "limit_lum",
         "parameters": {
           "maximum": 0.85,
           "minimum": 0.05
@@ -371,7 +371,7 @@
       "lgain": {
         "definitionVersion": 1,
         "id": "lgain",
-        "label": "lgain1",
+        "label": "math_lgain",
         "parameters": {
           "operand": 0.8,
           "operation": "multiply"
@@ -385,7 +385,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 860,
@@ -396,7 +396,7 @@
       "palette": {
         "definitionVersion": 2,
         "id": "palette",
-        "label": "palette1",
+        "label": "ramp_palette",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -468,9 +468,9 @@
       "ribs": {
         "definitionVersion": 1,
         "id": "ribs",
-        "label": "ribs1",
+        "label": "geometry_ribs",
         "parameters": {
-          "material": "glass1",
+          "material": "material_glass",
           "mode": "instances",
           "scale": 0.0092,
           "shape": "quad",
@@ -502,7 +502,7 @@
       "rise": {
         "definitionVersion": 1,
         "id": "rise",
-        "label": "rise1",
+        "label": "lfo_rise",
         "parameters": {
           "amplitude": 0.3,
           "frequency": 0.023,
@@ -519,7 +519,7 @@
       "roll": {
         "definitionVersion": 1,
         "id": "roll",
-        "label": "roll1",
+        "label": "kernel_roll",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"sample\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 10560,
@@ -529,7 +529,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('bore1').chan.low"
+                "source": "op('limit_bore').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -542,7 +542,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('lum1').chan.level"
+                "source": "op('limit_lum').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -576,7 +576,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             1,
@@ -591,9 +591,9 @@
             0.014,
             1
           ],
-          "camera": "eye1",
+          "camera": "camera_eye",
           "lights": "",
-          "scenes": "ribs1"
+          "scenes": "geometry_ribs"
         },
         "position": {
           "x": -180,
@@ -604,7 +604,7 @@
       "sway": {
         "definitionVersion": 1,
         "id": "sway",
-        "label": "sway1",
+        "label": "lfo_sway",
         "parameters": {
           "amplitude": 0.34,
           "frequency": 0.031,
@@ -621,7 +621,7 @@
       "swellEnv": {
         "definitionVersion": 1,
         "id": "swellEnv",
-        "label": "swell1",
+        "label": "lag_swell",
         "parameters": {
           "lag": 0.11
         },

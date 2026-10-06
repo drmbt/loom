@@ -6,6 +6,7 @@ import type { GraphPatchOperation, GraphPatchResult } from "../types/patch.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
 import { nodeNames, renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
+import { conventionalName } from "../graph/node-kinds.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
 import { z } from "zod";
 import { idInput, nodeIdsInput, pointInput } from "./input-schema.ts";
@@ -39,6 +40,11 @@ export interface RenameInput {
   nodeId: NodeId;
   /** null clears the label so the node follows its definition's title again. */
   label: string | null;
+  /**
+   * T1593b: store `label` exactly as given. Absent, the name is made to carry the node's
+   * kind (`conventionalName`): `soft` on a Blur becomes `blur_soft`, and the result says so.
+   */
+  exact?: boolean;
 }
 
 export interface ValuePlotModeInput {
@@ -128,7 +134,7 @@ const CASCADE = { x: 32, y: 32 } as const;
 const nodeSelectionSchema = z.object({ nodeIds: nodeIdsInput }).strict();
 const pasteSchema = z.object({ offset: pointInput.optional() }).strict();
 const duplicateSchema = z.object({ nodeIds: nodeIdsInput, offset: pointInput.optional() }).strict();
-const renameSchema = z.object({ nodeId: idInput, label: z.string().nullable() }).strict();
+const renameSchema = z.object({ nodeId: idInput, label: z.string().nullable(), exact: z.boolean().optional() }).strict();
 const valuePlotModeSchema = z.object({ nodeId: idInput, mode: z.enum(["bar", "trail"]).nullable() }).strict();
 
 const rejection = (
@@ -618,11 +624,43 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
   bus.registerCommand({
     name: "node.rename",
     inputSchema: renameSchema,
-    description: "Rename a node, or clear the name back to its definition title (§V29).",
-    handler: (input, context) =>
-      patchThrough(context, input.label === null ? "Clear name" : "Rename", [
-        { op: "setNodeLabel", nodeId: input.nodeId, label: input.label },
-      ]),
+    description:
+      "Rename a node, or clear the name back to its definition title (§V29). A name carries its node's kind (kind_role): one given without it gets the kind in front, unless exact is true.",
+    /*
+     * T1593b — THE RENAME DOOR KEEPS THE KIND. The title editor, an agent's `rename_node`
+     * and anything that renames later all come through here, so the rule is stated once
+     * (§V78): a name that does not carry its node's kind gets it, and the result says what
+     * the node was actually called. `exact: true` is the deliberate way past it.
+     *
+     * The patch operation underneath stays EXACT (§V324, §V325): `setNodeLabel` stores the
+     * string it is handed, because a replayed patch and a pasted document carry references
+     * written against exactly that string. The convention belongs to the act of naming,
+     * which is this command, and never to the replay of one.
+     */
+    handler: (input, context) => {
+      if (input.label === null) {
+        return patchThrough(context, "Clear name", [{ op: "setNodeLabel", nodeId: input.nodeId, label: null }]);
+      }
+      const node = context.graph.nodes[input.nodeId];
+      // The DEFINITION, not the type: a component instance's kind is its component's name.
+      // A node whose type is not installed has no kind to insist on and is named as typed.
+      const definition = node === undefined ? undefined : context.registry.get(node.type);
+      const name =
+        input.exact === true || definition === undefined ? input.label : conventionalName(input.label, definition).name;
+      const outcome = patchThrough(context, "Rename", [{ op: "setNodeLabel", nodeId: input.nodeId, label: name }]);
+      if (name === input.label.trim() || (outcome.status !== "applied" && outcome.status !== "validated")) return outcome;
+      const diagnostics: RuntimeDiagnostic[] = [
+        ...(outcome.diagnostics ?? []),
+        {
+          severity: "info",
+          code: "node.name.kind",
+          message: `Named "${name}", not "${input.label.trim()}": a node's name carries its kind (kind_role).`,
+          nodeId: input.nodeId,
+          suggestion: "Pass exact: true to store a name exactly as given.",
+        },
+      ];
+      return { ...outcome, diagnostics, output: { ...outcome.output, diagnostics } };
+    },
     rejectionOutput: rejection,
   });
 

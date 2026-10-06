@@ -4,7 +4,7 @@ import { ALEMBIC_WGSL } from "../shaders/alembic.wgsl.ts";
 /**
  * E59 — Vault (T1171). ONE OF THE FIVE LOOKS OF E58's INSTRUMENT, shipped as its own file.
  *
- *   palette1(ramp) ─► alembic1(customWgsl: THE SAME shader E58 ships) ─► out1(output)
+ *   ramp_palette(ramp) ─► wgsl_alembic(customWgsl: THE SAME shader E58 ships) ─► output1(output)
  *
  * ## WHAT THIS FILE IS, AND WHAT IT DELIBERATELY IS NOT
  *
@@ -108,7 +108,7 @@ export const vaultDocument = document(
           { position: 0.78, color: [0.04, 0.1, 0.16, 1] },
           { position: 1, color: [0.01, 0.02, 0.04, 1] },
         ],
-      }, { label: "palette1" }),
+      }, { label: "ramp_palette" }),
 
       node("alembic", "customWgsl", [-300, 0], {
         source: ALEMBIC_WGSL,
@@ -135,9 +135,9 @@ export const vaultDocument = document(
         paletteScale: 0.5,
         paletteBias: 0.4,
         grain: 1,
-      }, { label: "alembic1" }),
+      }, { label: "wgsl_alembic" }),
 
-      node("out", "output", [0, 0], { toneMap: "none" }, { label: "out1" }),
+      node("out", "output", [0, 0], { toneMap: "none" }, { label: "output1" }),
     ],
     [
       edge("e-palette-alembic", ["palette", "out"], ["alembic", "input"]),

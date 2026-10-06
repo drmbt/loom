@@ -97,6 +97,14 @@ export interface LightPayload {
      */
     readonly shadowCenter: readonly [number, number, number];
     /**
+     * T1598b: the ONLY geometries that cast this light's shadow, as geometry NODE IDS (the
+     * Light resolved its Shadow Casters names). Absent: every geometry a Render draws casts.
+     * A Render keeps its own geometries that are listed; one that is not still receives.
+     */
+    readonly shadowCasters?: ReadonlyArray<string>;
+    /** T1598b: geometries that do NOT cast this light's shadow, as node ids. Wins over `shadowCasters`. */
+    readonly shadowExclude?: ReadonlyArray<string>;
+    /**
      * T1437b: how a POINT light's radiance falls with distance d. "soft" is 1/(1 + d²),
      * which is nearly flat inside a metre and so washes a close-up evenly; "inverseSquare"
      * is the physical 1/d² (d held at 1 cm or more). Both equal the intensity's reading at
@@ -109,6 +117,32 @@ export interface LightPayload {
      * unlimited (no window).
      */
     readonly range: number;
+    /**
+     * T1623b: present when the Light's Type is SPOT: `cone` is the full angle at which its
+     * light reaches zero, in degrees, `softness` the share of the half-angle over which it
+     * fades. `type` is then "point": a spot stands at a place. A row of a Render's light
+     * table takes the cone; a casting Light, still a block of the lit shader, does not yet.
+     */
+    readonly spot?: { readonly cone: number; readonly softness: number };
+  };
+  /**
+   * T1589b — present exactly when the Light is in POINTS mode: it is not one light but one
+   * at every point of a pointset, and `light` above is then only the node's own values (what
+   * its tile shows). `records` names the buffer the Light RESOLVES once a frame: one record
+   * a slot, 64 bytes, laid out as `scene-lights.wgsl.ts` states it (where the light stands
+   * and its range, below 0 for a slot that is off; its colour times intensity and its
+   * falloff law; the way it travels; its kind). A Render copies them into its own light
+   * table and culls them by range on the GPU; it does not put such a light among the blocks
+   * its lit shaders unroll, and such a light casts no shadow. `capacity` is the pointset's:
+   * every slot counts against the Render's table, live or not. `always` (T1623b) says that
+   * the set's lights reach every pixel as its values stand (Type: Directional, or a Range of
+   * 0 that no attribute scales): a Render walks such rows with a plain loop and keeps them
+   * out of its grid. A value, like the Type and the Range it is read from.
+   */
+  readonly points?: {
+    readonly records: string;
+    readonly capacity: number;
+    readonly always: boolean;
   };
 }
 
@@ -136,6 +170,63 @@ export interface GeometryPayload {
   readonly pairs: Readonly<Record<string, ScenePairRef>>;
   readonly capacity: number;
   readonly topology?: PointTopology | string;
+  /**
+   * T1588b — the OBJECT TRANSFORM as one matrix (16 numbers, column-major), composed by the
+   * Geometry node from its Translate, Rotate, Scale and Pivot (`domain/geometry/transform.ts`
+   * states the order). Every pass of every Render draws by it and none composes it again.
+   * Absent means the identity (a payload built by hand, a test).
+   */
+  readonly objectMatrix?: readonly number[];
+  /**
+   * T1581b — present exactly when this is Instances mode drawing a MESH: the shape, and the
+   * records each instance is drawn by.
+   *
+   * `pairs` is the shape's own pointset (the Geometry's Shape Mesh input: position, normal,
+   * and uv, color, surface, emissive where it carries them), `triangles` and `indexBuffer`
+   * its mesh topology. `records` names the buffer the Geometry node RESOLVES once a frame —
+   * per instance slot the three rows of `Object · Instance` at byte offsets `m0`, `m1`,
+   * `m2`, and the instance's tint at `tint` when Tint is mapped. An instance that is not
+   * drawn (its Group predicate) holds a zero matrix. Every draw of this geometry reads the
+   * records and evaluates no per-instance attribute itself, so `scaleAttribute`,
+   * `orientAttribute`, `colorAttribute` and `group` below are absent on such a payload.
+   * The instance count is `capacity`, or on the GPU (`drawArgs`) when the geometry leaves
+   * instances out: the points its Group keeps, of the live ones.
+   */
+  readonly instanceMesh?: {
+    readonly pairs: Readonly<Record<string, ScenePairRef>>;
+    readonly triangles: number;
+    readonly indexBuffer: string;
+    /**
+     * F1: present when the geometry can leave instances out (a Group, or counted points):
+     * the indirect arguments of every draw of it (vertex count, VISIBLE instances, 0, 0),
+     * written by its resolve pass. A draw runs that many instances and finds each one's
+     * record through `records.visible`. Absent: every slot is drawn, `capacity` of them.
+     */
+    readonly drawArgs?: string;
+    readonly records: {
+      readonly buffer: string;
+      readonly m0: number;
+      readonly m1: number;
+      readonly m2: number;
+      /** With `drawArgs`: the slots of the instances that are drawn, dense, in slot order (one u32 a slot). */
+      readonly visible?: number;
+      readonly tint?: number;
+      /**
+       * The material's `struct Instance` fields this geometry BOUND to a point attribute,
+       * by field name: where the resolve pass copied each one, and its type. A field that
+       * is not here reads its declared default.
+       */
+      readonly fields?: Readonly<Record<string, { readonly offset: number; readonly type: string }>>;
+    };
+  };
+  /**
+   * T1598b — a sphere IN WORLD SPACE that holds everything this geometry draws, when that is
+   * known exactly on the CPU: a Surface over a pointset that carries its own bound (a Mesh
+   * File In, wired directly), turned by `objectMatrix`. Absent means "it can be anywhere"
+   * — kernel-moved points, instances, billboards — and a consumer then always draws it.
+   * A Render uses it to leave the geometry out of a shadow sweep that cannot reach it.
+   */
+  readonly bounds?: { readonly center: readonly [number, number, number]; readonly radius: number };
   /** How this object renders. */
   readonly mode: "surface" | "instances" | "points" | "beam";
   /**
@@ -168,6 +259,13 @@ export interface GeometryPayload {
    */
   /** T917: additive light — the draw blends additively and stops writing depth. */
   readonly blend?: "additive";
+  /**
+   * B256: the Geometry's In Depth Output, read for ADDITIVE geometry only (an opaque one is
+   * a body in every sweep whatever this says). Absent, additive geometry is in no depth sweep
+   * at all; present, its own depth is written to the camera's Depth output, and it is still
+   * in no light's sweep and no occlusion prepass.
+   */
+  readonly ownDepth?: true;
   /**
    * T1414b: a SHADOW-ONLY body — it draws into every light's shadow sweep (and a
    * projector's occlusion) and into nothing the camera sees: no colour, depth, normal,
@@ -244,6 +342,9 @@ export interface GeometryPayload {
   readonly material: MaterialPayload;
 }
 
+/** T1618b: what a map reads past its edge. Hold carries the edge texel on; Repeat tiles; Mirror tiles, every other tile turned round. */
+export type MapExtend = "hold" | "repeat" | "mirror";
+
 export interface MaterialPayload {
   readonly kind: "material";
   readonly model: "unlit" | "lambert" | "phong" | "pbr" | "glass";
@@ -258,6 +359,13 @@ export interface MaterialPayload {
     readonly albedo?: string;
     readonly roughness?: string;
   };
+  /**
+   * T1618b: how the maps are read where the texture coordinate leaves 0 to 1, an axis at a
+   * time. Absent is Hold on both: the edge texel carries on, which is what a map always did.
+   * Present only when an axis is not Hold, so a material that does not tile is the payload
+   * it was.
+   */
+  readonly mapExtend?: { readonly u: MapExtend; readonly v: MapExtend };
   /**
    * T725 — present exactly when model === "glass": screen-space transmission. The
    * surface SAMPLES what was already rendered behind it (§V644: sampled light, never
@@ -286,6 +394,14 @@ export interface MaterialPayload {
     readonly paramsDeclaration: string;
     readonly fields: ReadonlyArray<{ readonly name: string; readonly wgsl: string }>;
     readonly uniforms: Readonly<Record<string, number | readonly number[]>>;
+    /**
+     * T1581b: the source's `struct Instance` — what the material reads PER INSTANCE as
+     * `s.instance.<name>`, in declared order. A mesh-instancing Geometry binds each to a
+     * point attribute by name; on every other draw, and for a field it does not bind, the
+     * value is `default` (the field's `// @default`, zero when it declares none). Absent
+     * when the source declares no such struct. Structural, as `code` is.
+     */
+    readonly instance?: ReadonlyArray<{ readonly name: string; readonly wgsl: string; readonly default?: readonly number[] }>;
     /**
      * T1535b: where the author's `source` sits in `code` and in `paramsDeclaration`, each
      * counted from that text's own first character, every span naming the material node.

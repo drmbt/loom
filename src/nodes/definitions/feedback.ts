@@ -131,7 +131,7 @@ export const feedbackNode: NodeDefinition = {
       range: "bounded",
       step: 1,
       description:
-        "Iterations of this loop per displayed frame. 1 is one step per frame; a reaction-diffusion wants 10-50. Costs that many times the loop's GPU work.",
+        "Iterations of this loop per displayed frame. 1 is one step per frame; a reaction-diffusion wants 10-50. Costs that many times the loop's GPU work. It repeats the loop and nothing else: every iteration's shaders read the same frame delta, so the simulation runs that many times faster. (A Point Kernel's Substeps divides ctx.delta instead, covering the same time in smaller steps.)",
     },
     resetPulse: {
       type: "pulse",

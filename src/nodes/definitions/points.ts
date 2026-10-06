@@ -2,8 +2,10 @@ import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
 import type { CompiledNodeDescription, NodeDefinition, PointsetAttributeRef } from "../../domain/types/node-definition.ts";
 import type { ParameterSchema, ParameterValue } from "../../domain/types/parameters.ts";
 import type { DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
+import { MAX_KERNEL_STEPS, MAX_KERNEL_SUBSTEPS } from "../../runtime/backend/plan.ts";
 import type { AuthoredSpan, WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
-import { endOf, placed, placedAroundCut } from "../../runtime/backend/wgsl-source-map.ts";
+import { advance, endOf, placed, placedAroundCut } from "../../runtime/backend/wgsl-source-map.ts";
+import { declaredNames, resolveSharedModules, SHARED_WGSL_MODULES } from "../shaders/shared-modules.ts";
 import {
   validateAttributes,
   type PointAttributeSchema,
@@ -23,7 +25,7 @@ import {
   kernelStorage,
   packedPointStorage,
 } from "./point-storage.ts";
-import { parseTopology } from "../../points/topology.ts";
+import { kernelDimOf, parseTopology } from "../../points/topology.ts";
 import { drawArgsWgsl } from "../../points/lifecycle.ts";
 import { DEFAULT_POINT_KERNEL, SPRITE_RENDER_WGSL, TEXTURE_TO_ATTRIBUTE_WGSL, pointRayWgsl, spriteRenderWgsl } from "../shaders/points.wgsl.ts";
 import { RGBA_TEXTURE } from "./common-ports.ts";
@@ -31,11 +33,13 @@ import { missingCompileResource, readCompileInputs } from "./compile-context.ts"
 import { codeParametersLast } from "../../domain/parameters/code.ts";
 import { readColor, readNumber } from "./parameter-readers.ts";
 import {
+  REFLECTED_PARAMETER_KEYS_NOTE,
   extractParamsStruct,
   reflectParamsStruct,
   reflectedParamCollisions,
   reflectedParamSchema,
   reflectedUniforms,
+  remember,
   type ReflectedField,
 } from "./params-reflection.ts";
 
@@ -259,6 +263,85 @@ export function kernelBodyOf(source: string): string {
   return extractParamsStruct(source).rest;
 }
 
+/** T1581b (F9): the diagnostic code of a kernel's `// @use` refusals. */
+export const POINT_KERNEL_MODULE_CODE = "node.points.module";
+
+/**
+ * T1581b (F9) — A KERNEL'S SHARED MODULES. A kernel source may pull shared WGSL in with
+ * `// @use <name>` exactly as a Custom WGSL and a Material · WGSL do (one resolver, §V349),
+ * which is how a kernel that writes a per-instance `orient` reaches the `quat` module.
+ *
+ * The module text is pasted in FRONT of the kernel body, at module scope, so its functions
+ * are declared before `process` reads them. Both failures refuse by name, as they do on the
+ * two shader nodes: a module that does not exist (the kernel would compile without the code
+ * it asked for), and a name the kernel and a module both declare (one would shadow the other).
+ *
+ * Each text asks for itself: the advanced kernel's SPAWN HOOK is a module of its own, and a
+ * hook that turns its newborns writes its own `// @use quat` (`what` names it in a refusal).
+ */
+export function kernelSharedModules(
+  nodeId: string,
+  kernelSource: string,
+  what: "kernel" | "spawn hook" = "kernel",
+): { readonly prelude: string } | { readonly refusal: CompiledNodeDescription } {
+  const shared = sharedModulesOf(kernelSource);
+  if (shared.missing.length > 0) {
+    return {
+      refusal: {
+        passes: [],
+        diagnostics: shared.missing.map((name) => ({
+          severity: "error" as const,
+          code: POINT_KERNEL_MODULE_CODE,
+          message: `Node "${nodeId}": \`// @use ${name}\` names a shared WGSL module that does not exist.`,
+          nodeId,
+          suggestion: `Shared modules: ${Object.keys(SHARED_WGSL_MODULES).join(", ")}.`,
+        })),
+      },
+    };
+  }
+  if (shared.clashes.length > 0) {
+    return {
+      refusal: {
+        passes: [],
+        diagnostics: shared.clashes.map(({ module, declared }) => ({
+          severity: "error" as const,
+          code: POINT_KERNEL_MODULE_CODE,
+          message: `Node "${nodeId}": this ${what} declares "${declared}", which the shared module "${module}" also declares — one of the two would be silently shadowed.`,
+          nodeId,
+          suggestion: `Rename yours, or drop \`// @use ${module}\` and keep your own.`,
+        })),
+      },
+    };
+  }
+  return { prelude: shared.prelude };
+}
+
+/**
+ * What a kernel SOURCE asks of the shared modules: a pure function of the bytes, remembered
+ * per source because §T259 compiles every frame (the reason `resolveSharedModules` itself
+ * is). The node id is not in it: the same text on two nodes shares one entry.
+ */
+function sharedModulesOf(kernelSource: string): KernelSharedModules {
+  const hit = sharedModulesBySource.get(kernelSource);
+  if (hit !== undefined) return hit;
+  const shared = resolveSharedModules(kernelSource);
+  const own = shared.names.length === 0 ? new Set<string>() : new Set(declaredNames(kernelSource));
+  const clashes = shared.names.flatMap((name) =>
+    declaredNames((SHARED_WGSL_MODULES[name] as { source: string }).source)
+      .filter((declared) => own.has(declared))
+      .map((declared) => ({ module: name, declared })),
+  );
+  return remember(sharedModulesBySource, kernelSource, { prelude: shared.prelude, missing: shared.missing, clashes });
+}
+
+interface KernelSharedModules {
+  readonly prelude: string;
+  readonly missing: readonly string[];
+  readonly clashes: ReadonlyArray<{ readonly module: string; readonly declared: string }>;
+}
+
+const sharedModulesBySource = new Map<string, KernelSharedModules>();
+
 /**
  * T1523b — A GENERATED KERNEL'S SOURCE MAP: which lines of the module are which parameter's.
  *
@@ -274,7 +357,15 @@ export function kernelBodyOf(source: string): string {
  */
 export function kernelSourceMap(
   module: { readonly wgsl: string; readonly placed: KernelModulePlacements },
-  texts: { readonly kernel: string; readonly group?: string; readonly spawn?: string },
+  texts: {
+    readonly kernel: string;
+    readonly group?: string;
+    readonly spawn?: string;
+    /** T1581b (F9): the shared-module text pasted in front of the kernel body (`kernelSharedModules`). */
+    readonly prelude?: string;
+    /** … and in front of the spawn hook, in the hook's own module. */
+    readonly spawnPrelude?: string;
+  },
 ): WgslSourceMap {
   const group = texts.group ?? "";
   const spawn = texts.spawn ?? "";
@@ -283,7 +374,9 @@ export function kernelSourceMap(
   const spans: AuthoredSpan[] = [];
   const { declaration, start } = extractParamsStruct(texts.kernel);
   if (module.placed.kernel !== undefined) {
-    spans.push(...placedAroundCut("kernel", texts.kernel, start, start + declaration.length, module.placed.kernel));
+    /* The author's text starts after the modules it asked for. */
+    const at = advance(module.placed.kernel, texts.prelude ?? "");
+    spans.push(...placedAroundCut("kernel", texts.kernel, start, start + declaration.length, at));
   }
   if (module.placed.params !== undefined && declaration !== "") {
     spans.push(placed("kernel", declaration, module.placed.params, endOf(texts.kernel.slice(0, start))));
@@ -292,7 +385,7 @@ export function kernelSourceMap(
     spans.push(placed("group", group.trim(), module.placed.group, trimmedStart(group)));
   }
   if (module.placed.hook !== undefined) {
-    spans.push(placed("spawn", spawn.trim(), module.placed.hook, trimmedStart(spawn)));
+    spans.push(placed("spawn", spawn.trim(), advance(module.placed.hook, texts.spawnPrelude ?? ""), trimmedStart(spawn)));
   }
   kernelMaps.set(module.wgsl, { kernel: texts.kernel, group, spawn, map: spans });
   if (kernelMaps.size > KERNEL_MAP_LIMIT) {
@@ -390,7 +483,7 @@ export const pointKernelNode: NodeDefinition = {
   title: "Point Kernel",
   category: "points",
   description:
-    "Runs a per-point WGSL kernel over a GPU point set every frame. The POP-style custom operator.",
+    "Runs a per-point WGSL kernel over a GPU point set every frame. The POP-style custom operator. For a lot in 0..n-1 from a hash, `// @use lot` and hashLot(h, n): never divide a hash's high half (h >> 16u) by a constant, which Apple GPUs get wrong.",
   tags: ["points", "particles", "compute", "simulation"],
   inputs: [
     {
@@ -452,6 +545,41 @@ export const pointKernelNode: NodeDefinition = {
       step: 1,
       description: "Feeds pointRand(seed, pointId, frame) — same seed, same motion (§V74).",
     },
+    /**
+     * T1583b — KERNEL STEPS. Two counts, the pair Notch's Physics Root and TouchDesigner's
+     * Flex Solver expose, and the kernel runs their product per displayed frame.
+     *
+     * Neither is `compileTime`, and neither may become it (§V358): the plan carries the
+     * region at count 1 so that an expression driving either is a value write. That is
+     * what makes Notch's RATE form expressible without a second parameter set —
+     * `clamp(ceil(delta * 240), 1, 16)` holds the step near 1/240 s when a frame drops,
+     * where a bare count would let the step double exactly when stability matters.
+     *
+     * The name is Feedback's and the meaning is not, which both descriptions say: that
+     * node repeats a LOOP of nodes and changes no shader's delta; this one divides it.
+     */
+    substeps: {
+      type: "number",
+      label: "Substeps",
+      default: 1,
+      min: 1,
+      max: MAX_KERNEL_SUBSTEPS,
+      range: "bounded",
+      step: 1,
+      description:
+        "Runs the kernel this many times per displayed frame, each run reading what the one before wrote, with ctx.delta DIVIDED by it — the frame covers the same time in smaller steps, which is what keeps stiff springs and fast points stable. (Feedback's Substeps repeats its loop and leaves every shader's delta alone; this one divides it.) A per-frame value, so it can hold a step size instead of a count: clamp(ceil(delta * 240), 1, 16). The kernel reads ctx.substep (0 to ctx.substeps-1). Costs that many dispatches. A kernel wired as a processor whose every attribute comes from the incoming point set has nothing to carry between runs and stays at one.",
+    },
+    iterations: {
+      type: "number",
+      label: "Iterations",
+      default: 1,
+      min: 1,
+      max: MAX_KERNEL_STEPS,
+      range: "bounded",
+      step: 1,
+      description:
+        `Runs per SUBSTEP, at the same ctx.delta — the passes a constraint solver relaxes with. Dispatches per frame are Substeps × Iterations, at most ${MAX_KERNEL_STEPS}. The kernel reads ctx.iteration (0 to ctx.iterations-1): integrate when it is 0 and relax on the runs after it, alternating the halves of a chain with ctx.iteration & 1u so two neighbours never correct the same link in one run. pointAt reads the previous run, so a run that integrates cannot also relax against where its neighbours have just moved to.`,
+    },
     attributes: {
       type: "code",
       language: "json",
@@ -467,7 +595,7 @@ export const pointKernelNode: NodeDefinition = {
       default: DEFAULT_POINT_KERNEL,
       compileTime: true,
       description:
-        "fn process(p: Point, ctx: PointCtx) -> Point. Clocks first: ctx.absTime (f32 seconds) and ctx.absFrame (u32 — a texture shader's frameU.absFrame is f32) keep counting across a timeline loop, so reach for these for anything that should simply keep going. ctx.time and ctx.frameIndex are timeline readings and reset to the in point at every lap — take them only when where you are IN the piece is the point (a sweep, a scrubbed envelope), and write \"timeline-anchored\" in a comment when you do. ctx also carries index, count and delta — plus pointer (vec4f: x, y, buttons) and dim (cols, rows, i, j — the grid off the incoming edge, T472) for a kernel that names them. YOUR OWN KNOBS (T900): the kernel this node ships with ALREADY declares a `struct Params`, with a `// @default <literal>` and a describing comment per field (T1210) — keep the block and add to it. Every field becomes a named, typed, drivable control on this node, read as ctx.params.<name> — a uniform write, never a rebuild. A kernel with no such block has no knobs at all. That replaces ctx.value1..value4, which still work for kernels that already read them. pointRand(pointId, salt) is available, and fieldAt(position) samples the field input when one is wired (T477).",
+        "fn process(p: Point, ctx: PointCtx) -> Point. Clocks first: ctx.absTime (f32 seconds) and ctx.absFrame (u32 — a texture shader's frameU.absFrame is f32) keep counting across a timeline loop, so reach for these for anything that should simply keep going. ctx.time and ctx.frameIndex are timeline readings and reset to the in point at every lap — take them only when where you are IN the piece is the point (a sweep, a scrubbed envelope), and write \"timeline-anchored\" in a comment when you do. ctx also carries index, count and delta — plus pointer (vec4f: x, y, buttons) and dim (cols, rows, i, j — the grid off the incoming edge, T472) for a kernel that names them, and substep, substeps, iteration and iterations (u32: which run of this frame it is, when Substeps or Iterations is above 1; delta is already divided by substeps). YOUR OWN KNOBS (T900): the kernel this node ships with ALREADY declares a `struct Params`, with a `// @default <literal>` and a describing comment per field (T1210) — keep the block and add to it. Every field becomes a named, typed, drivable control on this node, read as ctx.params.<name> — a uniform write, never a rebuild. A kernel with no such block has no knobs at all. That replaces ctx.value1..value4, which still work for kernels that already read them. pointRand(pointId, salt) is available, and fieldAt(position) samples the field input when one is wired (T477). SHARED CODE (T1581b): a line `// @use quat` pulls in unit-quaternion helpers for a per-instance orient — quatAxisAngle(axis, angle), quatMul(a, b) (b first, then a), quatRotate(q, v), quatFromFrame(x, y, z), quatLookAt(forward, up), quatFromTo(a, b), quatSlerp(a, b, t); right-handed, (x, y, z, w). A module that does not exist is refused by name.",
     },
     group: {
       type: "code",
@@ -505,7 +633,11 @@ export const pointKernelNode: NodeDefinition = {
       ...legacyValueParametersFor(["kernel", "group"], stored),
     });
   },
+  parameterKeysNote: REFLECTED_PARAMETER_KEYS_NOTE,
   stateful: { reset: true, deterministicReplay: true, checkpoint: false, randomAccess: false },
+  // T1583b: the compiler wraps this node's one dispatch in a loop region and reads the
+  // region's count from these two — nothing in `compile` below repeats anything.
+  steps: { substeps: "substeps", iterations: "iterations" },
   contractVersion: POINT_KERNEL_CONTRACT_VERSION,
   compile(context): CompiledNodeDescription {
     const { nodeId, parameters, inputs } = readCompileInputs(context);
@@ -599,8 +731,11 @@ export const pointKernelNode: NodeDefinition = {
        already travelling, they were simply unreachable from inside a kernel, which is why
        E20 retyped `64u` into its WGSL beside the `cols: 64` the user can actually see. A
        non-grid (or absent) topology supplies nothing, and codegen refuses by name only if
-       the kernel asks (§V288/§V309: costing nothing when unused is the whole point). */
-    const incomingTopology = parseTopology(incoming?.topology);
+       the kernel asks (§V288/§V309: costing nothing when unused is the whole point).
+       T1586b: STRIPS are the same index (slot = j × cols + i), so a kernel over curves gets
+       the same four numbers — `i` its station, `j` its strip. T1587b: a grid of several
+       sheets gives ONE sheet's columns and rows, and how many sheets (`kernelDimOf`). */
+    const incomingDim = kernelDimOf(parseTopology(incoming?.topology));
     const fieldTexture = inputs["field"];
 
     /* T1076: this node's own packed pair, and the addressing table codegen needs. Every
@@ -625,16 +760,17 @@ export const pointKernelNode: NodeDefinition = {
       upstream: incoming?.pairs,
     });
 
+    /* T1581b (F9): the shared modules the kernel asked for, in front of its body. */
+    const shared = kernelSharedModules(nodeId, kernelSource);
+    if ("refusal" in shared) return shared.refusal;
     const module = generateKernelModule({
       attributes,
       reads: names,
       writes: names,
       storage: plan.storage,
-      kernel: kernelBodyOf(kernelSource),
+      kernel: `${shared.prelude}${kernelBodyOf(kernelSource)}`,
       ...(groupSource.trim() === "" ? {} : { group: groupSource }),
-      ...(incomingTopology?.kind === "grid"
-        ? { dim: { cols: incomingTopology.cols, rows: incomingTopology.rows } }
-        : {}),
+      ...(incomingDim === undefined ? {} : { dim: incomingDim.sheets > 1 ? incomingDim : { cols: incomingDim.cols, rows: incomingDim.rows } }),
       ...(fieldTexture === undefined ? {} : { field: true }),
       ...(params.fields.length === 0 ? {} : { params }),
     });
@@ -693,6 +829,10 @@ export const pointKernelNode: NodeDefinition = {
         // every frame from the numbers the shared block gets, so a kernel and a shader
         // cannot disagree about how long the show has run (§V182).
         ...(module.usesAbsClock ? { absTimeSeconds: 0, absFrameIndex: 0 } : {}),
+        // T1583b: the four step members, reserved exactly when the module declared them.
+        // The backend overwrites them for every run of a stepped frame; these values are
+        // what a kernel that is NOT stepped reads, and they say so — run 0 of 1.
+        ...(module.usesSteps ? { substep: 0, substeps: 1, iteration: 0, iterations: 1 } : {}),
       },
       // T477: exactly when the module declared the texture (§V288's mirror hazard —
       // vgpu binds by name, and a declared texture with no binding fails loudly).
@@ -701,7 +841,7 @@ export const pointKernelNode: NodeDefinition = {
         : {}),
       uniformBinding: "kernelFrame",
       nodeId,
-      sourceMap: kernelSourceMap(module, { kernel: kernelSource, group: groupSource }),
+      sourceMap: kernelSourceMap(module, { kernel: kernelSource, group: groupSource, prelude: shared.prelude }),
     };
 
     return {
@@ -839,6 +979,8 @@ export function resolveColorMap(
   pointset: { pairs: Readonly<Record<string, Readonly<PointsetAttributeRef>>> } | undefined,
   pointsPort: string,
   label: string = "color",
+  /** T1581b: the attribute type the compound head is — a colour or a quaternion is vec4f, a place is vec3f. */
+  type: "vec4f" | "vec3f" = "vec4f",
 ): { map: Readonly<PointsetAttributeRef> | undefined } | { refusal: CompiledNodeDescription } {
   if (binding === undefined) return { map: undefined };
   const refuse = (message: string, suggestion?: string): { refusal: CompiledNodeDescription } => ({
@@ -876,9 +1018,9 @@ export function resolveColorMap(
       `${label} maps "${binding.attribute}", but the edge does not declare its type; the producer predates typed pairs.`,
     );
   }
-  if (entry.type !== "vec4f") {
+  if (entry.type !== type) {
     return refuse(
-      `${label} needs a vec4f attribute to map the whole compound; "${binding.attribute}" is ${entry.type}.`,
+      `${label} needs a ${type} attribute to map the whole compound; "${binding.attribute}" is ${entry.type}.`,
     );
   }
   return { map: entry };

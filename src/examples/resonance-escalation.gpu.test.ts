@@ -14,7 +14,7 @@ beforeAll(async()=>{unavailable=(await probeDawn()).error;},60_000);
 describe("Resonance peak escalation",()=>{
   it("visits red, violet, blue and cyan while retaining a controllable warm base",()=>{
     const sample=(seconds:number,cycle:number)=> ([0,1,2] as const).map(channel=>{
-      const result=evaluateExpression(resonancePaletteExpression(channel).replaceAll("op('room1').par.paletteCycle","cycle"),{abstime:seconds,cycle});
+      const result=evaluateExpression(resonancePaletteExpression(channel).replaceAll("op('wgsl_room').par.paletteCycle","cycle"),{abstime:seconds,cycle});
       if(!result.ok) throw new Error(JSON.stringify(result));
       return result.value as number;
     });
@@ -36,7 +36,7 @@ describe("Resonance peak escalation",()=>{
       const result=await renderHeadless({host:nodeGpuHost(),components:await starterComponentsView(),graph,settings:{...resonanceDocument.settings,outputResolution:{width:80,height:45}},frames:time===0?1:2,fps:time===0?60:1/time,outputNodeId:"out",probeBuffers:[pointStorageId("fracture"),pointStorageId("seams")]});
       expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
       const scenes=String(graph.nodes["lightShot"]!.parameters.scenes).split(" ");
-      for(const label of ["seamlight1","seamreflection1","innerseamlight1","innerseamreflection1"]) {
+      for(const label of ["geometry_seamlight","geometry_seamreflection","geometry_innerseamlight","geometry_innerseamreflection"]) {
         const index=scenes.indexOf(label);
         expect(index).toBeGreaterThanOrEqual(0);
         const draw=result.plan.passes.find(pass=>pass.id.endsWith(`lightShot:scene:${index}`)) as {

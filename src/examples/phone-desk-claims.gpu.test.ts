@@ -134,7 +134,7 @@ describe("E81 Phone Desk — each widget drives what its annotation says it driv
     expect(differing(off, on)).toBeGreaterThan(PIXELS * 0.9);
   }, 120_000);
 
-  it("each press of the Next hue button turns hue1 a quarter turn, and four presses come back round", async () => {
+  it("each press of the Next hue button turns hsv_hue a quarter turn, and four presses come back round", async () => {
     expect(unavailable).toBeUndefined();
     const none = await render(moved({ flash: { presses: 0 } }), "hue");
     const one = await render(moved({ flash: { presses: 1 } }), "hue");

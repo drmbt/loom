@@ -3,7 +3,7 @@
 A monocular depth model turns a flat picture into a distance map. `pointsFromTexture`
 lifts a lattice of points by what it reads there, so a video stands up as a point cloud.
 
-The map is read on a 96×72 lattice and `tint1` colours each point from the source, so you
+The map is read on a 96×72 lattice and `sample_tint` colours each point from the source, so you
 can look at the cloud from the side — the depth-camera look, from a source that never
 carried depth.
 
@@ -11,13 +11,13 @@ Named for the nautical sense: throwing a line to find how deep the water is. E27
 carries the sculptural word *Relief*; this is the measurement rather than the carving.
 
 ```
-bed1(noise, nearly still) ─┐          pivot1(lfo) ┄drives┄► draw1.eye.x
-orb1(circle) ← 2 LFOs ─────┴─► stand1(add) ─┬─► pick1(switch) ─► depth1(depth)
-clip1(movieFileIn) ──────────── order 1 ─┘      │ colour            │ height
-                                                ▼                   ▼
-out1 ◄─ plate1(add) ◄─ dim1(level) ◄────────────┘   tint1(textureToAttribute) ◄ cloud1(GRID)
-            ▲                                                │
-            └── draw1(renderInstances, 6912 boxes) ◄ xform1(pointTransform, 1.2× ⌾ centroid) ◄┘
+noise_bed(noise, nearly still) ──┐          lfo_pivot(lfo) ┄drives┄► instances_draw.eye.x
+circle_orb(circle) ← 2 LFOs ─────┴─► add_stand(add) ─┬─► switch_pick(switch) ─► depth1(depth)
+movie_clip(movieFileIn) ──────────── order 1 ─────┘        │ colour                  │ height
+                                                           ▼                         ▼
+output1 ◄─ add_plate(add) ◄─ level_dim(level) ◄────────────┘   sample_tint(textureToAttribute) ◄ texturepoints_cloud(GRID)
+               ▲                                                              │
+               └── instances_draw(renderInstances, 6912 boxes) ◄ transform1(pointTransform, 1.2× ⌾ centroid) ◄┘
 ```
 
 ## It opens flat, and that is the design
@@ -34,18 +34,18 @@ across every one of 96 columns. A screenshot cannot tell a real relief from a pl
 
 ## The cloud's size is not the cloud producer's size
 
-`cloud1.sizeX/sizeY` look like the lever for "make it bigger" and are not one. They are
-pinned at exactly 2.0 because `tint1` reads each point's `position.xy` back as a UV — that
+`texturepoints_cloud.sizeX/sizeY` look like the lever for "make it bigger" and are not one. They are
+pinned at exactly 2.0 because `sample_tint` reads each point's `position.xy` back as a UV — that
 is what puts the video's own colour on the right box — so any other number lands the picture
-on the wrong points. `draw1.scale` is not the lever either: it sizes each *box*, so turning
+on the wrong points. `instances_draw.scale` is not the lever either: it sizes each *box*, so turning
 it up fuses the lattice into a slab instead of enlarging the cloud. And the camera cannot do
-it, because `plate1` adds the source picture underneath at full frame, so moving the eye
+it, because `add_plate` adds the source picture underneath at full frame, so moving the eye
 slides the cloud against a backdrop that does not move.
 
-So `xform1` does it, sitting between the bridge and the draw. Upstream of it the cloud is
+So `transform1` does it, sitting between the bridge and the draw. Upstream of it the cloud is
 still on the clip square and the UV contract holds; downstream it is 1.2× larger and fills
 the margins the shot used to waste. The boxes do not grow with it — a point transform moves
-points and leaves their size alone, which is the whole distinction from `draw1.scale` — so
+points and leaves their size alone, which is the whole distinction from `instances_draw.scale` — so
 the lattice reads a little airier as it spreads.
 
 It scales about the cloud's **centroid**, and that is not a default taken for free. This
@@ -57,7 +57,7 @@ grows where it stands.
 ## The camera pivots, and the sway is the depth cue
 
 A relief seen from a fixed eye is a *picture* of a relief: the geometry carries the depth
-and nothing reveals it. So `pivot1` swings `draw1.eye.x` by ±0.85 at an xz distance of 3 —
+and nothing reveals it. So `lfo_pivot` swings `instances_draw.eye.x` by ±0.85 at an xz distance of 3 —
 ±16° — on a 28-second round trip. A drift, not a turntable.
 
 It matters more here than in the other 3D examples, for two reasons. The relief itself only
@@ -87,9 +87,9 @@ irrelevant.
 
 `pointsFromTexture` writes only *position* — height is its whole job. On its own that left
 the cloud a wall of identically coloured boxes, which said nothing about the source and read
-as a grey lattice standing in front of a dimmed plate. So `tint1` (`textureToAttribute`)
-samples the source at each point and hands `draw1` a per-point colour, exactly E27's lesson:
-the cloud has to *be* the picture, not a caricature of its silhouette. `draw1.color` maps
+as a grey lattice standing in front of a dimmed plate. So `sample_tint` (`textureToAttribute`)
+samples the source at each point and hands `instances_draw` a per-point colour, exactly E27's lesson:
+the cloud has to *be* the picture, not a caricature of its silhouette. `instances_draw.color` maps
 that `sample` attribute, so every box wears the source's own colour and the relief you look
 at from the side is the video itself, lifted into depth.
 
@@ -115,7 +115,7 @@ unmeasured — it depends on the browser, and it is the open question in §T754.
 
 The subject is depth over time, so the synthetic performer is an orb on two free-running
 LFOs above a nearly-still perlin bed: the bed gives the model something to place, the orb
-gives it something that moves. Point `clip1` at real footage and set `pick1.index = 1` and
+gives it something that moves. Point `movie_clip` at real footage and set `switch_pick.index = 1` and
 the same lattice reads whatever the video contains — a camera never has to be opened for
 the example to work.
 
@@ -126,7 +126,7 @@ behind it. The dimmed source is *added* underneath instead, which suits the pict
 the scan reads as light standing off its own image, and both states are a picture — flat,
 the grid lies on the plate; with depth, it lifts away from it.
 
-`dim1`'s brightness is `0.035`, which looks far too dark until you remember the output
+`level_dim`'s brightness is `0.035`, which looks far too dark until you remember the output
 display-encodes: linear 0.15 arrives on screen as about 0.44 grey, and an earlier pass at
 "dimming" made the plate *lighter*.
 

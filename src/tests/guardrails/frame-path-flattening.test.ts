@@ -98,8 +98,23 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
   },
   {
     file: "app/graph-pane.tsx",
-    reads: 3,
-    why: "Canvas gesture handling — an edge drop and its before/after edge count. A gesture is a pointer event, not a frame, and it addresses the nodes the USER can see, which are the authored ones.",
+    reads: 5,
+    why: "Canvas gesture handling — an edge drop and its before/after edge count. A gesture is a pointer event, not a frame, and it addresses the nodes the USER can see, which are the authored ones. T1652b, two more, each on demand and never per frame: the camera pose a viewport gesture starts from, and the node an agent's `render_preview` names. Both used to read the pane's `graph` prop, which no longer moves for a values-only revision; the store's document is the one that holds the value just written.",
+  },
+  {
+    file: "app/revision-watch.ts",
+    reads: 4,
+    why: "T1652b: NOT per frame — once per REVISION (the store's own notification), to classify it as values-only or structural, and three times to take the document the next revision is compared with (at creation, when the first listener attaches, and when `structure()` is asked while nothing listens). It compares AUTHORED documents because a revision is an authored edit; what a frame path reads is still `runtime.flattened.current()`.",
+  },
+  {
+    file: "app/use-live-graph.ts",
+    reads: 2,
+    why: "T1652b: the `useSyncExternalStore` snapshot pair of a PANE that shows values (the canvas, the inspector, the Controls pane). A React value for presentation, taken on a revision the pane shows and never in a frame; the panes lay out and write AUTHORED nodes.",
+  },
+  {
+    file: "app/use-viewer-mapping.ts",
+    reads: 1,
+    why: "T1652b: NOT per frame — when the edit-mapping layer re-derives (a toggle, a document change, a new plan, a resize), to find the Corner Pin / Grid Warp whose handles it draws. AUTHORED nodes, whose parameters a drag writes; it was the pane's `graph` prop until that stopped moving for a values-only revision, which is what a dragged handle is.",
   },
   {
     file: "app/dock-panes.tsx",
@@ -133,6 +148,14 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
   },
 ];
 
+/**
+ * §T1559b: every consumer these three hand the graph to is typed `FlatGraph` now — the value
+ * graph's `evaluate` was the last (the probe at the foot of this file asks the checker). The
+ * zero-raw-reads half below stays all the same, because a type sees only a HAND-OFF: a path
+ * that walks `store.getGraph().nodes` itself (say, to skip the evaluation when the document
+ * holds no value node) reaches no typed consumer, and is T615 again for every value node
+ * inside a component. Here such a read cannot even be declared with a reason.
+ */
 const DECLARED_FRAME_PATHS: ReadonlyArray<{ file: string; what: string }> = [
   { file: "app/use-value-graph.ts", what: "the per-frame value-graph evaluation and its zero-frame twin" },
   { file: "app/pulse-firing.ts", what: "the expression-fired pulse watcher's step" },
@@ -244,8 +267,9 @@ describe("the raw document is unreachable from a per-frame path (T615, §V437)",
  *
  * The scan above catches a raw read in the frame-path tree by its SPELLING. The brand
  * catches the mistake by its TYPE, wherever it is written: a consumer that needs the
- * flattening takes `FlatGraph` (the pulse watcher, the OSC pump, the media transport, the
- * Analyze/vision/inference readers, the file and device doors, the compiler past flatten),
+ * flattening takes `FlatGraph` (the value graph, the pulse watcher, the OSC pump, the media
+ * transport, the Analyze/vision/inference readers, the file and device doors, the compiler
+ * past flatten),
  * and every parameter evaluation (`parameterReadOptions`, `validateGraph`) takes
  * `FlatGraph | AuthoredGraph`, so the inspector and a command's read scope say
  * `authoredGraph(…)` by name. Two halves hold it: the cast that would forge a brand is
@@ -278,20 +302,32 @@ describe("§T1552b — a FlatGraph is minted only by the flattener", () => {
     try {
       const graph = join(SRC, "domain/types/graph.ts");
       const nodeRefs = join(SRC, "domain/parameters/node-references.ts");
+      const valueGraph = join(SRC, "domain/channels/value-graph.ts");
+      const frame = join(SRC, "domain/types/frame.ts");
       const file = join(directory, "brand.ts");
       const lines = [
         `import { authoredGraph, type FlatGraph, type GraphDocument } from ${JSON.stringify(graph)};`,
         `import { NO_FLATTENING, parameterReadOptions } from ${JSON.stringify(nodeRefs)};`,
+        `import type { ValueGraphSession } from ${JSON.stringify(valueGraph)};`,
+        `import { ZERO_FRAME } from ${JSON.stringify(frame)};`,
         "declare const stored: GraphDocument;",
         "declare const flat: FlatGraph;",
+        "declare const session: ValueGraphSession;",
         "declare function needsFlat(graph: FlatGraph): void;",
         "const registry = { get: () => undefined };",
         "needsFlat(flat);",
+        "session.evaluate(flat, ZERO_FRAME, { flattening: NO_FLATTENING });",
         "parameterReadOptions({ graph: flat, registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING });",
         "parameterReadOptions({ graph: authoredGraph(stored), registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING });",
         "needsFlat(stored); // REFUSED: the store's document where the flattening is needed",
         "parameterReadOptions({ graph: stored, registry, frame: undefined, channels: undefined, flattening: NO_FLATTENING }); // REFUSED: no side said",
         "authoredGraph(flat); // REFUSED: a flattening is not the document",
+        "session.evaluate(stored, ZERO_FRAME, { flattening: NO_FLATTENING }); // REFUSED: §T1559b — the value graph evaluates the flattening",
+        "session.evaluate(authoredGraph(stored), ZERO_FRAME, { flattening: NO_FLATTENING }); // REFUSED: and saying `authored` does not make it one",
+        // §T1559b: WHICH flattening is required too — an evaluation input left optional is
+        // the bug class (§T1551b): the reader was built with no instances and nothing failed.
+        "session.evaluate(flat, ZERO_FRAME); // REFUSED: no flattening said",
+        "session.evaluate(flat, ZERO_FRAME, { pointer: { x: 0, y: 0, buttons: 0 } }); // REFUSED: inputs handed, and still no flattening",
         "",
       ];
       writeFileSync(file, lines.join("\n"), "utf8");
@@ -308,9 +344,9 @@ describe("§T1552b — a FlatGraph is minted only by the flattener", () => {
             .map((diagnostic) => source.getLineAndCharacterOfPosition(diagnostic.start as number).line),
         ),
       ].sort((a, b) => a - b);
-      // Exactly the three marked lines; the legitimate reads beside them typecheck.
+      // Exactly the seven marked lines; the legitimate reads beside them typecheck.
       const refused = lines.flatMap((line, index) => (line.includes("// REFUSED") ? [index] : []));
-      expect(refused).toHaveLength(3);
+      expect(refused).toHaveLength(7);
       expect(errorLines).toEqual(refused);
     } finally {
       rmSync(directory, { recursive: true, force: true });

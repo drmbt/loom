@@ -14,7 +14,7 @@ import { useGraphCompile } from "./use-graph-compile.ts";
  * B234 — THE VALUES A FRAME PUSHES BELONG TO THE PLAN THE BACKEND HOLDS.
  *
  * E82's first GO (`1 open`) is a STRUCTURAL edit — it switches two layers off — on a
- * document that animates (`ringsSrc.phase` is an expression, and the shot starts a 2 s
+ * document that animates (`ramp_ringsSrc.phase` is an expression, and the shot starts a 2 s
  * fade). `backend.compile` is awaited, so for as long as it takes the backend still holds
  * the plan from BEFORE the cue while React has already committed the document after it.
  *
@@ -191,7 +191,7 @@ describe("B234 — a structural cue across an in-flight compile", () => {
     // §V854: the fixture animates at all — or "it kept animating" below proves nothing.
     expect(pushesTo(warm, "ringsSrc").length).toBeGreaterThan(0);
 
-    // GO: `1 open` switches layerGrid and layerFx off and starts a 2 s fade. The compile
+    // GO: `1 open` switches layer_grid and layer_fx off and starts a 2 s fade. The compile
     // it causes is HELD, so the backend keeps the plan from before the cue.
     fixture.hold();
     await act(async () => {

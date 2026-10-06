@@ -5,7 +5,7 @@ import { APP_VIEWPORT, addNode, fitAll, moveNode, openApp } from "./app.ts";
 /**
  * T1102 — WHOSE PIXELS ARE ON TOP WHERE TWO NODES OVERLAP.
  *
- * Runs in the `chromium-headed-gpu` project only, for the reason
+ * Runs in the `chromium-gpu` project only, for the reason
  * `presentation-pixels.spec.ts` sets out at length: headless Chromium on this machine
  * resolves no WebGPU adapter, so a preview tile there is not a picture and nothing in this
  * file could be measured. That spec solved the geometry, the screenshot read and the

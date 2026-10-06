@@ -235,7 +235,7 @@ describe("a cue, a shot and a rename name the instance", () => {
 
   it("renaming cityA rewrites the cue, and GO still fires it", async () => {
     const doc = documentWith([...twoLooks(), list()]);
-    const renamed = await doc.bus.execute("node.rename", { nodeId: "a", label: "downtown" }, ctx);
+    const renamed = await doc.bus.execute("node.rename", { nodeId: "a", label: "downtown", exact: true }, ctx);
     expect(renamed.status).toBe("applied");
     expect(param(doc, "list", "cues")).toBe(serializeCueList({ version: 1, cues: [{ ...SET[0] as Cue, bank: "downtown" }] }));
     const go = await doc.bus.execute("cue.go", { nodeId: "list" }, ctx);
@@ -399,14 +399,14 @@ describe("refused by name", () => {
     };
     try {
       // The session's own writes keep it current: an edit, and a host command.
-      await session.bus.execute("node.rename", { nodeId: "solid", label: "base" }, ctx);
+      await session.bus.execute("node.rename", { nodeId: "solid", label: "base", exact: true }, ctx);
       const published = await session.bus.execute(
         "component.publishParameter",
         { key: "inner_radius", definition: { type: "number", label: "R", default: 4, min: 0, max: 64 }, targets: [{ nodeId: "blurA", key: "radius" }] },
         ctx,
       );
       expect(published.status, codes(published).join()).toBe("applied");
-      await session.bus.execute("node.rename", { nodeId: "inner", label: "inner2" }, ctx);
+      await session.bus.execute("node.rename", { nodeId: "inner", label: "inner2", exact: true }, ctx);
       expect(doc.components.get("city", 1)?.graph.nodes["inner"]?.label).toBe("inner2");
       expect(stale).toEqual([]);
 
@@ -415,7 +415,7 @@ describe("refused by name", () => {
       expect(stale).toEqual([COMPONENT_SESSION_STALE_CODE]);
 
       // The stale session's next commit — nothing to do with the bank — is not written.
-      await session.bus.execute("node.rename", { nodeId: "blurA", label: "softened" }, ctx);
+      await session.bus.execute("node.rename", { nodeId: "blurA", label: "softened", exact: true }, ctx);
       expect(refused).toEqual([COMPONENT_SESSION_STALE_CODE]);
       expect(presetNames()).toEqual(["calm", "riot"]);
       expect(doc.components.get("city", 1)?.graph.nodes["blurA"]?.label).toBe("blurA");
@@ -460,7 +460,7 @@ describe("the presets travel with the component", () => {
     const imported = await target.bus.execute("component.import", { text: written[0]?.text ?? "" }, ctx);
     expect(imported.status, codes(imported).join()).toBe("applied");
     const placed = imported.output.nodeId as NodeId;
-    await target.bus.execute("node.rename", { nodeId: placed, label: "newCity" }, ctx);
+    await target.bus.execute("node.rename", { nodeId: placed, label: "newCity", exact: true }, ctx);
     const recalled = await target.bus.execute("preset.recall", { nodeId: placed, name: "riot" }, ctx);
     expect(recalled.status, codes(recalled).join()).toBe("applied");
     expect(target.graph().nodes[placed]?.parameters["blur"]).toBe(44);
@@ -599,6 +599,47 @@ describe("T1541b — a timed cue names a look's instance", () => {
     const frame = { frameIndex: 30, timeSeconds: 1, fps: 30 } as Parameters<typeof timedIndex.stepsAt>[2];
     expect(timedIndex.stepsAt("a", "blur", frame)?.at(-1)?.to).toBe(2);
     expect(timedIndex.stepsAt("a", "amount", frame)?.at(-1)?.to).toBe(0.25);
+  });
+});
+
+/**
+ * §T1559b (2) — A PAGE BANK WHOSE MORPH IS DRIVEN, under a timed list. A ROOT bank in that
+ * state is warned about (`cue.timeline.drivenMorph`, `compiler/timeline-cue-problems.test.ts`),
+ * because its timed cues read the Morph stored while GO reads it live. An instance's settings
+ * are its definition's page bank's, and GO reads those stored as well (`bankSettings`): the
+ * two doors agree, so there is nothing to say. Both halves are held here — the second is
+ * only right while the first is.
+ */
+describe("§T1559b (2) — a page bank whose Morph is driven", () => {
+  /** Morph `time + 3`: 3 s as the document says it (the zero frame), 8 s at the frame attached below. */
+  const drivenCity = (): GraphComponentDefinition => {
+    const base = city();
+    const looks = base.graph.nodes["looks"] as GraphNode;
+    const morph: StoredParameter = {
+      mode: "expression",
+      bindings: { static: { kind: "static", value: 9 }, expression: { kind: "expression", source: "time + 3" } },
+    };
+    return { ...base, graph: { ...base.graph, nodes: { ...base.graph.nodes, looks: { ...looks, parameters: { ...looks.parameters, morph } } } } };
+  };
+  const show = (follow: "live" | "timeline"): GraphNode =>
+    node("show", "cueList", "show", {
+      follow,
+      cues: serializeCueList({ version: 1, cues: [{ name: "A", bank: "cityA", preset: "calm", ...(follow === "timeline" ? { at: 1 } : {}) }] }),
+    }, 400);
+
+  it("GO on the instance fades for the STORED 3 s, with a frame attached at which the expression says 8", async () => {
+    const doc = documentWith([...twoLooks(), show("live")], { definitions: [drivenCity()] });
+    doc.bus.attachFrame(() => ({ timeSeconds: 5, deltaSeconds: 1 / 30, frameIndex: 150, mode: "realtime", randomSeed: 0 }));
+    doc.at({ epoch: "e1", absTimeSeconds: 5 });
+    const go = await doc.bus.execute("cue.go", { nodeId: "show" }, ctx);
+    expect(go.status, codes(go).join()).toBe("applied");
+    expect(parseMorphRecords(param(doc, "a", PRESET_MORPHS_KEY)).map((record) => record.seconds)).toEqual([3]);
+  });
+
+  it("so a timed list firing it warns nothing", async () => {
+    const doc = documentWith([...twoLooks(), show("timeline")], { definitions: [drivenCity()] });
+    expect((await doc.bus.query("cue.list", { nodeId: "show" }, ctx)).lists[0]?.warnings).toEqual([]);
+    expect(planTimelineCues(doc.graph(), doc.bus.registry, doc.components).warnings).toEqual([]);
   });
 });
 

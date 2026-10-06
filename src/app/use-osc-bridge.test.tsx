@@ -461,7 +461,7 @@ describe("oscOut transmits only what the document configured (§T950 gap 4)", ()
     for (const index of [30, 60]) {
       const frame = morphFrame(index);
       // The order `advanceChannels` runs them in: the value graph, then the pump (§V179).
-      const result = values.evaluate(flattened.graph, frame, { morphs: flattened.morphs });
+      const result = values.evaluate(flattened.graph, frame, { flattening: flattened });
       await act(async () => {
         hook.result.current.sync(frame, flattened.graph, registry, result.byId, result.resolver, LIVE, flattened);
         await Promise.resolve();

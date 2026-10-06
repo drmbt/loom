@@ -40,13 +40,13 @@ describe("E36 Facade claims", () => {
     const both = litPass(plan, "shot#shot:scene:0");
     const onlyLeft = litPass(
       recompile((graph) => {
-        (graph.nodes["shot"]!.parameters as Record<string, unknown>)["projectors"] = "projL1";
+        (graph.nodes["shot"]!.parameters as Record<string, unknown>)["projectors"] = "projector_left";
       }),
       "shot#shot:scene:0",
     );
     const onlyRight = litPass(
       recompile((graph) => {
-        (graph.nodes["shot"]!.parameters as Record<string, unknown>)["projectors"] = "projR1";
+        (graph.nodes["shot"]!.parameters as Record<string, unknown>)["projectors"] = "projector_right";
       }),
       "shot#shot:scene:0",
     );
@@ -60,7 +60,7 @@ describe("E36 Facade claims", () => {
     }
     // And each solo compile carries no phantom second slot.
     expect(litPass(recompile((graph) => {
-      (graph.nodes["shot"]!.parameters as Record<string, unknown>)["projectors"] = "projL1";
+      (graph.nodes["shot"]!.parameters as Record<string, unknown>)["projectors"] = "projector_left";
     }), "shot#shot:scene:0").uniforms?.["projector1Matrix"]).toBeUndefined();
   });
 

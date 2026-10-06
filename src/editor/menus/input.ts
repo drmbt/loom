@@ -4,6 +4,8 @@ import { parseComponentNodeType } from "@domain/components/component-type.ts";
 import type { MenuContext } from "./guards.ts";
 import { edgesForTarget, nodeForTarget } from "./guards.ts";
 import { bindParameterPlan, boundControls, controlFromParameterPlan } from "@editor/controls/parameter-controls.ts";
+import { planControlDefaults, type ControlDefaultInput, type ControlDefaultVerb } from "@domain/commands/control-default-commands.ts";
+import { controlPanelOf } from "@editor/controls/control-defaults.ts";
 
 /**
  * Turning a target into command input (T126).
@@ -176,6 +178,38 @@ const unbindControl: InputBuilder = (item, target, context) => {
 };
 
 /**
+ * T1619b — the control menu's rows. A row's static `scope` says what it acts on: the control
+ * under the cursor, the Panel that control is on, or (the two `…All…` commands) the whole
+ * document. Each asks the plan its command will run (`planControlDefaults`), so a row that
+ * would change nothing is greyed with why: the command's own sentence about what it left
+ * alone (no default, driven), else that everything is where it would go already.
+ */
+const controlDefault =
+  (verb: ControlDefaultVerb, whole: boolean): InputBuilder =>
+  (item, target, context) => {
+    let input: ControlDefaultInput;
+    let subject: string;
+    if (whole) {
+      input = { all: true };
+      subject = "Every control";
+    } else if ((item.input as { scope?: unknown } | undefined)?.scope === "panel") {
+      const panel = controlPanelOf(context.graph, target);
+      if (panel === null) return { ok: false, reason: "This control is on no Panel." };
+      input = { nodeIds: [panel.id] };
+      subject = "Every control on it";
+    } else {
+      if (target.nodeId === undefined) return { ok: false, reason: "No control under the cursor." };
+      input = { nodeIds: [target.nodeId] };
+      subject = "It";
+    }
+    const plan = planControlDefaults(verb, context.graph, input);
+    if (plan.refusal === null) return { ok: true, input: whole ? {} : input };
+    const left = plan.diagnostics[0]?.message;
+    if (left !== undefined) return { ok: false, reason: left };
+    return { ok: false, reason: verb === "reset" ? `${subject} is at its default already.` : `${subject} has its value as its default already.` };
+  };
+
+/**
  * Keyed by `surface:command` first, then by `command`. The surface key exists because
  * `graph.applyPatch` is a real, registered command that means something different on
  * each surface — which is how "delete edge" and "disconnect port" work TODAY instead of
@@ -248,6 +282,10 @@ const BUILDERS: Record<string, InputBuilder> = {
   "control.fromParameter": controlFromParameter,
   "control.bindParameter": bindControl,
   "control.unbindParameter": unbindControl,
+  "control:control.reset": controlDefault("reset", false),
+  "control:control.setDefault": controlDefault("setDefault", false),
+  "control:control.resetAll": controlDefault("reset", true),
+  "control:control.setAllDefaults": controlDefault("setDefault", true),
 };
 
 /**

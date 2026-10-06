@@ -258,7 +258,7 @@ describe("E2 Reaction-Diffusion", () => {
     const intoKernel = Object.values(document.graph.edges).filter((edge) => edge.target.nodeId === "rd");
     expect(intoKernel).toHaveLength(1);
     // T734: the state now reaches the kernel THROUGH the advection, so the single input is
-    // `flow1` rather than `state` — still one input, still the Reorder carrying the map.
+    // `displace_flow` rather than `state` — still one input, still the Reorder carrying the map.
     expect(intoKernel[0]?.source).toEqual({ nodeId: "flow", portId: "out" });
     const intoFlow = Object.values(document.graph.edges).find((edge) => edge.target.nodeId === "flow" && edge.target.portId === "source");
     expect(intoFlow?.source).toEqual({ nodeId: "state", portId: "out" });
@@ -280,7 +280,7 @@ describe("E2 Reaction-Diffusion", () => {
    * the texture the kernel reads.
    */
   it("closes the loop by reference, onto the PACKED state", () => {
-    expect(document.graph.nodes["state"]?.parameters["source"]).toBe("pack1");
+    expect(document.graph.nodes["state"]?.parameters["source"]).toBe("reorder_pack");
     expect(Object.values(document.graph.edges).some((edge) => edge.target.nodeId === "state")).toBe(false);
   });
 

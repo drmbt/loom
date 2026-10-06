@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { readPointAttribute } from "../../../nodes/definitions/test-support.ts";
 
 import { compileGraph } from "../../../compiler/index.ts";
+import { flatDocument } from "../../../compiler/test-support.ts";
 import { createValueGraphSession } from "../../../domain/channels/value-graph.ts";
+import { NO_FLATTENING } from "../../../domain/parameters/node-references.ts";
 import { createNodeRegistry } from "../../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../../nodes/definitions/index.ts";
 import { createVgpuBackend } from "./vgpu-backend.ts";
@@ -136,7 +138,8 @@ async function runFrame(
   const graph = graphWith(mode);
   const session = createValueGraphSession(registry);
   const frame = frameAt(frameIndex);
-  const evaluated = session.evaluate(graph as never, frame);
+  // A hand-built document: no instance (`flatDocument` refuses one), nothing fading.
+  const evaluated = session.evaluate(flatDocument(graph as never), frame, { flattening: NO_FLATTENING });
   expect(evaluated.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
 
   const plan = compileGraph({

@@ -8,7 +8,7 @@ import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { ParameterSlot } from "@domain/types/parameters.ts";
 import { listExamples } from "../../examples/catalogue.ts";
 import { exampleRegistry } from "../../examples/runner.ts";
-import { cameraPoseAt, movableChannels, poseFromFacts, readCameraPoseFacts } from "./camera-pose.ts";
+import { cameraPoseAt, cameraPoseDrivenSentence, movableChannels, poseFromFacts, readCameraPoseFacts } from "./camera-pose.ts";
 import { createDomainBus } from "@domain/commands/index.ts";
 import { STORED_READ } from "@domain/parameters/resolve.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
@@ -190,5 +190,61 @@ describe("§T1557b — a camera eye channel on op('k1').chan.value (B181's shape
     // x 5 only if the channel reached a reader; the bug left the static 0 there.
     expect(pose?.eye).toEqual([5, 0.5, 3]);
     expect(pose?.eyeMask).toEqual([false, true, true]);
+  });
+});
+
+/**
+ * T1655b — A POSE NOTHING CAN MOVE SAYS SO, WHERE THE CONTROL WOULD BE.
+ *
+ * The owner's own camera (sentinel-bot's `camera_rig`) has all six channels of Eye and Look
+ * At on expressions. `readCameraPoseFacts` answers null for it, the tile offers no gizmo
+ * (right: §T1049, absent and never disabled) and showed NOTHING in that corner (wrong: the
+ * other half of the same rule is that the absence is said). "This camera cannot be moved
+ * from here" and "the app forgot the control" were the same pixels.
+ */
+describe("T1655b — a fully driven pose has a sentence, and a pose with a free channel has none", () => {
+  const expression = (source: string, retained: number): ParameterSlot => ({
+    mode: "expression",
+    bindings: { static: { kind: "static", value: retained }, expression: { kind: "expression", source } },
+  });
+  const cameraWith = (parameters: GraphNode["parameters"]): { camera: GraphNode; scope: Parameters<typeof cameraPoseAt>[2] } => {
+    const camera: GraphNode = {
+      id: "cam" as GraphNode["id"],
+      type: "camera",
+      label: "camera_rig",
+      definitionVersion: definition?.version ?? 1,
+      position: { x: 0, y: 0 },
+      parameters,
+    };
+    const graph: GraphDocument = { revision: 1, nodes: { cam: camera }, edges: {}, groups: {} };
+    const { bus } = createDomainBus({ store: createGraphStore({ initialGraph: graph }), registry: nodes });
+    return { camera, scope: { ...bus.readScope(), graph: authoredGraph(graph) } };
+  };
+  const SIX = {
+    "eye.x": expression("sin(abstime)", 0),
+    "eye.y": expression("0.5", 0.5),
+    "eye.z": expression("3 * cos(abstime)", 3),
+    "lookAt.x": expression("0", 0),
+    "lookAt.y": expression("0", 0),
+    "lookAt.z": expression("0", 0),
+  };
+
+  it("all six channels on expressions: no pose to fly, and one sentence naming what decides it and where", () => {
+    const { camera, scope } = cameraWith(SIX);
+    // The premise the sentence stands in for: there is nothing for a gesture to write.
+    expect(cameraPoseAt(camera, definition, scope)).toBeNull();
+    expect(cameraPoseDrivenSentence(camera, definition, scope)).toBe("Driven by expressions (Eye, Look At).");
+  });
+
+  it("one free channel is enough to fly, so there is no sentence: the control is there instead", () => {
+    // The legitimate case a sentence could swallow: five driven channels still leave a camera
+    // that moves (§V113), and a tile that said "driven" over a working gizmo would be a lie.
+    const { "lookAt.z": _free, ...five } = SIX;
+    const { camera, scope } = cameraWith(five);
+    expect(cameraPoseAt(camera, definition, scope)).not.toBeNull();
+    expect(cameraPoseDrivenSentence(camera, definition, scope)).toBeNull();
+    // And a plain camera says nothing either.
+    const plain = cameraWith({ eye: [0, 0.5, 3], lookAt: [0, 0, 0] });
+    expect(cameraPoseDrivenSentence(plain.camera, definition, plain.scope)).toBeNull();
   });
 });

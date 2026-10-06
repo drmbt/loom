@@ -1,4 +1,5 @@
 import type { GraphEdge, GraphNode, ProjectDocument } from "../../../domain/types/graph.ts";
+import { kindOfType, withKind } from "../../../domain/graph/node-kinds.ts";
 import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../../domain/types/schemas.ts";
 import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../../examples/documents/builders.ts";
@@ -23,8 +24,9 @@ export class Chain {
     this.last = first;
   }
 
+  /** A node, named for its kind and its id (`wgsl_haze` for a Custom WGSL `haze`) unless `extra.label` says otherwise. */
   add(id: string, type: string, position: readonly [number, number], parameters: Record<string, StoredParameter>, extra: Partial<GraphNode> = {}): string {
-    this.nodes.push(buildNode(id, type, position, {}, { ...extra, parameters, label: extra.label ?? `${id.toLowerCase()}1` }));
+    this.nodes.push(buildNode(id, type, position, {}, { ...extra, parameters, label: extra.label ?? withKind(kindOfType(type), id.toLowerCase()) }));
     return id;
   }
 
@@ -40,9 +42,12 @@ export class Chain {
     this.last = [id, "out"];
   }
 
-  /** A stock node that takes the running picture on `input` and continues the chain. */
+  /**
+   * A stock node that takes the running picture on `input` and continues the chain. It is the
+   * one of its kind in the shot, and is named so: `streak1`, `lens1`, `filmgrade1`.
+   */
   stock(id: string, type: string, parameters: Record<string, StoredParameter>, position: readonly [number, number]): void {
-    this.add(id, type, position, parameters);
+    this.add(id, type, position, parameters, { label: `${kindOfType(type)}1` });
     this.link(this.last, [id, "input"]);
     this.last = [id, "out"];
   }
@@ -87,9 +92,9 @@ export class Chain {
 
 export const vec3 = (v: readonly [number, number, number]): number[] => [v[0], v[1], v[2]];
 
-/** The screen-space passes' camera parameters, read off the Camera node `cam1` every frame. */
+/** The screen-space passes' camera parameters, read off the Camera node `camera1` every frame. */
 export function cameraParams(eye: readonly [number, number, number], aim: readonly [number, number, number], fov: number): Record<string, StoredParameter> {
-  const ref = (field: string, fallback: number): StoredParameter => expressionSlot(`op('cam1').par.${field}`, fallback);
+  const ref = (field: string, fallback: number): StoredParameter => expressionSlot(`op('camera1').par.${field}`, fallback);
   return {
     eye: vec3(eye),
     aim: vec3(aim),

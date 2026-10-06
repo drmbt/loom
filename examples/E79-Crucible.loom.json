@@ -975,7 +975,7 @@
       "accentLight": {
         "definitionVersion": 1,
         "id": "accentLight",
-        "label": "accentlight1",
+        "label": "light_accent",
         "parameters": {
           "color": [
             0.2,
@@ -1012,7 +1012,7 @@
       "amberLight": {
         "definitionVersion": 1,
         "id": "amberLight",
-        "label": "amberlight1",
+        "label": "light_amber",
         "parameters": {
           "color": [
             1,
@@ -1024,7 +1024,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "4 + op('tail380x1').chan.band380 * 70"
+                "source": "4 + op('tail_band380').chan.band380 * 70"
               },
               "static": {
                 "kind": "static",
@@ -1049,7 +1049,7 @@
       "analysis": {
         "definitionVersion": 1,
         "id": "analysis",
-        "label": "analysis1",
+        "label": "audioanalysis1",
         "parameters": {
           "envelope": 0.12,
           "hitDecay": 160,
@@ -1065,7 +1065,7 @@
       "band109": {
         "definitionVersion": 1,
         "id": "band109",
-        "label": "band109x1",
+        "label": "select_band109",
         "parameters": {
           "channels": "band109"
         },
@@ -1078,7 +1078,7 @@
       "band1300": {
         "definitionVersion": 1,
         "id": "band1300",
-        "label": "band1300x1",
+        "label": "select_band1300",
         "parameters": {
           "channels": "band1300"
         },
@@ -1091,7 +1091,7 @@
       "band3400": {
         "definitionVersion": 1,
         "id": "band3400",
-        "label": "band3400x1",
+        "label": "select_band3400",
         "parameters": {
           "channels": "band3400"
         },
@@ -1104,7 +1104,7 @@
       "band380": {
         "definitionVersion": 1,
         "id": "band380",
-        "label": "band380x1",
+        "label": "select_band380",
         "parameters": {
           "channels": "band380"
         },
@@ -1117,7 +1117,7 @@
       "band968": {
         "definitionVersion": 1,
         "id": "band968",
-        "label": "band968x1",
+        "label": "select_band968",
         "parameters": {
           "channels": "band968"
         },
@@ -1146,7 +1146,7 @@
       "beat1300": {
         "definitionVersion": 1,
         "id": "beat1300",
-        "label": "beat1300x1",
+        "label": "beat_band1300",
         "parameters": {
           "decay": "exponential",
           "retrigger": 0.15,
@@ -1162,7 +1162,7 @@
       "beatRange": {
         "definitionVersion": 1,
         "id": "beatRange",
-        "label": "beatrange1",
+        "label": "range_beat",
         "parameters": {
           "fromHigh": 0.6,
           "fromLow": 0.38,
@@ -1179,7 +1179,7 @@
       "bloom": {
         "definitionVersion": 1,
         "id": "bloom",
-        "label": "bloom1",
+        "label": "wgsl_bloom",
         "parameters": {
           "source": "\nstruct Params {\n  strength: f32, // @default 0.35 Scattered highlight energy.\n  threshold: f32, // @default 0.8 Highlight extraction threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> params: Params;\n@fragment fn fs(@location(0) uv:vec2f)->@location(0) vec4f {\n  let base=textureSampleLevel(inputTexture,inputSampler,uv,0.0).rgb;\n  let brightness=max(base.r,max(base.g,base.b));\n  let knee=max(params.threshold*0.5,0.0001);\n  let soft=clamp(brightness-params.threshold+knee,0.0,2.0*knee);\n  let contribution=max(brightness-params.threshold,soft*soft/(4.0*knee))/max(brightness,0.0001);\n  return vec4f(base*contribution*params.strength,1);\n}",
           "strength": 0.16,
@@ -1213,7 +1213,7 @@
       "body": {
         "definitionVersion": 1,
         "id": "body",
-        "label": "body1",
+        "label": "lag_body",
         "parameters": {
           "lag": 1.1,
           "releaseRatio": 3
@@ -1227,7 +1227,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "camera1",
         "parameters": {
           "eye": [
             0,
@@ -1330,7 +1330,7 @@
       "clip": {
         "definitionVersion": 1,
         "id": "clip",
-        "label": "clip1",
+        "label": "audiofile_clip",
         "parameters": {
           "beatOffset": 0.484,
           "beatsPerBar": 4,
@@ -1357,7 +1357,7 @@
       "coreForm": {
         "definitionVersion": 1,
         "id": "coreForm",
-        "label": "coreform1",
+        "label": "kernel_coreform",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
           "capacity": 12384,
@@ -1395,7 +1395,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('punch1').chan.band109"
+                "source": "op('lag_punch').chan.band109"
               },
               "static": {
                 "kind": "static",
@@ -1414,7 +1414,7 @@
       "coreGrid": {
         "definitionVersion": 1,
         "id": "coreGrid",
-        "label": "coregrid1",
+        "label": "grid_core",
         "parameters": {
           "cols": 129,
           "count": 12384,
@@ -1431,7 +1431,7 @@
       "coreMat": {
         "definitionVersion": 1,
         "id": "coreMat",
-        "label": "coremat1",
+        "label": "material_core",
         "parameters": {
           "color": [
             0.55,
@@ -1451,9 +1451,9 @@
       "coreMesh": {
         "definitionVersion": 1,
         "id": "coreMesh",
-        "label": "coremesh1",
+        "label": "geometry_coremesh",
         "parameters": {
-          "material": "coremat1",
+          "material": "material_core",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -1483,7 +1483,7 @@
       "cyanLight": {
         "definitionVersion": 1,
         "id": "cyanLight",
-        "label": "cyanlight1",
+        "label": "light_cyan",
         "parameters": {
           "color": [
             0.3,
@@ -1495,7 +1495,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "3 + op('tail3400x1').chan.band3400 * 60"
+                "source": "3 + op('tail_band3400').chan.band3400 * 60"
               },
               "static": {
                 "kind": "static",
@@ -1520,7 +1520,7 @@
       "depthPack": {
         "definitionVersion": 1,
         "id": "depthPack",
-        "label": "depthpack1",
+        "label": "mask_depthpack",
         "parameters": {
           "apply": "alpha",
           "channel": "red",
@@ -1535,7 +1535,7 @@
       "detail": {
         "definitionVersion": 1,
         "id": "detail",
-        "label": "detail1",
+        "label": "lag_detail",
         "parameters": {
           "lag": 0.012,
           "releaseRatio": 3
@@ -1549,7 +1549,7 @@
       "dustForm": {
         "definitionVersion": 1,
         "id": "dustForm",
-        "label": "dustform1",
+        "label": "kernel_dustform",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
           "burst": {
@@ -1570,7 +1570,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('detail1').chan.hatCount, 0, 1)"
+                "source": "clamp(op('lag_detail').chan.hatCount, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -1595,7 +1595,7 @@
       "dustGrid": {
         "definitionVersion": 1,
         "id": "dustGrid",
-        "label": "dustgrid1",
+        "label": "grid_dust",
         "parameters": {
           "cols": 9,
           "count": 14400,
@@ -1612,9 +1612,9 @@
       "dustMesh": {
         "definitionVersion": 1,
         "id": "dustMesh",
-        "label": "dustmesh1",
+        "label": "geometry_dustmesh",
         "parameters": {
-          "material": "hullpaint1",
+          "material": "material_hullpaint",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -1644,7 +1644,7 @@
       "flashLight": {
         "definitionVersion": 1,
         "id": "flashLight",
-        "label": "flashlight1",
+        "label": "light_flash",
         "parameters": {
           "color": [
             0.8,
@@ -1656,7 +1656,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('beat1300x1').chan.band1300 * 90"
+                "source": "op('beat_band1300').chan.band1300 * 90"
               },
               "static": {
                 "kind": "static",
@@ -1681,7 +1681,7 @@
       "fxaa": {
         "definitionVersion": 1,
         "id": "fxaa",
-        "label": "fxaa1",
+        "label": "wgsl_fxaa",
         "parameters": {
           "amount": 1,
           "source": "struct Params {\n  amount: f32, // @default 1  0 is the input exactly, 1 is full FXAA.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> params: Params;\n\nconst SPAN_MAX: f32 = 8.0;\nconst REDUCE_MUL: f32 = 0.125;\nconst REDUCE_MIN: f32 = 0.0078125;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn luma(c: vec3f) -> f32 {\n  let t = max(c, vec3f(0.0)) / (vec3f(1.0) + max(c, vec3f(0.0)));\n  return dot(t, vec3f(0.299, 0.587, 0.114));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let px = 1.0 / vec2f(textureDimensions(inputTexture));\n  let centre = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let m = centre.rgb;\n  let lM = luma(m);\n  let lNW = luma(tap(uv + vec2f(-1.0, -1.0) * px));\n  let lNE = luma(tap(uv + vec2f(1.0, -1.0) * px));\n  let lSW = luma(tap(uv + vec2f(-1.0, 1.0) * px));\n  let lSE = luma(tap(uv + vec2f(1.0, 1.0) * px));\n  let lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  let lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n\n  var dir = vec2f(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  let reduce = max((lNW + lNE + lSW + lSE) * 0.25 * REDUCE_MUL, REDUCE_MIN);\n  let rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);\n  dir = clamp(dir * rcpMin, vec2f(-SPAN_MAX), vec2f(SPAN_MAX)) * px;\n\n  let a = 0.5 * (tap(uv + dir * (1.0 / 3.0 - 0.5)) + tap(uv + dir * (2.0 / 3.0 - 0.5)));\n  let b = a * 0.5 + 0.25 * (tap(uv - dir * 0.5) + tap(uv + dir * 0.5));\n  let lB = luma(b);\n  let smoothed = select(b, a, (lB < lMin) || (lB > lMax));\n  // Alpha passes through untouched: an edge-smoothing pass has no business deciding coverage\n  // (T1276 found the first version writing 1 over a plate that carried 0).\n  return vec4f(mix(m, smoothed, params.amount), centre.a);\n}"
@@ -1698,7 +1698,7 @@
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
-        "label": "glow1",
+        "label": "add_glow",
         "parameters": {
           "opacity": 1
         },
@@ -1714,7 +1714,7 @@
       "haloForm": {
         "definitionVersion": 1,
         "id": "haloForm",
-        "label": "haloform1",
+        "label": "kernel_haloform",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
           "breath": {
@@ -1735,7 +1735,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('punch1').chan.band109"
+                "source": "op('lag_punch').chan.band109"
               },
               "static": {
                 "kind": "static",
@@ -1771,7 +1771,7 @@
       "haloGrid": {
         "definitionVersion": 1,
         "id": "haloGrid",
-        "label": "halogrid1",
+        "label": "grid_halo",
         "parameters": {
           "cols": 256,
           "count": 4352,
@@ -1788,7 +1788,7 @@
       "haloLight": {
         "definitionVersion": 1,
         "id": "haloLight",
-        "label": "halolight1",
+        "label": "light_halo",
         "parameters": {
           "color": [
             1,
@@ -1800,7 +1800,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "24 + op('punch1').chan.band109 * 90"
+                "source": "24 + op('lag_punch').chan.band109 * 90"
               },
               "static": {
                 "kind": "static",
@@ -1825,7 +1825,7 @@
       "haloMat": {
         "definitionVersion": 1,
         "id": "haloMat",
-        "label": "halomat1",
+        "label": "material_halo",
         "parameters": {
           "color": [
             1,
@@ -1843,9 +1843,9 @@
       "haloMesh": {
         "definitionVersion": 1,
         "id": "haloMesh",
-        "label": "halomesh1",
+        "label": "geometry_halomesh",
         "parameters": {
-          "material": "halomat1",
+          "material": "material_halo",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -1875,7 +1875,7 @@
       "haze": {
         "definitionVersion": 1,
         "id": "haze",
-        "label": "haze1",
+        "label": "wgsl_haze",
         "parameters": {
           "aim": [
             0,
@@ -1886,7 +1886,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera1').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -1899,7 +1899,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera1').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -1912,7 +1912,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera1').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -1931,7 +1931,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera1').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -1944,7 +1944,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera1').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -1957,7 +1957,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera1').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -1970,7 +1970,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -1983,7 +1983,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.fov"
+                "source": "op('camera1').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -1997,7 +1997,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "clamp(op('body1').chan.level, 0, 1)"
+                "source": "clamp(op('lag_body').chan.level, 0, 1)"
               },
               "static": {
                 "kind": "static",
@@ -2010,7 +2010,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('punch1').chan.band109"
+                "source": "op('lag_punch').chan.band109"
               },
               "static": {
                 "kind": "static",
@@ -2033,7 +2033,7 @@
       "heartForm": {
         "definitionVersion": 1,
         "id": "heartForm",
-        "label": "heartform1",
+        "label": "kernel_heartform",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]}]",
           "capacity": 4656,
@@ -2042,7 +2042,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('punch1').chan.band109"
+                "source": "op('lag_punch').chan.band109"
               },
               "static": {
                 "kind": "static",
@@ -2063,7 +2063,7 @@
       "heartGrid": {
         "definitionVersion": 1,
         "id": "heartGrid",
-        "label": "heartgrid1",
+        "label": "grid_heart",
         "parameters": {
           "cols": 97,
           "count": 4656,
@@ -2080,7 +2080,7 @@
       "heartMat": {
         "definitionVersion": 1,
         "id": "heartMat",
-        "label": "heartmat1",
+        "label": "material_heart",
         "parameters": {
           "color": [
             1,
@@ -2098,9 +2098,9 @@
       "heartMesh": {
         "definitionVersion": 1,
         "id": "heartMesh",
-        "label": "heartmesh1",
+        "label": "geometry_heartmesh",
         "parameters": {
-          "material": "heartmat1",
+          "material": "material_heart",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -2130,7 +2130,7 @@
       "hullPaint": {
         "definitionVersion": 1,
         "id": "hullPaint",
-        "label": "hullpaint1",
+        "label": "material_hullpaint",
         "parameters": {
           "color": [
             0.8,
@@ -2150,7 +2150,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "light_key",
         "parameters": {
           "color": [
             0.55,
@@ -2178,14 +2178,14 @@
       "lens": {
         "definitionVersion": 1,
         "id": "lens",
-        "label": "lens1",
+        "label": "wgsl_lens",
         "parameters": {
           "chromatic": 0.25,
           "far": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -2224,7 +2224,7 @@
       "opaqueAlpha": {
         "definitionVersion": 1,
         "id": "opaqueAlpha",
-        "label": "opaquealpha1",
+        "label": "reorder_opaquealpha",
         "parameters": {
           "outa": "one"
         },
@@ -2237,7 +2237,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "filmic"
         },
@@ -2250,7 +2250,7 @@
       "punch": {
         "definitionVersion": 1,
         "id": "punch",
-        "label": "punch1",
+        "label": "lag_punch",
         "parameters": {
           "lag": 0.05,
           "releaseRatio": 1
@@ -2264,7 +2264,7 @@
       "range1300": {
         "definitionVersion": 1,
         "id": "range1300",
-        "label": "range1300x1",
+        "label": "range_band1300",
         "parameters": {
           "fromHigh": 0.58,
           "fromLow": 0.46,
@@ -2281,7 +2281,7 @@
       "range3400": {
         "definitionVersion": 1,
         "id": "range3400",
-        "label": "range3400x1",
+        "label": "range_band3400",
         "parameters": {
           "fromHigh": 0.33,
           "fromLow": 0.27,
@@ -2298,7 +2298,7 @@
       "range380": {
         "definitionVersion": 1,
         "id": "range380",
-        "label": "range380x1",
+        "label": "range_band380",
         "parameters": {
           "fromHigh": 0.78,
           "fromLow": 0.32,
@@ -2315,7 +2315,7 @@
       "rim": {
         "definitionVersion": 1,
         "id": "rim",
-        "label": "rim1",
+        "label": "light_rim",
         "parameters": {
           "color": [
             1,
@@ -2343,7 +2343,7 @@
       "seamGlow": {
         "definitionVersion": 1,
         "id": "seamGlow",
-        "label": "seamglow1",
+        "label": "material_seamglow",
         "parameters": {
           "color": [
             1,
@@ -2361,7 +2361,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0.5,
@@ -2377,12 +2377,12 @@
             0,
             1
           ],
-          "camera": "cam1",
+          "camera": "camera1",
           "depthOutput": true,
           "environmentIntensity": 0,
           "environmentTaps": 4,
-          "lights": "halolight1 accentlight1 amberlight1 flashlight1 cyanlight1 key1 rim1",
-          "scenes": "halomesh1 coremesh1 heartmesh1 swarm0mesh1 swarm0glow1 swarm1mesh1 swarm1glow1 swarm2mesh1 swarm2glow1 swarm3mesh1 swarm3glow1 swarm4mesh1 swarm4glow1 swarm5mesh1 swarm5glow1 dustmesh1"
+          "lights": "light_halo light_accent light_amber light_flash light_cyan light_key light_rim",
+          "scenes": "geometry_halomesh geometry_coremesh geometry_heartmesh geometry_swarm0mesh geometry_swarm0glow geometry_swarm1mesh geometry_swarm1glow geometry_swarm2mesh geometry_swarm2glow geometry_swarm3mesh geometry_swarm3glow geometry_swarm4mesh geometry_swarm4glow geometry_swarm5mesh geometry_swarm5glow geometry_dustmesh"
         },
         "position": {
           "x": -700,
@@ -2393,7 +2393,7 @@
       "swarm0Form": {
         "definitionVersion": 1,
         "id": "swarm0Form",
-        "label": "swarm0form1",
+        "label": "kernel_swarm0form",
         "parameters": {
           "accent": 0.2,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
@@ -2419,7 +2419,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail380x1').chan.band380"
+                "source": "op('tail_band380').chan.band380"
               },
               "static": {
                 "kind": "static",
@@ -2447,12 +2447,13 @@
       "swarm0Glow": {
         "definitionVersion": 1,
         "id": "swarm0Glow",
-        "label": "swarm0glow1",
+        "label": "geometry_swarm0glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
-          "material": "seamglow1",
+          "inDepthOutput": true,
+          "material": "material_seamglow",
           "mode": "beam",
           "scale": 0.045,
           "soft": 0.6,
@@ -2484,7 +2485,7 @@
       "swarm0Grid": {
         "definitionVersion": 1,
         "id": "swarm0Grid",
-        "label": "swarm0grid1",
+        "label": "grid_swarm0",
         "parameters": {
           "cols": 36,
           "count": 17280,
@@ -2501,9 +2502,9 @@
       "swarm0Mesh": {
         "definitionVersion": 1,
         "id": "swarm0Mesh",
-        "label": "swarm0mesh1",
+        "label": "geometry_swarm0mesh",
         "parameters": {
-          "material": "hullpaint1",
+          "material": "material_hullpaint",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -2533,7 +2534,7 @@
       "swarm1Form": {
         "definitionVersion": 1,
         "id": "swarm1Form",
-        "label": "swarm1form1",
+        "label": "kernel_swarm1form",
         "parameters": {
           "accent": 0.15,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
@@ -2559,7 +2560,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail380x1').chan.band380"
+                "source": "op('tail_band380').chan.band380"
               },
               "static": {
                 "kind": "static",
@@ -2587,12 +2588,13 @@
       "swarm1Glow": {
         "definitionVersion": 1,
         "id": "swarm1Glow",
-        "label": "swarm1glow1",
+        "label": "geometry_swarm1glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
-          "material": "seamglow1",
+          "inDepthOutput": true,
+          "material": "material_seamglow",
           "mode": "beam",
           "scale": 0.045,
           "soft": 0.6,
@@ -2624,7 +2626,7 @@
       "swarm1Grid": {
         "definitionVersion": 1,
         "id": "swarm1Grid",
-        "label": "swarm1grid1",
+        "label": "grid_swarm1",
         "parameters": {
           "cols": 36,
           "count": 17280,
@@ -2641,9 +2643,9 @@
       "swarm1Mesh": {
         "definitionVersion": 1,
         "id": "swarm1Mesh",
-        "label": "swarm1mesh1",
+        "label": "geometry_swarm1mesh",
         "parameters": {
-          "material": "hullpaint1",
+          "material": "material_hullpaint",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -2673,7 +2675,7 @@
       "swarm2Form": {
         "definitionVersion": 1,
         "id": "swarm2Form",
-        "label": "swarm2form1",
+        "label": "kernel_swarm2form",
         "parameters": {
           "accent": 0.2,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
@@ -2699,7 +2701,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('beat1300x1').chan.band1300"
+                "source": "op('beat_band1300').chan.band1300"
               },
               "static": {
                 "kind": "static",
@@ -2727,12 +2729,13 @@
       "swarm2Glow": {
         "definitionVersion": 1,
         "id": "swarm2Glow",
-        "label": "swarm2glow1",
+        "label": "geometry_swarm2glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
-          "material": "seamglow1",
+          "inDepthOutput": true,
+          "material": "material_seamglow",
           "mode": "beam",
           "scale": 0.045,
           "soft": 0.6,
@@ -2764,7 +2767,7 @@
       "swarm2Grid": {
         "definitionVersion": 1,
         "id": "swarm2Grid",
-        "label": "swarm2grid1",
+        "label": "grid_swarm2",
         "parameters": {
           "cols": 36,
           "count": 17280,
@@ -2781,9 +2784,9 @@
       "swarm2Mesh": {
         "definitionVersion": 1,
         "id": "swarm2Mesh",
-        "label": "swarm2mesh1",
+        "label": "geometry_swarm2mesh",
         "parameters": {
-          "material": "hullpaint1",
+          "material": "material_hullpaint",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -2813,7 +2816,7 @@
       "swarm3Form": {
         "definitionVersion": 1,
         "id": "swarm3Form",
-        "label": "swarm3form1",
+        "label": "kernel_swarm3form",
         "parameters": {
           "accent": 0.15,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
@@ -2839,7 +2842,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('beat1300x1').chan.band1300"
+                "source": "op('beat_band1300').chan.band1300"
               },
               "static": {
                 "kind": "static",
@@ -2867,12 +2870,13 @@
       "swarm3Glow": {
         "definitionVersion": 1,
         "id": "swarm3Glow",
-        "label": "swarm3glow1",
+        "label": "geometry_swarm3glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
-          "material": "seamglow1",
+          "inDepthOutput": true,
+          "material": "material_seamglow",
           "mode": "beam",
           "scale": 0.045,
           "soft": 0.6,
@@ -2904,7 +2908,7 @@
       "swarm3Grid": {
         "definitionVersion": 1,
         "id": "swarm3Grid",
-        "label": "swarm3grid1",
+        "label": "grid_swarm3",
         "parameters": {
           "cols": 36,
           "count": 17280,
@@ -2921,9 +2925,9 @@
       "swarm3Mesh": {
         "definitionVersion": 1,
         "id": "swarm3Mesh",
-        "label": "swarm3mesh1",
+        "label": "geometry_swarm3mesh",
         "parameters": {
-          "material": "hullpaint1",
+          "material": "material_hullpaint",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -2953,7 +2957,7 @@
       "swarm4Form": {
         "definitionVersion": 1,
         "id": "swarm4Form",
-        "label": "swarm4form1",
+        "label": "kernel_swarm4form",
         "parameters": {
           "accent": 0.12,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
@@ -2979,7 +2983,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail3400x1').chan.band3400"
+                "source": "op('tail_band3400').chan.band3400"
               },
               "static": {
                 "kind": "static",
@@ -3007,12 +3011,13 @@
       "swarm4Glow": {
         "definitionVersion": 1,
         "id": "swarm4Glow",
-        "label": "swarm4glow1",
+        "label": "geometry_swarm4glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
-          "material": "seamglow1",
+          "inDepthOutput": true,
+          "material": "material_seamglow",
           "mode": "beam",
           "scale": 0.045,
           "soft": 0.6,
@@ -3044,7 +3049,7 @@
       "swarm4Grid": {
         "definitionVersion": 1,
         "id": "swarm4Grid",
-        "label": "swarm4grid1",
+        "label": "grid_swarm4",
         "parameters": {
           "cols": 36,
           "count": 17280,
@@ -3061,9 +3066,9 @@
       "swarm4Mesh": {
         "definitionVersion": 1,
         "id": "swarm4Mesh",
-        "label": "swarm4mesh1",
+        "label": "geometry_swarm4mesh",
         "parameters": {
-          "material": "hullpaint1",
+          "material": "material_hullpaint",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3093,7 +3098,7 @@
       "swarm5Form": {
         "definitionVersion": 1,
         "id": "swarm5Form",
-        "label": "swarm5form1",
+        "label": "kernel_swarm5form",
         "parameters": {
           "accent": 0.15,
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"end\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"emission\",\"type\":\"vec4f\",\"default\":[0,0,0,1]},{\"name\":\"seam\",\"type\":\"f32\",\"default\":[0]}]",
@@ -3119,7 +3124,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tail3400x1').chan.band3400"
+                "source": "op('tail_band3400').chan.band3400"
               },
               "static": {
                 "kind": "static",
@@ -3147,12 +3152,13 @@
       "swarm5Glow": {
         "definitionVersion": 1,
         "id": "swarm5Glow",
-        "label": "swarm5glow1",
+        "label": "geometry_swarm5glow",
         "parameters": {
           "blend": "additive",
           "endpoint": "end",
           "group": "p.seam > 0.5",
-          "material": "seamglow1",
+          "inDepthOutput": true,
+          "material": "material_seamglow",
           "mode": "beam",
           "scale": 0.045,
           "soft": 0.6,
@@ -3184,7 +3190,7 @@
       "swarm5Grid": {
         "definitionVersion": 1,
         "id": "swarm5Grid",
-        "label": "swarm5grid1",
+        "label": "grid_swarm5",
         "parameters": {
           "cols": 36,
           "count": 17280,
@@ -3201,9 +3207,9 @@
       "swarm5Mesh": {
         "definitionVersion": 1,
         "id": "swarm5Mesh",
-        "label": "swarm5mesh1",
+        "label": "geometry_swarm5mesh",
         "parameters": {
-          "material": "hullpaint1",
+          "material": "material_hullpaint",
           "mode": "surface",
           "tint": {
             "bindings": {
@@ -3247,7 +3253,7 @@
       "tail3400": {
         "definitionVersion": 1,
         "id": "tail3400",
-        "label": "tail3400x1",
+        "label": "tail_band3400",
         "parameters": {
           "decay": "linear",
           "tail": 0.35
@@ -3261,7 +3267,7 @@
       "tail380": {
         "definitionVersion": 1,
         "id": "tail380",
-        "label": "tail380x1",
+        "label": "tail_band380",
         "parameters": {
           "decay": "exponential",
           "tail": 0.6
@@ -3275,7 +3281,7 @@
       "tailRange": {
         "definitionVersion": 1,
         "id": "tailRange",
-        "label": "tailrange1",
+        "label": "range_tail",
         "parameters": {
           "fromHigh": 0.58,
           "fromLow": 0.4,

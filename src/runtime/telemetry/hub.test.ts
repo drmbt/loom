@@ -731,3 +731,118 @@ describe("§T1392b — the hub feeds the perf timeline", () => {
     hub.dispose();
   });
 });
+
+/*
+ * T1604b: a run of a node's draws is one device render pass, so it has ONE GPU span. The
+ * span's name says how many passes share it (`backdrop+2`). What must hold:
+ *
+ *  - the node's total is still a measurement (a run is one node's draws, so the span is its);
+ *  - no pass is given a share of it — the others say they share, with no number;
+ *  - a pass's OWN span from a moment ago (one pass per draw, while the panel was open) is
+ *    not added on top of the run's, which would bill the node twice.
+ */
+describe("T1604b — a run's span is one measurement", () => {
+  const scenePlan = (): TelemetryPlan =>
+    telemetryPlan(
+      planOf([
+        { id: "backdrop", nodeId: "render", kind: "draw" },
+        { id: "lit:0", nodeId: "render", kind: "draw" },
+        { id: "lit:1", nodeId: "render", kind: "draw" },
+        { id: "grade", nodeId: "grade", kind: "effect" },
+      ]),
+    );
+  const rowsOf = (hub: ReturnType<typeof createTelemetryHub>) =>
+    hub.snapshot().passes.map((row) => [row.passId, row.gpuMs, row.run === undefined ? null : `${row.run.head}:${String(row.run.passes)}`]);
+
+  it("is billed to the run's head and to its node, and the other passes say they share it", () => {
+    const hub = createTelemetryHub({ now });
+    const timing = fakeTimingSource(true);
+    hub.attachTimingSource(timing);
+    hub.setPlan(scenePlan());
+    timing.emit({ "backdrop+2": 6, grade: 1 });
+    advance(TELEMETRY_TICK_MS);
+    expect(rowsOf(hub)).toEqual([
+      ["backdrop", 6, "backdrop:3"],
+      ["lit:0", null, "backdrop:3"],
+      ["lit:1", null, "backdrop:3"],
+      ["grade", 1, null],
+    ]);
+    // Exact for the node: every draw of the run is its own.
+    expect(hub.nodeTelemetry("render" as NodeId).own.gpuMs).toBe(6);
+    expect(hub.nodeTelemetry("grade" as NodeId).own.gpuMs).toBe(1);
+    hub.dispose();
+  });
+
+  it("follows the device both ways: own spans replace the shared one, and a shared one drops the own spans it covers", () => {
+    const hub = createTelemetryHub({ now });
+    const timing = fakeTimingSource(true);
+    hub.attachTimingSource(timing);
+    hub.setPlan(scenePlan());
+
+    // One pass per draw (someone is looking): every pass has its own figure.
+    timing.emit({ backdrop: 1, "lit:0": 2, "lit:1": 3, grade: 1 });
+    advance(TELEMETRY_TICK_MS);
+    expect(rowsOf(hub)).toEqual([["backdrop", 1, null], ["lit:0", 2, null], ["lit:1", 3, null], ["grade", 1, null]]);
+    expect(hub.nodeTelemetry("render" as NodeId).own.gpuMs).toBe(6);
+
+    // The panel closes: one pass for the run. 5 ms, not 5 + 2 + 3 with the old figures still standing.
+    timing.emit({ "backdrop+2": 5, grade: 1 });
+    advance(TELEMETRY_TICK_MS);
+    expect(hub.nodeTelemetry("render" as NodeId).own.gpuMs).toBe(5);
+    expect(hub.snapshot().frame.passSumMs).toBe(6);
+    expect(rowsOf(hub)).toEqual([["backdrop", 5, "backdrop:3"], ["lit:0", null, "backdrop:3"], ["lit:1", null, "backdrop:3"], ["grade", 1, null]]);
+
+    // And open again.
+    timing.emit({ backdrop: 1, "lit:0": 2, "lit:1": 2, grade: 1 });
+    advance(TELEMETRY_TICK_MS);
+    expect(rowsOf(hub)).toEqual([["backdrop", 1, null], ["lit:0", 2, null], ["lit:1", 2, null], ["grade", 1, null]]);
+    hub.dispose();
+  });
+
+  it("sums a looped run's iterations onto its head like any looped pass", () => {
+    const hub = createTelemetryHub({ now });
+    const timing = fakeTimingSource(true);
+    hub.attachTimingSource(timing);
+    hub.setPlan(scenePlan());
+    timing.emit({ "backdrop+2": 2, "backdrop+2~1": 3, grade: 1 });
+    advance(TELEMETRY_TICK_MS);
+    expect(rowsOf(hub)[0]).toEqual(["backdrop", 5, "backdrop:3"]);
+    hub.dispose();
+  });
+});
+
+describe("T1604b — whoever looks at per-pass figures asks for them", () => {
+  it("switches the backend to one pass per draw while any demand is held, and back when the last is released", () => {
+    const hub = createTelemetryHub({ now });
+    const applied: boolean[] = [];
+    hub.attachPassDetailSwitch((exact) => applied.push(exact));
+    // Nobody is looking when the backend arrives.
+    expect(applied).toEqual([false]);
+
+    const panel = hub.demandPassDetail?.();
+    const inspector = hub.demandPassDetail?.();
+    expect(applied).toEqual([false, true]);
+    panel?.();
+    // One reader left: still exact.
+    expect(applied).toEqual([false, true]);
+    // Releasing twice is releasing once.
+    panel?.();
+    expect(applied).toEqual([false, true]);
+    inspector?.();
+    expect(applied).toEqual([false, true, false]);
+    hub.dispose();
+  });
+
+  it("tells a backend that arrives while someone is already looking", () => {
+    const hub = createTelemetryHub({ now });
+    const release = hub.demandPassDetail?.();
+    const applied: boolean[] = [];
+    const detach = hub.attachPassDetailSwitch((exact) => applied.push(exact));
+    expect(applied).toEqual([true]);
+    // Detached, the old backend hears nothing more.
+    detach();
+    release?.();
+    expect(applied).toEqual([true]);
+    hub.dispose();
+  });
+});

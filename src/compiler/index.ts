@@ -7,7 +7,7 @@
  */
 export { compileGraph, compileGraphRetaining } from "./compile.ts";
 export type { CompileGraphResult } from "./compile.ts";
-export { prepareFrameCompiler } from "./frame-compile.ts";
+export { prepareFrameCompiler, rebaseOnValues, structuralParameterKeys } from "./frame-compile.ts";
 export type { FrameCompiler } from "./frame-compile.ts";
 export { MAX_WARM_LAYERS, compileLayerWarmPlan, layerWarmRequest } from "./layer-warm.ts";
 export { timelineStructureRequest } from "./timeline-structure.ts";

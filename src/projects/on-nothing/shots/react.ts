@@ -119,17 +119,17 @@ export function reactive(nodes: GraphNode[], edges: GraphEdge[], profile: ReactP
   const lampGain = `(1 + ${profile.lamp} * (${lampHash} * 2 - 1))`;
   let kick = "0";
   if (song !== undefined && profile.kick > 0) {
-    nodes.push(buildNode("reactKickPick", "valueSelect", [-3900, 1700], {}, { label: "reactkickpick1", parameters: { channels: "kickCount" } }));
+    nodes.push(buildNode("reactKickPick", "valueSelect", [-3900, 1700], {}, { label: "select_reactkickpick", parameters: { channels: "kickCount" } }));
     // 1 on a kick-lane hit, gone KICK_TAIL later (half gone after two frames, as measured).
-    nodes.push(buildNode("reactKick", "valueBeat", [-3600, 1700], {}, { label: "reactkick1", parameters: { threshold: 0.5, retrigger: 0.1, tail: KICK_TAIL, decay: "linear" } }));
+    nodes.push(buildNode("reactKick", "valueBeat", [-3600, 1700], {}, { label: "beat_reactkick", parameters: { threshold: 0.5, retrigger: 0.1, tail: KICK_TAIL, decay: "linear" } }));
     edges.push(edge("react-kick-pick", [song, "out"], ["reactKickPick", "in"]));
     edges.push(edge("react-kick-beat", ["reactKickPick", "out"], ["reactKick", "in"]));
-    kick = "op('reactkick1').chan.kickCount";
+    kick = "op('beat_reactkick').chan.kickCount";
   }
   return {
     streak(from) {
       nodes.push(buildNode("reactStreak", "customWgsl", [-800, 300], {}, {
-        label: "reactstreak1",
+        label: "wgsl_reactstreak",
         resolution: { mode: "scale", factor: 1 },
         parameters: {
           source: STREAK_FLICKER_WGSL,

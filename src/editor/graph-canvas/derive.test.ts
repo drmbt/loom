@@ -248,6 +248,48 @@ describe("V26 — the edge carries the source port's family, resolved from the r
     const next = bus.store.getGraph();
     expect(projectEdges(next.edges, next.nodes, registry)[0]?.data?.inactive).toBe(true);
   });
+
+  /*
+   * T1639b — WHICH END OF A WIRE A PRESS CAN PICK UP. React Flow draws a grab zone on each
+   * end it is told is reconnectable, and a press there takes that end off its port.
+   */
+  it("lets the INPUT end of a wire be pulled off, and never the output end (T1639b)", async () => {
+    const { bus } = await seed();
+    const graph = bus.store.getGraph();
+    const edge = projectEdges(graph.edges, graph.nodes, registry)[0];
+    // "target" and not `true`: an output fans out, so a press on its dot cannot say which
+    // of the wires leaving it is meant.
+    expect(edge?.reconnectable).toBe("target");
+  });
+
+  it("leaves a wire into a one-socket input alone: its siblings end on the same dot (T1639b, T1518b)", () => {
+    const node = (id: string, type: string): GraphNode => ({
+      id,
+      type,
+      definitionVersion: 1,
+      position: { x: 0, y: 0 },
+      parameters: {},
+    });
+    const nodes: Record<string, GraphNode> = {
+      a: node("a", "test.solid"),
+      b: node("b", "test.solid"),
+      panel: node("panel", "panel"),
+      blur: node("blur", "test.blur"),
+    };
+    const edges: Record<string, GraphEdge> = {
+      e1: { id: "e1", source: { nodeId: "a", portId: "out" }, target: { nodeId: "panel", portId: "controls" } },
+      e2: { id: "e2", source: { nodeId: "b", portId: "out" }, target: { nodeId: "panel", portId: "controls" } },
+      e3: { id: "e3", source: { nodeId: "a", portId: "out" }, target: { nodeId: "blur", portId: "source" } },
+    };
+    const projected = projectEdges(edges, nodes, registry);
+    const byId = new Map(projected.map((edge) => [edge.id, edge.reconnectable]));
+    expect(byId.get("e1")).toBe(false);
+    expect(byId.get("e2")).toBe(false);
+    // The legitimate case beside it: an ordinary input in the same document still can.
+    expect(byId.get("e3")).toBe("target");
+    // And projecting again hands back the same objects: the new field does not churn (§V16).
+    expect(projectEdges(edges, nodes, registry, projected)).toBe(projected);
+  });
 });
 
 describe("T1262 — an annotation projects to its own type, under every node", () => {

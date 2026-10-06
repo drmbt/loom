@@ -3,12 +3,15 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { SCENE_PAYLOAD_KINDS } from "../domain/types/scene.ts";
 import {
+  pictureCameraControl,
   POINTS_PREVIEW_EYE,
   PREVIEW_ORBIT_RIGS,
+  previewCameraAbsenceSentence,
+  previewCameraControl,
   previewOrbitBasis,
   SCENE_PREVIEW_BALL_RIG,
 } from "./preview-orbit.ts";
-import type { PreviewPayloadKind } from "./preview-orbit.ts";
+import type { PreviewCameraAbsence, PreviewPayloadKind } from "./preview-orbit.ts";
 
 /**
  * T675 — ORBIT CAPABILITY IS DERIVED AT ONE SITE, and that is the part of the fix that
@@ -92,6 +95,86 @@ describe("T675 — every preview payload kind has a stated orbit decision", () =
     expect(previewOrbitBasis("light", BASIS_OPTIONS)?.fovY).toBe(SCENE_PREVIEW_BALL_RIG.fovY);
     expect(previewOrbitBasis("material", BASIS_OPTIONS)?.far).toBe(SCENE_PREVIEW_BALL_RIG.far);
     expect(previewOrbitBasis("geometry", BASIS_OPTIONS)?.fovY).toBeUndefined();
+  });
+});
+
+/**
+ * T1655b — EVERY KIND SAYS WHAT ITS TILE OFFERS FOR A CAMERA, OR WHY IT OFFERS NOTHING.
+ *
+ * T675's table above answered "can it be orbited" and its `null` was a silence: the walk
+ * through the real app found a camera with one Render with no control at all, a fully
+ * driven camera with nothing where the control would be, and a geometry that draws only
+ * its backdrop wearing a camera toggle that moved nothing. These pin the three answers;
+ * `preview-camera-coverage.test.ts` asks them of every node type in the registry.
+ */
+describe("T1655b — what a preview offers for its camera", () => {
+  it("an orbit that would move no pass is no orbit, and the row says nothing is drawn", () => {
+    // B250 handed a backdrop-only geometry a basis with an empty pass list so the preview
+    // system would not throw. The tile then offered a camera, and a drag changed no pixel.
+    const basis = previewOrbitBasis("geometry", { aspect: 16 / 9, passIds: [] });
+    expect(basis).toBeUndefined();
+    expect(previewCameraControl("geometry", basis)).toEqual({ kind: "none", reason: { because: "nothing-drawn" } });
+    // The legitimate case the guard could swallow: the same kind WITH its object pass orbits.
+    expect(previewCameraControl("geometry", previewOrbitBasis("geometry", BASIS_OPTIONS))).toEqual({ kind: "orbit" });
+  });
+
+  it("a kind the orbit table refuses draws through its own pose, so its gestures write it", () => {
+    // T614 and T704 are why these two cannot be orbited (the tile shows the payload's own
+    // matrix), and the same fact is why a gesture that WRITES Eye and Look At is honest (T692).
+    for (const kind of ALL_KINDS) {
+      const refused = PREVIEW_ORBIT_RIGS[kind] === null;
+      expect([kind, previewCameraControl(kind, undefined).kind]).toEqual([kind, refused ? "pose" : "none"]);
+    }
+  });
+
+  const port = (id: string, kind: string) => ({ id, label: id, type: { kind } }) as never;
+  /** A resolved position: what the compile reads for Eye or Look At. */
+  const position = [0, 0, 3];
+
+  it("a picture of 3D data names the camera it is taken through", () => {
+    const render = { inputs: [port("scenes", "scene"), port("camera", "camera")], parameters: {} };
+    expect(pictureCameraControl(render.inputs, render.parameters, "cam1")).toEqual({
+      kind: "none",
+      reason: { because: "through-camera", camera: "cam1" },
+    });
+    // No camera and no pose of its own: nothing to move, and it says so.
+    expect(pictureCameraControl(render.inputs, render.parameters, undefined)).toEqual({ kind: "none", reason: { because: "no-camera" } });
+  });
+
+  it("a picture drawn through its own node's Eye and Look At takes the gestures, until a camera is named", () => {
+    const surface = {
+      inputs: [port("points", "pointset"), port("camera", "camera")],
+      parameters: { eye: position, lookAt: position },
+    };
+    expect(pictureCameraControl(surface.inputs, surface.parameters, undefined)).toEqual({ kind: "pose" });
+    // A named camera replaces the inline pose (`camera-reference.ts`), so writing the inline
+    // one would move nothing: the row points at the camera instead.
+    expect(pictureCameraControl(surface.inputs, surface.parameters, "cam1")?.kind).toBe("none");
+    // One of the two parameters is not enough: the gesture writes both.
+    expect(pictureCameraControl(surface.inputs, { eye: position }, undefined)).toEqual({
+      kind: "none",
+      reason: { because: "no-camera" },
+    });
+  });
+
+  it("a filter over a picture has no camera to speak of, even when it reads one", () => {
+    // Camera Blur takes a camera for its Near and Far and frames nothing. A caption on it
+    // would be a sentence about a control nobody would look for there.
+    const blur = { inputs: [port("input", "texture2d"), port("camera", "camera")], parameters: {} };
+    expect(pictureCameraControl(blur.inputs, blur.parameters, "cam1")).toBeUndefined();
+  });
+
+  it("every reason has a sentence short enough for one line of a tile, naming the camera where there is one", () => {
+    const reasons: PreviewCameraAbsence[] = [
+      { because: "nothing-drawn" },
+      { because: "through-camera", camera: "n7" },
+      { because: "no-camera" },
+    ];
+    const sentences = reasons.map((reason) => previewCameraAbsenceSentence(reason, (id) => (id === "n7" ? "camera_rig" : id)));
+    expect(sentences[1]).toBe("Framed by camera_rig.");
+    expect(new Set(sentences).size).toBe(reasons.length);
+    // About 30 characters of the tile's 10 px mono fit in its 170 px; a name can run over, the sentence around it may not.
+    for (const sentence of [sentences[0]!, sentences[2]!]) expect(sentence.length).toBeLessThanOrEqual(30);
   });
 });
 

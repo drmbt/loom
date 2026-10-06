@@ -280,6 +280,7 @@
       "nd_mediaGrade1": {
         "definitionVersion": 1,
         "id": "nd_mediaGrade1",
+        "label": "mediagrade1",
         "parameters": {},
         "position": {
           "x": 0,

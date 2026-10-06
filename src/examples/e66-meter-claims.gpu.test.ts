@@ -374,7 +374,7 @@ describe("E66 Meter — every lane owns one visible thing (T1236)", () => {
     expect(angularGap(meanHue(noTint[MOMENTS.kickOff]!, halo), meanHue(noTint[MOMENTS.noHats]!, halo))).toBeLessThan(6);
   });
 
-  it("clip1.barPhase → the HAND's angle: the brightest ray is at 360 × barPhase from the declared grid at every moment, and cut, it is at twelve", { timeout: 120_000 }, async () => {
+  it("audiofile_clip.barPhase → the HAND's angle: the brightest ray is at 360 × barPhase from the declared grid at every moment, and cut, it is at twelve", { timeout: 120_000 }, async () => {
     expect(dawnError, dawnError ?? "").toBeUndefined();
     const noSweep = await shoot((graph) => cut(graph, "sweep", "r"));
     for (const [name, frame] of Object.entries(MOMENTS)) {
@@ -385,7 +385,7 @@ describe("E66 Meter — every lane owns one visible thing (T1236)", () => {
     expect(angularGap(handAngleAt(MOMENTS.kickOn), handAngleAt(MOMENTS.snareOn))).toBeGreaterThan(60);
   });
 
-  it("clip1.beatPhase → the HAND's brightness: brighter than the held value just after a beat, dimmer 400 ms on", { timeout: 120_000 }, async () => {
+  it("audiofile_clip.beatPhase → the HAND's brightness: brighter than the held value just after a beat, dimmer 400 ms on", { timeout: 120_000 }, async () => {
     expect(dawnError, dawnError ?? "").toBeUndefined();
     const noTick = await shoot((graph) => cut(graph, "tick", "brightness"));
     const alongHand = (frame: number) => (r: number, a: number) =>

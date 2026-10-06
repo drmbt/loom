@@ -10,9 +10,10 @@ import { document as exampleDocument, settings as exampleSettings } from "@/exam
 /**
  * T1086 — pixels through the APP, on the real canvas (§V895, §V885, §V628).
  *
- * This file runs ONLY in the `chromium-headed-gpu` project (`playwright.config.ts`):
- * headed Chromium on this machine has a real Metal WebGPU adapter, which the headless
- * lane never gets. That makes this the one suite in the project that can assert what a
+ * This file runs ONLY in the `chromium-gpu` project (`playwright.config.ts`; it was
+ * `chromium-headed-gpu` and opened a window until T1616b): the full Chromium, headless,
+ * has a real Metal WebGPU adapter on this machine, which the default lane's headless
+ * shell never gets. That makes this the one suite in the project that can assert what a
  * user actually SEES — app boot → command bus → compile → vgpu backend → frame driver →
  * presentation blit → the viewer's own `<canvas>`, composited at whatever size the pane
  * gave it. Every other pixel gate (`src/tests/headless/**`) renders through Dawn with no
@@ -104,9 +105,10 @@ test("sRGB grey reaches the compositor without a second decode (T1307)", async (
   await expect(page.getByText(/which the viewer decodes on sample/)).toHaveCount(0);
 });
 
-test("this lane's premise: headed Chromium has a real WebGPU adapter", async ({ page }) => {
-  // The claim `app.ts` carries — "headless has no adapter, headed does" — as a standing
-  // gate rather than a docblock, so it can never rot into §V895's shape again. Measured
+test("this lane's premise: its Chromium has a real WebGPU adapter", async ({ page }) => {
+  // The claim `app.ts` carries — "the headless shell has no adapter, the full browser
+  // does" — as a standing gate rather than a docblock, so it can never rot into §V895's
+  // shape again (T1616b: it read "headless has no adapter, headed does"). Measured
   // against the app's own origin, NOT a data: URL: the original over-broad claim was a
   // real measurement of an opaque origin where WebGPU is correctly absent.
   await page.goto("/");
@@ -123,7 +125,7 @@ test("this lane's premise: headed Chromium has a real WebGPU adapter", async ({ 
   expect(
     probe.adapter,
     "navigator.gpu exists but requestAdapter() resolved null — this lane is running without " +
-      "a GPU (headless? no display session?), and every pixel claim in this file is untestable",
+      "a GPU (the headless shell? no GPU session?), and every pixel claim in this file is untestable",
   ).not.toBeNull();
 });
 

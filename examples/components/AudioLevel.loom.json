@@ -341,7 +341,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('probe').chan.low"
+                "source": "op('limit_probe').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -364,6 +364,7 @@
       "nd_audioLevel1": {
         "definitionVersion": 1,
         "id": "nd_audioLevel1",
+        "label": "audiolevel1",
         "parameters": {},
         "position": {
           "x": -274,
@@ -384,7 +385,7 @@
       "probe": {
         "definitionVersion": 1,
         "id": "probe",
-        "label": "probe",
+        "label": "limit_probe",
         "parameters": {
           "maximum": 1,
           "minimum": 0

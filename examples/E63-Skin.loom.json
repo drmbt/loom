@@ -164,7 +164,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "lookup_bed",
         "parameters": {
           "channel": "red",
           "offset": 0,
@@ -180,7 +180,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "camera1",
         "parameters": {
           "eye": [
             0,
@@ -203,9 +203,9 @@
       "closed": {
         "definitionVersion": 1,
         "id": "closed",
-        "label": "closed1",
+        "label": "geometry_closed",
         "parameters": {
-          "material": "hidemat1",
+          "material": "material_hide",
           "mode": "surface"
         },
         "position": {
@@ -217,10 +217,10 @@
       "dots": {
         "definitionVersion": 1,
         "id": "dots",
-        "label": "dots1",
+        "label": "geometry_dots",
         "parameters": {
           "blend": "opaque",
-          "material": "hidemat1",
+          "material": "material_hide",
           "mode": "points",
           "scale": 0.008,
           "soft": 0,
@@ -235,7 +235,7 @@
       "field": {
         "definitionVersion": 1,
         "id": "field",
-        "label": "field1",
+        "label": "noise_field",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -262,7 +262,7 @@
       "fold": {
         "definitionVersion": 1,
         "id": "fold",
-        "label": "fold1",
+        "label": "mirror_fold",
         "parameters": {
           "extend": "hold",
           "keephigh": false,
@@ -283,7 +283,7 @@
       "hide": {
         "definitionVersion": 1,
         "id": "hide",
-        "label": "hide1",
+        "label": "texturepoints_hide",
         "parameters": {
           "cols": 96,
           "depth": 1,
@@ -302,7 +302,7 @@
       "hidemat": {
         "definitionVersion": 1,
         "id": "hidemat",
-        "label": "hidemat1",
+        "label": "material_hide",
         "parameters": {
           "color": [
             0.52,
@@ -328,7 +328,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "light_key",
         "parameters": {
           "color": [
             1,
@@ -353,9 +353,9 @@
       "open": {
         "definitionVersion": 1,
         "id": "open",
-        "label": "open1",
+        "label": "geometry_open",
         "parameters": {
-          "material": "hidemat1",
+          "material": "material_hide",
           "mode": "surface"
         },
         "position": {
@@ -367,7 +367,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 380,
@@ -378,7 +378,7 @@
       "plate": {
         "definitionVersion": 1,
         "id": "plate",
-        "label": "plate1",
+        "label": "over_plate",
         "parameters": {},
         "position": {
           "x": 80,
@@ -389,7 +389,7 @@
       "rakex": {
         "definitionVersion": 1,
         "id": "rakex",
-        "label": "rakex1",
+        "label": "lfo_rakex",
         "parameters": {
           "amplitude": 0.95,
           "frequency": 0.07,
@@ -406,7 +406,7 @@
       "rakez": {
         "definitionVersion": 1,
         "id": "rakez",
-        "label": "rakez1",
+        "label": "lfo_rakez",
         "parameters": {
           "amplitude": 0.55,
           "frequency": 0.07,
@@ -423,7 +423,7 @@
       "rim": {
         "definitionVersion": 1,
         "id": "rim",
-        "label": "rim1",
+        "label": "light_rim",
         "parameters": {
           "color": [
             0.22,
@@ -435,7 +435,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('rakex1').chan.value"
+                "source": "op('lfo_rakex').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -449,7 +449,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('rakez1').chan.value"
+                "source": "op('lfo_rakez').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -470,7 +470,7 @@
       "seam": {
         "definitionVersion": 1,
         "id": "seam",
-        "label": "seam1",
+        "label": "topology_seam",
         "parameters": {
           "cols": 96,
           "connectivity": "grid",
@@ -487,7 +487,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0.38,
@@ -503,9 +503,9 @@
             0,
             0
           ],
-          "camera": "cam1",
-          "lights": "key1 rim1",
-          "scenes": "dots1 open1 closed1"
+          "camera": "camera1",
+          "lights": "light_key light_rim",
+          "scenes": "geometry_dots geometry_open geometry_closed"
         },
         "position": {
           "x": -220,
@@ -516,7 +516,7 @@
       "standA": {
         "definitionVersion": 1,
         "id": "standA",
-        "label": "standA1",
+        "label": "kernel_standA",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 9216,
@@ -537,7 +537,7 @@
       "standB": {
         "definitionVersion": 1,
         "id": "standB",
-        "label": "standB1",
+        "label": "kernel_standB",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 9216,
@@ -558,7 +558,7 @@
       "standC": {
         "definitionVersion": 1,
         "id": "standC",
-        "label": "standC1",
+        "label": "kernel_standC",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 9216,
@@ -579,7 +579,7 @@
       "swatch": {
         "definitionVersion": 2,
         "id": "swatch",
-        "label": "swatch1",
+        "label": "ramp_swatch",
         "parameters": {
           "interp": "smooth",
           "period": 1,

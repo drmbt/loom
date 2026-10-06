@@ -1,7 +1,7 @@
 import type { TimeProbe } from "../../compiler/time-probe.ts";
 import type { ColorPolicy } from "../../domain/types/graph.ts";
 import { DEFAULT_COLOR_POLICY } from "../../domain/types/graph.ts";
-import type { NodeCompileContext, PointsetAttributeRef, TextureFormat } from "../../domain/types/node-definition.ts";
+import type { NodeCompileContext, PointsetAttributeRef, PointsetBounds, TextureFormat } from "../../domain/types/node-definition.ts";
 import type { ColorSpace } from "../../domain/types/ports.ts";
 import type { ParameterValue } from "../../domain/types/parameters.ts";
 import type { PortId } from "../../domain/types/ids.ts";
@@ -55,6 +55,8 @@ export interface NodeCompileInputs {
           readonly topology?: string;
           /** T322: GPU-resident live count, when the producer kills points. */
           readonly count?: { readonly buffer: string };
+          /** T1598b: the sphere holding every point, when the producer knows it exactly. */
+          readonly bounds?: PointsetBounds;
         };
         /**
          * T447/T457: the scene payload on a reference-fed edge (camera, light,
@@ -120,7 +122,7 @@ interface CompilerContextShape {
         sampler: string;
         sourceNodeId?: string;
         sourcePortId?: string;
-        pointset?: { pairs: Readonly<Record<string, PointsetAttributeRef>>; capacity: number; topology?: string; count?: { buffer: string } };
+        pointset?: { pairs: Readonly<Record<string, PointsetAttributeRef>>; capacity: number; topology?: string; count?: { buffer: string }; bounds?: PointsetBounds };
         scene?: unknown;
       }>
     >

@@ -1,5 +1,6 @@
 import { createRenderCanvasCapture } from "./render-canvas-capture.ts";
 import { ControlsPane } from "@editor/controls/controls-pane.tsx";
+import { ContextMenuHost } from "@editor/menus/index.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { scopeFromFrame } from "@domain/expressions/index.ts";
 import type { ExpressionScope } from "@domain/expressions/index.ts";
@@ -19,7 +20,7 @@ import type { KeymapEnvironment } from "@editor/keymap/index.ts";
 import { ComponentLibrary, ExampleLibrary, useDocumentDirty } from "@editor/library/index.ts";
 import type { ExampleProject } from "@editor/library/example-catalogue.ts";
 import { CommandPalette } from "@editor/palette/index.ts";
-import { ProblemsPanel } from "@editor/shader-editor/index.ts";
+import { ProblemsPanel, type ProblemAction } from "@editor/shader-editor/index.ts";
 import { Button, ErrorBoundary } from "@ui/index.ts";
 import { UnsavedChangesDialog } from "@ui/primitives/unsaved-changes-dialog.tsx";
 import { AppRuntimeContext } from "./app-context.ts";
@@ -87,6 +88,8 @@ import { instanceValueChannels } from "./instance-value-channels.ts";
 import { useAnalyzeChannels } from "./use-analyze-channels.ts";
 import { useModelInference } from "./use-model-inference.ts";
 import { useGraphCompile } from "./use-graph-compile.ts";
+import { LiveGraph } from "./live-graph.tsx";
+import { canvasShows, controlsShow, inspectorShows } from "./use-live-graph.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { useValueGraph } from "./use-value-graph.ts";
 import { useMidiInput } from "./use-midi-input.ts";
@@ -807,6 +810,20 @@ export function App({
     });
   }, [backend, runtime]);
 
+  /**
+   * T1604b — THE THIRD SIBLING: who is looking decides how the frame is encoded.
+   *
+   * A run of a node's draws is one device render pass by default, with one GPU span its
+   * passes share. The performance panel shows a figure per pass, so while it is open it
+   * holds a demand on the hub (`demandPassDetail`), and this is where that demand reaches
+   * the backend: one pass per draw while anyone holds one. Without this call the panel
+   * would ask and nothing would answer.
+   */
+  useEffect(() => {
+    if (backend === undefined) return;
+    return runtime.telemetry.attachPassDetailSwitch((exact) => backend.setExactPassTiming?.(exact));
+  }, [backend, runtime]);
+
   // The frame loop (T184): the only caller of `backend.loop()` in the app. Without it
   // the compiler, the backend and the renderer each pass their own suite while zero
   // frames are ever submitted — see `use-frame-loop.ts`.
@@ -984,6 +1001,8 @@ export function App({
     },
     pointer,
     valuesOnly: compile.valuesOnly,
+    // T1652b: a revision that only moved values arrives here, without this component rendering.
+    values: compile.values,
     // T519/B106 — a load is a discontinuity: the incoming plan must land on cleared
     // temporal history, because the backend carries feedback pairs and rings over BY
     // RESOURCE ID and two documents share those ids as soon as they share node names.
@@ -1520,6 +1539,26 @@ export function App({
 
   const errorCount = problems.filter((diagnostic) => diagnostic.severity === "error").length;
   /**
+   * §T1641b slice 2: what a Problems row can DO. A stored key the node does not declare
+   * (`parameter.unknown`) has no row in the inspector to be removed from, because the
+   * inspector draws what the node declares. So the row that reports it removes it: every
+   * such key on that node, one patch, one undo. Offered for a node of THIS document only;
+   * one inside a component is fixed in its definition.
+   */
+  const problemAction = useCallback(
+    (diagnostic: RuntimeDiagnostic): ProblemAction | null => {
+      const nodeId = diagnostic.nodeId;
+      const node = nodeId === undefined ? undefined : compile.graph.nodes[nodeId];
+      if (diagnostic.code !== "parameter.unknown" || nodeId === undefined || node === undefined) return null;
+      return {
+        label: "remove",
+        description: `Remove what "${node.label ?? nodeId}" stores under keys it does not declare`,
+        run: () => void runtime.bus.execute("parameter.removeUndeclared", { nodeId }, runtime.invocation).then(reportRefusal),
+      };
+    },
+    [compile.graph, reportRefusal, runtime],
+  );
+  /**
    * T1299: what `get_channels` reads — the SAME bags the value history sampler above
    * pushes, root nodes and component instances alike, read on demand. Never a second
    * evaluation (§V275).
@@ -1538,7 +1577,8 @@ export function App({
       selection,
       playing: frameLoop.playing,
       diagnostics: problems,
-      diagnosticsRevision: compile.graph.revision,
+      // T1652b: asked when the surface is, so a value written since the last render counts as looked at.
+      diagnosticsRevision: compile.answersFor ?? compile.graph.revision,
       channels: agentChannels,
     },
     agentPorts,
@@ -1806,7 +1846,8 @@ export function App({
    * T1238 — THE PANES THAT DO NOT READ THE DOCUMENT ARE BUILT ONCE PER CHANGE OF WHAT
    * THEY DO READ, NOT ONCE PER RENDER OF `App`.
    *
-   * `App` subscribes to the store (`useGraphCompile`) and re-renders on every revision;
+   * `App` subscribes to the store (`useGraphCompile`) and re-renders on every STRUCTURAL
+   * revision (T1652b: no longer for one that only moved a value — `revision-watch.ts`);
    * it also holds selection and port-drag state. That is its job. What it must not do is
    * hand every pane a FRESH ELEMENT each time, because a fresh element is a re-render
    * whatever its props say — and §T1235 measured what that cost: on E24 a 2 s knob drag
@@ -2106,6 +2147,9 @@ export function App({
                 onCreated={selectNodes}
               />
               <AppRuntimeContext.Provider value={editing.runtime}>
+              {/* T1652b: the pane's document is the store's, live, for a value the pane draws
+                  itself (a handle on a tile); a control's value is drawn by its own node. */}
+              <LiveGraph store={editing.bus.store} registry={runtime.registry} shows={canvasShows}>{(liveGraph) => (
               <GraphPane
                 selection={selection}
                 onSelectionChange={onSelectionChange}
@@ -2124,7 +2168,7 @@ export function App({
                  * flat plan rows addressable from a dived pane and both guards obsolete.
                  */
                 previewBackend={backend ?? null}
-                graph={editing.graph}
+                graph={liveGraph}
                 /*
                  * T1051 — the SAME outputs inside a component as outside, and the pane's
                  * `flatPrefix` is what makes that safe. This used to be [] inside, from a
@@ -2147,6 +2191,7 @@ export function App({
                  * refused plan bind a resource the installed program never had.
                  */
                 compiledOutputs={installedPlan?.outputs ?? EMPTY_OUTPUTS}
+                liveOutputs={frameLoop.liveOutputs}
                 previewFps={runtime.settings.previewFps}
                 previewLongEdge={runtime.settings.previewLongEdge}
                 previewSinks={previewSinks}
@@ -2171,6 +2216,7 @@ export function App({
                 // T1512b: the Panel's header phone icon opens this door's popover.
                 phone={phoneView}
               />
+              )}</LiveGraph>
               </AppRuntimeContext.Provider>
             </NodeInfoHost>
             </ErrorBoundary>
@@ -2178,6 +2224,8 @@ export function App({
           inspector={
             <ErrorBoundary name="Inspector">
               <AppRuntimeContext.Provider value={editing.runtime}>
+              {/* T1652b: live for what it inspects and what that reads; no other write renders it. */}
+              <LiveGraph store={editing.bus.store} registry={runtime.registry} shows={inspectorShows(selection)}>{(liveGraph) => (
               <InspectorPane
                 nodeId={selectedNodeId}
                 selection={selection}
@@ -2190,7 +2238,7 @@ export function App({
                         components: componentsView,
                       },
                     })}
-                graph={editing.graph}
+                graph={liveGraph}
                 /*
                  * T1202/§B189 — THE SAME STARVATION §T1051 FOUND ON THE CANVAS, one pane
                  * over, and the last one of its family.
@@ -2241,6 +2289,7 @@ export function App({
                 laser={laser.session}
                 performWindows={perform.surface}
               />
+              )}</LiveGraph>
               </AppRuntimeContext.Provider>
             </ErrorBoundary>
           }
@@ -2263,6 +2312,7 @@ export function App({
                  * state: the backend has never been given a program to present from.
                  */
                 compiled={installedPlan}
+                liveOutputs={frameLoop.liveOutputs}
                 graph={compile.graph}
                 backend={backend ?? null}
                 pointer={pointer}
@@ -2292,7 +2342,7 @@ export function App({
           }
           problems={
             <ErrorBoundary name="Problems">
-              <ProblemsPanel diagnostics={problems} onClear={clearProblems} />
+              <ProblemsPanel diagnostics={problems} onClear={clearProblems} actionFor={problemAction} />
             </ErrorBoundary>
           }
           performance={performancePane}
@@ -2300,8 +2350,16 @@ export function App({
           terminal={terminalPane}
           controls={
             <ErrorBoundary name="Controls">
-              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation}
-                phone={phoneView} midi={midi} channels={compile.channels} latestFrame={frameLoop.latestFrame} />
+              {/* T1619b: the control menu (Reset, Set as default) is mounted HERE for the Controls
+                  tab; a Panel's body on the canvas is under the graph pane's host. No fallback
+                  surface: a right-click on the tab's chrome opens nothing. */}
+              <ContextMenuHost bus={runtime.bus}>
+                {/* T1652b: live for a control, a Panel and what a Panel lists; no other write renders it. */}
+                <LiveGraph store={runtime.bus.store} registry={runtime.registry} shows={controlsShow}>{(liveGraph) => (
+                <ControlsPane graph={liveGraph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation}
+                  phone={phoneView} midi={midi} channels={compile.channels} latestFrame={frameLoop.latestFrame} />
+                )}</LiveGraph>
+              </ContextMenuHost>
             </ErrorBoundary>
           }
         />

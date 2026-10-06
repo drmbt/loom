@@ -14,6 +14,7 @@ import { bloomComponent, blurKnob, instanceNode } from "../components/test-suppo
 import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { testNodeDefinitions } from "../../nodes/registry/test-nodes.ts";
 import { presetsNode } from "../../nodes/definitions/presets.ts";
+import { controlNodeDefinitions } from "../../nodes/definitions/controls.ts";
 import { EMPTY_PRESET_BANK_JSON, parsePresetBank, serializePresetBank, type Preset } from "./bank.ts";
 
 /**
@@ -264,7 +265,7 @@ describe("paste with colliding names rewrites the bank's names (§V320, T1496b)"
       bank("blur1, solid1.amount"),
     ]);
     await bus.execute("preset.store", { nodeId: "bank", name: "p" }, contextFor(alice));
-    await bus.execute("node.rename", { nodeId: "blurA", label: "glow" }, contextFor(alice));
+    await bus.execute("node.rename", { nodeId: "blurA", label: "glow", exact: true }, contextFor(alice));
     expect(value(store, "bank", "targets")).toBe("glow, solid1.amount");
     const preset = presetsOf(store)[0]!;
     expect(Object.keys(preset.values)).toEqual(["glow", "solid1"]);
@@ -328,5 +329,70 @@ describe("preset.store (T1496b)", () => {
     expect(result.diagnostics[0]?.code).toBe("preset.bank.malformed");
     expect(result.diagnostics[0]?.message).toContain('"looks"');
     expect(value(store, "bank", "presets")).toBe("{ oops");
+  });
+});
+
+/**
+ * B261 — a look stored on a whole Slider held its range, caption and channel beside the
+ * value, so recalling it put back a range the author had since changed. The repro is the
+ * bug as a performer meets it: Store, retune the control, move it, Recall.
+ */
+describe("a preset whose target is a whole control holds what a hand moves, not how the control was authored (B261, T1619b)", () => {
+  const withControls: NodeRegistryView = createNodeRegistry([...testNodeDefinitions, presetsNode, ...controlNodeDefinitions]).view();
+  const slider = (): GraphNode =>
+    node("heat", "slider", "slider_heat", { channel: "heat", caption: "Heat", value: 0.4, min: 0, max: 2, step: 0, defaultValue: 1 });
+
+  it("Store, widen the range and rename the caption, move the slider, Recall: the value comes back and the retuning stays", async () => {
+    const { bus, store } = harness([slider(), bank("slider_heat")], withControls);
+    const stored = await bus.execute("preset.store", { nodeId: "bank", name: "low" }, contextFor(alice));
+    expect(stored.output).toEqual({ ok: true, preset: "low", captured: 1, missing: [] });
+    expect(presetsOf(store)[0]?.values).toEqual({ slider_heat: { value: 0.4 } });
+
+    await set(bus, store, "heat", { caption: "Hot", max: 10, defaultValue: 5, value: 7 });
+    const recalled = await bus.execute("preset.recall", { nodeId: "bank", name: "low" }, contextFor(alice));
+    expect(recalled.status).toBe("applied");
+    expect(value(store, "heat", "value")).toBe(0.4);
+    // What the author changed since the Store is still what the author changed.
+    expect([value(store, "heat", "caption"), value(store, "heat", "max"), value(store, "heat", "defaultValue")]).toEqual(["Hot", 10, 5]);
+  });
+
+  it("a Toggle and an XY Pad the same; a node that is not a control still stores every key", async () => {
+    const { bus, store } = harness(
+      [
+        node("cut", "toggle", "toggle_cut", { channel: "cut", caption: "Cut", on: true }),
+        node("aim", "xyPad", "xypad_aim", { channel: "aim", x: 0.2, y: 0.8, min: 0, max: 1 }),
+        node("solid", "test.solid", "solid1", { amount: 0.25 }),
+        bank("toggle_cut xypad_aim solid1"),
+      ],
+      withControls,
+    );
+    await bus.execute("preset.store", { nodeId: "bank", name: "a" }, contextFor(alice));
+    const held = presetsOf(store)[0]?.values ?? {};
+    expect(held["toggle_cut"]).toEqual({ on: true });
+    expect(held["xypad_aim"]).toEqual({ x: 0.2, y: 0.8 });
+    // Ruling 3 stands for everything else: every key, a text label among them.
+    expect(held["solid1"]).toEqual({ color: [0, 0, 0, 1], amount: 0.25, label: "" });
+  });
+
+  it("a key named outright is still stored: the author asked for the range by name", async () => {
+    const { bus, store } = harness([slider(), bank("slider_heat.max")], withControls);
+    await bus.execute("preset.store", { nodeId: "bank", name: "wide" }, contextFor(alice));
+    expect(presetsOf(store)[0]?.values).toEqual({ slider_heat: { max: 2 } });
+  });
+
+  it("a control's default is never stored, even named, and a preset written by hand that holds one does not move it", async () => {
+    const { bus, store } = harness([slider(), bank("slider_heat.defaultValue")], withControls);
+    const refused = await bus.execute("preset.store", { nodeId: "bank", name: "d" }, contextFor(alice));
+    expect(refused.status).toBe("rejected");
+    expect(refused.diagnostics.map((each) => each.code)).toEqual(["preset.target.key", "preset.store.nothing"]);
+
+    const byHand: Preset = { name: "hand", values: { slider_heat: { value: 0.9, defaultValue: 0.1 } } };
+    await set(bus, store, "bank", { presets: serializePresetBank({ version: 1, presets: [byHand] }) });
+    const recalled = await bus.execute("preset.recall", { nodeId: "bank", name: "hand" }, contextFor(alice));
+    expect(recalled.status).toBe("applied");
+    expect(recalled.output.skipped).toEqual(["slider_heat.defaultValue"]);
+    expect(recalled.diagnostics.filter((each) => each.severity === "warning").map((each) => each.code)).toEqual(["preset.target.default"]);
+    expect(value(store, "heat", "value")).toBe(0.9);
+    expect(value(store, "heat", "defaultValue")).toBe(1);
   });
 });

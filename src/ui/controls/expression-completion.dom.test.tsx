@@ -163,3 +163,44 @@ describe("§T1394b — the whole list, not the first eight", () => {
     expect(screen.getAllByRole("option").at(-1)?.getAttribute("aria-selected")).toBe("true");
   });
 });
+
+/**
+ * §T1641b — the panel is where an expression is typed, so it is where "what to write
+ * instead" has to be read. It showed a diagnostic's message and dropped its suggestion,
+ * and a refused function got the grammar's whole list and no rewrite (§B262).
+ */
+describe("§T1641b — what the panel says when an expression cannot be read", () => {
+  it("refuses a function the grammar lacks at the field, with the rewrite, and writes nothing", async () => {
+    const onChange = vi.fn();
+    const field = renderPanel(onChange);
+    await userEvent.click(field);
+    await userEvent.type(field, "pow(time, 2)");
+    await userEvent.keyboard("{Enter}");
+    // A draft that does not read is never committed: the document keeps what it had.
+    expect(onChange).not.toHaveBeenCalled();
+    const said = screen.getByRole("status").textContent ?? "";
+    expect(said).toContain('unknown function "pow"');
+    expect(said).toContain("Write time ^ 2.");
+  });
+
+  it("shows a stored expression's finding with its remedy, not the message alone", () => {
+    render(
+      <ParameterModePanel
+        label="Rotate"
+        slot={{ mode: "expression", bindings: { expression: { kind: "expression", source: "flicker * 2" } } }}
+        value={0}
+        diagnostic={{
+          severity: "error",
+          code: "parameter.expression.name",
+          message: 'Parameter "rotate" expression "flicker * 2" failed: unknown name "flicker"',
+          suggestion: `A node is named "slider_flicker": write op('slider_flicker').chan.<channel>.`,
+          nodeId: "n1",
+        }}
+        onChange={vi.fn()}
+      />,
+    );
+    const said = screen.getByRole("status").textContent ?? "";
+    expect(said).toContain('unknown name "flicker"');
+    expect(said).toContain(`A node is named "slider_flicker"`);
+  });
+});

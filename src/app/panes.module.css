@@ -384,6 +384,28 @@
   margin: 0;
 }
 
+/*
+ * T1655b — the camera sentence in the readout: the reason a 3D picture has no camera here.
+ * A full line of its own, and it wraps: it is a sentence, not a number.
+ */
+.readoutNote {
+  flex: 1 1 100%;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+}
+
+/* T1655b: the viewer's camera button where there is no camera. Inert, and still hoverable
+   and focusable so its reason can be read (a natively disabled button takes no pointer). */
+button.cameraInert,
+button.cameraInert:hover:not(:disabled),
+button.cameraInert:active:not(:disabled) {
+  background: transparent;
+  color: var(--line-hot);
+  cursor: default;
+}
+
 /**
  * The row NAMES, kept for a screen reader and taken out of the layout.
  *

@@ -27,7 +27,7 @@ import { shippedClipAudio } from "./shipped-clip-audio.ts";
  *      requiring the heard frame to be BRIGHTER, which is what "flare" means.
  *
  * "Only the lights hear the music" is checked on the document rather than on pixels: the
- * set of parameters that read `react1` is exactly the light set. A pixel mask cannot tell
+ * set of parameters that read `math_react` is exactly the light set. A pixel mask cannot tell
  * a light from a moved slab, and the document can.
  *
  * Every render HEARS the shipped clip through the same seam the example gates use
@@ -71,7 +71,7 @@ function cut(graph: GraphDocument, keys: readonly string[]): void {
   for (const key of keys) {
     const slot = node.parameters[key] as ParameterSlot | undefined;
     if (slot === undefined || typeof slot !== "object" || !("bindings" in slot) || slot.mode !== "expression") {
-      throw new Error(`"${key}" on glassRT is not driven by an expression`);
+      throw new Error(`"${key}" on wgsl_glassRT is not driven by an expression`);
     }
     node.parameters = { ...node.parameters, [key]: { ...slot, mode: "static" } };
   }
@@ -139,7 +139,7 @@ describe("E67 Fins: the lights on the beat", () => {
     const { document } = e67();
     const hearing = Object.entries(document.graph.nodes).flatMap(([id, node]) =>
       Object.entries(node.parameters)
-        .filter(([, value]) => JSON.stringify(value).includes("op('react1')"))
+        .filter(([, value]) => JSON.stringify(value).includes("op('math_react')"))
         .map(([key]) => `${id}.${key}`),
     );
     expect(hearing.sort()).toEqual(LIGHTS.map((key) => `glass.${key}`).sort());
@@ -277,7 +277,7 @@ describe("E67 Fins: the camera circles the stack", () => {
 /**
  * T1275 — FXAA SMOOTHS EDGES, AND ONLY EDGES.
  *
- * `fxaa1` sits between the grade and the output. Two claims, and the second is the one a
+ * `wgsl_fxaa` sits between the grade and the output. Two claims, and the second is the one a
  * plain blur would fail:
  *
  *   OFF      at `amount` 0 the frame is BYTE-IDENTICAL to the chain with no FXAA node at

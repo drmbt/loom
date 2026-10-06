@@ -32,7 +32,7 @@ import {
   type LoopbackWebSocketServer,
 } from "@devices/transport/loopback-ws.ts";
 import type { McpToolListing, McpToolSource } from "./server.ts";
-import { PARAMETER_MODES } from "@agent/schemas.ts";
+import { NODE_NAMES, PARAMETER_MODES } from "@agent/schemas.ts";
 
 /**
  * THE NODE HALF OF THE BRIDGE (T451, T921, §V288, §V338).
@@ -1533,10 +1533,14 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         "derived from each file's own graph (filter by `tag`), and `get_example` opens one as nodes and edges " +
         "in the same shape `get_graph` returns. They are the WORKED ANSWERS for how nodes combine — read one " +
         "before wiring a chain of a kind you have not wired here before.";
+      // T1593b: `NODE_NAMES` is the same sentence the naming tools are described by, imported
+      // for the reason `PARAMETER_MODES` is. A client that writes `op('lamp')` against a node
+      // it asked to be called `lamp` has to have been told, here, that it is `slider_lamp`.
       const document =
         `${PARAMETER_MODES} ` +
+        `${NODE_NAMES} ` +
         "An async source publishes its own latency, so `cache.index` as an expression " +
-        "`op('mask1').chan.lagFrames` delays a sibling branch by exactly the lag the mask introduced. " +
+        "`op('personmask1').chan.lagFrames` delays a sibling branch by exactly the lag the mask introduced. " +
         assemblies;
       /**
        * T1211 — THE POINTER (AND EVERY OTHER LIVE SIGNAL) IS UNAVAILABLE HERE, BY NAME.

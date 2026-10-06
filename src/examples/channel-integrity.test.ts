@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { flattenComponents } from "../compiler/flatten.ts";
+import { compiledWithoutCatalogue, flattenComponents } from "../compiler/flatten.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { componentNodeType, createComponentSystem } from "../domain/components/index.ts";
-import { NO_INSTANCES, nodeReferenceMembers, type InstanceChannelSources } from "../domain/parameters/node-references.ts";
+import { NO_FLATTENING, nodeReferenceMembers, type FlatteningReads } from "../domain/parameters/node-references.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
-import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphDocument, GraphNode } from "../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
@@ -25,7 +25,7 @@ import { expressionSlot } from "./documents/builders.ts";
  * and the document renders, every claim passes, and the feature never ran. That is §V856's
  * family, and it has now shipped three times in one week:
  *
- *   - E52  `op('mask1').chan.coverage`  — a LIVE source (personMask), whose road into the
+ *   - E52  `op('personmask1').chan.coverage`  — a LIVE source (personMask), whose road into the
  *          expression engine did not exist until T1067 put `externalChannels` in the ladder
  *   - E53  `op('matte1').chan.coverage` — the same, one seam over
  *   - E54  reported as `op('clag1').chan.bar` and was NOT this bug at all: `clag1` publishes
@@ -104,11 +104,11 @@ const nodeByLabel = (graph: GraphDocument, label: string): GraphNode | undefined
   Object.values(graph.nodes).find((node) => node.label === label);
 
 /** The union of channel names each label publishes, over the frames above. */
-function publishedChannels(graph: GraphDocument): Map<string, Set<string>> {
+function publishedChannels(logical: Logical): Map<string, Set<string>> {
   const session = createValueGraphSession(registry);
   const published = new Map<string, Set<string>>();
   for (const frame of FRAMES) {
-    for (const [name, bag] of session.evaluate(graph, frame).byName) {
+    for (const [name, bag] of session.evaluate(logical.graph, frame, { flattening: logical }).byName) {
       const keys = published.get(name) ?? new Set<string>();
       for (const key of Object.keys(bag)) keys.add(key);
       published.set(name, keys);
@@ -119,15 +119,16 @@ function publishedChannels(graph: GraphDocument): Map<string, Set<string>> {
 
 const EXAMPLE_PATHS = new Set(listExamples().map((file) => file.path));
 
-/** What the app evaluates: the flat graph, and the instances `op()` can still name in it. */
-interface Logical {
-  readonly graph: GraphDocument;
-  readonly instanceChannels: InstanceChannelSources;
+/** What the app evaluates: the flat graph, and what its flattening knows (the instances `op()` can still name in it). */
+interface Logical extends FlatteningReads {
+  readonly graph: FlatGraph;
 }
 
 /** The graph the app evaluates for `file`: flattened for an example, raw for a component file. */
 function logicalGraphOf(file: ExampleFile, graph: GraphDocument): Logical {
-  const raw = { graph, instanceChannels: NO_INSTANCES };
+  // Walked raw means walked with NO catalogue: the document as it is, an instance whole —
+  // so nothing was inlined, and there is no flattening to read from.
+  const raw = { graph: compiledWithoutCatalogue(graph), ...NO_FLATTENING };
   if (!EXAMPLE_PATHS.has(file.path)) return raw;
   const { document, result } = requireExample(file);
   if (result.components === undefined || result.nodes === undefined) return raw;
@@ -139,7 +140,7 @@ function unresolvable(file: ExampleFile, graph: GraphDocument, unverified: strin
 }
 
 function unresolvableIn(fileName: string, graph: GraphDocument, logical: Logical, unverified: string[]): string[] {
-  const published = publishedChannels(logical.graph);
+  const published = publishedChannels(logical);
   const problems: string[] = [];
   for (const reference of channelReferences(graph)) {
     /*
@@ -214,16 +215,16 @@ function unresolvableIn(fileName: string, graph: GraphDocument, logical: Logical
  *
  * Three are LIVE-SOURCE reads — a person mask and a matte publish their coverage
  * through the external-channel ladder T1067 wired into `app.tsx`, and no headless walk of
- * the document can see it. The other three are COMPONENT-INTERNAL chains: `probe` and
- * `hits` are Limits whose input crosses the component boundary, so evaluated standalone
+ * the document can see it. The other three are COMPONENT-INTERNAL chains: `limit_probe` and
+ * `limit_hits` are Limits whose input crosses the component boundary, so evaluated standalone
  * they publish nothing (AudioAnalysis carries two such probes, one per output, T1230).
  */
 const UNVERIFIABLE = [
-  "AudioAnalysis.loom.json  glow.brightness  op('probe').chan.low  [valueLimit]",
-  "AudioAnalysis.loom.json  glow.contrast  op('hits').chan.kickCount  [valueLimit]",
-  "AudioLevel.loom.json  glow.brightness  op('probe').chan.low  [valueLimit]",
-  "E52-Presence.loom.json  wash.brightness  op('mask1').chan.coverage  [personMask]",
-  "E53-Two-Cuts.loom.json  washC.brightness  op('seg1').chan.coverage  [personMask]",
+  "AudioAnalysis.loom.json  glow.brightness  op('limit_probe').chan.low  [valueLimit]",
+  "AudioAnalysis.loom.json  glow.contrast  op('limit_hits').chan.kickCount  [valueLimit]",
+  "AudioLevel.loom.json  glow.brightness  op('limit_probe').chan.low  [valueLimit]",
+  "E52-Presence.loom.json  wash.brightness  op('personmask1').chan.coverage  [personMask]",
+  "E53-Two-Cuts.loom.json  washC.brightness  op('personmask_seg').chan.coverage  [personMask]",
   "E53-Two-Cuts.loom.json  washW.brightness  op('matte1').chan.coverage  [matte]",
 ];
 

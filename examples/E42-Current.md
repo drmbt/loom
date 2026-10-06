@@ -16,24 +16,24 @@ and T721's mapped scale rides beside it, on E41's exact source rig.
 ## Graph
 
 ```
-bed1(noise 4d) ─┐
-orb1(circle ┄ pathx1/pathy1) ─┴─► stand1(add) ─┐ order 0
-clip1(movieFileIn) ─────────────────────────────┴─► pick1(switch) ─┬─► past1(cache, 6 back)
-                                                                   ▼        ▼
-pick1 ─► pack1.in1 (rgb)                                      moved1(difference)
-gain1 ─► pack1.in2 (a)  ─► pack1(reorder) ─► flow1.field           │
-                                                    gain1(level) ◄─┘
-grid1(pointGrid 48×27) ─► flow1(pointKernel) ─► tiles1(geometry, instances quad)
-facet1(materialPhong) ── by name ──► tiles1 ─► shot1(render ◄ view1, rake1) ─► out1
+noise_bed(noise 4d) ──┐
+circle_orb(circle ┄ lfo_pathx/lfo_pathy) ─┴─► add_stand(add) ─┐ order 0
+movie_clip(movieFileIn) ───────────────────────────────────────┴─► switch_pick(switch) ─┬─► cache_past(cache, 6 back)
+                                                                                        ▼                  ▼
+switch_pick ─► reorder_pack.in1 (rgb)                                      difference_moved(difference)
+level_gain ─► reorder_pack.in2 (a)  ─► reorder_pack(reorder) ─► kernel_flow.field           │
+                                                    level_gain(level) ◄─────────────────────┘
+grid1(pointGrid 48×27) ─► kernel_flow(pointKernel) ─► geometry_tiles(geometry, instances quad)
+material_facet(materialPhong) ── by name ──► geometry_tiles ─► render_shot(render ◄ camera_view, light_rake) ─► output1
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `flow1` | `pointKernel` | four `fieldAt` taps → the motion's local GRADIENT → a composed quaternion: spin about +Z into the flow, lean about the in-plane axis along it |
-| `tiles1` | `geometry` | instanced quads with all three maps at once: `tint` (the picture), `scale` (T721, from `tint.w` = motion), `orient` (T723, the quaternion) |
-| `facet1` | `materialPhong` | the reason the lean is VISIBLE: a specular facet under `rake1`'s low key answers "which way is this tile turned" per pixel |
-| `pack1` | `reorder` | E41's pack, verbatim: rgb = source colour, a = motion — one field input carries both readings |
-| `rake1` | `light` | low from the left, so a tile leant into rightward flow faces the light and a leftward one turns away — direction as light |
+| `kernel_flow` | `pointKernel` | four `fieldAt` taps → the motion's local GRADIENT → a composed quaternion: spin about +Z into the flow, lean about the in-plane axis along it |
+| `geometry_tiles` | `geometry` | instanced quads with all three maps at once: `tint` (the picture), `scale` (T721, from `tint.w` = motion), `orient` (T723, the quaternion) |
+| `material_facet` | `materialPhong` | the reason the lean is VISIBLE: a specular facet under `light_rake`'s low key answers "which way is this tile turned" per pixel |
+| `reorder_pack` | `reorder` | E41's pack, verbatim: rgb = source colour, a = motion — one field input carries both readings |
+| `light_rake` | `light` | low from the left, so a tile leant into rightward flow faces the light and a leftward one turns away — direction as light |
 
 ## Why a quaternion, witnessed rather than cited
 
@@ -73,6 +73,6 @@ the measured reason buffer-level claims exist for this example at all (§V712/§
   swirl this produces is the honest picture of the field we actually measure. Real
   optical flow (two-frame correlation) is a different instrument.
 - **The lean angle and epsilon are tuned constants**, fitted against the understudy's
-  measured field (§V696); very fast footage may want a lower `gain1.whitelevel`.
-- **Point `clip1` at real footage** (`pick1.index = 1`) and the mosaic re-tiles it live —
+  measured field (§V696); very fast footage may want a lower `level_gain.whitelevel`.
+- **Point `movie_clip` at real footage** (`switch_pick.index = 1`) and the mosaic re-tiles it live —
   the understudy proves the mechanism; the video input is the point.

@@ -254,3 +254,38 @@ describe("§T1393b — a value node's channel row", () => {
     expect(resolveMenuTarget(node)).toEqual({ surface: "node", nodeId: "lfo" });
   });
 });
+
+describe("§T1619b — a live control", () => {
+  const board = (kind: string, withPanel: boolean): HTMLElement => {
+    const node = document.createElement("div");
+    node.className = "react-flow__node";
+    node.setAttribute("data-id", "panel-node");
+    const body = document.createElement("div");
+    if (withPanel) body.setAttribute("data-control-panel", "panel-node");
+    const widget = document.createElement("div");
+    widget.setAttribute("data-control", kind);
+    widget.setAttribute("data-control-node", "slider-1");
+    const track = document.createElement("div");
+    widget.append(track);
+    body.append(widget);
+    node.append(body);
+    document.body.append(node);
+    return track;
+  };
+
+  it("resolves a Slider, a Toggle and an XY Pad to the control, with the Panel whose board it is on", () => {
+    for (const kind of ["slider", "toggle", "xy"]) {
+      expect(resolveMenuTarget(board(kind, true))).toEqual({ surface: "control", nodeId: "slider-1", panelId: "panel-node" });
+    }
+  });
+
+  it("nearest wins: on the widget it is the control, on the rest of the node it is the node", () => {
+    const track = board("slider", false);
+    expect(resolveMenuTarget(track)).toEqual({ surface: "control", nodeId: "slider-1" });
+    expect(resolveMenuTarget(track.closest(".react-flow__node"))).toEqual({ surface: "node", nodeId: "panel-node" });
+  });
+
+  it("a Button holds no default, so it is not a control surface: the click falls through to the node around it", () => {
+    expect(resolveMenuTarget(board("button", true))).toEqual({ surface: "node", nodeId: "panel-node" });
+  });
+});

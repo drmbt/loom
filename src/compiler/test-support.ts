@@ -24,6 +24,10 @@ import { wgsl } from "../runtime/backend/wgsl.ts";
  * passed as-is, by identity; one WITH an instance is refused, because handing that to a
  * flat consumer is the very mistake the brand exists to stop — flatten it
  * (`flattenComponents`) instead.
+ *
+ * §T1559b: a reader that also takes the flattening's reads (the value graph's `evaluate`) is
+ * handed `NO_FLATTENING` beside this: nothing was inlined, so there is no instance to name.
+ * A test that fades a bank builds its morph index and passes that instead.
  */
 export function flatDocument(graph: GraphDocument): FlatGraph {
   const instance = Object.values(graph.nodes).find((node) => isComponentNodeType(node.type));

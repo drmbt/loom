@@ -436,6 +436,7 @@
       "nd_bloom1": {
         "definitionVersion": 1,
         "id": "nd_bloom1",
+        "label": "bloom1",
         "parameters": {},
         "position": {
           "x": -54,

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
@@ -310,6 +313,160 @@ const v901RestrictedSyntax = [
   },
 ];
 
+// §V1028 / B246 — LAYERING ZONES: a directory (or one module) that may not import another.
+//
+// B246: `src/domain/parameters/node-references.ts` imported a VALUE from
+// `src/domain/presets/morph-index.ts` and read it at module scope. The presets layer imports
+// the parameter read path, so that one line closed a cycle, and a constant read across a
+// cycle is uninitialised whenever the far side happens to load first: every plain-node entry
+// point died at import with `Cannot access 'NO_MORPHS' before initialization`, while Vitest —
+// whose files load other modules first — stayed green. The rule it broke was already written
+// down, in `resolve.ts`'s own docblock ("this module never imports the presets layer"). A
+// boundary defended by a paragraph decays (§V901); these are those paragraphs, as a table.
+//
+// WHY A RULE OF ITS OWN and not `no-restricted-imports`, which §V3/§V11/§V901 use:
+//  - a zone is about where a specifier LANDS, and one target has three spellings here
+//    (`../presets/x.ts`, `@domain/presets/x.ts`, `@/domain/presets/x.ts`). This resolves the
+//    specifier through the alias table in tsconfig.app.json (the one `src/tooling/alias-hooks.ts`
+//    reads) and matches the resolved path, so no gitignore-style pattern has to guess — and
+//    none can match a `presets` segment that belongs to somebody else;
+//  - it sees every form that reaches a module in one visitor: `import`, `export … from`,
+//    `import()`, `require()` and the type query `import("…").T`. The core rule sees static
+//    declarations only, which is the hole §V3 and §V901 each had to close by hand;
+//  - zones overlap (a file under src/domain/parameters is in three of them) and flat config
+//    REPLACES a rule's value on overlap. A rule with its own id cannot be silently dropped by
+//    the next `no-restricted-imports` block that happens to match the same files.
+//
+// TYPE-ONLY IMPORTS ARE REFUSED TOO, and that is a decision, not an oversight. `import type`
+// is erased and cannot by itself cause an initialisation-order failure. But:
+//  (1) the rule as written is about DIRECTION: the lower layer declares what it needs
+//      (`ParameterMorphs`, `ParentBindResolver` in resolve.ts) and the upper layer implements
+//      it. A type imported from above moves the declaration's home up, which is the inversion;
+//  (2) MEASURED (Node 24 type stripping, which follows `verbatimModuleSyntax`): `import type
+//      { X } from` is erased, but `import { type X } from` is NOT — it survives as a bare
+//      module load, a real edge that closes the cycle with no value in sight. Two spellings a
+//      keystroke apart, one of them harmless, is not a distinction to leave to review.
+// Every zone below was already free of both spellings when it landed, so the strict form
+// cost nothing.
+//
+// TESTS ARE EXEMPT for §V901's reason: the boundary is about what PRODUCTION modules reach, a
+// test file is always its own first module, and no product entry point's graph contains one.
+// `test-support.ts` is NOT a test file here — it is a module other modules import, and it is
+// one of the two files B246's fix had to change.
+//
+// ADD A ZONE when a docblock says "never imports" / "may not import" AND it is true today.
+// One that is false today is a refactor, not a lint rule: `src/domain/** ↛ src/compiler/**`
+// (stated in presets/morph-index.ts) is the open one — `commands/validate-command.ts` imports
+// the compiler, and that edge is what joins the compiler and the domain into one cycle.
+const V1028_TYPE_NOTE = "A type-only import is refused too: `import { type X }` still loads the module.";
+const LAYERING_ZONES = [
+  {
+    from: /^src\/domain\/parameters\//,
+    to: /^src\/domain\/presets\//,
+    message:
+      "§V1028: src/domain/parameters/** may not import src/domain/presets/**. The presets layer " +
+      "imports the parameter read path, so an import back closes a cycle, and a value read at " +
+      "module scope across a cycle is uninitialised whenever the presets layer loads first — " +
+      "B246: every plain-node entry point died at import while Vitest stayed green. Fix: declare " +
+      "what this layer needs HERE, structurally (as ParameterMorphs and NO_MORPHS are in " +
+      `resolve.ts), and let the presets layer implement or re-export it. ${V1028_TYPE_NOTE}`,
+  },
+  {
+    from: /^src\/domain\/parameters\//,
+    to: /^src\/domain\/components\//,
+    message:
+      "§V1028 (§V81 stays one-way): src/domain/parameters/** may not import " +
+      "src/domain/components/**. The components layer imports the parameter read path, so an " +
+      "import back closes the kind of cycle B246 died of. Fix: declare the seam HERE, " +
+      "structurally (as ParentBindResolver is in resolve.ts), and let the components layer " +
+      `supply it. ${V1028_TYPE_NOTE}`,
+  },
+  {
+    from: /^src\/domain\//,
+    to: /^(src\/(ui|editor)\/|package:(react|react-dom|@xyflow\/react)(\/|$))/,
+    message:
+      "§V1028 (the domain is headless): src/domain/** may not import src/ui/**, src/editor/**, " +
+      "react, react-dom or @xyflow/react. The compiler and the MCP server load the domain under " +
+      "plain Node, with no editor and no DOM (resolve.ts, graph/node-box.ts, graph/layout.ts all " +
+      "say so). Fix: move what is shared DOWN into src/domain and let the editor import it from " +
+      `there. ${V1028_TYPE_NOTE}`,
+  },
+  {
+    from: /^src\/domain\/presets\/cue-list\.ts$/,
+    to: /^src\/domain\/presets\/(commands|cue-commands)\.ts$/,
+    message:
+      "§V1028: src/domain/presets/cue-list.ts may not import ./commands.ts or ./cue-commands.ts. " +
+      "commands.ts reads this module's CUE_GO_COMMAND / CUE_BACK_COMMAND at module scope, so an " +
+      "import back would make that read happen before the constants exist (B246's shape). Fix: " +
+      `keep this module data only; what needs a command belongs in cue-commands.ts. ${V1028_TYPE_NOTE}`,
+  },
+  {
+    from: /^src\/domain\/presets\/morph\.ts$/,
+    to: /^src\/(domain\/graph\/|nodes\/registry\/|domain\/parameters\/resolve\.ts$)/,
+    message:
+      "§V1028: src/domain/presets/morph.ts is data only — no graph, no registry, no resolver. " +
+      "graph/names.ts imports it for the rename clause, so anything here that reaches back " +
+      "there closes a cycle (B246's shape). Fix: which key fades belongs in morph-index.ts, and " +
+      `the blend belongs to the resolver. ${V1028_TYPE_NOTE}`,
+  },
+];
+
+const REPO_ROOT = path.dirname(fileURLToPath(import.meta.url));
+const toPosix = (file) => file.split(path.sep).join("/");
+
+/** `["@domain/", "src/domain/"]` pairs, longest prefix first so `@domain/` beats `@/`. */
+const ALIAS_TABLE = Object.entries(
+  JSON.parse(readFileSync(path.join(REPO_ROOT, "tsconfig.app.json"), "utf8")).compilerOptions.paths,
+)
+  .map(([pattern, targets]) => [pattern.replace(/\*$/, ""), targets[0].replace(/^\.\//, "").replace(/\*$/, "")])
+  .sort((left, right) => right[0].length - left[0].length);
+
+/** Where a specifier lands: a repo-relative path, or `package:<specifier>` for what is not ours. */
+function importTarget(filename, specifier) {
+  if (specifier.startsWith(".")) {
+    return toPosix(path.relative(REPO_ROOT, path.resolve(path.dirname(filename), specifier)));
+  }
+  for (const [prefix, target] of ALIAS_TABLE) {
+    if (specifier.startsWith(prefix)) return path.posix.normalize(`${target}${specifier.slice(prefix.length)}`);
+  }
+  return `package:${specifier}`;
+}
+
+const v1028Plugin = {
+  rules: {
+    "layering-zone": {
+      meta: {
+        type: "problem",
+        docs: { description: "§V1028: a layer may not import the layer that imports it." },
+        schema: [],
+      },
+      create(context) {
+        const file = toPosix(path.relative(REPO_ROOT, context.filename));
+        if (/\.test\.tsx?$/.test(file)) return {};
+        const zones = LAYERING_ZONES.filter((zone) => zone.from.test(file));
+        if (zones.length === 0) return {};
+        const check = (node, source) => {
+          if (source?.type !== "Literal" || typeof source.value !== "string") return;
+          const target = importTarget(context.filename, source.value);
+          for (const zone of zones) {
+            if (zone.to.test(target)) context.report({ node, message: zone.message });
+          }
+        };
+        return {
+          ImportDeclaration: (node) => check(node, node.source),
+          ExportNamedDeclaration: (node) => check(node, node.source),
+          ExportAllDeclaration: (node) => check(node, node.source),
+          ImportExpression: (node) => check(node, node.source),
+          // `import("../presets/x.ts").T` in a type position: the same dependency, spelled
+          // without a declaration. Where the literal sits has moved between parser versions.
+          TSImportType: (node) => check(node, node.source ?? node.argument?.literal),
+          "CallExpression[callee.name='require']": (node) => check(node, node.arguments[0]),
+        };
+      },
+    },
+  },
+};
+
 export default tseslint.config(
   {
     // scratchpad/** is scratch API-exploration and probe scripts (plain Node, not
@@ -487,6 +644,15 @@ export default tseslint.config(
         { paths: vgpuRestrictedPaths, patterns: [v901RestrictedMcpPattern] },
       ],
       "no-restricted-syntax": ["error", ...vgpuRestrictedSyntax, ...v901RestrictedSyntax],
+    },
+  },
+  {
+    // B246 / §V1028 — layering zones (LAYERING_ZONES above). A rule with its own id, so no
+    // other block's `no-restricted-imports` can replace it on the files they share.
+    files: ["src/**/*.{ts,tsx}"],
+    plugins: { v1028: v1028Plugin },
+    rules: {
+      "v1028/layering-zone": "error",
     },
   },
   {

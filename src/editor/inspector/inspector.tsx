@@ -116,6 +116,15 @@ export interface InspectorProjectSettings {
 
 export interface InspectorProps {
   bus: LoomBus;
+  /**
+   * T1652b: the document, from a host that already decides WHEN this panel has something
+   * new to show (`useLiveGraph` and `inspectorShows` in the app: every structural revision,
+   * and a value on a node it inspects or that node reads). With it the panel renders when
+   * its host hands it another document, and holds no subscription of its own. Without it
+   * (a test, an embed) it subscribes to the bus's store and renders on every revision, as
+   * it always did.
+   */
+  graph?: GraphDocument;
   /** Actor/project/capabilities for every command the pane sends (§V30). Memoise it. */
   context: InvocationContext;
   nodeId: NodeId | null;
@@ -287,6 +296,8 @@ export interface InspectorProps {
 /** §V16: <= 10 Hz. Shared with `TimelineReadout`'s cap, for the same reason. */
 export const LIVE_VALUE_INTERVAL_MS = 100;
 const noInstanceSubscription = (): (() => void) => () => {};
+/** T1652b: the host hands the document over (`InspectorProps.graph`), so there is nothing to listen for. */
+const noGraphSubscription = (): (() => void) => () => {};
 const noInstanceGraph = (): GraphDocument | null => null;
 
 /**
@@ -369,12 +380,14 @@ export function Inspector({
   components,
   flattened,
   instanceParameters,
+  graph: hostGraph,
 }: InspectorProps) {
-  const graph = useSyncExternalStore<GraphDocument>(
-    bus.store.subscribe,
+  const ownGraph = useSyncExternalStore<GraphDocument>(
+    hostGraph === undefined ? bus.store.subscribe : noGraphSubscription,
     bus.store.getGraph,
     bus.store.getGraph,
   );
+  const graph = hostGraph ?? ownGraph;
   // Parent edits do not notify the shared definition's authoring store.
   const instanceGraph = useSyncExternalStore(
     instanceParameters?.bus.store.subscribe ?? noInstanceSubscription,

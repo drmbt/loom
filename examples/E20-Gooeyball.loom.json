@@ -130,7 +130,7 @@
       "ball": {
         "definitionVersion": 1,
         "id": "ball",
-        "label": "ball1",
+        "label": "kernel_ball",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 4096,
@@ -146,9 +146,9 @@
       "body": {
         "definitionVersion": 1,
         "id": "body",
-        "label": "body1",
+        "label": "geometry_body",
         "parameters": {
-          "material": "gooskin1",
+          "material": "material_gooskin",
           "mode": "surface"
         },
         "position": {
@@ -173,7 +173,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "camera1",
         "parameters": {
           "eye": [
             0,
@@ -213,7 +213,7 @@
       "fill": {
         "definitionVersion": 1,
         "id": "fill",
-        "label": "fill1",
+        "label": "light_fill",
         "parameters": {
           "color": [
             0.35,
@@ -227,7 +227,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbitx1').chan.value"
+                "source": "op('lfo_orbitx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -241,7 +241,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbitz1').chan.value"
+                "source": "op('lfo_orbitz').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -260,7 +260,7 @@
       "goo": {
         "definitionVersion": 1,
         "id": "goo",
-        "label": "goo1",
+        "label": "kernel_goo",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"sample\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 4096,
@@ -276,7 +276,7 @@
       "gooskin": {
         "definitionVersion": 1,
         "id": "gooskin",
-        "label": "gooskin1",
+        "label": "material_gooskin",
         "parameters": {
           "color": [
             1,
@@ -302,7 +302,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "light_key",
         "parameters": {
           "color": [
             1,
@@ -327,7 +327,7 @@
       "orbitx": {
         "definitionVersion": 1,
         "id": "orbitx",
-        "label": "orbitx1",
+        "label": "lfo_orbitx",
         "parameters": {
           "amplitude": 2.2,
           "frequency": 0.11,
@@ -344,7 +344,7 @@
       "orbitz": {
         "definitionVersion": 1,
         "id": "orbitz",
-        "label": "orbitz1",
+        "label": "lfo_orbitz",
         "parameters": {
           "amplitude": 2.2,
           "frequency": 0.11,
@@ -361,7 +361,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 620,
@@ -372,7 +372,7 @@
       "paint": {
         "definitionVersion": 1,
         "id": "paint",
-        "label": "paint1",
+        "label": "lookup_paint",
         "parameters": {
           "channel": "red",
           "offset": 0,
@@ -388,7 +388,7 @@
       "palette": {
         "definitionVersion": 2,
         "id": "palette",
-        "label": "goopalette1",
+        "label": "ramp_goopalette",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -456,7 +456,7 @@
       "skin": {
         "definitionVersion": 1,
         "id": "skin",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0.4,
@@ -465,9 +465,9 @@
             1
           ],
           "ambientIntensity": 0.22,
-          "camera": "cam1",
-          "lights": "key1 fill1",
-          "scenes": "body1"
+          "camera": "camera1",
+          "lights": "light_key light_fill",
+          "scenes": "geometry_body"
         },
         "position": {
           "x": 340,

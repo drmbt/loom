@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { storedNeverFindings } from "@compiler/document-findings.ts";
 import { buildProjectFile, loadProject, nextProjectFileName } from "@domain/project/index.ts";
 import type { LoadProjectSuccess } from "@domain/project/index.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
@@ -171,8 +172,9 @@ export function useProject(runtime: AppRuntime, options: ProjectWiringOptions): 
     // is about to choose must describe the same document.
     await flush();
 
+    const document = current.projectDocument();
     const file = buildProjectFile({
-      document: current.projectDocument(),
+      document,
       components: current.components.all(),
     });
     /*
@@ -218,7 +220,15 @@ export function useProject(runtime: AppRuntime, options: ProjectWiringOptions): 
         ],
       };
     }
-    return { saved: true, fileName: outcome.fileName, diagnostics: [] };
+    /*
+     * §T1641b slice 3 (the lead's ruling 8): A PERSON'S WORK IS NEVER REFUSED ITS SAVE. The
+     * file above is written whatever the document holds, and the save then SAYS what in it
+     * can never take effect: the write gate asked of everything stored, a payload a slot
+     * only keeps and a component definition's own graph included, which no compile reads.
+     * A save by code is the other door (`checked-project.ts`): it refuses these, by name.
+     */
+    const neverEffective = storedNeverFindings({ graph: document.graph, registry: current.registry, components: current.components });
+    return { saved: true, fileName: outcome.fileName, diagnostics: neverEffective };
   }, []);
 
   const open = useCallback(

@@ -25,7 +25,7 @@ const FRAMES_PER_BEAT = (60 * 60) / SHOWCASE_BEAT.bpm;
 async function lanes(graphOf: (graph: GraphDocument) => GraphDocument = (graph) => graph) {
   const registry = createNodeRegistry(allNodeDefinitions).view();
   const root = graphOf(structuredClone(crucibleDocument.graph));
-  const graph = flattenComponents({ graph: root, registry, components: await starterComponentsView() }).graph;
+  const flattened = flattenComponents({ graph: root, registry, components: await starterComponentsView() });
   const audio = shippedClipAudio(root, 60);
   if (audio === undefined) throw new Error("E79 binds the shipped clip; the harness must hear it");
   const session = createValueGraphSession(registry);
@@ -34,9 +34,9 @@ async function lanes(graphOf: (graph: GraphDocument) => GraphDocument = (graph) 
   for (let index = 0; index < FRAMES; index += 1) {
     const features = audio(index);
     const result = session.evaluate(
-      graph,
+      flattened.graph,
       { timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index, mode: "offline", randomSeed: 79 },
-      features === null ? undefined : { audio: features },
+      { flattening: flattened, ...(features === null ? {} : { audio: features }) },
     );
     expect(result.diagnostics).toEqual([]);
     beat.push(result.byName.get("beat1")?.["band109"] ?? Number.NaN);

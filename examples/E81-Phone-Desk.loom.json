@@ -123,7 +123,7 @@
       "bg": {
         "definitionVersion": 1,
         "id": "bg",
-        "label": "bg1",
+        "label": "solid_background",
         "parameters": {
           "color": [
             0,
@@ -141,7 +141,7 @@
       "flash": {
         "definitionVersion": 1,
         "id": "flash",
-        "label": "flash",
+        "label": "button_flash",
         "parameters": {
           "caption": "Next hue",
           "channel": "flash",
@@ -155,12 +155,13 @@
         "type": "button"
       },
       "heat": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "heat",
-        "label": "heat",
+        "label": "slider_heat",
         "parameters": {
           "caption": "Heat",
           "channel": "heat",
+          "defaultValue": 1,
           "max": 2,
           "min": 0,
           "step": 0,
@@ -175,13 +176,13 @@
       "hue": {
         "definitionVersion": 1,
         "id": "hue",
-        "label": "hue1",
+        "label": "hsv_hue",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('flash').chan.flashCount * 90"
+                "source": "op('button_flash').chan.flashCount * 90"
               },
               "static": {
                 "kind": "static",
@@ -198,12 +199,13 @@
         "type": "hsv"
       },
       "invert": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "invert",
-        "label": "invert",
+        "label": "toggle_invert",
         "parameters": {
           "caption": "Invert",
           "channel": "invert",
+          "defaultOn": false,
           "on": false
         },
         "position": {
@@ -215,7 +217,7 @@
       "lay": {
         "definitionVersion": 1,
         "id": "lay",
-        "label": "lay1",
+        "label": "over_lay",
         "parameters": {
           "opacity": 1
         },
@@ -234,7 +236,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('heat').chan.heat"
+                "source": "op('slider_heat').chan.heat"
               },
               "static": {
                 "kind": "static",
@@ -247,7 +249,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('invert').chan.invert"
+                "source": "op('toggle_invert').chan.invert"
               },
               "static": {
                 "kind": "static",
@@ -266,9 +268,9 @@
       "noteControls": {
         "definitionVersion": 1,
         "id": "noteControls",
-        "label": "notecontrols1",
+        "label": "note_controls",
         "parameters": {
-          "body": "A widget is a value node: no picture, one number you set by hand, read as op('heat').chan.heat.\nHeat is brightness and Invert flips it. Next hue turns the hue a quarter. Top-right pin drags the picture's corner.\nDrag it on its node or on the Panel. Button adds flashCount; XY Pad publishes warpX and warpY.",
+          "body": "A widget is a value node: no picture, one number you set by hand, read as op('slider_heat').chan.heat.\nHeat is brightness and Invert flips it. Next hue turns the hue a quarter. Top-right pin drags the picture's corner.\nDrag it on its node or on the Panel. Button adds flashCount; XY Pad publishes warpX and warpY.",
           "color": "input",
           "title": "Controls"
         },
@@ -285,9 +287,9 @@
       "noteMapping": {
         "definitionVersion": 1,
         "id": "noteMapping",
-        "label": "notemapping1",
+        "label": "note_mapping",
         "parameters": {
-          "body": "Right-click a parameter in the Inspector → Control from Panel: it makes the control, binds it and adds it to the Panel.\nDrive from ▸ binds a control you already have. A bound parameter shows ← Heat.\nUnderneath is an expression: op('heat').chan.heat. It is maths: op('flash').chan.flashCount * 90 turns the hue a quarter per press.",
+          "body": "Right-click a parameter in the Inspector → Control from Panel: it makes the control, binds it and adds it to the Panel.\nDrive from ▸ binds a control you already have. A bound parameter shows ← Heat.\nUnderneath is an expression: op('slider_heat').chan.heat. It is maths: op('button_flash').chan.flashCount * 90 turns the hue a quarter per press.",
           "color": "value",
           "title": "Mapping: a parameter follows a control"
         },
@@ -304,7 +306,7 @@
       "notePanel": {
         "definitionVersion": 1,
         "id": "notePanel",
-        "label": "notepanel1",
+        "label": "note_panel",
         "parameters": {
           "body": "A widget joins panel1 by a wire: its out into the Panel's Controls, or drop the widget on the Panel.\nThe Panel is a board: the pencil on the Panel or in the Controls tab moves and sizes each control and adds labels.\nIts body on the canvas is the same board, live. The Controls tab is a bigger view of it.\nThe phone icon on its header publishes it to a paired phone.",
           "color": "composite",
@@ -323,7 +325,7 @@
       "notePhone": {
         "definitionVersion": 1,
         "id": "notePhone",
-        "label": "notephone1",
+        "label": "note_phone",
         "parameters": {
           "body": "1. Start the helper: pnpm helper --phone\n2. Pair it in Agent → Connections.\n3. Press the phone icon on panel1's header and scan the QR code.\n4. Accept the certificate once. The phone shows this panel and nothing else.\nA phone can also be a camera: in a Webcam node pick the device Phone · <name>.",
           "color": "color",
@@ -342,9 +344,9 @@
       "noteSurface": {
         "definitionVersion": 1,
         "id": "noteSurface",
-        "label": "notesurface1",
+        "label": "note_surface",
         "parameters": {
-          "body": "pin1 pins the picture's four corners onto the output.\nDrag the pins on its preview tile to fit a wall.\nThe top-right pin reads the pad: pintr x is op('warp').chan.warpX, y is op('warp').chan.warpY.",
+          "body": "cornerpin1 pins the picture's four corners onto the output.\nDrag the pins on its preview tile to fit a wall.\nThe top-right pin reads the pad: pintr x is op('xypad_warp').chan.warpX, y is op('xypad_warp').chan.warpY.",
           "color": "output",
           "title": "Mapping to a surface: Corner Pin"
         },
@@ -361,7 +363,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 0,
@@ -374,7 +376,7 @@
         "id": "panel",
         "label": "panel1",
         "parameters": {
-          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Picture\",\"rect\":{\"x\":0,\"y\":0,\"w\":5,\"h\":1}},\n    {\"member\":\"heat\",\"rect\":{\"x\":0,\"y\":1,\"w\":5,\"h\":1}},\n    {\"member\":\"invert\",\"rect\":{\"x\":0,\"y\":2,\"w\":2,\"h\":1}},\n    {\"member\":\"flash\",\"rect\":{\"x\":2,\"y\":2,\"w\":3,\"h\":1}},\n    {\"member\":\"warp\",\"rect\":{\"x\":5,\"y\":0,\"w\":3,\"h\":3}}\n  ]\n}",
+          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Picture\",\"rect\":{\"x\":0,\"y\":0,\"w\":5,\"h\":1}},\n    {\"member\":\"slider_heat\",\"rect\":{\"x\":0,\"y\":1,\"w\":5,\"h\":1}},\n    {\"member\":\"toggle_invert\",\"rect\":{\"x\":0,\"y\":2,\"w\":2,\"h\":1}},\n    {\"member\":\"button_flash\",\"rect\":{\"x\":2,\"y\":2,\"w\":3,\"h\":1}},\n    {\"member\":\"xypad_warp\",\"rect\":{\"x\":5,\"y\":0,\"w\":3,\"h\":3}}\n  ]\n}",
           "remote": true,
           "title": "Phone Desk"
         },
@@ -387,7 +389,7 @@
       "pin": {
         "definitionVersion": 1,
         "id": "pin",
-        "label": "pin1",
+        "label": "cornerpin1",
         "parameters": {
           "extend": "zero",
           "feather": 0,
@@ -399,7 +401,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('warp').chan.warpX"
+                "source": "op('xypad_warp').chan.warpX"
               },
               "static": {
                 "kind": "static",
@@ -412,7 +414,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('warp').chan.warpY"
+                "source": "op('xypad_warp').chan.warpY"
               },
               "static": {
                 "kind": "static",
@@ -431,7 +433,7 @@
       "rings": {
         "definitionVersion": 2,
         "id": "rings",
-        "label": "rings1",
+        "label": "ramp_rings",
         "parameters": {
           "interp": "linear",
           "period": 2.5,
@@ -504,12 +506,14 @@
         "type": "ramp"
       },
       "warp": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "warp",
-        "label": "warp",
+        "label": "xypad_warp",
         "parameters": {
           "caption": "Top-right pin",
           "channel": "warp",
+          "defaultX": 0.82,
+          "defaultY": 0.78,
           "max": 1,
           "min": 0,
           "x": 0.82,

@@ -57,6 +57,23 @@ export const PARAMETER_NODE_ATTRIBUTE = "data-node-id";
  */
 export const CHANNEL_NAME_ATTRIBUTE = "data-channel-name";
 export const CHANNEL_VALUE_ATTRIBUTE = "data-channel-value";
+/**
+ * §T1619b: a live control widget (`control-widget.tsx`). `data-control` says which kind it
+ * is and `data-control-node` which node; `data-control-panel`, on the Panel surface around
+ * it, says which Panel's board it was clicked on. Only the kinds that hold a DEFAULT are a
+ * surface of their own: a Button has nothing to reset, so a click on one falls through to
+ * whatever is around it.
+ *
+ * NEAREST WINS, as everywhere here: on the canvas a control's widget sits inside its own
+ * node (or inside a Panel node's body), so a right-click ON THE WIDGET opens the control's
+ * menu and a right-click on the rest of the node — its header, its frame — still opens the
+ * node's. The node menu is at its row cap, so the control's rows could not have joined it.
+ */
+export const CONTROL_KIND_ATTRIBUTE = "data-control";
+export const CONTROL_NODE_ATTRIBUTE = "data-control-node";
+export const CONTROL_PANEL_ATTRIBUTE = "data-control-panel";
+/** The `data-control` values whose control holds a default: Slider, Toggle, XY Pad. */
+const DEFAULT_HOLDING_CONTROLS: ReadonlySet<string> = new Set(["slider", "toggle", "xy"]);
 
 export interface ResolveMenuTargetOptions {
   /**
@@ -86,6 +103,14 @@ function surfaceOf(element: Element): MenuTarget | null {
     const nodeId = attribute(element, HANDLE_NODE_ID);
     const portId = attribute(element, HANDLE_PORT_ID);
     if (nodeId !== null && portId !== null) return { surface: "port", nodeId, portId };
+  }
+
+  const control = attribute(element, CONTROL_KIND_ATTRIBUTE);
+  if (control !== null && DEFAULT_HOLDING_CONTROLS.has(control)) {
+    const nodeId = attribute(element, CONTROL_NODE_ATTRIBUTE);
+    const panel = element.closest(`[${CONTROL_PANEL_ATTRIBUTE}]`);
+    const panelId = panel === null ? null : attribute(panel, CONTROL_PANEL_ATTRIBUTE);
+    if (nodeId !== null) return { surface: "control", nodeId, ...(panelId === null ? {} : { panelId }) };
   }
 
   const channel = attribute(element, CHANNEL_NAME_ATTRIBUTE);

@@ -169,7 +169,9 @@ describe("a DRIVEN pulse fires through the channel resolver (T628, T593's class)
         mode: "driven",
         bindings: {
           driven: { kind: "driven", channel: "lfo1" },
-          static: { kind: "static", value: 0 },
+          // What a pulse keeps is `false`, its own type (§V124). This was the number 0, which
+          // the write gate refuses (§T1641b slice 3 found it by reading every fixture's slots).
+          static: { kind: "static", value: false },
         },
       },
     },

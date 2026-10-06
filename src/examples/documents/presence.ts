@@ -3,9 +3,9 @@ import { settings, node, edge, graph, document, expressionSlot } from "./builder
 /**
  * E52 — Presence (T1029). THE OS CUTS THE PERSON OUT, AND THE ROOM KNOWS.
  *
- *   cam1(webcam) ─┐
- *   stand1(rig)  ─┴► src1(switch) ─► mask1(personMask) ─► key1(multiply ◄ src1)
- *   haze1(noise) ─► wash1(hsv) ─────────────────────────► room1(over ◄ key1) ─► out1
+ *   webcam1(webcam) ─┐
+ *   stand1(rig)  ─┴► switch_src(switch) ─► personmask1(personMask) ─► multiply_key(multiply ◄ switch_src)
+ *   noise_haze(noise) ─► level_wash(hsv) ─────────────────────────► over_room(over ◄ multiply_key) ─► output1
  *
  * ## What the picture is
  *
@@ -14,19 +14,19 @@ import { settings, node, edge, graph, document, expressionSlot } from "./builder
  * and composited over a slow synthetic haze. No model downloads, no weights, nothing
  * to verify (§V858): the OS supplies the model, which is exactly the trade this node
  * exists to demonstrate against the Matte node's hash-pinned, downloadable one. The
- * room answers the person: `mask1:coverage` — §V856's scalar, the fraction of the
+ * room answers the person: `personmask1:coverage` — §V856's scalar, the fraction of the
  * frame the mask claims — drives the haze's saturation, so an empty room sits
  * near-grey and wakes into colour as someone walks in. "Ran and found nobody" is a
  * VALUE here, not an absence.
  *
  * ## Degrade, stated because every gate sees it (§T715)
  *
- * The shipped default is the deterministic understudy (`src1` at 0 — a webcam cannot
+ * The shipped default is the deterministic understudy (`switch_src` at 0 — a webcam cannot
  * gate headlessly, E27's precedent), and the understudy contains NO PERSON, so on any
  * machine without the helper — and on every headless gate — the mask is zero
- * everywhere, `key1` goes black, `room1` shows the grey haze alone, and coverage
+ * everywhere, `multiply_key` goes black, `over_room` shows the grey haze alone, and coverage
  * reads 0. That is the correct picture of an empty room, not a failure; the node's
- * diagnostic says what pairing the helper would change. Flip `src1` to 1 with the
+ * diagnostic says what pairing the helper would change. Flip `switch_src` to 1 with the
  * helper attached and the mirror is live.
  */
 export const presenceDocument = document(
@@ -43,19 +43,19 @@ export const presenceDocument = document(
         type: "perlin4d", seed: 5, period: 0.35, harmon: 3, spread: 2, gain: 0.45,
         rough: 0.5, exp: 1.3, amp: 1, offset: 0.1, mono: false, aspectcorrect: true,
         speed: 0.35, t4d: 0.2, s4d: 1,
-      }, { label: "bed1" }),
+      }, { label: "noise_bed" }),
       /* The live half (E47's precedent): permission is requested only when the webcam
          node activates, never on load. */
-      node("cam", "webcam", [-1920, 140], {}, { label: "cam1" }),
-      node("src", "switch", [-1620, 0], { index: 0 }, { label: "src1" }),
+      node("cam", "webcam", [-1920, 140], {}, { label: "webcam1" }),
+      node("src", "switch", [-1620, 0], { index: 0 }, { label: "switch_src" }),
 
       // ---- the cut ------------------------------------------------------------------
       /* The OS's verdict on "who is a person", at 10 Hz by default: each ask crosses
          the bridge (~1 MB), so the rate limit is a bandwidth dial as much as a CPU one. */
-      node("mask", "personMask", [-1320, -140], { rateLimit: 0.1, invert: false }, { label: "mask1" }),
+      node("mask", "personMask", [-1320, -140], { rateLimit: 0.1, invert: false }, { label: "personmask1" }),
       /* The key: the source times its own mask — white-where-person on every channel
          (the node's convention, shared with Matte) makes multiply THE compositor. */
-      node("key", "multiply", [-1020, 0], { opacity: 1 }, { label: "key1" }),
+      node("key", "multiply", [-1020, 0], { opacity: 1 }, { label: "multiply_key" }),
 
       // ---- the room that knows ------------------------------------------------------
       /* perlin4d, NOT a 3d type: the fourth dimension is what `speed` advances, and a
@@ -68,16 +68,16 @@ export const presenceDocument = document(
         type: "perlin4d", seed: 12, period: 0.9, harmon: 2, spread: 2, gain: 0.4,
         rough: 0.5, exp: 1, amp: 0.7, offset: 0.15, mono: true, aspectcorrect: true,
         speed: 0.14, t4d: 0.37, s4d: 1,
-      }, { label: "haze1" }),
-      node("ink", "solid", [-1320, 600], { color: [0.12, 0.75, 0.5, 1] }, { label: "ink1" }),
-      node("tint", "multiply", [-1020, 620], { opacity: 1 }, { label: "tint1" }),
+      }, { label: "noise_haze" }),
+      node("ink", "solid", [-1320, 600], { color: [0.12, 0.75, 0.5, 1] }, { label: "solid_ink" }),
+      node("tint", "multiply", [-1020, 620], { opacity: 1 }, { label: "multiply_tint" }),
       /* §V856 SPENT as LIGHT: the room BRIGHTENS with coverage. Empty room = dim green
          haze; a person filling a tenth of the frame turns the lamp up. The channel is
          the seam's own (`<name>:coverage`), so the wiring is one expression. */
       node("wash", "level", [-1020, 320], {},
-        { label: "wash1", parameters: { brightness: expressionSlot("0.55 + op('mask1').chan.coverage * 4", 0.55) } }),
-      node("room", "over", [-720, 80], { opacity: 1 }, { label: "room1" }),
-      node("out", "output", [-420, 80], {}, { label: "out1" }),
+        { label: "level_wash", parameters: { brightness: expressionSlot("0.55 + op('personmask1').chan.coverage * 4", 0.55) } }),
+      node("room", "over", [-720, 80], { opacity: 1 }, { label: "over_room" }),
+      node("out", "output", [-420, 80], {}, { label: "output1" }),
     ],
     [
       edge("e1", ["bed", "out"], ["src", "inputs"], 0),

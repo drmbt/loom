@@ -6,6 +6,8 @@ import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 
 /**
  * T1298 — `valueSelect`, through the real value graph.
@@ -32,7 +34,7 @@ function through(type: string, parameters: Record<string, unknown> = {}) {
     groups: {},
   } as unknown as GraphDocument;
   const frame: FrameEvaluationInput = { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "realtime", randomSeed: 7 };
-  const result = createValueGraphSession(registry).evaluate(graph, frame, { pointer: { x: 1.7, y: -0.4, buttons: 1 } });
+  const result = createValueGraphSession(registry).evaluate(flatDocument(graph), frame, { flattening: NO_FLATTENING, pointer: { x: 1.7, y: -0.4, buttons: 1 } });
   expect(result.diagnostics).toEqual([]);
   const bag = result.byName.get("tap1") ?? {};
   return { values: bag, order: Object.keys(bag) };

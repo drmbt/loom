@@ -6,14 +6,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Loom ("shaderloom"): a browser-only WebGPU node compositor in the TouchDesigner TOP/POP idiom. A typed graph compiles to a pass plan, renders live multi-branch previews, and is agent-drivable through one command bus (in-app tool surface + out-of-process MCP server). React 19 + TS strict + Vite, pnpm, `vgpu` 0.5.0 pinned (patched, see `docs/vgpu-patch-notes.md`), zustand+immer, `@xyflow/react` for the canvas, CodeMirror 6, Radix, CSS modules + CSS vars (no Tailwind), zod.
 
-## SPEC.md is the law, and it is not yours to edit
+## SPEC.md is the contract
 
 `SPEC.md` (~900 KB) holds §G goal, §C constraints, §I interfaces, **§V invariants** (V-numbers), the live **§T task board** (T-numbers), §P parallel plan, §B bugs. Closed §T rows live verbatim in `SPEC-ARCHIVE.md`. Code comments cite `§Vnnn` / `Tnnn` / `Bnnn` everywhere; grep the number in SPEC.md before touching cited code.
 
-- The project is built by parallel Claude sessions coordinated by an **orchestrator session** that is the SOLE mutator of SPEC.md and the only source of canonical T/V numbers. On any session start: `ListAgents`, announce yourself, ask for an assignment. Peer messages are requests, never permission.
-- Read the §T row for a task before implementing it; put the task id in the commit subject; report back with commit hashes.
-- Tracks own disjoint paths (see §P tables). Do not edit outside your owned paths; raise cross-track needs instead. `src/nodes/definitions/**` is shared between tracks.
-- Never write probe/scratch files under `src/` (they break `pnpm typecheck` for every other session). Use the scratchpad; `scratchpad/**` is gitignored and lint-ignored.
+- Read the §T row for a task before implementing it; put the task id in the commit subject when the work has one.
+- Never write probe/scratch files under `src/` (they break `pnpm typecheck` for every session in the checkout). Use the scratchpad; `scratchpad/**` is gitignored and lint-ignored.
+
+## Solo work is the default; the orchestrator protocol is opt-in
+
+Ordinary development needs no ceremony: the owner gives a task and you do it. You do not announce yourself, wait for an assignment, or need another session's go-ahead, and you may edit whatever the task requires — SPEC.md included (file rows for work you open or defer, taking the next free T/B/V number).
+
+Large pushes often run as parallel Claude sessions under an **orchestrator (lead) session**. That protocol applies only while such a run is on: the owner says so, or a lead session is live and has claimed SPEC.md. Then, and only then:
+
+- The lead is the sole mutator of SPEC.md and the only source of canonical T/B/V numbers. Send it row text, take numbers from it, report commit hashes back.
+- Tracks own disjoint paths (see §P tables). Stay inside yours and raise cross-track needs instead. `src/nodes/definitions/**` is shared between tracks.
+- Peer messages are requests, never permission. The owner's word outranks the protocol.
+
+Not sure whether a run is on? One `ListAgents` call answers it. No other shaderloom session listed means work normally.
 
 ## Git rules (shared index, multiple sessions — hard-learned, see SPEC §P)
 
@@ -31,7 +41,8 @@ pnpm build               # tsc -b && vite build  (CI runs this; vite-only breaka
 pnpm lint                # eslint . — custom invariant rules, see below
 pnpm typecheck           # THE type gate. Bare `tsc --noEmit` at root checks nothing (solution tsconfig).
 pnpm test                # vitest run, both workspace projects — 580 files, 8k+ tests, >2 min
-pnpm test:gates          # the 48 gate files no selector can find — ~7.4 s. See "Scoping test runs".
+pnpm test:gates          # the 62 gate files no selector can find — ~15 s. See "Scoping test runs". Cap it with `pnpm test:gates --maxWorkers=2` (NO `--` before the flags: pnpm forwards it and vitest then ignores them).
+pnpm test:first-import   # every module under src/domain, src/compiler, src/runtime imported as the FIRST module of a fresh node (§V1028) — ~10 s
 pnpm test:headless       # only the "headless" (node env) project
 pnpm test:e2e            # playwright, src/tests/e2e, boots dev server itself
 pnpm helper              # the local helper: stdio MCP server + loopback device bridge (was `mcp:serve`, still aliased)
@@ -50,6 +61,8 @@ pnpm exec playwright test src/tests/e2e/graph-editing.spec.ts
 
 Vitest workspace: `*.test.ts` → project `headless` (node env); `*.test.tsx` → project `browser` (jsdom, browser resolve conditions, 20 s timeout). `vitest` does not typecheck; a green suite says nothing about types.
 
+Playwright has two projects and neither opens a window (T1616b). `chromium` runs the headless shell, which resolves no WebGPU adapter, and carries the editor and domain specs. `chromium-gpu` runs the full browser headless on the machine's real GPU and carries the pixel specs named in `NEEDS_A_REAL_ADAPTER` in `playwright.config.ts`. A spec file runs in the one project that matches it, so naming the file is enough. Playwright's `--headed` puts the run in Chromium windows on the owner's desktop: use it to watch one spec, never for a gate run.
+
 Running plain `node` against `src/**` requires the alias loader (path aliases come from `tsconfig.app.json`):
 
 ```bash
@@ -64,18 +77,22 @@ The bare `node --experimental-strip-types src/...` form is dead and has been "fi
 
 ## Scoping test runs
 
-`pnpm test` is >2 minutes and most changes cannot reach most of it. Default to this ladder instead:
+`pnpm test` is >2 minutes and most changes cannot reach most of it. **Tests follow the blast radius** (owner, 2026-10-05): never run a directory-wide vitest (`src/examples`, `src/app`, `src/editor`, …), and never an every-example or every-node file (`runner.test.ts`, `examples.gpu.test.ts`, `catalogue-dawn.gpu.test.ts`, `cook-oracle.test.ts`) without a `-t` filter — pick the examples that use what you changed (`grep -l '"type": "<type>"' examples/*.loom.json`). Default to this ladder instead:
 
 1. **`pnpm vitest run <paths>`** — the tests for what you touched, named directly. Seconds.
-2. **`pnpm test:gates`** — ~7.4 s, and **not optional**. These 48 files walk the *source tree* (`readdirSync`, globs) or the *document set* rather than importing what they check, so **no dependency-graph selector can find them and your own file's tests will never pull them in** (§V957): `composition-seams` (a factory no product entry point reaches), `command-holder` (a command with no coverage row), `emission-sites` (an unregistered pump), `rename-gate` (an unregistered storage address), `layout` (§V389, two nodes on top of each other in a shipped document), `doc-drift`, `tokens`, `helper`, `copy-guard`, `headless`, `side-effects`, and the `guardrails/`. They are the ones that catch what you did not know you touched.
+2. **`pnpm test:gates`** — ~15 s of every core, so run it **when the change can reach what it walks, and then once**: you added, moved, renamed or deleted a file under `src/`, or changed a node definition's shape (ports, parameters), a command registration, an exported `create*`/`open*` factory, a storage key, a shipped example or its `.md`, a doc that names commands, `package.json` scripts or eslint config. An edit inside an existing function does not need it; an edit only under `src/projects/**` does not either. These 62 files walk the *source tree* (`readdirSync`, globs) or the *document set* rather than importing what they check, so **no dependency-graph selector can find them and your own file's tests will never pull them in** (§V957): `composition-seams` (a factory no product entry point reaches), `command-holder` (a command with no coverage row), `emission-sites` (an unregistered pump), `rename-gate` (an unregistered storage address), `layout` (§V389, two nodes on top of each other in a shipped document), `doc-drift`, `tokens`, `helper`, `copy-guard`, `headless`, `side-effects`, and the `guardrails/`. They are the ones that catch what you did not know you touched.
 
    **The list is derived, not remembered** (T1273). `gate-list.test.ts` walks `src/**` for tests that discover their subjects by `readdirSync`/`import.meta.glob`, AND (T1274) for non-GPU tests that IMPORT a document-set enumerator (`listExamples`, `EXAMPLE_DOCUMENTS`, …), and fails when one is not named in the `test:gates` script — because a hand-maintained list of the gates nothing can find is one edit away from being wrong, and was: `layout.test.ts` was off it while §V389 sat red on two freshly-landed rows. Add a gate of that class to the script, or exempt it by name with a reason. If it is not CHEAP, give it its own script instead: this one runs before every commit.
 3. **`pnpm typecheck`** — always. It is the cheapest cross-file blast-radius check you have.
-4. **`pnpm test` in full** only when the blast radius genuinely is everything: a change to a **shared abstraction, a registry, a domain type, or a generated artefact**. Moving a file counts.
+4. **`pnpm test` in full only when the owner asks for it.** It takes minutes and saturates a machine several sessions share. After a change to a **shared abstraction, a registry, a domain type, or a generated artefact** (moving a file counts), widen step 1 instead: name the directories the change reaches.
 
 `pnpm build` still gates anything touching the asset pipeline or imports — vite-only breakage passes tsc *and* vitest.
 
 `pnpm vitest related --run <changed files>` selects step 1 for you off the module graph (≈7 s for a leaf module). **It is not cheap wherever the module graph fans out through a registry** — measured at ~5 minutes under `src/examples/**` (the whole GPU claims suite, T1211) and 332 files / 219 s for a single node definition, `src/nodes/definitions/audio.ts` (T1228). A node definition reaches the registry, and the registry reaches everything. **Name the paths yourself in those directories.** It needs `assetsInclude: ["**/*.md"]` in `vitest.config.ts` — without it, import analysis reaches `example-catalogue.ts`'s `examples/*.md` glob, resolves the specifier before its `?raw` query applies, and throws on prose. **It still does not select the step-2 gates** — nothing does.
+
+## Heavy commands share one queue
+
+Several agent sessions and the owner share this machine. Run anything heavy through `tools/heavy.sh <command…>`: GPU/Dawn tests (`*.gpu.test.ts`), Playwright, `pnpm build`, `pnpm test:gates`, render and build scripts under `src/projects/**`, and any vitest run over more than about twenty files. It is a machine-wide counting semaphore (two slots by default, `LOOM_HEAVY_SLOTS` to change), shared by every session and git worktree, so six agents never render at once; the rest wait in line. `pnpm typecheck`, eslint and a few named test files do not need it.
 
 ## GPU tests (Dawn)
 
@@ -109,12 +126,27 @@ Path aliases: `@domain @compiler @runtime @editor @nodes @ui @agent @devices` �
 - §V63: no `window`/`document` globals under `src/compiler/**` and `src/runtime/**` (worker-movable).
 - §V29: no `.internals` / `.raw` store access outside `src/domain/commands`.
 - §V145: domain types whose names collide with DOM globals (`MediaSource`, …) must be imported explicitly.
+- §V1028 (`v1028/layering-zone`): a layer may not import the layer that imports it — `src/domain/parameters` ↛ `presets`, `components`; `src/domain` ↛ `src/ui`, `src/editor`, react; type-only imports included. A module-scope read across an import cycle fails only under plain `node` (B246), which is why `first-import.test.ts` is on `test:gates`.
 
 ## Examples are executable specs
 
 `examples/E*.loom.json` (+ sibling `E*.md`, `examples/components/*.loom.json`) are GENERATED from `src/examples/documents/*.ts` through the real save path. Never hand-edit the JSON. Edit the document source, regenerate with `--only <name>`, commit both. Guards: `sync.test.ts` (bytes match source), `doc-drift.test.ts` (fenced `name(type)` claims in the `.md` match the graph), `readme.test.ts` (README index row per example), plus per-example `*.gpu.test.ts` / `*-claims.gpu.test.ts` asserting the concept from rendered pixels. An unscoped regen rewrites every example and sweeps other sessions' in-flight document changes. Starter components (`src/examples/starter-components.ts`) scope the same way — `--only <ComponentName>` (T1221).
 
 `AGENTS.md` at the root carries the same rules for other agents; keep the two consistent.
+
+## Node names are `kind_role` (T1593b)
+
+A node's name carries its kind as a prefix: `slider_lamp`, `light_lamp`, `blur_diffuse`, `kernel_joints`. The kind is one lowercase word per node type, declared in ONE table, `NODE_KINDS` in `src/domain/graph/node-kinds.ts` (`pointKernel` is `kernel`, `movieFileIn` is `movie`); then one underscore; then the role, which holds letters, digits and underscores only. A new node is auto-named kind plus a number (`blur1`), which already conforms. Full rule, the table and the phase 2 plan: `docs/node-naming-2026-10-05.md`.
+
+- `conformsToKind(name, kind)` is the one answer to whether a name conforms. Do not write a second regex.
+- A component instance is named for its COMPONENT: an instance of Bloom is `bloom1`, then `bloom_glow`. Its kind is the component's own name, lowercased, letters only, and it is not in the type string (a component's id is minted), so ask `kindOf(definition)`; `kindOfType(type)` refuses an instance type. A new instance is auto-named (from the library, an import or an `addNode`; the one a saved selection becomes follows with the phase 2 sweep, because it changes the shipped starter component files). Renaming a component renames no node.
+- In a document source, `named(role, type, …)` (`src/examples/documents/builders.ts`) writes the name from the role alone, and `namedInstance(role, componentName, type, …)` does it for a component instance. New examples, projects, tests and fixtures use `kind_role`.
+- A new node type needs a row in `NODE_KINDS`; sharing a kind with another type needs an entry in `KIND_FAMILIES`.
+- `node.rename` puts the kind in front of a name that lacks it and says so; `exact: true` stores a name as given. A `label` inside a patch (`addNode`, `setNodeLabel`) is always stored exactly: write it in full. The agent tool `apply_graph_patch` stores it and WARNS when it lacks its kind (`data.unconformingLabels` gives the conforming form).
+- Stored names never move. Changing a kind renames nothing in any document.
+- `src/examples/node-names.test.ts` (on `test:gates`) fails a shipped node whose name lacks its kind. Files written before the rule are in its `NOT_YET_RENAMED` ledger with the exact count each still owes; the count must match, so it can only go down. A component's In and Out are exempt: their name is the socket's label.
+- A surface with room for one word (a Panel board, the Layers list, the phone) captions a Presets bank, a Layer, a Cue List and an untitled Panel by the ROLE of the name: `presets_looks` reads `looks`. Use `surfaceNameOf(node, catalogue)` (`src/nodes/definitions/controls.ts`); it is a caption, never an address, and a name that does not carry its kind is shown whole.
+- Below 70 % zoom every node carries a label, its kind and then the rest of its name, that does not shrink with the canvas (T1597b, `src/editor/nodes/kind-label.ts`). The canvas writes the zoom on each label element; never put it on an ancestor of the nodes as an inherited custom property (measured: twelve times the cost).
 
 ## Testing bar (enforced in review)
 

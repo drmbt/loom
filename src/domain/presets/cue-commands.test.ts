@@ -726,7 +726,7 @@ describe("a cue that fires a SHOT is still one GO (§T1499b's planner, T1500b)",
 describe("renaming a bank carries the cues that name it (§V128, T1500b)", () => {
   it("the cue follows the rename and GO still fires it", async () => {
     const { bus, store } = session();
-    const renamed = await bus.execute("node.rename", { nodeId: "looks", label: "city" }, contextFor(alice));
+    const renamed = await bus.execute("node.rename", { nodeId: "looks", label: "city", exact: true }, contextFor(alice));
     expect(renamed.status).toBe("applied");
     const parsed = parseCueList(value(store, "list", "cues"));
     expect(parsed.ok ? parsed.list.cues.map((each) => each.bank) : []).toEqual(["city", "fx", "city"]);

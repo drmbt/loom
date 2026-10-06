@@ -46,7 +46,7 @@ describe("sameRenderedValue — proven equal, or false", () => {
   it("walks a fresh diagnostic, and sees a difference in ANY of its fields", () => {
     const diagnostic = {
       severity: "warning",
-      code: "parameter.expression",
+      code: "parameter.reference.node",
       message: "op('lfo1').chan.value: there is no node named \"lfo1\"",
       nodeId: "n1",
     };

@@ -139,7 +139,10 @@ describe("T1076 — eight point attributes on Dawn, which two bindings used to c
 
     /* CLAIM 3, before anything runs: the kernel spends TWO storage buffers for eight
        attributes — its own packed read half and its own write half. Sixteen, before. */
-    const kernel = plan.passes.find((pass) => (pass as { nodeId?: string }).nodeId === "sim") as {
+    // T1583b: the dispatch, by kind — the node's first pass is now its step region's marker.
+    const kernel = plan.passes.find(
+      (pass) => pass.kind === "dispatch" && (pass as { nodeId?: string }).nodeId === "sim",
+    ) as {
       buffers?: ReadonlyArray<{ resourceId: string; half?: string }>;
     };
     expect(kernel.buffers?.map((binding) => `${binding.resourceId}:${binding.half}`)).toEqual([

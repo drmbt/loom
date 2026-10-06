@@ -6,8 +6,8 @@ import { isParameterSlot } from "@domain/parameters/slots.ts";
 import { decodeMidiMessage, midiChannelName, parseMidiMapping, serialiseMidiMapping, type MidiSource } from "@domain/midi/midi-mapping.ts";
 import { boxesOverlap, nodeBox } from "@domain/graph/node-box.ts";
 import { resolveParameters } from "@domain/parameters/resolve.ts";
-import { NO_FLATTENING, parameterReadOptions } from "@domain/parameters/node-references.ts";
-import { authoredGraph, type GraphNode } from "@domain/types/graph.ts";
+import { parameterReadOptions } from "@domain/parameters/node-references.ts";
+import type { GraphNode } from "@domain/types/graph.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { StoredParameter } from "@domain/types/parameters.ts";
 import { controlMidiBinding, learnControlMidiPlan, unlearnControlMidiPlan } from "./midi-controls.ts";
@@ -50,7 +50,8 @@ function readings(runtime: AppRuntime, label: string) {
   return (data?: readonly number[], port = PORT) => {
     const message = data === undefined ? null : decodeMidiMessage(Uint8Array.from(data));
     const frame = { timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index++, mode: "realtime", randomSeed: 1 } as const;
-    const values = session.evaluate(graph(runtime), frame, { channels: (name) => message !== null && name === midiChannelName(port, message.source) ? message.raw : undefined });
+    const flattened = runtime.flattened.current();
+    const values = session.evaluate(flattened.graph, frame, { flattening: flattened, channels: (name) => message !== null && name === midiChannelName(port, message.source) ? message.raw : undefined });
     expect(values.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
     return values.byId.get(named(runtime, label).id);
   };
@@ -85,9 +86,12 @@ describe("MIDI learning uses one document patch and the existing value graph", (
     await learn(runtime, "heat", "value");
     const session = createValueGraphSession(runtime.registry);
     const frame = { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "realtime", randomSeed: 1 } as const;
-    const values = session.evaluate(graph(runtime), frame, { channels: (name) => name === midiChannelName(PORT, CC) ? 127 : undefined });
+    // What the app's value graph evaluates (`use-value-graph.ts`): the runtime's flattening,
+    // whole. The downstream read is the plan's per-frame one, over the same flattening.
+    const flattened = runtime.flattened.current();
+    const values = session.evaluate(flattened.graph, frame, { flattening: flattened, channels: (name) => name === midiChannelName(PORT, CC) ? 127 : undefined });
     const target = named(runtime, "picture");
-    const options = parameterReadOptions({ graph: authoredGraph(graph(runtime)), registry: runtime.registry, channels: values.resolver, frame, flattening: NO_FLATTENING });
+    const options = parameterReadOptions({ graph: flattened.graph, registry: runtime.registry, channels: values.resolver, frame, flattening: flattened });
     expect(resolveParameters(target, runtime.registry.get(target.type), options).values["opacity"]).toBe(1);
   });
 
@@ -109,6 +113,13 @@ describe("MIDI learning uses one document patch and the existing value graph", (
     expect(nodes(runtime, "valueCount")).toHaveLength(1);
     expect(nodes(runtime, "valueCount")[0]?.parameters).toMatchObject({ holdoff: 0, threshold: 0.5 });
     expect(Object.keys(graph(runtime).edges)).toHaveLength(1);
+    // T1593b: the two nodes a learn makes are named for what they ARE, and the button reads
+    // them by exactly those names. A name minted one way and read another would resolve to
+    // nothing, and the counts below would never move.
+    expect(nodes(runtime, "midiIn").map((node) => node.label)).toEqual(["midiin1"]);
+    expect(nodes(runtime, "valueCount").map((node) => node.label)).toEqual(["count_midi"]);
+    expect(JSON.stringify(named(runtime, "fire").parameters["held"])).toContain("op('midiin1').chan.");
+    expect(JSON.stringify(named(runtime, "fire").parameters["presses"])).toContain("op('count_midi').chan.");
     const read = readings(runtime, "fire");
     expect(read()).toEqual({ value: 0, valueCount: 5 });
     expect(read(cc(63))).toEqual({ value: 0, valueCount: 5 });

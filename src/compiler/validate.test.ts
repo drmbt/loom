@@ -31,13 +31,21 @@ describe("validateGraph — definitions and parameters (T24)", () => {
     expect(result.diagnostics.some((d) => d.severity === "error" && d.nodeId === "a")).toBe(true);
   });
 
-  it("warns about a parameter the definition does not declare", () => {
-    const graph = testGraph([testNode("a", "fx.blur", { parameters: { radius: 2, ghost: 1 } })]);
+  it("says a stored key the definition does not declare is read by nothing: the write gate's own finding, at rest", () => {
+    const graph = testGraph([testNode("a", "fx.blur", { parameters: { radius: 2, ghost: 1, radus: 3 } })]);
     const result = validateGraph(flatDocument(graph), registry);
 
-    expect(
-      result.diagnostics.some((d) => d.code === CompilerDiagnosticCode.parameterUnknown),
-    ).toBe(true);
+    // §T1641b slice 2: one code for the write and for the document at rest, at error.
+    const unknown = result.diagnostics.filter((d) => d.code === "parameter.unknown");
+    expect(unknown.map((d) => [d.severity, d.nodeId])).toEqual([
+      ["error", "a"],
+      ["error", "a"],
+    ]);
+    expect(unknown[0]?.message).toBe('Node "a" stores a value under "ghost", which "fx.blur" does not declare: nothing reads it.');
+    expect(unknown[0]?.suggestion).toBe("Declared: radius. Or remove the stored value: parameter.removeUndeclared (in a patch: removeParameters).");
+    expect(unknown[1]?.suggestion).toBe('Nearest: "radius". Declared: radius. Or remove the stored value: parameter.removeUndeclared (in a patch: removeParameters).');
+    // The declared value beside them is still the one handed on.
+    expect(result.nodes.get("a")?.parameters).toEqual({ radius: 2 });
   });
 
   it("warns when the saved definition version differs from the registry's", () => {
@@ -142,8 +150,9 @@ describe("validateGraph — per-component expressions (§B231)", () => {
       expression: { kind: "expression" as const, source },
     },
   });
+  // §T1641b: each way an expression fails has its own code, under these two stems.
   const expressionDiagnostics = (result: ReturnType<typeof validateGraph>) =>
-    result.diagnostics.filter((d) => d.code === "parameter.expression");
+    result.diagnostics.filter((d) => d.code.startsWith("parameter.expression.") || d.code.startsWith("parameter.reference."));
 
   it("reports an unknown function on a reflected kernel component, naming node, key and function", () => {
     const graph = testGraph([
@@ -157,6 +166,9 @@ describe("validateGraph — per-component expressions (§B231)", () => {
     expect(reported?.nodeId).toBe("k");
     expect(reported?.message).toContain('"place.x"');
     expect(reported?.message).toContain('unknown function "saturate"');
+    // §T1641b: it can never evaluate, so it is an error, and it says what to write instead.
+    expect([reported?.severity, reported?.code]).toEqual(["error", "parameter.expression.syntax"]);
+    expect(reported?.suggestion).toBe("Write clamp(abstime, 0, 1).");
     // What the kernel is handed: the retained x, the bare key's y and z.
     expect(result.nodes.get("k")?.parameters["place"]).toEqual([0.25, 2, 3]);
   });
@@ -170,6 +182,8 @@ describe("validateGraph — per-component expressions (§B231)", () => {
     expect(reported?.nodeId).toBe("cam");
     expect(reported?.message).toContain('"lookAt.y"');
     expect(reported?.message).toContain("mod(): the period is zero");
+    // §T1641b: arithmetic that fails for THESE inputs may read at another frame: a warning.
+    expect([reported?.severity, reported?.code]).toEqual(["warning", "parameter.expression.value"]);
   });
 
   it("stays silent on a valid component expression, whose value is the one handed on", () => {

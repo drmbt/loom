@@ -20,18 +20,18 @@ At the detector's defaults the analysis counts exactly **56 kicks**, **28 snares
 ## The graph
 
 ```
-clip1(audioFileIn) -> analysis1 -+-> lvl1(valueSelect)   the conditioned lanes, ranked over 16 s
-                                 +-> hit1(valueSelect)   the counts, decaying over 250 ms
+audiofile_clip(audioFileIn) -> audioanalysis1 -+-> select_lvl(valueSelect)   the conditioned lanes, ranked over 16 s
+                                 +-> select_hit(valueSelect)   the counts, decaying over 250 ms
 
-bg1(solid) -> flash1(level) ----------------------------------------------+
-core1(circle) -> kick1(transform) -> halo1(blur) -> glow1(level) -> tint1(hsv) -+
-ringo1(circle) -> ring1(multiply) <- hole1(circle) ; ring1 -> snap1(level) -----+-> mix1(add) -> output1(output)
-grain1(noise) -> spark1(threshold) -> hats1(level) --------------------------+
-hand1(rectangle) -> sweep1(transform) -> tick1(level) -----------------------+
-kick1 ---------------------------------------------------------------------+
+solid_background(solid) -> level_flash(level) ----------------------------------------------+
+circle_core(circle) -> transform_kick(transform) -> blur_halo(blur) -> level_glow(level) -> hsv_tint(hsv) -+
+circle_ringo(circle) -> multiply_ring(multiply) <- circle_hole(circle) ; multiply_ring -> level_snap(level) -----+-> add_mix(add) -> output1(output)
+noise_grain(noise) -> threshold_spark(threshold) -> level_hats(level) --------------------------+
+rectangle_hand(rectangle) -> transform_sweep(transform) -> level_tick(level) -----------------------+
+transform_kick ---------------------------------------------------------------------+
 ```
 
-`analysis1` is the starter component `AudioAnalysis`, unchanged. Its `levels` output is the source's bands and centroid after the envelope and the running-rank normaliser; its `hits` output is the four counts, each held at 1 on the frame it fires and decaying over `hitDecay` milliseconds. The two Selects pass each bag through unchanged at their default `*` — they exist so each bag has a name an expression can reach. They were Limits at 0…1 until T1302b, which is the identity only on lanes that live there: the hits bag also carries the tempo claim, and the Limit clipped `bpm` 124 to 1 and `beat` and `bar` to at most 1.
+`audioanalysis1` is the starter component `AudioAnalysis`, unchanged. Its `levels` output is the source's bands and centroid after the envelope and the running-rank normaliser; its `hits` output is the four counts, each held at 1 on the frame it fires and decaying over `hitDecay` milliseconds. The two Selects pass each bag through unchanged at their default `*` — they exist so each bag has a name an expression can reach. They were Limits at 0…1 until T1302b, which is the identity only on lanes that live there: the hits bag also carries the tempo claim, and the Limit clipped `bpm` 124 to 1 and `beat` and `bar` to at most 1.
 
 ## The legend, lane by lane
 
@@ -39,16 +39,16 @@ Every lane owns exactly one visual, so cutting a lane removes one thing and noth
 
 | lane | drives | what you see |
 | --- | --- | --- |
-| `levels.low` | `core1` radius | the core breathes with the held bass note; it re-centres after the silence as the normaliser's window refills |
-| `levels.level` | `halo1` blur size | the halo spreads with how loud the whole mix is |
-| `levels.high` | `glow1` brightness | the halo's brightness is the hat band, which is why it dims for bars 5–8 and is back for 11–16 |
-| `levels.centroid` | `tint1` hue offset | the halo is warm when the spectrum sits low (hats dropped) and swings cool when the hats and the ping pull it up |
-| `hits.kickCount` | `kick1` scale | the core jumps a third larger on every beat and falls back over 250 ms |
-| `hits.snareCount` | `snap1` brightness | the ring flashes on 2 and 4 |
-| `hits.hatCount` | `hats1` brightness | sparks scatter on every eighth — none in bars 5–8, and in bars 12–16 the downbeat has none because the open hat before it is still ringing |
-| `hits.onsetCount` | `flash1` brightness | the backdrop blinks on every onset, drums of any kind |
-| `clip1.barPhase` | `sweep1` rotation | the hand sweeps once round per bar |
-| `clip1.beatPhase` | `tick1` brightness | the hand is brightest on the beat and fades towards the next |
+| `levels.low` | `circle_core` radius | the core breathes with the held bass note; it re-centres after the silence as the normaliser's window refills |
+| `levels.level` | `blur_halo` blur size | the halo spreads with how loud the whole mix is |
+| `levels.high` | `level_glow` brightness | the halo's brightness is the hat band, which is why it dims for bars 5–8 and is back for 11–16 |
+| `levels.centroid` | `hsv_tint` hue offset | the halo is warm when the spectrum sits low (hats dropped) and swings cool when the hats and the ping pull it up |
+| `hits.kickCount` | `transform_kick` scale | the core jumps a third larger on every beat and falls back over 250 ms |
+| `hits.snareCount` | `level_snap` brightness | the ring flashes on 2 and 4 |
+| `hits.hatCount` | `level_hats` brightness | sparks scatter on every eighth — none in bars 5–8, and in bars 12–16 the downbeat has none because the open hat before it is still ringing |
+| `hits.onsetCount` | `level_flash` brightness | the backdrop blinks on every onset, drums of any kind |
+| `audiofile_clip.barPhase` | `transform_sweep` rotation | the hand sweeps once round per bar |
+| `audiofile_clip.beatPhase` | `level_tick` brightness | the hand is brightest on the beat and fades towards the next |
 
 The two phase lanes are read from the **source**, not the component. §V952 draws the line: a conditioned level goes through `levels`, a count goes through `hits`, and a phase is neither — it is not a level to rank and not a count to decay, so the component does not touch it.
 

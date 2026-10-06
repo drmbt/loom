@@ -8,6 +8,7 @@ import { CAMERA_PARAMS, DOF_WGSL, GTAO_WGSL, VIEW } from "../../furnace/screen-s
 import { ENVIRONMENT_HDRI_WGSL, ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { CRT_WGSL, GRADE_WGSL } from "../fx.ts";
 import { GLOSSY_SSR_WGSL } from "../reflections.ts";
+import { geometryName, lightName, meshName } from "../names.ts";
 import type { Area, OnNothingFacts } from "../scene-facts.ts";
 import { GLASS_COMPOSITE_WGSL, LAMP_GLASS_WGSL, OCCLUDER_WGSL, SURFACE_WGSL } from "../surface.ts";
 import { Chain, type Port, cameraParams, easeOut, smooth, vec3 } from "./title-graph.ts";
@@ -373,14 +374,14 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
   const path = titlePath("abstime");
   const before = titlePath(PREVIOUS_T);
 
-  chain.add("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: titleSurface(), floorGain: 0.35, matteAlbedo: 0.2, matteRoughness: 0.5, specularAA: 1, headGain: 0.06, tailGain: 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6, peel: 0 }, { label: "surf1" });
+  chain.add("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: titleSurface(), floorGain: 0.35, matteAlbedo: 0.2, matteRoughness: 0.5, specularAA: 1, headGain: 0.06, tailGain: 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6, peel: 0 }, { label: "material_surf" });
 
   // ── Meshes: the warehouse, the hero and the two white cars beside it, the title ──
   /** A Mesh File In of `select` (sized by `area`'s facts), moved by `move`: its points port. */
   const load = (id: string, area: Area, select: string, move: V3 | undefined, y: number): Port => {
     const mesh = facts.areas.get(area);
     if (mesh === undefined) throw new Error(`titleDocument: no "${area}" area in the GLB.`);
-    chain.add(`mesh_${id}`, "meshFileIn", [-3600, y], { file: facts.glbUrl, select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts });
+    chain.add(`mesh_${id}`, "meshFileIn", [-3600, y], { file: facts.glbUrl, select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts }, { label: meshName(id) });
     if (move === undefined) return [`mesh_${id}`, "out"];
     chain.add(`place_${id}`, "pointTransform", [-3450, y], { translate: vec3(move), pivot: "origin" });
     chain.link([`mesh_${id}`, "out"], [`place_${id}`, "points"]);
@@ -392,9 +393,9 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
   areas.forEach((area, index) => {
     const points = load(area, area, facts.areas.get(area)?.select ?? `${area}.*`, PLACEMENT[area], index * 250);
     if (area.startsWith("car")) carPoints.set(area, points);
-    chain.add(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "surf1" });
+    chain.add(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "material_surf" }, { label: geometryName(area) });
     chain.link(points, [`geo_${area}`, "points"]);
-    scenes.push(`geo_${area.toLowerCase()}1`);
+    scenes.push(geometryName(area));
   });
   // Lamp glass: its OWN Render (surface.ts LAMP_GLASS_WGSL), every title car a black depth
   // occluder where the title put it, composited additively after the occlusion pass, as
@@ -404,16 +405,16 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
   const glassScenes: string[] = [];
   const glassArea = facts.areas.get("lampglass");
   if (glassArea !== undefined) {
-    chain.add("glassMat", "materialWgsl", [-3300, 1900], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02, glint: 0.8, sheen: 0.03 }, { label: "glassmat1" });
-    chain.add("occMat", "materialWgsl", [-3300, 2000], { model: "unlit", source: OCCLUDER_WGSL, roughness: 1 }, { label: "occmat1" });
+    chain.add("glassMat", "materialWgsl", [-3300, 1900], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02, glint: 0.8, sheen: 0.03 }, { label: "material_glass" });
+    chain.add("occMat", "materialWgsl", [-3300, 2000], { model: "unlit", source: OCCLUDER_WGSL, roughness: 1 }, { label: "material_occ" });
     const glass = load("lampglass", "lampglass", glassArea.select, undefined, 2100);
-    chain.add("geo_lampglass", "geometry", [-3000, 2100], { mode: "surface", material: "glassmat1" });
+    chain.add("geo_lampglass", "geometry", [-3000, 2100], { mode: "surface", material: "material_glass" }, { label: "geometry_lampglass" });
     chain.link(glass, ["geo_lampglass", "points"]);
-    glassScenes.push("geo_lampglass1");
+    glassScenes.push("geometry_lampglass");
     cars.forEach((area, index) => {
-      chain.add(`occ_${area}`, "geometry", [-3000, 2200 + index * 100], { mode: "surface", material: "occmat1" });
+      chain.add(`occ_${area}`, "geometry", [-3000, 2200 + index * 100], { mode: "surface", material: "material_occ" });
       chain.link(carPoints.get(area)!, [`occ_${area}`, "points"]);
-      glassScenes.push(`occ_${area}1`);
+      glassScenes.push(`geometry_occ_${area}`);
     });
   }
 
@@ -439,14 +440,14 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
       occlusion: true,
     });
     chain.link(["cookie", "out"], ["head0", "cookie"]);
-    projectors.push("head01");
+    projectors.push("projector_head0");
   }
   // The room's practicals: old sodium high-bays warming the trusses and the brick, and a soft
   // key high behind the lens that gives the matte paint its sheen and the chrome its top light.
   const point = (id: string, position: V3, color: readonly number[], intensity: number, shadow?: { extent: number; softness: number }): void => {
     const casts = shadow === undefined ? {} : { shadows: true, shadowExtent: shadow.extent, shadowSoftness: shadow.softness };
-    chain.add(id, "light", [-2600, 1800 + lights.length * 80], { kind: "point", position: vec3(position), color: [...color], intensity, ...casts });
-    lights.push(`${id.toLowerCase()}1`);
+    chain.add(id, "light", [-2600, 1800 + lights.length * 80], { kind: "point", position: vec3(position), color: [...color], intensity, ...casts }, { label: lightName(id.toLowerCase()) });
+    lights.push(lightName(id.toLowerCase()));
   };
   const warm = [1, 0.72, 0.5, 1];
   point("sodiumL", [-6, 5.5, -7], warm, 16);
@@ -474,7 +475,7 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
     chain.add("envHdri", "customWgsl", [-2700, 700], { source: ENVIRONMENT_HDRI_WGSL, gain: 0.4, crush: 0.25, desaturate: 0.35 }, { resolution: { mode: "fixed", width: 1024, height: 512 } });
     chain.link(["hdri", "out"], ["envHdri", "input"]);
     // A soft pre-blur: the Render's 32 taps over a sharp HDRI streak on the satin paint.
-    chain.add("envBlur", "blur", [-2500, 700], { size: 3, filter: "gaussian", extend: "repeat" });
+    chain.add("envBlur", "blur", [-2500, 700], { size: 3, filter: "gaussian", extend: "repeat" }, { label: "blur_env" });
     chain.link(["envHdri", "out"], ["envBlur", "input"]);
   }
 
@@ -493,10 +494,10 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
     "lookAt.y": slot(path.aim[1], AIM[1]),
     "lookAt.z": slot(path.aim[2], AIM[2]),
     roll: slot(path.roll, 0),
-  }, { label: "cam1" });
+  }, { label: "camera1" });
   chain.add("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
-    camera: "cam1",
+    camera: "camera1",
     lights: lights.join(" "),
     projectors: projectors.join(" "),
     ambientColor: [1, 1, 1, 1],
@@ -508,7 +509,7 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
     albedoOutput: true,
     environmentIntensity: 1,
     environmentTaps: 32,
-  }, { label: "shot1" });
+  }, { label: "render_shot" });
   chain.link([options.hdri === true ? "envBlur" : "env", "out"], ["shot", "environment"]);
 
   // ── Screen space: reflections, contact occlusion, haze, depth of field ──
@@ -518,7 +519,7 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
   chain.pass("reflections", GLOSSY_SSR_WGSL, { ...cam, strength: 1.1, maxDistance: 30, roughnessCutoff: 0.55, thickness: 0.4, blur: 1.6, stretch: 4, keepBright: 4, dimShare: 0.1 }, [depth, normal], [-2100, 0]);
   chain.pass("occlusion", GTAO_WGSL, { ...cam, radius: 1.3, strength: 0.95, power: 1.6 }, [depth, normal], [-1900, 0]);
   if (glassScenes.length > 0) {
-    chain.add("glassShot", "render", [-2400, 700], { scenes: glassScenes.join(" "), camera: "cam1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1], antialias: "msaa", normalOutput: true }, { label: "glassshot1" });
+    chain.add("glassShot", "render", [-2400, 700], { scenes: glassScenes.join(" "), camera: "camera1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1], antialias: "msaa", normalOutput: true }, { label: "render_glassshot" });
     chain.pass("glass", GLASS_COMPOSITE_WGSL, {}, [["glassShot", "out"], ["glassShot", "normal"]], [-1800, 0]);
   }
   // The haze sees the hero's lamps and the moved cars' lamps where the title put them.
@@ -537,7 +538,7 @@ export function titleDocument(facts: OnNothingFacts, options: TitleOptions): Pro
   chain.pass("haze", hazeWgsl(hazeLights({ ...facts, markers }, ["head", "tube"])), { ...cam, density: 0.02, ambient: [0.006, 0.0055, 0.005], anisotropy: 0.72, head: 0.02, tube: BAY_HAZE, core: 0.4 }, [depth], [-1700, 0]);
   // Focus rides the script (its strokes stand ~4 cm in front of the grille, z ≈ 0.04): the focus
   // puller follows the push-in, so the title stays sharp while the flanks and the room go soft.
-  chain.pass("dof", DOF_WGSL, { ...cam, focusDistance: slot(`op('cam1').par.eye.z - ${SCRIPT_Z}`, EYE[2] - SCRIPT_Z), aperture: 0.18, maxRadius: 5 }, [depth], [-1500, 0]);
+  chain.pass("dof", DOF_WGSL, { ...cam, focusDistance: slot(`op('camera1').par.eye.z - ${SCRIPT_Z}`, EYE[2] - SCRIPT_Z), aperture: 0.18, maxRadius: 5 }, [depth], [-1500, 0]);
 
   // ── Optics: the streak glass (turning with the roll), bloom ──
   // What the glass smears is judged over AREA (a quarter-size box average, then the threshold):
@@ -597,7 +598,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   chain.pass("lens", TITLE_LENS_WGSL, { k: DISTORTION, edgeBlur: 0.02, swirl: 0.7, aberration: 0.004, vignette: 0.55 }, [], [-300, 0]);
   chain.pass("grade", GRADE_WGSL, { exposure: 0.45, black: 0.05, contrast: 1.22, saturation: 0.7, keepWarm: 0.9, bleach: 0.25, steel: [0.97, 1.0, 1.02], shadowTint: [0.97, 1.01, 1.02, 1], split: 0.3, grain: 0.028 }, [], [-100, 0]);
   if (options.crt === true) chain.pass("crt", CRT_WGSL, { amount: 1 }, [], [500, 0]);
-  chain.add("out", "output", [700, 0], { toneMap: "none" }, { label: "out1" });
+  chain.add("out", "output", [700, 0], { toneMap: "none" }, { label: "output1" });
   chain.link(chain.last, ["out", "input"]);
   return chain.document("title", options.width ?? 1920, options.height ?? 818);
 }

@@ -10,14 +10,14 @@ import { CLOSE_POOL, CUT, DISCOVERED, HOT_POOL } from "./camera-path.ts";
  * Built from the structure nodes (Trend, Rate, Novelty, Count, Delay) over the source's
  * record, it publishes the few numbers the scene is driven by:
  *
- *   energy1    loudness, ranked over 45 s — where this moment sits in the arrangement;
- *   bright1    spectral centroid, ranked over 30 s — dark breaks vs bright walls of noise
- *              (this track's sections live here more than in loudness, measured);
- *   density1   onsets per second, ranked over 30 s — how busy;
- *   build1     the 6 s trend of energy, positive part, scaled — a build-up;
- *   sections1  a count of spectral novelty spikes (12 s apart at least) — section changes;
- *   cuts1      a count of CUTS and seconds since the last — the shot clock;
- *   shot1      which framing is live.
+ *   normalize_dirEnergy    loudness, ranked over 45 s — where this moment sits in the arrangement;
+ *   normalize_dirBright    spectral centroid, ranked over 30 s — dark breaks vs bright walls of noise
+ *                          (this track's sections live here more than in loudness, measured);
+ *   normalize_dirDensity   onsets per second, ranked over 30 s — how busy;
+ *   range_dirBuild         the 6 s trend of energy, positive part, scaled — a build-up;
+ *   count_dirSections      a count of spectral novelty spikes (12 s apart at least) — section changes;
+ *   count_dirCuts          a count of CUTS and seconds since the last — the shot clock;
+ *   expression_dirShot     which framing is live.
  *
  * THE BOUNDARIES (the part a person authors): cuts land only on bar lines; a shot lasts 8
  * bars when calm, 4 when energetic, 2 when energetic AND dense; a section change cuts at
@@ -29,13 +29,53 @@ import { CLOSE_POOL, CUT, DISCOVERED, HOT_POOL } from "./camera-path.ts";
  * what makes an offline take of the whole track the performance the app would give.
  */
 
-const label = (name: string): string => `${name}1`;
+/**
+ * What each of the director's nodes is called: its kind, then the lane it is (T1593b). A
+ * node's id is the lane; its name is written out here, so the name a person reads on the
+ * canvas can be found in this file, and `chan` reads a node by the name it was given. Where
+ * the lane's own word was the kind (`dirRate` on a Rate) the kind is not said twice.
+ */
+const NAMES = {
+  dirPick: "select_dirPick",
+  dirGrid: "select_dirGrid",
+  dirBands: "select_dirBands",
+  dirLevel: "select_dirLevel",
+  dirLevelLag: "lag_dirLevel",
+  dirEnergy: "normalize_dirEnergy",
+  dirAbsolute: "expression_dirAbsolute",
+  dirIntensity: "expression_dirIntensity",
+  dirCentroid: "select_dirCentroid",
+  dirCentroidLag: "lag_dirCentroid",
+  dirBright: "normalize_dirBright",
+  dirOnsets: "select_dirOnsets",
+  dirRate: "rate_dir",
+  dirDensity: "normalize_dirDensity",
+  dirTrend: "trend_dir",
+  dirBuild: "range_dirBuild",
+  dirNovelty: "novelty_dir",
+  dirNoveltyRank: "normalize_dirNoveltyRank",
+  dirSections: "count_dirSections",
+  dirBeatPick: "select_dirBeatPick",
+  dirBeats: "count_dirBeats",
+  dirKickPick: "select_dirKickPick",
+  dirKicks: "count_dirKicks",
+  dirOnsetCounts: "count_dirOnsetCounts",
+  dirGate: "expression_dirGate",
+  dirClocks: "expression_dirClocks",
+  dirCuts: "count_dirCuts",
+  dirCutPick: "select_dirCutPick",
+  dirShot: "expression_dirShot",
+  dirPreviousCut: "delay_dirPreviousCut",
+  dirPreviousShot: "delay_dirPreviousShot",
+} as const;
 
-function node(id: string, type: string, position: readonly [number, number], parameters: Record<string, StoredParameter>): GraphNode {
-  return buildNode(id, type, position, {}, { label: label(id), parameters });
+type Lane = keyof typeof NAMES;
+
+function node(id: Lane, type: string, position: readonly [number, number], parameters: Record<string, StoredParameter>): GraphNode {
+  return buildNode(id, type, position, {}, { label: NAMES[id], parameters });
 }
 
-const chan = (name: string, channel = "value"): string => `op('${label(name)}').chan.${channel}`;
+const chan = (name: Lane, channel = "value"): string => `op('${NAMES[name]}').chan.${channel}`;
 
 export interface Director {
   readonly nodes: readonly GraphNode[];

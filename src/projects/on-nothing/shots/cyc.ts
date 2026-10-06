@@ -268,21 +268,21 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
   const scenes: string[] = [];
   const lights: string[] = [];
 
-  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, cycAlbedo: 0.9 }, { label: "surf1" }));
+  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL, cycAlbedo: 0.9 }, { label: "material_surf" }));
 
   // The wide stands its far man by a tight-cove wall (cyc_set.py); the legs walk the big cyc.
   const cyc = (options.shot === "cyc-wide" ? facts.areas.get("cycwide") : undefined) ?? facts.areas.get("cyc");
   if (cyc === undefined) throw new Error("cycDocument: no cyc area in the GLB.");
-  nodes.push(node("mesh_cyc", "meshFileIn", [-3600, 0], { file: facts.glbUrl, select: cyc.select, vertices: cyc.vertices, triangles: cyc.triangles, parts: cyc.parts }, { label: "meshcyc1" }));
-  nodes.push(node("geo_cyc", "geometry", [-3300, 0], { mode: "surface", material: "surf1" }, { label: "geocyc1" }));
+  nodes.push(node("mesh_cyc", "meshFileIn", [-3600, 0], { file: facts.glbUrl, select: cyc.select, vertices: cyc.vertices, triangles: cyc.triangles, parts: cyc.parts }, { label: "mesh_cyc" }));
+  nodes.push(node("geo_cyc", "geometry", [-3300, 0], { mode: "surface", material: "material_surf" }, { label: "geometry_cyc" }));
   edges.push(edge("mesh-geo-cyc", ["mesh_cyc", "out"], ["geo_cyc", "points"]));
-  scenes.push("geocyc1");
+  scenes.push("geometry_cyc");
 
   // ── The figures: one mesh, one skin kernel each ──
   // The wardrobe the reference's walker wears (cyc_wardrobe.py); an older GLB has only the suit.
   const mesh = facts.areas.get("figcyc") ?? facts.areas.get("fig");
   if (mesh === undefined) throw new Error("cycDocument: no figure in the GLB.");
-  nodes.push(node("fig", "meshFileIn", [-3600, 1200], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, joints: mesh.joints }, { label: "fig1" }));
+  nodes.push(node("fig", "meshFileIn", [-3600, 1200], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, joints: mesh.joints }, { label: "mesh_fig" }));
   const known = new Set(facts.bones.map(boneParam));
   /** Each walker's steady velocity (m/s, world), for a camera that follows it. */
   const velocity = new Map<string, { v: V3; clock: string }>();
@@ -322,11 +322,11 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
       }
     }
     const id = `skin_${figure.id}`;
-    nodes.push(node(id, "pointKernel", [-3300, 1200 + index * 200], { capacity: mesh.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw, ...place, ...pose }, { label: `skin${figure.id}1` }));
-    nodes.push(node(`geo_${figure.id}`, "geometry", [-3000, 1200 + index * 200], { mode: "surface", material: "surf1" }, { label: `geo${figure.id}1` }));
+    nodes.push(node(id, "pointKernel", [-3300, 1200 + index * 200], { capacity: mesh.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw, ...place, ...pose }, { label: `kernel_skin${figure.id}` }));
+    nodes.push(node(`geo_${figure.id}`, "geometry", [-3000, 1200 + index * 200], { mode: "surface", material: "material_surf" }, { label: `geometry_${figure.id}` }));
     edges.push(edge(`fig-${id}`, ["fig", "out"], [id, "in"]));
     edges.push(edge(`${id}-geo`, [id, "out"], [`geo_${figure.id}`, "points"]));
-    scenes.push(`geo${figure.id}1`);
+    scenes.push(`geometry_${figure.id}`);
   });
 
   // ── Light: the key as a small AREA source (jittered casters: the penumbra widens with
@@ -345,16 +345,16 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
     const ring = i === 0 ? 0 : key.radius * 0.8;
     const a = (2 * Math.PI * i) / (TAPS - 1);
     const dir = [0, 1, 2].map((c) => axis[c]! + ring * (Math.cos(a) * uAxis[c]! + Math.sin(a) * vAxis[c]!));
-    nodes.push(node(`key${i}`, "light", [-2600, 1000 + i * 60], { kind: "directional", direction: dir, color: [1, 1, 1, 1], intensity: key.intensity / TAPS, shadows: true, shadowExtent: 7, shadowSoftness: 2 }, { label: `key${i}1` }));
-    lights.push(`key${i}1`);
+    nodes.push(node(`key${i}`, "light", [-2600, 1000 + i * 60], { kind: "directional", direction: dir, color: [1, 1, 1, 1], intensity: key.intensity / TAPS, shadows: true, shadowExtent: 7, shadowSoftness: 2 }, { label: `light_key${i}` }));
+    lights.push(`light_key${i}`);
   }
   if (p.top !== undefined && p.top > 0) {
-    nodes.push(node("top", "light", [-2600, 1500], { kind: "directional", direction: [0, -1, 0], color: [1, 1, 1, 1], intensity: p.top }, { label: "top1" }));
-    lights.push("top1");
+    nodes.push(node("top", "light", [-2600, 1500], { kind: "directional", direction: [0, -1, 0], color: [1, 1, 1, 1], intensity: p.top }, { label: "light_top" }));
+    lights.push("light_top");
   }
 
   // ── Environment (the white room, for the figure's sheen) ──
-  nodes.push(node("envSeed", "ramp", [-2700, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 512, height: 256 } }));
+  nodes.push(node("envSeed", "ramp", [-2700, 300], {}, { label: "ramp_envseed", resolution: { mode: "fixed", width: 512, height: 256 } }));
   // The cyc lies toward the camera's view; the key's source stands where its light comes from.
   const toward = unit([p.camera.lookAt[0] - p.camera.eye[0], 0, p.camera.lookAt[2] - p.camera.eye[2]]);
   nodes.push(node("env", "customWgsl", [-2700, 500], {
@@ -365,7 +365,7 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
     keyDir: vec(unit([-p.key.direction[0], -p.key.direction[1], -p.key.direction[2]])),
     keyGain: 1.2,
     keySize: 0.4,
-  }, { label: "env1", resolution: { mode: "fixed", width: 512, height: 256 } }));
+  }, { label: "wgsl_env", resolution: { mode: "fixed", width: 512, height: 256 } }));
   edges.push(edge("seed-env", ["envSeed", "out"], ["env", "input"]));
 
   // ── Camera: a truck with the walker (or not), and a hand on it ──
@@ -389,9 +389,9 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
     roll: expressionSlot(wander(hh.roll, hh.seed, 7), 0),
     fov: cam.fov,
   };
-  nodes.push(node("cam", "camera", [-2700, -900], { near: 0.05, far: 100, ...cameraParams }, { label: "cam1" }));
+  nodes.push(node("cam", "camera", [-2700, -900], { near: 0.05, far: 100, ...cameraParams }, { label: "camera1" }));
   const aim: V3 = cam.lookAt;
-  const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('cam1').par.${field}`, fallback);
+  const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('camera1').par.${field}`, fallback);
   const passCamera: Record<string, StoredParameter> = {
     eye: vec(cam.eye),
     aim: vec(aim),
@@ -408,7 +408,7 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
 
   nodes.push(node("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
-    camera: "cam1",
+    camera: "camera1",
     lights: lights.join(" "),
     projectors: "",
     ambientColor: [1, 1, 1, 1],
@@ -420,12 +420,12 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
     albedoOutput: true,
     environmentIntensity: 0.25,
     environmentTaps: 16,
-  }, { label: "shot1" }));
+  }, { label: "render_shot" }));
   edges.push(edge("env-shot", ["env", "out"], ["shot", "environment"]));
 
   let last: readonly [string, string] = ["shot", "out"];
   const pass = (id: string, source: string, extra: Record<string, StoredParameter>, more: readonly (readonly [string, string])[], position: readonly [number, number]): void => {
-    nodes.push(node(id, more.length > 0 ? "customWgslMulti" : "customWgsl", position, { source, ...extra }, { label: `${id.toLowerCase()}1`, resolution: { mode: "project" } }));
+    nodes.push(node(id, more.length > 0 ? "customWgslMulti" : "customWgsl", position, { source, ...extra }, { label: `wgsl_${id.toLowerCase()}`, resolution: { mode: "project" } }));
     edges.push(edge(`${last[0]}-${id}`, last, [id, "input"]));
     more.forEach((port, index) => edges.push(edge(`${id}-more${index}`, port, [id, "more"], index)));
     last = [id, "out"];
@@ -435,14 +435,14 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
   const scene = last;
 
   // ── Diffusion: the whole picture, blurred wide (the bloom pyramid with no threshold) ──
-  nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: 0, knee: 0.001 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }));
+  nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: 0, knee: 0.001 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }));
   edges.push(edge("scene-bright", scene, ["bright", "input"]));
   for (const level of [1, 2, 3, 4]) {
-    nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: 0 }, { label: `bloomdown${level}1`, resolution: { mode: "scale", factor: 0.5 } }));
+    nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } }));
     edges.push(edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]));
   }
   for (const level of [0, 1, 2, 3]) {
-    nodes.push(node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1.4 }, { label: `bloomup${level}1`, resolution: { mode: "scale", factor: 2 } }));
+    nodes.push(node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1.4 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } }));
     edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
     edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
   }
@@ -451,11 +451,11 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
   pass("finish", CYC_FINISH_WGSL, p.finish, [], [-100, 0]);
 
   // ── The trail: copies one output frame apart (the shutter's smear is render.ts's sub-frames) ──
-  nodes.push(node("trail", "echo", [300, 0], { amount: p.echo.trail, darken: p.echo.darken, delay: expressionSlot(TRAIL_DELAY, 1), frames: 9 }, { label: "trail1" }));
+  nodes.push(node("trail", "echo", [300, 0], { amount: p.echo.trail, darken: p.echo.darken, delay: expressionSlot(TRAIL_DELAY, 1), frames: 9 }, { label: "echo_trail" }));
   edges.push(edge("finish-trail", last, ["trail", "input"]));
   last = ["trail", "out"];
   if (options.crt === true) pass("crt", CRT_WGSL, { amount: 1 }, [], [500, 0]);
-  nodes.push(node("out", "output", [700, 0], { toneMap: "none" }, { label: "out1" }));
+  nodes.push(node("out", "output", [700, 0], { toneMap: "none" }, { label: "output1" }));
   edges.push(edge("last-out", last, ["out", "input"]));
 
   return {

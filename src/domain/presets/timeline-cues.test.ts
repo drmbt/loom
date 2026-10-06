@@ -21,6 +21,7 @@ import {
   DOCUMENT_STRUCTURE,
   planTimelineCues,
   timelineCuePosition,
+  timelineCueWarnings,
 } from "./timeline-cues.ts";
 import { testRead } from "../parameters/test-support.ts";
 
@@ -362,6 +363,51 @@ describe("T1508b — what covers a key, and what does not", () => {
     expect(untimed.map((warning) => warning.cue)).toEqual(["C"]);
     expect(untimed[0]?.diagnostic.message).toContain('Cue "C" (show)');
     expect(brightness(graph, 900)).toBe(0.4);
+  });
+});
+
+/**
+ * §T1559b (2) — a following list fires a bank whose Morph is DRIVEN. Its timed cues read the
+ * Morph stored, GO reads it live; the plan says so. What the compile then puts in the
+ * Problems list, and the fade's stored seconds in the uniform the GPU reads, are
+ * `compiler/timeline-cue-problems.test.ts`. Held here: the warning as the list's OWN surfaces
+ * read it (`timelineCueWarnings`: the inspector section and `cue.list`).
+ */
+describe("§T1559b (2) — a driven Morph on a bank a following list fires", () => {
+  const drivenMorph = {
+    mode: "expression",
+    bindings: { static: { kind: "static", value: 2 }, expression: { kind: "expression", source: "op('k1').chan.value" } },
+  } as const;
+  const stage = (follow: "live" | "timeline"): GraphDocument =>
+    doc([
+      node("grade", "level", "level1", { brightness: 0.2 }),
+      presetBankNode("looks", "looks", "level1", LOOKS, { morph: drivenMorph, curve: "linear" }),
+      list(
+        "show",
+        "show",
+        [
+          { name: "A", bank: "looks", preset: "bright", at: 1 },
+          { name: "B", bank: "looks", preset: "mid", at: 4 },
+        ],
+        follow,
+      ),
+    ]);
+
+  it("is one warning about the list (no cue), filed on the bank, and the fade is the stored 2 s", () => {
+    const graph = stage("timeline");
+    const said = timelineCueWarnings(graph, registry, "show");
+    expect(said.map((warning) => [warning.list, warning.cue, warning.diagnostic.code, warning.diagnostic.nodeId])).toEqual([
+      ["show", null, "cue.timeline.drivenMorph", "looks"],
+    ]);
+    expect(said[0]?.diagnostic.message).toContain('Cue list "show" follows the timeline and fires bank "looks", whose Morph is driven (expression)');
+    expect(said[0]?.diagnostic.message).toContain("the stored value, 2 s");
+    expect(brightness(graph, 45)).toBe(mix(0.2, 0.8, 0.25));
+  });
+
+  it("the same list switched to live says nothing: GO reads the driver", () => {
+    const graph = stage("live");
+    expect(timelineCueWarnings(graph, registry, "show")).toEqual([]);
+    expect(planTimelineCues(graph, registry).warnings).toEqual([]);
   });
 });
 

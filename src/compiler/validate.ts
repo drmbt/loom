@@ -16,7 +16,7 @@ import { NO_MORPHS } from "../domain/presets/morph-index.ts";
 import type { ParameterReadOptions, ResolveParametersOptions } from "../domain/parameters/resolve.ts";
 import { bindCycleDiagnostics } from "../domain/parameters/bind-cycles.ts";
 import { referenceCycleDiagnostics } from "../domain/graph/reference-cycles.ts";
-import { isComponentKeyOf } from "../domain/parameters/slots.ts";
+import { undeclaredKeys, undeclaredParameter } from "../domain/parameters/validate.ts";
 import type { ResolvedParameters } from "../domain/parameters/resolve.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
@@ -70,6 +70,12 @@ export interface ResolvedNode {
   readonly parameters: Readonly<Record<string, ParameterValue>>;
   /** T286 (§V287): parameters whose active mode is `map` — the consumer compiles from this. */
   readonly parameterMaps: Readonly<Record<string, ParameterMapBinding>>;
+  /**
+   * T1652b: what resolving THIS node's parameters reported, in the order it was pushed
+   * onto the compilation's list. Kept per node so a values-only revision can ask whether
+   * a node says something different about its new value (`rebaseOnValues`).
+   */
+  readonly said: ReadonlyArray<RuntimeDiagnostic>;
 }
 
 export interface ValidatedGraph {
@@ -89,6 +95,25 @@ export function isTemporalOutput(definition: NodeDefinition, portId: PortId): bo
   return definition.temporal?.outputs.includes(portId) === true;
 }
 
+/** §T1641b slice 2: what `resolveNodeParameters` is told about the keys a node may store. */
+export interface StoredKeyRules {
+  /**
+   * Keys the document may hold beside the schema: a definition's `retainedParameterKeys`,
+   * or what an instance's manifest declares beside its published page.
+   */
+  readonly retained?: readonly string[] | undefined;
+  /** `NodeDefinition.parameterKeysNote`: the node's own naming rule, said beside a refusal. */
+  readonly note?: string | undefined;
+  /**
+   * The node was saved against ANOTHER version of its definition than this build has. A key
+   * this build does not declare may be that version's: a newer build's, or an older one's
+   * that the node's migration would rewrite (a document that went through `loadProject` is
+   * never in that state). Either way it is not a key of nothing, and "remove it" would be
+   * the wrong remedy: the version mismatch is what is said (`compiler/definition-version`).
+   */
+  readonly otherVersion?: boolean | undefined;
+}
+
 /**
  * One node's parameters, resolved through THE parameter read path (§V61, T168).
  *
@@ -102,14 +127,15 @@ export function isTemporalOutput(definition: NodeDefinition, portId: PortId): bo
  *    validation itself belongs to the shared resolver, because validating is what picks
  *    the value (reject → default, accept → stored); a caller that validated on its own
  *    would resolve differently, which is B8 wearing another parameter type.
- *  - the "carries a parameter this type does not declare" warning, which is about keys
- *    OUTSIDE the schema, is worded in terms of a node type, and carries a compiler
- *    diagnostic code. Nothing an inspector would ever want.
+ *  - the finding for a stored key OUTSIDE the schema, which nothing reads. §T1641b slice 2:
+ *    it is the write gate's own finding (`undeclaredParameter`, `parameter.unknown`), asked
+ *    of what the document already holds. It used to be this function's own loop, under its
+ *    own code and severity, with its own words (§B264).
  *
  * Takes a bare schema rather than a `NodeDefinition` because a component instance's
  * parameter page is the component's PUBLISHED definitions, which exist before any node
- * manifest does (§V80) — and one resolver is the point. `typeLabel` is only for the
- * "carries a parameter this type does not declare" message.
+ * manifest does (§V80) — and one resolver is the point. `typeLabel` is only for that
+ * finding's message.
  */
 export function resolveNodeParameters(
   node: GraphNode,
@@ -122,7 +148,7 @@ export function resolveNodeParameters(
    * itself (flattening's published page, a requirement classification).
    */
   read: ParameterReadOptions,
-  retainedParameterKeys: readonly string[] = [],
+  keys: StoredKeyRules = {},
 ): ResolvedParameters {
   const resolved = resolveParameterSchema(node, parameters, read);
 
@@ -144,21 +170,15 @@ export function resolveNodeParameters(
     }
   }
 
-  for (const key of Object.keys(node.parameters).sort()) {
-    if (key in parameters) continue;
-    // Variant settings stay in the document for a later switch, without becoming
-    // active parameters. Only the definition's explicit declaration exempts a key.
-    if (retainedParameterKeys.includes(key)) continue;
-    // `color.r` addresses a component of a declared compound (§V113), not an unknown key.
-    if (isComponentKeyOf(parameters, key)) continue;
-    diagnostics.push(
-      compilerDiagnostic(
-        "warning",
-        CompilerDiagnosticCode.parameterUnknown,
-        `Node "${node.id}" carries parameter "${key}", which "${typeLabel}" does not declare.`,
-        { nodeId: node.id, suggestion: "The value is ignored; remove it or update the node definition." },
-      ),
-    );
+  // Variant settings stay in the document for a later switch, without becoming active
+  // parameters: only an explicit declaration exempts a key. `color.r` addresses a component
+  // of a declared compound (§V113), not an undeclared key; `undeclaredKeys` knows both.
+  if (keys.otherVersion !== true) {
+    for (const key of undeclaredKeys(parameters, node.parameters, keys.retained)) {
+      diagnostics.push(
+        undeclaredParameter(parameters, key, node.id, { stored: { nodeId: node.id, type: typeLabel }, keysNote: keys.note }),
+      );
+    }
   }
 
   return resolved;
@@ -255,6 +275,7 @@ export function validateGraph(
         ),
       );
     }
+    const saidFrom = diagnostics.length;
     const resolvedParameters = resolveNodeParameters(
       node,
       // T880: the node's EFFECTIVE schema — a customWgsl reflects its own shader's struct, so
@@ -264,13 +285,18 @@ export function validateGraph(
       definition.type,
       diagnostics,
       read,
-      definition.retainedParameterKeys,
+      {
+        retained: definition.retainedParameterKeys,
+        note: definition.parameterKeysNote,
+        otherVersion: node.definitionVersion !== definition.version,
+      },
     );
     nodes.set(nodeId, {
       node,
       definition,
       parameters: { ...resolvedParameters.values },
       parameterMaps: resolvedParameters.maps,
+      said: diagnostics.slice(saidFrom),
     });
   }
 

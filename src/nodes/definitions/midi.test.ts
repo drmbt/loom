@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { compileGraph } from "../../compiler/index.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { nonReproducibleRenderWarning } from "../../domain/render/reproducibility.ts";
 import { serialiseMidiMapping, type MidiBinding } from "../../domain/midi/midi-mapping.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
@@ -173,7 +175,7 @@ interface Rendered {
 function render(document: GraphDocument, readings: Readonly<Record<string, number>> | null): Rendered {
   const session = createValueGraphSession(registry);
   const channels = channelsFrom(readings);
-  const values = session.evaluate(document, frame, channels === undefined ? {} : { channels });
+  const values = session.evaluate(flatDocument(document), frame, { flattening: NO_FLATTENING, ...(channels === undefined ? {} : { channels }) });
   const plan = compileGraph({
     graph: document,
     settings,

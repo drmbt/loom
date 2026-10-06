@@ -54,6 +54,24 @@ const NOT_A_TREE_WALKING_GATE: Readonly<Record<string, string>> = {
 };
 
 /**
+ * §V1028: tree-walking gates that ARE of this class and are NOT cheap, each with the script
+ * that runs it instead.
+ *
+ * The rule above has always said "if it is a gate but NOT cheap, give it its own script" —
+ * and had nowhere to write that down, so the only way past the detector was to call the gate
+ * "not a gate". An entry here is checked both ways: the file must still be a walker, must
+ * not ALSO be on `test:gates`, and the script it names must exist and name it. A gate that
+ * is on no script at all is run by nobody.
+ */
+const NOT_A_CHEAP_TREE_WALKING_GATE: Readonly<Record<string, { readonly script: string; readonly reason: string }>> = {
+  "src/tests/guardrails/first-import-all.test.ts": {
+    script: "test:first-import",
+    reason:
+      "starts one fresh node process per module under src/domain, src/compiler and src/runtime — 249 processes, 6.3 s of wall measured at V1028 at a load average of 13 and 16–20 s at 30, the whole gate script again; it runs in the full suite",
+  },
+};
+
+/**
  * T1274: the names that hand a test the WHOLE shipped set — every example file, every
  * starter component, every example document, or the directory they live in.
  *
@@ -70,6 +88,9 @@ const DOCUMENT_SET_ENUMERATORS: ReadonlySet<string> = new Set([
   "EXAMPLES_DIR",
   "STARTER_COMPONENTS_DIR",
   "buildExampleFiles",
+  // T1593b: the project documents under `projects/` are a shipped set too.
+  "listProjectDocuments",
+  "PROJECTS_DIR",
 ]);
 
 /**
@@ -152,11 +173,11 @@ const walkers = testFiles(SOURCE)
   .map((path) => relative(ROOT, path))
   .sort();
 
+const scripts =
+  (JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { scripts?: Record<string, string> }).scripts ?? {};
+
 const script = (() => {
-  const manifest = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
-    scripts?: Record<string, string>;
-  };
-  const line = manifest.scripts?.["test:gates"];
+  const line = scripts["test:gates"];
   if (line === undefined) throw new Error("package.json has no `test:gates` script");
   return line;
 })();
@@ -169,7 +190,10 @@ const listed = script
 describe("§V957 — the `test:gates` list is derived, not remembered (T1273)", () => {
   it("names every test that discovers its subjects by walking the source tree", () => {
     const missing = walkers.filter(
-      (path) => !listed.includes(path) && NOT_A_TREE_WALKING_GATE[path] === undefined,
+      (path) =>
+        !listed.includes(path) &&
+        NOT_A_TREE_WALKING_GATE[path] === undefined &&
+        NOT_A_CHEAP_TREE_WALKING_GATE[path] === undefined,
     );
     expect(
       missing,
@@ -177,8 +201,21 @@ describe("§V957 — the `test:gates` list is derived, not remembered (T1273)", 
         "(§V957) and only `pnpm test:gates` will ever run them. Add each to the `test:gates` " +
         "script in package.json — or, if it is not a gate of this class, add it to " +
         "NOT_A_TREE_WALKING_GATE here with the reason it looks like one. If it is a gate but " +
-        "NOT cheap, give it its own script instead: this one runs before every commit.",
+        "NOT cheap, give it its own script and name both in NOT_A_CHEAP_TREE_WALKING_GATE: " +
+        "this one runs before every commit.",
     ).toEqual([]);
+  });
+
+  it("keeps every not-cheap gate on a script of its own (§V1028)", () => {
+    for (const [path, { script: own, reason }] of Object.entries(NOT_A_CHEAP_TREE_WALKING_GATE)) {
+      expect(reason.length, `${path}'s exemption has no reason`).toBeGreaterThan(20);
+      expect(walkers, `${path} is exempted as a tree-walking gate but no longer walks — delete the exemption`).toContain(path);
+      expect(listed, `${path} is exempted as not cheap AND on \`test:gates\` — pick one`).not.toContain(path);
+      expect(
+        (scripts[own] ?? "").split(/\s+/),
+        `${path} is kept off \`test:gates\` on the promise that \`pnpm ${own}\` runs it, and that script does not name it`,
+      ).toContain(path);
+    }
   });
 
   it("names every test that imports the whole shipped set (T1274)", () => {

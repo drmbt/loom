@@ -3,14 +3,14 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
 /**
  * E56 — Vesper (T1190, T1155, T1152, T1149). THE INTENSITY OF THE MOMENT SETS THE SPEED OF THE DAY.
  *
- *   music1(audioPattern) ─┐
- *   track1(audioFileIn)  ─┴► source1(valueSwitch) ─► env1(valueLag) ─► norm1(valueNormalize)
+ *   pattern_music(audioPattern) ─┐
+ *   audiofile_track(audioFileIn)  ─┴► switch_source(valueSwitch) ─► lag_env(valueLag) ─► normalize1(valueNormalize)
  *                                                                          │
- *              travel1(valueSpeed) ◄── rate1(valueMath, range) ◄───────────┘
- *                   ┄high┄► clip1.cuePoint
+ *              speed_travel(valueSpeed) ◄── math_rate(valueMath, range) ◄───────────┘
+ *                   ┄high┄► movie_clip.cuePoint
  *
- *   clip1(movieFileIn, 1280x720) ─► tone1(level) ─► grade1(hsv) ─► mul1 ─► out1
- *                                                   vign1(circle) ───────►┘
+ *   movie_clip(movieFileIn, 1280x720) ─► level_tone(level) ─► hsv_grade(hsv) ─► multiply1 ─► output1
+ *                                                   circle_vign(circle) ───────►┘
  *
  * ## The idea
  *
@@ -33,11 +33,11 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *   UNDER A POSITION MAP, A CONSTANT INPUT IS A FROZEN PICTURE.
  *
  * Every stage that makes a control signal usable makes it FLATTER — the envelope follower,
- * the lag, and yes `norm1` too — and flatness on a position map renders as stillness. There
+ * the lag, and yes `normalize1` too — and flatness on a position map renders as stillness. There
  * is no setting that escapes it; tuning only trades a freeze for a jitter.
  *
  * ⚑ HIS IMMEDIATE FREEZE HAD A SECOND, SHARPER CAUSE AND IT IS WORTH RECORDING. He set the
- * Range to `From Low 0.20 ... From High 0.99` with `Outside: Clamp`. `norm1` publishes a
+ * Range to `From Low 0.20 ... From High 0.99` with `Outside: Clamp`. `normalize1` publishes a
  * PERCENTILE, so "below 0.20" is not a rare excursion — it is, by construction, EXACTLY 20%
  * OF THE TIME. Reproduced on this chain: 20.3% of the run pinned at frame 0, with a longest
  * pinned run of 109 frames (1.82 s). A percentile input makes a clamped From Low into a
@@ -46,12 +46,12 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * ## Driving a SPEED instead, and what it buys
  *
- * `travel1` is a `valueSpeed` — TD's Speed CHOP, and the value family's first accumulator.
+ * `speed_travel` is a `valueSpeed` — TD's Speed CHOP, and the value family's first accumulator.
  * The audio sets a RATE in clip-seconds per second; the node integrates it into the
- * position that `clip1.cuePoint` reads. Three things follow, and all three are the owner's
+ * position that `movie_clip.cuePoint` reads. Three things follow, and all three are the owner's
  * asks answered at once:
  *
- *  - IT CANNOT FREEZE. A constant input is constant motion. `rate1`'s low end is 0.4
+ *  - IT CANNOT FREEZE. A constant input is constant motion. `math_rate`'s low end is 0.4
  *    clip-seconds per second, a FLOOR rather than zero, so even the quietest moment is
  *    still travelling. MEASURED over 2400 steady-state frames, as the longest run of frames
  *    showing the same source frame — the honest reading of "it freezes":
@@ -60,7 +60,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *      position map, as round two shipped        14 frames still (0.23 s)
  *      THIS, the rate drive                       5 frames still (0.08 s)
  *
- *  - IT CANNOT CORNER ITSELF. There is no absolute target to sit on, and `travel1`'s limit
+ *  - IT CANNOT CORNER ITSELF. There is no absolute target to sit on, and `speed_travel`'s limit
  *    is MIRROR, so the ends of the lane bounce rather than clamp or jump-cut. A wrap would
  *    be a hard cut from sunrise to midnight; a bounce is the day running backwards.
  *
@@ -82,7 +82,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * owner used both and chose this one. A file that is reproducible and frozen is worth less
  * than one that is alive.
  *
- * ## The mapping into the rate, and why `norm1` stays
+ * ## The mapping into the rate, and why `normalize1` stays
  *
  * *"maybe we make up an interesting ranging system that doesn't just make it linear on the
  * frequency or loudness spectrum — it gives more resolution to where there's more
@@ -91,12 +91,12 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * A loudness envelope sits in a narrow band around its own median nearly all the time. Map
  * that band LINEARLY and most of the output range goes to levels the signal rarely visits.
- * `norm1` maps each channel through ITS OWN DISTRIBUTION — the percentile within its last
+ * `normalize1` maps each channel through ITS OWN DISTRIBUTION — the percentile within its last
  * 17 seconds — so equal amounts of TIME map to equal amounts of RANGE, with no floor and no
  * gain to retune when the track changes.
  *
  * ⚑ UNDER A RATE DRIVE THAT IS A BETTER JOB FOR IT THAN IT HAD, and the instrument had to
- * change with it. What `norm1` shapes now is HOW THE SPEED IS DISTRIBUTED — and NOT the
+ * change with it. What `normalize1` shapes now is HOW THE SPEED IS DISTRIBUTED — and NOT the
  * position, which under a bounced integral comes out even for almost any positive rate and
  * therefore proves nothing about the mapping. MEASURED as the share of the run in each
  * twentieth of the 0.4..5 rate range:
@@ -120,7 +120,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * ## The lane, and it stops short of BOTH ends of the file
  *
- * `travel1` travels between 0.4 s and 14.6 s of a 20.67 s file, so the drive never reaches
+ * `speed_travel` travels between 0.4 s and 14.6 s of a 20.67 s file, so the drive never reaches
  * either end — the owner's *"we need to range it so that we don't hit the actual end of
  * frame range"*, and with MIRROR it is structural rather than a clamp. The 6 s given up are
  * a judgement about the footage: the last quarter of this clip is flat white haze, source
@@ -131,7 +131,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * resolution in a certain area of the clip"* — a hand-picked curve re-introduces exactly the
  * eyeballed knob the percentile map removes, and the argument against the linear map is the
  * argument against it. When the ask is "dwell in THIS part of the clip", the honest control
- * is the one that names that part: `travel1`'s own bounds, or `trimStart`/`trimEnd`.
+ * is the one that names that part: `speed_travel`'s own bounds, or `trimStart`/`trimEnd`.
  *
  * ## What the transport already did, and why it looked like it did not (T493)
  *
@@ -194,7 +194,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * ## Portrait is GONE — the project is 16:9 again (the owner's T1190 note)
  *
  * Round one shipped 720x1280 for a portrait phone clip. This clip is 1280x720 and the
- * project records that, so opening the file sets it. `clip1`'s resolution is PINNED to the
+ * project records that, so opening the file sets it. `movie_clip`'s resolution is PINNED to the
  * file's own 1280x720 rather than left to inherit: `use-media-sources` writes a
  * `setNodeResolution` patch when the intrinsic size differs from the node's, so an unpinned
  * document MUTATES ITSELF the moment it opens. Pinned — and equal to the project — the
@@ -208,7 +208,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * nothing. `high` is where T776's arrangement lives: its bar means run 0.39 / 0.43 / 0.44 /
  * 0.35 and repeat, so the quiet bar of every four is a slow bar, every 8.57 seconds.
  *
- * `env1` is a peak follower at 0.25 s rise, x4 release (1 s fall). T1190 SHORTENED IT from
+ * `lag_env` is a peak follower at 0.25 s rise, x4 release (1 s fall). T1190 SHORTENED IT from
  * T1155's 0.6/x8 on the owner's note — *"I think our lag is probably too intense for
  * something audio reactive"* — and the reason it is safe now is the rate drive: under a
  * POSITION map the lag had to be long, because the playhead's SPEED was the envelope's
@@ -232,36 +232,36 @@ export const vesperDocument = document(
   graph(
     [
       // ---- the drive: the catalogue's fixed shape (audio-rd.ts, reactor.ts) -----------
-      node("music", "audioPattern", [-2400, 700], { bpm: 112, amount: 1, beatsPerBar: 4 }, { label: "music1" }),
+      node("music", "audioPattern", [-2400, 700], { bpm: 112, amount: 1, beatsPerBar: 4 }, { label: "pattern_music" }),
       node("track", "audioFileIn", [-2400, 1120], {
         cue: false, cuePoint: 0, extend: "loop", file: "", monitor: true, play: true,
         playMode: "freeRun", speed: 1, trimEnd: 0, trimStart: 0, volume: 1,
-      }, { label: "track1" }),
+      }, { label: "audiofile_track" }),
       /* Index 0 is the deterministic pattern so the file plays on open (§V363); drop a track
-         into `track1` and move this to 1 and the same city answers to real music. */
-      node("source", "valueSwitch", [-2100, 910], { index: 0 }, { label: "source1" }),
+         into `audiofile_track` and move this to 1 and the same city answers to real music. */
+      node("source", "valueSwitch", [-2100, 910], { index: 0 }, { label: "switch_source" }),
       /* Fast attack, faster release than T1155's: 0.25 s up, 1 s down. Shortened on the
          owner's "the lag is too intense" note, and only safe because the drive is now a
          RATE — see the docblock. */
-      node("env", "valueLag", [-1850, 910], { lag: 0.25, releaseRatio: 4 }, { label: "env1" }),
+      node("env", "valueLag", [-1850, 910], { lag: 0.25, releaseRatio: 4 }, { label: "lag_env" }),
       /* The envelope's PERCENTILE within its own last 17 seconds, so equal time maps to
          equal range. 17 s is two of the fixture's 8.57 s phrases; the window must exceed the
          cycle you want to traverse or it normalises that cycle away. */
-      node("norm", "valueNormalize", [-1600, 910], { window: 17 }, { label: "norm1" }),
+      node("norm", "valueNormalize", [-1600, 910], { window: 17 }, { label: "normalize1" }),
       /* THE RATE, in clip-seconds per wall-second. `toLow` is 0.4 and NOT ZERO: that floor
          is what makes "it never freezes" a property of the file rather than a hope. 0..1 in
          is a percentile by construction, so `clamp` never fires and the twelvefold spread
          between quiet and loud is the whole of the audio reactivity. */
       node("rate", "valueMath", [-1350, 910], {
         operation: "range", fromLow: 0, fromHigh: 1, toLow: 0.4, toHigh: 5, outside: "clamp",
-      }, { label: "rate1" }),
+      }, { label: "math_rate" }),
       /* ⚑ THE INTEGRATOR. Rate in, position out, bouncing between 0.4 s and 14.6 s of the
          file — so the playhead is always moving, can never reach the file's own ends, and
-         runs BACKWARDS on every other leg. Labelled `travel1` rather than `speed1` so it
-         never reads as `clip1`'s own Speed parameter. */
+         runs BACKWARDS on every other leg. Labelled `speed_travel` rather than `speed1` so it
+         never reads as `movie_clip`'s own Speed parameter. */
       node("travel", "valueSpeed", [-1100, 910], {
         minimum: 0.4, maximum: 14.6, limit: "mirror",
-      }, { label: "travel1" }),
+      }, { label: "speed_travel" }),
 
       // ---- the footage ---------------------------------------------------------------
       node("clip", "movieFileIn", [-2400, 0], {
@@ -274,18 +274,18 @@ export const vesperDocument = document(
         cue: true,
         extend: "hold", trimStart: 0, trimEnd: 0,
       }, {
-        label: "clip1",
+        label: "movie_clip",
         resolution: { mode: "fixed", width: 1280, height: 720 },
         /* 8.0 is the DRIVEN MEAN over 3600 frames (measured 7.9988), not the lane's
            midpoint — §V914 wants the value the drive actually spends its time around. */
-        parameters: { cuePoint: drivenSlot("travel1:high", 8) },
+        parameters: { cuePoint: drivenSlot("speed_travel:high", 8) },
       }),
 
       // ---- THE GRADE, and it is the file's exposure and contrast desk -----------------
       /*
        * The desk is graph work rather than a grading page bolted onto `movieFileIn`, which
        * would be a second copy of `level` disagreeing with the first (§T1064 deleted ~180
-       * lines of exactly that). `tone1` is the exposure/contrast half, `grade1` the colour
+       * lines of exactly that). `level_tone` is the exposure/contrast half, `hsv_grade` the colour
        * half, and between them they are the knobs to reach for on ANY video in the
        * catalogue.
        *
@@ -319,16 +319,16 @@ export const vesperDocument = document(
       node("tone", "level", [-1700, 0], {
         blacklevel: 0.015, whitelevel: 0.94, invert: 0, gamma1: 1.14,
         contrast: 1, brightness: 1, opacity: 1,
-      }, { label: "tone1", resolution: { mode: "project" } }),
-      node("grade", "hsv", [-1400, 0], { hueoffset: 0, saturation: 0.88, value: 1 }, { label: "grade1" }),
+      }, { label: "level_tone", resolution: { mode: "project" } }),
+      node("grade", "hsv", [-1400, 0], { hueoffset: 0, saturation: 0.88, value: 1 }, { label: "hsv_grade" }),
 
       // ---- the finish ----------------------------------------------------------------
       node("vign", "circle", [-1400, 420], {
         mode: "fill", center: [0.5, 0.5], radius: [0.78, 0.78], softness: 0.6,
         fillcolor: [1, 1, 1, 1], bgcolor: [0.3, 0.28, 0.34, 1], aspectcorrect: true,
-      }, { label: "vign1", resolution: { mode: "project" } }),
-      node("mul", "multiply", [-1100, 0], { opacity: 1 }, { label: "mul1" }),
-      node("out", "output", [-800, 0], { toneMap: "filmic" }, { label: "out1" }),
+      }, { label: "circle_vign", resolution: { mode: "project" } }),
+      node("mul", "multiply", [-1100, 0], { opacity: 1 }, { label: "multiply1" }),
+      node("out", "output", [-800, 0], { toneMap: "filmic" }, { label: "output1" }),
     ],
     [
       edge("e-music-source", ["music", "out"], ["source", "in1"]),

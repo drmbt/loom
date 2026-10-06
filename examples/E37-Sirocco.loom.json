@@ -120,11 +120,11 @@
       "body": {
         "definitionVersion": 1,
         "id": "body",
-        "label": "body1",
+        "label": "geometry_body",
         "parameters": {
           "endpoint": "trail",
           "group": "p.size <= 1.35",
-          "material": "haze1",
+          "material": "material_haze",
           "mode": "beam",
           "scale": {
             "bindings": {
@@ -168,7 +168,7 @@
       "burn": {
         "definitionVersion": 1,
         "id": "burn",
-        "label": "burn1",
+        "label": "add_burn",
         "parameters": {},
         "position": {
           "x": 740,
@@ -179,7 +179,7 @@
       "drift": {
         "definitionVersion": 1,
         "id": "drift",
-        "label": "drift1",
+        "label": "kernel_drift",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"velocity\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0.2,0.3,0.6,1]}]",
           "capacity": 18000,
@@ -200,7 +200,7 @@
       "drift2": {
         "definitionVersion": 1,
         "id": "drift2",
-        "label": "drift2",
+        "label": "lfo_drift",
         "parameters": {
           "amplitude": 15,
           "frequency": 0.035,
@@ -217,7 +217,7 @@
       "eye": {
         "definitionVersion": 1,
         "id": "eye",
-        "label": "eye1",
+        "label": "camera_eye",
         "parameters": {
           "eye": [
             4.2,
@@ -228,7 +228,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbx1').chan.value"
+                "source": "op('lfo_orbx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -241,7 +241,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbz1').chan.value"
+                "source": "op('lfo_orbz').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -269,11 +269,11 @@
       "fast": {
         "definitionVersion": 1,
         "id": "fast",
-        "label": "fast1",
+        "label": "geometry_fast",
         "parameters": {
           "endpoint": "trail",
           "group": "p.size > 1.35",
-          "material": "haze1",
+          "material": "material_haze",
           "mode": "beam",
           "scale": {
             "bindings": {
@@ -317,7 +317,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -332,7 +332,7 @@
       "haloLvl": {
         "definitionVersion": 1,
         "id": "haloLvl",
-        "label": "halolvl1",
+        "label": "level_halo",
         "parameters": {
           "blacklevel": 0.04,
           "brightness": 0.55,
@@ -351,7 +351,7 @@
       "haze": {
         "definitionVersion": 1,
         "id": "haze",
-        "label": "haze1",
+        "label": "material_haze",
         "parameters": {
           "color": [
             1,
@@ -369,10 +369,10 @@
       "heads": {
         "definitionVersion": 1,
         "id": "heads",
-        "label": "heads1",
+        "label": "geometry_heads",
         "parameters": {
           "group": "",
-          "material": "haze1",
+          "material": "material_haze",
           "mode": "points",
           "scale": {
             "bindings": {
@@ -415,13 +415,13 @@
       "hue": {
         "definitionVersion": 1,
         "id": "hue",
-        "label": "hue1",
+        "label": "hsv_hue",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drift2').chan.value"
+                "source": "op('lfo_drift').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -442,7 +442,7 @@
       "orbx": {
         "definitionVersion": 1,
         "id": "orbx",
-        "label": "orbx1",
+        "label": "lfo_orbx",
         "parameters": {
           "amplitude": 4.2,
           "frequency": 0.021,
@@ -459,7 +459,7 @@
       "orbz": {
         "definitionVersion": 1,
         "id": "orbz",
-        "label": "orbz1",
+        "label": "lfo_orbz",
         "parameters": {
           "amplitude": 4.2,
           "frequency": 0.021,
@@ -476,7 +476,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 1380,
@@ -487,7 +487,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             1,
@@ -503,10 +503,10 @@
             0.014,
             1
           ],
-          "camera": "eye1",
+          "camera": "camera_eye",
           "environmentIntensity": 1,
           "lights": "",
-          "scenes": "body1 fast1 heads1",
+          "scenes": "geometry_body geometry_fast geometry_heads",
           "showEnvironment": false
         },
         "position": {
@@ -518,7 +518,7 @@
       "streak": {
         "definitionVersion": 1,
         "id": "streak",
-        "label": "streak1",
+        "label": "kernel_streak",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"velocity\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,0,0]},{\"name\":\"trail\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"size\",\"type\":\"f32\",\"semantic\":\"size\",\"default\":[1]}]",
           "capacity": 18000,

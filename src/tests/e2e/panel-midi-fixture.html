@@ -36,7 +36,8 @@ function Fixture() {
 root.render(React.createElement(Fixture));
 const timer = setInterval(() => {
   const frame = { timeSeconds: frameIndex / 60, deltaSeconds: 1 / 60, frameIndex: frameIndex++, mode: "realtime", randomSeed: 7 };
-  result = session.evaluate(runtime.bus.store.getGraph(), frame, { channels: name => raw(name) });
+  const flattened = runtime.flattened.current();
+  result = session.evaluate(flattened.graph, frame, { flattening: flattened, channels: name => raw(name) });
   inputs = { frame };
 }, 50);
 window.panelMidiProof = {

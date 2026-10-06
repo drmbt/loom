@@ -21,7 +21,7 @@ import type {
 import { NO_CPU_TIMING, NO_PASS_TIMING, emptyNodeTelemetry } from "./types.ts";
 import { aggregateComponentTiming, aggregateNodeTiming } from "./aggregate.ts";
 import type { ComponentTiming } from "./aggregate.ts";
-import { spanBasePassId } from "../backend/plan.ts";
+import { spanBasePassId, spanSharedPasses } from "../backend/plan.ts";
 import { EMPTY_READBACK_BUDGET, readbackPlanBudget } from "./readback.ts";
 import { categoryRollups, nodeCostRows } from "./cost.ts";
 import type { DeclaredReadback, ReadbackBudget, SizedResource } from "./readback.ts";
@@ -244,6 +244,15 @@ export interface TelemetryHub extends TelemetrySource {
    * source with `timestampQuery: false` puts every field into the "unavailable" reading.
    */
   attachTimingSource(source: PassTimingSource): () => void;
+  /**
+   * T1604b: hands the hub the backend's switch between one device render pass per RUN (the
+   * default) and one per DRAW. The hub calls it with whether anybody holds a
+   * `demandPassDetail` — at once, and again whenever that changes. Returns a detach
+   * function. An `attach*`, so `composition-seams` requires a product call site: without
+   * one the performance panel would ask and nothing would answer, and every pass of a run
+   * but its first would read "shared" for as long as anyone looked.
+   */
+  attachPassDetailSwitch(apply: (exact: boolean) => void): () => void;
   /** One rendered frame. Counters only — no allocation, no listener call (§V16). */
   /**
    * One rendered frame (T255, §V85). `ran` is the set of node ids whose passes were
@@ -299,6 +308,18 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
   /** Most recent GPU span per pass id, ms. Only ever written from `onPassTimings`. */
   const spans = new Map<string, number>();
   /**
+   * T1604b: runs whose span is SHARED right now — head pass id → how many passes after it
+   * (in plan order) the span also covers. Written from the span NAMES the source delivers
+   * (`spanSharedPasses`), so it follows what the device was actually asked to do, frame by
+   * frame, and needs no second copy of the rule that decides what a run is.
+   */
+  const sharedRuns = new Map<string, number>();
+  /** Plan order, to find the passes that follow a run's head. Rebuilt on setPlan. */
+  let passOrder: ReadonlyMap<string, number> = new Map();
+  /** T1604b: how many readers want every pass to have its own span, and the backend's switch. */
+  let detailDemands = 0;
+  let applyDetail: ((exact: boolean) => void) | null = null;
+  /**
    * T1243: the latest submitted frame's GPU extent, summed over the vgpu frames that
    * share its submit number. Null until the source delivers one; a source that never
    * does leaves `frameBucket` on the per-pass sum, labelled as such.
@@ -347,6 +368,7 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
       if (pass.nodeId !== null) active.add(pass.nodeId);
     }
     activeNodes = active;
+    passOrder = new Map((next?.passes ?? []).map((pass, index) => [pass.id, index]));
     keptNodes = new Set(next === null ? [] : plansKeptNodes(next));
     const paths = new Map<NodeId, string>();
     for (const source of next?.sources ?? []) paths.set(source.nodeId, source.sourcePath);
@@ -482,10 +504,27 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
     };
   }
 
+  /** The passes after `head` that share its span, in plan order (T1604b). */
+  function sharersOf(head: string, count: number): string[] {
+    const at = passOrder.get(head);
+    if (at === undefined) return [];
+    return (plan?.passes ?? []).slice(at + 1, at + 1 + count).map((pass) => pass.id);
+  }
+
   function passRows(): ReadonlyArray<PassTimingRow> {
     const supported = timingSource.timestampQuery;
+    // T1604b: which run each pass's span is shared with, when it is.
+    const runOf = new Map<string, { head: string; passes: number }>();
+    if (supported) {
+      for (const [head, count] of sharedRuns) {
+        const run = { head, passes: count + 1 };
+        runOf.set(head, run);
+        for (const passId of sharersOf(head, count)) runOf.set(passId, run);
+      }
+    }
     return (plan?.passes ?? []).map((pass): PassTimingRow => {
       const span = supported ? spans.get(pass.id) : undefined;
+      const run = runOf.get(pass.id);
       return {
         passId: pass.id,
         kind: pass.kind,
@@ -494,6 +533,7 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
         label: pass.label,
         availability: !supported ? "unavailable" : span === undefined ? "pending" : "measured",
         gpuMs: span ?? null,
+        ...(run === undefined ? {} : { run }),
       };
     });
   }
@@ -558,6 +598,8 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
       // keeps a recompile from reporting the previous plan's cost against a new pass id.
       const live = new Set((next?.passes ?? []).map((pass) => pass.id));
       for (const passId of [...spans.keys()]) if (!live.has(passId)) spans.delete(passId);
+      // T1604b: a new plan's runs are its own; what was shared is learnt again from its spans.
+      sharedRuns.clear();
       // T1243: the extent belongs to a frame of the previous plan for the same reason.
       frameExtent = null;
       droppedFrames = 0;
@@ -641,12 +683,31 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
          * costing one iteration — a node that reads cheap and is not.
          */
         const total = new Map<string, number>();
+        /* T1604b: how many passes after it each span ALSO covers — 0 for a pass's own span.
+           The name says so (`runSpanName`), so this follows what was encoded this frame. */
+        const covers = new Map<string, number>();
         for (const [spanName, ms] of Object.entries(results)) {
           if (!Number.isFinite(ms)) continue;
           const passId = spanBasePassId(spanName);
           total.set(passId, (total.get(passId) ?? 0) + ms);
+          covers.set(passId, Math.max(covers.get(passId) ?? 0, spanSharedPasses(spanName)));
         }
-        for (const [passId, ms] of total) spans.set(passId, ms);
+        for (const [passId, ms] of total) {
+          spans.set(passId, ms);
+          const count = covers.get(passId) ?? 0;
+          if (count === 0) {
+            sharedRuns.delete(passId);
+            continue;
+          }
+          /* The run was one device pass this frame. Its other passes have no span of their
+             own any more, and one left over from when they did (one pass per draw, a moment
+             ago) would be added to the node's total on top of the run's. */
+          sharedRuns.set(passId, count);
+          for (const sharer of sharersOf(passId, count)) {
+            if (!total.has(sharer)) spans.delete(sharer);
+            sharedRuns.delete(sharer);
+          }
+        }
         if (frame !== undefined) timeline.noteGpu(perfNow(), frame.gpuMs, Object.fromEntries(total));
         schedule();
       });
@@ -656,12 +717,34 @@ export function createTelemetryHub(options: TelemetryHubOptions = {}): Telemetry
         detachTiming = null;
         timingSource = NO_PASS_TIMING;
         spans.clear();
+        sharedRuns.clear();
         frameExtent = null;
         droppedFrames = 0;
         schedule();
       };
       schedule();
       return () => detachTiming?.();
+    },
+
+    demandPassDetail() {
+      detailDemands += 1;
+      if (detailDemands === 1) applyDetail?.(true);
+      let held = true;
+      return () => {
+        if (!held) return;
+        held = false;
+        detailDemands -= 1;
+        if (detailDemands === 0) applyDetail?.(false);
+      };
+    },
+
+    attachPassDetailSwitch(apply) {
+      applyDetail = apply;
+      // Whoever is already looking gets their figures from the backend that just arrived.
+      apply(detailDemands > 0);
+      return () => {
+        if (applyDetail === apply) applyDetail = null;
+      };
     },
 
     recentFrameTimes() {

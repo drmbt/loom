@@ -10,7 +10,7 @@ colours, and the whole palette walks past the field while you watch.
 
 ```
 noise1(noise, perlin4d) ──► lookup1.source ─┐
-ramp1(ramp, 6 stops) ─────► lookup1.lookup ─┴─► lookup1(lookup) ─► out1(output)
+ramp1(ramp, 6 stops) ─────► lookup1.lookup ─┴─► lookup1(lookup) ─► output1(output)
    phase ← abstime                              offset -0.86, scale 2.6
 ```
 

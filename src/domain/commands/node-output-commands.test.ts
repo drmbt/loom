@@ -277,12 +277,12 @@ describe("node.rename", () => {
   });
 
   it("sets a label", async () => {
-    await h2.bus.execute("node.rename", { nodeId: id, label: "Bloom pass" }, contextFor(alice));
+    await h2.bus.execute("node.rename", { nodeId: id, label: "Bloom pass", exact: true }, contextFor(alice));
     expect(node2()?.label).toBe("Bloom pass");
   });
 
   it("trims surrounding whitespace rather than storing it", async () => {
-    await h2.bus.execute("node.rename", { nodeId: id, label: "  Edge detect  " }, contextFor(alice));
+    await h2.bus.execute("node.rename", { nodeId: id, label: "  Edge detect  ", exact: true }, contextFor(alice));
     expect(node2()?.label).toBe("Edge detect");
   });
 
@@ -310,8 +310,8 @@ describe("node.rename", () => {
   });
 
   it("is undoable as one step", async () => {
-    await h2.bus.execute("node.rename", { nodeId: id, label: "First" }, contextFor(alice));
-    await h2.bus.execute("node.rename", { nodeId: id, label: "Second" }, contextFor(alice));
+    await h2.bus.execute("node.rename", { nodeId: id, label: "First", exact: true }, contextFor(alice));
+    await h2.bus.execute("node.rename", { nodeId: id, label: "Second", exact: true }, contextFor(alice));
     await h2.bus.execute("graph.undo", {}, contextFor(alice));
     expect(node2()?.label).toBe("First");
   });

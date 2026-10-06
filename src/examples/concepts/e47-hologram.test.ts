@@ -14,7 +14,7 @@ describe("E47 Hologram", () => {
   const { plan, document } = requireExample(file);
 
   it("instances DepthPoints twice (zone + wall) plus the DepthCut, all flattened into the plan", () => {
-    // T979/T983's v2: the ZONE cloud (`holo`) and the WALL cloud (`holo2`) are two
+    // T979/T983's v2: the ZONE cloud (`holo`) and the WALL cloud (`depthpoints_holo2`) are two
     // instances of ONE DepthPoints definition — the reuse claim §V79 makes — and the
     // background cut is a third component. The plan holds their expansions and no
     // component types at all: the boundary is real, not a doc comment.
@@ -53,7 +53,7 @@ describe("E47 Hologram", () => {
     /* T1201 — THE COLOUR PORT CARRIES THE HEAT MAP, and the chain behind it is the claim.
        Each paint reads a `lookup` of the palette KEYED ON THE SAME DEPTH TEXTURE its own
        carve read, so a mote's colour is registered with its position by construction. The
-       subject's arrives through `braid1`, which is what still carries the §T977 cut —
+       subject's arrives through `reorder_braid`, which is what still carries the §T977 cut —
        rgb from the palette, ALPHA from the cut. Reading the palette straight into
        `holo/paint` would compile, look almost identical in a still, and silently restore
        every background mote to full coverage (B189's cohorts back to zero), so the BRAID
@@ -70,7 +70,7 @@ describe("E47 Hologram", () => {
        is deliberately un-cut: a background cut on the thing whose job is to be behind
        everything would carve holes in it. So no `cut/` texture may appear anywhere on the
        wall's colour path — asserted, because the wall's own map and the subject's differ
-       only when `srcpick1` moves, which is exactly when a crossed wire stops being
+       only when `switch_srcpick` moves, which is exactly when a crossed wire stops being
        invisible (§T979). */
     expect(texturesOf("holo2/paint")).toContain("target:wcoat:out");
     expect(texturesOf("wcoat")).toEqual(
@@ -90,7 +90,7 @@ describe("E47 Hologram", () => {
       new Map((draw?.buffers ?? []).map((entry) => [entry.binding, entry.resourceId]));
     // T983: the pointRange nodes (`zone`, `wall`) sit BETWEEN paint and scene, so the
     // positions come from the range's scratch while the colours still come from the
-    // matching paint. Pairing zone positions with holo2 tints (or vice versa) compiles
+    // matching paint. Pairing zone positions with depthpoints_holo2 tints (or vice versa) compiles
     // fine and puts the wall's colours on the person — which is why the PAIRING is the
     // claim, not the mere presence of two draws.
     const zone = buffersOf(draws.find((d) => buffersOf(d).get("positions") === pointStorageId("zone")));

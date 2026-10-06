@@ -14,7 +14,7 @@ import { requireExample } from "./runner.ts";
  * different mesh and not worth a slot." So the gate measures legibility, not wiring.
  *
  * T1271 CHANGED THE SHAPE OF THIS CLAIM, and §V955 is why. It used to compare one frame
- * of the file against one frame with `music1.amount = 0` and demand `muted < loud × 0.25`.
+ * of the file against one frame with `pattern_music.amount = 0` and demand `muted < loud × 0.25`.
  * Muting hands the analysis a CONSTANT, and a constant ranks 0.5 (§V952) — so after the
  * rebuild a muted E35 renders a MID-thickness tube, and the old gate would have failed on
  * a file whose reactivity is intact. A mute arm cannot measure reactivity through a
@@ -127,7 +127,7 @@ describe("E35 — the layers turn against each other (T683)", () => {
   it("relative phase between the colour populations sweeps, and survives a lap by construction", async () => {
     if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
     const { document, result: loaded } = e35();
-    const kernelNode = Object.values(document.graph.nodes).find((node) => node.label === "pointkernel1");
+    const kernelNode = Object.values(document.graph.nodes).find((node) => node.label === "kernel1");
     const kernel = String((kernelNode?.parameters as Record<string, unknown>)["kernel"]);
     // Lap survival is structural: the kernel's clock is ctx.absTime (seconds, keeps
     // counting across a timeline lap) and never bare ctx.time. A pixel test of the lap

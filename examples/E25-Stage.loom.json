@@ -75,7 +75,7 @@
       "breathe": {
         "definitionVersion": 1,
         "id": "breathe",
-        "label": "breathe1",
+        "label": "lfo_breathe",
         "parameters": {
           "amplitude": 0.5,
           "frequency": 0.2,
@@ -92,13 +92,13 @@
       "camA": {
         "definitionVersion": 1,
         "id": "camA",
-        "label": "cama1",
+        "label": "camera_a",
         "parameters": {
           "eye.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbax1').chan.value"
+                "source": "op('lfo_orbax').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -112,7 +112,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbaz1').chan.value"
+                "source": "op('lfo_orbaz').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -137,13 +137,13 @@
       "camB": {
         "definitionVersion": 1,
         "id": "camB",
-        "label": "camb1",
+        "label": "camera_b",
         "parameters": {
           "eye.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbbx1').chan.value"
+                "source": "op('lfo_orbbx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -170,9 +170,9 @@
       "floor": {
         "definitionVersion": 1,
         "id": "floor",
-        "label": "floor1",
+        "label": "geometry_floor",
         "parameters": {
-          "material": "matfloor1",
+          "material": "material_floor",
           "mode": "instances",
           "scale": 0.09,
           "shape": "box"
@@ -186,7 +186,7 @@
       "floorKernel": {
         "definitionVersion": 1,
         "id": "floorKernel",
-        "label": "floorkernel1",
+        "label": "kernel_floor",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 144,
@@ -201,7 +201,7 @@
       "floorPts": {
         "definitionVersion": 1,
         "id": "floorPts",
-        "label": "floorpts1",
+        "label": "grid_floor",
         "parameters": {
           "cols": 12,
           "count": 144,
@@ -218,9 +218,9 @@
       "geoA": {
         "definitionVersion": 1,
         "id": "geoA",
-        "label": "geoa1",
+        "label": "geometry_a",
         "parameters": {
-          "material": "mata1",
+          "material": "material_a",
           "mode": "instances",
           "scale": 0.075,
           "shape": "octahedron"
@@ -234,7 +234,7 @@
       "keyA": {
         "definitionVersion": 1,
         "id": "keyA",
-        "label": "keya1",
+        "label": "light_keya",
         "parameters": {
           "color": [
             1,
@@ -259,7 +259,7 @@
       "keyB": {
         "definitionVersion": 1,
         "id": "keyB",
-        "label": "keyb1",
+        "label": "light_keyb",
         "parameters": {
           "color": [
             1,
@@ -276,7 +276,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('breathe1').chan.value"
+                "source": "op('lfo_breathe').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -296,7 +296,7 @@
       "matA": {
         "definitionVersion": 1,
         "id": "matA",
-        "label": "mata1",
+        "label": "material_a",
         "parameters": {
           "color": [
             1,
@@ -322,7 +322,7 @@
       "matFloor": {
         "definitionVersion": 1,
         "id": "matFloor",
-        "label": "matfloor1",
+        "label": "material_floor",
         "parameters": {
           "color": [
             0.25,
@@ -348,7 +348,7 @@
       "orbAx": {
         "definitionVersion": 1,
         "id": "orbAx",
-        "label": "orbax1",
+        "label": "lfo_orbax",
         "parameters": {
           "amplitude": 2.4,
           "frequency": 0.07,
@@ -365,7 +365,7 @@
       "orbAz": {
         "definitionVersion": 1,
         "id": "orbAz",
-        "label": "orbaz1",
+        "label": "lfo_orbaz",
         "parameters": {
           "amplitude": 2.4,
           "frequency": 0.07,
@@ -382,7 +382,7 @@
       "orbBx": {
         "definitionVersion": 1,
         "id": "orbBx",
-        "label": "orbbx1",
+        "label": "lfo_orbbx",
         "parameters": {
           "amplitude": 1.4,
           "frequency": 0.045,
@@ -399,7 +399,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 560,
@@ -410,7 +410,7 @@
       "ringA": {
         "definitionVersion": 1,
         "id": "ringA",
-        "label": "ringa1",
+        "label": "torus_ringa",
         "parameters": {
           "cols": 36,
           "radius": 0.7,
@@ -426,9 +426,9 @@
       "screen": {
         "definitionVersion": 1,
         "id": "screen",
-        "label": "screen1",
+        "label": "geometry_screen",
         "parameters": {
-          "material": "screenmat1",
+          "material": "material_screen",
           "mode": "surface"
         },
         "position": {
@@ -440,7 +440,7 @@
       "screenGrid": {
         "definitionVersion": 1,
         "id": "screenGrid",
-        "label": "screengrid1",
+        "label": "grid_screen",
         "parameters": {
           "cols": 48,
           "count": 1296,
@@ -457,7 +457,7 @@
       "screenMat": {
         "definitionVersion": 1,
         "id": "screenMat",
-        "label": "screenmat1",
+        "label": "material_screen",
         "parameters": {
           "color": [
             1,
@@ -475,7 +475,7 @@
       "shotA": {
         "definitionVersion": 1,
         "id": "shotA",
-        "label": "shota1",
+        "label": "render_shota",
         "parameters": {
           "ambientColor": [
             0.3,
@@ -490,9 +490,9 @@
             0.2,
             1
           ],
-          "camera": "cama1",
-          "lights": "keya1",
-          "scenes": "geoa1"
+          "camera": "camera_a",
+          "lights": "light_keya",
+          "scenes": "geometry_a"
         },
         "position": {
           "x": -880,
@@ -503,7 +503,7 @@
       "shotB": {
         "definitionVersion": 1,
         "id": "shotB",
-        "label": "shotb1",
+        "label": "render_shotb",
         "parameters": {
           "ambientColor": [
             0.5,
@@ -518,9 +518,9 @@
             0.08,
             1
           ],
-          "camera": "camb1",
-          "lights": "keyb1",
-          "scenes": "screen1 floor1"
+          "camera": "camera_b",
+          "lights": "light_keyb",
+          "scenes": "geometry_screen geometry_floor"
         },
         "position": {
           "x": 280,

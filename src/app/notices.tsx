@@ -2,7 +2,12 @@ import { Button } from "@ui/index.ts";
 import styles from "./notices.module.css";
 
 /**
- * The strip under the top bar: things the user must be told and can act on.
+ * The strip at the foot of the window: things the user must be told and can act on.
+ *
+ * At the foot since B265. Under the top bar it was a row above the panes, and a notice
+ * arriving or leaving moved every one of them; "Output stale" leaves when a node gets its
+ * first input, so the port moved from under the pointer. Where the strip sits is the
+ * shell's (`app-shell.tsx`); what it says is this file's.
  *
  * Three of them exist today and all three are states the app used to enter silently:
  * autosave is off because there is no storage; a halted GPU with no way back; an

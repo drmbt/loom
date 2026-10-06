@@ -2,11 +2,11 @@ import { settings, node, edge, graph, document, drivenSlot, expressionSlot } fro
 
 /**
  * T1271: the analysis is ONE instance and every lane is an expression on one of its two
- * bags — `lvl1` for the ranked levels, `hit1` for the drum counts. These two helpers keep
+ * bags — `select_lvl` for the ranked levels, `select_hit` for the drum counts. These two helpers keep
  * the reads legible at the call site; the ranges are what carries the meaning.
  */
-const LEVELS = (key: string): string => `op('lvl1').chan.${key}`;
-const HITS = (key: string): string => `op('hit1').chan.${key}`;
+const LEVELS = (key: string): string => `op('select_lvl').chan.${key}`;
+const HITS = (key: string): string => `op('select_hit').chan.${key}`;
 
 /**
  * E35 — Nova-Torus (T660). The owner's second file, shipped as Corona's sibling.
@@ -62,11 +62,11 @@ export const novaTorusDocument = document(
        * that tube (prof = 1 + 0.38·star + 0.15·field), which is why the ring reads as
        * braided cable rather than as a donut.
        */
-      node("pointgenerator1", "pointGenerator", [-782, 44], { cols: 256, count: 65536, radius: 1, rows: 256, shape: "torus", sizeX: 2, sizeY: 2, sizeZ: 2 }, { label: "pointgenerator1", parameters: { radius2: expressionSlot(`0.18 + 0.3 * ${LEVELS("lowMid")}`, 0.33) } }),
-      node("pointkernel1", "pointKernel", [-153, 35], { attributes: "", capacity: 65536, group: "", kernel: "\nfn lm_hash(p: vec3f) -> f32 {\n  var q = fract(p * 0.1031);\n  q = q + vec3f(dot(q, q.zyx + 31.32));\n  return fract((q.x + q.y) * q.z);\n}\nfn lm_noise(x: vec3f) -> f32 {\n  let i = floor(x); let f = fract(x);\n  let u = f * f * (3.0 - 2.0 * f);\n  let a = mix(lm_hash(i + vec3f(0.0,0.0,0.0)), lm_hash(i + vec3f(1.0,0.0,0.0)), u.x);\n  let b = mix(lm_hash(i + vec3f(0.0,1.0,0.0)), lm_hash(i + vec3f(1.0,1.0,0.0)), u.x);\n  let c = mix(lm_hash(i + vec3f(0.0,0.0,1.0)), lm_hash(i + vec3f(1.0,0.0,1.0)), u.x);\n  let d = mix(lm_hash(i + vec3f(0.0,1.0,1.0)), lm_hash(i + vec3f(1.0,1.0,1.0)), u.x);\n  return mix(mix(a,b,u.y), mix(c,d,u.y), u.z) * 2.0 - 1.0;\n}\nfn lm_fbm(x: vec3f, oct: i32) -> f32 {\n  var v = 0.0; var a = 0.5; var q = x;\n  for (var k: i32 = 0; k < oct; k = k + 1) {\n    v = v + a * lm_noise(q);\n    q = q * 2.03 + vec3f(17.3, 9.1, 4.7);\n    a = a * 0.55;\n  }\n  return v;\n}\nfn lm_ridged(x: vec3f, oct: i32) -> f32 {\n  var v = 0.0; var a = 0.5; var q = x;\n  for (var k: i32 = 0; k < oct; k = k + 1) {\n    let n = 1.0 - abs(lm_noise(q));\n    v = v + a * n * n;\n    q = q * 2.07 + vec3f(11.1, 3.3, 7.7);\n    a = a * 0.52;\n  }\n  return v - 0.62;\n}\nfn lm_rotY(v: vec3f, a: f32) -> vec3f {\n  let c = cos(a); let s = sin(a);\n  return vec3f(v.x*c - v.z*s, v.y, v.x*s + v.z*c);\n}\nfn lm_rotX(v: vec3f, a: f32) -> vec3f {\n  let c = cos(a); let s = sin(a);\n  return vec3f(v.x, v.y*c - v.z*s, v.y*s + v.z*c);\n}\n\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  // absolute clock: ctx.time is timeline-relative and snaps at the loop point.\n  // T683: ctx.absTime is SECONDS (the manifest says so). The saved file multiplied\n  // by 0.001 - a milliseconds assumption - which ran this whole kernel clock at\n  // 1/1000th speed: the tumble, the band sweep and the morphs below were all\n  // authored, and all frozen. The turntable the owner asked for was already here.\n  let t = ctx.absTime;\n\n  let R0 = 1.0; let RMIN = 0.18; let RSPAN = 0.34;\n  let pin = p.position;\n  let d = max(1.0e-4, length(pin.xz));\n  let r = length(vec2f(d - R0, pin.y));\n  let fromAudio = clamp((r - RMIN) / RSPAN, 0.0, 1.0);\n  let warp = clamp(fromAudio + 0.30 + 0.26 * sin(t * 0.087), 0.0, 1.35);\n\n  let u  = atan2(pin.z, pin.x);\n  let v0 = atan2(pin.y, d - R0);\n\n  // ---- three morph weights, smooth and normalised (no steps, no snapping) --\n  let m = t * 0.055;\n  var w0 = 0.5 + 0.5 * sin(m);\n  var w1 = 0.5 + 0.5 * sin(m * 0.73 + 2.1);\n  var w2 = 0.5 + 0.5 * sin(m * 0.51 + 4.2);\n  w0 = w0 * w0; w1 = w1 * w1; w2 = w2 * w2;      // sharpen so one mode leads\n  let ws = w0 + w1 + w2 + 1.0e-4;\n  w0 = w0 / ws; w1 = w1 / ws; w2 = w2 / ws;\n\n  // ---- twist as PERIODIC harmonics of u: closes seamlessly, morphs smoothly\n  let A1 = 0.60 + 0.90 * sin(t * 0.037);\n  let A2 = 0.80 * sin(t * 0.023 + 1.7);\n  let A3 = 0.50 * sin(t * 0.019 + 3.3);\n  var v = v0\n        + A1 * sin(u)\n        + A2 * sin(2.0 * u + t * 0.06)\n        + A3 * sin(3.0 * u - 0.4)\n        + (0.5 + 1.1 * warp) * sin(u + t * 0.12);\n  v = v + t * 0.50;\n\n  let sc = vec3f(cos(u) * 1.4, sin(u) * 1.4, v * 0.45);\n  let wv = vec3f(\n    lm_fbm(sc + vec3f(0.0, 0.0, t * 0.12), 4),\n    lm_fbm(sc + vec3f(4.1, 2.7, t * 0.10), 4),\n    lm_fbm(sc + vec3f(8.3, 6.1, t * 0.14), 4)\n  );\n  let lobes   = lm_fbm(sc * 1.6 + wv * 1.5, 5);\n  let creases = lm_ridged(sc * (2.2 + 2.4 * warp) + wv * 1.1 - vec3f(t * 0.2, 0.0, 0.0), 5);\n  let field   = mix(lobes, creases * 1.15, clamp(warp, 0.0, 1.0));\n\n  // ---- three genuinely different cross-section profiles ---------------------\n  // harmonic counts stay integer; only the CROSSFADE moves, so nothing tears\n  let sMix = 0.5 + 0.5 * sin(t * 0.020);\n  let star = mix(sin(4.0 * v), sin(7.0 * v), sMix);\n  let rMix = 0.5 + 0.5 * sin(t * 0.031 + 1.2);\n  let ripple = mix(sin(3.0 * u - t * 1.1), sin(7.0 * u - t * 0.7), rMix);\n\n  let prof0 = 1.0 + 0.30 * field;                      // smooth organic coil\n  let prof1 = 1.0 + 0.38 * star + 0.15 * field;        // star / ribbon tube\n  let prof2 = 1.0 + 0.95 * max(0.0, creases);    // spiny coral\n  let prof  = w0 * prof0 + w1 * prof1 + w2 * prof2;\n\n  let squash = mix(1.0, 0.58, w1);                     // flatten toward a ribbon\n\n  let rr = r * prof * (1.0 + 0.40 * warp * field + 0.16 * ripple);\n  let RR = R0 + 0.10 * sin(3.0 * u + t * 0.7)\n              + 0.14 * sin(2.0 * u - t * 0.60)\n              + 0.18 * lm_fbm(vec3f(cos(u) * 2.0, sin(u) * 2.0, t * 0.15), 3);\n\n  let cu = cos(u); let su = sin(u);\n  let cv = cos(v); let sv = sin(v);\n  var p3 = vec3f(cu * (RR + rr * cv), rr * sv * squash, su * (RR + rr * cv));\n  p3.y = p3.y + 0.22 * sin(2.0 * u + t * 0.45);\n\n  p3 = p3 * 0.70;\n  p3 = lm_rotY(p3, t * 0.09);\n  p3 = lm_rotX(p3, -0.58);\n\n  let dcam = 4.2; let zc = max(0.05, dcam - p3.z);\n  let ff = 3.6; let aspect = 16.0 / 9.0;\n  q.position = vec3f((p3.x * ff / zc) / aspect, p3.y * ff / zc, 0.5);\n\n  // travelling colour band + camera depth, read by the layer predicates\n  let band = 0.5 + 0.5 * sin(3.0 * u - t * 0.90 + 0.8 * field + 1.6 * sin(v * 0.5));\n  q.velocity = vec3f(band, creases, clamp(p3.z * 1.4 + 0.5, 0.0, 1.0));\n  return q;\n}\n", seed: 11, value1: 0, value2: 0, value3: 0, value4: 0 }, { label: "pointkernel1" }),
+      node("pointgenerator1", "pointGenerator", [-782, 44], { cols: 256, count: 65536, radius: 1, rows: 256, shape: "torus", sizeX: 2, sizeY: 2, sizeZ: 2 }, { label: "generator1", parameters: { radius2: expressionSlot(`0.18 + 0.3 * ${LEVELS("lowMid")}`, 0.33) } }),
+      node("pointkernel1", "pointKernel", [-153, 35], { attributes: "", capacity: 65536, group: "", kernel: "\nfn lm_hash(p: vec3f) -> f32 {\n  var q = fract(p * 0.1031);\n  q = q + vec3f(dot(q, q.zyx + 31.32));\n  return fract((q.x + q.y) * q.z);\n}\nfn lm_noise(x: vec3f) -> f32 {\n  let i = floor(x); let f = fract(x);\n  let u = f * f * (3.0 - 2.0 * f);\n  let a = mix(lm_hash(i + vec3f(0.0,0.0,0.0)), lm_hash(i + vec3f(1.0,0.0,0.0)), u.x);\n  let b = mix(lm_hash(i + vec3f(0.0,1.0,0.0)), lm_hash(i + vec3f(1.0,1.0,0.0)), u.x);\n  let c = mix(lm_hash(i + vec3f(0.0,0.0,1.0)), lm_hash(i + vec3f(1.0,0.0,1.0)), u.x);\n  let d = mix(lm_hash(i + vec3f(0.0,1.0,1.0)), lm_hash(i + vec3f(1.0,1.0,1.0)), u.x);\n  return mix(mix(a,b,u.y), mix(c,d,u.y), u.z) * 2.0 - 1.0;\n}\nfn lm_fbm(x: vec3f, oct: i32) -> f32 {\n  var v = 0.0; var a = 0.5; var q = x;\n  for (var k: i32 = 0; k < oct; k = k + 1) {\n    v = v + a * lm_noise(q);\n    q = q * 2.03 + vec3f(17.3, 9.1, 4.7);\n    a = a * 0.55;\n  }\n  return v;\n}\nfn lm_ridged(x: vec3f, oct: i32) -> f32 {\n  var v = 0.0; var a = 0.5; var q = x;\n  for (var k: i32 = 0; k < oct; k = k + 1) {\n    let n = 1.0 - abs(lm_noise(q));\n    v = v + a * n * n;\n    q = q * 2.07 + vec3f(11.1, 3.3, 7.7);\n    a = a * 0.52;\n  }\n  return v - 0.62;\n}\nfn lm_rotY(v: vec3f, a: f32) -> vec3f {\n  let c = cos(a); let s = sin(a);\n  return vec3f(v.x*c - v.z*s, v.y, v.x*s + v.z*c);\n}\nfn lm_rotX(v: vec3f, a: f32) -> vec3f {\n  let c = cos(a); let s = sin(a);\n  return vec3f(v.x, v.y*c - v.z*s, v.y*s + v.z*c);\n}\n\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  // absolute clock: ctx.time is timeline-relative and snaps at the loop point.\n  // T683: ctx.absTime is SECONDS (the manifest says so). The saved file multiplied\n  // by 0.001 - a milliseconds assumption - which ran this whole kernel clock at\n  // 1/1000th speed: the tumble, the band sweep and the morphs below were all\n  // authored, and all frozen. The turntable the owner asked for was already here.\n  let t = ctx.absTime;\n\n  let R0 = 1.0; let RMIN = 0.18; let RSPAN = 0.34;\n  let pin = p.position;\n  let d = max(1.0e-4, length(pin.xz));\n  let r = length(vec2f(d - R0, pin.y));\n  let fromAudio = clamp((r - RMIN) / RSPAN, 0.0, 1.0);\n  let warp = clamp(fromAudio + 0.30 + 0.26 * sin(t * 0.087), 0.0, 1.35);\n\n  let u  = atan2(pin.z, pin.x);\n  let v0 = atan2(pin.y, d - R0);\n\n  // ---- three morph weights, smooth and normalised (no steps, no snapping) --\n  let m = t * 0.055;\n  var w0 = 0.5 + 0.5 * sin(m);\n  var w1 = 0.5 + 0.5 * sin(m * 0.73 + 2.1);\n  var w2 = 0.5 + 0.5 * sin(m * 0.51 + 4.2);\n  w0 = w0 * w0; w1 = w1 * w1; w2 = w2 * w2;      // sharpen so one mode leads\n  let ws = w0 + w1 + w2 + 1.0e-4;\n  w0 = w0 / ws; w1 = w1 / ws; w2 = w2 / ws;\n\n  // ---- twist as PERIODIC harmonics of u: closes seamlessly, morphs smoothly\n  let A1 = 0.60 + 0.90 * sin(t * 0.037);\n  let A2 = 0.80 * sin(t * 0.023 + 1.7);\n  let A3 = 0.50 * sin(t * 0.019 + 3.3);\n  var v = v0\n        + A1 * sin(u)\n        + A2 * sin(2.0 * u + t * 0.06)\n        + A3 * sin(3.0 * u - 0.4)\n        + (0.5 + 1.1 * warp) * sin(u + t * 0.12);\n  v = v + t * 0.50;\n\n  let sc = vec3f(cos(u) * 1.4, sin(u) * 1.4, v * 0.45);\n  let wv = vec3f(\n    lm_fbm(sc + vec3f(0.0, 0.0, t * 0.12), 4),\n    lm_fbm(sc + vec3f(4.1, 2.7, t * 0.10), 4),\n    lm_fbm(sc + vec3f(8.3, 6.1, t * 0.14), 4)\n  );\n  let lobes   = lm_fbm(sc * 1.6 + wv * 1.5, 5);\n  let creases = lm_ridged(sc * (2.2 + 2.4 * warp) + wv * 1.1 - vec3f(t * 0.2, 0.0, 0.0), 5);\n  let field   = mix(lobes, creases * 1.15, clamp(warp, 0.0, 1.0));\n\n  // ---- three genuinely different cross-section profiles ---------------------\n  // harmonic counts stay integer; only the CROSSFADE moves, so nothing tears\n  let sMix = 0.5 + 0.5 * sin(t * 0.020);\n  let star = mix(sin(4.0 * v), sin(7.0 * v), sMix);\n  let rMix = 0.5 + 0.5 * sin(t * 0.031 + 1.2);\n  let ripple = mix(sin(3.0 * u - t * 1.1), sin(7.0 * u - t * 0.7), rMix);\n\n  let prof0 = 1.0 + 0.30 * field;                      // smooth organic coil\n  let prof1 = 1.0 + 0.38 * star + 0.15 * field;        // star / ribbon tube\n  let prof2 = 1.0 + 0.95 * max(0.0, creases);    // spiny coral\n  let prof  = w0 * prof0 + w1 * prof1 + w2 * prof2;\n\n  let squash = mix(1.0, 0.58, w1);                     // flatten toward a ribbon\n\n  let rr = r * prof * (1.0 + 0.40 * warp * field + 0.16 * ripple);\n  let RR = R0 + 0.10 * sin(3.0 * u + t * 0.7)\n              + 0.14 * sin(2.0 * u - t * 0.60)\n              + 0.18 * lm_fbm(vec3f(cos(u) * 2.0, sin(u) * 2.0, t * 0.15), 3);\n\n  let cu = cos(u); let su = sin(u);\n  let cv = cos(v); let sv = sin(v);\n  var p3 = vec3f(cu * (RR + rr * cv), rr * sv * squash, su * (RR + rr * cv));\n  p3.y = p3.y + 0.22 * sin(2.0 * u + t * 0.45);\n\n  p3 = p3 * 0.70;\n  p3 = lm_rotY(p3, t * 0.09);\n  p3 = lm_rotX(p3, -0.58);\n\n  let dcam = 4.2; let zc = max(0.05, dcam - p3.z);\n  let ff = 3.6; let aspect = 16.0 / 9.0;\n  q.position = vec3f((p3.x * ff / zc) / aspect, p3.y * ff / zc, 0.5);\n\n  // travelling colour band + camera depth, read by the layer predicates\n  let band = 0.5 + 0.5 * sin(3.0 * u - t * 0.90 + 0.8 * field + 1.6 * sin(v * 0.5));\n  q.velocity = vec3f(band, creases, clamp(p3.z * 1.4 + 0.5, 0.0, 1.0));\n  return q;\n}\n", seed: 11, value1: 0, value2: 0, value3: 0, value4: 0 }, { label: "kernel1" }),
       node("ramp1", "ramp", [1220, 164], { interp: "smooth", period: 1, phase: 0, stops: [{ color: [0, 0, 0, 1], position: 0 }, { color: [0.01, 0.02, 0.07, 1], position: 0.1 }, { color: [0.06, 0.13, 0.42, 1], position: 0.3 }, { color: [0.48, 0.09, 0.64, 1], position: 0.52 }, { color: [0.98, 0.26, 0.22, 1], position: 0.72 }, { color: [1, 0.74, 0.3, 1], position: 0.89 }, { color: [1, 0.98, 0.93, 1], position: 1 }], type: "horizontal" }, { definitionVersion: 2, label: "ramp1" }),
-      node("renderpoints1", "renderPoints", [240, -100], { accumulate: false, blend: "additive", color: [0.17, 0.27, 0.54, 1], count: 65536, group: "" }, { label: "renderpoints1", parameters: { sizePixels: expressionSlot(`1.1 + 0.9 * ${LEVELS("level")}`, 1.55) } }),
-      node("renderpoints2", "renderPoints", [240, 204], { accumulate: false, blend: "additive", color: [1, 0.42, 0.1, 1], count: 65536, group: "p.velocity.y > 0.06", sizePixels: 1.3 }, { label: "renderpoints2" }),
+      node("renderpoints1", "renderPoints", [240, -100], { accumulate: false, blend: "additive", color: [0.17, 0.27, 0.54, 1], count: 65536, group: "" }, { label: "points1", parameters: { sizePixels: expressionSlot(`1.1 + 0.9 * ${LEVELS("level")}`, 1.55) } }),
+      node("renderpoints2", "renderPoints", [240, 204], { accumulate: false, blend: "additive", color: [1, 0.42, 0.1, 1], count: 65536, group: "p.velocity.y > 0.06", sizePixels: 1.3 }, { label: "points2" }),
       /**
        * The cyan sparkle group — and its size is DRIVEN now (§V624). The owner's file
        * carried `valuemath15 ×9 → valuemath16 +1` wired to nothing; Corona's identical
@@ -75,11 +75,11 @@ export const novaTorusDocument = document(
        * sparkle layer's weight follows the high band, 1.5% of the frame moving with it
        * at a mid-pattern frame. A parameter that drives nothing is a lie in a document.
        */
-      node("renderpoints3", "renderPoints", [240, 464], { accumulate: false, blend: "additive", color: [0.22, 0.88, 1, 1], count: 65536, group: "p.velocity.x > 0.66 && p.velocity.y < 0.04" }, { label: "renderpoints3", parameters: { sizePixels: expressionSlot(`0.6 + 2.6 * ${HITS("hatCount")}`, 0.6) } }),
+      node("renderpoints3", "renderPoints", [240, 464], { accumulate: false, blend: "additive", color: [0.22, 0.88, 1, 1], count: 65536, group: "p.velocity.x > 0.66 && p.velocity.y < 0.04" }, { label: "points3", parameters: { sizePixels: expressionSlot(`0.6 + 2.6 * ${HITS("hatCount")}`, 0.6) } }),
       node("screen1", "screen", [1660, -100], { opacity: 1 }, { label: "screen1" }),
       node("screen2", "screen", [1880, -100], { opacity: 1 }, { label: "screen2" }),
       node("screen3", "screen", [2100, -100], { opacity: 1 }, { label: "screen3" }),
-      node("audiofilein1", "audioFileIn", [-420, 704], { cue: false, cuePoint: 0, extend: "loop", file: "", monitor: true, play: true, playMode: "freeRun", speed: 1, trimEnd: 0, trimStart: 0, volume: 1 }, { label: "audiofilein1" }),
+      node("audiofilein1", "audioFileIn", [-420, 704], { cue: false, cuePoint: 0, extend: "loop", file: "", monitor: true, play: true, playMode: "freeRun", speed: 1, trimEnd: 0, trimStart: 0, volume: 1 }, { label: "audiofile1" }),
       /**
        * The FAST modulator — 0.5 Hz against Corona's 0.035, the deliberate tempo
        * difference (§V471.8 is Corona's idea; this file does something else on
@@ -92,12 +92,12 @@ export const novaTorusDocument = document(
        * T504/T508, Corona's exact treatment: the file opens PLAYING against a
        * deterministic pattern, and your own track is one drop away — both sources are
        * wired permanently, the Switch's index picks, and nothing downstream changes
-       * because everything downstream reads `source1`. The owner's original carried a
+       * because everything downstream reads `switch_source`. The owner's original carried a
        * session-local blob: URL that is dead outside the browser it was saved in; the
        * File parameter ships empty, its T493 transport kept.
        */
-      node("music1", "audioPattern", [-420, 444], { amount: 1, bpm: 112 }, { label: "music1" }),
-      node("source1", "valueSwitch", [-160, 574], { index: 0 }, { label: "source1" }),
+      node("music1", "audioPattern", [-420, 444], { amount: 1, bpm: 112 }, { label: "pattern_music" }),
+      node("source1", "valueSwitch", [-160, 574], { index: 0 }, { label: "switch_source" }),
       /**
        * T1271 — ONE ANALYSIS INSTANCE, and the eight lanes became eight expressions.
        *
@@ -111,7 +111,7 @@ export const novaTorusDocument = document(
        * cyan layer from the frame instead of dimming it). And six of the eight retained
        * values sat outside the range their own lane produced — §V914's shape — with three
        * of them at 0 on parameters that DRAW: cut the audio path and the shipped file
-       * renders a BLACK FRAME, 0.0000 of it lit, because `renderpoints1.sizePixels`
+       * renders a BLACK FRAME, 0.0000 of it lit, because `points1.sizePixels`
        * retained 0 is a point cloud with no points.
        *
        * The envelope stays 0.09 — E35's own number, kept against E24's 0.08, because the
@@ -120,22 +120,22 @@ export const novaTorusDocument = document(
        */
       node("analysis1", "component:audioAnalysis@1", [-140, 824], {
         envelope: 0.09, window: 16, settle: 0.15, hitDecay: 250,
-      }, { label: "analysis1" }),
+      }, { label: "audioanalysis1" }),
       /* T1302b — the two bags are named by a Select at `*`, which passes each through
          unchanged. They were Limits at 0..1, the identity only on lanes that live there: the
          hits bag also carries the tempo claim, and the Limit clipped `bpm` 112 to 1 and
          `beat`/`bar` to at most 1. */
-      node("lvl1", "valueSelect", [160, 744], { channels: "*" }, { label: "lvl1" }),
+      node("lvl1", "valueSelect", [160, 744], { channels: "*" }, { label: "select_lvl" }),
       /**
        * The counts lane, and it earns its place on ONE layer. Six properties read the rank,
        * which is the right shape for a body that breathes; the cyan sparkle is not a body,
-       * it is an event — `renderpoints3` selects the tips (`p.velocity.x > 0.66`) and
+       * it is an event — `points3` selects the tips (`p.velocity.x > 0.66`) and
        * `level2` grades them, so the two together are one flash. A rank rests at 0.5
        * (§V952), which would leave the sparkle half-lit at all times; a count rests at 0
        * and decays over 250 ms, which is the flash the owner's ×20 gain was reaching for
        * before the negative excursions ate a fifth of it.
        */
-      node("hit1", "valueSelect", [160, 948], { channels: "*" }, { label: "hit1" }),
+      node("hit1", "valueSelect", [160, 948], { channels: "*" }, { label: "select_hit" }),
     ],
     [
       edge("e0-music1-source1", ["music1", "out"], ["source1", "in1"]),

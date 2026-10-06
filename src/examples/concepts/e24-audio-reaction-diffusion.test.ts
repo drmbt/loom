@@ -29,7 +29,7 @@ describe("E24 Audio Reaction-Diffusion", () => {
   it("drives substeps from the bass rank, through a hard fence, into a live loop region", () => {
     const slot = slotOf("state", "substeps");
     expect(slot.mode).toBe("expression");
-    expect(channelOf(sourceOf("state", "substeps"))).toBe("lvl1:low");
+    expect(channelOf(sourceOf("state", "substeps"))).toBe("select_lvl:low");
     expect(sourceOf("state", "substeps")).toMatch(/^clamp\(.*, 1, 34\)$/);
     const begin = plan.passes.find((pass) => pass.kind === "loop" && pass.edge === "begin") as {
       count?: number;
@@ -50,7 +50,7 @@ describe("E24 Audio Reaction-Diffusion", () => {
   it("range-maps the audio rank into the chemistry with bounds the pattern survives", () => {
     const slot = slotOf("shape", "whitelevel");
     expect(slot.mode).toBe("expression");
-    expect(channelOf(sourceOf("shape", "whitelevel"))).toBe("lvl1:lowMid");
+    expect(channelOf(sourceOf("shape", "whitelevel"))).toBe("select_lvl:lowMid");
     const m = /^([0-9.]+) \+ ([0-9.]+) \* op/.exec(sourceOf("shape", "whitelevel"));
     expect(m).not.toBeNull();
     const rest = Number(m![1]);
@@ -63,8 +63,8 @@ describe("E24 Audio Reaction-Diffusion", () => {
 
   /**
    * T562 — THE CHEMISTRY MAP IS A FIELD, and the failure it shipped with was that the
-   * field was nearly a CONSTANT: `broad1` ran at period 0.62 with two octaves, one feature
-   * bigger than the frame, and `detail1` only warped it. Several octaves at a smaller
+   * field was nearly a CONSTANT: `noise_broad` ran at period 0.62 with two octaves, one feature
+   * bigger than the frame, and `noise_detail` only warped it. Several octaves at a smaller
    * period is what gives the picture regions, so it is asserted rather than left to be
    * quietly retuned back.
    */
@@ -147,7 +147,7 @@ describe("E24 Audio Reaction-Diffusion", () => {
     const out = Object.values(document.graph.edges).filter((edge) => edge.source.nodeId === "wind");
     expect(out.map((edge) => `${edge.target.nodeId}.${edge.target.portId}`)).toEqual(["rd.input"]);
 
-    // The chemistry map is NOT carried along: `dish1` reaches blue through the Reorder,
+    // The chemistry map is NOT carried along: `screen_dish` reaches blue through the Reorder,
     // which runs after the kernel, so the state slides across a stationary parameter field.
     const mapIntoPack = Object.values(document.graph.edges).find(
       (edge) => edge.target.nodeId === "pack" && edge.target.portId === "in2",
@@ -156,7 +156,7 @@ describe("E24 Audio Reaction-Diffusion", () => {
   });
 
   /**
-   * T560 — THE TRIGGER SEEDS THE PLATE, AND NOTHING LAGS IT. The shipped file put `trig1`'s
+   * T560 — THE TRIGGER SEEDS THE PLATE, AND NOTHING LAGS IT. The shipped file put `trigger1`'s
    * one-frame pulse through a `valueLag` of 0.35 s, and a one-pole smoother answers a
    * single-frame impulse with `1 - exp(-dt/tau)` — 0.047 at 60fps — so the palette scale it
    * drove travelled 2.4000..2.4535 on a hit. §V481(b) from the other side. The pulse now
@@ -173,11 +173,11 @@ describe("E24 Audio Reaction-Diffusion", () => {
       mode?: string;
       bindings?: { expression?: { source?: string }; static?: { value?: number } };
     };
-    // T1234: the trigger's pulse is read RAW by the expression — not through `hit1`, whose
+    // T1234: the trigger's pulse is read RAW by the expression — not through `select_hit`, whose
     // 250 ms decay would hold the gate open for fifteen frames and seed a wash.
-    expect(channelOf(slot?.bindings?.expression?.source)).toBe("trig1:onsetCount");
+    expect(channelOf(slot?.bindings?.expression?.source)).toBe("trigger1:onsetCount");
     expect(slot.bindings?.static?.value).toBe(2); // shut, and shut is exactly zero mask
-    expect(channelOf(sourceOf("born", "opacity"))).toBe("trig1:onsetCount");
+    expect(channelOf(sourceOf("born", "opacity"))).toBe("trigger1:onsetCount");
     const intoTrig = Object.values(document.graph.edges).filter((edge) => edge.target.nodeId === "trig");
     expect(intoTrig.map((edge) => edge.source.nodeId)).toEqual(["source"]);
     expect(document.graph.nodes["kick"]).toBeUndefined();
@@ -195,7 +195,7 @@ describe("E24 Audio Reaction-Diffusion", () => {
    * and the split: five distinct reads, each on the bag its job needs (§V952: continuous
    * through `levels`, counts through `hits`).
    */
-  it("conditions the audio once, and drives every lane as an expression on lvl1 or hit1", () => {
+  it("conditions the audio once, and drives every lane as an expression on select_lvl or select_hit", () => {
     const analyses = Object.values(document.graph.nodes).filter((node) => node.type === "component:audioAnalysis@1");
     expect(analyses.map((node) => node.id)).toEqual(["analysis"]);
     for (const [id, port] of [["lvl", "levels"], ["hit", "hits"]] as const) {
@@ -221,19 +221,19 @@ describe("E24 Audio Reaction-Diffusion", () => {
       "grow.s.x": channelOf(sourceOf("grow", "s.x")),
     };
     expect(reads).toEqual({
-      "warpA.weight.x": "hit1:kickCount",
-      "warpB.weight.x": "hit1:snareCount",
-      "warpC.weight.x": "hit1:hatCount",
-      "tint.scale": "lvl1:highMid",
-      "glow.brightness": "hit1:onsetCount",
-      "grow.s.x": "lvl1:low",
+      "warpA.weight.x": "select_hit:kickCount",
+      "warpB.weight.x": "select_hit:snareCount",
+      "warpC.weight.x": "select_hit:hatCount",
+      "tint.scale": "select_lvl:highMid",
+      "glow.brightness": "select_hit:onsetCount",
+      "grow.s.x": "select_lvl:low",
     });
     // Both axes of every pair read the same source, or a lens becomes a shear.
     for (const id of ["warpA", "warpB", "warpC"]) expect(sourceOf(id, "weight.y")).toBe(sourceOf(id, "weight.x"));
     expect(sourceOf("grow", "s.y")).toBe(sourceOf("grow", "s.x"));
     // A lens at rest is OFF: the three weights are a bare gain on a count that rests at 0,
     // which is T738's floor stated by the arithmetic rather than by a Limit node.
-    for (const id of ["warpA", "warpB", "warpC"]) expect(sourceOf(id, "weight.x")).toMatch(/^0\.[0-9]+ \* op\('hit1'\)/);
+    for (const id of ["warpA", "warpB", "warpC"]) expect(sourceOf(id, "weight.x")).toMatch(/^0\.[0-9]+ \* op\('select_hit'\)/);
   });
 
   /**
@@ -245,7 +245,7 @@ describe("E24 Audio Reaction-Diffusion", () => {
   it("walks morph, shape and anisotropy on slow free-running LFOs, anisotropy under 0.35", () => {
     const knobs = { morph: "band", shape: "stencil", anisotropy: "grain" } as const;
     for (const [key, id] of Object.entries(knobs)) {
-      expect(channelOf(sourceOf("rd", key)), key).toBe(id + "1");
+      expect(channelOf(sourceOf("rd", key)), key).toBe(`lfo_${id}`);
       const lfo = document.graph.nodes[id] as GraphNode;
       expect(lfo.type).toBe("lfo");
       // Slower than a minute per lap: 80 s, 120 s, 164 s.
@@ -262,7 +262,7 @@ describe("E24 Audio Reaction-Diffusion", () => {
   /**
    * T1234 — THE ECHO LOOP IS CAPPED. The old expansion rate rested at 0.982 (a SHRINKING
    * loop that the comments called an expansion); on the low rank it now runs 1.008..1.029
-   * always, and `dim1`'s gamma is contractive only in [0,1): above 1 it grows, and the
+   * always, and `level_dim`'s gamma is contractive only in [0,1): above 1 it grows, and the
    * clip's loud bars diverged the top-right corner to inf. The clamp is the bound.
    */
   it("caps the expanding echo loop at 1, between the dimmer and the stamp", () => {
@@ -287,6 +287,6 @@ describe("E24 Audio Reaction-Diffusion", () => {
   it("ships the synthetic pattern as its source, so it plays on first open", () => {
     const music = document.graph.nodes["music"] as GraphNode;
     expect(music.type).toBe("audioPattern");
-    expect(music.label).toBe("music1"); // the swap contract: replace the node, keep the label
+    expect(music.label).toBe("pattern_music"); // the swap contract: replace the node, keep the label
   });
 });

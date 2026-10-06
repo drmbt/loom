@@ -22,6 +22,7 @@ import { codeParametersLast } from "../../domain/parameters/code.ts";
 import { readNumber } from "./parameter-readers.ts";
 import {
   kernelBodyOf,
+  kernelSharedModules,
   kernelSourceMap,
   kernelParamCollisions,
   kernelParamSchema,
@@ -41,7 +42,7 @@ import {
   regionBinding,
   type KernelStoragePlan,
 } from "./point-storage.ts";
-import { reflectedUniforms } from "./params-reflection.ts";
+import { REFLECTED_PARAMETER_KEYS_NOTE, reflectedUniforms } from "./params-reflection.ts";
 
 /**
  * The ADVANCED kernel (T322/T323): a per-point kernel that may CHANGE COUNTS — the
@@ -143,7 +144,7 @@ export const pointKernelAdvancedNode: NodeDefinition = {
       default: DEFAULT_POINT_KERNEL,
       compileTime: true,
       description:
-        "fn process(p: Point, ctx: PointCtx) -> Point. q.alive = 0u kills; q.spawnCount = n emits n children this frame (capped per parent). Clocks first: ctx.absTime (f32 seconds) and ctx.absFrame (u32 — a texture shader's frameU.absFrame is f32) keep counting across a timeline loop, so reach for these for anything that should simply keep going. ctx.time and ctx.frameIndex are timeline readings and reset to the in point at every lap — take them only when where you are IN the piece is the point, and write \"timeline-anchored\" in a comment when you do. ctx.pointer (vec4f: x, y, buttons) is available to a kernel that names it. YOUR OWN KNOBS (T900): the kernel this node ships with ALREADY declares a `struct Params`, with a `// @default <literal>` and a describing comment per field (T1210) — keep the block and add to it. Every field becomes a named, typed, drivable control on this node, read as ctx.params.<name> here AND in the spawn hook — a uniform write, never a rebuild. A kernel with no such block has no knobs at all. That replaces ctx.value1..value4, which still work for kernels that already read them. pointRand(pointId, salt) is available, and fieldAt(position) samples the field input when one is wired (T744) — which is what lets a kernel SPAWN where a video moves.",
+        "fn process(p: Point, ctx: PointCtx) -> Point. q.alive = 0u kills; q.spawnCount = n emits n children this frame (capped per parent). Clocks first: ctx.absTime (f32 seconds) and ctx.absFrame (u32 — a texture shader's frameU.absFrame is f32) keep counting across a timeline loop, so reach for these for anything that should simply keep going. ctx.time and ctx.frameIndex are timeline readings and reset to the in point at every lap — take them only when where you are IN the piece is the point, and write \"timeline-anchored\" in a comment when you do. ctx.pointer (vec4f: x, y, buttons) is available to a kernel that names it. YOUR OWN KNOBS (T900): the kernel this node ships with ALREADY declares a `struct Params`, with a `// @default <literal>` and a describing comment per field (T1210) — keep the block and add to it. Every field becomes a named, typed, drivable control on this node, read as ctx.params.<name> here AND in the spawn hook — a uniform write, never a rebuild. A kernel with no such block has no knobs at all. That replaces ctx.value1..value4, which still work for kernels that already read them. pointRand(pointId, salt) is available, and fieldAt(position) samples the field input when one is wired (T744) — which is what lets a kernel SPAWN where a video moves. SHARED CODE (T1581b): a line `// @use quat` pulls in unit-quaternion helpers for a per-instance orient — quatAxisAngle(axis, angle), quatMul(a, b) (b first, then a), quatRotate(q, v), quatFromFrame(x, y, z), quatLookAt(forward, up), quatFromTo(a, b), quatSlerp(a, b, t); right-handed, (x, y, z, w). A module that does not exist is refused by name.",
     },
     group: {
       type: "code",
@@ -161,7 +162,7 @@ export const pointKernelAdvancedNode: NodeDefinition = {
       default: "",
       compileTime: true,
       description:
-        "T339: fn spawn(child: Point, ctx: PointCtx) -> Point. Runs once on each NEWBORN, which arrives as its parent's copy — shape its attributes here. No alive/spawnCount: lifecycle belongs to the kernel. Empty = children stay copies. Same ctx as the kernel: ctx.absTime is the clock that does not restart at a loop, so newborns after a lap do not repeat the phases of the ones before it (T489), and ctx.params carries the kernel's declared struct Params (T900) — one declaration, both passes.",
+        "T339: fn spawn(child: Point, ctx: PointCtx) -> Point. Runs once on each NEWBORN, which arrives as its parent's copy — shape its attributes here. No alive/spawnCount: lifecycle belongs to the kernel. Empty = children stay copies. Same ctx as the kernel: ctx.absTime is the clock that does not restart at a loop, so newborns after a lap do not repeat the phases of the ones before it (T489), and ctx.params carries the kernel's declared struct Params (T900) — one declaration, both passes. `// @use quat` works here too, written on a line of the hook's own (T1581b): the hook is a separate module and is not handed what the kernel asked for.",
     },
     // T479/T900: the legacy slots stay in the STATIC schema for type-only contexts; a placed
     // node's slots come from `parametersFor` below — parse forever, emit never.
@@ -182,6 +183,7 @@ export const pointKernelAdvancedNode: NodeDefinition = {
       ...legacyValueParametersFor(["kernel", "group", "spawn"], stored),
     });
   },
+  parameterKeysNote: REFLECTED_PARAMETER_KEYS_NOTE,
   stateful: { reset: true, deterministicReplay: true, checkpoint: false, randomAccess: false },
   contractVersion: ADVANCED_KERNEL_CONTRACT_VERSION,
   compile(context): CompiledNodeDescription {
@@ -272,12 +274,15 @@ export const pointKernelAdvancedNode: NodeDefinition = {
        the lifecycle passes below invert that (§V231), which is why they map their own. */
     const kernelPlan = kernelStorage({ own: storage, touched: names, written: names });
 
+    /* T1581b (F9): the shared modules the kernel asked for (`// @use`), in front of its body. */
+    const shared = kernelSharedModules(nodeId, kernelSource);
+    if ("refusal" in shared) return shared.refusal;
     const module = generateKernelModule({
       attributes,
       reads: names,
       writes: names,
       storage: kernelPlan.storage,
-      kernel: kernelBodyOf(kernelSource),
+      kernel: `${shared.prelude}${kernelBodyOf(kernelSource)}`,
       lifecycle: { flagsAttribute: FLAGS },
       ...(groupSource.trim() === "" ? {} : { group: groupSource }),
       ...(fieldTexture === undefined ? {} : { field: true }),
@@ -319,6 +324,9 @@ export const pointKernelAdvancedNode: NodeDefinition = {
     let hookModule: ReturnType<typeof generateSpawnHookModule> | undefined;
     let hookPlan: KernelStoragePlan | undefined;
     const shapedNames = names.filter((name) => name !== FLAGS);
+    /* T1581b (F9): the hook is a module of its own, and asks for its own shared modules. */
+    const hookShared = kernelSharedModules(nodeId, hookSource, "spawn hook");
+    if ("refusal" in hookShared) return hookShared.refusal;
     if (hookSource !== "") {
       hookPlan = kernelStorage({
         own: storage,
@@ -332,7 +340,7 @@ export const pointKernelAdvancedNode: NodeDefinition = {
         attributes,
         flagsAttribute: FLAGS,
         storage: hookPlan.storage,
-        hook: hookSource,
+        hook: `${hookShared.prelude}${hookSource}`,
         ...(params.fields.length === 0 ? {} : { params }),
       });
       if (!hookModule.ok) {
@@ -450,7 +458,7 @@ export const pointKernelAdvancedNode: NodeDefinition = {
         },
         uniformBinding: "kernelFrame",
         nodeId,
-        sourceMap: kernelSourceMap(module, { kernel: kernelSource, group: groupSource }),
+        sourceMap: kernelSourceMap(module, { kernel: kernelSource, group: groupSource, prelude: shared.prelude }),
       },
       {
         kind: "dispatch",
@@ -513,6 +521,7 @@ export const pointKernelAdvancedNode: NodeDefinition = {
               sourceMap: kernelSourceMap(hookModule, {
                 kernel: kernelSource,
                 spawn: typeof parameters["spawn"] === "string" ? parameters["spawn"] : "",
+                spawnPrelude: hookShared.prelude,
               }),
             },
           ]

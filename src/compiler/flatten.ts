@@ -14,7 +14,8 @@ import type {
 } from "../domain/types/parameters.ts";
 import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
 import type { FlatteningReads, InstanceChannelSource, InstanceChannelSources } from "../domain/parameters/node-references.ts";
-import { NO_MORPHS, buildMorphIndex, type PublishedOrigin } from "../domain/presets/morph-index.ts";
+import { NO_MORPHS, buildMorphIndex, type MorphIndexInput, type PublishedOrigin } from "../domain/presets/morph-index.ts";
+import { timelineCueProblems } from "../domain/presets/timeline-cues.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../domain/graph/names.ts";
 import { isPreviewablePortKind } from "../domain/graph/previewable.ts";
 import { effectiveParameterSchema, STORED_READ } from "../domain/parameters/resolve.ts";
@@ -32,6 +33,7 @@ import {
   describeRecursion,
   detectComponentRecursion,
   instanceDisplayNames,
+  instanceOwnParameters,
   internalParameterPath,
   isComponentInstance,
   parentBindResolver,
@@ -443,7 +445,8 @@ function flat(graph: GraphDocument): FlatGraph {
  * §T1552b — the graph a compile reads when it was handed NO catalogue: the document as it
  * is. Not a flattening — an instance in it stays an instance and meets the manifest's
  * `component.notFlattened` tripwire — but it is the graph that compile evaluates, so it is
- * named here rather than cast at the compile.
+ * named here rather than cast at the compile. §T1559b: the node-body plot's cut-out
+ * (`value-plot-chain.ts`) is named the same way: no catalogue, and no instance in it.
  */
 export function compiledWithoutCatalogue(graph: GraphDocument): FlatGraph {
   return flat(graph);
@@ -454,8 +457,10 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
   // `flatteningIsIdentity`.
   if (flatteningIsIdentity(request.graph)) {
     const identity = identityFlattening(request.graph);
+    const indexed: MorphIndexInput = { document: request.graph, registry: request.registry, components: request.components, flattened: identity };
     // T1497b: nothing was inlined, so the document's own nodes are what resolves.
-    return { ...identity, morphs: buildMorphIndex({ document: request.graph, registry: request.registry, components: request.components, flattened: identity }) };
+    // §T1559b (2): and what its cue lists that follow the timeline cannot do as written.
+    return { ...identity, diagnostics: timelineCueProblems(indexed), morphs: buildMorphIndex(indexed) };
   }
 
   const diagnostics: RuntimeDiagnostic[] = [];
@@ -791,8 +796,13 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
         definition: componentDefinition,
         instance: resolved,
         // §T1557b: the document, not a moment — this walk is a pure function of it (§V529).
+        // §T1641b slice 2: the page is the published parameters, and the instance's manifest
+        // declares more beside it (a look's own preset state). The same list the manifest is
+        // built from, so the compile cannot call a key the write gate accepts undeclared.
         readPage: (instanceNode, pageSchema) =>
-          resolveNodeParameters(instanceNode, pageSchema, node.type, publishedDiagnostics, STORED_READ),
+          resolveNodeParameters(instanceNode, pageSchema, node.type, publishedDiagnostics, STORED_READ, {
+            retained: Object.keys(instanceOwnParameters(componentDefinition)),
+          }),
       });
       const page = applied.page;
       for (const diagnostic of publishedDiagnostics) {
@@ -1005,6 +1015,17 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     // Groups are a canvas affordance, not a logical one: a flattened graph has no canvas.
     groups: {},
   });
+  // T1497b: against the ROOT document (the banks and the nodes they name live there)
+  // and this flattening (what actually resolves).
+  // T1541b: with the catalogue, so a timed cue can name a look's instance.
+  const indexed: MorphIndexInput = { document: request.graph, registry: request.registry, components: request.components, flattened: { graph, publishedOrigins, instanceSchemas } };
+  /*
+   * §T1559b (2): what the cue lists that follow the timeline cannot do as written, said
+   * HERE for the reason the morph index is built here: once per `(document revision,
+   * catalogue revision)`, however many frames and timeline segments compile over this
+   * flattening. The compile appends a flattening's diagnostics as they are.
+   */
+  diagnostics.push(...timelineCueProblems(indexed));
   return {
     graph,
     sources,
@@ -1017,10 +1038,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     changed,
     instanceNodes,
     publishedOrigins,
-    // T1497b: against the ROOT document (the banks and the nodes they name live there)
-    // and this flattening (what actually resolves).
-    // T1541b: with the catalogue, so a timed cue can name a look's instance.
-    morphs: buildMorphIndex({ document: request.graph, registry: request.registry, components: request.components, flattened: { graph, publishedOrigins, instanceSchemas } }),
+    morphs: buildMorphIndex(indexed),
   };
 }
 

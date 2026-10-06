@@ -51,7 +51,7 @@ describe("cook oracle (T249, §V157)", () => {
        *
        * E47 and E51 instantiate library components. Without `components`, compile does
        * not throw — it DEGRADES: `compiler/unknown-node-type` on the instance, the edge
-       * into `out1` severed as endpoint-missing, E51 down to ZERO passes and E47 to one,
+       * into `output1` severed as endpoint-missing, E51 down to ZERO passes and E47 to one,
        * and the oracle then rendered and digested a target nothing had written. Both
        * policies agreed perfectly about a black rectangle for 80 frames — a vacuous pass
        * of the exact kind this suite exists to refuse, and ONLY the non-vacuity guard at

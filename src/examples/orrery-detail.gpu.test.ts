@@ -16,10 +16,10 @@ it("keeps beveled orbit volumes disjoint and lights the core without audio-drive
   const sample=async(energy:number,plasma=true,isolated=false)=>{
     const doc=structuredClone(aetherOrreryDocument);
     for(const id of ids) doc.graph.nodes[id]!.parameters.energy=energy;
-    if(!plasma) doc.graph.nodes.lightShot!.parameters.scenes=String(doc.graph.nodes.lightShot!.parameters.scenes).replace(/plasmamesh1|plasmareflection1/g,"");
+    if(!plasma) doc.graph.nodes.lightShot!.parameters.scenes=String(doc.graph.nodes.lightShot!.parameters.scenes).replace(/geometry_plasmamesh|geometry_plasmareflection/g,"");
     if(isolated) {
-      doc.graph.nodes.shot!.parameters.scenes="coremesh1";
-      doc.graph.nodes.lightShot!.parameters.scenes=`lightoccluder_coremesh1 ${plasma?"plasmamesh1":""}`;
+      doc.graph.nodes.shot!.parameters.scenes="geometry_coremesh";
+      doc.graph.nodes.lightShot!.parameters.scenes=`geometry_lightoccluder_coremesh ${plasma?"geometry_plasmamesh":""}`;
     }
     const result=await renderHeadless({host:nodeGpuHost(),components:await starterComponentsView(),graph:doc.graph,settings:{...doc.settings,outputResolution:{width:320,height:180}},frames:1,outputNodeId:"out",probeBuffers:plasma&&!isolated?ids.map(pointStorageId):[]});
     expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);

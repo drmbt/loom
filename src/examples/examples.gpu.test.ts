@@ -90,7 +90,7 @@ describe.each(listExamples())("$fileName on Dawn", (file) => {
  *
  * So this measures the thing the example is named for. Park the pointer in the middle, run
  * five seconds, and count how much of the frame the dye reaches — once with the stirring
- * force on and once with `stir1.amount` at zero. Nothing else changes: same ink, same
+ * force on and once with `level_stir.amount` at zero. Nothing else changes: same ink, same
  * injection, same diffusion Blur, same fade.
  *
  * With the flow off the ink is a stationary blob that a 1.4px Blur spreads a little. With
@@ -356,7 +356,7 @@ describe("E2 is alive, and its chemistry map is doing the work", () => {
    * a LATE age (frame 900, fifteen seconds — well past where the old file had settled) and
    * against a CONTROL that removes exactly the mechanism and nothing else.
    *
-   * The control is `flow1`'s weight set to zero. That is a graph with the same nodes, the
+   * The control is `displace_flow`'s weight set to zero. That is a graph with the same nodes, the
    * same passes, the same twenty substeps and the same wire — it renders a plausible
    * picture, and every structural assertion in `concepts/*.test.ts` still passes on it. Only
    * these two numbers see the difference.
@@ -395,18 +395,18 @@ describe("E2 is alive, and its chemistry map is doing the work", () => {
    * TASKS.
    *
    * E24 shares `GRAY_SCOTT_WGSL` verbatim, so it shares E2's band and E2's fault. It also
-   * already HAD a node in §V626's slot — `wind1`, a Transform rotating 0.02 per iteration,
+   * already HAD a node in §V626's slot — `displace_wind`, a Transform rotating 0.02 per iteration,
    * seventeen to twenty-four times a frame — and §V626 is precisely that a rotation turns a
    * lattice and leaves it a lattice. The stirring was decorative; the plate never sheared.
    *
-   * Only the MOTION half is asserted here. E24's frame is mostly black outside `bowl1`'s
+   * Only the MOTION half is asserted here. E24's frame is mostly black outside `circle_bowl`'s
    * disc, so featureSpread over the whole frame measures the vignette rather than the
    * picture — and it is measurably blind to this: with the flow removed it goes UP, from
    * 191.9 to 233.9, because a relaxed plate has cleaner tile-to-tile edges. A number that
    * moves the wrong way under the mutation is not a gate, so it is not used as one.
    *
    * Measured at frame 900, 512x512, over ten frames: 17,369 pixels moved against 3,745 with
-   * `wind1`'s weight zeroed — 4.6x. Rendered without a value graph, so `substeps` sits on
+   * `displace_wind`'s weight zeroed — 4.6x. Rendered without a value graph, so `substeps` sits on
    * its retained 14 rather than the bass-driven 17-24; that makes this deterministic and
    * understates the shipped number, which is the safe direction for a floor.
    */
@@ -689,7 +689,7 @@ describe("E33 reads as a yin-yang without a disc behind it", () => {
   const noObject = (graph: GraphDocument): GraphDocument => {
     const shot = graph.nodes["shot"];
     if (shot === undefined) throw new Error("E33 has no render");
-    return { ...graph, nodes: { ...graph.nodes, shot: { ...shot, parameters: { ...shot.parameters, scenes: "cyc1" } } } };
+    return { ...graph, nodes: { ...graph.nodes, shot: { ...shot, parameters: { ...shot.parameters, scenes: "geometry_cyc" } } } };
   };
   /** THE CONTROL: the tiles' two tones split by a straight line instead of by `taiji`. */
   const straightTone = (graph: GraphDocument): GraphDocument => {
@@ -780,7 +780,7 @@ describe("E33 reads as a yin-yang without a disc behind it", () => {
    * of those passes the build that got it wrong — deleting the mass passes "absent at the
    * emblem end", and never growing it passes "present at the goo end".
    *
-   * Measured by DROPPING `body1` from the render and counting what changes, which is the
+   * Measured by DROPPING `geometry_body` from the render and counting what changes, which is the
    * only way to ask "is it contributing" without asking "is it in the graph": 0 pixels at
    * frame 0 (and 0 at frame 2100, the other emblem moment), 106,056 at frame 484 (0592b2e).
    * The zero is exact, not a threshold — the mass is grown down to a speck behind a mosaic
@@ -795,12 +795,12 @@ describe("E33 reads as a yin-yang without a disc behind it", () => {
         const shot = graph.nodes["shot"];
         if (shot === undefined) throw new Error("E33 has no render");
         const scenes = String(shot.parameters["scenes"]).split(/\s+/);
-        if (!scenes.includes("body1")) throw new Error("E33's render no longer names the mass");
+        if (!scenes.includes("geometry_body")) throw new Error("E33's render no longer names the mass");
         return {
           ...graph,
           nodes: {
             ...graph.nodes,
-            shot: { ...shot, parameters: { ...shot.parameters, scenes: scenes.filter((s) => s !== "body1").join(" ") } },
+            shot: { ...shot, parameters: { ...shot.parameters, scenes: scenes.filter((s) => s !== "geometry_body").join(" ") } },
           },
         };
       },

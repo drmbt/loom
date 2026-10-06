@@ -65,7 +65,6 @@ export type {
   ParameterRead,
   ParameterReadOptions,
   ResolveExtras,
-  ResolveParametersOptions,
   ResolvedComponent,
   ResolvedParameter,
   ResolvedParameters,

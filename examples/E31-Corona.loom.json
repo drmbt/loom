@@ -475,7 +475,7 @@
       "base": {
         "definitionVersion": 1,
         "id": "base",
-        "label": "base1",
+        "label": "null_base",
         "parameters": {},
         "position": {
           "x": -440,
@@ -486,7 +486,7 @@
       "beat": {
         "definitionVersion": 1,
         "id": "beat",
-        "label": "beat1",
+        "label": "pattern_beat",
         "parameters": {
           "amount": 1,
           "bpm": 124
@@ -500,7 +500,7 @@
       "burn": {
         "definitionVersion": 1,
         "id": "burn",
-        "label": "burn1",
+        "label": "add_burn",
         "parameters": {},
         "position": {
           "x": 340,
@@ -511,7 +511,7 @@
       "coat": {
         "definitionVersion": 1,
         "id": "coat",
-        "label": "coat1",
+        "label": "lookup_coat",
         "parameters": {
           "channel": "luminance",
           "offset": 0,
@@ -520,7 +520,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('grade1').chan.highMid"
+                "source": "op('math_grade').chan.highMid"
               },
               "static": {
                 "kind": "static",
@@ -539,7 +539,7 @@
       "damp": {
         "definitionVersion": 1,
         "id": "damp",
-        "label": "damp1",
+        "label": "lag_damp",
         "parameters": {
           "lag": 0.09
         },
@@ -552,7 +552,7 @@
       "dot": {
         "definitionVersion": 1,
         "id": "dot",
-        "label": "dot1",
+        "label": "math_dot",
         "parameters": {
           "operand": 1.2,
           "operation": "add"
@@ -566,7 +566,7 @@
       "dotG": {
         "definitionVersion": 1,
         "id": "dotG",
-        "label": "dotg1",
+        "label": "math_dotg",
         "parameters": {
           "operand": 2.2,
           "operation": "multiply"
@@ -580,7 +580,7 @@
       "drawBase": {
         "definitionVersion": 1,
         "id": "drawBase",
-        "label": "drawbase1",
+        "label": "points_drawbase",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -596,7 +596,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('dot1').chan.level"
+                "source": "op('math_dot').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -615,7 +615,7 @@
       "drawMid": {
         "definitionVersion": 1,
         "id": "drawMid",
-        "label": "drawmid1",
+        "label": "points_drawmid",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -638,7 +638,7 @@
       "drawTip": {
         "definitionVersion": 1,
         "id": "drawTip",
-        "label": "drawtip1",
+        "label": "points_drawtip",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -654,7 +654,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('tip1').chan.high"
+                "source": "op('math_tip').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -673,7 +673,7 @@
       "drift": {
         "definitionVersion": 1,
         "id": "drift",
-        "label": "drift1",
+        "label": "lfo_drift",
         "parameters": {
           "amplitude": 30,
           "frequency": 0.035,
@@ -690,7 +690,7 @@
       "gen": {
         "definitionVersion": 1,
         "id": "gen",
-        "label": "gen1",
+        "label": "generator1",
         "parameters": {
           "cols": 256,
           "count": 65536,
@@ -698,7 +698,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swell1').chan.lowMid"
+                "source": "op('math_swell').chan.lowMid"
               },
               "static": {
                 "kind": "static",
@@ -723,7 +723,7 @@
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
-        "label": "glow1",
+        "label": "math_glow",
         "parameters": {
           "operand": -3.6202,
           "operation": "add"
@@ -737,7 +737,7 @@
       "glowG": {
         "definitionVersion": 1,
         "id": "glowG",
-        "label": "glowg1",
+        "label": "math_glowg",
         "parameters": {
           "operand": 6.0207,
           "operation": "multiply"
@@ -751,7 +751,7 @@
       "grade": {
         "definitionVersion": 1,
         "id": "grade",
-        "label": "grade1",
+        "label": "math_grade",
         "parameters": {
           "operand": -1.5173,
           "operation": "add"
@@ -765,7 +765,7 @@
       "gradeG": {
         "definitionVersion": 1,
         "id": "gradeG",
-        "label": "gradeg1",
+        "label": "math_gradeg",
         "parameters": {
           "operand": 4.1815,
           "operation": "multiply"
@@ -779,7 +779,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -794,14 +794,14 @@
       "haloLvl": {
         "definitionVersion": 1,
         "id": "haloLvl",
-        "label": "halolvl1",
+        "label": "level_halo",
         "parameters": {
           "blacklevel": 0.01,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('glow1').chan.low"
+                "source": "op('math_glow').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -825,7 +825,7 @@
       "heat": {
         "definitionVersion": 1,
         "id": "heat",
-        "label": "heat1",
+        "label": "math_heat",
         "parameters": {
           "operand": -4.7247,
           "operation": "add"
@@ -839,7 +839,7 @@
       "heatG": {
         "definitionVersion": 1,
         "id": "heatG",
-        "label": "heatg1",
+        "label": "math_heatg",
         "parameters": {
           "operand": 7.3587,
           "operation": "multiply"
@@ -853,14 +853,14 @@
       "heatLvl": {
         "definitionVersion": 1,
         "id": "heatLvl",
-        "label": "heatlvl1",
+        "label": "level_heat",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('heat1').chan.low"
+                "source": "op('math_heat').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -884,13 +884,13 @@
       "hue": {
         "definitionVersion": 1,
         "id": "hue",
-        "label": "hue1",
+        "label": "hsv_hue",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drift1').chan.value"
+                "source": "op('lfo_drift').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -911,7 +911,7 @@
       "liftHeat": {
         "definitionVersion": 1,
         "id": "liftHeat",
-        "label": "liftheat1",
+        "label": "screen_liftheat",
         "parameters": {},
         "position": {
           "x": 860,
@@ -922,7 +922,7 @@
       "liftSpark": {
         "definitionVersion": 1,
         "id": "liftSpark",
-        "label": "liftspark1",
+        "label": "screen_liftspark",
         "parameters": {},
         "position": {
           "x": 1120,
@@ -933,7 +933,7 @@
       "loop": {
         "definitionVersion": 1,
         "id": "loop",
-        "label": "loop1",
+        "label": "feedback_loop",
         "parameters": {
           "clearColor": [
             0,
@@ -945,7 +945,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('trail1').chan.level"
+                "source": "op('math_trail').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -955,7 +955,7 @@
             "mode": "expression"
           },
           "reset": false,
-          "source": "tail1",
+          "source": "null_tail",
           "substeps": 1
         },
         "position": {
@@ -967,7 +967,7 @@
       "mixTrail": {
         "definitionVersion": 1,
         "id": "mixTrail",
-        "label": "mixtrail1",
+        "label": "screen_mixtrail",
         "parameters": {},
         "position": {
           "x": 1380,
@@ -978,7 +978,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 2160,
@@ -989,7 +989,7 @@
       "palette": {
         "definitionVersion": 2,
         "id": "palette",
-        "label": "palette1",
+        "label": "ramp_palette",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -1070,12 +1070,12 @@
       "shape": {
         "definitionVersion": 1,
         "id": "shape",
-        "label": "shape1",
+        "label": "kernel_shape",
         "parameters": {
           "attributes": "",
           "capacity": 65536,
           "group": "",
-          "kernel": "\nfn lm_hash(p: vec3f) -> f32 {\n  var q = fract(p * 0.1031);\n  q = q + vec3f(dot(q, q.zyx + 31.32));\n  return fract((q.x + q.y) * q.z);\n}\n\nfn lm_noise(x: vec3f) -> f32 {\n  let i = floor(x);\n  let f = fract(x);\n  let u = f * f * (3.0 - 2.0 * f);\n  let a = mix(lm_hash(i + vec3f(0.0, 0.0, 0.0)), lm_hash(i + vec3f(1.0, 0.0, 0.0)), u.x);\n  let b = mix(lm_hash(i + vec3f(0.0, 1.0, 0.0)), lm_hash(i + vec3f(1.0, 1.0, 0.0)), u.x);\n  let c = mix(lm_hash(i + vec3f(0.0, 0.0, 1.0)), lm_hash(i + vec3f(1.0, 0.0, 1.0)), u.x);\n  let d = mix(lm_hash(i + vec3f(0.0, 1.0, 1.0)), lm_hash(i + vec3f(1.0, 1.0, 1.0)), u.x);\n  return mix(mix(a, b, u.y), mix(c, d, u.y), u.z) * 2.0 - 1.0;\n}\n\nfn lm_fbm(x: vec3f, oct: i32) -> f32 {\n  var v = 0.0; var a = 0.5; var q = x;\n  for (var k: i32 = 0; k < oct; k = k + 1) {\n    v = v + a * lm_noise(q);\n    q = q * 2.03 + vec3f(17.3, 9.1, 4.7);\n    a = a * 0.55;\n  }\n  return v;\n}\n\n// Ridged: 1-|n| squared per octave. Creases and filaments instead of blobs.\nfn lm_ridged(x: vec3f, oct: i32) -> f32 {\n  var v = 0.0; var a = 0.5; var q = x;\n  for (var k: i32 = 0; k < oct; k = k + 1) {\n    let n = 1.0 - abs(lm_noise(q));\n    v = v + a * n * n;\n    q = q * 2.07 + vec3f(11.1, 3.3, 7.7);\n    a = a * 0.52;\n  }\n  return v - 0.62;\n}\n\nfn lm_rotY(v: vec3f, a: f32) -> vec3f {\n  let c = cos(a); let s = sin(a);\n  return vec3f(v.x * c - v.z * s, v.y, v.x * s + v.z * c);\n}\nfn lm_rotX(v: vec3f, a: f32) -> vec3f {\n  let c = cos(a); let s = sin(a);\n  return vec3f(v.x, v.y * c - v.z * s, v.y * s + v.z * c);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let t = ctx.absTime;\n\n  // ---- THE SMOOTH PIPE -------------------------------------------------\n  // pointgenerator1.radius is the only drivable number that reaches this\n  // kernel, so the sphere's radius is the audio's way in: length is divided\n  // straight back out and what survives is a continuous 0..1 control.\n  //\n  // THESE TWO CONSTANTS ARE swell1's BIAS AND GAIN, and they are a SILENT\n  // COUPLING (T554). The radius is driven by swell1 = \"lowMid x 1.25 + 0.68\",\n  // so subtracting the bias and dividing by the gain is the only thing that\n  // makes a 0..1 band arrive here as a 0..1 control. They were 1.0 and 0.6 -\n  // swell1's values from BEFORE T547 lowered the bias to 0.68 - and the\n  // mismatch did not warn, it just quietly stopped delivering: MEASURED on\n  // the shipped Beat source, damp1:lowMid spans 0.152..0.327, so the radius\n  // spans 0.870..1.088 and the old \"(inR - 1.0) / 0.6\" yielded fromAudio\n  // 0.000..0.147 - CLAMPED FLAT AT ZERO for most of every beat. The eight\n  // post-processing pairs kept reacting, so the picture still moved and the\n  // severed kernel looked like a style choice. Retune swell1 and you MUST\n  // retune these in the same commit.\n  let pin = p.position;\n  let inR = max(1.0e-4, length(pin));\n  let fromAudio = clamp((inR - 0.68) / 1.25, 0.0, 1.0);\n  // SILENCE HAS TO BE SILENT (T554, V477 in the kernel rather than in the\n  // value chain). This was \"0.30 + 0.28 * sin(...)\": with no audio at all\n  // \"drive\" still sat a third of the way up its range and swept 0.02..0.58\n  // over a 67-second cycle, which is most of the lobes-to-filaments\n  // crossfade happening on its own. The bias is the rest state, so it comes\n  // down to near zero - but not TO zero: a completely frozen rest state is\n  // its own failure (V427), and this keeps a slow shimmer under the\n  // rotation and the breath while leaving the EXTENT to the audio.\n  let drift = 0.05 + 0.04 * sin(t * 0.093);\n  let drive = clamp(fromAudio + drift, 0.0, 1.1);\n\n  var s = normalize(pin);\n\n  s = lm_rotY(s, t * 0.13);\n  s = lm_rotX(s, t * 0.081);\n\n  // taffy twist: shear grows with drive, very readable on the silhouette\n  s = lm_rotY(s, (0.8 + 2.4 * drive) * s.y + t * 0.05);\n\n  let wf = 1.25 + 0.85 * drive;\n  let w = vec3f(\n    lm_fbm(s * wf + vec3f(0.0, 0.0, t * 0.13), 4),\n    lm_fbm(s * wf + vec3f(5.2, 1.3, t * 0.11), 4),\n    lm_fbm(s * wf + vec3f(9.1, 7.7, t * 0.15), 4)\n  );\n\n  // two fields, crossfaded by drive: soft lobes -> sharp filaments\n  let lobes = lm_fbm(s * 1.9 + w * 1.5 + vec3f(0.0, t * 0.20, 0.0), 5);\n  let creases = lm_ridged(s * (2.4 + 2.6 * drive) + w * 1.1 - vec3f(t * 0.17, 0.0, 0.0), 5);\n  let field = mix(lobes, creases * 1.15, clamp(drive, 0.0, 1.0));\n\n  let ripple = sin(s.y * 6.0 - t * 1.05);\n  let breath = 0.05 * sin(t * 0.60) + 0.03 * sin(t * 1.03 + 1.3);\n  let amp = 0.24 + 0.32 * drive;\n\n  // T554 — THE EXTENT, and it is the term that was missing. The base here was\n  // a CONSTANT 1.0: \"drive\" moved \"amp\" and crossfaded lobes into creases, so\n  // the audio changed the creature's ROUGHNESS and CHARACTER and its SIZE\n  // never moved at all. No retune of the value chain could reach it, because\n  // there was nothing in the arithmetic for a retune to scale.\n  //\n  // Calibrated against the two ends rather than picked: the slope puts a LOUD\n  // passage back at the extent the constant 1.0 used to hold permanently, so\n  // nothing is lost at the top - the creature still fills the frame when the\n  // music is loud, it simply no longer does so in silence. MEASURED (99% of\n  // the luminance mass, as a fraction of half-frame-height): silence 0.47,\n  // Beat between hits 0.50, Beat on a hit 0.58, a loud passage 0.72. It was\n  // 0.71..0.72 at ALL FOUR before.\n  let core = 0.55 + 0.62 * drive;\n  let rad = core + breath + amp * field + 0.055 * ripple * (0.25 + drive);\n  let p3 = s * rad * 0.90;\n\n  let dcam = 4.5;\n  let zc = max(0.05, dcam - p3.z);\n  let ff = 3.17;\n  let aspect = 16.0 / 9.0;\n\n  q.position = vec3f((p3.x * ff / zc) / aspect, p3.y * ff / zc, 0.5);\n  q.velocity = vec3f(field, creases, drive);\n  return q;\n}\n",
+          "kernel": "\nfn lm_hash(p: vec3f) -> f32 {\n  var q = fract(p * 0.1031);\n  q = q + vec3f(dot(q, q.zyx + 31.32));\n  return fract((q.x + q.y) * q.z);\n}\n\nfn lm_noise(x: vec3f) -> f32 {\n  let i = floor(x);\n  let f = fract(x);\n  let u = f * f * (3.0 - 2.0 * f);\n  let a = mix(lm_hash(i + vec3f(0.0, 0.0, 0.0)), lm_hash(i + vec3f(1.0, 0.0, 0.0)), u.x);\n  let b = mix(lm_hash(i + vec3f(0.0, 1.0, 0.0)), lm_hash(i + vec3f(1.0, 1.0, 0.0)), u.x);\n  let c = mix(lm_hash(i + vec3f(0.0, 0.0, 1.0)), lm_hash(i + vec3f(1.0, 0.0, 1.0)), u.x);\n  let d = mix(lm_hash(i + vec3f(0.0, 1.0, 1.0)), lm_hash(i + vec3f(1.0, 1.0, 1.0)), u.x);\n  return mix(mix(a, b, u.y), mix(c, d, u.y), u.z) * 2.0 - 1.0;\n}\n\nfn lm_fbm(x: vec3f, oct: i32) -> f32 {\n  var v = 0.0; var a = 0.5; var q = x;\n  for (var k: i32 = 0; k < oct; k = k + 1) {\n    v = v + a * lm_noise(q);\n    q = q * 2.03 + vec3f(17.3, 9.1, 4.7);\n    a = a * 0.55;\n  }\n  return v;\n}\n\n// Ridged: 1-|n| squared per octave. Creases and filaments instead of blobs.\nfn lm_ridged(x: vec3f, oct: i32) -> f32 {\n  var v = 0.0; var a = 0.5; var q = x;\n  for (var k: i32 = 0; k < oct; k = k + 1) {\n    let n = 1.0 - abs(lm_noise(q));\n    v = v + a * n * n;\n    q = q * 2.07 + vec3f(11.1, 3.3, 7.7);\n    a = a * 0.52;\n  }\n  return v - 0.62;\n}\n\nfn lm_rotY(v: vec3f, a: f32) -> vec3f {\n  let c = cos(a); let s = sin(a);\n  return vec3f(v.x * c - v.z * s, v.y, v.x * s + v.z * c);\n}\nfn lm_rotX(v: vec3f, a: f32) -> vec3f {\n  let c = cos(a); let s = sin(a);\n  return vec3f(v.x, v.y * c - v.z * s, v.y * s + v.z * c);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let t = ctx.absTime;\n\n  // ---- THE SMOOTH PIPE -------------------------------------------------\n  // pointgenerator1.radius is the only drivable number that reaches this\n  // kernel, so the sphere's radius is the audio's way in: length is divided\n  // straight back out and what survives is a continuous 0..1 control.\n  //\n  // THESE TWO CONSTANTS ARE math_swell's BIAS AND GAIN, and they are a SILENT\n  // COUPLING (T554). The radius is driven by math_swell = \"lowMid x 1.25 + 0.68\",\n  // so subtracting the bias and dividing by the gain is the only thing that\n  // makes a 0..1 band arrive here as a 0..1 control. They were 1.0 and 0.6 -\n  // math_swell's values from BEFORE T547 lowered the bias to 0.68 - and the\n  // mismatch did not warn, it just quietly stopped delivering: MEASURED on\n  // the shipped Beat source, lag_damp:lowMid spans 0.152..0.327, so the radius\n  // spans 0.870..1.088 and the old \"(inR - 1.0) / 0.6\" yielded fromAudio\n  // 0.000..0.147 - CLAMPED FLAT AT ZERO for most of every beat. The eight\n  // post-processing pairs kept reacting, so the picture still moved and the\n  // severed kernel looked like a style choice. Retune math_swell and you MUST\n  // retune these in the same commit.\n  let pin = p.position;\n  let inR = max(1.0e-4, length(pin));\n  let fromAudio = clamp((inR - 0.68) / 1.25, 0.0, 1.0);\n  // SILENCE HAS TO BE SILENT (T554, V477 in the kernel rather than in the\n  // value chain). This was \"0.30 + 0.28 * sin(...)\": with no audio at all\n  // \"drive\" still sat a third of the way up its range and swept 0.02..0.58\n  // over a 67-second cycle, which is most of the lobes-to-filaments\n  // crossfade happening on its own. The bias is the rest state, so it comes\n  // down to near zero - but not TO zero: a completely frozen rest state is\n  // its own failure (V427), and this keeps a slow shimmer under the\n  // rotation and the breath while leaving the EXTENT to the audio.\n  let drift = 0.05 + 0.04 * sin(t * 0.093);\n  let drive = clamp(fromAudio + drift, 0.0, 1.1);\n\n  var s = normalize(pin);\n\n  s = lm_rotY(s, t * 0.13);\n  s = lm_rotX(s, t * 0.081);\n\n  // taffy twist: shear grows with drive, very readable on the silhouette\n  s = lm_rotY(s, (0.8 + 2.4 * drive) * s.y + t * 0.05);\n\n  let wf = 1.25 + 0.85 * drive;\n  let w = vec3f(\n    lm_fbm(s * wf + vec3f(0.0, 0.0, t * 0.13), 4),\n    lm_fbm(s * wf + vec3f(5.2, 1.3, t * 0.11), 4),\n    lm_fbm(s * wf + vec3f(9.1, 7.7, t * 0.15), 4)\n  );\n\n  // two fields, crossfaded by drive: soft lobes -> sharp filaments\n  let lobes = lm_fbm(s * 1.9 + w * 1.5 + vec3f(0.0, t * 0.20, 0.0), 5);\n  let creases = lm_ridged(s * (2.4 + 2.6 * drive) + w * 1.1 - vec3f(t * 0.17, 0.0, 0.0), 5);\n  let field = mix(lobes, creases * 1.15, clamp(drive, 0.0, 1.0));\n\n  let ripple = sin(s.y * 6.0 - t * 1.05);\n  let breath = 0.05 * sin(t * 0.60) + 0.03 * sin(t * 1.03 + 1.3);\n  let amp = 0.24 + 0.32 * drive;\n\n  // T554 — THE EXTENT, and it is the term that was missing. The base here was\n  // a CONSTANT 1.0: \"drive\" moved \"amp\" and crossfaded lobes into creases, so\n  // the audio changed the creature's ROUGHNESS and CHARACTER and its SIZE\n  // never moved at all. No retune of the value chain could reach it, because\n  // there was nothing in the arithmetic for a retune to scale.\n  //\n  // Calibrated against the two ends rather than picked: the slope puts a LOUD\n  // passage back at the extent the constant 1.0 used to hold permanently, so\n  // nothing is lost at the top - the creature still fills the frame when the\n  // music is loud, it simply no longer does so in silence. MEASURED (99% of\n  // the luminance mass, as a fraction of half-frame-height): silence 0.47,\n  // Beat between hits 0.50, Beat on a hit 0.58, a loud passage 0.72. It was\n  // 0.71..0.72 at ALL FOUR before.\n  let core = 0.55 + 0.62 * drive;\n  let rad = core + breath + amp * field + 0.055 * ripple * (0.25 + drive);\n  let p3 = s * rad * 0.90;\n\n  let dcam = 4.5;\n  let zc = max(0.05, dcam - p3.z);\n  let ff = 3.17;\n  let aspect = 16.0 / 9.0;\n\n  q.position = vec3f((p3.x * ff / zc) / aspect, p3.y * ff / zc, 0.5);\n  q.velocity = vec3f(field, creases, drive);\n  return q;\n}\n",
           "seed": 7,
           "value1": 0,
           "value2": 0,
@@ -1091,7 +1091,7 @@
       "source": {
         "definitionVersion": 1,
         "id": "source",
-        "label": "source1",
+        "label": "switch_source",
         "parameters": {
           "index": 0
         },
@@ -1104,7 +1104,7 @@
       "spark": {
         "definitionVersion": 1,
         "id": "spark",
-        "label": "spark1",
+        "label": "limit_spark",
         "parameters": {
           "maximum": 5,
           "minimum": 0.05
@@ -1118,7 +1118,7 @@
       "sparkAdd": {
         "definitionVersion": 1,
         "id": "sparkAdd",
-        "label": "sparkadd1",
+        "label": "math_sparkadd",
         "parameters": {
           "operand": -2.1476,
           "operation": "add"
@@ -1132,7 +1132,7 @@
       "sparkG": {
         "definitionVersion": 1,
         "id": "sparkG",
-        "label": "sparkg1",
+        "label": "math_sparkg",
         "parameters": {
           "operand": 6.9825,
           "operation": "multiply"
@@ -1146,14 +1146,14 @@
       "sparkLvl": {
         "definitionVersion": 1,
         "id": "sparkLvl",
-        "label": "sparklvl1",
+        "label": "level_spark",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('spark1').chan.high"
+                "source": "op('limit_spark').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -1177,7 +1177,7 @@
       "swell": {
         "definitionVersion": 1,
         "id": "swell",
-        "label": "swell1",
+        "label": "math_swell",
         "parameters": {
           "operand": -1.1733,
           "operation": "add"
@@ -1191,7 +1191,7 @@
       "swellG": {
         "definitionVersion": 1,
         "id": "swellG",
-        "label": "swellg1",
+        "label": "math_swellg",
         "parameters": {
           "operand": 3.724,
           "operation": "multiply"
@@ -1205,7 +1205,7 @@
       "tail": {
         "definitionVersion": 1,
         "id": "tail",
-        "label": "tail1",
+        "label": "null_tail",
         "parameters": {},
         "position": {
           "x": 1900,
@@ -1216,7 +1216,7 @@
       "tip": {
         "definitionVersion": 1,
         "id": "tip",
-        "label": "tip1",
+        "label": "math_tip",
         "parameters": {
           "operand": -2.4465,
           "operation": "add"
@@ -1230,7 +1230,7 @@
       "tipG": {
         "definitionVersion": 1,
         "id": "tipG",
-        "label": "tipg1",
+        "label": "math_tipg",
         "parameters": {
           "operand": 10.4737,
           "operation": "multiply"
@@ -1244,7 +1244,7 @@
       "track": {
         "definitionVersion": 1,
         "id": "track",
-        "label": "track1",
+        "label": "audiofile_track",
         "parameters": {
           "monitor": true
         },
@@ -1257,7 +1257,7 @@
       "trail": {
         "definitionVersion": 1,
         "id": "trail",
-        "label": "trail1",
+        "label": "math_trail",
         "parameters": {
           "operand": 0.62,
           "operation": "add"
@@ -1271,7 +1271,7 @@
       "trailG": {
         "definitionVersion": 1,
         "id": "trailG",
-        "label": "trailg1",
+        "label": "math_trailg",
         "parameters": {
           "operand": 0.3,
           "operation": "multiply"

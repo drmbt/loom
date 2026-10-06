@@ -49,7 +49,7 @@ const FIELD = { width: 1280, height: 720 };
 const GRID = { width: 288, height: 288 };
 /** The population, read off the shipped kernel rather than retyped. */
 const AGENTS = 3000;
-/** The fraction `bound1` parks all but — the half the picture draws. */
+/** The fraction `range_bound` parks all but — the half the picture draws. */
 const DRAWN_SHARE = 0.5;
 /**
  * SIXTY SECONDS, the horizon the owner judges this file at: 3600 frames at 60 fps. The lag
@@ -378,8 +378,8 @@ describe("E54 Quorum — three slime molds and one piece of ground (T1138)", () 
     async () => {
       expect(dawnError, dawnError ?? "").toBeUndefined();
 
-      /* (a) NOTHING ON SCREEN IS PAINTED. `trail1` clears to (0,0,0,0) and the only thing
-         that ever adds to it is `sow1` through `mix1`'s front, so with that front held at
+      /* (a) NOTHING ON SCREEN IS PAINTED. `feedback_trail` clears to (0,0,0,0) and the only thing
+         that ever adds to it is `points_sow` through `add_mix`'s front, so with that front held at
          zero the field is not "dim" or "mostly dark" — it is EXACTLY zero at every texel, at
          a frame where the shipped file is a full network. That is the whole loop asserted in
          one comparison. (Held at zero rather than unwired because Composite's `in2` is a
@@ -500,10 +500,10 @@ describe("E54 Quorum — three slime molds and one piece of ground (T1138)", () 
          rework kept the trail physics and drew the agents as bare particles; he said
          "we don't see these networks that are disintegrating and integrating — the different
          units are like tiny specks now", and he was right: a trail rendered as its own
-         agents has no relationships in it to watch. So `web1` draws the links, and what is
+         agents has no relationships in it to watch. So `proximity_web` draws the links, and what is
          asserted is that they are THERE and that they KEEP CHANGING.
 
-         `webs1` is the link layer alone — no nodes, no haze, no glow — so this measures the
+         `render_webs` is the link layer alone — no nodes, no haze, no glow — so this measures the
          web and nothing else. Jaccard over lit pixels: how much of the union of two frames'
          webs is in both. A settled web holds near 1 at every lag; a re-drawn one falls. */
       const lags = [0, 8, 60, 240] as const;
@@ -570,7 +570,7 @@ describe("E54 Quorum — three slime molds and one piece of ground (T1138)", () 
       let caste = 0;
       let drawn = 0;
       for (let slot = 0; slot < AGENTS; slot += 1) {
-        if (shot.sense[slot]![2] > DRAWN_SHARE) continue; // parked by bound1, never drawn
+        if (shot.sense[slot]![2] > DRAWN_SHARE) continue; // parked by range_bound, never drawn
         drawn += 1;
         if (shot.sense[slot]![1] > 0.45) caste += 1;
       }
@@ -580,7 +580,7 @@ describe("E54 Quorum — three slime molds and one piece of ground (T1138)", () 
 
       /* And it reaches the screen. A count over pairs can triple with the picture unchanged;
          a layer that is drawn cannot, and this is the difference stated as pixels. */
-      /* Dropped from `nodes1`'s scene list rather than unwired — Render names its scenes by
+      /* Dropped from `render_nodes`'s scene list rather than unwired — Render names its scenes by
          string, so this is the document saying "do not draw that layer" in its own terms. */
       const without = await shoot({
         capture: [BASE],
@@ -588,14 +588,14 @@ describe("E54 Quorum — three slime molds and one piece of ground (T1138)", () 
         mutate: (graph) => {
           const render = graph.nodes["nodes"];
           if (render === undefined) throw new Error("no nodes render");
-          if (render.parameters?.["scenes"] !== "dots1 frontdots1") throw new Error("nodes1 no longer draws frontdots1");
-          render.parameters = { ...render.parameters, scenes: "dots1" };
+          if (render.parameters?.["scenes"] !== "geometry_dots geometry_frontdots") throw new Error("render_nodes no longer draws geometry_frontdots");
+          render.parameters = { ...render.parameters, scenes: "geometry_dots" };
         },
       });
       const differing = differingPixels(shot.field[0]!, without.field[0]!);
       expect(
         differing,
-        `silencing frontdots1 changed ${differing} of ${FIELD.width * FIELD.height} pixels — the frontier layer is not on screen`,
+        `silencing geometry_frontdots changed ${differing} of ${FIELD.width * FIELD.height} pixels — the frontier layer is not on screen`,
       ).toBeGreaterThan(0.02 * FIELD.width * FIELD.height);
     },
   );

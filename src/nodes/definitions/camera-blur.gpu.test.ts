@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { stopsFinalRender } from "../../domain/diagnostics/classes.ts";
 import type { GraphDocument, GraphNode, ProjectSettings } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
@@ -104,7 +105,8 @@ async function render(document: GraphDocument, frame = 6): Promise<(x: number, y
     outputNodeId: "fx",
     animate: true,
   });
-  expect(result.diagnostics.filter((d) => d.severity === "error" || d.code === "parameter.expression")).toEqual([]);
+  // §T1641b: by class, not by code. No error, nothing that can never take effect, nothing waiting.
+  expect(result.diagnostics.filter(stopsFinalRender)).toEqual([]);
   const out = result.frames[0]!;
   const pixels = decodeComponents(out.bytes, out.format);
   return (x, y) => pixels[(y * W + x) * 4]!;

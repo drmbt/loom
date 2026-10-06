@@ -6,7 +6,7 @@ import { SKIN_ATTRIBUTES, boneParam, skinKernel } from "../skin-kernel.ts";
 
 /**
  * T1407b — the posed FIGURE for a shot graph: Mesh File In → the skin kernel → a Geometry
- * named `figgeo1`, wearing `material`. `pose` maps `bone.axis` to an expression (radians
+ * named `geometry_fig`, wearing `material`. `pose` maps `bone.axis` to an expression (radians
  * about the rest axes, skin-kernel.ts); `place` components may be expressions too.
  */
 export interface FigureSpec {
@@ -42,9 +42,9 @@ export function figureNodes(facts: OnNothingFacts, spec: FigureSpec): { nodes: G
     if (typeof entry === "string") place[`place.${"xyz"[index]}`] = expressionSlot(entry, 0);
   });
   const nodes: GraphNode[] = [
-    buildNode("fig", "meshFileIn", [-3600, 1200], {}, { label: "fig1", parameters: { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, joints: mesh.joints } }),
-    buildNode("skin", "pointKernel", [-3300, 1200], {}, { label: "skin1", parameters: { capacity: mesh.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: typeof spec.yaw === "number" ? spec.yaw : expressionSlot(spec.yaw, 0), ...place, ...pose } }),
-    buildNode("figGeo", "geometry", [-3000, 1200], {}, { label: "figgeo1", parameters: { mode: "surface", material: spec.material } }),
+    buildNode("fig", "meshFileIn", [-3600, 1200], {}, { label: "mesh_fig", parameters: { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, joints: mesh.joints } }),
+    buildNode("skin", "pointKernel", [-3300, 1200], {}, { label: "kernel_skin", parameters: { capacity: mesh.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: typeof spec.yaw === "number" ? spec.yaw : expressionSlot(spec.yaw, 0), ...place, ...pose } }),
+    buildNode("figGeo", "geometry", [-3000, 1200], {}, { label: "geometry_fig", parameters: { mode: "surface", material: spec.material } }),
   ];
   const edges = [edge("fig-skin", ["fig", "out"], ["skin", "in"]), edge("skin-geo", ["skin", "out"], ["figGeo", "points"])];
   const gun = spec.gun === true ? facts.areas.get("figgun") : undefined;
@@ -53,11 +53,11 @@ export function figureNodes(facts: OnNothingFacts, spec: FigureSpec): { nodes: G
     // the pistol: its own copy of the rig, the same kernel and knobs, so it stays in the hand
     const skin = nodes[1]!.parameters;
     nodes.push(
-      buildNode("gunIn", "meshFileIn", [-3600, 1450], {}, { label: "gunin1", parameters: { file: facts.glbUrl, select: gun.select, vertices: gun.vertices, triangles: gun.triangles, parts: gun.parts, joints: gun.joints } }),
-      buildNode("gunSkin", "pointKernel", [-3300, 1450], {}, { label: "gunskin1", parameters: { ...skin, capacity: gun.vertices } }),
-      buildNode("gunGeo", "geometry", [-3000, 1450], {}, { label: "figgungeo1", parameters: { mode: "surface", material: spec.material } }),
+      buildNode("gunIn", "meshFileIn", [-3600, 1450], {}, { label: "mesh_gunin", parameters: { file: facts.glbUrl, select: gun.select, vertices: gun.vertices, triangles: gun.triangles, parts: gun.parts, joints: gun.joints } }),
+      buildNode("gunSkin", "pointKernel", [-3300, 1450], {}, { label: "kernel_gunskin", parameters: { ...skin, capacity: gun.vertices } }),
+      buildNode("gunGeo", "geometry", [-3000, 1450], {}, { label: "geometry_figgun", parameters: { mode: "surface", material: spec.material } }),
     );
     edges.push(edge("gun-skin", ["gunIn", "out"], ["gunSkin", "in"]), edge("gunskin-geo", ["gunSkin", "out"], ["gunGeo", "points"]));
   }
-  return { nodes, edges, scene: gun === undefined ? "figgeo1" : "figgeo1 figgungeo1" };
+  return { nodes, edges, scene: gun === undefined ? "geometry_fig" : "geometry_fig geometry_figgun" };
 }

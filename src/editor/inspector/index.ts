@@ -29,7 +29,6 @@ export type {
   ParameterDriver,
   ParameterDriverContext,
   ParameterSource,
-  ResolveParametersOptions,
   ResolvedParameter,
   ResolvedParameters,
 } from "./parameter-resolver.ts";

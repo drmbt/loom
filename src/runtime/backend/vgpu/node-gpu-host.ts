@@ -108,20 +108,27 @@ async function initWithOptionalFeatures(
   base: Parameters<typeof init>[0],
   required: ReadonlyArray<string>,
 ): Promise<{ gpu: Awaited<ReturnType<typeof init>>; requestedFeatures: ReadonlyArray<string> }> {
-  const wanted = [...required, ...OPTIONAL_FEATURES.filter((feature) => !required.includes(feature))];
-  try {
-    const gpu = await initWithLimitLadder({
-      ...base,
-      requiredFeatures: [...wanted] as GPUFeatureName[],
-    });
-    return { gpu, requestedFeatures: wanted };
-  } catch {
-    const gpu = await initWithLimitLadder({
-      ...base,
-      ...(required.length === 0 ? {} : { requiredFeatures: [...required] as GPUFeatureName[] }),
-    });
-    return { gpu, requestedFeatures: required };
+  const optional = OPTIONAL_FEATURES.filter((feature) => !required.includes(feature));
+  /* T1581b F1: the optional features are a LIST now, and an adapter may offer one without
+     the other. Each refusal drops the LAST one and asks again, so a device without
+     `indirect-first-instance` still gets its `timestamp-query` (the list is in that order). */
+  for (let keep = optional.length; keep > 0; keep -= 1) {
+    const wanted = [...required, ...optional.slice(0, keep)];
+    try {
+      const gpu = await initWithLimitLadder({
+        ...base,
+        requiredFeatures: [...wanted] as GPUFeatureName[],
+      });
+      return { gpu, requestedFeatures: wanted };
+    } catch {
+      // Refused: ask for one optional feature fewer.
+    }
   }
+  const gpu = await initWithLimitLadder({
+    ...base,
+    ...(required.length === 0 ? {} : { requiredFeatures: [...required] as GPUFeatureName[] }),
+  });
+  return { gpu, requestedFeatures: required };
 }
 
 /** `GpuHost` backed by Dawn, for headless render and parity testing (§V47, T67, T69). */

@@ -250,9 +250,18 @@ export function minimalGraphFor(
        catalogue's producer of an adjacency is Proximity, over a grid. */
     const wantsAdjacency =
       port.type.kind === "pointset" && (port.type.requires ?? []).some((entry) => entry.name === "neighbor");
+    /* T1587b: a Sweep's Path asks for ONE strip that carries a frame, and says so only in
+       its refusals: a port's `requires` is matched against what the producer's port
+       DECLARES, and Curve Frames declares no `orient` because a switch decides it. So the
+       stand-in is named here: a one-row grid behind a Curve Frames. */
+    const wantsFramedPath = definition.type === "pointSweep" && port.id === "points";
     if (wantsAdjacency) {
       nodes[`${feedId}src`] = mk(`${feedId}src`, "pointGrid");
       nodes[feedId] = mk(feedId, "pointProximity", { neighbors: 2, radius: 1 });
+      edges[`${feedId}link`] = mkEdge(`${feedId}link`, [`${feedId}src`, "out"], [feedId, "points"]);
+    } else if (wantsFramedPath) {
+      nodes[`${feedId}src`] = mk(`${feedId}src`, "pointGrid", { cols: 8, rows: 1, count: 8 });
+      nodes[feedId] = mk(feedId, "pointCurveFrames");
       edges[`${feedId}link`] = mkEdge(`${feedId}link`, [`${feedId}src`, "out"], [feedId, "points"]);
     } else if (port.type.kind === "value") {
       // T1512b: the Panel's `controls` input takes VALUE wires (widget nodes). A checker
@@ -374,6 +383,28 @@ export function fixturePairs(
     };
   }
   return pairs;
+}
+
+/**
+ * T1586b: a node's emitted PROGRAM as one short string — every pass's id, shader text,
+ * bindings, dispatch size and uniform values.
+ *
+ * For the tests that FREEZE a program: where a later change must not move one byte of what
+ * a shipped configuration computes, the program that computes it is pinned here, by text.
+ * A device-independent statement, unlike a hash of read-back floats, which a different GPU's
+ * square root may round another way. Two 32-bit FNV-1a passes; this is a fingerprint, not a
+ * secret.
+ */
+export function planFingerprint(description: { readonly passes: ReadonlyArray<unknown> }): string {
+  const text = JSON.stringify(description.passes);
+  let low = 0x811c9dc5;
+  let high = 0x9747b28c;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    low = Math.imul(low ^ code, 0x01000193);
+    high = Math.imul(high ^ (code + index), 0x01000193);
+  }
+  return ((low >>> 0).toString(16).padStart(8, "0") + (high >>> 0).toString(16).padStart(8, "0"));
 }
 
 /**

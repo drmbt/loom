@@ -100,7 +100,8 @@ export function PanelNodeBody({
   if (panel === undefined) return null;
   const board = panelBoard(graph, panel);
   return (
-    <div className={styles.body} data-panel-body={panelId}>
+    // T1619b: `data-control-panel` is which Panel a right-clicked control's "all on this Panel" means.
+    <div className={styles.body} data-panel-body={panelId} data-control-panel={panelId}>
       <div className={styles.title}>{panelTitle(panel)}</div>
       {board === null ? (
         <PanelRows graph={graph} panel={panel} write={write} size="node" />

@@ -447,7 +447,7 @@
       "analysis1": {
         "definitionVersion": 1,
         "id": "analysis1",
-        "label": "analysis1",
+        "label": "audioanalysis1",
         "parameters": {
           "envelope": 0.08,
           "hitDecay": 420,
@@ -463,7 +463,7 @@
       "fxaa": {
         "definitionVersion": 1,
         "id": "fxaa",
-        "label": "fxaa1",
+        "label": "wgsl_fxaa",
         "parameters": {
           "amount": 1,
           "source": "struct Params {\n  amount: f32, // @default 1  0 is the input exactly, 1 is full FXAA.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> params: Params;\n\nconst SPAN_MAX: f32 = 8.0;\nconst REDUCE_MUL: f32 = 0.125;\nconst REDUCE_MIN: f32 = 0.0078125;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn luma(c: vec3f) -> f32 {\n  let t = max(c, vec3f(0.0)) / (vec3f(1.0) + max(c, vec3f(0.0)));\n  return dot(t, vec3f(0.299, 0.587, 0.114));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let px = 1.0 / vec2f(textureDimensions(inputTexture));\n  let centre = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let m = centre.rgb;\n  let lM = luma(m);\n  let lNW = luma(tap(uv + vec2f(-1.0, -1.0) * px));\n  let lNE = luma(tap(uv + vec2f(1.0, -1.0) * px));\n  let lSW = luma(tap(uv + vec2f(-1.0, 1.0) * px));\n  let lSE = luma(tap(uv + vec2f(1.0, 1.0) * px));\n  let lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  let lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n\n  var dir = vec2f(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  let reduce = max((lNW + lNE + lSW + lSE) * 0.25 * REDUCE_MUL, REDUCE_MIN);\n  let rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);\n  dir = clamp(dir * rcpMin, vec2f(-SPAN_MAX), vec2f(SPAN_MAX)) * px;\n\n  let a = 0.5 * (tap(uv + dir * (1.0 / 3.0 - 0.5)) + tap(uv + dir * (2.0 / 3.0 - 0.5)));\n  let b = a * 0.5 + 0.25 * (tap(uv - dir * 0.5) + tap(uv + dir * 0.5));\n  let lB = luma(b);\n  let smoothed = select(b, a, (lB < lMin) || (lB > lMax));\n  // Alpha passes through untouched: an edge-smoothing pass has no business deciding coverage\n  // (T1276 found the first version writing 1 over a plate that carried 0).\n  return vec4f(mix(m, smoothed, params.amount), centre.a);\n}"
@@ -477,7 +477,7 @@
       "hit1": {
         "definitionVersion": 1,
         "id": "hit1",
-        "label": "hit1",
+        "label": "select_hit",
         "parameters": {
           "channels": "*"
         },
@@ -490,7 +490,7 @@
       "lvl1": {
         "definitionVersion": 1,
         "id": "lvl1",
-        "label": "lvl1",
+        "label": "select_lvl",
         "parameters": {
           "channels": "*"
         },
@@ -503,7 +503,7 @@
       "music1": {
         "definitionVersion": 1,
         "id": "music1",
-        "label": "music1",
+        "label": "pattern_music",
         "parameters": {
           "amount": 1,
           "bpm": 112
@@ -517,7 +517,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "filmic"
         },
@@ -530,7 +530,7 @@
       "shape": {
         "definitionVersion": 1,
         "id": "shape",
-        "label": "shape1",
+        "label": "wgsl_shape",
         "parameters": {
           "aimPeriod": 59,
           "ambient": 0.12,
@@ -565,7 +565,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "5.9 + 2.6 * op('lvl1').chan.highMid"
+                "source": "5.9 + 2.6 * op('select_lvl').chan.highMid"
               },
               "static": {
                 "kind": "static",
@@ -579,7 +579,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('hit1').chan.kick"
+                "source": "op('select_hit').chan.kick"
               },
               "static": {
                 "kind": "static",
@@ -604,7 +604,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.072 + 0.064 * op('lvl1').chan.low"
+                "source": "0.072 + 0.064 * op('select_lvl').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -633,7 +633,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "7.82 + 2.72 * op('hit1').chan.kick"
+                "source": "7.82 + 2.72 * op('select_hit').chan.kick"
               },
               "static": {
                 "kind": "static",
@@ -696,7 +696,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.1 + 0.24 * op('lvl1').chan.centroid"
+                "source": "1.1 + 0.24 * op('select_lvl').chan.centroid"
               },
               "static": {
                 "kind": "static",
@@ -724,7 +724,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.4 + 0.5 * op('hit1').chan.snare"
+                "source": "0.4 + 0.5 * op('select_hit').chan.snare"
               },
               "static": {
                 "kind": "static",
@@ -751,7 +751,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.24 - 0.18 * op('lvl1').chan.lowMid"
+                "source": "0.24 - 0.18 * op('select_lvl').chan.lowMid"
               },
               "static": {
                 "kind": "static",
@@ -766,7 +766,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.05 + 0.6 * op('lvl1').chan.high"
+                "source": "1.05 + 0.6 * op('select_lvl').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -781,7 +781,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1 + op('source1').chan.bpmConfidence * (op('source1').chan.bpm - 112) / 112"
+                "source": "1 + op('switch_source').chan.bpmConfidence * (op('switch_source').chan.bpm - 112) / 112"
               },
               "static": {
                 "kind": "static",
@@ -805,7 +805,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "2.6 + 1.4 * op('hit1').chan.hat"
+                "source": "2.6 + 1.4 * op('select_hit').chan.hat"
               },
               "static": {
                 "kind": "static",
@@ -827,7 +827,7 @@
       "sky": {
         "definitionVersion": 1,
         "id": "sky",
-        "label": "sky1",
+        "label": "solid_sky",
         "parameters": {
           "color": [
             0,
@@ -845,7 +845,7 @@
       "source1": {
         "definitionVersion": 1,
         "id": "source1",
-        "label": "source1",
+        "label": "switch_source",
         "parameters": {
           "index": 0
         },
@@ -858,7 +858,7 @@
       "track1": {
         "definitionVersion": 1,
         "id": "track1",
-        "label": "track1",
+        "label": "audiofile_track",
         "parameters": {
           "cue": false,
           "cuePoint": 0,

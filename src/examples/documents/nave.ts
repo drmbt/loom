@@ -67,8 +67,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  * start and T467 zeroes it at render (§V44, §V45).
  *
  * Its neighbours own different clocks, and that is §V436 working rather than an
- * inconsistency: `sway1`/`rise1` are LFOs and free-running, so the camera drift also
- * survives a lap; `beat1` is the Audio Pattern and TIMELINE-ANCHORED by design, so bar one
+ * inconsistency: `lfo_sway`/`lfo_rise` are LFOs and free-running, so the camera drift also
+ * survives a lap; `pattern_beat` is the Audio Pattern and TIMELINE-ANCHORED by design, so bar one
  * lands on the in point and a scrub finds the same beat.
  *
  * ## Where the colour lives, and why it is not in the kernel
@@ -93,16 +93,16 @@ export const naveDocument = document(
   graph(
     [
       // ---- the sound ---------------------------------------------------------------
-      node("beat", "audioPattern", [-1740, 700], { bpm: 120, amount: 1 }, { label: "beat1" }),
-      node("swellEnv", "valueLag", [-1480, 700], { lag: 0.11 }, { label: "swell1" }),
-      node("bgain", "valueMath", [-1740, 960], { operation: "multiply", operand: 1.8397 }, { label: "bgain1" }),
+      node("beat", "audioPattern", [-1740, 700], { bpm: 120, amount: 1 }, { label: "pattern_beat" }),
+      node("swellEnv", "valueLag", [-1480, 700], { lag: 0.11 }, { label: "lag_swell" }),
+      node("bgain", "valueMath", [-1740, 960], { operation: "multiply", operand: 1.8397 }, { label: "math_bgain" }),
       /* T701: the dB-domain pattern rests at 0.712 where the linear one rested at 0.12,
          so the single multiply grew the house bias half — same output range as before,
          read off the new input range. */
-      node("bnorm", "valueMath", [-1740, 1180], { operation: "add", operand: -1.2437 }, { label: "bnorm1" }),
-      node("bcap", "valueLimit", [-1480, 960], { minimum: 0, maximum: 0.5 }, { label: "bore1" }),
-      node("lgain", "valueMath", [-1220, 960], { operation: "multiply", operand: 0.8 }, { label: "lgain1" }),
-      node("lcap", "valueLimit", [-960, 960], { minimum: 0.05, maximum: 0.85 }, { label: "lum1" }),
+      node("bnorm", "valueMath", [-1740, 1180], { operation: "add", operand: -1.2437 }, { label: "math_bnorm" }),
+      node("bcap", "valueLimit", [-1480, 960], { minimum: 0, maximum: 0.5 }, { label: "limit_bore" }),
+      node("lgain", "valueMath", [-1220, 960], { operation: "multiply", operand: 0.8 }, { label: "math_lgain" }),
+      node("lcap", "valueLimit", [-960, 960], { minimum: 0.05, maximum: 0.85 }, { label: "limit_lum" }),
 
       // ---- the palette, as a gradient rather than as a formula -----------------------
       node("palette", "ramp", [-1740, 40], {
@@ -122,7 +122,7 @@ export const naveDocument = document(
           { position: 0.86, color: [0.02, 0.01, 0.06, 1] },
           { position: 1, color: [0.55, 0.12, 0.7, 1] },
         ],
-      }, { label: "palette1", definitionVersion: 2 }),
+      }, { label: "ramp_palette", definitionVersion: 2 }),
 
       // ---- the tunnel ----------------------------------------------------------------
       node("sheet", "pointGrid", [-1480, 340], {
@@ -130,7 +130,7 @@ export const naveDocument = document(
       }, { label: "grid1" }),
       node("bridge", "textureToAttribute", [-1220, 160], {
         count: NAVE_RIBS * NAVE_ROUND,
-      }, { label: "bridge1" }),
+      }, { label: "sample_bridge" }),
       node("roll", "pointKernel", [-960, 160], {
         capacity: NAVE_RIBS * NAVE_ROUND,
         seed: 30,
@@ -140,48 +140,48 @@ export const naveDocument = document(
         ]),
         kernel: NAVE_KERNEL,
       }, {
-        label: "roll1",
+        label: "kernel_roll",
         parameters: {
-          value1: drivenSlot("bore1:low", 0.16),
-          value2: drivenSlot("lum1:level", 0.28),
+          value1: drivenSlot("limit_bore:low", 0.16),
+          value2: drivenSlot("limit_lum:level", 0.28),
         },
       }),
 
-      node("glass", "materialUnlit", [-700, -140], { color: [1, 1, 1, 1] }, { label: "glass1" }),
+      node("glass", "materialUnlit", [-700, -140], { color: [1, 1, 1, 1] }, { label: "material_glass" }),
       node("ribs", "geometry", [-700, 160], {
-        mode: "instances", shape: "quad", scale: 0.0092, material: "glass1", tint: [1, 1, 1, 1],
+        mode: "instances", shape: "quad", scale: 0.0092, material: "material_glass", tint: [1, 1, 1, 1],
       }, {
-        label: "ribs1",
+        label: "geometry_ribs",
         parameters: { tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "sample" } } } },
       }),
 
       // ---- the shot ------------------------------------------------------------------
-      node("sway", "lfo", [-960, 440], { shape: "sine", frequency: 0.031, amplitude: 0.34, offset: 0, phase: 0 }, { label: "sway1" }),
-      node("rise", "lfo", [-960, 700], { shape: "sine", frequency: 0.023, amplitude: 0.3, offset: 0, phase: 0.25 }, { label: "rise1" }),
+      node("sway", "lfo", [-960, 440], { shape: "sine", frequency: 0.031, amplitude: 0.34, offset: 0, phase: 0 }, { label: "lfo_sway" }),
+      node("rise", "lfo", [-960, 700], { shape: "sine", frequency: 0.023, amplitude: 0.3, offset: 0, phase: 0.25 }, { label: "lfo_rise" }),
       node("eye", "camera", [-440, 160], {
         /* Inside the bore, off the axis by a hair and drifting. Dead centre on the axis is
            a perfectly symmetric frame, and a perfectly symmetric frame has no parallax —
            the tunnel stops reading as a space and starts reading as a target. */
         eye: [0, 0, 2], lookAt: [0, 0, -12], fov: 50, near: 0.05, far: 120, ortho: false,
       }, {
-        label: "eye1",
+        label: "camera_eye",
         parameters: {
-          "eye.x": drivenSlot("sway1", 0),
-          "eye.y": drivenSlot("rise1", 0),
+          "eye.x": drivenSlot("lfo_sway", 0),
+          "eye.y": drivenSlot("lfo_rise", 0),
         },
       }),
       node("shot", "render", [-180, 160], {
-        scenes: "ribs1", camera: "eye1", lights: "",
+        scenes: "geometry_ribs", camera: "camera_eye", lights: "",
         ambientColor: [1, 1, 1, 1], ambientIntensity: 0,
         background: [0.004, 0.005, 0.014, 1],
-      }, { label: "shot1" }),
+      }, { label: "render_shot" }),
 
-      node("halo", "blur", [80, 420], { size: 20, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
+      node("halo", "blur", [80, 420], { size: 20, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
       node("haze", "level", [340, 420], {
         blacklevel: 0, whitelevel: 1, contrast: 1, brightness: 0.7, gamma1: 1, opacity: 1,
-      }, { label: "haze1" }),
-      node("burn", "add", [600, 160], {}, { label: "burn1" }),
-      node("out", "output", [860, 160], {}, { label: "out1" }),
+      }, { label: "level_haze" }),
+      node("burn", "add", [600, 160], {}, { label: "add_burn" }),
+      node("out", "output", [860, 160], {}, { label: "output1" }),
     ],
     [
       edge("e-beat-swell", ["beat", "out"], ["swellEnv", "in"]),

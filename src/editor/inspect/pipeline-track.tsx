@@ -61,6 +61,7 @@ const PASS_TONE: Readonly<Record<PipelinePassRow["kind"], string>> = {
   counter: "utility",
   swap: "temporal",
   loop: "utility",
+  write: "utility",
 };
 
 /** Storage kind → the app's own family colour, so a lane wears the colour its data wears. */

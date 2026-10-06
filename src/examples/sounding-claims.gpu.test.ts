@@ -23,7 +23,7 @@ const document = EXAMPLE_DOCUMENTS.find((entry) => entry.name === "E44 Sounding"
 const SIZE = 128;
 /* T1076: a one-attribute producer's packed buffer IS the position region. */
 const POSITION = pointStorageId("cloud");
-/* T1205: and the same, for the positions AFTER `xform1` — the ones actually drawn. */
+/* T1205: and the same, for the positions AFTER `transform1` — the ones actually drawn. */
 const DRAWN = pointStorageId("xform");
 
 let dawnError: string | undefined;
@@ -153,7 +153,7 @@ describe("E44 Sounding — the depth map IS the geometry", () => {
 
   /**
    * T830 — the fix the owner's report demanded. The boxes used to carry a CONSTANT colour,
-   * so the cloud was a grey lattice that said nothing about the picture. `tint1`
+   * so the cloud was a grey lattice that said nothing about the picture. `sample_tint`
    * (textureToAttribute) now samples the SOURCE at each point, so every box carries the
    * video's own colour and the cloud is the picture standing up in depth. The claim is
    * §V681-shaped: the colour is a per-point CORRESPONDENCE to the source, so it is asserted
@@ -197,10 +197,10 @@ describe("E44 Sounding — the depth map IS the geometry", () => {
   });
 
   /**
-   * T1205 — `xform1` SIZES THE CLOUD, AND IT HAS TO DO IT WITHOUT BREAKING §T830.
+   * T1205 — `transform1` SIZES THE CLOUD, AND IT HAS TO DO IT WITHOUT BREAKING §T830.
    *
    * The two are in tension and that tension is the reason the node is in this file.
-   * `cloud1.sizeX/sizeY` are pinned at 2.0 because `tint1` reads `position.xy` back as a
+   * `texturepoints_cloud.sizeX/sizeY` are pinned at 2.0 because `sample_tint` reads `position.xy` back as a
    * UV, so the producer's size is a DATA CONTRACT and not a framing choice; the picture
    * still needed to be bigger. So the transform sits downstream of the bridge, and both
    * halves are asserted here at once: the cloud the bridge saw is still on the clip square,
@@ -241,7 +241,7 @@ describe("E44 Sounding — the depth map IS the geometry", () => {
       const after = spanAndMiddle(drawn, axis);
 
       // §T830 SURVIVES: the bridge's cloud sits inside the clip square, which is the only
-      // reason `tint1` can read a position back as a UV at all. If a later hand moved the
+      // reason `sample_tint` can read a position back as a UV at all. If a later hand moved the
       // transform above the bridge, this is what says so.
       expect(before.span, `axis ${axis} is not on the clip square any more`).toBeLessThanOrEqual(2);
 

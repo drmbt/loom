@@ -12,6 +12,8 @@
  * draw would silently follow the wrong point across a kill.
  */
 
+import { stepSeed } from "../runtime/backend/shared-uniforms.ts";
+
 export function pointPcgReference(value: number): number {
   const state = (Math.imul(value >>> 0, 747796405) + 2891336453) >>> 0;
   const shifted = (state >>> (((state >>> 28) + 4) >>> 0)) >>> 0;
@@ -19,13 +21,20 @@ export function pointPcgReference(value: number): number {
   return ((word >>> 22) ^ word) >>> 0;
 }
 
+/**
+ * `run` (T1583b) is which run of the kernel inside the frame, for a node that steps it
+ * several times: 0 for a kernel run once, which is every caller before steps existed. The
+ * shader's text does not fold it — the backend hands each run `stepSeed(seed, run)` as its
+ * seed — so this mirror folds it the same way, through the same function.
+ */
 export function pointHashReference(
   seed: number,
   pointId: number,
   frameIndex: number,
   salt: number,
+  run = 0,
 ): number {
-  const a = pointPcgReference((seed ^ pointId) >>> 0);
+  const a = pointPcgReference((stepSeed(seed, run) ^ pointId) >>> 0);
   const b = pointPcgReference((a ^ frameIndex) >>> 0);
   return pointPcgReference((b ^ salt) >>> 0);
 }
@@ -36,7 +45,8 @@ export function pointRandReference(
   pointId: number,
   frameIndex: number,
   salt: number,
+  run = 0,
 ): number {
   // Math.fround mirrors the shader's f32 rounding of the hash before the multiply.
-  return Math.fround(pointHashReference(seed, pointId, frameIndex, salt)) * (1 / 4294967296);
+  return Math.fround(pointHashReference(seed, pointId, frameIndex, salt, run)) * (1 / 4294967296);
 }

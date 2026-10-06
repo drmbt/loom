@@ -6,17 +6,17 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *   sway(lfo) ─► field.amp                                      the DISTURBANCE
  *   field(noise) ─► gain(level) ─► clipbase ─┬─► cut ─► clip ─► halo ─► tint ─► glow.in1
  *                       ▲ brightness         └──────────────────────────────► glow.in2
- *   glow ─► out                palette ─► tint.lookup (phase ← "swirl1")
- *   glow ─► meter(analyze "meter1")                             the SENSOR
- *   probe(channelIn) ─► neg(×−1) ─► err(+target) ─► push(×K) ─► lift(+base) ─► clampg ─► engage(valueSwitch) = "gain1"   (in2 ◄ rest, the open loop)
- *                                       └─► swirl(×0.15) ─► swirlbias(+0.03) ─► swirlclamp = "swirl1"
+ *   glow ─► out                palette ─► tint.lookup (phase ← "limit_swirl")
+ *   glow ─► meter(analyze "analyze_meter")                             the SENSOR
+ *   probe(channelIn) ─► neg(×−1) ─► err(+target) ─► push(×K) ─► lift(+base) ─► clampg ─► engage(valueSwitch) = "switch_gain"   (in2 ◄ rest, the open loop)
+ *                                       └─► swirl(×0.15) ─► swirlbias(+0.03) ─► swirlclamp = "limit_swirl"
  *
  * §V144's image → parameter → image loop, closed THROUGH PROCESSING for the first time
  * (§V615): analyze meters the finished frame, channelIn (T654) brings the number back
  * into the value graph, and a proportional controller drives the picture's brightness
  * toward a setpoint while an LFO breathes the field's amplitude to give it work to do.
  *
- * gain1 = clamp(1.3 + 2.0·(0.18 − meter1), 0.8, 1.8). Every constant is sized from a
+ * switch_gain = clamp(1.3 + 2.0·(0.18 − analyze_meter), 0.8, 1.8). Every constant is sized from a
  * measured plant curve, not taste — the md carries the numbers. The short version:
  * meter/brightness slope ≈ 0.23 at the operating point, so the brightness path closes
  * at K·G ≈ 0.47; the palette-phase tap adds ≈ 0.27 in the same corrective direction;
@@ -45,7 +45,7 @@ export const selfRegulatingBloomDocument = document(
         amplitude: 0.35,
         offset: 1,
         phase: 0,
-      }, { label: "sway1" }),
+      }, { label: "lfo_sway" }),
       node("field", "noise", [-1040, 0], {
         type: "perlin4d",
         seed: 5,
@@ -62,7 +62,7 @@ export const selfRegulatingBloomDocument = document(
         s4d: 1,
         speed: 0.12,
       }, {
-        parameters: { amp: drivenSlot("sway1", 1) },
+        parameters: { amp: drivenSlot("lfo_sway", 1) },
       }),
       /**
        * THE ACTUATOR. The controller owns exactly one number in the picture: this
@@ -77,7 +77,7 @@ export const selfRegulatingBloomDocument = document(
       }, {
         // §V107/§V108: the retained 1.3 is `lift`'s own base, so a host with no
         // channel renders the frame-0 picture, not a different example.
-        parameters: { brightness: drivenSlot("gain1", 1.3) },
+        parameters: { brightness: drivenSlot("switch_gain", 1.3) },
       }),
       // E4/E34's lesson, twice: `gain` and `cut` are signed pipelines whose black
       // points emit negatives into an rgba16float working format; the blur would smear
@@ -112,7 +112,7 @@ export const selfRegulatingBloomDocument = document(
             { position: 0.45, color: [1, 1, 0.95, 1] },
           ],
         },
-        { definitionVersion: 2, parameters: { phase: drivenSlot("swirl1", 0.03) } },
+        { definitionVersion: 2, parameters: { phase: drivenSlot("limit_swirl", 0.03) } },
       ),
       node("tint", "lookup", [420, -160], { channel: "luminance", row: 0.5, offset: 0, scale: 1 }),
       node("glow", "add", [660, 0], { opacity: 1 }),
@@ -122,7 +122,7 @@ export const selfRegulatingBloomDocument = document(
        * never sees; metering the output is what makes the palette tap part of the loop
        * gain and the whole argument honest. Its NAME is the channel (§V129).
        */
-      node("meter", "analyze", [1180, -160], { channel: "luminance", operation: "average" }, { label: "meter1" }),
+      node("meter", "analyze", [1180, -160], { channel: "luminance", operation: "average" }, { label: "analyze_meter" }),
       node("out", "output", [920, 0]),
 
       /**
@@ -135,9 +135,9 @@ export const selfRegulatingBloomDocument = document(
        * the transport and the analyze node's §V329 staleness age counts up in its popup
        * while the picture stands still.
        */
-      node("probe", "channelIn", [-1140, 320], { channel: "meter1", fallback: 0.18 }),
+      node("probe", "channelIn", [-1140, 320], { channel: "analyze_meter", fallback: 0.18 }),
       node("neg", "valueMath", [-880, 320], { operation: "multiply", operand: -1 }),
-      node("err", "valueMath", [-620, 320], { operation: "add", operand: 0.18 }, { label: "err1" }),
+      node("err", "valueMath", [-620, 320], { operation: "add", operand: 0.18 }, { label: "math_err" }),
       node("push", "valueMath", [-360, 320], { operation: "multiply", operand: 2 }),
       node("lift", "valueMath", [-100, 320], { operation: "add", operand: 1.3 }),
       // The rails. Not exercised by the sway (measured); load-bearing at the
@@ -155,11 +155,11 @@ export const selfRegulatingBloomDocument = document(
        * measurement is allowed to push back.
        */
       node("rest", "constant", [420, 560], { value: 1.3 }),
-      node("engage", "valueSwitch", [420, 320], { index: 0 }, { label: "gain1" }),
+      node("engage", "valueSwitch", [420, 320], { index: 0 }, { label: "switch_gain" }),
       // The same error, spent twice: a small warm/cool lean on the halo's palette.
       node("swirl", "valueMath", [-360, 560], { operation: "multiply", operand: 0.15 }),
       node("swirlbias", "valueMath", [-100, 560], { operation: "add", operand: 0.03 }),
-      node("swirlclamp", "valueLimit", [160, 560], { minimum: 0.005, maximum: 0.055 }, { label: "swirl1" }),
+      node("swirlclamp", "valueLimit", [160, 560], { minimum: 0.005, maximum: 0.055 }, { label: "limit_swirl" }),
     ],
     [
       edge("e-field-gain", ["field", "out"], ["gain", "input"]),

@@ -580,7 +580,7 @@ describe("E70 Chimera — claims", () => {
           static: { kind: "static", value: 1 },
           expression: {
             kind: "expression",
-            source: "1 + op('source1').chan.bpmConfidence * (op('source1').chan.bpm - 112) / 112",
+            source: "1 + op('switch_source').chan.bpmConfidence * (op('switch_source').chan.bpm - 112) / 112",
           },
         },
       });

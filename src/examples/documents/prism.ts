@@ -7,22 +7,22 @@ import { PRISM_EDGE, PRISM_HALF, PRISM_RC, PRISM_RHO } from "../shaders/prism-ge
 /**
  * E13 — Prism (T710, rebuilt; was T363/T364).
  *
- *   bar1(pointTube) ─► form1(pointKernel) ─► solid1(geometry, surface) ─┐
- *   glass1(materialPhong) ──────────────── by name ────────────────────┘
- *                                                                       ├─► shot1(render)
- *   spectrum1(ramp) ─► optics1.field                                    │
- *   optics1(pointKernel) ─┬─► shaft1(geometry, beam, p.role < 0.5) ─────┤
- *                         └─► fan1  (geometry, beam, p.role > 0.5) ─────┤
- *   sky1(ramp) ─┐                                                       │
- *   band1(circle @ 0.5,0.5) ─┴─► studio1(add) ─► shot1.environment ─────┘
- *   key1(light), eye1(camera) ──── by name ─────────────────────────────┘
+ *   tube_bar(pointTube) ─► kernel_form(pointKernel) ─► geometry_solid(geometry, surface) ─┐
+ *   material_glass(materialPhong) ──────────────── by name ────────────────────┘
+ *                                                                       ├─► render_shot(render)
+ *   ramp_spectrum(ramp) ─► kernel_optics.field                                    │
+ *   kernel_optics(pointKernel) ─┬─► geometry_shaft(geometry, beam, p.role < 0.5) ─────┤
+ *                         └─► geometry_fan  (geometry, beam, p.role > 0.5) ─────┤
+ *   ramp_sky(ramp) ─┐                                                       │
+ *   circle_band(circle @ 0.5,0.5) ─┴─► add_studio(add) ─► render_shot.environment ─────┘
+ *   light_key(light), camera_eye(camera) ──── by name ─────────────────────────────┘
  *
- *   shot1 ─► cut1(level) ─► clip1(limit) ─► halo1(blur) ─► glow1(add).in2
- *   shot1 ─────────────────────────────────────────────► glow1(add).in1 ─► out1
+ *   render_shot ─► level_cut(level) ─► limit_clip(limit) ─► blur_halo(blur) ─► add_glow(add).in2
+ *   render_shot ─────────────────────────────────────────────► add_glow(add).in1 ─► output1
  *
- *   mouse1 ─► follow1(valueLag) ┄drives┄► optics1.value1 (y: angle)  the AIM — the
- *                               ┄drives┄► optics1.value3 (x: entry)   pointer's, always (T915b)
- *   fan1.tint ← the `tint` attribute (map mode, T478)
+ *   mouse1 ─► lag_follow(valueLag) ┄drives┄► kernel_optics.value1 (y: angle)  the AIM — the
+ *                               ┄drives┄► kernel_optics.value3 (x: entry)   pointer's, always (T915b)
+ *   geometry_fan.tint ← the `tint` attribute (map mode, T478)
  *
  * THE OWNER'S REFERENCE, and the one technical fact that makes it buildable: A PRISM
  * READS AS GLASS THROUGH ITS EDGES, NOT ITS VOLUME. The body is nearly black; what says
@@ -32,7 +32,7 @@ import { PRISM_EDGE, PRISM_HALF, PRISM_RC, PRISM_RHO } from "../shaders/prism-ge
  *
  * `envFresnel` rises to 1 at GRAZING, and §V640's measured LIMIT — the environment-band
  * rim is a rim only on CURVED geometry and turns into fill on a flat camera-facing
- * surface — is the whole reason this shape is built the way it is. `form1` walks a
+ * surface — is the whole reason this shape is built the way it is. `kernel_form` walks a
  * ROUNDED triangle: three straight runs joined by three 120° arcs, and a quarter-round
  * where each flat cap meets the barrel. Along a straight run the surface renderer's
  * central difference is collinear, so the face normal is EXACTLY constant and the faces
@@ -40,7 +40,7 @@ import { PRISM_EDGE, PRISM_HALF, PRISM_RC, PRISM_RHO } from "../shaders/prism-ge
  * it passes through grazing — so a thread of surface at grazing runs all the way round
  * the triangle, from any camera. That thread is the picture.
  *
- * Rounding the corners does not move the faces, which is what lets `optics1` below share
+ * Rounding the corners does not move the faces, which is what lets `kernel_optics` below share
  * the geometry: the straight run of a rounded triangle sits at d·cos(60°) + ρ from the
  * axis, and with d = RC − 2ρ that is exactly RC/2 — a sharp triangle's inradius, for
  * every ρ. One number, two nodes, no drift.
@@ -55,12 +55,12 @@ import { PRISM_EDGE, PRISM_HALF, PRISM_RC, PRISM_RHO } from "../shaders/prism-ge
  * AMBIENT IS ZERO AND THE KEY IS HARD, and that is E33's lesson (§V632/T636) rather than
  * taste: the physical terms here are tiny — a 4% head-on Fresnel on a specular of 0.86
  * and a diffuse albedo of 0.0009 linear — so any ambient worth the name drowns them and
- * the glass goes to grey slate. `key1` therefore does exactly one job: its direction is
+ * the glass goes to grey slate. `light_key` therefore does exactly one job: its direction is
  * the mirror of the view about the upper-left round-over's normal, so its Blinn lobe
  * (shininess 140) lands as a GLINT on that edge and nowhere else. Measured: killing it
  * moves 8,387 pixels by more than 4 luma — it earns its node (§V624).
  *
- * THE DISPERSION IS THE EXAMPLE, and it is solved rather than drawn. `optics1` runs
+ * THE DISPERSION IS THE EXAMPLE, and it is solved rather than drawn. `kernel_optics` runs
  * Snell's law twice per band, vectorially, in the prism's own cross-section: refract in
  * at the right face, cross to the left face plane, refract out. n follows CAUCHY
  * (T913, n = A + B/λ², λ 0.7µm → 0.4µm), violet-heavy the way real glass is, and runs
@@ -68,7 +68,7 @@ import { PRISM_EDGE, PRISM_HALF, PRISM_RC, PRISM_RHO } from "../shaders/prism-ge
  * real number (crown is 0.018; the old 0.085 was 3–5× exaggerated, which is why the fan
  * looked split at every angle and the impact angle stopped reading as the cause). The
  * split-or-converge behaviour is Snell's own: at near-normal incidence every wavelength
- * refracts alike and the beam stays a line; obliquely they part. No branch decides it. Sixty-one bands take their colour from `spectrum1` through the kernel's own
+ * refracts alike and the beam stays a line; obliquely they part. No branch decides it. Sixty-one bands take their colour from `ramp_spectrum` through the kernel's own
  * `field` input (`fieldAt(vec3f(t·2−1, 0, 0))` samples the ramp at u = t, v = 0.5), so
  * hue and refractive index are the SAME parameter and the ramp is the authored spectrum.
  *
@@ -99,11 +99,11 @@ import { PRISM_EDGE, PRISM_HALF, PRISM_RC, PRISM_RHO } from "../shaders/prism-ge
  * §T913's physical Δn narrowed that straddle band — real glass makes the two-face split
  * rarer than the old exaggerated spread did, a fidelity/legibility trade the aim owns).
  *
- * ONE SOURCE, TWO READINGS (§V471.1). `optics1` writes 65 points — the shaft, the ghost,
+ * ONE SOURCE, TWO READINGS (§V471.1). `kernel_optics` writes 65 points — the shaft, the ghost,
  * the drawn internal segment and its TIR continuation (T718),
  * and 61 bands — and two Geometries read the same pointset through a GROUP PREDICATE,
- * because they need different tapers: `shaft1` takes `p.role < 0.5` at taper 1, a
- * parallel-sided ribbon, and `fan1` takes `p.role > 0.5` at taper 0.06, because 61 beams
+ * because they need different tapers: `geometry_shaft` takes `p.role < 0.5` at taper 1, a
+ * parallel-sided ribbon, and `geometry_fan` takes `p.role > 0.5` at taper 0.06, because 61 beams
  * leaving the same face within 0.03 of each other fuse into an opaque wedge at any taper
  * above about zero (T680). The structure is a selection, not more nodes.
  *
@@ -131,7 +131,7 @@ import { PRISM_EDGE, PRISM_HALF, PRISM_RC, PRISM_RHO } from "../shaders/prism-ge
  * passed over it; but it changed when the input didn't, and that is the property that
  * matters. The whole `stir → urge → hold` branch is gone, and with it the blend.
  *
- * Now: `mouse1 → follow1(valueLag 0.18) → value1 (y) and value3 (x)` — position only.
+ * Now: `mouse1 → lag_follow(valueLag 0.18) → value1 (y) and value3 (x)` — position only.
  * y sets the angle across the full 6°–84° band; x walks the entry up the face and past
  * the apex into a real miss. The lag settles AT the pointer and stays there forever.
  * A never-moved cursor reads (0, 0): near-normal incidence at the base of the face —
@@ -168,17 +168,17 @@ const PRISM_ROWS = 45;
    and the traced SDF both render (§V818). Faces sit at PRISM_RC/2. */
 
 /* T937 — THE ONE TILT. Cursor tilt (T928) plus LFO drift (T934), authored once and
-   handed BY NAME to both form1 (which rotates the mesh) and optics1 (which traces in
+   handed BY NAME to both kernel_form (which rotates the mesh) and kernel_optics (which traces in
    body space): the glass and the light cannot disagree about where the body points. */
-const TILT_YAW_EXPR = "clamp(op('follow1').chan.x, 0, 1) * 0.44 - 0.10 + clamp(op('driftyaw1').chan.value, -1, 1) * 0.05";
-const TILT_NOD_EXPR = "clamp(op('follow1').chan.y, 0, 1) * 0.22 - 0.05 + clamp(op('driftnod1').chan.value, -1, 1) * 0.03";
+const TILT_YAW_EXPR = "clamp(op('lag_follow').chan.x, 0, 1) * 0.44 - 0.10 + clamp(op('lfo_driftyaw').chan.value, -1, 1) * 0.05";
+const TILT_NOD_EXPR = "clamp(op('lag_follow').chan.y, 0, 1) * 0.22 - 0.05 + clamp(op('lfo_driftnod').chan.value, -1, 1) * 0.03";
 
 /** The band the glass is drawn WITH: 61 refracted rays plus the shaft and its ghost. */
 const PRISM_BANDS = 61;
 
 /**
  * The prism's SURFACE. A tube is a grid with its u seam closed, which is exactly the
- * topology a prism's lateral loop needs (T296/T301) — `bar1` is here for its `cols`,
+ * topology a prism's lateral loop needs (T296/T301) — `tube_bar` is here for its `cols`,
  * `rows` and wrapU and nothing else, because every position below is replaced.
  *
  * THE ROUNDED TRIANGLE IS THE MECHANISM, not a styling choice. §V640: the environment
@@ -192,7 +192,7 @@ const PRISM_BANDS = 61;
  *
  * Rounding the corners does not move the faces: a straight run sits at d·cos(60°) + ρ
  * from the axis, and with d = RC − 2ρ that is RC/2 for EVERY ρ — a sharp triangle's
- * inradius. That identity is why `optics1` can share this geometry from one constant.
+ * inradius. That identity is why `kernel_optics` can share this geometry from one constant.
  */
 /**
  * T918 — THE WALL: an in-scene backdrop plane, the reference pipeline's own structure
@@ -330,7 +330,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  * equirect. Painted by DIRECTION distance, not uv distance — the lamp lives in the
  * z = 0 plane where equirect azimuth is degenerate, and a uv-space spot would tear as
  * the lamp crosses x = 0; an angular gaussian is continuous everywhere. `lampPhi` rides
- * the same follow1 expression family as everything else the hand steers.
+ * the same lag_follow expression family as everything else the hand steers.
  */
 const BEAM_ENV_WGSL = `${SHARED_UNIFORMS_WGSL}
 struct Params {
@@ -376,7 +376,7 @@ const PRISM_OPTICS_ATTRIBUTES = JSON.stringify([
  * structural, not decorative: a beam in air is visible ONLY by particulate scatter, so
  * the scatter the owner missed IS this cloud. Each mote drifts deterministically and is
  * lit by its distance to the beam's own traced path — the same trace head, the same aim
- * expressions, the same tilt params as optics1, so the light the dust catches cannot
+ * expressions, the same tilt params as kernel_optics, so the light the dust catches cannot
  * disagree with the beam the fan draws.
  */
 export const PRISM_DUST_KERNEL = `${PRISM_TRACE_KERNEL_HEAD}
@@ -513,20 +513,20 @@ export const prismDocument = document(
       // interaction". The default aim is value1's static payload below; the pointer takes
       // the aim while it moves (T857) and the lag chain hands it back to the static.
       node("mouse", "mouse", [-1880, 844], {}, { label: "mouse1" }),
-      node("follow", "valueLag", [-1560, 844], { lag: 0.18 }, { label: "follow1" }),
+      node("follow", "valueLag", [-1560, 844], { lag: 0.18 }, { label: "lag_follow" }),
       /* T934 — PASSIVE BODY DRIFT, on the OBJECT and never the aim. The owner: "slight
          rotate, pivot, swivel … driven by lfos … different frequencies resp slight
          offsets for the different axis". Two sines at mutually incommensurate
          frequencies (0.041 Hz and 0.067 Hz — 24.4s against 14.9s, ratio 1.63…) with
          different phases: the pair never visibly repeats, yet every frame reproduces
-         (§V74 — a clock, not an RNG). They feed form1's spare slots only; the pointer
+         (§V74 — a clock, not an RNG). They feed kernel_form's spare slots only; the pointer
          still owns the ray, and the T915b gate now proves the SEPARATION. */
       /* T940d: these two ALSO set how fast the beam sweeps the dust — the lit subset of
          motes churns at the body's drift rate, which read as dust "movement" no matter
          what the motes themselves did. Slowed 3x; both frequencies are ordinary node
          params, tune them in the inspector. */
-      node("driftyaw", "lfo", [-1560, 1028], { shape: "sine", frequency: 0.013, phase: 0.13 }, { label: "driftyaw1" }),
-      node("driftnod", "lfo", [-1560, 1288], { shape: "sine", frequency: 0.021, phase: 0.71 }, { label: "driftnod1" }),
+      node("driftyaw", "lfo", [-1560, 1028], { shape: "sine", frequency: 0.013, phase: 0.13 }, { label: "lfo_driftyaw" }),
+      node("driftnod", "lfo", [-1560, 1288], { shape: "sine", frequency: 0.021, phase: 0.71 }, { label: "lfo_driftnod" }),
       // itself, which is the only absolute value the CHOP set has and is also the right
       // 0.6s to fall, so the hand keeps the aim for a second or two after it stops and
       // then gives it back. A cursor that has never moved reads EXACTLY zero through all
@@ -552,26 +552,26 @@ export const prismDocument = document(
           { position: 0.80, color: [0.025, 0.025, 0.027, 1] },
           { position: 1.00, color: [0.008, 0.008, 0.012, 1] },
         ],
-      }, { label: "wallramp1", definitionVersion: 2, resolution: { mode: "fixed", width: 64, height: 256 } }),
-      node("wallgrid", "pointGrid", [-2200, -200], { count: WALL_COLS * WALL_ROWS, cols: WALL_COLS, rows: WALL_ROWS }, { label: "wallgrid1" }),
+      }, { label: "ramp_wall", definitionVersion: 2, resolution: { mode: "fixed", width: 64, height: 256 } }),
+      node("wallgrid", "pointGrid", [-2200, -200], { count: WALL_COLS * WALL_ROWS, cols: WALL_COLS, rows: WALL_ROWS }, { label: "grid_wall" }),
       node("wallplace", "pointKernel", [-1880, -200], {
         capacity: WALL_COLS * WALL_ROWS, seed: 3,
         attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
         kernel: WALL_PLACE_KERNEL,
-      }, { label: "wallplace1" }),
-      node("wallskin", "textureToAttribute", [-1560, -200], { count: WALL_COLS * WALL_ROWS }, { label: "wallskin1" }),
+      }, { label: "kernel_wallplace" }),
+      node("wallskin", "textureToAttribute", [-1560, -200], { count: WALL_COLS * WALL_ROWS }, { label: "sample_wallskin" }),
       node("wall", "geometry", [-920, -156], {
-        mode: "surface", material: "flare1", tint: [1, 1, 1, 1],
-      }, { label: "wall1", parameters: { tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "sample" } } } } }),
+        mode: "surface", material: "material_flare", tint: [1, 1, 1, 1],
+      }, { label: "geometry_wall", parameters: { tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "sample" } } } } }),
 
       // ---- the glass -------------------------------------------------------------
-      node("bar", "pointTube", [-1880, -420], { count: PRISM_COLS * PRISM_ROWS, cols: PRISM_COLS, rows: PRISM_ROWS }, { label: "bar1" }),
+      node("bar", "pointTube", [-1880, -420], { count: PRISM_COLS * PRISM_ROWS, cols: PRISM_COLS, rows: PRISM_ROWS }, { label: "tube_bar" }),
       node("form", "pointKernel", [-1560, -420], {
         capacity: PRISM_COLS * PRISM_ROWS,
         attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
         kernel: PRISM_FORM_KERNEL,
       }, {
-        label: "form1",
+        label: "kernel_form",
         // T937: the kernel's own struct Params (T900 reflection) — named, not numbered.
         parameters: {
           tiltYaw: expressionSlot(TILT_YAW_EXPR, -0.1),
@@ -595,8 +595,8 @@ export const prismDocument = document(
         // the material cannot paint a second, stronger rainbow over the traced one — the
         // 0.06 here was the lead suspect for "the ray is rainbow before it reaches the glass".
         ior: 1.5, roughness: 0.04, thickness: 1.1, absorption: [0.06, 0.05, 0.02, 1], dispersion: 0.03,
-      }, { label: "glass1" }),
-      node("solid", "geometry", [-1240, -420], { mode: "surface", material: "glass1", tint: [1, 1, 1, 1] }, { label: "solid1" }),
+      }, { label: "material_glass" }),
+      node("solid", "geometry", [-1240, -420], { mode: "surface", material: "material_glass", tint: [1, 1, 1, 1] }, { label: "geometry_solid" }),
 
       // ---- the light, taken apart ------------------------------------------------
       // A ramp that GOES somewhere (§V471.6), and it is not decoration: this is the
@@ -613,7 +613,7 @@ export const prismDocument = document(
           { position: 0.83, color: [0.16, 0.30, 1, 1] },
           { position: 1.00, color: [0.55, 0.14, 1, 1] },
         ],
-      }, { label: "spectrum1", definitionVersion: 2, resolution: { mode: "fixed", width: 256, height: 8 } }),
+      }, { label: "ramp_spectrum", definitionVersion: 2, resolution: { mode: "fixed", width: 256, height: 8 } }),
       node("optics", "pointKernel", [-1560, 104], {
         /* T920: the beam — 2 fixed slots + SLICES(9) x BANDS(61) x 3 legs. */
         capacity: 2 + 9 * PRISM_BANDS * 3,
@@ -624,19 +624,19 @@ export const prismDocument = document(
         // single ray, which is what the gate asserts.
         value2: 0.03,
       }, {
-        label: "optics1",
+        label: "kernel_optics",
         // T915b — the pointer OWNS the aim, both axes, exclusively: y is the angle
         // (6°–84°), x walks the entry up the face and off past the apex. Nothing
         // decays, nothing blends against a rest pose — a parked cursor is a parked
-        // beam. The only motion filter is follow1's positional lag, which settles AT
+        // beam. The only motion filter is lag_follow's positional lag, which settles AT
         // the pointer, never back toward anything.
         parameters: {
           /* T915: the STATIC default aim — the rest state IS the shipped image now, so it is
              chosen, not inherited from where the swing's midpoint fell (§V471). 1 is the
              band's steep end (θ1 = 37°), the aim the picture gate measures the WIDEST fan
              at — the frame that shows §T913's dispersion rather than a white line. */
-          value1: drivenSlot("follow1:y", 0),
-          value3: drivenSlot("follow1:x", 0),
+          value1: drivenSlot("lag_follow:y", 0),
+          value3: drivenSlot("lag_follow:x", 0),
           // T937: the SAME tilt the mesh wears — the trace runs in body space.
           tiltYaw: expressionSlot(TILT_YAW_EXPR, -0.1),
           tiltNod: expressionSlot(TILT_NOD_EXPR, -0.05),
@@ -644,17 +644,17 @@ export const prismDocument = document(
       }),
       // UNLIT, and white: a beam is scattered light in the air, not a surface, and it
       // takes no part in shadowing either (§V617). The colour is the attribute's.
-      node("flare", "materialUnlit", [-2520, -136], { color: [1, 1, 1, 1] }, { label: "flare1" }),
+      node("flare", "materialUnlit", [-2520, -136], { color: [1, 1, 1, 1] }, { label: "material_flare" }),
       // §V471.1 — ONE SOURCE, TWO READINGS, split by a group predicate rather than by
       // more nodes. The split is not cosmetic: a single shaft wants a parallel-sided
       // ribbon, and 61 beams leaving the same face within 0.03 of each other fuse into
       // an opaque wedge at any taper above about zero (T680).
-      node("shaft", "geometry", [-1240, -80], {
+      node("shaft", "geometry", [-1240, -96], {
         /* T917: SOFT + ADDITIVE — the beams are light now, not ribbons of paint. The soft
            profile falls off across the width; additive lets the ghost, interior and shaft
            sum where they cross instead of z-fighting. */
-        mode: "beam", endpoint: "tip", scale: 0.006, taper: 1, soft: 0.85, blend: "additive", material: "flare1", group: "p.role < 0.5",
-      }, { label: "shaft1", parameters: { tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } } } }),
+        mode: "beam", endpoint: "tip", scale: 0.006, taper: 1, soft: 0.85, blend: "additive", material: "material_flare", group: "p.role < 0.5",
+      }, { label: "geometry_shaft", parameters: { tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } } } }),
       node("fan", "geometry", [-1240, 104], {
         /* T917: the CONTINUUM — 61 soft bands overlapping ADDITIVELY blend into one
            spectrum, no new primitive: exactly the reference's 128-wavelength additive
@@ -663,8 +663,8 @@ export const prismDocument = document(
         /* T941: the WEDGE — the kernel writes each segment's true width into `size`
            and the draw maps scale from it; taper pinches the near end at the exit
            face. soft 1 + full-width overlap = the partition-of-unity crossfade. */
-        mode: "beam", endpoint: "tip", scale: 4, taper: 0.02, soft: 1, blend: "additive", material: "flare1", group: "p.role > 0.5",
-      }, { label: "fan1", parameters: {
+        mode: "beam", endpoint: "tip", scale: 4, taper: 0.02, soft: 1, blend: "additive", material: "material_flare", group: "p.role > 0.5",
+      }, { label: "geometry_fan", parameters: {
         tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
         /* T941: width = 4 (node scale) x tint.a (the kernel's segment width / 4). */
         scale: { mode: "map", bindings: { static: { kind: "static", value: 4 }, map: { kind: "map", attribute: "tint", channel: "w" } } },
@@ -672,9 +672,9 @@ export const prismDocument = document(
       // T941b — the IN-GLASS fan: interior wedge segments (role 0.5), width-mapped
       // like the exit fan, pinched at the shared entry point by the taper.
       node("core", "geometry", [-920, 104], {
-        mode: "beam", endpoint: "tip", scale: 4, taper: 0.05, soft: 1, blend: "additive", material: "flare1",
+        mode: "beam", endpoint: "tip", scale: 4, taper: 0.05, soft: 1, blend: "additive", material: "material_flare",
         group: "p.role > 0.25 && p.role < 0.75", tint: [1, 1, 1, 1],
-      }, { label: "core1", parameters: {
+      }, { label: "geometry_core", parameters: {
         tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
         scale: { mode: "map", bindings: { static: { kind: "static", value: 4 }, map: { kind: "map", attribute: "tint", channel: "w" } } },
       } }),
@@ -689,10 +689,10 @@ export const prismDocument = document(
         kernel: PRISM_DUST_KERNEL,
         value2: 0.03,
       }, {
-        label: "dust1",
+        label: "kernel_dust",
         parameters: {
-          value1: drivenSlot("follow1:y", 0),
-          value3: drivenSlot("follow1:x", 0),
+          value1: drivenSlot("lag_follow:y", 0),
+          value3: drivenSlot("lag_follow:x", 0),
           tiltYaw: expressionSlot(TILT_YAW_EXPR, -0.1),
           tiltNod: expressionSlot(TILT_NOD_EXPR, -0.05),
           driftSpeed: 1,
@@ -700,8 +700,8 @@ export const prismDocument = document(
       }),
       node("motes", "geometry", [-920, 304], {
         /* T940b: spherical soft splats, per-mote sizes — dust, not confetti. */
-        mode: "points", scale: 0.004, soft: 1, spherical: true, blend: "additive", material: "flare1", tint: [1, 1, 1, 1],
-      }, { label: "motes1", parameters: {
+        mode: "points", scale: 0.004, soft: 1, spherical: true, blend: "additive", material: "material_flare", tint: [1, 1, 1, 1],
+      }, { label: "geometry_motes", parameters: {
         tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
         scale: { mode: "map", bindings: { static: { kind: "static", value: 0.004 }, map: { kind: "map", attribute: "size" } } },
       } }),
@@ -720,24 +720,24 @@ export const prismDocument = document(
           { position: 0.40, color: [0.004, 0.005, 0.009, 1] },
           { position: 1.00, color: [0, 0, 0, 1] },
         ],
-      }, { label: "sky1", definitionVersion: 2, resolution: { mode: "fixed", width: 512, height: 256 } }),
+      }, { label: "ramp_sky", definitionVersion: 2, resolution: { mode: "fixed", width: 512, height: 256 } }),
       // `aspectcorrect` FALSE, always, on an equirect: the map is not a picture of a
       // square. Softness 0.16 and not more — the band's tail is what greys the body.
       node("band", "circle", [-1880, -680], {
         mode: "fill", center: [0.5, 0.5], radius: [0.26, 0.075], softness: 0.16,
         fillcolor: [0.74, 0.84, 1, 1], bgcolor: [0, 0, 0, 1], aspectcorrect: false,
-      }, { label: "band1" }),
-      node("studio", "add", [-1560, -900], {}, { label: "studio1", resolution: { mode: "fixed", width: 512, height: 256 } }),
+      }, { label: "circle_band" }),
+      node("studio", "add", [-1560, -900], {}, { label: "add_studio", resolution: { mode: "fixed", width: 512, height: 256 } }),
       // T945a: the lamp painted INTO the environment — see BEAM_ENV_WGSL.
       node("beamglow", "customWgsl", [-920, -1080], {
         [SHADER_SOURCE_PARAMETER]: BEAM_ENV_WGSL,
         gain: 2.2,
       }, {
-        label: "beamglow1",
+        label: "wgsl_beamglow",
         parameters: {
           // The lamp's azimuth in radians: phi = (185 - 360x) degrees, the same arc the
           // trace walks (T929) — one hand, one number, a third reader.
-          lampPhi: expressionSlot("3.2289 - 6.2832 * clamp(op('follow1').chan.x, 0, 1)", 3.2289),
+          lampPhi: expressionSlot("3.2289 - 6.2832 * clamp(op('lag_follow').chan.x, 0, 1)", 3.2289),
         },
       }),
 
@@ -749,7 +749,7 @@ export const prismDocument = document(
         /* T940: a directional key is by definition light that is not the beam — down to a
            whisper that only keeps the wall's texture from reading as a hole. */
         kind: "directional", direction: [0.73, -0.60, 0.31], color: [0.80, 0.88, 1, 1], intensity: 0.3, shadows: false,
-      }, { label: "key1" }),
+      }, { label: "light_key" }),
       node("eye", "camera", [-1240, -680], {
         // 26 degrees is a long lens on purpose: this is a poster, and a wide one would
         // bend the spectrum's straight rays. The eye sits barely off the prism's own
@@ -759,9 +759,9 @@ export const prismDocument = document(
         // 128px is 0.36 world at z = 0 under this lens, so the pair shifts up by exactly
         // that. Horizontal was already exact, so x stays 0.
         eye: [0, 0.24, 6.6], lookAt: [0, 0.18, 0], fov: 26, near: 0.1, far: 40, ortho: false,
-      }, { label: "eye1" }),
+      }, { label: "camera_eye" }),
       node("shot", "render", [-920, -420], {
-        scenes: "wall1 solid1 core1 fan1 shaft1 motes1", camera: "eye1", lights: "key1",
+        scenes: "geometry_wall geometry_solid geometry_core geometry_fan geometry_shaft geometry_motes", camera: "camera_eye", lights: "light_key",
         // AMBIENT ZERO, and it is E33's lesson rather than taste (§V632/T636): the
         // physical terms here are a 4% head-on Fresnel and a 0.0009 albedo, so any
         // ambient worth the name drowns them and the glass goes to grey slate.
@@ -775,18 +775,18 @@ export const prismDocument = document(
         /* T939: SSAA over MSAA here deliberately — the fan is shader-thin additive
            ribbons, and supersampling SHADES its four samples where MSAA only covers. */
         antialias: "ssaa",
-      }, { label: "shot1" }),
+      }, { label: "render_shot" }),
 
       // ---- the bloom, and the clamp that is load-bearing --------------------------
       // Level is a SIGNED pipeline: below `blacklevel` it emits negatives, the blur
       // spreads them over the whole frame and `add` then SUBTRACTS a halo from the
       // picture. On a document this black almost every pixel is below the threshold, so
-      // without `clip1` the frame goes out entirely (E33's and E34's lesson, twice).
-      node("cut", "level", [-600, -136], { blacklevel: 0.32, whitelevel: 1, gamma1: 1, contrast: 1, brightness: 1, opacity: 1 }, { label: "cut1" }),
-      node("clip", "limit", [-280, -136], { mode: "clamp", low: 0, high: 6, steps: 4 }, { label: "clip1" }),
-      node("halo", "blur", [40, -136], { size: 22, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
-      node("glow", "add", [360, -420], {}, { label: "glow1" }),
-      node("out", "output", [680, -420], {}, { label: "out1" }),
+      // without `limit_clip` the frame goes out entirely (E33's and E34's lesson, twice).
+      node("cut", "level", [-600, -136], { blacklevel: 0.32, whitelevel: 1, gamma1: 1, contrast: 1, brightness: 1, opacity: 1 }, { label: "level_cut" }),
+      node("clip", "limit", [-280, -136], { mode: "clamp", low: 0, high: 6, steps: 4 }, { label: "limit_clip" }),
+      node("halo", "blur", [40, -136], { size: 22, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
+      node("glow", "add", [360, -420], {}, { label: "add_glow" }),
+      node("out", "output", [680, -420], {}, { label: "output1" }),
     ],
     [
       edge("e-wallgrid-place", ["wallgrid", "out"], ["wallplace", "in"]),

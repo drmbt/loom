@@ -17,27 +17,27 @@ building block?
 ## Graph
 
 ```
-drive1(lfo) ┄drives┄► warm1.phase
-warm1(ramp: warm scroll)  ──► projL1.cookie
-chart1(checker: 8×5 grid) ──► projR1.cookie
+lfo_drive(lfo) ┄drives┄► ramp_warm.phase
+ramp_warm(ramp: warm scroll)  ──► projector_left.cookie
+checker_chart(checker: 8×5 grid) ──► projector_right.cookie
 
-wallpts1(pointGrid 32×18)  ─► walllay1(pointKernel: stand up) ─► wall1(geometry: surface)
-groundpts1(pointGrid 24×16)─► groundlay1(pointKernel: lie flat)─► ground1(geometry: surface)
-cornpts1(pointGrid 9×1)    ─► cornlay1(pointKernel: 9 dentils) ─► cornice1(geometry: box ×9)
+grid_wall(pointGrid 32×18)  ─► kernel_walllay(pointKernel: stand up) ─► geometry_wall(geometry: surface)
+grid_ground(pointGrid 24×16)─► kernel_groundlay(pointKernel: lie flat)─► geometry_ground(geometry: surface)
+grid_corn(pointGrid 9×1)    ─► kernel_cornlay(pointKernel: 9 dentils) ─► geometry_cornice(geometry: box ×9)
 
-wall1 ground1 cornice1 ─(names)─► shot1(render) ◄─(names)─ view1, moon1, projL1 projR1 ─► out1
-                                       ▲ eye.x ┄ drift1
+geometry_wall geometry_ground geometry_cornice ─(names)─► render_shot(render) ◄─(names)─ camera_view, light_moon, projector_left projector_right ─► output1
+                                                                     ▲ eye.x ┄ lfo_drift
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `projL1` | `projector` | the content throw: warm gradient cookie, `throwRatio 1.8`, `shiftY 0.35`, aimed at the wall's mid-height |
-| `projR1` | `projector` | the alignment throw: checker chart cookie, same lens, aimed 1.6 to the right — the two images share a ~1.8-wide blend zone |
-| `cornice1` | `geometry` | nine boxes on the cornice line, jutting off the wall face — the occluders that print shadow fingers above themselves |
-| `warm1` | `ramp` | the content, and the motion: its `phase` rides `drive1`, so the gradient scrolls through the left throw as a value (§V5), no rebuild |
-| `chart1` | `checker` | an 8×5 alignment grid, the first thing a real install ever projects |
-| `moon1` | `light` | dim, cool, no shadows — enough to read the architecture, never enough to compete with a throw |
-| `drift1` | `lfo` | 0.03 Hz on the camera's eye.x; a locked-off previz reads as a screenshot |
+| `projector_left` | `projector` | the content throw: warm gradient cookie, `throwRatio 1.8`, `shiftY 0.35`, aimed at the wall's mid-height |
+| `projector_right` | `projector` | the alignment throw: checker chart cookie, same lens, aimed 1.6 to the right — the two images share a ~1.8-wide blend zone |
+| `geometry_cornice` | `geometry` | nine boxes on the cornice line, jutting off the wall face — the occluders that print shadow fingers above themselves |
+| `ramp_warm` | `ramp` | the content, and the motion: its `phase` rides `lfo_drive`, so the gradient scrolls through the left throw as a value (§V5), no rebuild |
+| `checker_chart` | `checker` | an 8×5 alignment grid, the first thing a real install ever projects |
+| `light_moon` | `light` | dim, cool, no shadows — enough to read the architecture, never enough to compete with a throw |
+| `lfo_drift` | `lfo` | 0.03 Hz on the camera's eye.x; a locked-off previz reads as a screenshot |
 
 ## The lens does the aiming, not the tilt
 
@@ -76,7 +76,7 @@ before there is content.
 
 `occlusion` stays on for both projectors, so each renders the scene's depth
 from its own lens and a surface it cannot see receives nothing. The dentil
-blocks of `cornice1` are the demonstration: beams from below graze past them
+blocks of `geometry_cornice` are the demonstration: beams from below graze past them
 and the wall directly above each block stays dark, in exactly the fingers a
 site survey would sketch. Turn `occlusion` off and the beams paint straight
 through the blocks — a decal that lies about the building. Sometimes that lie
@@ -92,7 +92,7 @@ simply opted out of light.
 
 ## Things to try
 
-- Drag `projL1`'s `eye` sideways: the warm image walks across the wall, the
+- Drag `projector_left`'s `eye` sideways: the warm image walks across the wall, the
   blend zone narrows or widens, and the cornice fingers stay glued to the
   architecture — they re-derive from the pose every frame, nothing is baked.
 - Push `shiftY` to 0 and re-aim by raising `lookAt` instead: same coverage,
@@ -101,4 +101,4 @@ simply opted out of light.
 - Swap the cookies: alignment grid through the left lens, content through the
   right. The blend zone still adds; nothing about the throws cares what rides
   them.
-- Turn `moon1`'s intensity to 0: pure projector light, the true dark-site look.
+- Turn `light_moon`'s intensity to 0: pure projector light, the true dark-site look.

@@ -436,7 +436,7 @@
       "analysis1": {
         "definitionVersion": 1,
         "id": "analysis1",
-        "label": "analysis1",
+        "label": "audioanalysis1",
         "parameters": {
           "envelope": 0.08,
           "hitDecay": 420,
@@ -452,7 +452,7 @@
       "hit1": {
         "definitionVersion": 1,
         "id": "hit1",
-        "label": "hit1",
+        "label": "select_hit",
         "parameters": {
           "channels": "*"
         },
@@ -465,7 +465,7 @@
       "lvl1": {
         "definitionVersion": 1,
         "id": "lvl1",
-        "label": "lvl1",
+        "label": "select_lvl",
         "parameters": {
           "channels": "*"
         },
@@ -478,7 +478,7 @@
       "music1": {
         "definitionVersion": 1,
         "id": "music1",
-        "label": "music1",
+        "label": "pattern_music",
         "parameters": {
           "amount": 1,
           "bpm": 112
@@ -492,7 +492,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "filmic"
         },
@@ -505,7 +505,7 @@
       "sky": {
         "definitionVersion": 1,
         "id": "sky",
-        "label": "sky1",
+        "label": "solid_sky",
         "parameters": {
           "color": [
             0,
@@ -523,7 +523,7 @@
       "source1": {
         "definitionVersion": 1,
         "id": "source1",
-        "label": "source1",
+        "label": "switch_source",
         "parameters": {
           "index": 0
         },
@@ -536,7 +536,7 @@
       "temple": {
         "definitionVersion": 1,
         "id": "temple",
-        "label": "temple1",
+        "label": "wgsl_temple",
         "parameters": {
           "aisle": 3.6,
           "ambient": 0.34,
@@ -569,7 +569,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.02 + 0.024 * op('lvl1').chan.low"
+                "source": "0.02 + 0.024 * op('select_lvl').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -588,7 +588,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.22 + 0.26 * op('lvl1').chan.low"
+                "source": "1.22 + 0.26 * op('select_lvl').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -630,7 +630,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "3.4 + 2.6 * op('hit1').chan.kickCount"
+                "source": "3.4 + 2.6 * op('select_hit').chan.kickCount"
               },
               "static": {
                 "kind": "static",
@@ -643,7 +643,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.9 + 1.1 * op('hit1').chan.snareCount"
+                "source": "0.9 + 1.1 * op('select_hit').chan.snareCount"
               },
               "static": {
                 "kind": "static",
@@ -656,7 +656,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.34 + 0.26 * op('hit1').chan.hatCount"
+                "source": "0.34 + 0.26 * op('select_hit').chan.hatCount"
               },
               "static": {
                 "kind": "static",
@@ -671,7 +671,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "7.2 + 3.6 * op('lvl1').chan.lowMid"
+                "source": "7.2 + 3.6 * op('select_lvl').chan.lowMid"
               },
               "static": {
                 "kind": "static",
@@ -713,7 +713,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.42 + 0.26 * op('lvl1').chan.high"
+                "source": "0.42 + 0.26 * op('select_lvl').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -775,7 +775,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.2 + 0.16 * op('lvl1').chan.highMid"
+                "source": "0.2 + 0.16 * op('select_lvl').chan.highMid"
               },
               "static": {
                 "kind": "static",
@@ -795,7 +795,7 @@
       "track1": {
         "definitionVersion": 1,
         "id": "track1",
-        "label": "track1",
+        "label": "audiofile_track",
         "parameters": {
           "cue": false,
           "cuePoint": 0,

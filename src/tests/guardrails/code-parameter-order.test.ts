@@ -104,6 +104,8 @@ describe("T1052 — a node's code editors sort last", () => {
       "midiIn",
       // T1516b: a Panel's board, JSON written by the Controls tab's edit mode.
       "panel",
+      // T1586b: a Curve's own control points, a JSON table read while Control is unwired.
+      "pointCurve",
       "pointKernel",
       "pointKernelAdvanced",
       // T1496b: the preset bank's JSON, hand-editable like the MIDI mapping.

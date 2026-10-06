@@ -4,7 +4,7 @@ An alien disco ball lit from inside: a churning core marched as an emissive volu
 
 ## Why it is one shader (T1141)
 
-The catalogue was read before this was shaped. The scene pipeline's glass is a screen-space read of what the opaque pass already drew, so glass behind glass does not refract; its lights are directional or point, with no medium a beam could be seen in. So `reactor1` does the optics itself, in E46 Lantern's lane taken into 3D:
+The catalogue was read before this was shaped. The scene pipeline's glass is a screen-space read of what the opaque pass already drew, so glass behind glass does not refract; its lights are directional or point, with no medium a beam could be seen in. So `wgsl_reactor` does the optics itself, in E46 Lantern's lane taken into 3D:
 
 - **Analytic shells, one of them breathing.** Every shell is a sphere, so a crossing is a quadratic, not a march, and the ray hops from crossing to crossing. The outer shell's radius varies with direction and time (`wobble`, three slow travelling sines), so its silhouette evolves rather than only its pattern; that shell is the one whose crossing is marched anyway, and the walk finds the breathing face along with the struts.
 - **The frame.** A 3D Worley partition of the direction splits each shell into organic cells: few and large on the outer shell (`divisions`), more on each shell inward, so adjacent facets differ sharply in angle and take visibly different Fresnel values. That contrast between neighbouring faces is what makes a faceted surface read as geometry; a fine lattice reads as one smooth gradient, which is a sprite. Within `frameWidth` of a border the ray has hit a strut. On the outer shell the strut is a solid: a signed-distance tube of radial depth `strutDepth` along every border, marched through the shell band with the F2−F1 border measure halved so the step is a true lower bound (without that the walk stepped over struts at grazing incidence and drew a sawtooth along every edge), so struts stand proud of the faces, occlude the face behind them and break the silhouette, which a shaded sphere cannot do and which is what separates a skeleton from a paper ball. Struts are lit bodies with the core's light showing through the member, their width varying by cell and thin (`frameWidth` 0.06 to 0.12 on the kick); width and protrusion are separate knobs, so thinning them gives back none of the relief. Where glass meets strut the facet tilt fades out and the glass normal rotates a few degrees into the strut's flank, so Fresnel sees no step at the junction. At rest the outer shell has no plates at all; each shell inward carries more (`blocked` is the innermost's share), so the core sits in containment you look through the open frame to see. The lattice morphs (`morph`): the direction is warped by three slow travelling sines before the cells are read, so faces grow and shrink and borders travel without ever snapping; a cell's identity is its grid cell, so a plate or a facet's tilt never flickers while its shape moves.
@@ -14,15 +14,15 @@ The catalogue was read before this was shaped. The scene pipeline's glass is a s
 
 ## Two passes, one shader (T1150)
 
-The medium outside the ball was the whole frame's cost, and a volumetric is low-frequency. `haze1` draws only the straight ray's front haze, at half resolution through the node's own resolution override (`scale 0.5`), as two colour-free weights; `reactor1` draws the geometry at the project resolution and reads the front haze back bilinearly, which also softens the beams and settles the grain. Every knob `haze1` needs mirrors `reactor1`'s by expression, driven lanes included.
+The medium outside the ball was the whole frame's cost, and a volumetric is low-frequency. `wgsl_haze` draws only the straight ray's front haze, at half resolution through the node's own resolution override (`scale 0.5`), as two colour-free weights; `wgsl_reactor` draws the geometry at the project resolution and reads the front haze back bilinearly, which also softens the beams and settles the grain. Every knob `wgsl_haze` needs mirrors `wgsl_reactor`'s by expression, driven lanes included.
 
 Measured on Dawn/Metal, the whole graph at 1280×720: about 16 ms a frame at the wide shot and 17 ms averaged over the tour before the breathing shell; the breathing shell widens the marched band and adds about five milliseconds at the wide shot, measured relative under load (absolute numbers that day were unusable, two other GPU processes were running). About 25 ms at 1920×1080 before the relief and the tour (40 fps). The geometry pass alone is at the 60 fps budget at 1080p, so 1080p60 is not reachable for this design on this machine; the file ships at 1280×720. Set the project resolution to 1920×1080 if 40 fps is acceptable.
 
 ## The two gestures
 
-**The collapse.** A drop is a transition, not a quiet level, so the detector is the slope of the slowest envelope: `drop1` differentiates `env3`, `dropx1` and `dropb1` map the top few percent of falls onto 0 to 1 (a beat's decay never fires it; a pulled-back bar shuts it fully), `dropc1` clamps, and two lags with a fast rise and a slow release close the outer shell first (`shieldOuter`) and the inner shells after (`shieldInner`), so the shielding cascades inward and opens in the same order. A raised shield raises the share every plate's hash is judged against, so plates close in hash order across the shell; at 1 the shell is fully shut. Closing is a weight, not a switch: each plate eases from open to shut over a slice of the shield's travel (a few frames on the rise, a hundred on the release), so a collapse never flips a plate in one frame. And the weight reaches only the light. The plate's surface — its facet, its Fresnel, its refraction, the strut profile around it — is the same shut or open, so the glass reads the same at every moment; what a shut plate does is glow along its frame (`shadeFrame` takes the weight of the plates a strut lies between, and the seam where the plate meets its struts glows too), breathe that glow on its own phase (`shutPulse` radians per second, 0 holds it), hold back a share of the ray (`shutDim`), and dim the haze gate under it. So the core shows through a shut shell as a dull glow behind a lattice of pulsing frames. The seam is narrow, because a wide one seen through the outer shell's refracting facets during a collapse read as a jagged band where the glass meets the frame. While the outer shell is shut the core's own radiance dies back to a third and its colour cools toward the rim colour, so the ball collapses and the light goes out rather than a lid closing on a lamp; a shut plate is contained light, not a dead hull: its frame glows and breathes, a twelfth of the light leaks through the gate into the haze, and the whole thing opens back to full on a slow release, so a collapse lands for a couple of seconds instead of flickering past. `armt1` holds the shutters open for the first three seconds, because the pattern's opening hit decays like a drop and the rest state is the radiating one. `dropx1` and `dropb1` are the sensitivity; a real track has its own numbers.
+**The collapse.** A drop is a transition, not a quiet level, so the detector is the slope of the slowest envelope: `slope_drop` differentiates `lag_env3`, `math_dropx` and `math_dropb` map the top few percent of falls onto 0 to 1 (a beat's decay never fires it; a pulled-back bar shuts it fully), `limit_dropc` clamps, and two lags with a fast rise and a slow release close the outer shell first (`shieldOuter`) and the inner shells after (`shieldInner`), so the shielding cascades inward and opens in the same order. A raised shield raises the share every plate's hash is judged against, so plates close in hash order across the shell; at 1 the shell is fully shut. Closing is a weight, not a switch: each plate eases from open to shut over a slice of the shield's travel (a few frames on the rise, a hundred on the release), so a collapse never flips a plate in one frame. And the weight reaches only the light. The plate's surface — its facet, its Fresnel, its refraction, the strut profile around it — is the same shut or open, so the glass reads the same at every moment; what a shut plate does is glow along its frame (`shadeFrame` takes the weight of the plates a strut lies between, and the seam where the plate meets its struts glows too), breathe that glow on its own phase (`shutPulse` radians per second, 0 holds it), hold back a share of the ray (`shutDim`), and dim the haze gate under it. So the core shows through a shut shell as a dull glow behind a lattice of pulsing frames. The seam is narrow, because a wide one seen through the outer shell's refracting facets during a collapse read as a jagged band where the glass meets the frame. While the outer shell is shut the core's own radiance dies back to a third and its colour cools toward the rim colour, so the ball collapses and the light goes out rather than a lid closing on a lamp; a shut plate is contained light, not a dead hull: its frame glows and breathes, a twelfth of the light leaks through the gate into the haze, and the whole thing opens back to full on a slow release, so a collapse lands for a couple of seconds instead of flickering past. `timer_armt` holds the shutters open for the first three seconds, because the pattern's opening hit decays like a drop and the rest state is the radiating one. `math_dropx` and `math_dropb` are the sensitivity; a real track has its own numbers.
 
-**The escalation.** The tight bloom's gain rides `env3` with an aggressive range (`blowx1`, `blowb1`), so a sustained loud passage blows the core out and a quiet one lets it settle. The bloom is two widths: `cut1` remaps the highlights, `clamp1` floors the remap at zero (a Level is a remap, and a blurred negative field added back is a dark halo), `blur1` and `blur2` widen, `gain1` and `gain2` weight, `add1` and `add2` composite.
+**The escalation.** The tight bloom's gain rides `lag_env3` with an aggressive range (`math_blowx`, `math_blowb`), so a sustained loud passage blows the core out and a quiet one lets it settle. The bloom is two widths: `level_cut` remaps the highlights, `limit_clamp` floors the remap at zero (a Level is a remap, and a blurred negative field added back is a dark halo), `blur1` and `blur2` widen, `level_gain1` and `level_gain2` weight, `add1` and `add2` composite.
 
 ## The camera
 
@@ -30,7 +30,7 @@ A tour on the free-running clock, in six eased legs: wide; close on the shell su
 
 ## The knobs are the shader's own struct
 
-There is no project-level publish surface in this build (§T1143), so the top level is `reactor1`'s parameter page. Each field of `struct Params` reflects into a named, drivable control with the shader's trailing comment as its description.
+There is no project-level publish surface in this build (§T1143), so the top level is `wgsl_reactor`'s parameter page. Each field of `struct Params` reflects into a named, drivable control with the shader's trailing comment as its description.
 
 ## Colour
 
@@ -38,37 +38,37 @@ One hue angle swings the core, the glass and the beams together: `hueSwing` degr
 
 ## Audio, on the light and on the form
 
-`music1` is the synthetic pattern; `track1` is your own file one drop away, and `source1` picks between them. Three envelopes at three speeds feed affine `valueMath` pairs calibrated on the shipped pattern: through `env1` (fast), `level` to `coreGain`, `low` to `laserGain`, `highMid` to `facet`; through `env2` (0.35 s), `low` to `frameWidth` and `highMid` to `shellGap`; through `env3` (0.7 s), `level` to `swell` (the outer shell's radius) and to the bloom's gain, and its slope to the shutters. Every retained value sits inside its driven range and none holds a value for a second (§V903, asserted in the claims).
+`pattern_music` is the synthetic pattern; `audiofile_track` is your own file one drop away, and `switch_source` picks between them. Three envelopes at three speeds feed affine `valueMath` pairs calibrated on the shipped pattern: through `lag_env1` (fast), `level` to `coreGain`, `low` to `laserGain`, `highMid` to `facet`; through `lag_env2` (0.35 s), `low` to `frameWidth` and `highMid` to `shellGap`; through `lag_env3` (0.7 s), `level` to `swell` (the outer shell's radius) and to the bloom's gain, and its slope to the shutters. Every retained value sits inside its driven range and none holds a value for a second (§V903, asserted in the claims).
 
-To use a microphone, replace `track1` with an `audioIn` node and set `source1` to 1.
+To use a microphone, replace `audiofile_track` with an `audioIn` node and set `switch_source` to 1.
 
 ## The chain
 
 ```
-bed1(noise) -> haze1(customWgsl) -> reactor1(customWgsl) -> add1(add) -> add2(add) -> grade1(hsv) -> out1(output)
-reactor1(customWgsl) -> cut1(level) -> clamp1(limit) -> blur1(blur) -> gain1(level) -> add1(add)
-blur1(blur) -> blur2(blur) -> gain2(level) -> add2(add)
-music1(audioPattern) -> source1(valueSwitch) -> env1(valueLag) -> levelx1(valueMath) -> levelb1(valueMath)
-track1(audioFileIn) -> source1(valueSwitch)
-env1(valueLag) -> lowx1(valueMath) -> lowb1(valueMath);  env1(valueLag) -> highx1(valueMath) -> highb1(valueMath)
-source1(valueSwitch) -> env2(valueLag) -> barx1(valueMath) -> barb1(valueMath);  env2(valueLag) -> gapx1(valueMath) -> gapb1(valueMath)
-source1(valueSwitch) -> env3(valueLag) -> swellx1(valueMath) -> swellb1(valueMath);  env3(valueLag) -> blowx1(valueMath) -> blowb1(valueMath)
-env3(valueLag) -> drop1(valueSlope) -> dropx1(valueMath) -> dropb1(valueMath) -> dropc1(valueLimit) -> arm1(valueMath) -> shieldo1(valueLag), shieldi1(valueLag)
-armt1(timer) -> armc1(valueLimit) -> arm1(valueMath)
-levelb1 ┄drives┄► reactor1.coreGain
-lowb1 ┄drives┄► reactor1.laserGain
-highb1 ┄drives┄► reactor1.facet
-barb1 ┄drives┄► reactor1.frameWidth
-gapb1 ┄drives┄► reactor1.shellGap
-swellb1 ┄drives┄► reactor1.swell
-shieldo1 ┄drives┄► reactor1.shieldOuter
-shieldi1 ┄drives┄► reactor1.shieldInner
-blowb1 ┄drives┄► gain1.brightness
+noise_bed(noise) -> wgsl_haze(customWgsl) -> wgsl_reactor(customWgsl) -> add1(add) -> add2(add) -> hsv_grade(hsv) -> output1(output)
+wgsl_reactor(customWgsl) -> level_cut(level) -> limit_clamp(limit) -> blur1(blur) -> level_gain1(level) -> add1(add)
+blur1(blur) -> blur2(blur) -> level_gain2(level) -> add2(add)
+pattern_music(audioPattern) -> switch_source(valueSwitch) -> lag_env1(valueLag) -> math_levelx(valueMath) -> math_levelb(valueMath)
+audiofile_track(audioFileIn) -> switch_source(valueSwitch)
+lag_env1(valueLag) -> math_lowx(valueMath) -> math_lowb(valueMath);  lag_env1(valueLag) -> math_highx(valueMath) -> math_highb(valueMath)
+switch_source(valueSwitch) -> lag_env2(valueLag) -> math_barx(valueMath) -> math_barb(valueMath);  lag_env2(valueLag) -> math_gapx(valueMath) -> math_gapb(valueMath)
+switch_source(valueSwitch) -> lag_env3(valueLag) -> math_swellx(valueMath) -> math_swellb(valueMath);  lag_env3(valueLag) -> math_blowx(valueMath) -> math_blowb(valueMath)
+lag_env3(valueLag) -> slope_drop(valueSlope) -> math_dropx(valueMath) -> math_dropb(valueMath) -> limit_dropc(valueLimit) -> math_arm(valueMath) -> lag_shieldo(valueLag), lag_shieldi(valueLag)
+timer_armt(timer) -> limit_armc(valueLimit) -> math_arm(valueMath)
+math_levelb ┄drives┄► wgsl_reactor.coreGain
+math_lowb ┄drives┄► wgsl_reactor.laserGain
+math_highb ┄drives┄► wgsl_reactor.facet
+math_barb ┄drives┄► wgsl_reactor.frameWidth
+math_gapb ┄drives┄► wgsl_reactor.shellGap
+math_swellb ┄drives┄► wgsl_reactor.swell
+lag_shieldo ┄drives┄► wgsl_reactor.shieldOuter
+lag_shieldi ┄drives┄► wgsl_reactor.shieldInner
+math_blowb ┄drives┄► level_gain1.brightness
 ```
 
 ## Reproducibility
 
-The only clocks are `frameU.absTime` in the shader and `armt1`'s timeline read for the arm; the volumetric dither is a hash of the pixel, fixed across frames. Same seed, same frames.
+The only clocks are `frameU.absTime` in the shader and `timer_armt`'s timeline read for the arm; the volumetric dither is a hash of the pixel, fixed across frames. Same seed, same frames.
 
 ## What this example is a gate for
 

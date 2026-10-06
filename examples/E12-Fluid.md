@@ -17,12 +17,12 @@ where E2 has one.
 ## Graph
 
 ```
-vel1(feedback) ─► stir1(customWgsl) ─► advect1.disp                 the VELOCITY loop
-     ╰┄┄┄┄┄┄┄┄┄┄ source: "stir1" ┄┄┄┄┄╯                             (a reference, T350)
-dye1(feedback) ─► advect1(displace) ─► diffuse1(blur) ─► inject1.in2
-ink1(circle, centre ← mouse1) ──────────────────────────► inject1.in1
-inject1(over) ─► out1(output)                                       the DYE loop
-     ╰┄┄┄┄┄┄┄┄┄┄ dye1.source: "inject1" ┄╯
+feedback_velocity(feedback) ─► wgsl_stir(customWgsl) ─► displace_advect.disp                 the VELOCITY loop
+                  ╰┄┄┄┄┄┄┄┄┄┄ source: "wgsl_stir" ┄┄┄┄┄╯                                     (a reference, T350)
+feedback_dye(feedback) ──────► displace_advect(displace) ─► blur_diffuse(blur) ─► over_inject.in2
+circle_ink(circle, centre ← mouse1) ─────────────────────────────────────────────► over_inject.in1
+over_inject(over) ──────────► output1(output)                                                the DYE loop
+                  ╰┄┄┄┄┄┄┄┄┄┄ feedback_dye.source: "over_inject" ┄╯
 ```
 
 Neither loop is *wired* back: since T350 (§V285) a Feedback **names** the node it records,
@@ -31,13 +31,13 @@ back-edge nobody could read.
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `vel1` | `feedback` | the velocity state (`source: "stir1"`), pinned 640×640 rgba16float, `persistence: 1` |
-| `stir1` | `customWgsl` | self-advects the velocity, diffuses it, and adds a vortex at the pointer |
-| `dye1` | `feedback` | the dye state (`source: "inject1"`), `persistence: 0.985` — the fade is the node's own |
-| `advect1` | `displace` | **the advection**: `weight: [-1, -1]`, `offset: [0, 0]` — sample upstream |
-| `diffuse1` | `blur` | the dye's own diffusion, one and a bit pixels of it |
-| `ink1` | `circle` | the ink source, `center.x`/`center.y` driven by `mouse1` |
-| `inject1` | `over` | ink over the advected dye; the result is both the output and next frame's state |
+| `feedback_velocity` | `feedback` | the velocity state (`source: "wgsl_stir"`), pinned 640×640 rgba16float, `persistence: 1` |
+| `wgsl_stir` | `customWgsl` | self-advects the velocity, diffuses it, and adds a vortex at the pointer |
+| `feedback_dye` | `feedback` | the dye state (`source: "over_inject"`), `persistence: 0.985` — the fade is the node's own |
+| `displace_advect` | `displace` | **the advection**: `weight: [-1, -1]`, `offset: [0, 0]` — sample upstream |
+| `blur_diffuse` | `blur` | the dye's own diffusion, one and a bit pixels of it |
+| `circle_ink` | `circle` | the ink source, `center.x`/`center.y` driven by `mouse1` |
+| `over_inject` | `over` | ink over the advected dye; the result is both the output and next frame's state |
 | `mouse1` | `mouse` | the pointer as channels — no edges, addressed by name (§V173b) |
 
 ## What it proves
@@ -69,12 +69,12 @@ displacement of 0.005 uv has no representation in rgba8unorm at all.
 
 ## What breaks here first
 
-**The sign of `advect1.weight`.** Positive weight samples *downstream* — the unstable
+**The sign of `displace_advect.weight`.** Positive weight samples *downstream* — the unstable
 forward scheme. It does not crash and it does not go black: the dye still flows, and over a
 minute it tears itself apart. This is the parameter the concept test pins, rather than the
 presence of the Displace node.
 
-**`advect1.offset`.** The field is *signed*, so zero means "no motion". At Displace's 0.5
+**`displace_advect.offset`.** The field is *signed*, so zero means "no motion". At Displace's 0.5
 default the whole frame slides diagonally for ever, which looks deliberate.
 
 **Which texture is on which Displace input.** Swap `source` and `disp` and the dye becomes
@@ -96,7 +96,7 @@ choice for the same reason: one frame advanced is one simulation step.
 Everything above is structural — which resource is on which input, what a uniform holds —
 and all of it would still be true of a fluid that does not move. So `examples.gpu.test.ts`
 runs this file on Dawn for five seconds with the pointer parked in the middle and counts
-how much of the frame the dye reaches, once with `stir1.amount` at 1 and once at 0.
+how much of the frame the dye reaches, once with `wgsl_stir.amount` at 1 and once at 0.
 
 Measured: **4,612 pixels against 147,757** of 409,600. The flow, not the Blur, is what
 spreads the ink, and a regression in advection, in the velocity field, or in the pointer's
@@ -108,9 +108,9 @@ one revolution every couple of seconds near the eye of the vortex.
 
 ## Playing with it
 
-- `stir1.amount` is the stir strength, live on a uniform write. Turn it to zero and watch
+- `wgsl_stir.amount` is the stir strength, live on a uniform write. Turn it to zero and watch
   the flow coast to a stop: that is `DAMPING` and the wall term doing their jobs.
-- `diffuse1.size` is the fluid's viscosity as far as the dye is concerned. Push it past
+- `blur_diffuse.size` is the fluid's viscosity as far as the dye is concerned. Push it past
   three and the ink stops holding filaments.
-- `dye1.persistence` at 1 makes the dye permanent — the frame fills and never clears, which
+- `feedback_dye.persistence` at 1 makes the dye permanent — the frame fills and never clears, which
   is a good way to see the flow field's whole history at once.

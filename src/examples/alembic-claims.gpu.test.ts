@@ -225,7 +225,7 @@ function publishedLooks(): Record<string, PublishedLook> {
          nothing, and still render a different picture from the other rows — so the gate
          would pass over a line of the document that does not do what it says. */
       if (!(key in shippedParameters())) {
-        throw new Error(`E58's look table: row ${name} names "${key}", which alembic1 has no parameter for`);
+        throw new Error(`E58's look table: row ${name} names "${key}", which wgsl_alembic has no parameter for`);
       }
       overrides[key] = Number(value);
     }
@@ -234,7 +234,7 @@ function publishedLooks(): Record<string, PublishedLook> {
   return looks;
 }
 
-/** `alembic1`'s parameters as some OTHER shipped file in the family carries them. */
+/** `wgsl_alembic`'s parameters as some OTHER shipped file in the family carries them. */
 function parametersOf(fileName: string): Record<string, unknown> {
   const file = listExamples().find((entry) => entry.fileName === fileName);
   if (file === undefined) throw new Error(`${fileName} is not shipped`);
@@ -347,7 +347,7 @@ describe("E58 Alembic — claims", () => {
    * about one level up — two lists that must agree, and nothing checking that they do. A
    * reader would open E59 expecting the numbers this file prints.
    *
-   * So the row is asserted to be the DIFFERENCE: every key `E59-Vault`'s `alembic1` carries
+   * So the row is asserted to be the DIFFERENCE: every key `E59-Vault`'s `wgsl_alembic` carries
    * differently from this one's must be in the row, with that value, and nothing else may
    * differ. Both directions matter — a missing key is a document that moved and a table that
    * did not, and an extra key is a row promising a change the file does not make.

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument } from "../../domain/types/graph.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { mediaPlayhead } from "../../domain/media/transport.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
@@ -65,7 +67,7 @@ function speedGraph(rate: number, parameters: Record<string, unknown>): GraphDoc
 function travel(rates: readonly number[], parameters: Record<string, unknown>): number[] {
   const session = createValueGraphSession(registry);
   return rates.map((rate, index) => {
-    const evaluated = session.evaluate(speedGraph(rate, parameters), frameAt(index));
+    const evaluated = session.evaluate(flatDocument(speedGraph(rate, parameters)), frameAt(index), { flattening: NO_FLATTENING });
     return evaluated.byName.get("travel1")?.["value"] as number;
   });
 }

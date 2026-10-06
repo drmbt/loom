@@ -3,19 +3,19 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
 /**
  * E40 — Wake (T729).
  *
- *   bed1(noise 4d, nearly still) ─┐
- *   orb1(circle ┄ pathx1/pathy1) ─┴─► stand1(add) ─┐ order 0
- *                                                   ├─► pick1(switch) ─┬─► past1(cache, 6 back)
- *   clip1(movieFileIn) ─────────────────────────────┘ order 1          │        │
+ *   noise_bed(noise 4d, nearly still) ─┐
+ *   circle_orb(circle ┄ lfo_pathx/lfo_pathy) ─┴─► add_stand(add) ─┐ order 0
+ *                                                   ├─► switch_pick(switch) ─┬─► cache_past(cache, 6 back)
+ *   movie_clip(movieFileIn) ─────────────────────────────┘ order 1          │        │
  *                                                                      ▼        ▼
- *                                              under1(level) ◄─┐   moved1(difference)
+ *                                              level_under(level) ◄─┐   difference_moved(difference)
  *                                                              │        │
- *   gain1(level, whitelevel ┄ bite1) ◄────────────────────────────────── ┘
+ *   level_gain(level, whitelevel ┄ limit_bite) ◄────────────────────────────────── ┘
  *        │
- *        ├─► shiftr1(transform ┄ tear1) ─► fuser1(reorder) ─┐
- *        └─► shiftb1(transform ┄ tearn1) ─► fuseb1(reorder) ┴─► born1(add) ◄─ loop1(feedback)
+ *        ├─► transform_shiftr(transform ┄ limit_tear) ─► reorder_fuser(reorder) ─┐
+ *        └─► transform_shiftb(transform ┄ limit_tearn) ─► reorder_fuseb(reorder) ┴─► add_born(add) ◄─ feedback_loop(feedback)
  *                                                                  │
- *                             born1 ─► paint1(lookup ◄─ palette1) ─┴─► lay1(add) ─► trim1 ─► out1
+ *                             add_born ─► lookup_paint(lookup ◄─ ramp_palette) ─┴─► add_lay(add) ─► level_trim ─► output1
  *
  * ## What a Cache is FOR, other than a delay line
  *
@@ -32,8 +32,8 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * state that looks like anything: the first version of this graph used a `perlin3d` with no
  * driver, and since `speed` advances the FOURTH dimension and a 3D noise has none (T518,
  * §V624), the field never changed and the whole file rendered PURE BLACK. Not dim — black,
- * with every structural test green about it. So `bed1` is `perlin4d` with a real `speed`,
- * and the subject is `orb1` on two LFOs. The bed is nearly still ON PURPOSE: a bed evolving
+ * with every structural test green about it. So `noise_bed` is `perlin4d` with a real `speed`,
+ * and the subject is `circle_orb` on two LFOs. The bed is nearly still ON PURPOSE: a bed evolving
  * as fast as the subject travels makes the detector see motion everywhere and the subject
  * never stands out. Something has to hold still for a wake to be a wake ON.
  *
@@ -43,7 +43,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * GRADED colour, the head pins white, and the tail carries no hue at all. Feeding the raw
  * motion into the accumulator and grading what comes OUT makes the ramp a map of how long
  * ago a pixel moved — fresh reads warm, old reads cool — which is the picture this example
- * is for. So the loop closes on `born1`, not on the final output: §V471.5's shape inverted
+ * is for. So the loop closes on `add_born`, not on the final output: §V471.5's shape inverted
  * for the same reason E34 inverts it, because a loop closing on the finished frame would
  * smear the bed along with the wake.
  *
@@ -60,26 +60,26 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * ## §V703 — the guard found two of these in this very file
  *
  * The structural claim "no Level on the feedback path carries a positive blacklevel" went
- * red on this document within an hour of §V694 being written. `gain1` had 0.02, which sent
- * a zero pixel to -0.00917 and compounded to a -0.1835 floor in the accumulator; `under1`
+ * red on this document within an hour of §V694 being written. `level_gain` had 0.02, which sent
+ * a zero pixel to -0.00917 and compounded to a -0.1835 floor in the accumulator; `level_under`
  * had 0.06, which sent a BLACK source pixel to -0.064 and subtracted it from the wake.
  *
- * They are not equally bad, and the difference is worth knowing. `gain1`'s negative was
- * CONTAINED — `paint1` is a Lookup, and a Lookup clamps by indexing, so a negative index
- * reads the first stop and the value never escapes `born1`. `under1`'s was not contained:
- * it feeds `lay1` directly, so it darkened the finished frame. And it was invisible here
+ * They are not equally bad, and the difference is worth knowing. `level_gain`'s negative was
+ * CONTAINED — `lookup_paint` is a Lookup, and a Lookup clamps by indexing, so a negative index
+ * reads the first stop and the value never escapes `add_born`. `level_under`'s was not contained:
+ * it feeds `add_lay` directly, so it darkened the finished frame. And it was invisible here
  * because the synthetic bed sits near 0.6 luma; it would have appeared the moment someone
- * pointed `clip1` at footage with real blacks, as a wake that thins over the dark parts of
+ * pointed `movie_clip` at footage with real blacks, as a wake that thins over the dark parts of
  * their video for no visible reason. Both are 0 now, and `whitelevel` and `brightness`
  * already carried the range each was nominally buying.
  *
  * ## The gain pairs are fitted to a MEASURED field (§V696)
  *
- * `bite1` sets `gain1.whitelevel`, and the honest number depends entirely on what the
- * difference actually measures — which changed by thirteen times when `orb1` was given a
+ * `limit_bite` sets `level_gain.whitelevel`, and the honest number depends entirely on what the
+ * difference actually measures — which changed by thirteen times when `circle_orb` was given a
  * faster path. Fitted by eye it was wrong by an order of magnitude twice, once mapping the
  * field's MEDIAN to 0.86 and blowing the frame white. Louder low band lowers the white
- * point, so the wake flares on the kick; `hold1` lengthens the trail on the same beat.
+ * point, so the wake flares on the kick; `limit_hold` lengthens the trail on the same beat.
  */
 export const wakeDocument = document(
   "wake",
@@ -103,7 +103,7 @@ export const wakeDocument = document(
         speed: 0.035,
         t4d: 0.37, // T786: off the 4D lattice plane (T535) — t4d=0 collapses perlin4d's amplitude, so frame 0, which is the gallery card, was systematically flatter than every frame after it
         s4d: 1,
-      }, { label: "bed1" }),
+      }, { label: "noise_bed" }),
       node("orb", "circle", [-1620, -160], {
         mode: "fill",
         center: [0.5, 0.5],
@@ -112,16 +112,16 @@ export const wakeDocument = document(
         fillcolor: [1, 0.97, 0.9, 1],
         bgcolor: [0, 0, 0, 0],
         aspectcorrect: true,
-      }, { label: "orb1", parameters: { "center.x": drivenSlot("pathx1", 0.5), "center.y": drivenSlot("pathy1", 0.5), } }),
-      node("stand", "add", [-1360, -70], { opacity: 1 }, { label: "stand1" }),
-      node("pathx", "lfo", [-1620, 360], { shape: "sine", frequency: 0.29, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "pathx1" }),
-      node("pathy", "lfo", [-1620, 600], { shape: "sine", frequency: 0.203, amplitude: 0.3, offset: 0.5, phase: 0.25 }, { label: "pathy1" }),
-      node("clip", "movieFileIn", [-1620, 100], { file: "", playMode: "freeRun", speed: 1 }, { label: "clip1" }),
-      node("pick", "switch", [-1360, 150], { index: 0 }, { label: "pick1" }),
+      }, { label: "circle_orb", parameters: { "center.x": drivenSlot("lfo_pathx", 0.5), "center.y": drivenSlot("lfo_pathy", 0.5), } }),
+      node("stand", "add", [-1360, -70], { opacity: 1 }, { label: "add_stand" }),
+      node("pathx", "lfo", [-1620, 360], { shape: "sine", frequency: 0.29, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "lfo_pathx" }),
+      node("pathy", "lfo", [-1620, 600], { shape: "sine", frequency: 0.203, amplitude: 0.3, offset: 0.5, phase: 0.25 }, { label: "lfo_pathy" }),
+      node("clip", "movieFileIn", [-1620, 100], { file: "", playMode: "freeRun", speed: 1 }, { label: "movie_clip" }),
+      node("pick", "switch", [-1360, 150], { index: 0 }, { label: "switch_pick" }),
 
       // ── the delay line and the difference against it ───────────────────────
-      node("past", "cache", [-1100, 320], { frames: 8, index: 6, scale: 1 }, { label: "past1" }),
-      node("moved", "difference", [-840, 150], {}, { label: "moved1" }),
+      node("past", "cache", [-1100, 320], { frames: 8, index: 6, scale: 1 }, { label: "cache_past" }),
+      node("moved", "difference", [-840, 150], {}, { label: "difference_moved" }),
       node("gain", "level", [-580, 150], {
         blacklevel: 0,
         gamma1: 1,
@@ -129,7 +129,7 @@ export const wakeDocument = document(
         brightness: 1,
         invert: 0,
         opacity: 1,
-      }, { label: "gain1", parameters: { whitelevel: drivenSlot("bite1:low", 2.2), } }),
+      }, { label: "level_gain", parameters: { whitelevel: drivenSlot("limit_bite:low", 2.2), } }),
 
       // ── chromatic split of the motion, not of the picture ──────────────────
       node("shiftr", "transform", [-320, -60], {
@@ -140,7 +140,7 @@ export const wakeDocument = document(
         xord: "srt",
         extend: "hold",
         aspectcorrect: false,
-      }, { label: "shiftr1", parameters: { "t.x": drivenSlot("tear1:high", 0.006), } }),
+      }, { label: "transform_shiftr", parameters: { "t.x": drivenSlot("limit_tear:high", 0.006), } }),
       node("shiftb", "transform", [-320, 360], {
         t: [-0.006, 0],
         r: 0,
@@ -149,19 +149,19 @@ export const wakeDocument = document(
         xord: "srt",
         extend: "hold",
         aspectcorrect: false,
-      }, { label: "shiftb1", parameters: { "t.x": drivenSlot("tearn1:high", -0.006), } }),
+      }, { label: "transform_shiftb", parameters: { "t.x": drivenSlot("limit_tearn:high", -0.006), } }),
       node("fuser", "reorder", [-60, 60], {
         outr: "in2r",
         outg: "in1g",
         outb: "in1b",
         outa: "one",
-      }, { label: "fuser1" }),
+      }, { label: "reorder_fuser" }),
       node("fuseb", "reorder", [200, 60], {
         outr: "in1r",
         outg: "in1g",
         outb: "in2b",
         outa: "one",
-      }, { label: "fuseb1" }),
+      }, { label: "reorder_fuseb" }),
 
       // ── grade the motion ──────────────────────────────────────────────────
       node("palette", "ramp", [720, 420], {
@@ -177,22 +177,22 @@ export const wakeDocument = document(
           { position: 0.86, color: [0.85, 0.98, 0.55, 1] },
           { position: 1, color: [1, 1, 0.95, 1] },
         ],
-      }, { label: "palette1", definitionVersion: 2 }),
+      }, { label: "ramp_palette", definitionVersion: 2 }),
       node("paint", "lookup", [980, 60], {
         channel: "luminance",
         row: 0.5,
         offset: 0,
         scale: 1.25,
-      }, { label: "paint1" }),
+      }, { label: "lookup_paint" }),
 
       // ── the phosphor: only what MOVED enters the loop ─────────────────────
       node("loop", "feedback", [460, 380], {
-        source: "born1",
+        source: "add_born",
         clearColor: [0, 0, 0, 0],
         reset: false,
         substeps: 1,
-      }, { label: "loop1", parameters: { persistence: drivenSlot("hold1:level", 0.95), } }),
-      node("born", "add", [720, 60], { opacity: 1 }, { label: "born1" }),
+      }, { label: "feedback_loop", parameters: { persistence: drivenSlot("limit_hold:level", 0.95), } }),
+      node("born", "add", [720, 60], { opacity: 1 }, { label: "add_born" }),
 
       // ── the subject, held down under its own wake ────────────────────────
       node("under", "level", [-1100, -140], {
@@ -203,8 +203,8 @@ export const wakeDocument = document(
         brightness: 0.2,
         invert: 0,
         opacity: 1,
-      }, { label: "under1" }),
-      node("lay", "add", [1240, 60], { opacity: 1 }, { label: "lay1" }),
+      }, { label: "level_under" }),
+      node("lay", "add", [1240, 60], { opacity: 1 }, { label: "add_lay" }),
       node("trim", "level", [1500, 60], {
         blacklevel: 0,
         whitelevel: 1.25,
@@ -213,27 +213,27 @@ export const wakeDocument = document(
         brightness: 1,
         invert: 0,
         opacity: 1,
-      }, { label: "trim1" }),
-      node("out", "output", [1760, 60], {}, { label: "out1" }),
+      }, { label: "level_trim" }),
+      node("out", "output", [1760, 60], {}, { label: "output1" }),
 
       // ── the score ────────────────────────────────────────────────────────
-      node("beat", "audioPattern", [-1620, 840], { bpm: 126, amount: 1, beatsPerBar: 4 }, { label: "beat1" }),
-      node("smooth", "valueLag", [-1360, 840], { lag: 0.07 }, { label: "smooth1" }),
+      node("beat", "audioPattern", [-1620, 840], { bpm: 126, amount: 1, beatsPerBar: 4 }, { label: "pattern_beat" }),
+      node("smooth", "valueLag", [-1360, 840], { lag: 0.07 }, { label: "lag_smooth" }),
 
-      node("biteg", "valueMath", [-1100, 620], { operation: "multiply", operand: -1.6 }, { label: "biteg1" }),
-      node("biteb", "valueMath", [-840, 620], { operation: "add", operand: 3 }, { label: "biteb1" }),
-      node("bite", "valueLimit", [-580, 620], { minimum: 1.6, maximum: 3.2 }, { label: "bite1" }),
+      node("biteg", "valueMath", [-1100, 620], { operation: "multiply", operand: -1.6 }, { label: "math_biteg" }),
+      node("biteb", "valueMath", [-840, 620], { operation: "add", operand: 3 }, { label: "math_biteb" }),
+      node("bite", "valueLimit", [-580, 620], { minimum: 1.6, maximum: 3.2 }, { label: "limit_bite" }),
 
-      node("tearg", "valueMath", [-1100, 880], { operation: "multiply", operand: 0.03 }, { label: "tearg1" }),
-      node("tearb", "valueMath", [-840, 880], { operation: "add", operand: 0.004 }, { label: "tearb1" }),
-      node("tear", "valueLimit", [-580, 880], { minimum: 0.001, maximum: 0.03 }, { label: "tear1" }),
-      node("tearng", "valueMath", [-1100, 1140], { operation: "multiply", operand: -0.03 }, { label: "tearng1" }),
-      node("tearnb", "valueMath", [-840, 1140], { operation: "add", operand: -0.004 }, { label: "tearnb1" }),
-      node("tearn", "valueLimit", [-580, 1140], { minimum: -0.03, maximum: -0.001 }, { label: "tearn1" }),
+      node("tearg", "valueMath", [-1100, 880], { operation: "multiply", operand: 0.03 }, { label: "math_tearg" }),
+      node("tearb", "valueMath", [-840, 880], { operation: "add", operand: 0.004 }, { label: "math_tearb" }),
+      node("tear", "valueLimit", [-580, 880], { minimum: 0.001, maximum: 0.03 }, { label: "limit_tear" }),
+      node("tearng", "valueMath", [-1100, 1140], { operation: "multiply", operand: -0.03 }, { label: "math_tearng" }),
+      node("tearnb", "valueMath", [-840, 1140], { operation: "add", operand: -0.004 }, { label: "math_tearnb" }),
+      node("tearn", "valueLimit", [-580, 1140], { minimum: -0.03, maximum: -0.001 }, { label: "limit_tearn" }),
 
-      node("holdg", "valueMath", [-1100, 1400], { operation: "multiply", operand: 0.032 }, { label: "holdg1" }),
-      node("holdb", "valueMath", [-840, 1400], { operation: "add", operand: 0.93 }, { label: "holdb1" }),
-      node("hold", "valueLimit", [-580, 1400], { minimum: 0.92, maximum: 0.972 }, { label: "hold1" }),
+      node("holdg", "valueMath", [-1100, 1400], { operation: "multiply", operand: 0.032 }, { label: "math_holdg" }),
+      node("holdb", "valueMath", [-840, 1400], { operation: "add", operand: 0.93 }, { label: "math_holdb" }),
+      node("hold", "valueLimit", [-580, 1400], { minimum: 0.92, maximum: 0.972 }, { label: "limit_hold" }),
     ],
     [
       edge("e-bed-stand", ["bed", "out"], ["stand", "in1"], 0),

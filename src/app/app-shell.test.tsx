@@ -129,6 +129,44 @@ describe("app shell layout (§I.ui)", () => {
       expect(separator.getAttribute("aria-label")).toBeTruthy();
     }
   });
+
+  /*
+   * B265 — nothing that reports on the graph may move the graph.
+   *
+   * The notices were a row of the shell BETWEEN the top bar and the panes, so one arriving
+   * or leaving moved every pane by its height. "Output stale" leaves when a node gets its
+   * first input: the port slid 43 px from under the pointer as the wire landed.
+   * `wire-snap.spec.ts` measures that in a browser. This is the cause, where jsdom can see
+   * it: the shell's children are its grid rows in order, and nothing that can change
+   * height stands before the panes.
+   */
+  it("puts the notices after the panes, so a notice cannot move a pane (B265)", () => {
+    render(
+      <AppShell
+        storage={createMemoryStorage()}
+        graphCanvas={<div data-testid="the-canvas">canvas</div>}
+        notices={<div data-testid="a-notice">Output stale</div>}
+      />,
+    );
+    const notice = screen.getByTestId("a-notice");
+    const shell = screen.getByRole("banner").parentElement;
+    if (shell === null) throw new Error("the top bar has no parent");
+    const rows = [...shell.children];
+    // Three rows: the top bar, the panes, the notices.
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toBe(screen.getByRole("banner"));
+    expect(rows[2]?.contains(notice)).toBe(true);
+    // The panes are the row between, and the notice is in none of them.
+    expect(rows[1]?.querySelector("[data-pane-leaf]")).not.toBeNull();
+    expect(rows[1]?.contains(notice)).toBe(false);
+    // The legitimate case: with nothing to say the row is still there (the grid keeps its
+    // three rows) and it is empty.
+    cleanup();
+    render(<AppShell storage={createMemoryStorage()} />);
+    const empty = [...(screen.getByRole("banner").parentElement?.children ?? [])];
+    expect(empty).toHaveLength(3);
+    expect(empty[2]?.childElementCount).toBe(0);
+  });
 });
 
 /**

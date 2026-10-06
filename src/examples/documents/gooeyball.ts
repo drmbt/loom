@@ -110,7 +110,7 @@ export const gooeyballDocument = document(
           attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
           kernel: GOOEY_BALL_KERNEL,
         },
-        { label: "ball1" },
+        { label: "kernel_ball" },
       ),
       node("bridge", "textureToAttribute", [-880, 12], { count: GOOEY_COLS * GOOEY_ROWS }, { label: "sample1" }),
       node(
@@ -126,7 +126,7 @@ export const gooeyballDocument = document(
           ]),
           kernel: GOOEY_GOO_KERNEL,
         },
-        { label: "goo1" },
+        { label: "kernel_goo" },
       ),
       node(
         "claim",
@@ -150,13 +150,13 @@ export const gooeyballDocument = document(
           { position: 0.7, color: [0.95, 0.45, 0.2, 1] },
           { position: 1, color: [1, 0.9, 0.6, 1] },
         ],
-      }, { label: "goopalette1", definitionVersion: 2 }),
-      node("paint", "lookup", [-580, -412], { channel: "red", row: 0.5, scale: 1, offset: 0 }, { label: "paint1" }),
+      }, { label: "ramp_goopalette", definitionVersion: 2 }),
+      node("paint", "lookup", [-580, -412], { channel: "red", row: 0.5, scale: 1, offset: 0 }, { label: "lookup_paint" }),
       node("gooskin", "materialPhong", [-280, -412], {
         color: [1, 1, 1, 1], specular: [1, 0.9, 0.7, 1], shininess: 64, roughness: 0.45,
-      }, { label: "gooskin1" }),
-      node("body", "geometry", [20, -188], { mode: "surface", material: "gooskin1" }, { label: "body1" }),
-      node("cam", "camera", [20, -412], { eye: [0, 0.5, 2.6], lookAt: [0, 0, 0], fov: 55 }, { label: "cam1" }),
+      }, { label: "material_gooskin" }),
+      node("body", "geometry", [20, -188], { mode: "surface", material: "material_gooskin" }, { label: "geometry_body" }),
+      node("cam", "camera", [20, -412], { eye: [0, 0.5, 2.6], lookAt: [0, 0, 0], fov: 55 }, { label: "camera1" }),
       /*
        * TWO lights, one of them MOVING — the first shipped example with an animated
        * light: the warm key holds still, the cool fill ORBITS (its x/z driven by two
@@ -165,24 +165,24 @@ export const gooeyballDocument = document(
        */
       node("key", "light", [340, -572], {
         kind: "directional", color: [1, 0.9, 0.75, 1], intensity: 0.9, direction: [-0.5, -0.7, -0.5],
-      }, { label: "key1" }),
-      node("orbitx", "lfo", [340, -756], { shape: "sine", frequency: 0.11, amplitude: 2.2, offset: 0, phase: 0 }, { label: "orbitx1" }),
-      node("orbitz", "lfo", [340, -940], { shape: "sine", frequency: 0.11, amplitude: 2.2, offset: 0, phase: 0.25 }, { label: "orbitz1" }),
+      }, { label: "light_key" }),
+      node("orbitx", "lfo", [340, -756], { shape: "sine", frequency: 0.11, amplitude: 2.2, offset: 0, phase: 0 }, { label: "lfo_orbitx" }),
+      node("orbitz", "lfo", [340, -940], { shape: "sine", frequency: 0.11, amplitude: 2.2, offset: 0, phase: 0.25 }, { label: "lfo_orbitz" }),
       node("fill", "light", [340, -388], {
         kind: "point", color: [0.35, 0.65, 1, 1], intensity: 1.6,
       }, {
-        label: "fill1",
+        label: "light_fill",
         parameters: {
-          "position.x": drivenSlot("orbitx1", 2),
+          "position.x": drivenSlot("lfo_orbitx", 2),
           "position.y": 0.8,
-          "position.z": drivenSlot("orbitz1", 0.5),
+          "position.z": drivenSlot("lfo_orbitz", 0.5),
         },
       }),
       node("skin", "render", [340, -188], {
-        scenes: "body1", camera: "cam1", lights: "key1 fill1",
+        scenes: "geometry_body", camera: "camera1", lights: "light_key light_fill",
         ambientColor: [0.4, 0.45, 0.6, 1], ambientIntensity: 0.22,
-      }, { label: "shot1" }),
-      node("out", "output", [620, -188], {}, { label: "out1" }),
+      }, { label: "render_shot" }),
+      node("out", "output", [620, -188], {}, { label: "output1" }),
     ],
     [
       edge("e-sheet-ball", ["sheet", "out"], ["ball", "in"]),

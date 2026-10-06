@@ -4,9 +4,9 @@ import { settings, node, edge, graph, document } from "./builders.ts";
  * E50 — Galvo (T947). A SHOW LASER, SIMULATED BY ITS OWN PHYSICS. Simulation only —
  * the output stage is sequenced behind §T949's sideEffect declaration, deliberately.
  *
- *   gen1(pointKernel: 10-vertex star, slow spin) ─► beam1(laserPath, FULL planner)
- *   beam1 ─► draw1(renderPoints) ─► trace1(add) ◄─ echo1(feedback, the eye)
- *   trace1 ─► hot1(threshold) ─► halo1(blur) ─► glow1(add ◄ trace1) ─► out1
+ *   kernel_gen(pointKernel: 10-vertex star, slow spin) ─► laserpath_beam(laserPath, FULL planner)
+ *   laserpath_beam ─► points_draw(renderPoints) ─► add_trace(add) ◄─ feedback_echo(feedback, the eye)
+ *   add_trace ─► threshold_hot(threshold) ─► blur_halo(blur) ─► add_glow(add ◄ add_trace) ─► output1
  *
  * ## What the picture is
  *
@@ -29,9 +29,9 @@ import { settings, node, edge, graph, document } from "./builders.ts";
  *
  * The star's ~430 samples sit INSIDE the 500-point budget of 30 kpps at 60 fps, so the
  * figure is rock steady — that is what a correctly driven scanner looks like. Drop
- * `beam1.pps` toward 5,000 and the same figure starts to crawl and flicker as the scan
+ * `laserpath_beam.pps` toward 5,000 and the same figure starts to crawl and flicker as the scan
  * window stops covering the plan: the overdriven-scanner artifact, from arithmetic.
- * The afterglow is the EYE, not phosphor — `echo1` at 0.55 is a much shorter tail than
+ * The afterglow is the EYE, not phosphor — `feedback_echo` at 0.55 is a much shorter tail than
  * E49's CRT — and the wide soft bloom is beam divergence on a real wall.
  */
 export const galvoDocument = document(
@@ -58,7 +58,7 @@ export const galvoDocument = document(
   return q;
 }`,
         value1: 0, value2: 0, value3: 0, value4: 0,
-      }, { label: "gen1" }),
+      }, { label: "kernel_gen" }),
 
       /* The planner at full strength: bounded galvo velocity (maxStep) and corner
          dwell (holdMin/holdMax by angle steepness). ~430 planned samples against the
@@ -71,31 +71,31 @@ export const galvoDocument = document(
         closed: true,
         color: [1, 0.16, 0.06, 1],
         slots: 48,
-      }, { label: "beam1" }),
+      }, { label: "laserpath_beam" }),
 
       /* The spot on the wall: additive splats, colour mapped from the plan so only the
          scan window's samples emit. Slightly larger spot than E49 — a diverged beam. */
       node("draw", "renderPoints", [-900, 0], {
         count: 480, blend: "additive", accumulate: false, sizePixels: 2.4, group: "",
         color: [1, 1, 1, 1],
-      }, { label: "draw1", parameters: {
+      }, { label: "points_draw", parameters: {
         color: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
       } }),
 
       /* The afterglow is the EYE (persistence of vision), far shorter than a CRT
          phosphor: 0.55 ≈ 1/e in under two frames. */
-      node("trace", "add", [-600, 0], {}, { label: "trace1" }),
+      node("trace", "add", [-600, 0], {}, { label: "add_trace" }),
       node("echo", "feedback", [-900, 280], {
-        source: "trace1",
+        source: "add_trace",
         persistence: 0.55,
         clearColor: [0, 0, 0, 1],
-      }, { label: "echo1" }),
+      }, { label: "feedback_echo" }),
 
       // ---- divergence on the wall: wide soft bloom over the raw beam ----------------
-      node("hot", "threshold", [-300, -160], { threshold: 0.4, softness: 0.35, channel: "luminance", compare: "greater" }, { label: "hot1" }),
-      node("halo", "blur", [0, -160], { size: 34, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
-      node("glow", "add", [300, 0], {}, { label: "glow1" }),
-      node("out", "output", [600, 0], {}, { label: "out1" }),
+      node("hot", "threshold", [-300, -160], { threshold: 0.4, softness: 0.35, channel: "luminance", compare: "greater" }, { label: "threshold_hot" }),
+      node("halo", "blur", [0, -160], { size: 34, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
+      node("glow", "add", [300, 0], {}, { label: "add_glow" }),
+      node("out", "output", [600, 0], {}, { label: "output1" }),
     ],
     [
       edge("e-gen-beam", ["gen", "out"], ["beam", "points"]),

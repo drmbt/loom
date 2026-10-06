@@ -15,7 +15,8 @@ import { idInput, nodeIdsInput, pointInput } from "../commands/input-schema.ts";
 import { parameterValueSchema } from "../types/schemas.ts";
 import { parameterDefinitionSchema } from "./schemas.ts";
 import { attachClipboardComponents } from "../commands/loom-clipboard.ts";
-import { renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
+import { renumberedName, rewriteNodeNameReferences, uniqueNodeName } from "../graph/names.ts";
+import { kindFromName } from "../graph/node-kinds.ts";
 import { withBoundaryPorts } from "./boundary-ports.ts";
 import { componentClipboard } from "./component-clipboard.ts";
 import { componentNodeType } from "./component-type.ts";
@@ -797,6 +798,12 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
             definitionVersion: version,
             position: built.position,
             parameters: defaultPublishedValues(built.definition),
+            // T1593b: named for its component, like an instance from the library, an import
+            // or an `addNode` (`mattecut1`). The selection is already out of the draft, so a
+            // node it held cannot be what the number is counted against. Every shipped
+            // starter component is authored through this command, which is why the 12 files
+            // under `examples/components/` each carry this label on their root instance.
+            label: uniqueNodeName(draft, kindFromName(built.definition.name)),
           };
 
           for (const wiring of built.inputWiring) {
@@ -954,6 +961,10 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
             definitionVersion: definition.version,
             position,
             parameters: defaultPublishedValues(definition),
+            // T1593b (ruled 2026-10-05): a new instance is NAMED, for its component —
+            // `bloom1`, then `bloom2`. It used to be left unnamed, which made it the one
+            // new node `op('…')` could not address until someone renamed it.
+            label: uniqueNodeName(draft, kindFromName(definition.name)),
           };
         },
       });

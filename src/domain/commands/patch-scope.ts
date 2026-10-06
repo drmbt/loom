@@ -68,6 +68,7 @@ export function operationClass(operation: GraphPatchOperation): PatchOperationCl
     // layout. It changes what the canvas draws and nothing the compiler reads, so it
     // contends with an edit to the same node and with nobody's structural work.
     case "setParameters":
+    case "removeParameters":
     case "setShaderSource":
     case "moveNodes":
     case "setNodeUi":
@@ -178,6 +179,7 @@ export function touchedEntities(
     }
 
     case "setParameters":
+    case "removeParameters":
     case "setShaderSource":
     case "setNodeUi":
     case "setNodeLabel":

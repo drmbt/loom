@@ -207,6 +207,63 @@ describe("scene payload previews are sink-gated (T462, §V309)", () => {
     expect(object?.uniforms?.["grid"]).toEqual([8, 8, 0, 0]);
   });
 
+  it("a watched MESH surface draws its triangles, not only the backdrop (B247)", () => {
+    // A Mesh File In wired to a Surface geometry: the tile used to fall through the grid
+    // parse and show the backdrop alone — a loaded hull that read as an empty node.
+    const compiled = compile(
+      graphOf(
+        [
+          node("mesh", "meshFileIn", { vertices: 24, triangles: 12 }, "mesh_hull"),
+          node("geo", "geometry", { mode: "surface" }, "geometry_hull"),
+        ],
+        { e1: { id: "e1", source: { nodeId: "mesh", portId: "out" }, target: { nodeId: "geo", portId: "points" } } },
+      ),
+      [{ nodeId: "geo", portId: "out" }],
+    );
+    const passes = (rowById(compiled, "preview:scene:geo:out")?.synthesis?.passes ?? []) as DrawPassDescriptor[];
+    expect(passes.map((pass) => pass.id)).toEqual(["geo#scenePreviewBackdrop:out", "geo#scenePreview:out"]);
+    const object = passes[1];
+    // The file's own connectivity and normals, exactly what the Render binds for it.
+    expect(object?.vertexCount).toBe(12 * 3);
+    expect(object?.buffers?.map((buffer) => buffer.binding)).toEqual(
+      expect.arrayContaining(["positions", "meshIndices", "meshNormals"]),
+    );
+    // Drawn where it is: the tile frames the object, it does not move it (identity model).
+    expect(object?.uniforms?.["model"]).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    // B250's legitimate case: now that the object IS drawn, the orbit is handed it.
+    expect(rowById(compiled, "preview:scene:geo:out")?.synthesis?.orbit?.passIds).toEqual(["geo#scenePreview:out"]);
+  });
+
+  it("a watched MESH-INSTANCE geometry shows the backdrop alone, and is offered no orbit (T1581b, B250, T1655b)", () => {
+    // The tile's instanced draw is slice D of T1581b. Until then the tile is an honest
+    // empty frame — never the box a primitive would draw in the mesh's place. B250 handed
+    // the orbit an empty pass list so it would not throw; T1655b: an orbit that moves no
+    // pass put a camera toggle on a tile where no drag changes a pixel, so there is none,
+    // and the row says why in its place.
+    const compiled = compile(
+      graphOf(
+        [
+          node("mesh", "meshFileIn", { vertices: 24, triangles: 12 }, "mesh_shape"),
+          node("grid", "pointGrid", { cols: 4, rows: 4 }, "grid_places"),
+          node("geo", "geometry", { mode: "instances", shape: "mesh" }, "geometry_instances"),
+        ],
+        {
+          e1: { id: "e1", source: { nodeId: "mesh", portId: "out" }, target: { nodeId: "geo", portId: "mesh" } },
+          e2: { id: "e2", source: { nodeId: "grid", portId: "out" }, target: { nodeId: "geo", portId: "points" } },
+        },
+      ),
+      [{ nodeId: "geo", portId: "out" }],
+    );
+    expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const synthesis = rowById(compiled, "preview:scene:geo:out")?.synthesis;
+    expect(synthesis?.passes.map((pass) => pass.id)).toEqual(["geo#scenePreviewBackdrop:out"]);
+    expect(synthesis?.orbit).toBeUndefined();
+    expect(rowById(compiled, "preview:scene:geo:out")?.previewCamera).toEqual({
+      kind: "none",
+      reason: { because: "nothing-drawn" },
+    });
+  });
+
   it("INSTANCING is visible: the worn primitive and its scale reach the picture (T532)", () => {
     const compiled = compile(
       geometryGraph({ mode: "instances", shape: "octahedron", scale: 0.25 }),
@@ -466,6 +523,25 @@ describe("every geometry mode previews (T1020)", () => {
     expect(draws.length).toBe(1); // the backdrop, and only the backdrop
   });
 
+  /**
+   * B250 — THE ORBIT NAMES ONLY PASSES THE TILE HAS. The inspection orbit pushes its camera
+   * onto the passes its basis names, and the preview system refuses, by throwing, a named
+   * pass with no viewProjection. The basis used to name the object pass whether or not the
+   * mode had emitted one, so the honest empty frame above — and every Surface geometry fed
+   * an imported mesh, whose topology is not a grid either — threw on every tick of the app.
+   * Swept over every mode, the refusal included, so a mode that learns to draw nothing
+   * cannot name a pass it did not draw.
+   */
+  it.each(["surface", "beam", "points", "instances"])("mode %s: the orbit names no pass the tile lacks", (mode) => {
+    const compiled = compile(modeGraph(mode), [{ nodeId: "subject", portId: "out" }]);
+    const synthesis = rowById(compiled, "preview:scene:subject:out")?.synthesis;
+    if (synthesis === undefined) throw new Error(`mode ${mode} has no preview row`);
+    const drawn = new Set(synthesis.passes.map((pass) => pass.id));
+    for (const passId of synthesis.orbit?.passIds ?? []) expect([mode, drawn.has(passId)]).toEqual([mode, true]);
+    // The legitimate case the guard could swallow: a mode that DOES draw its object still hands it to the orbit.
+    if (mode !== "surface") expect(synthesis.orbit?.passIds).toEqual(["subject#scenePreview:out"]);
+  });
+
   it("the beam preview mirrors the Render's own draw: endpoints bound, additive kept", () => {
     const compiled = compile(modeGraph("beam"), [{ nodeId: "subject", portId: "out" }]);
     const row = rowById(compiled, "preview:scene:subject:out");
@@ -500,10 +576,15 @@ describe("every geometry mode previews (T1020)", () => {
  * This gate is the AGREEMENT itself, and it is exact because the GEOMETRY preview draws
  * with the Render's OWN generators (`sceneSurfaceWgsl` / `sceneInstancesWgsl`, which have
  * carried a pbr branch since T1284) — so the mapping line was the entire disagreement on
- * this path, and with it gone the two passes compile to the SAME WGSL, byte for byte.
+ * this path, and with it gone the two passes compiled to the SAME WGSL, byte for byte.
  * Comparing two GENERATED strings would prove nothing if both came from one call; these
  * come from two independent compiles of two different sinks in one graph, so a mapping
  * that sends one of them to `phong` fails here.
+ *
+ * T1623b slice 3: the two are still the one generator at the one material, and are no longer
+ * one string: a Render's lit draw walks its light table and a tile unrolls its two stock
+ * lights (the previews follow in a later slice). The gate names each text by the generator
+ * call it must equal, and holds one light's shading to the same characters in both.
  *
  * The MATERIAL tile (the torus) cannot be byte-compared this way — it is its own
  * generator with its own geometry — so its claim is pixels, in
@@ -518,9 +599,9 @@ describe("a pbr material's preview and its render agree (T1292)", () => {
         node("skin", "materialPbr", { color: [0.8, 0.6, 0.3, 1], metallic: 1, roughness: 0.4 }, "skin1"),
         node("geo", "geometry", { mode: "surface", material: "skin1" }, "geo1"),
         node("cam", "camera", { eye: [0, 0, 4], lookAt: [0, 0, 0] }, "cam1"),
-        // TWO lights, because the preview rig has two: the generated light blocks are
-        // structural, so a render under one light emits a different (correct) shader and
-        // the comparison would be about the light COUNT rather than about the model.
+        // TWO lights, as the preview rig has two. When this was written a Render unrolled
+        // a block a light, so its text depended on the count; since T1623b slice 3 its
+        // Lights are rows of a table and its text is the same under any number of them.
         node("key", "light", { kind: "directional", direction: [0, 0, -1] }, "key1"),
         node("fill", "light", { kind: "directional", direction: [1, -0.4, 0] }, "fill1"),
         node("shot", "render", { scenes: "geo1", camera: "cam1", lights: "key1 fill1" }, "shot1"),
@@ -532,7 +613,7 @@ describe("a pbr material's preview and its render agree (T1292)", () => {
       },
     );
 
-  it("the geometry tile and the Render draw the SAME shader — not a look-alike", () => {
+  it("the geometry tile and the Render draw the SAME generator's shader, the same material and the same light block — not a look-alike", () => {
     const compiled = compileGraph({
       graph: pbrScene(),
       settings: SETTINGS,
@@ -548,9 +629,29 @@ describe("a pbr material's preview and its render agree (T1292)", () => {
     ) as DrawPassDescriptor | undefined;
     const render = compiled.passes.find((pass) => pass.id.endsWith("shot:scene:0"));
     expect([tile === undefined, render === undefined]).toEqual([false, false]);
-    // The bound the row asked for, and it is ZERO: same generator, same options, same
-    // text. Before this task the tile's was `sceneSurfaceWgsl({ model: "phong" })`.
-    expect(tile?.shader).toBe(render?.shader);
+    // The bound the row asked for, and it is ZERO: same generator, same material options.
+    // Before this task the tile's was `sceneSurfaceWgsl({ model: "phong" })`.
+    //
+    // T1623b slice 3 moved WHERE THE LIGHTS COME FROM in one of the two, and nothing else. A
+    // Render's Lights that do not cast are rows of its light table, which its lit draw
+    // walks; a tile keeps its two stock lights as two unrolled blocks until the previews
+    // follow. So the two texts are no longer one string, and what is exact is this:
+    //  - each is the Render's generator at the same material, the tile with two blocks and
+    //    no table, the Render with the table and no block;
+    expect(tile?.shader).toBe(String(sceneSurfaceWgsl({ model: "pbr", lightCount: 2 })));
+    expect(render?.shader).toBe(String(sceneSurfaceWgsl({ model: "pbr", lightCount: 0, lightGrid: true })));
+    //  - and the SHADING of one light is the same characters in both: a block's, from its
+    //    falloff to its last sum, and a row's of the walk, its indentation taken off.
+    const shadingOf = (text: string | undefined): string => {
+      const from = (text ?? "").indexOf("var toLight: vec3f;");
+      const until = "lit += albedo.rgb * radiance * lambert * (vec3f(1.0) - fresnel) * (1.0 - params.material.x);";
+      const to = (text ?? "").indexOf(until, from);
+      expect([from > 0, to > from]).toEqual([true, true]);
+      return (text ?? "").slice(from, to + until.length).split("\n").map((line) => line.trim()).join("\n");
+    };
+    expect(shadingOf(render?.shader)).toBe(shadingOf(tile?.shader));
+    expect(render?.shader).toContain("lightTable");
+    expect(tile?.shader).not.toContain("lightTable");
     // And it is the GGX text that is shared, not an empty agreement between two phongs:
     // `distribution` appears only in `ggxSpecularWgsl`.
     expect(tile?.shader?.includes("let distribution = alpha2 /")).toBe(true);

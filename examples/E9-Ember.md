@@ -12,25 +12,25 @@ and they fall back into it.
 ## Graph
 
 ```
-                     ┌─► bed1   (renderPoints, cold, no predicate) ─┐
-fire1 ──────────────►├─► body1  (renderPoints, heat > 0.22) ────────┴─► stack1(add) ─┐
-(pointKernelAdvanced)└─► spark1 (renderPoints, heat > 0.62) ──────────────► fuse1(add)◄┘
-                                                                             │
-        ┌────────────────────────────────────────────────────────────────────┤
-        ▼                                                                    ▼
-   halo1(blur) ─► halolvl1(level) ─────────────────────────────────► burn1(add)
-                                                                             │
-                                              loop1(feedback) ─► mix1(screen)◄┘
-                                                     ▲                │
-                                                     └── ash1(null) ◄─┘ ─► out1(output)
+                           ┌─► points_bed   (renderPoints, cold, no predicate) ─┐
+kernel_fire ──────────────►├─► points_body  (renderPoints, heat > 0.22) ────────┴───► add_stack(add) ─┐
+(pointKernelAdvanced)      └─► points_spark (renderPoints, heat > 0.62) ────────────────► add_fuse(add)◄┘
+                                                                                           │
+              ┌────────────────────────────────────────────────────────────────────────────┤
+              ▼                                                                            ▼
+   blur_halo(blur) ───► level_halo(level) ─────────────────────────────────────► add_burn(add)
+                                                                                           │
+                                                          feedback_loop(feedback) ─► screen_mix(screen)◄┘
+                                                                 ▲                    │
+                                                                 └── null_ash(null) ◄─┘ ─► output1(output)
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `fire1` | `pointKernelAdvanced` | vents spawn 1–3 embers a frame each; a curl-field draught, buoyancy, drag and a **cursor gust** move them; they die when they run cold or leave the frame. A **spawn hook** gives every newborn its own launch |
-| `bed1` `body1` `spark1` | `renderPoints` | three additive draws over the **same** cloud, split by a group predicate on heat |
-| `halo1` `halolvl1` `burn1` | `blur` `level` `add` | the glow, one job per stage |
-| `loop1` `mix1` `ash1` | `feedback` `screen` `null` | a short trail, closed on the final picture |
+| `kernel_fire` | `pointKernelAdvanced` | vents spawn 1–3 embers a frame each; a curl-field draught, buoyancy, drag and a **cursor gust** move them; they die when they run cold or leave the frame. A **spawn hook** gives every newborn its own launch |
+| `points_bed` `points_body` `points_spark` | `renderPoints` | three additive draws over the **same** cloud, split by a group predicate on heat |
+| `blur_halo` `level_halo` `add_burn` | `blur` `level` `add` | the glow, one job per stage |
+| `feedback_loop` `screen_mix` `null_ash` | `feedback` `screen` `null` | a short trail, closed on the final picture |
 
 ## What it proves
 
@@ -38,22 +38,22 @@ fire1 ──────────────►├─► body1  (renderPoint
 atomics, §V74), births append through a second scan over the same generated passes, and
 ids come from a monotone GPU cursor — so the same seed is the same fire, frame for frame,
 on every machine. The live total sits in a counts buffer and the draw turns it into
-indirect arguments on the GPU; pause and read `fire1`'s points with `read_points` and the
+indirect arguments on the GPU; pause and read `kernel_fire`'s points with `read_points` and the
 census you get is the one the GPU drew.
 
-**One source, three readings, and the split is the lifecycle.** `bed1`, `body1` and
-`spark1` differ only in a group predicate, a colour and a size:
+**One source, three readings, and the split is the lifecycle.** `points_bed`, `points_body` and
+`points_spark` differ only in a group predicate, a colour and a size:
 
 | | predicate | colour | reads as |
 | --- | --- | --- | --- |
-| `bed1` | `p.velocity.z < 0.34` | cold blue, largest | the smoke the fire makes of itself |
-| `body1` | `p.velocity.z > 0.22` | orange | the burning column |
-| `spark1` | `p.velocity.z > 0.62` | white-gold, smallest | the newest sparks only |
+| `points_bed` | `p.velocity.z < 0.34` | cold blue, largest | the smoke the fire makes of itself |
+| `points_body` | `p.velocity.z > 0.22` | orange | the burning column |
+| `points_spark` | `p.velocity.z > 0.62` | white-gold, smallest | the newest sparks only |
 
 The draws are additive and stacked, so a fresh ember carries a small white core inside an
 orange middle — a black-body gradient **per particle**, out of selection alone, with no
-per-point colour attribute anywhere. As it cools it drops out of `spark1`, then out of
-`body1`, and ends as one dim blue dot in the haze. Watching a single ember fall down that
+per-point colour attribute anywhere. As it cools it drops out of `points_spark`, then out of
+`points_body`, and ends as one dim blue dot in the haze. Watching a single ember fall down that
 table is watching it die. Structure comes from selection, not from more nodes.
 
 **Heat rides in `velocity.z`, and the binding budget is why.** A lifecycle kernel spends

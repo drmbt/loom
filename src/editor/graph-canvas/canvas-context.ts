@@ -6,6 +6,7 @@ import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { GraphStoreView } from "@domain/graph/store.ts";
 import type { EdgeGeometryStore } from "@editor/edges/edge-geometry.ts";
 import type { RenameSessionStore } from "@editor/nodes/rename-session.ts";
+import type { KindLabelRegistry } from "@editor/nodes/kind-label.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { ComponentRegistryView } from "@domain/components/index.ts";
 import type { EdgeFlowStore } from "@editor/edges/edge-flow-command.ts";
@@ -85,8 +86,16 @@ export interface GraphCanvasContextValue {
    * an agent use (§V29, §V61). The node header supplies the argument nothing supplied
    * before (B60); it does not own a second rename, so §V128's reference rewrite and the
    * §V325 collision refusal happen in the one place they already happen.
+   *
+   * T1593b: `exact` is the command's own flag. The title editor passes it when the person
+   * switched the kind prefix off, so the name is stored as typed.
    */
-  renameNode: (nodeId: NodeId, label: string) => Promise<CommandResult<"node.rename">>;
+  renameNode: (nodeId: NodeId, label: string, exact?: boolean) => Promise<CommandResult<"node.rename">>;
+  /**
+   * T1597b: where a node's low-zoom kind label registers, so the canvas can tell it the
+   * zoom without rendering anything (`kind-label.ts`).
+   */
+  kindLabels: KindLabelRegistry;
   /**
    * T599: brings the problems pane to the front — the node's "+N more" chip, when a
    * node carries more diagnostics than its one message line can show.

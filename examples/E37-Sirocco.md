@@ -11,22 +11,22 @@ look in TouchDesigner's particle repertoire, built out of pieces that already ex
 ## Graph
 
 ```
-drift1(pointKernel · THE WIND) ─► streak1(pointKernel · THE READING) ─┬─► body1(geometry · BEAM, p.size <= 1.35)
-   curl of a vector potential        trail = position − velocity·t    ├─► fast1(geometry · BEAM, p.size  > 1.35)
-   + containment + inertia           size  = f(speed)                 └─► heads1(geometry · POINTS)
-                                                                           ▲ haze1(materialUnlit) — all three
+kernel_drift(pointKernel · THE WIND) ─► kernel_streak(pointKernel · THE READING) ─┬─► geometry_body(geometry · BEAM, p.size <= 1.35)
+   curl of a vector potential        trail = position − velocity·t                ├─► geometry_fast(geometry · BEAM, p.size  > 1.35)
+   + containment + inertia           size  = f(speed)                             └─► geometry_heads(geometry · POINTS)
+                                                                                       ▲ material_haze(materialUnlit) — all three
 
-orbx1(lfo) ─┬─► eye1(camera) ─► shot1(render) ◄─ body1 · fast1 · heads1
-orbz1(lfo) ─┘
+lfo_orbx(lfo) ─┬─► camera_eye(camera) ─► render_shot(render) ◄─ geometry_body · geometry_fast · geometry_heads
+lfo_orbz(lfo) ─┘
 
-shot1 ─┬───────────────────────────► burn1(add) ─► hue1(hsv) ─► out1(output)
-       └─► halo1(blur) ─► halolvl1(level) ─┘          ▲ drift2(lfo) — a 29-second hue cycle
+render_shot ─┬───────────────────────────► add_burn(add) ─► hsv_hue(hsv) ─► output1(output)
+             └─► blur_halo(blur) ─► level_halo(level) ─┘          ▲ lfo_drift(lfo) — a 29-second hue cycle
 ```
 
 ## What it proves
 
 - **A beam is a velocity streak, and the trail costs one attribute and no history.**
-  `mode: "beam"` takes a per-point far end; `streak1` writes
+  `mode: "beam"` takes a per-point far end; `kernel_streak` writes
   `trail = position − velocity × 0.34s`, so the ribbon *is* the distance the mote would
   cover in a third of a second. Derived from **velocity and not from the previous
   position**, and the difference is structural rather than stylistic: a previous-position
@@ -37,7 +37,7 @@ shot1 ─┬──────────────────────�
 - **The first example in the set to draw `geometry` in `points` mode.** Every other
   shipped scene uses `surface`, `instances` or `beam`; the billboard mode had no witness
   at all, which is how §B132 — points-mode `scale` silently inert, every authored size
-  rendering as 0.05 — survived from T647 until it was measured. Dropping `heads1` from the
+  rendering as 0.05 — survived from T647 until it was measured. Dropping `geometry_heads` from the
   render changes **9.0% of the frame**, so the mode is load-bearing here and the size that
   reaches it is measured, not assumed.
 
@@ -49,11 +49,11 @@ shot1 ─┬──────────────────────�
 - **One cloud, three readings — §V471.1 in the lit scene path.** The `size` predicate
   splits the same edge into a slow body and a fast layer with their own widths and tapers,
   and the heads ride over both. Measured at frame 120, full resolution, display-encoded:
-  dropping `fast1` changes 16.2% of the frame and takes mean luma from 18.3 to 11.7;
-  dropping `body1` changes 15.8%. None of the three is decoration.
+  dropping `geometry_fast` changes 16.2% of the frame and takes mean luma from 18.3 to 11.7;
+  dropping `geometry_body` changes 15.8%. None of the three is decoration.
 
 - **Five channels reach the draws where one kernel may declare four.** §V588's ceiling is
-  *per kernel*: `drift1` owns position, velocity and tint; `streak1` declares position,
+  *per kernel*: `kernel_drift` owns position, velocity and tint; `kernel_streak` declares position,
   velocity, trail and size — exactly four, at the ceiling — and does **not** declare
   `tint`, so the colour travels past it by reference (§V197). Chaining is how you spend
   more than one kernel's worth of attributes, and this file needs the room.
@@ -84,7 +84,7 @@ shot1 ─┬──────────────────────�
   frame zero, snapping the whole cloud once a lap.
 
 - **The colour is data the kernel writes, so there is no palette lookup downstream.**
-  `drift1` writes a per-point tint from speed *squared* and a slowly travelling band —
+  `kernel_drift` writes a per-point tint from speed *squared* and a slowly travelling band —
   squared because the median mote sits at heat ≈ 0.46, which puts the body of the cloud in
   deep blue and spends the amber only on the genuinely fast few. A linear ramp washes every
   streak to the same cream; that was the first render, and it is why this one is not a

@@ -20,6 +20,7 @@ import {
   setShaderSourceInput,
   layoutGraphInput,
 attachAssetInput,
+  renameNodeInput,
 } from "../schemas.ts";
 import type {
   AttachAssetInput,
@@ -34,9 +35,11 @@ import type {
   SetParametersInput,
   SetShaderSourceInput,
   LayoutGraphInput,
+  RenameNodeInput,
 } from "../schemas.ts";
-import { dispatchOperations, dispatchPatchCommand, failed, result, type PatchToolData } from "../tool-support.ts";
-import type { AgentTool, ToolStatus } from "../types.ts";
+import { conformingFormOf, conventionalName, type KindSource } from "@domain/graph/node-kinds.ts";
+import { diagnostic, dispatchOperations, dispatchPatchCommand, failed, result, type PatchToolData } from "../tool-support.ts";
+import type { AgentTool, ToolRuntime, ToolStatus } from "../types.ts";
 
 /**
  * Mutation tools (T55, T56 — §V29, §V30, §V32, §V33, §V34, §V35).
@@ -73,11 +76,74 @@ import type { AgentTool, ToolStatus } from "../types.ts";
 
 const tempRef = (name: string): TempId => `$${name}`;
 
-export const applyGraphPatch: AgentTool<ApplyGraphPatchInput, PatchToolData> = {
+/** One explicit label in a patch that does not carry its node's kind, with the name that would. */
+export interface UnconformingLabel {
+  /** Index into the patch's `operations`. */
+  readonly operation: number;
+  /** The label as the patch wrote it, and as it was stored. */
+  readonly label: string;
+  /** The same name with its kind: what `rename_node` would have stored. */
+  readonly conforming: string;
+}
+
+export interface GraphPatchToolData extends PatchToolData {
+  /** Present only when a label in the patch does not conform. Document text, so it is here and not in a diagnostic (§V37). */
+  readonly unconformingLabels?: readonly UnconformingLabel[];
+}
+
+/**
+ * T1593b (ruled 2026-10-05): A PATCH WARNS ABOUT A LABEL WITHOUT ITS KIND. It does not
+ * refuse it and it does not change it.
+ *
+ * A patch stores a label exactly as written (§V324: it is replayable, and the references
+ * beside the label in the same patch were written against that exact string). So the one
+ * door that cannot apply `kind_role` is also the door an agent building a whole graph uses
+ * most, and until now it took `lamp` on a slider in silence. The warning is how the
+ * convention reaches that door: stored as written, and told what it should have been.
+ *
+ * WHY HERE, AND NOT IN `graph.applyPatch`. The command is also what paste, duplicate and
+ * every editor gesture run, over names a person chose or a saved file holds. A warning
+ * there would fire on every paste of a document written before the rule. This is advice
+ * to the author of a NEW label, and the author of a new label through this door is an
+ * agent.
+ *
+ * The node an operation names is resolved the way the patch will resolve it: an `addNode`
+ * by its own type, a `setNodeLabel` by a `$temp` ref made earlier in the same patch or by
+ * a node already in the document. One whose type is not installed has no kind to hold it
+ * to and is skipped, as is a component's In or Out.
+ */
+function unconformingLabels(
+  operations: readonly GraphPatchOperation[],
+  runtime: ToolRuntime,
+): UnconformingLabel[] {
+  const graph = runtime.bus.store.getGraph();
+  const added = new Map<string, string>();
+  const found: UnconformingLabel[] = [];
+  operations.forEach((operation, index) => {
+    let type: string | undefined;
+    let label: string | null | undefined;
+    if (operation.op === "addNode") {
+      added.set(operation.ref, operation.type);
+      type = operation.type;
+      label = operation.label;
+    } else if (operation.op === "setNodeLabel") {
+      type = added.get(operation.nodeId) ?? graph.nodes[operation.nodeId]?.type;
+      label = operation.label;
+    }
+    if (type === undefined || label === undefined || label === null) return;
+    const definition = runtime.bus.registry.get(type);
+    if (definition === undefined) return;
+    const conforming = conformingFormOf(label, definition);
+    if (conforming !== null) found.push({ operation: index, label: label.trim(), conforming });
+  });
+  return found;
+}
+
+export const applyGraphPatch: AgentTool<ApplyGraphPatchInput, GraphPatchToolData> = {
   name: "apply_graph_patch",
   title: "Apply graph patch",
   description:
-    "Apply an ordered batch of graph operations atomically: all of them apply or none do. Refer to nodes created in the same patch by a $temp ref and read the stable ids back from createdIds. A baseRevision older than the document is reported as a conflict and never rebased.",
+    "Apply an ordered batch of graph operations atomically: all of them apply or none do. Refer to nodes created in the same patch by a $temp ref and read the stable ids back from createdIds. A baseRevision older than the document is reported as a conflict and never rebased. A node label in a patch (addNode.label, setNodeLabel) is stored exactly as written and never prefixed, so write names in full as kind_role (slider_lamp, blur_diffuse); list_node_definitions gives each type's kind. A label without its kind is still stored, with a warning: data.unconformingLabels lists each one beside its conforming form.",
   kind: "mutate",
   inputSchema: applyGraphPatchInput,
   requires: { commands: ["graph.applyPatch"] },
@@ -88,25 +154,88 @@ export const applyGraphPatch: AgentTool<ApplyGraphPatchInput, PatchToolData> = {
   // template-literal type that the schema enforces with a regex. The review gate wants
   // the domain type, so the conversion happens once, here.
   preview: (input) => input.operations as unknown as readonly GraphPatchOperation[],
-  run: (input, runtime) =>
-    dispatchPatchCommand("apply_graph_patch", "graph.applyPatch", {
+  async run(input, runtime) {
+    // Read BEFORE the patch applies: a `setNodeLabel` names a node by the type it has now.
+    const unconforming = unconformingLabels(input.operations as unknown as readonly GraphPatchOperation[], runtime);
+    const patched = await dispatchPatchCommand("apply_graph_patch", "graph.applyPatch", {
       baseRevision: input.baseRevision,
       operations: input.operations,
       ...(input.label === undefined ? {} : { label: input.label }),
-    }, runtime),
+    }, runtime);
+    // A refused patch stored nothing, so there is no stored label to warn about.
+    if (unconforming.length === 0 || patched.data === null || (patched.status !== "ok" && patched.status !== "validated")) {
+      return patched;
+    }
+    return {
+      ...patched,
+      data: { ...patched.data, unconformingLabels: unconforming },
+      diagnostics: [
+        ...patched.diagnostics,
+        diagnostic(
+          "warning",
+          "node.name.kindMissing",
+          `${unconforming.length} node label(s) in this patch do not carry their node's kind (kind_role). They were stored exactly as written; data.unconformingLabels lists each with its conforming form.`,
+          { suggestion: "Write a label in full as kind_role, or name the node with rename_node or add_node, which add the kind." },
+        ),
+      ],
+    };
+  },
 };
 
-export const addNode: AgentTool<AddNodeInput, PatchToolData> = {
+/**
+ * What a tool that NAMES a node returns (T1593b): the patch result, and the name the node
+ * holds afterwards.
+ *
+ * The name is in `data` and nowhere else, because it is document text (§V37). It is the
+ * whole reason these tools report it at all: a name is `kind_role`, so the label an agent
+ * asked for and the name that was stored can differ (`lamp` → `slider_lamp`), and an
+ * `op('lamp')` written from the request rather than from this field reads nothing.
+ */
+export interface NamedPatchToolData extends PatchToolData {
+  /** The stored name; on a dry run the name it would store, when that is known. Null when refused or unnamed. */
+  readonly name: string | null;
+}
+
+/** Authored here, so it carries no document text: the name itself is `data.name`. */
+const KIND_ADDED = diagnostic(
+  "info",
+  "node.name.kind",
+  "The label did not carry the node's kind, so the kind was put in front of it (kind_role). The stored name is data.name.",
+  { suggestion: "Read data.name before writing op('…') against this node. exactLabel: true stores a label exactly as written." },
+);
+
+/**
+ * The label an add stores: the caller's own, with the kind in front unless it is there or
+ * `exactLabel` says otherwise.
+ *
+ * `definition` is what the kind is read from: the registry's own, in the run AND in the
+ * review preview, so a held edit shows the reviewer the name it will store (a component
+ * instance's kind is its component's name, which only the registry knows). It is
+ * `undefined` only for a type that is not installed, and that add is refused anyway.
+ */
+function labelForAdd(
+  input: { label?: string | undefined; exactLabel?: boolean | undefined },
+  definition: KindSource | undefined,
+): string | undefined {
+  if (input.label === undefined) return undefined;
+  return input.exactLabel === true || definition === undefined
+    ? input.label.trim()
+    : conventionalName(input.label, definition).name;
+}
+
+export const addNode: AgentTool<AddNodeInput, NamedPatchToolData> = {
   name: "add_node",
   title: "Add node",
   description:
-    "Add one node of a registered type. The stable id comes back in createdIds under the ref $node. Prefer placement {relativeTo, direction} over inventing coordinates: name the node you are about to wire this one to and it lands beside that node in reading order, so a chain built this way needs no tidy afterwards. With neither position nor placement the node cascades to a free spot instead of stacking at the origin. Pass position only to pin an exact coordinate.",
+    "Add one node of a registered type. The stable id comes back in createdIds under the ref $node. Prefer placement {relativeTo, direction} over inventing coordinates: name the node you are about to wire this one to and it lands beside that node in reading order, so a chain built this way needs no tidy afterwards. With neither position nor placement the node cascades to a free spot instead of stacking at the origin. Pass position only to pin an exact coordinate. A node's name is kind_role: with no label it is auto-named kind plus a number (blur1); a label without the node's kind gets the kind in front (label lamp on a slider is stored slider_lamp). Either way data.name is the name that was stored, and that is the name op('…') reads. exactLabel: true stores the label exactly as written.",
   kind: "mutate",
   inputSchema: addNodeInput,
   requires: { commands: ["graph.applyPatch"] },
   capabilities: [],
   mutates: true,
-  preview: (input) => [operationsForAdd(input, input.position ?? { x: 0, y: 0 })],
+  preview: (input, registry) => [
+    operationsForAdd(input, input.position ?? { x: 0, y: 0 }, labelForAdd(input, registry.get(input.type))),
+  ],
   async run(input, runtime) {
     // T280: placement resolves against the CURRENT document, so an agent building a
     // chain never computes a coordinate — "right of the blur" is the whole statement.
@@ -127,10 +256,27 @@ export const addNode: AgentTool<AddNodeInput, PatchToolData> = {
             )
           : placeFree(graph, runtime.bus.registry, input.type, previewAspectOf(runtime.bus.store.getSettings()), presetCatalogueHolderFor(runtime.bus).current?.components);
     }
-    return dispatchOperations("add_node", runtime, [operationsForAdd(input, at)], {
+    const label = labelForAdd(input, runtime.bus.registry.get(input.type));
+    const patched = await dispatchOperations("add_node", runtime, [operationsForAdd(input, at, label)], {
       label: "Add node",
       baseRevision: input.baseRevision,
     });
+    const created = patched.data?.createdIds[tempRef("node")];
+    // Applied: what the document holds (the auto-name included). Dry run: the label it
+    // would store, which is known; an auto-name is not, because nothing was minted.
+    const name =
+      patched.status === "ok" && created !== undefined
+        ? (runtime.bus.store.getGraph().nodes[created]?.label ?? null)
+        : patched.status === "validated"
+          ? (label ?? null)
+          : null;
+    const prefixed =
+      label !== undefined && label !== input.label?.trim() && (patched.status === "ok" || patched.status === "validated");
+    return {
+      ...patched,
+      data: patched.data === null ? null : { ...patched.data, name },
+      diagnostics: prefixed ? [...patched.diagnostics, KIND_ADDED] : patched.diagnostics,
+    };
   },
 };
 
@@ -142,6 +288,7 @@ function operationsForAdd(
     parameters?: Record<string, StoredParameter> | undefined;
   },
   position: { x: number; y: number },
+  label?: string,
 ): GraphPatchOperation {
   return {
     op: "addNode",
@@ -149,8 +296,41 @@ function operationsForAdd(
     type: input.type,
     position,
     ...(input.parameters === undefined ? {} : { parameters: input.parameters }),
+    ...(label === undefined ? {} : { label }),
   };
 }
+
+/**
+ * `rename_node` (T1593b): the SAME `node.rename` command a person's title editor runs.
+ *
+ * It exists because the convention needs a door that applies it. Until now an agent could
+ * rename only by writing a `setNodeLabel` operation into a patch, and a patch stores a
+ * label exactly as written (§V324: a patch is replayable, so it must not rewrite what it
+ * carries). That is the right rule for a patch and the wrong place for "keep the kind":
+ * so the rule lives in the command (§V78), and this tool is the adapter onto it, with no
+ * naming logic of its own (§V39).
+ */
+export const renameNode: AgentTool<RenameNodeInput, NamedPatchToolData> = {
+  name: "rename_node",
+  title: "Rename node",
+  description:
+    "Rename a node, or clear its name with label null. Every stored reference to the old name (expressions, name lists, preset targets, cue lists, panel boards) is rewritten in the same step. A node's name is kind_role: a label without the node's kind gets the kind in front (label lamp on a slider is stored slider_lamp), and data.name is the name that was stored — use that in op('…'). exact: true stores the label exactly as written. A name already in use is refused, and the refusal names a free one.",
+  kind: "mutate",
+  inputSchema: renameNodeInput,
+  requires: { commands: ["node.rename"] },
+  capabilities: [],
+  mutates: true,
+  async run(input, runtime) {
+    const patched = await dispatchPatchCommand(
+      "rename_node",
+      "node.rename",
+      { nodeId: input.nodeId, label: input.label, ...(input.exact === true ? { exact: true } : {}) },
+      runtime,
+    );
+    const name = patched.status === "ok" ? (runtime.bus.store.getGraph().nodes[input.nodeId]?.label ?? null) : null;
+    return { ...patched, data: patched.data === null ? null : { ...patched.data, name } };
+  },
+};
 
 /**
  * `layout_graph` (T279, B84, §V78, §V191): the deterministic tidy — the SAME bus command
@@ -467,6 +647,7 @@ export const redo = historyTool(
 export const mutationTools: readonly AgentTool[] = [
   applyGraphPatch,
   addNode,
+  renameNode,
   layoutGraphTool,
   removeNodes,
   connectPorts,

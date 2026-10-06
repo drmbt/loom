@@ -35,7 +35,7 @@
             "fxaa": {
               "definitionVersion": 1,
               "id": "fxaa",
-              "label": "fxaa1",
+              "label": "wgsl_fxaa",
               "parameters": {
                 "amount": 1,
                 "source": "struct Params {\n  amount: f32, // @default 1  0 is the input exactly, 1 is full FXAA.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> params: Params;\n\nconst SPAN_MAX: f32 = 8.0;\nconst REDUCE_MUL: f32 = 0.125;\nconst REDUCE_MIN: f32 = 0.0078125;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn luma(c: vec3f) -> f32 {\n  let t = max(c, vec3f(0.0)) / (vec3f(1.0) + max(c, vec3f(0.0)));\n  return dot(t, vec3f(0.299, 0.587, 0.114));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let px = 1.0 / vec2f(textureDimensions(inputTexture));\n  let centre = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  let m = centre.rgb;\n  let lM = luma(m);\n  let lNW = luma(tap(uv + vec2f(-1.0, -1.0) * px));\n  let lNE = luma(tap(uv + vec2f(1.0, -1.0) * px));\n  let lSW = luma(tap(uv + vec2f(-1.0, 1.0) * px));\n  let lSE = luma(tap(uv + vec2f(1.0, 1.0) * px));\n  let lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));\n  let lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));\n\n  var dir = vec2f(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));\n  let reduce = max((lNW + lNE + lSW + lSE) * 0.25 * REDUCE_MUL, REDUCE_MIN);\n  let rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);\n  dir = clamp(dir * rcpMin, vec2f(-SPAN_MAX), vec2f(SPAN_MAX)) * px;\n\n  let a = 0.5 * (tap(uv + dir * (1.0 / 3.0 - 0.5)) + tap(uv + dir * (2.0 / 3.0 - 0.5)));\n  let b = a * 0.5 + 0.25 * (tap(uv - dir * 0.5) + tap(uv + dir * 0.5));\n  let lB = luma(b);\n  let smoothed = select(b, a, (lB < lMin) || (lB > lMax));\n  // Alpha passes through untouched: an edge-smoothing pass has no business deciding coverage\n  // (T1276 found the first version writing 1 over a plate that carried 0).\n  return vec4f(mix(m, smoothed, params.amount), centre.a);\n}"
@@ -1198,7 +1198,7 @@
             "cut": {
               "definitionVersion": 1,
               "id": "cut",
-              "label": "cut1",
+              "label": "mask_cut",
               "parameters": {
                 "apply": "colour",
                 "channel": "red"
@@ -1234,7 +1234,7 @@
             "matte": {
               "definitionVersion": 1,
               "id": "matte",
-              "label": "matte1",
+              "label": "wgsl_matte",
               "parameters": {
                 "feather": 0.12,
                 "invert": 0,
@@ -1406,7 +1406,7 @@
             "carve": {
               "definitionVersion": 1,
               "id": "carve",
-              "label": "carve1",
+              "label": "kernel_carve",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,
@@ -1478,7 +1478,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "kernel_paint",
               "parameters": {
                 "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]}]",
                 "capacity": 36864,
@@ -2339,7 +2339,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "op('driftx1').chan.value"
+                      "source": "op('lfo_driftx').chan.value"
                     },
                     "static": {
                       "kind": "static",
@@ -2352,7 +2352,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "op('drifty1').chan.value"
+                      "source": "op('lfo_drifty').chan.value"
                     },
                     "static": {
                       "kind": "static",
@@ -2640,7 +2640,7 @@
             "cut": {
               "definitionVersion": 1,
               "id": "cut",
-              "label": "cut1",
+              "label": "mask_cut",
               "parameters": {
                 "apply": "alpha",
                 "channel": "red"
@@ -2654,7 +2654,7 @@
             "history": {
               "definitionVersion": 1,
               "id": "history",
-              "label": "history1",
+              "label": "cache_history",
               "parameters": {
                 "frames": 24,
                 "index": {
@@ -3294,7 +3294,7 @@
             "break": {
               "definitionVersion": 1,
               "id": "break",
-              "label": "break1",
+              "label": "wgsl_break",
               "parameters": {
                 "amount": 0.35,
                 "grid": [
@@ -3305,7 +3305,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3318,7 +3318,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3340,7 +3340,7 @@
             "churnx": {
               "definitionVersion": 1,
               "id": "churnx",
-              "label": "churnx1",
+              "label": "lfo_churnx",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.062,
@@ -3357,7 +3357,7 @@
             "churny": {
               "definitionVersion": 1,
               "id": "churny",
-              "label": "churny1",
+              "label": "lfo_churny",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.041,
@@ -3374,7 +3374,7 @@
             "crush": {
               "definitionVersion": 1,
               "id": "crush",
-              "label": "crush1",
+              "label": "level_crush",
               "parameters": {
                 "blacklevel": 0.03,
                 "brightness": 1,
@@ -3393,7 +3393,7 @@
             "fit": {
               "definitionVersion": 1,
               "id": "fit",
-              "label": "fit1",
+              "label": "transform_fit",
               "parameters": {
                 "aspectcorrect": false,
                 "extend": "hold",
@@ -3410,7 +3410,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churnx1').chan.value) / max(1, op('churny1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churnx').chan.value) / max(1, op('lfo_churny').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -3423,7 +3423,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churny1').chan.value) / max(1, op('churnx1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churny').chan.value) / max(1, op('lfo_churnx').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -3447,7 +3447,7 @@
             "grid": {
               "definitionVersion": 1,
               "id": "grid",
-              "label": "grid1",
+              "label": "tile_grid",
               "parameters": {
                 "mirrorx": false,
                 "mirrory": false,
@@ -3463,7 +3463,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3476,7 +3476,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3500,7 +3500,7 @@
             "guard": {
               "definitionVersion": 1,
               "id": "guard",
-              "label": "guard1",
+              "label": "limit_guard",
               "parameters": {
                 "high": 1,
                 "low": 0,
@@ -3538,7 +3538,7 @@
             "map": {
               "definitionVersion": 1,
               "id": "map",
-              "label": "map1",
+              "label": "wgsl_map",
               "parameters": {
                 "grid": [
                   3,
@@ -3548,7 +3548,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3561,7 +3561,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3584,7 +3584,7 @@
             "mix": {
               "definitionVersion": 1,
               "id": "mix",
-              "label": "mix1",
+              "label": "cross_mix",
               "parameters": {
                 "cross": 0.55
               },
@@ -3608,7 +3608,7 @@
             "pack": {
               "definitionVersion": 1,
               "id": "pack",
-              "label": "pack1",
+              "label": "reorder_pack",
               "parameters": {
                 "outa": "in2lum",
                 "outb": "in1b",
@@ -3629,7 +3629,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "solid_paint",
               "parameters": {
                 "color": [
                   1,
@@ -3652,7 +3652,7 @@
             "palette": {
               "definitionVersion": 2,
               "id": "palette",
-              "label": "palette1",
+              "label": "ramp_palette",
               "parameters": {
                 "interp": "smooth",
                 "period": 1,
@@ -3750,7 +3750,7 @@
             "scan": {
               "definitionVersion": 1,
               "id": "scan",
-              "label": "scan1",
+              "label": "slitscan1",
               "parameters": {
                 "depth": 1,
                 "frames": 61,
@@ -3765,7 +3765,7 @@
             "sweep": {
               "definitionVersion": 1,
               "id": "sweep",
-              "label": "sweep1",
+              "label": "wgsl_sweep",
               "parameters": {
                 "amount": 0.5,
                 "grid": [
@@ -3776,7 +3776,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3789,7 +3789,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -3810,7 +3810,7 @@
             "tint": {
               "definitionVersion": 1,
               "id": "tint",
-              "label": "tint1",
+              "label": "multiply_tint",
               "parameters": {
                 "opacity": 1
               },
@@ -3823,7 +3823,7 @@
             "tone": {
               "definitionVersion": 1,
               "id": "tone",
-              "label": "tone1",
+              "label": "lookup_tone",
               "parameters": {
                 "channel": "luminance",
                 "offset": 0.08,
@@ -4336,7 +4336,7 @@
       "nd_e0b8e3ccb72d1": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d1",
-        "label": "video1",
+        "label": "movie_video",
         "parameters": {
           "audio": false,
           "cue": false,
@@ -4365,13 +4365,13 @@
       "nd_e0b8e3ccb72d10": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d10",
-        "label": "grade1",
+        "label": "hsv_grade",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('hue1').chan.hue"
+                "source": "op('slider_hue').chan.hue"
               },
               "static": {
                 "kind": "static",
@@ -4384,7 +4384,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sat1').chan.sat"
+                "source": "op('slider_sat').chan.sat"
               },
               "static": {
                 "kind": "static",
@@ -4404,7 +4404,7 @@
       "nd_e0b8e3ccb72d11": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d11",
-        "label": "base1",
+        "label": "solid_base",
         "parameters": {
           "color": [
             0,
@@ -4427,7 +4427,7 @@
       "nd_e0b8e3ccb72d12": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d12",
-        "label": "underlay1",
+        "label": "layer_underlay",
         "parameters": {
           "blend": "over",
           "opacity": 0.6,
@@ -4445,7 +4445,7 @@
       "nd_e0b8e3ccb72d13": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d13",
-        "label": "graphic1",
+        "label": "layer_graphic",
         "parameters": {
           "blend": "screen",
           "opacity": 1,
@@ -4460,7 +4460,7 @@
       "nd_e0b8e3ccb72d14": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d14",
-        "label": "source1",
+        "label": "slider_source",
         "parameters": {
           "caption": "Source: 0 file, 1 screen, 2 webcam",
           "channel": "source",
@@ -4478,7 +4478,7 @@
       "nd_e0b8e3ccb72d15": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d15",
-        "label": "hue1",
+        "label": "slider_hue",
         "parameters": {
           "caption": "Underlay hue",
           "channel": "hue",
@@ -4496,7 +4496,7 @@
       "nd_e0b8e3ccb72d16": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d16",
-        "label": "sat1",
+        "label": "slider_sat",
         "parameters": {
           "caption": "Underlay saturation",
           "channel": "sat",
@@ -4514,9 +4514,9 @@
       "nd_e0b8e3ccb72d17": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d17",
-        "label": "desk1",
+        "label": "panel_desk",
         "parameters": {
-          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Underlay video\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"source1\",\"rect\":{\"x\":0,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"underlay1\",\"rect\":{\"x\":4,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"hue1\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"sat1\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"label\":\"Graphic\",\"rect\":{\"x\":0,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"graphic1\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"seat1\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Underlay video\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_source\",\"rect\":{\"x\":0,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"layer_underlay\",\"rect\":{\"x\":4,\"y\":1,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_hue\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_sat\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"label\":\"Graphic\",\"rect\":{\"x\":0,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"layer_graphic\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_seat\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}}\n  ]\n}",
           "layout": "",
           "remote": false,
           "title": "LED box desk"
@@ -4530,7 +4530,7 @@
       "nd_e0b8e3ccb72d2": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d2",
-        "label": "ledmat1",
+        "label": "material_led",
         "parameters": {
           "color": [
             1,
@@ -4548,7 +4548,7 @@
       "nd_e0b8e3ccb72d3": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d3",
-        "label": "strip1",
+        "label": "grid_strip",
         "parameters": {
           "cols": 7,
           "count": 14,
@@ -4568,7 +4568,7 @@
       "nd_e0b8e3ccb72d4": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d4",
-        "label": "fold1",
+        "label": "kernel_fold",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 14,
@@ -4589,12 +4589,12 @@
       "nd_e0b8e3ccb72d5": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d5",
-        "label": "ledbox1",
+        "label": "geometry_ledbox",
         "parameters": {
           "blend": "opaque",
           "endpoint": "",
           "group": "",
-          "material": "ledmat1",
+          "material": "material_led",
           "materialOverrides": "",
           "mode": "surface",
           "orient": [
@@ -4625,7 +4625,7 @@
       "nd_e0b8e3ccb72d6": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d6",
-        "label": "floorgrid1",
+        "label": "grid_floor",
         "parameters": {
           "cols": 2,
           "count": 4,
@@ -4645,7 +4645,7 @@
       "nd_e0b8e3ccb72d7": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d7",
-        "label": "floorflat1",
+        "label": "transform_floorflat",
         "parameters": {
           "pivot": "origin",
           "pivotPoint": [
@@ -4678,7 +4678,7 @@
       "nd_e0b8e3ccb72d8": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d8",
-        "label": "floormat1",
+        "label": "material_floor",
         "parameters": {
           "color": [
             0.05,
@@ -4698,12 +4698,12 @@
       "nd_e0b8e3ccb72d9": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72d9",
-        "label": "floor1",
+        "label": "geometry_floor",
         "parameters": {
           "blend": "opaque",
           "endpoint": "",
           "group": "",
-          "material": "floormat1",
+          "material": "material_floor",
           "materialOverrides": "",
           "mode": "surface",
           "orient": [
@@ -4734,7 +4734,7 @@
       "nd_e0b8e3ccb72da": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72da",
-        "label": "key1",
+        "label": "light_key1",
         "parameters": {
           "color": [
             1,
@@ -4775,7 +4775,7 @@
       "nd_e0b8e3ccb72db": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72db",
-        "label": "seat1",
+        "label": "slider_seat",
         "parameters": {
           "caption": "Seat angle (deg): 0 centre, 90 side-on",
           "channel": "seat",
@@ -4793,7 +4793,7 @@
       "nd_e0b8e3ccb72dc": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72dc",
-        "label": "seatcam1",
+        "label": "camera_seat",
         "parameters": {
           "eye": [
             0,
@@ -4804,7 +4804,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "sin(op('seat1').chan.seat * 0.0174533) * 10"
+                "source": "sin(op('slider_seat').chan.seat * 0.0174533) * 10"
               },
               "static": {
                 "kind": "static",
@@ -4818,7 +4818,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "cos(op('seat1').chan.seat * 0.0174533) * 10 - 0.6"
+                "source": "cos(op('slider_seat').chan.seat * 0.0174533) * 10 - 0.6"
               },
               "static": {
                 "kind": "static",
@@ -4848,7 +4848,7 @@
       "nd_e0b8e3ccb72dd": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72dd",
-        "label": "stage1",
+        "label": "render_stage",
         "parameters": {
           "albedoOutput": false,
           "ambientColor": [
@@ -4869,16 +4869,16 @@
             0.015,
             1
           ],
-          "camera": "seatcam1",
+          "camera": "camera_seat",
           "depthOutput": false,
           "environmentFilter": "taps",
           "environmentIntensity": 1,
           "environmentTaps": 8,
           "lightDepthOutput": false,
-          "lights": "key1",
+          "lights": "light_key1",
           "normalOutput": false,
           "projectors": "",
-          "scenes": "ledbox1 floor1",
+          "scenes": "geometry_ledbox geometry_floor",
           "shadowOutput": false,
           "showEnvironment": false
         },
@@ -4896,7 +4896,7 @@
       "nd_e0b8e3ccb72de": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72de",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "none"
         },
@@ -4909,7 +4909,7 @@
       "nd_e0b8e3ccb72dw": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72dw",
-        "label": "clip1",
+        "label": "movie_clip",
         "parameters": {
           "audio": false,
           "cue": false,
@@ -4980,14 +4980,14 @@
       "nd_e0b8e3ccb72dz": {
         "definitionVersion": 1,
         "id": "nd_e0b8e3ccb72dz",
-        "label": "sourcesw1",
+        "label": "switch_source",
         "parameters": {
           "crossfade": false,
           "index": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('source1').chan.source"
+                "source": "op('slider_source').chan.source"
               },
               "static": {
                 "kind": "static",

@@ -14,29 +14,29 @@ nodes and two oscillators running at 0.05 Hz.
 ## Graph
 
 ```
-rings1(circle: distance) ─► gain1(level) ─► wrap1(limit: zigzag) ─┬───────► beat1.in1
-                                                                  │
-                                       warp1(transform) ◄─────────┘
-                                             │  t.x ┄ driftx1, t.y ┄ drifty1
-                                             └────────────────────────────► beat1.in2
+circle_rings(circle: distance) ─► level_gain(level) ─► limit_wrap(limit: zigzag) ─┬───────► difference_beat.in1
+                                                                                  │
+                                       transform_warp(transform) ◄────────────────┘
+                                                      │  t.x ┄ lfo_driftx, t.y ┄ lfo_drifty
+                                                      └────────────────────────────► difference_beat.in2
 
-beat1(difference) ─► tint1(lookup) ◄─ palette1(ramp, 6 stops) ─► out1
+difference_beat(difference) ─► lookup_tint(lookup) ◄─ ramp_palette(ramp, 6 stops) ─► output1
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
-| `rings1` | `circle` | `distance` mode — the signed distance from the centre, in red, unclamped, over the whole frame |
-| `gain1` | `level` | the ring COUNT: `whitelevel` 0.011 is a gain of ~91 |
-| `wrap1` | `limit` | `zigzag` folds that ramp into a continuous triangle wave — the rings |
-| `warp1` | `transform` | the same rings, 16% larger, drifting; `t.x`/`t.y` driven |
-| `beat1` | `difference` | the two readings, subtracted. This is the entire effect |
-| `palette1` → `tint1` | `ramp` → `lookup` | six stops, half of them FLOOR: indigo → violet → coral → gold, indexed on RED |
-| `driftx1`, `drifty1` | `lfo` | 0.05 Hz and 0.031 Hz — incommensurate on purpose |
+| `circle_rings` | `circle` | `distance` mode — the signed distance from the centre, in red, unclamped, over the whole frame |
+| `level_gain` | `level` | the ring COUNT: `whitelevel` 0.011 is a gain of ~91 |
+| `limit_wrap` | `limit` | `zigzag` folds that ramp into a continuous triangle wave — the rings |
+| `transform_warp` | `transform` | the same rings, 16% larger, drifting; `t.x`/`t.y` driven |
+| `difference_beat` | `difference` | the two readings, subtracted. This is the entire effect |
+| `ramp_palette` → `lookup_tint` | `ramp` → `lookup` | six stops, half of them FLOOR: indigo → violet → coral → gold, indexed on RED |
+| `lfo_driftx`, `lfo_drifty` | `lfo` | 0.05 Hz and 0.031 Hz — incommensurate on purpose |
 
 ## What it proves
 
 **One generator, two readings, and the picture is the difference between them (§V6).**
-`wrap1` is compiled as a single pass and consumed twice — once directly, once through a
+`limit_wrap` is compiled as a single pass and consumed twice — once directly, once through a
 Transform — so the ring field costs one render and the output is a comparison of it
 against a moved copy of itself. Every other example in the set demonstrates fan-out as a
 footnote about cost. Here it is the mechanism: delete one of the two edges and there is
@@ -117,14 +117,14 @@ bright, additive-looking image, and it is not an over-range one.
 
 ## Regression signatures
 
-- **A smooth gradient with no rings** → `wrap1`'s mode fell back to `clamp`, the
+- **A smooth gradient with no rings** → `limit_wrap`'s mode fell back to `clamp`, the
   parameter's own default. Everything still compiles.
-- **A flat single-colour frame** → the Transform went to identity, or `beat1.in2` was
-  rewired to something that is not `warp1`. This is the failure the control catches.
+- **A flat single-colour frame** → the Transform went to identity, or `difference_beat.in2` was
+  rewired to something that is not `transform_warp`. This is the failure the control catches.
 - **The frame is a uniform weave with no dark anywhere** → the palette lost its floor.
   This is a beauty regression, not a correctness one, and it is the one this example is
   most likely to suffer.
-- **The image is dimmer and the contrast is gone, but it is still a moiré** → `tint1`
+- **The image is dimmer and the contrast is gone, but it is still a moiré** → `lookup_tint`
   went back to indexing `luminance`. The chain carries its value in red with green and
   blue at zero, so a luminance index reads the beat at 0.2126× strength.
 - **A hard band crawling along one edge** → the drift amplitude or the scale changed and

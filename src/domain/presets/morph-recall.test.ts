@@ -18,6 +18,7 @@ import { resolveParameters, srgbToLinear } from "../parameters/resolve.ts";
 import { liveClock } from "../transport/live-clock.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { levelNode } from "../../nodes/definitions/color.ts";
+import { controlSliderNode } from "../../nodes/definitions/controls.ts";
 import { presetsNode } from "../../nodes/definitions/presets.ts";
 import { constantNode } from "../../nodes/definitions/values.ts";
 import { serializePresetBank, type MorphSpec, type Preset } from "./bank.ts";
@@ -69,7 +70,7 @@ const knobsNode: NodeDefinition = {
   compile: () => ({ passes: [] }),
 };
 
-const registry: NodeRegistryView = createNodeRegistry([levelNode, presetsNode, constantNode, knobsNode]).view();
+const registry: NodeRegistryView = createNodeRegistry([levelNode, presetsNode, constantNode, knobsNode, controlSliderNode]).view();
 
 function node(id: NodeId, type: string, label: string, parameters: Record<string, StoredParameter> = {}): GraphNode {
   return { id, type, label, definitionVersion: 1, position: { x: 0, y: 0 }, parameters };
@@ -485,6 +486,27 @@ describe("a manual edit of a morphing key wins at once", () => {
     const later = run.frames(30);
     expect(run.shown("level", "brightness")).toBe(blend(0.6, 0.2, second, later));
   });
+
+  it("a control reset in mid-fade is such an edit: THAT control cuts to its default, and the recall's other key keeps fading (T1619b)", async () => {
+    const run = session([
+      node("level", "level", "level1", { brightness: 0.2 }),
+      node("heat", "slider", "slider_heat", { channel: "heat", value: 0.2, min: 0, max: 2, defaultValue: 0.5 }),
+      bank("bank", "looks", [preset("hot", { level1: { brightness: 0.8 }, slider_heat: { value: 1.8 } })]),
+    ]);
+    run.frames(5);
+    await recall(run, "hot", LINEAR_1S);
+    const [record] = run.records();
+    if (record === undefined) throw new Error("no record");
+    const half = run.frames(30);
+    // Both keys are on their way: the slider between 0.2 and 1.8, not at either and not at its default.
+    expect(run.shown("heat", "value")).toBe(blend(0.2, 1.8, record, half));
+
+    const reset = await run.bus.execute("control.reset", { nodeIds: ["heat"] }, contextFor(alice));
+    expect(reset.status).toBe("applied");
+    const next = run.frames(1);
+    expect(run.shown("heat", "value")).toBe(0.5);
+    expect(run.shown("level", "brightness")).toBe(blend(0.2, 0.8, record, next));
+  });
 });
 
 describe("exports and reopened documents render the END state (§5.4)", () => {
@@ -681,10 +703,10 @@ describe("the value graph reads the same fade (§V61)", () => {
     const frame = run.frames(30);
     const graph = run.store.view.getGraph();
     const values = createValueGraphSession(registry);
-    const fading = values.evaluate(graph, frame, { morphs: buildMorphIndex({ document: graph, registry }) });
+    const fading = values.evaluate(flatDocument(graph), frame, { flattening: { ...NO_FLATTENING, morphs: buildMorphIndex({ document: graph, registry }) } });
     expect(fading.byName.get("constant1")?.["value"]).toBe(blend(0, 1, record, frame));
     // Cut the wire: without the index the same frame publishes the destination.
-    expect(values.evaluate(graph, frame).byName.get("constant1")?.["value"]).toBe(1);
+    expect(values.evaluate(flatDocument(graph), frame, { flattening: NO_FLATTENING }).byName.get("constant1")?.["value"]).toBe(1);
   });
 });
 
@@ -694,7 +716,7 @@ describe("a rename carries a fade in flight (§V128, §V320)", () => {
     run.frames(5);
     await recall(run, "bright", LINEAR_1S);
     run.frames(20);
-    const renamed = await run.bus.execute("node.rename", { nodeId: "level", label: "grade" }, contextFor(alice));
+    const renamed = await run.bus.execute("node.rename", { nodeId: "level", label: "grade", exact: true }, contextFor(alice));
     expect(renamed.status).toBe("applied");
     const [record] = run.records();
     if (record === undefined) throw new Error("no record");

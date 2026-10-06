@@ -1,8 +1,10 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { EditPhase } from "@ui/controls/types.ts";
+import type { StoredParameter } from "@domain/types/parameters.ts";
 import { isParameterSlot, storedStaticValue } from "@domain/parameters/slots.ts";
+import { controlDefaultState, type ControlDefaultState } from "@nodes/definitions/controls.ts";
 import { controlCaption, formatControlValue as format } from "./board-fit.ts";
 import { ControlValuesContext, type ControlValuesReader } from "./control-values-context.ts";
 import styles from "./control-widget.module.css";
@@ -31,6 +33,12 @@ import styles from "./control-widget.module.css";
  * T1518b — and says only what the rect has room for (`showValue`, decided by `board-fit.ts`):
  * with no room for both, the VALUE goes and the caption stays whole — a slider or pad shows
  * its caption alone, a toggle its caption and a small switch (no On/Off), a button no count.
+ *
+ * T1619b — every widget MARKS ITS DEFAULT, where Reset sends it: a slider two notches on its
+ * track at the default, an XY pad a ring there, each dim while the value is at it and bright
+ * while it is away; a toggle a dot while its state is not its default. From
+ * `controlDefaultState`, the answer `control.reset` itself reads. A control that holds no
+ * default, and a key the document drives, draw no mark: there is nothing to go back to.
  */
 
 /** Writes a control's keys as ONE patch — an XY drag moves x and y in one undo group. */
@@ -69,15 +77,24 @@ function useControlValues({ nodeId, type, parameters }: ControlWidgetProps) {
   const [sample, setSample] = useState<LiveValues | null>(null);
   const retained = useMemo(() => Object.fromEntries(Object.entries(parameters).map(([key, value]) =>
     [key, isParameterSlot(value) ? storedStaticValue(value) : value])), [parameters]);
+  /** Whether a sample has been set since the control was last undriven: the only time there is one to clear. */
+  const sampled = useRef(false);
   useEffect(() => {
     if (!active || reader === null) {
-      setSample(null);
+      // T1652b: only when there IS a sample. This effect runs on every write of the control
+      // (its `parameters` are another object), and clearing a sample that is already clear
+      // made React render the widget a second time on every other write to find that out.
+      if (sampled.current) {
+        sampled.current = false;
+        setSample(null);
+      }
       return;
     }
     const tick = () => {
       const resolved = reader.read(nodeId);
       // Keep primitive value samples: a reader may reuse its record between frames.
       const values = Object.fromEntries(keys.map((key) => [key, resolved[key]]));
+      sampled.current = true;
       setSample((previous) => previous?.reader === reader && previous.nodeId === nodeId
         && keys.every((key) => Object.is(previous.values[key], values[key]))
         ? previous : { reader, nodeId, values });
@@ -107,7 +124,9 @@ function useDrag(onMove: (x: number, y: number, phase: EditPhase) => void) {
   return {
     ref: element,
     onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
+      // T1619b: a control-click is a right-click on a Mac. It opens the control's menu and
+      // must not move the control on its way there.
+      if (event.button !== 0 || event.ctrlKey) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       const [x, y] = at(event);
       onMove(x, y, "live");
@@ -132,6 +151,24 @@ interface WidgetProps extends ControlWidgetProps {
   readonly className: string;
   readonly values: Readonly<Record<string, unknown>>;
   readonly live: boolean;
+  /** T1619b: where the control stands against its default; null for a Button. */
+  readonly defaults: ControlDefaultState | null;
+}
+
+/**
+ * T1619b — the default a value key is marked at, and whether the value is away from it.
+ * Null — no mark — when the key holds no default or the document drives it.
+ */
+function defaultMark(state: ControlDefaultState | null, key: string): { readonly at: number | boolean; readonly away: boolean } | null {
+  if (state === null || state.driven.includes(key)) return null;
+  const at = state.defaults[key];
+  return at === undefined ? null : { at, away: state.away.includes(key) };
+}
+
+/** A default's place along min..max as 0..1, or null when it has none to draw. */
+function markShare(mark: ReturnType<typeof defaultMark>, min: number, max: number): number | null {
+  if (mark === null || typeof mark.at !== "number" || max === min) return null;
+  return Math.min(1, Math.max(0, (mark.at - min) / (max - min)));
 }
 
 /** Caption left, value right, on one row — the value never takes a row of its own. `null`: no room for it (T1518b). */
@@ -144,7 +181,7 @@ function Head({ caption, value }: { caption: string; value: string | null }) {
   );
 }
 
-function Slider({ nodeId, parameters, values, live, write, caption, className, size, showValue }: WidgetProps) {
+function Slider({ nodeId, parameters, values, live, write, caption, className, size, showValue, defaults }: WidgetProps) {
   const min = num(values["min"], 0);
   const max = num(values["max"], 1);
   const step = num(values["step"], 0);
@@ -157,6 +194,8 @@ function Slider({ nodeId, parameters, values, live, write, caption, className, s
   const head = <Head caption={caption} value={showValue === false ? null : driven && !live ? "driven" : format(value)} />;
   // On a board the caption and value sit INSIDE the bar, so a one-row slider is one row.
   const board = size === "board";
+  const mark = defaultMark(defaults, "value");
+  const tick = markShare(mark, min, max);
   return (
     <div className={className} data-control="slider" data-control-node={nodeId}>
       {board ? null : head}
@@ -168,18 +207,22 @@ function Slider({ nodeId, parameters, values, live, write, caption, className, s
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={value}
-        title={driven ? `${caption} is driven — its value comes from an expression` : caption}
+        title={driven ? `${caption} is driven — its value comes from an expression` : mark === null ? caption : `${caption} · default ${format(mark.at as number)}`}
       >
         <div className={styles.fill} style={{ width: `${share * 100}%` }} />
+        {tick === null ? null : (
+          <div className={`${styles.tick} ${mark?.away === true ? styles.away : ""}`} style={{ left: `${tick * 100}%` }} data-default-mark={mark?.away === true ? "away" : "at"} aria-hidden="true" />
+        )}
         {board ? <div className={styles.overlay}>{head}</div> : null}
       </div>
     </div>
   );
 }
 
-function Toggle({ nodeId, parameters, values, write, caption, className, showValue }: WidgetProps) {
+function Toggle({ nodeId, parameters, values, write, caption, className, showValue, defaults }: WidgetProps) {
   const on = values["on"] === true;
   const driven = isDriven(parameters["on"]);
+  const mark = defaultMark(defaults, "on");
   return (
     <div className={className} data-control="toggle" data-control-node={nodeId}>
       <button
@@ -190,7 +233,8 @@ function Toggle({ nodeId, parameters, values, write, caption, className, showVal
         className={`${styles.toggle} ${on ? styles.on : ""} ${showValue === false ? styles.mini : ""}`}
         onClick={() => { if (!driven) write(nodeId, { on: !on }, "commit"); }}
       >
-        <span className={styles.caption} title={caption}>{caption}</span>
+        <span className={styles.caption} title={mark === null ? caption : `${caption} · default ${mark.at === true ? "On" : "Off"}`}>{caption}</span>
+        {mark?.away === true ? <span className={styles.offDefault} data-default-mark="away" aria-hidden="true" /> : null}
         <span className={styles.switch} aria-hidden="true">
           <span className={styles.knob} />
         </span>
@@ -253,7 +297,7 @@ function Button({ nodeId, parameters, values, write, caption, className, showVal
   );
 }
 
-function XYPad({ nodeId, parameters, values, live, write, caption, className, size, showValue }: WidgetProps) {
+function XYPad({ nodeId, parameters, values, live, write, caption, className, size, showValue, defaults }: WidgetProps) {
   const min = num(values["min"], 0);
   const max = num(values["max"], 1);
   const x = num(values["x"], 0.5);
@@ -269,11 +313,20 @@ function XYPad({ nodeId, parameters, values, live, write, caption, className, si
   const head = <Head caption={caption} value={showValue === false ? null : driven && !live ? "driven" : `${format(x)}, ${format(y)}`} />;
   // On a board the pad fills its rect and the header is laid over its top edge.
   const board = size === "board";
+  // T1619b: the ring is drawn only when BOTH axes hold a default: half a place is no place.
+  const markX = defaultMark(defaults, "x");
+  const markY = defaultMark(defaults, "y");
+  const homeX = markShare(markX, min, min + span);
+  const homeY = markShare(markY, min, min + span);
+  const away = markX?.away === true || markY?.away === true;
   return (
     <div className={className} data-control="xy" data-control-node={nodeId}>
       {board ? null : head}
       <div {...drag} className={`${styles.pad} ${driven ? styles.driven : ""}`} aria-label={caption} role="group">
         {board ? <div className={styles.overlay}>{head}</div> : null}
+        {homeX === null || homeY === null ? null : (
+          <div className={`${styles.home} ${away ? styles.away : ""}`} style={{ left: `${homeX * 100}%`, bottom: `${homeY * 100}%` }} data-default-mark={away ? "away" : "at"} aria-hidden="true" />
+        )}
         <div className={styles.puck} style={{ left: `${((x - min) / span) * 100}%`, bottom: `${((y - min) / span) * 100}%` }} />
       </div>
     </div>
@@ -287,11 +340,26 @@ const WIDGETS: Readonly<Record<string, (props: WidgetProps) => ReturnType<typeof
   xyPad: XYPad,
 };
 
-export function ControlWidget(props: ControlWidgetProps) {
+/**
+ * T1652b — A WIDGET RENDERS WHEN ITS OWN CONTROL DOES, and for nothing else.
+ *
+ * Everything a widget draws comes from its node's stored `parameters` (the value, the
+ * caption, the range, the default its mark stands at, whether a key is driven) and from
+ * the two props that say how big it is drawn. The store hands an untouched node the SAME
+ * `parameters` object across revisions, so comparing the props is comparing exactly what
+ * is shown: one slider written renders one widget, on every surface that draws it.
+ *
+ * It used not to be memoised, and a board is a list: a Panel of forty controls rendered
+ * forty widgets for each one moved (measured: 124 widgets a write on a document with four
+ * Panels, on every write from the desk or a phone). A driven control's live number is its
+ * own state (`useControlValues`), sampled by the widget, and does not come through here.
+ */
+export const ControlWidget = memo(function ControlWidget(props: ControlWidgetProps) {
   const display = useControlValues(props);
   const Widget = WIDGETS[props.type];
   if (Widget === undefined) return null;
   const caption = controlCaption(display.values);
   const className = `${styles.widget} ${props.size === "panel" ? styles.panel : props.size === "board" ? styles.board : styles.node}`;
-  return <Widget {...props} values={display.values} live={display.live} caption={caption} className={className} />;
-}
+  const defaults = controlDefaultState({ type: props.type, parameters: props.parameters as Record<string, StoredParameter> });
+  return <Widget {...props} values={display.values} live={display.live} caption={caption} className={className} defaults={defaults} />;
+});

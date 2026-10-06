@@ -78,6 +78,11 @@ describe("command bus — registration surface (§V39)", () => {
     // Exact, not toContain: a new registration should have to be declared here.
     expect(harness.bus.listCommands()).toEqual([
       "channel.copy",
+      // T1619b: a control back to its default, and its value made the default.
+      "control.reset",
+      "control.resetAll",
+      "control.setAllDefaults",
+      "control.setDefault",
       // T1500b: a cue list's GO / BACK / fire / standby are document edits too.
       "cue.back",
       "cue.fire",
@@ -118,6 +123,8 @@ describe("command bus — registration surface (§V39)", () => {
       "parameter.copyValue",
       "parameter.paste",
       "parameter.pulse",
+      // T1641b: how a stored key the node does not declare leaves a document.
+      "parameter.removeUndeclared",
       "parameter.reset",
       // T1184: the other half of the pair — reset is a claim about the node TYPE,
       // revert is a claim about THIS FILE (the value the document was opened with).

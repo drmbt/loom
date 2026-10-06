@@ -3,7 +3,7 @@ import { attributeBinding } from "./point-storage.ts";
 import type { DrawPassDescriptor } from "../../runtime/backend/plan.ts";
 import { cameraPayloadMatrix, viewProjection } from "../../domain/geometry/camera.ts";
 import type { CameraPayload } from "../../domain/types/scene.ts";
-import { RENDER_SURFACE_WGSL } from "../shaders/render-surface.wgsl.ts";
+import { renderSurfaceWgsl } from "../shaders/render-surface.wgsl.ts";
 import { RGBA_TEXTURE } from "./common-ports.ts";
 import {
   DANGLING_CAMERA_SUGGESTION,
@@ -11,7 +11,7 @@ import {
   namedCameraWins,
 } from "./camera-reference.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
-import { gridCellCounts, gridPointCount, parseTopology } from "../../points/topology.ts";
+import { gridPointCount, gridSheets, gridVertexCount, parseTopology } from "../../points/topology.ts";
 import { readColor, readNumber, readVector } from "./parameter-readers.ts";
 
 /**
@@ -108,7 +108,6 @@ export const renderSurfaceNode: NodeDefinition = {
         `topology "${pointset.topology}" addresses ${gridPointCount(parsed)} points but the edge carries ${pointset.capacity}.`,
       );
     }
-    const { cellsU, cellsV } = gridCellCounts(parsed);
 
     // T457 (V387): one camera model everywhere. A NAMED camera arrives as a scene
     // payload on the reference-fed edge and replaces the inline parameters wholesale;
@@ -158,13 +157,14 @@ export const renderSurfaceNode: NodeDefinition = {
     const pass: DrawPassDescriptor = {
       kind: "draw",
       id: `${nodeId}:surface`,
-      shader: RENDER_SURFACE_WGSL,
+      // T1587b: a grid of several sheets is one draw of every sheet's cells.
+      shader: renderSurfaceWgsl(gridSheets(parsed) > 1),
       target,
       topology: "triangle-list",
       instances: 1,
       // The analytic index buffer: six vertices per grid cell, cells from the edge —
       // a wrapped axis has a seam cell, so its cell count equals its point count.
-      vertexCount: cellsU * cellsV * 6,
+      vertexCount: gridVertexCount(parsed),
       buffers: [
         // The half the PAYLOAD names (§V231) — this frame's positions, whoever owns
         // the buffer (§V197) and whichever half compaction or convention left them in.

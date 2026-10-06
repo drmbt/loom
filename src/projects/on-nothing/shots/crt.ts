@@ -5,6 +5,7 @@ import { SHARED_UNIFORMS_WGSL } from "../../../runtime/backend/shared-uniforms.t
 import type { OnNothingFacts } from "../scene-facts.ts";
 import { boneParam, yawFor } from "../skin-kernel.ts";
 import { carAreas } from "../scene-facts.ts";
+import { geometryName } from "../names.ts";
 import { ease, type Build, type ShotOptions } from "./halo.ts";
 import { addNode, connect, dropParams, feederOf, finish, setParams, spliceAfter, surgery } from "./splice.ts";
 
@@ -109,13 +110,13 @@ export function crtDocument(facts: OnNothingFacts, options: ShotOptions, build: 
   dropParams(cut, "skin", Object.keys(skin.parameters).filter((key) => key.includes(".")));
   setParams(cut, "skin", pose);
   // A hard top light: it grazes down the belly (the form reads in greys) and leaves the hands, turned to the lens, in their own shadow.
-  addNode(cut, "footKey", "light", [-2600, 1300], { kind: "point", position: [place[0] + 0.1, 1.9, place[2] + 0.02], color: [1, 0.97, 0.92, 1], intensity: 6 }, { label: "footkey1" });
+  addNode(cut, "footKey", "light", [-2600, 1300], { kind: "point", position: [place[0] + 0.1, 1.9, place[2] + 0.02], color: [1, 0.97, 0.92, 1], intensity: 6 }, { label: "light_footkey" });
   const shotNode = cut.nodes["shot"];
   if (shotNode === undefined) throw new Error('crtDocument: the base graph has no Render "shot".');
   // The cars stay out of the picture: in the negative their lamps would print as black holes.
-  const cars = new Set(carAreas(facts).map((area) => `geo${area}1`));
+  const cars = new Set(carAreas(facts).map(geometryName));
   const scenes = String(shotNode.parameters["scenes"]).split(" ").filter((label) => !cars.has(label));
-  setParams(cut, "shot", { scenes: scenes.join(" "), lights: `${String(shotNode.parameters["lights"])} footkey1` });
+  setParams(cut, "shot", { scenes: scenes.join(" "), lights: `${String(shotNode.parameters["lights"])} light_footkey` });
   // The footage camera: tight on the belly and the hands (the torso fills the tube's width), a hand-held video camera's drift.
   const eye: [number, number, number] = [place[0] + 0.06, 1.18, place[2] + 1.25];
   const aim: [number, number, number] = [place[0], 1.06, place[2]];
@@ -139,8 +140,8 @@ export function crtDocument(facts: OnNothingFacts, options: ShotOptions, build: 
 
   // ── Hold at 12 pictures a second, then photograph the tube ──
   const last = feederOf(cut, "out");
-  addNode(cut, "hold", "customWgslMulti", [500, 0], { source: HOLD_WGSL, rate: 12 }, { label: "hold1" });
-  addNode(cut, "holdHistory", "feedback", [500, 300], { source: "hold1" }, { label: "holdhistory1" });
+  addNode(cut, "hold", "customWgslMulti", [500, 0], { source: HOLD_WGSL, rate: 12 }, { label: "wgsl_hold" });
+  addNode(cut, "holdHistory", "feedback", [500, 300], { source: "wgsl_hold" }, { label: "feedback_holdhistory" });
   spliceAfter(cut, last, "hold");
   connect(cut, ["holdHistory", "out"], ["hold", "more"], 0);
   const tubeCam = ease(0, CRT_SECONDS);
@@ -179,7 +180,7 @@ export function crtDocument(facts: OnNothingFacts, options: ShotOptions, build: 
     tint: [0.93, 0.98, 1.05, 1],
     saturation: 0.35,
     grain: 0.02,
-  }, { label: "tube1" });
+  }, { label: "crttube1" });
   spliceAfter(cut, "hold", "tube");
   return finish(base, cut, "crt");
 }

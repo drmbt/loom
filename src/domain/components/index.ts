@@ -17,6 +17,7 @@ export type { ComponentTypeRef } from "./component-type.ts";
 export {
   COMPONENT_CATEGORY,
   componentNodeDefinition,
+  instanceOwnParameters,
   internalParameterOf,
   internalPortOf,
   pruneComponentDefinition,

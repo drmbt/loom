@@ -18,14 +18,14 @@ export const nativePersonMaskDocument = document(
   settings({ randomSeed: 73, workingFormat: "rgba8unorm-srgb" }),
   graph([
     ...chart.nodes,
-    node("camera", "webcam", [-960, 140], {}, { label: "camera1" }),
-    node("source", "switch", [-600, -200], { index: 0 }, { label: "source1" }),
-    node("out", "output", [480, -200], {}, { label: "reference1" }),
+    node("camera", "webcam", [-960, 140], {}, { label: "webcam1" }),
+    node("source", "switch", [-600, -200], { index: 0 }, { label: "switch_source" }),
+    node("out", "output", [480, -200], {}, { label: "output_reference" }),
     node("mask", "personMask", [-240, 140], {
       transport: "native", rateLimit: 0.1, invert: false,
-    }, { label: "mask1", format: { mode: "fixed", format: "rgba16float" } }),
-    node("key", "multiply", [120, 140], { opacity: 1 }, { label: "key1" }),
-    node("resultOut", "output", [480, 140], {}, { label: "person1" }),
+    }, { label: "personmask1", format: { mode: "fixed", format: "rgba16float" } }),
+    node("key", "multiply", [120, 140], { opacity: 1 }, { label: "multiply_key" }),
+    node("resultOut", "output", [480, 140], {}, { label: "output_person" }),
   ], [
     ...chart.edges,
     edge("calibration-source", ["signal", "out"], ["source", "inputs"], 0),

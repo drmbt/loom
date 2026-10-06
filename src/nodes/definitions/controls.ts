@@ -1,13 +1,14 @@
-import type { CompiledNodeDescription, NodeDefinition } from "../../domain/types/node-definition.ts";
+import type { CompiledNodeDescription, MigrationResult, NodeDefinition } from "../../domain/types/node-definition.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
-import type { StoredParameter } from "../../domain/types/parameters.ts";
+import type { ParameterDefinition, ParameterSchema, StoredParameter } from "../../domain/types/parameters.ts";
 import { incomingEdgesInOrder } from "../../domain/graph/edge-order.ts";
 import { overridingWire, sourceReferencesOf } from "../../domain/graph/source-references.ts";
-import { isParameterSlot, staticBindingValue } from "../../domain/parameters/slots.ts";
+import { isParameterSlot, staticBindingValue, storedStaticValue } from "../../domain/parameters/slots.ts";
 import { PRESETS_NODE_TYPE, parsePresetBank } from "../../domain/presets/bank.ts";
 import { bankViewOf, type BankCatalogue } from "../../domain/presets/bank-view.ts";
-import { isComponentNodeType } from "../../domain/components/component-type.ts";
+import { isComponentNodeType, parseComponentNodeType } from "../../domain/components/component-type.ts";
+import { kindFromName, kindOfType, roleOrName } from "../../domain/graph/node-kinds.ts";
 import { CUE_LIST_NODE_TYPE } from "../../domain/presets/cue-list.ts";
 import { VALUE_PORT } from "./common-ports.ts";
 
@@ -50,9 +51,251 @@ const captionParameter = {
   description: "What the control says on a panel. Empty: the channel name.",
 };
 
+/* ------------------------------------------------------------ defaults (T1619b) */
+
+/**
+ * T1619b — A CONTROL'S DEFAULT: where Reset sends it (`docs/control-reset-design-2026-10-06.md`).
+ *
+ * Each key a hand moves has a key beside it that holds its default, an ordinary parameter:
+ * the inspector edits it, and undo, the audit, copy and paste and a save carry it with
+ * nothing built. A Button has none, because nothing of it is set by hand and left.
+ *
+ * `control.setDefault` copies the current value into it, and a control made on the bus is
+ * born with it (`bornAtDefault`). One that stores none has NO default (`controlDefaults`).
+ * A preset never stores or recalls it (`presetHolds` below), so recalling a look cannot
+ * change what Reset means.
+ *
+ * One table, read by the definitions' `parametersFor` and `migrate`, by the two commands
+ * (`domain/commands/control-default-commands.ts`) and by the preset capture.
+ */
+export const CONTROL_DEFAULT_KEYS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  slider: { value: "defaultValue" },
+  toggle: { on: "defaultOn" },
+  xyPad: { x: "defaultX", y: "defaultY" },
+};
+
+/**
+ * B261 — WHAT OF A CONTROL IS STATE: the keys a hand (or a recall) moves. The rest is
+ * AUTHORING: the name it publishes under, its caption, its range, its step, its default.
+ *
+ * A preset whose target is a whole control used to hold every key, so recalling a look
+ * put back the range and the caption its author had since changed. It holds the state
+ * keys now. A target that names one key (`slider_heat.max`) still stores that key: the
+ * author asked for it by name. A default key is the exception, never stored and never
+ * recalled, named or not.
+ */
+export const CONTROL_STATE_KEYS: Readonly<Record<string, readonly string[]>> = {
+  slider: ["value"],
+  toggle: ["on"],
+  button: ["held", "presses"],
+  xyPad: ["x", "y"],
+};
+
+/** Does a preset hold this key of this node type? `whole`: the target names the node, not the key. */
+export function presetHolds(type: string, key: string, whole: boolean): boolean {
+  if (Object.values(CONTROL_DEFAULT_KEYS[type] ?? {}).includes(key)) return false;
+  const state = CONTROL_STATE_KEYS[type];
+  return !whole || state === undefined || state.includes(key);
+}
+
+/** What a Slider and each axis of an XY Pad read while nothing is stored for them. */
+const UNSET_NUMBER = 0.5;
+
+/** What each value key of a control reads while nothing is stored for it: the type's own declared value. */
+const DECLARED_VALUES: Readonly<Record<string, Readonly<Record<string, number | boolean>>>> = {
+  slider: { value: UNSET_NUMBER },
+  toggle: { on: false },
+  xyPad: { x: UNSET_NUMBER, y: UNSET_NUMBER },
+};
+
+/**
+ * A stored bound of a control's range: the number the document states, `declared` when
+ * nothing is stored, and null when an expression drives it (its value is not known here).
+ */
+function storedBound(stored: unknown, declared: number): number | null {
+  if (stored === undefined) return declared;
+  const value = plainValue(stored as StoredParameter);
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** A number as the control's channel carries it: inside Min..Max (`valueEvaluate`'s own rule). A range an expression drives does not clamp. */
+function clampToRange(stored: Readonly<Record<string, unknown>>, value: number): number {
+  const lo = storedBound(stored["min"], 0);
+  const hi = storedBound(stored["max"], 1);
+  if (lo === null || hi === null) return value;
+  return Math.min(Math.max(lo, hi), Math.max(Math.min(lo, hi), value));
+}
+
+/**
+ * THE DEFAULT OF EACH VALUE KEY that HOLDS one, from a control's stored parameters; null for
+ * a node type that holds none (a Button, a Panel, anything else).
+ *
+ * A KEY WITH NO STORED DEFAULT HAS NO DEFAULT (the lead's ruling, 2026-10-06, T1619b S2).
+ * It is absent here, never the type's 0.5: a control whose source authored no default
+ * would otherwise reset to a number nobody chose, silently. `control.setDefault` gives it
+ * one; a control made on the bus is born with one (`bornAtDefault`); the version 1 → 2
+ * `migrate` gives every older control the value in its file. A default an expression
+ * drives is not a stored default either.
+ *
+ * A number is read clamped into Min..Max and NOT snapped to Step: a reset restores what
+ * the author wrote (T652).
+ */
+export function controlDefaults(type: string, stored: Readonly<Record<string, unknown>>): Readonly<Record<string, number | boolean>> | null {
+  const keys = CONTROL_DEFAULT_KEYS[type];
+  if (keys === undefined) return null;
+  const defaults: Record<string, number | boolean> = {};
+  for (const valueKey in keys) {
+    const held = plainValue(stored[keys[valueKey] as string] as StoredParameter | undefined);
+    if (type === "toggle") {
+      if (typeof held === "boolean") defaults[valueKey] = held;
+    } else if (typeof held === "number" && Number.isFinite(held)) {
+      defaults[valueKey] = clampToRange(stored, held);
+    }
+  }
+  return defaults;
+}
+
+/** How far a number may sit from its default and still be AT it, as a share of the range: float noise, nothing a hand can see. */
+const AT_DEFAULT_SHARE = 1 / 10_000;
+
+export interface ControlDefaultState {
+  /** Value key → the default it resets to. A key that holds none is absent. */
+  readonly defaults: Readonly<Record<string, number | boolean>>;
+  /** Value key → what it holds now, as the channel carries it. A driven key is absent. */
+  readonly current: Readonly<Record<string, number | boolean>>;
+  /** The value keys that are AWAY from their default. A driven key is never one, nor one with no default. */
+  readonly away: readonly string[];
+  /** The value keys the document drives (an expression, a MIDI learn): not a hand's to move. */
+  readonly driven: readonly string[];
+  /** The hand-set value keys that hold NO default: neither at one nor away from one. */
+  readonly missing: readonly string[];
+}
+
+/**
+ * WHERE A CONTROL STANDS AGAINST ITS DEFAULT, or null for a node that holds none. The one
+ * answer behind `control.reset`, `control.setDefault` and every surface that marks a
+ * control as moved, so no two of them can disagree about "away".
+ */
+export function controlDefaultState(node: Pick<GraphNode, "type" | "parameters">): ControlDefaultState | null {
+  const defaults = controlDefaults(node.type, node.parameters);
+  const declared = DECLARED_VALUES[node.type];
+  if (defaults === null || declared === undefined) return null;
+  const lo = storedBound(node.parameters["min"], 0);
+  const hi = storedBound(node.parameters["max"], 1);
+  const slack = lo === null || hi === null ? 0 : Math.abs(hi - lo) * AT_DEFAULT_SHARE;
+  const current: Record<string, number | boolean> = {};
+  const away: string[] = [];
+  const driven: string[] = [];
+  const missing: string[] = [];
+  for (const [key, unset] of Object.entries(declared)) {
+    const stored = node.parameters[key];
+    if (isParameterSlot(stored) && stored.mode !== "static") {
+      driven.push(key);
+      continue;
+    }
+    // Nothing stored reads as the schema default: this key's own default when it holds
+    // one (`parametersFor`), the type's declared value when it does not.
+    const held = plainValue(stored);
+    const fallback = defaults[key] ?? unset;
+    const now = typeof unset === "boolean" ? (typeof held === "boolean" ? held : fallback) : typeof held === "number" && Number.isFinite(held) ? clampToRange(node.parameters, held) : fallback;
+    current[key] = now;
+    const target = defaults[key];
+    if (target === undefined) missing.push(key);
+    else if (typeof now === "number" && typeof target === "number" ? Math.abs(now - target) > slack : now !== target) away.push(key);
+  }
+  return { defaults, current, away, driven, missing };
+}
+
+/**
+ * A control's schema with its value keys' defaults set to the node's OWN stored defaults,
+ * so "Reset to default" on its Value, the menu's `isOverridden` and every other reader of
+ * a schema default mean the default Reset uses. Before this a Slider reset to 0.5 whatever
+ * its range (§T1184's pattern). A key that holds no default keeps the declared one, and
+ * the declared schema is returned itself while every default is the declared one. One
+ * schema is kept per distinct default: schemas are read per frame, and their identity is
+ * what memoised readers key on.
+ */
+function schemaWithDefaults(type: string, declared: ParameterSchema, kept: Map<string, ParameterSchema>, stored: Readonly<Record<string, unknown>>): ParameterSchema {
+  const defaults = controlDefaults(type, stored) ?? {};
+  let asDeclared = true;
+  let signature = "";
+  for (const key in defaults) {
+    if ((declared[key] as { default?: unknown } | undefined)?.default !== defaults[key]) asDeclared = false;
+    signature += `${key}=${String(defaults[key])} `;
+  }
+  if (asDeclared) return declared;
+  const found = kept.get(signature);
+  if (found !== undefined) return found;
+  const schema: ParameterSchema = { ...declared };
+  for (const key in defaults) schema[key] = { ...declared[key], default: defaults[key] } as ParameterDefinition;
+  // Bounded: a default an agent sweeps must not grow this for the life of the page.
+  if (kept.size >= 256) kept.clear();
+  kept.set(signature, schema);
+  return schema;
+}
+
+/**
+ * Version 1 → 2 (§V10): a control saved before it held a default takes the value in the
+ * file as its default, so "what was saved" is what Reset returns to from the first open.
+ * A value an expression drives gives its retained hand-set value. A value the file never
+ * stored gives the declared one, which is what that control showed. Only a driven value
+ * with nothing retained under it is left without a default.
+ */
+function migrateControlDefaults(type: string, oldVersion: number, data: unknown): MigrationResult {
+  const parameters: Record<string, unknown> = typeof data === "object" && data !== null ? { ...(data as Record<string, unknown>) } : {};
+  if (oldVersion >= 2) return { parameters };
+  for (const [defaultKey, value] of Object.entries(defaultsFromValues(type, parameters))) {
+    if (parameters[defaultKey] === undefined) parameters[defaultKey] = value;
+  }
+  return { parameters };
+}
+
+/**
+ * Each default key of a control, holding the value its value key holds in `parameters`: the
+ * hand-set value (under an expression, the one retained), or the declared one when nothing
+ * is stored. A key with no such value is left out. The one rule behind the `migrate` above
+ * and `bornWith` below.
+ */
+function defaultsFromValues(type: string, parameters: Readonly<Record<string, unknown>>): Record<string, number | boolean> {
+  const defaults: Record<string, number | boolean> = {};
+  for (const [valueKey, defaultKey] of Object.entries(CONTROL_DEFAULT_KEYS[type] ?? {})) {
+    const stored = parameters[valueKey] as StoredParameter | undefined;
+    const value = stored === undefined ? DECLARED_VALUES[type]?.[valueKey] : storedStaticValue(stored);
+    if (type === "toggle" ? typeof value === "boolean" : typeof value === "number" && Number.isFinite(value)) defaults[defaultKey] = value as number | boolean;
+  }
+  return defaults;
+}
+
+/**
+ * A CONTROL IS BORN AT ITS DEFAULT (`NodeDefinition.bornWith`): made on the bus — from the
+ * library, by a paste, by an agent, from a parameter — the default it stores is the value
+ * it is made with. Without this the manifest's 0.5 would be stored for a Slider created at
+ * 7, and Reset would send it to a number nobody chose. A control that never went through
+ * the bus (a document source that authored none) stores no default, and has none.
+ */
+const bornAtDefault =
+  (type: string) =>
+  (provided: Readonly<Record<string, StoredParameter>>): Record<string, StoredParameter> =>
+    defaultsFromValues(type, provided);
+
+const defaultDescription = (what: string): string =>
+  `Where Reset sends ${what}. A control has no default until one is stored here: Set as default stores its current value. A preset never stores or recalls it.`;
+
+const SLIDER_PARAMETERS: ParameterSchema = {
+  channel: channelParameter,
+  caption: captionParameter,
+  value: { type: "number", label: "Value", default: UNSET_NUMBER },
+  min: { type: "number", label: "Min", default: 0 },
+  max: { type: "number", label: "Max", default: 1 },
+  step: { type: "number", label: "Step", default: 0, min: 0, range: "floor", description: "0 is continuous; above 0 the slider snaps to multiples of it." },
+  defaultValue: { type: "number", label: "Default", default: UNSET_NUMBER, description: defaultDescription("the slider") },
+};
+const SLIDER_SCHEMAS = new Map<string, ParameterSchema>();
+
 export const controlSliderNode: NodeDefinition = {
   type: "slider",
-  version: 1,
+  // 2 (T1619b): it holds its default. `migrate` gives an older file's slider its stored value as one.
+  version: 2,
   title: "Slider",
   category: "value",
   description:
@@ -60,14 +303,10 @@ export const controlSliderNode: NodeDefinition = {
   tags: ["control", "slider", "fader", "knob", "ui", "panel", "live", "perform"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
-  parameters: {
-    channel: channelParameter,
-    caption: captionParameter,
-    value: { type: "number", label: "Value", default: 0.5 },
-    min: { type: "number", label: "Min", default: 0 },
-    max: { type: "number", label: "Max", default: 1 },
-    step: { type: "number", label: "Step", default: 0, min: 0, range: "floor", description: "0 is continuous; above 0 the slider snaps to multiples of it." },
-  },
+  parameters: SLIDER_PARAMETERS,
+  parametersFor: (stored) => schemaWithDefaults("slider", SLIDER_PARAMETERS, SLIDER_SCHEMAS, stored),
+  migrate: (oldVersion, data) => migrateControlDefaults("slider", oldVersion, data),
+  bornWith: bornAtDefault("slider"),
   valueEvaluate: ({ values }) => {
     const lo = num(values["min"], 0);
     const hi = num(values["max"], 1);
@@ -77,20 +316,28 @@ export const controlSliderNode: NodeDefinition = {
   compile: noPasses,
 };
 
+const TOGGLE_PARAMETERS: ParameterSchema = {
+  channel: channelParameter,
+  caption: captionParameter,
+  on: { type: "boolean", label: "On", default: false },
+  defaultOn: { type: "boolean", label: "Default", default: false, description: defaultDescription("the toggle") },
+};
+const TOGGLE_SCHEMAS = new Map<string, ParameterSchema>();
+
 export const controlToggleNode: NodeDefinition = {
   type: "toggle",
-  version: 1,
+  // 2 (T1619b): it holds its default, as the Slider does.
+  version: 2,
   title: "Toggle",
   category: "value",
   description: "On or off, published under its Channel name as 1 or 0. CLOCKLESS.",
   tags: ["control", "toggle", "switch", "checkbox", "ui", "panel", "live", "perform"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
-  parameters: {
-    channel: channelParameter,
-    caption: captionParameter,
-    on: { type: "boolean", label: "On", default: false },
-  },
+  parameters: TOGGLE_PARAMETERS,
+  parametersFor: (stored) => schemaWithDefaults("toggle", TOGGLE_PARAMETERS, TOGGLE_SCHEMAS, stored),
+  migrate: (oldVersion, data) => migrateControlDefaults("toggle", oldVersion, data),
+  bornWith: bornAtDefault("toggle"),
   valueEvaluate: ({ values }) => ({ [controlChannel(values)]: values["on"] === true ? 1 : 0 }),
   compile: noPasses,
 };
@@ -118,23 +365,32 @@ export const controlButtonNode: NodeDefinition = {
   compile: noPasses,
 };
 
+const XY_PARAMETERS: ParameterSchema = {
+  channel: channelParameter,
+  caption: captionParameter,
+  x: { type: "number", label: "X", default: UNSET_NUMBER },
+  y: { type: "number", label: "Y", default: UNSET_NUMBER },
+  min: { type: "number", label: "Min", default: 0 },
+  max: { type: "number", label: "Max", default: 1 },
+  defaultX: { type: "number", label: "Default X", default: UNSET_NUMBER, description: defaultDescription("the pad's X") },
+  defaultY: { type: "number", label: "Default Y", default: UNSET_NUMBER, description: defaultDescription("the pad's Y") },
+};
+const XY_SCHEMAS = new Map<string, ParameterSchema>();
+
 export const controlXYNode: NodeDefinition = {
   type: "xyPad",
-  version: 1,
+  // 2 (T1619b): it holds its default, as the Slider does.
+  version: 2,
   title: "XY Pad",
   category: "value",
   description: "Two numbers from one drag, published as <channel>X and <channel>Y, each between Min and Max. CLOCKLESS.",
   tags: ["control", "xy", "pad", "2d", "ui", "panel", "live", "perform"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: VALUE_PORT }],
-  parameters: {
-    channel: channelParameter,
-    caption: captionParameter,
-    x: { type: "number", label: "X", default: 0.5 },
-    y: { type: "number", label: "Y", default: 0.5 },
-    min: { type: "number", label: "Min", default: 0 },
-    max: { type: "number", label: "Max", default: 1 },
-  },
+  parameters: XY_PARAMETERS,
+  parametersFor: (stored) => schemaWithDefaults("xyPad", XY_PARAMETERS, XY_SCHEMAS, stored),
+  migrate: (oldVersion, data) => migrateControlDefaults("xyPad", oldVersion, data),
+  bornWith: bornAtDefault("xyPad"),
   valueEvaluate: ({ values }) => {
     const name = controlChannel(values);
     const lo = num(values["min"], 0);
@@ -293,8 +549,45 @@ function plainValue(stored: StoredParameter | undefined): unknown {
   return stored.mode === "static" ? staticBindingValue(stored) : undefined;
 }
 
-/** What a widget or Panel is called on a surface: the node's label, or its id. */
+/**
+ * A node's NAME: its label, or its id. This is the IDENTITY a board stores a member under,
+ * a preset target names and `op('…')` reads. What a surface SHOWS for a bank, a Layer, a
+ * Cue List or a Panel is `surfaceNameOf` below, which is not always the same string.
+ */
 export const controlNameOf = (node: GraphNode): string => node.label ?? node.id;
+
+/**
+ * What a Presets bank, a Layer, a Cue List or a Panel is CALLED on a surface with room for
+ * one word: the ROLE of its name (T1593b, ruled 2026-10-05).
+ *
+ * A name is `kind_role`, so on stage a bank would read `presets_looks`, a layer
+ * `layer_graphic`, a cue list `cuelist_set`. The board already DRAWS each as what it is (a
+ * strip of presets, a switch and a fader, GO and BACK), so the kind in front is the same
+ * fact a second time, in the one place where every character is read from across a room.
+ * The board shows `looks`, `graphic`, `set`.
+ *
+ * ONE RULE FOR EVERY SUCH SURFACE (the desk's board, the Controls tab, the phone, the
+ * Layers list), so they cannot caption one node two ways: `roleOrName`. A name with no
+ * role (`presets1`) and a name that does not carry its kind (`looks`, anything saved
+ * before the rule) are shown whole. Nothing is cut from a name the rule did not make.
+ *
+ * `catalogue` is for the one member that is not a built-in node: a look's INSTANCE, which
+ * is a bank from outside (§T1505b). Its kind is its component's own name, which only the
+ * catalogue knows; without one its name is shown whole rather than guessed at.
+ *
+ * It is a CAPTION and never an address. A board stores its members under `controlNameOf`,
+ * and a phone's write names a node by id.
+ */
+export function surfaceNameOf(
+  node: GraphNode,
+  catalogue?: { get(componentId: string, version: number): { readonly name: string } | undefined },
+): string {
+  const name = controlNameOf(node);
+  const instance = parseComponentNodeType(node.type);
+  if (instance === null) return roleOrName(name, kindOfType(node.type));
+  const component = catalogue?.get(instance.componentId, instance.version);
+  return component === undefined ? name : roleOrName(name, kindFromName(component.name));
+}
 
 /** What a wired picture is called on a Layer's item: the wire wins over the name (§B233). */
 const WIRED_PICTURE = "wired";
@@ -314,10 +607,13 @@ export function layerPicture(graph: Pick<GraphDocument, "nodes" | "edges">, node
   return typeof stored === "string" ? stored.trim() : "";
 }
 
-/** A Panel's title as every surface shows it: its Title, or the node's name. */
+/**
+ * A Panel's title as every surface shows it: its Title, or the role of the node's name
+ * (`desk` for `panel_desk`, T1593b; `surfaceNameOf`).
+ */
 export function panelTitle(panel: GraphNode): string {
   const title = plainValue(panel.parameters["title"]);
-  return typeof title === "string" && title !== "" ? title : controlNameOf(panel);
+  return typeof title === "string" && title !== "" ? title : surfaceNameOf(panel);
 }
 
 /**

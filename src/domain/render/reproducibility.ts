@@ -287,6 +287,32 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // order is fixed by the tree and by the loop rather than by the scheduler — no atomics
   // (§V74), same answer run to run and device to device. No clock, no RNG, no async.
   pointTransform: "pure",
+  // T1586b. PURE: one invocation per strip walks its strip left to right — a running sum
+  // of segment lengths and a frame carried from segment to segment. The order is the slot
+  // order, fixed by the loop and never by the scheduler; strips share no slot, so no two
+  // invocations write the same word (no atomics, §V74). No clock, no RNG, no state.
+  pointCurveFrames: "pure",
+  // T1586b. PURE: one thread per OUTPUT point, each from at most four control points of
+  // its own span, so no point depends on another and there is no order to keep. The
+  // Arc's solve is a fixed number of bisection steps — its length reads nothing. Control
+  // points come from an input buffer or from this node's own uniforms. No clock, no RNG.
+  pointCurve: "pure",
+  // T1586b. PURE: a length walk per strip (the same left-to-right sum as Curve Frames),
+  // then one thread per OUTPUT slot that computes its own station from its slot number —
+  // a multiplication, never a running sum — and binary-searches its strip. Every output
+  // word is written by exactly one invocation. No clock, no RNG, no state.
+  pointResample: "pure",
+  // T1587b. PURE: one thread per VERTEX of the swept grid, each from one path point and one
+  // profile point of its own, so no vertex depends on another and there is no order to
+  // keep. Every output word is written by exactly one invocation. No clock, no RNG, no state.
+  pointSweep: "pure",
+  // T1585b. PURE in this record's sense: a simulation with STATE, like the kernels above,
+  // and a function of the frames it has been given and nothing else. One thread per strand
+  // walks its strand in order and writes only its own points; no RNG, no atomics, and the
+  // only clock it reads is the frame's own step, which also sets how many solver steps the
+  // frame runs (`rateSubsteps`). A take seeks to its in point, which clears the state and
+  // replays (§V170), so two takes of one project are the same bytes.
+  pointRope: "pure",
   // T947. PURE, and the frame clock is the reason that needs saying: the scan-window
   // cursor reads the SHARED FRAME TIME (timeSeconds/deltaSeconds through the T172
   // uniform merge), which is timeline state, not a wall clock — the same frame inputs

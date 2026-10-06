@@ -42,7 +42,7 @@ import { APP_VIEWPORT, addNode, fitAll, openApp, viewportSettled } from "./app.t
  *
  * The legitimate case the fix could swallow — on an ORBITABLE tile alt+drag is the
  * camera (T675), and a press there must keep reaching the tile — needs an installed plan
- * to mark the tile orbitable, i.e. a real adapter, i.e. the headed lane; that lane's
+ * to mark the tile orbitable, i.e. a real adapter, i.e. the `chromium-gpu` lane; that lane's
  * spec list lives in `playwright.config.ts`, outside B195's paths. It was verified by
  * hand (headed, Grid Points at zoom 8: alt+drag moved the camera 0 px and left the tile
  * `data-inspect="adjustable"`) and is not gated here.

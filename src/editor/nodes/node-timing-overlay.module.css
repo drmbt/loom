@@ -31,6 +31,26 @@
 }
 
 /*
+ * B258 — WHILE THE LOW-ZOOM KIND LABEL IS SHOWING, THE READOUT STANDS ON TOP OF IT.
+ *
+ * Below 70 % zoom every node's kind stands on the line under its header and grows UP, out
+ * of the top of the node (`node-view.module.css`, `.kindLabelClip`). That is this
+ * readout's room, and the label's plate would cover the bar from its left end, which is
+ * the end the fill starts at. So the readout moves up by exactly what the label takes
+ * above the node's top edge, and the stack reads bar, number, label, node.
+ *
+ * `--kind-label-zoom` is written on this element by the canvas, as it is on the label
+ * (`kind-label.ts`); `--kind-label-height` comes from the node. A TRANSFORM, so a zoom
+ * step lays nothing out. `min(0px, …)`: while the label still fits inside the header band
+ * (down to about 57 %) it takes nothing above the node and the readout does not move.
+ */
+[data-kind-labels] .overlay {
+  transform: translateY(
+    min(0px, var(--pane-header-h) - var(--hairline) - var(--kind-label-height, 0px) / var(--kind-label-zoom, 1))
+  );
+}
+
+/*
  * The track is the displayed span sum; the fill is this node's share of that sum.
  * Neither represents exclusive GPU cost (T1302).
  *

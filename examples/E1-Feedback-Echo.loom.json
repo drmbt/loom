@@ -158,7 +158,7 @@
       "pathx": {
         "definitionVersion": 1,
         "id": "pathx",
-        "label": "pathx1",
+        "label": "lfo_pathx",
         "parameters": {
           "amplitude": 0.3,
           "frequency": 0.31,
@@ -175,7 +175,7 @@
       "pathy": {
         "definitionVersion": 1,
         "id": "pathy",
-        "label": "pathy1",
+        "label": "lfo_pathy",
         "parameters": {
           "amplitude": 0.24,
           "frequency": 0.23,
@@ -221,7 +221,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('pathx1').chan.value"
+                "source": "op('lfo_pathx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -234,7 +234,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('pathy1').chan.value"
+                "source": "op('lfo_pathy').chan.value"
               },
               "static": {
                 "kind": "static",

@@ -17,8 +17,8 @@ import { requireExample } from "./runner.ts";
  * LIT**. That is why the behaviour shipped, and it is why this file exists — a fixture
  * that cannot tell apart the thing its test asserts is not a fixture (§V461).
  *
- * THE DARK FIXTURE. The same understudy, one fourteenth of the light: `bed1.brightness`
- * and `swell1.fillcolor` both scaled by 0.14. Deliberately a SCALE and nothing else — the
+ * THE DARK FIXTURE. The same understudy, one fourteenth of the light: `level_bed.brightness`
+ * and `circle_swell.fillcolor` both scaled by 0.14. Deliberately a SCALE and nothing else — the
  * picture, its shape, its motion and its timing are untouched, so any difference these
  * tests measure is the graph's response to LEVEL and cannot be a response to content.
  *
@@ -50,10 +50,10 @@ function dimmed(graph: GraphDocument): void {
   const swell = graph.nodes["swell"];
   if (bed === undefined || swell === undefined) throw new Error("E27 lost `bed`/`swell`");
   const brightness = (bed.parameters as Record<string, unknown>)["brightness"];
-  if (typeof brightness !== "number") throw new Error("`bed1.brightness` is not a number");
+  if (typeof brightness !== "number") throw new Error("`level_bed.brightness` is not a number");
   (bed.parameters as Record<string, unknown>)["brightness"] = brightness * DIM;
   const fill = (swell.parameters as Record<string, unknown>)["fillcolor"];
-  if (!Array.isArray(fill)) throw new Error("`swell1.fillcolor` is not a colour");
+  if (!Array.isArray(fill)) throw new Error("`circle_swell.fillcolor` is not a colour");
   (swell.parameters as Record<string, unknown>)["fillcolor"] = [
     (fill[0] as number) * DIM,
     (fill[1] as number) * DIM,
@@ -64,8 +64,8 @@ function dimmed(graph: GraphDocument): void {
 
 /**
  * OPEN THE EXPOSURE LOOP — the control that makes this a crossing rather than a picture.
- * `norm1.whitelevel` goes back to a static 1.0, which is exactly what the file did before
- * T797 (and exactly what it silently falls back to if `roofsafe1` is ever renamed, since
+ * `level_norm.whitelevel` goes back to a static 1.0, which is exactly what the file did before
+ * T797 (and exactly what it silently falls back to if `limit_roofsafe` is ever renamed, since
  * a measured channel IS its node's name, §V129).
  */
 function unmetered(graph: GraphDocument): void {
@@ -202,10 +202,10 @@ describe("E27 sets its own exposure, and a dark room still gets a relief (T797)"
   /**
    * THE LEAD CLAIM, and it is a PAIR because a single number cannot say "rescued".
    *
-   * The unmetered arm is the shipped file before T797: `norm1` at a static white point,
+   * The unmetered arm is the shipped file before T797: `level_norm` at a static white point,
    * the source arriving one fourteenth as bright, and every point in the sheet compressed
    * into a band near zero — a flat navy rectangle. The metered arm is the same graph with
-   * `roof1` allowed to say how bright the frame actually is.
+   * `analyze_roof` allowed to say how bright the frame actually is.
    *
    * Measured on Dawn while writing this: 0.0163 unmetered against 0.1977 metered, and
    * bright pixels 0.00% against 9.5%. The thresholds sit far from both.
@@ -238,7 +238,7 @@ describe("E27 sets its own exposure, and a dark room still gets a relief (T797)"
    *
    * Measured: 0.0163 with the motion rig and the loop open, against 0.0159 with neither —
    * a 2% difference on a number that has to move by an order of magnitude to matter. This
-   * is the assertion that stops someone "simplifying" `norm1` away on the grounds that
+   * is the assertion that stops someone "simplifying" `level_norm` away on the grounds that
    * E41 proved motion is enough.
    */
   it("is NOT rescued by the motion term alone — a dark difference is still dark", async () => {
@@ -263,7 +263,7 @@ describe("E27 sets its own exposure, and a dark room still gets a relief (T797)"
   /**
    * AND THE MOTION TERM IS NOT DECORATION EITHER, once the exposure is closed.
    *
-   * The same frame with `stir1` bypassed differs by a mean 0.073 per pixel over more than
+   * The same frame with `level_stir` bypassed differs by a mean 0.073 per pixel over more than
    * a third of the frame (measured 0.0734 / 55.5% above 5/255 at 1280x720). Asserted as a
    * COMPARISON rather than a level, because §V712's lesson is that a still frame's summary
    * statistics read identically with the wiring mis-owned.
@@ -289,7 +289,7 @@ describe("E27 sets its own exposure, and a dark room still gets a relief (T797)"
    *
    * A Cache tap reads the oldest slice WRITTEN (§V229) — and on frame 0 nothing has been
    * written, so it reads black and a difference taken against the live source is the whole
-   * picture. Before `now1` was put on the near side, frame 0 measured 0.256 against a
+   * picture. Before `cache_now` was put on the near side, frame 0 measured 0.256 against a
    * steady 0.178: the sheet opened over-lifted and blown, which is exactly the transient
    * §V732 records being baked into a baseline and passing.
    *
@@ -302,7 +302,7 @@ describe("E27 sets its own exposure, and a dark room still gets a relief (T797)"
     const first = await shoot(() => {}, 0);
     const settled = await shoot(() => {}, 2);
 
-    // Measured 0.1752 against 0.1738 — under 2%. The pre-`now1` file ran +44%.
+    // Measured 0.1752 against 0.1738 — under 2%. The pre-`cache_now` file ran +44%.
     expect(first.mean / settled.mean).toBeGreaterThan(0.85);
     expect(first.mean / settled.mean).toBeLessThan(1.15);
   }, 240_000);
@@ -318,11 +318,11 @@ describe("E27 sets its own exposure, and a dark room still gets a relief (T797)"
  * §T797 tuned two hours earlier, on BOTH of its fixtures.
  *
  * Two knobs, and each is a single number:
- *   - `kick1.operand` (0) — the low band's gain onto `lift1.value1`, which is the kernel's
- *     LIFT AMPLITUDE. Not the exposure: `norm1`'s white point belongs to `roof1`, and a
+ *   - `math_kick.operand` (0) — the low band's gain onto `kernel_lift.value1`, which is the kernel's
+ *     LIFT AMPLITUDE. Not the exposure: `level_norm`'s white point belongs to `analyze_roof`, and a
  *     second driver there would fight the normalisation this file just gained (§V730).
- *   - `cycle1.amplitude` (0) — an LFO onto `coat1.offset`, which slides the picture along
- *     the ramp. Colour only: `braid1` carries the shape in alpha (T503), so this drive
+ *   - `lfo_cycle.amplitude` (0) — an LFO onto `lookup_coat.offset`, which slides the picture along
+ *     the ramp. Colour only: `reorder_braid` carries the shape in alpha (T503), so this drive
  *     cannot reach the geometry, the exposure, or the motion path.
  *
  * Both are measured on the LIT understudy and on §T797's ×0.14 dark fixture, because "the
@@ -338,7 +338,7 @@ describe("E27's optional audio and colour rotation are OFF at zero, and real abo
    *
    * Measured on Dawn while writing this: 0 differing pixels of 921,600, at frame 0 and at
    * frame 90, on both fixtures. Frame 0 is in because §V769 says frame 0 is what a user
-   * sees on open and because §T797's `now1` guard lives there — an addition that perturbed
+   * sees on open and because §T797's `cache_now` guard lives there — an addition that perturbed
    * the cache ring would show up there first.
    */
   it("is BYTE-IDENTICAL to the file T797 left, on the lit understudy and on the dark fixture", async () => {
@@ -365,9 +365,9 @@ describe("E27's optional audio and colour rotation are OFF at zero, and real abo
    * ── T820 REPAIRED THIS TEST, AND THE REPAIR IS THE POINT, NOT A LOOSENING ──
    *
    * T809 shipped this chain with NO SMOOTHING, and the owner reported the result:
-   * "relief audioreactivity is too glitchy and jumpy and jittery". `beat1`'s strike has an
+   * "relief audioreactivity is too glitchy and jumpy and jittery". `pattern_beat`'s strike has an
    * INSTANT attack, so the drive jumped its whole 0.262 excursion in one 16 ms frame and
-   * sagged to zero before the next beat. `env1` (`valueLag`, 40 ms attack, `releaseRatio`
+   * sagged to zero before the next beat. `lag_env` (`valueLag`, 40 ms attack, `releaseRatio`
    * 8 for a 320 ms release) turns that into an envelope, and BOTH of this test's original
    * numbers had to move because the behaviour they described was the defect:
    *
@@ -380,9 +380,9 @@ describe("E27's optional audio and colour rotation are OFF at zero, and real abo
    *   - THE OFF-BEAT ASSERTION INVERTED, and that inversion IS the fix. It used to demand
    *     the picture "sits still between beats" (< 0.03, measured 0.0110) — which is exactly
    *     the collapse-to-zero the owner was seeing as a strobe. It now demands the opposite:
-   *     the envelope SUSTAINS between beats (measured 0.0596). Rewire `bsub1 → kick1`
+   *     the envelope SUSTAINS between beats (measured 0.0596). Rewire `math_bsub → math_kick`
    *     direct, as T809 had it, and the off-beat drive falls back to ~0.0002 and this
-   *     assertion fails loudly — which is what stops anyone "simplifying" `env1` away.
+   *     assertion fails loudly — which is what stops anyone "simplifying" `lag_env` away.
    *
    * SUSTAIN MUST NOT DEGENERATE INTO A CONSTANT BIAS, so the rhythm is asserted separately
    * and on the term that actually carries it. Per-pixel |Δ| against rest is a poor rhythm
@@ -399,12 +399,12 @@ describe("E27's optional audio and colour rotation are OFF at zero, and real abo
   it("answers the KICK when the gain is turned up, and both fixtures get it", async () => {
     if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
 
-    // §V739: name the node BEFORE measuring it, so removing or renaming `env1` fails here
+    // §V739: name the node BEFORE measuring it, so removing or renaming `lag_env` fails here
     // as a missing node rather than as a number nobody can attribute.
     const { document } = e27();
     expect(
-      Object.values(document.graph.nodes).find((entry) => entry.label === "env1"),
-      "E27 lost `env1` — T820's envelope follower IS the fix for the reported jitter",
+      Object.values(document.graph.nodes).find((entry) => entry.label === "lag_env"),
+      "E27 lost `lag_env` — T820's envelope follower IS the fix for the reported jitter",
     ).toMatchObject({ type: "valueLag", parameters: { lag: 0.04, releaseRatio: 8 } });
 
     const litRest = await shoot(() => {}, 100);
@@ -415,7 +415,7 @@ describe("E27's optional audio and colour rotation are OFF at zero, and real abo
     const litOffBeatRest = await shoot(() => {}, 90);
     const litOffBeat = await shoot(audioAt(1), 90);
     // T820, INVERTED FROM T809: measured 0.0596, where the unsmoothed chain gave 0.0110.
-    // The sheet sustains between beats instead of collapsing — delete `env1` and this dies.
+    // The sheet sustains between beats instead of collapsing — delete `lag_env` and this dies.
     expect(compare(litOffBeatRest, litOffBeat)).toBeGreaterThan(0.03);
     // ...and it is still a RHYTHM and not a constant bias: the lift the audio adds at the
     // peak is measured 2.14x the lift it adds off the beat (+0.0062 against +0.0029).
@@ -434,9 +434,9 @@ describe("E27's optional audio and colour rotation are OFF at zero, and real abo
   /**
    * THE COLOUR SWEEP, AND ITS TWO ENDS BOTH HAVE TO SURVIVE THE DARK FIXTURE.
    *
-   * `coat1.offset` slides the picture along the ramp and CLAMPS at the ends — Lookup's
+   * `lookup_coat.offset` slides the picture along the ramp and CLAMPS at the ends — Lookup's
    * shader is `clamp(index * scale + offset, 0, 1)`. That clamp is the reason this is what
-   * ships rather than a true wrap-around rotation of `palette1.phase`: this ramp is
+   * ships rather than a true wrap-around rotation of `ramp_palette.phase`: this ramp is
    * monotone in luminance by design (T503), a wrap makes it non-monotone, and the .md
    * records what four phases of that looked like. A slide keeps the monotone mapping, so
    * the relief stays legible at every point of the swing.
