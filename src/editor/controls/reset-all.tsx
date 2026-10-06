@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { CONTROL_RESET_ALL_COMMAND, CONTROL_RESET_COMMAND } from "@domain/commands/control-default-commands.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphNode } from "@domain/types/graph.ts";
 import { panelTitle } from "@nodes/definitions/controls.ts";
 import { Button, PopoverContent, PopoverHeader, PopoverRoot, PopoverTrigger, cx } from "@ui/index.ts";
-import { resetAllSentence, tallyDefaults } from "./control-defaults.ts";
+import { resetAllSentence, tallyDefaults, type DefaultTally } from "./control-defaults.ts";
 import { popoverEventStops } from "./popover-events.ts";
 import styles from "./reset-all.module.css";
 
@@ -47,7 +47,22 @@ export interface ResetAllButtonProps {
 
 export function ResetAllButton({ controls, panel, bus, invocation, disabled = false }: ResetAllButtonProps) {
   const [shown, setShown] = useState(false);
-  const tally = useMemo(() => tallyDefaults(controls), [controls]);
+  /*
+   * T1668b: counted over the controls AS THE DOCUMENT HOLDS THEM, read here. `controls` says
+   * which (the tab's layout, which does not move for a value); how many of them are away
+   * from their defaults is a matter of their values. The snapshot is the count itself, so
+   * the button renders when the count changes and not for every value on the way.
+   */
+  const counted = useCallback((): string => {
+    const nodes = bus.store.getGraph().nodes;
+    const tally = tallyDefaults(controls.map((control) => nodes[control.id] ?? control));
+    return `${String(tally.total)}/${String(tally.away)}/${String(tally.missing)}`;
+  }, [bus, controls]);
+  const key = useSyncExternalStore(bus.store.subscribe, counted, counted);
+  const tally = useMemo((): DefaultTally => {
+    const [total, away, missing] = key.split("/").map(Number) as [number, number, number];
+    return { total, away, missing };
+  }, [key]);
   const title = panel === undefined ? "All controls" : panelTitle(panel);
   const sentence = resetAllSentence(title, tally);
   const reset = (): void => {

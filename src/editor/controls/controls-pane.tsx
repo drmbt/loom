@@ -11,12 +11,13 @@ import { NO_MORPHS } from "@domain/presets/morph-index.ts";
 import { CONTROL_WIDGET_TYPES, LAYER_NODE_TYPE, panelBoard, panelMembers, panelTitle } from "@nodes/definitions/controls.ts";
 import { isRemotePanel } from "@devices/phone/phone-snapshot.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
-import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
+import type { ControlWrite } from "./control-widget.tsx";
 import { ControlTargets } from "./control-targets.tsx";
 import { controlTargets } from "./parameter-controls.ts";
 import { PanelBoardEditor, PanelBoardGrid, Pencil } from "./panel-board.tsx";
 import { LayersView } from "./layers-view.tsx";
-import { PanelRows } from "./panel-surface.tsx";
+import { LiveControl, PanelRows } from "./panel-surface.tsx";
+import { useLiveDocument } from "./use-live-node.ts";
 import { PhoneDoorButton } from "./phone-door.tsx";
 import { ResetAllButton } from "./reset-all.tsx";
 import { PANEL_EMPTY_HINT, type PhoneDoorView } from "./phone-door-copy.ts";
@@ -60,7 +61,27 @@ import surface from "./panel-surface.module.css";
  * tabs to choose between, so a document with one Panel and no layer draws as before.
  */
 
+/** The Layers list is a picture of every layer's switch and fader at once: it reads the document itself (T1668b). */
+function LiveLayers(props: Omit<Parameters<typeof LayersView>[0], "graph">) {
+  return <LayersView {...props} graph={useLiveDocument(props.bus)} />;
+}
+
+/** A board being ARRANGED shows what each control holds and drives while it is moved: it reads the document itself (T1668b). */
+function LiveBoardEditor(props: Omit<Parameters<typeof PanelBoardEditor>[0], "graph" | "board">) {
+  const graph = useLiveDocument(props.bus);
+  const panel = graph.nodes[props.panelId];
+  const board = panel === undefined ? null : panelBoard(graph, panel);
+  return board === null ? null : <PanelBoardEditor {...props} graph={graph} board={board} />;
+}
+
 export interface ControlsPaneProps {
+  /**
+   * The document the tab is LAID OUT from: which Panels there are, what is on each, the
+   * titles. T1668b: its host may hand the document's STRUCTURE (the app does), which does
+   * not move for a value written — every control here reads its own node (`useLiveNode`),
+   * the reset count reads the controls it counts, and the two views that are a picture of
+   * many values at once (Layers, a board being arranged) read the document themselves.
+   */
   readonly graph: GraphDocument;
   readonly registry: NodeRegistryView;
   readonly bus: LoomBus;
@@ -174,7 +195,7 @@ export function ControlsPane({ graph, registry, bus, invocation, phone, midi, ch
         <header className={styles.header}>
           <h2 className={styles.title}>Layers</h2>
         </header>
-        <LayersView graph={graph} bus={bus} invocation={invocation} write={write} />
+        <LiveLayers bus={bus} invocation={invocation} write={write} />
       </div>,
     );
   }
@@ -235,15 +256,15 @@ export function ControlsPane({ graph, registry, bus, invocation, phone, midi, ch
         <div className={surface.grid} data-panel-row>
           {widgets.map((widget) => (
             <div key={widget.id} className={surface.cell}>
-              <ControlWidget nodeId={widget.id} type={widget.type} parameters={widget.parameters as Record<string, unknown>} write={write} size="panel" />
+              <LiveControl bus={bus} node={widget} write={write} size="panel" />
               {renderMeta(widget)}
             </div>
           ))}
         </div>
       ) : board === null ? (
-        <PanelRows graph={graph} panel={panel} write={write} size="panel" renderMeta={renderMeta} />
+        <PanelRows graph={graph} panel={panel} bus={bus} write={write} size="panel" renderMeta={renderMeta} />
       ) : editing ? (
-        <PanelBoardEditor graph={graph} panelId={panel.id} board={board} write={write} bus={bus} invocation={invocation} apply={apply} registry={registry} />
+        <LiveBoardEditor panelId={panel.id} write={write} bus={bus} invocation={invocation} apply={apply} registry={registry} />
       ) : board.items.length === 0 ? (
         <p className={surface.hint} data-panel-empty>{PANEL_EMPTY_HINT}</p>
       ) : (

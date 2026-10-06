@@ -500,7 +500,7 @@ function GraphPaneInner({
     () => createParameterEditor({ bus, context: invocation }),
     [bus, invocation],
   );
-  /** T1652b: this pane's document as of its last structural revision, for the canvas's reference lines. */
+  /** T1652b: this pane's document as of its last structural revision: what the canvas draws, and a Panel body's layout (T1668b). */
   const structure = useMemo(() => {
     const watch = revisionWatchFor(bus.store, registry);
     return { subscribe: watch.subscribeStructure, get: watch.structure };
@@ -524,6 +524,8 @@ function GraphPaneInner({
     invocation,
     write: controlWrite,
     phone: (componentPath ?? []).length === 0 ? phone : undefined,
+    // T1668b: a Panel's body lays its board out from the structure; its controls read their own values.
+    structure,
   });
   const cameraGizmos = useMemo(
     () => createCameraGizmoStore({ editor: parameterEditor, readPose: readCameraPose }),

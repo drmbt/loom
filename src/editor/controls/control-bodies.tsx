@@ -11,7 +11,7 @@ import { BOARD_NAMED_TYPES, CONTROL_WIDGET_TYPES, soloPanelFor } from "@nodes/de
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { joinPanelOperations } from "./panel-join.ts";
 import { PanelEdit } from "./panel-edit.tsx";
-import { PanelNodeBody } from "./panel-surface.tsx";
+import { PanelNodeBody, type StructureSource } from "./panel-surface.tsx";
 import { PhoneDoorButton } from "./phone-door.tsx";
 import { usePresetCatalogue } from "./use-preset-catalogue.ts";
 import type { PhoneDoorView } from "./phone-door-copy.ts";
@@ -47,6 +47,8 @@ export interface ControlBodiesOptions {
   readonly write: ControlWrite;
   /** The phone door; absent where a Panel cannot be published (tests, inside a component). */
   readonly phone?: PhoneDoorView | undefined;
+  /** T1668b: the document's structure, for a Panel's body to lay its board out from (`PanelNodeBody`). */
+  readonly structure?: StructureSource | undefined;
 }
 
 export interface ControlBodies {
@@ -99,12 +101,12 @@ function PanelPhone({ bus, invocation, panelId, door }: { bus: LoomBus; invocati
   return <PhoneDoorButton door={door} panel={{ published, publish }} />;
 }
 
-export function useControlBodies({ bus, invocation, write, phone }: ControlBodiesOptions): ControlBodies {
+export function useControlBodies({ bus, invocation, write, phone, structure }: ControlBodiesOptions): ControlBodies {
   const renderControls = useCallback(
     (nodeId: NodeId): ReactNode => {
       const node = bus.store.getGraph().nodes[nodeId];
       if (node === undefined) return null;
-      if (node.type === "panel") return <PanelNodeBody bus={bus} invocation={invocation} panelId={nodeId} write={write} />;
+      if (node.type === "panel") return <PanelNodeBody bus={bus} invocation={invocation} panelId={nodeId} write={write} structure={structure} />;
       if (BOARD_NAMED_TYPES.has(node.type) || isComponentNodeType(node.type)) return <AddToPanel bus={bus} invocation={invocation} widgetId={nodeId} />;
       if (!CONTROL_WIDGET_TYPES.has(node.type)) return null;
       return (
@@ -114,7 +116,7 @@ export function useControlBodies({ bus, invocation, write, phone }: ControlBodie
         </>
       );
     },
-    [bus, invocation, write],
+    [bus, invocation, write, structure],
   );
   const renderHeaderControls = useCallback(
     (nodeId: NodeId): ReactNode => {

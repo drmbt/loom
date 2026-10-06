@@ -456,6 +456,15 @@ export interface FlatteningReads {
   readonly morphs: ParameterMorphs;
   /** T1485b: the component instances `op('<instance>').chan.<c>` can name. */
   readonly instanceChannels: InstanceChannelSources;
+  /**
+   * T1668b — THE SAME OBJECT FOR TWO FLATTENINGS THAT DIFFER IN VALUES ONLY, where the
+   * producer can say so (the app's one flattening, `flattened-graph.ts`, which asks
+   * `classifyRevision`). What depends on a document's structure alone — who reads whom,
+   * the order value nodes evaluate in — is memoised on this instead of on the flattened
+   * document, which is another object for every value written. Absent: no such promise,
+   * and a reader keys on the document itself.
+   */
+  readonly structure?: object;
 }
 
 /** No component instance to name. One object, so "none" is an identity check. */

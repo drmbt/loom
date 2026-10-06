@@ -187,6 +187,32 @@ describe("T1653b — the canvas does not hand the library a new identity for an 
     expect(churn, "a document change re-bound listeners on the canvas root").toEqual([]);
   });
 
+  it("a VALUE written to a node hands the library nothing new: every prop the same object, its store not written (T1668b)", async () => {
+    const { bus, root, store } = await mountCanvas();
+    const blur = Object.values(bus.store.getGraph().nodes).find((node) => node.type === "test.blur");
+    if (blur === undefined) throw new Error("expected the blur node");
+    const before = recorded.props[recorded.props.length - 1] as Record<string, unknown>;
+    const rendersBefore = recorded.props.length;
+    let storeWrites = 0;
+    const off = store.subscribe(() => {
+      storeWrites += 1;
+    });
+    const churn = await listenerChurn(root, async () => {
+      await act(async () => {
+        const result = await bus.execute("graph.applyPatch", patch(bus.store.getRevision(), [{ op: "setParameters", nodeId: blur.id as NodeId, parameters: { radius: 9 } }], "value"), invocation);
+        expect(result.status).toBe("applied");
+      });
+      await settle();
+    });
+    off();
+    // The canvas may render for it or not; what it hands the library, when it does, is what it handed before.
+    const after = recorded.props[recorded.props.length - 1] as Record<string, unknown>;
+    const moved = Object.keys(after).filter((key) => after[key] !== before[key] && MAY_CHANGE[key] === undefined);
+    expect(moved, `props handed to <ReactFlow> that are another object after a value was written (${String(recorded.props.length - rendersBefore)} renders): ${moved.join(", ")}`).toEqual([]);
+    expect(storeWrites, "the library's store was written for a value").toBe(0);
+    expect(churn).toEqual([]);
+  });
+
   it("a pan writes nothing but the transform and re-binds nothing; a zoom moves the wire range in the store and re-binds nothing", async () => {
     const { root, store } = await mountCanvas();
     const radiusBefore = store.getState().connectionRadius;

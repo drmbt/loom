@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { createValueGraphSession, type ValueGraphSession } from "@domain/channels/value-graph.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { InstanceChannelSources } from "@domain/parameters/node-references.ts";
 import { NO_MORPHS } from "@domain/presets/morph-index.ts";
@@ -8,6 +8,7 @@ import type { FrameInputs } from "@domain/types/backend.ts";
 import { ZERO_FRAME } from "@domain/types/frame.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { FlattenedGraph } from "@compiler/index.ts";
+import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 
 /**
@@ -215,6 +216,8 @@ export function useValueGraph(runtime: AppRuntime, externalChannels?: ChannelRes
     byName: ReadonlyMap<string, Readonly<Record<string, number>>>;
   } | null>(null);
 
+  const zeroSession = useRef<{ registry: NodeRegistryView; session: ValueGraphSession } | null>(null);
+
   const resolver = useCallback<ChannelResolver>(
     (channel, context) => {
       if (context.frame !== undefined) return latest.current?.(channel, context);
@@ -231,11 +234,17 @@ export function useValueGraph(runtime: AppRuntime, externalChannels?: ChannelRes
       const flattened = runtimeRef.current.flattened.current();
       const cached = structural.current;
       if (cached === null || cached.flattened !== flattened) {
-        const once = createValueGraphSession(runtimeRef.current.registry);
+        // T1668b: one session kept for these walks and CLEARED before each, which is the
+        // throwaway it was (no state survives) with what a session learns of a document's
+        // structure kept: a value written does not parse the document's references again.
+        const registry = runtimeRef.current.registry;
+        if (zeroSession.current === null || zeroSession.current.registry !== registry) zeroSession.current = { registry, session: createValueGraphSession(registry) };
+        const once = zeroSession.current.session;
+        once.reset();
         const result = once.evaluate(flattened.graph, ZERO_FRAME, {
           pointer: { x: 0, y: 0, buttons: 0 },
           // The structural compile reads no fade (it has no frame); it does read instances.
-          flattening: { morphs: NO_MORPHS, instanceChannels: flattened.instanceChannels },
+          flattening: { morphs: NO_MORPHS, instanceChannels: flattened.instanceChannels, ...(flattened.structure === undefined ? {} : { structure: flattened.structure }) },
         });
         structural.current = { flattened, resolver: result.resolver, byName: result.byName };
         return result.resolver(channel, context);

@@ -1,4 +1,4 @@
-import type { FlatGraph, GraphDocument } from "../types/graph.ts";
+import type { FlatGraph } from "../types/graph.ts";
 import type { NodeId, PortId } from "../types/ids.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../types/frame.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
@@ -133,6 +133,9 @@ export interface ValueGraphSession {
   reset(): void;
 }
 
+/** What a session memoises a document's references on: a flattening's `structure`, or the flattened document itself. */
+type StructureKey = object;
+
 function isValueNode(definition: NodeDefinition | undefined): definition is NodeDefinition {
   return definition !== undefined && (definition.valueEvaluate !== undefined || definition.valueChannel !== undefined);
 }
@@ -143,8 +146,10 @@ const valuePortIds = (definition: NodeDefinition): ReadonlySet<PortId> =>
 export function createValueGraphSession(registry: NodeRegistryView): ValueGraphSession {
   /** nodeId → persistent state bag. Survives frames; dies on reset() or node removal. */
   const states = new Map<NodeId, Record<string, unknown>>();
-  // Authored reference parsing belongs to graph changes, never the frame path.
-  const dependenciesByGraph = new WeakMap<GraphDocument, ReadonlyMap<NodeId, ReadonlySet<NodeId>>>();
+  // Authored reference parsing belongs to graph changes, never the frame path — and, T1668b,
+  // to changes of STRUCTURE: keyed on the flattening's `structure` where it has one, so a
+  // value written (another document object, the same references) parses nothing again.
+  const dependenciesByGraph = new WeakMap<StructureKey, ReadonlyMap<NodeId, ReadonlySet<NodeId>>>();
 
   return {
     reset() {
@@ -195,7 +200,8 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
         incoming.set(edge.target.nodeId, list);
         orderAfter(edge.source.nodeId, edge.target.nodeId);
       }
-      let dependencies = dependenciesByGraph.get(graph);
+      const structure = flattening.structure ?? graph;
+      let dependencies = dependenciesByGraph.get(structure);
       if (dependencies === undefined) {
         const authored = parameterDependencies(graph);
         /*
@@ -240,7 +246,7 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
           if (sources.size > 0) compiled.set(target, sources);
         }
         dependencies = compiled;
-        dependenciesByGraph.set(graph, dependencies);
+        dependenciesByGraph.set(structure, dependencies);
       }
       for (const [target, sources] of dependencies) {
         for (const source of sources) orderAfter(source, target);

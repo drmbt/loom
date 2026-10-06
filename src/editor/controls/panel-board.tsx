@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
@@ -36,6 +36,7 @@ import {
   removeFromPanelOperations,
 } from "./panel-board-edit.ts";
 import { joinPanelOperations } from "./panel-join.ts";
+import { useLiveNode } from "./use-live-node.ts";
 import { usePresetCatalogue } from "./use-preset-catalogue.ts";
 import styles from "./panel-board.module.css";
 
@@ -143,6 +144,9 @@ interface BoardPlay {
   readonly invocation: InvocationContext;
 }
 
+type WidgetItem = Extract<PanelBoardItem, { readonly kind: "widget" }>;
+
+/** What an item draws, from the node the board was laid out with: the editor's inert picture of it (it renders from the live document). */
 function Item({ item, fit, cells, write, bus, invocation }: BoardPlay & { readonly item: PanelBoardItem; readonly fit: BoardFit; readonly cells: CellMetrics }) {
   if (item.kind === "label") return <div className={styles.label}>{item.text}</div>;
   if (boardNamesMember(item.node)) {
@@ -150,6 +154,31 @@ function Item({ item, fit, cells, write, bus, invocation }: BoardPlay & { readon
   }
   return (
     <ControlWidget nodeId={item.node.id} type={item.node.type} parameters={item.node.parameters as Record<string, unknown>} write={write} size="board" showValue={fit.value} />
+  );
+}
+
+/** One place on the board: its box on the grid, and what `fit` says its rect has room for. */
+function Cell({ item, fit, children }: { readonly item: PanelBoardItem; readonly fit: BoardFit; readonly children: ReactNode }) {
+  return (
+    <div className={styles.item} style={itemStyle(item, fit)} data-board-item={item.key} data-rect={rectAttr(item.rect)} data-caption-fit={fit.caption}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * A control on the board, reading ITS OWN node (`useLiveNode`, T1668b): the board hands it
+ * the node it was laid out from, and what it draws — its value, its caption's fit — is the
+ * document's. So a value written to it renders this cell, on each surface that shows the
+ * board, and no other.
+ */
+function ControlCell({ item, cells, write, bus, invocation }: BoardPlay & { readonly item: WidgetItem; readonly cells: CellMetrics }) {
+  const node = useLiveNode(bus, item.node);
+  const fit = fitOf({ ...item, node }, cells);
+  return (
+    <Cell item={item} fit={fit}>
+      <Item item={{ ...item, node }} fit={fit} cells={cells} write={write} bus={bus} invocation={invocation} />
+    </Cell>
   );
 }
 
@@ -177,14 +206,15 @@ export function PanelBoardGrid({ board, write, bus, invocation, variant, widthPx
         };
   return (
     <div className={variant === "canvas" ? styles.canvas : styles.tab} style={grid} data-panel-board={variant} data-columns={board.columns} data-rows={board.rows}>
-      {board.items.map((item) => {
-        const fit = fitOf(item, cells);
-        return (
-          <div key={item.key} className={styles.item} style={itemStyle(item, fit)} data-board-item={item.key} data-rect={rectAttr(item.rect)} data-caption-fit={fit.caption}>
-            <Item item={item} fit={fit} cells={cells} write={write} bus={bus} invocation={invocation} />
-          </div>
-        );
-      })}
+      {board.items.map((item) =>
+        item.kind === "label" ? (
+          <Cell key={item.key} item={item} fit={fitOf(item, cells)}>
+            <div className={styles.label}>{item.text}</div>
+          </Cell>
+        ) : (
+          <ControlCell key={item.key} item={item} cells={cells} write={write} bus={bus} invocation={invocation} />
+        ),
+      )}
     </div>
   );
 }

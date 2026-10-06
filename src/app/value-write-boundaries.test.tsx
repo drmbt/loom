@@ -11,7 +11,8 @@ import { serializePresetBank } from "@domain/presets/bank.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { serializePanelBoard } from "@nodes/definitions/controls.ts";
+import { NODE_KINDS } from "@domain/graph/node-kinds.ts";
+import { BOARD_NAMED_TYPES, CONTROL_WIDGET_TYPES, serializePanelBoard } from "@nodes/definitions/controls.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { App } from "./app.tsx";
 import { createAppRuntime } from "./app-runtime.ts";
@@ -70,6 +71,16 @@ const counts = vi.hoisted(() => ({
   valuesPasses: 0,
   requirements: 0,
   referenceGeometry: 0,
+  /** The graph canvas itself: it draws the document's structure, and a value is not structure (T1668b). */
+  canvas: 0,
+  /** Walks of the whole document for file references (`use-arriving-files.ts`, T1668b). */
+  fileScans: 0,
+  /** Parses of every expression of the document for who reads whom (`parameterDependencies`, T1668b). */
+  referenceParses: 0,
+  /** A Panel node's body on the canvas: the board's LAYOUT there (T1668b). */
+  panelBody: 0,
+  /** A bank, a layer or a cue list drawn on a board, by node (`BoardMember`, T1668b). */
+  members: {} as Record<string, number>,
   widgets: {} as Record<string, number>,
   problemsShown: [] as readonly RuntimeDiagnostic[],
 }));
@@ -120,6 +131,20 @@ vi.mock("@editor/shader-editor/index.ts", async (importOriginal) => {
     },
   };
 });
+vi.mock("@editor/controls/panel-surface.tsx", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@editor/controls/panel-surface.tsx")>();
+  return { ...original, PanelNodeBody: (props: Parameters<typeof original.PanelNodeBody>[0]) => ((counts.panelBody += 1), original.PanelNodeBody(props)) };
+});
+vi.mock("@editor/controls/board-members.tsx", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@editor/controls/board-members.tsx")>();
+  return {
+    ...original,
+    BoardMember: (props: Parameters<typeof original.BoardMember>[0]) => {
+      counts.members[props.node.id] = (counts.members[props.node.id] ?? 0) + 1;
+      return original.BoardMember(props);
+    },
+  };
+});
 vi.mock("@editor/controls/controls-pane.tsx", async (importOriginal) => {
   const original = await importOriginal<typeof import("@editor/controls/controls-pane.tsx")>();
   return { ...original, ControlsPane: (props: Parameters<typeof original.ControlsPane>[0]) => ((counts.controls += 1), original.ControlsPane(props)) };
@@ -157,6 +182,18 @@ vi.mock("@domain/types/node-definition.ts", async (importOriginal) => {
     ...original,
     nodeRuntimeRequirements: (...args: Parameters<typeof original.nodeRuntimeRequirements>) => ((counts.requirements += 1), original.nodeRuntimeRequirements(...args)),
   };
+});
+vi.mock("@editor/graph-canvas/index.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@editor/graph-canvas/index.ts")>();
+  return { ...original, GraphCanvas: (props: Parameters<typeof original.GraphCanvas>[0]) => ((counts.canvas += 1), original.GraphCanvas(props)) };
+});
+vi.mock("@domain/graph/parameter-dependencies.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@domain/graph/parameter-dependencies.ts")>();
+  return { ...original, parameterDependencies: (...args: Parameters<typeof original.parameterDependencies>) => ((counts.referenceParses += 1), original.parameterDependencies(...args)) };
+});
+vi.mock("@domain/components/component-file.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@domain/components/component-file.ts")>();
+  return { ...original, externalFiles: (...args: Parameters<typeof original.externalFiles>) => ((counts.fileScans += 1), original.externalFiles(...args)) };
 });
 // The reference lines' geometry is rebuilt by exactly this call, when their dependencies are another array.
 vi.mock("@editor/edges/reference-geometry.ts", async (importOriginal) => {
@@ -356,12 +393,15 @@ async function stage(options: { readonly speedChain?: number } = {}) {
 
 /** Every counter, as a plain object, for a before/after difference. */
 function snapshot() {
-  return { ...counts, widgets: { ...counts.widgets } };
+  return { ...counts, widgets: { ...counts.widgets }, members: { ...counts.members } };
 }
 function since(before: ReturnType<typeof snapshot>) {
   const now = snapshot();
   const widgets: Record<string, number> = {};
   for (const [nodeId, count] of Object.entries(now.widgets)) widgets[nodeId] = count - (before.widgets[nodeId] ?? 0);
+  /** Renders of a control's ITEMS, by node, on every surface: its widget, or its bank / layer / cue-list member. */
+  const items: Record<string, number> = { ...widgets };
+  for (const [nodeId, count] of Object.entries(now.members)) items[nodeId] = (items[nodeId] ?? 0) + count - (before.members[nodeId] ?? 0);
   return {
     app: now.app - before.app,
     graphPane: now.graphPane - before.graphPane,
@@ -375,6 +415,11 @@ function since(before: ReturnType<typeof snapshot>) {
     valuesPasses: now.valuesPasses - before.valuesPasses,
     requirements: now.requirements - before.requirements,
     referenceGeometry: now.referenceGeometry - before.referenceGeometry,
+    canvas: now.canvas - before.canvas,
+    panelBody: now.panelBody - before.panelBody,
+    items,
+    fileScans: now.fileScans - before.fileScans,
+    referenceParses: now.referenceParses - before.referenceParses,
     widgets,
   };
 }
@@ -398,6 +443,10 @@ describe("T1652b — a value-only write, through the composed app", () => {
     expect(counts.dirty, "a value write did not mark the document dirty").toBe(true);
     expect(since(clean).app, "the root renders once for the dirty mark").toBe(1);
     expect(since(clean).structuralCompiles).toBe(0);
+    // A frame has been drawn: what a frame learns of the document's structure, it has learnt.
+    await act(async () => {
+      fixture.frame();
+    });
 
     const installsBefore = fixture.structuralInstalls();
     const uniformsBefore = fixture.uniforms.length;
@@ -420,13 +469,20 @@ describe("T1652b — a value-only write, through the composed app", () => {
     expect(moved.structuralCompiles, "a structural compile ran for a value").toBe(0);
     expect(moved.requirements, "the requirement diagnostics ran for a value").toBe(0);
     expect(moved.referenceGeometry, "the reference lines were rebuilt for a value").toBe(0);
+    expect(moved.canvas, "the graph canvas rendered for a value (it draws structure; a node's body draws its own values)").toBe(0);
+    expect(moved.fileScans, "the document was walked for file references for a value").toBe(0);
     expect(moved.valuesPasses, "exactly one values pass per write").toBe(WRITES);
     expect(watch.stats().escalated - escalatedBefore, `a write left the lane: ${watch.stats().lastEscalation ?? ""}`).toBe(0);
     expect(fixture.structuralInstalls() - installsBefore, "the backend built a program for a value").toBe(0);
 
     // WHAT IT MUST STILL DO. The surface that shows the control renders, and of its widgets
     // only that control's: once per write on each surface that draws it.
-    expect(moved.controls).toBe(WRITES);
+    // What the tab's HEADER counts is a matter of values, and it read them: one control is away from its default now.
+    const resetCount = (): string | null => document.querySelector("[data-controls-pane] [data-reset-all]")?.getAttribute("data-reset-all") ?? null;
+    expect(resetCount(), "the reset count did not follow the control's value").toBe("1");
+    // The Controls tab and the Panel's body are LAID OUT from structure: neither rendered. The control's own cell did.
+    expect(moved.controls, "the Controls tab rendered whole for one control's value").toBe(0);
+    expect(moved.panelBody, "a Panel's body on the canvas rendered whole for one control's value").toBe(0);
     // One render per write on each surface that draws the control: the Controls tab's board, the Panel
     // node's body on the canvas, and the Slider node's own body. A whole number, the same for every write.
     const surfaces = (moved.widgets[slider] ?? 0) / WRITES;
@@ -446,6 +502,9 @@ describe("T1652b — a value-only write, through the composed app", () => {
     // Both readers: the one through the control's channel and the one through its parameter.
     expect(Object.values(reached[0]?.values ?? {}).filter((value) => value === last)).toHaveLength(2);
     expect(new Set(fixture.uniforms.slice(uniformsBefore).map((write) => write.passId)).size).toBe(1);
+    // Who reads whom is the document's STRUCTURE: twelve values and the frame after them parsed no expression for it.
+    // (The lane's frame-zero walk of the value graph and the frame's own each did, for every value: two a write.)
+    expect(since(before).referenceParses, "the document's expressions were parsed for references for a value").toBe(0);
 
     runtime.dispose();
   }, 60_000);
@@ -583,6 +642,126 @@ describe("T1652b — a value-only write, through the composed app", () => {
   }, 60_000);
 });
 
+/**
+ * T1668b — A BOARD ITEM RENDERS WHEN ITS OWN VALUE MOVES, for every kind of control a board
+ * can hold. The kinds are the catalogue's (`CONTROL_WIDGET_TYPES` and `BOARD_NAMED_TYPES`):
+ * a kind added there without a row here fails, and so does a kind whose value the document
+ * cannot move as a value.
+ */
+describe("T1668b — a value written renders that control's items and no other item, for every kind of control", () => {
+  const WRITE: Record<string, { readonly parameters: Record<string, unknown>; readonly value: Record<string, unknown> }> = {
+    slider: { parameters: { caption: "Gain", channel: "gain", value: 0.5, min: 0, max: 2, step: 0 }, value: { value: 0.9 } },
+    toggle: { parameters: { caption: "Arm", channel: "arm", on: false }, value: { on: true } },
+    button: { parameters: { caption: "Flash", channel: "flash" }, value: { held: true } },
+    xyPad: { parameters: { caption: "Aim" }, value: { x: 0.8 } },
+    presets: { parameters: { targets: "level_look", presets: serializePresetBank({ version: 1, presets: [{ name: "night", values: { level_look: { brightness: 0.4 } } }, { name: "day", values: { level_look: { brightness: 1.2 } } }] }) }, value: { current: "day" } },
+    layer: { parameters: { opacity: 1 }, value: { opacity: 0.4 } },
+    cueList: { parameters: { cues: JSON.stringify({ version: 1, cues: [{ name: "1", bank: "presets_k", preset: "night" }, { name: "2", bank: "presets_k", preset: "day" }] }) }, value: { standby: "2" } },
+  };
+
+  it("there is a row for every kind the catalogue can put on a board", () => {
+    expect(Object.keys(WRITE).sort()).toEqual([...CONTROL_WIDGET_TYPES, ...BOARD_NAMED_TYPES].sort());
+  });
+
+  it("each kind in turn: the value takes the values road, its own items render, nobody else's do, and neither surface is laid out again", async () => {
+    const fixture = recordingBackend();
+    const actor = { kind: "human" as const, id: "tester", label: "Tester" };
+    const kinds = Object.keys(WRITE);
+    const nameOf = (kind: string): string => `${(NODE_KINDS as Readonly<Record<string, string>>)[kind] ?? kind}_k`;
+    const scratch = createAppRuntime({ identityStorage: null, actor });
+    const seeded = await scratch.bus.execute("graph.applyPatch", { baseRevision: scratch.bus.store.getRevision(), label: "seed", operations: [
+      { op: "addNode", ref: "$solid", type: "solid", position: { x: 0, y: 0 }, label: "solid_ground" },
+      { op: "addNode", ref: "$look", type: "level", position: { x: 300, y: 0 }, label: "level_look", parameters: { brightness: 1 } },
+      { op: "addNode", ref: "$out", type: "output", position: { x: 900, y: 0 }, label: "output_frame" },
+      { op: "connect", source: { nodeId: "$solid", portId: "out" }, target: { nodeId: "$look", portId: "input" } },
+      { op: "connect", source: { nodeId: "$look", portId: "out" }, target: { nodeId: "$out", portId: "input" } },
+      ...kinds.map((kind, index) => ({ op: "addNode", ref: `$${kind}`, type: kind, position: { x: index * 300, y: 400 }, label: nameOf(kind), parameters: WRITE[kind]?.parameters })),
+      {
+        op: "addNode", ref: "$panel", type: "panel", position: { x: 0, y: 900 }, label: "panel_all",
+        parameters: { title: "All", board: serializePanelBoard({ columns: 8, items: kinds.map((kind, index) => ({ member: nameOf(kind), rect: { x: 0, y: index * 2, w: 8, h: 2 } })) }) },
+      },
+      // A widget joins a Panel by wire; a bank, a layer and a cue list by name.
+      ...kinds.filter((kind) => CONTROL_WIDGET_TYPES.has(kind)).map((kind) => ({ op: "connect", source: { nodeId: `$${kind}`, portId: "out" }, target: { nodeId: "$panel", portId: "controls" } })),
+    ] as GraphPatchOperation[] }, scratch.invocation);
+    expect(seeded.status, JSON.stringify(seeded.diagnostics).slice(0, 500)).toBe("applied");
+    const ids = seeded.output.createdIds as Record<string, NodeId>;
+    const runtime = createAppRuntime({ identityStorage: null, actor, document: scratch.projectDocument() });
+    scratch.dispose();
+    const status: GpuStatus = { kind: "ready", capabilities: CAPABILITIES, baseline: true, backend: fixture.backend };
+    await act(async () => {
+      render(<App runtime={runtime} storage={createMemoryStorage()} gpuProbe={() => Promise.resolve(status)} />);
+    });
+    await settle();
+    const watch = revisionWatchFor(runtime.bus.store, runtime.registry);
+    // Every kind is DRAWN on the board, on both surfaces, before anything is counted.
+    for (const kind of kinds) {
+      const nodeId = ids[`$${kind}`] as string;
+      expect((counts.widgets[nodeId] ?? 0) + (counts.members[nodeId] ?? 0), `the ${kind} is not drawn on a board`).toBeGreaterThanOrEqual(2);
+    }
+    // The first write of a clean document flips the dirty mark, which the root shows: not counted.
+    await patch(runtime, [{ op: "setParameters", nodeId: ids["$look"] as NodeId, parameters: { contrast: 1.1 } }]);
+    await settle();
+
+    for (const kind of kinds) {
+      const nodeId = ids[`$${kind}`] as NodeId;
+      const before = snapshot();
+      const stats = watch.stats();
+      await patch(runtime, [{ op: "setParameters", nodeId, parameters: WRITE[kind]?.value ?? {} }] as GraphPatchOperation[]);
+      await settle();
+      const moved = since(before);
+      expect({ values: watch.stats().values - stats.values, escalated: watch.stats().escalated - stats.escalated }, `a ${kind}'s value did not take the values road: ${watch.stats().lastEscalation ?? ""}`).toEqual({ values: 1, escalated: 0 });
+      // Its own items: on the Controls tab's board and on the Panel's body, at least.
+      expect(moved.items[nodeId] ?? 0, `the ${kind}'s own items did not render for its value`).toBeGreaterThanOrEqual(2);
+      const others = Object.entries(moved.items).filter(([id, renders]) => id !== nodeId && renders > 0).map(([id, renders]) => `${runtime.bus.store.getGraph().nodes[id as NodeId]?.label ?? id} x${String(renders)}`);
+      expect(others, `a ${kind}'s value rendered other controls' items`).toEqual([]);
+      // Neither board is laid out again, and the root does not render.
+      expect({ app: moved.app, controls: moved.controls, panelBody: moved.panelBody }, `a ${kind}'s value laid a surface out again`).toEqual({ app: 0, controls: 0, panelBody: 0 });
+      // The canvas renders only when its PANE does, and the pane does not for a widget's value. For a
+      // bank's, a layer's or a cue list's it still does, once (`canvasShows`: the pane derives preview
+      // and gizmo rows from a node's parameters) — that is the pane's rule, not a board's.
+      expect(moved.canvas, `a ${kind}'s value rendered the canvas without its pane`).toBe(moved.graphPane);
+      expect(moved.graphPane, `a ${kind}'s value rendered the graph pane`).toBe(CONTROL_WIDGET_TYPES.has(kind) ? 0 : 1);
+    }
+    runtime.dispose();
+  }, 90_000);
+});
+
+describe("T1668b — what a layout from structure must not swallow", () => {
+  it("a control that JOINS the Panel is drawn on both boards, and one that goes back to its default is counted so", async () => {
+    const { runtime, id } = await stage();
+    const slider = id("$slider");
+    const boardItems = (): number => document.querySelectorAll("[data-board-item]").length;
+    const resetCount = (): string | null => document.querySelector("[data-controls-pane] [data-reset-all]")?.getAttribute("data-reset-all") ?? null;
+    const drawn = boardItems();
+    expect(drawn, "the Panel's two controls are not drawn on the tab's board and on the Panel's body").toBe(4);
+    expect(resetCount()).toBe("0");
+    await patch(runtime, [{ op: "setParameters", nodeId: slider, parameters: { value: 1.5 } }]);
+    await settle();
+    expect(resetCount()).toBe("1");
+    await patch(runtime, [{ op: "setParameters", nodeId: slider, parameters: { value: 0.5 } }]);
+    await settle();
+    expect(resetCount(), "back at its default, and still counted away").toBe("0");
+
+    // STRUCTURE: a third control wired to the Panel. Both boards are laid out again and draw it.
+    const before = snapshot();
+    const made = await patch(runtime, [
+      { op: "addNode", ref: "$extra", type: "slider", position: { x: 0, y: 1500 }, label: "slider_extra", parameters: { caption: "Extra", channel: "extra", value: 0.25, min: 0, max: 1, step: 0 } },
+      { op: "connect", source: { nodeId: "$extra", portId: "out" }, target: { nodeId: id("$panel"), portId: "controls" } },
+    ] as GraphPatchOperation[]);
+    await settle();
+    const moved = since(before);
+    expect(moved.controls, "the Controls tab was not laid out again for a new member").toBeGreaterThanOrEqual(1);
+    expect(moved.panelBody, "the Panel's body was not laid out again for a new member").toBeGreaterThanOrEqual(1);
+    expect(boardItems(), "the new member is not drawn on both boards").toBe(drawn + 2);
+    // …and it is LIVE there: its value, written, shows on both.
+    await patch(runtime, [{ op: "setParameters", nodeId: made["$extra"] as NodeId, parameters: { value: 0.75 } }]);
+    await settle();
+    const shown = [...document.querySelectorAll(`[data-board-item] [data-control-node="${made["$extra"] as string}"] [role="slider"]`)].map((element) => element.getAttribute("aria-valuenow"));
+    expect(shown).toEqual(["0.75", "0.75"]);
+    runtime.dispose();
+  }, 60_000);
+});
+
 describe("T1652b — what the rule must not swallow", () => {
   it("a STRUCTURAL edit still compiles, still re-renders what shows it, and still re-derives what a value cannot move", async () => {
     const { runtime, id } = await stage();
@@ -610,16 +789,25 @@ describe("T1652b — what the rule must not swallow", () => {
         newReference: false,
       },
     ];
+    const canvasNodes = (): number => document.querySelectorAll(".react-flow__node").length;
     for (const edit of edits) {
       const before = snapshot();
+      const drawnBefore = canvasNodes();
       await patch(runtime, edit.operations);
       await settle();
       const moved = since(before);
+      // The canvas DRAWS a node the document gained: it renders from structure, and this is structure.
+      if (edit.what === "a node and a wire") expect(canvasNodes(), "the canvas did not draw the new node").toBe(drawnBefore + 1);
       expect(moved.structuralCompiles, `${edit.what}: no structural compile`).toBeGreaterThanOrEqual(1);
       expect(moved.valuesPasses, `${edit.what}: took the values lane`).toBe(0);
       expect(moved.app, `${edit.what}: App did not render`).toBeGreaterThanOrEqual(1);
       expect(moved.graphPane, `${edit.what}: the graph pane did not render`).toBeGreaterThanOrEqual(1);
       expect(moved.requirements, `${edit.what}: the requirement diagnostics did not run`).toBeGreaterThanOrEqual(1);
+      expect(moved.canvas, `${edit.what}: the graph canvas did not render`).toBeGreaterThanOrEqual(1);
+      // A file reference is a string, and it can only arrive in a revision like these: each is walked for them.
+      expect(moved.fileScans, `${edit.what}: the document was not walked for file references`).toBeGreaterThanOrEqual(1);
+      // …and for who reads whom: a new expression is a new reader, and the value graph must order by it.
+      expect(moved.referenceParses, `${edit.what}: the document's references were not parsed again`).toBeGreaterThanOrEqual(1);
       if (edit.newReference) expect(moved.referenceGeometry, `${edit.what}: the reference lines were not rebuilt`).toBeGreaterThanOrEqual(1);
     }
     runtime.dispose();
