@@ -229,7 +229,7 @@ function projectorBlocks(
       (_, p) => `  projector${p}Matrix: mat4x4f,
   projector${p}Pos: vec4f,    // xyz = lens position, w = brightness (nominal at look-at)
   projector${p}Color: vec4f,  // rgb = tint, w = falloff switch (0 off, 1 inverse-square)
-  projector${p}Meta: vec4f,   // x = throw distance |lookAt - eye|, yzw reserved
+  projector${p}Meta: vec4f,   // x = throw distance |lookAt - eye|; y, z = near, far; w = image width as 2·tan(half), keystone included
 `,
     )
     .join("");
@@ -248,9 +248,18 @@ function projectorBlocks(
       const occlusionBlock = proj.occlusion
         ? `      let ddims = vec2f(textureDimensions(projectorDepth${p}, 0));
       let stored = textureLoad(projectorDepth${p}, vec2i(puv * (ddims - vec2f(1.0))), 0).r;
-      /* The T624 slope-scaled bias, reused: fragment-z on both sides of the compare. */
-      let bias = 0.0015 + 0.012 * (1.0 - plambert);
-      if (pndc.z - bias > stored) { beam = 0.0; }
+      /* VNB11: compare DEPTHS, not fragment-z. Perspective fragment-z crowds toward 1 with
+         distance (near is 2% of the throw), so a fixed bias in it was a sliver of a texel by
+         the lens and metres at the end of a stage throw: a deck's top no longer shadowed its
+         own front face. Linearised, the bias is the depth map's texel footprint at this
+         depth, scaled by the slope, plus a hair for float precision. */
+      let pnear = params.projector${p}Meta.y;
+      let pfar = params.projector${p}Meta.z;
+      let here = pnear * pfar / (pfar - pndc.z * (pfar - pnear));
+      let there = pnear * pfar / (pfar - min(stored, 1.0) * (pfar - pnear));
+      let ptexel = here * params.projector${p}Meta.w / max(ddims.x, 1.0);
+      let pslope = sqrt(max(1.0 - plambert * plambert, 0.0)) / max(plambert, 0.1);
+      if (here - (ptexel * (1.5 + 2.0 * pslope) + here * 0.0005) > there) { beam = 0.0; }
 `
         : "";
       return `  {
