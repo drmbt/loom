@@ -163,7 +163,7 @@ export const pointSweepNode: NodeDefinition = {
       label: "Points",
       type: { kind: "pointset" as const, requires: [{ name: "position", type: "vec3f" as const }] },
       description:
-        "A grid: columns round the profile, rows along the path (a cap adds two rows at its end), one sheet per strip of the path. position, normal (vec3f: the outline's own normal in the ring's plane, the end's on a cap, on the side Facing names), uv (vec2f) and every attribute of the path point except its frame, copied to each vertex of its ring. A kernel's ctx.dim reads one sheet's columns and rows, and ctx.dim.sheet says which sheet.",
+        "A grid: columns round the profile, rows along the path (a cap adds two rows at its end), one sheet per strip of the path. position, normal (vec3f: the outline's own normal in the ring's plane, the end's on a cap, on the side Facing names), uv (vec2f: the texture coordinate a Surface's material reads) and every attribute of the path point except its frame, copied to each vertex of its ring. A kernel's ctx.dim reads one sheet's columns and rows, and ctx.dim.sheet says which sheet.",
     },
   ],
   parameters: {
@@ -208,7 +208,7 @@ export const pointSweepNode: NodeDefinition = {
       range: "floor",
       step: 0.01,
       description:
-        "The profile's half-width, metres: a Ring's radius, half a Square's or a Strip's width, and what multiplies a Custom outline's own x and y (1 keeps its size). In Map mode an f32 attribute of the path (or one channel of a float vector) MULTIPLIES it per point: a taper, a swelling, a hall in a tunnel.",
+        "The profile's half-width, metres: a Ring's radius, half a Square's or a Strip's width, and what multiplies a Custom outline's own x and y (1 keeps its size). In Map mode an f32 attribute of the path (or one channel of a float vector) MULTIPLIES it per point: a taper, a swelling, a hall in a tunnel. A map that goes to nothing at both ends closes the tube into a spindle, with no cap rows.",
     },
     caps: {
       type: "enum",

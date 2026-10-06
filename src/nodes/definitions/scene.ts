@@ -1000,7 +1000,8 @@ export const geometryNode: NodeDefinition = {
       id: "points",
       label: "Points",
       type: { kind: "pointset", requires: [{ name: "position", type: "vec3f" }] },
-      description: "Surface mode needs analytic grid topology on the edge.",
+      description:
+        "Surface mode needs analytic grid topology on the edge. A vec2f attribute named uv on the points is the texture coordinate its material reads, in place of the grid's columns and rows.",
     },
     {
       // T1581b: the instance SHAPE. AFTER `points`, which stays the first pointset input:
@@ -3332,6 +3333,16 @@ export const renderNode: NodeDefinition = {
         ...(material.maps.albedo === undefined ? {} : { albedo: true }),
         ...(material.maps.roughness === undefined ? {} : { roughness: true }),
       };
+      /* T1618b: a grid whose pointset carries a vec2f `uv` hands it to the material as its
+         texture coordinate, in place of the grid's own. Bound and read only where a coordinate
+         IS read: a map is wired, or the Material · WGSL's source names the member. A sweep
+         whose material patterns by world position keeps the program and the bindings it had. */
+      const gridUv =
+        topology.kind === "grid" &&
+        (material.maps.albedo !== undefined || material.maps.roughness !== undefined || (material.custom !== undefined && SURFACE_UV_REFERENCE.test(material.custom.code)))
+          ? meshAttribute("uv", "vec2f")
+          : undefined;
+      const gridUvOption = gridUv === undefined ? {} : { gridUv: true };
       /* The author's surface, as the generator takes it: one object for every variant below. */
       const customOption =
         material.custom === undefined
@@ -3350,6 +3361,7 @@ export const renderNode: NodeDefinition = {
         ...instancedOption,
         ...(tinted ? { pointColor: true } : {}),
         ...sheetsOption,
+        ...gridUvOption,
         ...(meshTopology === undefined
           ? {}
           : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
@@ -3382,6 +3394,7 @@ export const renderNode: NodeDefinition = {
           ...instancedOption,
           ...(tinted ? { pointColor: true } : {}),
           ...sheetsOption,
+          ...gridUvOption,
           ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, shadowBias, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
           ...(environmentResource === undefined ? {} : { environment: true, environmentTaps, ...(environmentPrefiltered ? { environmentPrefiltered: true } : {}) }),
           ...(aoActive ? { ambientOcclusion: true } : {}),
@@ -3404,6 +3417,7 @@ export const renderNode: NodeDefinition = {
                 ...(tintAttribute === undefined
                   ? []
                   : [attributeBinding("pointColors", tintAttribute)]),
+                ...(gridUv === undefined ? [] : [attributeBinding("gridUvs", gridUv)]),
                 ...(meshTopology === undefined
                   ? []
                   : [
@@ -3848,6 +3862,15 @@ export const renderNode: NodeDefinition = {
 const envLit = (model: string): boolean => model === "phong" || model === "pbr";
 
 /**
+ * T1618b — DOES A MATERIAL · WGSL READ THE TEXTURE COORDINATE? Its source is the author's,
+ * and a read of the member has to spell it: `s.uv`, or `.uv` on a copy of the struct handed
+ * to a helper. So the member's name after a dot is the whole test, the way a kernel's
+ * `ctx.dim` is found (`points/codegen.ts`). A match in a comment costs one binding; a read
+ * cannot be missed. The stock materials read it exactly where a map is wired.
+ */
+const SURFACE_UV_REFERENCE = /\.\s*uv\b/;
+
+/**
  * T1411b — a SURFACE (grid or mesh) drawn with Blend: Additive. One predicate for the
  * three places that must agree: the lit loop defers it, the lit pass blends it, and every
  * depth sweep (shadow, AO, projector, the Depth output) leaves it out. The per-point
@@ -3895,14 +3918,15 @@ const ALBEDO_IN = {
   label: "Albedo Map",
   optional: true,
   type: RGBA_TEXTURE,
-  description: "Multiplies the base colour, sampled by the surface's grid uv. A render output plugs in here (E25).",
+  description:
+    "Multiplies the base colour, read at the surface's texture coordinate: a vec2f attribute named uv on its points where they carry one (a Sweep writes one, a mesh file brings its own), else a grid's own, 0 to 1 across its columns and along its rows, once round a wrapped axis. A render output plugs in here (E25).",
 };
 const ROUGHNESS_IN = {
   id: "roughness",
   label: "Roughness Map",
   optional: true,
   type: RGBA_TEXTURE,
-  description: "Red channel multiplies roughness, sampled by the surface's grid uv.",
+  description: "Red channel multiplies roughness, read at the same texture coordinate as the Albedo Map: the points' uv attribute, else the grid's own.",
 };
 
 export const materialUnlitNode: NodeDefinition = {

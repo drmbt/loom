@@ -41,6 +41,14 @@ export interface SceneShadingOptions {
    */
   readonly sheets?: boolean;
   /**
+   * T1618b: the grid's pointset carries a `uv` (vec2f) AND this draw reads a texture
+   * coordinate (a map is bound, or the Material · WGSL names `.uv`): the vertex chunk binds
+   * the attribute and hands it on in place of the grid coordinate, carried past a wrapped
+   * seam by whole turns — see `GRID_UV_WGSL`. Absent, the text is the one a grid has
+   * without it, to the byte: a pointset that carries a `uv` nobody reads costs nothing.
+   */
+  readonly gridUv?: boolean;
+  /**
    * T481: the LIGHT INDICES that cast, in casting order. Slot s of this list owns
    * `shadow{s}Matrix` (a named mat4 member, V380) and the `shadowMap{s}` texture at
    * binding 5+s. Empty or absent emits byte-identical text (§V309).
@@ -994,10 +1002,74 @@ var<private> gridSheet: u32;
 `,
 } as const;
 
-function surfaceMeshWgsl(pointColor: boolean, carriesLocal = false, sheets = false): EmittedWgsl {
+/**
+ * T1618b — A GRID THAT CARRIES ITS OWN TEXTURE COORDINATE. A pointset with a vec2f `uv`
+ * (a Sweep publishes one: round its profile, and along its path by length or by count) is
+ * read by the material in place of the grid coordinate. It is a variant, emitted only for a
+ * draw that reads a coordinate from a pointset that has one.
+ *
+ * ⚑ THE SEAM. On a wrapped axis the corner past the last point IS the first point, and its
+ * coordinate is back where the axis began: read plainly, the seam cell would run the whole
+ * map backwards. So past the seam the coordinate is CARRIED ON BY WHOLE TURNS: the first
+ * point's, plus the whole number of turns the axis makes on its way to the last, up for a
+ * coordinate that rises and down for one that falls. Once round a tube from 0 arrives at 1;
+ * three tiles round arrive at 3; a mirrored coordinate that falls from 1 arrives at 0.
+ * It takes the producer's coordinate to make a whole number of turns round a wrapped axis,
+ * which a Sweep's always does (Metres on a closed path rounds its tiles to a whole number).
+ *
+ * `row` is the lit chunk's own row rule, so on a grid of several sheets a vertex reads its
+ * own sheet's coordinate and each sheet's seam is carried by its own turns.
+ */
+const GRID_UV_WGSL = (rowOf: (row: string) => string): string => `/* T1618b: the pointset's own texture coordinate. */
+fn gridUvAt(column: u32, row: u32) -> vec2f {
+  let cols = u32(params.grid.x);
+  let rows = u32(params.grid.y);
+  return gridUvs[${rowOf("row")} * cols + column];
+}
+
+/* Past a wrapped seam: the first point's coordinate, carried on by the whole turns the axis
+   makes on its way to the last point, in the direction it goes. */
+fn gridUvPastSeam(first: f32, last: f32) -> f32 {
+  let turns = last - first;
+  return first + sign(turns) * ceil(abs(turns));
+}
+
+fn gridUvOf(gx: u32, gy: u32) -> vec2f {
+  let cols = u32(params.grid.x);
+  let rows = u32(params.grid.y);
+  let wrapU = params.grid.z > 0.5;
+  let wrapV = params.grid.w > 0.5;
+  let column = select(gx, gx % cols, wrapU);
+  let row = select(gy, gy % rows, wrapV);
+  var coordinate = gridUvAt(column, row);
+  if (wrapU && gx == cols) {
+    coordinate.x = gridUvPastSeam(coordinate.x, gridUvAt(cols - 1u, row).x);
+  }
+  if (wrapV && gy == rows) {
+    coordinate.y = gridUvPastSeam(coordinate.y, gridUvAt(column, rows - 1u).y);
+  }
+  return coordinate;
+}
+
+`;
+
+function surfaceMeshWgsl(pointColor: boolean, carriesLocal = false, sheets = false, gridUv = false): EmittedWgsl {
   /* One sheet: the cell IS the quad, and a row's first slot is `row × cols`. */
   const cell = sheets ? "cell" : "quad";
   const rowOf = (row: string): string => (sheets ? GRID_SHEET_WGSL.row(row) : row);
+  /* §B255 in the grid's own coordinate; T1618b where the pointset brings one that is read. */
+  const coordinate = gridUv
+    ? `  /* T1618b: the pointset's own uv, carried past a wrapped seam by whole turns. */
+  out.uv = gridUvOf(gx, gy);`
+    : `  /* The grid coordinate IS the uv — free, and what material maps sample by. B255: an axis
+     runs over its CELLS. A wrapped axis has as many cells as points (the last is the seam
+     cell), so the coordinate is 1 at the seam vertex and a texture goes once round. It was
+     the points less one on every axis, which on a wrapped one ran to cols ÷ (cols − 1):
+     the seam cell read past the map's edge and showed its last texel all the way across. */
+  out.uv = vec2f(
+    f32(gx) / max(select(params.grid.x - 1.0, params.grid.x, wrapU), 1.0),
+    f32(gy) / max(select(params.grid.y - 1.0, params.grid.y, wrapV), 1.0),
+  );`;
   return wgsl`struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) normal: vec3f,
@@ -1029,7 +1101,7 @@ fn previousIndex(i: u32, extent: u32, wrapped: bool) -> u32 {
   return select(max(i, 1u) - 1u, (i + extent - 1u) % extent, wrapped);
 }
 
-@vertex
+${gridUv ? GRID_UV_WGSL(rowOf) : ""}@vertex
 fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let cols = u32(params.grid.x);
   let rows = u32(params.grid.y);
@@ -1055,15 +1127,7 @@ ${sheets ? GRID_SHEET_WGSL.cell("select(rows - 1u, rows, wrapV)") : ""}  let gx 
   out.position = params.viewProjection * vec4f(world, 1.0);
   out.normal = (params.modelNormal * vec4f(localNormal, 0.0)).xyz;
   out.world = world;${carriesLocal ? "\n  out.local = local;\n  out.localNormal = localNormal;" : ""}
-  /* The grid coordinate IS the uv — free, and what material maps sample by. B255: an axis
-     runs over its CELLS. A wrapped axis has as many cells as points (the last is the seam
-     cell), so the coordinate is 1 at the seam vertex and a texture goes once round. It was
-     the points less one on every axis, which on a wrapped one ran to cols ÷ (cols − 1):
-     the seam cell read past the map's edge and showed its last texel all the way across. */
-  out.uv = vec2f(
-    f32(gx) / max(select(params.grid.x - 1.0, params.grid.x, wrapU), 1.0),
-    f32(gy) / max(select(params.grid.y - 1.0, params.grid.y, wrapV), 1.0),
-  );
+${coordinate}
   /* Same modular indexing as the position read, so the seam vertex wears column 0's tint. */
   out.tint = ${pointColor
     ? `pointColors[${rowOf("select(gy, gy % rows, wrapV)")} * cols + select(gx, gx % cols, wrapU)]`
@@ -1390,6 +1454,8 @@ export const sceneSurfaceModule = generatedOnce("sceneSurfaceModule", buildScene
 function buildSceneSurfaceModule(options: SceneShadingOptions): SceneSurfaceModule {
   const lightCount = Math.max(0, Math.floor(options.lightCount));
   const pointColor = options.pointColor === true;
+  /* T1618b: a grid's own `uv`. A mesh has its own (`mesh.uv`), and an instanced draw no grid. */
+  const gridUv = options.gridUv === true && options.mesh === undefined;
   const albedoMap = options.maps?.albedo === true;
   const roughnessMap = options.maps?.roughness === true;
   const shadows = options.shadows ?? [];
@@ -1705,13 +1771,16 @@ ${shadowFactor(index)}    matte.${"xyz"[channel]} = 1.0 - shadow;
   const modelFields = instanced === undefined ? "  model: mat4x4f,           // T1588b: the object transform\n  modelNormal: mat4x4f,     // its normal matrix (upper 3x3)\n" : "";
   const pointBindings =
     instanced === undefined
-      ? `@group(0) @binding(1) var<storage, read> positions: array<vec3f>;\n${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}`
+      ? `@group(0) @binding(1) var<storage, read> positions: array<vec3f>;\n${pointColor ? "@group(0) @binding(2) var<storage, read> pointColors: array<vec4f>;\n" : ""}${
+          /* T1618b: a grid's own uv attribute, at the slot a mesh's has (a draw is one or the other). */
+          gridUv ? `@group(0) @binding(${MESH_BINDINGS.uvs}) var<storage, read> gridUvs: array<vec2f>;\n` : ""
+        }`
       : "";
   const meshDeclarations =
     options.mesh === undefined ? "" : instanced === undefined ? meshBindingsWgsl(options.mesh) : `${instancedStorageWgsl(instanced)}${instanceAccessors}${FACE_VIEWER_WGSL}`;
   const vertexStage =
     options.mesh === undefined
-      ? surfaceMeshWgsl(pointColor, custom !== undefined, options.sheets === true)
+      ? surfaceMeshWgsl(pointColor, custom !== undefined, options.sheets === true, gridUv)
       : instanced === undefined
         ? meshVertexWgsl(pointColor, options.mesh, custom !== undefined)
         : meshInstancedVertexWgsl(instanced, custom !== undefined);
