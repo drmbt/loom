@@ -5,7 +5,7 @@ import { edge, expressionSlot, graph, node as buildNode, settings } from "../../
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { serializePresetBank } from "../../domain/presets/bank.ts";
-import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
+import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, CUT_DEFAULTS, SHOTS, cutStatements } from "./camera.ts";
 import { FIELD, FIELD_ATTRIBUTES, FIELD_TOWERS, POD_CAPACITY, POD_COUNT, POD_KERNEL, POD_SURFACE_WGSL, TOWER_CAPACITY, TOWER_KERNEL, TOWER_SURFACE_WGSL } from "./field.ts";
 import { PACK_BARS, fieldTurn, against, pace, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
@@ -613,6 +613,20 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("lag_levels", "valueLag", [-2400, 500], { lag: 0.03, releaseRatio: 5 }, { label: "lag_levels" }),
     node("select_hits", "valueSelect", [-3300, 750], { channels: "kickCount snareCount hatCount" }, { label: "select_hits" }),
     node("lag_hits", "valueLag", [-3000, 750], { lag: 0.001, releaseRatio: 250 }, { label: "lag_hits" }),
+    // How busy the track is, for the camera's cuts (camera.ts, CUT_PACE): kicks and snares a second over the last
+    // four, up within a second of a beat coming in and down over six after it goes, so a bar's rest does not slow the cutting.
+    node("rate_hits", "valueRate", [-3300, 450], { window: 4 }, { label: "rate_hits" }),
+    node("expression_busy", "valueExpression", [-3000, 450], { expressions: "busy = kickCount + snareCount", defaults: "kickCount = 0;\nsnareCount = 0" }, { label: "expression_busy" }),
+    node("select_busy", "valueSelect", [-2700, 450], { channels: "busy" }, { label: "select_busy" }),
+    node("lag_busy", "valueLag", [-2400, 450], { lag: 1, releaseRatio: 6 }, { label: "lag_busy" }),
+    // THE CUTS (camera.ts, cutStatements): a request for one on every eighth, fourth or second bar line by how busy
+    // the track is, and a Count that grants it unless the last cut was less than a shot's length ago. The camera
+    // reads the count: it is the number of the shot.
+    // (The bar alone from the track: an Expression's wires share one bag, and the track has a `level` of its own.)
+    node("select_bar", "valueSelect", [-2400, 300], { channels: "bar" }, { label: "select_bar" }),
+    node("expression_cut", "valueExpression", [-2100, 450], { expressions: cutStatements((60 / track.bpm) * track.beatsPerBar), defaults: CUT_DEFAULTS }, { label: "expression_cut" }),
+    node("select_want", "valueSelect", [-1800, 450], { channels: "want" }, { label: "select_want" }),
+    node("count_cuts", "valueCount", [-1500, 450], { threshold: 0.5, holdoff: expressionSlot("op('expression_cut').chan.hold", 3.2) }, { label: "count_cuts" }),
     // What the track is doing (director.ts): this passage's loudness against what it has
     // usually been lately (slow to fall), and against the quietest it has lately been (falls at
     // once, slow to rise). The level is the clip's own, not the ranked one: a rank has no silence.
@@ -654,21 +668,19 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("constant_winding", "constant", [-900, 1100], { value: expressionSlot(`${SPIRAL} * op('lag_rate').chan.value / 16`, 0) }, { label: "constant_winding" }),
     node("speed_winding", "valueSpeed", [-600, 1100], { minimum: 0, maximum: 1, limit: "loop" }, { label: "speed_winding" }),
     node("lag_swim", "valueLag", [-1200, 725], { lag: 0.8, releaseRatio: 1.5 }, { label: "lag_swim" }),
-    // The same number under a name of its own, for the camera: an Expression node reads its wires into one
-    // bag by channel name, and the distance travelled is already `value` there.
-    node("expression_swimming", "valueExpression", [-900, 725], { expressions: "swim = value", defaults: "value = 0" }, { label: "expression_swimming" }),
     // The long view: the passage's loudness ranked against the last minute's, eased.
     node("normalize_intensity", "valueNormalize", [-2100, 850], { window: 60 }, { label: "normalize_intensity" }),
     node("lag_intensity", "valueLag", [-1800, 850], { lag: 2, releaseRatio: 1 }, { label: "lag_intensity" }),
     node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(`max(${on("toggle_perch")}, max(${rest(FOLLOW, ENERGY)}, max(${phrasePerch(FOLLOW, INTENSITY, phraseDraw(BAR, 2))}, ${phrasePause(FOLLOW, INTENSITY, phraseDraw(BAR, 5), BAR)}) * (${ENERGY} > 0)))`, 0) }, { label: "constant_perch" }),
     // The pack: how many are out. A follower takes eight seconds to come up or fall back, so the number is eased.
     // In the fields all of them are out, and are called up two bars before it gets there.
-    node("constant_pack", "constant", [-1500, 1225], { value: expressionSlot(`max(max(${on("slider_pack")}, ${PACK.length} * ${PLACE_SOON}), ${packSize(`(${FOLLOW} * (${ENERGY} > 0))`, INTENSITY, phraseDraw(BAR, 6, PACK_BARS), PACK.length)})`, 1) }, { label: "constant_pack" }),
-    // Which place it is in, under a name of its own for the camera (see expression_swimming).
+    node("constant_pack", "constant", [-1500, 1225], { value: expressionSlot(`max(max(${on("slider_pack")}, ${PACK.length} * ${PLACE_SOON}), ${packSize(`(${FOLLOW} * (${ENERGY} > 0))`, phraseDraw(BAR, 6, PACK_BARS), PACK.length)})`, 1) }, { label: "constant_pack" }),
+    // Which place it is in, under a name of its own for the camera: an Expression node reads its wires into one bag by channel name.
+    node("expression_packing", "valueExpression", [-900, 1100], { expressions: "packing = value", defaults: "value = 1" }, { label: "expression_packing" }),
     node("constant_place", "constant", [-1500, 1350], { value: expressionSlot(PLACE, 0) }, { label: "constant_place" }),
     node("expression_placed", "valueExpression", [-900, 1350], { expressions: "place = value", defaults: "value = 0" }, { label: "expression_placed" }),
     node("lag_pack", "valueLag", [-1200, 1225], { lag: 4, releaseRatio: 1 }, { label: "lag_pack" }),
-    // Under a name of its own for the camera, which stands back behind however many are out (see expression_swimming).
+    // Under a name of its own for the camera, which stands back behind however many are out (see expression_placed).
     node("expression_packed", "valueExpression", [-900, 1225], { expressions: "pack = value", defaults: "value = 1" }, { label: "expression_packed" }),
     node("lag_perched", "valueLag", [-2100, 1125], { lag: 0.6, releaseRatio: 1 }, { label: "lag_perched" }),
     node("speed_travel", "valueSpeed", [-1800, 1000], { minimum: 0, maximum: PATH.period, limit: "loop" }, { label: "speed_travel" }),
@@ -944,6 +956,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("rank-levels", ["normalize_levels", "out"], ["lag_levels", "in"]),
     edge("clip-hits", ["audiofile_track", "out"], ["select_hits", "in"]),
     edge("hits-lag", ["select_hits", "out"], ["lag_hits", "in"]),
+    edge("hits-rate", ["select_hits", "out"], ["rate_hits", "in"]),
+    edge("rate-busy", ["rate_hits", "out"], ["expression_busy", "in"]),
+    edge("busy-only", ["expression_busy", "out"], ["select_busy", "in"]),
+    edge("busy-ease", ["select_busy", "out"], ["lag_busy", "in"]),
+    edge("clip-bar", ["audiofile_track", "out"], ["select_bar", "in"]),
+    ...["select_bar", "lag_busy", "lag_intensity"].map((source, index) => edge(`cut-${source}`, [source, "out"], ["expression_cut", "in"], index)),
+    edge("cut-want", ["expression_cut", "out"], ["select_want", "in"]),
+    edge("want-count", ["select_want", "out"], ["count_cuts", "in"]),
     edge("smooth-loud", ["lag_smooth", "out"], ["select_loud", "in"]),
     edge("loud-lag", ["select_loud", "out"], ["lag_loud", "in"]),
     edge("loud-usual", ["lag_loud", "out"], ["lag_usual", "in"]),
@@ -962,10 +982,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("perch-ease", ["constant_perch", "out"], ["lag_perched", "in"]),
     edge("stroke-rate", ["constant_stroke", "out"], ["speed_stroke", "in"]),
     // What the camera rig reads: how far the robot has come, the track's bars, and the panel.
-    ...["speed_travel", "audiofile_track", "slider_shot", "toggle_cuts", "slider_distance", "xypad_view", "expression_swimming", "expression_packed", "expression_placed"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
+    ...["speed_travel", "slider_shot", "toggle_cuts", "slider_distance", "xypad_view", "expression_packed", "expression_packing", "expression_placed", "count_cuts"].map((source, index) => edge(`camera-${source}`, [source, "out"], ["expression_camera", "in"], index)),
     edge("pack-named", ["lag_pack", "out"], ["expression_packed", "in"]),
+    edge("packing-named", ["constant_pack", "out"], ["expression_packing", "in"]),
     edge("place-named", ["constant_place", "out"], ["expression_placed", "in"]),
-    edge("swim-named", ["lag_swim", "out"], ["expression_swimming", "in"]),
     ...pieces.flatMap((piece) => [
       edge(`${piece.role}-shape`, [`mesh_${piece.role}`, "out"], [`geometry_${piece.role}`, "mesh"]),
       edge(`${piece.role}-points`, [pointsOf(piece), "out"], [`geometry_${piece.role}`, "points"]),

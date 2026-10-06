@@ -161,11 +161,33 @@
           "portId": "points"
         }
       },
-      "camera-audiofile_track": {
-        "id": "camera-audiofile_track",
-        "order": 1,
+      "busy-ease": {
+        "id": "busy-ease",
         "source": {
-          "nodeId": "audiofile_track",
+          "nodeId": "select_busy",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lag_busy",
+          "portId": "in"
+        }
+      },
+      "busy-only": {
+        "id": "busy-only",
+        "source": {
+          "nodeId": "expression_busy",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "select_busy",
+          "portId": "in"
+        }
+      },
+      "camera-count_cuts": {
+        "id": "camera-count_cuts",
+        "order": 8,
+        "source": {
+          "nodeId": "count_cuts",
           "portId": "out"
         },
         "target": {
@@ -175,7 +197,7 @@
       },
       "camera-expression_packed": {
         "id": "camera-expression_packed",
-        "order": 7,
+        "order": 5,
         "source": {
           "nodeId": "expression_packed",
           "portId": "out"
@@ -185,9 +207,21 @@
           "portId": "in"
         }
       },
+      "camera-expression_packing": {
+        "id": "camera-expression_packing",
+        "order": 6,
+        "source": {
+          "nodeId": "expression_packing",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_camera",
+          "portId": "in"
+        }
+      },
       "camera-expression_placed": {
         "id": "camera-expression_placed",
-        "order": 8,
+        "order": 7,
         "source": {
           "nodeId": "expression_placed",
           "portId": "out"
@@ -197,21 +231,9 @@
           "portId": "in"
         }
       },
-      "camera-expression_swimming": {
-        "id": "camera-expression_swimming",
-        "order": 6,
-        "source": {
-          "nodeId": "expression_swimming",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "expression_camera",
-          "portId": "in"
-        }
-      },
       "camera-slider_distance": {
         "id": "camera-slider_distance",
-        "order": 4,
+        "order": 3,
         "source": {
           "nodeId": "slider_distance",
           "portId": "out"
@@ -223,7 +245,7 @@
       },
       "camera-slider_shot": {
         "id": "camera-slider_shot",
-        "order": 2,
+        "order": 1,
         "source": {
           "nodeId": "slider_shot",
           "portId": "out"
@@ -247,7 +269,7 @@
       },
       "camera-toggle_cuts": {
         "id": "camera-toggle_cuts",
-        "order": 3,
+        "order": 2,
         "source": {
           "nodeId": "toggle_cuts",
           "portId": "out"
@@ -259,7 +281,7 @@
       },
       "camera-xypad_view": {
         "id": "camera-xypad_view",
-        "order": 5,
+        "order": 4,
         "source": {
           "nodeId": "xypad_view",
           "portId": "out"
@@ -289,6 +311,17 @@
         "target": {
           "nodeId": "geometry_claw",
           "portId": "mesh"
+        }
+      },
+      "clip-bar": {
+        "id": "clip-bar",
+        "source": {
+          "nodeId": "audiofile_track",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "select_bar",
+          "portId": "in"
         }
       },
       "clip-hits": {
@@ -321,6 +354,53 @@
         },
         "target": {
           "nodeId": "select_levels",
+          "portId": "in"
+        }
+      },
+      "cut-lag_busy": {
+        "id": "cut-lag_busy",
+        "order": 1,
+        "source": {
+          "nodeId": "lag_busy",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_cut",
+          "portId": "in"
+        }
+      },
+      "cut-lag_intensity": {
+        "id": "cut-lag_intensity",
+        "order": 2,
+        "source": {
+          "nodeId": "lag_intensity",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_cut",
+          "portId": "in"
+        }
+      },
+      "cut-select_bar": {
+        "id": "cut-select_bar",
+        "order": 0,
+        "source": {
+          "nodeId": "select_bar",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_cut",
+          "portId": "in"
+        }
+      },
+      "cut-want": {
+        "id": "cut-want",
+        "source": {
+          "nodeId": "expression_cut",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "select_want",
           "portId": "in"
         }
       },
@@ -468,6 +548,17 @@
         },
         "target": {
           "nodeId": "lag_hits",
+          "portId": "in"
+        }
+      },
+      "hits-rate": {
+        "id": "hits-rate",
+        "source": {
+          "nodeId": "select_hits",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "rate_hits",
           "portId": "in"
         }
       },
@@ -690,6 +781,17 @@
         },
         "target": {
           "nodeId": "expression_packed",
+          "portId": "in"
+        }
+      },
+      "packing-named": {
+        "id": "packing-named",
+        "source": {
+          "nodeId": "constant_pack",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_packing",
           "portId": "in"
         }
       },
@@ -1730,6 +1832,17 @@
           "portId": "in"
         }
       },
+      "rate-busy": {
+        "id": "rate-busy",
+        "source": {
+          "nodeId": "rate_hits",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "expression_busy",
+          "portId": "in"
+        }
+      },
       "rate-ease": {
         "id": "rate-ease",
         "source": {
@@ -1840,17 +1953,6 @@
           "portId": "in"
         }
       },
-      "swim-named": {
-        "id": "swim-named",
-        "source": {
-          "nodeId": "lag_swim",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "expression_swimming",
-          "portId": "in"
-        }
-      },
       "towers-frames": {
         "id": "towers-frames",
         "source": {
@@ -1893,6 +1995,17 @@
         "target": {
           "nodeId": "sweep_towers",
           "portId": "points"
+        }
+      },
+      "want-count": {
+        "id": "want-count",
+        "source": {
+          "nodeId": "select_want",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "count_cuts",
+          "portId": "in"
         }
       },
       "winding-sum": {
@@ -2151,7 +2264,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(max(op('slider_pack').chan.pack, 3 * max(max(op('slider_fields').chan.fields > 0.5, (op('toggle_follow').chan.follow * (mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2))), max(op('slider_fields').chan.fields > 0.5, (op('toggle_follow').chan.follow * (mod(floor((op('audiofile_track').chan.bar + 2) / 16), 3) == 2))))), (1 + (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0)) * 2 * (op('lag_intensity').chan.level > 0.6) * (fract(sin((floor(op('audiofile_track').chan.bar / 8) + 6) * 12.9898) * 43758.5453) < 0.4)))"
+                "source": "max(max(op('slider_pack').chan.pack, 3 * max(max(op('slider_fields').chan.fields > 0.5, (op('toggle_follow').chan.follow * (mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2))), max(op('slider_fields').chan.fields > 0.5, (op('toggle_follow').chan.follow * (mod(floor((op('audiofile_track').chan.bar + 2) / 16), 3) == 2))))), (1 + (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0)) * 2 * (fract(sin((floor(op('audiofile_track').chan.bar / 8) + 6) * 12.9898) * 43758.5453) < 0.3)))"
               },
               "static": {
                 "kind": "static",
@@ -2330,6 +2443,32 @@
         },
         "type": "constant"
       },
+      "count_cuts": {
+        "definitionVersion": 1,
+        "id": "count_cuts",
+        "label": "count_cuts",
+        "parameters": {
+          "holdoff": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('expression_cut').chan.hold"
+              },
+              "static": {
+                "kind": "static",
+                "value": 3.2
+              }
+            },
+            "mode": "expression"
+          },
+          "threshold": 0.5
+        },
+        "position": {
+          "x": -1500,
+          "y": 450
+        },
+        "type": "valueCount"
+      },
       "count_kick": {
         "definitionVersion": 1,
         "id": "count_kick",
@@ -2344,17 +2483,45 @@
         },
         "type": "valueCount"
       },
+      "expression_busy": {
+        "definitionVersion": 1,
+        "id": "expression_busy",
+        "label": "expression_busy",
+        "parameters": {
+          "defaults": "kickCount = 0;\nsnareCount = 0",
+          "expressions": "busy = kickCount + snareCount"
+        },
+        "position": {
+          "x": -3000,
+          "y": 450
+        },
+        "type": "valueExpression"
+      },
       "expression_camera": {
         "definitionVersion": 1,
         "id": "expression_camera",
         "label": "expression_camera",
         "parameters": {
-          "defaults": "bar = floor(abstime / 4);\nvalue = 0;\nswim = 0;\npack = 1;\nshot = 0;\ncuts = 0;\ndistance = 7.5;\nviewX = 1.1;\nviewY = 0.6;\nplace = 0",
-          "expressions": "turn = floor(bar / 2);\npacked = (pack > 1.5);\nfielded = (place > 0.5);\ncut = fielded * (((turn - 8 * floor(turn / 8)) == 0) * 19 + ((turn - 8 * floor(turn / 8)) == 1) * 9 + ((turn - 8 * floor(turn / 8)) == 2) * 20 + ((turn - 8 * floor(turn / 8)) == 3) * 0 + ((turn - 8 * floor(turn / 8)) == 4) * 21 + ((turn - 8 * floor(turn / 8)) == 5) * 13 + ((turn - 8 * floor(turn / 8)) == 6) * 22 + ((turn - 8 * floor(turn / 8)) == 7) * 10) + (1 - fielded) * (packed * (((turn - 8 * floor(turn / 8)) == 0) * 15 + ((turn - 8 * floor(turn / 8)) == 1) * 9 + ((turn - 8 * floor(turn / 8)) == 2) * 16 + ((turn - 8 * floor(turn / 8)) == 3) * 0 + ((turn - 8 * floor(turn / 8)) == 4) * 17 + ((turn - 8 * floor(turn / 8)) == 5) * 13 + ((turn - 8 * floor(turn / 8)) == 6) * 18 + ((turn - 8 * floor(turn / 8)) == 7) * 10) + (1 - packed) * ((swim > 0.5) * (((turn - 10 * floor(turn / 10)) == 0) * 9 + ((turn - 10 * floor(turn / 10)) == 1) * 0 + ((turn - 10 * floor(turn / 10)) == 2) * 11 + ((turn - 10 * floor(turn / 10)) == 3) * 13 + ((turn - 10 * floor(turn / 10)) == 4) * 1 + ((turn - 10 * floor(turn / 10)) == 5) * 10 + ((turn - 10 * floor(turn / 10)) == 6) * 4 + ((turn - 10 * floor(turn / 10)) == 7) * 12 + ((turn - 10 * floor(turn / 10)) == 8) * 14 + ((turn - 10 * floor(turn / 10)) == 9) * 2) + (swim <= 0.5) * (((turn - 9 * floor(turn / 9)) == 0) * 0 + ((turn - 9 * floor(turn / 9)) == 1) * 4 + ((turn - 9 * floor(turn / 9)) == 2) * 8 + ((turn - 9 * floor(turn / 9)) == 3) * 3 + ((turn - 9 * floor(turn / 9)) == 4) * 7 + ((turn - 9 * floor(turn / 9)) == 5) * 2 + ((turn - 9 * floor(turn / 9)) == 6) * 6 + ((turn - 9 * floor(turn / 9)) == 7) * 1 + ((turn - 9 * floor(turn / 9)) == 8) * 5)));\npick = (cuts > 0.5) * cut + (cuts <= 0.5) * floor(shot + 0.5);\npost = (floor(value / 25.6) + 0.5) * 25.6;\nahead = (pick == 0) * (0 - distance - (pack - 1) * 5.5) + (pick == 1) * 5.5 + (pick == 2) * 0.4 + (pick == 3) * (post - value) + (pick == 4) * 1.5 * sin(abstime * 0.17) + (pick == 5) * 2.7 + (pick == 6) * (0 - 1.7) + (pick == 7) * 1.75 + (pick == 8) * 0.9 + (pick == 9) * (0 - 4.4) + (pick == 10) * (0 - 3.5) + (pick == 11) * (0 - 2.2) + (pick == 12) * (0 - 3) + (pick == 13) * (0 - 6.8) + (pick == 14) * (0 - 2.1 + 0.7 * sin(abstime * 0.19)) + (pick == 15) * 6 + (pick == 16) * 2 + (pick == 17) * (0 - 19.5) + (pick == 18) * 1 + (pick == 19) * (0 - 26) + (pick == 20) * (0 - 4) + (pick == 21) * 8 + (pick == 22) * (0 - 23);\nright = (pick == 0) * viewX + (pick == 1) * (0 - 0.9) + (pick == 2) * 2 + (pick == 3) * 1.6 + (pick == 4) * 1.9 * cos(abstime * 0.3) + (pick == 5) * 0.22 * sin(abstime * 0.23) + (pick == 6) * 0.8 + (pick == 7) * 0.7 + (pick == 8) * 0.35 + (pick == 9) * 0.5 + (pick == 10) * 0.12 * sin(abstime * 0.21) + (pick == 11) * 1.05 + (pick == 12) * 0.2 + (pick == 13) * 0.8 * sin(abstime * 0.13) + (pick == 14) * 1.15 * cos(abstime * 0.33) + (pick == 15) * (0 - 0.9 + 0.1 * sin(abstime * 0.17)) + (pick == 16) * (0 - 1.2) + (pick == 17) * 0.5 + (pick == 18) * 1.5 + (pick == 19) * (8 + 0.6 * sin(abstime * 0.11)) + (pick == 20) * 9.5 + (pick == 21) * (0 - 5) + (pick == 22) * (0 - 4);\nup = (pick == 0) * viewY + (pick == 1) * 0.35 + (pick == 2) * 0.15 + (pick == 3) * (0 - 1.3) + (pick == 4) * 1.3 * sin(abstime * 0.3) + (pick == 5) * (0 - 0.12) + (pick == 6) * 0.75 + (pick == 7) * 0.3 + (pick == 8) * (0 - 1.45) + (pick == 9) * 0.3 + (pick == 10) * 0.1 + (pick == 11) * (0 - 0.2) + (pick == 12) * 1.2 + (pick == 13) * 0.45 + (pick == 14) * 1.15 * sin(abstime * 0.33) + (pick == 15) * 1.6 + (pick == 16) * 1.6 + (pick == 17) * 0.4 + (pick == 18) * (0 - 1.3) + (pick == 19) * 6 + (pick == 20) * (0.8 + 0.5 * sin(abstime * 0.13)) + (pick == 21) * (0 - 8) + (pick == 22) * 12;\nlens = (pick == 0) * 55 + (pick == 1) * 48 + (pick == 2) * 68 + (pick == 3) * 40 + (pick == 4) * 60 + (pick == 5) * 34 + (pick == 6) * 52 + (pick == 7) * 24 + (pick == 8) * 64 + (pick == 9) * 40 + (pick == 10) * 74 + (pick == 11) * 44 + (pick == 12) * 50 + (pick == 13) * 26 + (pick == 14) * 48 + (pick == 15) * 24 + (pick == 16) * 60 + (pick == 17) * 32 + (pick == 18) * 70 + (pick == 19) * 62 + (pick == 20) * 64 + (pick == 21) * 66 + (pick == 22) * 58;\naim = (pick == 0) * 3.3 + (pick == 1) * 0.3 + (pick == 2) * 0.3 + (pick == 3) * 0.3 + (pick == 4) * 0.3 + (pick == 5) * 0.7 + (pick == 6) * 8 + (pick == 7) * 0.85 + (pick == 8) * 0.2 + (pick == 9) * -1.4 + (pick == 10) * 0 + (pick == 11) * -2.1 + (pick == 12) * -1 + (pick == 13) * -2.6 + (pick == 14) * -2 + (pick == 15) * -4 + (pick == 16) * -4 + (pick == 17) * -5.5 + (pick == 18) * -4 + (pick == 19) * -2 + (pick == 20) * -5 + (pick == 21) * -5 + (pick == 22) * -5.5;\nride = (pick == 0) * 0 + (pick == 1) * 0 + (pick == 2) * 0 + (pick == 3) * 0 + (pick == 4) * 0.5 + (pick == 5) * 0.85 + (pick == 6) * 1 + (pick == 7) * 1 + (pick == 8) * 0.6 + (pick == 9) * 1 + (pick == 10) * 1 + (pick == 11) * 1 + (pick == 12) * 1 + (pick == 13) * 1 + (pick == 14) * 1 + (pick == 15) * 0.4 + (pick == 16) * 0.4 + (pick == 17) * 0.3 + (pick == 18) * 0.3 + (pick == 19) * 0.2 + (pick == 20) * 0.2 + (pick == 21) * 0.2 + (pick == 22) * 0.2;\nz = value + ahead"
+          "defaults": "want = floor(abstime / 8);\nvalue = 0;\npack = 1;\npacking = 1;\nshot = 0;\ncuts = 0;\ndistance = 7.5;\nviewX = 1.1;\nviewY = 0.6;\nplace = 0",
+          "expressions": "turn = want;\npacked = (packing > 1.5);\nfielded = (place > 0.5);\ncut = fielded * (((turn - 8 * floor(turn / 8)) == 0) * 19 + ((turn - 8 * floor(turn / 8)) == 1) * 23 + ((turn - 8 * floor(turn / 8)) == 2) * 20 + ((turn - 8 * floor(turn / 8)) == 3) * 24 + ((turn - 8 * floor(turn / 8)) == 4) * 21 + ((turn - 8 * floor(turn / 8)) == 5) * 25 + ((turn - 8 * floor(turn / 8)) == 6) * 22 + ((turn - 8 * floor(turn / 8)) == 7) * 26) + (1 - fielded) * (packed * (((turn - 8 * floor(turn / 8)) == 0) * 15 + ((turn - 8 * floor(turn / 8)) == 1) * 9 + ((turn - 8 * floor(turn / 8)) == 2) * 16 + ((turn - 8 * floor(turn / 8)) == 3) * 0 + ((turn - 8 * floor(turn / 8)) == 4) * 17 + ((turn - 8 * floor(turn / 8)) == 5) * 13 + ((turn - 8 * floor(turn / 8)) == 6) * 18 + ((turn - 8 * floor(turn / 8)) == 7) * 10) + (1 - packed) * (((turn - 15 * floor(turn / 15)) == 0) * 0 + ((turn - 15 * floor(turn / 15)) == 1) * 9 + ((turn - 15 * floor(turn / 15)) == 2) * 4 + ((turn - 15 * floor(turn / 15)) == 3) * 8 + ((turn - 15 * floor(turn / 15)) == 4) * 11 + ((turn - 15 * floor(turn / 15)) == 5) * 3 + ((turn - 15 * floor(turn / 15)) == 6) * 7 + ((turn - 15 * floor(turn / 15)) == 7) * 13 + ((turn - 15 * floor(turn / 15)) == 8) * 2 + ((turn - 15 * floor(turn / 15)) == 9) * 10 + ((turn - 15 * floor(turn / 15)) == 10) * 6 + ((turn - 15 * floor(turn / 15)) == 11) * 12 + ((turn - 15 * floor(turn / 15)) == 12) * 1 + ((turn - 15 * floor(turn / 15)) == 13) * 14 + ((turn - 15 * floor(turn / 15)) == 14) * 5));\npick = (cuts > 0.5) * cut + (cuts <= 0.5) * floor(shot + 0.5);\npost = (floor(value / 25.6) + 0.5) * 25.6;\nahead = (pick == 0) * (0 - distance - (pack - 1) * 5.5) + (pick == 1) * 5.5 + (pick == 2) * 0.4 + (pick == 3) * (post - value) + (pick == 4) * 1.5 * sin(abstime * 0.17) + (pick == 5) * 2.7 + (pick == 6) * (0 - 1.7) + (pick == 7) * 1.75 + (pick == 8) * 0.9 + (pick == 9) * (0 - 4.4) + (pick == 10) * (0 - 3.5) + (pick == 11) * (0 - 2.2) + (pick == 12) * (0 - 3) + (pick == 13) * (0 - 6.8) + (pick == 14) * (0 - 2.1 + 0.7 * sin(abstime * 0.19)) + (pick == 15) * 6 + (pick == 16) * 2 + (pick == 17) * (0 - 19.5) + (pick == 18) * 1 + (pick == 19) * (0 - 26) + (pick == 20) * (0 - 4) + (pick == 21) * 8 + (pick == 22) * (0 - 23) + (pick == 23) * (0 - 5.2) + (pick == 24) * (0 - distance - (pack - 1) * 5.5) + (pick == 25) * (0 - 6.6) + (pick == 26) * (0 - 3.3);\nright = (pick == 0) * viewX + (pick == 1) * (0 - 0.9) + (pick == 2) * 2 + (pick == 3) * 1.6 + (pick == 4) * 1.9 * cos(abstime * 0.3) + (pick == 5) * 0.22 * sin(abstime * 0.23) + (pick == 6) * 0.8 + (pick == 7) * 0.7 + (pick == 8) * 0.35 + (pick == 9) * 0.5 + (pick == 10) * 0.12 * sin(abstime * 0.21) + (pick == 11) * 1.05 + (pick == 12) * 0.2 + (pick == 13) * 0.8 * sin(abstime * 0.13) + (pick == 14) * 1.15 * cos(abstime * 0.33) + (pick == 15) * (0 - 0.9 + 0.1 * sin(abstime * 0.17)) + (pick == 16) * (0 - 1.2) + (pick == 17) * 0.5 + (pick == 18) * 1.5 + (pick == 19) * (8 + 0.6 * sin(abstime * 0.11)) + (pick == 20) * 9.5 + (pick == 21) * (0 - 5) + (pick == 22) * (0 - 4) + (pick == 23) * 1.2 + (pick == 24) * (0 - viewX) + (pick == 25) * (0 - 1.2 + 0.3 * sin(abstime * 0.13)) + (pick == 26) * (0.5 + 0.12 * sin(abstime * 0.21));\nup = (pick == 0) * viewY + (pick == 1) * 0.35 + (pick == 2) * 0.15 + (pick == 3) * (0 - 1.3) + (pick == 4) * 1.3 * sin(abstime * 0.3) + (pick == 5) * (0 - 0.12) + (pick == 6) * 0.75 + (pick == 7) * 0.3 + (pick == 8) * (0 - 1.45) + (pick == 9) * 0.3 + (pick == 10) * 0.1 + (pick == 11) * (0 - 0.2) + (pick == 12) * 1.2 + (pick == 13) * 0.45 + (pick == 14) * 1.15 * sin(abstime * 0.33) + (pick == 15) * 1.6 + (pick == 16) * 1.6 + (pick == 17) * 0.4 + (pick == 18) * (0 - 1.3) + (pick == 19) * 6 + (pick == 20) * (0.8 + 0.5 * sin(abstime * 0.13)) + (pick == 21) * (0 - 8) + (pick == 22) * 12 + (pick == 23) * 0.6 + (pick == 24) * (viewY + 0.9) + (pick == 25) * 0.9 + (pick == 26) * (0 - 0.4);\nlens = (pick == 0) * 55 + (pick == 1) * 48 + (pick == 2) * 68 + (pick == 3) * 40 + (pick == 4) * 60 + (pick == 5) * 34 + (pick == 6) * 52 + (pick == 7) * 24 + (pick == 8) * 64 + (pick == 9) * 40 + (pick == 10) * 74 + (pick == 11) * 44 + (pick == 12) * 50 + (pick == 13) * 26 + (pick == 14) * 48 + (pick == 15) * 24 + (pick == 16) * 60 + (pick == 17) * 32 + (pick == 18) * 70 + (pick == 19) * 62 + (pick == 20) * 64 + (pick == 21) * 66 + (pick == 22) * 58 + (pick == 23) * 46 + (pick == 24) * 55 + (pick == 25) * 28 + (pick == 26) * 76;\naim = (pick == 0) * 3.3 + (pick == 1) * 0.3 + (pick == 2) * 0.3 + (pick == 3) * 0.3 + (pick == 4) * 0.3 + (pick == 5) * 0.7 + (pick == 6) * 8 + (pick == 7) * 0.85 + (pick == 8) * 0.2 + (pick == 9) * -1.4 + (pick == 10) * 0 + (pick == 11) * -2.1 + (pick == 12) * -1 + (pick == 13) * -2.6 + (pick == 14) * -2 + (pick == 15) * -4 + (pick == 16) * -4 + (pick == 17) * -5.5 + (pick == 18) * -4 + (pick == 19) * -2 + (pick == 20) * -5 + (pick == 21) * -5 + (pick == 22) * -5.5 + (pick == 23) * -1.4 + (pick == 24) * 3.3 + (pick == 25) * -2.6 + (pick == 26) * 0;\nride = (pick == 0) * 0 + (pick == 1) * 0 + (pick == 2) * 0 + (pick == 3) * 0 + (pick == 4) * 0.5 + (pick == 5) * 0.85 + (pick == 6) * 1 + (pick == 7) * 1 + (pick == 8) * 0.6 + (pick == 9) * 1 + (pick == 10) * 1 + (pick == 11) * 1 + (pick == 12) * 1 + (pick == 13) * 1 + (pick == 14) * 1 + (pick == 15) * 0.4 + (pick == 16) * 0.4 + (pick == 17) * 0.3 + (pick == 18) * 0.3 + (pick == 19) * 0.2 + (pick == 20) * 0.2 + (pick == 21) * 0.2 + (pick == 22) * 0.2 + (pick == 23) * 1 + (pick == 24) * 0 + (pick == 25) * 1 + (pick == 26) * 1;\nz = value + ahead"
         },
         "position": {
           "x": -1800,
           "y": -600
+        },
+        "type": "valueExpression"
+      },
+      "expression_cut": {
+        "definitionVersion": 1,
+        "id": "expression_cut",
+        "label": "expression_cut",
+        "parameters": {
+          "defaults": "bar = floor(abstime / 4);\nbusy = 9;\nlevel = 1",
+          "expressions": "calm = max(busy < 4.5, bar < 8);\nfast = (1 - calm) * (busy >= 6.5) * (level >= 0.7);\nbars = calm * 8 + (1 - calm) * (1 - fast) * 4 + fast * 2;\nwant = (fract(bar / bars) < 0.25);\nhold = bars * 1.9355 * 0.9"
+        },
+        "position": {
+          "x": -2100,
+          "y": 450
         },
         "type": "valueExpression"
       },
@@ -2372,6 +2539,20 @@
         },
         "type": "valueExpression"
       },
+      "expression_packing": {
+        "definitionVersion": 1,
+        "id": "expression_packing",
+        "label": "expression_packing",
+        "parameters": {
+          "defaults": "value = 1",
+          "expressions": "packing = value"
+        },
+        "position": {
+          "x": -900,
+          "y": 1100
+        },
+        "type": "valueExpression"
+      },
       "expression_placed": {
         "definitionVersion": 1,
         "id": "expression_placed",
@@ -2383,20 +2564,6 @@
         "position": {
           "x": -900,
           "y": 1350
-        },
-        "type": "valueExpression"
-      },
-      "expression_swimming": {
-        "definitionVersion": 1,
-        "id": "expression_swimming",
-        "label": "expression_swimming",
-        "parameters": {
-          "defaults": "value = 0",
-          "expressions": "swim = value"
-        },
-        "position": {
-          "x": -900,
-          "y": 725
         },
         "type": "valueExpression"
       },
@@ -3765,6 +3932,20 @@
         "position": {
           "x": -1200,
           "y": 975
+        },
+        "type": "valueLag"
+      },
+      "lag_busy": {
+        "definitionVersion": 1,
+        "id": "lag_busy",
+        "label": "lag_busy",
+        "parameters": {
+          "lag": 1,
+          "releaseRatio": 6
+        },
+        "position": {
+          "x": -2400,
+          "y": 450
         },
         "type": "valueLag"
       },
@@ -5348,6 +5529,19 @@
         },
         "type": "presets"
       },
+      "rate_hits": {
+        "definitionVersion": 1,
+        "id": "rate_hits",
+        "label": "rate_hits",
+        "parameters": {
+          "window": 4
+        },
+        "position": {
+          "x": -3300,
+          "y": 450
+        },
+        "type": "valueRate"
+      },
       "render_shot": {
         "definitionVersion": 1,
         "id": "render_shot",
@@ -5466,6 +5660,32 @@
         },
         "type": "pointRope"
       },
+      "select_bar": {
+        "definitionVersion": 1,
+        "id": "select_bar",
+        "label": "select_bar",
+        "parameters": {
+          "channels": "bar"
+        },
+        "position": {
+          "x": -2400,
+          "y": 300
+        },
+        "type": "valueSelect"
+      },
+      "select_busy": {
+        "definitionVersion": 1,
+        "id": "select_busy",
+        "label": "select_busy",
+        "parameters": {
+          "channels": "busy"
+        },
+        "position": {
+          "x": -2700,
+          "y": 450
+        },
+        "type": "valueSelect"
+      },
       "select_hits": {
         "definitionVersion": 1,
         "id": "select_hits",
@@ -5515,6 +5735,19 @@
         "position": {
           "x": -2700,
           "y": 650
+        },
+        "type": "valueSelect"
+      },
+      "select_want": {
+        "definitionVersion": 1,
+        "id": "select_want",
+        "label": "select_want",
+        "parameters": {
+          "channels": "want"
+        },
+        "position": {
+          "x": -1800,
+          "y": 450
         },
         "type": "valueSelect"
       },
@@ -5991,9 +6224,9 @@
         "id": "slider_shot",
         "label": "slider_shot",
         "parameters": {
-          "caption": "Shot (0 to 22)",
+          "caption": "Shot (0 to 26)",
           "channel": "shot",
-          "max": 22,
+          "max": 26,
           "min": 0,
           "step": 1,
           "value": 0

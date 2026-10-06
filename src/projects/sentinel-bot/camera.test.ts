@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PACK } from "./document.ts";
 import { ZERO_FRAME, frameFromClock } from "../../domain/types/frame.ts";
 import { valueExpressionNode } from "../../nodes/definitions/value-structure-nodes.ts";
-import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, FIELD_ORDER, PACK_ORDER, SHOTS, SHOT_TABLE, SWIMMING_ORDER, WALKING_ORDER, shotAtTurn, type Shot } from "./camera.ts";
+import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, CUT_DEFAULTS, CUT_PACE, FIELD_ORDER, PACK_ORDER, ROBOT_ORDER, SHOTS, SHOT_TABLE, cutStatements, shotAtTurn, type Shot } from "./camera.ts";
 import { FIELD } from "./field.ts";
 import { CHAMBERS } from "./path.ts";
 import { FIELD_BERTH } from "./rig.ts";
@@ -79,67 +79,90 @@ describe("the sentinel camera", () => {
     expect(Math.hypot((later["right"] as number) - (early["right"] as number), (later["up"] as number) - (early["up"] as number))).toBeGreaterThan(1.5);
   });
 
-  it("cuts on every second bar when Cuts is on: walking, through the nine shots of the robot, never from a close one to a close one", () => {
+  it("takes the shot the cut counter is on, through the fifteen shots of the robot, never from a close one to a close one nor from the tail to the tail", () => {
     const order: number[] = [];
-    for (let bar = 0; bar < 2 * WALKING_ORDER.length; bar += 1) {
-      const out = rig({ value: 0, shot: 0, cuts: 1, bar, swim: 0 }, 0);
-      // The pick is the pair of bars it falls in: bars 0 and 1 share a shot, bar 2 is the next.
-      expect(out["pick"]).toBe(shotAtTurn(Math.floor(bar / 2)));
-      if (bar % 2 === 0) order.push(out["pick"] as number);
+    for (let want = 0; want < ROBOT_ORDER.length; want += 1) {
+      const out = rig({ value: 0, shot: 0, cuts: 1, want }, 0);
+      expect(out["pick"]).toBe(shotAtTurn(want));
+      order.push(out["pick"] as number);
     }
-    expect(order).toEqual([...WALKING_ORDER]);
-    expect(new Set(order).size).toBe(9);
-    // Every one is a shot of the robot: the tail's are for when it swims, the pack's for when there is one.
-    expect(order.every((pick) => (SHOT_TABLE[pick] as (typeof SHOT_TABLE)[number]).subject === "robot")).toBe(true);
-    // A close shot is one that rides with the robot (it would lose it otherwise). Round the whole cycle, wrap included.
-    const close = order.map((pick) => (SHOT_TABLE[pick] as (typeof SHOT_TABLE)[number]).ride >= 0.6);
-    expect(close.filter(Boolean).length).toBe(4);
-    for (let index = 0; index < close.length; index += 1) expect(close[index] === true && close[(index + 1) % close.length] === true).toBe(false);
+    expect(order).toEqual([...ROBOT_ORDER]);
+    expect(new Set(order).size).toBe(15);
+    // Every shot of the robot and of its tail is in it; the pack's and the fields' are for when there is one.
+    const subjects = order.map((pick) => (SHOT_TABLE[pick] as (typeof SHOT_TABLE)[number]).subject);
+    expect(subjects.filter((subject) => subject === "robot").length).toBe(9);
+    expect(subjects.filter((subject) => subject === "tail").length).toBe(6);
+    // A close shot is one that rides with the robot (it would lose it otherwise). Round the whole cycle, wrap included:
+    // no two shots of the tail running, and no two close shots of the body.
+    for (let at = 0; at < order.length; at += 1) {
+      const [here, next] = [SHOT_TABLE[order[at] as number]!, SHOT_TABLE[order[(at + 1) % order.length] as number]!];
+      expect([here.name, next.name, here.subject === "tail" && next.subject === "tail"]).toEqual([here.name, next.name, false]);
+      expect([here.name, next.name, here.subject === "robot" && next.subject === "robot" && here.ride >= 0.6 && next.ride >= 0.6]).toEqual([here.name, next.name, false]);
+    }
+    // With Cuts off the slider holds any of them, whatever the counter says.
+    expect(rig({ value: 0, shot: 12, cuts: 0, want: 7 }, 0)["pick"]).toBe(12);
   });
 
-  it("swimming, cuts through every shot of the tail, and cuts the moment it lets go of the wall", () => {
-    const order: number[] = [];
-    for (let bar = 0; bar < 2 * SWIMMING_ORDER.length; bar += 2) order.push(rig({ value: 0, shot: 0, cuts: 1, bar, swim: 1 }, 0)["pick"] as number);
-    expect(order).toEqual([...SWIMMING_ORDER]);
-    const tails = SHOT_TABLE.map((shot, at) => ({ shot, at })).filter(({ shot }) => shot.subject === "tail");
-    expect(tails.length).toBe(6);
-    for (const { at } of tails) expect(order).toContain(at);
-    // The same bar, walking and swimming, is two different shots: letting go is a cut, and to the tail.
-    const walking = rig({ value: 0, shot: 0, cuts: 1, bar: 0, swim: 0.4 }, 0)["pick"] as number;
-    const swimming = rig({ value: 0, shot: 0, cuts: 1, bar: 0, swim: 0.6 }, 0)["pick"] as number;
-    expect([SHOT_TABLE[walking]?.name, SHOT_TABLE[swimming]?.name]).toEqual(["chase", "tail"]);
-    // With Cuts off the slider holds any of them, whatever it is doing.
-    expect(rig({ value: 0, shot: 12, cuts: 0, bar: 7, swim: 1 }, 0)["pick"]).toBe(12);
+  it("asks for a cut every eighth bar while the track is calm or just begun, every second only with a full beat in a loud passage, every fourth otherwise; and says how long to hold", () => {
+    // The owner, 2026-10-06: "cuts are a bit too hectic even while there's a build up … not get tricked during intros".
+    const BAR = 1.8;
+    const asked = (inputs: Record<string, number>): Record<string, number> => {
+      const evaluate = valueExpressionNode.valueEvaluate;
+      if (evaluate === undefined) throw new Error("the Expression node has no evaluator");
+      return evaluate({ inputs: { in: inputs }, values: { expressions: cutStatements(BAR), defaults: CUT_DEFAULTS }, frame: frameFromClock({ timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: ZERO_FRAME.mode, randomSeed: 0, fps: 60 }), state: {} } as never) as Record<string, number>;
+    };
+    const paceOf = (inputs: Record<string, number>): number => asked(inputs)["bars"] as number;
+    // The opening eight bars are held however busy and loud they are.
+    expect(paceOf({ bar: 3, busy: 9, level: 1 })).toBe(8);
+    // After them: few hits is calm whatever the level; a full beat that is not among the loudest is four; both is two.
+    expect(paceOf({ bar: 40, busy: CUT_PACE.calm - 0.1, level: 1 })).toBe(8);
+    expect(paceOf({ bar: 40, busy: CUT_PACE.busy + 1, level: CUT_PACE.loud - 0.1 })).toBe(4);
+    expect(paceOf({ bar: 40, busy: CUT_PACE.busy - 0.1, level: 1 })).toBe(4);
+    expect(paceOf({ bar: 40, busy: CUT_PACE.busy + 1, level: 1 })).toBe(2);
+    // The request goes high on a bar line of that pace and nowhere else: bars 40 and 48 when calm, not 42, 44 or 46.
+    const high = (bar: number, busy: number): number => asked({ bar, busy, level: 1 })["want"] as number;
+    expect([40, 42, 44, 46, 48].map((bar) => high(bar, 2))).toEqual([1, 0, 0, 0, 1]);
+    expect([40, 42, 44, 46, 48].map((bar) => high(bar, 5))).toEqual([1, 0, 1, 0, 1]);
+    expect([40, 42, 44, 46, 48].map((bar) => high(bar, 9))).toEqual([1, 1, 1, 1, 1]);
+    // …and falls again inside the bar, so the next line is a rise.
+    expect(high(41.5, 9)).toBe(0);
+    // The hold is nine tenths of the shot's own length: the next line of the same pace gets through, and nothing before it.
+    expect(asked({ bar: 40, busy: 2, level: 1 })["hold"]).toBeCloseTo(8 * BAR * 0.9, 9);
+    expect(asked({ bar: 40, busy: 9, level: 1 })["hold"]).toBeCloseTo(2 * BAR * 0.9, 9);
   });
 
   it("with more than one of the pack out, cuts through the four shots of the pack, each placed to hold all three apart in its frame", () => {
     const order: number[] = [];
-    for (let bar = 0; bar < 2 * PACK_ORDER.length; bar += 2) order.push(rig({ value: 0, shot: 0, cuts: 1, bar, swim: 1, pack: 3 }, 0)["pick"] as number);
+    for (let want = 0; want < PACK_ORDER.length; want += 1) order.push(rig({ value: 0, shot: 0, cuts: 1, want, pack: 3, packing: 3 }, 0)["pick"] as number);
     expect(order).toEqual([...PACK_ORDER]);
     const ofThePack = SHOT_TABLE.map((shot, at) => ({ shot, at })).filter(({ shot }) => shot.subject === "pack");
     expect(ofThePack.map(({ shot }) => shot.name)).toEqual(["packfront", "packquarter", "packrear", "packunder"]);
     for (const { at } of ofThePack) expect(order).toContain(at);
-    // One robot out: the pack's shots are not in the cut at all, swimming or walking.
-    for (let bar = 0; bar < 40; bar += 2) for (const swim of [0, 1]) expect(SHOT_TABLE[rig({ value: 0, shot: 0, cuts: 1, bar, swim, pack: 1 }, 0)["pick"] as number]?.subject).not.toBe("pack");
+    // One robot out: the pack's shots are not in the cut at all.
+    for (let want = 0; want < 40; want += 1) expect(SHOT_TABLE[rig({ value: 0, shot: 0, cuts: 1, want, pack: 1, packing: 1 }, 0)["pick"] as number]?.subject).not.toBe("pack");
     // The formation the pack flies in (document.ts, PACK), seen through each of its shots.
     for (const { shot, at } of ofThePack) expectAllSeenApart(shot, rig({ value: 0, shot: at, cuts: 0, pack: 3 }, 0), PACK);
   });
 
   it("in the fields, cuts through the place's own four shots between the tails and the long chase; each keeps inside the avenue and holds all three", () => {
     const order: number[] = [];
-    for (let bar = 0; bar < 2 * FIELD_ORDER.length; bar += 2) order.push(rig({ value: 0, shot: 0, cuts: 1, bar, swim: 1, pack: 3, place: 1 }, 0)["pick"] as number);
+    for (let want = 0; want < FIELD_ORDER.length; want += 1) order.push(rig({ value: 0, shot: 0, cuts: 1, want, pack: 3, packing: 3, place: 1 }, 0)["pick"] as number);
     expect(order).toEqual([...FIELD_ORDER]);
-    for (const [turn, pick] of order.entries()) expect(pick).toBe(shotAtTurn(turn, true, true, true));
+    for (const [turn, pick] of order.entries()) expect(pick).toBe(shotAtTurn(turn, true, true));
     const ofTheFields = SHOT_TABLE.map((shot, at) => ({ shot, at })).filter(({ shot }) => shot.subject === "field");
     expect(ofTheFields.map(({ shot }) => shot.name)).toEqual(["fieldwide", "fieldside", "fieldlow", "fieldhigh"]);
     for (const { at } of ofTheFields) expect(order).toContain(at);
+    // The place changes on a cut: no shot of the fields' order is in the robot's or the pack's, so whichever shot
+    // the tunnel was on and whichever the fields begin with, they are two shots. (They shared four; on the owner's
+    // track the tunnel came back in the middle of "tips".)
+    for (const pick of FIELD_ORDER) expect([SHOT_TABLE[pick]?.name, ROBOT_ORDER.includes(pick) || PACK_ORDER.includes(pick)]).toEqual([SHOT_TABLE[pick]?.name, false]);
     // Never two of the place's wide shots running: between any two, a shot of the robots.
     for (let turn = 0; turn < order.length; turn += 1) {
       const [here, next] = [SHOT_TABLE[order[turn] as number], SHOT_TABLE[order[(turn + 1) % order.length] as number]];
       expect(here?.subject === "field" && next?.subject === "field").toBe(false);
     }
     // In the tunnel none of them is ever in the cut, however it is going.
-    for (let bar = 0; bar < 40; bar += 2) for (const swim of [0, 1]) for (const pack of [1, 3]) expect(SHOT_TABLE[rig({ value: 0, shot: 0, cuts: 1, bar, swim, pack, place: 0 }, 0)["pick"] as number]?.subject).not.toBe("field");
+    for (let want = 0; want < 40; want += 1) for (const pack of [1, 3]) expect(SHOT_TABLE[rig({ value: 0, shot: 0, cuts: 1, want, pack, packing: pack, place: 0 }, 0)["pick"] as number]?.subject).not.toBe("field");
     // Out there the pack flies wider apart, below the line as well as above it (rig.ts, FIELD_BERTH).
     const wider = 1 + CHAMBERS.swell * FIELD_BERTH;
     const afield = PACK.map((body) => [body[0] * wider, body[1] * wider, body[2]] as const);

@@ -69,6 +69,14 @@ export const SHOT_TABLE: readonly Shot[] = [
   { name: "fieldside", what: "abreast of them from the edge of the avenue: they cross the towers behind", ahead: "(0 - 4)", right: "9.5", up: "(0.8 + 0.5 * sin(abstime * 0.13))", lens: 64, aim: -5, ride: 0.2, subject: "field" },
   { name: "fieldlow", what: "from well below and ahead, looking back and up: they come over against the towers' tops", ahead: "8", right: "(0 - 5)", up: "(0 - 8)", lens: 66, aim: -5, ride: 0.2, subject: "field" },
   { name: "fieldhigh", what: "from high behind, looking down past them into the dark the towers come up out of", ahead: "(0 - 23)", right: "(0 - 4)", up: "12", lens: 58, aim: -5.5, ride: 0.2, subject: "field" },
+  // …and the fields' own close shots: of the tail and from behind, as the tunnel's are and a little off them.
+  // Shots of their own and not the tunnel's used again, because the place changes on a cut: were the shot before
+  // the change and the one after it ever the same shot, the towers would turn to tunnel in the middle of it.
+  // (It happened: "tips" in the fields' order and in the robot's, at bar 96 of the owner's track.)
+  { name: "fieldtail", what: "in the fields, behind the ends of the tentacles and off to the right, the towers going by beyond", ahead: "(0 - 5.2)", right: "1.2", up: "0.6", lens: 46, aim: -1.4, ride: 1, subject: "tail" },
+  { name: "fieldchase", what: "in the fields, behind and above the whole pack on the other side from the chase", ahead: "(0 - distance - (pack - 1) * 5.5)", right: "(0 - viewX)", up: "(viewY + 0.9)", lens: 55, aim: 3.3, ride: 0, subject: "robot" },
+  { name: "fieldtips", what: "in the fields, a long lens from behind on the left: the ends large, the body and the towers beyond", ahead: "(0 - 6.6)", right: "(0 - 1.2 + 0.3 * sin(abstime * 0.13))", up: "0.9", lens: 28, aim: -2.6, ride: 1, subject: "tail" },
+  { name: "fieldwake", what: "in the fields, in among the ends from below, wide", ahead: "(0 - 3.3)", right: "(0.5 + 0.12 * sin(abstime * 0.21))", up: "(0 - 0.4)", lens: 76, aim: 0, ride: 1, subject: "tail" },
 ];
 
 export const SHOTS: readonly string[] = SHOT_TABLE.map((shot) => shot.name);
@@ -79,19 +87,26 @@ const index = (name: string): number => {
   return at;
 };
 
-/** The order shots are cut to while it walks: the nine of the robot, a wide one and a close one taking turns. */
-export const WALKING_ORDER: readonly number[] = ["chase", "circle", "under", "post", "eye", "flank", "shoulder", "lead", "face"].map(index);
-/** …and while it swims: every tail shot, with four of the others between so the tail is not all there is. */
-export const SWIMMING_ORDER: readonly number[] = ["tail", "chase", "tailside", "tips", "lead", "wake", "circle", "tailtop", "tailround", "flank"].map(index);
+/**
+ * The order shots of the robot are cut to: its nine and the tail's six, a wide one and a close one taking turns
+ * and never two of the tail running. ONE order, whether it walks or swims: there were two, chosen by whether it
+ * was swimming more than half, and a robot that hovered at half (the owner's track holds it there through the
+ * intro) was cut between them six times in twelve seconds.
+ */
+export const ROBOT_ORDER: readonly number[] = ["chase", "tail", "circle", "under", "tailside", "post", "eye", "tips", "flank", "wake", "shoulder", "tailtop", "lead", "tailround", "face"].map(index);
 /** …and while more than one of the pack is out: the four shots of the pack, with the tail and the chase between. */
 export const PACK_ORDER: readonly number[] = ["packfront", "tail", "packquarter", "chase", "packrear", "tips", "packunder", "wake"].map(index);
 
 /** The shot cut to on the `turn`-th pair of bars. */
-/** …and in the fields: the place's own four between shots of the tails and the long chase, never two of a kind running. */
-export const FIELD_ORDER: readonly number[] = ["fieldwide", "tail", "fieldside", "chase", "fieldlow", "tips", "fieldhigh", "wake"].map(index);
+/**
+ * …and in the fields: the place's own four wide shots between its own close ones, never two of a kind running.
+ * It shares NO shot with the two orders above (the test holds that), so going into the fields and coming out
+ * of them is always a cut.
+ */
+export const FIELD_ORDER: readonly number[] = ["fieldwide", "fieldtail", "fieldside", "fieldchase", "fieldlow", "fieldtips", "fieldhigh", "fieldwake"].map(index);
 
-export function shotAtTurn(turn: number, swimming = false, pack = false, field = false): number {
-  const order = field ? FIELD_ORDER : pack ? PACK_ORDER : swimming ? SWIMMING_ORDER : WALKING_ORDER;
+export function shotAtTurn(turn: number, pack = false, field = false): number {
+  const order = field ? FIELD_ORDER : pack ? PACK_ORDER : ROBOT_ORDER;
   return order[((turn % order.length) + order.length) % order.length] as number;
 }
 
@@ -104,16 +119,51 @@ const ordered = (order: readonly number[], place: string): string => `(${order.m
 const turnIn = (order: readonly number[]): string => `(turn - ${order.length} * floor(turn / ${order.length}))`;
 
 /**
- * Reads, by wire: `value` (distance travelled), `bar` (the track's bar count), `swim` (how
- * much it is swimming), `pack` (how many are out), `shot`, `cuts`, `distance`, `viewX`,
- * `viewY` (the panel), `place` (0 the tunnel, 1 the fields). Writes
- * `pick`, `ahead`, `right`, `up`, `lens`, `aim`, `ride`, `z`.
+ * HOW LONG A SHOT IS HELD: by how busy the track is, not by the clock. (The owner, 2026-10-06, of a cut every
+ * two bars whatever was playing: "cuts are a bit too hectic even while there's a build up. we need to make sure
+ * to not get tricked during intros etc and hastily cutting around if it's something rather calm".)
+ *
+ * `busy` is kicks and snares a second, counted over four seconds and let fall slowly; `level` is where the
+ * passage stands among the last minute's. A shot is held EIGHT bars while the track is calm (few hits, or its
+ * first eight bars whatever is in them), TWO only with a full beat going in a passage that is also among the
+ * loudest, and FOUR otherwise. Loudness alone is not asked: an intro and a build-up are loud for where they
+ * stand in the track. (Measured on the owner's track in eight-second stretches: 8 hits a second through the
+ * verses, 5 to 6 in the intro, 3 to 4 through the breakdowns and the build.)
+ *
+ * These statements only ASK for a cut: `want` goes high on every `bars`-th bar line. A Count after them makes
+ * the cut, and will not make another within `hold` seconds of the last (nine tenths of the shot's own length).
+ * That is the point of it: every signal here is a number crossing a line, a number that sits ON its line
+ * crosses it over and over, and before there was a counter each crossing was a cut (measured on the owner's
+ * track: 73 cuts, some a tenth of a second apart).
+ */
+export const CUT_PACE = { calm: 4.5, busy: 6.5, loud: 0.7, opening: 8 } as const;
+
+/** Reads `bar`, `busy`, `level`; writes `bars` (how long a shot is now), `want` and `hold`. `barSeconds` is the track's. */
+export function cutStatements(barSeconds: number): string {
+  return [
+    `calm = max(busy < ${CUT_PACE.calm}, bar < ${CUT_PACE.opening})`,
+    `fast = (1 - calm) * (busy >= ${CUT_PACE.busy}) * (level >= ${CUT_PACE.loud})`,
+    `bars = calm * 8 + (1 - calm) * (1 - fast) * 4 + fast * 2`,
+    `want = (fract(bar / bars) < 0.25)`,
+    `hold = bars * ${barSeconds.toFixed(4)} * 0.9`,
+  ].join(";\n");
+}
+/** With nothing wired or playing it asks for a cut every two bars of the clock. */
+export const CUT_DEFAULTS = ["bar = floor(abstime / 4)", "busy = 9", "level = 1"].join(";\n");
+
+/**
+ * Reads, by wire: `value` (distance travelled), `want` (how many cuts there have been: the Count's), `pack` (how
+ * many are out now, eased: the chase stands back by it), `packing` (how many are CALLED out: it changes on a bar
+ * line, where there is a cut anyway, so the pack's shots come in on that cut and not two seconds after it when
+ * the second robot has come half way up), `place` (0 the tunnel, 1 the fields), `shot`, `cuts`, `distance`,
+ * `viewX`, `viewY` (the panel).
+ * Writes `pick`, `ahead`, `right`, `up`, `lens`, `aim`, `ride`, `z`.
  */
 export const CAMERA_STATEMENTS = [
-  `turn = floor(bar / 2)`,
-  `packed = (pack > 1.5)`,
+  `turn = want`,
+  `packed = (packing > 1.5)`,
   `fielded = (place > 0.5)`,
-  `cut = fielded * ${ordered(FIELD_ORDER, turnIn(FIELD_ORDER))} + (1 - fielded) * (packed * ${ordered(PACK_ORDER, turnIn(PACK_ORDER))} + (1 - packed) * ((swim > 0.5) * ${ordered(SWIMMING_ORDER, turnIn(SWIMMING_ORDER))} + (swim <= 0.5) * ${ordered(WALKING_ORDER, turnIn(WALKING_ORDER))}))`,
+  `cut = fielded * ${ordered(FIELD_ORDER, turnIn(FIELD_ORDER))} + (1 - fielded) * (packed * ${ordered(PACK_ORDER, turnIn(PACK_ORDER))} + (1 - packed) * ${ordered(ROBOT_ORDER, turnIn(ROBOT_ORDER))})`,
   `pick = (cuts > 0.5) * cut + (cuts <= 0.5) * floor(shot + 0.5)`,
   `post = (floor(value / ${POST_SPACING}) + 0.5) * ${POST_SPACING}`,
   `ahead = ${picked((shot) => shot.ahead)}`,
@@ -125,5 +175,5 @@ export const CAMERA_STATEMENTS = [
   `z = value + ahead`,
 ].join(";\n");
 
-/** What a channel reads before anything is wired or playing: a silent host cuts on the clock instead of the bar. */
-export const CAMERA_DEFAULTS = ["bar = floor(abstime / 4)", "value = 0", "swim = 0", "pack = 1", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6", "place = 0"].join(";\n");
+/** What a channel reads before anything is wired or playing: a silent host cuts on the clock. */
+export const CAMERA_DEFAULTS = ["want = floor(abstime / 8)", "value = 0", "pack = 1", "packing = 1", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6", "place = 0"].join(";\n");

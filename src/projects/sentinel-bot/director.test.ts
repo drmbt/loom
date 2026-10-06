@@ -135,10 +135,10 @@ describe("the sentinel follows the track", () => {
     expect([0, 1, 2, 3, 4].map((bar) => read(phrasePause("follow", "intensity", "draw", "bar"), { follow: 1, intensity: 0.6, draw: 0.2, bar }))).toEqual([1, 1, 0, 0, 1]);
     expect(read(phrasePause("follow", "intensity", "draw", "bar"), { follow: 1, intensity: 0.6, draw: 0.3, bar: 0 })).toBe(0);
     expect(read(phrasePause("follow", "intensity", "draw", "bar"), { follow: 1, intensity: 0.9, draw: 0, bar: 0 })).toBe(0);
-    // The pack: the leader alone, except for two eight-bar turns in five in the louder passages; never without the switch.
-    expect([0.3, 0.6, 0.7, 1].map((intensity) => read(packSize("follow", "intensity", "draw", 3), { follow: 1, intensity, draw: 0.2 }))).toEqual([1, 1, 3, 3]);
-    expect(read(packSize("follow", "intensity", "draw", 3), { follow: 1, intensity: 0.9, draw: 0.5 })).toBe(1);
-    expect(read(packSize("follow", "intensity", "draw", 3), { follow: 0, intensity: 1, draw: 0 })).toBe(1);
+    // The pack: the leader alone, except for three eight-bar turns in ten; never without the switch. By the turn's
+    // draw and nothing that moves inside a turn, so it is called on a bar line, where the camera cuts.
+    expect([0.1, 0.29, 0.31, 0.9].map((draw) => read(packSize("follow", "draw", 3), { follow: 1, draw }))).toEqual([3, 3, 1, 1]);
+    expect(read(packSize("follow", "draw", 3), { follow: 0, draw: 0 })).toBe(1);
     // Its turns are eight bars long: the same draw from bar 0 to 7, another from 8.
     const turns = [0, 7, 8].map((bar) => read(phraseDraw("bar", 6, PACK_BARS), { bar }));
     expect([turns[1] === turns[0], turns[2] === turns[0]]).toEqual([true, false]);
@@ -189,6 +189,10 @@ interface Run {
   /** The focus pass's aperture, per frame, and what it is with nothing opening it (the panel's Depth of Field for that lens). */
   readonly aperture: number[];
   readonly apertureAtRest: number[];
+  /** The shot the camera is on, per frame; how long a shot is held just then, in bars and as the least seconds between cuts. */
+  readonly pick: number[];
+  readonly shotBars: number[];
+  readonly hold: number[];
 }
 
 async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run> {
@@ -223,6 +227,9 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
   const kick: number[] = [];
   const aperture: number[] = [];
   const apertureAtRest: number[] = [];
+  const pick: number[] = [];
+  const shotBars: number[] = [];
+  const hold: number[] = [];
   let first = Number.NaN;
   let last = Number.NaN;
   for (let index = 0; index < FRAMES; index += 1) {
@@ -259,10 +266,13 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
     kick.push(read("lag_hits:kickCount"));
     aperture.push(evaluated(apertureSource));
     apertureAtRest.push((read("slider_focus:focus") * 55) / read("expression_camera:lens"));
+    pick.push(read("expression_camera:pick"));
+    shotBars.push(read("expression_cut:bars"));
+    hold.push(read("expression_cut:hold"));
     last = read("speed_travel:value");
     if (index === 0) first = last;
   }
-  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, pack, distance: last - first, lens, fov, kick, aperture, apertureAtRest };
+  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, pack, distance: last - first, lens, fov, kick, aperture, apertureAtRest, pick, shotBars, hold };
 }
 
 /** The frames of a stretch of the clip, in seconds. */
@@ -364,6 +374,30 @@ describe("the sentinel follows its own clip, through the document's value graph"
     // The panel's Focus on the Kick at 0: never.
     const never = await run(true, true, 0);
     expect(never.aperture).toEqual(never.apertureAtRest);
+  });
+
+  it("holds the opening shot eight bars, cuts only on a bar line, and never twice within a shot's length", async () => {
+    // The owner, 2026-10-06: "cuts are a bit too hectic even while there's a build up. we need to make sure to not
+    // get tricked during intros etc and hastily cutting around if it's something rather calm". On his track the
+    // old rule cut 73 times in 198 seconds, six of them in the first twelve, some a tenth of a second apart.
+    const followed = await run(true, true);
+    const cuts: number[] = [];
+    for (let index = 1; index < FRAMES; index += 1) if (followed.pick[index] !== followed.pick[index - 1]) cuts.push(index);
+    // It does cut, and not on every second bar as it did: the shipped clip is sixteen bars of a sparse beat (measured:
+    // one cut, at bar 8; the old rule made seven).
+    expect(cuts.length).toBeGreaterThanOrEqual(1);
+    expect(cuts.length).toBeLessThanOrEqual(3);
+    // The opening: one shot until the eighth bar, whatever the first bars hold.
+    expect(followed.bar[cuts[0] as number]).toBeGreaterThanOrEqual(8);
+    expect(followed.shotBars.slice(0, cuts[0] as number).every((bars) => bars === 8)).toBe(true);
+    for (const [at, index] of cuts.entries()) {
+      // On a bar line: the bar count has just stepped, and to a bar the pace at that moment cuts on.
+      expect(followed.bar[index]).not.toBe(followed.bar[index - 1]);
+      // Not within a shot's length of the last one: nine tenths of it, by the pace it is on.
+      if (at > 0) expect((index - (cuts[at - 1] as number)) / FPS).toBeGreaterThanOrEqual((followed.hold[index] as number) - 1 / FPS);
+    }
+    // Whatever pace it is on is one of the three (the rule for which is camera.test.ts's).
+    expect([...new Set(followed.shotBars)].every((bars) => bars === 8 || bars === 4 || bars === 2)).toBe(true);
   });
 
   it("with nothing playing the switch changes nothing", async () => {

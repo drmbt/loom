@@ -106,13 +106,18 @@ export function fieldTurn(follow: string, bar: string): string {
 export const PACK_BARS = 8;
 
 /**
- * How many of the pack are out, 1 or `most`: the leader alone, except for some eight-bar turns (`draw`, two
- * in five of them) in the louder passages, when the rest come up from behind. An event, not a state: while a
- * pack is out it flies, and a piece that flew whenever it was loud never walked (measured on the owner's
- * track with the pack following the intensity itself: 157 of 198 seconds swimming).
+ * How many of the pack are out, 1 or `most`: the leader alone, except for some eight-bar turns (`draw`, three
+ * in ten of them), when the rest come up from behind. An event, not a state: while a pack is out it flies, and
+ * a piece that flew whenever it was loud never walked (measured on the owner's track with the pack following
+ * the intensity itself: 157 of 198 seconds swimming).
+ *
+ * By the bar count alone, as the fields are. It also asked for a loud passage (intensity over 0.6), and a
+ * number that crosses a line does it between bar lines: the pack's shots then came in a second after the cut
+ * on the bar, two cuts for one. Nothing here can hold a decision taken at the head of a turn (§T1652b asks
+ * the engine for a node that can), so the call is one that cannot change inside a turn.
  */
-export function packSize(follow: string, intensity: string, draw: string, most: number): string {
-  return `(1 + ${follow} * ${most - 1} * (${intensity} > 0.6) * (${draw} < 0.4))`;
+export function packSize(follow: string, draw: string, most: number): string {
+  return `(1 + ${follow} * ${most - 1} * (${draw} < 0.3))`;
 }
 
 /** What the long view multiplies the pace by: 0.65 at the quietest of the last minute, 1.35 at the loudest. */
