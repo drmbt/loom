@@ -761,6 +761,17 @@
           "portId": "in"
         }
       },
+      "glitch-grade": {
+        "id": "glitch-grade",
+        "source": {
+          "nodeId": "wgsl_glitch",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "filmgrade_finish",
+          "portId": "input"
+        }
+      },
       "glow-back": {
         "id": "glow-back",
         "source": {
@@ -981,14 +992,14 @@
           "portId": "points"
         }
       },
-      "lens-grade": {
-        "id": "lens-grade",
+      "lens-glitch": {
+        "id": "lens-glitch",
         "source": {
           "nodeId": "lens_glass",
           "portId": "out"
         },
         "target": {
-          "nodeId": "filmgrade_finish",
+          "nodeId": "wgsl_glitch",
           "portId": "input"
         }
       },
@@ -1152,7 +1163,7 @@
       },
       "panel_all-slider_chase": {
         "id": "panel_all-slider_chase",
-        "order": 41,
+        "order": 42,
         "source": {
           "nodeId": "slider_chase",
           "portId": "out"
@@ -1200,7 +1211,7 @@
       },
       "panel_all-slider_eyehits": {
         "id": "panel_all-slider_eyehits",
-        "order": 37,
+        "order": 38,
         "source": {
           "nodeId": "slider_eyehits",
           "portId": "out"
@@ -1212,7 +1223,7 @@
       },
       "panel_all-slider_eyesweep": {
         "id": "panel_all-slider_eyesweep",
-        "order": 38,
+        "order": 39,
         "source": {
           "nodeId": "slider_eyesweep",
           "portId": "out"
@@ -1282,9 +1293,21 @@
           "portId": "controls"
         }
       },
+      "panel_all-slider_glitch": {
+        "id": "panel_all-slider_glitch",
+        "order": 28,
+        "source": {
+          "nodeId": "slider_glitch",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_all",
+          "portId": "controls"
+        }
+      },
       "panel_all-slider_glow": {
         "id": "panel_all-slider_glow",
-        "order": 36,
+        "order": 37,
         "source": {
           "nodeId": "slider_glow",
           "portId": "out"
@@ -1332,7 +1355,7 @@
       },
       "panel_all-slider_huefrom": {
         "id": "panel_all-slider_huefrom",
-        "order": 31,
+        "order": 32,
         "source": {
           "nodeId": "slider_huefrom",
           "portId": "out"
@@ -1344,7 +1367,7 @@
       },
       "panel_all-slider_hueshift": {
         "id": "panel_all-slider_hueshift",
-        "order": 35,
+        "order": 36,
         "source": {
           "nodeId": "slider_hueshift",
           "portId": "out"
@@ -1356,7 +1379,7 @@
       },
       "panel_all-slider_hueto": {
         "id": "panel_all-slider_hueto",
-        "order": 32,
+        "order": 33,
         "source": {
           "nodeId": "slider_hueto",
           "portId": "out"
@@ -1368,7 +1391,7 @@
       },
       "panel_all-slider_hueturn": {
         "id": "panel_all-slider_hueturn",
-        "order": 33,
+        "order": 34,
         "source": {
           "nodeId": "slider_hueturn",
           "portId": "out"
@@ -1392,7 +1415,7 @@
       },
       "panel_all-slider_legs": {
         "id": "panel_all-slider_legs",
-        "order": 39,
+        "order": 40,
         "source": {
           "nodeId": "slider_legs",
           "portId": "out"
@@ -1404,7 +1427,7 @@
       },
       "panel_all-slider_meter": {
         "id": "panel_all-slider_meter",
-        "order": 40,
+        "order": 41,
         "source": {
           "nodeId": "slider_meter",
           "portId": "out"
@@ -1476,7 +1499,7 @@
       },
       "panel_all-slider_shot": {
         "id": "panel_all-slider_shot",
-        "order": 28,
+        "order": 29,
         "source": {
           "nodeId": "slider_shot",
           "portId": "out"
@@ -1488,7 +1511,7 @@
       },
       "panel_all-slider_spark": {
         "id": "panel_all-slider_spark",
-        "order": 42,
+        "order": 43,
         "source": {
           "nodeId": "slider_spark",
           "portId": "out"
@@ -1524,7 +1547,7 @@
       },
       "panel_all-slider_spread": {
         "id": "panel_all-slider_spread",
-        "order": 34,
+        "order": 35,
         "source": {
           "nodeId": "slider_spread",
           "portId": "out"
@@ -1584,7 +1607,7 @@
       },
       "panel_all-toggle_cuts": {
         "id": "panel_all-toggle_cuts",
-        "order": 29,
+        "order": 30,
         "source": {
           "nodeId": "toggle_cuts",
           "portId": "out"
@@ -1632,7 +1655,7 @@
       },
       "panel_all-xypad_view": {
         "id": "panel_all-xypad_view",
-        "order": 30,
+        "order": 31,
         "source": {
           "nodeId": "xypad_view",
           "portId": "out"
@@ -2050,6 +2073,18 @@
           "portId": "controls"
         }
       },
+      "panel_scene-slider_glitch": {
+        "id": "panel_scene-slider_glitch",
+        "order": 10,
+        "source": {
+          "nodeId": "slider_glitch",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_scene",
+          "portId": "controls"
+        }
+      },
       "panel_scene-slider_grain": {
         "id": "panel_scene-slider_grain",
         "order": 7,
@@ -2124,7 +2159,7 @@
       },
       "panel_scene-slider_shot": {
         "id": "panel_scene-slider_shot",
-        "order": 10,
+        "order": 11,
         "source": {
           "nodeId": "slider_shot",
           "portId": "out"
@@ -2136,7 +2171,7 @@
       },
       "panel_scene-toggle_cuts": {
         "id": "panel_scene-toggle_cuts",
-        "order": 11,
+        "order": 12,
         "source": {
           "nodeId": "toggle_cuts",
           "portId": "out"
@@ -2148,7 +2183,7 @@
       },
       "panel_scene-xypad_view": {
         "id": "panel_scene-xypad_view",
-        "order": 12,
+        "order": 13,
         "source": {
           "nodeId": "xypad_view",
           "portId": "out"
@@ -2166,6 +2201,17 @@
         },
         "target": {
           "nodeId": "lag_perched",
+          "portId": "in"
+        }
+      },
+      "place-lag": {
+        "id": "place-lag",
+        "source": {
+          "nodeId": "constant_place",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lag_place",
           "portId": "in"
         }
       },
@@ -5516,6 +5562,20 @@
         },
         "type": "valueLag"
       },
+      "lag_place": {
+        "definitionVersion": 1,
+        "id": "lag_place",
+        "label": "lag_place",
+        "parameters": {
+          "lag": 0.1,
+          "releaseRatio": 1
+        },
+        "position": {
+          "x": -1200,
+          "y": 1350
+        },
+        "type": "valueLag"
+      },
       "lag_rate": {
         "definitionVersion": 1,
         "id": "lag_rate",
@@ -7406,7 +7466,7 @@
         "id": "panel_all",
         "label": "panel_all",
         "parameters": {
-          "board": "{\n  \"columns\": 18,\n  \"items\": [\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":0,\"w\":17,\"h\":1}},\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_robot\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_reach\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spiral\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_attack\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pack\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_weight\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_drag\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_follow\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":19,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_ropes\",\"rect\":{\"x\":0,\"y\":20,\"w\":8,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":9,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":9,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":9,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":9,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":9,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":9,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":9,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":9,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":9,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":9,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":9,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":9,\"y\":12,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":9,\"y\":13,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":9,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":9,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":10,\"y\":16,\"w\":6,\"h\":6}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":9,\"y\":22,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":9,\"y\":23,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":9,\"y\":24,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":9,\"y\":25,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":9,\"y\":26,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":9,\"y\":27,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":9,\"y\":28,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":9,\"y\":29,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":9,\"y\":30,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":9,\"y\":31,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":9,\"y\":32,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":9,\"y\":33,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":9,\"y\":34,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":9,\"y\":35,\"w\":8,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 18,\n  \"items\": [\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":0,\"w\":17,\"h\":1}},\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_robot\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_reach\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spiral\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_attack\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pack\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_weight\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_drag\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_follow\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":19,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_ropes\",\"rect\":{\"x\":0,\"y\":20,\"w\":8,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":9,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":9,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":9,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":9,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":9,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":9,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":9,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":9,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":9,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":9,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":9,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":9,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":9,\"y\":13,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":9,\"y\":14,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":9,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":9,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":10,\"y\":17,\"w\":6,\"h\":6}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":9,\"y\":23,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":9,\"y\":24,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":9,\"y\":25,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":9,\"y\":26,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":9,\"y\":27,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":9,\"y\":28,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":9,\"y\":29,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":9,\"y\":30,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":9,\"y\":31,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":9,\"y\":32,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":9,\"y\":33,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":9,\"y\":34,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":9,\"y\":35,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":9,\"y\":36,\"w\":8,\"h\":1}}\n  ]\n}",
           "remote": false,
           "title": "All"
         },
@@ -7451,7 +7511,7 @@
         "id": "panel_scene",
         "label": "panel_scene",
         "parameters": {
-          "board": "{\n  \"columns\": 9,\n  \"items\": [\n    {\"label\":\"Scene\",\"rect\":{\"x\":0,\"y\":0,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":13,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":1,\"y\":16,\"w\":6,\"h\":6}}\n  ]\n}",
+          "board": "{\n  \"columns\": 9,\n  \"items\": [\n    {\"label\":\"Scene\",\"rect\":{\"x\":0,\"y\":0,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":0,\"y\":14,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":1,\"y\":17,\"w\":6,\"h\":6}}\n  ]\n}",
           "remote": true,
           "title": "Scene"
         },
@@ -7466,8 +7526,8 @@
         "id": "presets_all",
         "label": "presets_all",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_all\",\n      \"values\": {\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_crawl\": {\n          \"value\": 0.6\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"slider_stride\": {\n          \"value\": 5\n        },\n        \"slider_reach\": {\n          \"value\": 1.3\n        },\n        \"slider_flare\": {\n          \"value\": 0.25\n        },\n        \"slider_wave\": {\n          \"value\": 0.05\n        },\n        \"slider_grip\": {\n          \"value\": 1\n        },\n        \"slider_gesture\": {\n          \"value\": 0.6\n        },\n        \"slider_spiral\": {\n          \"value\": 0\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_weight\": {\n          \"value\": 0\n        },\n        \"slider_drag\": {\n          \"value\": 1.5\n        },\n        \"slider_follow\": {\n          \"value\": 0.4\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"toggle_follow\": {\n          \"on\": true\n        },\n        \"toggle_ropes\": {\n          \"on\": false\n        },\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        },\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "slider_speed.value slider_crawl.value slider_swim.value slider_stride.value slider_reach.value slider_flare.value slider_wave.value slider_grip.value slider_gesture.value slider_spiral.value slider_attack.value slider_pack.value slider_weight.value slider_drag.value slider_follow.value toggle_perch.on toggle_follow.on toggle_ropes.on slider_bore.value slider_lamp.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_glow.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_all\",\n      \"values\": {\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_crawl\": {\n          \"value\": 0.6\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"slider_stride\": {\n          \"value\": 5\n        },\n        \"slider_reach\": {\n          \"value\": 1.3\n        },\n        \"slider_flare\": {\n          \"value\": 0.25\n        },\n        \"slider_wave\": {\n          \"value\": 0.05\n        },\n        \"slider_grip\": {\n          \"value\": 1\n        },\n        \"slider_gesture\": {\n          \"value\": 0.6\n        },\n        \"slider_spiral\": {\n          \"value\": 0\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_weight\": {\n          \"value\": 0\n        },\n        \"slider_drag\": {\n          \"value\": 1.5\n        },\n        \"slider_follow\": {\n          \"value\": 0.4\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"toggle_follow\": {\n          \"on\": true\n        },\n        \"toggle_ropes\": {\n          \"on\": false\n        },\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        },\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "slider_speed.value slider_crawl.value slider_swim.value slider_stride.value slider_reach.value slider_flare.value slider_wave.value slider_grip.value slider_gesture.value slider_spiral.value slider_attack.value slider_pack.value slider_weight.value slider_drag.value slider_follow.value toggle_perch.on toggle_follow.on toggle_ropes.on slider_bore.value slider_lamp.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_glow.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
         },
         "position": {
           "x": -1500,
@@ -7508,8 +7568,8 @@
         "id": "presets_scene",
         "label": "presets_scene",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_scene\",\n      \"values\": {\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "slider_bore.value slider_lamp.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_scene\",\n      \"values\": {\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "slider_bore.value slider_lamp.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y"
         },
         "position": {
           "x": -2100,
@@ -7791,8 +7851,8 @@
           "value": 0.3
         },
         "position": {
-          "x": -2700,
-          "y": 3500
+          "x": -3600,
+          "y": 3750
         },
         "type": "slider"
       },
@@ -7867,8 +7927,8 @@
           "value": 0.6
         },
         "position": {
-          "x": -2700,
-          "y": 3250
+          "x": -3600,
+          "y": 3500
         },
         "type": "slider"
       },
@@ -7886,7 +7946,7 @@
           "value": 0.25
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 3500
         },
         "type": "slider"
@@ -7986,6 +8046,25 @@
         },
         "type": "slider"
       },
+      "slider_glitch": {
+        "definitionVersion": 2,
+        "id": "slider_glitch",
+        "label": "slider_glitch",
+        "parameters": {
+          "caption": "Glitch",
+          "channel": "glitch",
+          "defaultValue": 0,
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 0
+        },
+        "position": {
+          "x": -3300,
+          "y": 3000
+        },
+        "type": "slider"
+      },
       "slider_glow": {
         "definitionVersion": 2,
         "id": "slider_glow",
@@ -8000,7 +8079,7 @@
           "value": 9
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 3250
         },
         "type": "slider"
@@ -8076,7 +8155,7 @@
           "value": 0
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 3000
         },
         "type": "slider"
@@ -8095,7 +8174,7 @@
           "value": 0.4
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 3250
         },
         "type": "slider"
@@ -8114,7 +8193,7 @@
           "value": 0.07
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 3000
         },
         "type": "slider"
@@ -8133,8 +8212,8 @@
           "value": 0
         },
         "position": {
-          "x": -2700,
-          "y": 3000
+          "x": -3600,
+          "y": 3250
         },
         "type": "slider"
       },
@@ -8171,7 +8250,7 @@
           "value": 1
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 3500
         },
         "type": "slider"
@@ -8190,7 +8269,7 @@
           "value": 0.7
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 3500
         },
         "type": "slider"
@@ -8323,7 +8402,7 @@
           "value": 0.6
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 3750
         },
         "type": "slider"
@@ -8380,7 +8459,7 @@
           "value": 0.6
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 3250
         },
         "type": "slider"
@@ -9146,6 +9225,36 @@
           "mode": "project"
         },
         "type": "customWgslMulti"
+      },
+      "wgsl_glitch": {
+        "definitionVersion": 1,
+        "id": "wgsl_glitch",
+        "label": "wgsl_glitch",
+        "parameters": {
+          "amount": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(op('slider_glitch').chan.glitch, clamp(abs(op('constant_place').chan.value - op('lag_place').chan.value) * 2.2, 0, 1))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "bands": 26,
+          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\nstruct Params {\n  amount: f32, // @default 0  How much, 0 to 1. At 0 the picture goes through untouched.\n  bands: f32, // @default 26  How many thin bands the picture tears into, top to bottom.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn glitchLot(a: f32, b: f32) -> f32 {\n  let n = (u32(i32(a) + 65536) * 73856093u) ^ (u32(i32(b) + 65536) * 19349663u);\n  let m = (n ^ (n >> 15u)) * 2246822519u;\n  return f32((m ^ (m >> 13u)) >> 8u) / 16777216.0;\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let amount = clamp(params.amount, 0.0, 1.0);\n  if (amount <= 0.0) { return textureSampleLevel(inputTexture, inputSampler, uv, 0.0); }\n  let tick = floor(frameU.absTime * 30.0);\n  // Bands of two sizes, each set of them moved up or down a little every tick.\n  let wide = floor(uv.y * params.bands * 0.3 + glitchLot(tick, 1.0) * 7.0);\n  let thin = floor(uv.y * params.bands + glitchLot(tick, 2.0) * 13.0);\n  // A band tears if its lot is under the amount: at the most half the wide ones and a third of the thin.\n  let tornWide = step(glitchLot(wide, tick + 11.0), amount * 0.5);\n  let tornThin = step(glitchLot(thin, tick + 23.0), amount * 0.35);\n  let slide = ((glitchLot(wide, tick + 3.0) - 0.5) * 0.24 * tornWide + (glitchLot(thin, tick + 5.0) - 0.5) * 0.08 * tornThin) * amount;\n  let at = vec2f(fract(uv.x + slide), uv.y);\n  // The colours come apart sideways.\n  let apart = 0.012 * amount * (0.4 + tornWide + tornThin);\n  let red = textureSampleLevel(inputTexture, inputSampler, vec2f(fract(at.x + apart), at.y), 0.0).r;\n  let middle = textureSampleLevel(inputTexture, inputSampler, at, 0.0);\n  let blue = textureSampleLevel(inputTexture, inputSampler, vec2f(fract(at.x - apart), at.y), 0.0).b;\n  var colour = vec3f(red, middle.g, blue);\n  // Snow: in a few of the thin bands, two pixels to a grain.\n  let snowy = step(glitchLot(thin, tick + 41.0), amount * 0.16);\n  let grain = floor(uv * frameU.resolution * 0.5);\n  // (Dim snow: this piece is dark, and at 0.8 a band of it was the brightest thing in the frame.)\n  colour = mix(colour, vec3f(glitchLot(grain.x + grain.y * 4099.0, tick + 7.0)) * 0.3, snowy * 0.85);\n  return vec4f(colour, middle.a);\n}"
+        },
+        "position": {
+          "x": 525,
+          "y": 150
+        },
+        "resolution": {
+          "mode": "project"
+        },
+        "type": "customWgsl"
       },
       "wgsl_haze": {
         "definitionVersion": 1,

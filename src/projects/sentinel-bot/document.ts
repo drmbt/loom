@@ -1,4 +1,5 @@
 import { HAZE_WGSL } from "./air.ts";
+import { GLITCH_WGSL } from "./glitch.ts";
 import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
@@ -191,6 +192,8 @@ const SCENE: readonly Slider[] = [
   { name: "slider_fields", caption: "Place (fields dock temple)", value: 0, min: 0, max: 3 },
   // …and how much mist lies low in them (air.ts).
   { name: "slider_mist", caption: "Mist", value: 1, min: 0, max: 2.5 },
+  // Tears the picture (glitch.ts) for as long as it is up; by itself it happens only on a change of place.
+  { name: "slider_glitch", caption: "Glitch", value: 0, min: 0, max: 1 },
 ];
 
 // THE ROBOT'S LIGHTS, the piece's main instrument (surface.ts): the lenses of its face and the lines along its
@@ -1112,6 +1115,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // A lens that is not perfect, and film: a little barrel, soft fringed edges, a vignette; then the
     // grade (a filmic curve, crushed blacks, green in the shadows as the film has it) and grain.
     node("lens_glass", "lens", [450, 0], { distortion: 0.035, edgeBlur: 0.008, swirl: 0.3, aberration: 0.0012, vignette: 0.6, vignetteRound: 0.8 }, { label: "lens_glass", resolution: { mode: "project" } }),
+    // A glitch (glitch.ts): on a change of place, for a third of a second (the place's number against itself
+    // eased: the difference is a pulse that dies away), and whenever the panel's Glitch is up.
+    node("lag_place", "valueLag", [-1200, 1350], { lag: 0.1, releaseRatio: 1 }, { label: "lag_place" }),
+    node("wgsl_glitch", "customWgsl", [525, 150], { source: GLITCH_WGSL, amount: expressionSlot(`max(${on("slider_glitch")}, clamp(abs(op('constant_place').chan.value - op('lag_place').chan.value) * 2.2, 0, 1))`, 0), bands: 26 }, { label: "wgsl_glitch", resolution: { mode: "project" } }),
     node("filmgrade_finish", "filmGrade", [600, 0], {
       exposure: 0.3, black: 0.03, contrast: 1.2, saturation: 0.92, keepWarm: 1, bleach: 0.2,
       shadowTint: [0.78, 1, 0.9, 1], highlightTint: [1, 0.97, 0.92, 1], split: 0.55,
@@ -1212,7 +1219,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("glow-front", ["wgsl_bloomup0", "out"], ["add_glow", "in1"]),
     edge("glow-back", ["wgsl_focus", "out"], ["add_glow", "in2"]),
     edge("glow-lens", ["add_glow", "out"], ["lens_glass", "input"]),
-    edge("lens-grade", ["lens_glass", "out"], ["filmgrade_finish", "input"]),
+    edge("lens-glitch", ["lens_glass", "out"], ["wgsl_glitch", "input"]),
+    edge("glitch-grade", ["wgsl_glitch", "out"], ["filmgrade_finish", "input"]),
+    edge("place-lag", ["constant_place", "out"], ["lag_place", "in"]),
     edge("grade-out", ["filmgrade_finish", "out"], ["output_frame", "input"]),
     ...[...panels, everything].flatMap((panel) => panel.members.map((member, index) => edge(`${panel.id}-${member}`, [member, "out"], [panel.id, "controls"], index))),
   ];
