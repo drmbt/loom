@@ -95,6 +95,7 @@ import { joinPanelOperations, panelUnderDrop } from "@editor/controls/panel-join
 import { presetCatalogueHolderFor } from "@domain/presets/bank-view.ts";
 import { addBankTargetsOperations, bankUnderDrop, topmostDropTarget } from "@editor/controls/bank-join.ts";
 import { orderSelection, promoteInSelection } from "@editor/selection/selection-order.ts";
+import { VIEW_CLIP_ATTRIBUTE } from "@ui/hooks/use-visible-subscribe.ts";
 import styles from "./graph-canvas.module.css";
 
 /**
@@ -1225,6 +1226,8 @@ export function GraphCanvas({
       <div
         className={styles.canvas}
         data-testid="graph-canvas"
+        // T1691b: this box is the view the tiles are panned in; one outside it is off screen.
+        {...{ [VIEW_CLIP_ATTRIBUTE]: "" }}
         data-pan-key={panKeyHeld ? "held" : undefined}
         ref={canvasRef}
         onDoubleClick={onCanvasDoubleClick}
