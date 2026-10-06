@@ -367,7 +367,8 @@ export function ropeTwin(fixture: RopeFixture): RopeTwin {
   const stored = fixture.rope ?? {};
   const number = (key: string, fallback: number): number => (typeof stored[key] === "number" ? (stored[key] as number) : fallback);
   const parameters: RopeParameters = {
-    iterations: number("iterations", ROPE_DEFAULTS.iterations),
+    // Iterations defaults to 8 while Bend Limit is on (the node's `parametersFor`).
+    iterations: number("iterations", stored["bendLimit"] === true ? 8 : ROPE_DEFAULTS.iterations),
     speed: number("speed", ROPE_DEFAULTS.speed),
     gravity: number("gravity", ROPE_DEFAULTS.gravity),
     damping: number("damping", ROPE_DEFAULTS.damping),
@@ -376,6 +377,8 @@ export function ropeTwin(fixture: RopeFixture): RopeTwin {
     restLengthScale: number("restLengthScale", ROPE_DEFAULTS.restLengthScale),
     stretch: number("stretch", ROPE_DEFAULTS.stretch),
     maxStretch: number("maxStretch", ROPE_DEFAULTS.maxStretch),
+    bendLimit: stored["bendLimit"] === true,
+    minBendRadius: number("minBendRadius", ROPE_DEFAULTS.minBendRadius),
     anchorFirst: number("anchorFirst", ROPE_DEFAULTS.anchorFirst),
     anchorSecond: number("anchorSecond", ROPE_DEFAULTS.anchorSecond),
     anchorLast: number("anchorLast", ROPE_DEFAULTS.anchorLast),

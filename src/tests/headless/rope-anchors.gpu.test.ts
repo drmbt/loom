@@ -137,18 +137,25 @@ describe("rope: a far pin that stands on a rung and crosses to the next (T1585b 
   }, 240_000);
 
   /*
-   * WHAT THE ATTACK NEEDS. At one step a frame the claw crosses 13 cm in a step and the
-   * solve cannot finish: segments are left long, and Max Stretch holds every one but the
-   * last, which has a pin at its far end and takes what is left. Two steps a frame hold it.
-   * So: Min Update Steps 2 at 60 frames a second, which Update Rate 240 already gives
-   * twice over, and which matters only where the rate has been turned down.
+   * WHAT THE ATTACK NEEDS, AND WHAT HOLDS IT WHEN IT DOES NOT GET IT. At one step a frame
+   * the claw crosses 13 cm in a step and the solve cannot finish. Max Stretch then holds
+   * EVERY segment (the design's D24): between two pins the guard first walks back from the
+   * later one and then out from the earlier, so nothing is left for the segment before the
+   * claw to take. Walking out only, that one segment was 177% long.
    *
-   * Two steps hold it only because the claw's target is WALKED across them. Seen red at 30
-   * tolerances with the target put at its end in a frame's first step.
+   * Two steps a frame put every segment at its length. So: Min Update Steps 2 at 60 frames
+   * a second, which Update Rate 240 already gives twice over, and which matters only where
+   * the rate has been turned down. Two steps hold it only because the claw's target is
+   * WALKED across them: seen red at 30 tolerances with the target put at its end in a
+   * frame's first step.
    */
-  it("the attack needs two steps a frame: at one a segment is left more than its Max Stretch long, and Min Update Steps 2 holds it", async () => {
+  it("the attack at ONE step a frame: the guard holds every segment within Max Stretch, the one before the claw too; two steps put each at its length", async () => {
     const one = await stride(1.6, { updateRate: 60 });
-    expect(one.stretch).toBeGreaterThan(0.02 * PITCH);
+    // Max Stretch is 2%, read back to the stored positions' spacing. Seen red at 110 mm on
+    // segment 53, the one before the claw, with the guard walking out from the first point only.
+    expect(one.stretch).toBeLessThanOrEqual(0.02 * PITCH + 2 * 2 ** -19);
+    // It is the guard that holds it and not the solve: a segment is tens of tolerances out.
+    expect(one.stretch).toBeGreaterThan(10 * TOLERANCE);
     expect(one.pinOff).toBe(0);
     const two = await stride(1.6, { updateRate: 60, minSteps: 2 });
     expect(two.stretch).toBeLessThanOrEqual(TOLERANCE);

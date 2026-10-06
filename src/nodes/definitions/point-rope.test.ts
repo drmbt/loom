@@ -3,12 +3,12 @@ import { describe, expect, it } from "vitest";
 import { scratchResourceId } from "../../compiler/resources.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 import { ZERO_FRAME } from "../../domain/types/frame.ts";
-import { ROPE_MAX_STRAND_POINTS } from "../../points/rope.ts";
+import { ROPE_DEFAULTS, ROPE_MAX_ITERATIONS, ROPE_MAX_STRAND_POINTS } from "../../points/rope.ts";
 import { MAX_KERNEL_SUBSTEPS } from "../../runtime/backend/plan.ts";
 import { dispatchFrameUniforms, dispatchStepUniforms } from "../../runtime/backend/shared-uniforms.ts";
 import { pointStorageId } from "./point-storage.ts";
 import { ROPE_KEPT_KEY, ROPE_SOLVE_KEY, pointRopeNode, ropeAttributes } from "./point-rope.ts";
-import { compileContext, fixturePairs } from "./test-support.ts";
+import { compileContext, fixturePairs, planFingerprint } from "./test-support.ts";
 
 /**
  * Rope at the fixture level (T1585b): what it publishes on the edge, how its one pass is
@@ -161,7 +161,7 @@ describe("Rope — its one pass (T1585b)", () => {
     expect(pass.shader).toContain(`let o = ${String((STRANDS["position"]?.offset ?? 0) / 4)}u + slot * 4u;`);
   });
 
-  it("allocates two vec4f a point to keep and eight floats a point to solve in, beside the pair", () => {
+  it("allocates two vec4f a point to keep and eight floats a point to solve in, beside the pair (twenty with Bend Limit on, below)", () => {
     const scratch = compile().scratch as ReadonlyArray<{ key: string; kind: string; stride: number; capacity: number }>;
     expect(scratch.map((entry) => [entry.key, entry.kind, entry.stride * entry.capacity])).toEqual([
       [ROPE_KEPT_KEY, "buffer", 550 * 32],
@@ -245,17 +245,17 @@ describe("Rope — weights from attributes (T1585b slice 2)", () => {
     const plain = passOf(compile({}, { pairs: HELD }));
     const mapped = passOf(compile({}, { pairs: HELD, maps: { anchorLast: { attribute: "hold" } } }));
     // Read at base + segments: the strand's LAST point, one float a point.
-    expect(mapped.shader).toContain(`lastWeight = clamp(bitcast<f32>(pk_0[${wordOf(HELD, "hold")}u + (base + segments) * 1u + 0u]), 0.0, 1.0);`);
-    expect(plain.shader).toContain("lastWeight = clamp(params.anchorLast, 0.0, 1.0);");
+    expect(mapped.shader).toContain(`lastWeight = held(bitcast<f32>(pk_0[${wordOf(HELD, "hold")}u + (base + segments) * 1u + 0u]));`);
+    expect(plain.shader).toContain("lastWeight = held(params.anchorLast);");
     expect(mapped.buffers.map((buffer) => buffer.binding)).toEqual(["pk_0", "state_in", "state_out", "kept", "scratch"]);
     // A different program, and an id that says which station reads a buffer.
     expect(mapped.id).toBe("rope_tentacles:rope:step:l:550");
     expect(plain.id).toBe("rope_tentacles:rope:step::550");
     // First and second read theirs at their own points.
     const all = passOf(compile({}, { pairs: HELD, maps: { anchorFirst: { attribute: "hold" }, anchorSecond: { attribute: "aim", channel: "y" }, anchorLast: { attribute: "hold" } } }));
-    expect(all.shader).toContain(`let firstWeight = clamp(bitcast<f32>(pk_0[${wordOf(HELD, "hold")}u + base * 1u + 0u]), 0.0, 1.0);`);
+    expect(all.shader).toContain(`let firstWeight = held(bitcast<f32>(pk_0[${wordOf(HELD, "hold")}u + base * 1u + 0u]));`);
     // One channel of a float vector: four words a point, the second of them.
-    expect(all.shader).toContain(`secondWeight = clamp(bitcast<f32>(pk_0[${wordOf(HELD, "aim")}u + (base + 1u) * 4u + 1u]), 0.0, 1.0);`);
+    expect(all.shader).toContain(`secondWeight = held(bitcast<f32>(pk_0[${wordOf(HELD, "aim")}u + (base + 1u) * 4u + 1u]));`);
     expect(all.id).toBe("rope_tentacles:rope:step:fsl:550");
   });
 
@@ -270,7 +270,7 @@ describe("Rope — weights from attributes (T1585b slice 2)", () => {
       ["scratch", scratchResourceId("rope_tentacles", ROPE_SOLVE_KEY)],
     ]);
     expect(pass.shader).toContain("const PINNED: bool = true;");
-    expect(pass.shader).toContain(`let pin = clamp(bitcast<f32>(pk_1[${wordOf(ELSEWHERE, "grip")}u + slot * 1u + 0u]), 0.0, 1.0);`);
+    expect(pass.shader).toContain(`let pin = held(bitcast<f32>(pk_1[${wordOf(ELSEWHERE, "grip")}u + slot * 1u + 0u]));`);
     expect(pass.id).toBe("rope_tentacles:rope:step:lp:550");
     // Without a pin attribute the text says so, and reads none.
     expect(passOf(compile({}, { pairs: ELSEWHERE })).shader).toContain("const PINNED: bool = false;");
@@ -307,6 +307,97 @@ describe("Rope — weights from attributes (T1585b slice 2)", () => {
       'Node "rope_tentacles": the incoming points and the attributes its weights read come from 5 producers, and a pass binds 8 buffers with this node\'s own 4 (§V588).',
     );
     expect(refused.suggestion).toBe("Gather the weights onto the strands in one kernel before the Rope, so they come from one producer.");
+  });
+});
+
+describe("Rope — Bend Limit is a structural switch (T1585b slice 4)", () => {
+  /** Words only the limit's program has: its constants, its helpers, its second solve. */
+  const ITS_OWN = ["BEND_", "giveOf", "hinge", "storePlaced", "attempt", "minBendRadius", "20u"];
+
+  it("off, the program has none of the limit's text, its block none of its numbers, and a point eight floats to solve in; stored off, it is the same pass", () => {
+    const off = passOf(compile());
+    for (const word of ITS_OWN) expect(off.shader, word).not.toContain(word);
+    expect(declared(off.shader)).not.toContain("minBendRadius");
+    expect(off.uniforms["minBendRadius"]).toBeUndefined();
+    // Stored off, with a radius left in the document from when it was on: the same text, the same id, the same block.
+    const stored = passOf(compile({ bendLimit: false, minBendRadius: 0.5 }));
+    expect(stored.shader).toBe(off.shader);
+    expect(stored.id).toBe(off.id);
+    expect(stored.uniforms).toEqual(off.uniforms);
+    const scratch = compile({ bendLimit: false }).scratch as ReadonlyArray<{ key: string; stride: number; capacity: number }>;
+    expect(scratch.find((entry) => entry.key === ROPE_SOLVE_KEY)).toMatchObject({ stride: 4, capacity: 550 * 8 });
+  });
+
+  it("on, it is another program: the id says so, the radius is in the block, and a point has twenty floats to solve in", () => {
+    const on = passOf(compile({ bendLimit: true }));
+    expect(on.id).toBe("rope_tentacles:rope:step:b:550");
+    for (const word of ["fn giveOf", "fn hinge", "fn storePlaced", "const BEND_SOFTENING: f32 = 0.0009765625;", "for (var attempt = 0u; attempt < 3u;"]) expect(on.shader, word).toContain(word);
+    // Declared and set, both or neither, and last in the block: nothing before it has moved.
+    expect(Object.keys(on.uniforms)).toEqual(declared(on.shader));
+    expect(declared(on.shader).at(-1)).toBe("minBendRadius");
+    expect(declared(on.shader).slice(0, -1)).toEqual(declared(passOf(compile()).shader));
+    expect(on.uniforms["minBendRadius"]).toBe(ROPE_DEFAULTS.minBendRadius);
+    // A radius of nothing is a turn of nothing at every joint: the floor is a millimetre.
+    expect(passOf(compile({ bendLimit: true, minBendRadius: 0 })).uniforms["minBendRadius"]).toBe(0.001);
+    // The radius is a number and not structure: one program for every radius.
+    expect(passOf(compile({ bendLimit: true, minBendRadius: 0.4 })).shader).toBe(on.shader);
+    const scratch = compile({ bendLimit: true }).scratch as ReadonlyArray<{ key: string; stride: number; capacity: number }>;
+    expect(scratch.find((entry) => entry.key === ROPE_SOLVE_KEY)).toMatchObject({ stride: 4, capacity: 550 * 20 });
+    // Still the step's own four buffers and the producer's: the limit binds nothing more (§V588).
+    expect(on.buffers.map((buffer) => buffer.binding)).toEqual(["pk_0", "state_in", "state_out", "kept", "scratch"]);
+    // With every other switch too, it is one more letter on the id.
+    expect(passOf(compile({ bendLimit: true, tensionOutput: true })).id).not.toBe(on.id);
+  });
+
+  /*
+   * Holding a turn to its limit while the strand moves takes more Newton steps than holding
+   * a length. So the DEFAULT of Iterations follows the switch — and only the default: a
+   * number an author stored is theirs with the limit on or off. Both ways in agree: the
+   * schema the compiler resolves defaults from, and the node read with no value at all.
+   */
+  it("Iterations defaults to 8 while it is on and to 4 while it is off, and a stored Iterations is the author's either way", () => {
+    expect(effectiveParameterSchema(pointRopeNode, {})["iterations"]).toMatchObject({ default: ROPE_DEFAULTS.iterations });
+    expect(effectiveParameterSchema(pointRopeNode, { bendLimit: true })["iterations"]).toMatchObject({ default: ROPE_MAX_ITERATIONS });
+    expect(passOf(compile()).uniforms["solves"]).toBe(4);
+    expect(passOf(compile({ bendLimit: true })).uniforms["solves"]).toBe(8);
+    expect(passOf(compile({ bendLimit: true, iterations: 3 })).uniforms["solves"]).toBe(3);
+    expect(passOf(compile({ iterations: 6 })).uniforms["solves"]).toBe(6);
+    // Nothing else in the schema moves with the switch.
+    const [off, on] = [effectiveParameterSchema(pointRopeNode, {}), effectiveParameterSchema(pointRopeNode, { bendLimit: true })];
+    expect(Object.keys(on)).toEqual(Object.keys(off));
+    for (const key of Object.keys(off)) if (key !== "iterations") expect(on[key], key).toBe(off[key]);
+  });
+
+  it("Min Bend Radius is inactive while Bend Limit is off, and says why", () => {
+    const inactive = effectiveParameterSchema(pointRopeNode, {})["minBendRadius"]?.inactiveWhen;
+    expect(inactive?.({ bendLimit: false })).toBe("Bend Limit is off.");
+    expect(inactive?.({ bendLimit: true })).toBeNull();
+    expect(effectiveParameterSchema(pointRopeNode, {})["bendLimit"]).toMatchObject({ type: "boolean", default: false, compileTime: true });
+  });
+
+  /*
+   * THE PROGRAM WITHOUT THE LIMIT, FROZEN. A fingerprint of the whole plan for each shape the
+   * step's text takes with Bend Limit off: its switches, its maps, its pin, its claims. The
+   * limit is a second program beside this one and must not move a word of it. These moved
+   * three times in slice 4, each for a change every Rope was meant to get — the guard between
+   * two pins (D24), a weight within a millionth of 1 read as 1, and a held point that
+   * follows a held point left where it is told (D31) — and the limit's own text never moved
+   * them (the design's 17.9 has each value and what moved it).
+   */
+  it.each([
+    ["the default", {}, "strips:55x10", undefined, "3c0dde6bb79537aa"],
+    ["Tension", { tensionOutput: true }, "strips:55x10", undefined, "2ea65f9e5ac95d03"],
+    ["three stations, Soft, a Segment Length, a Teleport Distance", { anchorSecond: 1, anchorLast: 1, anchorMode: "soft", segmentLength: 0.06, teleportDistance: 100 }, "strips:55x10", undefined, "e4a053ef65156952"],
+    ["three stations mapped", {}, "strips:55x10", { anchorFirst: { attribute: "live" }, anchorSecond: { attribute: "live" }, anchorLast: { attribute: "live" } }, "4fe60f089a1f03be"],
+    ["a pin, Tension and a mapped last station", { pinAttribute: "charge", tensionOutput: true }, "strips:55x10", { anchorLast: { attribute: "live" } }, "e461f63999f7672a"],
+    ["a grid of two sheets", {}, "grid:55x5x2", undefined, "3c0dde6bb79537aa"],
+    ["one strand to a row of 550", {}, "strips:550x1", undefined, "b10beddbf8f34796"],
+  ] as const)("with Bend Limit off the plan is the plan it was: %s", (_label, parameters, topology, maps, fingerprint) => {
+    const plan = compile(parameters, { topology, ...(maps === undefined ? {} : { maps }) });
+    expect(plan.diagnostics ?? []).toEqual([]);
+    expect(planFingerprint(plan)).toBe(fingerprint);
+    // Stored off is not stored at all.
+    expect(planFingerprint(compile({ ...parameters, bendLimit: false }, { topology, ...(maps === undefined ? {} : { maps }) }))).toBe(fingerprint);
   });
 });
 

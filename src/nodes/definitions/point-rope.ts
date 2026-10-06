@@ -1,4 +1,5 @@
 import type { CompiledNodeDescription, NodeDefinition, PointsetAttributeRef } from "../../domain/types/node-definition.ts";
+import type { ParameterSchema } from "../../domain/types/parameters.ts";
 import type { DispatchPassDescriptor } from "../../runtime/backend/plan.ts";
 import { MAX_KERNEL_SUBSTEPS } from "../../runtime/backend/plan.ts";
 import { scratchResourceId } from "../../compiler/resources.ts";
@@ -7,7 +8,7 @@ import { ATTRIBUTE_STRIDES } from "../../points/attributes.ts";
 import { MAX_KERNEL_STORAGE_BINDINGS } from "../../points/codegen.ts";
 import { regionAccessorWgsl, regionStoreWgsl } from "../../points/packing.ts";
 import { ROPE_DEFAULTS, ROPE_MAX_ITERATIONS, ROPE_MAX_STRAND_POINTS } from "../../points/rope.ts";
-import { ropeStepWgsl } from "../shaders/rope.wgsl.ts";
+import { ropeScratchFloats, ropeStepWgsl } from "../shaders/rope.wgsl.ts";
 import type { RopeScalarRegion } from "../shaders/rope.wgsl.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { readFlag, readNumber } from "./parameter-readers.ts";
@@ -64,8 +65,19 @@ import type { ScalarMap } from "./points.ts";
  * still a spring. Two anchors further apart than the rope is long: the earlier holds, and
  * the later falls short (the Curve node's Arc, in the same words).
  *
- * SLICES 1 AND 2 of the design's plan: the strand, its time and its anchors. No colliders
- * and no bend yet.
+ * ⚑ BEND LIMIT (slice 4). With it on, no joint turns tighter than a circle of Min Bend
+ * Radius: rigid rings instanced along the rope do not pass through each other. It is a
+ * limit and not a spring, and it is IN the solve — a row per joint beside the row per
+ * segment, one banded system — because the case it is for is a rope at rest, whose loop
+ * closes under its own weight in every step. Its rows are COMPLIANT (the design's D30), so
+ * a step has an answer where the limit cannot be met, and LENGTH COMES BEFORE BEND: a step
+ * that cannot keep the rope's length with the limit in it is solved again without it. It is
+ * another program, so the switch is structure, and with it off the step is the tridiagonal
+ * one, with none of the limit's text.
+ *
+ * SLICES 1, 2 AND 4 of the design's plan: the strand, its time, its anchors and its bend
+ * limit. No colliders yet, and no Bend Stiffness: the spring under the limit is its own
+ * slice, and so is a softness for the limit that an author sets.
  */
 
 /** What the node steps and publishes, in the order its packed buffer lays it out. `tension` only when it is asked for. */
@@ -84,7 +96,7 @@ export function ropeAttributes(outputs: { readonly tension: boolean }): Readonly
   return outputs.tension ? [...STATE_ATTRIBUTES, TENSION_ATTRIBUTE] : STATE_ATTRIBUTES;
 }
 
-/** The scratch buffer a step works in: eight floats a point (`nodes/shaders/rope.wgsl.ts`). */
+/** The scratch buffer a step works in: eight floats a point, twenty with Bend Limit on (`nodes/shaders/rope.wgsl.ts`). */
 export const ROPE_SOLVE_KEY = "solve";
 /**
  * What the solver keeps between frames and writes rarely, two vec4f a point: the target the
@@ -107,6 +119,294 @@ const ACCESSOR: Readonly<Record<string, string>> = {
   position: "Position",
   velocity: "Velocity",
   tension: "Tension",
+};
+
+const ROPE_PARAMETERS: ParameterSchema = {
+  updateRate: {
+    type: "number",
+    label: "Update Rate",
+    group: "Simulation",
+    default: 240,
+    min: 1,
+    max: 3840,
+    range: "bounded",
+    unit: "hz",
+    description:
+      "Solver steps per second of the piece. At 240 on a 60 fps project a frame runs 4 steps; a frame that covers two project frames runs 8 at the same step size. Raise it for a rope that is pulled hard or has many short segments: a step has to be shorter than the time a wave takes to cross one segment.",
+  },
+  minSteps: {
+    type: "number",
+    label: "Min Update Steps",
+    group: "Simulation",
+    default: 1,
+    min: 1,
+    max: MAX_KERNEL_SUBSTEPS,
+    range: "bounded",
+    step: 1,
+    description: "The fewest solver steps one frame runs, whatever its length. Set it equal to Max Update Steps for a fixed count.",
+  },
+  maxSteps: {
+    type: "number",
+    label: "Max Update Steps",
+    group: "Simulation",
+    default: 16,
+    min: 1,
+    max: MAX_KERNEL_SUBSTEPS,
+    range: "bounded",
+    step: 1,
+    description:
+      "The most solver steps one frame runs. A frame that would need more takes longer steps instead, so the rope stays with the timeline. Each step is one dispatch.",
+  },
+  iterations: {
+    type: "number",
+    label: "Iterations",
+    group: "Simulation",
+    default: ROPE_DEFAULTS.iterations,
+    min: 1,
+    max: ROPE_MAX_ITERATIONS,
+    range: "bounded",
+    step: 1,
+    description:
+      "The most times one solver step solves a strand's segments together. A step stops sooner, as soon as every segment is within 1/8192 of its length, so this is a ceiling for hard moments and costs nothing on calm ones. With Bend Limit on it defaults to 8: a turn held to its limit while the rope moves takes more of them, and they are what the limit costs. Measured: at rest a step with the limit on is 1.4 to 1.8 times one without; with a held end swept at 4 m/s, 2.4 times on strands of 55 points.",
+  },
+  speed: {
+    type: "number",
+    label: "Simulation Speed",
+    group: "Simulation",
+    default: ROPE_DEFAULTS.speed,
+    min: 0,
+    max: 4,
+    range: "floor",
+    description: "Scales the time each step advances. 0 holds the rope still where it is.",
+  },
+  gravity: {
+    type: "number",
+    label: "Gravity",
+    group: "Simulation",
+    default: ROPE_DEFAULTS.gravity,
+    min: -30,
+    max: 30,
+    range: "soft",
+    description: "Metres a second squared toward −Y. 9.81 is a scene in metres; scale it with the scene, and set 0 for a rope adrift.",
+  },
+  damping: {
+    type: "number",
+    label: "Damping",
+    group: "Simulation",
+    default: ROPE_DEFAULTS.damping,
+    min: 0,
+    max: 20,
+    range: "floor",
+    description: "How fast a point's velocity falls away, per second: air at about 0.5, water at 1.5 and more. 0 swings for ever.",
+  },
+  mass: {
+    type: "number",
+    label: "Mass",
+    group: "Simulation",
+    default: ROPE_DEFAULTS.mass,
+    min: 0.001,
+    max: 100,
+    range: "floor",
+    description: "Kilograms per point. It scales the tension the rope reports and how much a Stretch gives; a rope of one mass moves the same whatever it weighs.",
+  },
+  segmentLength: {
+    type: "number",
+    label: "Segment Length",
+    group: "Rope",
+    default: ROPE_DEFAULTS.segmentLength,
+    min: 0,
+    max: 10,
+    step: 0.001,
+    range: "floor",
+    description:
+      "Metres between a point and the next, for every segment. 0 measures each segment of the incoming strip when the rope is seeded, which is right when the incoming strip is laid out at the rope's own spacing. Give the number when it is not: when the strip's last point is already where a claw should go, or the strip is a straight line shorter than the rope. A strip shorter than its rope between two held ends is pushed out to the low side of the line between them; lying exactly along gravity it has no low side, and stays straight and short.",
+  },
+  restLengthScale: {
+    type: "number",
+    label: "Rest Length Scale",
+    group: "Rope",
+    default: ROPE_DEFAULTS.restLengthScale,
+    min: 0,
+    max: 4,
+    range: "floor",
+    description:
+      "Multiplies every segment's rest length, measured or given: below 1 the rope draws itself in, above 1 it pays out. Raised on a rope held at both ends, the slack goes to the low side of the line between them; a rope lying exactly along gravity has no low side, and stays straight and short.",
+  },
+  stretch: {
+    type: "number",
+    label: "Stretch",
+    group: "Rope",
+    default: ROPE_DEFAULTS.stretch,
+    min: 0,
+    max: 1,
+    range: "floor",
+    description:
+      "How much a segment gives: the fraction it lengthens per newton of tension. 0 is a rope that does not stretch; 0.001 on a one-kilogram point is a bungee. It means the same at any Update Rate.",
+  },
+  maxStretch: {
+    type: "number",
+    label: "Max Stretch",
+    group: "Rope",
+    default: ROPE_DEFAULTS.maxStretch,
+    min: 0,
+    max: 10,
+    range: "floor",
+    description:
+      "The most a segment may be longer or shorter than its rest length at the end of a step, as a fraction: 0.02 is two percent. A guard for a step too coarse for what the rope is being put through; it moves points and adds no speed. Raise it to let a Stretch give more.",
+  },
+  bendLimit: {
+    type: "boolean",
+    label: "Bend Limit",
+    group: "Rope",
+    default: false,
+    compileTime: true,
+    description:
+      "The rope does not bend tighter than Min Bend Radius: a limit, not a spring. For rings or links instanced along it that must not pass through each other. It is solved together with the segments' lengths, so it holds on a rope at rest: to 1.0001 of the limit on a strand of 55 points and to about 1.03 on one of 250 (what a resting bend gives grows steeply with the number of points in it). In motion it is exceeded: see Min Bend Radius for by how much. It costs: see Iterations. BETWEEN TWO HELD ENDS the rope needs the slack a turn of this radius takes. With less, the limit cannot be met: a step that cannot keep the rope's length with the limit in it is solved without it, and short of that the rope may never come to rest. Give it the slack, or turn the limit off there. A pose handed in with a fold far past the limit may open into a loop with a full turn in it; hand in one the rope could lie in.",
+  },
+  minBendRadius: {
+    type: "number",
+    label: "Min Bend Radius",
+    group: "Rope",
+    default: ROPE_DEFAULTS.minBendRadius,
+    min: 0.001,
+    max: 100,
+    step: 0.001,
+    range: "floor",
+    inactiveWhen: (values) => (values["bendLimit"] === true ? null : "Bend Limit is off."),
+    description:
+      "Metres: the radius of the tightest curve the rope makes while Bend Limit is on. A joint between two segments of mean length l may turn at most 2·asin(l ÷ 2R): 23° for 60 mm segments at 0.15 m. A radius and not an angle, so a rope resampled to twice the points is asked for the same curve. ALLOW A MARGIN FOR MOTION. In fast motion the limit is exceeded, by an amount that varies from run to run (a whipped rope is chaotic): with a held end swept at 4 m/s, by 1 to 15 % at Update Rate 240 and under 1 % at 960; at 8 m/s, by 16 to 24 % at 240 and by 2 to 15 % at 960. Where the geometry breaks at the limit, set the radius with that margin or raise Update Rate.",
+  },
+  anchorFirst: {
+    type: "number",
+    label: "Anchor First",
+    group: "Anchors",
+    default: ROPE_DEFAULTS.anchorFirst,
+    min: 0,
+    max: 1,
+    range: "bounded",
+    description:
+      "How firmly the first point of each strand is held to its incoming point. 1 is the incoming point itself; 0 lets go; in between is a pull that tightens as it nears 1, so a weight that ramps moves the point without a jump. In Map mode an f32 attribute (or one channel of a float vector) is the weight, read at each strand's first point: a weight per strand. A weight within a millionth of 1 is 1, here and on every anchor, so one that is computed and lands a rounding short still holds. To let go, ramp a weight down (see Anchor Mode).",
+  },
+  anchorSecond: {
+    type: "number",
+    label: "Anchor Second",
+    group: "Anchors",
+    default: ROPE_DEFAULTS.anchorSecond,
+    min: 0,
+    max: 1,
+    range: "bounded",
+    description:
+      "The same for the second point of each strand. Held with the first, it fixes the direction the strand leaves in: put the incoming second point one segment along the way a socket faces. With both at 1 both are their incoming points exactly, and the first segment is as long as they are apart, whatever Segment Length says. In Map mode the attribute is read at each strand's second point; a weight within a millionth of 1 is 1.",
+  },
+  anchorLast: {
+    type: "number",
+    label: "Anchor Last",
+    group: "Anchors",
+    default: ROPE_DEFAULTS.anchorLast,
+    min: 0,
+    max: 1,
+    range: "bounded",
+    description:
+      "The same for the last point of each strand: a rope held at both ends hangs between them. In Map mode the attribute is read at each strand's last point, so one strand can hold while its neighbour lets go; a weight within a millionth of 1 is 1. A target further from an earlier held point than the rope between them is long is not reached: the rope keeps its length and its end falls short. (That is for a target with rope to solve between it and the held point before it. A held point that directly follows a held point is always its incoming point.)",
+  },
+  anchorMode: {
+    type: "enum",
+    label: "Anchor Mode",
+    group: "Anchors",
+    default: ROPE_DEFAULTS.anchorMode,
+    // §V831: APPEND only.
+    options: [
+      { value: "hard", label: "Hard" },
+      { value: "soft", label: "Soft" },
+    ],
+    description:
+      "What a weight means. Hard: 1 is the incoming point itself, and a weight below 1 is a spring that stiffens without limit as it nears 1, so 0.3 to 0.5 follows a wandering target with a lag and a ramp to 1 lands on it. Soft: a weight of 1 is a spring of Anchor Strength, which lags a moving target and never pins. LETTING GO of a rope that held points were holding longer than itself: it takes its own length back in the first step a weight is under 1, and its far end moves by the whole over-length in that frame. Ramp the weight down over a few frames and that is all it does. Cut it from 1 to 0 in one frame and the whole correction is left in the rope as speed: it is thrown.",
+  },
+  anchorStrength: {
+    type: "number",
+    label: "Anchor Strength",
+    group: "Anchors",
+    default: ROPE_DEFAULTS.anchorStrength,
+    min: 0.05,
+    max: 30,
+    range: "floor",
+    unit: "hz",
+    description:
+      "How fast a soft or partly weighted anchor draws its strand in: the frequency, in hertz, the whole strand would swing at on that spring at a Hard weight of 0.5 or a Soft weight of 1. Under gravity the held point then rests g ÷ (2π × strength)² below its target: 62 mm at 2 Hz, 16 mm at 4. A point held at weight 1 under Hard does not read it.",
+  },
+  anchorDamping: {
+    type: "number",
+    label: "Anchor Damping",
+    group: "Anchors",
+    default: ROPE_DEFAULTS.anchorDamping,
+    min: 0,
+    max: 4,
+    range: "floor",
+    description: "The damping ratio of that pull. 1 arrives at the target without springing past it; less overshoots and rings; 0 is a bare spring.",
+  },
+  pinAttribute: {
+    type: "string",
+    label: "Pin Attribute",
+    group: "Anchors",
+    default: "",
+    compileTime: true,
+    description:
+      "The name of an f32 attribute that is a weight on EVERY point, 0 to 1: a cable clipped along its length. A point takes the larger of this and its Anchor weight. Under Hard a weight of 1 (or within a millionth of it) is a hold, as an Anchor's is: the point is its incoming point of the same frame, exactly, wherever on the strand it is. A strand held at every point IS the incoming strip, whatever its lengths: a strip longer than the rope is followed long (to let go of one, see Anchor Mode). Below 1 a weight is a pull sized for the point's own mass, where an Anchor's is sized for the strand's. It costs a step about twice: every point then follows its incoming point, every frame. Empty reads none.",
+  },
+  reset: {
+    type: "boolean",
+    label: "Reset",
+    group: "Reset",
+    default: false,
+    description: "Holds the rope on its incoming points, at rest, for as long as it is on, and measures its segments again. A pulse on it is a restart.",
+  },
+  teleportDistance: {
+    type: "number",
+    label: "Teleport Distance",
+    group: "Reset",
+    default: ROPE_DEFAULTS.teleportDistance,
+    min: 0,
+    max: 1000,
+    // Metres, and continuous: without a step the control derives one of 10 m and rounds to it.
+    step: 0.1,
+    range: "floor",
+    description:
+      "Metres. A strand whose anchored first point is asked to move further than this in one frame is teleported and not dragged there. 0 never teleports. Set it well above what the anchor travels in a frame: for a world that wraps every 960 m, 100.",
+  },
+  teleportMode: {
+    type: "enum",
+    label: "Teleport",
+    group: "Reset",
+    default: ROPE_DEFAULTS.teleportMode,
+    options: [
+      { value: "carry", label: "Carry" },
+      { value: "reset", label: "Reset" },
+    ],
+    inactiveWhen: (values) => (readNumber(values, "teleportDistance", 0) > 0 ? null : "Teleport Distance is 0, so nothing teleports."),
+    description:
+      "What a teleport does. Carry moves every point of the strand by the jump and keeps its shape and its speed: for a world that wraps. Reset puts the strand back on its incoming points at rest: for a cut to another place.",
+  },
+  tensionOutput: {
+    type: "boolean",
+    label: "Tension",
+    group: "Output",
+    default: false,
+    compileTime: true,
+    description: "Publish tension (f32): the newtons in the segment after each point, 0 on a strand's last point. A hanging rope reads the weight below each point.",
+  },
+};
+
+/**
+ * The schema of a Rope whose Bend Limit is on: Iterations defaults to 8. Holding a turn to
+ * its limit while the strand moves takes more Newton steps than holding a length (measured
+ * on Dawn: the consumer's loop swept at 4 m/s is 1.17 times its limit at four and 1.01 at
+ * eight; at 8 m/s with four, a step cannot keep the rope's length and is solved without the
+ * limit).
+ * Hoisted, because `parametersFor` hands it out on every read.
+ */
+const ROPE_PARAMETERS_LIMITED: ParameterSchema = {
+  ...ROPE_PARAMETERS,
+  iterations: { ...(ROPE_PARAMETERS["iterations"] as ParameterSchema[string]), default: ROPE_MAX_ITERATIONS } as ParameterSchema[string],
 };
 
 export const pointRopeNode: NodeDefinition = {
@@ -135,256 +435,10 @@ export const pointRopeNode: NodeDefinition = {
         "The same strips with position simulated (it replaces the incoming position) and velocity added, in metres a second; tension, in newtons in the segment after each point, when Tension is on. Capacity, the strips claim and every other attribute pass through untouched.",
     },
   ],
-  parameters: {
-    updateRate: {
-      type: "number",
-      label: "Update Rate",
-      group: "Simulation",
-      default: 240,
-      min: 1,
-      max: 3840,
-      range: "bounded",
-      unit: "hz",
-      description:
-        "Solver steps per second of the piece. At 240 on a 60 fps project a frame runs 4 steps; a frame that covers two project frames runs 8 at the same step size. Raise it for a rope that is pulled hard or has many short segments: a step has to be shorter than the time a wave takes to cross one segment.",
-    },
-    minSteps: {
-      type: "number",
-      label: "Min Update Steps",
-      group: "Simulation",
-      default: 1,
-      min: 1,
-      max: MAX_KERNEL_SUBSTEPS,
-      range: "bounded",
-      step: 1,
-      description: "The fewest solver steps one frame runs, whatever its length. Set it equal to Max Update Steps for a fixed count.",
-    },
-    maxSteps: {
-      type: "number",
-      label: "Max Update Steps",
-      group: "Simulation",
-      default: 16,
-      min: 1,
-      max: MAX_KERNEL_SUBSTEPS,
-      range: "bounded",
-      step: 1,
-      description:
-        "The most solver steps one frame runs. A frame that would need more takes longer steps instead, so the rope stays with the timeline. Each step is one dispatch.",
-    },
-    iterations: {
-      type: "number",
-      label: "Iterations",
-      group: "Simulation",
-      default: ROPE_DEFAULTS.iterations,
-      min: 1,
-      max: ROPE_MAX_ITERATIONS,
-      range: "bounded",
-      step: 1,
-      description:
-        "The most times one solver step solves a strand's segments together. A step stops sooner, as soon as every segment is within 1/8192 of its length, so this is a ceiling for hard moments and costs nothing on calm ones.",
-    },
-    speed: {
-      type: "number",
-      label: "Simulation Speed",
-      group: "Simulation",
-      default: ROPE_DEFAULTS.speed,
-      min: 0,
-      max: 4,
-      range: "floor",
-      description: "Scales the time each step advances. 0 holds the rope still where it is.",
-    },
-    gravity: {
-      type: "number",
-      label: "Gravity",
-      group: "Simulation",
-      default: ROPE_DEFAULTS.gravity,
-      min: -30,
-      max: 30,
-      range: "soft",
-      description: "Metres a second squared toward −Y. 9.81 is a scene in metres; scale it with the scene, and set 0 for a rope adrift.",
-    },
-    damping: {
-      type: "number",
-      label: "Damping",
-      group: "Simulation",
-      default: ROPE_DEFAULTS.damping,
-      min: 0,
-      max: 20,
-      range: "floor",
-      description: "How fast a point's velocity falls away, per second: air at about 0.5, water at 1.5 and more. 0 swings for ever.",
-    },
-    mass: {
-      type: "number",
-      label: "Mass",
-      group: "Simulation",
-      default: ROPE_DEFAULTS.mass,
-      min: 0.001,
-      max: 100,
-      range: "floor",
-      description: "Kilograms per point. It scales the tension the rope reports and how much a Stretch gives; a rope of one mass moves the same whatever it weighs.",
-    },
-    segmentLength: {
-      type: "number",
-      label: "Segment Length",
-      group: "Rope",
-      default: ROPE_DEFAULTS.segmentLength,
-      min: 0,
-      max: 10,
-      step: 0.001,
-      range: "floor",
-      description:
-        "Metres between a point and the next, for every segment. 0 measures each segment of the incoming strip when the rope is seeded, which is right when the incoming strip is laid out at the rope's own spacing. Give the number when it is not: when the strip's last point is already where a claw should go, or the strip is a straight line shorter than the rope.",
-    },
-    restLengthScale: {
-      type: "number",
-      label: "Rest Length Scale",
-      group: "Rope",
-      default: ROPE_DEFAULTS.restLengthScale,
-      min: 0,
-      max: 4,
-      range: "floor",
-      description: "Multiplies every segment's rest length, measured or given: below 1 the rope draws itself in, above 1 it pays out.",
-    },
-    stretch: {
-      type: "number",
-      label: "Stretch",
-      group: "Rope",
-      default: ROPE_DEFAULTS.stretch,
-      min: 0,
-      max: 1,
-      range: "floor",
-      description:
-        "How much a segment gives: the fraction it lengthens per newton of tension. 0 is a rope that does not stretch; 0.001 on a one-kilogram point is a bungee. It means the same at any Update Rate.",
-    },
-    maxStretch: {
-      type: "number",
-      label: "Max Stretch",
-      group: "Rope",
-      default: ROPE_DEFAULTS.maxStretch,
-      min: 0,
-      max: 10,
-      range: "floor",
-      description:
-        "The most a segment may be longer or shorter than its rest length at the end of a step, as a fraction: 0.02 is two percent. A guard for a step too coarse for what the rope is being put through; it moves points and adds no speed. Raise it to let a Stretch give more.",
-    },
-    anchorFirst: {
-      type: "number",
-      label: "Anchor First",
-      group: "Anchors",
-      default: ROPE_DEFAULTS.anchorFirst,
-      min: 0,
-      max: 1,
-      range: "bounded",
-      description:
-        "How firmly the first point of each strand is held to its incoming point. 1 is the incoming point itself; 0 lets go; in between is a pull that tightens as it nears 1, so a weight that ramps moves the point without a jump. In Map mode an f32 attribute (or one channel of a float vector) is the weight, read at each strand's first point: a weight per strand.",
-    },
-    anchorSecond: {
-      type: "number",
-      label: "Anchor Second",
-      group: "Anchors",
-      default: ROPE_DEFAULTS.anchorSecond,
-      min: 0,
-      max: 1,
-      range: "bounded",
-      description:
-        "The same for the second point of each strand. Held with the first, it fixes the direction the strand leaves in: put the incoming second point one segment along the way a socket faces. In Map mode the attribute is read at each strand's second point.",
-    },
-    anchorLast: {
-      type: "number",
-      label: "Anchor Last",
-      group: "Anchors",
-      default: ROPE_DEFAULTS.anchorLast,
-      min: 0,
-      max: 1,
-      range: "bounded",
-      description:
-        "The same for the last point of each strand: a rope held at both ends hangs between them. In Map mode the attribute is read at each strand's last point, so one strand can hold while its neighbour lets go. A target further from an earlier held point than the rope is long is not reached: the rope keeps its length and its end falls short.",
-    },
-    anchorMode: {
-      type: "enum",
-      label: "Anchor Mode",
-      group: "Anchors",
-      default: ROPE_DEFAULTS.anchorMode,
-      // §V831: APPEND only.
-      options: [
-        { value: "hard", label: "Hard" },
-        { value: "soft", label: "Soft" },
-      ],
-      description:
-        "What a weight means. Hard: 1 is the incoming point itself, and a weight below 1 is a spring that stiffens without limit as it nears 1, so 0.3 to 0.5 follows a wandering target with a lag and a ramp to 1 lands on it. Soft: a weight of 1 is a spring of Anchor Strength, which lags a moving target and never pins.",
-    },
-    anchorStrength: {
-      type: "number",
-      label: "Anchor Strength",
-      group: "Anchors",
-      default: ROPE_DEFAULTS.anchorStrength,
-      min: 0.05,
-      max: 30,
-      range: "floor",
-      unit: "hz",
-      description:
-        "How fast a soft or partly weighted anchor draws its strand in: the frequency, in hertz, the whole strand would swing at on that spring at a Hard weight of 0.5 or a Soft weight of 1. Under gravity the held point then rests g ÷ (2π × strength)² below its target: 62 mm at 2 Hz, 16 mm at 4. A point held at weight 1 under Hard does not read it.",
-    },
-    anchorDamping: {
-      type: "number",
-      label: "Anchor Damping",
-      group: "Anchors",
-      default: ROPE_DEFAULTS.anchorDamping,
-      min: 0,
-      max: 4,
-      range: "floor",
-      description: "The damping ratio of that pull. 1 arrives at the target without springing past it; less overshoots and rings; 0 is a bare spring.",
-    },
-    pinAttribute: {
-      type: "string",
-      label: "Pin Attribute",
-      group: "Anchors",
-      default: "",
-      compileTime: true,
-      description:
-        "The name of an f32 attribute that is a weight on EVERY point, 0 to 1: a cable clipped along its length. A point takes the larger of this and its Anchor weight. A pull from this attribute is sized for the point's own mass, where an Anchor's is sized for the strand's. Empty reads none.",
-    },
-    reset: {
-      type: "boolean",
-      label: "Reset",
-      group: "Reset",
-      default: false,
-      description: "Holds the rope on its incoming points, at rest, for as long as it is on, and measures its segments again. A pulse on it is a restart.",
-    },
-    teleportDistance: {
-      type: "number",
-      label: "Teleport Distance",
-      group: "Reset",
-      default: ROPE_DEFAULTS.teleportDistance,
-      min: 0,
-      max: 1000,
-      // Metres, and continuous: without a step the control derives one of 10 m and rounds to it.
-      step: 0.1,
-      range: "floor",
-      description:
-        "Metres. A strand whose anchored first point is asked to move further than this in one frame is teleported and not dragged there. 0 never teleports. Set it well above what the anchor travels in a frame: for a world that wraps every 960 m, 100.",
-    },
-    teleportMode: {
-      type: "enum",
-      label: "Teleport",
-      group: "Reset",
-      default: ROPE_DEFAULTS.teleportMode,
-      options: [
-        { value: "carry", label: "Carry" },
-        { value: "reset", label: "Reset" },
-      ],
-      inactiveWhen: (values) => (readNumber(values, "teleportDistance", 0) > 0 ? null : "Teleport Distance is 0, so nothing teleports."),
-      description:
-        "What a teleport does. Carry moves every point of the strand by the jump and keeps its shape and its speed: for a world that wraps. Reset puts the strand back on its incoming points at rest: for a cut to another place.",
-    },
-    tensionOutput: {
-      type: "boolean",
-      label: "Tension",
-      group: "Output",
-      default: false,
-      compileTime: true,
-      description: "Publish tension (f32): the newtons in the segment after each point, 0 on a strand's last point. A hanging rope reads the weight below each point.",
-    },
+  parameters: ROPE_PARAMETERS,
+  /** Iterations defaults to 8 while Bend Limit is on. */
+  parametersFor(stored) {
+    return stored["bendLimit"] === true ? ROPE_PARAMETERS_LIMITED : ROPE_PARAMETERS;
   },
   stateful: { reset: true, deterministicReplay: true, checkpoint: false, randomAccess: false },
   // The count follows the frame: clamp(round(delta × Update Rate), Min, Max). One run a step.
@@ -471,6 +525,7 @@ export const pointRopeNode: NodeDefinition = {
     }
 
     const tension = parameters["tensionOutput"] === true;
+    const bend = parameters["bendLimit"] === true;
     const owned = ropeAttributes({ tension });
     /* A name already on the edge is REPLACED when its type agrees and refused when it does
        not (Gather's rule): `velocity` as vec3f over an f32 `velocity` would be swizzled
@@ -544,7 +599,7 @@ export const pointRopeNode: NodeDefinition = {
          stepped dispatch's own `iterations` (runs per substep, 1 here) into any member of
          that name, so a block that called its Newton cap `iterations` read 1 whatever the
          parameter said — found by the sway test, which stood at two tolerances. */
-      { name: "solves", type: "u32", value: Math.min(ROPE_MAX_ITERATIONS, Math.max(1, Math.round(readNumber(parameters, "iterations", ROPE_DEFAULTS.iterations)))) },
+      { name: "solves", type: "u32", value: Math.min(ROPE_MAX_ITERATIONS, Math.max(1, Math.round(readNumber(parameters, "iterations", bend ? ROPE_MAX_ITERATIONS : ROPE_DEFAULTS.iterations)))) },
       { name: "reset", type: "u32", value: readFlag(parameters, "reset", false) },
       { name: "teleportMode", type: "u32", value: parameters["teleportMode"] === "reset" ? 1 : 0 },
       // A flag, not structure (§V453): Hard and Soft are one program.
@@ -564,15 +619,18 @@ export const pointRopeNode: NodeDefinition = {
       { name: "anchorDamping", type: "f32", value: Math.max(0, readNumber(parameters, "anchorDamping", ROPE_DEFAULTS.anchorDamping)) },
       { name: "teleportDistance", type: "f32", value: Math.max(0, readNumber(parameters, "teleportDistance", ROPE_DEFAULTS.teleportDistance)) },
     ];
+    // Only a Rope with Bend Limit on has the member: without it the block is the one it always was.
+    if (bend) members.push({ name: "minBendRadius", type: "f32", value: Math.max(0.001, readNumber(parameters, "minBendRadius", ROPE_DEFAULTS.minBendRadius)) });
 
     const pass: DispatchPassDescriptor = {
       kind: "dispatch",
       /* What a person would want to read of what the program's text depends on: the Tension
          switch decides which regions exist, a mapped station (f, s, l) and a pin attribute
-         (p) each read a buffer, and the capacity moves every region's offset. */
+         (p) each read a buffer, Bend Limit (b) is another solve, and the capacity moves every
+         region's offset. */
       id: [
         `${nodeId}:rope:step`,
-        `${tension ? "t" : ""}${stationRegions.anchorFirst === undefined ? "" : "f"}${stationRegions.anchorSecond === undefined ? "" : "s"}${stationRegions.anchorLast === undefined ? "" : "l"}${pinRegion === undefined ? "" : "p"}`,
+        `${tension ? "t" : ""}${stationRegions.anchorFirst === undefined ? "" : "f"}${stationRegions.anchorSecond === undefined ? "" : "s"}${stationRegions.anchorLast === undefined ? "" : "l"}${pinRegion === undefined ? "" : "p"}${bend ? "b" : ""}`,
         String(capacity),
       ].join(":"),
       shader: ropeStepWgsl({
@@ -584,6 +642,7 @@ export const pointRopeNode: NodeDefinition = {
         position: positionRegion,
         ...stationRegions,
         ...(pinRegion === undefined ? {} : { pin: pinRegion }),
+        ...(bend ? { bend: true } : {}),
       }),
       entryPoint: "main",
       // One invocation per STRAND: each walks its own strand.
@@ -606,7 +665,7 @@ export const pointRopeNode: NodeDefinition = {
       passes: [pass],
       scratch: [
         { key: ROPE_KEPT_KEY, kind: "buffer" as const, stride: 16, capacity: capacity * 2 },
-        { key: ROPE_SOLVE_KEY, kind: "buffer" as const, stride: 4, capacity: capacity * 8 },
+        { key: ROPE_SOLVE_KEY, kind: "buffer" as const, stride: 4, capacity: capacity * ropeScratchFloats(bend) },
         storage.scratch,
       ],
       pointsets: {

@@ -251,6 +251,64 @@ describe("rope: a pin attribute, a weight on every point (T1585b slice 2)", () =
   }, 180_000);
 });
 
+describe("rope: a weight a rounding short of 1 holds (T1585b slice 4, the first consumer's finding)", () => {
+  /*
+   * A weight that is COMPUTED upstream, `mix(a, 1.0, s)` at s = 1, can land on the last
+   * float below 1, and under Hard that is a spring 16 million times the one at a half where
+   * a hold was meant. A weight within a millionth of 1 is read as 1. The kernel here writes
+   * that float by its bits, so no compiler folds it to 1 on the way.
+   */
+  const LAST_BELOW_ONE = Math.fround(1 - 2 ** -24);
+  const level: RopePose = { wgsl: `vec3f(f32(i) * ${REST}, 0.0, f32(j))`, at: (i, j) => [i * REST, 0, j] };
+
+  it("as a pin in the middle of a strand it is the incoming point to the bit while the strip moves; at 0.999 it is a pull, and hangs below", async () => {
+    const pinned = (wgsl: string, weight: number): RopeFixture => ({
+      cols: POINTS,
+      pose: level,
+      weights: [{ name: "clip", wgsl: `select(0.0, ${wgsl}, i == 8u)`, at: (i) => (i === 8 ? weight : 0) }],
+      rope: stepping({ pinAttribute: "clip" }),
+    });
+    await onRope(pinned("bitcast<f32>(0x3f7fffffu)", LAST_BELOW_ONE), async (rope) => {
+      rope.render();
+      for (let frame = 1; frame <= 96; frame += 1) {
+        rope.shift([frame * 2 ** -8, 0, 0]);
+        rope.render();
+        if (frame % 16 !== 0) continue;
+        const read = await rope.read();
+        // Seen red with the weight read as it is written: the point is a few micrometres off its target, and not it.
+        expect(pointOf(read.position, 8), `frame ${frame}`).toEqual([8 * REST + frame * 2 ** -8, 0, 0]);
+        expect(component(read.velocity, 8, 0), `frame ${frame}`).toBe(0.25);
+      }
+    });
+    // The control: 0.999 is under the tolerance, a spring sized for one point's mass with half the strand on it.
+    const pulled = await onRope(pinned("0.999", 0.999), async (rope) => {
+      await frames(rope, 64 * 4);
+      return rope.read();
+    });
+    // At least the eight points below it over that spring: 8·g ÷ ((2π·strength)²·999), 0.4 mm.
+    expect(-component(pulled.position, 8, 1)).toBeGreaterThan((8 * GRAVITY) / ((2 * Math.PI * ROPE_DEFAULTS.anchorStrength) ** 2 * 999));
+  }, 180_000);
+
+  it("as a mapped Anchor Last it holds the strand's end on its incoming point, to the bit", async () => {
+    const fixture: RopeFixture = {
+      cols: POINTS,
+      rows: 2,
+      pose: drawnIn(0.75),
+      weights: [{ name: "hold", wgsl: "bitcast<f32>(0x3f7fffffu)", at: () => LAST_BELOW_ONE }],
+      maps: { anchorLast: "hold" },
+      rope: stepping(),
+    };
+    const read = await onRope(fixture, async (rope) => {
+      await frames(rope, 64 * 2);
+      return rope.read();
+    });
+    for (let strand = 0; strand < 2; strand += 1) {
+      expect(pointOf(read.position, strand * POINTS + LINKS), `strand ${strand}`).toEqual([0.75, 0, strand]);
+      expect(pointOf(read.velocity, strand * POINTS + LINKS), `strand ${strand}`).toEqual([0, 0, 0]);
+    }
+  }, 180_000);
+});
+
 describe("rope: what a weight between 0 and 1 is (T1585b slice 2, D19 and D20)", () => {
   /*
    * THE FIRST CONSUMER'S NUMBERS. 55 points 60 mm apart, gravity 9.81, hung from a first

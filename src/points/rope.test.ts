@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ROPE_BEND_FLOOR,
+  ROPE_BEND_SOFTENING,
+  ROPE_BEND_TOLERANCE,
   ROPE_DEFAULTS,
+  ROPE_HELD_FROM,
   ROPE_TOLERANCE,
   ROPE_TOLERANCE_FLOOR,
   advanceRope,
@@ -404,6 +408,84 @@ describe("rope reference: the guard (T1585b, Notch's Max Stretch)", () => {
     // guard that fed its correction into the velocity would be the finishing sweep the
     // design rejected for the energy it adds.
     expect(Array.from(guarded.velocity)).toEqual(Array.from(unguarded.velocity));
+  });
+});
+
+/*
+ * D24 — BETWEEN TWO PINS THE GUARD WALKS BACK FIRST. The walk out from the first point moves
+ * each segment's later point and leaves a pinned one, so on a strand held at its far end too,
+ * whatever the solve did not close landed on the one segment before that pin. The points
+ * before the last hard pin are now drawn in toward it first, and the walk out finds them
+ * nearly in place.
+ */
+describe("rope reference: the guard on a strand held at both ends (T1585b, the design's D24)", () => {
+  it("a far pin thrown past the step limit: every segment within Max Stretch, the one before the pin too", () => {
+    /* The first consumer's attack in one step a frame: 54 segments, the first two points on
+       a socket at 1.6 m/s, the last on a claw that crosses 2 m in 30% of a step — 8 m/s. */
+    const cols = 55;
+    const pitch = 2 ** -4;
+    const claw = (t: number): Vec3 => {
+      const cycle = t / 1.25;
+      const swing = Math.min(1, Math.max(0, (cycle - Math.floor(cycle) - 0.7) / 0.3));
+      return [1.5, 0, 0.7 + (Math.floor(cycle) + swing * swing * (3 - 2 * swing)) * 2];
+    };
+    const at = (t: number): Float32Array => strand(cols, (i) => (i === cols - 1 && t > 0 ? claw(t) : [0, 0, 1.6 * t - i * pitch]));
+    const held = (t: number): RopeParameters => ({ ...ROPE_DEFAULTS, damping: 1.5, anchorSecond: 1, anchorLast: Math.min(1, t / 1.5) ** 2 * (3 - 2 * Math.min(1, t / 1.5)) });
+    const state = seeded(at(0), held(0));
+    let longest = 0;
+    let unfinished = 0;
+    for (let frame = 1; frame <= 600; frame += 1) {
+      const t = frame / 60;
+      advanceRope(state, at(t), held(t), { deltaSeconds: 1 / 60, substeps: 1 });
+      if (frame < 240) continue;
+      for (let k = 0; k < cols - 1; k += 1) {
+        const off = Math.abs(lengthOf(state.position, k) - pitch);
+        longest = Math.max(longest, off);
+        if (off > 100 * (ROPE_TOLERANCE * pitch + ROPE_TOLERANCE_FLOOR)) unfinished += 1;
+      }
+    }
+    // 2%, to the stored positions' spacing 16 m down the tunnel (2⁻¹⁹ m, on each end).
+    expect(longest).toBeLessThanOrEqual(0.02 * pitch + 2 * 2 ** -19);
+    // It is the guard holding it: the solve left segments a hundred tolerances out.
+    expect(unfinished).toBeGreaterThan(0);
+  });
+
+  it("a strand hung from its last point only is walked from that pin, and its first point is where the walk puts it", () => {
+    const rest = 1 / 16;
+    const upside = rope({ anchorFirst: 0, anchorLast: 1, iterations: 1 });
+    const hang = (x: number): Float32Array => strand(POINTS, (i) => [x, (i - LINKS) * rest, 0]);
+    const state = seeded(hang(0), upside);
+    run(state, hang(0), upside, 2, 4);
+    // The pin thrown a hundred lengths in one step: the solve cannot finish.
+    run(state, hang(100), upside, 1, 1);
+    for (let k = 0; k < LINKS; k += 1) expect(lengthOf(state.position, k), `segment ${k}`).toBeLessThanOrEqual(rest * 1.02 + 3 * 2 ** -17);
+    expect(pointOf(state.position, LINKS)).toEqual([100, 0, 0]);
+  });
+
+  /*
+   * A strand with NO hard pin past its first point has nothing to walk back from, and is the
+   * words it was. These are hashes of its positions and velocities taken from the reference
+   * as it stood before D24, after the same throw: held at its first point, held there softly,
+   * held nowhere, and held softly at both ends.
+   */
+  it.each([
+    ["held at its first point", {}, "dc74f236", "f6e32e8c"],
+    ["held softly at its first point", { anchorFirst: 0.5 }, "d5fd921c", "e2221601"],
+    ["held nowhere", { anchorFirst: 0 }, "e64f3204", "4bfcffbc"],
+    ["held softly at both ends", { anchorFirst: 0.5, anchorLast: 0.5 }, "80cb756b", "ea31cb74"],
+  ] as const)("a strand %s is unchanged to the bit", (_label, more, positions, velocities) => {
+    const rest = 1 / 16;
+    const parameters = rope({ damping: 0.5, iterations: 1, ...more });
+    const state = seeded(hangingAt([0, 0, 0], rest), parameters);
+    run(state, hangingAt([0, 0, 0], rest), parameters, 2, 4);
+    run(state, hangingAt([100, 0, 0], rest), parameters, 9, 4);
+    const hash = (words: Float32Array): string => {
+      let low = 0x811c9dc5;
+      for (const byte of new Uint8Array(words.buffer, words.byteOffset, words.byteLength)) low = Math.imul(low ^ byte, 0x01000193);
+      return (low >>> 0).toString(16).padStart(8, "0");
+    };
+    expect(hash(state.position)).toBe(positions);
+    expect(hash(state.velocity)).toBe(velocities);
   });
 });
 
@@ -923,5 +1005,378 @@ describe("rope reference: a strand seeded short between two pins has no hand (T1
         expect(Math.abs((shapes[step] as Float32Array)[point * 4 + 2] as number), `direction ${step}, point ${point}`).toBe(0);
       }
     }
+  });
+});
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ * SLICE 4 — what a weight of 1 is, wherever it comes from (the first consumer's findings).
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ */
+
+describe("rope reference: a weight of 1 is a hold, and so is one a rounding short of it (T1585b slice 4)", () => {
+  /** The last float below 1: what `mix(a, 1.0, s)` can give at `s = 1`. */
+  const LAST_BELOW_ONE = Math.fround(1 - 2 ** -24);
+  const rest = 1 / 16;
+  // Held at its first point, its last point's target carried along at a quarter of a metre a second.
+  const at = (frame: number): Float32Array => strand(POINTS, (i) => (i === LINKS ? [0.5 + frame * 2 ** -8, -0.25, 0] : [0, -i * rest, 0]));
+  const play = (parameters: RopeParameters, maps: RopeMaps = {}): RopeState => {
+    const state = seeded(at(0), parameters, 1, maps);
+    for (let frame = 1; frame <= 96; frame += 1) advanceRope(state, at(frame), parameters, { deltaSeconds: FRAME, substeps: 4 }, maps);
+    return state;
+  };
+  const only = (point: number, weight: number): Float32Array => {
+    const map = new Float32Array(POINTS);
+    map[point] = weight;
+    return map;
+  };
+  const sameRun = (a: RopeState, b: RopeState): boolean =>
+    Buffer.from(a.position.buffer).equals(Buffer.from(b.position.buffer)) && Buffer.from(a.velocity.buffer).equals(Buffer.from(b.velocity.buffer));
+  const loose = rope({ damping: 2, iterations: 8, segmentLength: rest });
+
+  it("the last float below 1 is the run at 1, word for word: as a station's number, as its map, and as a pin", () => {
+    for (const weight of [LAST_BELOW_ONE, ROPE_HELD_FROM]) {
+      // A station's number.
+      const numbered = play({ ...loose, anchorLast: weight });
+      expect(sameRun(numbered, play({ ...loose, anchorLast: 1 })), `Anchor Last ${weight}`).toBe(true);
+      expect(pointOf(numbered.position, LINKS)).toEqual([0.5 + 96 * 2 ** -8, -0.25, 0]);
+      // Its map, read at the strand's last point.
+      expect(sameRun(play(loose, { anchorLast: only(LINKS, weight) }), play(loose, { anchorLast: only(LINKS, 1) })), `Anchor Last mapped ${weight}`).toBe(true);
+      // A pin, on that point and on one in the middle of the strand.
+      expect(sameRun(play(loose, { pin: only(LINKS, weight) }), play(loose, { pin: only(LINKS, 1) })), `pin ${weight}`).toBe(true);
+      const middle = play(loose, { pin: only(8, weight) });
+      expect(sameRun(middle, play(loose, { pin: only(8, 1) })), `pin in the middle ${weight}`).toBe(true);
+      expect(pointOf(middle.position, 8)).toEqual([0, -8 * rest, 0]);
+    }
+  });
+
+  /*
+   * THE TOLERANCE IS A MILLIONTH, AND NOT MORE. Under it a weight is the spring it says: at
+   * 0.999 a pin's spring is 999 times the one at a half, sized for one point's mass, and a
+   * strand of seventeen hung from it by its first point rests seventeen weights over that
+   * spring below its target: 17·g ÷ ((2π·strength)²·999), 0.86 mm. A tolerance wide enough
+   * to swallow 0.999 would put it ON the target.
+   */
+  it("under the tolerance a weight is a pull: at 0.999 the point rests below its target, and the float under the tolerance is not the run at 1", () => {
+    const hung = { ...loose, anchorFirst: 0, damping: 8 };
+    const maps = { pin: only(0, 0.999) };
+    const pulled = seeded(at(0), hung, 1, maps);
+    for (let frame = 0; frame < 64 * 6; frame += 1) advanceRope(pulled, at(0), hung, { deltaSeconds: FRAME, substeps: 4 }, maps);
+    const one = GRAVITY / ((2 * Math.PI * ROPE_DEFAULTS.anchorStrength) ** 2 * 999);
+    expect(-(pulled.position[1] as number)).toBeGreaterThan(16 * one);
+    expect(-(pulled.position[1] as number)).toBeLessThan(18 * one);
+    const under = Math.fround(ROPE_HELD_FROM - 2 ** -24);
+    expect(sameRun(play({ ...loose, anchorLast: under }), play({ ...loose, anchorLast: 1 }))).toBe(false);
+  });
+});
+
+describe("rope reference: a held point is where it is told to be (T1585b slice 4, the design's D31)", () => {
+  /*
+   * UNDER HARD A WEIGHT OF 1 IS A HOLD, ALWAYS. The reach rule (the design's 4.6) is for a
+   * target the ROPE cannot reach: points the solve can move between it and the pin before
+   * it, and not enough rope. Between two held points that are neighbours there is nothing
+   * to solve, and each is its incoming point however far apart they are told to be. (The
+   * first consumer's rig holds rings up to 16 % further apart than the rope's pitch. Drawn
+   * in, each ring trailed the one before it, and the last by 99 mm.)
+   */
+  it.each([
+    ["16 % longer than the rope", (): number => 1.16],
+    ["5 % shorter", (): number => 0.95],
+    ["uneven, from 0.9 to 1.2 of a segment", (i: number): number => 0.9 + 0.075 * ((i * 7) % 5)],
+  ] as const)("held at every point the rope IS the incoming strip to the bit, at the strip's speed: %s", (_label, gap) => {
+    const pin = new Float32Array(POINTS).fill(1);
+    const held = rope({ segmentLength: REST });
+    const along = Array.from({ length: POINTS }, (_unused, i) => i).map((i, _index, all) => all.slice(1, i + 1).reduce((sum, k) => sum + gap(k) * REST, 0));
+    // Carried a quarter of a metre a second along and half a metre a second up.
+    const at = (frame: number): Float32Array => strand(POINTS, (i) => [(along[i] as number) + frame * 2 ** -8, frame * 2 ** -7, 0]);
+    const state = seeded(at(0), held, 1, { pin });
+    for (let frame = 1; frame <= 8; frame += 1) {
+      advanceRope(state, at(frame), held, { deltaSeconds: FRAME, substeps: 4 }, { pin });
+      expect(Array.from(state.position), `frame ${frame}`).toEqual(Array.from(at(frame)));
+    }
+    expect(axis(state.velocity, 0)).toEqual(every(0.25));
+    expect(axis(state.velocity, 1)).toEqual(every(0.5));
+  });
+
+  it("Anchor First and Second both at 1 are both their incoming points, and the first segment is as long as they say: twice a segment, or half", () => {
+    const two = rope({ gravity: 0, anchorSecond: 1, segmentLength: REST, maxStretch: 0 });
+    const laid = (gap: number): Float32Array => strand(POINTS, (i) => (i === 0 ? [0, 0, 0] : [gap + (i - 1) * REST, 0, 0]));
+    for (const gap of [2 * REST, REST / 2]) {
+      const state = seeded(laid(gap), two);
+      run(state, laid(gap), two, 2, 4);
+      expect(pointOf(state.position, 0)).toEqual([0, 0, 0]);
+      expect(pointOf(state.position, 1)).toEqual([gap, 0, 0]);
+      // The rope after them keeps its own length: the third point is a segment past the second.
+      expect(pointOf(state.position, 2)).toEqual([gap + REST, 0, 0]);
+    }
+  });
+
+  /*
+   * THE RULE'S OTHER SIDE, UNCHANGED. A pin with a point the solve can move between it and
+   * the pin before it is still drawn in to the rope between them: the third point's target
+   * is four segments from the first, there are two segments of rope, and it is put two
+   * segments along the line. With the second point held as well the three are neighbours,
+   * and each is its incoming point.
+   */
+  it("across a point the solve can move the earlier pin still wins: a pin two segments on is drawn in to two segments; with the point between held too, it is not", () => {
+    const loose = rope({ gravity: 0, segmentLength: REST, maxStretch: 0 });
+    const far = strand(POINTS, (i) => (i < 2 ? [i * REST, 0, 0] : [(i + 2) * REST, 0, 0]));
+    const only = (points: readonly number[]): Float32Array => {
+      const map = new Float32Array(POINTS);
+      for (const point of points) map[point] = 1;
+      return map;
+    };
+    const between = seeded(far, loose, 1, { pin: only([2]) });
+    for (let frame = 0; frame < 4; frame += 1) advanceRope(between, far, loose, { deltaSeconds: FRAME, substeps: 4 }, { pin: only([2]) });
+    expect(pointOf(between.position, 2)).toEqual([2 * REST, 0, 0]);
+    const neighbours = seeded(far, loose, 1, { pin: only([1, 2]) });
+    for (let frame = 0; frame < 4; frame += 1) advanceRope(neighbours, far, loose, { deltaSeconds: FRAME, substeps: 4 }, { pin: only([1, 2]) });
+    expect(pointOf(neighbours.position, 1)).toEqual([REST, 0, 0]);
+    expect(pointOf(neighbours.position, 2)).toEqual([4 * REST, 0, 0]);
+  });
+});
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ * SLICE 4 — the bend limit (the design's section 17: D30, D32).
+ * ─────────────────────────────────────────────────────────────────────────────────────────
+ */
+
+/** The angle the strand turns through at point j, radians: 0 along a straight run. */
+const turnAt = (position: Float32Array, j: number): number => {
+  const a = [0, 1, 2].map((c) => (position[j * 4 + c] as number) - (position[j * 4 - 4 + c] as number)) as [number, number, number];
+  const b = [0, 1, 2].map((c) => (position[j * 4 + 4 + c] as number) - (position[j * 4 + c] as number)) as [number, number, number];
+  const cross = Math.hypot(a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
+  return Math.atan2(cross, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
+};
+
+describe("rope reference: the bend limit in closed form — a strand held out level by its first two points (T1585b slice 4)", () => {
+  /*
+   * A BEAM. The first two points are held a segment apart along +X and the other fifteen are
+   * left to gravity. With no limit the strand hangs straight down from the second point, a
+   * turn of 90° there. With a radius of 2 m every joint may turn 2·asin(2b ÷ 4R) = 2·asin(1/64),
+   * 1.79°: the strand curls down along that circle, every joint at its limit, 27° in all.
+   *
+   * AT REST the shape itself says what each joint carries. Cut the strand at point j: the
+   * points beyond it weigh m·g each, and about point j those weights turn the cut end by
+   * Σ m·g·(xᵢ − xⱼ). Of the rows that reach across the cut only joint j's has a moment about
+   * that point — the segment's passes through it, and the next joint's pushes on the point
+   * itself. So joint j's row has pushed λⱼ = g·h²·Σ (xᵢ − xⱼ) per unit mass, and a COMPLIANT
+   * row (the design's D30) gives by that times its compliance: 2⁻¹⁰ of the diagonal its rest
+   * lengths give it, which is 1 ÷ b² for the first joint (one point of its three can move),
+   * 5 ÷ b² for the second and 6 ÷ b² after.
+   *
+   *     turnⱼ = limit + 2⁻¹⁰ · (1, 5 or 6) ÷ b² · g·h² · Σ (xᵢ − xⱼ)
+   *
+   * At the root that give is 2.2e-4 rad and at the second joint 9.7e-4, eleven and fifty
+   * times what a step may leave on a joint: the compliance is IN the answer. A row raised on
+   * its diagonal with nothing on its right-hand side rests every joint at the limit itself.
+   */
+  const b = 2 ** -4;
+  const h = FRAME / 4;
+  const beam = (more: Partial<RopeParameters> = {}): RopeParameters => rope({ damping: 8, anchorSecond: 1, segmentLength: b, iterations: 8, minBendRadius: 2, ...more });
+  const laid = levelAt(b);
+  const rested = (parameters: RopeParameters): RopeState => {
+    const state = seeded(laid, parameters);
+    run(state, laid, parameters, 64 * 10, 4);
+    return state;
+  };
+  /** What joint j of the resting shape gives by, from the weights beyond it. */
+  const giveAt = (position: Float32Array, j: number): number => {
+    let moment = 0;
+    for (let i = j + 1; i < POINTS; i += 1) moment += GRAVITY * h * h * ((position[i * 4] as number) - (position[j * 4] as number));
+    return ((ROPE_BEND_SOFTENING * (j === 1 ? 1 : j === 2 ? 5 : 6)) / (b * b)) * moment;
+  };
+
+  it.each([
+    ["a radius of 2 m", 2],
+    ["half that: twice the turn", 1],
+  ] as const)("%s: every joint rests at its limit plus what its compliance gives for the weight beyond it, to the solver's exit tolerance", (_label, radius) => {
+    const limit = 2 * Math.asin((2 * b) / (4 * radius));
+    /** What a step may leave on a joint: its tolerance on the turn, and the floor on each of its points. */
+    const tolerance = limit * ROPE_BEND_TOLERANCE + ROPE_BEND_FLOOR * (2 / b);
+    const state = rested(beam({ bendLimit: true, minBendRadius: radius }));
+    for (let j = 1; j < LINKS; j += 1) {
+      expect(Math.abs(turnAt(state.position, j) - (limit + giveAt(state.position, j))), `joint ${j}`).toBeLessThanOrEqual(tolerance);
+    }
+    // The give is in the answer: at the second joint it is tens of tolerances.
+    expect(giveAt(state.position, 2)).toBeGreaterThan(20 * tolerance);
+    // The held points are their incoming points, every segment keeps its length, and it is at rest.
+    expect(pointOf(state.position, 0)).toEqual([0, 0, 0]);
+    expect(pointOf(state.position, 1)).toEqual([b, 0, 0]);
+    for (let k = 1; k < LINKS; k += 1) expect(Math.abs(lengthOf(state.position, k) - b), `segment ${k}`).toBeLessThanOrEqual(ROPE_TOLERANCE * b + ROPE_TOLERANCE_FLOOR + 2 ** -23);
+    expect(Math.max(...Array.from(state.velocity, Math.abs))).toBeLessThan(1e-3);
+  });
+
+  it("the control: with no limit the strand hangs straight down from its second point", () => {
+    const state = rested(beam());
+    expect(Math.abs(turnAt(state.position, 1) - Math.PI / 2)).toBeLessThan(0.001);
+    expect(Math.abs((state.position[LINKS * 4 + 1] as number) + 15 * b)).toBeLessThan(0.001);
+  });
+});
+
+describe("rope reference: the limit is one-sided (T1585b slice 4)", () => {
+  /*
+   * A LIMIT HOLDS A JOINT FROM BENDING FURTHER AND NEVER HOLDS IT BENT. The consumer's loop,
+   * at rest with its lowest joints on their limit, has its far pin drawn away until the rope
+   * is nearly straight between its pins. Every joint that was at its limit has to be LET GO
+   * by the solve, in the step the segments ask it to open: a joint kept in the system while
+   * it holds the strand bent fights the segments, and they lose their length.
+   */
+  it("a loop resting on its limit is drawn out nearly straight: its joints open, and every segment keeps its length while they do", () => {
+    const links = 54;
+    const pitch = 0.06;
+    const limit = 2 * Math.asin(pitch / 0.3);
+    const ease = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10));
+    // Carried up to a pin half a metre off over 6 s, rested until 20 s, then drawn out to 3 m over 2 s.
+    const at = (t: number): Float32Array =>
+      strand(links + 1, (i) => (i === links && t > 0 ? [0.5 * ease(t / 6) + 2.5 * ease((t - 20) / 2), -links * pitch * (1 - ease(t / 6)), 0] : [0, i === 0 ? 0 : -i * pitch, 0]));
+    const parameters: RopeParameters = { ...ROPE_DEFAULTS, damping: 2, anchorLast: 1, segmentLength: pitch, minBendRadius: 0.15, iterations: 8, bendLimit: true };
+    const state = seeded(at(0), parameters);
+    let atLimit = 0;
+    let stretch = 0;
+    for (let frame = 1; frame <= 60 * 24; frame += 1) {
+      advanceRope(state, at(frame / 60), parameters, { deltaSeconds: 1 / 60, substeps: 4 });
+      if (frame === 60 * 20) for (let j = 1; j < links; j += 1) if (turnAt(state.position, j) > 0.99 * limit) atLimit += 1;
+      if (frame > 60 * 20) for (let k = 0; k < links; k += 1) stretch = Math.max(stretch, Math.abs(lengthOf(state.position, k) - pitch));
+    }
+    // It was resting on its limit…
+    expect(atLimit).toBeGreaterThanOrEqual(4);
+    // …and is now a shallow curve between pins 3 m apart: no joint anywhere near its limit.
+    let worst = 0;
+    for (let j = 1; j < links; j += 1) worst = Math.max(worst, turnAt(state.position, j));
+    expect(worst).toBeLessThan(0.25 * limit);
+    expect(pointOf(state.position, links)).toEqual(pointOf(at(24), links));
+    expect(state.position[links * 4]).toBe(3);
+    // While it opened, no segment left its length by more than a step may leave it.
+    expect(stretch).toBeLessThanOrEqual(ROPE_TOLERANCE * pitch + ROPE_TOLERANCE_FLOOR + 2 ** -22);
+  });
+});
+
+describe("rope reference: with the limit on and never reached, a strand is the strand it was (T1585b slice 4)", () => {
+  // A radius of a hundredth of a segment: no joint of these strands comes near it.
+  const limited = (more: Partial<RopeParameters> = {}): RopeParameters => rope({ bendLimit: true, minBendRadius: REST / 100, ...more });
+
+  it.each([1, 4, 8])("hung from its first point: sag 0 to the bit at %i steps a frame, and each segment carries the weight below it", (steps) => {
+    const incoming = hangingAt();
+    const state = seeded(incoming, limited());
+    run(state, incoming, limited(), 64, steps);
+    expect(axis(state.position, 1)).toEqual(Array.from({ length: POINTS }, (_unused, point) => hung(point)));
+    expect(axis(state.position, 0)).toEqual(every(0));
+    expect(axis(state.velocity, 1)).toEqual(every(0));
+    expect(Array.from(state.tension)).toEqual(Array.from({ length: POINTS }, (_unused, point) => (point < LINKS ? (LINKS - point) * GRAVITY : 0)));
+  });
+
+  it("free, it falls g·h²·k(k+1)/2 at g·h·k, every point alike", () => {
+    const incoming = hangingAt();
+    const state = seeded(incoming, limited({ anchorFirst: 0 }));
+    run(state, incoming, limited({ anchorFirst: 0 }), 8, 8);
+    expect(axis(state.position, 1)).toEqual(Array.from({ length: POINTS }, (_unused, point) => hung(point) - 0.0634765625));
+    expect(axis(state.velocity, 1)).toEqual(every(-1));
+  });
+});
+
+describe("rope reference: the first consumer's loop (T1585b slice 4, the acceptance)", () => {
+  /*
+   * 54 segments of 0.06 m, both ends held half a metre apart, a radius of 0.15 m: a joint
+   * may turn 2·asin(0.06 ÷ 0.3) = 23.07°. Hung with no limit the loop's lowest joints turn
+   * more than twice that. The strand is seeded hanging straight and its far end is carried
+   * up to its pin over six seconds — a pose the rope could lie in (a pose seeded with a fold
+   * far past the limit can open into a loop with a full turn in it, the design's D33).
+   */
+  const links = 54;
+  const pitch = 0.06;
+  const radius = 0.15;
+  const limit = 2 * Math.asin(pitch / (2 * radius));
+  const ease = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10));
+  const loopAt = (t: number): Float32Array => strand(links + 1, (i) => (i === links && t > 0 ? [0.5 * ease(t / 6), -links * pitch * (1 - ease(t / 6)), 0] : [0, -i * pitch, 0]));
+  const hang = (more: Partial<RopeParameters>, substeps: number): { worst: number; stretch: number; moved: number; state: RopeState } => {
+    const parameters: RopeParameters = { ...ROPE_DEFAULTS, damping: 2, anchorLast: 1, segmentLength: pitch, minBendRadius: radius, iterations: 8, ...more };
+    const state = seeded(loopAt(0), parameters);
+    let worst = 0;
+    let stretch = 0;
+    let moved = 0;
+    let was = state.position.slice();
+    for (let frame = 1; frame <= 60 * 22; frame += 1) {
+      advanceRope(state, loopAt(frame / 60), parameters, { deltaSeconds: 1 / 60, substeps });
+      if (frame > 60 * 20) {
+        for (let j = 1; j < links; j += 1) worst = Math.max(worst, turnAt(state.position, j));
+        for (let k = 0; k < links; k += 1) stretch = Math.max(stretch, Math.abs(lengthOf(state.position, k) - pitch));
+        for (let point = 0; point <= links; point += 1) {
+          const [a, b] = [pointOf(state.position, point), pointOf(was, point)];
+          moved = Math.max(moved, Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]));
+        }
+      }
+      was = state.position.slice();
+    }
+    return { worst, stretch, moved, state };
+  };
+
+  it.each([
+    [4, 1.0005],
+    [16, 1.0002],
+  ])("at rest no joint turns past its limit, at %i steps a frame; with no limit the loop's lowest joints turn twice as far", (substeps, ceiling) => {
+    const limited = hang({ bendLimit: true }, substeps);
+    // The limit, its exit tolerance, and what a resting joint gives (measured 1.0001 of the
+    // limit at four steps and 1.0000 at sixteen; in closed form in the three-point case above).
+    expect(limited.worst / limit).toBeLessThanOrEqual(ceiling);
+    // …and it is AT its limit, not short of it: the loop is as tight as it is let be.
+    expect(limited.worst / limit).toBeGreaterThan(0.999);
+    // Its ends are their incoming points and its segments their length.
+    expect(pointOf(limited.state.position, 0)).toEqual(pointOf(loopAt(22), 0));
+    expect(pointOf(limited.state.position, links)).toEqual(pointOf(loopAt(22), links));
+    expect(limited.state.position[links * 4]).toBe(0.5);
+    expect(limited.stretch).toBeLessThanOrEqual(ROPE_TOLERANCE * pitch + ROPE_TOLERANCE_FLOOR + 2 ** -22);
+    // The control.
+    expect(hang({}, substeps).worst / limit).toBeGreaterThan(2);
+  });
+
+  /*
+   * A LIMIT IS A SET OF ROWS THAT COME AND GO, and a resting bend must not show it. A joint
+   * the solve has set a hair inside its limit is out of the system until gravity brings it
+   * back, each joint on a step of its own, and the bend then chatters: before a joint within
+   * a thousandth of its limit was kept in the system (ROPE_BEND_BAND), this loop shimmered
+   * at sixteen steps a frame. Held to the SAME loop with no limit, whose own stillness is
+   * what single precision leaves of a step that small.
+   */
+  it.each([4, 16])("at rest the limit's rows do not show: no point moves further in a frame than in the same loop with no limit, at %i steps a frame", (substeps) => {
+    const limited = hang({ bendLimit: true }, substeps);
+    const free = hang({}, substeps);
+    expect(free.moved).toBeGreaterThan(0);
+    expect(limited.moved).toBeLessThanOrEqual(2 * free.moved);
+  });
+});
+
+describe("rope reference: where the limit and the pins cannot both be had (T1585b slice 4, the design's D30)", () => {
+  /*
+   * A strand whose first two points are held facing +X and whose last is held straight
+   * BEHIND them, at the end of all its rope: taut, folded back on itself at the second
+   * point by 180°, where the limit allows 24°. Nothing can meet the limit. Length and the
+   * pins hold, the bend gives, and the step has an ANSWER: the strand comes to rest.
+   *
+   * With the softening as a raised pivot only, a step here has no fixed point: each Newton
+   * step adds to the joint's multiplier what the last one failed to deliver.
+   */
+  it("taut and folded back at the second point: the pins hold, every segment keeps its length, the bend gives, and the strand is at rest", () => {
+    const rest = 1 / 16;
+    const pulled = rope({ damping: 2, anchorSecond: 1, anchorLast: 1, segmentLength: rest, iterations: 8, bendLimit: true, minBendRadius: 0.15 });
+    // Fifteen segments of rope after the second point, and a target fourteen and a half behind it.
+    const incoming = strand(POINTS, (i) => (i === LINKS ? [rest - 14.5 * rest, 0, 0] : [i * rest, 0, 0]));
+    const state = seeded(strand(POINTS, (i) => [i * rest, 0, 0]), pulled);
+    let fastest = 0;
+    for (let frame = 0; frame < 64 * 8; frame += 1) {
+      advanceRope(state, incoming, pulled, { deltaSeconds: FRAME, substeps: 4 });
+      for (const value of state.position) expect(Number.isFinite(value), `frame ${frame}`).toBe(true);
+      if (frame >= 64 * 6) for (let point = 0; point < POINTS; point += 1) fastest = Math.max(fastest, Math.hypot(...pointOf(state.velocity, point)));
+    }
+    expect(pointOf(state.position, 0)).toEqual([0, 0, 0]);
+    expect(pointOf(state.position, 1)).toEqual([rest, 0, 0]);
+    expect(pointOf(state.position, LINKS)).toEqual([rest - 14.5 * rest, 0, 0]);
+    // Within Max Stretch (the guard's 2 %): the solve may leave a taut strand that far and no further.
+    for (let k = 1; k < LINKS; k += 1) expect(Math.abs(lengthOf(state.position, k) - rest), `segment ${k}`).toBeLessThanOrEqual(0.02 * rest + 2 ** -22);
+    // The bend gave: the strand leaves the second point turned far past the limit's 24°.
+    expect(turnAt(state.position, 1)).toBeGreaterThan(1);
+    // At rest.
+    expect(fastest).toBeLessThan(0.01);
   });
 });
