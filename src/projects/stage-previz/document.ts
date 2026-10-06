@@ -1,8 +1,10 @@
 import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/graph.ts";
 import type { ParameterSlot, ParameterValue } from "../../domain/types/parameters.ts";
+import { chan, follow, shadowFovSource, viewSlots, type Slots } from "./slots.ts";
+import { applyRig } from "./rig.ts";
 import { LIMITS, document, edge, expressionSlot, graph, node, settings } from "../../examples/documents/builders.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
-import { PROJECTORS, type Area, type ProjectorName, type StageFacts, type Vec3 } from "./facts.ts";
+import { PROJECTORS, type Area, type ProjectorName, type StageFacts } from "./facts.ts";
 import { beamShader, compositeShader } from "./haze.ts";
 import { TEST_BEAMS_WGSL, TEST_GRID_WGSL } from "./test-content.ts";
 
@@ -26,36 +28,6 @@ import { TEST_BEAMS_WGSL, TEST_GRID_WGSL } from "./test-content.ts";
  * Stage left is +x (the audience's right); stage right is −x.
  */
 
-type Slots = Record<string, ParameterSlot>;
-
-const fmt = (value: number): string => {
-  const rounded = Math.round(value * 10000) / 10000;
-  return Object.is(rounded, -0) ? "0" : String(rounded);
-};
-
-/** v0 when s < 0.5, v1 when 0.5 <= s < 1.5, … — a stepped pick by comparisons. */
-function pick(values: readonly number[], s: string): string {
-  let out = fmt(values[0] ?? 0);
-  for (let k = 1; k < values.length; k += 1) {
-    const delta = (values[k] ?? 0) - (values[k - 1] ?? 0);
-    if (Math.abs(delta) > 1e-6) out += ` + ${fmt(delta)} * (${s} >= ${k - 0.5})`;
-  }
-  return out;
-}
-
-/** Every component of a vec3 slot from three expressions. */
-function vecSlots(key: string, sources: readonly [string, string, string], retained: Vec3): Slots {
-  const axes = ["x", "y", "z"] as const;
-  return Object.fromEntries(axes.map((axis, index) => [`${key}.${axis}`, expressionSlot(sources[index] ?? "0", retained[index] ?? 0)]));
-}
-
-/** A vec3 slot that follows another node's vec3 parameter. */
-function follow(key: string, target: string, parameter: string, retained: Vec3): Slots {
-  return vecSlots(key, [`op('${target}').par.${parameter}.x`, `op('${target}').par.${parameter}.y`, `op('${target}').par.${parameter}.z`], retained);
-}
-
-const chan = (name: string): string => `op('${name}').chan.${name}`;
-
 /** Haze knobs, shared by the beam passes and the composite so the two can never disagree. */
 const DENSITY = `${chan("haze")} * 0.06`;
 const FOG = `${chan("fog")} * 0.3`;
@@ -64,7 +36,8 @@ const GAIN = `${chan("beams")} * 40`;
 const COL = { tests: -4400, syphon: -4100, switches: -3800, flip: -3500, rig: -3200, mesh: -4400, kernels: -4100, geo: -3800, scene: -3500, render: -2900, beams: -2600, mix: -2300, out: -2000 } as const;
 
 const PROJECTOR_Y: Record<ProjectorName, number> = { SR: 0, SL: 300, DS: 600 };
-const MESH_Y: Record<Area, number> = { stage: 1300, grid: 1520, curtain: 1740, kabuki: 1960, led: 2180, talent: 2400 };
+/** The base areas; `rig` (the moving projector bodies) and `deck` (the floor, its own material) are added by rig.ts with their controls. */
+const MESH_Y: Record<Exclude<Area, "rig" | "deck" | "strobe">, number> = { stage: 1300, grid: 1520, curtain: 1740, kabuki: 1960, led: 2180, talent: 2400 };
 
 export function stageDocument(facts: StageFacts): ProjectDocument {
   const nodes: GraphNode[] = [];
@@ -161,7 +134,7 @@ export function stageDocument(facts: StageFacts): ProjectDocument {
 
   // ---- the stage --------------------------------------------------------------------------
   const kabuki = facts.areas.kabuki;
-  for (const area of Object.keys(MESH_Y) as Area[]) {
+  for (const area of Object.keys(MESH_Y) as Array<keyof typeof MESH_Y>) {
     const mesh = facts.areas[area];
     const meshId = `mesh${area[0]!.toUpperCase()}${area.slice(1)}`;
     const geoId = `geo${area[0]!.toUpperCase()}${area.slice(1)}`;
@@ -192,15 +165,8 @@ export function stageDocument(facts: StageFacts): ProjectDocument {
     kind: "directional", direction: [-0.3, -0.55, 0.78], color: [0.7, 0.8, 1, 1], shadows: false,
   }, { parameters: { intensity: expressionSlot(`${chan("work")} * 0.5`, 0.08) } }));
 
-  const shotValues = (pickOf: (shot: StageFacts["shots"][number]) => number): string => pick(facts.shots.map(pickOf), chan("shot"));
   const first = facts.shots[0]!;
-  add(labelled("view", "camera", [COL.scene, 1740], { near: 0.1, far: 120, ortho: false, roll: 0 }, {
-    parameters: {
-      ...vecSlots("eye", [shotValues((s) => s.eye[0]), shotValues((s) => s.eye[1]), shotValues((s) => s.eye[2])], first.eye),
-      ...vecSlots("lookAt", [shotValues((s) => s.lookAt[0]), shotValues((s) => s.lookAt[1]), shotValues((s) => s.lookAt[2])], first.lookAt),
-      fov: expressionSlot(shotValues((s) => s.fov), first.fov),
-    },
-  }));
+  add(labelled("view", "camera", [COL.scene, 1740], { near: 0.1, far: 120, ortho: false, roll: 0 }, { parameters: viewSlots(facts) }));
 
   const surfaces = "geoStage geoGrid geoCurtain geoKabuki geoTalent";
   add(labelled("stage", "render", [COL.render, 900], {
@@ -216,8 +182,7 @@ export function stageDocument(facts: StageFacts): ProjectDocument {
     const camId = `shadowCam${name}`;
     const renderId = `shadow${name}`;
     const y = 3000 + PROJECTOR_Y[name] * 0.8;
-    // Vertical FOV that covers the lens's image, with 15% to spare for shift and keystone.
-    const fov = `2 * atan2(0.575 * (1 + 2 * max(abs(op('${proj}').par.shiftX), abs(op('${proj}').par.shiftY))) / (op('${proj}').par.throwRatio * op('${proj}').par.aspect), 1) * 57.29578`;
+    const fov = shadowFovSource(proj);
     add(labelled(camId, "camera", [COL.scene, y], { near: 0.1, far: 60, ortho: false }, {
       parameters: {
         ...follow("eye", proj, "eye", rig.eye),
@@ -284,12 +249,13 @@ export function stageDocument(facts: StageFacts): ProjectDocument {
   add(labelled("out", "output", [COL.out, 900], {}));
   wire("e-atmosphere-out", ["atmosphere", "out"], ["out", "input"]);
 
-  return document(
+  return applyRig(document(
     "stage-previz",
     "Stage previz",
     settings({ outputResolution: { width: 1920, height: 1080 }, randomSeed: 11, limits: { ...LIMITS, memoryBudgetBytes: 2_147_483_648 } }),
     graph(nodes, edges),
-  );
+  ), facts);
+
 }
 
 /** The kabuki flies out: every vertex rises to the pipe line, and once out it is parked high above the rig. */

@@ -107,7 +107,7 @@ ${VIEW_FIELDS}
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
 @group(0) @binding(5) var inputTexture2: texture_2d<f32>;
 ${accumulate ? "@group(0) @binding(6) var inputTexture3: texture_2d<f32>;\n" : ""}
-const STEPS: u32 = 44u;
+const STEPS: u32 = 48u;
 
 ${VIEW_WGSL}
 
@@ -229,7 +229,7 @@ fn ign(pixel: vec2f) -> f32 {
 }
 
 @fragment
-fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+fn fs(@builtin(position) fragment: vec4f, @location(0) uv: vec2f) -> @location(0) vec4f {
   let cam = basis(params.eye, params.aim, params.roll);
   let ray = cameraRay(cam, uv);
   let hit = sceneDistance(cam, ray, uv, params.reach);
@@ -237,10 +237,27 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let span = insideBeam(l, params.eye, ray, 0.0, hit);
   var scatter = vec3f(0.0);
   if (span.y > span.x) {
-    let jitter = ign(uv * frameU.resolution + vec2f(frameU.absFrame * 5.3, frameU.absFrame * 1.7));
-    let dt = (span.y - span.x) / f32(STEPS);
+    // Jitter by THIS pass's own pixel. It renders at half the output's size, and seeding the
+    // noise from uv × the output resolution stepped it two pixels per texel: interleaved
+    // gradient noise at a stride of two is a slow diagonal ramp, the weave that showed
+    // wherever the haze was bright.
+    let jitter = ign(floor(fragment.xy) + vec2f(frameU.absFrame * 5.3, frameU.absFrame * 1.7));
+    // EQUI-ANGULAR sampling about the lens (Kulla & Fajardo 2012): the samples are spaced
+    // evenly in the ANGLE they subtend at the lens, not evenly along the ray. The light falls
+    // off as 1/d², so the stretch of ray nearest the lens carries most of the energy; evenly
+    // spaced, a pixel got one sample there or none, each carrying a huge weight and one texel
+    // of the cookie — the coloured speckle fanning out of a close, wide lens. Spaced by angle
+    // they crowd in where the light is, and 1/d² cancels against the sampling density exactly
+    // (each sample's weight below is d² × the angle step), so the falloff adds no noise at all.
+    let toLens = l.o - params.eye;
+    let closest = dot(toLens, ray);
+    let miss = max(length(toLens - ray * closest), 0.05);
+    let a0 = atan((span.x - closest) / miss);
+    let a1 = atan((span.y - closest) / miss);
+    let da = (a1 - a0) / f32(STEPS);
     for (var i = 0u; i < STEPS; i = i + 1u) {
-      let t = span.x + (f32(i) + jitter) * dt;
+      let t = closest + miss * tan(a0 + (f32(i) + jitter) * da);
+      let dt = da * (miss * miss + (t - closest) * (t - closest)) / miss;
       let q = params.eye + ray * t;
       let p = throughLens(l, q);
       if (p.z <= 0.0 || p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) { continue; }
@@ -279,22 +296,39 @@ ${VIEW_FIELDS}
 @group(0) @binding(3) var<uniform> params: Params;
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
 @group(0) @binding(5) var inputTexture2: texture_2d<f32>;
+@group(0) @binding(6) var inputTexture3: texture_2d<f32>;
 
 ${VIEW_WGSL}
+
+// Distance to the DRAPES (More #3: the scrim and the kabuki drawn opaque, depth only), or
+// \`reach\`. They draw additively and write no depth, so the scene's depth runs on through them.
+fn drapeDistance(cam: Basis, ray: vec3f, uv: vec2f, reach: f32) -> f32 {
+  let size = vec2f(textureDimensions(inputTexture3));
+  let d = textureLoad(inputTexture3, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).r;
+  return select(d * params.far / max(dot(ray, cam.f), 1e-4), reach, d >= 0.9999 || d <= 0.0);
+}
 
 fn scatterTexel(p: vec2i) -> vec3f {
   let size = vec2i(textureDimensions(inputTexture2));
   return textureLoad(inputTexture2, clamp(p, vec2i(0), size - vec2i(1)), 0).rgb;
 }
 
-// The half-resolution scatter, bilinear (More is bound unfilterable).
-fn scatterAt(uv: vec2f) -> vec3f {
-  let p = uv * vec2f(textureDimensions(inputTexture2)) - 0.5;
+// One bilinear tap of the half-resolution scatter (More is bound unfilterable).
+fn bilinear(p: vec2f) -> vec3f {
   let i = vec2i(floor(p));
   let f = p - floor(p);
   let top = mix(scatterTexel(i), scatterTexel(i + vec2i(1, 0)), f.x);
   let bottom = mix(scatterTexel(i + vec2i(0, 1)), scatterTexel(i + vec2i(1, 1)), f.x);
   return mix(top, bottom, f.y);
+}
+
+// The scatter resolved through a tent about three half-res texels wide: four bilinear taps
+// half a texel apart. The beams jitter their march by interleaved gradient noise, which
+// averages flat over any 3×3 block and reads as a diagonal weave over none; a plain bilinear
+// upsample doubled that weave into view wherever the haze is bright (looking into a lens).
+fn scatterAt(uv: vec2f) -> vec3f {
+  let p = uv * vec2f(textureDimensions(inputTexture2)) - 0.5;
+  return 0.25 * (bilinear(p + vec2f(-0.5, -0.5)) + bilinear(p + vec2f(0.5, -0.5)) + bilinear(p + vec2f(-0.5, 0.5)) + bilinear(p + vec2f(0.5, 0.5)));
 }
 
 fn shoulder(x: f32) -> f32 {
@@ -307,7 +341,9 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let lit = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
   let cam = basis(params.eye, params.aim, params.roll);
   let ray = cameraRay(cam, uv);
-  let hit = sceneDistance(cam, ray, uv, params.reach);
+  // The render's light is faded by the haze in front of the FIRST thing it came off — a drape
+  // in front of the scene included: their glow is most of what shows through them.
+  let hit = min(sceneDistance(cam, ray, uv, params.reach), drapeDistance(cam, ray, uv, params.reach));
   let through = exp(-params.density * hit);
   let c = lit.rgb * through + params.ambient * (1.0 - through) + scatterAt(uv) + vec3f(frameU.time * 0.0);
   return vec4f(shoulder(c.r), shoulder(c.g), shoulder(c.b), lit.a);
