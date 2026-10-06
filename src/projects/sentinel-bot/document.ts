@@ -277,9 +277,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     return {
       position: { x: expressionSlot(at.x, 0), y: expressionSlot(lampHeightExpression(z, on("slider_bore")), 2.25), z: expressionSlot(z, rest) },
       near: `clamp(1.5 - abs(${z} - ${TRAVEL}) / ${LAMP_SPACING}, 0, 1)`,
-      // A hall's lamp hangs higher and is the bigger lamp for it, by the square of how much higher: the deck
-      // under it is lit as a plain bore's is.
-      high: `pow(1 + ${CHAMBERS.swell} * ${chamberExpression(z)}, 2)`,
+      // A hall's lamp hangs higher and is the bigger lamp for it, by how much higher. Not by the square, which
+      // would light the deck under it as a plain bore's is: tried, and the hall was a lit room, every wall of it.
+      // A hall is a bigger dark with the same few lamps (the owner: "it shouldn't look like a hospital").
+      high: `(1 + ${CHAMBERS.swell} * ${chamberExpression(z)})`,
       // The light is the colour of the plate it hangs under (tunnel.ts, LAMP_TONES).
       tone: lampToneExpression(station),
     };

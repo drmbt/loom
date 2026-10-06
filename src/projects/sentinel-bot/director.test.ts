@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { flattenComponents } from "../../compiler/flatten.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
-import { evaluateExpression } from "../../domain/expressions/evaluate.ts";
+import { evaluateExpression, parseExpression } from "../../domain/expressions/evaluate.ts";
 import { starterComponentsView } from "../../examples/component-files.ts";
 import { SHOWCASE_BEAT, showcaseBarStart } from "../../examples/build-showcase-beat.ts";
 import { shippedClipAudio } from "../../examples/shipped-clip-audio.ts";
@@ -17,6 +17,30 @@ function read(source: string, scope: Record<string, number>): number {
   if (!result.ok) throw new Error(`"${source}" does not evaluate`);
   return result.value;
 }
+
+describe("the sentinel's file", () => {
+  it("holds no expression the engine cannot read: every one parses, function names and all", () => {
+    // An expression that fails is not an error to the engine: the parameter quietly keeps its stored value.
+    // A lamp's strength written with a function the grammar does not have (`pow`) shipped that way, three
+    // lamps at their stored strength, and every render of it looked plausible.
+    const { graph: built } = sentinelDocument(KIT_FIXTURE);
+    const unread: string[] = [];
+    let expressions = 0;
+    for (const entry of Object.values(built.nodes)) {
+      for (const [key, stored] of Object.entries(entry.parameters)) {
+        if (typeof stored !== "object" || stored === null || !("bindings" in stored)) continue;
+        const binding = stored.bindings.expression;
+        if (binding === undefined || binding.kind !== "expression") continue;
+        expressions += 1;
+        const parsed = parseExpression(binding.source);
+        if (!parsed.ok) unread.push(`${entry.label ?? entry.id}.${key}: ${parsed.reason}`);
+      }
+    }
+    expect(unread).toEqual([]);
+    // The walk really found them: the file is driven by hundreds.
+    expect(expressions).toBeGreaterThan(200);
+  });
+});
 
 describe("the sentinel follows the track", () => {
   it("measures a passage against a memory of the track, and no track at all is 0", () => {

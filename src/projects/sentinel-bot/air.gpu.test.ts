@@ -91,7 +91,7 @@ function beam(eye: Vec, aim: Vec, plate: Vec): number {
 
 function expected(eye: Vec, aim: Vec, plate: Vec): number[] {
   // A hall's lamp is the bigger lamp (tunnel.ts, hallLamp); the pass reads that off where the light hangs.
-  const hall = (1 + CHAMBERS.swell * chamberAt(plate[2])) ** 2;
+  const hall = 1 + CHAMBERS.swell * chamberAt(plate[2]);
   return LAMP_TONES.bore.map((channel) => Math.round(Math.min(1, channel * LAMP * hall * BEAM_GAIN * beam(eye, aim, plate)) * 255));
 }
 

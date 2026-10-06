@@ -207,7 +207,10 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   let grit = detailFbm(s.world * 31.0, 3, s.footprint);
   // Water comes down the wall: tracks a hand wide that run the long way round it.
   let track = detailFbm(vec3f(along * 7.0, around * 2.2, 3.0), 3, s.footprint).value;
-  let run = smoothstep(0.6, 0.72, track) * (0.35 + 0.65 * low);
+  // Not on the deck: there the angle round the bore barely changes across three metres of plate and jumps at the
+  // seam under its middle, so a track was a stripe from wall to wall that stopped dead on the centre line
+  // (the owner, 2026-10-06: "the floor has some stripey issues"). On the deck water stands: the pools, below.
+  let run = smoothstep(0.6, 0.72, track) * (0.35 + 0.65 * low) * step(what, 2.5);
   let dirt = p.grime * smoothstep(0.3, 0.72, stain.value);
   let pit = smoothstep(0.52, 0.8, spall.value);
 
@@ -385,10 +388,9 @@ fn airlight(origin: vec3f, ray: vec3f, reach: f32, light: vec3f) -> f32 {
 // arctangent in it: with s the distance along the ray from its nearest point to the plate, c that nearest
 // distance, and the depth under the plate there under + sink * s, it is the integral of
 // (under + sink * s)³ / (s² + c²)^(5/2), taken over the part of the ray that is below the plate.
-// A hall's lamp is the bigger lamp, by the square of how much higher it hangs (document.ts, lampAt).
+// A hall's lamp is the bigger lamp, by how much higher it hangs (document.ts, lampAt).
 fn hallLamp(z: f32) -> f32 {
-  let high = 1.0 + CHAMBER_SWELL * chamberAt(z);
-  return high * high;
+  return 1.0 + CHAMBER_SWELL * chamberAt(z);
 }
 
 fn beamUpTo(s: f32, c2: f32, under: f32, sink: f32) -> f32 {
