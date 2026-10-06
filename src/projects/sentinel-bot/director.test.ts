@@ -11,7 +11,7 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { SHOTS } from "./camera.ts";
 import { diagnosticClass } from "../../domain/diagnostics/classes.ts";
-import { DOCK_HUE, DOCK_TURN, FIELD_BARS, FIELD_EVERY, FIELD_HUE, GLIMPSE, PACK_BARS, PACK_SHARE, PHRASE_BARS, SHOW_HUES, SHOW_TURNS, RUSH, STAND, against, dockTurn, fieldStand, fieldTurn, showHue, pace, packSize, phraseAttack, phraseDraw, phraseRush, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
+import { against, DOCK_HUE, DOCK_TURN, dockTurn, FIELD_BARS, FIELD_HUE, FIELD_TURN, fieldTurn, GLIMPSE, pace, PACK_BARS, PACK_SHARE, packSize, PHRASE_BARS, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseRush, phraseSpiral, phraseSwim, rest, RUSH, SHOW_HUES, SHOW_TURNS, showHue, showStand, STAND, stride, surge, TEMPLE_HUE, TEMPLE_TURN, templeTurn } from "./director.ts";
 import { sentinelDocument } from "./document.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
@@ -80,14 +80,16 @@ describe("the sentinel follows the track", () => {
     expect([0.1, 0.8, 1.2, 4].map((value) => read(pace("follow", "energy"), { follow: 0, energy: value }))).toEqual([1, 1, 1, 1]);
   });
 
-  it("goes out to the fields for sixteen bars of every forty-eight and for a glimpse early on, on the bar count alone, and never opens there", () => {
+  it("goes out to the fields for the third sixteen bars of the show and for a glimpse early on, on the bar count alone, and never opens there", () => {
     const afield = (bar: number, follow = 1): number => read(fieldTurn("follow", "bar"), { follow, bar });
-    expect([FIELD_BARS, FIELD_EVERY]).toEqual([16, 3]);
+    expect([FIELD_BARS, FIELD_TURN]).toEqual([16, 2]);
     // The opening is the tunnel's, twelve bars of it; then four bars' glimpse of the towers (the owner: "show the
     // aesthetics with the spires a bit earlier"); the tunnel to bar thirty-two; sixteen in the fields, to the bar;
     // then the tunnel again.
     expect([GLIMPSE.from, GLIMPSE.to]).toEqual([12, 16]);
-    for (let bar = 0; bar < 96; bar += 0.25) expect([bar, afield(bar)]).toEqual([bar, (bar >= 12 && bar < 16) || (bar >= 32 && bar < 48) || bar >= 80 ? 1 : 0]);
+    for (let bar = 0; bar < 96; bar += 0.25) expect([bar, afield(bar)]).toEqual([bar, (bar >= 12 && bar < 16) || (bar >= 32 && bar < 48) ? 1 : 0]);
+    // …and again a show later, bars 128 to 144.
+    expect([afield(127.999), afield(128), afield(143.999), afield(144)]).toEqual([0, 1, 1, 0]);
     // The glimpse is once: the second time round the show, bars 108 to 112 are the tunnel's.
     expect([afield(108), afield(111)]).toEqual([0, 0]);
     // It changes on a bar that is a multiple of two, which is where the camera cuts (camera.ts, `turn`).
@@ -104,14 +106,20 @@ describe("the sentinel follows the track", () => {
     for (let bar = 0; bar < 192; bar += 0.25) expect([bar, docked(bar)]).toEqual([bar, (bar >= 48 && bar < 64) || (bar >= 144 && bar < 160) ? 1 : 0]);
     // It follows the fields without a bar of tunnel between: the place changes on the turn's own line, where the camera cuts.
     expect([afield(47.999), docked(47.999), afield(48), docked(48)]).toEqual([1, 0, 0, 1]);
-    // Never the fields and the dock at once.
-    for (let bar = 0; bar < 192; bar += 0.5) expect(afield(bar) + docked(bar)).toBeLessThanOrEqual(1);
+    // THE TEMPLE: the last sixteen bars of the show's ninety-six, bars 80 to 96, and 176 to 192.
+    const templed = (bar: number, follow = 1): number => read(templeTurn("follow", "bar"), { follow, bar });
+    expect(TEMPLE_TURN).toBe(5);
+    for (let bar = 0; bar < 192; bar += 0.25) expect([bar, templed(bar)]).toEqual([bar, (bar >= 80 && bar < 96) || bar >= 176 ? 1 : 0]);
+    expect(templed(85, 0)).toBe(0);
+    // Never two places at once, and in ninety-six bars it has been to all three.
+    for (let bar = 0; bar < 192; bar += 0.5) expect(afield(bar) + docked(bar) + templed(bar)).toBeLessThanOrEqual(1);
+    expect([afield(40), docked(56), templed(88)]).toEqual([1, 1, 1]);
     // Cut the switch and it never goes.
     for (let bar = 0; bar < 96; bar += 1) expect(docked(bar, 0)).toBe(0);
   });
 
   it("turns the robots' lights to a colour of its own in each sixteen bars of the show, cold in the fields, and only on a turn's first bar", () => {
-    const hue = (bar: number, follow = 1, place = 0): number => read(showHue("follow", "place", "dock", "bar"), { follow, place, dock: 0, bar });
+    const hue = (bar: number, follow = 1, place = 0): number => read(showHue("follow", "place", "dock", "temple", "bar"), { follow, place, dock: 0, temple: 0, bar });
     expect(SHOW_TURNS * FIELD_BARS).toBe(96);
     // Each turn of the tunnel's holds its own colour from its first bar to its last. (The fields' turns read 0
     // here: out there the place says the colour, below.)
@@ -121,12 +129,13 @@ describe("the sentinel follows the track", () => {
     }
     // Not one colour all the way through (the owner: "the colour feels very much static"): the tunnel alone has
     // three, and the fields and the dock one each of their own.
-    expect(new Set(SHOW_HUES.filter((_, turn) => turn % FIELD_EVERY !== FIELD_EVERY - 1 && turn !== DOCK_TURN)).size).toBe(3);
-    expect(new Set([...SHOW_HUES, FIELD_HUE, DOCK_HUE]).size).toBe(5);
+    expect(new Set(SHOW_HUES.filter((_, turn) => turn !== FIELD_TURN && turn !== DOCK_TURN && turn !== TEMPLE_TURN)).size).toBe(3);
+    expect(new Set([...SHOW_HUES, FIELD_HUE, DOCK_HUE, TEMPLE_HUE]).size).toBe(6);
     // Never upward past amber: the wheel has green a third of the way up, and these lights have none.
-    for (const turned of [...SHOW_HUES, FIELD_HUE, DOCK_HUE]) expect(turned > -0.55 && turned < 0.1).toBe(true);
-    // In the dock it is the dock's colour, whoever put it there.
-    expect(read(showHue("follow", "place", "dock", "bar"), { follow: 0, place: 0, dock: 1, bar: 5 })).toBe(DOCK_HUE);
+    for (const turned of [...SHOW_HUES, FIELD_HUE, DOCK_HUE, TEMPLE_HUE]) expect(turned > -0.55 && turned < 0.1).toBe(true);
+    // In the dock it is the dock's colour and in the temple the temple's, whoever put it there.
+    expect(read(showHue("follow", "place", "dock", "temple", "bar"), { follow: 0, place: 0, dock: 1, temple: 0, bar: 5 })).toBe(DOCK_HUE);
+    expect(read(showHue("follow", "place", "dock", "temple", "bar"), { follow: 0, place: 0, dock: 0, temple: 1, bar: 5 })).toBe(TEMPLE_HUE);
     // In the fields it is the fields' colour, whoever put it there: the show, or the panel with the show off.
     expect(hue(40, 1, 1)).toBe(FIELD_HUE);
     expect(hue(5, 0, 1)).toBe(FIELD_HUE);
@@ -134,13 +143,13 @@ describe("the sentinel follows the track", () => {
     for (let bar = 0; bar < 96; bar += 8) expect(hue(bar, 0, 0) + 0).toBe(0);
   });
 
-  it("stands for four bars in the middle of each turn in the fields, and nowhere else", () => {
-    const stands = (bar: number, follow = 1): number => read(fieldStand("follow", "bar"), { follow, bar });
+  it("stands for four bars in the middle of its turn in the fields and of its turn in the temple, and nowhere else", () => {
+    const stands = (bar: number, follow = 1): number => read(showStand("follow", "bar"), { follow, bar });
     expect([STAND.from, STAND.to]).toEqual([8, 12]);
     for (let bar = 0; bar < 192; bar += 0.25) {
       const turn = Math.floor(bar / FIELD_BARS);
       const within = bar - turn * FIELD_BARS;
-      expect([bar, stands(bar)]).toEqual([bar, turn % FIELD_EVERY === FIELD_EVERY - 1 && within >= 8 && within < 12 ? 1 : 0]);
+      expect([bar, stands(bar)]).toEqual([bar, (turn % 6 === FIELD_TURN || turn % 6 === TEMPLE_TURN) && within >= 8 && within < 12 ? 1 : 0]);
     }
     // It begins and ends on a bar the camera cuts on, and is two of its shots long.
     expect([stands(39.999), stands(40), stands(43.999), stands(44)]).toEqual([0, 1, 1, 0]);

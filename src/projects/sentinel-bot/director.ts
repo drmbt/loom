@@ -87,16 +87,18 @@ export function phrasePause(follow: string, intensity: string, draw: string, bar
 }
 
 /**
- * THE OTHER PLACE. The piece goes out of the tunnel into the fields (field.ts) for sixteen bars at a time,
- * every third such turn, starting with the third: on the owner's 110 bars that is bars 32 to 48 and 80 to 96
- * (and four bars early on: GLIMPSE, below).
+ * THE OTHER PLACES. The piece goes out of the tunnel for sixteen bars at a time. Of the show's six such turns:
+ * tunnel, tunnel, the FIELDS (field.ts), the DOCK (dock.ts), tunnel, the TEMPLE (temple.ts); and round again. On
+ * the owner's 110 bars the fields are bars 32 to 48 (and four bars early on: GLIMPSE, below), the dock 48 to 64,
+ * the temple 80 to 96.
  * By the bar count and nothing else. The track's loudness cannot choose it, because a place must not change
  * in the middle of a shot and nothing here can hold a decision once taken: a rule that read the loudness
  * would put the tunnel back whenever a passage dipped. Sixteen bars is eight of the camera's two-bar shots, so
  * the place changes on a cut.
  */
 export const FIELD_BARS = 16;
-export const FIELD_EVERY = 3;
+/** Which of the show's six turns of sixteen bars is the fields': the third. */
+export const FIELD_TURN = 2;
 /** The show comes round every this many turns of sixteen bars (SHOW_TURNS, below, is the same number, said where the show is). */
 const SHOW_TURNS_COUNT = 6;
 
@@ -108,10 +110,16 @@ const SHOW_TURNS_COUNT = 6;
 export const GLIMPSE = { from: 12, to: 16 } as const;
 
 /**
- * THE DOCK (dock.ts): the turn after the fields' first. Of the show's six turns of sixteen bars: tunnel, tunnel,
- * fields, DOCK, tunnel, fields. On the owner's 110 bars that is bars 48 to 64. By the bar count, as every place is.
+ * THE DOCK (dock.ts): the turn after the fields'. By the bar count, as every place is.
  */
 export const DOCK_TURN = 3;
+/** …and THE TEMPLE (temple.ts): the last turn of the six. */
+export const TEMPLE_TURN = 5;
+
+/** Whether the bar `bar` is spent in the temple: 0 or 1. */
+export function templeTurn(follow: string, bar: string): string {
+  return `(${follow} * (mod(floor(${bar} / ${FIELD_BARS}), ${SHOW_TURNS_COUNT}) == ${TEMPLE_TURN}))`;
+}
 
 /** Whether the bar `bar` is spent in the dock: 0 or 1. */
 export function dockTurn(follow: string, bar: string): string {
@@ -125,7 +133,7 @@ export function glimpseShot(follow: string, bar: string): string {
 
 /** Whether the bar `bar` is spent in the fields: 0 or 1. */
 export function fieldTurn(follow: string, bar: string): string {
-  return `(${follow} * max(mod(floor(${bar} / ${FIELD_BARS}), ${FIELD_EVERY}) == ${FIELD_EVERY - 1}, (${bar} >= ${GLIMPSE.from}) * (${bar} < ${GLIMPSE.to})))`;
+  return `(${follow} * max(mod(floor(${bar} / ${FIELD_BARS}), ${SHOW_TURNS_COUNT}) == ${FIELD_TURN}, (${bar} >= ${GLIMPSE.from}) * (${bar} < ${GLIMPSE.to})))`;
 }
 
 /** A pack's turn is eight bars: the others take most of two to come up from behind and as long to fall back. */
@@ -201,40 +209,43 @@ export const SHOW_TURNS = SHOW_TURNS_COUNT;
 /**
  * How far the robots' lights are turned round the wheel in each turn of the show, in turns of the wheel from
  * where the panel has them (red), for the turns spent in the tunnel: home; amber; (the fields); (the dock);
- * violet; (the fields again). A place out of the tunnel has a colour of its own (FIELD_HUE, DOCK_HUE). Never
- * upward past amber: no green.
+ * violet; (the temple). A place out of the tunnel has a colour of its own (FIELD_HUE, DOCK_HUE, TEMPLE_HUE).
+ * Never upward past amber: no green.
  */
 export const SHOW_HUES: readonly number[] = [0, 0.05, 0, 0, -0.28, 0];
 /** …and in the fields, whichever turn it is: red becomes a cold cyan, against the pods' red. */
 export const FIELD_HUE = -0.45;
 for (let turn = 0; turn < SHOW_TURNS; turn += 1) {
-  const elsewhere = turn % FIELD_EVERY === FIELD_EVERY - 1 || turn === DOCK_TURN;
+  const elsewhere = turn === FIELD_TURN || turn === DOCK_TURN || turn === TEMPLE_TURN;
   if (elsewhere && SHOW_HUES[turn] !== 0) throw new Error(`director.ts: turn ${turn} of the show is spent out of the tunnel, in a place with a colour of its own: its entry in SHOW_HUES must be 0.`);
 }
 
 /** …and in the dock: magenta, against the sodium of its lamps. */
 export const DOCK_HUE = -0.12;
+/** …and in the temple: blue, against its fires. */
+export const TEMPLE_HUE = -0.36;
 
 /**
- * The turn of the wheel for bar `bar`: the fields' wherever `fields` is 1 and the dock's wherever `dock` is (the
- * panel can put it in either too), else the show's turn's when following.
+ * The turn of the wheel for bar `bar`: a place's own wherever its flag is 1 (the panel can put it in any of
+ * them too), else the show's turn's when following.
  */
-export function showHue(follow: string, fields: string, dock: string, bar: string): string {
+export function showHue(follow: string, fields: string, dock: string, temple: string, bar: string): string {
   const turn = `mod(floor(${bar} / ${FIELD_BARS}), ${SHOW_TURNS})`;
   const table = SHOW_HUES.map((hue, index) => (hue === 0 ? null : `(${turn} == ${index}) * ${hue}`)).filter((term) => term !== null).join(" + ");
-  return `(${fields} * ${FIELD_HUE} + ${dock} * ${DOCK_HUE} + (1 - ${fields}) * (1 - ${dock}) * ${follow} * (${table}))`;
+  return `(${fields} * ${FIELD_HUE} + ${dock} * ${DOCK_HUE} + ${temple} * ${TEMPLE_HUE} + (1 - ${fields}) * (1 - ${dock}) * (1 - ${temple}) * ${follow} * (${table}))`;
 }
 
 /**
- * THE STAND: in each turn the piece spends in the fields, for four bars in the middle of it (bars 8 to 12 of
- * the sixteen) the pack stops where it is, out in the open, and goes over to the attack; then it goes on.
- * Two of the camera's shots long.
+ * THE STAND: in the turn the piece spends in the fields, and in the one it spends in the temple, for four bars
+ * in the middle (bars 8 to 12 of the sixteen) the pack stops where it is, out in the open, and goes over to
+ * the attack; then it goes on. Two of the camera's shots long. (Not in the dock: it goes straight down that.)
  */
 export const STAND = { from: 8, to: 12 } as const;
 
 /** Whether bar `bar` is in a stand: 0 or 1. */
-export function fieldStand(follow: string, bar: string): string {
+export function showStand(follow: string, bar: string): string {
   const within = `mod(${bar}, ${FIELD_BARS})`;
-  // Of a whole turn in the fields: the glimpse (GLIMPSE) is too short to stop in.
-  return `(${follow} * (mod(floor(${bar} / ${FIELD_BARS}), ${FIELD_EVERY}) == ${FIELD_EVERY - 1}) * (${within} >= ${STAND.from}) * (${within} < ${STAND.to}))`;
+  const turn = `mod(floor(${bar} / ${FIELD_BARS}), ${SHOW_TURNS})`;
+  // Of a whole turn: the glimpse of the fields (GLIMPSE) is too short to stop in.
+  return `(${follow} * max(${turn} == ${FIELD_TURN}, ${turn} == ${TEMPLE_TURN}) * (${within} >= ${STAND.from}) * (${within} < ${STAND.to}))`;
 }
