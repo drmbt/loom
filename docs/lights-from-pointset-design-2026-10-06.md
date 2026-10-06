@@ -1106,3 +1106,48 @@ Each of the 62 shipped Renders' own targets, frames 0 and 60, raw bytes, main (`
 - **Primitive instances reading a layer other than the first on Dawn**: the instances generator's lookup is the surface generator's own function and its text is pinned, but no Dawn test puts a casting Light's second layer on an instances draw.
 - A browser; a second GPU; a device whose `maxTextureArrayLayers` is the floor of 256 (the refusal is tested against this device's own limit, whatever it reports).
 - An unfiltered test run, by accident: a scratch script handed vitest an empty list of files, which is the whole suite. It ran for about ten minutes before it was stopped, and its result was not read. The script refuses an empty list now.
+
+## 17. T1688b as built (2026-10-07): Shadow On, a casting light's shadow switched by a value
+
+Asked by a consumer (sentinel-bot): its body light's shadow is wanted in the tunnel and wasted in three of the show's six turns, where nothing stands in the light's twelve metres. Cast Shadows is structure (the map, the sweeps, the block of lit text), so a place could not put the shadow out without a recompile.
+
+### 17.1 What it is
+
+- **Cast Shadows stays structure.** Beside it the Light has a VALUE, **Shadow On** (`shadowOn`, a boolean, default on, not compile-time). A cue, a preset or an expression turns it and nothing is rebuilt.
+- **A switch and no amount.** TouchDesigner's Light COMP has Shadow Type (Off, Hard, Soft, Custom), a menu, and no strength; its strength is on the material (Phong MAT Shadow Strength). Notch's Light has Casts Shadows, a toggle. Both put a switch on the light. A fraction would need the lookup's text to change (a mix) and would keep the lookup's cost.
+- **The mechanism is T1598b's, unchanged.** A light whose shadow is out reaches nothing: every caster draw of its sweeps stays in the plan and carries `skip`, and each sweep's far plate still clears. The map then says "nothing here" and never what it held when the shadow went out; the lit text, its bindings and its resources are the ones it has with the shadow on (§V1029: one text at 0 and at 1); the frame it comes back the sweeps draw the casters where they are. The Light Depth output's sweep follows, since it is that light's map as data.
+- **A driven value is on unless it is 0** (the rule of every driven boolean). There is no half shadow.
+- **What stays while it is out**: the lit pass's lookup (25 reads at Shadow Softness 2, of a map that holds nothing) and one clear a sweep.
+
+### 17.2 Claims
+
+- `shadow-switch.test.ts` (9, no GPU): out, every caster draw of that light's sweeps is skipped and its far plate still clears (a sun; a point light's six faces); it is that light's alone, in either order; the Light Depth output goes out with it. The plan with the shadow out is the plan with it on but for the flags: the same passes, text, targets, layers, bindings and resources, and the device is asked for no shader module and no pipeline going out or coming back. The parameter is a boolean that defaults on, is not compile-time, and is live only on a casting Light in Single mode; a revision that moves it is values-only, one that moves Cast Shadows is structure.
+- `vgpu/shadow-switch.gpu.test.ts` (6, Dawn), whole frames byte for byte: out equals the same light with Cast Shadows off (a sun, a point light, a soft sun); the light beside it keeps its shadow; on, out, out, on over four frames with the caster moving, each frame equal to the document that was that way all along (the map is not stale); driven, 0.5 and -1 are on and 0 is out.
+- 14 mutations of the product, 14 red (the worker's run, before parking).
+
+### 17.3 The landing's ladder (main at `9a95def1` with this on top)
+
+- The two files above and the five pin files (`material-textures`, `light-points`, `grid-uv`, `scene-light-guard`, `generated-text-growth`): green, no pin re-taken.
+- The 27 catalogue walkers (460 tests), the fifteen test files that name the Light's shadow parameters (116), `test:gates`, `test:first-import`, `pnpm build`: green. One gate asked for a ledger row: `effective-schema-closure.test.ts` now names the new test's two reads of the Light's declared schema, with the reason.
+- **The 27 shipped casting Renders**, frames 0 and 60 of each Render's own target, clean main against main with this: 0 channel values differ in all 27 (no control run was needed: there was nothing to explain).
+- **A PBR surface** (not in the Dawn file, whose meshes are lambert): Shadow On off against Cast Shadows off, a sun and a point light on a Material · PBR floor and box: 0 of 36,864 half-floats differ in each; against the shadow on, 450 and 1,317 differ. The block and the row agree to the bit here.
+
+### 17.4 What it is worth, on the consumer
+
+sentinel-bot at 1280 × 720 with its pack of three out, headless on Dawn, the whole frame's GPU time by the reference-pass rule (B260): the document before (the body light always casting) and after (its Shadow On driven by the place: on in the tunnel, out in the fields, the dock and the temple), each held at a place by the panel's Place, 150 frames after 12 of warm-up, the two alternated (before, after, before, after, before, after, before), a fixed reference pass beside every frame (2.69 to 2.82 ms throughout).
+
+| place | before, ms | after, ms | of the reference, before to after |
+|---|---|---|---|
+| the fields | 11.7 to 12.1 | 9.0 to 9.2 | 4.35 to 3.40, -21.8 % |
+| the dock | 12.1 to 12.3 | 9.5 to 9.6 | 4.48 to 3.51, -21.7 % |
+| the temple | 11.9 to 12.1 | 9.3 to 9.4 | 4.39 to 3.37, -23.3 % |
+| the tunnel (the shadow stays on) | 13.6 to 13.7 | 13.6 to 13.6 | 4.85 to 4.86, +0.2 % |
+
+About 2.6 ms a frame in each of the three places, and nothing in the tunnel. The picture: one frame of each place with the shadow on and out, whole-frame PSNR 61.8, 66.6 and 60.4 dB; looked at side by side, no difference found.
+
+### 17.5 Not checked
+
+- Primitive instances and a points geometry under a light whose shadow is out (the Dawn file's casters are file meshes).
+- The app: a Shadow On toggled from the inspector or a cue, and the performance panel's sweep rows while it is out.
+- GPU time in a browser; the figures above are Dawn's.
+

@@ -196,6 +196,14 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "`inactiveWhen` follows Outside. Both are properties of the manifest, not of an instance.",
     reads: ["cornerPinNode.parameters", "cornerPinNode.parameters"],
   },
+  "src/nodes/definitions/shadow-switch.test.ts": {
+    reason:
+      `${TYPE_ONLY_UNIT_TEST} T1688b's two reads pin what the Light DECLARES: Shadow On is a ` +
+      "boolean that defaults to on and is NOT compile-time, beside Cast Shadows which is, and " +
+      "its `inactiveWhen` follows Mode and Cast Shadows. A value against structure is a " +
+      "property of the manifest, not of an instance.",
+    reads: ["lightNode.parameters", "lightNode.parameters"],
+  },
   "src/nodes/definitions/annotate.test.ts": {
     reason:
       `${TYPE_ONLY_UNIT_TEST} T1262's three reads pin what the annotation box DECLARES — ` +

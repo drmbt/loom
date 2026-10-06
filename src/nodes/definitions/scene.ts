@@ -604,8 +604,16 @@ const LIGHT_PARAMETERS: ParameterSchema = {
     default: false,
     compileTime: true,
     description:
-      "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible. Shadow Casters and Shadow Exclude choose which geometries those passes draw (T1598b).",
+      "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible. Shadow Casters and Shadow Exclude choose which geometries those passes draw (T1598b). Changing it rebuilds the Render: to put a shadow out and bring it back while playing, use Shadow On.",
     inactiveWhen: pointsCastNothing,
+  },
+  shadowOn: {
+    type: "boolean",
+    label: "Shadow On",
+    default: true,
+    description:
+      "T1688b: the switch of a casting light's shadow, and A VALUE: a cue, a preset or an expression turns it, and nothing is rebuilt. Off, this frame none of this light's shadow passes draws a caster (their cost is the casters' triangles, a point light's six times) and the light shades everything in its reach as if nothing stood in its way; the frame it comes back on, the shadow is drawn from where the casters are now. The lookup the lit pass makes stays (Shadow Softness prices it): to be rid of that too, turn Cast Shadows off, which rebuilds. Driven by an expression, any value but 0 is on.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has a shadow to switch."),
   },
   shadowExtent: {
     type: "number",
@@ -744,6 +752,8 @@ export const lightNode: NodeDefinition = {
         direction: vec3(parameters, "direction", [-0.4, -0.8, -0.45]),
         position: vec3(parameters, "position", [1, 2, 1.5]),
         shadows: parameters["shadows"] === true,
+        /* T1688b: out only when it says so; a document from before the parameter has it on. */
+        ...(parameters["shadowOn"] === false ? { shadowOn: false } : {}),
         shadowExtent: readNumber(parameters, "shadowExtent", 8),
         shadowSoftness: readNumber(parameters, "shadowSoftness", 2),
         shadowBias: Math.max(0, readNumber(parameters, "shadowBias", 0)),
@@ -2741,6 +2751,18 @@ export const renderNode: NodeDefinition = {
      */
     const reachOf = (light: LightPayload["light"], face: number) => (payload: GeometryPayload): boolean =>
       payload.bounds === undefined || pointShadowFaceReaches(light.position, Math.max(0.1, light.shadowExtent), face, payload.bounds);
+    /*
+     * T1688b — A LIGHT WHOSE SHADOW IS OUT THIS FRAME REACHES NOTHING. Shadow On is a value,
+     * and this is the mechanism a value already had (T1598b): every draw of the light's
+     * sweeps stays in the plan and carries `skip`, and each sweep's far plate still clears.
+     * So the map holds "nothing here" and not what it held when the shadow went out; the lit
+     * text and its bindings are the ones it has with the shadow on (§V1029: one text at 0 and
+     * at 1); and the frame it comes back, the sweeps draw the casters where they are.
+     * `face` absent: a directional light's one sweep, which has no reach of its own.
+     */
+    const NOTHING_IN_REACH = (): boolean => false;
+    const sweepReachOf = (light: LightPayload["light"], face?: number): { readonly reaches?: (payload: GeometryPayload) => boolean } =>
+      light.shadowOn === false ? { reaches: NOTHING_IN_REACH } : face === undefined ? {} : { reaches: reachOf(light, face) };
 
     /* T481: the shadow phase — every map is rendered BEFORE the lit draws that read it.
        Zero casting lights emits nothing here and nothing below changes: §V309 holds as
@@ -2764,7 +2786,7 @@ export const renderNode: NodeDefinition = {
               target: shadowTargetOf(slot),
               layer: shadowLayerOf(slot),
               casters: castersBySlot[slot] ?? [],
-              reaches: reachOf(light, face),
+              ...sweepReachOf(light, face),
               matrix,
               linearDepth: false,
               extraUniforms: {},
@@ -2782,6 +2804,7 @@ export const renderNode: NodeDefinition = {
           target: shadowTargetOf(slot),
           layer: shadowLayerOf(slot),
           casters: castersBySlot[slot] ?? [],
+          ...sweepReachOf(light),
           matrix: shadowMatrices[slot],
           linearDepth: false,
           extraUniforms: {},
@@ -2842,7 +2865,7 @@ export const renderNode: NodeDefinition = {
             prefix: `lightDepth:face${face}`,
             target: lightDepthTarget,
             casters: castersBySlot[0] ?? [],
-            reaches: reachOf(first.light, face),
+            ...sweepReachOf(first.light, face),
             matrix,
             linearDepth: false,
             extraUniforms: {},
@@ -2854,7 +2877,7 @@ export const renderNode: NodeDefinition = {
           });
         });
       } else {
-        emitDepthSweep({ prefix: "lightDepth", target: lightDepthTarget, casters: castersBySlot[0] ?? [], matrix: shadowMatrices[0], linearDepth: false, extraUniforms: {} });
+        emitDepthSweep({ prefix: "lightDepth", target: lightDepthTarget, casters: castersBySlot[0] ?? [], ...sweepReachOf(first.light), matrix: shadowMatrices[0], linearDepth: false, extraUniforms: {} });
       }
     }
 

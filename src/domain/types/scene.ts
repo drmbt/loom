@@ -70,6 +70,13 @@ export interface LightPayload {
      */
     readonly shadows: boolean;
     /**
+     * T1688b: a CASTING light's shadow, on or out THIS FRAME. A value: `false` and none of
+     * this light's sweeps draws a caster this frame (each draw is skipped, the far plate
+     * still clears), so its map says "nothing here" and the light shades unoccluded. The
+     * map, the passes and the lit text are what they are with it on. Absent: on.
+     */
+    readonly shadowOn?: boolean;
+    /**
      * T481 (V426): the world-units half-extent of the ortho shadow volume around the
      * origin. EXPLICIT, never auto-fit — payloads carry no scene bounds, and a derived
      * box would silently crop the shadow plausibly-wrong. A number the user can see
