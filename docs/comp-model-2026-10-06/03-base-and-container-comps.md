@@ -21,7 +21,7 @@ Today's Panel node becomes a Container COMP whose children are controls. A Base 
 
 A Container COMP's panel is built from three sources, in this order:
 
-1. **Its own custom parameters**, laid out on its parameter page as controls. Publishing a parameter is what puts it on the panel, so there is nothing to keep in sync.
+1. **Its own custom parameters**, laid out on its parameter page as controls. Promoting a parameter is what puts it on the panel, so there is nothing to keep in sync.
 2. **Its children's panels.** A child Container's panel appears inside its parent's, as in TD: a rig panel inside a desk panel inside the project. Each child decides whether it shows (TD: Display) and whether it takes input (TD: Enable).
 3. **A background**, referenced: a node's output shown behind the controls (TD: Background TOP), or a colour, plus border and opacity (TD's Look page).
 

@@ -11,6 +11,7 @@ Loom borrows TouchDesigner's idiom but not its container model. Every Loom compo
 - **Mappers.** MIDI, OSC and keys each get a mapping table, with feedback to the hardware.
 - **Tables.** A table data type (a DAT analog) with one Lister-style editor sits under all of it.
 - **The command bus.** A generated command bible, and later command arguments on triggers and user-defined commands.
+- **Families and the palette.** Stronger family colour, MAT and DAT families, and a three-tier component palette (built-in, community, local) that you publish to by opening a PR.
 
 It is staged so that each piece ships alone, and stage 0 is a small fix that needs no model change.
 
@@ -25,6 +26,7 @@ It is staged so that each piece ships alone, and stage 0 is a small fix that nee
 | [05. Mappers](05-mappers.md) | MIDI, OSC and keys each get a table and a learn mode; feedback out; missing-target resolution; additive import | You own MIDI (T1388b phase 2 is the base) | Skim |
 | [06. Tables](06-tables.md) | A table node (DAT analog), TSV/CSV/JSON/XML, one Lister-style editor ported from [drmbt/TD-table-editor](https://github.com/drmbt/TD-table-editor) | You want a piece that can start now | Skim; independent |
 | [07. Command bus](07-command-bus.md) | Why no eval; what a bus command is; a generated command bible; RFEs for command arguments and user-defined commands | You own the bus or the agent surface | Skim; RFE-level |
+| [08. Families, colour, palette](08-families-colour-and-palette.md) | Family colour matching the port hue; MAT and DAT families; "component" = a published, versioned COMP; built-in / community / local palette tiers with publish-as-PR | You own node styling or the library | ⚑ Please read §2.1 (reverses T712's "very subtle") |
 
 ## Why these depend on each other
 
@@ -46,6 +48,8 @@ graph TD
   B["07<br/>command bible"]
   A["07<br/>RFE: command actions"]
   U["07<br/>RFE: user commands"]
+  FC["08 §2<br/>family colour, MAT, DAT"]
+  PUB["08 §3–4<br/>published components, palette tiers"]
   P --> F --> L
   P --> M
   P --> SC
@@ -68,6 +72,10 @@ graph TD
   A --> MAP
   A --> U
   LIB --> U
+  T --> FC
+  C --> PUB
+  L --> PUB
+  LIB --> PUB
 ```
 
 What each arrow means:
@@ -81,7 +89,7 @@ What each arrow means:
 - **The table type comes before mappers and the command bible** (06 → 05, 07) because both *are* tables in one editor. It depends on nothing, so it can start in parallel with stage 1.
 - **The command bible comes before command actions, and actions before user commands** (07). An action names a command and has to be checked against that command's schema and trigger-safe flag, which the bible makes visible. A user command is a sequence of actions, so it can live in the library.
 
-Parallel tracks the dependencies allow: {stage 0}, {stage 1 → 02}, {06 → 07's bible}, then the rest as the graph frees them.
+Parallel tracks the dependencies allow: {stage 0}, {stage 1 → 02}, {06 → 07's bible}, {08's family colour and MAT split}, then the rest as the graph frees them.
 
 ## Risks across the whole proposal
 
