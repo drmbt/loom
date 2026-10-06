@@ -1,5 +1,5 @@
+import { useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { useStore } from "zustand";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
@@ -9,6 +9,7 @@ import { panelBoard, panelLayout, panelTitle } from "@nodes/definitions/controls
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { PanelBoardGrid } from "./panel-board.tsx";
 import { PANEL_EMPTY_HINT } from "./phone-door-copy.ts";
+import { useLiveNode } from "./use-live-node.ts";
 import styles from "./panel-surface.module.css";
 
 /**
@@ -26,15 +27,28 @@ import styles from "./panel-surface.module.css";
  * override draws (`panelBoard` is null for it). A wired Panel draws its board.
  */
 
+/** A control in a row or a list, reading ITS OWN node (`useLiveNode`, T1668b). */
+export function LiveControl({ bus, node, write, size }: { readonly bus: LoomBus; readonly node: GraphNode; readonly write: ControlWrite; readonly size: "node" | "panel" }) {
+  const live = useLiveNode(bus, node);
+  return <ControlWidget nodeId={live.id} type={live.type} parameters={live.parameters as Record<string, unknown>} write={write} size={size} />;
+}
+
+/** Where a surface that lays controls out gets the document's structure from, when its host has it. */
+export interface StructureSource {
+  subscribe(listener: () => void): () => void;
+  get(): GraphDocument;
+}
+
 export interface PanelRowsProps {
   readonly graph: Pick<GraphDocument, "nodes" | "edges">;
   readonly panel: GraphNode;
+  readonly bus: LoomBus;
   readonly write: ControlWrite;
   readonly size: "node" | "panel";
   readonly renderMeta?: (widget: GraphNode) => ReactNode;
 }
 
-export function PanelRows({ graph, panel, write, size, renderMeta }: PanelRowsProps) {
+export function PanelRows({ graph, panel, bus, write, size, renderMeta }: PanelRowsProps) {
   const { rows } = panelLayout(graph, panel);
   if (rows.length === 0) return <p className={styles.hint} data-panel-empty>{PANEL_EMPTY_HINT}</p>;
   return (
@@ -53,13 +67,7 @@ export function PanelRows({ graph, panel, write, size, renderMeta }: PanelRowsPr
                 <div key={`missing-${cell.name}-${String(at)}`} className={styles.missing}>no control named “{cell.name}”</div>
               ) : (
                 <div key={cell.node.id} className={size === "panel" ? styles.cell : undefined}>
-                  <ControlWidget
-                    nodeId={cell.node.id}
-                    type={cell.node.type}
-                    parameters={cell.node.parameters as Record<string, unknown>}
-                    write={write}
-                    size={size}
-                  />
+                  <LiveControl bus={bus} node={cell.node} write={write} size={size} />
                   {renderMeta?.(cell.node)}
                 </div>
               ),
@@ -73,9 +81,12 @@ export function PanelRows({ graph, panel, write, size, renderMeta }: PanelRowsPr
 
 /**
  * The Panel node's own body on the canvas: its title and its board (T1516b) — or, for a
- * Panel laid out by the legacy override text, its rows — live. Its own store subscription,
- * because the body shows OTHER nodes' values — a widget moved anywhere must move here too,
- * and the Panel node's own slice (§V16) never changes when it does.
+ * Panel laid out by the legacy override text, its rows — live. Its own subscription,
+ * because the body shows OTHER nodes — and, T1668b, a subscription to the document's
+ * STRUCTURE where the canvas has one to give (`structure`): which controls are on the board
+ * and where. Each control on it reads its own value (`useLiveNode`), so a widget moved
+ * anywhere moves here too without this body rendering. Without `structure` (a test, an
+ * embed) it follows the store.
  *
  * The board is the tab's board scaled to the node's width (`PanelBoardGrid variant="canvas"`),
  * from the same `panelBoard`; it is played here and arranged in the Controls tab — or in
@@ -89,13 +100,16 @@ export function PanelNodeBody({
   invocation,
   panelId,
   write,
+  structure,
 }: {
   readonly bus: LoomBus;
   readonly invocation: InvocationContext;
   readonly panelId: NodeId;
   readonly write: ControlWrite;
+  /** The document as of its last structural revision, and when that moves (the app's `revision-watch.ts`). */
+  readonly structure?: StructureSource | undefined;
 }) {
-  const graph = useStore(bus.store, (state) => state.graph);
+  const graph = useSyncExternalStore(structure?.subscribe ?? bus.store.subscribe, structure?.get ?? bus.store.getGraph);
   const panel = graph.nodes[panelId];
   if (panel === undefined) return null;
   const board = panelBoard(graph, panel);
@@ -104,7 +118,7 @@ export function PanelNodeBody({
     <div className={styles.body} data-panel-body={panelId} data-control-panel={panelId}>
       <div className={styles.title}>{panelTitle(panel)}</div>
       {board === null ? (
-        <PanelRows graph={graph} panel={panel} write={write} size="node" />
+        <PanelRows graph={graph} panel={panel} bus={bus} write={write} size="node" />
       ) : board.items.length === 0 ? (
         <p className={styles.hint} data-panel-empty>{PANEL_EMPTY_HINT}</p>
       ) : (

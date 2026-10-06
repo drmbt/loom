@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { alice, contextFor, createHarness } from "@domain/commands/test-support.ts";
 import { FLY_AXES } from "@editor/viewer/orbit-gestures.ts";
-import { registerViewerCommands } from "./viewer-commands.ts";
+import { NO_CAMERA_TO_FLY, registerViewerCommands } from "./viewer-commands.ts";
 import type { ViewerHandlers } from "./viewer-commands.ts";
 
 /**
@@ -31,6 +31,7 @@ function setup(handlers?: Partial<ViewerHandlers>) {
         return true;
       },
       editMapping: () => false,
+      flyCamera: () => ({ flying: false, camera: null, refusal: NO_CAMERA_TO_FLY }),
       ...handlers,
     };
   }
@@ -86,5 +87,59 @@ describe("viewer.fly", () => {
     const result = await bus.execute("viewer.fly", { direction: "forward" }, { ...context, dryRun: true });
     expect(result.status).toBe("validated");
     expect(flown).toEqual([]);
+  });
+});
+
+/**
+ * §T970 — `viewer.flyCamera`: the lock, as the command `c`, the palette and an agent reach.
+ * What the lock DOES is the pane's and is gated through the real app
+ * (`src/tests/e2e/camera-fly.spec.ts`); this holds what the command says.
+ */
+describe("viewer.flyCamera", () => {
+  it("arms the lock and names the camera it armed", async () => {
+    const asked: Array<boolean | undefined> = [];
+    const { bus } = setup({
+      flyCamera: (on) => {
+        asked.push(on);
+        return { flying: on ?? true, camera: "camera_rig", refusal: null };
+      },
+    });
+    const toggled = await bus.execute("viewer.flyCamera", {}, context);
+    expect(toggled.status).toBe("applied");
+    expect(toggled.output).toEqual({ flying: true, camera: "camera_rig" });
+    const off = await bus.execute("viewer.flyCamera", { on: false }, context);
+    expect(off.output).toEqual({ flying: false, camera: "camera_rig" });
+    // Absent `on` is a toggle and reaches the pane as one; a stated one is passed as stated.
+    expect(asked).toEqual([undefined, false]);
+  });
+
+  it("refuses by name when the picture has no camera to fly, and says the pane's own reason when it has one", async () => {
+    const none = setup({});
+    const refused = await none.bus.execute("viewer.flyCamera", {}, context);
+    expect(refused.status).toBe("rejected");
+    expect(refused.diagnostics?.[0]?.code).toBe("viewer.noCameraToFly");
+    expect(refused.diagnostics?.[0]?.message).toBe(NO_CAMERA_TO_FLY);
+    expect(refused.output).toEqual({ flying: false, camera: null });
+
+    // A camera that IS there and cannot be flown: the driven sentence, not the generic one.
+    const driven = setup({ flyCamera: () => ({ flying: false, camera: null, refusal: "Driven by expressions (Eye, Look At)." }) });
+    const said = await driven.bus.execute("viewer.flyCamera", { on: true }, context);
+    expect(said.status).toBe("rejected");
+    expect(said.diagnostics?.[0]?.message).toBe("Driven by expressions (Eye, Look At).");
+  });
+
+  it("refuses with no viewer on screen, and a dry run arms nothing", async () => {
+    const { bus } = setup();
+    expect((await bus.execute("viewer.flyCamera", {}, context)).status).toBe("rejected");
+    let armed = 0;
+    const live = setup({
+      flyCamera: () => {
+        armed += 1;
+        return { flying: true, camera: "camera_rig", refusal: null };
+      },
+    });
+    const dry = await live.bus.execute("viewer.flyCamera", {}, { ...context, dryRun: true });
+    expect(dry.status).toBe("validated");
+    expect(armed).toBe(0);
   });
 });

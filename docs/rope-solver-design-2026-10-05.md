@@ -1801,12 +1801,504 @@ Raw span means, in the same order, off then on: 0.127 and 0.175 ms; 0.118 and 0.
 
 ### 17.14 What this slice has not verified
 
-- **17.8's case on a device.** The table is the reference. The device was run on the taut case only.
+- **17.8's case on a device.** The table is the reference. The device was run on the taut case only. (Done in slice 4b: 18.4.)
 - **Cases 1 to 3 on the consumer's own rig.** They are fixtures of this repo's with its lengths and weights.
 - **The limit with a Pin Attribute holding points inside the bend**, beyond case 3's pulls.
 - **The limit in three dimensions under twist.** Every fixture's bend is planar or nearly so; the row is written for any plane.
 - **Another device.** Every figure is Metal.
-- **The 250-point figures at rest on a device**, beyond the cost. They are the reference.
+- **The 250-point figures at rest on a device**, beyond the cost. They are the reference. (Done in slice 4b: 18.6.)
+
+## 18. Slice 4b as built (2026-10-06)
+
+The two things section 17 left open, as ruled: a pose in which the limit cannot be met comes to rest with the limit giving (D37), and a strand held longer than itself is let go without speed (D38). D39's band is pinned by a count. Decisions are numbered on from D41.
+
+### 18.1 What was built
+
+- **The hinge (D41).** With Bend Limit on each joint keeps an OPENING, the radians its limit is let out by, from step to step. It opens where the joint is in trouble for longer than a wait and closes when the pose lets it (18.2). Reference: `state.opening`, `state.yielding`. Device: the opening is the fourth float of the point's second `kept` vector; the clock is the twentieth float of its scratch, which the next step reads; the first point's clock float says whether any joint of the strand has either, and a strand with neither, in a step no joint is in trouble in, walks its joints no third time and reads no opening.
+- **The speedless take-up (D38).** In the step a segment that two hard pins held comes free, its over-length is taken up in positions only (18.8). It is in both programs, so the seven fingerprints of the program without the limit moved.
+- **D39.** `advanceRope` takes a `tally` that counts Newton steps; the band is held by the count it buys (18.9).
+- **Not built.** Bend Stiffness (D34 stands: candidate (ii) was not the answer); a softness the author sets. Their row texts are in 18.13.
+
+### 18.2 The hinge
+
+A joint GIVES by its compliance times what it has pushed: the radians it stands past its limit for what it carries. After each step:
+
+- It is IN TROUBLE if it gives more than the YIELD, 2⁻⁸ rad (0.22°), or pushes at all in a step that could not bring the strand's lengths within their tolerance.
+- After a WAIT of 1/32 s of trouble, step after step: over the yield its limit opens, by half of what it gives beyond half the yield and at most 2⁻⁸ rad a step; under the yield its limit is put where the joint stands, 2⁻⁸ rad beyond it, and the joint is LEFT ALONE until it has come in by more than that gap.
+- A step that had to be solved without the limit (D36) opens toward where that left the joint, at most 2⁻⁴ rad a step.
+- An open limit closes at once behind a joint that straightens, and by 2⁻¹⁰ rad a step onto a joint that gives less than half the yield, in a step the solve finished at its first attempt.
+
+**The fixed point, and why a step there adds no energy.** What threw the strand in slice 4 was measured, not assumed: a row that is nearly rigid, asked every step from nothing to turn a joint the pins will not let turn. Its first Newton step moves the joint to its limit as if nothing resisted, and the lengths then take that back; what they take back is stored as speed. The size of that move is the joint's give, and in the poses of 18.4 it was 9 to 40 times the yield, in steps most of which the solve finished (so "the step did not converge" is not what marks them: 18.3). At the hinge's fixed point every joint is in one of three states. Inside its opened limit, its row is out of the system. At its limit and giving no more than the yield in a step the solve finishes, the most its row can ask a point to move in a step is the yield times a segment, 0.24 mm at 1/16 m, where the thrash moved points 9 to 40 mm. Left alone, its limit stands off it and its row asks nothing. Between half the yield and the yield nothing moves, so opening and closing cannot chase each other; and a joint left alone is not probed, so nothing disturbs a strand at rest. This is an argument with a measured threshold in it and not a proof. The evidence is 18.4: every row at rest at both rates, red with the hinge out.
+
+**What each rule is for was measured by taking it out** (reference, the tests of 18.11):
+
+| Taken out | What fails |
+|---|---|
+| the hinge | the table from d = 7.5 to 12, at 2.7 to 239 m/s; the consumer's strand |
+| the yield (trouble only on an unfinished step) | the table, the consumer's strand, the limit that comes back |
+| trouble under the yield on an unfinished step | the taut strand at 3.06 m: 0.8 to 3.4 m/s; a row of the table at sixteen steps |
+| left alone (the limit closes on the joint again at the next step) | nothing moves, and every step is spent trying: 7 to 8 Newton steps a step where it is 1 to 2 |
+| the wait | a sweep at 8 m/s at sixteen steps a frame: 1.58 of the limit where it is 1.03; case 1: 1.07 |
+| closing only in a step finished at its first attempt | the limit does not come back at sixteen steps |
+| closing | the limit does not come back; the table |
+| following a joint in at once | the limit does not come back at sixteen steps |
+| opening after a step solved without the limit | the table at d = 12: 65 m/s |
+
+### 18.3 What was tried, and what each did
+
+All on the reference in single precision, over the same measurements: the table of 18.4, the consumer's strand, the sweeps and cases of 17.4 and 17.5, and resting loops of 55 to 1,024 points. "Table" is the fastest point of the last two seconds over the rows that are worst.
+
+| Form | Table, 4 and 16 steps | What else |
+|---|---|---|
+| slice 4 | 2.7 to 66 and 11 to 239 m/s | consumer at 2.9 m: 0.49 m/s |
+| (i) a bound on what a joint may push | 50 to 100 m/s on every row, d = 7 too | |
+| softer rows after four Newton steps | no help from d = 8 to 10 | |
+| (iii) softer rows on the joints that did not converge, recovering | most rows rest; the taut end 8 m/s | the 8 m/s sweep at 240: 7.7 of the limit |
+| solve again on any length out of tolerance | | sweeps 2.0 to 3.4 of the limit |
+| an opening with no way back but the joint straightening | rests | case 1 stays at 1.11 of the limit; the sweep 1.71 |
+| an opening on a leaking clock | rests | case 2 creeps to 1.15 |
+| the hinge, closing while the give is under a band | at most 0.025 and 0.095 | taut at 3.06 m: 42 mm a frame |
+| …with a closing step refused and a hold of 1 s | at most 0.025 and 0.091 | steps stuck at 8 Newton steps; the sweep 1.45 |
+| …and trouble under the yield, the hold still 1 s | | consumer at 3.0 m: a twitch of 6 mm a frame each second, 0.36 m/s |
+| a yield that needs an unfinished step | 2.7 to 38 m/s from d = 7.5 | (the sweep and fine strands untouched) |
+| a first yield four times higher | rests; entries of 15 m/s | the sweep 1.79 (mean of nine 1.54) |
+| a yield only above a tension (0.5, 0.25 of a step's limit) | 0.5 to 10.6; 0.1 to 1.7 m/s | (the sweep untouched) |
+| a yield only on a joint that is not turning | not run: a joint at its limit does not turn (95 % of the joint-steps over the yield in the sweep turn under 4 rad/s) | |
+| a load that does not fall when its limit opens is not a pose (a latch) | 0.1 to 5.5 m/s | 1,024 points: 2.76 |
+| twice the yield | 0.1 to 0.75 m/s on five and eight rows of sixteen | 1,024 points keep 1.28 |
+| closing only in a step of four Newton steps or fewer | 0.000 | the sweep 2.28; consumer at 3.0 m 0.30 m/s |
+| left alone for good after a refused closing step | one row 0.28 | case 1: 1.04 |
+| **as built** | **0.000 on 13 and 16 rows of 16; at most 0.025** | consumer at most 0.019; cases 1.00; 18.6 |
+
+Three findings from this, each of which a later slice may want:
+
+- **A strand in such a pose is thrown in steps the solve finishes.** With the yield made to wait for an unfinished step the table thrashes as before, with 0 to 100 unfinished steps in 512 to 2,048.
+- **Tension does not mark it either.** Over the yield, the tension beside a joint is under half of what a step can carry in every legitimate case and in the first steps of every pose that cannot be met; it is one to four times that only once the strand is already being thrown.
+- **Nothing local tells a pose that cannot be met from a load.** A joint at the bottom of a resting 1,024-point loop and a joint in the table's d = 8 are the same to every measure tried: give, tension, convergence, turning rate. They differ in what opening the limit does to the give (it falls in one and not in the other), and a rule built on that latched joints of the table falsely and let it thrash.
+
+### 18.4 The table
+
+Sixteen strands of sixteen segments of 1/16 m, the first two points held facing +X, radius 0.15 m (a joint may turn 24.0°), the last point held d segments straight behind the second. Each arrives by a walk: carried round over 2 s to four segments behind, rested 1 s, walked out to d over 1 s, held 5 s; the last 2 s are read. (Four segments behind is itself tighter than the radius allows; the limit gives there too, by a whole limit on three joints, and is back by d = 6 or 7.)
+
+On a device (Dawn, Metal), `tests/headless/rope-bend.gpu.test.ts`: the fastest free point in the last 2 s in m/s, with the same strand's with no limit in brackets; the largest turn at any joint as a multiple of the limit; the first joints' turns at the end, in degrees.
+
+| d | Update Rate 240 | of the limit | joints | Update Rate 960 | of the limit | joints |
+|---|---|---|---|---|---|---|
+| 7.0 | 0.000 (0.007) | 1.04 | 24 24 25 24 | 0.000 (0.010) | 1.05 | 24 24 25 24 |
+| 7.5 | 0.000 (0.008) | 1.18 | 24 25 28 25 | 0.000 (0.010) | 1.20 | 24 25 29 25 |
+| 8.0 | 0.000 (0.010) | 1.24 | 24 28 30 26 | 0.000 (0.014) | 1.36 | 24 26 33 25 |
+| 8.5 | 0.000 (0.012) | 1.35 | 24 30 33 28 | 0.000 (0.017) | 1.60 | 24 26 39 25 |
+| 9.0 | 0.000 (0.011) | 1.45 | 24 33 35 29 | 0.000 (0.015) | 1.84 | 24 27 44 25 |
+| 9.5 | 0.000 (0.011) | 1.55 | 24 37 36 31 | 0.000 (0.015) | 2.10 | 24 28 51 25 |
+| 10.0 | 0.000 (0.013) | 1.70 | 24 41 39 34 | 0.000 (0.020) | 2.28 | 24 32 55 26 |
+| 10.5 | 0.023 (0.011) | 2.02 | 24 49 43 28 | 0.000 (0.018) | 2.06 | 24 49 43 25 |
+| 11.0 | 0.021 (0.013) | 2.41 | 24 58 44 24 | 0.089 (0.023) | 2.32 | 24 56 47 24 |
+| 11.5 | 0.000 (0.010) | 2.73 | 24 66 48 24 | 0.000 (0.019) | 2.58 | 24 62 54 24 |
+| 12.0 | 0.000 (0.013) | 3.25 | 24 78 49 24 | 0.000 (0.026) | 3.12 | 24 75 56 24 |
+| 12.5 | 0.014 (0.010) | 4.32 | 24 104 28 24 | 0.000 (0.023) | 4.29 | 24 103 29 24 |
+| 13.0 | 0.009 (0.009) | 5.61 | 24 135 24 0 | 0.000 (0.020) | 5.61 | 24 135 24 0 |
+| 13.5 | 0.000 (0.007) | 3.66 | 69 88 24 4 | 0.000 (0.022) | 4.66 | 63 112 10 0 |
+| 14.0 | 0.000 (0.004) | 3.85 | 93 84 8 0 | 0.000 (0.020) | 3.84 | 92 86 6 0 |
+| 14.5 | 0.000 (0.002) | 5.13 | 123 47 13 0 | 0.000 (0.010) | 5.09 | 122 53 8 0 |
+
+- **The bound that is asserted.** No free point faster than 0.03 m/s, half a millimetre a frame, or a small multiple of what the same strand with no limit shows where that is more: four times on the reference, six on the device. The device's worst is d = 11 at 960, 0.089 m/s against 0.023, which is a tenth of a millimetre a step: one joint going in and out of the system. On the reference it is 0.000 m/s on 13 rows of 16 at four steps a frame (at most 0.025) and on all 16 at sixteen.
+- **Every segment is within Max Stretch**: 0.02 % at rest on the device; up to 1.98 % during the walk on the reference, where D36's steps are.
+- **Where the pose allows the limit it holds as it did, less what a tight turn gives**: d = 7 is 1.04 and 1.05 of the limit (slice 4: 1.02). The joint beside the held pair stays at its limit up to d = 13.
+- **Where it does not, the excess is spread while the slack lets it be** (d = 10: 24°, 41°, 39°, 34°) **and gathers where it does not** (d = 13: 24°, 135°, 24°). The largest is 5.6 of the limit. No joint folds flat; with no limit the second point folds by 102° to 180°.
+- **On the way in** the fastest point reaches 2.8 to 7.2 m/s at four steps a frame and 3.8 to 13.8 at sixteen, for a tenth to three tenths of a second, with a pin that moves at about 1 m/s at its fastest; it is under 0.1 m/s two tenths of a second after the pin stops. With no limit: 0.4 to 1.5. Slice 4: 2.7 to 80 and 11 to 300, for good from d = 7.5 to 12.
+- **The limit comes back.** Out to d = 11 it is 2.36 of the limit; back at d = 6 it is 1.000, at both rates, the strand at rest.
+
+### 18.5 The consumer's strand, socket facing away from the claw
+
+53 segments of 0.06 m (3.18 m), gravity 1.5, damping 1.5, the socket and the ring after it held facing −X, the claw carried round over 4 s to a point along +X; 12 s, the last 2 read. On a device:
+
+| Claw | Update Rate 240 | Update Rate 960 | Largest turn | First joints |
+|---|---|---|---|---|
+| 2.9 m | 0.000 m/s (no limit 0.008) | 0.000 (0.016) | 3.97 of the limit | 23° 92° 36° 23° 9° |
+| 3.0 m | 0.013 (0.006) | 0.019 (0.015) | 3.99, 3.91 | 92° 77° 14°; 90° 90° 1° |
+| 3.06 m, taut | 0.052 (0.019) | 0.000 (0.001) | 7.54 | 174° 6° |
+| 3.1 m | 14.5 (11.2) | 34.7 (47.3) | 7.7 | 169° 11° |
+
+Segments are 0.01 % off in the first three rows. Taut, the strand folds flat at its second point as it does with no limit; "nearly at rest" is what is asserted there (under 0.25 m/s; the reference shows 0.13 at four steps a frame, 2 mm a frame). Slice 4 at 2.9 m and four steps: 0.49 m/s, for good.
+
+**The row at 3.1 m is not the limit's** (18.7).
+
+### 18.6 What it costs where the limit can be met
+
+- **Cases 1 to 3** (17.5): 1.00 of the limit at every joint, as before, on the reference and under the 1.02 ceiling on the device.
+- **At rest**, on a device: 55 points 1.0001 of the limit at Update Rate 240, 1.0000 at 960, 1.0003 at 120, as before. **250 points: 1.0299 at 240 and 1.0026 at 960**, segments 0.010 % and 0.005 % off. (Section 17 quoted the reference's 1.030; this is the device.)
+- **The sweeps**, on a device, slice 4 then slice 4b: 4 m/s at 240, 1.011 and 1.011; 4 m/s at 960, 1.001 and 1.001; 8 m/s at 960, 1.024 and 1.024; **8 m/s at 240, 1.241 and 1.399**, with a worst segment of 0.2 % and 0.69 %. Three are the same to the digit: their joints are past the yield only in bursts shorter than the wait.
+- **The sweep at 8 m/s at Update Rate 240 is not within what it was.** A step of 1/240 s does not carry it: joints give more than the yield for a fifth of a second at a time, and the limit opens there as in any pose it cannot hold. A whipped rope is chaotic, so one sweep is a sample: on the reference, over this sweep and eight beside it (the pin's centre 0.85 to 0.95 m, 7.5 to 8.5 m/s), slice 4 is 1.20 to 1.52 of the limit, mean 1.32, with a segment up to 1.06 % off; slice 4b is 1.23 to 2.00, mean 1.46, a segment up to 1.94 % off. The test's ceiling on the turn, 1.5, holds the sample and not the neighbourhood, before or after. Its ceiling on a segment was 0.5 % and is now Max Stretch.
+- **A strand too fine for its step loses radius.** A resting joint gives under the strand's own weight, more the finer the strand and the coarser the step. At 250 points and 240 it gives 0.65 of the yield. At 1,024 points and 960 it gives 1.5 of it, so its limit opens: the loop of 17.4 holds a radius of **0.096 m where it held 0.118** (0.15 asked); on the reference its worst joint goes from 1.28 to 1.94 of the limit. 500 points at 240, which was already 1.52 and never finishes a step: 2.35. 1,024 points at 240 is past its own step limit as before. A joint's give falls with the square of the step.
+- **Max Stretch at 0 with the limit on** (found, not asked for): D36 takes any rounding for a segment beyond Max Stretch and solves every step two or three times, 11 to 12 Newton steps a step. The strand rests (0.07 to 0.09 m/s at 2.9 and 3.0 m) where slice 4 threw it at 31 to 45 m/s. Row text in 18.13.
+
+### 18.7 The reach rule lets a pin stand where a stiff rope cannot follow (found)
+
+A far pin is drawn in only when it is further from the earlier pin than the rope between them with Max Stretch on top: here 3.18 m. A rope whose Stretch is nothing cannot take that 2 %. With the claw 3.1 m off the rope has 3.06 m of reach, and with NO limit the strand is thrown at 11 m/s at four steps a frame and 52 at sixteen, a segment 11 to 13 % long, 8 Newton steps a step; with Max Stretch at 0 it is drawn in to 3.06 m and rests. This is slice 2's rule and is in both programs. It is the same failure as 18.2 by another door: rows that are nearly rigid asked every step for what the pins do not allow. Both test files hold it as a repro. Not fixed here: what the reach should be for a rope with a Stretch is a ruling. Row text in 18.13.
+
+### 18.8 The speedless take-up (D38)
+
+`released` is the first point after a segment that two hard pins held at the last step and do not both hold in this one. From it on, a point is stored with the speed it was predicted with, and not with what the step's corrections moved it by.
+
+**That alone was not enough, and why.** On a strand with a pin attribute or two anchors the solve's pivots are raised (`ROPE_PIN_SOFTENING`), which makes a whole strand's uniform contraction its slowest mode: eight Newton steps take up a small part of 16 %, the guard brings the rest to Max Stretch, and the remaining 2 % comes out over the next steps as speed (3.1 m/s). So the guard takes a released segment, and those after it, to their OWN length in that step. The take-up is then finished in the step of release, in positions only.
+
+The release fixture: every point pinned to a strip laid longer than the rope along −Z and carried at 0.64 m/s; let go at 2 s. On a device, Update Rate 240:
+
+| | far end moves in the frame of release | fastest stored speed in it | from it on | slice 4 |
+|---|---|---|---|---|
+| the control: own pitch, cut | 17 mm (its swing) | | 1.04 m/s | 1.04 |
+| 16 % long, cut | 517 mm | 0.04 m/s | 1.04 | 56 m/s |
+| 16 % long, ramp over 0.2 s | 509 mm | 0.11 | 1.02 | 4.0 |
+| 2.5 % long, cut | 80 mm | 0.06 | 1.04 | 8.0 |
+| 2.5 % long, ramp | 79 mm | 0.01 | 1.02 | 0.65 |
+
+- **The stated factor.** In the frame of release a cut leaves under a fifth of the control's fastest speed; a ramp up to 1.25 of it, because a weight a frame after 1 is still a pull fifty times as stiff as the one at a half, toward a strip the rope cannot lie along, and that pull moves the points it holds (0.11 to 1.05 m/s with the frame the ramp starts in, on the reference; 0.03 from the next frame). From the release on, every case is the control's swing. No point is thrown.
+- **What the picture does.** The strand contracts toward its first held point in one frame: the far end jumps by the whole over-length, half a metre on a 3 m rope held 16 % long. Then it hangs and swings as a rope let go at its own length does. The description of Anchor Mode says so in place of the warning.
+- **A part weight holds no segment long.** Below 1 a pin is a pull and the segment between two pulled points is in the solve, so the rope is its own length under any weight short of a hold. The take-up happens in the step a weight leaves 1, whatever it leaves it for: cut to 0.5, the same 516 mm and no speed.
+- **One step, not one frame**: the same at 1, 4 and 16 steps a frame. And Max Stretch is not what a released segment is taken to: at 0.25 it is still its own length in that frame.
+- **A seed is not a release.** A strand SEEDED longer than its Segment Length takes its length in its first step by the solve, with speed (19 m/s on the fixture of `point-rope-anchors.gpu.test.ts`), as it did before. On the device the seed writes "not held" for every point so that this is so. Whether a seed should be speedless too is a ruling (18.12).
+- **The fingerprints** of 17.9, slice 4 then slice 4b: the default and the grid `3c0dde6bb79537aa`, `188043d68742e709`; Tension `2ea65f9e5ac95d03`, `81b23f9b42eca06a`; three stations, Soft `e4a053ef65156952`, `f03a9810eb7a3088`; three stations mapped `4fe60f089a1f03be`, `7cbb710f95eed076`; a pin, Tension, a mapped last `e461f63999f7672a`, `e940402a0125d291`; a row of 550 `b10beddbf8f34796`, `c4deab1acfbc9c49`. What moved them is the take-up: a point's stored speed, the guard's reach for a released segment, and the seed's two words.
+
+### 18.9 The band and the let-go flag (D39)
+
+- **The band, by the count that was asked for.** The first consumer's loop at rest at sixteen steps a frame takes 1.00 Newton steps a step; with the band at nothing, 1.76. Asserted at 1.05.
+- **The flag does not show in that count**, and the report of slice 4 was wrong to pair them there: taken out alone it leaves the resting loop at 1.00. What it buys is elsewhere, and is held: with it out the sweep of 18.2's table goes from 1.03 to 1.53 of the limit, the consumer's strand at 3.0 m from 1 to 2 Newton steps a step to 3.8, and a row of the table at sixteen steps misses its bound. (With the band out the same sweep is 1.68 and the same strand 5.)
+
+### 18.10 Cost (measured by the GPU timing rule)
+
+One process, a fixed reference pass beside every frame, variants in rounds with the first repeated last, 720 frames a variant; `span ÷ reference`, limit off then on, and the ratio.
+
+| | off | on | on ÷ off | slice 4 |
+|---|---|---|---|---|
+| 400 × 250, a loop at rest | 3.14, 3.11 | 5.76 | **1.84** | 1.76 |
+| 400 × 250, hanging straight | 0.959 | 1.552 | 1.62 | 1.65 |
+| 400 × 250, swept at 4 m/s | 3.21 | 10.91 | **3.40** | 3.19 |
+| 10 × 55, a loop at rest | 0.178, 0.178 | 0.297 | 1.67 | 1.45 |
+| 10 × 55, swept at 4 m/s | 0.234 | 0.626 | 2.68 | 2.38 |
+
+- The 400 × 250 rows are from the last of three runs, with the reference steady at 0.555 ms. The 10 × 55 rows are from the first, taken before the strand's flag kept a step from reading openings it does not have; two later runs gave 1.53 and 1.47 at rest and 2.37 and 2.05 swept with the machine busy (the reference at 0.8 to 1.7 ms, and "off" 20 % apart between first and last). At 10 × 55 a span is one or two timer quanta. The description gives ranges: 1.5 to 1.9 at rest, 2.4 to 2.7 swept at 55 points, 3.4 at 250.
+- What the slice adds to a step where no limit is open: a read of the point's last inverse mass in `place`, a branch for each stored speed, and for each joint that pushed, its give against the yield.
+
+### 18.11 Tests as built
+
+- **`points/rope.test.ts`, 77 to 94.** The table at 4 and 16 steps against the same strands with no limit; the limit that comes back; the consumer's strand at 2.9, 3.0 and 3.06 m, and 3.1 m as the repro of 18.7; left alone by a count; the wait by a sweep; the release by cut and ramp at 16 % and 2.5 %, at 1, 4 and 16 steps, to a part weight, under a Max Stretch of 0.25; the band by a count. 30 s.
+- **`tests/headless/rope-bend.gpu.test.ts`, 16 to 27, Dawn, per frame.** 18.4's table at Update Rate 240 and 960, sixteen strands in one pointset; out and back; 18.5; 250 points at rest; 18.8's five rows. Two of slice 4's assertions are changed and say why where they stand (18.6). 2.6 minutes.
+- **`nodes/definitions/point-rope-anchors.gpu.test.ts`, 15 to 17.** The first step after a seed lets nothing go; a strand pinned 16 % long and cut is where the reference puts it, at the reference's speed.
+- **`nodes/definitions/point-rope.test.ts`, 31.** The fingerprints of 18.8.
+- **Red by edit, restored by edit**: 14 mutations of the reference (18.2's table, and no release, no take-up in the guard, the step's own speed kept, no band, no flag) and 6 of the shader (no hinge, no trouble under the yield, no closing, no release, no take-up, a seed that says "held"). A seventh, the hinge's walk run on every step, changes nothing, as it should.
+
+### 18.12 Decisions to rule
+
+- **D41. The hinge as in 18.2**, chosen by measurement over the forms of 18.3. D34 stands.
+- **D42. Its constants**: yield 2⁻⁸ rad, wait 1/32 s, 2⁻⁸ rad a step open, 2⁻⁴ after a step solved without the limit, a gap of 2⁻⁸ rad, 2⁻¹⁰ rad a step closed. Twice the yield keeps fine strands (18.6) and leaves five to eight rows of the table moving at 0.1 to 0.75 m/s.
+- **D43. The 8 m/s sweep at Update Rate 240 gives more than it did** (1.241 to 1.399 on a device; a mean of 1.32 to 1.46 over nine on the reference, the worst 1.52 to 2.00). Nothing tried rests the table and leaves it. Built: its turn ceiling as it was; its segment ceiling raised from 0.5 % to Max Stretch; the description says 25 to 50 %, and twice in a bad sweep. To rule: accept, or name what the limit owes a sweep a step of 1/240 s does not carry.
+- **D44. A strand too fine for its step loses radius** (1,024 points at 960: 0.118 to 0.096 m). Built: the test's bound moved from 0.11 to 0.085 and the description says so. Alternative: D42's higher yield.
+- **D45. "At rest" is asserted as** 0.03 m/s or a multiple of the unlimited strand's, four on the reference and six on the device; and "nearly" (0.25 m/s) for the taut strand at 3.06 m.
+- **D46. The take-up is finished by the guard**, to the segment's own length, because the solve's pin softening leaves it short (18.8). A part weight holds no segment long.
+- **D47. A seed is not a release**: a strand seeded longer than its Segment Length still takes its length with speed. Alternative: seed it speedless too; a line in `place`, and every strand seeded off its Segment Length changes.
+- **D48. The band is pinned by its count and the flag by a sweep and a count of its own**, not by the count the ruling named (18.9).
+- **D49. The reach rule's defect is filed and not fixed** (18.7).
+- **D50. Max Stretch at 0 with the limit on is filed and not fixed** (18.6).
+
+**As ruled (lead, 2026-10-06).**
+
+- D41 accepted: the hinge. D34 stands; Bend Stiffness is its own slice.
+- D42 accepted as measured constants. They stay constants, named once.
+- D43 accepted: a sweep a step does not carry gives more, and the remedy the description names is Update Rate. The segment ceiling at Max Stretch is right, since that is what Max Stretch promises; the turn ceiling stays.
+- D44 accepted as built (0.085). Rest on every table row outranks a 1,024-point strand at 960. Twice the yield is rejected.
+- D45 accepted, with one change asked: the device bound of six times is too near its worst row (3.9) and is not to be widened; find what that row does. Answered in 19.4: the bound stands and the row is filed.
+- D46, D47, D48 accepted. A seed is not a release.
+- D49 and D50 are not filed and left: they are B276 and B277, slice 4c (section 19).
+- On building through the rule to stop where no form keeps both the table and the sweeps: accepted this once, because it was said in the report's first line with the table beside it. The rule stands.
+
+### 18.13 Row texts
+
+- **Rope: a softness for the bend limit that an author sets.** As 17.13. To add from this slice: the yield is in radians of give, and a softer limit gives more for the same load, so a softness an author raises brings the yield nearer. The two are to be sized together.
+- **Rope: Bend Stiffness, the spring under the limit** (3.2, D34). As 17.13. This slice did not need it to rest the table. It would still be what spreads a turn that the hinge leaves on one joint (d = 13: 135° on one where three could carry 45°).
+- **Bug. Rope: a far pin within Max Stretch of the rope's reach throws a stiff rope** (18.7). Slice 2. A pin 3.1 m from a socket that 3.06 m of rope reaches, Max Stretch 2 %, Stretch 0, no bend limit: 11 m/s at Update Rate 240 and 52 at 960, a segment 11 % long. The reach rule adds Max Stretch to the rope's length; a rope with no Stretch cannot take it. Repro in `points/rope.test.ts` and `tests/headless/rope-bend.gpu.test.ts` (the consumer's strand, 3.1 m). Candidate: reach the rope's own length where Stretch is nothing.
+- **Bug. Rope: Bend Limit with Max Stretch 0 solves every step two or three times** (18.6). D36's test for a segment beyond Max Stretch has no tolerance, so at 0 any rounding is beyond it: 11 to 12 Newton steps a step. Candidate: the solve's own tolerance on that test, for D36 only.
+- **Rope: the limit on a strand too fine for its step** (18.6, D44). A yield in radians takes a strand's own weight for a pose that cannot be met once the weight gives more than 0.22° a joint. Wanted: a mark that tells the two apart. Measured not to be one: the give's size, the tension beside the joint, whether the step finished, how fast the joint turns, whether the give falls when the limit opens (18.3).
+- **Rope: a seed longer than Segment Length, speedless** (D47), if ruled.
+
+### 18.14 What this slice has not verified
+
+- **Cases 1 to 3 and the poses of 18.5 on the consumer's own rig.** They are fixtures of this repo's with its lengths and weights.
+- **A pose that cannot be met entered at speed.** Both fixtures ease their pin to a stop as the pose is reached (the table's at about 1 m/s at its fastest, the consumer's claw at 4 on an arc with slack); the sweeps move at 4 and 8 m/s but can be met.
+- **The hinge in three dimensions under twist**, and with a Pin Attribute holding points inside the bend.
+- **The opening across a Teleport Carry or a change of Min Bend Radius.** It is kept as it is; a Reset and a seed clear it.
+- **Toggling Bend Limit on a running strand.** The scratch changes layout with the program; what the first step after reads there was not tested.
+- **Another device.** Every figure is Metal.
+- **The neighbourhood of the 8 m/s sweep on a device.** The nine sweeps are the reference; the device ran the one.
+
+## 19. Slice 4c (2026-10-06)
+
+Three things were asked: the reach rule's defect (B276), Bend Limit with a Max Stretch of nothing (B277), and what the table's d = 11 row does at Update Rate 960 (D45). B277 is built. D45 is answered and filed. **B276 is NOT built**: the rule as ruled has the cliff it was to be checked for, and the ruling was to say so before building. What was measured, and the rule that the measurements point to, are in 19.1.
+
+### 19.1 B276: the reach rule (not built here; built in slice 4d, 20.1)
+
+**The rule as ruled**: the reach is the rope's own length where Stretch is nothing, and its length plus Max Stretch where it has a Stretch. **It has a cliff just above 0.** The consumer's strand (53 segments of 0.06 m, mass 1, gravity 1.5, no bend limit), the claw between the rope's reach (3.06 m) and reach plus Max Stretch (3.12 m), today's rule, reference: fastest point in the last 2 s in m/s, at four steps a frame and at sixteen.
+
+| Stretch | 3.08 m | 3.10 m | 3.12 m |
+|---|---|---|---|
+| 0 | 8.3, 28 | 11.5, 52 | 13.8, 72 |
+| 10⁻⁷ | 4.8, 0.91 | 8.9, 1.9 | 10.4, 2.4 |
+| 4 × 10⁻⁷ | 0.31, 0.00 | 3.9, 1.2 | 6.6, 1.5 |
+| 1.6 × 10⁻⁶ | 0.25, 0.01 | 0.46, 0.00 | 0.66, 0.00 |
+| 6.4 × 10⁻⁶ | 0.00, 0.01 | 0.30, 0.01 | 0.42, 0.01 |
+| 2.6 × 10⁻⁵ | 0.01, 0.01 | 0.01, 0.01 | 0.01, 0.02 |
+
+So a rope with a very small Stretch is thrown as the rope with none is, and the step from 0 is not the line.
+
+**What the line is, measured.** A segment that has to be `s` longer than its length carries a tension of `s ÷ Stretch`, and what a step of length `h` makes of that tension on a point of mass `m` with segments of length `l` is the number `s·h² ÷ (Stretch·l·m)`. Every cell of the table above, and of a finer one (ten Stretches from 5 × 10⁻⁸ to 2.6 × 10⁻⁵), falls on one side of it: **at 0.29 and under the strand rests (0.00 to 0.02 m/s, every cell); at 0.43 and over it does not (0.2 to 15 m/s, every cell).** A quarter is what a taut string of point masses gives for its fastest sideways mode (`4T ÷ l` against `m ÷ h²`), which a step that takes each segment's direction from the step before does not carry past.
+
+**The rule that follows**: the reach is what the rope can be IN A STEP. A segment reaches `l × (1 + min(Max Stretch, Stretch·l·m ÷ 4h²))`. At a Stretch of nothing that is its own length, and it rises from there without a step: no cliff. It is physical in the way the ruling asked for (rigid against elastic), with the step in it, because what throws the strand is not the rope's stretch but a tension the step cannot carry. It depends on Update Rate: at a higher rate a rope reaches further, up to Max Stretch.
+
+**Measured with that rule** (a scratch copy of the reference, no bend limit; the claw at 3.08, 3.10, 3.12, 3.2 and 3.6 m; eight Stretches from 0 to 10⁻⁴; four steps a frame and sixteen): every cell whose reach comes out under Max Stretch rests, 0.00 to 0.02 m/s, the far end short of its target by what was drawn in (40 mm at 3.1 m with no Stretch). The consumer's own case, 3.1 m, no Stretch: 0.02 and 0.00 m/s where it is 11.5 and 52. With the factor at 0.4 in place of a quarter, four cells of eight at 3.1 m do not rest (0.09 to 0.69 m/s), so a quarter is not generous.
+
+**What it does not rest, and no reach rule would** (two defects found on the way, neither the reach's):
+
+- **A rope its own load stretches past Max Stretch is thrown by the guard**, with slack or without. Stretch 10⁻³ (the description's "bungee"), the claw at 2.5 m with 0.6 m of slack: 3.7 and 4.5 m/s, segments 13 to 33 % long; at 10⁻²: 6.2 and 5.4. With Max Stretch at 1 the same strands rest (0.02 m/s). The guard moves points and stores no speed for it, and the next step's solve stretches the rope back, which IS stored: every step. The cells of the measurement above where the reach comes out at Max Stretch itself and the pin stands at it or beyond are a rope held AT the guard's limit, and they move from a Stretch of 6.4 × 10⁻⁶ (0.10 m/s at sixteen steps a frame) to 10⁻⁴ (3 and 11 m/s), segments 2.2 to 25 % long; at 3.12 m and 10⁻⁴ today's rule gives the same 2.7 and 9.9 m/s.
+- **Bend Limit with a Stretch above nothing, in a pose the limit cannot meet, is thrown.** The consumer's strand with the claw 2.9 and 3.0 m off (where the reach does not act), sixteen steps a frame: Stretch 1.6 × 10⁻⁶ to 10⁻⁴, 92 to 129 m/s, segments 115 to 216 % long, every step solved three times. At four steps a frame it rests (0.00 to 0.09). Every test of the limit has a Stretch of nothing; this was never run. A limit's row can be met by stretching a rope that stretches.
+
+**To rule**: the reach rule above, or another. And whether the two defects are slices of their own (row texts in 19.5).
+
+### 19.2 B277: Bend Limit with a Max Stretch of nothing (built)
+
+Length before bend (D36) solved a step again when it ended with a segment beyond Max Stretch, and asked the guard's test, which is exact. At a Max Stretch of nothing a rounding is beyond it in every step. D36 now asks for a segment beyond Max Stretch by more than the solve's own tolerance of a length (1/8192 of it and 10⁻⁷ m); the guard's own test is as it was. In the bend program only: the program without the limit is the text it was.
+
+**By count** (reference; Newton steps a step at four steps a frame, then sixteen):
+
+| Max Stretch 0, Bend Limit on | before | after | at Max Stretch 0.02 |
+|---|---|---|---|
+| the consumer's loop at rest | 10.0, 3.0 | 1.0, 1.0 | 1.0, 1.0 |
+| that loop swept at 4 m/s | 16.1, 11.8 | 4.2, 2.5 | 4.1, 2.5 |
+| the consumer's strand, claw 2.9 m | 11.1, 12.0 | 2.0, 2.0 | 2.0, 2.0 |
+| the consumer's strand, claw 3.0 m | 12.0, 10.1 | 7.0, 7.9 | 1.5, 2.2 |
+
+**On a device, by the timing rule** (one process a run, a fixed reference pass beside every frame, variants in rounds, the first repeated last; `span ÷ reference` of Max Stretch 0 over Max Stretch 0.02, limit on; "before" is the shader with the change taken out by edit, in a run of its own, so only the ratios inside a run are compared):
+
+| | before | after |
+|---|---|---|
+| 10 × 55, a loop at rest | 1.479 ÷ 0.260 = 5.7 | 0.313 ÷ 0.273 = 1.15 |
+| 10 × 55, swept at 4 m/s | 2.134 ÷ 0.575 = 3.7 | 0.669 ÷ 0.594 = 1.13 |
+| 400 × 250, a loop at rest | 21.81 ÷ 5.79 = 3.8 | 6.62 ÷ 5.83 = 1.14 |
+| 400 × 250, swept at 4 m/s | 33.18 ÷ 10.85 = 3.1 | 13.15 ÷ 11.29 = 1.16 |
+
+Raw span means at full clock, in the same order, Max Stretch 0 then 0.02: before 0.776 and 0.136 ms; 1.119 and 0.302; 11.43 and 3.03; 17.40 and 5.69. After 0.164 and 0.143; 0.351 and 0.312; 3.47 and 3.06; 6.90 and 5.92. The seventh that is left is the guard, which still walks the strand in every step.
+
+**A thing it was hiding** (found): an open limit closes onto its joint only in a step the solve finished at its first attempt, and at a Max Stretch of nothing no step was. So a limit that gave never came back: out to d = 11 and back to d = 6 it stood at 2.02 and 2.31 of the limit on the reference and 2.00 and 2.27 on the device, for good. Now 1.000, on both. This is what the device's test holds, since a count cannot be read there.
+
+**The resting speed at 2.9 and 3.0 m: not all "no worse", and not at rest either way.** Fastest point in the last 2 s, m/s, before then after: 2.9 m, 0.074 to 0.063 and 0.292 to 0.261; 3.0 m, 0.086 to 0.077 and **0.287 to 0.323**. Three better, one 12 % worse, none at rest, where a Max Stretch of 0.02 gives 0.000 to 0.019.
+
+### 19.3 What is left at a Max Stretch of nothing (found, not built)
+
+That motion is the guard's. Its test is still exact, so at a Max Stretch of nothing it walks the strand to its exact lengths in every step, on roundings; with the limit on, the walk turns joints, and their rows push back in the next step. Measured on a scratch copy with the guard asking the same tolerance in the bend program: the consumer's strand at 2.9 and 3.0 m rests at **0.000 m/s** at both rates, and the loop at rest too. Not built: the ruling was the tolerance for D36 only. It is one condition in each program's bend path. On the device the out-and-back strand at Max Stretch 0 and Update Rate 240 is at 0.035 m/s for this reason, and that row of the test is held to "nearly at rest" (0.1 m/s) and says so.
+
+### 19.4 D45: the table's d = 11 row at Update Rate 960
+
+Read from the device step by step (the rope's state, its `kept` buffer and its scratch, every frame of the last half second):
+
+- **The hinge is idle.** Two joints are open, by 31.63° and 22.77°; neither opening moves in the last place printed, and no clock runs.
+- **Those two joints rest INSIDE THE BAND between half the yield and the yield**, where a limit neither opens nor closes: they give 0.92 to 0.98 and 0.76 to 0.81 of the yield. The joints beside them, whose limits are not open, give 0.21, 0.43 and 0.14.
+- **The motion is a cycle of exactly three frames**, in the strand beyond the bend: joint 6, three past the open ones and 3.4° inside its limit, turns back and forth by a tenth of a degree, and the point there moves at 0.089, 0.017, 0.089 m/s, a tenth of a millimetre a step.
+
+So it is not one joint going in and out of the system, as section 18 guessed, and **neither the gap nor the closing rate is the cause**: neither acts on a joint in that band. The cause is the band's own top: a joint may rest giving almost a whole yield, and a step that rebuilds that much push from nothing does not land on the same point twice on this device; it lands on a short cycle. The reference, with the same row, lands on a point (0.000 m/s).
+
+**No one-constant change inside D42's reasoning settles it.** The only named constant that bounds the band is the yield, which every row's opening hangs on and which D42 ruled. The band's floor, half the yield, is not a named constant, and raising it was not tried. The bound stands at six times (its worst row 3.9), and the row is filed (19.5).
+
+### 19.5 Row texts
+
+- **B276, as measured** (19.1). Rope: a far pin beyond what a step lets the rope reach throws it. Rule proposed: a segment reaches `l × (1 + min(Max Stretch, Stretch·l·m ÷ 4h²))`.
+- **Bug. Rope: a rope its own load stretches past Max Stretch is thrown by the guard** (19.1). Stretch 10⁻³, the consumer's strand held at both ends with 0.6 m of slack: 3.7 to 4.5 m/s, segments 13 to 33 % long; rests with Max Stretch raised. The guard moves points without speed and the next solve stretches them back with it. Slice 1's guard with slice 1's Stretch; no test holds the two together.
+- **Bug. Rope: Bend Limit with a Stretch above nothing is thrown where the limit cannot be met** (19.1). The consumer's strand, claw 2.9 or 3.0 m off, Stretch 1.6 × 10⁻⁶ to 10⁻⁴, Update Rate 960: 92 to 129 m/s, segments 115 to 216 % long, three solves a step. Rests at Update Rate 240. Every test of the limit has a Stretch of nothing.
+- **Rope: the guard at a Max Stretch of nothing, with the limit on** (19.3). Give the guard's test the solve's tolerance in the bend program. Measured: 0.06 to 0.32 m/s becomes 0.000.
+- **Rope: a joint resting just under the yield cycles on a device** (19.4, D45). The table's d = 11 row at Update Rate 960: 0.089 m/s, a tenth of a millimetre a step, a cycle of three frames, with two open joints giving 0.98 and 0.81 of the yield. Wanted: a rule for a joint that rests in the band between half the yield and the yield. Not a constant.
+
+### 19.6 Tests
+
+- **`points/rope.test.ts`, 94 to 102.** B277 by count: the loop at rest, the loop swept, the consumer's strand at 2.9 m, each at four steps a frame and sixteen (red at 10 and 3, 15.7 and 11.5, 11 and 12 with the change taken out). The limit that comes back, at a Max Stretch of nothing too (red at 2.02 and 2.31).
+- **`tests/headless/rope-bend.gpu.test.ts`, 27 to 29, Dawn.** The limit that comes back at a Max Stretch of nothing, at Update Rate 240 and 960 (red at 2.00 and 2.27 with the change taken out of the shader).
+- The 3.1 m rows in both files are still the REPRO of B276, not a claim.
+- Rule 13: the tests that hold today's reach rule are in `points/rope.test.ts`, `nodes/definitions/point-rope.gpu.test.ts` and `nodes/definitions/point-rope-anchors.gpu.test.ts` ("drawn in to the rope's length times 1 + Max Stretch"). They are untouched, because the rule is. No test ran Bend Limit at a Max Stretch of nothing before this slice.
+
+### 19.7 What this slice has not verified
+
+- **B276's rule on a device**, with a mass other than 1, with segments of unequal length, or with the limit on at a Stretch above nothing (which is thrown for its own reason, 19.1).
+- **The quarter** beyond this one strand: it is measured on 53 segments of 0.06 m at 240 and 960 steps a second.
+- **B277 with a Max Stretch that is small and not nothing** (10⁻⁴, say), where the tolerance and Max Stretch are of a size.
+- **The d = 11 cycle on another device.** It is Metal's; the reference does not show it.
+
+## 20. Slice 4d (2026-10-06)
+
+Two parts. Built: the reach (B276) and the guard's tolerance with the limit on (20.1 to 20.3). Not built, a design for the lead to rule on: what a hard length cap on a rope that stretches should be (20.4 to 20.9), from tracing the two thrown ropes of 19.1 (B280, B281). Decisions on from D51.
+
+**As ruled (lead, 2026-10-06), on section 19.** B276: the rule of 19.1 is accepted, as a stability bound of this solver and not a property of rope, the quarter a named constant with its measurement beside it. The guard's tolerance in the bend program: build it. D45: accepted as answered; the bound stays; the cycle of three frames is B282; raising the band's floor is not to be tried now. The two thrown ropes are B280 and B281: trace them and bring a design before any shader.
+
+### 20.1 B276 as built: the reach is what the rope can be in a step
+
+A held point may ask a segment of rest length `l` to reach
+
+`l × (1 + min(Max Stretch, max(2⁻¹⁶, ¼·Stretch·l·m ÷ h²)))`
+
+with `m` the point's mass and `h` the step. A pin beyond the sum of that over the segments between it and the pin before it is drawn in along the line to it, and the far end stands short of it. `ROPE_REACH_SHARE` is the quarter and `ROPE_REACH_SLACK` the 2⁻¹⁶; both programs.
+
+- **Why it is a bound of the solver.** A pin past the rope's rest length asks each segment to be `s` longer, which a rope of that Stretch answers with a tension of `s ÷ Stretch`. A step takes each segment's direction from where the step began, so a taut strand's fastest sideways mode (stiffness `4T ÷ l` on a mass `m`) is stepped explicitly and is stable only while `4T·h² ÷ (l·m) ≤ 1`. A pin may not ask of a rope in one step what its stiffest mode cannot give in one step. So the reach grows with Update Rate, and a rope that could physically bear the pull is still drawn in if a step cannot carry it.
+- **The quarter, measured** (19.1): with `s·h² ÷ (Stretch·l·m)` at 0.29 and under every strand rests; at 0.43 and over none does. With the share at 1 the tests of 20.3 are red on eight of their thirteen rows.
+- **It scales with mass exactly**: a Stretch of 10⁻⁷ on a mass of 4, 1.6·10⁻⁶ on a quarter and 4·10⁻⁷ on 1 give the same figures to the digit, under the old reach (3.92 m/s) and the new (0.001 m/s, 38.9 mm short).
+- **Segments of unequal length** (the node makes them: with no Segment Length each is measured from the seed): each reaches by its own length. A strand of 0.04 and 0.08 m segments in turn rests, short by the sum of what each can be.
+- **The consumer's case**: a claw 3.10 m off on 3.06 m of rope with no Stretch stands 40 mm short (39.95 on the device) and rests.
+
+**The slack is not in the ruling (D51).** With the reach the rope's length to the bit, a pin at the end of a strand laid straight was in or out of reach by a rounding of a sum of single-precision lengths. Every fixture that hangs a strand and pins its last point where it hangs was drawn in by a micrometre in some frames: the swept loops' figures all moved, and a held point was a float or two off its incoming point (64 strands laid in 64 directions and held where they lie: red with no slack). So a pin within 2⁻¹⁶ of the rope's length past it is in reach. An eighth of the solve's tolerance, measured: the consumer's strand with no Stretch and no limit rests pinned up to 1.6 mm past its 3.12 m (thrown at 3.2), in 2 Newton steps a step up to 0.2 mm and in all 8 from 0.4; with the limit on and the strand folded back on its socket, at sixteen steps a frame, it cycles at 0.26 to 0.34 m/s with a slack of half the tolerance and rests at 0.000 with an eighth, a thirty-second and a hundred-and-twenty-eighth. It is inside the stability bound (two anchors soften each pivot by 2⁻¹², which by the same quarter is a give of 2⁻¹³). At a Max Stretch of nothing there is no slack and the reach is exact.
+
+On the reference, the consumer's strand, claw 3.1 m, no bend limit; fastest point in the last 2 s in m/s at four steps a frame and at sixteen, before and after, and how far short of the pin the far end stands:
+
+| | before | slice 4d | short, mm |
+|---|---|---|---|
+| no Stretch | 11.5, 52 | 0.016, 0.001 | 40.0, 40.0 |
+| Stretch 10⁻⁸ | 11.4, 36 | 0.010, 0.001 | 40.0, 39.6 |
+| 10⁻⁷ | 8.9, 1.9 | 0.000, 0.001 | 39.7, 35.7 |
+| 4·10⁻⁷ | 3.9, 1.2 | 0.001, 0.001 | 38.9, 22.7 |
+| 1.6·10⁻⁶ | 0.46, 0.004 | 0.003, 0.004 | 35.7, 0 |
+| 6.4·10⁻⁶ | 0.30, 0.009 | 0.004, 0.009 | 22.7, 0 |
+| 2.6·10⁻⁵ | 0.007, 0.012 | 0.007, 0.012 | 0, 0 |
+| no Stretch, segments 0.04 and 0.08 m | 8.1, 29 | 0.016, 0.000 | 20.0, 20.0 |
+| 4·10⁻⁷, segments 0.04 and 0.08 m | 0.32, 0.001 | 0.002, 0.001 | 18.8, 0.8 |
+| no Stretch, Bend Limit on | 8.7, 41 | 0.10, 0.000 | 40.0, 40.0 |
+
+With the limit on, the strand at 3.1 m is the taut one of 18.5 (drawn in to 3.06 m, folded flat at its second point): "nearly at rest" at four steps a frame, as that row is. On a device (Metal): no Stretch 0.021 and 0.001 m/s; the five other Stretch and mass rows 0.000 to 0.007; with the limit 0.102 and 0.000; every far end within 0.01 mm of the rule.
+
+### 20.2 The guard's tolerance, with the limit on
+
+With Bend Limit on the guard is called as length before bend is (B277): by a segment beyond Max Stretch by more than the solve's own tolerance of a length. Its exact test failed on a rounding in every step at a Max Stretch of nothing, and a guard that walks a strand to its exact lengths turns its joints.
+
+- The consumer's strand, Max Stretch 0, limit on, 2.9 to 3.03 m: 0.05 to 0.33 m/s becomes 0.000, at both rates and two frame rates.
+- The out-and-back row at Max Stretch 0 is back on the 0.03 bound: 0.014 and 0.020 m/s on the device, as at 0.02.
+- Cost at Max Stretch 0 over 0.02 with the limit on, by the timing rule: 0.94, 1.07, 1.02 and 1.08 (10 × 55 at rest and swept, 400 × 250 at rest and swept), from 1.15, 1.13, 1.14 and 1.16.
+- The program without the limit is untouched by this: its guard's test is exact still. That is part of 20.8.
+
+### 20.3 Tests, and four things found
+
+- **`points/rope.test.ts`, 102 to 124** (54 s). The reach in closed form (no Stretch, a Stretch, a mass, Max Stretch's cap, segments of two lengths: 29 units where the old rule gave 30); the consumer's strand at 3.1 m over thirteen rows of Stretch, mass and segment lengths, at rest and short by what the rule says; the share from the other side; a pin at the end of a strand laid straight, 64 directions; Max Stretch 0 with the limit on at rest. The two 3.1 m repros are claims.
+- **`tests/headless/rope-bend.gpu.test.ts`, 29 to 35.** Six Stretch and mass rows, two strands (equal and unequal segments), two rates; the 3.1 m row as a claim.
+- **Rule 13, the tests that held the old reach, re-derived**: "a last target out of reach" in the reference and in `point-rope-anchors.gpu.test.ts` (Max Stretch a quarter used to give 1.25 of the rope; now 1 + 2⁻¹⁶ with no Stretch, 1.125 with one, 1.25 where Max Stretch caps); and `tests/headless/rope-anchors.gpu.test.ts`, "at 1 the tip IS the target on every frame", whose target wanders 0.13 mm past the rope's length (now: the target where the rope reaches it, the reach on the line to it where not).
+- Red by edit, restored by edit: the old reach, a share of 1, no slack, the exact guard, on the reference; the old reach and the exact guard in the shader.
+
+**Found, each of which is a correction to what section 18 said:**
+
+1. **"One or two Newton steps a step once its limit has given" (18.2's left-alone row) was one path.** At four steps a frame the same strand also comes to rest with two joints giving just under the yield (B282's state) and then takes 5 to 7 Newton steps a step, left alone or not: the guard's tolerance moved the test's one path from 1.4 to 5.5. The test now holds at sixteen steps a frame, on three distances (1.0 to 2.2 against 7.1 to 8.0 without).
+2. **"The wait, pinned by a sweep" is a pin of one sweep.** Over it and its eight neighbours (the pin 1.15 to 1.25 m off, 7.5 to 8.5 m/s, sixteen steps a frame) the worst turn is 1.03 to 1.65 of the limit with the wait and 1.08 to 1.66 without. It moved to 1.68 for the hours the reach had no slack. Kept, and says so.
+3. **D43 is wider than 18.6 said.** "Three of the four sweeps are the same to the digit" was true of the four. Around the 8 m/s sweep at Update Rate 960 (the pin 0.85 to 0.95 m off, 7.5 to 8.5 m/s, reference): slice 4 is 1.02 to 1.26 of the limit, mean 1.11; slice 4b and now, 1.02 to 1.98, mean 1.25. The device test's 1.024 under a ceiling of 1.25 is one of those nine.
+4. **B277 made one cell worse, and it is on main.** Max Stretch 0, Bend Limit on, the strand taut (the claw at 3.06 m or beyond): 0.09 and 0.35 m/s in slice 4b, 0.5 to 3.3 since slice 4c, with the guard exact or not. At a Max Stretch of nothing "beyond Max Stretch by more than the solve's tolerance" is "not converged", so length before bend fires on every step the limit keeps the solve from finishing, and the hinge and it take turns. Row text in 20.9.
+
+### 20.4 The two thrown ropes are one mechanism
+
+**In every thrown row the guard is called in every step; in every row that rests it is called in none.** Counted on a scratch copy of the reference, over the last two seconds:
+
+| | m/s | longest segment | guard called |
+|---|---|---|---|
+| B280: Stretch 10⁻³, held at both ends with 0.6 m of slack, 240 and 960 | 3.7, 4.5 | 33 %, 13 % | 100 % of steps |
+| B280: Stretch 10⁻², the same | 6.2, 5.4 | 74 %, 27 % | 100 % |
+| the same rope HUNG FROM ONE POINT, nothing else | 0.94, 0.99 | 2.00 % | 100 % |
+| a pin at the reach of a rope whose reach is Max Stretch (Stretch 10⁻⁴, 3.12 m) | 2.7, 9.9 | 22 %, 21 % | 100 % |
+| B281: the limit on, Stretch 1.6·10⁻⁶ to 10⁻⁴, 2.9 and 3.0 m, 960 | 77 to 129 | 114 to 217 % | 100 %, and three solves a step |
+| B281's rows at 240, which rest | 0.003 to 0.086 | under 1.5 % | 0 % |
+
+The hung rope is the whole of it in one line: its own weight would stretch its first segment 8 %, the guard holds it at 2.00 %, nothing moves, and every point is stored with a speed of 1 m/s. In each step the solve stretches the rope to what its load asks and stores that as speed; the guard then moves the points back and stores no speed for it; the next step begins from the guard's positions with the solve's speed. Held at one end that is a rope standing still at 1 m/s. Held at both, what one walk each way cannot place lands on a segment, and the strand is thrown.
+
+**The design already said so, of the bend** (15.2): "A positions-only guard fails at rest... Max Stretch escapes this only because inside the step limit the solve already holds the length and the guard moves nothing. A limit that acts on a rope at rest has to be in what the velocity is taken from." With a Stretch the solve does not hold the length inside Max Stretch, and Max Stretch does not escape.
+
+**Three ways in, one failure**: a load past Max Stretch on a rope that stretches (B280); a pin at the reach of a rope whose reach is Max Stretch itself, which lets it hang nowhere (the taut cells of 19.1); the limit's rows, which a rope that stretches can meet by stretching (B281: at 960 a step's elastic row is 16 times softer against a joint's than at 240, which is why it is 960 that is thrown).
+
+B281 has a second moment, which is the same failure again: with the cap in the solve (20.6) all twelve of its rows come to rest, and four of them pass through 46 to 263 m/s on the way in, for 0.07 s. Traced on one: for five frames every step is solved three times and the guard is called in sixteen steps of sixteen, until the hinge has opened the joint (to 104°).
+
+### 20.5 What the tools and the literature do for a hard cap
+
+None of these was run; this is from the papers and the design's own section 2, and the tools' internals are not documented where I could check (Notch's Max Stretch is a parameter of its Rope Deformer, 1.5; how it is applied is not stated).
+
+- **Strain limiting as a pass after the step**, with the speed taken from the result. Provot (1995) corrects over-stretched springs after the integration, in a few sweeps; Bridson, Fedkiw and Anderson (2002) apply strain and strain-rate limits as velocity impulses; Goldenthal et al. (2007, fast projection) project onto the inextensible manifold after an implicit step and set the velocity from the projected positions; Thomaszewski et al. (2009) and Wang et al. (2010) limit strain per element the same way. Position-based dynamics (Müller et al. 2007) takes every velocity from the positions, so its length projection is always told to the speed. **I know of no method that projects a length and keeps the pre-projection speed.** That is what this guard does, by design, for a step it was never meant to act in twice.
+- **A one-sided row inside the solve**: a unilateral constraint with the others, as contact is in a rigid-body solver, or a stiffening (biphasic) spring: elastic up to the cap, rigid at it. XPBD (Macklin et al. 2016) takes a row of any compliance, so the cap is the same row with its compliance set to nothing and its rest length at the cap, in or out of the system by its multiplier's sign. This is what slice 4 built for the bend (15.2, D17).
+- **Long-range attachments** (Kim et al. 2012; Unreal's cloth "tethers"): no point further from an anchor than the rope between them, as a projection. Section 2.2 measured it on this rope and D1 left it out: exact for a strand pulled straight, silent along a curved path, and US 9,070,220 B2 is NVIDIA's.
+
+### 20.6 The forms, measured
+
+A scratch copy of the reference (`scratchpad/rope-refs/variant4d.py`), single precision, the consumer's strand and loop. No shader.
+
+- **A. As built**: a positional walk after the solve, the solve's speed kept.
+- **B. The walk's correction told to the speed**: a point the guard moved is stored with the speed from where the step began to where the guard left it.
+- **C. A one-sided length row in the solve**: a segment that began the step at Max Stretch's length (within the solve's tolerance), or that the elastic row leaves past it, is solved as a rigid row at that length; it is let go when it carries less than the elastic row would there. No state is kept: the active set is read from the positions the step begins with. The guard stays, positional, called by a segment past Max Stretch by more than the tolerance (in both programs).
+- **C+B**: C, and the guard's rare calls told to the speed.
+- **L. Long-range attachments** in place of the walk, each free point within its rope's reach of the nearest pin before and after it, told to the speed.
+
+Fastest point in the last 2 s, m/s (longest segment), at 240 and 960 unless said:
+
+| | A | B | C | C+B | L |
+|---|---|---|---|---|---|
+| **B280**, Stretch 10⁻³, slack 0.6 m | 3.7, 4.5 (33 %) | 0.014, 0.024 (2.3 %) | 0.012, 0.030 (2.00 %) | 0.013, 0.031 (2.00 %) | 0.010, 0.017 (3.4 %) |
+| B280, Stretch 10⁻², slack 0.6 m | 6.2, 5.4 (74 %) | 0.016, 0.026 (2.8 %) | 0.014, 0.032 (2.00 %) | 0.013, 0.032 (2.00 %) | 0.006, 0.038 (21 %) |
+| hung from one point, Stretch 10⁻³ | 0.94, 0.99 (2.00 %) | 0.000 (2.00 %) | 0.000 (2.00 %) | 0.000 (2.00 %) | 0.000 (2.00 %) |
+| **taut at Max Stretch**: 3.12 m, Stretch 10⁻⁴ | 2.7, 9.9 (22 %) | 0.005, 0.007 (7.2 %) | 0.000, 0.004 (2.01 %) | 0.000, 0.004 (2.01 %) | 0.000, 0.001 (2.2 %) |
+| 3.2 m, Stretch 10⁻⁴ | 3.1, 11.4 (25 %) | 0.004, 0.007 (8.8 %) | 0.025, 0.000 (2.01 %) | 0.089, 0.000 (2.6 %) | 0.001, 0.002 (2.1 %) |
+| **B281**, twelve rows, at the end | five thrown, 77 to 129 | all at rest (0.086 at most) | eleven at rest (0.10 at most); one at 0.63 | the same as C | two thrown at 440 and 530 |
+| B281, the fastest moment on the way in, 960 | 21 to 586 | 5.1 to 7.4 | 6.5 to 263 (four rows over 45) | 4.4 to 7.2 | 5.6 to 530 |
+| **a rope that stretches, in motion**: the loop swept at 4 m/s, Stretch 10⁻⁴, 240 | 4.7 (11.8 %) | **108 (109 %)** | 6.5 (2.01 %) | 6.5 (2.01 %) | 6.3 (12 %) |
+| **rows that hold today, no Stretch**: the loop at rest and swept at 4 and 8 m/s, the consumer's strand | as they are | the same | the same, to the digit | the same | the same |
+| the loop swept at 8 m/s at ONE step a frame, limit on: turn | 1.72 of the limit | **7.30** | 1.72 | 7.30 | 1.62 (a segment 15 % long) |
+| the same, no limit: longest segment | 2.00 % | 2.00 % | 2.00 % | 2.00 % | 94 % |
+| guard called, share of steps: at rest under load; the elastic sweep | 100 %; 100 % | 100 %; 90 % | 0 %; 2 % | 0 %; 2 % | every step, by design |
+| Newton steps a step: B280 held at both ends, at rest; the elastic sweep | 8.0; 8.0 | 8.0; 7.7 | **1.0**; 7.7 | 1.0; 7.7 | 8.0; 7.8 |
+
+- **B rests what is at rest and throws what moves.** Told to the speed, a walk that sets each point from the one before it is the finishing sweep section 2.2 rejected for the energy it adds (88 m/s where the converged strand reaches 41): the elastic rope swept at 4 m/s goes from 4.7 to 108 m/s. And on a rope with no Stretch, where the guard is called in 2 % of the steps of a sweep at one step a frame, the limit's worst turn goes from 1.72 to 7.30 of the limit.
+- **C holds the cap at rest and in motion, and the guard goes back to what it was for**: 2.00 to 2.01 % everywhere, the guard called in none of the steps at rest and in 2 % of a sweep's. It is cheaper than today where the cap acts on a rope held at both ends: the solve finishes in one Newton step, because the row it could never bring within tolerance (an elastic row the guard kept undoing) is now a row it can. (The rope hung from one point still takes all eight, at rest.)
+- **C makes one of B281's rows worse**: the claw 3.0 m off, Stretch 1.6·10⁻⁶, Update Rate 240 moves at 0.63 m/s at the end, where it rests at 0.003 as built. Not traced.
+- **C without the warm start is not clean** (tried first): with every segment starting each step elastic, the active set is rebuilt from nothing, 8 Newton steps do not finish it, and the rows at rest move at 0.03 to 0.2 m/s. Read from the step's own starting positions, it costs a square root a segment and keeps no state.
+- **With C the guard's test has to take the tolerance in both programs** (as B277 and 20.2 did for the limit): a capped segment sits at Max Stretch to a rounding, and the exact test calls the guard on it in every step (measured: 100 % of steps, 2.1 to 2.6 % segments and 0.06 to 0.09 m/s on the taut rows).
+- **L says nothing along a curve**, as 2.2 found: 21 % on a slack strand, 94 % in a coarse sweep. And it leaves B281 thrown.
+- **Rows with no Stretch are the same under C to the digit**: the cap's row is never in the system, because a rope with no Stretch has rigid rows already.
+
+### 20.7 Recommendation
+
+**C: the cap is a one-sided row in the solve, with the row every segment already has.** Elastic up to Max Stretch and rigid at it, in or out by its multiplier, its active set read from the positions the step begins with. In both programs (the bend program's segment row is the same row). The guard stays what D5 made it: a positional net for a step the solve could not finish, which is a step past the limit of 2.6 and not a rope at rest; its test, and length before bend's, take the solve's tolerance in both programs.
+
+- It is the design's own rule (15.2), applied to the length as slice 4 applied it to the bend.
+- It adds no pass, no buffer and no stored value. Per segment: a square root in the first Newton step of a step, and a compare in each.
+- Three patches on the guard's test would have been three shortcuts, as the lead suspected: B (tell the speed) rests B280 and throws a moving rope; a tolerance alone leaves the guard called in every step; a different walk (L) leaves the limit's case thrown.
+
+**What C does not close:**
+
+- **B281's way in**: four rows of twelve still pass through 46 to 263 m/s for 0.07 s at Update Rate 960, in a run of steps where the guard is called every time before the hinge has opened. C+B takes that to 4 to 7 m/s and breaks the one-step sweep with the limit (7.30). Not recommended; the run is its own row (20.9).
+- **One of B281's rows at Update Rate 240**, which ends at 0.63 m/s under C (20.6).
+- **Max Stretch then means two things less ambiguously, and one of them changes**: today "raise it to let a Stretch give more" is advice for a rope the guard is fighting. With C, Max Stretch is where a rope that stretches stops stretching, at rest and in motion, and its description says so.
+
+### 20.8 Cost
+
+- By count, on the reference (20.6's last row): unchanged where no cap is active; 8.0 to 1.0 Newton steps a step where a load holds a rope at its cap at rest between two pins.
+- On a device: not measured. There is no shader for C, by the ruling. The estimate is the per-segment work above, in loops the step already makes.
+
+### 20.9 Decisions to rule, and row texts
+
+- **D51. The reach's slack** (20.1): 2⁻¹⁶ of a length, not in the ruling, needed. Built.
+- **D52. The length cap is a one-sided row in the solve** (20.7), the guard a net whose test takes the solve's tolerance in both programs. Not built. The off program's fingerprints move.
+- **D53. Max Stretch's description under D52**: where a rope that stretches stops, not a guard to raise.
+- **D54. B281's way in** is filed and not designed (below).
+- **D55. Three of section 18's claims are corrected** (20.3, items 1 to 3): two tests re-derived or relabelled, and D43's sweep statement widened to Update Rate 960.
+
+Row texts:
+
+- **B280, as traced**: Rope: a rope that stretches, loaded past Max Stretch, is stored with a speed it does not have, and between two pins is thrown. The guard is called in every step and its correction is not told to the speed. Hung from one point, Stretch 10⁻³: 1 m/s on a rope standing still. Fix as D52.
+- **B281, as traced**: the same failure by the limit's rows, which a rope that stretches meets by stretching past Max Stretch. Under D52 its rows rest; a run of 0.07 s at up to 263 m/s is left on the way in on four of twelve at Update Rate 960. Wanted: what length before bend should do on a rope whose rows are at their cap.
+- **Bug. Rope: Bend Limit, Max Stretch 0 and a taut strand: B277 made it worse** (20.3, item 4): 0.35 to 3.3 m/s at Update Rate 960. At a Max Stretch of nothing length before bend fires on every unfinished step. Candidate: a floor under what "beyond Max Stretch" means for length before bend.
+- **Rope: the sweep ceilings at 8 m/s hold samples** (20.3, item 3): at Update Rate 960 too. A claim on a neighbourhood (a mean over nine, as measured here) would be a claim the hinge can be held to.
+- **Rope: the wait has no robust pin** (20.3, item 2).
+
+### 20.10 What this slice has not verified
+
+- **C on a device, and C's cost there.** No shader.
+- **C with the limit on beyond the consumer's strand**, and the table of 18.4 with a Stretch.
+- **C at a Max Stretch of nothing** (the cap is then the rest length: a rope that stretches and may not), and with Max Stretch's short side (a segment too short).
+- **The program without the limit at a Max Stretch of nothing and a taut strand**: 0.08 to 0.09 m/s and a segment 0.6 % off, before this slice and after. Its guard's test is still exact; under D52 it would not be.
+- **The reach** on a strand with a mass per point (the node has one mass), with a pin attribute between the two pins, and in three dimensions out of a plane.
+- **The quarter** beyond 53 segments of 0.06 m and of 0.04 and 0.08 m, at 240 and 960.
+- **The tools.** Section 20.5 is from the papers. Nothing was run in TouchDesigner or Notch.
 
 ## Appendix A. The model
 

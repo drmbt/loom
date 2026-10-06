@@ -261,6 +261,24 @@ export function App({
   // keymap resolves selection-driven command input against them (§T77).
   const [selection, setSelection] = useState<readonly NodeId[]>([]);
   /**
+   * THE SELECTION AS OF NOW, for a key pressed before the next commit (T1671b's pass, item 5).
+   *
+   * `selection` above is what the panes RENDER from, and it lands one `App` commit after the
+   * canvas reports a click. The keymap used to read that same state: a key pressed between
+   * the click and the commit acted on the selection BEFORE the click. Measured: a click on
+   * a node's name and `v` sent with nothing between them opened the viewer on the node
+   * selected before, every time, at no load at all; on a loaded machine the gap is wide
+   * enough for a hand (two specs failed on it, four tests in one run). The hover below is a
+   * ref read at press time for the same reason. Written in the same call as the state, by
+   * every writer of it, so the two never disagree for longer than that one commit.
+   */
+  const selectionNow = useRef<readonly NodeId[]>(selection);
+  const writeSelection = useCallback((nodeIds: readonly NodeId[]) => {
+    const next = sameIds(selectionNow.current, nodeIds) ? selectionNow.current : [...nodeIds];
+    selectionNow.current = next;
+    setSelection(next);
+  }, []);
+  /**
    * T1238 — HOVER IS A REF, NOT STATE. Nothing renders from it: its one reader is the
    * keymap, which resolves `inputFrom: "hoveredNode"` at PRESS time through the getter on
    * `environment` below. As state it re-rendered `App` on every node enter/leave, and
@@ -279,9 +297,7 @@ export function App({
   const [floatBlocked, setFloatBlocked] = useState<PaneId | null>(null);
   const actionsRef = useRef<GraphActions | null>(null);
 
-  const onSelectionChange = useCallback((nodeIds: readonly NodeId[]) => {
-    setSelection((previous) => (sameIds(previous, nodeIds) ? previous : [...nodeIds]));
-  }, []);
+  const onSelectionChange = writeSelection;
 
   /**
    * A node created by a pane that is NOT the canvas — placing a component instance, and
@@ -1199,7 +1215,7 @@ export function App({
       });
       owned.current = true;
       setRuntime(next);
-      setSelection([]);
+      writeSelection([]);
       hoveredNodeRef.current = null;
       setRejection(NO_DIAGNOSTICS);
       /*
@@ -1217,7 +1233,7 @@ export function App({
       clearFrameLoopDiagnostics();
       onRuntimeChange?.(next);
     },
-    [clearBackendDiagnostics, clearFrameLoopDiagnostics, onRuntimeChange, storage],
+    [clearBackendDiagnostics, clearFrameLoopDiagnostics, onRuntimeChange, storage, writeSelection],
   );
 
   /**
@@ -1301,7 +1317,7 @@ export function App({
     });
     owned.current = true;
     setRuntime(next);
-    setSelection([]);
+    writeSelection([]);
     hoveredNodeRef.current = null;
     setRejection(NO_DIAGNOSTICS);
     /*
@@ -1315,7 +1331,7 @@ export function App({
     clearBackendDiagnostics();
     clearFrameLoopDiagnostics();
     onRuntimeChange?.(next);
-  }, [clearBackendDiagnostics, clearFrameLoopDiagnostics, lastOpened, onRuntimeChange, storage]);
+  }, [clearBackendDiagnostics, clearFrameLoopDiagnostics, lastOpened, onRuntimeChange, storage, writeSelection]);
 
   const isDirty = useCallback(() => dirtyRef.current, []);
 
@@ -1832,14 +1848,17 @@ export function App({
   const environment = useMemo<KeymapEnvironment>(
     () => ({
       context: "global",
-      selection,
-      // A getter, so the object is stable across hovers and still answers with the node
-      // under the pointer at the moment the keymap asks (T1238, see `hoveredNodeRef`).
+      // Getters, both: the object is stable, and each answers as of the moment the keymap
+      // asks. The selection is the one the canvas last REPORTED, not the one last rendered
+      // (see `selectionNow`); the hover is the node under the pointer (T1238).
+      get selection() {
+        return selectionNow.current;
+      },
       get hoveredNodeId() {
         return hoveredNodeRef.current;
       },
     }),
-    [selection],
+    [],
   );
 
   /**

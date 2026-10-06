@@ -225,13 +225,20 @@ describe("§T1618b: Map Extend picks how a map is read past its edge, and Hold i
  * E25 and E76 the same bytes, the others within one step of a half float in at most 117
  * channel values of 3.7 million. Before: E20 524da1380e9f7f65, E25 3ea3923714e496b7, E34
  * c73ed3113401e002, E75 b48273dc56455b40, E76 a05741c9165a6c6f.
+ *
+ * RE-TAKEN ON PURPOSE BY T1623b SLICE 4 (2026-10-06), the three that have a casting Light
+ * (E34, E75, E76), and again not for a map and not for any shader text: a casting light's
+ * shadow map is a layer of one of the Render's two layered targets, so its sweep's passes
+ * and the lit draws' `shadowMap{s}` binding name that resource and that layer. Each one's
+ * picture is the bytes it was at frames 0 and 60. E20 and E25 have no casting light and did
+ * not move. Before: E34 14199392299ab466, E75 20539dddac39162c, E76 cb73eea6156d7eb0.
  */
 const MAPPED: ReadonlyArray<readonly [example: string, fingerprint: string]> = [
   ["E20-Gooeyball", "1fbe0a8bf6618eb3"],
   ["E25-Stage", "85b151e8582f5a44"],
-  ["E34-Lidar", "14199392299ab466"],
-  ["E75-Resonance", "20539dddac39162c"],
-  ["E76-Verdant-Lotus", "cb73eea6156d7eb0"],
+  ["E34-Lidar", "599df12eea639426"],
+  ["E75-Resonance", "e01198d733cec059"],
+  ["E76-Verdant-Lotus", "b88c8f5482d239b8"],
 ];
 
 const registry = createNodeRegistry(allNodeDefinitions).view();

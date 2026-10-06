@@ -2,6 +2,7 @@ import { memo, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { EditPhase } from "@ui/controls/types.ts";
+import { ShareFill } from "@ui/primitives/share-fill.tsx";
 import type { StoredParameter } from "@domain/types/parameters.ts";
 import { isParameterSlot, storedStaticValue } from "@domain/parameters/slots.ts";
 import { controlDefaultState, type ControlDefaultState } from "@nodes/definitions/controls.ts";
@@ -209,7 +210,7 @@ function Slider({ nodeId, parameters, values, live, write, caption, className, s
         aria-valuenow={value}
         title={driven ? `${caption} is driven — its value comes from an expression` : mark === null ? caption : `${caption} · default ${format(mark.at as number)}`}
       >
-        <div className={styles.fill} style={{ width: `${share * 100}%` }} />
+        <ShareFill className={styles.fill} end={share} />
         {tick === null ? null : (
           <div className={`${styles.tick} ${mark?.away === true ? styles.away : ""}`} style={{ left: `${tick * 100}%` }} data-default-mark={mark?.away === true ? "away" : "at"} aria-hidden="true" />
         )}
@@ -327,7 +328,8 @@ function XYPad({ nodeId, parameters, values, live, write, caption, className, si
         {homeX === null || homeY === null ? null : (
           <div className={`${styles.home} ${away ? styles.away : ""}`} style={{ left: `${homeX * 100}%`, bottom: `${homeY * 100}%` }} data-default-mark={away ? "away" : "at"} aria-hidden="true" />
         )}
-        <div className={styles.puck} style={{ left: `${((x - min) / span) * 100}%`, bottom: `${((y - min) / span) * 100}%` }} />
+        {/* T1669b: where the puck is DRAWN in a box that does not move (`.puck`). */}
+        <div className={styles.puck} style={{ backgroundPosition: `${((x - min) / span) * 100}% ${(1 - (y - min) / span) * 100}%` }} />
       </div>
     </div>
   );

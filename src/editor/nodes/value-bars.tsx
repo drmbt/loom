@@ -9,6 +9,7 @@ import {
   isChannelOn,
   observeChannels,
 } from "./value-plot-mode.ts";
+import { ShareFill } from "@ui/primitives/share-fill.tsx";
 import type { ObservedRange } from "./value-plot-mode.ts";
 import styles from "./value-plot.module.css";
 
@@ -245,13 +246,8 @@ function Track({
         declared ? "" : " (observed)"
       }`}
     >
-      <div
-        className={styles.barFill}
-        style={{
-          insetInlineStart: `${(geometry.start * 100).toFixed(2)}%`,
-          inlineSize: `${((geometry.end - geometry.start) * 100).toFixed(2)}%`,
-        }}
-      />
+      {/* T1653b: a share of the track's own box (`ShareFill`), so a moving value changes no geometry. */}
+      <ShareFill className={styles.barFill} start={geometry.start} end={geometry.end} />
       {bipolar ? (
         // Only where zero is INSIDE the track. On a 0..1 channel the mark would sit on
         // the left edge and read as part of the frame rather than as a value.

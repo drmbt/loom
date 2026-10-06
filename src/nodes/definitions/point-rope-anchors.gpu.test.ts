@@ -100,14 +100,19 @@ describe("rope: held at both ends (T1585b slice 2, the design's 4.6)", () => {
 
   /*
    * OUT OF REACH, THE EARLIER PIN WINS. The last target is put at twice the strand's length
-   * along it: it is drawn in to the rope's length times 1 + Max Stretch, on the line to it.
-   * The first point does not move; length is kept and the target is not. The reach is a sum
-   * of sixteen exact products; where the device divides it by a square root the last point
-   * is held to one last place of where it stands.
+   * along it: it is drawn in to the rope's REACH, on the line to it. The first point does not
+   * move; length is kept and the target is not. The reach is a sum of sixteen exact products;
+   * where the device divides it by a square root the last point is held to one last place of
+   * where it stands.
+   *
+   * THE REACH IS WHAT THE ROPE CAN BE IN A STEP (B276, slice 4d; it was the rope's length
+   * times 1 + Max Stretch whatever its Stretch). A segment of length l reaches
+   * l × (1 + min(Max Stretch, max(2⁻¹⁶, ¼·Stretch·l·m ÷ h²))). Here l is 1/16 m and a step
+   * 1/256 s, so l ÷ 4h² is 1,024.
    */
   it("a last target out of reach is drawn in to the rope's length on the line to it, and the first point holds", async () => {
-    const lastAt = async (maxStretch: number, pose: RopePose): Promise<RopeRead> =>
-      onRope({ cols: POINTS, pose, rope: stepping({ gravity: 0, anchorLast: 1, maxStretch }) }, async (rope) => {
+    const lastAt = async (maxStretch: number, pose: RopePose, more: Readonly<Record<string, unknown>> = {}): Promise<RopeRead> =>
+      onRope({ cols: POINTS, pose, rope: stepping({ gravity: 0, anchorLast: 1, maxStretch, ...more }) }, async (rope) => {
         await frames(rope, 6);
         return rope.read();
       });
@@ -117,9 +122,19 @@ describe("rope: held at both ends (T1585b slice 2, the design's 4.6)", () => {
     expect(Math.abs(component(beyond.position, LINKS, 0) - 1)).toBeLessThanOrEqual(2 ** -23);
     expect(Math.abs(component(beyond.position, LINKS, 1))).toBe(0);
     for (let k = 0; k < LINKS; k += 1) expect(Math.abs(segmentLength(beyond.position, k) - REST), `segment ${k}`).toBeLessThanOrEqual(TAU + 2 ** -22);
-    // With Max Stretch at a quarter the rope gives that much before the target is lost.
-    const giving = await lastAt(0.25, drawnIn(2));
-    expect(Math.abs(component(giving.position, LINKS, 0) - 1.25)).toBeLessThanOrEqual(2 ** -22);
+    // With Max Stretch at a quarter a rope with NO Stretch still reaches its own length, and the
+    // slack a rounding needs, 2⁻¹⁶ of it. (Seen red at 1.25 with the old reach.)
+    const rigid = await lastAt(0.25, drawnIn(2));
+    expect(Math.abs(component(rigid.position, LINKS, 0) - (1 + 2 ** -16))).toBeLessThanOrEqual(2 ** -22);
+    // With a Stretch of 2⁻¹³ a segment may be an eighth longer (1,024 × 2⁻¹³)…
+    const giving = await lastAt(0.25, drawnIn(2), { stretch: 2 ** -13 });
+    expect(Math.abs(component(giving.position, LINKS, 0) - 1.125)).toBeLessThanOrEqual(2 ** -22);
+    // …and the same with half the Stretch on twice the mass.
+    const heavy = await lastAt(0.25, drawnIn(2), { stretch: 2 ** -14, mass: 2 });
+    expect(Math.abs(component(heavy.position, LINKS, 0) - 1.125)).toBeLessThanOrEqual(2 ** -22);
+    // With a Stretch of 2⁻¹¹ it could be half as long again, and Max Stretch stops it at a quarter.
+    const capped = await lastAt(0.25, drawnIn(2), { stretch: 2 ** -11 });
+    expect(Math.abs(component(capped.position, LINKS, 0) - 1.25)).toBeLessThanOrEqual(2 ** -22);
     // The control: a target inside the rope's length is the last point, to the bit.
     const within = await lastAt(0, drawnIn(0.5, 0.25));
     expect(pointOf(within.position, LINKS)).toEqual([0.5, 0.25, 0]);
@@ -166,6 +181,77 @@ describe("rope: Segment Length (T1585b slice 2)", () => {
     expect(Math.abs((await tipAfter(REST)) + 1)).toBeLessThanOrEqual(LINKS * (TAU + 2 ** -22) + 2 ** -20);
     // The control: measured from the seed, the last segment is the 0.66 m to that point.
     expect(await tipAfter(0)).toBeLessThan(-1.5);
+  }, 180_000);
+});
+
+describe("rope: what a step is told of the step before (T1585b slice 4b, the design's D38)", () => {
+  /*
+   * THE SPEEDLESS TAKE-UP reads, for each point, whether it was a hard pin at the step
+   * before: that is the point's inverse mass, left in the step's scratch. A SEED is not a
+   * step, and holds nothing: the first step after it lets nothing go. Seen here on a strand
+   * seeded on a strip a quarter longer than its Segment Length, hung from its first point: it
+   * takes its length in its first step by the SOLVE, with the speed that gives it, as it did
+   * before slice 4b, and the device is the reference. (A scratch that says "held" on a fresh
+   * strand would take that first step for a release, and store no speed at all.)
+   *
+   * And the release itself agrees with the reference: a strand pinned 16 % long at every
+   * point and cut is, in the frame of the cut and after, where the reference puts it, at the
+   * reference's speed.
+   */
+  const long: RopePose = { wgsl: `vec3f(f32(i) * ${1.25 * REST}, 0.0, f32(j))`, at: (i, j) => [i * 1.25 * REST, 0, j] };
+
+  it("the first step after a seed lets nothing go: a strand seeded longer than its Segment Length takes its length with speed, and the device is the reference", async () => {
+    const fixture: RopeFixture = { cols: POINTS, pose: long, rope: stepping({ segmentLength: REST }) };
+    await onRope(fixture, async (rope) => {
+      const twin = ropeTwin(fixture);
+      // Frame 0 seeds; frame 1 is the first four steps.
+      for (let frame = 0; frame < 2; frame += 1) {
+        rope.render();
+        twin.render();
+      }
+      const read = await rope.read();
+      const fastest = (velocity: Float32Array): number => Math.max(...Array.from({ length: POINTS }, (_unused, point) => Math.hypot(...pointOf(velocity, point))));
+      // The far end came in by a quarter of the strand in that frame, and the speed of it is stored.
+      expect(component(read.position, LINKS, 0)).toBeLessThan(LINKS * REST * 1.02);
+      expect(fastest(twin.state.velocity)).toBeGreaterThan(1);
+      // Seen red at 0.13 m/s where the reference stores 19, with the seed leaving every point "held".
+      expect(fastest(read.velocity)).toBeGreaterThan(0.9 * fastest(twin.state.velocity));
+      expect(fastest(read.velocity)).toBeLessThan(1.1 * fastest(twin.state.velocity));
+      expect(apart(read.position, twin.state.position)).toBeLessThan(1e-3);
+    });
+  }, 180_000);
+
+  it("a strand pinned 16 % long at every point and cut: held it is the strip, and in the frame of the cut and after it the device is the reference, which stores no speed for the take-up", async () => {
+    const BODY = 0.64;
+    const fixture: RopeFixture = {
+      cols: POINTS,
+      pose: { wgsl: `vec3f(0.0, 0.0, ${BODY} * t - f32(i) * ${1.16 * REST})`, at: (i, _j, t) => [0, 0, BODY * t - i * 1.16 * REST] },
+      weights: [{ name: "clip", wgsl: "select(1.0, 0.0, t >= 1.0)", at: (_i, _j, t) => (t >= 1 ? 0 : 1) }],
+      rope: stepping({ gravity: 1.5, segmentLength: REST, pinAttribute: "clip" }),
+    };
+    await onRope(fixture, async (rope) => {
+      const twin = ropeTwin(fixture);
+      const against = (velocity: Float32Array): number => Math.max(...Array.from({ length: POINTS }, (_unused, point) => Math.hypot(component(velocity, point, 0), component(velocity, point, 1), component(velocity, point, 2) - BODY)));
+      for (let frame = 0; frame <= 64 + 16; frame += 1) {
+        rope.render();
+        twin.render();
+        if (frame < 63) continue;
+        const read = await rope.read();
+        if (frame === 63) {
+          // Held: the strip, to the bit, 16 % long.
+          expect(same(new Uint8Array(read.position.buffer, read.position.byteOffset, read.position.byteLength), new Uint8Array(read.incoming.buffer, read.incoming.byteOffset, read.incoming.byteLength))).toBe(true);
+          expect(segmentLength(read.position, 8) / REST).toBeGreaterThan(1.15);
+          continue;
+        }
+        // From the cut on: its own length (the solver's tolerance and a stored position's spacing)...
+        for (let k = 0; k < LINKS; k += 1) expect(Math.abs(segmentLength(read.position, k) - REST), `frame ${frame}, segment ${k}`).toBeLessThanOrEqual(8 * TAU + 2 ** -20);
+        // ...where the reference puts it, to four digits of the strand's metre (seen red 28 mm from it with the release never noticed)...
+        expect(apart(read.position, twin.state.position), `frame ${frame}`).toBeLessThan(1e-4);
+        // ...and with the reference's speed: gravity's, a twentieth of a metre a second in the frame of the cut.
+        expect(Math.abs(against(read.velocity) - against(twin.state.velocity)), `frame ${frame}`).toBeLessThan(0.02);
+        if (frame === 64) expect(against(read.velocity)).toBeLessThan(0.1);
+      }
+    });
   }, 180_000);
 });
 

@@ -392,10 +392,78 @@ fn extendMirror(coordinate: f32) -> f32 {
 }`,
 };
 
+/**
+ * T1658b — READING A TEXTURE BY A COORDINATE, with no sampler.
+ *
+ * A Material · WGSL names the textures it reads (`// @texture lens`) and a draw pass carries
+ * no sampler, so a read is `textureLoad`: exact texels, any float format, and no derivative,
+ * which is why a read may sit inside a branch or a loop of the author's (WGSL's uniformity
+ * rule is about `textureSample`). These are the two reads an author wants from that:
+ *
+ *  - `mapNearest(t, uv, extend)`: the one texel the coordinate is in;
+ *  - `mapLinear(t, uv, extend)`: the four texels round it, weighed. Four loads.
+ *
+ * `extend` says what a coordinate past 0..1 reads, across and along: `MAP_HOLD` (the edge
+ * carries on), `MAP_REPEAT`, `MAP_MIRROR`. The folds are the module `extend`'s own, applied
+ * to each TEXEL's coordinate, so `mapLinear` blends across a tile's edge with the texel
+ * that is really next to it.
+ *
+ * ⚑ THE ADDRESS IS ALL `size` TEXELS, HOLD INCLUDED: 0..1 covers the texture once, texel
+ * centres at `(k + ½) ÷ size`. That is the address the stock materials' Map Extend uses for
+ * Repeat and Mirror and NOT the one their Hold uses: a stock map held at its edge is read at
+ * `uv × (size − 1)`, truncated, which shows its last texel only at exactly 1 (§T1650b). The
+ * two are different on purpose. Making either match the other moves pictures: this one's
+ * every Material · WGSL that reads a texture, the stock one's every mapped Surface that
+ * shipped (E20, E25, E34, E75, E76 and two project documents on 2026-10-06). Neither is to
+ * be "fixed" without that list.
+ *
+ * No mip levels: a texture drawn much smaller than it is shimmers. Feed a smaller one.
+ */
+const MAP_MODULE: SharedWgslModule = {
+  summary: "mapNearest(t, uv, extend), mapLinear(t, uv, extend): read a texture by a coordinate with textureLoad; extend is vec2u of MAP_HOLD, MAP_REPEAT, MAP_MIRROR",
+  requires: ["extend"],
+  source: `const MAP_HOLD: u32 = 0u;
+const MAP_REPEAT: u32 = 1u;
+const MAP_MIRROR: u32 = 2u;
+
+fn mapFold(coordinate: f32, extend: u32) -> f32 {
+  if (extend == MAP_REPEAT) {
+    return extendRepeat(coordinate);
+  }
+  if (extend == MAP_MIRROR) {
+    return extendMirror(coordinate);
+  }
+  return clamp(coordinate, 0.0, 1.0);
+}
+
+fn mapIndex(t: texture_2d<f32>, uv: vec2f, extend: vec2u) -> vec2i {
+  let size = vec2f(textureDimensions(t));
+  let folded = vec2f(mapFold(uv.x, extend.x), mapFold(uv.y, extend.y));
+  return vec2i(min(floor(folded * size), size - vec2f(1.0)));
+}
+
+fn mapNearest(t: texture_2d<f32>, uv: vec2f, extend: vec2u) -> vec4f {
+  return textureLoad(t, mapIndex(t, uv, extend), 0);
+}
+
+fn mapLinear(t: texture_2d<f32>, uv: vec2f, extend: vec2u) -> vec4f {
+  let size = vec2f(textureDimensions(t));
+  let place = uv * size - vec2f(0.5);
+  let low = floor(place);
+  let weight = place - low;
+  let a = (low + vec2f(0.5)) / size;
+  let b = (low + vec2f(1.5)) / size;
+  let lower = mix(textureLoad(t, mapIndex(t, vec2f(a.x, a.y), extend), 0), textureLoad(t, mapIndex(t, vec2f(b.x, a.y), extend), 0), weight.x);
+  let upper = mix(textureLoad(t, mapIndex(t, vec2f(a.x, b.y), extend), 0), textureLoad(t, mapIndex(t, vec2f(b.x, b.y), extend), 0), weight.x);
+  return mix(lower, upper, weight.y);
+}`,
+};
+
 export const SHARED_WGSL_MODULES: Readonly<Record<string, SharedWgslModule>> = {
   hash: HASH_MODULE,
   lot: LOT_MODULE,
   extend: EXTEND_MODULE,
+  map: MAP_MODULE,
   grid: GRID_MODULE,
   "surface-detail": SURFACE_DETAIL_MODULE,
   "light-depth": LIGHT_DEPTH_MODULE,

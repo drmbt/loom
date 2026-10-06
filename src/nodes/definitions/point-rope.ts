@@ -62,8 +62,10 @@ import type { ScalarMap } from "./points.ts";
  * read at that strand's own station: a weight per strand, which is "this claw lets go and
  * that one holds". A Pin Attribute is a weight on every point. Hard, a weight of 1 is the
  * incoming point itself and anything less is a spring that stiffens toward it; Soft, 1 is
- * still a spring. Two anchors further apart than the rope is long: the earlier holds, and
- * the later falls short (the Curve node's Arc, in the same words).
+ * still a spring. Two anchors further apart than the rope can reach: the earlier holds, and
+ * the later falls short (the Curve node's Arc, in the same words). The reach is what the
+ * rope can be in a solver step (B276): its own length with no Stretch, more with one and at
+ * a higher Update Rate, never past Max Stretch.
  *
  * ⚑ BEND LIMIT (slice 4). With it on, no joint turns tighter than a circle of Min Bend
  * Radius: rigid rings instanced along the rope do not pass through each other. It is a
@@ -75,7 +77,17 @@ import type { ScalarMap } from "./points.ts";
  * another program, so the switch is structure, and with it off the step is the tridiagonal
  * one, with none of the limit's text.
  *
- * SLICES 1, 2 AND 4 of the design's plan: the strand, its time, its anchors and its bend
+ * ⚑ WHERE THE LIMIT CANNOT BE MET IT GIVES (slice 4b, the design's D41). A joint that gives
+ * more than a yield for longer than a wait, or pushes at all on a strand whose step could
+ * not be finished, has its limit opened, and the opening is kept from step to step: a strand
+ * between two held ends with less slack than a turn of the radius needs comes to rest
+ * there, where it used to be thrown. The opening closes when the pose lets it.
+ *
+ * ⚑ LETTING GO IS SPEEDLESS (slice 4b, the design's D38). In the step a segment that two
+ * hard pins held comes free it takes its own length, in positions only, as the Max Stretch
+ * guard and Teleport Carry move points: a strand held longer than itself is not thrown.
+ *
+ * SLICES 1, 2, 4 AND 4B of the design's plan: the strand, its time, its anchors and its bend
  * limit. No colliders yet, and no Bend Stiffness: the spring under the limit is its own
  * slice, and so is a softness for the limit that an author sets.
  */
@@ -96,13 +108,19 @@ export function ropeAttributes(outputs: { readonly tension: boolean }): Readonly
   return outputs.tension ? [...STATE_ATTRIBUTES, TENSION_ATTRIBUTE] : STATE_ATTRIBUTES;
 }
 
-/** The scratch buffer a step works in: eight floats a point, twenty with Bend Limit on (`nodes/shaders/rope.wgsl.ts`). */
+/**
+ * The scratch buffer a step works in: eight floats a point, twenty with Bend Limit on
+ * (`nodes/shaders/rope.wgsl.ts`). Two of them are read by the NEXT step and so outlive the
+ * one that wrote them: a point's inverse mass (nothing: it was a hard pin), and with Bend
+ * Limit on its joint's clock.
+ */
 export const ROPE_SOLVE_KEY = "solve";
 /**
  * What the solver keeps between frames and writes rarely, two vec4f a point: the target the
  * point's anchor had when the last frame ended (xyz) with the measured length of the
- * segment after the point (w), and how fast that target was moving then (xyz). Not in the
- * stepped pair, where every run would copy it.
+ * segment after the point (w), and how fast that target was moving then (xyz, the strand's
+ * first point only) with what the limit of the joint at the point is let out by, in radians
+ * (w, Bend Limit on). Not in the stepped pair, where every run would copy it.
  */
 export const ROPE_KEPT_KEY = "kept";
 
@@ -167,7 +185,7 @@ const ROPE_PARAMETERS: ParameterSchema = {
     range: "bounded",
     step: 1,
     description:
-      "The most times one solver step solves a strand's segments together. A step stops sooner, as soon as every segment is within 1/8192 of its length, so this is a ceiling for hard moments and costs nothing on calm ones. With Bend Limit on it defaults to 8: a turn held to its limit while the rope moves takes more of them, and they are what the limit costs. Measured: at rest a step with the limit on is 1.4 to 1.8 times one without; with a held end swept at 4 m/s, 2.4 times on strands of 55 points.",
+      "The most times one solver step solves a strand's segments together. A step stops sooner, as soon as every segment is within 1/8192 of its length, so this is a ceiling for hard moments and costs nothing on calm ones. With Bend Limit on it defaults to 8: a turn held to its limit while the rope moves takes more of them, and they are what the limit costs. Measured: at rest a step with the limit on is 1.5 to 1.9 times one without; with a held end swept at 4 m/s, 2.4 to 2.7 times on strands of 55 points and 3.4 on strands of 250.",
   },
   speed: {
     type: "number",
@@ -252,7 +270,7 @@ const ROPE_PARAMETERS: ParameterSchema = {
     max: 10,
     range: "floor",
     description:
-      "The most a segment may be longer or shorter than its rest length at the end of a step, as a fraction: 0.02 is two percent. A guard for a step too coarse for what the rope is being put through; it moves points and adds no speed. Raise it to let a Stretch give more.",
+      "The most a segment may be longer or shorter than its rest length at the end of a step, as a fraction: 0.02 is two percent. A guard for a step too coarse for what the rope is being put through; it moves points and adds no speed. Raise it to let a Stretch give more. It is also the most a held point may ask a segment to reach (see Anchor Last).",
   },
   bendLimit: {
     type: "boolean",
@@ -261,7 +279,7 @@ const ROPE_PARAMETERS: ParameterSchema = {
     default: false,
     compileTime: true,
     description:
-      "The rope does not bend tighter than Min Bend Radius: a limit, not a spring. For rings or links instanced along it that must not pass through each other. It is solved together with the segments' lengths, so it holds on a rope at rest: to 1.0001 of the limit on a strand of 55 points and to about 1.03 on one of 250 (what a resting bend gives grows steeply with the number of points in it). In motion it is exceeded: see Min Bend Radius for by how much. It costs: see Iterations. BETWEEN TWO HELD ENDS the rope needs the slack a turn of this radius takes. With less, the limit cannot be met: a step that cannot keep the rope's length with the limit in it is solved without it, and short of that the rope may never come to rest. Give it the slack, or turn the limit off there. A pose handed in with a fold far past the limit may open into a loop with a full turn in it; hand in one the rope could lie in.",
+      "The rope does not bend tighter than Min Bend Radius: a limit, not a spring. For rings or links instanced along it that must not pass through each other. It is solved together with the segments' lengths, so it holds on a rope at rest: to 1.0001 of the limit on a strand of 55 points and to 1.03 on one of 250 at Update Rate 240. In motion it is exceeded: see Min Bend Radius for by how much. It costs: see Iterations. WHERE IT CANNOT BE MET IT GIVES, and the rope comes to rest. Between two held ends with less slack than a turn of this radius takes, the joints that cannot hold let out, by as much as the pose needs and no more: a claw far out with its socket facing away puts two joints at 90° where 23° is asked. Length and the held points come first. The limit is the limit again when the slack is back. A pose handed in with a fold far past the limit may open into a loop with a full turn in it; hand in one the rope could lie in.",
   },
   minBendRadius: {
     type: "number",
@@ -274,7 +292,7 @@ const ROPE_PARAMETERS: ParameterSchema = {
     range: "floor",
     inactiveWhen: (values) => (values["bendLimit"] === true ? null : "Bend Limit is off."),
     description:
-      "Metres: the radius of the tightest curve the rope makes while Bend Limit is on. A joint between two segments of mean length l may turn at most 2·asin(l ÷ 2R): 23° for 60 mm segments at 0.15 m. A radius and not an angle, so a rope resampled to twice the points is asked for the same curve. ALLOW A MARGIN FOR MOTION. In fast motion the limit is exceeded, by an amount that varies from run to run (a whipped rope is chaotic): with a held end swept at 4 m/s, by 1 to 15 % at Update Rate 240 and under 1 % at 960; at 8 m/s, by 16 to 24 % at 240 and by 2 to 15 % at 960. Where the geometry breaks at the limit, set the radius with that margin or raise Update Rate.",
+      "Metres: the radius of the tightest curve the rope makes while Bend Limit is on. A joint between two segments of mean length l may turn at most 2·asin(l ÷ 2R): 23° for 60 mm segments at 0.15 m. A radius and not an angle, so a rope resampled to twice the points is asked for the same curve. ALLOW A MARGIN FOR MOTION. In fast motion the limit is exceeded, by an amount that varies from run to run (a whipped rope is chaotic): with a held end swept at 4 m/s, by 1 to 15 % at Update Rate 240 and under 1 % at 960; at 8 m/s by 2 to 15 % at 960, and at 240, where a step cannot carry that sweep and the limit lets out, by 25 to 50 % and in a bad sweep by twice. A JOINT THAT STANDS MORE THAN 0.22° PAST ITS LIMIT FOR 1/32 S HAS IT LET OUT, whatever loads it. A strand too fine for its step is loaded so by its own weight: 1,024 points on 3.2 m hold a radius of 0.096 m at Update Rate 960 where 0.15 is asked. Raise Update Rate or use fewer points.",
   },
   anchorFirst: {
     type: "number",
@@ -285,7 +303,7 @@ const ROPE_PARAMETERS: ParameterSchema = {
     max: 1,
     range: "bounded",
     description:
-      "How firmly the first point of each strand is held to its incoming point. 1 is the incoming point itself; 0 lets go; in between is a pull that tightens as it nears 1, so a weight that ramps moves the point without a jump. In Map mode an f32 attribute (or one channel of a float vector) is the weight, read at each strand's first point: a weight per strand. A weight within a millionth of 1 is 1, here and on every anchor, so one that is computed and lands a rounding short still holds. To let go, ramp a weight down (see Anchor Mode).",
+      "How firmly the first point of each strand is held to its incoming point. 1 is the incoming point itself; 0 lets go; in between is a pull that tightens as it nears 1, so a weight that ramps moves the point without a jump. In Map mode an f32 attribute (or one channel of a float vector) is the weight, read at each strand's first point: a weight per strand. A weight within a millionth of 1 is 1, here and on every anchor, so one that is computed and lands a rounding short still holds. For letting go, see Anchor Mode.",
   },
   anchorSecond: {
     type: "number",
@@ -307,7 +325,7 @@ const ROPE_PARAMETERS: ParameterSchema = {
     max: 1,
     range: "bounded",
     description:
-      "The same for the last point of each strand: a rope held at both ends hangs between them. In Map mode the attribute is read at each strand's last point, so one strand can hold while its neighbour lets go; a weight within a millionth of 1 is 1. A target further from an earlier held point than the rope between them is long is not reached: the rope keeps its length and its end falls short. (That is for a target with rope to solve between it and the held point before it. A held point that directly follows a held point is always its incoming point.)",
+      "The same for the last point of each strand: a rope held at both ends hangs between them. In Map mode the attribute is read at each strand's last point, so one strand can hold while its neighbour lets go; a weight within a millionth of 1 is 1. A target further from an earlier held point than the rope between them can REACH is not reached: the rope keeps its length and its end stands short of the target (40 mm short of one 3.10 m off on 3.06 m of rope). A rope with no Stretch reaches its own length. One with a Stretch reaches further, up to Max Stretch, and further at a higher Update Rate: it is what a solver step can pull the rope to, not what the rope could bear. (That is for a target with rope to solve between it and the held point before it. A held point that directly follows a held point is always its incoming point.)",
   },
   anchorMode: {
     type: "enum",
@@ -320,7 +338,7 @@ const ROPE_PARAMETERS: ParameterSchema = {
       { value: "soft", label: "Soft" },
     ],
     description:
-      "What a weight means. Hard: 1 is the incoming point itself, and a weight below 1 is a spring that stiffens without limit as it nears 1, so 0.3 to 0.5 follows a wandering target with a lag and a ramp to 1 lands on it. Soft: a weight of 1 is a spring of Anchor Strength, which lags a moving target and never pins. LETTING GO of a rope that held points were holding longer than itself: it takes its own length back in the first step a weight is under 1, and its far end moves by the whole over-length in that frame. Ramp the weight down over a few frames and that is all it does. Cut it from 1 to 0 in one frame and the whole correction is left in the rope as speed: it is thrown.",
+      "What a weight means. Hard: 1 is the incoming point itself, and a weight below 1 is a spring that stiffens without limit as it nears 1, so 0.3 to 0.5 follows a wandering target with a lag and a ramp to 1 lands on it. Soft: a weight of 1 is a spring of Anchor Strength, which lags a moving target and never pins. LETTING GO of a rope that held points were holding longer than itself: in the step a weight leaves 1 it takes its own length back, in its points' positions and not in their speed. Its far end moves by the whole over-length in that frame, which is seen (half a metre on a 3 m rope held 16 % long), and then it hangs and swings as a rope let go at its own length does. Cut or ramp, it is not thrown. A weight under 1 holds no segment long: it is a pull, and the rope keeps its length under it.",
   },
   anchorStrength: {
     type: "number",

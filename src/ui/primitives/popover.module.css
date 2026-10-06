@@ -14,6 +14,26 @@
   animation: pop var(--dur-fast) var(--ease-out);
 }
 
+/*
+ * B273 — CLOSED IS GONE. A popover has an ENTRY animation and no exit.
+ *
+ * Radix keeps a closed popover mounted until an `animationend` whenever the animation it
+ * sees at the close is not the one it recorded at the mount. The only animation here is
+ * the entry, declared for every state — so a card closed before its entry had played was
+ * kept, closed and empty, until that entry finished: measured on the examples list, where
+ * a click loads a document and the main thread is busy, `animationstart` came 130 ms
+ * AFTER `data-state="closed"` and the card left 230 ms after it closed. For those moments
+ * a closed hover card lay over whatever had taken its place (the Controls pane) and took
+ * the pointer: a slider dragged there did not move.
+ *
+ * With no animation in the closed state there is nothing to wait for, and Radix unmounts
+ * at once. The same rule stands at the dialog, the tooltip and the context menu, which
+ * are built the same way.
+ */
+.content[data-state="closed"] {
+  animation: none;
+}
+
 .arrow {
   fill: var(--bg-raise);
 }

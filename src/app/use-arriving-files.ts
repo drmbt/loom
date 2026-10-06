@@ -4,6 +4,7 @@ import type { GraphDocument } from "@domain/types/graph.ts";
 import { createIndexedDbFileHandleStore } from "@ui/files/retained-files.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import type { Notice } from "./notices.tsx";
+import { revisionWatchFor } from "./revision-watch.ts";
 
 /**
  * T1519b — A FILE THAT ARRIVES AND DOES NOT OPEN HERE IS SAID AT THE MOMENT IT ARRIVES.
@@ -109,7 +110,14 @@ export function useArrivingFiles(runtime: ArrivingRuntime, options: ArrivingFile
       });
     };
     scan();
-    const unsubscribeGraph = bus.store.subscribe(scan);
+    /*
+     * T1668b: a file reference is a STRING, and a revision that moves a string is not a
+     * values-only one (`classify-revision.ts`), so no reference can arrive in a revision this
+     * does not hear. It listened to every revision, and each one is another document object
+     * to the cache above: every value written walked every node of the document for files
+     * (0.5 ms of each write on a 200-node project).
+     */
+    const unsubscribeGraph = revisionWatchFor(bus.store, registry).subscribeStructure(scan);
     const unsubscribeComponents = components.subscribe(scan);
     return () => {
       live = false;

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { renderHeadless, type RenderedFrame } from "../../tests/headless/render-harness.ts";
 import { nodeGpuHost } from "../../runtime/backend/vgpu/node-gpu-host.ts";
@@ -19,12 +19,16 @@ import { loadKit } from "./load-kit.ts";
  *     [--audio track.wav]           the track the piece hears, muxed into a clip; without it every lane rests
  *     [--bpm 134 --offset 0 --beats 4]   that track's tempo, when it is not the shipped beat: the camera cuts on its bars
  *     [--bitrate 14M]               a clip's video bitrate (default 40M: a long clip wants less)
- *     [--set kernel_ring.crawl=0.5,slider_speed.value=6]   parameter overrides by node id
+ *     [--set kernel_ring.crawl=0.5,slider_speed.value=6]   parameter overrides by node id (a vector in square brackets:
+ *                                   camera_rig.eye=[0.8,0.3,1.5] is the camera flown that far off its shot)
  *     [--cam=-7.5,1.1,0.6]          the chase shot, placed: metres ahead of the robot, right, up
  *     [--robots 1]                  build only the first N of the pack (document.ts, PACK); default all of it
  *     [--tier offline]              shadows and hinged claws (document.ts, tier); default live, what the app runs
  *     [--shadows on|off] [--claws hinged|rigid]   one of the tier's two decisions on its own, for measuring it
  *     [--shot 3]                    hold one of the rig's shots (camera.ts): 0 chase, 1 lead, 2 flank, 3 post, 4 circle
+ *     [--feed picture.png]          what the eyes' camera sees (document.ts, webcam_eyes), one still picture (needs ffmpeg);
+ *                                   without it the camera is off, as on a page that was given none: the lenses
+ *                                   keep their own light
  *     [--tag name]                  file name prefix
  *
  * Every animated thing runs on absTime from 0. Stills go to the gitignored renders/ tree.
@@ -47,7 +51,8 @@ const first = strip?.[0] ?? Number(flag("at") ?? 4);
 const count = strip?.[1] ?? 1;
 const gap = strip?.[2] ?? 0;
 const tag = flag("tag") ?? "sentinel";
-const overrides = (flag("set") ?? "").split(",").filter((entry) => entry !== "").map((entry) => {
+// (A comma inside square brackets is a vector's: --set camera_rig.eye=[0.8,0.3,1.5] is one override.)
+const overrides = (flag("set") ?? "").split(/,(?![^[]*\])/).filter((entry) => entry !== "").map((entry) => {
   const match = /^([^.=]+)\.([^=]+)=(.+)$/.exec(entry);
   if (match === null) throw new Error(`--set expects node.param=value, got "${entry}".`);
   return { nodeId: match[1]!, parameter: match[2]!, value: JSON.parse(match[3]!) as unknown };
@@ -73,6 +78,7 @@ mkdirSync(outDir, { recursive: true });
 
 const clip = flag("clip")?.split(",").map(Number);
 const audioPath = flag("audio");
+const feedPath = flag("feed");
 const track = audioPath === undefined ? undefined : walkTrack(audioPath, fps);
 const clipStart = Math.round((clip?.[0] ?? 0) * fps);
 const capture = clip === undefined ? Array.from({ length: count }, (_, index) => Math.round((first + index * gap) * fps)) : Array.from({ length: Math.round((clip[1] ?? 10) * fps) }, (_, index) => clipStart + index);
@@ -109,6 +115,14 @@ const result = await renderHeadless({
   // Every Mesh File In of the document reads the one kit.
   meshes: Object.fromEntries(Object.values(document.graph.nodes).filter((entry) => entry.type === "meshFileIn").map((entry) => [entry.id, glb])),
   ...(track === undefined ? {} : { audio: track.seam(fps, 0) }),
+  // The eyes' camera. A headless render has none, and what the page shows with its camera off is a clear frame (the
+  // lenses keep their own light): so that, unless a picture is given. (Left alone, the harness puts its test card there.)
+  pictures: {
+    webcam_eyes: ([wide, high]: readonly [number, number]) =>
+      feedPath === undefined
+        ? new Uint8Array(wide * high * 4)
+        : new Uint8Array(execFileSync("ffmpeg", ["-loglevel", "error", "-i", feedPath, "-vf", `scale=${wide}:${high}`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { maxBuffer: wide * high * 4 + 4096 })),
+  },
   ...(encoder === undefined
     ? {}
     : {

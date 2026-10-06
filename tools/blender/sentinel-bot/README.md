@@ -11,7 +11,7 @@ and neither is the kit built from it (the owner's decision): the kit goes to
 B=/Applications/Blender.app/Contents/MacOS/Blender
 $B --background --factory-startup --python tools/blender/sentinel-bot/build.py -- \
    --fbx <Export-FBX_Sentinel_Final_EO_1.fbx> --out public/media/sentinel-bot/sentinel.glb \
-   [--preview <png dir>] [--mandible-ratio 0.35] [--body-ratio 1.0] [--samples 40]
+   [--preview <png dir>] [--mandible-ratio 0.35] [--body-ratio 1.0] [--ring-low-ratio 0.25] [--samples 40]
 ```
 
 - A build takes about 40 s (the bake is sampled at `--samples` frames to measure the hinges).
@@ -37,11 +37,12 @@ Each piece once, in the frame of the joint that carries it, right-handed, glTF a
 | `body.*`, `eyes.*`, `lamp.*` | robot: origin at the body centre, +Z forward, +Y up | no `loom_part` |
 | `mand_<k>_<level>` | robot frame at the reference pose, origin at its joint | `loom_part`, `loom_parent`; decimated by `--mandible-ratio` |
 | `ring` | joint: origin at the joint, +Z toward the tip, +Y the frame's normal (loom's curve-frame convention) | one ring; draw it at every station |
+| `ring_low` | joint, as `ring` | the same ring at a quarter of its triangles (`--ring-low-ratio 0.25`): a shadow caster's proxy (loom §T1689b), not drawn to the eye |
 | `hub` | joint | the claw's cone |
 | `claw` | the hub's joint | the whole claw as one rigid piece, fingers at rest: for a draw that cannot afford nine pieces |
 | `phalanx_<f>_<p>` | its own joint | finger `f` (0–3), link `p` (0 = knuckle) |
 | `socket.<t>` | robot | marker: where tentacle `t` leaves the body |
-| `eye.<i>` | robot | marker: a lens centre; extras `loom_radius` |
+| `eye.<i>` | robot | marker: the middle of an eye's face (on its axis, as far forward as it reaches); extras `loom_face`, its radius as seen from in front (what a picture in the lens is as wide as) |
 | `kit.info` | – | marker: `loom_tentacles`, `loom_ring_count`, `loom_ring_pitch`, `loom_ring_start`, `loom_hub_distance`, `loom_fingers`, `loom_claw_open`, `loom_claw_closed` |
 
 Hinged nodes (`mand_*`, `phalanx_*`) carry what the bake shows about their joint as extras:

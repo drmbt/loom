@@ -21,12 +21,13 @@ What is written:
   mand_<k>_<level>           front arm k, link `level` (0 = shoulder), robot frame at the
                              reference pose, origin at its joint, `loom_parent` its carrier.
   ring                       one tentacle ring, joint frame.
+  ring_low                   the same ring at a quarter of its triangles (--ring-low-ratio): what casts its shadow.
   hub                        the claw's cone, joint frame.
   claw                       the whole claw as one rigid piece, fingers at rest, in the hub's
                              joint frame: for a draw that cannot afford nine pieces.
   phalanx_<f>_<p>            claw finger f (0–3), link p (0 = knuckle), its own joint frame.
   socket.<t>                 marker: where tentacle t leaves the body.
-  eye.<i>                    marker: an eye lens (centre; extras radius).
+  eye.<i>                    marker: an eye lens (the middle of its face; extras face, its radius seen from in front).
   kit.info                   marker: counts and lengths.
 Every hinged node (mand_*, phalanx_*) carries extras: `loom_joint` (its origin in the
 parent's frame), `loom_rest` (its rest orientation there, quaternion x y z w), `loom_axis`
@@ -45,6 +46,7 @@ def flag(name, default=None):
     return argv[argv.index(f"--{name}") + 1] if f"--{name}" in argv else default
 FBX, OUT, PREVIEW = flag("fbx"), flag("out"), flag("preview")
 MAND_RATIO, BODY_RATIO, SAMPLES = float(flag("mandible-ratio", 0.35)), float(flag("body-ratio", 1.0)), int(flag("samples", 40))
+RING_LOW_RATIO = float(flag("ring-low-ratio", 0.25))
 if FBX is None or OUT is None:
     raise SystemExit("usage: build.py -- --fbx <sentinel.fbx> --out <sentinel.glb> [--preview dir]")
 
@@ -259,6 +261,12 @@ for t, arm in enumerate(armatures):
         worst["phalanx"] = max(worst["phalanx"], max((a - b).length for a, b in zip(in_frame(piece, bone_frame(bone)), reference[key])))
 
 place("ring", meshes["ring"])
+# THE RING AS A SHADOW CASTER (loom §T1689b): the same ring in the same joint frame, at RING_LOW_RATIO of its
+# triangles. A ring is drawn at every station of every tentacle, and six of the nine passes it is drawn in are one
+# light's shadow sweeps (the lead's measurement, §T1666b): a shadow shows an outline, not a bevel.
+ring_low = place("ring_low", meshes["ring"].copy())
+ring_low.data.name = "ring_low"
+ring_low.modifiers.new("decimate", "DECIMATE").ratio = RING_LOW_RATIO
 hub_object = place("hub", meshes["hub"])
 finger_count = len(fingers[a0.name])
 claw_range = [0.0, 0.0]
@@ -317,14 +325,23 @@ for ob in eye_objects:
     for v in mesh.vertices: islands[find(v.index)].append(B2G @ v.co)
     for pts in islands.values():
         c = sum(pts, Vector()) / len(pts)
-        eyes.append((max((p - c).length for p in pts), c))
-# Lenses and their bezels are separate islands at one place: keep the largest island at each place.
+        eyes.append((max((p - c).length for p in pts), c, pts))
+# An eye is a STACK of islands on one axis, the robot's forward one: a barrel that runs back into the head, a cap
+# behind it, a ring and a glass in front. The barrel is the largest of them, so the largest island that is on no
+# eye's axis yet starts an eye, and every island whose centre is within the barrel's reach of that axis is of it.
+# (It was the largest island at each place, by distance in space: a barrel is half as long as the next eye is far,
+# so one eye in nine swallowed its neighbour's barrel, and a barrel and its own glass were two lenses.)
+def reach(c, pts): return max(math.hypot(p.x - c.x, p.y - c.y) for p in pts)
 eyes.sort(key=lambda e: -e[0])
-lenses = []
-for radius, c in eyes:
-    if radius < 0.012 or any((c - other).length < max(radius, r) for r, other in lenses): continue
-    lenses.append((radius, c))
-for i, (radius, c) in enumerate(lenses): place(f"eye.{i}", None, at=c, props={"loom_radius": radius})
+stacks = []
+for radius, c, pts in eyes:
+    home = next((stack for stack in stacks if math.hypot(c.x - stack[0].x, c.y - stack[0].y) < stack[1]), None)
+    if home is not None: home[2].extend(pts)
+    elif radius >= 0.012: stacks.append((c, reach(c, pts), list(pts)))
+# What is written of an eye is its FACE, what shows of it from in front: the middle (on the axis, as far forward
+# as the eye reaches) and how far it reaches from the axis. A picture shown in the lens is as wide as that.
+lenses = [(Vector((c.x, c.y, max(p.z for p in pts))), reach(c, pts)) for c, _, pts in stacks]
+for i, (c, wide) in enumerate(lenses): place(f"eye.{i}", None, at=c, props={"loom_face": wide})
 info.update(eyes=len(lenses))
 
 for t, position in enumerate(sockets): place(f"socket.{t}", None, at=position)
@@ -341,7 +358,7 @@ if bad: raise SystemExit(f"the FBX's copies are not identical in their joint fra
 body_pts = [B2G @ v.co for ob in kit if ob.name == "body.Sentinel_1" for v in ob.data.vertices]
 print("KIT body bounds (x, y up, z forward):", [round(min(p[i] for p in body_pts), 3) for i in range(3)], [round(max(p[i] for p in body_pts), 3) for i in range(3)])
 print("KIT sockets:", [tuple(round(c, 3) for c in s) for s in sockets])
-print("KIT eyes:", [(round(r, 3), tuple(round(x, 3) for x in c)) for r, c in lenses])
+print("KIT eyes (face radius, middle):", [(round(wide, 3), tuple(round(x, 3) for x in c)) for c, wide in lenses])
 for ob in kit:
     if "loom_axis" in ob: print("KIT hinge", ob.name, "axis", [round(x, 3) for x in ob["loom_axis"]], "range°", [round(math.degrees(x), 1) for x in ob["loom_range"]], "fit", [round(x, 4) for x in ob["loom_fit"]])
 
@@ -361,7 +378,7 @@ if PREVIEW is not None:
     for name, offset, target, only in shots:
         for ob in kit:
             if ob.type != "MESH": continue
-            family = "ring" if ob.name == "ring" else "claw" if ob.name == "hub" or ob.name.startswith("phalanx") else "merged" if ob.name == "claw" else "robot"
+            family = "ring" if ob.name == "ring" else "ring_low" if ob.name == "ring_low" else "claw" if ob.name == "hub" or ob.name.startswith("phalanx") else "merged" if ob.name == "claw" else "robot"
             ob.hide_render = (family != only) if only is not None else (family != "robot")
         camera.location = Vector(target) + Vector(offset)
         camera.rotation_euler = (Vector(target) - camera.location).to_track_quat("-Z", "Y").to_euler()

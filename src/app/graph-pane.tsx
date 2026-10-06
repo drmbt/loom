@@ -17,7 +17,7 @@ import type { ResolvedOutput } from "@compiler/index.ts";
 import { GraphCanvas } from "@editor/graph-canvas/index.ts";
 import { type CameraPose, createCameraGizmoStore } from "@editor/viewer/camera-gizmo-store.ts";
 import { previewCameraAbsenceSentence, type PreviewCameraAbsence } from "@compiler/preview-orbit.ts";
-import { cameraPoseAt, cameraPoseDrivenSentence } from "@editor/viewer/camera-pose.ts";
+import { cameraPoseAt, cameraPoseSaid } from "@editor/viewer/camera-pose.ts";
 import type { ControlWrite } from "@editor/controls/control-widget.tsx";
 import { useControlBodies } from "@editor/controls/control-bodies.tsx";
 import type { PhoneDoorView } from "@editor/controls/phone-door-copy.ts";
@@ -459,35 +459,48 @@ function GraphPaneInner({
     }
     return reasons;
   }, [compiledOutputs]);
-  const drivenSaid = useRef<{ graph: GraphDocument | null; said: Map<NodeId, string | null> }>({ graph: null, said: new Map() });
+  const poseSaidCache = useRef<{ graph: GraphDocument | null; said: Map<NodeId, ReturnType<typeof cameraPoseSaid>> }>({ graph: null, said: new Map() });
+  /**
+   * What a pose tile has to say, off the store by the read `readCameraPose` makes (T1652b:
+   * the two must agree). Which MODE decides each channel is a fact of the revision, not of
+   * the frame, so it is asked once per revision and node: the overlay asks on every pan and
+   * zoom, and resolving six expressions per camera per frame of a pan is not a caption's price.
+   */
+  const poseSaid = useCallback(
+    (nodeId: NodeId): ReturnType<typeof cameraPoseSaid> | null => {
+      const { current, node, scope } = poseSubject(nodeId);
+      if (node === undefined) return null;
+      if (poseSaidCache.current.graph !== current) poseSaidCache.current = { graph: current, said: new Map() };
+      const known = poseSaidCache.current.said.get(nodeId);
+      if (known !== undefined) return known;
+      const said = cameraPoseSaid(node, registry.get(node.type), scope);
+      poseSaidCache.current.said.set(nodeId, said);
+      return said;
+    },
+    [poseSubject, registry],
+  );
   const previewCameraNote = useCallback(
     (nodeId: NodeId): string | null => {
-      // Off the store, by the read `readCameraPose` makes (T1652b): the two must agree.
-      const { current, node, scope } = poseSubject(nodeId);
-      if (cameraGizmoNodes.has(nodeId)) {
-        if (node === undefined) return null;
-        /* Which MODE decides each channel is a fact of the revision, not of the frame, so it
-           is asked once per revision and node. The overlay asks on every pan and zoom, and
-           resolving six expressions per camera per frame of a pan is not a caption's price. */
-        if (drivenSaid.current.graph !== current) drivenSaid.current = { graph: current, said: new Map() };
-        const known = drivenSaid.current.said.get(nodeId);
-        if (known !== undefined) return known;
-        const said = cameraPoseDrivenSentence(node, registry.get(node.type), scope);
-        drivenSaid.current.said.set(nodeId, said);
-        return said;
-      }
+      if (cameraGizmoNodes.has(nodeId)) return poseSaid(nodeId)?.driven ?? null;
       const reason = cameraAbsences.get(nodeId);
       if (reason === undefined) return null;
-      return previewCameraAbsenceSentence(reason, (id) => current.nodes[id]?.label ?? id);
+      // The NAMES, by the one read of the store this pane's pose readers share.
+      const { nodes } = poseSubject(nodeId).current;
+      return previewCameraAbsenceSentence(reason, (id) => nodes[id]?.label ?? id);
     },
-    [cameraAbsences, cameraGizmoNodes, poseSubject, registry],
+    [cameraAbsences, cameraGizmoNodes, poseSaid, poseSubject],
+  );
+  /** §T970: on a tile that has its gizmo, the channels a partly driven pose holds back. */
+  const previewCameraHint = useCallback(
+    (nodeId: NodeId): string => (cameraGizmoNodes.has(nodeId) ? (poseSaid(nodeId)?.held ?? "") : ""),
+    [cameraGizmoNodes, poseSaid],
   );
 
   const parameterEditor = useMemo(
     () => createParameterEditor({ bus, context: invocation }),
     [bus, invocation],
   );
-  /** T1652b: this pane's document as of its last structural revision, for the canvas's reference lines. */
+  /** T1652b: this pane's document as of its last structural revision: what the canvas draws, and a Panel body's layout (T1668b). */
   const structure = useMemo(() => {
     const watch = revisionWatchFor(bus.store, registry);
     return { subscribe: watch.subscribeStructure, get: watch.structure };
@@ -511,6 +524,8 @@ function GraphPaneInner({
     invocation,
     write: controlWrite,
     phone: (componentPath ?? []).length === 0 ? phone : undefined,
+    // T1668b: a Panel's body lays its board out from the structure; its controls read their own values.
+    structure,
   });
   const cameraGizmos = useMemo(
     () => createCameraGizmoStore({ editor: parameterEditor, readPose: readCameraPose }),
@@ -1160,7 +1175,7 @@ function GraphPaneInner({
           }
         />
       </GraphMenuHost>
-      <PreviewInspectOverlays bounds={previewBounds} inspect={previewInspect} note={previewCameraNote} />
+      <PreviewInspectOverlays bounds={previewBounds} inspect={previewInspect} note={previewCameraNote} hint={previewCameraHint} />
       <PreviewGizmoOverlays
         bounds={previewBounds}
         tile={gizmoTile}

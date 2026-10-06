@@ -382,16 +382,21 @@ describe("Rope — Bend Limit is a structural switch (T1585b slice 4)", () => {
    * three times in slice 4, each for a change every Rope was meant to get — the guard between
    * two pins (D24), a weight within a millionth of 1 read as 1, and a held point that
    * follows a held point left where it is told (D31) — and the limit's own text never moved
-   * them (the design's 17.9 has each value and what moved it).
+   * them (the design's 17.9 has each value and what moved it). They moved once more in slice
+   * 4b, for the speedless take-up (D38), which every Rope gets: a point's stored speed and
+   * the guard's reach for a released segment, and the seed's word that nothing was held
+   * (the design's 18.8). The hinge, which is the limit's, did not move them. And once more in
+   * slice 4d, for the reach (B276), which every Rope gets: how far a held point may ask a
+   * segment to be (the design's 20.1). The guard's tolerance, which is the limit's, did not.
    */
   it.each([
-    ["the default", {}, "strips:55x10", undefined, "3c0dde6bb79537aa"],
-    ["Tension", { tensionOutput: true }, "strips:55x10", undefined, "2ea65f9e5ac95d03"],
-    ["three stations, Soft, a Segment Length, a Teleport Distance", { anchorSecond: 1, anchorLast: 1, anchorMode: "soft", segmentLength: 0.06, teleportDistance: 100 }, "strips:55x10", undefined, "e4a053ef65156952"],
-    ["three stations mapped", {}, "strips:55x10", { anchorFirst: { attribute: "live" }, anchorSecond: { attribute: "live" }, anchorLast: { attribute: "live" } }, "4fe60f089a1f03be"],
-    ["a pin, Tension and a mapped last station", { pinAttribute: "charge", tensionOutput: true }, "strips:55x10", { anchorLast: { attribute: "live" } }, "e461f63999f7672a"],
-    ["a grid of two sheets", {}, "grid:55x5x2", undefined, "3c0dde6bb79537aa"],
-    ["one strand to a row of 550", {}, "strips:550x1", undefined, "b10beddbf8f34796"],
+    ["the default", {}, "strips:55x10", undefined, "b1f60e3c1fe800d5"],
+    ["Tension", { tensionOutput: true }, "strips:55x10", undefined, "eb01bde3a41847c0"],
+    ["three stations, Soft, a Segment Length, a Teleport Distance", { anchorSecond: 1, anchorLast: 1, anchorMode: "soft", segmentLength: 0.06, teleportDistance: 100 }, "strips:55x10", undefined, "4c36a6f2410a3a87"],
+    ["three stations mapped", {}, "strips:55x10", { anchorFirst: { attribute: "live" }, anchorSecond: { attribute: "live" }, anchorLast: { attribute: "live" } }, "015f79e324bc9e27"],
+    ["a pin, Tension and a mapped last station", { pinAttribute: "charge", tensionOutput: true }, "strips:55x10", { anchorLast: { attribute: "live" } }, "f8be0d629dbde8f1"],
+    ["a grid of two sheets", {}, "grid:55x5x2", undefined, "b1f60e3c1fe800d5"],
+    ["one strand to a row of 550", {}, "strips:550x1", undefined, "0b8c8d90a0f38b2d"],
   ] as const)("with Bend Limit off the plan is the plan it was: %s", (_label, parameters, topology, maps, fingerprint) => {
     const plan = compile(parameters, { topology, ...(maps === undefined ? {} : { maps }) });
     expect(plan.diagnostics ?? []).toEqual([]);

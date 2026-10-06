@@ -1,7 +1,7 @@
 import type { GraphEdge, GraphNode } from "../../domain/types/graph.ts";
 import { edge, expressionSlot, node } from "../../examples/documents/builders.ts";
 import type { StageFacts } from "./facts.ts";
-import { chan, grey } from "./slots.ts";
+import { chan, grey, measuredMesh } from "./slots.ts";
 import { TEST_FX_WGSL } from "./test-content.ts";
 
 /**
@@ -27,25 +27,41 @@ const FX_POSITIONS = {
   strobeMesh: [-4400, 4440], strobeMaterial: [-4100, 4440], strobeGeometry: [-3800, 4440], note: [-3500, 3920],
 } as const;
 
-/** Wire the FX feed into a session: nodes the session already has keep their own settings. */
+/**
+ * Wire the FX feed into a session: nodes the session already has keep their own settings, and
+ * an input the session has already wired keeps its wire.
+ *
+ * WHAT THE SESSION ALREADY HAS IS FOUND BY NAME, and a wire by the input it lands on, never by
+ * the id this file would have given it. A node or a wire made in the app has a minted id: the
+ * `-7` session's FX Syphon is `syphonin_FX` under `nd_…`, feeding the switch through a
+ * Transform of its owner's. Looked up by id, neither was found, and an upgrade added a second
+ * `syphonin_FX` and three more wires, six inputs on a switch of three.
+ */
 export function applyFx(nodes: Record<string, GraphNode>, edges: Record<string, GraphEdge>, facts: StageFacts): void {
   const put = (entry: GraphNode): void => {
     nodes[entry.id] = entry;
   };
+  /** Ours, unless another wire already lands on that input (and, on a variadic one, that slot). */
   const wire = (entry: GraphEdge): void => {
-    edges[entry.id] = entry;
+    const taken = Object.values(edges).some(
+      (own) => own.id !== entry.id && own.target.nodeId === entry.target.nodeId && own.target.portId === entry.target.portId && own.order === entry.order,
+    );
+    if (!taken) edges[entry.id] = entry;
   };
-  const ensure = (entry: GraphNode): void => {
-    if (nodes[entry.id] === undefined) put(entry);
+  /** The session's node of that name (applyRig hands this the working names), or ours, added. */
+  const ensure = (entry: GraphNode): GraphNode => {
+    const own = nodes[entry.id] ?? Object.values(nodes).find((candidate) => candidate.label === entry.label);
+    if (own === undefined) put(entry);
+    return own ?? entry;
   };
-  ensure(node("syphonFX", "syphonIn", FX_POSITIONS.syphon, { source: "" }, { label: "syphonFX" }));
-  ensure(node("testFX", "customWgsl", FX_POSITIONS.test, { source: TEST_FX_WGSL, speed: 0.25, level: 1 }, { label: "testFX" }));
-  ensure(node("fxMap", "movieFileIn", FX_POSITIONS.map, { file: FX_MAP_URL }, { label: "fxMap" }));
+  const syphon = ensure(node("syphonFX", "syphonIn", FX_POSITIONS.syphon, { source: "" }, { label: "syphonFX" }));
+  const test = ensure(node("testFX", "customWgsl", FX_POSITIONS.test, { source: TEST_FX_WGSL, speed: 0.25, level: 1 }, { label: "testFX" }));
+  const map = ensure(node("fxMap", "movieFileIn", FX_POSITIONS.map, { file: FX_MAP_URL }, { label: "fxMap" }));
   put(node("feedFX", "switch", FX_POSITIONS.feed, {}, { label: "feedFX", parameters: { index: expressionSlot(chan("source"), 1) } }));
-  if (nodes["blank"] !== undefined) wire(edge("e-blank-testFX", ["blank", "out"], ["testFX", "input"]));
-  wire(edge("e-syphonFX-feedFX", ["syphonFX", "out"], ["feedFX", "inputs"], 0));
-  wire(edge("e-testFX-feedFX", ["testFX", "out"], ["feedFX", "inputs"], 1));
-  wire(edge("e-fxMap-feedFX", ["fxMap", "out"], ["feedFX", "inputs"], 2));
+  if (nodes["blank"] !== undefined) wire(edge("e-blank-testFX", ["blank", "out"], [test.id, "input"]));
+  wire(edge("e-syphonFX-feedFX", [syphon.id, "out"], ["feedFX", "inputs"], 0));
+  wire(edge("e-testFX-feedFX", [test.id, "out"], ["feedFX", "inputs"], 1));
+  wire(edge("e-fxMap-feedFX", [map.id, "out"], ["feedFX", "inputs"], 2));
 
   // The pixel lines: the `led` area the session already draws, now reading the feed.
   const matLed = nodes["matLed"];
@@ -53,8 +69,8 @@ export function applyFx(nodes: Record<string, GraphNode>, edges: Record<string, 
   wire(edge("e-feedFX-matLed", ["feedFX", "out"], ["matLed", "albedo"]));
 
   // The strobes: their windows on the grated decks, a mesh area of their own.
-  const strobe = facts.areas.strobe;
-  put(node("meshStrobe", "meshFileIn", FX_POSITIONS.strobeMesh, { file: facts.glbUrl, select: strobe.select, vertices: strobe.vertices, triangles: strobe.triangles }, { label: "meshStrobe" }));
+  // (What the app measured on the session's own node stays on it: slots.ts, `measuredMesh`.)
+  put(measuredMesh(nodes["meshStrobe"], "meshStrobe", FX_POSITIONS.strobeMesh, facts.glbUrl, facts.areas.strobe));
   put(node("matStrobe", "materialUnlit", FX_POSITIONS.strobeMaterial, {}, { label: "matStrobe", parameters: { color: expressionSlot(`${chan("strobes")} * 4`, grey(2)) } }));
   put(node("geoStrobe", "geometry", FX_POSITIONS.strobeGeometry, { mode: "surface", material: "matStrobe" }, { label: "geoStrobe" }));
   wire(edge("e-meshStrobe-geoStrobe", ["meshStrobe", "out"], ["geoStrobe", "points"]));
@@ -68,7 +84,7 @@ export function applyFx(nodes: Record<string, GraphNode>, edges: Record<string, 
   put(node("noteFX", "annotate", FX_POSITIONS.note, {
     title: "Pixel lines + strobes: one feed",
     body: [
-      "Resolume → Syphon: pick the server in syphonFX. ONE 1920 x 1080 stream drives all 63 pixel lines and 38 strobes.",
+      "Resolume → Syphon: pick the server in syphonin_FX. ONE 1920 x 1080 stream drives all 63 pixel lines and 38 strobes.",
       "Top half: the pixel lines seen from the house (30' across = 1920 px; one texel row per bar row).",
       "Bottom half: the strobes in plan, downstage at the bottom (48' across = 1920 px; the riser's back edge at the middle).",
       "Template: fx-pixel-map.png (+ .svg labelled, .csv every texel) beside the session — Source 2 shows it on the rig. Send it at 1920 x 1080, filling the frame.",

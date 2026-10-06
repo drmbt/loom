@@ -85,12 +85,11 @@ export function inspectorShows(selection: readonly NodeId[]): ShowsValues {
 }
 
 /**
- * What the CONTROLS TAB draws a value of: a control, a Panel, and what a Panel lists by
- * name (a bank, a Layer, a cue list, a look's instance). A control an expression drives is
- * sampled by the tab itself (`ControlValuesContext`), not through this.
+ * What the CONTROLS TAB's LAYOUT draws a value of: a Panel's own (its Phone switch, in the
+ * header). T1668b: nothing else. The tab is laid out from structure, and each control on
+ * it — a widget, a bank, a layer, a cue list — reads its own node (`useLiveNode` in
+ * `src/editor/controls`), as the reset count and the Layers list read theirs. It used to
+ * render whole for any control's value. A control an expression drives is sampled by the
+ * tab itself (`ControlValuesContext`).
  */
-export const controlsShow: ShowsValues = (written, graph) =>
-  written.some((nodeId) => {
-    const type = graph.nodes[nodeId]?.type;
-    return type !== undefined && (type === "panel" || CONTROL_WIDGET_TYPES.has(type) || BOARD_NAMED_TYPES.has(type) || isComponentNodeType(type));
-  });
+export const controlsShow: ShowsValues = (written, graph) => written.some((nodeId) => graph.nodes[nodeId]?.type === "panel");

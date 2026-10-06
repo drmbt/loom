@@ -75,10 +75,17 @@ function mount(
 }
 
 const track = (channel: string) => screen.getByTestId(`value-track-lag-${channel}`);
-const fillWidth = (channel: string) =>
-  (track(channel).firstElementChild as HTMLElement | null)?.style.inlineSize;
-const fillStart = (channel: string) =>
-  (track(channel).firstElementChild as HTMLElement | null)?.style.insetInlineStart;
+/**
+ * T1653b: a bar is a SHARE of its track's box (`ShareFill`). Its box does not move; its
+ * paddings say where the drawn part begins and how much of the track is left after it.
+ */
+const drawn = (channel: string) => {
+  const style = (track(channel).firstElementChild as HTMLElement).style;
+  const start = Number.parseFloat(style.paddingInlineStart);
+  return { start, width: 100 - start - Number.parseFloat(style.paddingInlineEnd) };
+};
+const fillWidth = (channel: string) => `${String(Number(drawn(channel).width.toFixed(2)))}%`;
+const fillStart = (channel: string) => `${String(Number(drawn(channel).start.toFixed(2)))}%`;
 
 beforeAll(() => {
   installDomStubs();

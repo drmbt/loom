@@ -972,3 +972,137 @@ Each of the 62 Renders of the shipped examples and projects (the starter compone
 - The inspector's rows (the Cone of a Spot in Single mode is live now; the reason a casting spot's is not); the Problems pane showing the two warnings; a browser; a second GPU.
 - A named spot beside a pointset Light with no Range, both in the any-kind run: each kind is held alone, the two together were not rendered.
 - The driven cases of the two warnings (T1646b).
+
+## 16. T1623b slice 4 as built (2026-10-06): a Render's shadow maps are layers, each read through a 2D view
+
+The fourth slice of the one light path (`docs/light-cost-investigation-2026-10-06.md`, 11.3). Before it every casting Light had a shadow target of its own, with a depth buffer of its own. Now a Render has two layered targets, one for its directional Lights' maps and one for its point Lights' cube atlases, a layer a Light and one depth buffer a kind. **What a lit draw binds and reads did not change**: a texture a casting Light, `shadowMap{s}`, which is now a view of that Light's one layer. The lit text is main's text, character for character; no picture moved and no cost moved.
+
+That is not what the slice was briefed to build. It was briefed, and first built, with ONE `texture_2d_array` binding a kind and each block reading its layer at a literal index. That form is measured below, cost the lit draw 73 to 85 % more at four and eight casting Lights, and was ruled out (16.3).
+
+### 16.1 What a Render emits now
+
+- **Two resources of a new kind, `layers`**: `scratch:<render>:shadowMaps` (directional; twice the output) and `scratch:<render>:shadowCubes` (point; one and a half times, each layer the 3 x 2 atlas of cube faces it was), `r32float`, each present only when the Render has a casting Light of its kind.
+- **A slot's layer is its place among the slots of its own kind**, in slot order (`shadowLayers`, in `scene.ts`: the one answer, asked by the sweeps and by the bindings). A sun, a lamp, a lamp, a sun, a lamp are layers 0 and 1 of the maps and 0, 1 and 2 of the cubes.
+- **A sweep's passes name their layer** (`DrawPassDescriptor.layer`): the far plate that clears, and a draw a caster (a face). Their ids, their order, their shaders, their caster lists and their reach culling are what they were.
+- **A lit draw's bindings**: `shadowMap{s}`, one a casting Light as before, each `{ resourceId: the array of its kind, layer }`. The shadow matte's draw binds the same.
+- **Layers are allocated in steps**: 1, 2, 4, 8, then eights (`shadowLayerStep`). A third and a fourth casting sun are the same texture; a fifth is another. A spare layer costs its bytes and nothing else.
+- **Memory.** A layer is four bytes a texel: at 1920 x 1080, 31.6 MiB a directional map (3840 x 2160) and 17.8 MiB a cube atlas (2880 x 1620). Each array has ONE depth buffer of a layer's size, where each Light had its own, so an array of a step is never more than the Lights' own targets were (`step(n) + 1 <= 2n` at every n):
+
+  | Casting suns at 1920 x 1080 | Before: a target and a depth buffer a Light | Now: layers of a step and one depth buffer |
+  |---|---|---|
+  | 1 | 63.3 MiB | 63.3 MiB |
+  | 2 | 126.6 | 94.9 |
+  | 3 | 189.8 | 158.2 (a step of four) |
+  | 4 | 253.1 | 158.2 |
+  | 5 | 316.4 | 284.8 (a step of eight) |
+  | 8 | 506.3 | 284.8 |
+
+- **What bounds a Render's casting Lights is what bounded them**: the sixteen sampled textures a stage may bind, a texture a casting Light, refused by the compiler's own name (`compiler/binding-budget`). Sixteen casting Lights compile, seventeen do not. §V1029's two casting debts are the rows they were: a block of text and a binding a Light.
+- **Untouched**: the Light Depth output's sweep and the projectors' occlusion sweeps (each still a target of its own: a projector's becomes a layer of the directional array in slice 6, and nothing in this slice needs it sooner), MSAA, the Depth output, the caster lists (T1598b), the per-frame skip of a draw that is provably empty.
+
+### 16.2 What the backend gained
+
+The brief named the `ring` as the starting point: a texture with layers, a view a layer to draw into, one `2d-array` view to bind. What a layered shadow target needed that a ring does not have, and the other way round:
+
+| | A ring (T237, T321) | A layered target |
+|---|---|---|
+| Who writes a layer | one copy a frame, out of a single write target | a draw, straight into the layer it names |
+| Which layer is which | the ring rotates; a uniform says where "now" is | the plan says; nothing rotates and no uniform is merged |
+| Depth | none on the layers | one depth buffer shared by the layers |
+| Bound as | the whole array, or a tap (a layer some frames back) | the whole array (`array`), or one layer by its index (`layer`) |
+
+So it is a resource kind of its own, `layers`, and not a flag on `ring`: the two share two ideas and no mechanism.
+
+- **`LayeredTargetResourceDescriptor`** `{ kind: "layers", id, size, format, layers, depth?, label? }`. Its structure key holds its layer count; the memory estimate counts every layer and one depth buffer; the device's `maxTextureArrayLayers` is checked by name before the texture is asked for.
+- **`DrawPassDescriptor.layer`**. Required on a draw into a layered target and refused anywhere else. In the draw's key where it is set, so every other draw's key is the key it had.
+- **The shared depth buffer has one rule, and the reader enforces it**: draws into different layers are different render passes, so a layer's draws test against what that layer's own passes left provided its FIRST pass clears. A plan whose layer opens with a pass that does not clear is refused by name.
+- **Render-pass runs (T1604b)**: a run's identity gains its layer, so a run ends where the layer changes. A point Light's six faces stay one run; a Render's device pass count is what it was.
+- **`TextureBindingDescriptor.layer`**: bind one layer as a plain `texture_2d`. Refused outside the target's layers, on a target that has none, and beside `array`, `tap` or `live`. In the pass's key where it is set.
+- **In the vgpu backend** a layered target is one raw-device array texture, a `2d` view a layer and one `2d-array` view, each made once, and at most one depth texture (the same reach past vgpu as a ring's history: its `renderTarget` owns a texture of one layer). A layer is handed to vgpu's passes as a target: vgpu asks a target for a render pass descriptor, its formats, its sample count and its size, and gets them. It is carried across a structural recompile that leaves its key alone, destroyed when replaced, and cleared layer by layer at a document boundary.
+- **The Pipeline panel** draws it in the texture lane with its layer count.
+
+### 16.3 The form that was briefed, and why it is not what landed
+
+Built first, complete, and on the branch as checkpoints 2 to 6: `shadowMaps` and `shadowCubes` each ONE `texture_2d_array` binding, a block reading `textureLoad(shadowMaps, texel, <layer>, 0)`. Two bindings in place of N, the cap of sixteen gone. Every shipped picture was the bytes it was. Then the measurement the brief asked for:
+
+| Lit draw / reference (2560 x 1440, default Shadow Softness, a device pass a draw) | main | array at a literal layer | |
+|---|---|---|---|
+| 1 casting point Light | 0.255, 0.255 | 0.262, 0.244 | none |
+| 2 | 0.476, 0.488 | 0.727, 0.714 | +50 % |
+| 4 | 0.951, 0.958 | 1.609, 1.698 | +73 % |
+| 8 | 2.049, 2.047 | 3.905, 3.861 | +90 % |
+| 1 casting sun | 0.268, 0.262 | 0.302, 0.310 | +15 % |
+| 2 | 0.488, 0.465 | 0.610, 0.622 | +29 % |
+| 4 | 0.952, 0.930 | 1.310, 1.333 | +40 % |
+
+The whole of it is the READ of a `texture_2d_array`, and none of it the storage: a scratch copy of the tree with the same two layered targets and each block reading a `texture_2d` view of its layer draws at main's cost, with main's text. The full tables (raw WebGPU and the engine's text; textures, array, views, atlas; by softness; the sweeps; an atlas's size wall) are in `docs/light-cost-investigation-2026-10-06.md`, section 15.
+
+**Ruled (the lead, 2026-10-06): the views.** A slice whose gate is "no picture moves" does not move the lit draw by 50 to 90 %.
+
+**An atlas was measured and rejected.** One plain texture a kind with a rectangle a Light reads at a texture's cost (within 5 % in the engine, the rectangle a literal or a uniform), which would make slice 5's rows free. Against it: inside the baseline's 8,192 texels a side an atlas holds ONE casting sun and TWO casting point Lights at a 4K output (six and ten at 1080p), and must refuse the rest; its point Lights' sweeps cost 29 % more at four and 2.6 times at eight without a scissor the backend does not have; and it was not byte identical in one measured case of fourteen. A storage that refuses at a size wall is not the storage of a path whose point is that counts do not matter.
+
+### 16.4 Slice 5's first question
+
+The property slice 5 is for, "the lit text is the same for any number of casting Lights", has to be had WITHOUT reading an array at one and a half to nearly two times. Two candidates, to be measured before anything is built:
+
+1. **Layers as storage, a FIXED set of 2D view bindings a kind**, always declared (the unused ones bound to a spare layer), and a row's slot choosing among them by a `switch`. The text is fixed by a cap, and casting Lights are refused by name past it. To say: what the cap is against the sixteen-texture budget beside the material textures (T1658b), the environment, occlusion and the projectors; and what the `switch` costs.
+2. **The array, if the taps can be written so that it reads at a texture's cost.** The rise is not linear in the reads: nothing at one read a Light, 7 to 10 % at nine, 73 to 85 % at 25, 84 % at 49. That is the shape of a threshold in the compiler and not of a price a read. A bounded look, half a day: the taps as one loop with a computed offset against unrolled, the layer hoisted into a `let`, a helper function a tap, rows of taps; and what Apple's compiler output says of the two forms if it can be read. If one form reads flat, the array comes back and the cap goes entirely.
+
+Known already: on raw WebGPU the array's read costs 46 to 95 % more than a texture's at 25 reads and 34 % at nine, whatever the map's size or content; a nearest sampler in place of `textureLoad` costs the same; a layer read from a uniform costs a tenth more than a literal one.
+
+### 16.5 Measured, as landed
+
+Rule 12 throughout: a reference compute pass beside every frame, main's tree and this one loaded in one process and alternated, main first and last. Lit draw and sweeps over the reference, medians of each take; a PBR floor and a sheet over it; passes grouped into runs as the app draws them.
+
+| Casting Lights | Lit draw: main | Lit draw: slice 4 | Sweeps: main | Sweeps: slice 4 |
+|---|---|---|---|---|
+| 1 point, 1920 wide | 0.149, 0.163, 0.140 | 0.146, 0.156 | 0.024 to 0.045 | 0.034, 0.038 |
+| 2 point | 0.271, 0.286, 0.286 | 0.273, 0.283 | 0.070 to 0.083 | 0.082, 0.082 |
+| 4 point | 0.553, 0.562, 0.569 | 0.543, 0.558 | 0.170 to 0.196 | 0.182, 0.170 |
+| 8 point, 1280 wide | 0.586, 0.558, 0.569 | 0.562, 0.566 | 0.180 to 0.192 | 0.196, 0.207 |
+| 1 sun, 1920 wide | 0.140, 0.146, 0.133 | 0.152, 0.140 | 0.023 to 0.040 | 0.023, 0.023 |
+| 2 suns | 0.328, 0.271, 0.271 | 0.261, 0.265 | 0.065 to 0.089 | 0.065, 0.067 |
+| 4 suns | 0.537, 0.558, 0.542 | 0.556, 0.545 | 0.157 to 0.170 | 0.176, 0.189 |
+
+Every cell the same bytes as main, and the same lit text (51,872 characters at one point Light, 110,188 at eight). The machine was shared while this ran; a take differs from the next by more than the two trees differ.
+
+**Whole frames** (the whole frame's GPU time over the reference, summed over 40 frames; main, slice 4, main, slice 4, main, slice 4, main):
+
+| Document | main | slice 4 |
+|---|---|---|
+| The consumer's offline tier (five casting point Lights; 14 Lights) | 10.27, 9.74, 8.90, 8.84 | 9.70, 9.35, 8.87 |
+| E79 Crucible (two casting Lights) | 0.735, 0.720, 0.709, 0.701 | 0.712, 0.716, 0.734 |
+
+Neither moves: the offline tier's takes fall through the run in both trees, and each of slice 4's lies between its neighbours.
+
+### 16.6 Every shipped Render's picture
+
+Each of the 62 shipped Renders' own targets, frames 0 and 60, raw bytes, main (`9f337052`) against this slice, two takes; and a third take of the 27 Renders with a casting Light from the tree as it lands (main at `0fbe1348` merged), **27 of 27 the same bytes at both frames**, the furnace among them. The first two takes:
+
+- **61 are the same bytes at both frames in at least one take, and 58 in both.**
+- **The furnace** differs at frame 60 in both takes (293 and 627 channel values of 8.3 million) and at frame 0 in one. It is not the same picture run to run on main (B272), and by bytes it cannot be gated: rendered four times beside a second render of main's own tree, at frames 0, 30 and 60, MAIN DIFFERED FROM MAIN in eight of the twelve comparisons (by up to thousands of steps of a half float, in its sparks), and main against this slice was the same bytes in five. Its lit text is main's and its plan differs from main's only in the names this slice changes.
+- **Three of on-nothing's Renders differed at frame 0 in ONE take each, by one step of a half float**: hands (4 values) and split's car shot (15), which have no casting Light, and mirror (26). Each was then rendered again beside a second render of main's own tree: in every repeat main against this slice was the same bytes, except the one repeat in which MAIN DIFFERED FROM MAIN by the same values (split's car shot, one of three; mirror, one of six, 28 values). So frame 0 of these Renders is not the same picture run to run on main, about one run in six, by one step. Found on the way; not this slice's.
+
+### 16.7 Tests, and what was seen red
+
+- **New**: `layered-target.test.ts` (13, the plan contract and the mock device) and `vgpu/layered-target.gpu.test.ts` (7, Dawn) over `layered-target.fixture.ts`; `shadow-layers.test.ts` (11, no GPU) and `vgpu/shadow-layers.gpu.test.ts` (5, Dawn) over `shadow-layers.fixture.ts`.
+- **On Dawn**: a draw lands in the layer it names and the array is bound as that many layers; a layer bound as a plain 2D texture is the layer its binding names (bound out of order, and twice); a layer's draws are depth-tested against one another and every layer starts from a cleared depth; with a device pass a draw, a draw that does not clear finds its layer's colour and depth; a layered target of more layers than the device has is refused by name; a layer keeps its pixels from frame to frame and every layer is cleared at a document boundary; the layers are carried across a structural recompile and allocated anew when the count changes. Three casting suns, hard-edged and at Shadow Softness 1, each one's shadow where it throws it, of a box and of a plate off the middle; the same three in another order with the box drawn ahead of the floor; two casting lamps and a casting sun between them; sixteen casting suns.
+- **The fixture's plate.** With the box alone the scene is its own mirror image and so are the maps of suns that mirror one another: every sun made to read layer 0 left the three suns' test green. The plate breaks the symmetry and each sun's shadow of it is probed. Found by the mutation run.
+- **Claims re-derived, not loosened**: `scene-pipeline.test.ts` (a casting Light's map is a layer of the Render's array; its sweep names the layer; the lit draw binds `shadowMap0` at that layer and its text knows no array), `render-pass-runs.test.ts` (a run names its layer; the same runs and device pass counts).
+- **Pins.** Unmoved: B260's eighteen digests, `scene-ao.test.ts`, the seven one-sheet programs of `grid-sheets.test.ts`, §V1029's ledger: every one a pin of TEXT. Re-taken, each with its reason beside it: the four example plans of `light-points.test.ts` and the three of `grid-uv.test.ts` that have a casting Light, which pin whole plans; a plan names a layer where it named a target.
+- **50 mutations of the product, one at a time, 50 seen red.**
+
+### 16.8 Where it departs from the brief, for the lead
+
+- **A lit draw binds a texture a casting Light, not two arrays** (ruled; 16.3).
+- **No refusal by memory and none at 256 layers.** Both were built for the array form, where nothing else bounded the casting Lights. With a binding a Light the compiler's sixteen refuses first, and an array of a step is never more memory than main allocated; a budget would only have refused documents main renders (eight casting suns at a 4K output are 1.1 GiB of layers here and 2 GiB of targets on main). The budget and its name belong to the slice that lifts the cap.
+- **A new resource kind, not a ring with two flags** (16.2).
+
+### 16.9 Not checked, and found on the way
+
+- **`scene-mesh-instances.test.ts` was red on main since slice 3 landed** (two claims listed a lit draw's buffers and did not know the light table). Fixed, on main as `3cebb9dc`. It was found by reading the test tree for the old rule's statement; slice 3's own run had not named the file.
+- **Frame 0 of three on-nothing Renders is not the same picture run to run on main** (16.6).
+- **A device pass a draw (exact pass timing) inflates every sweep's span by an order of magnitude**, since each pass loads and stores its whole target. A sweep's figure taken in that mode says little of the app, and the lit draw's is unaffected.
+- **Primitive instances reading a layer other than the first on Dawn**: the instances generator's lookup is the surface generator's own function and its text is pinned, but no Dawn test puts a casting Light's second layer on an instances draw.
+- A browser; a second GPU; a device whose `maxTextureArrayLayers` is the floor of 256 (the refusal is tested against this device's own limit, whatever it reports).
+- An unfiltered test run, by accident: a scratch script handed vitest an empty list of files, which is the whole suite. It ran for about ten minutes before it was stopped, and its result was not read. The script refuses an empty list now.

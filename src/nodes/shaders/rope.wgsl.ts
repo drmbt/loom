@@ -3,14 +3,22 @@ import type { EmittedWgsl } from "../../runtime/backend/wgsl.ts";
 import { ZERO_SEGMENT_SQUARED } from "../../points/curve.ts";
 import {
   ROPE_BEND_BAND,
+  ROPE_BEND_CLOSE,
   ROPE_BEND_FLOOR,
+  ROPE_BEND_GAP,
+  ROPE_BEND_OPEN_AGAIN,
+  ROPE_BEND_OPEN_MOST,
   ROPE_BEND_SOFTENING,
   ROPE_BEND_STEP,
   ROPE_BEND_TOLERANCE,
+  ROPE_BEND_YIELD,
+  ROPE_BEND_YIELD_WAIT,
   ROPE_HELD_FROM,
   ROPE_MAX_ITERATIONS,
   ROPE_PIN_SOFTENING,
   ROPE_PIVOT_FLOOR,
+  ROPE_REACH_SHARE,
+  ROPE_REACH_SLACK,
   ROPE_TOLERANCE,
   ROPE_TOLERANCE_FLOOR,
 } from "../../points/rope.ts";
@@ -91,9 +99,22 @@ import {
  * pins it by fingerprint. With it on, the Newton step is the reference's banded one: the
  * joint at each point and the segment after it are two rows, eliminated in that order by an
  * LDLᵀ whose window is the last four rows, and substituted back the other way. `scratch`
- * is then sixteen floats a point: the working position, the inverse mass, the segment's
- * multiplier, the joint's, and five floats for each of the point's two rows (the solved
- * right-hand side and four multipliers to the rows before it).
+ * is then twenty floats a point: the working position, the inverse mass, the segment's
+ * multiplier, the joint's, five floats for each of the point's two rows (the solved
+ * right-hand side and four multipliers to the rows before it), where the point was placed,
+ * and the joint's clock.
+ *
+ * ## What a step leaves for the next (slice 4b)
+ *
+ * Two things, and neither is in the state pair. A point's INVERSE MASS stays in `scratch`
+ * from one step to the next, and `place` reads it before the step writes it: a point whose
+ * inverse mass was nothing was a hard pin at the last step, which is all the speedless
+ * take-up (the reference's D38) has to know. And with Bend Limit on each joint keeps its
+ * OPENING, in the fourth float of its point's second `kept` vector, and its CLOCK, in the
+ * twentieth float of its point's scratch (the reference's D41). The strand's first point has
+ * no joint: its clock's float says whether any joint of the strand has an opening or a
+ * clock, so a strand with neither, in a step no joint is in trouble in, does not walk its
+ * joints a third time.
  */
 
 /** A scalar attribute upstream: which bound buffer, the word its region starts at, a point's stride in words, and the component read. */
@@ -123,7 +144,7 @@ export interface RopeShaderOptions {
   readonly anchorLast?: RopeScalarRegion;
   /** The pin attribute: a weight on every point. */
   readonly pin?: RopeScalarRegion;
-  /** Bend Limit is on: the banded step, and sixteen floats of scratch a point. */
+  /** Bend Limit is on: the banded step, and twenty floats of scratch a point. */
   readonly bend?: boolean;
 }
 
@@ -152,13 +173,15 @@ const BEND_LAYOUT = `/* The twenty floats scratch holds per point with Bend Limi
    position while a step solves (three), its inverse mass, the multiplier of the segment
    AFTER it and of the joint AT it, each summed over the Newton steps, and five floats for
    each of its two rows — the joint's, then the segment's: the solved right-hand side and
-   the four multipliers to the rows before it. */
+   the four multipliers to the rows before it; where the point was placed (three); and the
+   joint's clock, which the step after this one reads. */
 const INVERSE: u32 = 3u;
 const MULTIPLIER: u32 = 4u;
 const TURNED: u32 = 5u;
 const JOINT_ROW: u32 = 6u;
 const SEGMENT_ROW: u32 = 11u;
-const PLACED: u32 = 16u;`;
+const PLACED: u32 = 16u;
+const YIELDING: u32 = 19u;`;
 
 const BEND_FUNCTIONS = `/* What a joint's row is raised by, as a share of its pivot; how near its limit a joint
    counts as on it; how far inside it a joint is still held; metres of a stored position's
@@ -170,6 +193,18 @@ const BEND_BAND: f32 = ${literal(ROPE_BEND_BAND)};
 const BEND_FLOOR: f32 = ${ROPE_BEND_FLOOR};
 const PIVOT_FLOOR: f32 = ${literal(ROPE_PIVOT_FLOOR)};
 const BEND_STEP: f32 = ${literal(ROPE_BEND_STEP)};
+/* The hinge: radians a joint may give before it is in trouble; seconds of trouble before its
+   limit moves; the most it opens by a step, and by a step solved without the limit; how far
+   beyond its joint an open limit is left; what it closes by a step. */
+const BEND_YIELD: f32 = ${literal(ROPE_BEND_YIELD)};
+const BEND_YIELD_WAIT: f32 = ${literal(ROPE_BEND_YIELD_WAIT)};
+const BEND_OPEN_MOST: f32 = ${literal(ROPE_BEND_OPEN_MOST)};
+const BEND_OPEN_AGAIN: f32 = ${literal(ROPE_BEND_OPEN_AGAIN)};
+const BEND_GAP: f32 = ${literal(ROPE_BEND_GAP)};
+const BEND_CLOSE: f32 = ${literal(ROPE_BEND_CLOSE)};
+/* In a joint's clock: its limit was put where the joint stands, and is left alone until the joint comes in. */
+const LEFT_ALONE: f32 = -1.0;
+const PI: f32 = 3.141592653589793;
 
 struct Measured {
   direction: vec3f,
@@ -240,6 +275,23 @@ fn loadPlaced(slot: u32) -> vec3f {
 /* The most a joint between segments of these rest lengths may turn, as twice the sine of half of it. */
 fn mostOf(a: f32, b: f32) -> f32 {
   return min(2.0, (a + b) / (2.0 * max(params.minBendRadius, 0.000001)));
+}
+
+/* Whether any joint of the strand being walked has an opening or a clock: its first point's clock float, read once a step. */
+var<private> h_open: bool;
+
+/* The limit of the joint at a slot with its opening, as twice the sine of half of it. On a
+   strand none of whose joints has one, the plain limit and nothing read. */
+fn limitOf(slot: u32, a: f32, b: f32) -> f32 {
+  let plain = mostOf(a, b);
+  if (!h_open) {
+    return plain;
+  }
+  let opening = kept[slot * 2u + 1u].w;
+  if (!(opening > 0.0)) {
+    return plain;
+  }
+  return min(2.0, 2.0 * sin(min(PI, 2.0 * asin(plain / 2.0) + opening) / 2.0));
 }
 
 /* What a joint gives by, per unit it has pushed: the softening's share of the diagonal its
@@ -316,6 +368,20 @@ fn substitute(at: u32) -> f32 {
   return lambda;
 }
 
+/* Is segment k between these two points beyond Max Stretch by more than the solve's own
+   tolerance of its length (B277)? Asked only of a segment the guard's exact test has already
+   found beyond it: this is what asks for a step to be solved again, and at a Max Stretch of
+   nothing a rounding fails the exact test in every step. */
+fn past(base: u32, k: u32, low: vec3f, high: vec3f) -> bool {
+  let rest = restOf(base + k);
+  let span = high - low;
+  let squared = dot(span, span);
+  let slack = TOLERANCE * rest + TOLERANCE_FLOOR;
+  let longest = rest * (1.0 + params.maxStretch) + slack;
+  let shorter = max(0.0, rest * max(0.0, 1.0 - params.maxStretch) - slack);
+  return squared > longest * longest || squared < shorter * shorter;
+}
+
 /* Is the joint at point j, between these three points, still beyond its tolerance of its limit? */
 fn lookAt(base: u32, j: u32, low: vec3f, middle: vec3f, high: vec3f) -> bool {
   let at = (base + j) * 20u;
@@ -332,7 +398,7 @@ fn lookAt(base: u32, j: u32, low: vec3f, middle: vec3f, high: vec3f) -> bool {
   let kappa = (high - middle) * far - (middle - low) * near;
   /* Its limit, its tolerance, and what it gives by for what it has pushed. */
   let give = giveOf(scratch[at - 20u + INVERSE], scratch[at + INVERSE], scratch[at + 20u + INVERSE], a, b);
-  let allowed = (mostOf(a, b) * (1.0 + BEND_TOLERANCE) + BEND_FLOOR * (near + far)) + give * max(-scratch[at + TURNED], 0.0);
+  let allowed = (limitOf(base + j, a, b) * (1.0 + BEND_TOLERANCE) + BEND_FLOOR * (near + far)) + give * max(-scratch[at + TURNED], 0.0);
   return dot(kappa, kappa) > allowed * allowed;
 }
 
@@ -374,7 +440,7 @@ export function ropeStepWgsl(options: RopeShaderOptions): EmittedWgsl {
       var higherInverse = 0.0;
       var gathered = 0.0;
       if (iteration == 0u) {
-        s_reach = s_reach + rest * (1.0 + limit);
+        s_reach = s_reach + rest * (1.0 + min(limit, max(REACH_SLACK, (REACH_SHARE * ((params.stretch * rest) / hh)) / params.inverseMass)));
         let placed = place(k + 1u);
         higher = placed.xyz;
         higherInverse = placed.w;
@@ -437,7 +503,7 @@ export function ropeStepWgsl(options: RopeShaderOptions): EmittedWgsl {
       scratch[at + MULTIPLIER] = total;
       if (scratch[at + 8u + INVERSE] > 0.0) {
         storePosition(slot + 1u, moved + origin);
-        storeVelocity(slot + 1u, (moved - (loadPosition(slot + 1u) - originWas)) / h);
+        storeVelocity(slot + 1u, speedOf(k + 1u, moved));
       }
 ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segments) {
         let left = look(base, k + 1u, moved, aboveNow, hh);
@@ -482,10 +548,28 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
      joint in the system: the rope keeps its length and its pins, and the bend gives.
      Where that step cannot be finished either (a step too coarse for the strand, limit or
      no limit) the first answer is the better one to hand the guard, and it is solved a
-     third time as it was the first. */
+     third time as it was the first. "Beyond" here is beyond by more than the solve's own
+     tolerance of a length (B277); the guard's test stays exact. */
   storePlaced(base, loadWork(base));
+  /* What the hinge is told of the last Newton step run: whether the limit was in it, whether
+     it left a segment out of its tolerance, whether it left anything out of its own, whether
+     the step was solved more than once, whether a joint pushed, and whether one gave more
+     than the yield. */
+  var withLimit = true;
+  /* With the limit on, what asks for another solve AND what calls the guard: a segment beyond
+     Max Stretch by more than the solve's own tolerance (B277). The exact test fails on a
+     rounding in every step at a Max Stretch of nothing. */
+  var beyond = false;
+  var lengthsOpen = false;
+  var finished = true;
+  var again = false;
+  var pushing = false;
+  var over = false;
+  h_open = scratch[base * 20u + YIELDING] != 0.0;
   for (var attempt = 0u; attempt < 3u; attempt = attempt + 1u) {
     let limited = attempt != 1u;
+    withLimit = limited;
+    again = attempt > 0u;
     if (attempt > 0u) {
       storeWork(base, loadPlaced(base));
     }
@@ -530,7 +614,7 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
         var pushed = 0.0;
         if (iteration == 0u) {
           if (attempt == 0u) {
-            s_reach = s_reach + rest * (1.0 + limit);
+            s_reach = s_reach + rest * (1.0 + min(limit, max(REACH_SLACK, (REACH_SHARE * ((params.stretch * rest) / hh)) / params.inverseMass)));
             let placed = place(k + 1u);
             higher = placed.xyz;
             higherInverse = placed.w;
@@ -565,7 +649,7 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
         if (limited && k > 0u && restWas > 0.0 && rest > 0.0 && (beforeInverse + lowerInverse) + higherInverse > 0.0) {
           let apart = here.direction - directionWas;
           let gap = dot(apart, apart);
-          let most = mostOf(restWas, rest);
+          let most = limitOf(slot, restWas, rest);
           let nearly = most * (1.0 - BEND_BAND);
           if (gap > most * most || pushed < 0.0 || (pushed == 0.0 && gap > nearly * nearly)) {
             let joint = hinge(directionWas, sizeWas, here.direction, here.size);
@@ -621,6 +705,10 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
       /* Back: substitute row by row, move each point, store it, and look at what is left. */
       var converged = true;
       exceeded = false;
+      beyond = false;
+      lengthsOpen = false;
+      pushing = false;
+      over = false;
       e_p1 = 0.0;
       e_p2 = 0.0;
       e_p3 = 0.0;
@@ -645,7 +733,8 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
         let turnHere = substitute(at + JOINT_ROW);
         let lowerWas = loadWork(slot);
         let higherWas = loadWork(slot + 1u);
-        let here = measure(lowerWas, higherWas, restOf(slot));
+        let restHere = restOf(slot);
+        let here = measure(lowerWas, higherWas, restHere);
         /* The joint's gradient, from the three points as they were: only a joint that was in
            the system has a multiplier. */
         var low = vec3f(0.0);
@@ -675,17 +764,27 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
         if (turnHere != 0.0 && turnedNow > 0.0) {
           converged = false;
         }
+        if (limited && k > 0u && turnedNow < 0.0) {
+          pushing = true;
+          if (giveOf(scratch[at - 20u + INVERSE], scratch[at + INVERSE], scratch[at + 20u + INVERSE], restOf(slot - 1u), restHere) * (-turnedNow) > BEND_YIELD) {
+            over = true;
+          }
+        }
         if (scratch[at + 20u + INVERSE] > 0.0) {
           storePosition(slot + 1u, moved + origin);
-          storeVelocity(slot + 1u, (moved - (loadPosition(slot + 1u) - originWas)) / h);
+          storeVelocity(slot + 1u, speedOf(k + 1u, moved));
         }
   ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segments) {
           let left = look(base, k + 1u, moved, aboveNow, hh);
           if (left.x == 1u) {
             exceeded = true;
+            if (past(base, k + 1u, moved, aboveNow)) {
+              beyond = true;
+            }
           }
           if (left.y == 1u) {
             converged = false;
+            lengthsOpen = true;
           }
         }
         if (k + 2u < segments) {
@@ -714,22 +813,115 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
       let left = look(base, 0u, solved, aboveNow, hh);
       if (left.x == 1u) {
         exceeded = true;
+        if (past(base, 0u, solved, aboveNow)) {
+          beyond = true;
+        }
       }
       if (left.y == 1u) {
         converged = false;
+        lengthsOpen = true;
       }
       if (segments > 1u) {
         if (lookAt(base, 1u, solved, aboveNow, aboveNext)) {
           converged = false;
         }
       }
+      finished = converged;
       if (converged) {
         break;
       }
     }
-    if (!exceeded) {
+    if (!beyond) {
       break;
     }
+  }
+
+  /* THE HINGE (the reference's D41): a limit that cannot be met is opened; one whose joint
+     has straightened follows it in. A strand none of whose joints has an opening or a clock,
+     after a step solved with the limit in which none is in trouble, has nothing to do here. */
+  if (!withLimit || over || (pushing && lengthsOpen) || h_open) {
+    var kept_any = 0.0;
+    for (var j = 1u; j < segments; j = j + 1u) {
+      let slot = base + j;
+      let at = slot * 20u;
+      let beforeInverse = scratch[at - 20u + INVERSE];
+      let hereInverse = scratch[at + INVERSE];
+      let afterInverse = scratch[at + 20u + INVERSE];
+      if (!((beforeInverse + hereInverse) + afterInverse > 0.0)) {
+        continue;
+      }
+      let a = restOf(slot - 1u);
+      let b = restOf(slot);
+      if (!(a > 0.0 && b > 0.0)) {
+        continue;
+      }
+      var opening = kept[slot * 2u + 1u].w;
+      var yielding = scratch[at + YIELDING];
+      var gave = 0.0;
+      if (withLimit) {
+        gave = giveOf(beforeInverse, hereInverse, afterInverse, a, b) * max(-scratch[at + TURNED], 0.0);
+      }
+      let troubled = gave > BEND_YIELD || (gave > 0.0 && lengthsOpen);
+      if (withLimit && !troubled && !(opening > 0.0) && yielding == 0.0) {
+        continue;
+      }
+      /* How far past its limit, as it is with nothing open, the joint stands. */
+      let middle = loadWork(slot);
+      let first = measure(loadWork(slot - 1u), middle, a);
+      let second = measure(middle, loadWork(slot + 1u), b);
+      let apart = second.direction - first.direction;
+      let together = second.direction + first.direction;
+      let turn = 2.0 * atan2(sqrt(dot(apart, apart)), sqrt(dot(together, together)));
+      let excess = turn - 2.0 * asin(mostOf(a, b) / 2.0);
+      if (!withLimit) {
+        /* The step was solved without the limit: toward where that left the joint. */
+        yielding = 0.0;
+        if (excess > opening) {
+          opening = min(excess, opening + BEND_OPEN_AGAIN);
+        }
+      } else if (troubled) {
+        /* In trouble: it gives more than the yield, or it pushes on a strand that could not keep its lengths. */
+        yielding = max(yielding, 0.0) + h;
+        if (yielding > BEND_YIELD_WAIT) {
+          if (gave > BEND_YIELD) {
+            opening = opening + min((gave - BEND_YIELD / 2.0) / 2.0, BEND_OPEN_MOST);
+          } else {
+            /* To where the joint stands, with a gap, and left alone: it asks nothing more of the strand. */
+            opening = max(opening, excess + BEND_GAP);
+            yielding = LEFT_ALONE;
+          }
+        }
+      } else if (!(yielding < 0.0)) {
+        yielding = 0.0;
+        /* An open limit closes onto a joint that gives less than half the yield, a step at a time, while the solve finishes. */
+        if (opening > 0.0 && gave < BEND_YIELD / 2.0 && finished && !again) {
+          opening = max(0.0, opening - BEND_CLOSE);
+        }
+      }
+      if (yielding < 0.0) {
+        /* Left alone: its limit follows the joint in only once the joint has come in by more
+           than the gap, and is then left alone no longer. */
+        if (excess + 2.0 * BEND_GAP < opening) {
+          opening = max(0.0, excess + BEND_GAP);
+          yielding = 0.0;
+        }
+      } else if (opening > 0.0 && excess + BEND_GAP < opening) {
+        /* ...and at once behind a joint that has straightened. */
+        opening = max(0.0, excess + BEND_GAP);
+      }
+      if (!(excess > 0.0)) {
+        opening = 0.0;
+        if (yielding < 0.0) {
+          yielding = 0.0;
+        }
+      }
+      kept[slot * 2u + 1u].w = opening;
+      scratch[at + YIELDING] = yielding;
+      if (opening > 0.0 || yielding != 0.0) {
+        kept_any = 1.0;
+      }
+    }
+    scratch[base * 20u + YIELDING] = kept_any;
   }
 
 `;
@@ -752,6 +944,10 @@ const TOLERANCE_FLOOR: f32 = ${ROPE_TOLERANCE_FLOOR};
 const MAX_ITERATIONS: u32 = ${ROPE_MAX_ITERATIONS}u;
 /* What each pivot is raised by, as a share of it, on a strand with two or more anchors. */
 const PIN_SOFTENING: f32 = ${literal(ROPE_PIN_SOFTENING)};
+/* How far past its rest length a pin may ask a segment to be, as a share of Stretch x length x mass / step squared (B276). */
+const REACH_SHARE: f32 = ${literal(ROPE_REACH_SHARE)};
+/* ...and the least it reaches past it where Max Stretch allows any: an eighth of the solve's tolerance of a length. */
+const REACH_SLACK: f32 = ${literal(ROPE_REACH_SLACK)};
 /* A pin attribute is named: every point may be anchored, and keeps its target's history. */
 const PINNED: bool = ${pinned ? "true" : "false"};
 const TAU: f32 = 6.283185307179586;
@@ -830,7 +1026,9 @@ ${tension("    storeTension(slot, 0.0);\n")}    var rest = 0.0;
     }
     kept[slot * 2u] = vec4f(here, rest);
     kept[slot * 2u + 1u] = vec4f(0.0);
-  }
+    /* No point was held at a step before this one. */
+    scratch[slot * ${stride}u + INVERSE] = 1.0;
+${bend ? "    /* ...and no joint has a clock. */\n    scratch[slot * 20u + YIELDING] = 0.0;\n" : ""}  }
 }
 
 /* A step of no length: every word a run writes, carried over as it is. */
@@ -873,15 +1071,19 @@ fn look(base: u32, k: u32, low: vec3f, high: vec3f, hh: f32) -> vec2u {
 }
 
 /* A point set no nearer and no further from another than its segment may be: Max Stretch,
-   on both sides of the rest length. */
-fn within(solved: vec3f, other: vec3f, rest: f32) -> vec3f {
+   on both sides of the rest length. A segment let go in this step (the reference's D38) is
+   taken up to its own length: what it was held over-long by is no stretch the rope earned. */
+fn within(solved: vec3f, other: vec3f, rest: f32, letGo: bool) -> vec3f {
   let span = solved - other;
   let squared = dot(span, span);
   if (!(squared > ZERO_SEGMENT_SQUARED)) {
     return solved;
   }
   let size = sqrt(squared);
-  let most = rest * (1.0 + params.maxStretch);
+  var most = rest * (1.0 + params.maxStretch);
+  if (letGo) {
+    most = rest;
+  }
   let least = rest * max(0.0, 1.0 - params.maxStretch);
   if (size > most) {
     return other + span * (most / size);
@@ -920,6 +1122,15 @@ var<private> s_free: bool;
 var<private> s_reach: f32;
 /* The last hard pin on the strand, by point; -1 when it has none. */
 var<private> s_lastPin: i32;
+/* THE SPEEDLESS TAKE-UP (the reference's D38). Two held points that are neighbours hold the
+   segment between them at whatever length they are told. In the step one of them comes free,
+   that segment is the rope's again and takes its own length back, in POSITIONS ONLY.
+   s_released is the first point after such a segment, or the strand's point count: from it
+   on, a point is stored with the speed it was predicted with. The other two: whether the
+   point before the one being placed was a hard pin at the last step, and is one in this. */
+var<private> s_released: u32;
+var<private> s_heldBefore: bool;
+var<private> s_heldBehind: bool;
 
 /* Predict point i, pull it by its anchor, and hand the solve its working position (xyz) and
    its inverse mass (w). A hard pin is STORED here, as its target, and the solve does not
@@ -1022,7 +1233,26 @@ fn place(i: u32) -> vec4f {
   if (weighs > 0.0) {
     s_free = true;
   }
+  /* The point's inverse mass at the last step is still in scratch: the caller writes this step's after this. */
+  let wasHeld = !(scratch[slot * ${stride}u + INVERSE] > 0.0);
+  let isHeld = !(weighs > 0.0);
+  if (i > 0u && s_released == s_cols && s_heldBefore && wasHeld && !(s_heldBehind && isHeld)) {
+    s_released = i;
+  }
+  s_heldBefore = wasHeld;
+  s_heldBehind = isHeld;
   return vec4f(placed, weighs);
+}
+
+/* The speed point i is stored with, moved to here by the step: what moved it, or from the
+   first released point on what it was predicted with. */
+fn speedOf(i: u32, moved: vec3f) -> vec3f {
+  let slot = s_base + i;
+  if (i < s_released) {
+    return (moved - (loadPosition(slot) - s_originWas)) / s_h;
+  }
+  let v = loadVelocity(slot) * s_keep;
+  return vec3f(v.x, v.y - s_drop / s_h, v.z);
 }
 
 ${bend ? BEND_FUNCTIONS : ""}@compute @workgroup_size(64)
@@ -1128,6 +1358,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   s_free = false;
   s_reach = 0.0;
   s_lastPin = -1;
+  s_released = cols;
+  s_heldBefore = false;
+  s_heldBehind = false;
 
   /* The first point: predicted, then pulled by its anchor. */
   let firstStart = loadPosition(base) - originWas;
@@ -1143,8 +1376,8 @@ ${tension("  storeTension(base + segments, 0.0);\n")}
     return;
   }
 
-${bend ? bandedLoop : tridiagonalLoop}  /* The guard: only on a step that left a segment beyond Max Stretch. Positions only. */
-  if (!exceeded) {
+${bend ? bandedLoop : tridiagonalLoop}  /* The guard: only on a step that left a segment beyond Max Stretch, or let one go. Positions only. */
+  if (!${bend ? "beyond" : "exceeded"} && s_released == cols) {
     return;
   }
   /* BACK FROM THE LAST PIN FIRST (the design's D24). The walk out from the first point
@@ -1160,7 +1393,7 @@ ${bend ? bandedLoop : tridiagonalLoop}  /* The guard: only on a step that left a
       let slot = base + last - 1u - back;
       var placed = loadWork(slot);
       if (scratch[slot * ${stride}u + INVERSE] > 0.0) {
-        placed = within(placed, ahead, restOf(slot));
+        placed = within(placed, ahead, restOf(slot), last - back >= s_released);
         storeWork(slot, placed);
       }
       ahead = placed;
@@ -1174,7 +1407,7 @@ ${bend ? bandedLoop : tridiagonalLoop}  /* The guard: only on a step that left a
     let slot = base + i;
     var placed = loadWork(slot);
     if (scratch[slot * ${stride}u + INVERSE] > 0.0) {
-      placed = within(placed, resting, restOf(slot - 1u));
+      placed = within(placed, resting, restOf(slot - 1u), i >= s_released);
     }
     resting = placed;
     /* A pinned point keeps the target it was stored at. */

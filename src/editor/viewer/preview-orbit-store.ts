@@ -73,15 +73,27 @@ export interface PreviewOrbitStore {
    *
    * Inert in home mode, like `apply` and `zoom`; the caller enters adjustable first.
    *
-   * ⚑ OPTIONAL, like `frameContent` and `release`, and the absence is a REFUSAL rather
-   * than an omission: `createCameraGizmoStore` wears this same interface and its writes
-   * land on a DOCUMENT camera node through the command bus (§T1314b). Flying that is a
-   * different feature with a different ruling — undoable, audited, confirm-before-
-   * replacing a driven channel — and a `fly` inherited by accident would have made the
-   * view-only gesture quietly destructive on exactly one surface. A caller that cannot
-   * see this method has a store that does not fly, and must not offer the control.
+   * ⚑ OPTIONAL, like `frameContent` and `release`: a caller that cannot see this method
+   * has a store that does not fly, and must not offer the control.
+   *
+   * §T970: `createCameraGizmoStore` wears this same interface, its writes land on a
+   * DOCUMENT node through the command bus (§T1314b), and it flies too, by its own ruling
+   * and not by inheriting this one: every move is an edit, one flight is one undo step
+   * (closed by `release`), and a driven channel is masked and never replaced. The radius
+   * its delta is scaled by is the distance from Eye to Look At, which a flight keeps.
    */
   fly?(nodeId: NodeId, delta: readonly [number, number, number]): void;
+  /**
+   * §T970: where the camera IS, for a store whose camera is not a stock framing moved by
+   * deltas. The viewer's flight asks this for the axes W and D run along; the inspection
+   * store has no use for it (its pose is `orbitPose(basis, get(nodeId))`).
+   */
+  pose?(nodeId: NodeId): {
+    readonly eye: readonly [number, number, number];
+    readonly lookAt: readonly [number, number, number];
+    /** §T1671b: the world's up in the pose's coordinates, when it is not +y (`CameraPose.up`). */
+    readonly up?: readonly [number, number, number];
+  } | null;
   reset(nodeId: NodeId): void;
   /**
    * T379 — home to MEASURED CONTENT: enter adjustable with a content frame under zero
@@ -225,5 +237,6 @@ export function prefixedOrbitStore(store: PreviewOrbitStore, prefix: string): Pr
       ? {}
       : { frameContent: (nodeId, frame) => store.frameContent!(flat(nodeId), frame) }),
     ...(store.release === undefined ? {} : { release: (nodeId) => store.release!(flat(nodeId)) }),
+    ...(store.pose === undefined ? {} : { pose: (nodeId: NodeId) => store.pose!(flat(nodeId)) }),
   };
 }

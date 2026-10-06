@@ -48,10 +48,11 @@
 .panel .track {
   height: var(--control-h-lg);
 }
+/* The track's size, always: how much of it is drawn is `ShareFill`'s (T1653b). */
 .fill {
   position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--signal);
+  inset: 0;
+  background-color: var(--signal);
   opacity: 0.85;
 }
 /*
@@ -89,14 +90,27 @@
 .panel .pad {
   max-width: calc(var(--space-48) * 3.75);
 }
+/*
+ * T1669b — THE PUCK IS DRAWN, NOT MOVED. It was a 16px disc placed by `left` and `bottom`:
+ * a box that moves, and to Chromium that is a changed paint chunk and a full compositor
+ * update for every position a finger drags it through (`src/ui/primitives/share-fill.tsx`
+ * has the rule and its measurements). Measured on this pad, one way at a time: `left` and
+ * `bottom`, a full update a move; `transform` on the same box, a full update a move; a box
+ * that does not move and DRAWS the disc where the value is, none.
+ *
+ * So this box is the pad plus half a puck all round, always, and the widget writes where
+ * its background sits: a disc one puck across, at `x% (100 - y)%` — a background's
+ * position is measured over the box less the image, which is the pad exactly. Not the same
+ * pixels as the box it replaces: the disc's edge is a gradient's, not a rounded corner's.
+ * It takes no pointer: a press goes to the pad, as it did.
+ */
 .puck {
   position: absolute;
-  width: var(--space-4);
-  height: var(--space-4);
-  margin: calc(var(--space-4) / -2) 0 0 calc(var(--space-4) / -2);
-  transform: translateY(50%);
-  border-radius: var(--radius-pill);
-  background: var(--signal);
+  inset: calc(var(--space-4) / -2);
+  background-image: radial-gradient(circle closest-side, var(--signal) calc(100% - 0.5px), transparent 100%);
+  background-size: var(--space-4) var(--space-4);
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 /* T1619b — a pad's default: a ring the puck sits in while it is there, and leaves behind. */
 .home {

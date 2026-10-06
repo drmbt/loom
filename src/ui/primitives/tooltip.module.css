@@ -13,6 +13,11 @@
   animation: fade var(--dur-instant) var(--ease-out);
 }
 
+/* B273: an entry and no exit, so closed is gone at once (`popover.module.css` has the reason). */
+.content[data-state="closed"] {
+  animation: none;
+}
+
 /* Keyboard hints and numerics inside a tooltip stay monospace. */
 .content kbd {
   padding: 0 var(--space-1);

@@ -893,7 +893,7 @@ function segmentsOf(
 function laneDetail(resource: ResourceDescriptor): string {
   const sized = sizedResource(resource);
   if (sized !== null) {
-    const frames = "frames" in resource ? ` ×${resource.frames}` : "";
+    const frames = "frames" in resource ? ` ×${resource.frames}` : resource.kind === "layers" ? ` ×${resource.layers} layers` : "";
     return `${describeSize(sized.size)} ${sized.format}${frames}`;
   }
   if ("capacity" in resource) return `${resource.capacity} × ${resource.stride} B`;
@@ -1025,6 +1025,10 @@ function buildLimits(plan: CompiledGraph, capabilities: BackendCapabilities): Pi
     }
     if ("frames" in resource) {
       layers.push({ asks: resource.frames, note: `${resource.id} holds ${resource.frames} frames` });
+    }
+    // T1623b: a layered target is one array texture too, and asks the same limit.
+    if (resource.kind === "layers") {
+      layers.push({ asks: resource.layers, note: `${resource.id} has ${resource.layers} layers` });
     }
     if ("capacity" in resource) {
       bytes.push({

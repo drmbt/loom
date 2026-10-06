@@ -2755,7 +2755,7 @@
                   },
                   "mode": "expression"
                 },
-                "floorY": 1.4,
+                "floorY": 1.8572,
                 "fog": {
                   "bindings": {
                     "expression": {
@@ -3142,7 +3142,7 @@
                   },
                   "mode": "expression"
                 },
-                "floorY": 1.4,
+                "floorY": 1.8572,
                 "fog": {
                   "bindings": {
                     "expression": {
@@ -3529,7 +3529,7 @@
                   },
                   "mode": "expression"
                 },
-                "floorY": 1.4,
+                "floorY": 1.8572,
                 "fog": {
                   "bindings": {
                     "expression": {
@@ -3988,7 +3988,7 @@
               "type": "render"
             }
           },
-          "revision": 1
+          "revision": 2
         },
         "inputs": [
           {
@@ -7128,7 +7128,7 @@
               "id": "geoCurtainDepth",
               "label": "geometry_curtainDepth",
               "parameters": {
-                "material": "material_surface",
+                "material": "material_depth",
                 "mode": "surface"
               },
               "position": {
@@ -7185,7 +7185,7 @@
               "id": "geoKabukiDepth",
               "label": "geometry_kabukiDepth",
               "parameters": {
-                "material": "material_surface",
+                "material": "material_depth",
                 "mode": "surface"
               },
               "position": {
@@ -7499,6 +7499,26 @@
               },
               "type": "materialPbr"
             },
+            "matDepth": {
+              "definitionVersion": 1,
+              "id": "matDepth",
+              "label": "material_depth",
+              "parameters": {
+                "color": [
+                  0.8,
+                  0.8,
+                  0.8,
+                  1
+                ],
+                "mapExtendU": "hold",
+                "mapExtendV": "hold"
+              },
+              "position": {
+                "x": -4400,
+                "y": 3700
+              },
+              "type": "materialUnlit"
+            },
             "matDrape": {
               "definitionVersion": 1,
               "id": "matDrape",
@@ -7683,7 +7703,7 @@
               "type": "pointKernel"
             }
           },
-          "revision": 1
+          "revision": 3
         },
         "inputs": [
           {

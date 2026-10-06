@@ -360,7 +360,24 @@ interface PresentationState {
   lastPresentTime: number | undefined;
 }
 
+/**
+ * VNB13 — an image's bytes with its rows in the opposite order: a bottom-first frame as the
+ * top-first one a texture is written from. `scratch` is reused when it is the right size, so
+ * a source that sends bottom-first bytes every frame allocates once.
+ */
+export function rowsReversed(bytes: Uint8Array, bytesPerRow: number, rows: number, scratch?: Uint8Array): Uint8Array {
+  const length = bytesPerRow * rows;
+  const out = scratch !== undefined && scratch.byteLength === length ? scratch : new Uint8Array(length);
+  for (let row = 0; row < rows; row += 1) {
+    const from = (rows - 1 - row) * bytesPerRow;
+    out.set(bytes.subarray(from, from + bytesPerRow), row * bytesPerRow);
+  }
+  return out;
+}
+
 export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend {
+  /** VNB13: the buffer `rowsReversed` writes into, kept between frames. */
+  let flipScratch: Uint8Array | undefined;
   const host = options.host ?? browserGpuHost();
   const recover = options.recoverFromDeviceLoss ?? true;
   const maxRebuildAttempts = options.maxRebuildAttempts ?? 3;
@@ -1181,6 +1198,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       }
     }
     const boundaryTargets = boundaryScoped ? [...activeProgram.resources.targets.values()] : [];
+    const boundaryLayered = boundaryScoped ? [...activeProgram.resources.layered.values()] : [];
     const boundaryExternals = boundaryScoped
       ? [...activeProgram.resources.externalTextures.values()]
       : [];
@@ -1189,6 +1207,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       selected.length > 0 ||
       selectedRings.length > 0 ||
       boundaryTargets.length > 0 ||
+      boundaryLayered.length > 0 ||
       boundaryExternals.length > 0
     ) {
       guard.assertOutsideFrame("temporal history clear");
@@ -1223,7 +1242,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
          RGB, which is the half of that probe B186 had to finish) left a PLAIN target
          at 255 in this change's own gate — so do not unify these two paths without
          re-running reset-boundary.gpu.test.ts against the unified one. */
-      if (boundaryTargets.length > 0 || boundaryExternals.length > 0) {
+      if (boundaryTargets.length > 0 || boundaryLayered.length > 0 || boundaryExternals.length > 0) {
         const device = gpu.gpu as GPUDevice;
         const encoder = device.createCommandEncoder({ label: "boundary target clear" });
         const clearView = (view: GPUTextureView) => {
@@ -1236,6 +1255,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         };
         for (const target of boundaryTargets) {
           clearView((target as { color: { gpu: GPUTexture } }).color.gpu.createView());
+        }
+        // T1623b: a layered target is a plain target a layer, and carries the same way
+        // (same id, same shape): every layer is cleared with them.
+        for (const layers of boundaryLayered) {
+          for (let index = 0; index < layers.layers; index += 1) clearView(layers.layerView(index));
         }
         // T773: same path, same measured behaviour — see the boundary comment above for
         // why an external texture can take it and why `lastFrameId` must go with it.
@@ -2087,9 +2111,14 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       try {
         if (mediaFrame.bytes !== undefined) {
           const bytesPerRow = entry.size[0] * bytesPerPixelFor(entry.format as Parameters<typeof bytesPerPixelFor>[0]);
+          // VNB13: `flipY` is the frame's, whichever payload carries it. The image path flips
+          // on the copy; bytes are written rows reversed, from a buffer kept between frames.
+          const bytes = mediaFrame.flipY === true
+            ? (flipScratch = rowsReversed(mediaFrame.bytes, bytesPerRow, entry.size[1], flipScratch))
+            : mediaFrame.bytes;
           queue.writeTexture(
             { texture: entry.texture.gpu },
-            mediaFrame.bytes as BufferSource,
+            bytes as BufferSource,
             { bytesPerRow, rowsPerImage: entry.size[1] },
             { width: entry.size[0], height: entry.size[1] },
           );
@@ -2381,6 +2410,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   function releasePreviewSet(previous: ResourceSet, keepShared: boolean): void {
     releaseResourcesExcept(previous, {
       targets: new Map(),
+      layered: new Map(),
       rings: new Map(),
       pingPongs: new Map(),
       samplers: new Map(),
@@ -2684,7 +2714,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         const oversized = read.resources
           .filter(
             (resource): resource is ResourceDescriptor & { size: readonly [number, number] } =>
-              resource.kind === "target" || resource.kind === "pingPong" || resource.kind === "ring",
+              resource.kind === "target" || resource.kind === "pingPong" || resource.kind === "ring" || resource.kind === "layers",
           )
           .filter((resource) => resource.size[0] > maxDimension || resource.size[1] > maxDimension);
         if (oversized.length > 0) {
@@ -2695,6 +2725,25 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
               `Resource "${resource.id}" (${resource.size[0]}×${resource.size[1]}) exceeds this device's ` +
                 `maxTextureDimension2D of ${maxDimension}.`,
               { suggestion: "Lower the node or project resolution below the device limit." },
+            ),
+          );
+          for (const diagnostic of limitDiagnostics) hub.report(diagnostic);
+          stale = program !== undefined;
+          throw new ResourceBuildError(limitDiagnostics);
+        }
+      }
+      // T1623b: and a layered target's layer count, before `createTexture` is asked for a
+      // texture this device cannot make (which answers on the uncaptured-error path, §T1153).
+      const maxLayers = capabilities?.limits["maxTextureArrayLayers"] ?? 0;
+      if (maxLayers > 0) {
+        const tooDeep = read.resources.flatMap((resource) => (resource.kind === "layers" && resource.layers > maxLayers ? [resource] : []));
+        if (tooDeep.length > 0) {
+          const limitDiagnostics = tooDeep.map((resource) =>
+            backendDiagnostic(
+              "error",
+              BackendDiagnosticCode.resourceLimit,
+              `Resource "${resource.id}" has ${resource.layers} layers, and this device's maxTextureArrayLayers is ${maxLayers}.`,
+              { suggestion: "Ask for fewer layers: for a Render's shadow maps, fewer casting lights." },
             ),
           );
           for (const diagnostic of limitDiagnostics) hub.report(diagnostic);
@@ -3987,6 +4036,7 @@ function computeCarryOver(
   }
 
   const targets = new Map<string, NonNullable<ReturnType<ResourceSet["targets"]["get"]>>>();
+  const layered = new Map<string, NonNullable<ReturnType<ResourceSet["layered"]["get"]>>>();
   const rings = new Map<string, NonNullable<ReturnType<ResourceSet["rings"]["get"]>>>();
   const pingPongs = new Map<string, NonNullable<ReturnType<ResourceSet["pingPongs"]["get"]>>>();
   const samplers = new Map<string, GPUSampler>();
@@ -3997,6 +4047,8 @@ function computeCarryOver(
   for (const id of reusable) {
     const target = previous.resources.targets.get(id);
     if (target) targets.set(id, target);
+    const layers = previous.resources.layered.get(id);
+    if (layers) layered.set(id, layers);
     const pair = previous.resources.pingPongs.get(id);
     if (pair) pingPongs.set(id, pair);
     // T237: a carried ring keeps its history, like a carried pair keeps its feedback.
@@ -4051,6 +4103,7 @@ function computeCarryOver(
 
   return {
     targets,
+    layered,
     rings,
     pingPongs,
     samplers,
@@ -4132,6 +4185,10 @@ function releaseResourcesExcept(previous: ResourceSet, next?: ResourceSet): void
   }
   for (const [id, target] of previous.targets) {
     if (next?.targets.get(id) !== target) destroy(target);
+  }
+  // T1623b: a layered target that was not carried takes its array texture and its depth with it.
+  for (const [id, layers] of previous.layered) {
+    if (next?.layered.get(id) !== layers) layers.dispose();
   }
   for (const [id, pair] of previous.pingPongs) {
     if (next?.pingPongs.get(id) !== pair) {

@@ -1,8 +1,9 @@
+import type { GraphNode } from "../../domain/types/graph.ts";
 import type { ParameterSlot } from "../../domain/types/parameters.ts";
-import { expressionSlot } from "../../examples/documents/builders.ts";
-import type { StageFacts, Vec3 } from "./facts.ts";
+import { expressionSlot, node } from "../../examples/documents/builders.ts";
+import type { AreaFacts, StageFacts, Vec3 } from "./facts.ts";
 
-/** Stage previz — the expression helpers the session's builders share. */
+/** Stage previz — the expression helpers, and the one node, the session's builders share. */
 
 export type Slots = Record<string, ParameterSlot>;
 
@@ -83,4 +84,15 @@ export function viewSlots(facts: StageFacts): Slots {
  */
 export function grey(level: number): [number, number, number, number] {
   return [level, level, level, 1];
+}
+
+/**
+ * A Mesh File In for one area of the GLB, sized as the export measures it. Given the session's
+ * own node (`own`), everything else stored on it stays: the app measures a mesh it loads and
+ * writes what it found beside ours (`clips`, `clipFrames`, `joints`), and an upgrade that
+ * dropped those would change an up-to-date session every time the app had saved it.
+ */
+export function measuredMesh(own: GraphNode | undefined, id: string, position: readonly [number, number], glbUrl: string, area: AreaFacts): GraphNode {
+  const measured = { file: glbUrl, select: area.select, vertices: area.vertices, triangles: area.triangles, ...(area.parts === "" ? {} : { parts: area.parts }) };
+  return node(id, "meshFileIn", position, { ...own?.parameters, ...measured }, { label: id });
 }

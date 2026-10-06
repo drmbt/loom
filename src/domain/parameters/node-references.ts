@@ -10,6 +10,7 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { FlatOrAuthoredGraph, GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId, PortId } from "../types/ids.ts";
+import type { ParameterChannels } from "../types/node-definition.ts";
 import type { ParameterDefinition, ParameterSchema, ParameterValue } from "../types/parameters.ts";
 import { componentKey, componentNamesFor } from "./slots.ts";
 import {
@@ -164,6 +165,8 @@ export interface NodeReferenceCatalogueOptions {
    * which is the truth: nothing here knows what is on the wire.
    */
   readonly channelsOf?: (name: string) => readonly string[];
+  /** §T1674b: the channels a node's DEFINITION declares (a camera's composed pose). The reader's own source. */
+  readonly declaredChannelsOf?: (node: GraphNode) => ParameterChannels | undefined;
   /** T1485b: the component instances `op('…').chan` can name — the reader's own map. */
   readonly instances?: InstanceChannelSources | undefined;
 }
@@ -206,6 +209,9 @@ export function nodeReferenceMembers(
     if (key !== undefined) return [];
     const sources = options.instances?.get(name);
     if (sources !== undefined) return instanceChannelNames(sources, options.channelsOf).map((text) => ({ text }));
+    // §T1674b: declared channels are a static list, so they complete with what each one is.
+    const declared = options.declaredChannelsOf?.(target);
+    if (declared !== undefined) return Object.entries(declared.names).map(([text, detail]) => ({ text, detail }));
     return (options.channelsOf?.(name) ?? []).map((text) => ({ text }));
   }
   if (namespace !== PARAMETER_NAMESPACE) return [];
@@ -258,6 +264,11 @@ export interface NodeReferenceOptions {
    * instance's channels are unreadable, as they were before.
    */
   readonly instances?: InstanceChannelSources | undefined;
+  /**
+   * §T1674b: the channels a node's definition composes from its own parameters. Asked
+   * BEFORE the channel resolver: they need none.
+   */
+  readonly declaredChannelsOf?: (node: GraphNode) => ParameterChannels | undefined;
 }
 
 /**
@@ -445,6 +456,15 @@ export interface FlatteningReads {
   readonly morphs: ParameterMorphs;
   /** T1485b: the component instances `op('<instance>').chan.<c>` can name. */
   readonly instanceChannels: InstanceChannelSources;
+  /**
+   * T1668b — THE SAME OBJECT FOR TWO FLATTENINGS THAT DIFFER IN VALUES ONLY, where the
+   * producer can say so (the app's one flattening, `flattened-graph.ts`, which asks
+   * `classifyRevision`). What depends on a document's structure alone — who reads whom,
+   * the order value nodes evaluate in — is memoised on this instead of on the flattened
+   * document, which is another object for every value written. Absent: no such promise,
+   * and a reader keys on the document itself.
+   */
+  readonly structure?: object;
 }
 
 /** No component instance to name. One object, so "none" is an identity check. */
@@ -553,6 +573,7 @@ export function parameterReadOptions(context: ParameterReadContext): ParameterRe
       },
       base,
       instances: instanceChannels,
+      declaredChannelsOf: (node) => context.registry.get(node.type)?.parameterChannels,
     }),
     ...base,
   });
@@ -683,6 +704,52 @@ function readerWithin(
       const channelNode = channelTarget === undefined ? undefined : options.graph.nodes[channelTarget];
       if (channelNode === undefined) {
         return { ok: false, kind: "node", reason: `${reference}: there is no node named "${name}"` };
+      }
+      /*
+       * §T1674b — A CHANNEL THE DEFINITION COMPOSES FROM THE NODE'S OWN PARAMETERS (a camera's
+       * pose in the world). Decided before "no channel resolver": it needs none. It is the
+       * `.par` read's own recursive step, off the same per-frame resolve of the target, so a
+       * frame that reads seven channels of one camera resolves that camera once, and the
+       * cycle guard is the same guard.
+       */
+      const declared = options.declaredChannelsOf?.(channelNode);
+      if (declared !== undefined && channelTarget !== undefined) {
+        if (!Object.hasOwn(declared.names, key)) {
+          const offered = Object.keys(declared.names);
+          const near = nearestSpelling(key, offered);
+          return {
+            ok: false,
+            // Never, not "not yet": the list is the definition's, and this name is not on it.
+            kind: "unreadable",
+            reason: `${reference}: "${name}" publishes no channel "${key}"`,
+            suggestion: `${near === null ? "" : `Nearest: "${near}". `}"${name}" (${channelNode.type}) publishes: ${offered.join(", ")}.`,
+          };
+        }
+        if (visited.has(channelTarget)) {
+          scope.cycles += 1;
+          return {
+            ok: false,
+            kind: "cycle",
+            reason: `${reference}: that reference is a cycle (${[...visited, channelTarget].join(" → ")})`,
+          };
+        }
+        const schema = options.schemaOf(channelNode);
+        if (schema === undefined) {
+          return { ok: false, kind: "unknownType", reason: `${reference}: "${name}" has an unknown node type` };
+        }
+        const resolved = targetOf(options, scope, visited, channelTarget, channelNode, schema);
+        // A parameter the channel is composed from that fell back is not a pose: its failure
+        // is the read's (the rule the `.par` read has, over every parameter this one reads).
+        for (const parameter of declared.reads) {
+          const entry = resolved.get(parameter);
+          const governing = entry?.diagnostic ?? entry?.components?.find((each) => each.diagnostic != null)?.diagnostic ?? null;
+          if (governing !== null) return { ok: false, kind: upstreamKind(governing), reason: `${reference}: ${governing.message}` };
+        }
+        const composed = declared.evaluate(resolved.values)[key];
+        if (typeof composed !== "number" || !Number.isFinite(composed)) {
+          return { ok: false, kind: "channel", reason: `${reference}: "${name}" publishes no channel "${key}" right now` };
+        }
+        return { ok: true, value: composed };
       }
       if (channels === undefined) return resolverless;
       // The resolvers in use (value graph, analyze) key on the ADDRESS; the context rides

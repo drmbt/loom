@@ -57,6 +57,7 @@ export const STAGE_NAMES: Readonly<Record<string, string>> = {
   "kabukiFly": "kernel_kabukiFly",
   "leds": "slider_leds",
   "matDeck": "material_deck",
+  "matDepth": "material_depth",
   "matDrape": "material_drape",
   "matLed": "material_led",
   "matStrobe": "material_strobe",

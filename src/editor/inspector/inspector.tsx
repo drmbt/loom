@@ -455,6 +455,7 @@ export function Inspector({
             schemaOf: (target) =>
               effectiveParameterSchema(registry.get(target.type), target.parameters),
             ...(channelsOf === undefined ? {} : { channelsOf }),
+            declaredChannelsOf: (target) => registry.get(target.type)?.parameterChannels,
             ...(instancesOf === undefined ? {} : { instances: instancesOf() }),
           },
           name,

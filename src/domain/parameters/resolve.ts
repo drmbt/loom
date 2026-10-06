@@ -1467,6 +1467,8 @@ function resolveSchemaWith(
 export interface ParameterSchemaSource {
   readonly parameters: ParameterSchema;
   parametersFor?(stored: Readonly<Record<string, unknown>>): ParameterSchema;
+  /** §T1674b: what the parameters compose to, read as `op('name').chan.<c>` by the one reader. */
+  readonly parameterChannels?: NodeDefinition["parameterChannels"];
 }
 
 /**

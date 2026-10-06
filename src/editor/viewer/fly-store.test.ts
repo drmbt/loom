@@ -83,26 +83,26 @@ describe("PreviewOrbitStore.fly", () => {
     expect(store.get(NODE)).toBeUndefined();
   });
 
-  it("⚑ is ABSENT on the store whose writes reach the document (§T1314b)", () => {
+  it("⚑ the store whose writes reach the document flies by its OWN rule, and never while home (§T970)", () => {
     /*
-     * `createCameraGizmoStore` wears this same interface and its `apply` writes a DOCUMENT
-     * camera node through the command bus. Fly is optional precisely so this store does not
-     * inherit one: the destructive camera-fly is a different feature with a different
-     * ruling (undoable, audited, confirm-before-replacing a driven channel), and a flight
-     * that arrived here by interface inheritance would have made §T1311b's view-only
-     * gesture quietly destructive on exactly one surface.
-     *
-     * Asserted on the OBJECT rather than on a type, because a type says nothing at runtime
-     * and this is the property that keeps the two features apart.
+     * This asserted that `createCameraGizmoStore` had no `fly` at all (§T1314b): a flight
+     * inherited through the shared interface would have made a view-only gesture write a
+     * document. §T970 ruled the document-writing flight and built it there on purpose, so
+     * what is held now is the property that mattered: nothing is written until the store
+     * is armed for that node, and an armed flight is a write through the editor, never a
+     * view offset (`get` still answers undefined). `camera-gizmo-store.test.ts` holds
+     * what the write is.
      */
+    const writes: unknown[] = [];
     const gizmo = createCameraGizmoStore({
-      editor: {
-        begin: () => {},
-        write: () => {},
-        commit: () => {},
-      } as unknown as Parameters<typeof createCameraGizmoStore>[0]["editor"],
-      readPose: () => null,
+      editor: { setStored: (...write) => writes.push(write) },
+      readPose: () => ({ eye: [0, 0, 3], lookAt: [0, 0, 0] }),
     });
-    expect(gizmo.fly).toBeUndefined();
+    gizmo.fly!(NODE, [0, 0, -1]);
+    expect(writes).toEqual([]);
+    gizmo.setMode(NODE, "adjustable");
+    gizmo.fly!(NODE, [0, 0, -1]);
+    expect(writes).toHaveLength(1);
+    expect(gizmo.get(NODE)).toBeUndefined();
   });
 });

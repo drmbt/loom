@@ -145,6 +145,45 @@ export interface RingResourceDescriptor {
   readonly label?: string;
 }
 
+/**
+ * A LAYERED TARGET (T1623b slice 4): ONE texture of N layers. A draw renders into the layer
+ * it names (`DrawPassDescriptor.layer`), and a shader reads all of them through one binding,
+ * `texture_2d_array<f32>` (`TextureBindingDescriptor.array`), picking the layer itself,
+ * or one of them through a binding of its own, `texture_2d<f32>` (`TextureBindingDescriptor.layer`).
+ *
+ * It is what a shader needs to INDEX: N targets are N bindings, and a shader cannot index
+ * its bindings, so a text that reads "the map of light i" from N targets holds N names.
+ * A Render's shadow maps are the first use: a layer a casting light.
+ *
+ * It shares the ring's two ideas (a view a layer, one `2d-array` view to bind) and none of
+ * its mechanism. A ring's layers are written by ONE copy a frame out of a single write
+ * target, and it rotates; here every layer is a render attachment drawn into directly, and
+ * which layer is which is the plan's to say. So this is a kind of its own and not a flag on
+ * `ring`: nothing rotates, nothing is copied, there is no `written` count and no per-frame
+ * uniform, and the things a ring has no use for are here: `depth`, and a draw's `layer`.
+ *
+ * `depth` is ONE depth attachment shared by every layer. Draws into different layers are
+ * different render passes, encoded one after the other, so a layer's draws depth-test
+ * against what that layer's own passes left there PROVIDED its first pass clears; a layer
+ * whose first pass does not clear would test against another layer's depth. The reader
+ * refuses that (`layeredTargetDiagnostics`).
+ *
+ * `layers` is structural, as a ring's `frames` is: more layers is another allocation. A
+ * node that wants to add a layer rarely allocates in steps.
+ */
+export interface LayeredTargetResourceDescriptor {
+  readonly kind: "layers";
+  readonly id: string;
+  /** The size of every layer. */
+  readonly size: readonly [number, number];
+  readonly format: TextureFormat;
+  /** Layer count, >= 1. A draw's `layer` is 0 to `layers - 1`. */
+  readonly layers: number;
+  /** One depth buffer (depth24plus) shared by the layers: see above. */
+  readonly depth?: boolean;
+  readonly label?: string;
+}
+
 export type ResourceDescriptor =
   | TargetResourceDescriptor
   | PingPongResourceDescriptor
@@ -152,7 +191,8 @@ export type ResourceDescriptor =
   | BufferResourceDescriptor
   | BufferPairResourceDescriptor
   | ExternalTextureResourceDescriptor
-  | RingResourceDescriptor;
+  | RingResourceDescriptor
+  | LayeredTargetResourceDescriptor;
 
 export interface TextureBindingDescriptor {
   /** WGSL binding name in the pass shader. */
@@ -185,8 +225,24 @@ export interface TextureBindingDescriptor {
    * `ringFrames` uniform merge tells it where "now" is. Mutually exclusive with `tap`
    * (one binding is one WGSL type), enforced by the reader. Part of the pass structure
    * key: array vs single-layer is a different pipeline.
+   *
+   * T1623b: and one of the two ways a `layers` resource is bound: every layer, as
+   * `texture_2d_array<f32>`, with no uniform merged (which layer is which is the plan's).
+   * The other is `layer`.
    */
   readonly array?: boolean;
+  /**
+   * T1623b slice 4: bind ONE LAYER of a `layers` resource, as a plain `texture_2d<f32>`: the
+   * shader does not know the texture is a layer of anything. This is how a Render's lit
+   * draws read their casting lights' shadow maps, a binding a light. It is not a
+   * convenience: on Apple's GPUs a read through a `texture_2d_array` binding costs one and
+   * a half to nearly two times a read of a `texture_2d`, and a read through a view of one
+   * layer costs what a texture costs (measured: docs/light-cost-investigation-2026-10-06.md,
+   * section 15). Mutually exclusive with `array`, `tap` and `live`; only on a `layers`
+   * resource and inside its layers, all enforced by the reader. Part of the pass structure
+   * key where it is set: another layer is another texture bound.
+   */
+  readonly layer?: number;
   /**
    * B160: bind the ring's WRITE TARGET — the frame being composed RIGHT NOW, already
    * rendered by this node's own earlier write pass. This is what makes §V229's "never
@@ -478,6 +534,11 @@ export interface DrawPassDescriptor {
    */
   readonly sourceMap?: WgslSourceMap;
   readonly target: string;
+  /**
+   * T1623b: WHICH LAYER of a `layers` target this draw renders into. Required there, and
+   * refused anywhere else. Structural: it is part of where the draw goes.
+   */
+  readonly layer?: number;
   readonly topology: "point-list" | "line-list" | "triangle-list" | "triangle-strip";
   /** A literal count, or a counter resource so the GPU decides how much to draw. */
   readonly instances: number | { readonly indirect: string };
@@ -652,7 +713,7 @@ function readBindings(value: unknown): ReadonlyArray<TextureBindingDescriptor> |
   const out: TextureBindingDescriptor[] = [];
   for (const entry of value) {
     if (!isRecord(entry)) return undefined;
-    const { binding, resourceId, sampled, tap, array, live } = entry;
+    const { binding, resourceId, sampled, tap, array, live, layer } = entry;
     if (typeof binding !== "string" || typeof resourceId !== "string") return undefined;
     if (sampled !== undefined && sampled !== "filtered" && sampled !== "unfiltered") return undefined;
     // T237: a tap is a whole number of frames back, and there is no tap 0 — slice 0 is
@@ -664,6 +725,8 @@ function readBindings(value: unknown): ReadonlyArray<TextureBindingDescriptor> |
     // B160: `live` is the ring's write target — a third thing, not a history read.
     if (live !== undefined && typeof live !== "boolean") return undefined;
     if (live === true && (tap !== undefined || array === true)) return undefined;
+    // T1623b: one layer of a layered target is a fourth thing: a whole number, and nothing else beside it.
+    if (layer !== undefined && (!Number.isInteger(layer) || (layer as number) < 0 || tap !== undefined || array === true || live === true)) return undefined;
     out.push({
       binding,
       resourceId,
@@ -671,6 +734,7 @@ function readBindings(value: unknown): ReadonlyArray<TextureBindingDescriptor> |
       ...(tap === undefined ? {} : { tap: tap as number }),
       ...(array === true ? { array: true } : {}),
       ...(live === true ? { live: true } : {}),
+      ...(layer === undefined ? {} : { layer: layer as number }),
     });
   }
   return out;
@@ -710,6 +774,22 @@ function readResource(value: unknown): ResourceDescriptor | undefined {
       size: value["size"],
       format: value["format"],
       sourceId,
+      ...(typeof label === "string" ? { label } : {}),
+    };
+  }
+
+  if (kind === "layers") {
+    const layers = value["layers"];
+    if (!isSize(value["size"]) || !isFormat(value["format"])) return undefined;
+    if (!Number.isInteger(layers) || (layers as number) < 1) return undefined;
+    const label = value["label"];
+    return {
+      kind: "layers",
+      id,
+      size: value["size"],
+      format: value["format"],
+      layers: layers as number,
+      ...(value["depth"] === true ? { depth: true } : {}),
       ...(typeof label === "string" ? { label } : {}),
     };
   }
@@ -1013,6 +1093,8 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
   if (clear !== undefined && typeof clear !== "boolean") return undefined;
   const skip = value["skip"];
   if (skip !== undefined && typeof skip !== "boolean") return undefined;
+  const layer = value["layer"];
+  if (layer !== undefined && !(Number.isInteger(layer) && (layer as number) >= 0)) return undefined;
 
   const nodeId = value["nodeId"];
   const sourceMap = readSourceMap(value["sourceMap"]);
@@ -1022,6 +1104,8 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
     id,
     shader: wgslFromPlan(shader),
     target,
+    // T1623b: kept only where it is said, so a draw into a plain target has the bytes it had.
+    ...(layer === undefined ? {} : { layer: layer as number }),
     topology,
     instances,
     ...(vertexCount === undefined ? {} : { vertexCount: vertexCount as number }),
@@ -1156,9 +1240,61 @@ export function readExecutionPlan(plan: LogicalExecutionPlan): PlanReadResult {
   diagnostics.push(...loopStructureDiagnostics(passes));
   diagnostics.push(...kernelStepsDiagnostics(passes, resources));
   diagnostics.push(...bufferWriteDiagnostics(passes, resources));
+  diagnostics.push(...layeredTargetDiagnostics(passes, resources));
 
   const ok = diagnostics.every((diagnostic) => diagnostic.severity !== "error");
   return { resources, passes, diagnostics, ok };
+}
+
+/**
+ * T1623b: a layered target is drawn into a layer at a time and bound whole, or the plan is
+ * refused. Each of these renders a plausible picture when it is wrong (§V147): a draw with
+ * no layer would land in layer 0, a layer past the end in nothing, a binding without
+ * `array` would be handed a texture of another dimension than its shader declares, and a
+ * layer whose first pass does not clear would depth-test against another layer's depth.
+ */
+function layeredTargetDiagnostics(passes: ReadonlyArray<PassDescriptor>, resources: ReadonlyArray<ResourceDescriptor>): RuntimeDiagnostic[] {
+  const layered = new Map<string, LayeredTargetResourceDescriptor>();
+  for (const resource of resources) if (resource.kind === "layers") layered.set(resource.id, resource);
+  const out: RuntimeDiagnostic[] = [];
+  const refuse = (pass: PassDescriptor, message: string): void => {
+    out.push(backendDiagnostic("error", BackendDiagnosticCode.planInvalid, message, "nodeId" in pass && pass.nodeId !== undefined ? { nodeId: pass.nodeId } : {}));
+  };
+  /** The layers of each depth-sharing target that a pass has cleared so far, in plan order. */
+  const cleared = new Map<string, Set<number>>();
+  for (const pass of passes) {
+    if (pass.kind === "effect" && layered.has(pass.target)) {
+      refuse(pass, `Pass "${pass.id}" is an effect into the layered target "${pass.target}"; only a draw names a layer to render into.`);
+    }
+    if (pass.kind === "draw") {
+      const target = layered.get(pass.target);
+      if (target === undefined) {
+        if (pass.layer !== undefined) refuse(pass, `Draw pass "${pass.id}" names layer ${pass.layer} of "${pass.target}", which is not a layered target.`);
+      } else if (pass.layer === undefined || pass.layer >= target.layers) {
+        refuse(pass, `Draw pass "${pass.id}" renders into the layered target "${pass.target}" and names ${pass.layer === undefined ? "no layer" : `layer ${pass.layer}`}; it has layers 0 to ${target.layers - 1}.`);
+      } else if (target.depth === true) {
+        const seen = cleared.get(target.id) ?? new Set<number>();
+        cleared.set(target.id, seen);
+        if (pass.clear ?? true) seen.add(pass.layer);
+        else if (!seen.has(pass.layer)) {
+          refuse(pass, `Draw pass "${pass.id}" is the first into layer ${pass.layer} of "${pass.target}" and does not clear: the layers share one depth buffer, so it would test against another layer's depth.`);
+        }
+      }
+    }
+    if (pass.kind === "effect" || pass.kind === "dispatch" || pass.kind === "draw") {
+      for (const binding of pass.textures ?? []) {
+        const bound = layered.get(binding.resourceId);
+        if (bound === undefined) {
+          if (binding.layer !== undefined) refuse(pass, `Pass "${pass.id}" binds layer ${binding.layer} of "${binding.resourceId}" as "${binding.binding}", which is not a layered target.`);
+        } else if (binding.array !== true && binding.layer === undefined) {
+          refuse(pass, `Pass "${pass.id}" binds the layered target "${binding.resourceId}" as "${binding.binding}" with neither \`array\` nor \`layer\`: it is bound whole, as texture_2d_array, or a layer of it as texture_2d.`);
+        } else if (binding.layer !== undefined && binding.layer >= bound.layers) {
+          refuse(pass, `Pass "${pass.id}" binds layer ${binding.layer} of the layered target "${binding.resourceId}" as "${binding.binding}"; it has layers 0 to ${bound.layers - 1}.`);
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -1313,7 +1449,8 @@ export const SPAN_ITERATION_SEPARATOR = "~";
  * it is multisampled), so two hundred draws into twenty targets were two hundred passes.
  *
  * A RUN is the draws one device render pass holds: consecutive `draw` passes of ONE NODE
- * into ONE TARGET, of which only the first may clear. Anything else ends it — an effect, a
+ * into ONE TARGET (T1623b: and one LAYER of it, where it has layers: a layer is what a
+ * render pass attaches), of which only the first may clear. Anything else ends it — an effect, a
  * dispatch, a swap, a loop marker, another target, another node, a draw that clears. So a
  * run is passes that were already adjacent and already drew over one another in this
  * order: grouping them moves nothing and changes no pixel.
@@ -1350,6 +1487,8 @@ export interface RenderPassRun {
   /** The run's passes in plan order. The first is its HEAD: its `clear` is the pass's, and its id names the span. */
   readonly passIds: ReadonlyArray<string>;
   readonly target: string;
+  /** T1623b: the layer of a layered target the run draws into; absent for any other target. */
+  readonly layer?: number;
   readonly nodeId: string | undefined;
 }
 
@@ -1361,18 +1500,18 @@ export function renderPassRuns(
   for (const resource of resources) {
     if (resource.kind === "target" && resource.msaa === true) multisampled.add(resource.id);
   }
-  const runs: Array<{ passIds: string[]; target: string; nodeId: string | undefined }> = [];
+  const runs: Array<{ passIds: string[]; target: string; layer?: number; nodeId: string | undefined }> = [];
   let open: (typeof runs)[number] | undefined;
   for (const pass of passes) {
     if (pass.kind !== "draw") {
       open = undefined;
       continue;
     }
-    if (open !== undefined && pass.clear === false && pass.target === open.target && pass.nodeId === open.nodeId && !multisampled.has(pass.target)) {
+    if (open !== undefined && pass.clear === false && pass.target === open.target && pass.layer === open.layer && pass.nodeId === open.nodeId && !multisampled.has(pass.target)) {
       open.passIds.push(pass.id);
       continue;
     }
-    open = { passIds: [pass.id], target: pass.target, nodeId: pass.nodeId };
+    open = { passIds: [pass.id], target: pass.target, ...(pass.layer === undefined ? {} : { layer: pass.layer }), nodeId: pass.nodeId };
     runs.push(open);
   }
   return runs;
@@ -1466,6 +1605,9 @@ export function resourceStructureKey(resource: ResourceDescriptor): string {
       // allocation, so it cannot be carried and its history starts again (§V62b) — the
       // same rule a resized ping-pong already lives under, at a bigger scale.
       return JSON.stringify([resource.kind, resource.id, resource.size[0], resource.size[1], resource.format, resource.frames]);
+    case "layers":
+      // T1623b: the layer count is structural as a ring's depth is; one more layer is another allocation.
+      return JSON.stringify([resource.kind, resource.id, resource.size[0], resource.size[1], resource.format, resource.layers, resource.depth === true]);
   }
 }
 
@@ -1617,7 +1759,7 @@ function passKeyParts(pass: PassDescriptor): unknown[] {
           pass.shader,
           pass.target,
           pass.clear ?? true,
-          (pass.textures ?? []).map((t) => [t.binding, t.resourceId, t.sampled ?? "filtered", t.array === true]),
+          (pass.textures ?? []).map((t) => [t.binding, t.resourceId, t.sampled ?? "filtered", t.array === true, ...(t.layer === undefined ? [] : [t.layer])]),
           (pass.samplers ?? []).map((s) => [s.binding, s.resourceId]),
           pass.uniformBinding ?? null,
           // Names, never values (§V5).
@@ -1634,7 +1776,7 @@ function passKeyParts(pass: PassDescriptor): unknown[] {
             ? ["indirect", pass.workgroups.indirect]
             : pass.workgroups,
           (pass.buffers ?? []).map((b) => [b.binding, b.resourceId, b.half ?? "read", b.offset ?? 0, b.bytes ?? 0]),
-          (pass.textures ?? []).map((t) => [t.binding, t.resourceId, t.sampled ?? "filtered", t.array === true]),
+          (pass.textures ?? []).map((t) => [t.binding, t.resourceId, t.sampled ?? "filtered", t.array === true, ...(t.layer === undefined ? [] : [t.layer])]),
           Object.keys(pass.uniforms ?? {}).sort(),
           pass.uniformBinding ?? null,
         ];
@@ -1647,12 +1789,14 @@ function passKeyParts(pass: PassDescriptor): unknown[] {
           pass.topology,
           typeof pass.instances === "object" ? ["indirect", pass.instances.indirect] : "literal",
           (pass.buffers ?? []).map((b) => [b.binding, b.resourceId, b.half ?? "read", b.offset ?? 0, b.bytes ?? 0]),
-          (pass.textures ?? []).map((t) => [t.binding, t.resourceId, t.sampled ?? "filtered", t.array === true]),
+          (pass.textures ?? []).map((t) => [t.binding, t.resourceId, t.sampled ?? "filtered", t.array === true, ...(t.layer === undefined ? [] : [t.layer])]),
           Object.keys(pass.uniforms ?? {}).sort(),
           pass.uniformBinding ?? null,
           pass.sharedBinding ?? null,
           pass.blend ?? null,
           pass.clear ?? true,
+          // T1623b: only where a layer is named, so every other draw's key is the key it had.
+          ...(pass.layer === undefined ? [] : [["layer", pass.layer]]),
         ];
       case "counter":
         return ["counter", pass.id, pass.op, pass.resourceId, pass.outputResourceId ?? null];
@@ -1694,16 +1838,18 @@ export function estimateResourceBytes(resources: ReadonlyArray<ResourceDescripto
       resource.kind !== "target" &&
       resource.kind !== "pingPong" &&
       resource.kind !== "externalTexture" &&
-      resource.kind !== "ring"
+      resource.kind !== "ring" &&
+      resource.kind !== "layers"
     ) {
       continue;
     }
     const bytesPerPixel = BYTES_PER_PIXEL[resource.format] ?? 4;
     // A ring is `frames` slices, a ping-pong is 2 — the same multiplication, which is
     // what "generalised from 2 to N" means at the level of what it costs (§V226).
-    const slices = resource.kind === "pingPong" ? 2 : resource.kind === "ring" ? resource.frames : 1;
+    // T1623b: a layered target is `layers` of them, and ONE depth buffer whatever the count.
+    const slices = resource.kind === "pingPong" ? 2 : resource.kind === "ring" ? resource.frames : resource.kind === "layers" ? resource.layers : 1;
     total += resource.size[0] * resource.size[1] * bytesPerPixel * slices;
-    if (resource.kind === "target" && resource.depth === true) {
+    if ((resource.kind === "target" || resource.kind === "layers") && resource.depth === true) {
       total += resource.size[0] * resource.size[1] * 4; // depth24plus
     }
   }

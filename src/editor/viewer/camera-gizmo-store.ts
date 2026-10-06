@@ -24,8 +24,8 @@ import type { PreviewInspectMode, PreviewOrbitStore } from "./preview-orbit-stor
  * It wears the `PreviewOrbitStore` interface so `NodePreviewSlot` and the header toggle
  * work unchanged — same alt-entry, same radians-per-pixel, same wheel, same `h` to
  * leave. The verbs map onto the T706 representation: drag orbits `eye` around `lookAt`,
- * shift-drag trucks both together, the wheel dollies the distance. `roll` is deliberately
- * not a gesture (its parameter description says why). `get()` always answers undefined:
+ * shift-drag trucks both together, the wheel dollies the distance, and (§T970) a flight
+ * translates both. `roll` is deliberately not a gesture (its parameter description says why). `get()` always answers undefined:
  * there is no view override to publish, because the deltas live in the document.
  *
  * ## Undo (§V15) and liveness (§V5)
@@ -66,6 +66,19 @@ export interface CameraPose {
    */
   readonly eyeMask?: readonly boolean[] | undefined;
   readonly lookAtMask?: readonly boolean[] | undefined;
+  /**
+   * §T1671b — WHICH WAY THE WORLD'S UP POINTS, in the coordinates Eye and Look At are stored
+   * in. Absent means +y, which it is for every node with no frame and every camera whose
+   * frame is Level (a level frame only turns about the vertical).
+   *
+   * A camera in an AIMED frame stores its pose down a Heading that climbs or dives, so the
+   * frame's own +y is tilted. The gestures must not tilt with it: an orbit is a turntable
+   * about the WORLD's vertical on every other tile, the up-down clamp is against the world's
+   * poles (past them the picture flips), and a pilot's "up" is the picture's. So the maths
+   * runs about this axis, in the pose's own coordinates, and what is written is still the
+   * offset in the frame.
+   */
+  readonly up?: readonly [number, number, number] | undefined;
 }
 
 const WHEEL_COMMIT_MS = 400;
@@ -90,6 +103,12 @@ const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[2] * b[0] - a[0] * b[2],
   a[0] * b[1] - a[1] * b[0],
 ];
+const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+/** A unit vector across `axis`: toward +z, or toward +x when the axis is z itself. */
+const across = (axis: Vec3): Vec3 => {
+  const seed: Vec3 = Math.abs(axis[2]) > 0.9 ? [1, 0, 0] : [0, 0, 1];
+  return normalize(sub(seed, scale(axis, dot(seed, axis))));
+};
 const round6 = (v: number): number => Number(v.toFixed(6));
 const asValue = (v: Vec3): [number, number, number] => [round6(v[0]), round6(v[1]), round6(v[2])];
 
@@ -101,6 +120,8 @@ interface GizmoSession {
   readonly startLookAt: Vec3;
   readonly eyeMask: readonly boolean[] | undefined;
   readonly lookAtMask: readonly boolean[] | undefined;
+  /** §T1671b: the world's up in the pose's coordinates, when it is not +y (read with the pose, §V657). */
+  readonly up: Vec3 | undefined;
   /** True once any delta was written — release without movement commits nothing. */
   dirty: boolean;
   wheelTimer: ReturnType<typeof setTimeout> | undefined;
@@ -131,6 +152,7 @@ export function createCameraGizmoStore(options: {
       startLookAt: pose.lookAt,
       eyeMask: pose.eyeMask,
       lookAtMask: pose.lookAtMask,
+      up: pose.up,
       dirty: false,
       wheelTimer: undefined,
     };
@@ -226,7 +248,38 @@ export function createCameraGizmoStore(options: {
       if ((modes.get(nodeId) ?? "home") !== "adjustable") return;
       const s = session(nodeId);
       if (s === null) return;
-      if (delta.panX !== undefined || delta.panY !== undefined) {
+      if (s.up !== undefined) {
+        /*
+         * §T1671b — the same two verbs ABOUT A GIVEN AXIS: the world's up, where the pose
+         * is stored in a frame that pitches. The branch below is the same maths about +y
+         * and is left exactly as it was, so no pose that had a gizmo before moves a digit.
+         */
+        const axis = s.up;
+        const offset = sub(s.eye, s.lookAt);
+        const r = Math.max(length(offset), MIN_DISTANCE);
+        if (delta.panX !== undefined || delta.panY !== undefined) {
+          const forward = normalize(scale(offset, -1));
+          const reference = Math.abs(dot(forward, axis)) > 0.999 ? across(axis) : axis;
+          const right = normalize(cross(forward, reference));
+          const upV = cross(right, forward);
+          const move = add(scale(right, (delta.panX ?? 0) * r), scale(upV, (delta.panY ?? 0) * r));
+          s.eye = add(s.eye, move);
+          s.lookAt = add(s.lookAt, move);
+        } else {
+          // A turntable about the axis through Look At: the eye keeps its height along the
+          // axis while it turns, and the clamp is against the AXIS's poles.
+          const height = dot(offset, axis);
+          const flat = sub(offset, scale(axis, height));
+          const outward = length(flat) < 1e-9 ? across(axis) : normalize(flat);
+          const turn = delta.azimuth ?? 0;
+          const turned = add(scale(outward, Math.cos(turn)), scale(cross(axis, outward), Math.sin(turn)));
+          const elevation = Math.max(
+            -MAX_ELEVATION,
+            Math.min(MAX_ELEVATION, Math.asin(Math.max(-1, Math.min(1, height / r))) + (delta.elevation ?? 0)),
+          );
+          s.eye = add(s.lookAt, add(scale(turned, r * Math.cos(elevation)), scale(axis, r * Math.sin(elevation))));
+        }
+      } else if (delta.panX !== undefined || delta.panY !== undefined) {
         // TRUCK: eye and lookAt slide together, screen-aligned, scaled by distance so
         // the drag covers the same fraction of the picture at any range (the slot's
         // pan units are "radii per px" — here the radius is the orbit distance).
@@ -266,9 +319,46 @@ export function createCameraGizmoStore(options: {
       const r = Math.max(length(offset) * factor, MIN_DISTANCE);
       s.eye = holdMasked(add(s.lookAt, scale(normalize(offset), r)), s.startEye, s.eyeMask);
       write(nodeId, s, "live");
-      // The wheel has no pointerup; the transaction closes itself after a short idle.
+      // The wheel has no pointerup; the transaction closes itself after a short idle. And it
+      // ends the gesture as `release` does (§V657): the next one re-reads the document. It
+      // only committed, so after a dolly and an undo the next drag, wheel or flight started
+      // from the DOLLIED pose and wrote the undo away (found by the fly pace's e2e: a flight
+      // after an undone dolly landed the dolly's length too far).
       if (s.wheelTimer !== undefined) clearTimeout(s.wheelTimer);
-      s.wheelTimer = setTimeout(() => commit(nodeId), WHEEL_COMMIT_MS);
+      s.wheelTimer = setTimeout(() => {
+        commit(nodeId);
+        sessions.delete(nodeId);
+      }, WHEEL_COMMIT_MS);
+    },
+    /**
+     * §T970 — FLY: the whole rig translates, Eye and Look At together, along a step the
+     * caller resolved against this camera's own axes (`pose` below). `delta` is in units
+     * of the distance from Eye to Look At, the same scale-free unit the inspection store's
+     * flight uses for its stock radius: a camera that frames a table and one that frames a
+     * hall cross their own picture at the same pace, and the wheel, which changes that
+     * distance, is the throttle a pilot already has.
+     *
+     * A document edit like every other verb here: live writes inside one transaction, and
+     * `release` (the last fly key coming up) closes it, so one flight is one undo step.
+     */
+    fly(nodeId, delta) {
+      if ((modes.get(nodeId) ?? "home") !== "adjustable") return;
+      if (!delta.every((value) => Number.isFinite(value))) return;
+      const s = session(nodeId);
+      if (s === null) return;
+      const r = Math.max(length(sub(s.eye, s.lookAt)), MIN_DISTANCE);
+      const move = scale(delta, r);
+      s.eye = holdMasked(add(s.eye, move), s.startEye, s.eyeMask);
+      s.lookAt = holdMasked(add(s.lookAt, move), s.startLookAt, s.lookAtMask);
+      write(nodeId, s, "live");
+    },
+    /** Where the camera is: the gesture in flight if there is one, else the document. */
+    pose(nodeId) {
+      const s = sessions.get(nodeId);
+      if (s !== undefined) return { eye: s.eye, lookAt: s.lookAt, ...(s.up === undefined ? {} : { up: s.up }) };
+      const stored = options.readPose(nodeId);
+      if (stored === null) return null;
+      return { eye: stored.eye, lookAt: stored.lookAt, ...(stored.up === undefined ? {} : { up: stored.up }) };
     },
     reset(nodeId) {
       commit(nodeId);

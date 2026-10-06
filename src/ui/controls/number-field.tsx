@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { NumberParameter } from "@domain/types/parameters.ts";
 import { cx } from "../cx.ts";
+import { ShareFill } from "../primitives/share-fill.tsx";
 import {
   DECADE_LADDER,
   DRAG_THRESHOLD_PX,
@@ -693,7 +694,7 @@ export function NumberField({
       data-driven={drivenBy !== undefined}
     >
       {fraction === null ? null : (
-        <span className={styles.numberFill} style={{ width: `${fraction * 100}%` }} aria-hidden />
+        <ShareFill className={styles.numberFill} end={fraction} minimum="2px" />
       )}
       <input
         ref={inputRef}

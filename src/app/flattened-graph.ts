@@ -2,7 +2,9 @@ import { flattenComponents } from "@compiler/index.ts";
 import type { FlattenedGraph } from "@compiler/index.ts";
 import type { ComponentRegistry } from "@domain/components/index.ts";
 import type { GraphStoreView } from "@domain/graph/index.ts";
+import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
+import { classifyRevision } from "./classify-revision.ts";
 
 /**
  * THE flattened document, memoized on `(document revision, catalogue revision)` (T615,
@@ -60,6 +62,17 @@ import type { NodeRegistryView } from "@nodes/registry/registry.ts";
  * produces for every host while the host document is untouched — same nodes, same edges,
  * same revision — so a document-only key would keep serving yesterday's internals.
  *
+ * ## `structure`: what a value written does not move (T1668b)
+ *
+ * The flattening is another object for every revision, a moved slider included, and
+ * everything memoised on it was derived again for each value: the value graph parsed every
+ * expression of the document for its references twice a write (0.6 ms each on a 200-node
+ * project). Each flattening handed out here carries `structure`, and two flattenings carry
+ * the SAME one exactly when the document moved between them by values-only revisions
+ * (`classifyRevision`, the one definition) under the same catalogue. Asked of the two
+ * documents themselves, not of anybody's notification, so it is right whoever calls
+ * `current()` first after a write.
+ *
  * ## What it deliberately does NOT do
  *
  * No clock, no frame, no per-subtree time. `sources.get(flatId).path` is kept intact and
@@ -95,7 +108,7 @@ export function createFlattenedGraphSource(
     catalogue += 1;
   });
 
-  let cached: { graph: unknown; catalogue: number; flattened: FlattenedGraph } | null = null;
+  let cached: { graph: GraphDocument; catalogue: number; flattened: FlattenedGraph; structure: object } | null = null;
 
   return {
     current(): FlattenedGraph {
@@ -104,8 +117,10 @@ export function createFlattenedGraphSource(
       const graph = store.getGraph();
       const hit = cached;
       if (hit !== null && hit.graph === graph && hit.catalogue === catalogue) return hit.flattened;
-      const flattened = flattenComponents({ graph, registry, components: components.view() });
-      cached = { graph, catalogue, flattened };
+      // The same structure as the flattening before it, or another: see `structure` above.
+      const structure = hit !== null && hit.catalogue === catalogue && classifyRevision(hit.graph, graph, registry).kind === "values" ? hit.structure : {};
+      const flattened: FlattenedGraph = { ...flattenComponents({ graph, registry, components: components.view() }), structure };
+      cached = { graph, catalogue, flattened, structure };
       return flattened;
     },
     dispose() {

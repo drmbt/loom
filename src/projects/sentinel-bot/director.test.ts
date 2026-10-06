@@ -10,9 +10,11 @@ import { shippedClipAudio } from "../../examples/shipped-clip-audio.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { SHOTS } from "./camera.ts";
+import { boxesOverlap, nodeBox, previewAspectOf } from "../../domain/graph/node-box.ts";
 import { diagnosticClass } from "../../domain/diagnostics/classes.ts";
 import { against, DOCK_HUE, DOCK_TURN, dockTurn, FIELD_BARS, FIELD_HUE, FIELD_TURN, fieldTurn, GLIMPSE, pace, PACK_BARS, PACK_SHARE, packSize, PHRASE_BARS, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseRush, phraseSpiral, phraseSwim, rest, RUSH, SHOW_HUES, SHOW_TURNS, showHue, showStand, STAND, stride, surge, TEMPLE_HUE, TEMPLE_TURN, templeTurn } from "./director.ts";
-import { sentinelDocument } from "./document.ts";
+import { SHIPPED_TRACK, sentinelDocument } from "./document.ts";
+import { SEEK_FRAME_LIMIT, projectFps, projectRange } from "../../domain/types/graph.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
 /** T1561b — what following the track does to the pace and to swimming, read through the expression engine that runs it. */
@@ -23,6 +25,26 @@ function read(source: string, scope: Record<string, number>): number {
 }
 
 describe("the sentinel's file", () => {
+  it("lays no node of its canvas on top of another, in either tier", () => {
+    // It did: 67 pairs, written 150 across and 125 down where a node is 178 by 148 or more, so a tile's own
+    // sentence (what frames a Render, why a camera has no gizmo) was under its neighbour. The boxes are the
+    // canvas's own (the examples' layout gate measures with the same ones).
+    const registry = createNodeRegistry(allNodeDefinitions).view();
+    for (const tier of ["live", "offline"] as const) {
+      const built = sentinelDocument(KIT_FIXTURE, { tier });
+      const aspect = previewAspectOf(built.settings);
+      const placed = Object.values(built.graph.nodes).map((node) => ({ name: node.label ?? node.id, box: nodeBox(node, registry.get(node.type), aspect, built.graph) }));
+      const overlapping: string[] = [];
+      for (let a = 0; a < placed.length; a += 1) {
+        for (let b = a + 1; b < placed.length; b += 1) {
+          if (boxesOverlap((placed[a] as (typeof placed)[number]).box, (placed[b] as (typeof placed)[number]).box)) overlapping.push(`${tier}: ${placed[a]?.name} / ${placed[b]?.name}`);
+        }
+      }
+      expect(overlapping).toEqual([]);
+      expect(placed.length).toBeGreaterThan(150);
+    }
+  });
+
   it("holds no expression the engine cannot read: every one parses, function names and all", () => {
     // An expression that fails is not an error to the engine: the parameter quietly keeps its stored value.
     // A lamp's strength written with a function the grammar does not have (`pow`) shipped that way, three
@@ -56,6 +78,24 @@ describe("the sentinel's file", () => {
     expect(compiled.diagnostics.filter((entry) => diagnosticClass(entry.code) === "never").map((entry) => `${entry.code}: ${entry.message}`)).toEqual([]);
     // It compiled the whole piece, not a stub of it.
     expect(compiled.passes.length).toBeGreaterThan(20);
+  });
+});
+
+describe("the sentinel's file is as long as its show", () => {
+  it("with the loop on, every place of the show comes round before the file starts again, to the shipped beat and to a faster track", () => {
+    for (const track of [SHIPPED_TRACK, { file: "media/sentinel-bot/track", bpm: 134, beatsPerBar: 4, beatOffset: 0 }]) {
+      const built = sentinelDocument(KIT_FIXTURE, { track });
+      const range = projectRange(built.settings);
+      /** The bar of the track a frame of the file is in. */
+      const barAt = (frame: number): number => (frame / projectFps(built.settings) - track.beatOffset) / ((track.beatsPerBar * 60) / track.bpm);
+      expect(range.start).toBe(0);
+      // The temple is the last place of a round (director.ts): the file runs well into its turn. (At the default
+      // range, ten seconds, it ended in bar 5 of the first turn, and the loop began the show again from there.)
+      expect(barAt(range.end)).toBeGreaterThan(TEMPLE_TURN * FIELD_BARS + FIELD_BARS / 4);
+      // …and no further than a round, or than the transport will seek to.
+      expect(barAt(range.end)).toBeLessThanOrEqual(SHOW_TURNS * FIELD_BARS);
+      expect(range.end).toBeLessThanOrEqual(SEEK_FRAME_LIMIT);
+    }
   });
 });
 

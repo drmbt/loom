@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { pointStorageId } from "../../nodes/definitions/point-storage.ts";
 import { ANCHOR, ROPE, component, incomingOf, ropeGraph, ropeRegionOf, segmentLength, type RopeFixture, type RopePose } from "../../nodes/definitions/rope-test-support.ts";
-import { ROPE_DEFAULTS, ROPE_TOLERANCE, ROPE_TOLERANCE_FLOOR } from "../../points/rope.ts";
+import { ROPE_DEFAULTS, ROPE_REACH_SLACK, ROPE_TOLERANCE, ROPE_TOLERANCE_FLOOR } from "../../points/rope.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "./render-harness.ts";
 
@@ -310,15 +310,33 @@ describe("rope: feeling about — a wandering target at a part weight (T1585b sl
     let nearest = Number.POSITIVE_INFINITY;
     let largest = 0;
     let before: number[] | undefined;
+    /** Over the frames whose target is out of the rope's reach: how many, and the furthest the tip is from where the reach puts it. */
+    let beyond = 0;
+    let offReach = 0;
+    /** Over the frames whose target is within the rope's own length: how many, and the furthest the tip is from it. */
+    let within = 0;
+    let offTarget = 0;
+    // The rope from the first point to the tip: sixteen segments, and the reach's slack.
+    const rope = LINKS * REST;
+    const reach = rope * (1 + ROPE_REACH_SLACK);
     for (const frame of frames) {
       const tip = pointOf(frame.position, LINKS);
-      const off = between(tip, pointOf(frame.incoming, LINKS));
+      const target = pointOf(frame.incoming, LINKS);
+      const off = between(tip, target);
       furthest = Math.max(furthest, off);
       nearest = Math.min(nearest, off);
       if (before !== undefined) largest = Math.max(largest, between(tip, before));
       before = tip;
+      const far = Math.hypot(target[0] as number, target[1] as number, target[2] as number);
+      if (far <= rope) {
+        within += 1;
+        offTarget = Math.max(offTarget, off);
+      } else if (far > reach + 1e-6) {
+        beyond += 1;
+        offReach = Math.max(offReach, between(tip, target.map((value) => (value * reach) / far)));
+      }
     }
-    return { furthest, nearest, largest };
+    return { furthest, nearest, largest, beyond, offReach, within, offTarget };
   };
   const allowed = (weight: number): number => {
     const gain = weight / (1 - weight);
@@ -339,8 +357,22 @@ describe("rope: feeling about — a wandering target at a part weight (T1585b sl
     expect(read.nearest).toBeGreaterThan(0);
   }, 240_000);
 
-  it("the controls: at 1 the tip IS the target on every frame; at 0 it does not know there is one; and it moves without a pop", async () => {
-    expect((await behind(1)).furthest).toBe(0);
+  /*
+   * AT 1 THE TIP IS THE TARGET WHEREVER THE ROPE REACHES IT (re-derived in slice 4d, B276).
+   * This target wanders a little past a metre from the strand's first point, on a metre of
+   * rope with no Stretch. The reach used to be the rope's length with Max Stretch on top, so
+   * the tip was the target on every frame, on a rope longer than itself. A rope with no
+   * Stretch reaches its own length: where the target is within it the tip is the target, to
+   * the bit, and where it is beyond the tip is on the line to it at the rope's reach.
+   */
+  it("the controls: at 1 the tip IS the target on every frame the rope reaches it, and at the rope's reach on the line to it on the rest; at 0 it does not know there is one; and it moves without a pop", async () => {
+    const held = await behind(1);
+    expect(held.within).toBeGreaterThan(400);
+    expect(held.offTarget).toBe(0);
+    // Some frames ARE out of reach, or the other half of this claims nothing.
+    expect(held.beyond).toBeGreaterThan(0);
+    // Stored positions near a metre are a ten-millionth apart.
+    expect(held.offReach).toBeLessThanOrEqual(3 * 2 ** -23);
     expect((await behind(0)).nearest).toBeGreaterThan(0.3);
     // Continuity, as for the hand-over: the largest move in a frame halves with the frame.
     const ratio = (await behind(0.4, 64)).largest / (await behind(0.4, 128)).largest;

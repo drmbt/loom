@@ -60,6 +60,14 @@ declare module "@domain/types/commands.ts" {
      * the camera: the mode itself writes nothing; a drag in it is an ordinary parameter edit.
      */
     "viewer.editMapping": { input: { on?: boolean }; output: { editing: boolean } };
+    /**
+     * §T970: lock the viewer to the camera its picture is drawn through, so its drag, wheel
+     * and fly keys MOVE THAT CAMERA: document edits through the bus, each gesture one undo
+     * step. `on` sets it; absent, it toggles (`c`). The mode itself writes nothing. Refused
+     * by name when the picture has no such camera, or when that camera's Eye and Look At
+     * are all driven.
+     */
+    "viewer.flyCamera": { input: { on?: boolean }; output: { flying: boolean; camera: string | null } };
   }
 }
 
@@ -79,6 +87,8 @@ export interface ViewerHandlers {
   fly(direction: FlyAxis): boolean;
   /** §T1536b: set (or, `undefined`, toggle) the viewer's edit-mapping mode; returns it. */
   editMapping(on: boolean | undefined): boolean;
+  /** §T970: set (or toggle) the lock. `camera` null = nothing to fly, and `refusal` says why. */
+  flyCamera(on: boolean | undefined): { flying: boolean; camera: string | null; refusal: string | null };
 }
 
 export interface ViewerHolder {
@@ -102,6 +112,9 @@ const NO_OUTPUT = { nodeId: null, portId: null };
  * between them; neither invents a third.
  */
 export const VIEWER_NO_CAMERA_MESSAGE = "The viewer is not showing an orbitable 3D preview.";
+/** §T970: said by `viewer.flyCamera` when the picture has no camera to lock to. */
+export const NO_CAMERA_TO_FLY = "The viewer's picture is not drawn through a camera that can be moved.";
+export const NO_CAMERA_TO_FLY_SUGGESTION = "Show a camera, or a Render framed by one, in the viewer.";
 export const VIEWER_NO_CAMERA_SUGGESTION =
   "Select a geometry, points or material preview in the viewer first.";
 
@@ -197,7 +210,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
   bus.registerCommand({
     name: "viewer.cameraHome",
     inputSchema: NO_INPUT,
-    description: "Return the viewer's inspection camera to its baked framing.",
+    description: "Return the viewer's inspection camera to its baked framing. While the viewer is locked to a camera, leave the lock instead: nothing is edited.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();
       if (holder.current === null) return cameraRefusal(revision);
@@ -306,6 +319,34 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
       return { status: "applied", revision, output: { editing: holder.current.editMapping(input.on) } };
     },
     rejectionOutput: () => ({ editing: false }),
+  });
+
+  /*
+   * §T970 — THE LOCK, as a command, so `c` is a keymap row (rebindable, in the shortcut
+   * editor) and the palette reaches the same toggle as the bar's button. NOT an agent tool,
+   * and it should not become one: the lock only routes a person's gestures, and an agent
+   * that wants a camera somewhere writes its Eye and Look At (`set_parameters`). No
+   * `viewer.*` command is on the agent surface (`src/agent/tools` dispatches none).
+   */
+  bus.registerCommand({
+    name: "viewer.flyCamera",
+    inputSchema: z.object({ on: z.boolean().optional() }).strict(),
+    description:
+      "Lock the viewer to the camera its picture is drawn through: its drag, wheel and fly keys then move that camera (undoable edits). Omit `on` to toggle.",
+    handler: (input, context) => {
+      const revision = context.store.getRevision();
+      const refuse = (message: string) => ({
+        status: "rejected" as const,
+        revision,
+        diagnostics: [{ severity: "info" as const, code: "viewer.noCameraToFly", message, suggestion: NO_CAMERA_TO_FLY_SUGGESTION }],
+        output: { flying: false, camera: null },
+      });
+      if (holder.current === null) return refuse(NO_CAMERA_TO_FLY);
+      if (context.dryRun) return { status: "validated", revision, output: { flying: false, camera: null } };
+      const { flying, camera, refusal } = holder.current.flyCamera(input.on);
+      return refusal === null ? { status: "applied", revision, output: { flying, camera } } : refuse(refusal);
+    },
+    rejectionOutput: () => ({ flying: false, camera: null }),
   });
 
   return holder;

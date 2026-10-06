@@ -656,13 +656,23 @@ describe("T1589b slice 2: a spot is a kind of row, and its cone and its aim are 
  * differ in 61 to 118 channel values of 3.7 to 5.3 million, each by one step of a half
  * float. Before: E13 b0ae17f85a00fa66, E33 5a7d8127aa370b62, E28 9cd4c3c06215a84f, E69
  * 962a4048645d64ce, E79 6bd605b4e59f4207.
+ *
+ * RE-TAKEN ON PURPOSE BY T1623b SLICE 4 (2026-10-06), the four that have a casting Light, and
+ * NOT FOR ANY SHADER TEXT: every module of these plans is the string it was. A casting
+ * light's shadow map is a layer of one of the Render's two layered targets now, so the plan
+ * NAMES it otherwise: its sweep's passes draw into `shadowMaps` or `shadowCubes` at a layer
+ * where they drew into a target of the light's own, and the lit draws' `shadowMap{s}`
+ * binding names that resource and that layer. Each one's picture is the bytes it was
+ * (frames 0 and 60, the Render's own target, main against this slice). E13 has no casting
+ * light and did not move. Before: E33 9aefeca06bc7bde5, E28 393eb505a3d99752, E69
+ * 923972675c8cd9d1, E79 921e038a3a933358.
  */
 const PINNED: ReadonlyArray<readonly [example: string, fingerprint: string, casting: number, table: boolean]> = [
   ["E13-Prism", "f6cab593f8e8d50a", 0, false],
-  ["E33-Obol", "9aefeca06bc7bde5", 1, true],
-  ["E28-Sundial", "393eb505a3d99752", 1, true],
-  ["E69-Burnish", "923972675c8cd9d1", 1, true],
-  ["E79-Crucible", "921e038a3a933358", 2, true],
+  ["E33-Obol", "744b970a16cfaded", 1, true],
+  ["E28-Sundial", "de0f0fc3267944b4", 1, true],
+  ["E69-Burnish", "2ab7ef7524fc78db", 1, true],
+  ["E79-Crucible", "9ae189909229718d", 2, true],
 ];
 
 function examplePlan(name: string) {

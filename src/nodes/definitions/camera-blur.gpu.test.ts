@@ -185,4 +185,31 @@ describe("Camera Blur on a real device (T1421b)", () => {
     const far = await render(graph(truck));
     for (let x = 0; x < W; x += 1) expect(far(x, 64), `${x}`).toBe(x === CENTRE ? 1 : 0);
   }, 60_000);
+
+  /*
+   * §T1656b: the camera's path is its WORLD path. Origin and Heading are composed into the
+   * pose before the two samples either side of the frame are taken, so a camera CARRIED by
+   * its Origin, or TURNED by its Heading, blurs exactly as one whose Eye and Look At do the
+   * moving, with Eye and Look At themselves standing still.
+   */
+  it("a camera carried by its Origin blurs as one whose Eye and Look At travel (T1656b)", async () => {
+    requireDawn();
+    // The travelling case above, with the travel moved to Origin: 20 m/s past a wall 5 m away.
+    const carried: Record<string, StoredParameter> = { "origin.x": expressionSlot("abstime * 20", 0) };
+    expectSmear(await render(graph(carried, {}, 5)), smearOfTurn(20 / 5), false);
+    // Not vacuous: at infinity the same carried camera leaves the line a line.
+    const far = await render(graph(carried));
+    for (let x = 0; x < W; x += 1) expect(far(x, 64), `${x}`).toBe(x === CENTRE ? 1 : 0);
+  }, 60_000);
+
+  it("a camera turned by its Heading pans as one whose Look At turns (T1656b)", async () => {
+    requireDawn();
+    // The pan above, with the turn moved to Heading. The frame's forward is its −z, so a
+    // heading of (sin θ, 0, −cos θ) turns the unmoved camera by θ: 4 rad/s, as there.
+    const turned: Record<string, StoredParameter> = {
+      "heading.x": expressionSlot("sin(abstime * 4)", 0),
+      "heading.z": expressionSlot("-cos(abstime * 4)", -1),
+    };
+    expectSmear(await render(graph(turned)), smearOfTurn(4), true);
+  }, 60_000);
 });

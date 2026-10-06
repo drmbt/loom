@@ -61,8 +61,11 @@ export interface KitFacts {
   readonly fingers: number;
   /** Indexed finger * 2 + link. */
   readonly phalanges: readonly Phalanx[];
-  /** Robot frame: each eye lens. */
-  readonly eyes: ReadonlyArray<{ readonly position: Vec3; readonly radius: number }>;
+  /**
+   * Robot frame: each eye, by its FACE, what shows of it from in front. `position` is the face's middle (on the
+   * eye's axis, which is the robot's forward one, as far forward as the eye reaches) and `face` its radius, metres.
+   */
+  readonly eyes: ReadonlyArray<{ readonly position: Vec3; readonly face: number }>;
 }
 
 export const ROBOT_SELECT = "body.* eyes.* lamp.* part:mand_*";
@@ -123,7 +126,12 @@ export function kitFactsFrom(glbUrl: string, robot: DecodedMesh, shape: (select:
   }
   const eyes = robot.markers
     .filter((marker) => marker.name.startsWith("eye."))
-    .map((marker) => ({ position: marker.position, radius: typeof marker.extras?.["loom_radius"] === "number" ? marker.extras["loom_radius"] : 0 }));
+    .map((marker) => {
+      const face = marker.extras?.["loom_face"];
+      // A kit from before the faces were measured has the half length of each eye's barrel there, and twice the eyes.
+      if (typeof face !== "number") throw new Error(`The sentinel kit's ${marker.name} has no loom_face; rebuild it with tools/blender/sentinel-bot/build.py.`);
+      return { position: marker.position, face };
+    });
   return {
     glbUrl,
     robot: selectionFacts(ROBOT_SELECT, robot),

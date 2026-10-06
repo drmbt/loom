@@ -68,16 +68,18 @@
   box-shadow: var(--shadow-inset);
 }
 /* A morph in flight: a bar along the foot of the button being faded to. */
+/* The foot of the button, whole: how far along it is drawn is `ShareFill`'s (T1653b). */
 .fade {
   position: absolute;
   left: 0;
+  right: 0;
   bottom: 0;
   height: 0.3em;
-  background: var(--signal);
+  background-color: var(--signal);
   pointer-events: none;
 }
 .lit .fade {
-  background: var(--bg-void);
+  background-color: var(--bg-void);
 }
 .empty {
   align-self: center;

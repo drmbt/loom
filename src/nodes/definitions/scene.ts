@@ -1,6 +1,6 @@
 import type { CompiledNodeDescription, NodeDefinition, ScratchRequest } from "../../domain/types/node-definition.ts";
-import type { ParameterSchema } from "../../domain/types/parameters.ts";
-import { storedStaticValue } from "../../domain/parameters/slots.ts";
+import type { ParameterSchema, StoredParameter } from "../../domain/types/parameters.ts";
+import { isParameterSlot, storedStaticValue } from "../../domain/parameters/slots.ts";
 import { instanceShapeIndex, parseInstanceShape } from "./render-instances.ts";
 import type { BufferBindingDescriptor, BufferWritePassDescriptor, DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
 import { relocated, type WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
@@ -8,7 +8,7 @@ import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
 import type { CameraPayload, GeometryPayload, LightPayload, MapExtend, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
-import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorDepthRange, projectorMatrix } from "../../domain/geometry/camera.ts";
+import { cameraBasis, cameraFrame, cameraPayloadMatrix, directionalShadowMatrix, inCameraFrame, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorDepthRange, projectorMatrix } from "../../domain/geometry/camera.ts";
 import { identityMatrix, normalMatrix, objectMatrix } from "../../domain/geometry/transform.ts";
 import { gridPointCount, gridSheets, gridVertexCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
@@ -113,6 +113,97 @@ export const CAMERA_MOTION_SECONDS = 1 / 1000;
 const samePose = (a: CameraPose, b: CameraPose): boolean =>
   a.fovDeg === b.fovDeg && a.roll === b.roll && a.eye.every((v, i) => v === b.eye[i]) && a.lookAt.every((v, i) => v === b.lookAt[i]);
 
+/**
+ * §T1656b: Eye and Look At are offsets in the frame Origin and Heading make. THE ONE
+ * COMPOSITION: the payload carries these world positions (so no consumer of a camera knows
+ * the frame exists) and §T1674b's channels are these same numbers, read by an expression.
+ * §T1671b: the Frame is read HERE, so an Aimed frame reaches the payload and the channels by
+ * the one function, and a reader of the channels changes nothing when a camera opts in.
+ */
+function composedCameraPose(values: Readonly<Record<string, unknown>>): CameraPose {
+  const frame = cameraFrame(
+    vec3(values, "origin", [0, 0, 0]),
+    vec3(values, "heading", [0, 0, 0]),
+    values["frame"] === "aimed" ? "aimed" : "level",
+  );
+  return {
+    eye: inCameraFrame(frame, vec3(values, "eye", [0, 0.5, 3])),
+    lookAt: inCameraFrame(frame, vec3(values, "lookAt", [0, 0, 0])),
+    fovDeg: readNumber(values as never, "fov", 55),
+    roll: readNumber(values as never, "roll", 0),
+  };
+}
+
+const AXES = ["X", "Y", "Z"] as const;
+
+/** §T1674b: is this camera's Origin or Heading anything but the default, as STORED? */
+function cameraHasFrame(stored: Readonly<Record<string, StoredParameter>>): boolean {
+  const moved = (value: StoredParameter | undefined): boolean => {
+    if (value === undefined) return false;
+    // A slot in any mode but static is driven: an expression is a frame, whatever it is worth now.
+    if (isParameterSlot(value) && value.mode !== "static") return true;
+    const held = storedStaticValue(value);
+    if (typeof held === "number") return held !== 0;
+    return Array.isArray(held) && held.some((component) => component !== 0);
+  };
+  return ["origin", "heading"].some((key) => moved(stored[key]) || ["x", "y", "z"].some((axis) => moved(stored[`${key}.${axis}`])));
+}
+
+/**
+ * §T1674b — THE CAMERA'S POSE IN THE WORLD, AS CHANNELS: what a pass that turns a pixel back
+ * into a ray reads (lit air, a focus by distance, a reflection). The payload's own numbers,
+ * from the payload's own function, and the basis the Render's view is built on
+ * (`cameraBasis`: the guarded up, Roll included).
+ */
+const cameraChannels: NonNullable<NodeDefinition["parameterChannels"]> = {
+  names: {
+    eyeX: "Where the camera is, in the world: x",
+    eyeY: "Where the camera is, in the world: y",
+    eyeZ: "Where the camera is, in the world: z",
+    aimX: "The point it looks at, in the world: x",
+    aimY: "The point it looks at, in the world: y",
+    aimZ: "The point it looks at, in the world: z",
+    forwardX: "The way it looks, a unit vector: x",
+    forwardY: "The way it looks, a unit vector: y",
+    forwardZ: "The way it looks, a unit vector: z",
+    rightX: "The picture's right, Roll included: x",
+    rightY: "The picture's right, Roll included: y",
+    rightZ: "The picture's right, Roll included: z",
+    upX: "The picture's up, Roll included: x",
+    upY: "The picture's up, Roll included: y",
+    upZ: "The picture's up, Roll included: z",
+    distance: "From the camera to the point it looks at",
+    fov: "The field of view, in degrees",
+  },
+  reads: ["eye", "lookAt", "origin", "heading", "frame", "fov", "roll"],
+  evaluate(values) {
+    const pose = composedCameraPose(values);
+    const basis = cameraBasis(pose.eye, pose.lookAt, pose.roll);
+    const channels: Record<string, number> = {
+      distance: Math.hypot(pose.lookAt[0] - pose.eye[0], pose.lookAt[1] - pose.eye[1], pose.lookAt[2] - pose.eye[2]),
+      fov: pose.fovDeg,
+    };
+    AXES.forEach((axis, index) => {
+      channels[`eye${axis}`] = pose.eye[index] as number;
+      channels[`aim${axis}`] = pose.lookAt[index] as number;
+      channels[`forward${axis}`] = basis.forward[index] as number;
+      channels[`right${axis}`] = basis.right[index] as number;
+      channels[`up${axis}`] = basis.up[index] as number;
+    });
+    return channels;
+  },
+  insteadOf(parameter, component, stored) {
+    if (parameter !== "eye" && parameter !== "lookAt") return null;
+    if (!cameraHasFrame(stored)) return null;
+    const axis = component === "y" ? "Y" : component === "z" ? "Z" : "X";
+    return {
+      channel: `${parameter === "eye" ? "eye" : "aim"}${axis}`,
+      gives: "the offset in the frame its Origin and Heading make",
+      wants: parameter === "eye" ? "where the camera is in the world" : "the point it looks at in the world",
+    };
+  },
+};
+
 /** T377 — the camera as a THING: shareable, drivable, referenced by name. */
 export const cameraNode: NodeDefinition = {
   type: "camera",
@@ -120,13 +211,41 @@ export const cameraNode: NodeDefinition = {
   title: "Camera",
   category: "render",
   description:
-    "A camera other nodes reference by NAME: Render, Render Surface and Render Instances all name it in their camera parameter, so one camera frames them together. Every parameter is drivable — an orbiting camera is a uniform write, never a rebuild. Its preview shows WHAT THE RENDERER SEES: with exactly one renderer naming this camera, the preview is that renderer's own picture; with none, a stock reference scene showing framing alone; with several, the stock scene again, because there is no single answer and picking one would be a viewpoint nobody chose.",
+    "A camera other nodes reference by NAME: Render, Render Surface and Render Instances all name it in their camera parameter, so one camera frames them together. Every parameter is drivable — an orbiting camera is a uniform write, never a rebuild. To follow something that moves, drive Origin and Heading with it and leave Eye and Look At as the offset: the view can then be flown by hand and still follows. An expression on another node reads where the camera IS in the world as op('camera_name').chan.eyeX (eye, aim, forward, right, up as X Y Z, and distance and fov): with Origin or Heading set, par.eye and par.lookAt are the offset. Its preview shows WHAT THE RENDERER SEES: with exactly one renderer naming this camera, the preview is that renderer's own picture; with none, a stock reference scene showing framing alone; with several, the stock scene again, because there is no single answer and picking one would be a viewpoint nobody chose.",
   tags: ["3d", "scene", "camera", "view"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: { kind: "camera" } }],
+  parameterChannels: cameraChannels,
   parameters: {
     eye: { type: "vector", size: 3, label: "Eye", default: [0, 0.5, 3] },
     lookAt: { type: "vector", size: 3, label: "Look At", default: [0, 0, 0] },
+    origin: {
+      type: "vector",
+      size: 3,
+      label: "Origin",
+      default: [0, 0, 0],
+      description:
+        "Where Eye and Look At are measured from. Drive it with the position of what the camera follows, and Eye and Look At become offsets from that subject: a view flown by hand in the viewer or on this tile is then an offset that travels with it. At 0, 0, 0 Eye and Look At are world positions.",
+    },
+    heading: {
+      type: "vector",
+      size: 3,
+      label: "Heading",
+      default: [0, 0, 0],
+      description:
+        "The direction the frame faces, as a vector: the frame's forward is its −z, the way the default camera looks, so an offset behind the subject stays behind it. With Frame on Level only the horizontal part is read: Eye and Look At turn about the vertical, and the camera rises with the subject and never tilts with it. With Frame on Aimed it is read whole. At 0, 0, 0 nothing turns and only Origin's position is inherited.",
+    },
+    frame: {
+      type: "enum",
+      label: "Frame",
+      default: "level",
+      options: [
+        { value: "level", label: "Level" },
+        { value: "aimed", label: "Aimed" },
+      ],
+      description:
+        "How Heading is read. Level: only its horizontal part, so the frame turns about the vertical and never tilts (a chase camera keeps its own horizon). Aimed: whole, so the frame's forward is Heading itself and Look At 0, 0, −d is d along it (a directed shot: drive Origin with where the camera is and Heading with where it looks, and Eye and Look At stay plain numbers that a flight can write). A Heading within about 2.6° of straight up or down takes world +z as its up, as the camera's own view does. Flying it keeps its world meaning in either frame: a drag orbits Look At about the world's vertical, a turntable, and E and Q rise and fall along the picture's up. Bank the picture with Roll.",
+    },
     fov: { type: "number", label: "FOV", default: 55, min: 1, max: 179, range: "bounded", unit: "degrees" },
     near: { type: "number", label: "Near", default: 0.1, min: 0.001, range: "floor" },
     far: { type: "number", label: "Far", default: 100, min: 0.01, range: "floor" },
@@ -153,12 +272,9 @@ export const cameraNode: NodeDefinition = {
   },
   compile(context): CompiledNodeDescription {
     const { parameters, timeProbe } = readCompileInputs(context);
-    const pose = (values: Readonly<Record<string, unknown>>): CameraPose => ({
-      eye: vec3(values, "eye", [0, 0.5, 3]),
-      lookAt: vec3(values, "lookAt", [0, 0, 0]),
-      fovDeg: readNumber(values as never, "fov", 55),
-      roll: readNumber(values as never, "roll", 0),
-    });
+    // §T1656b: the payload carries WORLD positions (`composedCameraPose`), so no consumer of
+    // a camera (a Render, the tile, Camera Blur's motion) knows the frame exists.
+    const pose = composedCameraPose;
     // T1421b: the path's derivative, both sides, for a motion blur (Camera Blur) — published
     // only when the camera MOVES there, so a still camera's payload is the same with or
     // without a frame (the values-only frame path never re-runs a camera that animates nothing).
@@ -171,8 +287,8 @@ export const cameraNode: NodeDefinition = {
         : { dt: CAMERA_MOTION_SECONDS, frameSeconds: timeProbe.frameSeconds, before: pose(before), after: pose(after) };
     const payload: CameraPayload = {
       kind: "camera",
-      eye: vec3(parameters, "eye", [0, 0.5, 3]),
-      lookAt: vec3(parameters, "lookAt", [0, 0, 0]),
+      eye: now.eye,
+      lookAt: now.lookAt,
       fovDeg: readNumber(parameters, "fov", 55),
       near: readNumber(parameters, "near", 0.1),
       far: readNumber(parameters, "far", 100),
@@ -1658,6 +1774,8 @@ const TEXTURE_CATEGORIES: ReadonlyArray<readonly [RegExp, string]> = [
 function textureLedger(
   nodeId: string,
   passes: ReadonlyArray<DrawPassDescriptor | DispatchPassDescriptor | BufferWritePassDescriptor>,
+  /** T1658b: a Material · WGSL's textures are bound under the author's own names. */
+  materialTextureNames: ReadonlySet<string>,
 ): NonNullable<CompiledNodeDescription["diagnostics"]>[number] | undefined {
   let worst: { id: string; bindings: string[] } | undefined;
   for (const pass of passes) {
@@ -1668,7 +1786,7 @@ function textureLedger(
   if (worst === undefined) return undefined;
   const counts = new Map<string, number>();
   for (const binding of worst.bindings) {
-    const category = TEXTURE_CATEGORIES.find(([pattern]) => pattern.test(binding))?.[1] ?? binding;
+    const category = materialTextureNames.has(binding) ? "Material · WGSL textures" : (TEXTURE_CATEGORIES.find(([pattern]) => pattern.test(binding))?.[1] ?? binding);
     counts.set(category, (counts.get(category) ?? 0) + 1);
   }
   const breakdown = [...counts].map(([category, count]) => `${count} ${category}`).join(", ");
@@ -1678,7 +1796,7 @@ function textureLedger(
     message: `Node "${nodeId}": pass "${worst.id}" binds ${worst.bindings.length} sampled textures (${breakdown}), over the WebGPU baseline of ${SAMPLED_TEXTURE_BASELINE} (maxSampledTexturesPerShaderStage). A device that reports no more than the baseline refuses the pass.`,
     nodeId,
     suggestion:
-      "Each projector costs two (cookie + occlusion): turn Occlusion off on projectors nothing needs to shadow, or merge projectors that sit together into one wider throw. Each casting light costs one shadow map; Env Filter: Prefiltered costs one more than Taps.",
+      "Each projector costs two (cookie + occlusion): turn Occlusion off on projectors nothing needs to shadow, or merge projectors that sit together into one wider throw. Each casting light costs one shadow map; Env Filter: Prefiltered costs one more than Taps; a Material · WGSL costs one a texture its source names.",
   };
 }
 
@@ -2112,7 +2230,33 @@ export const renderNode: NodeDefinition = {
             ]
           : [[`shadow${slot}Matrix`, Array.from(shadowMatrices[slot] ?? [])]],
       );
-    const shadowTargetOf = (slot: number): string => `scratch:${nodeId}:shadow${casting[slot]?.index ?? slot}`;
+    /*
+     * T1623b slice 4 — THE SHADOW MAPS ARE LAYERS. Two layered targets a Render, one for its
+     * directional casting lights' maps (twice the output) and one for its point lights' 3 x 2
+     * cube atlases (one and a half times), a layer a light, where each casting light had a
+     * target of its own. A sweep draws into its light's layer (`shadowLayers` is the one
+     * answer to which).
+     *
+     * The layers of one array share ONE depth buffer: the sweeps run one after the other and
+     * each opens with a pass that clears. A Render with three casting suns holds four
+     * layers' colour and one depth where it held three of each.
+     *
+     * A LIT DRAW STILL BINDS A TEXTURE A LIGHT: `shadowMap{s}`, a `texture_2d`, which is now a
+     * VIEW OF THAT LIGHT'S ONE LAYER. So the lit text is the text it was, character for
+     * character, and a casting light is still one of the sixteen sampled textures a stage
+     * may bind. That is on purpose and measured: reading the same layer through one
+     * `texture_2d_array` binding costs the lit draw 73 to 85 % more at four and eight casting
+     * lights of the default softness on Apple's GPUs, and through a view it costs what a
+     * texture costs (docs/light-cost-investigation-2026-10-06.md, section 15). How a row
+     * reads a map without that cost is slice 5's first question.
+     */
+    const shadowSlots = shadowLayers(casting.length, pointSlots);
+    const SHADOW_KEYS = { maps: "shadowMaps", cubes: "shadowCubes" } as const;
+    const shadowTargetOf = (slot: number): string => `scratch:${nodeId}:${pointSlots.includes(slot) ? SHADOW_KEYS.cubes : SHADOW_KEYS.maps}`;
+    const shadowLayerOf = (slot: number): number => shadowSlots.layerOf[slot] ?? 0;
+    /** What a lit draw binds for its casting lights: for each, the one layer that is its map. */
+    const shadowTextures = (): Array<{ binding: string; resourceId: string; sampled: "unfiltered"; layer: number }> =>
+      casting.map((_, slot) => ({ binding: `shadowMap${slot}`, resourceId: shadowTargetOf(slot), sampled: "unfiltered" as const, layer: shadowLayerOf(slot) }));
     const castingIndices = casting.map(({ index }) => index);
     /*
      * T1623b slice 3 — WHICH LIGHT IS WHAT, for the two generators.
@@ -2161,6 +2305,8 @@ export const renderNode: NodeDefinition = {
     const diagnostics: NonNullable<CompiledNodeDescription["diagnostics"]> = [];
     const background = readColor(parameters, "background", [0, 0, 0, 1]);
     const passes: Array<DrawPassDescriptor | DispatchPassDescriptor | BufferWritePassDescriptor> = [];
+    /* T1658b: the names a Material · WGSL's textures are bound under, for the ledger below. */
+    const materialTextureNames = new Set<string>();
     /** T478: one indirect-args scratch buffer per COUNTED geometry. */
     const scratch: Array<
       | NonNullable<ReturnType<typeof countedDrawSupport>>["scratch"]
@@ -2173,6 +2319,8 @@ export const renderNode: NodeDefinition = {
       | { key: string; scale: number; format: "rgba16float" }
       // T1589b: the light table — the pointset Lights' records and the grid's cells.
       | LightTablePlan["scratch"][number]
+      // T1623b slice 4: the shadow maps, a layer a casting light.
+      | { kind: "layers"; key: string; layers: number; scale: number; format: "r32float"; depth: true }
     > = [];
     if (ssaa) scratch.push({ key: "ss", scale: 2, depth: true });
     /** T481: counted draw support emitted once (in the shadow phase when one exists),
@@ -2259,7 +2407,10 @@ export const renderNode: NodeDefinition = {
       readonly cube?: { readonly light: readonly number[]; readonly tile: readonly number[] };
       /** T1362b: faces after the first share the atlas the first one cleared. */
       readonly skipClear?: boolean;
+      /** T1623b slice 4: the layer of a layered `target` this sweep draws into (a casting light's map). */
+      readonly layer?: number;
     }): void => {
+      const firstOfSweep = passes.length;
       const depthShader = (shader: ReturnType<typeof shadowSurfaceWgsl>): ReturnType<typeof shadowSurfaceWgsl> =>
         options.cube === undefined ? shader : cubeShadowVariant(shader);
       const cubeUniforms = options.cube === undefined ? {} : { cubeLight: [...options.cube.light], cubeTile: [...options.cube.tile] };
@@ -2549,6 +2700,13 @@ export const renderNode: NodeDefinition = {
           if (pass !== undefined && pass.kind === "draw") passes[index] = { ...pass, skip: true };
         }
       });
+      /* T1623b slice 4: every draw of this sweep goes into its layer. Said once, here, for the
+         clear and for each geometry's draw whatever emitted it. */
+      if (options.layer === undefined) return;
+      for (let index = firstOfSweep; index < passes.length; index += 1) {
+        const pass = passes[index];
+        if (pass !== undefined && pass.kind === "draw" && pass.target === options.target) passes[index] = { ...pass, layer: options.layer };
+      }
     };
 
     /*
@@ -2588,12 +2746,15 @@ export const renderNode: NodeDefinition = {
        Zero casting lights emits nothing here and nothing below changes: §V309 holds as
        byte-identical passes and shaders. */
     const emitShadowPasses = (): void => {
+      /* T1623b slice 4: the two layered targets, each with the layers its kind's casting
+         lights need, in steps (`shadowLayerStep`). */
+      if (shadowSlots.directional > 0) scratch.push({ kind: "layers", key: SHADOW_KEYS.maps, layers: shadowLayerStep(shadowSlots.directional), scale: SHADOW_MAP_SCALE, format: "r32float", depth: true });
+      if (shadowSlots.point > 0) scratch.push({ kind: "layers", key: SHADOW_KEYS.cubes, layers: shadowLayerStep(shadowSlots.point), scale: SHADOW_CUBE_SCALE, format: "r32float", depth: true });
       casting.forEach(({ index: lightIndex, light }, slot) => {
         if (light.type === "point") {
           /* T1362b: the cube — one atlas (3×2 tiles, each face's frustum squeezed into its
              tile) cleared once, then six sweeps, one per face, each storing radial distance
              ÷ range. 1.5× the output keeps a tile near the output's own texel density. */
-          scratch.push({ key: `shadow${lightIndex}`, scale: 1.5, format: "r32float", depth: true });
           const range = Math.max(0.1, light.shadowExtent);
           (pointFaces[slot] ?? []).forEach((matrix, face) => {
             const tileX = face % 3;
@@ -2601,6 +2762,7 @@ export const renderNode: NodeDefinition = {
             emitDepthSweep({
               prefix: `shadow:${lightIndex}:face${face}`,
               target: shadowTargetOf(slot),
+              layer: shadowLayerOf(slot),
               casters: castersBySlot[slot] ?? [],
               reaches: reachOf(light, face),
               matrix,
@@ -2615,10 +2777,10 @@ export const renderNode: NodeDefinition = {
           });
           return;
         }
-        scratch.push({ key: `shadow${lightIndex}`, scale: 2, format: "r32float", depth: true });
         emitDepthSweep({
           prefix: `shadow:${lightIndex}`,
           target: shadowTargetOf(slot),
+          layer: shadowLayerOf(slot),
           casters: castersBySlot[slot] ?? [],
           matrix: shadowMatrices[slot],
           linearDepth: false,
@@ -3242,11 +3404,7 @@ export const renderNode: NodeDefinition = {
             ? {}
             : {
                 textures: [
-                  ...casting.map((_, slot) => ({
-                    binding: `shadowMap${slot}`,
-                    resourceId: shadowTargetOf(slot),
-                    sampled: "unfiltered" as const,
-                  })),
+                  ...shadowTextures(),
                   ...(environmentResource === undefined || !envLit(model)
                     ? []
                     : [
@@ -3410,8 +3568,13 @@ export const renderNode: NodeDefinition = {
                 paramsDeclaration: material.custom.paramsDeclaration,
                 fields: material.custom.fields,
                 ...(material.custom.instance === undefined ? {} : { instance: material.custom.instance }),
+                ...(material.custom.textures === undefined ? {} : { textures: material.custom.textures.map((texture) => texture.name) }),
               },
             };
+      /* T1658b: the textures a Material · WGSL names, bound under those names in every draw
+         of this geometry that runs its `surface()`: the lit draw, the layers, the matte. */
+      const materialTextures = (material.custom?.textures ?? []).map((texture) => ({ binding: texture.name, resourceId: texture.resourceId, sampled: "unfiltered" as const }));
+      for (const texture of materialTextures) materialTextureNames.add(texture.binding);
       const surfaceMaterialOptions = {
         model: model as "unlit" | "lambert" | "phong" | "pbr",
         maps,
@@ -3490,6 +3653,7 @@ export const renderNode: NodeDefinition = {
               ],
         ...(material.maps.albedo === undefined &&
         material.maps.roughness === undefined &&
+        materialTextures.length === 0 &&
         casting.length === 0 &&
         !aoActive &&
         !projActive &&
@@ -3503,11 +3667,8 @@ export const renderNode: NodeDefinition = {
                 ...(material.maps.roughness === undefined
                   ? []
                   : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
-                ...casting.map((_, slot) => ({
-                  binding: `shadowMap${slot}`,
-                  resourceId: shadowTargetOf(slot),
-                  sampled: "unfiltered" as const,
-                })),
+                ...materialTextures,
+                ...shadowTextures(),
                 ...(environmentResource === undefined || !envLit(model)
                   ? []
                   : [
@@ -3582,7 +3743,8 @@ export const renderNode: NodeDefinition = {
             textures: [
               ...(material.maps.albedo === undefined ? [] : [{ binding: "albedoMap", resourceId: material.maps.albedo, sampled: "unfiltered" as const }]),
               ...(material.maps.roughness === undefined ? [] : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
-              ...casting.map((_, slot) => ({ binding: `shadowMap${slot}`, resourceId: shadowTargetOf(slot), sampled: "unfiltered" as const })),
+              ...materialTextures,
+              ...shadowTextures(),
             ],
             uniforms: Object.fromEntries(Object.entries(litPass.uniforms ?? {}).filter(([key]) => !/^(environment|projector)/.test(key))),
           });
@@ -3594,12 +3756,13 @@ export const renderNode: NodeDefinition = {
           id: layer === "normal" ? `${nodeId}:gbuffer:${index}` : `${nodeId}:gbuffer:${layer}:${index}`,
           ...surface({ ...surfaceMaterialOptions, lightCount: 0, gbuffer: layer }),
           target,
-          ...(material.maps.albedo === undefined && material.maps.roughness === undefined
+          ...(material.maps.albedo === undefined && material.maps.roughness === undefined && materialTextures.length === 0
             ? { textures: [] }
             : {
                 textures: [
                   ...(material.maps.albedo === undefined ? [] : [{ binding: "albedoMap", resourceId: material.maps.albedo, sampled: "unfiltered" as const }]),
                   ...(material.maps.roughness === undefined ? [] : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
+                  ...materialTextures,
                 ],
               }),
           uniforms: Object.fromEntries(Object.entries(litPass.uniforms ?? {}).filter(([key]) => !lighting.test(key))),
@@ -3886,7 +4049,7 @@ export const renderNode: NodeDefinition = {
       } as DrawPassDescriptor);
     }
 
-    const ledger = textureLedger(nodeId, passes);
+    const ledger = textureLedger(nodeId, passes, materialTextureNames);
     if (ledger !== undefined) diagnostics.push(ledger);
 
     if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
@@ -3938,6 +4101,37 @@ const SURFACE_UV_REFERENCE = /\.\s*uv\b/;
  */
 const additiveSurface = (payload: GeometryPayload): boolean =>
   (payload.mode === "surface" || payload.instanceMesh !== undefined) && additiveLight(payload);
+
+/** T1623b slice 4: a shadow layer's size as a share of the Render's output: a directional map, a point light's cube atlas. */
+const SHADOW_MAP_SCALE = 2;
+const SHADOW_CUBE_SCALE = 1.5;
+/**
+ * T1623b slice 4 — HOW MANY LAYERS AN ARRAY IS GIVEN for `count` casting lights of its kind:
+ * 1, 2, 4, 8, then eights. The layer count is the array's structure (another count is
+ * another texture), so turning Cast Shadows on for one more light rebuilds the array only
+ * when a step is passed, and a spare layer costs its bytes and nothing else: no sweep
+ * draws into it and no block reads it. With its one depth buffer an array of a step is never
+ * more memory than the lights' own targets were (each had a depth buffer of its own): at
+ * 1920 x 1080 a directional map is 31.6 MiB and a cube atlas 17.8 MiB, so five casting suns
+ * are nine times 31.6 where they were ten times.
+ *
+ * What bounds a Render's casting lights is what bounded them: the sixteen sampled textures
+ * a stage may bind, a texture a casting light (the compiler's binding budget).
+ */
+export const shadowLayerStep = (count: number): number => (count <= 0 ? 0 : count <= 8 ? 2 ** Math.ceil(Math.log2(count)) : Math.ceil(count / 8) * 8);
+/**
+ * T1623b slice 4 — WHICH LAYER A SHADOW SLOT IS: its place among the slots of its own kind,
+ * in slot order (the directional lights' maps are one layered target, the point lights' cube
+ * atlases another). The ONE answer: a light's sweep draws into it and its block's texture is
+ * a view of it.
+ */
+export function shadowLayers(slots: number, pointSlots: Iterable<number> = []): { readonly layerOf: ReadonlyArray<number>; readonly directional: number; readonly point: number } {
+  const points = new Set(pointSlots);
+  let directional = 0;
+  let point = 0;
+  const layerOf = Array.from({ length: Math.max(0, slots) }, (_, slot) => (points.has(slot) ? point++ : directional++));
+  return { layerOf, directional, point };
+}
 
 /**
  * T1623b: a geometry the SURFACE generator draws with a lit model: a Surface or mesh

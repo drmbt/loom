@@ -199,6 +199,130 @@ export function cameraBasis(
   return { forward, right, up: cross(right, forward) };
 }
 
+/**
+ * §T1656b — A CAMERA'S PARENT FRAME: where its Eye and Look At are measured FROM.
+ *
+ * The owner's camera follows a robot travelling 3 to 8 m a second, by six expressions on Eye
+ * and Look At. A view flown by hand could only be kept by replacing those expressions with
+ * numbers, and the camera would stop following (§T970). The reference tools all answer the
+ * same way: the thing that moves is a PARENT, and the camera's own transform is an offset
+ * in it (TouchDesigner's Parent Transform Source, Notch's parent node, Blender's parenting;
+ * `docs/camera-fly-design-2026-10-06.md` has the sentences).
+ *
+ * Here the parent is two vectors on the camera, both ordinary drivable parameters:
+ *
+ *  - ORIGIN: where the frame is. World Eye = Origin + frame · Eye; the same for Look At.
+ *  - HEADING: which way the frame faces. ONLY ITS HORIZONTAL PART IS READ: the frame turns
+ *    about the world's up axis and never tilts. A camera that follows a subject up a ramp
+ *    rises with it (Origin) and does not pitch with it, so the horizon of a flown view stays
+ *    where the pilot left it, and the gizmo's orbit, truck and fly mean the same thing in the
+ *    frame as in the world (a turn about the axis all three already use).
+ *
+ * The frame's FORWARD is its local −z, the way a camera looks: the default camera (Eye
+ * 0, 0.5, 3, Look At the origin) under a subject's position and heading sits three behind
+ * and half above it, looking where it goes. No heading (zero, or straight up or down) is no
+ * turn: only the position is inherited.
+ *
+ * ## §T1671b — LEVEL, or AIMED
+ *
+ * That is the LEVEL frame, and it is the default. A directed shot wants the other reading
+ * of the same vector: Heading is where the camera LOOKS, climbing and diving included, so
+ * that "d along the shot" is Look At 0, 0, −d as a plain number (the owner's rig is a table
+ * of 25 directed shots; on a level frame the aim's height and distance had to stay in Look
+ * At as expressions, and two of the six channels a flight writes were driven). That is the
+ * AIMED frame: its forward IS Heading, read whole, and its up is the world's up made
+ * perpendicular to it.
+ *
+ * THE POLE, STATED. A Heading within about 2.6° of straight up or down has no such up. The
+ * frame then takes world +z as its up reference: `guardedRolledUp`'s rule and threshold
+ * below, the one the camera's own view has for a view that steep, so the frame's axes and
+ * the picture's agree there too. Nothing is NaN, and nothing is remembered from the frame
+ * before: the axes are a function of this Heading alone.
+ */
+export type CameraFrameMode = "level" | "aimed";
+
+export interface CameraFrame {
+  readonly origin: readonly [number, number, number];
+  /** The frame's +x, in the world. Unit; horizontal away from the pole. */
+  readonly right: readonly [number, number, number];
+  /** The frame's +y, in the world. Unit. The world's own up in a LEVEL frame. */
+  readonly up: readonly [number, number, number];
+  /** The frame's +z, in the world: the opposite of its heading. Unit; horizontal when LEVEL. */
+  readonly back: readonly [number, number, number];
+}
+
+const WORLD_UP = [0, 1, 0] as const;
+
+export function cameraFrame(
+  origin: readonly [number, number, number],
+  heading: readonly [number, number, number],
+  mode: CameraFrameMode = "level",
+): CameraFrame {
+  if (mode === "aimed") {
+    const length = Math.hypot(heading[0], heading[1], heading[2]);
+    // A Heading of no length is no heading, as it is when level.
+    if (!(length > 1e-6)) return { origin, right: [1, 0, 0], up: WORLD_UP, back: [0, 0, 1] };
+    const forward = [heading[0] / length, heading[1] / length, heading[2] / length] as const;
+    const reference = Math.abs(forward[1]) > 0.999 ? ([0, 0, 1] as const) : WORLD_UP;
+    // right = forward × reference, made unit; up = right × forward.
+    const rx = forward[1] * reference[2] - forward[2] * reference[1];
+    const ry = forward[2] * reference[0] - forward[0] * reference[2];
+    const rz = forward[0] * reference[1] - forward[1] * reference[0];
+    const span = Math.hypot(rx, ry, rz);
+    const right = [rx / span, ry / span, rz / span] as const;
+    const up = [
+      right[1] * forward[2] - right[2] * forward[1],
+      right[2] * forward[0] - right[0] * forward[2],
+      right[0] * forward[1] - right[1] * forward[0],
+    ] as const;
+    return { origin, right, up, back: [-forward[0], -forward[1], -forward[2]] };
+  }
+  const span = Math.hypot(heading[0], heading[2]);
+  if (!(span > 1e-6)) return { origin, right: [1, 0, 0], up: WORLD_UP, back: [0, 0, 1] };
+  const back = [-heading[0] / span, 0, -heading[2] / span] as const;
+  // right = up × back, with up the world's y.
+  return { origin, right: [back[2], 0, -back[0]], up: WORLD_UP, back };
+}
+
+/**
+ * §T1671b: the WORLD's up, in the frame's own coordinates. A gesture on a pose stored in a
+ * frame (an orbit, a truck, a flight) keeps its world meaning, a turntable about the
+ * world's vertical, by being told which way that is where the pose's numbers live. It is
+ * 0, 1, 0 itself in every level frame.
+ */
+export function worldUpInCameraFrame(frame: CameraFrame): readonly [number, number, number] {
+  if (frame.up === WORLD_UP) return WORLD_UP;
+  return [frame.right[1], frame.up[1], frame.back[1]];
+}
+
+/**
+ * A point of the frame, in the world.
+ *
+ * ⚑ THE UNTOUCHED FRAME RETURNS THE POINT ITSELF, float for float: every camera saved
+ * before Origin and Heading existed has neither, and what it draws must not move by a bit.
+ * `x * 1 + z * 0 + 0` is exact for finite numbers and still not the same claim.
+ */
+export function inCameraFrame(
+  frame: CameraFrame,
+  point: readonly [number, number, number],
+): readonly [number, number, number] {
+  const { origin, right, up, back } = frame;
+  if (origin[0] === 0 && origin[1] === 0 && origin[2] === 0 && right[0] === 1 && back[2] === 1 && up[1] === 1) return point;
+  // A LEVEL frame, by the arithmetic it has always had: its up is the world's, exactly.
+  if (up === WORLD_UP) {
+    return [
+      origin[0] + right[0] * point[0] + back[0] * point[2],
+      origin[1] + point[1],
+      origin[2] + right[2] * point[0] + back[2] * point[2],
+    ];
+  }
+  return [
+    origin[0] + right[0] * point[0] + up[0] * point[1] + back[0] * point[2],
+    origin[1] + right[1] * point[0] + up[1] * point[1] + back[1] * point[2],
+    origin[2] + right[2] * point[0] + up[2] * point[1] + back[2] * point[2],
+  ];
+}
+
 /** The optics a venue spec lists (T704). All of it is geometry — no light math here. */
 export interface ProjectorLens {
   /** Throw distance ÷ image width — the number printed on the lens. */
@@ -213,18 +337,6 @@ export interface ProjectorLens {
   readonly keystoneV: number;
 }
 
-/**
- * T704 — the projector's viewProjection: what the venue's lens sheet says, as a matrix.
- *
- * fovX comes from the throw ratio (tan(fovX/2) = 0.5/throw); fovY from the native
- * aspect. Near/far derive from the throw DISTANCE (|eye − lookAt|) so the frustum
- * brackets the surface being hit without another parameter to explain: near at 2% of
- * the distance, far at 8×. Lens shift is a true off-axis offset (the image moves, the
- * body does not re-aim) — implemented on the projection's z-column so it survives the
- * perspective divide as a constant NDC offset. Keystone is the trapezoid a tilted
- * screen produces: a shear INTO THE W ROW, so one side of the image genuinely scales
- * against the other rather than merely sliding.
- */
 /**
  * The projector frustum's near and far planes, from the throw distance (|eye − lookAt|):
  * near at 2% of it, far at 8×. One function, because the lit read linearises the depth
@@ -245,6 +357,18 @@ export function projectorDepthRange(pose: {
   return { near: Math.max(0.01, distance * 0.02), far: distance * 8 };
 }
 
+/**
+ * T704 — the projector's viewProjection: what the venue's lens sheet says, as a matrix.
+ *
+ * fovX comes from the throw ratio (tan(fovX/2) = 0.5/throw); fovY from the native
+ * aspect. Near/far derive from the throw DISTANCE (|eye − lookAt|) so the frustum
+ * brackets the surface being hit without another parameter to explain: near at 2% of
+ * the distance, far at 8×. Lens shift is a true off-axis offset (the image moves, the
+ * body does not re-aim) — implemented on the projection's z-column so it survives the
+ * perspective divide as a constant NDC offset. Keystone is the trapezoid a tilted
+ * screen produces: a shear INTO THE W ROW, so one side of the image genuinely scales
+ * against the other rather than merely sliding.
+ */
 export function projectorMatrix(
   pose: {
     readonly eye: readonly [number, number, number];

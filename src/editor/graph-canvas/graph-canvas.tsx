@@ -26,7 +26,6 @@ import type {
   OnConnectStartParams,
   ReactFlowInstance,
 } from "@xyflow/react";
-import { useStore } from "zustand";
 import { arePortsCompatible } from "@domain/graph/port-compat.ts";
 import { parseHandleId } from "@domain/graph/edge-order.ts";
 import type { CommandResult, InvocationContext } from "@domain/types/commands.ts";
@@ -119,8 +118,19 @@ const NODE_TYPES: NodeTypes = {
 };
 const EDGE_TYPES: EdgeTypes = { [SIGNAL_EDGE_TYPE]: SignalEdge as EdgeTypes[string] };
 const DEFAULT_EDGE_OPTIONS = { type: SIGNAL_EDGE_TYPE } as const;
-/** §I.ui: middle-drag pans, alt-drag pans, left-drag rubber-band selects, scroll zooms. */
-const PAN_MOUSE_BUTTONS = [1] as const;
+/**
+ * §I.ui: middle-drag pans, alt-drag pans, left-drag rubber-band selects, scroll zooms.
+ *
+ * ONE array for the life of the module (T1653b). React Flow's zoom pane keys an effect on
+ * this prop's IDENTITY, and that effect re-binds its non-passive `wheel` listener on the
+ * canvas root. A new array per render (it was `[...PAN_MOUSE_BUTTONS]` in the JSX) re-bound
+ * it on every render of this component — every value written, every selection — and for a
+ * blocking wheel listener that changed Chromium re-derives the hit-test data of everything
+ * under it: its paint invalidator visited every object of every node and every layer was
+ * repainted, 0.1 ms a node, with no DOM change at all (measured: 900 objects visited for
+ * one write on a 54-node document, 15 in a frame without one).
+ */
+const PAN_MOUSE_BUTTONS: number[] = [1];
 /**
  * Alt-drag is `panActivationKeyCode`, and with a trackpad it is the ONLY pan gesture.
  * React Flow gives every node wrapper its `nopan` class and its node-drag filter ignores
@@ -220,8 +230,18 @@ export function GraphCanvas({
   structure,
 }: GraphCanvasProps) {
   const registry = bus.registry;
-  const domainNodes = useStore(bus.store, (state) => state.graph.nodes);
-  const domainEdges = useStore(bus.store, (state) => state.graph.edges);
+  /*
+   * T1668b — THE CANVAS DRAWS THE DOCUMENT'S STRUCTURE. Everything it projects is a node's
+   * FIELD or a wire (type, position, size, stacking, bypass; `derive.ts`), and a value
+   * written changes none of those: each node's body reads its own values. So the document
+   * it renders from is the one `structure` hands it (the app: `revision-watch.ts`, which
+   * does not move for a values-only revision), and the canvas does not render for a moved
+   * slider at all. It did, twice a write, to re-project 200 nodes into the arrays it
+   * already had. Without `structure` (a test, an embed) it follows the store.
+   */
+  const structureGraph = useSyncExternalStore(structure?.subscribe ?? bus.store.subscribe, structure?.get ?? bus.store.getGraph);
+  const domainNodes = structureGraph.nodes;
+  const domainEdges = structureGraph.edges;
 
   // One per mounted canvas: every edge writes where it is, the drop handlers read it.
   const edgeGeometry = useMemo(() => createEdgeGeometry(), []);
@@ -272,7 +292,7 @@ export function GraphCanvas({
   // The map's DOM lands here (see `graph-minimap.tsx`); state, not a ref, so the portal
   // renders once the host exists.
   const [minimapHost, setMinimapHost] = useState<HTMLDivElement | null>(null);
-  const referenceGraph = useSyncExternalStore(structure?.subscribe ?? bus.store.subscribe, structure?.get ?? bus.store.getGraph);
+  const referenceGraph = structureGraph;
   const dependencies = useMemo(
     () => (showReferenceLines ? [...parameterDependencies(referenceGraph).values()].flat() : []),
     [showReferenceLines, referenceGraph],
@@ -674,8 +694,11 @@ export function GraphCanvas({
        * duplicate it". A refusal cannot reach us — `isValidConnection` already declined an
        * incompatible drop under the cursor — so the canvas dispatches or does nothing.
        */
+      // The document AS IT IS when the wire lands (T1668b): a callback that closed over the
+      // rendered one was another function for every revision, and the library copies this
+      // prop into its store, where every node and handle is asked again.
       const drop = connectDropOperations({
-        graph: { nodes: domainNodes, edges: domainEdges },
+        graph: bus.store.getGraph(),
         registry,
         source: { nodeId: source, portId: sourcePortId },
         target: { nodeId: target, portId: targetPortId, ...(slot === undefined ? {} : { slot }) },
@@ -688,7 +711,7 @@ export function GraphCanvas({
         if (applied) landing();
       });
     },
-    [apply, land, domainEdges, domainNodes, registry],
+    [apply, land, bus, registry],
   );
 
   /**
@@ -923,8 +946,10 @@ export function GraphCanvas({
       const { source, target, sourceHandle, targetHandle } = connection;
       if (sourceHandle === null || sourceHandle === undefined) return false;
       if (targetHandle === null || targetHandle === undefined) return false;
-      const sourceNode = domainNodes[source];
-      const targetNode = domainNodes[target];
+      // Read at the moment it is asked, for `onConnect`'s reason (T1668b).
+      const nodes = bus.store.getGraph().nodes;
+      const sourceNode = nodes[source];
+      const targetNode = nodes[target];
       if (sourceNode === undefined || targetNode === undefined) return false;
 
       // T695 — the handle id carries a slot on a variadic input; the PORT is what decides
@@ -939,7 +964,7 @@ export function GraphCanvas({
       // the existing edge (`onConnect` above), so the drop must be allowed to land.
       return true;
     },
-    [domainNodes, registry],
+    [bus, registry],
   );
 
   /**
@@ -1246,7 +1271,7 @@ export function GraphCanvas({
           // Deletion is a keymap binding, not a hidden built-in: §V52 wants every
           // hotkey to be data pointing at a bus command (T76/T77 own that table).
           deleteKeyCode={null}
-          panOnDrag={[...PAN_MOUSE_BUTTONS]}
+          panOnDrag={PAN_MOUSE_BUTTONS}
           panActivationKeyCode={PAN_KEY}
           selectionOnDrag
           selectionMode={SelectionMode.Partial}

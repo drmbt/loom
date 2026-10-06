@@ -58,7 +58,20 @@ export function stationsPerTentacle(facts: KitFacts): number {
  * points: a run of `count` stations of every tentacle starting at `first`, or the robot's body.
  * 631 hull instances with 630 turned away measured 400 ms a frame; one, 5.
  */
-export type Pick = { readonly first: number; readonly count: number } | "body";
+export type Pick = { readonly first: number; readonly count: number } | "body" | AxisPick;
+/**
+ * Points that ride the body rigidly, out along its nose: `count` of them on its forward axis, from `axis[0]` to
+ * `axis[1]` metres ahead of its middle, each turned as the body is and with `along` 0 at the first to 1 at the
+ * last. A searchlight's beam is these (searchlight.ts): it is where the face is and goes the way the face looks
+ * because it is the same frame, from the same kernel, that the hull is drawn in.
+ */
+export interface AxisPick {
+  readonly axis: readonly [number, number];
+  readonly count: number;
+}
+const onAxis = (pick: Pick): pick is AxisPick => pick !== "body" && "axis" in pick;
+/** Whether a pick is of the body itself (its own point, or points along its nose) and not of its tentacles. */
+const ofBody = (pick: Pick): pick is "body" | AxisPick => pick === "body" || onAxis(pick);
 
 /** The ring joints and the hub of every tentacle: the strip a curve would be (§T1586b). */
 export function spinePick(facts: KitFacts): Pick {
@@ -67,7 +80,7 @@ export function spinePick(facts: KitFacts): Pick {
 
 /** Points ONE robot has in a pick; a rig of several holds them robot after robot. */
 export function jointCount(facts: KitFacts, pick: Pick): number {
-  return pick === "body" ? 1 : facts.sockets.length * pick.count;
+  return pick === "body" ? 1 : onAxis(pick) ? pick.count : facts.sockets.length * pick.count;
 }
 
 /**
@@ -273,7 +286,7 @@ export interface JointKernelOptions {
 export function jointKernel(facts: KitFacts, robots: readonly Vec3[], pick: Pick, options: JointKernelOptions = {}): string {
   if (robots.length === 0) throw new Error("jointKernel: a rig needs at least one robot.");
   const rope = options.rope === true;
-  if (rope && (pick === "body" || pick.first !== 0 || pick.count !== facts.ringCount)) throw new Error("jointKernel: a Rope's strands are a tentacle's rings, all of them and nothing else.");
+  if (rope && (ofBody(pick) || pick.first !== 0 || pick.count !== facts.ringCount)) throw new Error("jointKernel: a Rope's strands are a tentacle's rings, all of them and nothing else.");
   const tentacles = facts.sockets.length;
   const stations = stationsPerTentacle(facts);
   const { angle, rank } = wallAngles(facts);
@@ -326,11 +339,14 @@ ${PLACE_PARAMS}
 ${ROBOT_FRAME}
 const ROBOTS: u32 = ${robots.length}u;
 // Which of a robot's points this kernel writes (rig.ts, Pick).
-const PICK_BODY: bool = ${pick === "body"};
+const PICK_BODY: bool = ${ofBody(pick)};
+// …and, of the body, how far ahead of its middle the first and the last of its points stand (its own point: at it).
+const AXIS_FROM: f32 = ${(onAxis(pick) ? pick.axis[0] : 0).toFixed(5)};
+const AXIS_TO: f32 = ${(onAxis(pick) ? pick.axis[1] : 0).toFixed(5)};
 const ROPE: bool = ${rope};
 // How far into taking the wall a tentacle is the rig's own again, every ring held (0 to 1 of its hold).
 const HANDED_BACK: f32 = 0.05;
-const PICK_FIRST: u32 = ${pick === "body" ? 0 : pick.first}u;
+const PICK_FIRST: u32 = ${ofBody(pick) ? 0 : pick.first}u;
 const PICK_COUNT: u32 = ${pick === "body" ? 1 : pick.count}u;
 const ROBOT_POINTS: u32 = ${jointCount(facts, pick)}u;
 const ROBOT_OFFSET = array<vec3f, ${robots.length}>(${robots.map(wgslVec3).join(", ")});
@@ -628,7 +644,10 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let body = robotFrame(frameZ, offset + sway + riding, params.roll + winding - woven.x * 0.3 * afoot, params.look + vec2f(0.0, 0.14 * rearing), ctx.absTime, adrift);
   if (PICK_BODY) {
     // The robot's own point: where its body is and how it is turned (the kit's robot frame: +Z forward, +Y up).
-    q.position = body.origin;
+    // Or, of an axis pick, its points out along the nose, each turned the same.
+    let out = f32(place) / max(f32(PICK_COUNT) - 1.0, 1.0);
+    q.position = body.origin + body.forward * mix(AXIS_FROM, AXIS_TO, out);
+    q.along = out;
     q.orient = quatFromFrame(body.right, body.up, body.forward);
     q.kind = ${KIND.body}.0;
     return q;
