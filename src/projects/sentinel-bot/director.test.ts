@@ -182,12 +182,27 @@ interface Run {
   readonly pack: number[];
   /** Metres travelled by the last frame. */
   readonly distance: number;
+  /** The camera, per frame: the lens the shot asks for and the one the Camera is given, degrees; and the kick. */
+  readonly lens: number[];
+  readonly fov: number[];
+  readonly kick: number[];
+  /** The focus pass's aperture, per frame, and what it is with nothing opening it (the panel's Depth of Field for that lens). */
+  readonly aperture: number[];
+  readonly apertureAtRest: number[];
 }
 
-async function run(follow: boolean, heard: boolean): Promise<Run> {
+async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run> {
   const built = sentinelDocument(KIT_FIXTURE);
   const toggle = built.graph.nodes["toggle_follow"]!;
-  const graph = { ...built.graph, nodes: { ...built.graph.nodes, toggle_follow: { ...toggle, parameters: { ...toggle.parameters, on: follow } } } };
+  const pumped = built.graph.nodes["slider_pump"]!;
+  const graph = { ...built.graph, nodes: { ...built.graph.nodes, toggle_follow: { ...toggle, parameters: { ...toggle.parameters, on: follow } }, ...(pump === undefined ? {} : { slider_pump: { ...pumped, parameters: { ...pumped.parameters, value: pump } } }) } };
+  /** A node parameter's expression, as the document stores it. */
+  const expressionOf = (nodeId: string, key: string): string => {
+    const stored = (graph.nodes as Record<string, typeof toggle | undefined>)[nodeId]?.parameters[key];
+    if (typeof stored !== "object" || stored === null || !("bindings" in stored) || stored.bindings.expression?.kind !== "expression") throw new Error(`${nodeId}.${key} is not an expression`);
+    return stored.bindings.expression.source;
+  };
+  const [fovSource, apertureSource] = [expressionOf("camera_rig", "fov"), expressionOf("wgsl_focus", "aperture")];
   const registry = createNodeRegistry(allNodeDefinitions).view();
   const flattened = flattenComponents({ graph, registry, components: await starterComponentsView() });
   const audio = shippedClipAudio(graph, FPS);
@@ -203,6 +218,11 @@ async function run(follow: boolean, heard: boolean): Promise<Run> {
   const perch: number[] = [];
   const attack: number[] = [];
   const pack: number[] = [];
+  const lens: number[] = [];
+  const fov: number[] = [];
+  const kick: number[] = [];
+  const aperture: number[] = [];
+  const apertureAtRest: number[] = [];
   let first = Number.NaN;
   let last = Number.NaN;
   for (let index = 0; index < FRAMES; index += 1) {
@@ -228,10 +248,21 @@ async function run(follow: boolean, heard: boolean): Promise<Run> {
     perch.push(read("constant_perch:value"));
     attack.push(read("lag_attack:value"));
     pack.push(read("lag_pack:value"));
+    // The camera's own two expressions, read as the app reads them: against this frame's channels.
+    const evaluated = (source: string): number => {
+      const value = evaluateExpression(source, { abstime: index / FPS, time: index / FPS }, (name, path) => (path[0] === "chan" && path[1] !== undefined ? { ok: true, value: read(`${name}:${path[1]}`) } : { ok: false, reason: `not a channel: ${path.join(".")}` }));
+      if (!value.ok) throw new Error(`"${source.slice(0, 60)}…" does not evaluate: ${value.reason}`);
+      return value.value;
+    };
+    lens.push(read("expression_camera:lens"));
+    fov.push(evaluated(fovSource));
+    kick.push(read("lag_hits:kickCount"));
+    aperture.push(evaluated(apertureSource));
+    apertureAtRest.push((read("slider_focus:focus") * 55) / read("expression_camera:lens"));
     last = read("speed_travel:value");
     if (index === 0) first = last;
   }
-  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, pack, distance: last - first };
+  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, pack, distance: last - first, lens, fov, kick, aperture, apertureAtRest };
 }
 
 /** The frames of a stretch of the clip, in seconds. */
@@ -305,6 +336,34 @@ describe("the sentinel follows its own clip, through the document's value graph"
     expect(Math.max(...panel.pack)).toBe(1);
     // The switch is the difference: off, the panel's Swim (0) is all there is.
     expect(Math.max(...panel.swim)).toBe(0);
+  });
+
+  it("the lens holds its length through every kick; some phrases the kick opens the aperture instead, and the panel says how far", async () => {
+    // The owner, 2026-10-06, of a lens that punched in 2.5 degrees on every kick: "the very prominent and constant
+    // camera punching … feels a bit irritating … a bit jarring … maybe occasionally we drive DOF instead".
+    const followed = await run(true, true);
+    const kicks = followed.kick.filter((value) => value > 0.3).length;
+    expect(kicks).toBeGreaterThan(50);
+    // Every frame of the clip, kick or no kick: the Camera has exactly the lens the shot asks for.
+    expect(followed.fov).toEqual(followed.lens);
+    // The aperture: at rest except in the phrases whose draw is under 0.45, and there wider by as much as the kick is in.
+    let opened = 0;
+    let held = 0;
+    for (let index = 0; index < FRAMES; index += 1) {
+      const gate = drawOf(followed.bar[index]!, 11) < 0.45 ? 1 : 0;
+      const expected = followed.apertureAtRest[index]! * (1 + 0.6 * 1.4 * followed.kick[index]! * gate);
+      expect(Math.abs(followed.aperture[index]! - expected)).toBeLessThan(1e-9);
+      if (followed.kick[index]! > 0.3) {
+        if (gate === 1) opened += 1;
+        else held += 1;
+      }
+    }
+    // Both kinds of phrase are in the clip: kicks that open it and kicks that do not.
+    expect(opened).toBeGreaterThan(10);
+    expect(held).toBeGreaterThan(10);
+    // The panel's Focus on the Kick at 0: never.
+    const never = await run(true, true, 0);
+    expect(never.aperture).toEqual(never.apertureAtRest);
   });
 
   it("with nothing playing the switch changes nothing", async () => {

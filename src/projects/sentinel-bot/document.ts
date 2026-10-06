@@ -12,7 +12,7 @@ import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { CHAMBERS, PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "../furnace/screen-space.ts";
-import { FIELD_BERTH, KIND, JOINT_ATTRIBUTES, PACK_WANDER, adriftAheadExpression, adriftExpression, ownCountOf, jointCount, jointKernel, type Pick } from "./rig.ts";
+import { FIELD_BERTH, swimLungeExpression, KIND, JOINT_ATTRIBUTES, PACK_WANDER, adriftAheadExpression, adriftExpression, ownCountOf, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { HULL_SURFACE_WGSL, hueExpression, lampParameter } from "./surface.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampHeightExpression, lampToneExpression } from "./tunnel.ts";
 import { LAMP_ATTRIBUTES, LAMP_COUNT, LAMP_KERNEL } from "./tunnel.ts";
@@ -178,6 +178,8 @@ const SCENE: readonly Slider[] = [
   { name: "slider_react", caption: "Listen", value: 1, min: 0, max: 2 },
   { name: "slider_haze", caption: "Haze", value: 0.04, min: 0, max: 0.12 },
   { name: "slider_focus", caption: "Depth of field", value: 0.5, min: 0, max: 1.5 },
+  // How far a kick opens the lens, in the phrases that it does (nearly half): 0 never.
+  { name: "slider_pump", caption: "Focus on the kick", value: 0.6, min: 0, max: 2 },
   { name: "slider_grain", caption: "Grain", value: 0.06, min: 0, max: 0.2 },
   // The other place (field.ts): over a half, the tunnel is gone and the line runs through the fields.
   { name: "slider_fields", caption: "Fields", value: 0, min: 0, max: 1 },
@@ -245,6 +247,13 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const track = options.track ?? SHIPPED_TRACK;
   // Perched, it eases to a stop (below) and its head scans the tunnel on two slow counts, so the sweep never repeats on the bar.
   const PERCHED = "op('lag_perched').chan.value";
+  /**
+   * WHEN IT STANDS STILL, IT AND THE PLACE ANSWER THE TRACK MORE (the owner, 2026-10-06: "rather have subject
+   * and scene respond more if things become too static"). Perched or paused, nothing travels and the camera
+   * holds: so the lamps take the kick as well as the low end, and the lenses and the legs' bands answer harder.
+   */
+  const LAMP_BREATH = `(0.7 + ${LOW} * 0.8 + 0.6 * ${KICK} * ${PERCHED})`;
+  const STILL_GAIN = `(1 + 0.7 * ${PERCHED})`;
   const look: Record<string, StoredParameter> = {
     look: [0, 0],
     // It looks about as it goes, slowly, and now and then turns its head well round to one side for a second or
@@ -266,7 +275,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const adrift = `(max(${SWIM}, ${chamberExpression(`(${TRAVEL} + 2.5)`)}) * (1 - ${(1 - PACK_WANDER).toFixed(2)} * ${COMPANY}))`;
   const wander = { x: `${adrift} * ${adriftExpression("x")}`, y: `${adrift} * ${adriftExpression("y")}` };
   // …and along it: the slow drift, and the lunge of each swimming stroke (rig.ts, robotZ).
-  const lunge = `(${adrift} * (${adriftAheadExpression} + 0.5 * sin(6.2831853 * (${STROKE} - 0.125))))`;
+  const lunge = `(${adrift} * (${adriftAheadExpression} + ${swimLungeExpression(STROKE, 0)}))`;
   // A close shot rides with it (the rig's `ride`), along the tunnel as well as across it: a long lens two metres
   // off a robot that had drifted a metre up the tunnel had it in a corner of the frame.
   const eye = onPath(`(${RIG("ahead")} + ${RIG("ride")} * ${lunge})`, `${RIG("right")} + ${RIG("ride")} * ${wander.x} + 0.02 * sin(abstime * 2.3)`, `${RIG("up")} + ${RIG("ride")} * ${wander.y} + 0.015 * sin(abstime * 1.7 + 1)`, [1.1, 0.6, -7.5]);
@@ -296,7 +305,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     const roomy = `(${wide} * (1 + ${CHAMBERS.swell} * max(${chamberExpression(`(${TRAVEL} + ${offset[2]})`)}, ${FIELD_BERTH} * ${PLACE})))`;
     return {
       out,
-      at: onPath(`(${offset[2]} - 0.3 - 45 * (1 - ${out}) + ${adrift} * 0.5 * sin(6.2831853 * (${STROKE} - 0.125)))`, `${offset[0]} * ${roomy} + ${adrift} * ${adriftExpression("x", own)}`, `${offset[1]} * ${offset[1] > 0 ? roomy : `max(${wide}, ${roomy} * ${PLACE})`} + ${adrift} * ${adriftExpression("y", own)}`, [offset[0], offset[1], offset[2]]),
+      at: onPath(`(${offset[2]} - 0.3 - 45 * (1 - ${out}) + ${adrift} * ${swimLungeExpression(STROKE, index + 1)})`, `${offset[0]} * ${roomy} + ${adrift} * ${adriftExpression("x", own)}`, `${offset[1]} * ${offset[1] > 0 ? roomy : `max(${wide}, ${roomy} * ${PLACE})`} + ${adrift} * ${adriftExpression("y", own)}`, [offset[0], offset[1], offset[2]]),
     };
   });
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
@@ -491,7 +500,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   // Each is published to the phone (Phone: on). That opens nothing by itself: a phone reaches them only through
   // the helper's phone door, armed by its own flag and opened from the paired tab.
   const COLUMNS = 8;
-  const row = (member: string, y: number): { member: string; rect: { x: number; y: number; w: number; h: number } } => ({ member, rect: { x: 0, y, w: COLUMNS, h: 1 } });
+  // A control takes six of the eight: the right quarter of every panel is bare board, so on a phone there is
+  // somewhere to put a thumb and scroll that is not a slider. (The owner, 2026-10-06, after the phone's own
+  // scrolling had landed: "still pretty hard to not screw with the sliders when scrolling on mobile".)
+  const row = (member: string, y: number): { member: string; rect: { x: number; y: number; w: number; h: number } } => ({ member, rect: { x: 0, y, w: COLUMNS - 2, h: 1 } });
   const heading = (label: string, y: number): { label: string; rect: { x: number; y: number; w: number; h: number } } => ({ label, rect: { x: 0, y, w: COLUMNS, h: 1 } });
   /**
    * BACK TO WHAT WAS SAVED (the owner, 2026-10-06: "ways to reset controls individually or all according to
@@ -506,44 +518,75 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     slidersSaved(LIGHTS),
   ];
   const bankOf = (panel: string): string => `presets_${panel}`;
-  const panels: ReadonlyArray<{ id: string; title: string; members: readonly string[]; board: string }> = [
-    {
-      id: "panel_robot",
-      title: "Robot",
-      members: [...robotSliders.map((slider) => slider.name), ...robotToggles],
-      // The Saved button sits right under the heading on every panel: the same place on each, and in a paged board it is on the first page.
-      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Robot", 0), row(bankOf("robot"), 1), ...robotSliders.map((slider, index) => row(slider.name, 2 + index)), ...robotToggles.map((toggle, index) => row(toggle, 2 + robotSliders.length + index))] }),
-    },
-    {
-      id: "panel_scene",
-      title: "Scene",
-      members: [...SCENE.map((slider) => slider.name), "slider_shot", "toggle_cuts", "xypad_view"],
-      board: serializePanelBoard({
-        columns: COLUMNS,
-        items: [
-          heading("Scene", 0),
-          row(bankOf("scene"), 1),
-          ...SCENE.map((slider, index) => row(slider.name, 2 + index)),
-          heading("Camera", 2 + SCENE.length),
-          row("slider_shot", 3 + SCENE.length),
-          row("toggle_cuts", 4 + SCENE.length),
-          { member: "xypad_view", rect: { x: 2, y: 5 + SCENE.length, w: 4, h: 3 } },
-        ],
-      }),
-    },
-    {
-      id: "panel_lights",
-      title: "Lights",
-      members: LIGHTS.map((slider) => slider.name),
-      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Lights", 0), row(bankOf("lights"), 1), ...LIGHTS.map((slider, index) => row(slider.name, 2 + index))] }),
-    },
+  /**
+   * A bank shows on a board as a strip of buttons, one a preset, named as the preset is (and a Store after
+   * them). So the preset is named for what pressing it does: `reset_robot`, `reset_scene`, `reset_lights`,
+   * and `reset_all` for every control of the piece. (They were each called `saved`, and the owner, with the
+   * button in front of him: "resetting in the controls is not visible for me anywhere … I have to reload
+   * right now if I screw something up. want to be able to reset individual controls or all page or all".
+   * The page and all are these; one control at a time is the engine's, §T1619b.)
+   */
+  const resetOf = (panel: string): string => `reset_${panel}`;
+  // What each panel's board holds, top row down: its heading, its own reset, its controls.
+  const boards = {
+    robot: [heading("Robot", 0), row(bankOf("robot"), 1), ...robotSliders.map((slider, index) => row(slider.name, 2 + index)), ...robotToggles.map((toggle, index) => row(toggle, 2 + robotSliders.length + index))],
+    scene: [
+      heading("Scene", 0),
+      row(bankOf("scene"), 1),
+      ...SCENE.map((slider, index) => row(slider.name, 2 + index)),
+      heading("Camera", 2 + SCENE.length),
+      row("slider_shot", 3 + SCENE.length),
+      row("toggle_cuts", 4 + SCENE.length),
+      { member: "xypad_view", rect: { x: 2, y: 5 + SCENE.length, w: 4, h: 3 } },
+    ],
+    lights: [heading("Lights", 0), row(bankOf("lights"), 1), ...LIGHTS.map((slider, index) => row(slider.name, 2 + index))],
+  };
+  const rowsOf = (board: ReadonlyArray<{ rect: { y: number; h: number } }>): number => Math.max(...board.map((item) => item.rect.y + item.rect.h));
+  const members = {
+    robot: [...robotSliders.map((slider) => slider.name), ...robotToggles],
+    scene: [...SCENE.map((slider) => slider.name), "slider_shot", "toggle_cuts", "xypad_view"],
+    lights: LIGHTS.map((slider) => slider.name),
+  };
+  // Each of the three has the reset for everything right under its own, so a phone has both on whichever panel
+  // is up, in the same place on each: the heading, the panel's reset, the reset for everything, then the controls.
+  const withResetAll = (board: ReadonlyArray<{ rect: { x: number; y: number; w: number; h: number } }>): Array<Record<string, unknown>> => [
+    ...board.filter((item) => item.rect.y < 2),
+    row(bankOf("all"), 2),
+    ...board.filter((item) => item.rect.y >= 2).map((item) => ({ ...item, rect: { ...item.rect, y: item.rect.y + 1 } })),
   ];
-  const banks: GraphNode[] = ["robot", "scene", "lights"].map((panel, index) =>
-    node(bankOf(panel), "presets", [-2400 + index * 300, 3750], {
-      targets: Object.entries(saved[index] ?? {}).flatMap(([name, values]) => Object.keys(values).map((key) => `${name}.${key}`)).join(" "),
-      presets: serializePresetBank({ version: 1, presets: [{ name: "saved", values: saved[index] ?? {} }] }),
-    }, { label: bankOf(panel) }),
-  );
+  const panels: ReadonlyArray<{ id: string; title: string; members: readonly string[]; board: string }> = (["robot", "scene", "lights"] as const).map((panel) => ({
+    id: `panel_${panel}`,
+    title: panel.charAt(0).toUpperCase() + panel.slice(1),
+    members: members[panel],
+    board: serializePanelBoard({ columns: COLUMNS, items: withResetAll(boards[panel]) as never }),
+  }));
+  /**
+   * ALL OF THEM AT ONCE, for the desk (the owner, 2026-10-06: "an 'All' tab where we see all of them at once …
+   * and where there is space definitely 2 columns"). The same controls and the same resets as the three
+   * panels, laid out in two columns of eight under the reset for everything: the robot's on the left, the
+   * scene's and the lights' on the right. Not published to the phone: a control half a phone wide is one a
+   * thumb cannot hold. (A board that takes one column or two by the width it is given is the engine's to
+   * make; this one is two.)
+   */
+  const shifted = (board: ReadonlyArray<{ rect: { x: number; y: number; w: number; h: number } }>, dx: number, dy: number): Array<Record<string, unknown>> =>
+    board.map((item) => ({ ...item, rect: { ...item.rect, x: item.rect.x + dx, y: item.rect.y + dy } }));
+  const everything = {
+    id: "panel_all",
+    title: "All",
+    members: panels.flatMap((panel) => panel.members),
+    board: serializePanelBoard({
+      columns: COLUMNS * 2,
+      items: [{ member: bankOf("all"), rect: { x: 0, y: 0, w: COLUMNS * 2 - 2, h: 1 } }, ...shifted(boards.robot, 0, 1), ...shifted(boards.scene, COLUMNS, 1), ...shifted(boards.lights, COLUMNS, 1 + rowsOf(boards.scene))] as never,
+    }),
+  };
+  const targetsOf = (values: Record<string, Record<string, number | boolean>>): string => Object.entries(values).flatMap(([name, held]) => Object.keys(held).map((key) => `${name}.${key}`)).join(" ");
+  const savedAll: Record<string, Record<string, number | boolean>> = Object.assign({}, ...saved);
+  const banks: GraphNode[] = [
+    ...["robot", "scene", "lights"].map((panel, index) =>
+      node(bankOf(panel), "presets", [-2400 + index * 300, 3750], { targets: targetsOf(saved[index] ?? {}), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf(panel), values: saved[index] ?? {} }] }) }, { label: bankOf(panel) }),
+    ),
+    node(bankOf("all"), "presets", [-1500, 3750], { targets: targetsOf(savedAll), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf("all"), values: savedAll }] }) }, { label: bankOf("all") }),
+  ];
 
   // Every control is on exactly one panel: one left off would be a slider nobody can reach from a phone.
   const placed = panels.flatMap((panel) => panel.members);
@@ -640,7 +683,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       spread: expressionSlot(on("slider_spread"), 0.6),
       shift: expressionSlot(HUE_SHIFT, 0),
       // The face: a third of the lenses each to kick, snare and hat, and a band of light across it once a beat.
-      eyeHits: expressionSlot(on("slider_eyehits"), 0.6),
+      eyeHits: expressionSlot(`min(1, ${on("slider_eyehits")} * ${STILL_GAIN})`, 0.6),
       kick: expressionSlot(KICK, 0),
       snare: expressionSlot(SNARE, 0),
       hat: expressionSlot(HAT, 0),
@@ -650,7 +693,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // They breathe as the lights do.
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
-      lamps: expressionSlot(`${on("slider_lamp")} * 0.23 * (0.7 + ${LOW} * 0.8) * (1 - ${PLACE})`, 6),
+      lamps: expressionSlot(`${on("slider_lamp")} * 0.23 * ${LAMP_BREATH} * (1 - ${PLACE})`, 6),
       air: expressionSlot(`0.55 * ${PLACE}`, 0),
       // How bright a kick's pulse is as it runs down the cores (the rig says where it is).
       pulseGlow: expressionSlot(`1.6 * ${on("slider_legs")}`, 1.6),
@@ -680,7 +723,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       spiral: expressionSlot(SPIRAL, 0),
       spiralTurn: expressionSlot("op('speed_winding').chan.value - 0.5", 0),
       meter: expressionSlot(`${on("slider_meter")} * ${LOW}`, 0),
-      chase: expressionSlot(`${on("slider_chase")} * (0.1 + ${HIGH} * 0.9)`, 0.05),
+      chase: expressionSlot(`${on("slider_chase")} * (0.1 + ${HIGH} * 0.9) * ${STILL_GAIN}`, 0.05),
       chasePhase: expressionSlot(`${STROKE} * ${track.beatsPerBar}`, 0),
       spark: expressionSlot(`${on("slider_spark")} * ${HAT}`, 0),
       ...swimming,
@@ -695,7 +738,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // ── The tunnel: one grid bent into the bore, a window of it riding with the robot ──
     node("grid_bore", "pointGrid", [-2400, 1200], { cols: BORE_COLUMNS, rows: BORE_ROWS, count: BORE_COLUMNS * BORE_ROWS, sizeX: 2, sizeY: 2 }, { label: "grid_bore" }),
     node("kernel_bore", "pointKernel", [-2100, 1200], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("slider_bore"), 2.6), place: expressionSlot(PLACE, 0) }, { label: "kernel_bore" }),
-    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * (0.7 + ${LOW} * 0.8) * (1 - ${PLACE})`, 14), bore: expressionSlot(on("slider_bore"), 2.6) }, { label: "material_bore" }),
+    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * ${LAMP_BREATH} * (1 - ${PLACE})`, 14), bore: expressionSlot(on("slider_bore"), 2.6) }, { label: "material_bore" }),
     node("geometry_bore", "geometry", [-1800, 1200], { mode: "surface", material: "material_bore", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bore" }),
 
     // ── Air: dust that the lamps and the eyes light on its way to a wall ──
@@ -720,7 +763,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       kernel: MOTE_KERNEL,
       travel,
       bore: expressionSlot(on("slider_bore"), 2.6),
-      lamp: expressionSlot(`${on("slider_lamp")} * (0.7 + ${LOW} * 0.8) * (1 - ${PLACE})`, 26),
+      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${PLACE})`, 26),
       eyes: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8),
       eyeColor: [1, 0.04, 0.04, 1],
       "eyeColor.r": expressionSlot(eyeTone[0], 1),
@@ -732,8 +775,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
 
     // ── Camera and light ──
     node("expression_camera", "valueExpression", [-1800, -600], { expressions: CAMERA_STATEMENTS, defaults: CAMERA_DEFAULTS }, { label: "expression_camera" }),
-    // A kick punches the lens in.
-    node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "camera_rig" }),
+    // The lens holds its length. (A kick used to punch it in 2.5 degrees; the owner, 2026-10-06: "the very prominent
+    // and constant camera punching … feels a bit irritating as it's not necessarily only tracking the kick … a bit
+    // jarring". What answers the kick now is the focus, some phrases, and the robot and the place themselves.)
+    node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(RIG("lens"), 55), near: 0.05, far: 240 }, { label: "camera_rig" }),
     // The eyes throw the tentacles' shadows down the walls (which of the scene casts them: see `robotCasts`).
     node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 16, ...(shadows ? { shadows: true, shadowExtent: 16, shadowSoftness: 1 } : {}) }, { label: "light_eyes" }),
     // The light of its own tentacles, from the middle of the body. It lights the bore round the robot wherever
@@ -759,16 +804,16 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ),
     // ── EVERY LAMP OF THE TUNNEL IS A LIGHT (§T1589b): one Light, standing on a point for each lamp station of the
     // lap (tunnel.ts, LAMP_KERNEL). They breathe with the low end, and in the fields they are out. ──
-    node("kernel_lamps", "pointKernel", [-1800, -600], {
+    node("kernel_lamps", "pointKernel", [-1800, -900], {
       capacity: LAMP_COUNT,
       attributes: LAMP_ATTRIBUTES,
       kernel: LAMP_KERNEL,
       travel,
       bore: expressionSlot(on("slider_bore"), 2.6),
-      lamp: expressionSlot(`${on("slider_lamp")} * (0.7 + ${LOW} * 0.8) * (1 - ${PLACE})`, 26),
+      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${PLACE})`, 26),
       named: namedLamps.length > 0 ? 1 : 0,
     }, { label: "kernel_lamps" }),
-    node("light_lamps", "light", [-1500, -600], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 24 }, { label: "light_lamps" }),
+    node("light_lamps", "light", [-1500, -900], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 24 }, { label: "light_lamps" }),
     // The three nearest the robot as Lights of their own, where a lamp's shadow is wanted: a Light in Points
     // mode casts none. Offline only (see robotCasts); the kernel above dims those three by as much.
     ...namedLamps.map((lamp, index) =>
@@ -779,7 +824,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         "color.g": expressionSlot(lamp.tone[1], 0.84),
         "color.b": expressionSlot(lamp.tone[2], 1),
         // No tunnel, no lamps: in the fields they are out.
-        intensity: expressionSlot(`${on("slider_lamp")} * ${lamp.near} * ${lamp.high} * (0.7 + ${LOW} * 0.8) * (1 - ${PLACE})`, index === 1 ? 26 : 0),
+        intensity: expressionSlot(`${on("slider_lamp")} * ${lamp.near} * ${lamp.high} * ${LAMP_BREATH} * (1 - ${PLACE})`, index === 1 ? 26 : 0),
         position: [0, 2.25, (index - 0.5) * LAMP_SPACING],
         "position.x": lamp.position.x,
         "position.y": lamp.position.y,
@@ -840,7 +885,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       glow: expressionSlot(`${on("slider_haze")} * 0.05`, 0.002),
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
-      lamp: expressionSlot(`${on("slider_lamp")} * (0.7 + ${LOW} * 0.8) * (1 - ${PLACE})`, 26),
+      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${PLACE})`, 26),
       eyesAt: [0, 0, 0.9],
       "eyesAt.x": glow.x,
       "eyesAt.y": glow.y,
@@ -858,7 +903,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       ...lens,
       // On the robot's face, or on the tail when that is what the shot looks at.
       focusDistance: expressionSlot(`max(((${RIG("ahead")} - min(${RIG("aim")}, 0.4)) * (${RIG("ahead")} - min(${RIG("aim")}, 0.4)) + ${RIG("right")} * ${RIG("right")} + ${RIG("up")} * ${RIG("up")}) ^ 0.5, 0.6)`, 7.5),
-      aperture: expressionSlot(`${on("slider_focus")} * 55 / ${RIG("lens")}`, 0.5),
+      // …and some phrases (nearly half of them) the kick opens the lens: what is not the robot goes softer for a
+      // moment and comes back, in place of the punch (the owner: "maybe occasionally we drive DOF instead").
+      aperture: expressionSlot(`${on("slider_focus")} * 55 / ${RIG("lens")} * (1 + ${on("slider_pump")} * 1.4 * ${KICK} * (${phraseDraw(BAR, 11)} < 0.45))`, 0.5),
       maxRadius: 14,
     }, { label: "wgsl_focus", resolution: { mode: "project" } }),
     node("wgsl_bright", "customWgsl", [-600, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 1 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }),
@@ -880,6 +927,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ...controls,
     ...banks,
     ...panels.map((panel, index) => node(panel.id, "panel", [-2400 + index * 300, 3500], { title: panel.title, board: panel.board, remote: true }, { label: panel.id })),
+    node(everything.id, "panel", [-1500, 3500], { title: everything.title, board: everything.board, remote: false }, { label: everything.id }),
   ];
 
   const edges: GraphEdge[] = [
@@ -950,7 +998,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("glow-lens", ["add_glow", "out"], ["lens_glass", "input"]),
     edge("lens-grade", ["lens_glass", "out"], ["filmgrade_finish", "input"]),
     edge("grade-out", ["filmgrade_finish", "out"], ["output_frame", "input"]),
-    ...panels.flatMap((panel) => panel.members.map((member, index) => edge(`${panel.id}-${member}`, [member, "out"], [panel.id, "controls"], index))),
+    ...[...panels, everything].flatMap((panel) => panel.members.map((member, index) => edge(`${panel.id}-${member}`, [member, "out"], [panel.id, "controls"], index))),
   ];
 
   return {

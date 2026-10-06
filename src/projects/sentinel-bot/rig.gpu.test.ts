@@ -7,7 +7,7 @@ import { evaluateExpression } from "../../domain/expressions/evaluate.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 import { CHAMBERS, chamberAt, pathAt } from "./path.ts";
-import { FIELD_BERTH, JOINT_ATTRIBUTES, jointCount, jointKernel, spinePick } from "./rig.ts";
+import { FIELD_BERTH, JOINT_ATTRIBUTES, SWIM, jointCount, jointKernel, spinePick, swimLungeExpression } from "./rig.ts";
 import { BORE_ATTRIBUTES, BORE_KERNEL, LAMP_HANGS, lampHeightExpression } from "./tunnel.ts";
 
 /**
@@ -374,6 +374,37 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     }
   }, 120_000);
 
+  it("a pack does not swim as one: each robot strokes a part of a bar after the last, as hard as its own count has it, and the document's lunge is the body's", async () => {
+    // The owner, 2026-10-06: "the pumping swimming motion of the robots … seems totally in sync between all of them".
+    // Three in line astern in plain bore, on rails so only the stroke moves them along the tunnel.
+    const line = [[0, 0, 0], [0, 0, -6], [0, 0, -12]] as const;
+    const STROKE = 0.3;
+    /** How far along the tunnel each body is from where the first stands, by its sockets. */
+    const along = async (variety: number): Promise<number[]> => {
+      const pack = await walk(3, { swim: 1, stroke: STROKE, carry: 0, variety }, line);
+      return line.map((_, robot) => {
+        let z = 0;
+        for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) z += pack.socket(robot, tentacle)[2] / TENTACLES;
+        return z;
+      });
+    };
+    const [unison, apart] = [await along(0), await along(1)];
+    // What the document's own expression says each has lunged (the camera and the followers' lights ride it): the kernel's first frame is at time 0.
+    const lunge = (robot: number): number => {
+      const value = evaluateExpression(swimLungeExpression("stroke", robot), { stroke: STROKE, abstime: 0 });
+      if (!value.ok) throw new Error("the lunge does not evaluate");
+      return value.value;
+    };
+    for (const robot of [0, 1, 2]) {
+      // In unison every body has the leader's lunge; apart, its own. (The line of the tunnel is not straight: to 3 cm.)
+      expect(Math.abs((apart[robot] as number) - (unison[robot] as number) - (lunge(robot) - lunge(0)))).toBeLessThan(0.03);
+    }
+    // And they really are apart: at this moment of the bar the second is a third of a metre behind where unison has it.
+    expect(Math.abs(lunge(1) - lunge(0))).toBeGreaterThan(0.2);
+    // The lunge itself is a third of a metre at the most, where it was half: less of a pump.
+    expect(SWIM.lunge).toBeLessThan(0.4);
+  }, 120_000);
+
   it("crosses a chamber swimming: told to walk, in the middle of a hall every claw has let go and trails", async () => {
     // A chamber's wall stands 1.9 bore radii off the axis, further than a tentacle reaches, so the
     // rig lets go by itself. The same robot, the same Swim of 0, a hall's middle against plain bore.
@@ -536,9 +567,11 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     // and 1 for one that jumps. (The bracketed two-arc solver this rig replaced read 1.0.)
     const coarse = largestMove(await walk(240));
     const fine = largestMove(await walk(480));
-    // Measured, the largest move of any ring over 2.7 cm of travel: 18.8 cm. (It was 30 cm while the slack's bow
-    // could change sides, and 25.5 cm before the tentacles stepped in a wave.)
-    expect(coarse).toBeLessThan(0.22);
+    // Measured, the largest move of any ring over 2.7 cm of travel: 15.8 cm. (It was 30 cm while the slack's bow
+    // could change sides, 25.5 cm before the tentacles stepped in a wave, and 18.8 cm while every claw was in the
+    // air for 38 per cent of its step and eased by a smoothstep; now each is up for 46 to 60 per cent and leaves
+    // and lands with no acceleration.)
+    expect(coarse).toBeLessThan(0.18);
     expect(coarse / fine).toBeGreaterThan(1.7);
     expect(coarse / fine).toBeLessThan(2.3);
     // The same with six of the ten on the wall, the piece's own setting: across these two strides tentacles
@@ -593,9 +626,11 @@ describe("the sentinel's rig — every joint, across two strides", () => {
       const socket = pose.socket(0, tentacle);
       const wrist = pose.at(0, tentacle, FACTS.ringCount);
       if (wrist === undefined) throw new Error("a wrist is stowed");
-      // A striker's wrist is ahead of its socket and well inside the bore. A holder's claw is where the gait has it:
-      // on its rung, or in the air between two (they step in a wave, so at any instant one or two are).
-      const striking = wrist[2] - socket[2] > 0.3 && offAxis(wrist) < 1.8;
+      // A striker's wrist is well ahead of its socket and near the axis (measured: 1.9 to 3.0 m ahead, 0.2 to 1.1 m
+      // off it). A holder's claw is where the gait has it: on its rung, or in the air between two, lifted off the
+      // wall (they step in a wave, so at any instant two or three are; one in mid-step was measured 0.9 m ahead
+      // and 1.7 m off the axis, which is not a blow).
+      const striking = wrist[2] - socket[2] > 1.5 && offAxis(wrist) < 1.3;
       if (striking) ahead += 1;
       else if (pose.slip(0, tentacle, FACTS.ringCount) < 0.02) held += 1;
       furthest = Math.max(furthest, wrist[2] - socket[2]);
@@ -611,7 +646,7 @@ describe("the sentinel's rig — every joint, across two strides", () => {
       const socket = rest.socket(0, tentacle);
       const wrist = rest.at(0, tentacle, FACTS.ringCount);
       if (wrist === undefined) continue;
-      if (wrist[2] - socket[2] > 0.3 && offAxis(wrist) < 1.8) striking += 1;
+      if (wrist[2] - socket[2] > 1.5 && offAxis(wrist) < 1.3) striking += 1;
       if (offAxis(wrist) > 2.2) onWall += 1;
     }
     expect(striking).toBe(0);

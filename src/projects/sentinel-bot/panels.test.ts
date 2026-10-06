@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parsePresetBank } from "../../domain/presets/bank.ts";
 import { presetSession } from "../../domain/presets/test-support.ts";
 import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
@@ -13,10 +14,13 @@ import { KIT_FIXTURE } from "./kit.fixture.ts";
  *
  * The owner, 2026-10-06: "ways to reset controls individually or all according to what was saved …
  * accessible on both phone and browser". What exists for it today is a Presets bank, which the
- * desk and the phone both draw as buttons: each of the three panels carries one with a single
- * preset, `saved`, holding every control of that panel at the value the file ships it with. The
- * claim is what a performer gets from the press: after moving EVERY control of a panel, one
- * recall puts each of them back, and touches nothing on the other two panels.
+ * desk and the phone both draw as buttons named as their presets are: each of the three panels
+ * carries one with a single preset, `reset_<panel>`, holding every control of that panel at the
+ * value the file ships it with, and every panel carries `reset_all` as well. (They were first all
+ * called `saved`; the owner, with them in front of him: "resetting in the controls is not visible
+ * for me anywhere".) The claim is what a performer gets from the press: after moving EVERY control,
+ * one recall of a panel's puts that panel back and touches nothing on the other two, and one of
+ * `reset_all` puts back all three.
  */
 const registry = createNodeRegistry(allNodeDefinitions).view();
 const PANELS = ["robot", "scene", "lights"] as const;
@@ -24,6 +28,12 @@ const PANELS = ["robot", "scene", "lights"] as const;
 const KEYS: Readonly<Record<string, readonly string[]>> = { slider: ["value"], toggle: ["on"], xyPad: ["x", "y"] };
 
 const built = (): GraphDocument => structuredClone(sentinelDocument(KIT_FIXTURE).graph);
+/** A bank node's presets, as the app reads them. */
+function readPresetBank(bank: GraphNode): { presets: ReadonlyArray<{ name: string }> } {
+  const parsed = parsePresetBank(storedStaticValue(bank.parameters["presets"]));
+  if (!parsed.ok) throw new Error(`${bank.label ?? bank.id} holds no readable bank`);
+  return parsed.bank;
+}
 const named = (graph: GraphDocument, name: string): GraphNode => {
   const found = Object.values(graph.nodes).find((node) => node.label === name);
   if (found === undefined) throw new Error(`no node named ${name}`);
@@ -71,22 +81,49 @@ describe("the sentinel's panels", () => {
       // The board as the desk and the phone derive it: a named member whose node is gone is dropped there.
       const board = panelBoard(graph, named(graph, `panel_${panel}`));
       const members = (board?.items ?? []).flatMap((item) => (item.kind === "widget" ? [item.node.label as string] : []));
-      // What the board draws is the panel's controls and its bank, nothing else and nothing missing.
-      expect([...members].sort()).toEqual([...controlsOf(graph, panel), `presets_${panel}`].sort());
+      // What the board draws is the panel's controls, its own reset and the reset for everything; nothing else and nothing missing.
+      expect([...members].sort()).toEqual([...controlsOf(graph, panel), `presets_${panel}`, "presets_all"].sort());
+      // …and a reset reads as one: the button is named for what it does.
+      expect(readPresetBank(named(graph, `presets_${panel}`)).presets.map((preset) => preset.name)).toEqual([`reset_${panel}`]);
       // The phone shows it only if the Phone switch is on.
       expect(storedStaticValue(named(graph, `panel_${panel}`).parameters["remote"])).toBe(true);
+      // On a phone there is somewhere to scroll that is not a control: nothing reaches into the right quarter of the board.
+      for (const item of board?.items ?? []) if (item.kind === "widget") expect([panel, item.node.label, item.rect.x + item.rect.w <= 6]).toEqual([panel, item.node.label, true]);
     }
+    // ALL: every control and every bank again, on one board for the desk, in two columns, and not on the phone.
+    const everything = panelBoard(graph, named(graph, "panel_all"));
+    const shown = (everything?.items ?? []).flatMap((item) => (item.kind === "widget" ? [item.node.label as string] : []));
+    expect([...shown].sort()).toEqual([...all, ...PANELS.map((panel) => `presets_${panel}`), "presets_all"].sort());
+    expect(readPresetBank(named(graph, "presets_all")).presets.map((preset) => preset.name)).toEqual(["reset_all"]);
+    expect([...controlsOf(graph, "all")].sort()).toEqual([...all].sort());
+    expect(everything?.columns).toBe(16);
+    const columnsUsed = new Set((everything?.items ?? []).map((item) => (item.rect.x < 8 ? "left" : "right")));
+    expect([...columnsUsed].sort()).toEqual(["left", "right"]);
+    // No two of its controls on top of each other.
+    const cells = new Set<string>();
+    for (const item of everything?.items ?? []) {
+      for (let x = item.rect.x; x < item.rect.x + item.rect.w; x += 1) {
+        for (let y = item.rect.y; y < item.rect.y + item.rect.h; y += 1) {
+          expect([x, y, cells.has(`${x},${y}`)]).toEqual([x, y, false]);
+          cells.add(`${x},${y}`);
+        }
+      }
+    }
+    expect(storedStaticValue(named(graph, "panel_all").parameters["remote"])).toBe(false);
   });
 
-  it("Saved puts every control of its panel back to what the file ships, and leaves the other panels as they were moved", async () => {
+  it("a panel's reset puts every control of that panel back to what the file ships and leaves the other panels as they were moved; the reset for everything puts back all three", async () => {
     const shipped = built();
     for (const panel of PANELS) {
       const session = presetSession(moved(built()), registry);
       // Moved: nothing reads what it shipped with.
       for (const other of PANELS) for (const [key, value] of Object.entries(reading(session.graph(), other))) expect([key, value]).not.toEqual([key, reading(shipped, other)[key]]);
-      await session.recall(named(session.graph(), `presets_${panel}`).id, "saved");
+      await session.recall(named(session.graph(), `presets_${panel}`).id, `reset_${panel}`);
       expect(reading(session.graph(), panel)).toEqual(reading(shipped, panel));
       for (const other of PANELS.filter((each) => each !== panel)) expect(reading(session.graph(), other)).toEqual(reading(moved(built()), other));
     }
+    const session = presetSession(moved(built()), registry);
+    await session.recall(named(session.graph(), "presets_all").id, "reset_all");
+    for (const panel of PANELS) expect(reading(session.graph(), panel)).toEqual(reading(shipped, panel));
   });
 });

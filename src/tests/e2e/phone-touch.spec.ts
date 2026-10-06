@@ -160,15 +160,15 @@ async function tallStage(): Promise<Stage & { node(name: string): GraphNode }> {
   };
 }
 
-/** The shipped sentinel-bot document, its three Panels published — in memory; the file is not touched. */
+/**
+ * The shipped sentinel-bot document, AS SHIPPED: the Panels it publishes to the phone are the ones a phone gets.
+ * (It used to switch Phone on for every Panel of the file. The file now has a fourth, `panel_all`, a two-column
+ * board for the desk that it deliberately keeps off the phone; forced on, it was a fifth tab and a second pad.)
+ */
 async function sentinelStage(): Promise<Stage> {
   const parsed = parseProjectDocument(readFileSync("projects/sentinel-bot/sentinel.loom.json", "utf8"));
   if (!parsed.ok) throw new Error(`sentinel.loom.json did not load: ${parsed.reason}`);
-  const shipped = parsed.document.graph;
-  const nodes = Object.fromEntries(
-    Object.entries(shipped.nodes).map(([id, node]) => [id, node.type === "panel" ? { ...node, parameters: { ...node.parameters, remote: true } } : node]),
-  );
-  const graph = { ...shipped, nodes } as GraphDocument;
+  const graph = parsed.document.graph as GraphDocument;
   // No bus behind this one: what it is asked is whether anything is SENT.
   return openStage(
     () => graph,
@@ -640,9 +640,12 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
 });
 
 /*
- * THE CONSUMER, AS SHIPPED: sentinel-bot's three Panels, eight columns, every control the
- * full width — three tabs, each a little taller than a small phone's screen. With every
- * row a slider from edge to edge there is nowhere to scroll from but a slider.
+ * THE CONSUMER, AS SHIPPED: sentinel-bot's three published Panels, eight columns, every control
+ * six of them wide — three tabs, each taller than a small phone's screen. (The owner, on a real
+ * phone after this page's scrolling had landed: "still pretty hard to not screw with the sliders
+ * when scrolling on mobile". So the project now leaves the right quarter of each board bare, as
+ * somewhere to scroll from. A flick that STARTS on a slider must still scroll and write nothing:
+ * that is what this holds.)
  */
 test.describe("§T1607b the phone page under a real touch — sentinel-bot's Panels as shipped", () => {
   const VIEWPORT = { width: 375, height: 600 };
@@ -660,7 +663,7 @@ test.describe("§T1607b the phone page under a real touch — sentinel-bot's Pan
       for (const name of ["Lights", "Robot", "Scene"]) {
         await phone.page.locator("#tabs [role=tab]", { hasText: name }).tap();
         await expect(phone.page.locator("#tabs [aria-selected=true]")).toHaveText(name);
-        // The premise: a little taller than the screen, and its sliders run edge to edge.
+        // The premise: taller than the screen, and its sliders run three quarters of the board (a bare quarter beside them).
         const end = await scrollEnd(phone.page);
         expect(end, `${name} must need scrolling`).toBeGreaterThan(0);
         const widths = await phone.page.evaluate(() => {
@@ -668,7 +671,8 @@ test.describe("§T1607b the phone page under a real touch — sentinel-bot's Pan
           return [...document.querySelectorAll("section.panel:not([hidden]) .track")].map((track) => track.getBoundingClientRect().width / board);
         });
         expect(widths.length).toBeGreaterThanOrEqual(8);
-        expect(Math.min(...widths), `${name}: every slider is the board's full width`).toBeCloseTo(1, 3);
+        expect(Math.min(...widths), `${name}: every slider is most of the board's width`).toBeGreaterThan(0.7);
+        expect(Math.max(...widths), `${name}: and none reaches into the bare quarter`).toBeLessThan(0.78);
 
         await flickFromSlider(phone, 240, true);
         expect(await atEnd(phone.page, end), `${name} must scroll to its end`).toBe(true);

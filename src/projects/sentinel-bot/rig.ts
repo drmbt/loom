@@ -135,6 +135,17 @@ export const adriftExpression = (axis: "x" | "y", own = 0): string => `(${ADRIFT
 /** With company a robot wanders a fifth as far, and holds the ends of its tentacles in: three in a bore have no room for more. */
 export const PACK_WANDER = 0.2;
 /**
+ * THE SWIMMING STROKE, as the kernel and the document's expressions both have it (a follower's lights and the
+ * camera ride the same lunge the body makes): `lunge` metres forward and back on each stroke at full effort,
+ * each robot `apart` of a bar after the one before, and its effort swelling between `effort` × 2 − 1 and 1 on a
+ * slow count (`swell` radians a second, each robot `swellApart` radians on).
+ */
+export const SWIM = { lunge: 0.35, apart: 0.37, effort: 0.725, swell: 0.41, swellApart: 2.3 } as const;
+/** How far along the tunnel robot `robot` of the pack has lunged on its stroke now, as an expression of the stroke's phase. */
+export function swimLungeExpression(stroke: string, robot: number): string {
+  return `(${SWIM.lunge} * (${SWIM.effort} + ${(1 - SWIM.effort).toFixed(3)} * sin(abstime * ${SWIM.swell} + ${(robot * SWIM.swellApart).toFixed(3)})) * sin(6.2831853 * (${stroke} + ${(robot * SWIM.apart).toFixed(3)} - 0.125)))`;
+}
+/**
  * How much further apart the pack flies out in the fields, as a hall's swell is reckoned: a hall is 1, and
  * this many halls' worth puts the three 3.7 m either side of the leader and 2.2 m over and under it.
  */
@@ -149,9 +160,21 @@ fn swimAt(swim: f32, z: f32) -> f32 {
 
 // Where along the tunnel the robot is. Swimming, it lunges on the snap of each stroke and
 // drifts back between: half a metre either side of where it would glide.
-fn robotZ(travel: f32, offset: vec3f, swim: f32, stroke: f32) -> f32 {
+fn robotZ(travel: f32, offset: vec3f, swim: f32, stroke: f32, effort: f32) -> f32 {
   let z = travel + offset.z;
-  return z + swimAt(swim, z) * 0.5 * sin(6.2831853 * (stroke - 0.125));
+  return z + swimAt(swim, z) * ${SWIM.lunge} * effort * sin(6.2831853 * (stroke - 0.125));
+}
+
+// EACH ROBOT SWIMS ON ITS OWN COUNT (the owner, 2026-10-06: "the pumping swimming motion of the robots is a bit
+// weird and seems totally in sync between all of them and it's a bit too repetitive"). One stroke a bar, but
+// each robot of a pack a part of a bar after the last; and how hard a robot strokes swells and falls slowly, on
+// a count of its own, so no two strokes of one robot are alike and it glides between the hard ones.
+// (Variety 0 is unison: the robots of a pack stroke together, which is what the rig's tests fan out.)
+fn strokeOf(stroke: f32, robot: f32, variety: f32) -> f32 {
+  return stroke + robot * ${SWIM.apart} * variety;
+}
+fn effortOf(time: f32, robot: f32, variety: f32) -> f32 {
+  return ${SWIM.effort} + ${(1 - SWIM.effort).toFixed(3)} * sin(time * ${SWIM.swell} + robot * ${SWIM.swellApart} * variety);
 }
 
 // Adrift it does not keep its distance either: it gains and loses most of a metre on a slow count.
@@ -256,7 +279,7 @@ struct Params {
 ${PLACE_PARAMS}
   crawl: f32, // @default 1  How many of the tentacles walk the wall: 0 none (all trail behind), 1 every one.
   stride: f32, // @default 3.2  Metres the body travels per step of a tentacle.
-  duty: f32, // @default 0.62  Share of a step the claw stays planted. The rest it is in the air, reaching for the next rung.
+  duty: f32, // @default 0.54  Share of a step the claw stays planted, at most (each tentacle has its own, down to 0.14 less). The rest it is in the air, reaching for the next rung: the longer that is, the slower the claw has to go.
   lead: f32, // @default 0.75  Metres ahead of the body a claw plants.
   lift: f32, // @default 0.35  How far a swinging claw pulls in off the wall, as a share of the way to the axis.
   bore: f32, // @default 2.6  Radius of the wall the claws plant on, metres.
@@ -414,6 +437,8 @@ struct Trail {
   adrift: f32, // how much the body is adrift, 0 to 1, and its own count
   own: f32,
   wave: f32, // the squiggle's size, metres
+  rate: f32, // how fast its squiggle and its sway run, against the others' (1 the middle)
+  late: f32, // how late the swimming beat reaches its end, against the others' (1 the middle)
   phase: f32, // this tentacle's own count
   time: f32,
 };
@@ -428,7 +453,7 @@ fn strokeOpen(stroke: f32) -> f32 {
 // How far off the axis the trail runs s metres along, and how fast that changes.
 fn trailRadius(t: Trail, s: f32) -> vec2f {
   // The beat reaches the ends late: what the body did a fifth of a bar ago, the tips do now. That lag is the drag.
-  let open = t.swim * strokeOpen(t.stroke - 0.2 * s / LENGTH);
+  let open = t.swim * strokeOpen(t.stroke - 0.2 * t.late * s / LENGTH);
   let tip = t.flare + open * 0.85;
   let begins = LENGTH * mix(0.6, 0.3, open);
   let inward = clamp(s / 1.2, 0.0, 1.0);
@@ -461,10 +486,10 @@ fn trailShape(t: Trail, s: f32) -> vec3f {
   let reach = s / LENGTH;
   // A long slow wave running out to the tip, growing as it goes: water, not a spring.
   let size = t.wave * (0.15 + 3.0 * reach * reach);
-  let count = s * 1.7 - t.time * 1.25 + t.phase;
+  let count = s * 1.7 - t.time * 1.25 * t.rate + t.phase;
   let squiggle = (sideways * sin(count) + around * 0.6 * cos(count * 0.7 + 1.0)) * size;
   // A slow sway of the whole tail, a pendulum's: nothing at the body, most at the tip.
-  let sway = sideways * sin(t.time * 0.45 + t.phase * 1.3) * 0.26 * reach * reach;
+  let sway = sideways * sin(t.time * 0.45 * t.rate + t.phase * 1.3) * 0.26 * reach * reach;
   // The tail goes where the body WENT: s metres back it is where the body had wandered to half a second
   // a metre ago, about the line the body itself keeps (its berth: a pack's robots fly beside the axis, and
   // drawn back onto the axis every tail of a pack pointed at the middle of the tunnel; the owner,
@@ -500,7 +525,10 @@ fn takesHold(tentacle: u32, bodyZ: f32, params: Params) -> f32 {
 // One tentacle's gait: how far through its step it is.
 fn swingOf(tentacle: u32, bodyZ: f32, stride: f32, count: f32, duty: f32) -> f32 {
   let cycle = bodyZ / stride + STEP_PHASE[tentacle] + count;
-  return smoothstep(0.0, 1.0, clamp((cycle - floor(cycle) - duty) / max(1.0 - duty, 1e-3), 0.0, 1.0));
+  let through = clamp((cycle - floor(cycle) - duty) / max(1.0 - duty, 1e-3), 0.0, 1.0);
+  // It neither leaves its rung nor lands on the next with a jolt: no speed and no acceleration at either end
+  // of the swing. (It was a smoothstep, which starts and stops at full acceleration: a twitch at each end.)
+  return through * through * through * (through * (through * 6.0 - 15.0) + 10.0);
 }
 
 // Walking, the body is not on the tunnel's axis: it weaves across it, slowly, as a thing does that is
@@ -551,7 +579,9 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let offset = params.offset + vec3f(berth.x * roomy, berth.y * select(wide, roomy, berth.y > 0.0 || afield > 0.5), berth.z - 45.0 * arriving);
   let swimming = swimAt(params.swim, params.travel + offset.z);
   // Where the gait counts from: the rungs it plants on are a matter of how far it has come.
-  let bodyZ = robotZ(params.travel, offset, params.swim, params.stroke);
+  let stroke = strokeOf(params.stroke, f32(robot), params.variety);
+  let effort = effortOf(ctx.absTime, f32(robot), params.variety);
+  let bodyZ = robotZ(params.travel, offset, params.swim, stroke, effort);
   let stride = PATH_PERIOD / round(PATH_PERIOD / max(params.stride, 0.5));
   let count = f32(robot) * 0.37 * params.variety;
   // A pack in unison plants on the same ribs; with variety each robot draws its own.
@@ -584,12 +614,20 @@ fn process(p: Point, ctx: PointCtx) -> Point {
 
   // ── Walking: stance on one rib, then a swing to the next ──
   let step = floor(bodyZ / stride + STEP_PHASE[tentacle] + count);
-  let swing = swingOf(tentacle, bodyZ, stride, count, params.duty);
+  // EACH TENTACLE ITS OWN (the owner, 2026-10-06: "legs need to move more natural, a bit more varied between each
+  // other"). Until now they differed only in WHEN: the same step, the same squiggle, the same beat, each on its own
+  // count. Now each has its own measure of them as well, drawn once from which tentacle of which robot it is:
+  // how long its claw is in the air, how far it lifts, how big and how fast its squiggle, how far its end
+  // stands off and how late the beat reaches it. (In unison, Variety 0, the robots of a pack draw alike.)
+  let own4 = vec4f(chance(tentacle, 21u, seed), chance(tentacle, 22u, seed), chance(tentacle, 23u, seed), chance(tentacle, 24u, seed));
+  let own3 = vec3f(chance(tentacle, 25u, seed), chance(tentacle, 26u, seed), chance(tentacle, 27u, seed));
+  // Its claw is in the air for as long as Duty leaves it, or longer: never shorter, since a shorter swing is a faster one.
+  let swing = swingOf(tentacle, bodyZ, stride, count, clamp(params.duty - own4.x * 0.14, 0.3, 0.9));
   let rib = plant(tentacle, step, stride, bodyZ, count, seed, params);
   let next = plant(tentacle, step + 1.0, stride, bodyZ, count, seed, params);
   var walking = mix(rib, next, swing);
   let aloft = sin(swing * 3.14159265);
-  walking = mix(walking, pathAt(walking.z), params.lift * aloft);
+  walking = mix(walking, pathAt(walking.z), params.lift * mix(0.55, 1.2, own4.y) * aloft);
 
   let grab = takesHold(tentacle, bodyZ, params) * (1.0 - swimming);
   let leave = normalize(body.forward * -0.6 + radial * 0.8);
@@ -601,7 +639,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let rock = sin(ctx.absTime * 0.6 + f32(tentacle) * 1.3) * 0.5;
   let loosePlane = toWake * cos(rock) + side * sin(rock);
   // Swimming opens and shuts them together: splayed wide at the top of the beat, streamlined after the snap.
-  let open = select(smoothstep(0.25, 1.0, params.stroke), 1.0 - smoothstep(0.0, 0.25, params.stroke), params.stroke < 0.25);
+  let beat = stroke - floor(stroke);
+  let open = effort * select(smoothstep(0.25, 1.0, beat), 1.0 - smoothstep(0.0, 0.25, beat), beat < 0.25);
   let splay = clamp(params.flare + swimming * (open * 1.1 - 0.15), -0.2, 1.2);
   let trailing = Bend(
     acos(clamp(dot(leave, wake), -1.0, 1.0)) * (1.0 - splay) / NECK,
@@ -682,12 +721,14 @@ fn process(p: Point, ctx: PointCtx) -> Point {
     trail.berth = offset.xy;
     // Swimming flings the ends wide at the top of the beat and draws them in after it (trailRadius).
     // In company the ends are held in and the stroke flings them less wide: they would lie across the next robot.
-    trail.flare = (0.18 + 0.7 * params.flare) * mix(1.0, 0.3, clamp(params.company, 0.0, 1.0));
-    trail.swim = swimming * mix(1.0, 0.25, clamp(params.company, 0.0, 1.0));
-    trail.stroke = params.stroke;
+    trail.flare = (0.18 + 0.7 * params.flare) * mix(0.55, 1.5, own4.z) * mix(1.0, 0.3, clamp(params.company, 0.0, 1.0));
+    trail.swim = swimming * effort * mix(1.0, 0.25, clamp(params.company, 0.0, 1.0));
+    trail.stroke = stroke;
     trail.adrift = adrift;
     trail.own = ownCount(offset);
-    trail.wave = params.wave * 1.6 + 0.03;
+    trail.wave = (params.wave * 1.6 + 0.03) * mix(0.55, 1.6, own4.w);
+    trail.rate = mix(0.7, 1.4, own3.x);
+    trail.late = mix(0.5, 1.6, own3.y);
     // Each robot of a pack squiggles on its own count, as far as Variety says (in unison they are one robot).
     trail.phase = f32(tentacle) * 1.7 + f32(robot) * 0.9 * params.variety;
     trail.time = ctx.absTime;
