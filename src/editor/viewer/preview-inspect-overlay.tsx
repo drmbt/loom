@@ -84,14 +84,30 @@ export interface PreviewInspectOverlaysProps {
    * orbit declaration — never from a node type — so a 2D preview is never offered one.
    */
   inspect: (nodeId: NodeId) => PreviewOrbitStore | null;
+  /**
+   * T1655b — WHY A 3D TILE HAS NO CAMERA, said in the corner the control would have been
+   * (§T1049: absent, never disabled, and said). Asked only where `inspect` answered null;
+   * null for a tile with nothing 3D about it, which gets no chrome at all. The graph pane
+   * answers from the compiler's declaration (`ResolvedOutput.previewCamera`) and, for a
+   * camera, from whether any channel of its pose is free.
+   *
+   * A sentence and not a tooltip on a dead glyph: this control has been lost three times by
+   * being quiet (T664, T675, and the driven camera that showed nothing), and an absence
+   * that reads as breakage is the same bug as a hidden control.
+   */
+  note?: ((nodeId: NodeId) => string | null) | undefined;
 }
 
-/** One button's placement: the screen point its bottom-right corner sits on. */
+/** One tile's chrome: the screen point its bottom-right corner sits on, and what goes there. */
 interface Placement {
   nodeId: NodeId;
-  source: PreviewOrbitStore;
+  /** The camera to arm, or null where there is none and `note` says why. */
+  source: PreviewOrbitStore | null;
+  note: string | null;
   x: number;
   y: number;
+  /** The tile's width in the node's own pixels: the note wraps inside it. */
+  width: number;
   zoom: number;
 }
 
@@ -105,6 +121,8 @@ function samePlacements(a: readonly Placement[], b: readonly Placement[]): boole
       right !== undefined &&
       left.nodeId === right.nodeId &&
       left.source === right.source &&
+      left.note === right.note &&
+      left.width === right.width &&
       left.x === right.x &&
       left.y === right.y &&
       left.zoom === right.zoom
@@ -112,7 +130,7 @@ function samePlacements(a: readonly Placement[], b: readonly Placement[]): boole
   });
 }
 
-export function PreviewInspectOverlays({ bounds, inspect }: PreviewInspectOverlaysProps) {
+export function PreviewInspectOverlays({ bounds, inspect, note }: PreviewInspectOverlaysProps) {
   // The slot rects live outside React (they are written by a ResizeObserver), so the map
   // identity is the subscription: a slot mounting, resizing or unmounting re-renders this
   // layer and nothing else.
@@ -128,8 +146,12 @@ export function PreviewInspectOverlays({ bounds, inspect }: PreviewInspectOverla
         for (const [id, box] of boxes) {
           const internal = state.nodeLookup.get(id);
           if (internal === undefined) continue;
+          // T1655b: a node in front covers this corner, so anything drawn here would be drawn
+          // on THAT node's picture (the compositor clips the tile itself, T1102).
+          if (bounds.cornerCovered(id)) continue;
           const source = inspect(id);
-          if (source === null) continue;
+          const said = source === null ? (note?.(id) ?? null) : null;
+          if (source === null && said === null) continue;
           // `position`, not `internals.positionAbsolute`: this is the exact field
           // `use-node-previews.ts` places the TILE from (`flow.getNode(id)?.position`), and
           // the button has to land on that tile, not near it.
@@ -141,14 +163,16 @@ export function PreviewInspectOverlays({ bounds, inspect }: PreviewInspectOverla
           placements.push({
             nodeId: id,
             source,
+            note: said,
             x: rect.x + rect.width,
             y: rect.y + rect.height,
+            width: box.width,
             zoom,
           });
         }
         return placements;
       },
-    [boxes, inspect],
+    [bounds, boxes, inspect, note],
   );
 
   /*
@@ -177,9 +201,32 @@ export function PreviewInspectOverlays({ bounds, inspect }: PreviewInspectOverla
   if (placements.length === 0) return null;
   return (
     <div className={styles.previewChrome} data-testid="preview-inspect-overlays">
-      {placements.map((placement) => (
-        <PreviewInspectToggle key={placement.nodeId} {...placement} />
-      ))}
+      {placements.map((placement) =>
+        placement.source === null ? (
+          <p
+            key={placement.nodeId}
+            className={styles.inspectNote}
+            data-testid={`preview-camera-note-${placement.nodeId}`}
+            role="note"
+            style={{
+              ...cssVars({ "--chrome-zoom": placement.zoom, "--tile-width": `${String(placement.width)}px` }),
+              left: `${String(placement.x)}px`,
+              top: `${String(placement.y)}px`,
+            }}
+          >
+            {placement.note}
+          </p>
+        ) : (
+          <PreviewInspectToggle
+            key={placement.nodeId}
+            nodeId={placement.nodeId}
+            source={placement.source}
+            x={placement.x}
+            y={placement.y}
+            zoom={placement.zoom}
+          />
+        ),
+      )}
     </div>
   );
 }
@@ -191,7 +238,13 @@ export function PreviewInspectOverlays({ bounds, inspect }: PreviewInspectOverla
  * source is the pane's own store. Its own `useSyncExternalStore` on this node's slice, so
  * adjusting one preview (or alt-peeking one, T675) re-renders one button.
  */
-function PreviewInspectToggle({ nodeId, source, x, y, zoom }: Placement) {
+function PreviewInspectToggle({
+  nodeId,
+  source,
+  x,
+  y,
+  zoom,
+}: Pick<Placement, "nodeId" | "x" | "y" | "zoom"> & { source: PreviewOrbitStore }) {
   const read = useCallback(() => source.mode(nodeId), [source, nodeId]);
   const mode = useSyncExternalStore(
     useCallback((listener: () => void) => source.subscribe(nodeId, listener), [source, nodeId]),

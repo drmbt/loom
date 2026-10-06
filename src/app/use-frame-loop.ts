@@ -56,10 +56,24 @@ const NO_DIAGNOSTICS: readonly RuntimeDiagnostic[] = [];
  * value-blind way (`planStructureSignature` over the synthesis's own passes): a scene
  * payload's uniforms move with its parameters (§V5, T462) and must not re-render the App.
  */
-function installedPlanKey(plan: CompiledGraph): string {
+export function installedPlanKey(plan: CompiledGraph): string {
   const synthesized = plan.outputs.flatMap((output) =>
     output.synthesis === undefined
-      ? []
+      ? /*
+         * T1655b: and a row that BORROWS another row's resource, or says something about its
+         * camera. A camera with exactly one Render previews as that Render's own picture by
+         * aliasing its row (T546): no pass, no resource, no synthesis, so nothing above moves
+         * when the camera's tile comes on screen, the row was never announced, and the tile
+         * read "no signal" for as long as nothing structural happened. Reproduced through
+         * the app in `preview-camera.spec.ts` (a camera far from everything, gone to after the
+         * install); the owner's camera read "no signal" when framed alone on the walk, which is
+         * this shape, though that one was not re-run against the old key. The camera answer
+         * rides along for the same reason: re-wiring a Render to another camera moves a
+         * uniform and the name its tile shows, and no structure.
+         */
+        output.previewCamera === undefined
+        ? []
+        : [`${output.nodeId}:${output.portId}:${output.resourceId}:${JSON.stringify(output.previewCamera)}`]
       : [
           `${output.nodeId}:${output.portId}:${output.synthesis.kind ?? ""}:${planStructureSignature(
             [],
@@ -98,6 +112,8 @@ export interface FrameLoopResult {
    * backend holds nothing, so there is nothing to bind against.
    */
   readonly installedPlan: CompiledGraph | null;
+  /** T1655b: the rows of the installed plan's newest values-only variation (see `liveOutputsRef`). */
+  readonly liveOutputs: () => CompiledGraph["outputs"] | null;
   /**
    * T433 — true while playback is cycling the document's frame range.
    *
@@ -327,6 +343,16 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
    */
   const [installedPlan, setInstalledPlan] = useState<CompiledGraph | null>(null);
   const installedSignatureRef = useRef<string | null>(null);
+  /**
+   * T1655b: the rows of the newest plan the backend holds VALUES for: the installed plan,
+   * or its latest values-only variation. A values-only edit is deliberately not announced
+   * through `installedPlan` (§V16), and a synthesized preview's uniform values live on its
+   * row, so without this a camera, light or material tile kept drawing the values of the
+   * last STRUCTURAL edit (`live-synthesis.ts` has the measurement). Read by the preview
+   * tick, never rendered from.
+   */
+  const liveOutputsRef = useRef<CompiledGraph["outputs"] | null>(null);
+  const liveOutputs = useCallback(() => liveOutputsRef.current, []);
   /**
    * T455 — TIMELINE MODE IS THE DEFAULT, so the frame counter is BOUNDED.
    *
@@ -1016,6 +1042,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       if (built === null || driverRef.current === null || pendingInstallRef.current) return false;
       if (animatorRef.current.pushRebased(backend, built, plan.compiled) === null) return false;
       planRef.current = plan.compiled;
+      liveOutputsRef.current = plan.compiled.outputs;
       installedAnimateRef.current = plan.animate;
       laneHeldRef.current = { backend, plan: plan.compiled };
       return true;
@@ -1084,6 +1111,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         // Later pushes diff against the newest values, so a slider dragged through ten
         // positions writes each block once, not ten times against a stale base.
         planRef.current = compiled;
+        liveOutputsRef.current = compiled.outputs;
         installedAnimateRef.current = animate;
         installedSegmentRef.current = segment;
         wakeInstallWaiters();
@@ -1149,6 +1177,7 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         // The generation guard above has already dropped a superseded install, so this
         // can only ever announce the newest plan that landed.
         // §B188: keyed on what a CONSUMER can read, which the plan signature alone is not.
+        liveOutputsRef.current = compiled.outputs;
         const key = installedPlanKey(compiled);
         if (installedSignatureRef.current !== key) {
           installedSignatureRef.current = key;
@@ -1246,5 +1275,5 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
   // T465: the problems tab's Clear empties every ACCUMULATING source; anything still
   // real re-reports on its own and thereby proves it is live.
   const clearDiagnostics = useCallback(() => setDiagnostics([]), []);
-  return { diagnostics, clearDiagnostics, playing, looping, latestFrame, installedPlan };
+  return { diagnostics, clearDiagnostics, playing, looping, latestFrame, installedPlan, liveOutputs };
 }

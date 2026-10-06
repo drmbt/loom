@@ -234,10 +234,12 @@ describe("scene payload previews are sink-gated (T462, §V309)", () => {
     expect(rowById(compiled, "preview:scene:geo:out")?.synthesis?.orbit?.passIds).toEqual(["geo#scenePreview:out"]);
   });
 
-  it("a watched MESH-INSTANCE geometry shows the backdrop alone, and its orbit names no pass (T1581b, B250)", () => {
+  it("a watched MESH-INSTANCE geometry shows the backdrop alone, and is offered no orbit (T1581b, B250, T1655b)", () => {
     // The tile's instanced draw is slice D of T1581b. Until then the tile is an honest
-    // empty frame — never the box a primitive would draw in the mesh's place — and the
-    // orbit, which throws on a pass it cannot find, is handed none.
+    // empty frame — never the box a primitive would draw in the mesh's place. B250 handed
+    // the orbit an empty pass list so it would not throw; T1655b: an orbit that moves no
+    // pass put a camera toggle on a tile where no drag changes a pixel, so there is none,
+    // and the row says why in its place.
     const compiled = compile(
       graphOf(
         [
@@ -255,7 +257,11 @@ describe("scene payload previews are sink-gated (T462, §V309)", () => {
     expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const synthesis = rowById(compiled, "preview:scene:geo:out")?.synthesis;
     expect(synthesis?.passes.map((pass) => pass.id)).toEqual(["geo#scenePreviewBackdrop:out"]);
-    expect(synthesis?.orbit?.passIds).toEqual([]);
+    expect(synthesis?.orbit).toBeUndefined();
+    expect(rowById(compiled, "preview:scene:geo:out")?.previewCamera).toEqual({
+      kind: "none",
+      reason: { because: "nothing-drawn" },
+    });
   });
 
   it("INSTANCING is visible: the worn primitive and its scale reach the picture (T532)", () => {

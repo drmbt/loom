@@ -642,6 +642,28 @@ export function rebaseOnValues(previous: CompileGraphResult, request: CompileReq
   for (const id of ids) {
     if (!moved.has(id) && !sameFlattened(after.nodes[id], before.nodes[id])) return `The flattening differs at "${id}", which was not written.`;
   }
+  /*
+   * T1655b: a WRITTEN node whose own scene-payload preview is being watched. That tile's
+   * draw passes and their uniform values live on the node's ROW (`ResolvedOutput.synthesis`),
+   * not in `passes`, and the splice below keeps the base's rows: the tile would go on
+   * drawing the value before this one. Measured in the app before the lane existed, as the
+   * camera gizmo (T692): the drag wrote the pose and the tile it was dragged on stood still.
+   * So the revision is compiled in full, which mints the row afresh. It costs what every
+   * revision cost before the lane, and only for an edit made ON a camera, light, material,
+   * geometry or projector whose stock-scene tile is on screen. A pointset's splat is not
+   * refused: its block is the stock rig and the granted tile, and no parameter reaches it.
+   *
+   * NOT refused, and so still stale (reported with T1655b, to be fixed by re-deriving the
+   * rows from the payloads this re-run already captures): such a node that only READS the
+   * written value, through an expression. Refusing there would send every slider that
+   * tints a light down the structural road whenever that light's tile is on screen.
+   */
+  for (const id of moved) {
+    const watched = base.outputs.some(
+      (output) => output.nodeId === id && output.synthesis !== undefined && output.synthesis.kind !== "pointset",
+    );
+    if (watched) return `"${id}" is drawn on its own preview tile, whose values are on its row and not in a pass.`;
+  }
   for (const id of moved) {
     if (after.nodes[id] === undefined) return `"${id}" was written and is not in the flattening.`;
     // The node the base read must be the flattening's own, not a timeline override of it.

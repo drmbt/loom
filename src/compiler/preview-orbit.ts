@@ -1,3 +1,6 @@
+import type { NodeId } from "../domain/types/ids.ts";
+import type { NodeDefinition } from "../domain/types/node-definition.ts";
+import type { ParameterValue } from "../domain/types/parameters.ts";
 import type { ScenePayloadKind } from "../domain/types/scene.ts";
 
 /**
@@ -125,6 +128,12 @@ export function previewOrbitBasis(
 ): PreviewOrbitBasis | undefined {
   const rig: PreviewOrbitRig | null = PREVIEW_ORBIT_RIGS[kind];
   if (rig === null) return undefined;
+  /* T1655b: an orbit that names no pass moves nothing. A geometry whose object pass was not
+     emitted (B250: mesh instances until T1581b's slice D, a refused surface, a beam with no
+     endpoint) draws its backdrop alone, and a basis published for it put a camera toggle on
+     a tile where no drag changes a pixel. No pass, no orbit; `previewCameraControl` below
+     says why in its place. */
+  if (options.passIds.length === 0) return undefined;
   return {
     eye: [...rig.eye],
     lookAt: [0, 0, 0],
@@ -134,4 +143,113 @@ export function previewOrbitBasis(
     aspect: options.aspect,
     passIds: options.passIds,
   };
+}
+
+/**
+ * T1655b — WHAT A PREVIEW OFFERS FOR ITS CAMERA, OR WHY IT OFFERS NOTHING.
+ *
+ * The orbit table above answers one question, "can this synthesized picture be orbited",
+ * and its `null` was a silence: a camera, a projector and every picture TAKEN through a
+ * camera got no control and nothing saying why. The owner asked twice ("certain nodes are
+ * missing a way to control their freeview camera. like the camera node and some other stuff
+ * that actually handles geometry"), and the walk through the real app found the silence was
+ * the bug as often as a missing control was. So every row that shows something 3D carries
+ * ONE of three answers, decided here and nowhere else:
+ *
+ *  - `orbit`: an inspection camera over a synthesized picture (T561). View state.
+ *  - `pose`: the picture is drawn through THIS NODE'S OWN Eye and Look At, so the same
+ *    gestures may write them (T692). A document edit, undoable.
+ *  - `none`, with a reason: there is no camera here to move, and the reason says where one
+ *    is (T1049: absent, never disabled, and said where the control would have been).
+ *
+ * A row with no answer at all is a 2D picture: nothing about it is 3D.
+ */
+/* The discriminant is `because`, not `code`: a reason here is not a diagnostic, and
+   `diagnostics/classes.test.ts` reads every `code: "…"` in the source as one. */
+export type PreviewCameraAbsence =
+  /** A kind that orbits, whose object pass was not emitted: only the backdrop is drawn. */
+  | { readonly because: "nothing-drawn" }
+  /** A picture taken through another node's camera. */
+  | { readonly because: "through-camera"; readonly camera: NodeId }
+  /** A picture of 3D data whose node names no camera and has no Eye and Look At of its own. */
+  | { readonly because: "no-camera" };
+
+export type PreviewCameraControl =
+  | { readonly kind: "orbit" }
+  | { readonly kind: "pose" }
+  | { readonly kind: "none"; readonly reason: PreviewCameraAbsence };
+
+/**
+ * What stands in the orbit's place for a kind the table refuses. Keyed by exactly the kinds
+ * whose rig is `null`, so a kind that is refused an orbit cannot land without saying what
+ * its tile offers instead: it is a typecheck failure here.
+ *
+ * Both draw through the payload's own Eye and Look At (T614, T704), which is why an
+ * inspection orbit would falsify them and why a gesture that WRITES those two is honest.
+ */
+type KindWithoutOrbit = {
+  [K in PreviewPayloadKind]: (typeof PREVIEW_ORBIT_RIGS)[K] extends null ? K : never;
+}[PreviewPayloadKind];
+
+const WITHOUT_ORBIT = {
+  camera: { kind: "pose" },
+  projector: { kind: "pose" },
+} as const satisfies Record<KindWithoutOrbit, PreviewCameraControl>;
+
+/** The answer for a synthesized preview of `kind`, given the basis the one site above made. */
+export function previewCameraControl(
+  kind: PreviewPayloadKind,
+  orbit: PreviewOrbitBasis | undefined,
+): PreviewCameraControl {
+  if (orbit !== undefined) return { kind: "orbit" };
+  if (PREVIEW_ORBIT_RIGS[kind] === null) return WITHOUT_ORBIT[kind as KindWithoutOrbit];
+  return { kind: "none", reason: { because: "nothing-drawn" } };
+}
+
+/** The two parameters a `pose` gesture writes. A node that has both draws through them. */
+const POSE_PARAMETERS = ["eye", "lookAt"] as const;
+
+const isPosition = (value: ParameterValue | undefined): boolean =>
+  Array.isArray(value) && value.length === 3 && value.every((entry) => typeof entry === "number");
+
+/**
+ * The answer for a PICTURE OF 3D DATA: a texture output of a node that takes a pointset or
+ * a scene. Undefined for every other node: a filter over a picture has no camera to speak of
+ * (Camera Blur reads a camera's Near and Far and frames nothing).
+ *
+ * Derived from the node's ports and its RESOLVED parameters (the values the compile reads,
+ * through the one schema funnel, §T903), never from a list of node types: a fifth renderer
+ * is covered the day it declares its ports. `camera` is the node wired (or named, §V372)
+ * into its camera input this compile, if any.
+ */
+export function pictureCameraControl(
+  inputs: NodeDefinition["inputs"],
+  parameters: Readonly<Record<string, ParameterValue>>,
+  camera: NodeId | undefined,
+): PreviewCameraControl | undefined {
+  const takesThreeD = inputs.some((port) => port.type.kind === "pointset" || port.type.kind === "scene");
+  if (!takesThreeD) return undefined;
+  if (camera !== undefined) return { kind: "none", reason: { because: "through-camera", camera } };
+  if (POSE_PARAMETERS.every((key) => isPosition(parameters[key]))) return { kind: "pose" };
+  return { kind: "none", reason: { because: "no-camera" } };
+}
+
+/**
+ * The one sentence for each reason, said where the control would have been: in the corner
+ * of a tile about 170 px wide, so each is one line there (the first version ran to four
+ * lines over a Render's picture, which is a caption nobody asked for). The reason, and where
+ * the camera is when there is one.
+ */
+export function previewCameraAbsenceSentence(
+  reason: PreviewCameraAbsence,
+  nameOf: (nodeId: NodeId) => string,
+): string {
+  switch (reason.because) {
+    case "nothing-drawn":
+      return "No object drawn on this tile.";
+    case "through-camera":
+      return `Framed by ${nameOf(reason.camera)}.`;
+    case "no-camera":
+      return "Drawn without a camera.";
+  }
 }

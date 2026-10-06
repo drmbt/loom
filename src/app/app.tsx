@@ -2191,6 +2191,7 @@ export function App({
                  * refused plan bind a resource the installed program never had.
                  */
                 compiledOutputs={installedPlan?.outputs ?? EMPTY_OUTPUTS}
+                liveOutputs={frameLoop.liveOutputs}
                 previewFps={runtime.settings.previewFps}
                 previewLongEdge={runtime.settings.previewLongEdge}
                 previewSinks={previewSinks}
@@ -2311,6 +2312,7 @@ export function App({
                  * state: the backend has never been given a program to present from.
                  */
                 compiled={installedPlan}
+                liveOutputs={frameLoop.liveOutputs}
                 graph={compile.graph}
                 backend={backend ?? null}
                 pointer={pointer}

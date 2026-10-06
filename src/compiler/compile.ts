@@ -26,7 +26,9 @@ import { describeError } from "../runtime/backend/diagnostics.ts";
 // place — a `satisfies Record<PreviewPayloadKind, …>` table rather than the two
 // hand-maintained branches that used to live in this file.
 import {
+  pictureCameraControl,
   POINTS_PREVIEW_EYE,
+  previewCameraControl,
   previewOrbitBasis,
   SCENE_PREVIEW_BALL_RIG,
 } from "./preview-orbit.ts";
@@ -1796,6 +1798,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         format: "rgba8unorm",
         space: colorSpaceForFormat("rgba8unorm"),
         temporal: false,
+        previewCamera: previewCameraControl("pointset", pointsOrbit),
         synthesis: {
           kind: "pointset",
           depth: false,
@@ -1925,7 +1928,14 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
                 return propagated.outputs.get(outputKey(only, slot.portId));
               })();
         if (rendered !== undefined) {
-          scenePreviewOutputs.set(key, { ...rendered, nodeId, portId: port.id });
+          // T1655b: the borrowed picture is drawn through THIS camera, so the row says what
+          // a synthesized camera row says. It carries no `synthesis` to read a kind off.
+          scenePreviewOutputs.set(key, {
+            ...rendered,
+            nodeId,
+            portId: port.id,
+            previewCamera: previewCameraControl("camera", undefined),
+          });
           continue;
         }
       }
@@ -2367,6 +2377,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         format: "rgba8unorm",
         space: colorSpaceForFormat("rgba8unorm"),
         temporal: false,
+        previewCamera: previewCameraControl(payload.kind, orbit),
         synthesis: { kind: payload.kind, depth: true, passes: synthPasses, ...(orbit === undefined ? {} : { orbit }) },
       });
     }
@@ -2606,7 +2617,27 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   // T373: a pointset output with a synthesized preview projects as that TARGET — a row
   // the preview system can bind — replacing the marker row for the same port. Without
   // the sink the marker row stands, exactly as before.
+  /*
+   * T1655b: a PICTURE OF 3D DATA (a Render, Render Surface, Render Instances, Render Points)
+   * says whose camera it is taken through, or that it is drawn through its own Eye and Look
+   * At. The camera is read off the same kept edges `renderersByCamera` is, by renderer.
+   */
+  const cameraByRenderer = new Map<NodeId, NodeId>();
+  for (const edge of [...topology.currentFrameEdges, ...topology.temporalEdges]) {
+    const port = validated.nodes.get(edge.target.nodeId)?.definition?.inputs.find((input) => input.id === edge.target.portId);
+    if (port?.type.kind === "camera") cameraByRenderer.set(edge.target.nodeId, edge.source.nodeId);
+  }
+  const withPictureCamera = (output: ResolvedOutput): ResolvedOutput => {
+    if (output.resourceKind === "pointset") return output;
+    const resolved = validated.nodes.get(output.nodeId);
+    const control =
+      resolved === undefined
+        ? undefined
+        : pictureCameraControl(resolved.definition.inputs, resolved.parameters, cameraByRenderer.get(output.nodeId));
+    return control === undefined ? output : { ...output, previewCamera: control };
+  };
   const outputs = [...propagated.outputs.values()]
+    .map(withPictureCamera)
     .map((output) => pointsPreviewOutputs.get(outputKey(output.nodeId, output.portId)) ?? output)
     .concat(aliasOutputs)
     // T462: scene-payload previews ADD rows — camera/light/material outputs never had

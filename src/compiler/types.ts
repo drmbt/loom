@@ -1,6 +1,6 @@
 import type { TimeProbe } from "./time-probe.ts";
 import type { EdgeId, NodeId, PortId } from "../domain/types/ids.ts";
-import type { PreviewPayloadKind } from "./preview-orbit.ts";
+import type { PreviewCameraControl, PreviewPayloadKind } from "./preview-orbit.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { ColorPolicy, GraphDocument, ProjectSettings } from "../domain/types/graph.ts";
 import type { BackendCapabilities, LogicalExecutionPlan } from "../domain/types/backend.ts";
@@ -202,6 +202,17 @@ export interface ResolvedOutput {
     /** The viewport target's aspect, so an orbit is not stretched against it (T663). */
     readonly aspect: number;
   };
+  /**
+   * T1655b: what this row offers for its camera, or why it offers nothing, on every row that
+   * shows something 3D (a synthesized preview, a camera's borrowed Render, a picture of a
+   * pointset or a scene). Decided in `preview-orbit.ts` and read by the tiles and the viewer,
+   * so a consumer never infers 3D-ness from a node type. Absent on a 2D picture.
+   *
+   * `synthesis.kind === "camera"` used to be the question the camera gizmo asked, and a
+   * camera with exactly one Render borrows that Render's row (T546), which has no synthesis:
+   * the gizmo was offered only on a camera nothing rendered through.
+   */
+  readonly previewCamera?: PreviewCameraControl;
 }
 
 /**

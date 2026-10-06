@@ -23,6 +23,7 @@ import { serializePanelBoard } from "@nodes/definitions/controls.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { generatedTextCounts } from "@runtime/backend/wgsl.ts";
+import { edge, graph as graphOf, named, settings as projectSettings } from "@/examples/documents/builders.ts";
 import { classifyRevision } from "./classify-revision.ts";
 
 /**
@@ -305,5 +306,88 @@ describe("T1652b: the frame drawn from the lane's plan is the frame drawn from t
     // The base the frames splice over is this revision's: they read the document that holds 0.875.
     expect(rebased.retained?.request).toBe(request);
     expect(rebased.retained?.graph.nodes[slider.id]).toBe(next.nodes[slider.id]);
+  });
+});
+
+/**
+ * T1655b — THE LANE DOES NOT CARRY A TILE'S OWN VALUES, SO IT DOES NOT TAKE A WRITE THAT NEEDS THEM.
+ *
+ * A camera, light, material, geometry or projector previews as a stock scene whose draw
+ * passes and uniform values are on the node's ROW (`ResolvedOutput.synthesis`), not in
+ * `passes`. The lane splices passes and keeps the base's rows, so a write ON such a node
+ * while its tile is on screen would leave the tile drawing the value before. That was the
+ * camera gizmo's failure in the app before the lane existed (the drag wrote the pose, the
+ * tile stood still), and the lane must not bring it back by being faster.
+ */
+describe("T1655b: a write on a node whose own stock-scene tile is watched is compiled in full", () => {
+  const open = (nodes: GraphNode[], wires: ReadonlyArray<readonly [string, string, string]> = []): Opened => {
+    const system = createComponentSystem(baseRegistry);
+    return {
+      graph: graphOf(nodes, wires.map(([from, to, port], index) => edge(`e${String(index)}`, [from, "out"], [to, port]))),
+      settings: projectSettings({ outputResolution: { width: 64, height: 64 } }),
+      registry: system.nodes,
+      components: system.components.view(),
+    };
+  };
+  const watching = (request: CompileRequest, ...nodeIds: string[]): CompileRequest => ({
+    ...request,
+    sinks: nodeIds.map((nodeId) => ({ nodeId: nodeId as NodeId, portId: "out", kind: "preview" as const })),
+  });
+  const matrixOf = (result: CompileGraphResult, nodeId: string): unknown =>
+    result.compiled.outputs.find((output) => output.nodeId === nodeId)?.synthesis?.passes.find((pass) => pass.uniforms?.["viewProjection"] !== undefined)
+      ?.uniforms?.["viewProjection"];
+
+  it("a camera nothing renders through: Eye is written, and the lane hands the revision back with the reason", () => {
+    const opened = open([named("free", "camera", [0, 0], { eye: [0, 0.5, 3] })]);
+    const { requestFor } = harness(opened);
+    const base = compileGraphRetaining(watching(requestFor(opened.graph), "camera_free"));
+    const next = withStored(opened.graph, "camera_free" as NodeId, "eye", [2, 0.5, 3]);
+    // The premise: it IS a values-only revision, so without the refusal the lane takes it.
+    expect(classifyRevision(opened.graph, next, opened.registry)).toEqual({ kind: "values", written: ["camera_free"] });
+    const request = watching(requestFor(next), "camera_free");
+    const rebased = rebaseOnValues(base, request, ["camera_free" as NodeId]);
+    expect(rebased).toBe(`"camera_free" is drawn on its own preview tile, whose values are on its row and not in a pass.`);
+    // What the refusal protects: the full compile it is sent to has the tile's new matrix, and the base does not.
+    expect(matrixOf(compileGraphRetaining(request), "camera_free")).not.toEqual(matrixOf(base, "camera_free"));
+  });
+
+  it("the same write with nobody watching the camera rides the lane", () => {
+    // The legitimate case the refusal could swallow: no tile, no row, nothing to go stale.
+    const opened = open([named("free", "camera", [0, 0], { eye: [0, 0.5, 3] }), named("src", "noise", [400, 0])]);
+    const { requestFor } = harness(opened);
+    const base = compileGraphRetaining(watching(requestFor(opened.graph), "noise_src"));
+    const next = withStored(opened.graph, "camera_free" as NodeId, "eye", [2, 0.5, 3]);
+    const rebased = rebaseOnValues(base, watching(requestFor(next), "noise_src"), ["camera_free" as NodeId]);
+    expect(typeof rebased).toBe("object");
+  });
+
+  it("⚑ a camera with ONE Render rides the lane too: its tile is the Render's own picture, which IS a pass", () => {
+    // The owner's case, and the one that must stay fast: dragging the camera that frames the
+    // shot. Its row is borrowed from the Render (T546), so there is no synthesis to go stale,
+    // and the lane's spliced Render pass carries the new matrix exactly as the full compile's does.
+    const opened = open(
+      [
+        named("source", "pointGrid", [0, 0], { cols: 4, rows: 4 }),
+        named("boxes", "geometry", [400, 0], { mode: "instances" }),
+        named("key", "light", [800, 0]),
+        named("shot", "camera", [0, 400], { eye: [0, 0.5, 3] }),
+        named("shot", "render", [400, 400]),
+      ],
+      [
+        ["grid_source", "geometry_boxes", "points"],
+        ["geometry_boxes", "render_shot", "scenes"],
+        ["camera_shot", "render_shot", "camera"],
+        ["light_key", "render_shot", "lights"],
+      ],
+    );
+    const { requestFor } = harness(opened);
+    const base = compileGraphRetaining(watching(requestFor(opened.graph), "camera_shot", "render_shot"));
+    expect(base.compiled.outputs.find((output) => output.nodeId === "camera_shot")?.synthesis).toBeUndefined();
+    const next = withStored(opened.graph, "camera_shot" as NodeId, "eye", [2, 0.5, 3]);
+    const request = watching(requestFor(next), "camera_shot", "render_shot");
+    const rebased = rebaseOnValues(base, request, ["camera_shot" as NodeId]);
+    if (typeof rebased === "string") throw new Error(rebased);
+    expect(rebased.compiled.passes).toEqual(compileGraphRetaining(request).compiled.passes);
+    expect(rebased.compiled.passes).not.toEqual(base.compiled.passes);
   });
 });

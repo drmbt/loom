@@ -96,6 +96,57 @@ const vectorChannels = (
 const asChannels = (channels: readonly CameraChannel[]): readonly LabelDragChannel[] =>
   channels.map((channel) => ({ name: channel.name, drivenBy: channel.drivenBy }));
 
+const poseChannels = (
+  node: GraphNode,
+  definition: NodeDefinition | undefined,
+  read: ParameterReadOptions,
+): { eye: readonly CameraChannel[]; lookAt: readonly CameraChannel[] } => {
+  const resolved = resolveParameters(node, definition, read);
+  return {
+    eye: vectorChannels(resolved.get("eye"), [0, 0.5, 3]),
+    lookAt: vectorChannels(resolved.get("lookAt"), [0, 0, 0]),
+  };
+};
+
+/**
+ * T1655b — THE SENTENCE FOR A POSE NOTHING HERE CAN MOVE, or null while a channel is free.
+ *
+ * `readCameraPoseFacts` answers null for a fully driven pose and the caller offers no
+ * control, which is right (§T1049) and was half of the rule: the other half is that the
+ * absence is SAID where the control would have been. The owner's own camera has all six
+ * channels on expressions, and its tile showed nothing at all in that corner, so "this
+ * camera cannot be moved from here" and "this app forgot the control" were the same pixels.
+ *
+ * It names what decides the pose and where that is changed. It does not offer to free a
+ * channel: that would replace the rig the expressions are (§T970, §T1656b).
+ */
+export function cameraPoseDrivenSentence(
+  node: GraphNode,
+  definition: NodeDefinition | undefined,
+  /** The bus's read scope, as `cameraPoseAt` takes it: the same read the gizmo starts from. */
+  scope: ParameterReadContext,
+): string | null {
+  const { eye, lookAt } = poseChannels(node, definition, parameterReadOptions(scope));
+  const drivers = new Set<string>();
+  for (const channel of [...eye, ...lookAt]) {
+    if (channel.drivenBy === null) return null;
+    drivers.add(channel.drivenBy);
+  }
+  const by =
+    drivers.size === 1 && drivers.has(MODE_LABELS.expression)
+      ? "expressions"
+      : [...drivers].sort().join(" and ");
+  // Two short lines on a tile: what decides the pose, and the two parameters it is decided in.
+  return `Driven by ${by} (Eye, Look At).`;
+}
+
+/**
+ * T1655b: a picture drawn through its own node's pose, seen in the VIEWER, which cannot move
+ * it yet (flying a camera from there is §T970). Kept beside the sentence above so the two
+ * things a pose tile can say when it has no control are in one place.
+ */
+export const POSE_MOVED_FROM_ITS_TILE = "Drawn through this node's Eye and Look At: drag on its tile in the graph to move it.";
+
 /**
  * The camera's pose as the gesture must see it, or null when there is nothing to fly.
  *
@@ -110,9 +161,7 @@ export function readCameraPoseFacts(
   /** §T1557b: `parameterReadOptions(…)` for where the camera IS; `STORED_READ` for the document. */
   read: ParameterReadOptions,
 ): CameraPoseFacts | null {
-  const resolved = resolveParameters(node, definition, read);
-  const eye = vectorChannels(resolved.get("eye"), [0, 0.5, 3]);
-  const lookAt = vectorChannels(resolved.get("lookAt"), [0, 0, 0]);
+  const { eye, lookAt } = poseChannels(node, definition, read);
   const free = [...eye, ...lookAt].some((channel) => channel.drivenBy === null);
   if (!free) return null;
 
