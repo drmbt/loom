@@ -10,9 +10,9 @@ article's point is that glow and soft shadows are the same field read two ways, 
 here is a post-process.
 
 ```
-bed1(noise, near-black) ─► lantern1(customWgsl: the SDF lit scene) ─► out1
-                                 ▲
-                 pulse1(lfo) ┄breath┄► lantern1.amount
+noise_bed(noise, near-black) ─► wgsl_lantern(customWgsl: the SDF lit scene) ─► output1
+                                      ▲
+                 lfo_pulse(lfo) ┄breath┄► wgsl_lantern.amount
 ```
 
 ## The field is the scene, the light, and the shadows
@@ -42,7 +42,7 @@ world units and its acceleration is essentially zero.
 
 ## It breathes, and that is the drive
 
-`pulse1` swings `lantern1.amount` on a slow sine, so the whole room's light swells and dims.
+`lfo_pulse` swings `wgsl_lantern.amount` on a slow sine, so the whole room's light swells and dims.
 A floor of gain always remains, so the picture never blacks out — the breath dims the light,
 never erases the scene. `amount` is the one generic scalar the custom-WGSL contract carries;
 the kernel makes it the light gain.

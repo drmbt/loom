@@ -6,7 +6,10 @@ import type { GraphPatchOperation, GraphPatchResult } from "../types/patch.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
 import { nodeNames, renumberedName, rewriteNodeNameReferences } from "../graph/names.ts";
+import { conventionalName } from "../graph/node-kinds.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
+import { z } from "zod";
+import { idInput, nodeIdsInput, pointInput } from "./input-schema.ts";
 import { clipboardComponentsFor, encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
 import type { ClipboardArrival, SystemClipboard } from "./loom-clipboard.ts";
 
@@ -37,6 +40,11 @@ export interface RenameInput {
   nodeId: NodeId;
   /** null clears the label so the node follows its definition's title again. */
   label: string | null;
+  /**
+   * T1593b: store `label` exactly as given. Absent, the name is made to carry the node's
+   * kind (`conventionalName`): `soft` on a Blur becomes `blur_soft`, and the result says so.
+   */
+  exact?: boolean;
 }
 
 export interface ValuePlotModeInput {
@@ -121,6 +129,13 @@ interface Clipboard {
 
 /** Successive pastes of one clipboard cascade instead of stacking on each other. */
 const CASCADE = { x: 32, y: 32 } as const;
+
+/** §T1556b: the input schemas, one per input shape above. */
+const nodeSelectionSchema = z.object({ nodeIds: nodeIdsInput }).strict();
+const pasteSchema = z.object({ offset: pointInput.optional() }).strict();
+const duplicateSchema = z.object({ nodeIds: nodeIdsInput, offset: pointInput.optional() }).strict();
+const renameSchema = z.object({ nodeId: idInput, label: z.string().nullable(), exact: z.boolean().optional() }).strict();
+const valuePlotModeSchema = z.object({ nodeId: idInput, mode: z.enum(["bar", "trail"]).nullable() }).strict();
 
 const rejection = (
   _input: unknown,
@@ -354,6 +369,7 @@ function registerToggle(
   bus.registerCommand({
     name,
     description: `${label} on the target nodes.`,
+    inputSchema: nodeSelectionSchema,
     handler: (input, context) => {
       const nodes = existing(context.graph, targets(input));
       if (nodes.length === 0) {
@@ -447,6 +463,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.removeNodes",
+    inputSchema: nodeSelectionSchema,
     description: "Delete nodes and their incident edges (§V40).",
     handler: (input, context) => {
       const nodeIds = targets(input);
@@ -460,6 +477,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.copySelection",
+    inputSchema: nodeSelectionSchema,
     description: "Copy the selected nodes and the edges between them.",
     handler: (input, context) => {
       const copied = snapshot(context.graph, targets(input));
@@ -490,6 +508,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.cutSelection",
+    inputSchema: nodeSelectionSchema,
     description: "Copy the selection to the clipboard, then delete it.",
     handler: (input, context) => {
       const nodeIds = targets(input);
@@ -514,6 +533,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.paste",
+    inputSchema: pasteSchema,
     description: "Paste the clipboard as new nodes with new ids (§V35).",
     handler: async (input, context) => {
       /*
@@ -588,6 +608,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.duplicateSelection",
+    inputSchema: duplicateSchema,
     description: "Copy the selected nodes in place, offset, keeping the edges between them.",
     handler: (input, context) => {
       const copied = snapshot(context.graph, targets(input));
@@ -602,11 +623,44 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "node.rename",
-    description: "Rename a node, or clear the name back to its definition title (§V29).",
-    handler: (input, context) =>
-      patchThrough(context, input.label === null ? "Clear name" : "Rename", [
-        { op: "setNodeLabel", nodeId: input.nodeId, label: input.label },
-      ]),
+    inputSchema: renameSchema,
+    description:
+      "Rename a node, or clear the name back to its definition title (§V29). A name carries its node's kind (kind_role): one given without it gets the kind in front, unless exact is true.",
+    /*
+     * T1593b — THE RENAME DOOR KEEPS THE KIND. The title editor, an agent's `rename_node`
+     * and anything that renames later all come through here, so the rule is stated once
+     * (§V78): a name that does not carry its node's kind gets it, and the result says what
+     * the node was actually called. `exact: true` is the deliberate way past it.
+     *
+     * The patch operation underneath stays EXACT (§V324, §V325): `setNodeLabel` stores the
+     * string it is handed, because a replayed patch and a pasted document carry references
+     * written against exactly that string. The convention belongs to the act of naming,
+     * which is this command, and never to the replay of one.
+     */
+    handler: (input, context) => {
+      if (input.label === null) {
+        return patchThrough(context, "Clear name", [{ op: "setNodeLabel", nodeId: input.nodeId, label: null }]);
+      }
+      const node = context.graph.nodes[input.nodeId];
+      // The DEFINITION, not the type: a component instance's kind is its component's name.
+      // A node whose type is not installed has no kind to insist on and is named as typed.
+      const definition = node === undefined ? undefined : context.registry.get(node.type);
+      const name =
+        input.exact === true || definition === undefined ? input.label : conventionalName(input.label, definition).name;
+      const outcome = patchThrough(context, "Rename", [{ op: "setNodeLabel", nodeId: input.nodeId, label: name }]);
+      if (name === input.label.trim() || (outcome.status !== "applied" && outcome.status !== "validated")) return outcome;
+      const diagnostics: RuntimeDiagnostic[] = [
+        ...(outcome.diagnostics ?? []),
+        {
+          severity: "info",
+          code: "node.name.kind",
+          message: `Named "${name}", not "${input.label.trim()}": a node's name carries its kind (kind_role).`,
+          nodeId: input.nodeId,
+          suggestion: "Pass exact: true to store a name exactly as given.",
+        },
+      ];
+      return { ...outcome, diagnostics, output: { ...outcome.output, diagnostics } };
+    },
     rejectionOutput: rejection,
   });
 
@@ -626,6 +680,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
    */
   bus.registerCommand({
     name: "node.setValuePlotMode",
+    inputSchema: valuePlotModeSchema,
     description: "Draw a value node's body as a bar or as a curve (null: follow the default).",
     handler: (input, context) =>
       patchThrough(context, input.mode === null ? "Default value plot" : "Set value plot", [
@@ -666,6 +721,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
    */
   bus.registerCommand({
     name: "node.bringToFront",
+    inputSchema: nodeSelectionSchema,
     description: "Raise the target nodes above every other node in the graph.",
     handler: (input, context) => {
       const nodes = existing(context.graph, targets(input));
@@ -698,5 +754,6 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
         })),
       );
     },
+    rejectionOutput: rejection,
   });
 }

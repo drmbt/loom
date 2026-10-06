@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { NodeId } from "../types/ids.ts";
 import { alice, agent, contextFor, createHarness, patch, type Harness } from "./test-support.ts";
-import { CapabilityDeniedError, InvalidInvocationError, UnknownCommandError, UnknownQueryError } from "./bus.ts";
+import { CapabilityDeniedError, InvalidCommandInputError, InvalidInvocationError, UnknownCommandError, UnknownQueryError } from "./bus.ts";
 import { createCapabilityGrantStore } from "./grants.ts";
+import { z } from "zod";
+import { ANY_INPUT, NO_INPUT } from "./input-schema.ts";
 
 /**
  * Bus invariants: §V29 §V30 §V31 §V36 §V38 §V39.
@@ -41,6 +43,7 @@ describe("command bus — registration surface (§V39)", () => {
   it("accepts a command registered by another module and routes it", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
       handler: (input, context) => {
         const applied = context.apply({
           label: "Rename",
@@ -75,6 +78,11 @@ describe("command bus — registration surface (§V39)", () => {
     // Exact, not toContain: a new registration should have to be declared here.
     expect(harness.bus.listCommands()).toEqual([
       "channel.copy",
+      // T1619b: a control back to its default, and its value made the default.
+      "control.reset",
+      "control.resetAll",
+      "control.setAllDefaults",
+      "control.setDefault",
       // T1500b: a cue list's GO / BACK / fire / standby are document edits too.
       "cue.back",
       "cue.fire",
@@ -115,6 +123,8 @@ describe("command bus — registration surface (§V39)", () => {
       "parameter.copyValue",
       "parameter.paste",
       "parameter.pulse",
+      // T1641b: how a stored key the node does not declare leaves a document.
+      "parameter.removeUndeclared",
       "parameter.reset",
       // T1184: the other half of the pair — reset is a claim about the node TYPE,
       // revert is a claim about THIS FILE (the value the document was opened with).
@@ -147,6 +157,7 @@ describe("command bus — registration surface (§V39)", () => {
     expect(() =>
       harness.bus.registerCommand({
         name: "graph.applyPatch",
+        inputSchema: ANY_INPUT("a duplicate registration, refused before it could run"),
         handler: () => {
           throw new Error("unreachable");
         },
@@ -194,6 +205,7 @@ describe("command bus — capability gating (§V38)", () => {
   beforeEach(() => {
     harness.bus.registerCommand({
       name: "test.exportSomething",
+      inputSchema: NO_INPUT,
       requiredCapabilities: ["export"],
       handler: () => ({ status: "applied", output: { ok: true } }),
       rejectionOutput: () => ({ ok: false }),
@@ -231,6 +243,7 @@ describe("command bus — capability gating (§V38)", () => {
     const fresh = createHarness({ grants });
     fresh.bus.registerCommand({
       name: "test.exportSomething",
+      inputSchema: NO_INPUT,
       requiredCapabilities: ["export"],
       handler: () => ({ status: "applied", output: { ok: true } }),
       rejectionOutput: () => ({ ok: false }),
@@ -260,6 +273,7 @@ describe("command bus — capability gating (§V38)", () => {
     const fresh = createHarness();
     fresh.bus.registerCommand({
       name: "test.exportSomething",
+      inputSchema: NO_INPUT,
       requiredCapabilities: ["recording"],
       handler: () => ({ status: "applied", output: { ok: true } }),
     });
@@ -273,6 +287,7 @@ describe("command bus — dryRun reaches every command (§V36)", () => {
   it("makes ctx.apply a no-op for a third-party command", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
       handler: (input, context) => {
         const applied = context.apply({
           label: "Rename",
@@ -348,5 +363,125 @@ describe("command bus — queries", () => {
     });
     await addSolid();
     expect(await harness.bus.query("test.count", {}, contextFor(alice))).toBe(1);
+  });
+});
+
+/**
+ * §T1556b — the bus parses a command's input before the handler runs, so every door gets one
+ * refusal: the same rejected result, the same audit entry, the same sentence.
+ */
+describe("command bus — input schemas (§T1556b)", () => {
+  const renameSchema = z.object({ nodeId: z.string().min(1), label: z.string() }).strict();
+
+  it("refuses input its schema rejects, naming command and field; the handler never runs and the refusal is audited", async () => {
+    let ran = 0;
+    harness.bus.registerCommand({
+      name: "test.rename",
+      inputSchema: renameSchema,
+      handler: () => {
+        ran += 1;
+        return { status: "applied", output: { ok: true } };
+      },
+      rejectionOutput: () => ({ ok: false }),
+    });
+    const result = await harness.bus.execute("test.rename", { nodeId: "n1", label: 7 } as never, contextFor(alice));
+    expect(ran).toBe(0);
+    expect(result.status).toBe("rejected");
+    expect(result.output).toEqual({ ok: false });
+    expect(result.diagnostics).toEqual([
+      {
+        severity: "error",
+        code: "command.input",
+        message: 'Input to "test.rename" is invalid at label (invalid_type): Expected string, received number',
+      },
+    ]);
+    expect(harness.store.view.getAudit()).toMatchObject([{ command: "test.rename", status: "rejected", actor: { id: "alice" } }]);
+  });
+
+  it("refuses an unknown key: a typo is reported, not dropped", async () => {
+    harness.bus.registerCommand({
+      name: "test.rename",
+      inputSchema: renameSchema,
+      handler: () => ({ status: "applied", output: { ok: true } }),
+      rejectionOutput: () => ({ ok: false }),
+    });
+    const result = await harness.bus.execute("test.rename", { nodeId: "n1", label: "x", lable: "y" } as never, contextFor(alice));
+    expect(result.status).toBe("rejected");
+    expect(result.diagnostics[0]?.message).toContain("Unrecognized key(s) in object: 'lable'");
+  });
+
+  it("hands the handler the input AS SENT once it passes: the schema is a gate, not a transform", async () => {
+    let seen: unknown = null;
+    harness.bus.registerCommand({
+      name: "test.rename",
+      inputSchema: renameSchema,
+      handler: (input) => {
+        seen = input;
+        return { status: "applied", output: { ok: true } };
+      },
+    });
+    const sent = { nodeId: "n1", label: "x" };
+    await harness.bus.execute("test.rename", sent, contextFor(alice));
+    expect(seen).toBe(sent);
+  });
+
+  it("a dry run is refused the same way and records nothing (§V36)", async () => {
+    harness.bus.registerCommand({
+      name: "test.rename",
+      inputSchema: renameSchema,
+      handler: () => ({ status: "applied", output: { ok: true } }),
+      rejectionOutput: () => ({ ok: false }),
+    });
+    const result = await harness.bus.execute("test.rename", {} as never, contextFor(alice, { dryRun: true }));
+    expect(result.status).toBe("rejected");
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["command.input", "command.input"]);
+    expect(harness.store.view.getAudit()).toHaveLength(0);
+  });
+
+  it("with no rejectionOutput it throws the same sentences — after the audit entry exists (the capability path's rule)", async () => {
+    harness.bus.registerCommand({
+      name: "test.rename",
+      inputSchema: renameSchema,
+      handler: () => ({ status: "applied", output: { ok: true } }),
+    });
+    const thrown = await harness.bus.execute("test.rename", { nodeId: "", label: "x" }, contextFor(alice)).catch((error: unknown) => error);
+    expect(thrown).toBeInstanceOf(InvalidCommandInputError);
+    expect((thrown as InvalidCommandInputError).message).toBe(
+      'Input to "test.rename" is invalid at nodeId (too_small): String must contain at least 1 character(s)',
+    );
+    expect(harness.store.view.getAudit()).toMatchObject([{ command: "test.rename", status: "rejected" }]);
+  });
+
+  it("ANY_INPUT is the named escape: the bus passes the input through to the handler", async () => {
+    let seen: unknown = null;
+    harness.bus.registerCommand({
+      name: "test.rename",
+      inputSchema: ANY_INPUT("a test of the escape"),
+      handler: (input) => {
+        seen = input;
+        return { status: "applied", output: { ok: true } };
+      },
+    });
+    await harness.bus.execute("test.rename", { anything: true } as never, contextFor(alice));
+    expect(seen).toEqual({ anything: true });
+    expect(() => ANY_INPUT("  ")).toThrow(/reason/);
+  });
+
+  it("refuses a registration that cast its way past the required schema", () => {
+    expect(() =>
+      (harness.bus.registerCommand as unknown as (registration: unknown) => void)({
+        name: "test.rename",
+        handler: () => ({ status: "applied", output: { ok: true } }),
+      }),
+    ).toThrow(/without an inputSchema/);
+    expect(harness.bus.hasCommand("test.rename")).toBe(false);
+  });
+
+  it("lists at most ten issues, then says how many more — a 10 000-operation patch is one refusal, not 10 000", async () => {
+    const operations = Array.from({ length: 25 }, () => ({ op: "addNode", ref: "$a", type: "test.solid" }));
+    const result = await harness.bus.execute("graph.applyPatch", { baseRevision: 0, operations } as never, contextFor(alice));
+    expect(result.status).toBe("rejected");
+    expect(result.diagnostics).toHaveLength(11);
+    expect(result.diagnostics[10]?.message).toBe('Input to "graph.applyPatch" has 15 further problem(s), not listed.');
   });
 });

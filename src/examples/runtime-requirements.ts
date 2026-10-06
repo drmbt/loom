@@ -1,7 +1,7 @@
 import { flattenComponents } from "../compiler/flatten.ts";
 import { resolveNodeParameters } from "../compiler/validate.ts";
 import { createComponentSystem } from "../domain/components/registry.ts";
-import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
+import { effectiveParameterSchema, STORED_READ } from "../domain/parameters/resolve.ts";
 import { loadProject } from "../domain/project/load.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { GraphDocument } from "../domain/types/graph.ts";
@@ -70,7 +70,7 @@ export function exampleRuntimeRequirements(project: unknown): readonly ExampleRu
        back under a different name. Transport is compile-time, so these are the same
        effective values the app runs on. */
     const resolved = resolveNodeParameters(node, effectiveParameterSchema(definition, node.parameters), definition.title, diagnostics,
-      undefined, definition.retainedParameterKeys);
+      STORED_READ, { retained: definition.retainedParameterKeys, note: definition.parameterKeysNote });
     let declared: readonly RuntimeRequirementId[];
     try {
       declared = nodeRuntimeRequirements(definition, resolved.values);

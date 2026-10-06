@@ -7,6 +7,7 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { CUSTOM_WGSL_UNIFORM_BINDING } from "../shaders/custom-wgsl-default.wgsl.ts";
 import { customWgslNode } from "./custom-wgsl.ts";
 import { declaresUniformBlock, extractParamsStruct, reflectParamsStruct, reflectedUniforms } from "./params-reflection.ts";
+import { testRead } from "../../domain/parameters/test-support.ts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
@@ -201,8 +202,8 @@ describe("T1172 — a memoised schema still resolves a MOVING value (§B181)", (
   });
 
   it("resolves a reflected control's EXPRESSION to a different number on a different frame", () => {
-    const atZero = resolveParameters(animated, customWgslNode, { frame: frameAt(0) }).get("gain");
-    const atSixty = resolveParameters(animated, customWgslNode, { frame: frameAt(60) }).get("gain");
+    const atZero = resolveParameters(animated, customWgslNode, testRead({ frame: frameAt(0) })).get("gain");
+    const atSixty = resolveParameters(animated, customWgslNode, testRead({ frame: frameAt(60) })).get("gain");
 
     expect(atZero?.diagnostic).toBeNull();
     expect(atSixty?.diagnostic).toBeNull();
@@ -217,8 +218,8 @@ describe("T1172 — a memoised schema still resolves a MOVING value (§B181)", (
 
   it("keeps resolving the expression after the SAME source has been reflected many times", () => {
     // The memo's steady state, which is the state the app is in from frame two onward.
-    for (let index = 0; index < 50; index += 1) resolveParameters(animated, customWgslNode, { frame: frameAt(index) });
-    const late = resolveParameters(animated, customWgslNode, { frame: frameAt(120) }).get("gain");
+    for (let index = 0; index < 50; index += 1) resolveParameters(animated, customWgslNode, testRead({ frame: frameAt(index) }));
+    const late = resolveParameters(animated, customWgslNode, testRead({ frame: frameAt(120) })).get("gain");
     expect(late?.value).toBe(4);
     expect(late?.driven).toBe(true);
   });

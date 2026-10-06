@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import type { GraphDocument, GraphNode, ProjectSettings } from "../../../domain/types/graph.ts";
 import type { BackendCapabilities } from "../../../domain/types/backend.ts";
 import { compileGraph } from "../../../compiler/compile.ts";
@@ -104,7 +105,7 @@ describe("Analyze on Dawn (T236)", () => {
       // any sample() the channel is unknown (retained values rule); after a sample
       // settles, the resolver answers synchronously.
       const channels = createAnalyzeChannels({ readBuffer: (id) => backend.readBuffer(id) });
-      channels.track(analyzeChannelEntries(graph, registry));
+      channels.track(analyzeChannelEntries(flatDocument(graph), registry));
       expect(channels.resolver("analyze1", {} as never)).toBeUndefined();
       // The readback is fire-and-forget by contract — the resolver answers with the
       // last COMPLETED one. So the test waits the way a frame loop does: keep
@@ -166,7 +167,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
       expect(values[3]).toBeCloseTo(0.5, 5);
       // And the channel publishes the log-average when asked for it.
       const channels = createAnalyzeChannels({ readBuffer: (id) => backend.readBuffer(id) });
-      channels.track(analyzeChannelEntries(graph, registry));
+      channels.track(analyzeChannelEntries(flatDocument(graph), registry));
       for (let attempt = 0; attempt < 200; attempt += 1) {
         if (channels.resolver("meter1", {} as never) !== undefined) break;
         channels.sample(attempt);
@@ -245,7 +246,7 @@ describe("Analyze drives a parameter that changes the PICTURE (T480, §V144, §V
     const backendRefFor = backend;
     try {
       await backend.initialize({});
-      channels.track(analyzeChannelEntries(graph, registry));
+      channels.track(analyzeChannelEntries(flatDocument(graph), registry));
 
       // FRAME 0: no readback has landed, the driven amount resolves to its retained 0.
       const first = compileAt(0);

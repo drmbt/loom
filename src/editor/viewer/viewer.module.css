@@ -134,6 +134,36 @@
 }
 
 /*
+ * T1655b — the sentence a 3D tile carries INSTEAD of the toggle, in the toggle's corner.
+ *
+ * Same anchor and same scale-with-zoom as the button above, so "no camera here, and why"
+ * sits exactly where "camera" would have. It wraps inside the tile (`--tile-width` is the
+ * tile's own width in node pixels) and takes no pointer: a picture with no camera drags its
+ * node and pans the canvas like any node body, and the sentence must not swallow that.
+ * Always drawn, never on hover, for the reason the toggle is.
+ */
+.inspectNote {
+  position: absolute;
+  box-sizing: border-box;
+  /* `max-content`, stated: an absolutely positioned box shrinks to the room left in its
+     containing block, and that is the PANE, so a tile near the pane's right edge wrapped its
+     sentence to one word a line. */
+  width: max-content;
+  max-width: calc(var(--tile-width, 160px) - 6px);
+  margin: 0;
+  padding: 1px 4px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-sunken) 78%, transparent);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.3;
+  pointer-events: none;
+  transform: scale(var(--chrome-zoom, 1)) translate(calc(-100% - 3px), calc(-100% - 3px));
+  transform-origin: 0 0;
+}
+
+/*
  * T685 — the lens marker's rules are gone from here for §V633's reason, the same one that
  * moved the inspect toggle: nothing painted inside this box survives the composited tile.
  * It is `.lensMark` in `nodes/node-view.module.css` now, in the node header.

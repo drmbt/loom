@@ -1,6 +1,7 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * Selection as a bus command (§V29, §V52).
@@ -63,6 +64,7 @@ export function registerSelectionCommands(bus: LoomBus): SelectionHolder {
   if (!bus.hasCommand("graph.selectAll")) {
     bus.registerCommand({
       name: "graph.selectAll",
+      inputSchema: NO_INPUT,
       description: "Select every node in the graph.",
       handler: (_input, context) => {
         if (holder.current === null) {

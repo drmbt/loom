@@ -16,6 +16,8 @@ import {
   type ComponentRename,
 } from "./component-file.ts";
 import { componentNodeType } from "./component-type.ts";
+import { uniqueNodeName } from "../graph/names.ts";
+import { kindFromName } from "../graph/node-kinds.ts";
 import { defaultPublishedValues } from "./published-parameter.ts";
 import { describeRecursion, detectComponentRecursion, wouldRecurse } from "./recursion.ts";
 import type { ComponentGraphSource } from "./recursion.ts";
@@ -225,6 +227,7 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
 
   bus.registerCommand({
     name: "component.import",
+    inputSchema: componentImportInputSchema,
     description: "Import a component file: reuse it if it is already installed, otherwise install it (renamed if its name is taken), and place it.",
     handler: async (input, context): Promise<CommandOutcome<ComponentImportOutput>> => {
       const revision = context.store.getRevision();
@@ -333,6 +336,9 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
               definitionVersion: root.version,
               position: position ?? { x: 0, y: 0 },
               parameters: defaultPublishedValues(root),
+              // T1593b: an imported component's instance is named for it, as an
+              // instantiated one is (`component.instantiate`).
+              label: uniqueNodeName(draft, kindFromName(root.name)),
             };
           },
         });
@@ -362,6 +368,7 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
 
   bus.registerCommand({
     name: "component.export",
+    inputSchema: componentExportInputSchema,
     description: "Export a component, and every component it nests, to a .loom.json file.",
     handler: async (input, context): Promise<CommandOutcome<ComponentExportOutput>> => {
       const revision = context.store.getRevision();

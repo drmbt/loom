@@ -1,0 +1,191 @@
+/*
+ * A wire while it is being dragged (T1639b): the drawing for `wire-in-flight.tsx`.
+ *
+ * Two colours and no others. The wire itself is `--text`, the brightest neutral: until
+ * it lands it is not a connection and has no type (§V26 keeps a port hue for a typed
+ * signal). `--wire-color` is the port type's token, set by the script only while a port
+ * that takes the wire is in range, and it colours the ring and the arc: that is the
+ * connection a release would make.
+ *
+ * Every size is a design size times `--wire-k` (`wireScale`), which the script writes on
+ * the root element: 1 at 100 % zoom and above, `1 / zoom` below. This drawing is in graph
+ * space, so that is what holds it at one size on screen when the canvas is zoomed out.
+ *
+ * No filter anywhere: the light around the ring and the arc is a second, wider stroke at
+ * low alpha. The arc is rewritten 15 times a second, and a filter would be recomputed
+ * each time.
+ */
+
+.wireInFlight {
+  --wire-k: 1;
+}
+
+.wire,
+.arc,
+.arcGlow,
+.branch,
+.ring,
+.ringGlow,
+.refusedRing {
+  fill: none;
+}
+
+.wire {
+  stroke: var(--text);
+  stroke-width: calc(1.75px * var(--wire-k));
+  stroke-linecap: round;
+}
+
+/* The round tip, at the cursor. It does not jump to a port: the arc bridges the gap. */
+.tip {
+  r: calc(3.5px * var(--wire-k));
+  fill: var(--text);
+}
+
+/* ---- in range of a port that takes the wire --------------------------- */
+
+.live,
+.refused {
+  display: none;
+}
+
+.wireInFlight[data-wire-state="live"] .live,
+.wireInFlight[data-wire-state="refused"] .refused {
+  display: inline;
+}
+
+.ring,
+.ringGlow {
+  r: calc(8.5px * var(--wire-k));
+  transform-box: fill-box;
+  transform-origin: center;
+  /* Arrives in two frames, as measured. Zeroed with every animation under reduced motion. */
+  animation: wire-ring-in 70ms var(--ease-out) both;
+}
+
+.ring {
+  stroke: var(--wire-color);
+  stroke-width: calc(1.25px * var(--wire-k));
+}
+
+.ringGlow {
+  stroke: color-mix(in srgb, var(--wire-color) 28%, transparent);
+  stroke-width: calc(5px * var(--wire-k));
+}
+
+@keyframes wire-ring-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.arc,
+.arcGlow,
+.branch {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The bolt's core is the colour pulled towards white: it is the hottest thing drawn. */
+.arc {
+  stroke: color-mix(in srgb, var(--wire-color) 72%, var(--text));
+  stroke-width: calc(1.4px * var(--wire-k));
+}
+
+.arcGlow {
+  stroke: color-mix(in srgb, var(--wire-color) 34%, transparent);
+  stroke-width: calc(5px * var(--wire-k));
+}
+
+.branch {
+  stroke: color-mix(in srgb, var(--wire-color) 55%, transparent);
+  stroke-width: calc(0.8px * var(--wire-k));
+}
+
+/* ---- in range of a port that refuses it ------------------------------- */
+
+/*
+ * Quieter in every way the other is loud: grey where that has the type's colour, dashed
+ * where that is whole, still where that crackles. It says "this port is in range and a
+ * release here does nothing".
+ */
+.refusedRing {
+  r: calc(8.5px * var(--wire-k));
+  stroke: var(--text-dim);
+  stroke-width: calc(1px * var(--wire-k));
+  stroke-dasharray: calc(2.5px * var(--wire-k));
+  opacity: 0.85;
+}
+
+/*
+ * Why, in the port's own words (`takes texture2d<float,data>`). It waits a quarter of a
+ * second: a wire crossing a node passes several refusing ports on its way, and their
+ * captions flashing by would be the loudest thing on the canvas. The delay is not zeroed
+ * by reduced motion, only the fade is, so the wait holds there too.
+ */
+.refusedWhy {
+  fill: var(--text-dim);
+  stroke: var(--bg-sunken);
+  stroke-width: calc(3px * var(--wire-k));
+  paint-order: stroke;
+  font-family: var(--font-mono);
+  font-size: calc(var(--fs-micro) * var(--wire-k));
+  animation: wire-why-in 120ms linear 250ms both;
+}
+
+@keyframes wire-why-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/*
+ * A NEW PORT STARTS THE ARRIVAL AGAIN. An animation restarts when its name changes and
+ * not when the element is merely moved, so going straight from one port to its neighbour
+ * would carry the first port's finished animation along: the caption would be on screen
+ * the instant the second port came into range. The script flips `data-wire-flip` on every
+ * change of port, and these are the same two animations under a second name.
+ */
+.wireInFlight[data-wire-flip="1"] .ring,
+.wireInFlight[data-wire-flip="1"] .ringGlow {
+  animation-name: wire-ring-in-again;
+}
+
+.wireInFlight[data-wire-flip="1"] .refusedWhy {
+  animation-name: wire-why-in-again;
+}
+
+@keyframes wire-ring-in-again {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes wire-why-in-again {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring,
+  .ringGlow {
+    animation: none;
+  }
+}

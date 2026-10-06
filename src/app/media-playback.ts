@@ -1,12 +1,13 @@
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
-import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
-import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import { parameterReadOptions, resolveParameters, type FlatteningReads } from "@domain/parameters/index.ts";
 import {
   createMediaClock,
   mediaPlayhead,
+  mediaPlayheadAt,
   mediaTransportFrom,
   type MediaClock,
   type MediaPlayhead,
@@ -39,9 +40,12 @@ import type { NodeRegistryView } from "@nodes/registry/registry.ts";
  * stall, a throttled rAF or a hidden tab is paid in dropped frames, never in samples
  * (§T740's rule, which had reached the timeline and stopped short of this module — §B236).
  * Under the TIMELINE LOCK the frame is the master by contract (§V436), so there the
- * element still converges on the playhead with a bounded rate adjustment.
+ * element still converges on the playhead — calmly (§T1549b): nothing inside one frame of
+ * drift, whole 1% rate steps written only when the step changes, one seek past 0.25 s.
  *
- * A loop, scrub, cue, trim edit or speed change is a new target rather than clock drift.
+ * A loop, scrub, cue, trim edit or speed change is a new target rather than clock drift —
+ * except a positive speed change in free run, which is a `playbackRate` write: the
+ * position integrates on from where it is (B187).
  * Standalone callers without continuity information retain the tolerance-based policy.
  *
  * ## Reverse is a scrub, and says so
@@ -75,9 +79,59 @@ const MAX_RATE = 16;
 // Native media clocks round positions to microseconds; fractional-frame targets cannot
 // be represented exactly. Comparing them bit-for-bit restarts a held seek every frame.
 const POSITION_PRECISION_SECONDS = 1e-6;
-const MAX_RATE_CORRECTION = 0.05;
+
+/*
+ * §T1549b, option (a) — THE TIMELINE LOCK'S CORRECTION, CALMED. The frame stays master
+ * (§V436), so the element still converges on the playhead, but a listener hears every
+ * `playbackRate` write as a resample and every seek as a jump. So: no correction inside one
+ * delivered frame of drift, the rate moves in whole 1% steps and is written only when the
+ * step changes, and past a quarter second the element is sought ONCE rather than chased.
+ */
+/** Whole-percent rate steps, at most this many either way: ±5%. */
+const MAX_RATE_STEPS = 5;
 // Four-second convergence time constant, bounded above so audio never races to catch up.
 const DRIFT_RATE_GAIN = 0.25;
+/** Past this the lock seeks once instead of bending the rate for many seconds. */
+export const LOCK_RESYNC_SECONDS = 0.25;
+/**
+ * B242: media seconds (at speed 1) a locked element must PLAY past where it was last put —
+ * a seek, a cue, a lap, the first frame — before a resync can be armed. Chrome's audio
+ * output starts ~0.2 s after every `play()` and every seek, and longer on a loaded machine,
+ * with `seeking` false, `readyState` 4 and `paused` false the whole time: no element state
+ * says it has not started. `currentTime` creeps a video frame past the seek point first,
+ * then freezes. Half a second of media is far past that creep, and a frozen element never
+ * reaches it, however long the freeze.
+ */
+const LOCK_SETTLE_SECONDS = 0.5;
+/**
+ * B242: a lag no decoder start-up explains. Chrome's freeze is 0.2–0.3 s; a locked element
+ * that has PLAYED `LOCK_SETTLE_SECONDS` and is still more than this far off (autoplay was
+ * blocked for 30 s, say) gets its one seek even though the resync is not armed — the 1%
+ * steps alone would take ten minutes over 30 s.
+ */
+const LOCK_LAG_CEILING_SECONDS = 1;
+/** The least time between two rate-step writes: a hard ceiling of four a second. */
+const LOCK_STEP_DWELL_SECONDS = 0.25;
+
+/**
+ * The next whole-percent rate step for a locked element `drift` seconds behind (positive)
+ * or ahead (negative) of its playhead. A correction STARTS only outside one delivered frame
+ * and, once running, carries on until the drift is inside half a frame or has crossed over;
+ * the size only moves by a whole step. Without both margins the frame grid's own jitter
+ * (a 45 Hz display on a 60 fps timeline lands either side of the real time by half a frame)
+ * would flip the step on and off every frame.
+ */
+function nextLockStep(step: number, drift: number, frameSeconds: number): number {
+  const size = Math.abs(drift);
+  const direction = Math.sign(drift);
+  const settled = step === 0
+    ? size <= frameSeconds
+    : size <= frameSeconds / 2 || direction !== Math.sign(step);
+  if (settled) return 0;
+  const raw = size * DRIFT_RATE_GAIN * 100;
+  if (step !== 0 && Math.abs(raw - Math.abs(step)) < 1) return step;
+  return direction * Math.min(MAX_RATE_STEPS, Math.max(1, Math.round(raw)));
+}
 
 /** Whether the shared transport requires a held decoder, including blocked autoplay. */
 export function isMediaPlayheadHeld(transport: MediaTransportValues, head: MediaPlayhead, duration = 0): boolean {
@@ -88,10 +142,11 @@ export function isMediaPlayheadHeld(transport: MediaTransportValues, head: Media
 
 /**
  * Put the element where the playhead says, without restarting continuous audio.
- * `continuous: true` never seeks: in free run the element is the clock and plays at
- * exactly `speed` (§V1027), under the timeline lock it converges by rate. False seeks
- * exactly. An omitted argument is the standalone drift policy, for callers that do not
- * own a transport history.
+ * `continuous: true` never seeks: the element plays at `speed × (1 + correction)`, where
+ * `correction` is the runner's (`MediaSteppedTransport.correction`) — 0 in free run, where
+ * the element is the clock (§V1027), and a whole-percent step under the timeline lock
+ * (§T1549b). False seeks exactly. An omitted argument is the standalone drift policy, for
+ * callers that do not own a transport history.
  *
  * Returns whether it seeked, so a caller can assert the "only corrects on drift" property
  * rather than trust it.
@@ -101,6 +156,7 @@ export function applyMediaPlayhead(
   transport: MediaTransportValues,
   head: MediaPlayhead,
   continuous?: boolean,
+  correction?: number,
 ): boolean {
   const speed = Number.isFinite(transport.speed) ? transport.speed : 1;
   // HELD: a cue, a stopped free-run transport, a zero or reverse speed, or a `black`
@@ -121,14 +177,17 @@ export function applyMediaPlayhead(
 
   const drift = head.position - element.currentTime;
   // Seeking restarts the audio decoder's buffering. Correcting ordinary startup lag
-  // with a seek can therefore recreate that lag forever. During a continuous run under
-  // the timeline lock, gently converge on the target instead; discontinuities still seek
-  // exactly. In free run there is nothing to converge on: the runner took this playhead
-  // FROM the element (§V1027), and a rate bent by the rounding of that round trip would
-  // be a rewrite every frame of a sound that is already where it should be.
-  const correction = continuous === true && transport.playMode !== "freeRun"
-    ? Math.max(-MAX_RATE_CORRECTION, Math.min(MAX_RATE_CORRECTION, drift * DRIFT_RATE_GAIN)) : 0;
-  const rate = Math.min(MAX_RATE, Math.max(MIN_RATE, speed * (1 + correction)));
+  // with a seek can therefore recreate that lag forever. During a continuous run the
+  // runner has already decided the rate — it holds the history a calm correction needs
+  // (§T1549b) — and this only writes it when it changed; discontinuities still seek exactly.
+  // REQUIRED with `continuous: true`, for `flattening`'s reason: a door that dropped it would
+  // leave a locked element uncorrected until it drifted far enough to seek, and say nothing.
+  if (continuous === true && correction === undefined) {
+    throw new Error("applyMediaPlayhead: a continuous frame needs the runner's `correction` (MediaSteppedTransport.correction).");
+  }
+  const bend = continuous === true && Number.isFinite(correction)
+    ? Math.max(-MAX_RATE_STEPS / 100, Math.min(MAX_RATE_STEPS / 100, correction as number)) : 0;
+  const rate = Math.min(MAX_RATE, Math.max(MIN_RATE, speed * (1 + bend)));
   if (element.playbackRate !== rate) element.playbackRate = rate;
   if (element.paused) void element.play();
 
@@ -151,6 +210,20 @@ export interface MediaSteppedTransport {
   /** The element is left playing, never sought; false marks a cue, scrub, lap or edit. */
   readonly continuous: boolean;
   /**
+   * §T1548b: this frame's only discontinuity is a Loop window wrapping ONCE in realtime free
+   * run — everything else follows. `continuous` is false, so a door with one element seeks
+   * as before; a door holding a second element primed on the in point hands over to it
+   * instead and writes nothing on the element that was playing. Never true under the lock
+   * (§V436: there a lap stays an exact seek) or off realtime (§V662).
+   */
+  readonly lap: boolean;
+  /**
+   * §T1549b: the fraction the element's rate is bent off `speed` this frame — a whole
+   * percent, at most ±5%, under the timeline lock; 0 everywhere else. Hand it to
+   * `applyMediaPlayhead` with `continuous`.
+   */
+  readonly correction: number;
+  /**
    * Everything else the node resolved this frame — `volume`, and whatever a door adds
    * next. Handed back rather than re-resolved by the caller so the audio hook's volume
    * and its playhead cannot come from two different reads of the same frame (§B8's shape).
@@ -164,7 +237,7 @@ export interface MediaTransportRunner {
    *
    * `elementSeconds` is the element's own `currentTime`, read by the door this frame. In
    * realtime free run a continuous frame takes the playhead from it (§V1027). REQUIRED,
-   * for `morphs`' reason: a door that forgot it would keep a playhead nothing corrects,
+   * for `flattening`'s reason: a door that forgot it would keep a playhead nothing corrects,
    * and say nothing. `null` is the answer where there is no element to follow.
    */
   step(frame: FrameEvaluationInput, duration: number, elementSeconds: number | null): MediaSteppedTransport | null;
@@ -174,19 +247,19 @@ export interface MediaTransportRunner {
 }
 
 export interface MediaTransportContext {
-  readonly graph: () => GraphDocument;
+  readonly graph: () => FlatGraph;
   readonly registry: NodeRegistryView;
   /** The value graph's resolver, so a DRIVEN speed or trim reaches here like any other. */
   readonly channels: () => ChannelResolver | undefined;
   /**
-   * T1524b: the preset morphs in flight over `graph()` (`FlattenedGraph.morphs`), so a
-   * speed, a trim or a volume a bank is fading reaches the element at the value the
-   * picture is at that frame, not at its destination. Read per step, like `channels`, and
-   * REQUIRED like it: an optional getter nothing supplies is how a door ends up resolving
-   * without it (§V272). `undefined` — and `cue()`, which has no frame — reads what the
-   * document stores.
+   * §T1559b: the flattening `graph()` came out of (`runtime.flattened.current()`), WHOLE —
+   * the preset morphs in flight (T1524b: a speed, a trim or a volume a bank is fading
+   * reaches the element at the value the picture is at that frame) and the component
+   * instances `op('<instance>').chan.<c>` names (T1485b). Read per step, like `channels`,
+   * and REQUIRED like it: an optional getter nothing supplies is how a door ends up
+   * resolving without it (§V272). A door with no flattening passes `() => NO_FLATTENING`.
    */
-  readonly morphs: () => ParameterMorphs | undefined;
+  readonly flattening: () => FlatteningReads;
 }
 
 /**
@@ -206,6 +279,16 @@ export function createMediaTransportRunner(
   let lastDuration = 0;
   let previous: { transport: MediaTransportValues; head: MediaPlayhead; time: number; mode: FrameEvaluationInput["mode"] } | null = null;
   let cuePending = false;
+  // §T1549b — the timeline lock's correction state: the whole-percent rate step in force,
+  // when it was last changed (seconds of delivered frames), whether a resync seek is armed,
+  // and (B242) the position the element was last put at or last seen frozen at, which it
+  // must play past to arm, and the previous locked frame's playhead and element reading.
+  let lockStep = 0;
+  let lockStepAt = -Infinity;
+  let resyncArmed = false;
+  let settleFrom = 0;
+  let lastLocked: { head: number; element: number } | null = null;
+  let runSeconds = 0;
 
   const readAll = (
     frame?: FrameEvaluationInput,
@@ -214,7 +297,6 @@ export function createMediaTransportRunner(
     if (node === undefined) return null;
     const definition = context.registry.get(node.type);
     if (definition === undefined) return null;
-    const channels = context.channels();
     /**
      * ⚑ T1155 — §V837's ONE FACTORY, and this call site is why it exists.
      *
@@ -230,12 +312,12 @@ export function createMediaTransportRunner(
      * by E56, whose whole picture is a driven `cuePoint`: the file loaded, the element
      * reached readyState 4, and `currentTime` sat at the retained 3.42 forever.
      */
-    const resolved = resolveParameters(node, definition, createParameterReadOptions({
+    const resolved = resolveParameters(node, definition, parameterReadOptions({
       graph: context.graph(),
       registry: context.registry,
-      ...(frame === undefined ? {} : { frame }),
-      ...(channels === undefined ? {} : { channels }),
-      morphs: context.morphs(),
+      frame,
+      channels: context.channels(),
+      flattening: context.flattening(),
     }));
     return (key) => resolved.get(key)?.value;
   };
@@ -248,18 +330,29 @@ export function createMediaTransportRunner(
       lastDuration = duration;
       const last = previous;
       const pending = cuePending;
-      const follows = (candidate: MediaPlayhead): boolean =>
+      // `lap` 1 asks the other question (§T1548b): would it follow, but for the Loop window
+      // having wrapped exactly once? Free run only — under the lock a lap is a new target.
+      const follows = (candidate: MediaPlayhead, lap: 0 | 1 = 0): boolean =>
         frame.mode === "realtime" && last !== null && last.mode === frame.mode && !pending
         && !isMediaPlayheadHeld(transport, candidate, duration) && !isMediaPlayheadHeld(last.transport, last.head, duration)
         && transport.playMode === last.transport.playMode
-        && transport.speed === last.transport.speed
+        // B187: in free run a speed change is a rate write and the position integrates on
+        // from where it is — both speeds are positive here, because a held transport (0 or
+        // reverse) never follows. Under the lock a new speed re-prices the whole timeline
+        // (§V436: position = timeline × speed), which is a new target and seeks.
+        && (transport.speed === last.transport.speed || transport.playMode === "freeRun")
         && transport.trimStart === last.transport.trimStart && transport.trimEnd === last.transport.trimEnd
         && transport.extend === last.transport.extend
-        && candidate.laps === last.head.laps && candidate.position >= last.head.position
+        && candidate.laps === last.head.laps + lap
+        && (lap === 0 ? candidate.position >= last.head.position
+          : transport.extend === "loop" && transport.playMode === "freeRun")
         && (transport.playMode === "freeRun"
           || Math.abs(frame.timeSeconds - last.time - frame.deltaSeconds) < 1e-6);
-      let head = mediaPlayhead(transport, clock.advance(transport, frame.deltaSeconds, frame.timeSeconds), duration);
+      // B187: the clock hands back the media offset (`∫ speed dt` in free run, `timeline ×
+      // speed` under the lock), so it enters through `mediaPlayheadAt`, never multiplied twice.
+      let head = mediaPlayheadAt(transport, clock.advance(transport, frame.deltaSeconds, frame.timeSeconds), duration);
       let continuous = follows(head);
+      let lap = !continuous && follows(head, 1);
       /*
        * §V1027, T1542b — THE ELEMENT IS THE CLOCK. The accumulator above is only a
        * prediction of where a playing element got to; the element knows. So on a frame
@@ -270,14 +363,80 @@ export function createMediaTransportRunner(
        * Realtime free run only. Under the lock the position is `f(frame)` (§V436), which
        * the `playMode` check keeps out; in a take the frame is the master (§V662), and
        * `follows` is false on every frame that is not realtime.
+       *
+       * §T1548b: a frame the prediction says has wrapped is asked the element too, in the
+       * lap the element was in — the lap is taken when the ELEMENT reaches the out point,
+       * not a frame early on the accumulator's guess, so a hand-over cuts nothing off.
        */
-      if (continuous && transport.playMode === "freeRun" && elementSeconds !== null && Number.isFinite(elementSeconds)) {
-        head = mediaPlayhead(transport, clock.adopt(transport, head, elementSeconds), duration);
+      if ((continuous || lap) && last !== null && transport.playMode === "freeRun"
+        && elementSeconds !== null && Number.isFinite(elementSeconds)) {
+        head = mediaPlayheadAt(transport, clock.adopt({ ...head, laps: last.head.laps }, elementSeconds), duration);
         continuous = follows(head);
+        lap = !continuous && follows(head, 1);
       }
+      /*
+       * §T1549b, option (a) — UNDER THE LOCK THE FRAME STAYS MASTER, CALMLY. The playhead is
+       * `f(frame)` and is not touched here; only how the element is brought to it is. Inside
+       * one delivered frame of drift nothing is written; beyond it the rate moves in whole
+       * 1% steps no more often than `LOCK_STEP_DWELL_SECONDS`; past `LOCK_RESYNC_SECONDS`
+       * the element is sought ONCE — and only while a resync is ARMED.
+       *
+       * B242: a resync is armed only once the element has played `LOCK_SETTLE_SECONDS`
+       * past where it was last put AND is back inside half of `LOCK_RESYNC_SECONDS`.
+       * Every seek, cue, lap and first frame disarms it, and so does any frame on which the
+       * element did not PLAY — it moved less than a quarter of what the playhead moved: a
+       * transport resume (the door paused it while no frames ran; the first frame back
+       * carries up to 0.25 s of playhead), blocked autoplay, a start-up freeze, a decoder
+       * stall. The lag a decoder builds while it starts is alignment, which the rate
+       * closes, not drift (§T493: a seek restarts that start-up and recreates the lag).
+       * T1549b re-armed as soon as the element read past the seek point, and Chrome's
+       * element does that within a frame, before it freezes for its audio start: every
+       * start-up longer than 0.25 s became one more seek, 14 and 16 in the 3 s
+       * still-pixels proof. A real drift (a page stall, a jump) on a playing element still
+       * gets its one seek, and a lag past `LOCK_LAG_CEILING_SECONDS` once it plays gets one
+       * whether armed or not.
+       */
+      runSeconds += Number.isFinite(frame.deltaSeconds) ? Math.max(0, frame.deltaSeconds) : 0;
+      const locked = continuous && transport.playMode !== "freeRun"
+        && elementSeconds !== null && Number.isFinite(elementSeconds);
+      if (locked) {
+        const drift = head.position - elementSeconds;
+        // Moved forward, but by under a quarter of the playhead's step: not playing. A
+        // BACKWARD move is a jump, which is drift, not a freeze.
+        const moved = lastLocked === null ? -1 : elementSeconds - lastLocked.element;
+        if (lastLocked !== null && moved >= 0 && moved < (head.position - lastLocked.head) / 4) {
+          resyncArmed = false;
+          settleFrom = elementSeconds;
+        }
+        const played = elementSeconds - settleFrom >= LOCK_SETTLE_SECONDS * transport.speed;
+        if (resyncArmed ? Math.abs(drift) > LOCK_RESYNC_SECONDS : played && Math.abs(drift) > LOCK_LAG_CEILING_SECONDS) {
+          continuous = false;
+          resyncArmed = false;
+          settleFrom = head.position;
+          lockStep = 0;
+        } else {
+          // Back inside HALF the threshold: armed right at it, the frame grid's jitter
+          // (±1 frame of `currentTime` granularity) crosses it the next frame and seeks.
+          if (!resyncArmed && played && Math.abs(drift) <= LOCK_RESYNC_SECONDS / 2) {
+            resyncArmed = true;
+          }
+          const proposed = nextLockStep(lockStep, drift, frame.deltaSeconds);
+          if (proposed !== lockStep && runSeconds - lockStepAt >= LOCK_STEP_DWELL_SECONDS) {
+            lockStep = proposed;
+            lockStepAt = runSeconds;
+          }
+        }
+      } else {
+        // Any other frame writes the element at exactly `speed` (a seek, free run, a take),
+        // and disarms the resync: the element starts again from `head.position`.
+        lockStep = 0;
+        resyncArmed = false;
+        settleFrom = head.position;
+      }
+      lastLocked = locked && continuous ? { head: head.position, element: elementSeconds } : null;
       previous = { transport, head, time: frame.timeSeconds, mode: frame.mode };
       cuePending = false;
-      return { transport, head, continuous, read };
+      return { transport, head, continuous, lap, correction: locked ? lockStep / 100 : 0, read };
     },
     cue() {
       const read = readAll();
@@ -287,13 +446,18 @@ export function createMediaTransportRunner(
       // function would report for that point rather than on a second opinion about it.
       const head = mediaPlayhead(transport, 0, lastDuration);
       const point = Math.max(head.start, Math.min(head.end > head.start ? head.end : Infinity, transport.cuePoint));
-      clock.cueTo(transport, head, point);
+      clock.cueTo(head, point);
       cuePending = true;
     },
     reset() {
       clock.reset();
       previous = null;
       cuePending = false;
+      lockStep = 0;
+      lockStepAt = -Infinity;
+      resyncArmed = false;
+      settleFrom = 0;
+      lastLocked = null;
     },
   };
 }

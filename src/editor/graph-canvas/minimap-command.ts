@@ -2,6 +2,7 @@
 // undo group — whether the overview map is on screen is not something the document knows.
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { PreferenceStorage } from "@editor/nodes/node-type-labels.ts";
+import { z } from "zod";
 
 /**
  * `view.toggleMinimap` — TouchDesigner's network overview, as a corner map (T1257).
@@ -115,6 +116,7 @@ export function registerMinimapCommand(bus: LoomBus): MinimapStore {
 
   bus.registerCommand({
     name: TOGGLE_MINIMAP_COMMAND,
+    inputSchema: z.object({ show: z.boolean().optional() }).strict(),
     description:
       "Show or hide the network overview map in the graph pane's corner — drag it to pan, click it to jump (T1257).",
     handler: (input, context) => {

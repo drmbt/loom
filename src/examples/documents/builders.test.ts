@@ -5,7 +5,8 @@ import { createComponentSystem } from "../../domain/components/registry.ts";
 import { componentNodeType } from "../../domain/components/component-type.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { document, graph, node, settings } from "./builders.ts";
+import { conformsToKind, kindOfType } from "../../domain/graph/node-kinds.ts";
+import { document, edge, graph, named, namedInstance, node, settings } from "./builders.ts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
@@ -124,5 +125,134 @@ describe("the example builders stamp the version the loader agrees with (§T1068
     // diagnostic an author reads a pipeline stage later, if at all. The builder is where the
     // name was typed, so it is where the name is checked.
     expect(() => node("oops", "gaussianBlurr", [0, 0])).toThrow(/gaussianBlurr/);
+  });
+});
+
+describe("graph() refuses a second node or edge under an id already taken", () => {
+  /*
+   * `graph()` keys by id, so a repeated id used to replace the earlier entry without a
+   * word: a Slider and a Light both called "lamp" compiled, and the scene had no light
+   * (sentinel-bot, 2026-10-05). The loss is silent in the file too, since the save path
+   * writes whatever the map holds.
+   */
+  it("names the id and both node types", () => {
+    expect(() => graph([node("lamp", "slider", [0, 0]), node("lamp", "constant", [200, 0])], [])).toThrow(
+      'graph(): two nodes share the id "lamp" (slider, then constant). An id names one node; rename one.',
+    );
+  });
+
+  it("names a repeated edge id with both connections", () => {
+    const nodes = [node("a", "constant", [0, 0]), node("b", "constant", [200, 0]), node("c", "constant", [400, 0])];
+    expect(() => graph(nodes, [edge("e1", ["a", "value"], ["b", "value"]), edge("e1", ["a", "value"], ["c", "value"])])).toThrow(
+      'graph(): two edges share the id "e1" (a.value → b.value, then a.value → c.value). An id names one edge; rename one.',
+    );
+  });
+
+  it("still builds a graph whose ids are all different", () => {
+    const built = graph([node("a", "constant", [0, 0]), node("b", "constant", [200, 0])], [edge("e1", ["a", "value"], ["b", "value"])]);
+    expect(Object.keys(built.nodes)).toEqual(["a", "b"]);
+    expect(Object.keys(built.edges)).toEqual(["e1"]);
+  });
+});
+
+describe("named() names a node kind_role from the role alone (T1593b)", () => {
+  it("makes the name from the type's kind and the role, and uses it as the id too", () => {
+    const lamp = named("lamp", "slider", [0, 0]);
+    expect(lamp.label).toBe("slider_lamp");
+    expect(lamp.id).toBe("slider_lamp");
+    // The declared SHORT kind, not the type string: `pointkernel_joints` is what the ruling refused.
+    expect(named("joints", "pointKernel", [0, 0]).label).toBe("kernel_joints");
+    expect(named("pathx", "lfo", [0, 0]).label).toBe("lfo_pathx");
+    expect(named("car01", "meshFileIn", [0, 0]).label).toBe("mesh_car01");
+  });
+
+  /*
+   * The convention's own first example, and the bug it comes from: a Slider and a Light
+   * both called "lamp" used to share one id, the second replaced the first, and the scene
+   * had no light. Named by kind they are two nodes, and the real save and load agree.
+   */
+  it("lets one role name two nodes of different kinds, through the real save path", () => {
+    const built = document(
+      "t1593b-lamp",
+      "T1593b lamp",
+      settings(),
+      graph([named("lamp", "slider", [0, 0]), named("lamp", "light", [0, 300]), named("out", "output", [300, 0])], []),
+    );
+    const loaded = roundTrip(built);
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) return;
+    expect(loaded.changed).toBe(false);
+    const names = Object.values(loaded.document.graph.nodes).map((each) => each.label).sort();
+    expect(names).toEqual(["light_lamp", "output_out", "slider_lamp"]);
+  });
+
+  it("produces names the shipped-name gate accepts, for every node it builds", () => {
+    const nodes = [named("lamp", "slider", [0, 0]), named("joints", "pointKernel", [0, 0]), named("grade", "customWgsl", [0, 0])];
+    for (const each of nodes) expect(conformsToKind(each.label ?? "", kindOfType(each.type))).toBe(true);
+  });
+
+  it("keeps a shipped node's id when the sweep gives it its name", () => {
+    const dish = named("dish", "screen", [0, 0], {}, { id: "dish" });
+    expect(dish.id).toBe("dish");
+    expect(dish.label).toBe("screen_dish");
+  });
+
+  it("carries parameters and the registry's version exactly as node() does", () => {
+    const built = named("soft", "blur", [10, 20], { size: 4 });
+    const plain = node("blur_soft", "blur", [10, 20], { size: 4 }, { label: "blur_soft" });
+    expect(built).toEqual(plain);
+  });
+
+  it("refuses a role with a character a name may not hold", () => {
+    expect(() => named("key light", "light", [0, 0])).toThrow(
+      'named("key light", "light"): "light_key light" is not a name. A role holds letters, digits and underscores only, starting with a letter or a digit.',
+    );
+  });
+
+  it("refuses a role that already carries the kind, instead of naming the node blur_blur_soft", () => {
+    expect(() => named("blur_soft", "blur", [0, 0])).toThrow(/write the role alone/);
+    expect(() => named("blur1", "blur", [0, 0])).toThrow(/write the role alone/);
+    expect(() => named("", "blur", [0, 0])).toThrow(/write the role alone/);
+  });
+
+  it("refuses a second name in extra.label", () => {
+    expect(() => named("soft", "blur", [0, 0], {}, { label: "soft1" })).toThrow(/is a second name/);
+  });
+
+  it("refuses a component's In and Out, whose name is the socket's label", () => {
+    expect(() => named("depth", "componentIn", [0, 0])).toThrow(/named for the socket they publish/);
+  });
+
+  /*
+   * RULED 2026-10-05: an instance of a component is named for THE COMPONENT (`bloom_glow`),
+   * and the type string carries the component's id, not its name. So named() cannot know
+   * the kind and says so, and namedInstance() is told the name at the call site.
+   */
+  it("refuses a component instance, and points at namedInstance()", () => {
+    expect(() => named("holo", "component:depthPoints@1", [0, 0])).toThrow(
+      `named("holo", "component:depthPoints@1"): a component instance is named for its component, and the type does not carry the component's name. Use namedInstance("holo", "<Component name>", "component:depthPoints@1", …).`,
+    );
+  });
+});
+
+describe("namedInstance() names an instance for its component (T1593b)", () => {
+  it("makes the kind from the component's name and the name from the role", () => {
+    const holo = namedInstance("holo", "DepthPoints", "component:depthPoints@1", [0, 0]);
+    expect(holo.label).toBe("depthpoints_holo");
+    expect(holo.id).toBe("depthpoints_holo");
+    expect(holo.type).toBe("component:depthPoints@1");
+    expect(holo.definitionVersion).toBe(1);
+    // A name with a space in it is the same component to a reader.
+    expect(namedInstance("holo", "Depth Points", "component:depthPoints@1", [0, 0]).label).toBe("depthpoints_holo");
+  });
+
+  it("keeps a shipped instance's id, and refuses the same mistakes named() does", () => {
+    expect(namedInstance("holo", "DepthPoints", "component:depthPoints@1", [0, 0], {}, { id: "holo" }).id).toBe("holo");
+    expect(() => namedInstance("depthpoints_holo", "DepthPoints", "component:depthPoints@1", [0, 0])).toThrow(/write the role alone/);
+    expect(() => namedInstance("my holo", "DepthPoints", "component:depthPoints@1", [0, 0])).toThrow(/is not a name/);
+  });
+
+  it("refuses a built-in type, which named() names", () => {
+    expect(() => namedInstance("soft", "Blur", "blur", [0, 0])).toThrow(/is not a component instance type/);
   });
 });

@@ -1,5 +1,5 @@
 import type { NodeId, PortId } from "../domain/types/ids.ts";
-import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphNode } from "../domain/types/graph.ts";
 import { instanceShapeIndex } from "../nodes/definitions/render-instances.ts";
 import { attributeBinding } from "../nodes/definitions/point-storage.ts";
 import { bypassPassthroughPorts } from "../domain/graph/bypass.ts";
@@ -26,7 +26,9 @@ import { describeError } from "../runtime/backend/diagnostics.ts";
 // place — a `satisfies Record<PreviewPayloadKind, …>` table rather than the two
 // hand-maintained branches that used to live in this file.
 import {
+  pictureCameraControl,
   POINTS_PREVIEW_EYE,
+  previewCameraControl,
   previewOrbitBasis,
   SCENE_PREVIEW_BALL_RIG,
 } from "./preview-orbit.ts";
@@ -40,7 +42,7 @@ import { colorPolicyOf, sinkTargetSpace } from "../domain/color/display.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic, hasError } from "./diagnostics.ts";
 import { synthesizeSourceReferenceEdges } from "./source-reference-edges.ts";
 import { bindingOverflows, describeOverflow } from "./bindings.ts";
-import { flattenComponents, redirectSink, withSourcePath } from "./flatten.ts";
+import { compiledWithoutCatalogue, flattenComponents, redirectSink, withSourcePath } from "./flatten.ts";
 import type { ComponentSource } from "./flatten.ts";
 import { wgsl } from "../runtime/backend/wgsl.ts";
 import { resolveNodeFormat } from "./format.ts";
@@ -68,7 +70,7 @@ import {
 // T532: the geometry preview draws through the scene Render's OWN shader builders, so
 // the preview and the render cannot drift about what a geometry looks like.
 import { lightMetaUniform, sceneInstancesWgsl, sceneSurfaceWgsl } from "../nodes/shaders/scene-render.wgsl.ts";
-import { gridCellCounts, gridPointCount, parseTopology } from "../points/topology.ts";
+import { gridPointCount, gridSheets, gridVertexCount, parseTopology } from "../points/topology.ts";
 import {
   CAMERA_PREVIEW_VERTEX_COUNT,
   SCENE_PREVIEW_BALL_VERTEX_COUNT,
@@ -76,9 +78,12 @@ import {
   scenePreviewBallWgsl,
 } from "../nodes/shaders/scene-preview.wgsl.ts";
 import { cameraPayloadMatrix, viewProjection , projectorMatrix } from "../domain/geometry/camera.ts";
+import { identityMatrix } from "../domain/geometry/transform.ts";
 import type { Mat4 } from "../domain/geometry/camera.ts";
 import { DEFAULT_MATERIAL } from "../domain/types/scene.ts";
-import { applySubstepLoops, planSubstepLoops } from "./substeps.ts";
+import { applyKernelSteps, applySubstepLoops, planSubstepLoops } from "./substeps.ts";
+import { highHalfDivideWarnings } from "./wgsl-high-half.ts";
+import { isParameterSlot } from "../domain/parameters/slots.ts";
 import { scaleOutputPixels } from "./pixel-scale.ts";
 import { timeProbeFor } from "./time-probe.ts";
 import type { TimeProbe } from "./time-probe.ts";
@@ -89,7 +94,9 @@ function withTimeProbe(probe: TimeProbe | undefined): { timeProbe?: TimeProbe } 
 }
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
+import type { InstanceChannelSources } from "../domain/parameters/node-references.ts";
 import { buildMorphIndex } from "../domain/presets/morph-index.ts";
+import { timelineCueProblems } from "../domain/presets/timeline-cues.ts";
 import { outputPixelScale } from "../domain/types/graph.ts";
 import { orderNodes } from "./topology.ts";
 import { isTemporalOutput, validateGraph, validateRequiredInputs } from "./validate.ts";
@@ -138,8 +145,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * know from inside its own compile). When the plan IR grows a `compute` kind this set and
  * `TARGETED_PASS_KINDS` are the two places that learn about it — scheduling, pruning and
  * ordering never look at a pass kind at all.
+ *
+ * T1623b: `write` is a node's table of rows as values (`BufferWritePassDescriptor`).
  */
-const NODE_EMITTABLE_PASS_KINDS: ReadonlySet<string> = new Set(["effect", "dispatch", "draw"]);
+const NODE_EMITTABLE_PASS_KINDS: ReadonlySet<string> = new Set(["effect", "dispatch", "draw", "write"]);
 
 /**
  * The default framing every pointset preview shares (T373): an isometric-ish orbit at
@@ -840,7 +849,7 @@ export interface RetainedCompile {
    */
   readonly request: CompileRequest;
   /** The flat graph with source-reference edges synthesized — what `op()` reads against. */
-  readonly graph: GraphDocument;
+  readonly graph: FlatGraph;
   /** Kept nodes in topological order (spliced passthroughs excluded). */
   readonly order: ReadonlyArray<NodeId>;
   /** One record per node that compiled without throwing, by id. */
@@ -853,6 +862,15 @@ export interface RetainedCompile {
    * plan reads the SAME index the plan's "what animates" was classified from.
    */
   readonly morphs: ParameterMorphs;
+  /** T1485b: the component instances this compile's `op()` reads could name, kept as `morphs` is. */
+  readonly instances: InstanceChannelSources | undefined;
+  /**
+   * T1652b: what each node SAID about its own values in this compile, by id: the
+   * diagnostics of resolving its parameters, then those its `compile` returned. Only
+   * nodes that said something are in it. `rebaseOnValues` compares a node's new answer
+   * against this one, so a value that changes what a diagnostic says is never spliced.
+   */
+  readonly said: ReadonlyMap<NodeId, ReadonlyArray<RuntimeDiagnostic>>;
 }
 
 export interface CompileGraphResult {
@@ -902,7 +920,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       return { compiled: emptyPlan(stamp(diagnostics), [], sourceRows), retained: null };
     }
   }
-  const flatGraph = flattened?.graph ?? request.graph;
+  const flatGraph = flattened?.graph ?? compiledWithoutCatalogue(request.graph);
 
   /**
    * T1497b — THE PRESET MORPHS IN FLIGHT, derived HERE rather than asked of each caller.
@@ -920,7 +938,14 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
    */
   const morphs =
     request.resolution?.morphs ?? flattened?.morphs ?? buildMorphIndex({ document: request.graph, registry });
-  const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs };
+  // T1485b: and the instances `op('<instance>').chan` can name, by the same precedence.
+  const instances = request.resolution?.instances ?? flattened?.instanceChannels;
+  const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs, ...(instances === undefined ? {} : { instances }) };
+  // §T1559b (2): what a cue list that follows the timeline cannot do as written (every
+  // `cue.timeline.*` warning of its plan), where both roots read problems. A flattening
+  // already carries them (`flattened.diagnostics`, above: once per flattening, not per frame
+  // or segment compiled over it); with no catalogue there is none, and they are asked for here.
+  if (flattened === undefined) diagnostics.push(...timelineCueProblems({ document: request.graph, registry: request.registry }));
 
   /**
    * T350 (§V285) / T447 (§V373): a SOURCE REFERENCE synthesizes the exact edge the wired
@@ -1163,6 +1188,11 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   const sceneInfoByOutput = new Map<string, ScenePayload>();
   /** T1182: what each compiled node leaves for the per-frame values-only path. */
   const retainedNodes = new Map<NodeId, RetainedNodeCompile>();
+  /** T1652b: what each node said about its values — resolving them here, compiling them below. */
+  const said = new Map<NodeId, RuntimeDiagnostic[]>();
+  for (const [nodeId, resolved] of validatedRaw.nodes) {
+    if (resolved.said.length > 0) said.set(nodeId, [...resolved.said]);
+  }
   /** T1432b: authored pixels -> output pixels, 1 when the project names no reference width. */
   const pixelScale = outputPixelScale(settings);
   for (const nodeId of topology.order) {
@@ -1288,6 +1318,9 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       continue;
     }
     diagnostics.push(...(description.diagnostics ?? []));
+    if (description.diagnostics !== undefined && description.diagnostics.length > 0) {
+      said.set(nodeId, [...(said.get(nodeId) ?? []), ...description.diagnostics]);
+    }
 
     // T147: scratch targets — node-private intermediates for multi-pass work (a
     // separable blur's horizontal leg). Read structurally so the frozen
@@ -1332,6 +1365,16 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         const topology = rawInfo["topology"];
         const countRaw = rawInfo["count"];
         const countBuffer = isRecord(countRaw) ? countRaw["buffer"] : undefined;
+        /* T1598b: a bound is used to leave draws out, so a malformed one is DROPPED — an
+           unbounded pointset is always drawn, a wrongly bounded one loses its shadow. */
+        const boundsRaw = rawInfo["bounds"];
+        const center = isRecord(boundsRaw) ? boundsRaw["center"] : undefined;
+        const radius = isRecord(boundsRaw) ? boundsRaw["radius"] : undefined;
+        const bounds =
+          Array.isArray(center) && center.length === 3 && center.every((value) => typeof value === "number" && Number.isFinite(value)) &&
+          typeof radius === "number" && Number.isFinite(radius) && radius >= 0
+            ? { center: [center[0], center[1], center[2]] as [number, number, number], radius }
+            : undefined;
         pointsetInfoByOutput.set(outputKey(nodeId, portId), {
           pairs,
           capacity: capacity as number,
@@ -1339,6 +1382,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
           ...(typeof countBuffer === "string" && countBuffer.length > 0
             ? { count: { buffer: countBuffer } }
             : {}),
+          ...(bounds === undefined ? {} : { bounds }),
         });
       }
     }
@@ -1754,6 +1798,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         format: "rgba8unorm",
         space: colorSpaceForFormat("rgba8unorm"),
         temporal: false,
+        previewCamera: previewCameraControl("pointset", pointsOrbit),
         synthesis: {
           kind: "pointset",
           depth: false,
@@ -1883,7 +1928,14 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
                 return propagated.outputs.get(outputKey(only, slot.portId));
               })();
         if (rendered !== undefined) {
-          scenePreviewOutputs.set(key, { ...rendered, nodeId, portId: port.id });
+          // T1655b: the borrowed picture is drawn through THIS camera, so the row says what
+          // a synthesized camera row says. It carries no `synthesis` to read a kind off.
+          scenePreviewOutputs.set(key, {
+            ...rendered,
+            nodeId,
+            portId: port.id,
+            previewCamera: previewCameraControl("camera", undefined),
+          });
           continue;
         }
       }
@@ -2043,6 +2095,10 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
             },
             blend: "alpha",
           });
+        } else if (payload.instanceMesh !== undefined) {
+          /* T1581b: MESH instances. The tile's object draw is slice D of that row; until it
+             lands the tile is the backdrop alone — an honest empty frame, never the box
+             the primitives' branch below would draw in the mesh's place. */
         } else if (payload.mode === "instances") {
           const instance = payload.instance ?? { shape: "box" as const, scale: 0.05 };
           synthPasses.push({
@@ -2144,19 +2200,62 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
           // beam hole above. The backdrop pass is already in synthPasses.
           const parsed =
             typeof payload.topology === "string" ? parseTopology(payload.topology) : null;
+          /* T1588b: the tile frames the OBJECT, not its place in the scene, so it draws by
+             the identity whatever the node's Transform says. */
+          const untransformed = { model: identityMatrix(), modelNormal: identityMatrix() };
           if (parsed !== null && parsed.kind === "grid" && gridPointCount(parsed) <= payload.capacity) {
             const topology = parsed;
-            const cells = gridCellCounts(topology);
             synthPasses.push({
               ...passBase,
               clear: false,
-              shader: sceneSurfaceWgsl({ model: geometryModel, lightCount: 2 }),
-              vertexCount: cells.cellsU * cells.cellsV * 6,
+              // T1587b: a grid of several sheets is one draw of every sheet's cells, as in the Render.
+              shader: sceneSurfaceWgsl({ model: geometryModel, lightCount: 2, ...(gridSheets(topology) > 1 ? { sheets: true } : {}) }),
+              vertexCount: gridVertexCount(topology),
               buffers: geometryBuffers,
               uniforms: {
                 ...geometryUniforms,
+                ...untransformed,
                 grid: [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0],
               },
+            });
+          }
+          /*
+           * B247 — a MESH surface (Mesh File In, or anything downstream of one). T532 drew
+           * grids only, so a loaded hull's tile was the backdrop and read as an empty node.
+           * The Render's own mesh draw, with the same bindings: the index list, the file's
+           * normals, and its colour, surface row and emissive where the edge carries them.
+           * A mesh without a vec3f normal is what the Render refuses by name — backdrop only.
+           */
+          const meshNormal = payload.pairs["normal"];
+          if (parsed !== null && parsed.kind === "mesh" && meshNormal !== undefined && meshNormal.type === "vec3f") {
+            const typed = (name: string, type: string) => {
+              const pair = payload.pairs[name];
+              return pair !== undefined && pair.type === type ? pair : undefined;
+            };
+            const tint = payload.colorAttribute ?? typed("color", "vec4f");
+            const uv = typed("uv", "vec2f");
+            const surface = typed("surface", "vec4f");
+            const emissive = typed("emissive", "vec3f");
+            synthPasses.push({
+              ...passBase,
+              clear: false,
+              shader: sceneSurfaceWgsl({
+                model: geometryModel,
+                lightCount: 2,
+                ...(tint === undefined ? {} : { pointColor: true }),
+                mesh: { uv: uv !== undefined, surface: surface !== undefined, emissive: emissive !== undefined },
+              }),
+              vertexCount: parsed.triangles * 3,
+              buffers: [
+                ...geometryBuffers,
+                ...(tint === undefined ? [] : [attributeBinding("pointColors", tint, "read")]),
+                { binding: "meshIndices", resourceId: parsed.indexBuffer },
+                attributeBinding("meshNormals", meshNormal, "read"),
+                ...(uv === undefined ? [] : [attributeBinding("meshUvs", uv, "read")]),
+                ...(surface === undefined ? [] : [attributeBinding("meshSurface", surface, "read")]),
+                ...(emissive === undefined ? [] : [attributeBinding("meshEmissive", emissive, "read")]),
+              ],
+              uniforms: { ...geometryUniforms, ...untransformed, grid: [0, 0, 0, 0] },
             });
           }
         }
@@ -2255,10 +2354,17 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
        * the "inherit from a common thing" the owner asked for, so it moved to
        * `preview-orbit.ts` where a missing kind fails to compile. `passIds` names only the
        * object pass — a geometry's backdrop has no camera to move.
+       *
+       * B250: and only when that pass was EMITTED. A Surface geometry whose topology could
+       * not be used, a mesh-instance geometry (until T1581b's slice D draws its tile) and a
+       * Beam with no endpoint push the backdrop alone, and an orbit naming the absent object
+       * pass made the preview system refuse the tile, by throwing, on every tick. (An
+       * imported mesh on a Surface was the common case, until B247 drew it.)
        */
+      const objectPassId = `${nodeId}#scenePreview:${port.id}`;
       const orbit = previewOrbitBasis(payload.kind, {
         aspect: previewAspect,
-        passIds: [`${nodeId}#scenePreview:${port.id}`],
+        passIds: synthPasses.some((pass) => pass.id === objectPassId) ? [objectPassId] : [],
       });
       // A surface-mode geometry whose topology could not be used pushes only the
       // backdrop — the refusal-by-name case keeps its honest empty frame.
@@ -2271,6 +2377,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         format: "rgba8unorm",
         space: colorSpaceForFormat("rgba8unorm"),
         temporal: false,
+        previewCamera: previewCameraControl(payload.kind, orbit),
         synthesis: { kind: payload.kind, depth: true, passes: synthPasses, ...(orbit === undefined ? {} : { orbit }) },
       });
     }
@@ -2371,6 +2478,37 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
     passes.push(...(reordered as ReadonlyArray<Record<string, unknown>>));
   }
 
+  /*
+   * 6c. KERNEL STEPS (T1583b). A node that declares `steps` has its one dispatch wrapped
+   * in a loop region where it stands — at count 1 too (§V358). After 6b on purpose: a
+   * kernel inside a region a feedback loop iterates is refused by name there instead of
+   * being nested in it.
+   */
+  const stepped = applyKernelSteps(
+    passes,
+    {
+      nodes: validated.nodes,
+      pairs: new Set(
+        resources.flatMap((resource) =>
+          resource["kind"] === "bufferPair" && typeof resource["id"] === "string" ? [resource["id"]] : [],
+        ),
+      ),
+      // T1585b: a rate-driven count is stated for the frame this compile was asked at.
+      deltaSeconds: request.resolution?.frame?.deltaSeconds ?? 0,
+      // A slot in any mode but static can read the frame; a morph fades a plain value.
+      moves: (nodeId, key) => {
+        const stored = validated.nodes.get(nodeId)?.node.parameters[key];
+        return (isParameterSlot(stored) && stored.mode !== "static") || morphs.keysOf(nodeId)?.has(key) === true;
+      },
+    },
+    diagnostics,
+  );
+  if (stepped !== passes) {
+    const wrapped = [...(stepped as ReadonlyArray<Record<string, unknown>>)];
+    passes.length = 0;
+    passes.push(...wrapped);
+  }
+
   // One shared sampler for the plan. Emitted whenever anything renders: deciding per-plan
   // whether it is referenced would make the resource list depend on shader text, and a
   // sampler is the cheapest object the backend owns.
@@ -2383,6 +2521,9 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   const candidate: LogicalExecutionPlan = { passes, resources, diagnostics: [] };
   const read = readExecutionPlan(candidate);
   diagnostics.push(...read.diagnostics);
+  // B263: a divide of a high half by a constant is valid WGSL and wrong on Apple GPUs. Said
+  // here, once for every surface an author writes WGSL on, by the author's node and line.
+  diagnostics.push(...highHalfDivideWarnings(read.passes));
 
   // T150/B5: a texture binding that SAMPLES an unfilterable format is refused here,
   // with the node named, instead of surfacing as a cryptic vgpu bind error at render
@@ -2395,7 +2536,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   }
   const float32Filterable = request.capabilities.features.includes("float32-filterable");
   for (const pass of read.passes) {
-    if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop") continue;
+    if (pass.kind === "swap" || pass.kind === "counter" || pass.kind === "loop" || pass.kind === "write") continue;
     for (const binding of pass.textures ?? []) {
       if (binding.sampled === "unfiltered") continue;
       if (formatById.get(binding.resourceId) !== "r32float" || float32Filterable) continue;
@@ -2476,7 +2617,27 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
   // T373: a pointset output with a synthesized preview projects as that TARGET — a row
   // the preview system can bind — replacing the marker row for the same port. Without
   // the sink the marker row stands, exactly as before.
+  /*
+   * T1655b: a PICTURE OF 3D DATA (a Render, Render Surface, Render Instances, Render Points)
+   * says whose camera it is taken through, or that it is drawn through its own Eye and Look
+   * At. The camera is read off the same kept edges `renderersByCamera` is, by renderer.
+   */
+  const cameraByRenderer = new Map<NodeId, NodeId>();
+  for (const edge of [...topology.currentFrameEdges, ...topology.temporalEdges]) {
+    const port = validated.nodes.get(edge.target.nodeId)?.definition?.inputs.find((input) => input.id === edge.target.portId);
+    if (port?.type.kind === "camera") cameraByRenderer.set(edge.target.nodeId, edge.source.nodeId);
+  }
+  const withPictureCamera = (output: ResolvedOutput): ResolvedOutput => {
+    if (output.resourceKind === "pointset") return output;
+    const resolved = validated.nodes.get(output.nodeId);
+    const control =
+      resolved === undefined
+        ? undefined
+        : pictureCameraControl(resolved.definition.inputs, resolved.parameters, cameraByRenderer.get(output.nodeId));
+    return control === undefined ? output : { ...output, previewCamera: control };
+  };
   const outputs = [...propagated.outputs.values()]
+    .map(withPictureCamera)
     .map((output) => pointsPreviewOutputs.get(outputKey(output.nodeId, output.portId)) ?? output)
     .concat(aliasOutputs)
     // T462: scene-payload previews ADD rows — camera/light/material outputs never had
@@ -2512,7 +2673,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       signature: structure.signature,
       estimatedResourceBytes,
     },
-    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput, morphs },
+    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput, morphs, instances, said },
   };
 }
 

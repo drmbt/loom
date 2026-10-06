@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledGraph } from "@compiler/index.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
-import { resolveParameters } from "@domain/parameters/index.ts";
+import { parameterReadOptions, resolveParameters, resolveStored } from "@domain/parameters/index.ts";
 import { EMISSION_PUMPS } from "@domain/render/emission-pumps.ts";
 import { emissionRefusal } from "@domain/render/side-effects.ts";
 import { desktopOutputBridge } from "@devices/native-output.ts";
@@ -20,23 +20,33 @@ type Entry = { key: string; selectionKey?: string; session?: Session; polling: b
 const STATUS_POLL_MS = 1000;
 
 export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | null,
-  graph: GraphDocument, compiled: CompiledGraph | null) {
+  graph: FlatGraph, compiled: CompiledGraph | null) {
   const [diagnostics, setDiagnostics] = useState<readonly RuntimeDiagnostic[]>([]);
   const requests = useMemo(() => {
     const demanded = new Set(compiled?.order);
     return Object.values(graph.nodes).filter(node => TYPES.has(node.type) && !isSilencedSource(node))
       .map(node => {
         const definition = runtime.registry.get(node.type)!;
-        const values = resolveParameters(node, definition).values;
+        // §T1557b: the document (`resolveStored`) — a session is keyed on these, per revision.
+        const values = resolveStored(node, definition).values;
+        /*
+         * §T1559b (2), ruled live: Publish follows a driven value (an expression, a channel, a
+         * fade), read through the bus's read scope (the frame on screen, the compile's
+         * channels, the flattening) over the flattened graph this node came from. Read once
+         * per frame by the tick, which acts only on a change: an open per rising edge, a close
+         * per falling edge. No debounce: a close drains before the next open (`draining`).
+         */
+        const enabled = () =>
+          resolveParameters(node, definition, parameterReadOptions({ ...runtime.bus.readScope(), graph })).values["enabled"] === true;
         const edge = Object.values(graph.edges).find(edge => edge.target.nodeId === node.id && edge.target.portId === "input");
         const source = compiled?.outputs.find(output => output.nodeId === edge?.source.nodeId && output.portId === edge.source.portId);
         const selection = source && demanded.has(node.id) ? { resourceId: source.resourceId, size: source.size } : null;
         const transport = NATIVE_OUTPUT_TRANSPORTS[node.type];
         if (!transport) throw new Error(`No native output transport for ${node.type}`);
-        return { id: node.id, definition, transport, name: String(values["name"]), enabled: values["enabled"] === true,
+        return { id: node.id, definition, transport, name: String(values["name"]), enabled,
           selection, selectionKey: JSON.stringify(selection), key: JSON.stringify([transport, values]) };
       });
-  }, [graph, compiled, runtime.registry]);
+  }, [graph, compiled, runtime.registry, runtime.bus]);
   const latest = useRef(requests); latest.current = requests;
   const controller = useRef<{ suspend(): Promise<void> } | null>(null);
   // A replacement document/backend cannot reuse publisher names while the prior
@@ -81,9 +91,10 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
       if (disposed) return;
       const wanted = latest.current;
       const policy = renderRangeHolderFor(runtime.bus).current?.busy() === true ? "blocked" : "live-session";
+      const enabled = new Map(wanted.map(request => [request.id, request.enabled()]));
       for (const [id, entry] of entries) {
         const request = wanted.find(request => request.id === id);
-        if (!request || request.key !== entry.key || policy === "blocked" || !request.enabled || !request.selection) close(id, entry);
+        if (!request || request.key !== entry.key || policy === "blocked" || !enabled.get(id) || !request.selection) close(id, entry);
       }
       for (const id of messages.keys()) if (!wanted.some(request => request.id === id)) report(id, null);
       for (const request of wanted) {
@@ -92,7 +103,7 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
         if (drainFailure.current) { report(request.id, drainFailure.current); continue; }
         const refusal = emissionRefusal(request.definition, policy);
         if (refusal) { report(request.id, refusal); continue; }
-        if (!request.enabled) { report(request.id, null); continue; }
+        if (!enabled.get(request.id)) { report(request.id, null); continue; }
         if (!request.selection) { report(request.id, `Connect a compiled texture to ${label} Out`); continue; }
         // T1340b: the node's own requirement warning says this, once, in the one
         // vocabulary — see the note in `use-native-inputs.ts`. Nothing is published either

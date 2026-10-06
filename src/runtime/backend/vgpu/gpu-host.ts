@@ -83,8 +83,15 @@ export const DESIRED_LIMITS: Readonly<Record<string, number>> = {
  * Optional and never required: a device without it must still get a working app (§V12),
  * so the ask is filtered against the adapter's offer rather than made unconditional —
  * over-requesting FAILS device creation outright.
+ *
+ * `indirect-first-instance` (T1581b F1) is asked for what its ABSENCE costs. Without it a
+ * non-zero `firstInstance` in indirect arguments is illegal, and Dawn cannot see the
+ * arguments on the CPU, so it validates them on the GPU: a compute pass ahead of every
+ * render pass that holds an indirect draw. Measured on a scene of 150 single-draw indirect
+ * passes (M3 Max, Dawn on Metal): 29 ms of GPU a frame without the feature, 18.5 ms with
+ * it, 11 ms with literal draws. Nothing here writes a non-zero firstInstance either way.
  */
-export const OPTIONAL_FEATURES: ReadonlyArray<string> = ["timestamp-query"];
+export const OPTIONAL_FEATURES: ReadonlyArray<string> = ["timestamp-query", "indirect-first-instance"];
 
 /**
  * The features to request: everything the caller required, plus every optional feature

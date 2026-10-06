@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { GraphDocument } from "@domain/types/graph.ts";
@@ -70,6 +71,8 @@ function fakeElement(width = 640, height = 360) {
     currentTime: 0,
     muted: true,
     volume: 1,
+    // §T1548b: a real element can loop itself; a whole-file free-run Loop asks it to.
+    loop: false,
     playbackRate: 1,
     duration: 12,
     paused: true,
@@ -171,7 +174,7 @@ function Harness({
   /** T493: the per-frame seam, so a test can drive a frame the way the loop does. */
   onWiring?: (wiring: MediaWiring) => void;
 }) {
-  const media = useMediaSources(runtime, backend, graph, resolved ?? null, environment, controls);
+  const media = useMediaSources(runtime, backend, flatDocument(graph), resolved ?? null, environment, controls);
   onDiagnostics?.(media.diagnostics.map((entry) => entry.message));
   onWiring?.(media);
   return null;
@@ -204,6 +207,10 @@ describe("movie sound and output extent share the existing media session", () =>
     const view = render(draw(graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip" } } })));
     await waitFor(() => expect(opens).toBe(1));
     act(() => wiring.sync(frame));
+    // §T1548b: a whole-file free-run Loop loops on its ONE element — no partner is opened,
+    // and the element is asked to loop itself.
+    expect(opens).toBe(1);
+    expect(element.loop).toBe(true);
     expect(element.muted).toBe(true);
     view.rerender(draw(graphWith({ movie: { type: "movieFileIn", parameters: {
       file: "blob:clip", audio: true, volume: { mode: "expression", bindings: {
@@ -213,7 +220,12 @@ describe("movie sound and output extent share the existing media session", () =>
     act(() => wiring.sync(frame));
     expect(element.muted).toBe(false);
     expect(element.volume).toBeCloseTo(0.3, 10);
-    expect(opens).toBe(1);
+    // §T1560b: Audio on a whole-file Loop asks for the loop partner — one open, once (this
+    // door hands back the same element, which is refused), and the playing one is not reopened.
+    expect(opens).toBe(2);
+    await act(async () => {});
+    act(() => wiring.sync(frame));
+    expect(opens).toBe(2);
     view.unmount();
     expect(element.muted).toBe(true);
     expect(element.paused).toBe(true);
@@ -1177,9 +1189,10 @@ describe("media sources reach the backend (T264)", () => {
    * The rule is gated in `media-playback.test.ts`; what is gated here is that this hook
    * passes `currentTime` at all. The element plays a full second per frame while each
    * frame accounts for a quarter of one — `liveClock`'s clamp, which is what a frame loop
-   * that cannot keep up delivers. Followed, the element reaches the 12 s out point on the
-   * thirteenth frame and is lapped to the in point plus its overshoot. Unfollowed, the
-   * runner's own count stands at 3.25 s, sees no lap, and the element sits at 12.25.
+   * that cannot keep up delivers. Followed, the element reaches the 11 s out point on the
+   * twelfth frame and is lapped to the in point plus its overshoot. Unfollowed, the
+   * runner's own count stands at 3 s, sees no lap, and the element sits at 11.25. The window
+   * is trimmed (§T1548b): the whole file loops on the element itself, which writes nothing.
    */
   it("follows its element's clock: a clip that outran the frames is lapped where IT is (T1542b)", async () => {
     const runtime = newRuntime();
@@ -1197,7 +1210,7 @@ describe("media sources reach the backend (T264)", () => {
         <Harness
           runtime={runtime}
           backend={backend}
-          graph={graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip" } } })}
+          graph={graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip", trimEnd: 11 } } })}
           environment={environment}
           onWiring={(value) => {
             wiring = value;
@@ -1207,7 +1220,7 @@ describe("media sources reach the backend (T264)", () => {
     });
     await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
 
-    for (let index = 0; index <= 12; index += 1) {
+    for (let index = 0; index <= 11; index += 1) {
       if (index > 0 && !element.paused) element.currentTime += 1;
       act(() =>
         (wiring as unknown as MediaWiring).sync({
@@ -1222,6 +1235,183 @@ describe("media sources reach the backend (T264)", () => {
       expect(element.playbackRate).toBe(1);
     }
     expect(element.currentTime).toBeCloseTo(0.25, 6);
+    runtime.dispose();
+  });
+
+  /**
+   * §T1548b — THE REACH of the loop hand-over: the hook opens a SECOND element on the same
+   * file, primes it on the in point, and at a free-run lap moves both the picture (the
+   * registered source's frame) and the play state to it, with no write on the element that
+   * was playing. The rule itself is gated in `media-playback.test.ts`.
+   */
+  it("a free-run Loop lap hands the picture and the sound to a second element, writing nothing on the playing one (T1548b)", async () => {
+    const runtime = newRuntime();
+    const { backend, registered } = fakeBackend();
+    const first = fakeElement();
+    const second = fakeElement();
+    /** Each element's own clock, and the `currentTime` writes made while it PLAYED. */
+    const clocks = new Map<object, number>([[first, 0], [second, 0]]);
+    const heard = new Map<object, number[]>([[first, []], [second, []]]);
+    for (const element of [first, second]) {
+      Object.defineProperty(element, "currentTime", {
+        get: () => clocks.get(element),
+        set: (value: number) => {
+          if (!element.paused) heard.get(element)!.push(value);
+          clocks.set(element, value);
+        },
+      });
+    }
+    const opened = [first, second];
+    let opens = 0;
+    let wiring: MediaWiring | null = null;
+    const environment: MediaEnvironment = {
+      openStill: () => Promise.reject(new Error("no still in this test")),
+      openFile: () => Promise.resolve(opened[opens++] as unknown as MediaElement),
+      openCamera: () => Promise.reject(new Error("not used")),
+    };
+    await act(async () => {
+      render(
+        <Harness
+          runtime={runtime}
+          backend={backend}
+          graph={graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip", trimStart: 1, trimEnd: 1.5 } } })}
+          environment={environment}
+          onWiring={(value) => {
+            wiring = value;
+          }}
+        />,
+      );
+    });
+    await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
+    const source = registered.get(mediaSourceIdFor("movie"))!;
+    first.emit("timeupdate");
+    let index = 0;
+    /** One delivered frame, an eighth of a second, so the 0.5 s window is exactly four. */
+    const tick = () => {
+      if (index > 0) {
+        for (const element of [first, second]) {
+          if (!element.paused) clocks.set(element, clocks.get(element)! + 0.125);
+        }
+      }
+      act(() =>
+        (wiring as unknown as MediaWiring).sync({
+          timeSeconds: index * 0.125,
+          deltaSeconds: 0.125,
+          frameIndex: index,
+          mode: "realtime",
+          randomSeed: 1,
+        }),
+      );
+      index += 1;
+    };
+    tick();
+    // The first frame lands an eighth of a second in: the in point plus one frame.
+    expect(first.currentTime).toBe(1.125);
+    // The first free-run Loop frame asked for the partner; it arrives asynchronously.
+    await waitFor(() => expect(opens).toBe(2));
+    await act(async () => {});
+    expect([second.paused, second.muted]).toEqual([true, true]);
+    heard.get(first)!.length = 0;
+    tick();
+    // Primed: waiting paused on the in point.
+    expect(second.currentTime).toBe(1);
+    tick();
+    expect(source.currentFrame()?.image).toBe(first);
+    tick();
+    // The out point: the partner plays from the in point and is what the texture uploads;
+    // the finished one is paused, and only THEN put back on the in point.
+    expect([first.paused, second.paused]).toEqual([true, false]);
+    expect(source.currentFrame()?.image).toBe(second);
+    expect(first.currentTime).toBe(1);
+    for (let frame = 0; frame < 4; frame += 1) tick();
+    expect([first.paused, second.paused]).toEqual([false, true]);
+    expect(source.currentFrame()?.image).toBe(first);
+    expect(heard.get(first)).toEqual([]);
+    expect(heard.get(second)).toEqual([]);
+    expect(opens).toBe(2);
+    runtime.dispose();
+  });
+
+  /**
+   * §T1560b — THE REACH of the Audio rule for a WHOLE-FILE Loop: silent, it loops natively
+   * on one element and no second one is opened; Audio on opens the partner and the playing
+   * element stops looping itself; Audio off again releases the partner (paused, dropped:
+   * the next Audio on has to open a new one) and the playing element loops itself again.
+   * Nothing is written on the playing element at any of the switches.
+   */
+  it("Audio on a whole-file Loop opens the loop partner, and Audio off releases it (T1560b)", async () => {
+    const runtime = newRuntime();
+    const { backend, registered } = fakeBackend();
+    const opened = [fakeElement(), fakeElement(), fakeElement()];
+    const [first, second, third] = opened as [ReturnType<typeof fakeElement>, ReturnType<typeof fakeElement>, ReturnType<typeof fakeElement>];
+    const heard: number[] = [];
+    let clock = 0;
+    Object.defineProperty(first, "currentTime", {
+      get: () => clock,
+      set: (value: number) => {
+        if (!first.paused) heard.push(value);
+        clock = value;
+      },
+    });
+    let opens = 0;
+    let wiring: MediaWiring | null = null;
+    const environment: MediaEnvironment = {
+      openStill: () => Promise.reject(new Error("no still in this test")),
+      openFile: () => Promise.resolve(opened[opens++] as unknown as MediaElement),
+      openCamera: () => Promise.reject(new Error("not used")),
+    };
+    const draw = (audio: boolean) => (
+      <Harness
+        runtime={runtime}
+        backend={backend}
+        graph={graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip", audio, volume: 1 } } })}
+        environment={environment}
+        onWiring={(value) => {
+          wiring = value;
+        }}
+      />
+    );
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(draw(false));
+    });
+    await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
+    let index = 0;
+    const tick = () => {
+      if (index > 0 && !first.paused) clock += 1 / 60;
+      act(() =>
+        (wiring as unknown as MediaWiring).sync({
+          timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index, mode: "realtime", randomSeed: 1,
+        }),
+      );
+      index += 1;
+    };
+    tick();
+    tick();
+    // Silent: one element, looping itself.
+    expect([opens, first.loop, first.paused]).toEqual([1, true, false]);
+    heard.length = 0;
+    view.rerender(draw(true));
+    tick();
+    expect(opens).toBe(2);
+    await act(async () => {});
+    tick();
+    // Audio on: the partner waits paused and muted; the playing element no longer loops itself.
+    expect([second.paused, second.muted, first.loop, first.paused, first.muted]).toEqual([true, true, false, false, false]);
+    view.rerender(draw(false));
+    tick();
+    tick();
+    // Audio off: the partner is released, the playing element loops itself again.
+    expect([second.paused, first.loop, first.paused]).toEqual([true, true, false]);
+    expect(opens).toBe(2);
+    view.rerender(draw(true));
+    tick();
+    // Released, not kept: Audio on again opens a new partner.
+    expect(opens).toBe(3);
+    await act(async () => {});
+    tick();
+    expect([third.paused, first.loop]).toEqual([true, false]);
+    expect(heard).toEqual([]);
     runtime.dispose();
   });
 

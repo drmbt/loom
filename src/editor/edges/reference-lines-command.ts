@@ -2,6 +2,7 @@
 // no undo group — whether a line is DRAWN is not something the document knows about.
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { sharedForBus } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
 
 /**
  * `ui.toggleReferenceLines` — the ONE way the reference lines turn on and off (T248, §V153).
@@ -109,6 +110,7 @@ export function registerReferenceLinesCommand(bus: LoomBus): ReferenceLinesStore
 
   bus.registerCommand({
     name: TOGGLE_REFERENCE_LINES_COMMAND,
+    inputSchema: z.object({ show: z.boolean().optional() }).strict(),
     description: "Show or hide reference lines — which parameters read which nodes (§V153).",
     handler: (input, context) => {
       const next = input.show ?? !store.get();

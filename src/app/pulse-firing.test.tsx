@@ -15,6 +15,7 @@ import { createAppRuntime } from "./app-runtime.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import { usePulseFiring } from "./pulse-firing.ts";
 import { renderRangeHolderFor } from "./render-range.ts";
+import { z } from "zod";
 
 /**
  * Expression-fired pulses reach a node INSIDE a component (T615, T214, §V125).
@@ -66,6 +67,7 @@ describe("usePulseFiring — a pulse inside a component fires, and lands on ITS 
     const cleared: string[][] = [];
     runtime.bus.registerCommand({
       name: "runtime.resetFeedback",
+      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
       description: "Test double for the feedback reset a pulse fires.",
       handler: (input) => {
         cleared.push([...(input.nodeIds ?? [])]);
@@ -101,7 +103,7 @@ describe("usePulseFiring — a pulse inside a component fires, and lands on ITS 
     // The bus needs the flattening to resolve a flat id; in the app `useGraphCompile`
     // attaches it. Attached directly here so this file tests the pulse path and not the
     // compile hook.
-    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current());
 
     const { result } = renderHook(() => usePulseFiring(runtime, runtime.invocation));
     await act(async () => {
@@ -172,7 +174,7 @@ describe("usePulseFiring — a take fires no command that edits the document (T1
       expect(second.status, JSON.stringify(second.diagnostics)).toBe("applied");
       bank = second.output.createdIds["$bank"] ?? "";
     });
-    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current());
     return { runtime, level, bank };
   }
 
@@ -233,6 +235,7 @@ describe("usePulseFiring — a take fires no command that edits the document (T1
     const cleared: string[][] = [];
     runtime.bus.registerCommand({
       name: "runtime.resetFeedback",
+      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
       description: "Test double for the feedback reset a pulse fires.",
       handler: (input) => {
         cleared.push([...(input.nodeIds ?? [])]);
@@ -248,7 +251,7 @@ describe("usePulseFiring — a take fires no command that edits the document (T1
       expect(seeded.status).toBe("applied");
       one = seeded.output.createdIds["$one"] ?? "";
     });
-    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current());
     renderRangeHolderFor(runtime.bus).current = {
       busy: () => true,
       render: async () => ({ kind: "rendered", frames: 0, fileName: null }),
@@ -297,6 +300,7 @@ describe("usePulseFiring — a pulse reading a morphing parameter fires mid-fade
     let at = -1;
     runtime.bus.registerCommand({
       name: "runtime.resetFeedback",
+      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
       description: "Test double for the feedback reset a pulse fires.",
       handler: () => {
         fired.push(at);
@@ -461,7 +465,7 @@ describe("usePulseFiring — a look's Recall pulse fires from inside its compone
       expect(result.status, JSON.stringify(result.diagnostics)).toBe("applied");
       ids = result.output.createdIds as Record<string, string>;
     });
-    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current());
     const nodeOf = (ref: string) => runtime.bus.store.getGraph().nodes[ids[ref] ?? ""];
     const outerBefore = JSON.stringify(nodeOf("$o"));
     const auditBefore = runtime.bus.store.getAudit().length;

@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, join } from "node:path";
 import { createComponentSystem } from "../../domain/components/index.ts";
 import { loadProject } from "../../domain/project/index.ts";
-import { serializeProjectDocument } from "../../domain/project/serialize.ts";
+import { buildCheckedProjectFile } from "../../examples/checked-project.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { stageFacts } from "./facts.ts";
@@ -42,13 +42,12 @@ if (existsSync(maps[0]!)) {
   for (const map of maps) if (existsSync(map)) copyFileSync(map, join(dirname(path), map.split("/").pop()!));
 }
 const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
-const loaded = loadProject(readFileSync(path, "utf8"), { nodes: system.nodes });
+const loaded = loadProject(readFileSync(path, "utf8"), { nodes: system.nodes, components: system.components });
 if (!loaded.ok) throw new Error(`${path} did not load: ${loaded.reason}`);
 const facts = stageFacts(new Uint8Array(readFileSync(glbPath)), glbUrl);
-// The real save path writes the document; what else the file carried at its root (the app's
-// component library, written from its live registry on every save) rides along untouched.
-const written = JSON.parse(serializeProjectDocument(applyRig(loaded.document, facts, { reset }))) as Record<string, unknown>;
-const original = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-for (const [key, value] of Object.entries(original)) if (!(key in written)) written[key] = value;
-writeFileSync(path, JSON.stringify(written, null, 2), "utf8");
+// The checked save (T1641b): refused while the upgraded session holds anything a code save
+// refuses, and written with the session's own component library, as the app's save writes it.
+// `updatedAt` is the session's own, so an upgrade that changes nothing changes no byte.
+const upgraded = applyRig(loaded.document, facts, { reset });
+writeFileSync(path, buildCheckedProjectFile({ document: upgraded, components: loaded.components, now: () => loaded.document.updatedAt }).text, "utf8");
 console.log(`upgraded ${path}${reset.length === 0 ? "" : ` (reset: ${reset.join(", ")})`}; media in public/media/stage-previz/stage.glb`);

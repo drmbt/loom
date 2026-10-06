@@ -84,7 +84,7 @@ export { useShaderCompileState } from "./use-shader-compile.ts";
 export { ShaderEditor } from "./shader-editor.tsx";
 export type { ShaderEditorProps } from "./shader-editor.tsx";
 export { ProblemsPanel } from "./problems-panel.tsx";
-export type { ProblemsPanelProps } from "./problems-panel.tsx";
+export type { ProblemAction, ProblemsPanelProps } from "./problems-panel.tsx";
 export { ShaderStatusBadge } from "./shader-status-badge.tsx";
 export { shaderStatusBadgeProps } from "./shader-status.ts";
 export type { ShaderStatusBadgeProps } from "./shader-status.ts";

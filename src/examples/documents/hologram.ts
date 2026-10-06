@@ -4,7 +4,7 @@ import { settings, node, edge, graph, document, drivenSlot, expressionSlot } fro
  * T1201 — the two segments of the palette fit, and the one sweep they share.
  *
  * The bases are the `offset` half of the affine that fits the understudy depth map's
- * MEASURED range to the ramp; the derivation is written out at `palette1` below, beside
+ * MEASURED range to the ramp; the derivation is written out at `ramp_palette` below, beside
  * the numbers it was measured from. They are named here because each appears twice — once
  * as the parameter's static and once inside its expression — and two spellings of one
  * calibration is how a fit drifts by half.
@@ -12,22 +12,22 @@ import { settings, node, edge, graph, document, drivenSlot, expressionSlot } fro
 const SUBJECT_BASE = -0.06;
 const WALL_BASE = -0.94;
 /** One LFO about zero, plus each band's own base: §V920's pair, spelled for two readers. */
-const SUBJECT_SWEEP = `${String(SUBJECT_BASE)} + op('cycle1').chan.value`;
-const WALL_SWEEP = `${String(WALL_BASE)} + op('cycle1').chan.value`;
+const SUBJECT_SWEEP = `${String(SUBJECT_BASE)} + op('lfo_cycle').chan.value`;
+const WALL_SWEEP = `${String(WALL_BASE)} + op('lfo_cycle').chan.value`;
 
 /**
  * E47 — Hologram (T956). THE DEPTH → POINT CLOUD COMPONENT, SHOWCASED.
  *
- *   bed1(noise) ─┬─► src1(add) ─┬─► cut1(component:depthCut@1) ─► braid1.in2  (coverage)
- *   orb1(circle)─┘              ├─► flat1(hsv, sat 0) ─► soften1(blur) ─► pick1(switch)
+ *   noise_bed(noise) ─┬─► add_src(add) ─┬─► depthcut1(component:depthCut@1) ─► reorder_braid.in2  (coverage)
+ *   circle_orb(circle)─┘              ├─► hsv_flat1(hsv, sat 0) ─► blur_soften1(blur) ─► switch_pick(switch)
  *                               └─► depth1(depth) ────────── index 1 ──────┘   │
- *                     pick1 ─► holo1.depth ─and─► coat1.source (the heat key)
- *   palette1(ramp) ─► coat1(lookup) ─► braid1(reorder) ─► holo1.colour
- *   holo1(component:depthPoints@1) ─► zone1(pointRange, inside) ─► dots1 ─┐
- *   src1 ─► flat2 ─► soften2 ─┬─► holo2.depth                             │
- *                            └─► wcoat1(lookup) ◄─palette1 ─► holo2.colour│
- *   holo2 ─► wall1(pointRange, OUTSIDE) ─► wdots1 ────────────────────────┴► shot1 ─► out1
- *   orbit1(lfo) ┄drives┄► eye1.eye.x     cycle1(lfo) ┄drives┄► both lookups' offset
+ *                     switch_pick ─► depthpoints_holo1.depth ─and─► lookup_coat.source (the heat key)
+ *   ramp_palette(ramp) ─► lookup_coat(lookup) ─► reorder_braid(reorder) ─► depthpoints_holo1.colour
+ *   depthpoints_holo1(component:depthPoints@1) ─► range_zone(pointRange, inside) ─► geometry_dots ─┐
+ *   add_src ─► hsv_flat2 ─► blur_soften2 ─┬─► depthpoints_holo2.depth                             │
+ *                            └─► lookup_wcoat(lookup) ◄─ramp_palette ─► depthpoints_holo2.colour│
+ *   depthpoints_holo2 ─► range_wall(pointRange, OUTSIDE) ─► geometry_wdots ────────────────────────┴► render_shot ─► output1
+ *   lfo_orbit(lfo) ┄drives┄► camera_eye.eye.x     lfo_cycle(lfo) ┄drives┄► both lookups' offset
  *
  * ## What the picture is
  *
@@ -39,7 +39,7 @@ const WALL_SWEEP = `${String(WALL_BASE)} + op('cycle1').chan.value`;
  *
  * ## The component is the subject, and the example uses it AS a component
  *
- * `holo1` is an INSTANCE of the DepthPoints library component — the first example to
+ * `depthpoints_holo1` is an INSTANCE of the DepthPoints library component — the first example to
  * instantiate one — with its published page turned from here: fov 55, near/far as a
  * shallow stage, displace tuned to fill the frame, resolution 144. The chain inside
  * (grid → carve → paint) is the component's own business; this document only feeds two
@@ -48,7 +48,7 @@ const WALL_SWEEP = `${String(WALL_BASE)} + op('cycle1').chan.value`;
  *
  * ## Two depth sources on one switch — the source-agnosticism, demonstrated live
  *
- * The shipped default (`pick1.index = 0`) is an UNDERSTUDY: the source's own luma,
+ * The shipped default (`switch_pick.index = 0`) is an UNDERSTUDY: the source's own luma,
  * desaturated and blurred — bright is close, exactly the inverse encoding the component's
  * `inverseDepth` knob declares. It is deterministic, so every gate and the gallery card
  * see a real carved volume, and the orb visibly POPS toward the viewer because it is the
@@ -69,24 +69,24 @@ const WALL_SWEEP = `${String(WALL_BASE)} + op('cycle1').chan.value`;
  *
  * The owner's ask, verbatim: "threshold based on the depth map point cloud … an IN and
  * OUT zone, like a volume", and "the person is in front of a filled in wall of clouds".
- * Both are ONE operator: `zone1` keeps holo1's points INSIDE depthN [0, 0.13] — the
+ * Both are ONE operator: `range_zone` keeps depthpoints_holo1's points INSIDE depthN [0, 0.13] — the
  * subject pops off its background geometrically, on the cloud where depth is exact —
- * and `wall1` keeps a SECOND DepthPoints instance's points OUTSIDE the same range.
+ * and `range_wall` keeps a SECOND DepthPoints instance's points OUTSIDE the same range.
  * Same range, two modes: an exact partition (the boundary belongs to inside), which is
  * §T983's design property doing §T979's job.
  *
- * §T979's stronger point is that this REDEEMS the source switch: `holo2` reads the
- * synthetic performer ALWAYS — `src1` for colour, its own luma chain (`flat2` →
- * `soften2`) for depth — so flipping `srcpick1` to the webcam no longer throws the
+ * §T979's stronger point is that this REDEEMS the source switch: `depthpoints_holo2` reads the
+ * synthetic performer ALWAYS — `add_src` for colour, its own luma chain (`hsv_flat2` →
+ * `blur_soften2`) for depth — so flipping `switch_srcpick` to the webcam no longer throws the
  * synthetic source away. It becomes the BACKDROP: you, near, in front of a wall of
  * clouds, far — and they separate by REAL depth under the orbit's parallax, which a 2D
- * key cannot do. holo2's published near/far place its stage behind holo1's (2.0–4.4
+ * key cannot do. depthpoints_holo2's published near/far place its stage behind depthpoints_holo1's (2.0–4.4
  * against 0.7–2.6), so the wall is behind the subject in world space, not merely
  * dimmer.
  *
  * ## The cut (§T977) — the model-less 2D spelling, riding the same picture
  *
- * `cut1` (DepthCut) mattes the subject's COLOUR by the active depth map before it
+ * `depthcut1` (DepthCut) mattes the subject's COLOUR by the active depth map before it
  * becomes paint: everything past the cut plane loses its light entirely (threshold 0.8,
  * feather 0.12 over the understudy's luma), so the backdrop goes DARK and the subject
  * stands alone in its own cloud — the owner's "model-less bg cut … part of the hologram
@@ -110,9 +110,9 @@ const WALL_SWEEP = `${String(WALL_BASE)} + op('cycle1').chan.value`;
  * The owner: "apply the style that we have in Relief — this kind of heat map pattern —
  * to Hologram, because it just looks much cooler. The one that we have in Hologram is
  * just blue and kind of boring." So E27's `ramp` → `lookup` pair moved here, keyed on the
- * ACTIVE DEPTH MAP rather than on a picture's luminance: `palette1` is E27's contrast
- * ramp verbatim, and both clouds read it — `coat1` off `pick1`, `wcoat1` off the wall's
- * own `soften2` — at the same uv the carve kernel sampled to place each point. So a
+ * ACTIVE DEPTH MAP rather than on a picture's luminance: `ramp_palette` is E27's contrast
+ * ramp verbatim, and both clouds read it — `lookup_coat` off `switch_pick`, `lookup_wcoat` off the wall's
+ * own `blur_soften2` — at the same uv the carve kernel sampled to place each point. So a
  * mote's colour IS its distance, and the two instances become one continuous thermal
  * field: navy and teal far, magenta through orange near, a white crest on the plateau.
  *
@@ -122,7 +122,7 @@ const WALL_SWEEP = `${String(WALL_BASE)} + op('cycle1').chan.value`;
  * emptied. All three are in the per-node notes below, because "which of them was it" is
  * the part worth keeping.
  *
- * `cut1` STILL DECIDES WHAT IS LIT, and only that: `braid1` takes the palette's rgb and
+ * `depthcut1` STILL DECIDES WHAT IS LIT, and only that: `reorder_braid` takes the palette's rgb and
  * the CUT's alpha, so B189's point cohorts are untouched by every line of this. §B189's
  * follow-up (`2e38f74`) gave `mask` an `apply` mode and DepthCut now carves COLOUR too —
  * which this chain deliberately does not read, because the paint kernel already
@@ -139,33 +139,33 @@ export const hologramDocument = document(
         type: "perlin4d", seed: 11, period: 0.2, harmon: 3, spread: 2, gain: 0.3,
         rough: 0.5, exp: 1.6, amp: 1.0, offset: 0.12, mono: true, aspectcorrect: true,
         speed: 0.03, t4d: 0.41, s4d: 1,
-      }, { label: "bed1" }),
+      }, { label: "noise_bed" }),
       node("orb", "circle", [-2220, -20], {
         mode: "fill", center: [0.5, 0.5], radius: [0.15, 0.15], softness: 0.09,
         fillcolor: [1, 0.62, 0.3, 1], bgcolor: [0, 0, 0, 0], aspectcorrect: true,
-      }, { label: "orb1", parameters: { "center.x": drivenSlot("swayx1", 0.5), "center.y": drivenSlot("swayy1", 0.5) } }),
-      node("swayx", "lfo", [-2220, 260], { shape: "sine", frequency: 0.29, amplitude: 0.28, offset: 0.5, phase: 0 }, { label: "swayx1" }),
-      node("swayy", "lfo", [-2220, 540], { shape: "sine", frequency: 0.19, amplitude: 0.22, offset: 0.5, phase: 0.25 }, { label: "swayy1" }),
-      node("src", "add", [-1920, -160], { opacity: 1 }, { label: "src1" }),
+      }, { label: "circle_orb", parameters: { "center.x": drivenSlot("lfo_swayx", 0.5), "center.y": drivenSlot("lfo_swayy", 0.5) } }),
+      node("swayx", "lfo", [-2220, 260], { shape: "sine", frequency: 0.29, amplitude: 0.28, offset: 0.5, phase: 0 }, { label: "lfo_swayx" }),
+      node("swayy", "lfo", [-2220, 540], { shape: "sine", frequency: 0.19, amplitude: 0.22, offset: 0.5, phase: 0.25 }, { label: "lfo_swayy" }),
+      node("src", "add", [-1920, -160], { opacity: 1 }, { label: "add_src" }),
       /* T972 — the SOURCE switch: flip to 1 and the cloud is WHOEVER IS AT THE CAMERA.
          The shipped default stays the deterministic synthetic performer (a webcam
          cannot gate headlessly, §T715's family), and permission is only ever requested
          when the webcam node actually activates — never on load (E27's precedent). With
          the understudy depth this degrades beautifully: webcam + no model still carves
          a moving cloud of your face from its own luma. */
-      node("cam", "webcam", [-1920, 140], {}, { label: "cam1" }),
-      node("srcpick", "switch", [-1620, -280], { index: 0 }, { label: "srcpick1" }),
+      node("cam", "webcam", [-1920, 140], {}, { label: "webcam1" }),
+      node("srcpick", "switch", [-1620, -280], { index: 0 }, { label: "switch_srcpick" }),
 
       // ---- two depth sources, one switch -------------------------------------------
       /* The understudy: the source's own luma as inverse depth (bright = close), blurred
          so the carve reads a surface rather than film grain. Deterministic — the card
          and every gate see a real volume. */
-      node("flat", "hsv", [-1620, 40], { hueoffset: 0, saturation: 0, value: 1 }, { label: "flat1" }),
-      node("soften", "blur", [-1320, 40], { size: 14, filter: "gaussian", extend: "hold" }, { label: "soften1" }),
+      node("flat", "hsv", [-1620, 40], { hueoffset: 0, saturation: 0, value: 1 }, { label: "hsv_flat1" }),
+      node("soften", "blur", [-1320, 40], { size: 14, filter: "gaussian", extend: "hold" }, { label: "blur_soften1" }),
       /* The ML path (§T715): loads and renders without the model — flat mid-grey, a
-         visibly flat sheet in the orbit, never a failure. Flip pick1 to 1 to use it. */
+         visibly flat sheet in the orbit, never a failure. Flip switch_pick to 1 to use it. */
       node("depth", "depth", [-1620, 280], { model: "accurate" }, { label: "depth1" }),
-      node("pick", "switch", [-1020, 100], { index: 0 }, { label: "pick1" }),
+      node("pick", "switch", [-1020, 100], { index: 0 }, { label: "switch_pick" }),
 
       /* §T977 — the model-less cut, on the COLOUR path: the active depth map mattes the
          subject's picture (soft, luma-thresholded), and the paint kernel now honours
@@ -186,7 +186,7 @@ export const hologramDocument = document(
         threshold: 0.8,
         feather: 0.12,
         invert: 0,
-      }, { label: "cut1" }),
+      }, { label: "depthcut1" }),
 
       // ---- the component, instanced -------------------------------------------------
       node("holo", "component:depthPoints@1", [-720, -60], {
@@ -208,7 +208,7 @@ export const hologramDocument = document(
            `thermal()` is near-white). The knob is not deleted: raise it and you get the
            component's own readout back, which is the comparison the boundary is for. */
         heat: 0,
-      }, { label: "holo1" }),
+      }, { label: "depthpoints_holo1" }),
 
       /* T1201 — THE HEAT MAP, AND IT IS E27's INSTRUMENT KEYED ON DEPTH.
          Owner: "apply the style that we have in Relief — this kind of heat map pattern —
@@ -217,7 +217,7 @@ export const hologramDocument = document(
          WHAT WAS ACTUALLY BLUE, measured before anything was copied. Three things were
          each independently capable of eating every warm hue in the frame, and only one
          of them was the palette:
-           1. `glowm1`/`wallm1` were a cyan and a blue carrier, and §T478's tint
+           1. `material_glowm`/`material_wallm` were a cyan and a blue carrier, and §T478's tint
               MULTIPLIES the material colour per point. A blue carrier cannot produce an
               orange mote whatever the tint says — E27's `phosphor1` is WHITE for exactly
               this reason ("white base means the tint IS the colour"), and that one line
@@ -239,7 +239,7 @@ export const hologramDocument = document(
          luminance because a relief IS its luminance. Here the field is depth.
 
          WHY DEPTH AND NOT LUMINANCE, given the understudy makes them nearly the same
-         number. `pick1` is the ACTIVE depth map — flip it to 1 and it is the ML model —
+         number. `switch_pick` is the ACTIVE depth map — flip it to 1 and it is the ML model —
          so keying the palette there is the choice that survives the switch this example
          exists to demonstrate, and it is the same texture, at the same uv, that the
          carve kernel read to place the point. So palette-index and point-position come
@@ -262,8 +262,8 @@ export const hologramDocument = document(
          B189's threshold: a knob correct in the abstract and dead against this map.
 
          THERE ARE TWO FITS BECAUSE THERE ARE TWO BANDS, and they are two segments of ONE
-         mapping rather than two palettes. `zone1`/`wall1` already partition the cloud at
-         depthN 0.13 — which is map luma 0.72 — and `cut1` zeroes the light of everything
+         mapping rather than two palettes. `range_zone`/`range_wall` already partition the cloud at
+         depthN 0.13 — which is map luma 0.72 — and `depthcut1` zeroes the light of everything
          below 0.68, so the SUBJECT only ever wears map [0.68, 1.00] and the WALL only
          [0.498, 0.72]. A single affine has to spend the whole ramp on one of them: fit it
          to the subject and 80% of the frame crushes into the black foot (measured — that
@@ -271,9 +271,9 @@ export const hologramDocument = document(
          clips flat at the crest. Two segments, meeting AT the partition, spend the ramp
          on both and stay monotone through the join:
 
-           wall     `wcoat1`  2.25 / -0.94 :  0.498 → 0.18 navy … 0.622 → 0.46 teal …
+           wall     `lookup_wcoat`  2.25 / -0.94 :  0.498 → 0.18 navy … 0.622 → 0.46 teal …
                                               0.696 → 0.63 … 0.72 → 0.68 magenta
-           subject  `coat1`   1.06 / -0.06 :  0.68  → 0.66 magenta … 0.90 → 0.89 orange
+           subject  `lookup_coat`   1.06 / -0.06 :  0.68  → 0.66 magenta … 0.90 → 0.89 orange
                                               … 1.00 → 1.00 white crest
 
          Brighter is nearer is hotter, continuously, across BOTH clouds — the two rows
@@ -289,7 +289,7 @@ export const hologramDocument = document(
          the carve clamps the same sample, so its depth is flat there too. Giving it the
          white crest is the reading that agrees with the geometry (a near plane at the
          near plane). Un-flattening it would mean re-ranging the source — which moves the
-         map under `cut1`'s threshold and B189's point cohorts with it, so it is not this
+         map under `depthcut1`'s threshold and B189's point cohorts with it, so it is not this
          task's to do.
 
          AND THE FIT IS STATIC RATHER THAN AUTO-GAINED, which is §V694 read the other way
@@ -297,8 +297,8 @@ export const hologramDocument = document(
          room; here the top is a clipped constant and the part that moves is the FLOOR,
          and §V694 is precisely the rule against driving a subtractive floor from a
          subsampled, one-frame-late reduction. So the fit is a measured constant, written
-         down above, and re-measurable. Flip `pick1` to the ML model and both rows want
-         retuning, exactly as `cut1`'s threshold does — that is what the knobs are for. */
+         down above, and re-measurable. Flip `switch_pick` to the ML model and both rows want
+         retuning, exactly as `depthcut1`'s threshold does — that is what the knobs are for. */
       node("palette", "ramp", [-1620, -580], {
         type: "horizontal", interp: "smooth", phase: 0, period: 1,
         /* E27's stops, verbatim — the one thing here that IS a copy. */
@@ -310,16 +310,16 @@ export const hologramDocument = document(
           { position: 0.9, color: [1, 0.46, 0.32, 1] },
           { position: 1, color: [1, 0.97, 0.9, 1] },
         ],
-      }, { label: "palette1", definitionVersion: 2 }),
+      }, { label: "ramp_palette", definitionVersion: 2 }),
       /* §V920 — THE KEY SET AND WHAT DRIVES IT ARE TAKEN AS A PAIR, and this slot is the
-         one the invariant is about. E27 ships `coat1.offset` as a DRIVEN slot whose static
-         is 0 and whose driver (`cycle1`) has amplitude 0 — so in E27 that 0 is never the
+         one the invariant is about. E27 ships `lookup_coat.offset` as a DRIVEN slot whose static
+         is 0 and whose driver (`lfo_cycle`) has amplitude 0 — so in E27 that 0 is never the
          number that matters, and lifting the key set alone would have shipped
          `offset: 0`: the un-fitted lookup above, the entire frame inside one stop, the
          palette dead on arrival. Exactly E55's `brightness: 0`, one file over.
 
          THE SWEEP IS AN EXPRESSION RATHER THAN A BARE CHANNEL, because the two fits above
-         have DIFFERENT bases and one LFO cannot carry both. `cycle1` therefore oscillates
+         have DIFFERENT bases and one LFO cannot carry both. `lfo_cycle` therefore oscillates
          about ZERO and each lookup adds its own base (E51's `expressionSlot` idiom): the
          drive is shared, the calibration is not. A bare `drivenSlot` here would have
          handed both lookups the same offset and silently collapsed the two-band fit into
@@ -338,20 +338,20 @@ export const hologramDocument = document(
          motion is what separates a thermal field from a tinted picture. */
       node("coat", "lookup", [-1320, -580], {
         channel: "luminance", row: 0.5, scale: 1.06, offset: SUBJECT_BASE,
-      }, { label: "coat1", parameters: { offset: expressionSlot(SUBJECT_SWEEP, SUBJECT_BASE) } }),
+      }, { label: "lookup_coat", parameters: { offset: expressionSlot(SUBJECT_SWEEP, SUBJECT_BASE) } }),
       node("cycle", "lfo", [-1920, -580], {
         shape: "sine", frequency: 0.037, amplitude: 0.05, offset: 0, phase: 0,
-      }, { label: "cycle1" }),
-      /* E27's `braid1`, and it is REQUIRED here rather than decorative: `lookup` returns
+      }, { label: "lfo_cycle" }),
+      /* E27's `reorder_braid`, and it is REQUIRED here rather than decorative: `lookup` returns
          the PALETTE's texel whole (`textureSampleLevel(lookupTexture, …)` — the source's
          alpha is not carried), and this document's alpha is the §T977 cut's COVERAGE.
          Lift the palette in without the braid and every point comes back at coverage 1:
          the background returns, B189's cohorts collapse, and the cut is dead again.
-         So rgb comes from the palette and ALPHA from `cut1`, byte-for-byte — which is why
+         So rgb comes from the palette and ALPHA from `depthcut1`, byte-for-byte — which is why
          the point cohorts (fully cut / fully kept) are unmoved by this whole change. */
       node("braid", "reorder", [-1020, -580], {
         outr: "in1r", outg: "in1g", outb: "in1b", outa: "in2a",
-      }, { label: "braid1" }),
+      }, { label: "reorder_braid" }),
 
       /* T983 — the subject's zone: keep the near band of the cloud, park the rest. The
          cut happens ON the cloud, where depthN is an exact per-point attribute (§T973),
@@ -359,26 +359,26 @@ export const hologramDocument = document(
          work"). from/to are runtime knobs: drag `to` and the room recedes live. */
       node("zone", "pointRange", [-720, 460], {
         attribute: "depthN", component: "x", from: 0, to: 0.13, mode: "inside",
-      }, { label: "zone1" }),
+      }, { label: "range_zone" }),
 
       // ---- the backdrop wall (§T979): the SAME component, instanced twice -----------
-      /* The synthetic performer stops being a fallback and becomes a LAYER: holo2 reads
-         it ALWAYS (its own luma chain for depth), so flipping srcpick1 to the webcam
+      /* The synthetic performer stops being a fallback and becomes a LAYER: depthpoints_holo2 reads
+         it ALWAYS (its own luma chain for depth), so flipping switch_srcpick to the webcam
          keeps the cloud wall standing behind you instead of throwing it away. */
-      node("flat2", "hsv", [-1620, 760], { hueoffset: 0, saturation: 0, value: 1 }, { label: "flat2" }),
-      node("soften2", "blur", [-1320, 760], { size: 14, filter: "gaussian", extend: "hold" }, { label: "soften2" }),
+      node("flat2", "hsv", [-1620, 760], { hueoffset: 0, saturation: 0, value: 1 }, { label: "hsv_flat2" }),
+      node("soften2", "blur", [-1320, 760], { size: 14, filter: "gaussian", extend: "hold" }, { label: "blur_soften2" }),
       node("holo2", "component:depthPoints@1", [-1020, 760], {
         /* A deeper stage than the subject's (2.0–4.4 against 0.7–2.6): the wall stands
            BEHIND the subject in world space, and the orbit's parallax separates them —
            the thing a 2D key cannot do (§T979). T1201: `heat` 0 for the same reason the
-           subject's is — the wall wears the SAME palette, read through `wcoat1` off its
+           subject's is — the wall wears the SAME palette, read through `lookup_wcoat` off its
            own depth chain, so the two clouds are one continuous thermal field instead of
            two differently-tinted layers. Its drawn band (depthN 0.166–0.314, the
            complement of the subject's zone) lands in the palette's navy-through-magenta
            foot, so it still reads as an environment rather than a second performer — by
            WHERE IT IS IN Z now, not by having been given a bluer carrier.
 
-           T1201 — AND IT IS DENSE ENOUGH TO BE A WALL NOW (120 → 176, and `wdots1` 0.005
+           T1201 — AND IT IS DENSE ENOUGH TO BE A WALL NOW (120 → 176, and `geometry_wdots` 0.005
            → 0.007). This is the one change here that is not about colour, and it is here
            because a palette can only paint what is drawn: at 120 the backdrop was 14400
            motes with black between every one of them, and the fitted palette rendered as
@@ -395,28 +395,28 @@ export const hologramDocument = document(
         displace: 1.2,
         gain: 0.62,
         heat: 0,
-      }, { label: "holo2" }),
-      /* The wall's own read of the same palette (T1201). Keyed on `soften2` — holo2's own
-         depth map, never `pick1` — so §T979's rule holds unchanged: the backdrop depends
+      }, { label: "depthpoints_holo2" }),
+      /* The wall's own read of the same palette (T1201). Keyed on `blur_soften2` — depthpoints_holo2's own
+         depth map, never `switch_pick` — so §T979's rule holds unchanged: the backdrop depends
          on the synthetic performer and on nothing the source switch can take away.
          NO BRAID HERE, and that is measured rather than assumed: the wall has no cut, and
-         `src1`'s alpha (an additive composite's sum) already reads >= 1 at every one of
-         holo2's live points — all 30976 publish tint.a === 1, before and after — so the
+         `add_src`'s alpha (an additive composite's sum) already reads >= 1 at every one of
+         depthpoints_holo2's live points — all 30976 publish tint.a === 1, before and after — so the
          ramp's opaque alpha is the identical coverage. A reorder here would be a node
          that provably does nothing.
 
-         STRAIGHT ALPHA, both here and at `braid1` (§B189's convention, stated in
+         STRAIGHT ALPHA, both here and at `reorder_braid` (§B189's convention, stated in
          `composite.wgsl.ts`): the ramp's rgb is the colour a fully covered mote wears, NOT
          colour times coverage. The paint kernel is what multiplies by coverage, once. */
       node("wcoat", "lookup", [-1320, 1040], {
         channel: "luminance", row: 0.5, scale: 2.25, offset: WALL_BASE,
-      }, { label: "wcoat1", parameters: { offset: expressionSlot(WALL_SWEEP, WALL_BASE) } }),
+      }, { label: "lookup_wcoat", parameters: { offset: expressionSlot(WALL_SWEEP, WALL_BASE) } }),
       /* T983's other mode, SAME range: the wall keeps what the subject's zone drops.
          Inside + outside over one range partition exactly (the boundary belongs to
          inside), so between the two instances no depth band is drawn twice or lost. */
       node("wall", "pointRange", [-720, 760], {
         attribute: "depthN", component: "x", from: 0, to: 0.13, mode: "outside",
-      }, { label: "wall1" }),
+      }, { label: "range_wall" }),
 
       // ---- styling and the stage ----------------------------------------------------
       /* T1201 — WHITE, and this is the line the owner's complaint was actually about.
@@ -424,39 +424,39 @@ export const hologramDocument = document(
          scaled every red channel by 0.55 and could not draw an orange mote at any tint:
          the palette below would have been invisible through it. E27's `phosphor1` is
          white for exactly this reason — a white base means the tint IS the colour. */
-      node("glowm", "materialUnlit", [-420, -300], { color: [1, 1, 1, 1] }, { label: "glowm1" }),
+      node("glowm", "materialUnlit", [-420, -300], { color: [1, 1, 1, 1] }, { label: "material_glowm" }),
       node("dots", "geometry", [-420, -60], {
         mode: "points", scale: 0.0068, soft: 1, spherical: false, blend: "additive",
-        material: "glowm1", tint: [1, 1, 1, 1],
-      }, { label: "dots1", parameters: {
+        material: "material_glowm", tint: [1, 1, 1, 1],
+      }, { label: "geometry_dots", parameters: {
         /* The component's per-point colour, mapped — without this every mote draws the
            static white and the retexturing is invisible. */
         tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
       } }),
       /* The wall's motes: finer and dimmer — light density behind the subject. T1201:
-         white for the same reason as `glowm1`, so the wall's place in the palette is what
+         white for the same reason as `material_glowm`, so the wall's place in the palette is what
          makes it cool, not a carrier that was overriding the paint. Its subordination is
-         where it always belonged: `scale` 0.007 against `dots1`'s 0.0068 on a stage
-         nearly twice as far away, and holo2's `gain` 0.62 against 0.55. */
-      node("wallm", "materialUnlit", [-120, 760], { color: [1, 1, 1, 1] }, { label: "wallm1" }),
+         where it always belonged: `scale` 0.007 against `geometry_dots`'s 0.0068 on a stage
+         nearly twice as far away, and depthpoints_holo2's `gain` 0.62 against 0.55. */
+      node("wallm", "materialUnlit", [-120, 760], { color: [1, 1, 1, 1] }, { label: "material_wallm" }),
       node("wdots", "geometry", [-420, 760], {
         mode: "points", scale: 0.007, soft: 1, spherical: false, blend: "additive",
-        material: "wallm1", tint: [1, 1, 1, 1],
-      }, { label: "wdots1", parameters: {
+        material: "material_wallm", tint: [1, 1, 1, 1],
+      }, { label: "geometry_wdots", parameters: {
         tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
       } }),
       node("eye", "camera", [-420, 180], {
         eye: [0, 0.85, 3.2], lookAt: [0, -0.1, 0], fov: 40, near: 0.1, far: 40, ortho: false,
-      }, { label: "eye1", parameters: { "eye.x": drivenSlot("orbit1", 0) } }),
-      node("orbit", "lfo", [-420, 420], { shape: "sine", frequency: 0.03, amplitude: 0.9, offset: 0, phase: 0 }, { label: "orbit1" }),
+      }, { label: "camera_eye", parameters: { "eye.x": drivenSlot("lfo_orbit", 0) } }),
+      node("orbit", "lfo", [-420, 420], { shape: "sine", frequency: 0.03, amplitude: 0.9, offset: 0, phase: 0 }, { label: "lfo_orbit" }),
       node("shot", "render", [-120, -60], {
-        scenes: "dots1 wdots1", camera: "eye1", lights: "",
+        scenes: "geometry_dots geometry_wdots", camera: "camera_eye", lights: "",
         ambientColor: [0, 0, 0, 1], ambientIntensity: 0,
         background: [0.008, 0.01, 0.016, 1],
         /* T939: thin bright motes on black — supersampling shades them. */
         antialias: "ssaa",
-      }, { label: "shot1" }),
-      node("out", "output", [180, -60], {}, { label: "out1" }),
+      }, { label: "render_shot" }),
+      node("out", "output", [180, -60], {}, { label: "output1" }),
     ],
     [
       edge("e-bed-src", ["bed", "out"], ["src", "in1"]),
@@ -474,14 +474,14 @@ export const hologramDocument = document(
          against the flattened plan's texture bindings to be trusted at all. */
       /* §T977, T1194: the cut's two texture ports, likewise — `depth` is the MATTE's depth
          map and `picture` the thing being masked, where they shipped as `input`/`input_2`.
-         The ACTIVE depth map drives the matte, so the cut follows whichever source pick1
+         The ACTIVE depth map drives the matte, so the cut follows whichever source switch_pick
          selects — understudy or ML. */
       edge("e-pick-cut", ["pick", "out"], ["cut", "depth"]),
       edge("e-srcpick-cut", ["srcpick", "out"], ["cut", "picture"]),
       /* T1201 — the colour port carries the HEAT MAP now, braided with the cut's coverage.
-         `coat1` reads the ACTIVE depth map (`pick1`, the same texture at the same uv the
-         carve kernel placed the point from) through `palette1`; `braid1` puts that in rgb
-         and `cut1`'s alpha in a. Only `cut1`'s ALPHA is read from here on — its rgb was
+         `lookup_coat` reads the ACTIVE depth map (`switch_pick`, the same texture at the same uv the
+         carve kernel placed the point from) through `ramp_palette`; `reorder_braid` puts that in rgb
+         and `depthcut1`'s alpha in a. Only `depthcut1`'s ALPHA is read from here on — its rgb was
          the source picture, which the palette has replaced. */
       edge("e-pick-coat", ["pick", "out"], ["coat", "source"]),
       edge("e-palette-coat", ["palette", "out"], ["coat", "lookup"]),

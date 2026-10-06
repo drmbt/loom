@@ -394,7 +394,7 @@
       "aimB": {
         "definitionVersion": 1,
         "id": "aimB",
-        "label": "aimB1",
+        "label": "kernel_aimB",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 180,
@@ -403,7 +403,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('clock1').chan.barPhase"
+                "source": "op('switch_clock').chan.barPhase"
               },
               "static": {
                 "kind": "static",
@@ -422,7 +422,7 @@
       "beat": {
         "definitionVersion": 1,
         "id": "beat",
-        "label": "beat1",
+        "label": "pattern_beat",
         "parameters": {
           "amount": 1,
           "bpm": 122
@@ -436,7 +436,7 @@
       "camA": {
         "definitionVersion": 1,
         "id": "camA",
-        "label": "camA1",
+        "label": "camera_A",
         "parameters": {
           "eye": [
             0,
@@ -447,7 +447,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbAx1').chan.value"
+                "source": "op('lfo_orbAx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -460,7 +460,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('orbAz1').chan.value"
+                "source": "op('lfo_orbAz').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -484,7 +484,7 @@
       "camB": {
         "definitionVersion": 1,
         "id": "camB",
-        "label": "camB1",
+        "label": "camera_B",
         "parameters": {
           "eye": [
             0,
@@ -506,7 +506,7 @@
       "castB": {
         "definitionVersion": 1,
         "id": "castB",
-        "label": "castB1",
+        "label": "ray_castB",
         "parameters": {
           "direction": [
             0,
@@ -528,7 +528,7 @@
       "clock": {
         "definitionVersion": 1,
         "id": "clock",
-        "label": "clock1",
+        "label": "switch_clock",
         "parameters": {
           "index": 0
         },
@@ -541,9 +541,9 @@
       "dots": {
         "definitionVersion": 1,
         "id": "dots",
-        "label": "dots1",
+        "label": "geometry_dots",
         "parameters": {
-          "material": "sparkA1",
+          "material": "material_sparkA",
           "mode": "instances",
           "scale": 0.018,
           "shape": "octahedron",
@@ -575,7 +575,7 @@
       "fanB": {
         "definitionVersion": 1,
         "id": "fanB",
-        "label": "fanB1",
+        "label": "line_fanB",
         "parameters": {
           "count": 180,
           "sizeX": 3.4
@@ -589,7 +589,7 @@
       "glim": {
         "definitionVersion": 1,
         "id": "glim",
-        "label": "glim1",
+        "label": "limit_glitch",
         "parameters": {
           "maximum": 1,
           "minimum": 0
@@ -603,7 +603,7 @@
       "gth": {
         "definitionVersion": 1,
         "id": "gth",
-        "label": "gth1",
+        "label": "math_glitchthreshold",
         "parameters": {
           "operand": -0.03,
           "operation": "add"
@@ -617,7 +617,7 @@
       "henv": {
         "definitionVersion": 1,
         "id": "henv",
-        "label": "henv1",
+        "label": "lag_high",
         "parameters": {
           "lag": 0.03,
           "releaseRatio": 10
@@ -631,7 +631,7 @@
       "hglitch": {
         "definitionVersion": 1,
         "id": "hglitch",
-        "label": "hd1",
+        "label": "math_glitchgain",
         "parameters": {
           "operand": 8,
           "operation": "multiply"
@@ -645,7 +645,7 @@
       "hitsB": {
         "definitionVersion": 1,
         "id": "hitsB",
-        "label": "hitsB1",
+        "label": "kernel_hitsB",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"hitPosition\",\"type\":\"vec3f\",\"default\":[0,0,0]}]",
           "capacity": 180,
@@ -654,7 +654,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('henv1').chan.high"
+                "source": "op('lag_high').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -673,7 +673,7 @@
       "hrad": {
         "definitionVersion": 1,
         "id": "hrad",
-        "label": "hm1",
+        "label": "math_radiusgain",
         "parameters": {
           "operand": 0.32,
           "operation": "multiply"
@@ -687,7 +687,7 @@
       "hsub": {
         "definitionVersion": 1,
         "id": "hsub",
-        "label": "hs1",
+        "label": "math_highrest",
         "parameters": {
           "operand": -0.381,
           "operation": "add"
@@ -701,9 +701,9 @@
       "impactsB": {
         "definitionVersion": 1,
         "id": "impactsB",
-        "label": "impactsB1",
+        "label": "geometry_impactsB",
         "parameters": {
-          "material": "sparkB1",
+          "material": "material_sparkB",
           "mode": "instances",
           "scale": 0.05,
           "shape": "octahedron",
@@ -748,7 +748,7 @@
       "lbreath": {
         "definitionVersion": 1,
         "id": "lbreath",
-        "label": "ld1",
+        "label": "math_breath",
         "parameters": {
           "operand": 1.4,
           "operation": "multiply"
@@ -762,7 +762,7 @@
       "lenv": {
         "definitionVersion": 1,
         "id": "lenv",
-        "label": "lenv1",
+        "label": "lag_low",
         "parameters": {
           "lag": 0.05,
           "releaseRatio": 5
@@ -776,10 +776,10 @@
       "links": {
         "definitionVersion": 1,
         "id": "links",
-        "label": "links1",
+        "label": "geometry_links",
         "parameters": {
           "endpoint": "tip",
-          "material": "sparkA1",
+          "material": "material_sparkA",
           "mode": "beam",
           "scale": 0.003,
           "taper": 0,
@@ -811,7 +811,7 @@
       "lsub": {
         "definitionVersion": 1,
         "id": "lsub",
-        "label": "ls1",
+        "label": "math_lowrest",
         "parameters": {
           "operand": -0.712,
           "operation": "add"
@@ -825,7 +825,7 @@
       "mix": {
         "definitionVersion": 1,
         "id": "mix",
-        "label": "mix1",
+        "label": "cross_mix",
         "parameters": {
           "cross": {
             "bindings": {
@@ -850,7 +850,7 @@
       "orbAx": {
         "definitionVersion": 1,
         "id": "orbAx",
-        "label": "orbAx1",
+        "label": "lfo_orbAx",
         "parameters": {
           "amplitude": 0.7,
           "frequency": 0.013,
@@ -867,7 +867,7 @@
       "orbAz": {
         "definitionVersion": 1,
         "id": "orbAz",
-        "label": "orbAz1",
+        "label": "lfo_orbAz",
         "parameters": {
           "amplitude": 0.7,
           "frequency": 0.013,
@@ -884,7 +884,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": -200,
@@ -895,7 +895,7 @@
       "padd": {
         "definitionVersion": 1,
         "id": "padd",
-        "label": "pal1",
+        "label": "math_palette",
         "parameters": {
           "operand": -160,
           "operation": "add"
@@ -909,13 +909,13 @@
       "paint": {
         "definitionVersion": 1,
         "id": "paint",
-        "label": "paint1",
+        "label": "hsv_paint",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('pal1').chan.bar"
+                "source": "op('math_palette').chan.bar"
               },
               "static": {
                 "kind": "static",
@@ -936,7 +936,7 @@
       "pmul": {
         "definitionVersion": 1,
         "id": "pmul",
-        "label": "pm1",
+        "label": "math_palettegain",
         "parameters": {
           "operand": 320,
           "operation": "multiply"
@@ -950,7 +950,7 @@
       "prox": {
         "definitionVersion": 1,
         "id": "prox",
-        "label": "prox1",
+        "label": "proximity1",
         "parameters": {
           "falloff": 2,
           "neighbors": 2,
@@ -958,7 +958,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('rad1').chan.high"
+                "source": "op('math_radius').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -977,7 +977,7 @@
       "pstep": {
         "definitionVersion": 1,
         "id": "pstep",
-        "label": "pstep1",
+        "label": "step_palette",
         "parameters": {
           "every": 4,
           "maximum": 1,
@@ -993,7 +993,7 @@
       "radd": {
         "definitionVersion": 1,
         "id": "radd",
-        "label": "rad1",
+        "label": "math_radius",
         "parameters": {
           "operand": 0.12,
           "operation": "add"
@@ -1007,10 +1007,10 @@
       "raysB": {
         "definitionVersion": 1,
         "id": "raysB",
-        "label": "raysB1",
+        "label": "geometry_raysB",
         "parameters": {
           "endpoint": "hitPosition",
-          "material": "sparkB1",
+          "material": "material_sparkB",
           "mode": "beam",
           "scale": 0.008,
           "taper": 0.15,
@@ -1042,7 +1042,7 @@
       "seedA": {
         "definitionVersion": 1,
         "id": "seedA",
-        "label": "seedA1",
+        "label": "sphere_seedA",
         "parameters": {
           "count": 600,
           "radius": 1
@@ -1056,11 +1056,11 @@
       "shotA": {
         "definitionVersion": 1,
         "id": "shotA",
-        "label": "shotA1",
+        "label": "render_shotA",
         "parameters": {
-          "camera": "camA1",
+          "camera": "camera_A",
           "lights": "",
-          "scenes": "dots1 links1"
+          "scenes": "geometry_dots geometry_links"
         },
         "position": {
           "x": -1400,
@@ -1071,11 +1071,11 @@
       "shotB": {
         "definitionVersion": 1,
         "id": "shotB",
-        "label": "shotB1",
+        "label": "render_shotB",
         "parameters": {
-          "camera": "camB1",
+          "camera": "camera_B",
           "lights": "",
-          "scenes": "impactsB1 raysB1"
+          "scenes": "geometry_impactsB geometry_raysB"
         },
         "position": {
           "x": -1100,
@@ -1086,7 +1086,7 @@
       "sightB": {
         "definitionVersion": 1,
         "id": "sightB",
-        "label": "sightB1",
+        "label": "kernel_sightB",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"hitPosition\",\"type\":\"vec3f\",\"default\":[0,0,0]}]",
           "capacity": 180,
@@ -1095,7 +1095,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('henv1').chan.high"
+                "source": "op('lag_high').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -1114,7 +1114,7 @@
       "slim": {
         "definitionVersion": 1,
         "id": "slim",
-        "label": "sl1",
+        "label": "limit_shot",
         "parameters": {
           "maximum": 1,
           "minimum": 0
@@ -1128,7 +1128,7 @@
       "smul": {
         "definitionVersion": 1,
         "id": "smul",
-        "label": "sm1",
+        "label": "math_shotgain",
         "parameters": {
           "operand": 12,
           "operation": "multiply"
@@ -1142,7 +1142,7 @@
       "sparkA": {
         "definitionVersion": 1,
         "id": "sparkA",
-        "label": "sparkA1",
+        "label": "material_sparkA",
         "parameters": {
           "color": [
             1,
@@ -1160,7 +1160,7 @@
       "sparkB": {
         "definitionVersion": 1,
         "id": "sparkB",
-        "label": "sparkB1",
+        "label": "material_sparkB",
         "parameters": {
           "color": [
             1,
@@ -1178,13 +1178,13 @@
       "splice": {
         "definitionVersion": 1,
         "id": "splice",
-        "label": "spliceP1",
+        "label": "wgsl_spliceP",
         "parameters": {
           "amount": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('glim1').chan.high"
+                "source": "op('limit_glitch').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -1204,7 +1204,7 @@
       "ssub": {
         "definitionVersion": 1,
         "id": "ssub",
-        "label": "ss1",
+        "label": "math_shotbias",
         "parameters": {
           "operand": -5.5,
           "operation": "add"
@@ -1234,7 +1234,7 @@
       "swarm": {
         "definitionVersion": 1,
         "id": "swarm",
-        "label": "swarm1",
+        "label": "kernel_swarm",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]}]",
           "capacity": 600,
@@ -1243,7 +1243,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('ld1').chan.low"
+                "source": "op('math_breath').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -1256,7 +1256,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('henv1').chan.high"
+                "source": "op('lag_high').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -1275,7 +1275,7 @@
       "terrainB": {
         "definitionVersion": 1,
         "id": "terrainB",
-        "label": "terrainB1",
+        "label": "noise_terrainB",
         "parameters": {
           "amp": 1,
           "aspectcorrect": false,

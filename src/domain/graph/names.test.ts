@@ -3,6 +3,7 @@ import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import {
   countNodeNameReferences,
+  freeRoleName,
   nameBaseFor,
   nodeByName,
   resolveRename,
@@ -56,6 +57,20 @@ describe("naming (§V129)", () => {
     const graph = graphWith({ a: { label: "noise1" }, b: {} });
     expect(nodeByName(graph, "noise1")).toBe("a");
     expect(nodeByName(graph, "nope")).toBeUndefined();
+  });
+
+  /**
+   * T1593b: a node the APP makes for a purpose is named `kind_role`, so "Control from
+   * Panel" does not put a bare `brightness` on the canvas the day after the convention.
+   */
+  it("names an app-made node by its kind and its purpose, numbered when taken", () => {
+    const none = () => false;
+    expect(freeRoleName("slider", "brightness", none)).toBe("slider_brightness");
+    expect(freeRoleName("valueCount", "midi", none)).toBe("count_midi");
+    // The purpose is free text (a parameter's label) and is cleaned into a role.
+    expect(freeRoleName("xyPad", "pin top right", none)).toBe("xypad_pin_top_right");
+    const taken = new Set(["slider_brightness", "slider_brightness1"]);
+    expect(freeRoleName("slider", "brightness", (name) => taken.has(name))).toBe("slider_brightness2");
   });
 });
 

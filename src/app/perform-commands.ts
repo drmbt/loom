@@ -1,5 +1,7 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
+import { nodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * Perform windows, as bus commands (§T1391b, §V307).
@@ -54,6 +56,7 @@ export function registerPerformCommands(bus: LoomBus): ReturnType<typeof perform
   if (!bus.hasCommand("perform.toggle")) {
     bus.registerCommand({
       name: "perform.toggle",
+      inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
       description:
         "Open the perform windows of the selected Window Out nodes (every one when none is selected), or close them if they are all open.",
       handler: (input, context) => {

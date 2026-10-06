@@ -14,7 +14,7 @@ import {
   storedStaticValue,
   withMode,
 } from "@domain/parameters/slots.ts";
-import { nodeNames, renumberedName, uniqueNodeName } from "@domain/graph/names.ts";
+import { freeRoleName, nodeNames, uniqueNodeName } from "@domain/graph/names.ts";
 import { boxesOverlap, nodeBox, NODE_WIDTH } from "@domain/graph/node-box.ts";
 import { CONTROL_WIDGET_TYPES, controlChannel, controlNameOf, panelTitle } from "@nodes/definitions/controls.ts";
 import { joinPanelOperations } from "./panel-join.ts";
@@ -250,7 +250,8 @@ const NO_CONTROL_REASON =
  * - number → Slider with the parameter's own min/max/step and its current value;
  *   boolean → Toggle in its current state; 2-vector → XY Pad, both components bound.
  * - caption = the parameter's label, channel = an identifier from it, node name = the
- *   channel (renumbered when taken, §V129), so the binding reads `op('brightness').chan.brightness`.
+ *   control's kind and the channel (`slider_brightness`, T1593b; renumbered when taken,
+ *   §V129), so the binding reads `op('slider_brightness').chan.brightness`.
  * - the Panel: `panelId` when given; else the document's only Panel; else a new one
  *   titled "Controls". Several Panels and none named is refused — there is no one answer.
  * - `catalogue`: the component catalogue (`presetCatalogueHolderFor`), so placement and the
@@ -286,7 +287,9 @@ export function controlFromParameterPlan(
   const panelName = panel === null ? uniqueNodeName(graph as GraphDocument, "panel") : null;
   if (panelName !== null) taken.add(panelName);
   const channel = channelFromLabel(definition.label || key);
-  const name = taken.has(channel) ? renumberedName(channel, (candidate) => taken.has(candidate)) : channel;
+  // T1593b: the node's name carries its kind (`slider_brightness`); the CHANNEL it
+  // publishes stays the bare word, so the read is `op('slider_brightness').chan.brightness`.
+  const name = freeRoleName(type, channel, (candidate) => taken.has(candidate));
   const read = (published: string) => controlReadSource(name, published);
   const stored = node.parameters[key];
 

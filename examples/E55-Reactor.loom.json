@@ -499,7 +499,7 @@
       "arm": {
         "definitionVersion": 1,
         "id": "arm",
-        "label": "arm1",
+        "label": "math_arm",
         "parameters": {
           "operand": 1,
           "operation": "minimum"
@@ -513,7 +513,7 @@
       "armc": {
         "definitionVersion": 1,
         "id": "armc",
-        "label": "armc1",
+        "label": "limit_armc",
         "parameters": {
           "maximum": 1,
           "minimum": 0
@@ -527,7 +527,7 @@
       "armt": {
         "definitionVersion": 1,
         "id": "armt",
-        "label": "armt1",
+        "label": "timer_armt",
         "parameters": {
           "delay": 3,
           "speed": 1
@@ -541,7 +541,7 @@
       "barb": {
         "definitionVersion": 1,
         "id": "barb",
-        "label": "barb1",
+        "label": "math_barb",
         "parameters": {
           "operand": -0.12,
           "operation": "add"
@@ -555,7 +555,7 @@
       "barx": {
         "definitionVersion": 1,
         "id": "barx",
-        "label": "barx1",
+        "label": "math_barx",
         "parameters": {
           "operand": 0.25,
           "operation": "multiply"
@@ -569,7 +569,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "noise_bed",
         "parameters": {
           "amp": 0.1,
           "offset": 0.04,
@@ -585,7 +585,7 @@
       "blowb": {
         "definitionVersion": 1,
         "id": "blowb",
-        "label": "blowb1",
+        "label": "math_blowb",
         "parameters": {
           "operand": -0.4,
           "operation": "add"
@@ -599,7 +599,7 @@
       "blowx": {
         "definitionVersion": 1,
         "id": "blowx",
-        "label": "blowx1",
+        "label": "math_blowx",
         "parameters": {
           "operand": 11,
           "operation": "multiply"
@@ -643,7 +643,7 @@
       "clamp": {
         "definitionVersion": 1,
         "id": "clamp",
-        "label": "clamp1",
+        "label": "limit_clamp",
         "parameters": {
           "high": 8,
           "low": 0,
@@ -658,7 +658,7 @@
       "cut": {
         "definitionVersion": 1,
         "id": "cut",
-        "label": "cut1",
+        "label": "level_cut",
         "parameters": {
           "blacklevel": 0.45,
           "brightness": 1,
@@ -677,7 +677,7 @@
       "drop": {
         "definitionVersion": 1,
         "id": "drop",
-        "label": "drop1",
+        "label": "slope_drop",
         "parameters": {},
         "position": {
           "x": -900,
@@ -688,7 +688,7 @@
       "dropb": {
         "definitionVersion": 1,
         "id": "dropb",
-        "label": "dropb1",
+        "label": "math_dropb",
         "parameters": {
           "operand": -2.43,
           "operation": "add"
@@ -702,7 +702,7 @@
       "dropc": {
         "definitionVersion": 1,
         "id": "dropc",
-        "label": "dropc1",
+        "label": "limit_dropc",
         "parameters": {
           "maximum": 1,
           "minimum": 0
@@ -716,7 +716,7 @@
       "dropx": {
         "definitionVersion": 1,
         "id": "dropx",
-        "label": "dropx1",
+        "label": "math_dropx",
         "parameters": {
           "operand": -28.6,
           "operation": "multiply"
@@ -730,7 +730,7 @@
       "env": {
         "definitionVersion": 1,
         "id": "env",
-        "label": "env1",
+        "label": "lag_env1",
         "parameters": {
           "lag": 0.08
         },
@@ -743,7 +743,7 @@
       "env2": {
         "definitionVersion": 1,
         "id": "env2",
-        "label": "env2",
+        "label": "lag_env2",
         "parameters": {
           "lag": 0.35
         },
@@ -756,7 +756,7 @@
       "env3": {
         "definitionVersion": 1,
         "id": "env3",
-        "label": "env3",
+        "label": "lag_env3",
         "parameters": {
           "lag": 0.7
         },
@@ -769,14 +769,14 @@
       "gain": {
         "definitionVersion": 1,
         "id": "gain",
-        "label": "gain1",
+        "label": "level_gain1",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('blowb1').chan.level"
+                "source": "op('math_blowb').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -800,7 +800,7 @@
       "gain2": {
         "definitionVersion": 1,
         "id": "gain2",
-        "label": "gain2",
+        "label": "level_gain2",
         "parameters": {
           "blacklevel": 0,
           "brightness": 0.6,
@@ -819,7 +819,7 @@
       "gapb": {
         "definitionVersion": 1,
         "id": "gapb",
-        "label": "gapb1",
+        "label": "math_gapb",
         "parameters": {
           "operand": 0.16,
           "operation": "add"
@@ -833,7 +833,7 @@
       "gapx": {
         "definitionVersion": 1,
         "id": "gapx",
-        "label": "gapx1",
+        "label": "math_gapx",
         "parameters": {
           "operand": 0.2,
           "operation": "multiply"
@@ -847,7 +847,7 @@
       "grade": {
         "definitionVersion": 1,
         "id": "grade",
-        "label": "grade1",
+        "label": "hsv_grade",
         "parameters": {
           "hueoffset": 0,
           "saturation": 1.1,
@@ -862,13 +862,13 @@
       "haze": {
         "definitionVersion": 1,
         "id": "haze",
-        "label": "haze1",
+        "label": "wgsl_haze",
         "parameters": {
           "blocked": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.blocked"
+                "source": "op('wgsl_reactor').par.blocked"
               },
               "static": {
                 "kind": "static",
@@ -881,7 +881,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.coreGain"
+                "source": "op('wgsl_reactor').par.coreGain"
               },
               "static": {
                 "kind": "static",
@@ -894,7 +894,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.distance"
+                "source": "op('wgsl_reactor').par.distance"
               },
               "static": {
                 "kind": "static",
@@ -907,7 +907,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.divisions"
+                "source": "op('wgsl_reactor').par.divisions"
               },
               "static": {
                 "kind": "static",
@@ -920,7 +920,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.frameWidth"
+                "source": "op('wgsl_reactor').par.frameWidth"
               },
               "static": {
                 "kind": "static",
@@ -933,7 +933,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.haze"
+                "source": "op('wgsl_reactor').par.haze"
               },
               "static": {
                 "kind": "static",
@@ -946,7 +946,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.laserCount"
+                "source": "op('wgsl_reactor').par.laserCount"
               },
               "static": {
                 "kind": "static",
@@ -959,7 +959,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.laserGain"
+                "source": "op('wgsl_reactor').par.laserGain"
               },
               "static": {
                 "kind": "static",
@@ -972,7 +972,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.layers"
+                "source": "op('wgsl_reactor').par.layers"
               },
               "static": {
                 "kind": "static",
@@ -985,7 +985,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.morph"
+                "source": "op('wgsl_reactor').par.morph"
               },
               "static": {
                 "kind": "static",
@@ -998,7 +998,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.orbit"
+                "source": "op('wgsl_reactor').par.orbit"
               },
               "static": {
                 "kind": "static",
@@ -1011,7 +1011,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.shellGap"
+                "source": "op('wgsl_reactor').par.shellGap"
               },
               "static": {
                 "kind": "static",
@@ -1024,7 +1024,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.shieldInner"
+                "source": "op('wgsl_reactor').par.shieldInner"
               },
               "static": {
                 "kind": "static",
@@ -1037,7 +1037,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.shieldOuter"
+                "source": "op('wgsl_reactor').par.shieldOuter"
               },
               "static": {
                 "kind": "static",
@@ -1051,7 +1051,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.spin"
+                "source": "op('wgsl_reactor').par.spin"
               },
               "static": {
                 "kind": "static",
@@ -1064,7 +1064,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.stations"
+                "source": "op('wgsl_reactor').par.stations"
               },
               "static": {
                 "kind": "static",
@@ -1077,7 +1077,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.strutDepth"
+                "source": "op('wgsl_reactor').par.strutDepth"
               },
               "static": {
                 "kind": "static",
@@ -1090,7 +1090,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.swell"
+                "source": "op('wgsl_reactor').par.swell"
               },
               "static": {
                 "kind": "static",
@@ -1103,7 +1103,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.travel"
+                "source": "op('wgsl_reactor').par.travel"
               },
               "static": {
                 "kind": "static",
@@ -1116,7 +1116,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('reactor1').par.wobble"
+                "source": "op('wgsl_reactor').par.wobble"
               },
               "static": {
                 "kind": "static",
@@ -1139,7 +1139,7 @@
       "highb": {
         "definitionVersion": 1,
         "id": "highb",
-        "label": "highb1",
+        "label": "math_highb",
         "parameters": {
           "operand": -0.05,
           "operation": "add"
@@ -1153,7 +1153,7 @@
       "highx": {
         "definitionVersion": 1,
         "id": "highx",
-        "label": "highx1",
+        "label": "math_highx",
         "parameters": {
           "operand": 1.5,
           "operation": "multiply"
@@ -1167,7 +1167,7 @@
       "levelb": {
         "definitionVersion": 1,
         "id": "levelb",
-        "label": "levelb1",
+        "label": "math_levelb",
         "parameters": {
           "operand": 0.5,
           "operation": "add"
@@ -1181,7 +1181,7 @@
       "levelx": {
         "definitionVersion": 1,
         "id": "levelx",
-        "label": "levelx1",
+        "label": "math_levelx",
         "parameters": {
           "operand": 4.2,
           "operation": "multiply"
@@ -1195,7 +1195,7 @@
       "lowb": {
         "definitionVersion": 1,
         "id": "lowb",
-        "label": "lowb1",
+        "label": "math_lowb",
         "parameters": {
           "operand": -3,
           "operation": "add"
@@ -1209,7 +1209,7 @@
       "lowx": {
         "definitionVersion": 1,
         "id": "lowx",
-        "label": "lowx1",
+        "label": "math_lowx",
         "parameters": {
           "operand": 4.7,
           "operation": "multiply"
@@ -1223,7 +1223,7 @@
       "music": {
         "definitionVersion": 1,
         "id": "music",
-        "label": "music1",
+        "label": "pattern_music",
         "parameters": {
           "amount": 1,
           "bpm": 112
@@ -1237,7 +1237,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "filmic"
         },
@@ -1250,7 +1250,7 @@
       "reactor": {
         "definitionVersion": 1,
         "id": "reactor",
-        "label": "reactor1",
+        "label": "wgsl_reactor",
         "parameters": {
           "blocked": 0.1,
           "coreColor": [
@@ -1263,7 +1263,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('levelb1').chan.level"
+                "source": "op('math_levelb').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -1286,7 +1286,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('highb1').chan.highMid"
+                "source": "op('math_highb').chan.highMid"
               },
               "static": {
                 "kind": "static",
@@ -1305,7 +1305,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('barb1').chan.low"
+                "source": "op('math_barb').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -1329,7 +1329,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('lowb1').chan.low"
+                "source": "op('math_lowb').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -1345,7 +1345,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('gapb1').chan.highMid"
+                "source": "op('math_gapb').chan.highMid"
               },
               "static": {
                 "kind": "static",
@@ -1359,7 +1359,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('shieldi1').chan.level"
+                "source": "op('lag_shieldi').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -1372,7 +1372,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('shieldo1').chan.level"
+                "source": "op('lag_shieldo').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -1391,7 +1391,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swellb1').chan.level"
+                "source": "op('math_swellb').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -1416,7 +1416,7 @@
       "shieldi": {
         "definitionVersion": 1,
         "id": "shieldi",
-        "label": "shieldi1",
+        "label": "lag_shieldi",
         "parameters": {
           "lag": 0.16,
           "releaseRatio": 28
@@ -1430,7 +1430,7 @@
       "shieldo": {
         "definitionVersion": 1,
         "id": "shieldo",
-        "label": "shieldo1",
+        "label": "lag_shieldo",
         "parameters": {
           "lag": 0.04,
           "releaseRatio": 70
@@ -1444,7 +1444,7 @@
       "source": {
         "definitionVersion": 1,
         "id": "source",
-        "label": "source1",
+        "label": "switch_source",
         "parameters": {
           "index": 0
         },
@@ -1457,7 +1457,7 @@
       "swellb": {
         "definitionVersion": 1,
         "id": "swellb",
-        "label": "swellb1",
+        "label": "math_swellb",
         "parameters": {
           "operand": 0.96,
           "operation": "add"
@@ -1471,7 +1471,7 @@
       "swellx": {
         "definitionVersion": 1,
         "id": "swellx",
-        "label": "swellx1",
+        "label": "math_swellx",
         "parameters": {
           "operand": 0.23,
           "operation": "multiply"
@@ -1485,7 +1485,7 @@
       "track": {
         "definitionVersion": 1,
         "id": "track",
-        "label": "track1",
+        "label": "audiofile_track",
         "parameters": {
           "cue": false,
           "cuePoint": 0,

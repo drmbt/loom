@@ -169,7 +169,7 @@ function sampleOneFrame(
   store: ReturnType<typeof createValueHistoryStore>,
 ): void {
   const session = createValueGraphSession(registry);
-  const result = session.evaluate(flattened.graph, FRAME, { pointer: POINTER });
+  const result = session.evaluate(flattened.graph, FRAME, { flattening: flattened, pointer: POINTER });
   const entries = instanceValueChannels(flattened, registry, result.byId);
   for (const entry of entries) store.push(entry.nodeId, entry.channels, FRAME.timeSeconds);
   store.retain(new Set(entries.map((entry) => entry.nodeId)));

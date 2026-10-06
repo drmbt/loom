@@ -1,4 +1,6 @@
 import { evaluateAst, parseExpression, scopeFromFrame } from "../expressions/index.ts";
+import { frameFromClock } from "../types/frame.ts";
+import { DEFAULT_PROJECT_FPS } from "../types/graph.ts";
 import type { ParameterDefinition } from "../types/parameters.ts";
 
 /**
@@ -155,13 +157,16 @@ export function forecastClamp(
   const at = (seconds: number): number | null => {
     const result = evaluateAst(
       parsed.ast,
-      scopeFromFrame({
-        timeSeconds: seconds,
-        deltaSeconds: 1 / 60,
-        frameIndex: Math.round(seconds * 60),
-        mode: "offline",
-        randomSeed: 0,
-      }),
+      scopeFromFrame(
+        frameFromClock({
+          timeSeconds: seconds,
+          deltaSeconds: 1 / 60,
+          frameIndex: Math.round(seconds * 60),
+          mode: "offline",
+          randomSeed: 0,
+          fps: DEFAULT_PROJECT_FPS,
+        }),
+      ),
     );
     return result.ok ? result.value : null;
   };

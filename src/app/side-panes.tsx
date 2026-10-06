@@ -13,9 +13,12 @@ import { flattenedNodeId, presentsPicture } from "@compiler/index.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
 import type { UnknownParameter } from "@domain/project/index.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument } from "@domain/types/graph.ts";
+import { previewCameraAbsenceSentence } from "@compiler/preview-orbit.ts";
+import { POSE_MOVED_FROM_ITS_TILE, cameraPoseDrivenSentence } from "@editor/viewer/camera-pose.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import type { InstanceChannelSources } from "@domain/parameters/node-references.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import { ComponentPage, InspectorSubjects } from "@editor/component/index.ts";
 import type { GraphComponentDefinition } from "@domain/types/components.ts";
@@ -165,6 +168,8 @@ export interface InspectorPaneProps {
    * invents no resolver.
    */
   channelNames?: ((nodeName: string) => readonly string[]) | undefined;
+  /** T1485b: the component instances `op('…').chan` can name. Passed straight through. */
+  instanceChannels?: (() => InstanceChannelSources) | undefined;
   status: GpuStatus;
   /** Values the open file carried that this build cannot read (§V68, §V69). */
   unknownParameters?: readonly UnknownParameter[];  /** T434(b)/T432: the session audio capture's status, for the Inspector's Audio section. */
@@ -280,6 +285,7 @@ export function InspectorPane({
   channels,
   latestFrame,
   channelNames,
+  instanceChannels,
   status,
   unknownParameters = [],
   audioStatus,
@@ -342,6 +348,8 @@ export function InspectorPane({
   const nodeInspector = (
     <Inspector
       bus={bus}
+      // T1652b: this pane's own document (live for what it shows), so the panel renders when the pane does.
+      graph={graph}
       context={invocation}
       components={components}
       flattened={readFlattened}
@@ -365,6 +373,7 @@ export function InspectorPane({
       {...(channels === undefined ? {} : { channels })}
       {...(latestFrame === undefined ? {} : { latestFrame })}
       {...(channelNames === undefined ? {} : { channelNames })}
+      {...(instanceChannels === undefined ? {} : { instanceChannels })}
       {...(audioStatus === undefined ? {} : { audioStatus })}
       {...(cameraStatus === undefined ? {} : { cameraStatus })}
       {...(screenCapture === undefined ? {} : { screenCapture })}
@@ -485,6 +494,8 @@ function formatChannel(value: number): string {
 
 export interface ViewerPaneProps {
   compiled: CompiledGraph | null;
+  /** T1655b: the newest values of the installed rows, for a synthesized subject (`live-synthesis.ts`). */
+  liveOutputs?: (() => CompiledGraph["outputs"] | null) | undefined;
   /**
    * Needed to tell a declared Output node from a preview sink — see below — and, §T1536b,
    * as the AUTHORED document the Edit mapping layer reads its targets from (live: the app
@@ -578,6 +589,7 @@ export interface ViewerPaneProps {
  */
 export function ViewerPane({
   compiled,
+  liveOutputs,
   graph,
   backend = null,
   pointer = null,
@@ -755,6 +767,7 @@ export function ViewerPane({
     alphaDisplay,
     documentIdentity,
     ...(orbits === undefined ? {} : { orbits }),
+    liveOutputs,
   });
   const nativeOutput = useNativeOutput(backend, selected, documentIdentity, bus);
   /*
@@ -1008,6 +1021,24 @@ export function ViewerPane({
     return { eye: camera.eye, lookAt: camera.lookAt, fovY: camera.fovY, aspect: camera.aspect };
   }, [selected]);
   const fly = useViewerFly({ orbits, nodeId: orbitNodeId, basis: orbitable ? flyBasis : null });
+  /*
+   * T1655b — WHY THIS 3D PICTURE HAS NO CAMERA HERE, as the tile says it (one fact, one
+   * sentence: the compiler's reason on the row). A picture drawn through a node's own Eye
+   * and Look At is moved from that node's tile today; flying it from here is §T970.
+   */
+  const cameraNote = useMemo((): string | null => {
+    const control = selected?.previewCamera;
+    if (orbitable || selected === null || selected === undefined || control === undefined || control.kind === "orbit") return null;
+    if (control.kind === "none") {
+      return previewCameraAbsenceSentence(control.reason, (id) => graph.nodes[id]?.label ?? id);
+    }
+    const node = graph.nodes[selected.nodeId as NodeId];
+    const driven =
+      node === undefined
+        ? null
+        : cameraPoseDrivenSentence(node, registry.get(node.type), { ...bus.readScope(), graph: authoredGraph(graph), registry });
+    return driven ?? POSE_MOVED_FROM_ITS_TILE;
+  }, [bus, graph, orbitable, registry, selected]);
   /** T379: measure the selected preview's positions — the frame-content readback. */
   const measureBounds = useCallback(async (): Promise<
     { lookAt: readonly [number, number, number]; radius: number } | undefined
@@ -1107,8 +1138,12 @@ export function ViewerPane({
   /* The wheel dollies — non-passive, so the page never scrolls under a zoom. Attached
      only while an orbitable output is selected (§V461: the mode has to turn off). */
   const orbitElement = useRef<HTMLCanvasElement | null>(null);
+  /* T1655b: the canvas that is ON SCREEN. A synthesized row (a pointset, a geometry, a
+     light, a material) is presented on the second canvas (§B220) and the first is hidden,
+     so a listener on the first alone was a listener on nothing. */
+  const synthesized = synthesisRow !== null;
   useEffect(() => {
-    const element = orbitElement.current;
+    const element = synthesized ? synthesisCanvasRef.current : orbitElement.current;
     if (element === null || !orbitable || orbits === undefined || orbitNodeId === null) return;
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
@@ -1117,7 +1152,7 @@ export function ViewerPane({
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);
-  }, [orbitable, orbits, orbitNodeId, canvasKey]);
+  }, [orbitable, orbits, orbitNodeId, canvasKey, synthesized]);
 
   const onCanvasPointer = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -1380,6 +1415,7 @@ export function ViewerPane({
             orbitNodeId !== null &&
             graph.nodes[orbitNodeId]?.type === "customWgsl"
           }
+          said={cameraNote}
           flying={fly.flying}
         />
         {/* §T1536b (viewer slice): beside the camera toggle — the other mode the picture's
@@ -1458,6 +1494,20 @@ export function ViewerPane({
               className={styles.canvas}
               aria-label="Rendered output"
               data-testid="viewer-synthesis-canvas"
+              /*
+               * T1655b — THE GESTURES, ON THE CANVAS THAT IS SHOWN. §B220 gave these rows a
+               * second canvas and left orbit, pan and the wheel on the first, which is
+               * `hidden` whenever this one is mounted: the bar said "drag to orbit" over a
+               * pointset, a geometry, a light or a material and no drag moved it (measured in
+               * the real app, on every such row the T1655b walk tried). jsdom dispatches to a hidden element, so
+               * every test that dragged `viewer-canvas` passed (§V461). No pixel readout
+               * here: the probe reads the main program's target, which these rows have none of.
+               */
+              onPointerMove={onOrbitMove}
+              onPointerDown={onOrbitDown}
+              onPointerUp={onOrbitUp}
+              onPointerCancel={onOrbitUp}
+              style={orbitable ? { cursor: "grab", touchAction: "none" } : undefined}
             />
           )}
           <canvas
@@ -1531,6 +1581,14 @@ export function ViewerPane({
             ? "—"
             : `${selected.size[0]} × ${selected.size[1]} · ${selected.format}`}
         </dd>
+        {cameraNote === null ? null : (
+          <>
+            <dt className={styles.rowNameHidden}>camera</dt>
+            <dd className={styles.readoutNote} data-testid="viewer-camera-note">
+              {cameraNote}
+            </dd>
+          </>
+        )}
         {probeFacts === null ? null : (
           <>
             <dt className={styles.rowNameHidden}>pixel</dt>
@@ -1568,18 +1626,29 @@ export function ViewerPane({
  * deliberately so: a tile with no camera is one of forty on a canvas and its silence is
  * unremarkable, while the viewer is where the user went specifically to look at this one
  * thing. Here the answer to "why can I not fly this" has to be reachable.
+ *
+ * T1655b: AND IT WAS NOT. The button was natively `disabled`, the button primitive gives a
+ * disabled button `pointer-events: none`, and a tooltip opens on a pointer: measured in the
+ * real app, no tooltip appeared on any of the rows that had a reason to give. So it is
+ * `aria-disabled`, which keeps the hover and the focus the sentence needs (§V830: a control
+ * you may not use but must still read is not `disabled`), and a press does nothing. Where
+ * the compiler gave a reason for a 3D picture, that sentence (`said`) is this tooltip AND a
+ * visible line of the readout below, so it is one fact said one way in two places.
  */
 function ViewerCameraButton({
   orbits,
   nodeId,
   orbitable,
   shaderWithoutCamera,
+  said,
   flying,
 }: {
   orbits: PreviewOrbitStore | undefined;
   nodeId: NodeId | null;
   orbitable: boolean;
   shaderWithoutCamera: boolean;
+  /** T1655b: the compiler's reason this 3D picture has no camera here, when it gave one. */
+  said: string | null;
   flying: boolean;
 }) {
   /* Per-node slice, like the tile toggle's: the store notifies on MODE changes only, so a
@@ -1598,9 +1667,7 @@ function ViewerCameraButton({
   const canFly = orbitable && orbits?.fly !== undefined;
 
   const hint = !orbitable
-    ? shaderWithoutCamera
-      ? viewCameraAbsentReason()
-      : VIEWER_NO_CAMERA_MESSAGE
+    ? (said ?? (shaderWithoutCamera ? viewCameraAbsentReason() : VIEWER_NO_CAMERA_MESSAGE))
     : adjustable
       ? `Inspecting${flying ? " — flying" : ""}. Drag orbits, shift-drag pans, wheel zooms${
           canFly ? ", W A S D + E Q fly (shift is faster)" : ""
@@ -1610,13 +1677,14 @@ function ViewerCameraButton({
   return (
     <Tooltip label={hint}>
       <Button
-        disabled={!orbitable}
+        aria-disabled={!orbitable}
+        className={orbitable ? undefined : styles.cameraInert}
         aria-label="Inspect camera"
         aria-pressed={adjustable}
         data-testid="viewer-camera-toggle"
         data-viewer-camera={adjustable ? "adjustable" : "home"}
         onClick={() => {
-          if (orbits === undefined || nodeId === null) return;
+          if (!orbitable || orbits === undefined || nodeId === null) return;
           orbits.setMode(nodeId, adjustable ? "home" : "adjustable");
         }}
       >

@@ -40,6 +40,9 @@ describe("the code-parameter census (T492)", () => {
       "midiIn.mapping:json",
       // T1516b: a Panel's board — written by the Controls tab's edit mode, JSON like the bank.
       "panel.board:json",
+      // T1586b: a Curve's own control points — hand-editable structured data, and what a
+      // CPU reader of the curve parses.
+      "pointCurve.points:json",
       "pointKernel.attributes:json",
       "pointKernel.group:wgsl",
       "pointKernel.kernel:wgsl",
@@ -263,6 +266,14 @@ describe("core catalogue (T70, T40)", () => {
       "pointProximity",
       "pointRange",
       "pointTransform",
+      // T1586b: the curve family — curves are strips of a pointset.
+      "pointCurve",
+      "pointCurveFrames",
+      "pointResample",
+      // T1587b: a profile swept along a strip into a grid the Render lights.
+      "pointSweep",
+      // T1585b: strips simulated as ropes that keep their length.
+      "pointRope",
       // T947: the vector-display path planner — the laser and the scope share it.
       "laserPath",
       // T950: the transport sink — sideEffect "emits", the catalogue's second.
@@ -348,6 +359,10 @@ describe("reset is exposed where it is declared (§V123, T216)", () => {
     // for a scoped reset to name.
     pointKernel: "point bufferPairs are not in the compiled feedback table",
     pointKernelAdvanced: "point bufferPairs are not in the compiled feedback table",
+    // T1585b: the same gap for a pulse. The Rope does have the STATE half of Feedback's pair
+    // — its Reset boolean, which the step reads and which holds the rope on its incoming
+    // points for as long as it is on — so it can be reset; what it lacks is the event.
+    pointRope: "point bufferPairs are not in the compiled feedback table; its Reset boolean is the state half",
     // The value graph's per-node state lives in `createValueGraphSession`, which has no
     // caller outside its own tests — there is no running session to reset.
     // (T318: the §V194 rename landed — `valueTrigger`/`valueLag` match their siblings.)

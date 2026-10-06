@@ -87,7 +87,7 @@ export const murmurationDocument = document(
         "pointKernel",
         [-880, 0],
         { capacity: 2000, seed: 31, attributes: MURMURATION_FLOCK_ATTRIBUTES, kernel: MURMURATION_FLOCK_KERNEL },
-        { label: "flock1" },
+        { label: "kernel_flock" },
       ),
       node(
         "part",
@@ -99,7 +99,7 @@ export const murmurationDocument = document(
           attributes: JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]),
           kernel: MURMURATION_PART_KERNEL,
         },
-        { label: "part1" },
+        { label: "kernel_part" },
       ),
       node(
         "birds",
@@ -117,7 +117,7 @@ export const murmurationDocument = document(
           group: "length(p.position) < 1.7",
         },
         {
-          label: "birds1",
+          label: "instances_birds",
           parameters: {
             color: {
               mode: "map",
@@ -130,7 +130,7 @@ export const murmurationDocument = document(
           },
         },
       ),
-      node("out", "output", [40, 0], {}, { label: "out1" }),
+      node("out", "output", [40, 0], {}, { label: "output1" }),
     ],
     [
       edge("e-sphere-flock", ["sphere", "out"], ["flock", "in"]),

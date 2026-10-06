@@ -178,7 +178,7 @@
       "ash": {
         "definitionVersion": 1,
         "id": "ash",
-        "label": "ash1",
+        "label": "null_ash",
         "parameters": {},
         "position": {
           "x": 1440,
@@ -189,7 +189,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "points_bed",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -212,7 +212,7 @@
       "body": {
         "definitionVersion": 1,
         "id": "body",
-        "label": "body1",
+        "label": "points_body",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -235,7 +235,7 @@
       "burn": {
         "definitionVersion": 1,
         "id": "burn",
-        "label": "burn1",
+        "label": "add_burn",
         "parameters": {},
         "position": {
           "x": 880,
@@ -246,7 +246,7 @@
       "fuse": {
         "definitionVersion": 1,
         "id": "fuse",
-        "label": "fuse1",
+        "label": "add_fuse",
         "parameters": {},
         "position": {
           "x": 40,
@@ -257,7 +257,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -272,7 +272,7 @@
       "haloLvl": {
         "definitionVersion": 1,
         "id": "haloLvl",
-        "label": "halolvl1",
+        "label": "level_halo",
         "parameters": {
           "blacklevel": 0.01,
           "brightness": 1.4,
@@ -291,7 +291,7 @@
       "loop": {
         "definitionVersion": 1,
         "id": "loop",
-        "label": "loop1",
+        "label": "feedback_loop",
         "parameters": {
           "clearColor": [
             0,
@@ -301,7 +301,7 @@
           ],
           "persistence": 0.62,
           "reset": false,
-          "source": "ash1",
+          "source": "null_ash",
           "substeps": 1
         },
         "position": {
@@ -313,7 +313,7 @@
       "mix": {
         "definitionVersion": 1,
         "id": "mix",
-        "label": "mix1",
+        "label": "screen_mix",
         "parameters": {},
         "position": {
           "x": 1160,
@@ -324,7 +324,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 1720,
@@ -335,7 +335,7 @@
       "sim": {
         "definitionVersion": 1,
         "id": "sim",
-        "label": "fire1",
+        "label": "kernel_fire",
         "parameters": {
           "attributes": "",
           "capacity": 16384,
@@ -353,7 +353,7 @@
       "spark": {
         "definitionVersion": 1,
         "id": "spark",
-        "label": "spark1",
+        "label": "points_spark",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -376,7 +376,7 @@
       "stack": {
         "definitionVersion": 1,
         "id": "stack",
-        "label": "stack1",
+        "label": "add_stack",
         "parameters": {},
         "position": {
           "x": -240,

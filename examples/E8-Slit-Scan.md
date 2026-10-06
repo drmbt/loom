@@ -9,18 +9,18 @@ and a gradient.
 ## Graph
 
 ```
-swingx(lfo) ─┬─► body1.center.x
-swingy(lfo) ─┴─► body1.center.y
-body1(circle) ─┬─► slitscan1.input ─┐
-               │                    ├─► slitscan1(slitScan) ─┐
-ramp1(ramp, vertical) ─► .map ──────┘                        ├─► now(add) ─► out1(output)
-               └─────────────────────────────────────────────┘
+swingx(lfo) ───────┬─► circle_body.center.x
+swingy(lfo) ───────┴─► circle_body.center.y
+circle_body(circle) ─┬─► slitscan1.input ─┐
+                     │                    ├─► slitscan1(slitScan) ─┐
+ramp1(ramp, vertical) ───────► .map ──────┘                        ├─► now(add) ─► output1(output)
+                     └─────────────────────────────────────────────┘
 ```
 
 | Node | Type | Doing |
 | --- | --- | --- |
 | `swingx`, `swingy` | `lfo` | 0.62 Hz and 0.4 Hz — the disc's two coordinates |
-| `body1` | `circle` | a soft warm disc on deep blue: the subject |
+| `circle_body` | `circle` | a soft warm disc on deep blue: the subject |
 | `ramp1` | `ramp` | vertical black→white: the TOP row says "now", the bottom says "0.8 s ago" |
 | `slitscan1` | `slitScan` | records 48 frames of history; each pixel reads the frame its map value names |
 | `now` | `add` | the present, composited back over its own past |

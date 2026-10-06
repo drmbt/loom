@@ -10,6 +10,7 @@ import { CRT_WGSL, ECHO_WGSL, GRADE_WGSL, HALO_WGSL, LENS_WGSL, MIRROR_WGSL, OPT
 import type { Area, OnNothingFacts } from "./scene-facts.ts";
 import { carAreas } from "./scene-facts.ts";
 import { markerOf } from "./scene-facts.ts";
+import { geometryName, lightName, meshName } from "./names.ts";
 import { SKIN_ATTRIBUTES, boneParam, skinKernel, yawFor } from "./skin-kernel.ts";
 import { LAMP_GLASS_WGSL, surfaceWgsl, type Footprint } from "./surface.ts";
 import { CAR_RIG_ATTRIBUTES, carRigKernel } from "./car-rig.ts";
@@ -209,7 +210,7 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
   if (camera === undefined) throw new Error(`onNothingDocument: the GLB has no camera "shot.${shot}".`);
   const eye = camera.eye;
   const aim: [number, number, number] = [eye[0] + camera.forward[0] * 6, eye[1] + camera.forward[1] * 6, eye[2] + camera.forward[2] * 6];
-  const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('cam1').par.${field}`, fallback);
+  const cameraRef = (field: string, fallback: number): StoredParameter => expressionSlot(`op('camera1').par.${field}`, fallback);
   const cameraParams: Record<string, StoredParameter> = {
     eye: vec(eye),
     aim,
@@ -233,19 +234,19 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
   // ── The song (render.ts --audio feeds the analysis): smoothed, normalised level lanes ──
   const audio = options.audio === true;
   if (audio) {
-    nodes.push(node("song", "audioFileIn", [-4200, 1400], { file: "media/on-nothing/song.wav", playMode: "timeline" }, { label: "song1" }));
-    nodes.push(node("pickLevels", "valueSelect", [-3900, 1300], { channels: "level low high" }, { label: "picklevels1" }));
-    nodes.push(node("smooth", "valueLag", [-3600, 1300], { lag: 0.02, releaseRatio: 4 }, { label: "smooth1" }));
-    nodes.push(node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "rank1" }));
+    nodes.push(node("song", "audioFileIn", [-4200, 1400], { file: "media/on-nothing/song.wav", playMode: "timeline" }, { label: "audiofile_song" }));
+    nodes.push(node("pickLevels", "valueSelect", [-3900, 1300], { channels: "level low high" }, { label: "select_picklevels" }));
+    nodes.push(node("smooth", "valueLag", [-3600, 1300], { lag: 0.02, releaseRatio: 4 }, { label: "lag_smooth" }));
+    nodes.push(node("rank", "valueNormalize", [-3300, 1300], { window: 16 }, { label: "normalize_rank" }));
     // slow and smooth: the columns breathe with the track, they never twitch
-    nodes.push(node("levels", "valueLag", [-3000, 1300], { lag: 1.0, releaseRatio: 1.5 }, { label: "levels1" }));
+    nodes.push(node("levels", "valueLag", [-3000, 1300], { lag: 1.0, releaseRatio: 1.5 }, { label: "lag_levels" }));
     edges.push(edge("song-pick", ["song", "out"], ["pickLevels", "in"]));
     edges.push(edge("pick-smooth", ["pickLevels", "out"], ["smooth", "in"]));
     edges.push(edge("smooth-rank", ["smooth", "out"], ["rank", "in"]));
     edges.push(edge("rank-levels", ["rank", "out"], ["levels", "in"]));
   }
   /** 0..1 loudness, smooth; 0.5 when silent (no --audio). */
-  const LOUD = audio ? "clamp(op('levels1').chan.level * 0.6 + op('levels1').chan.low * 0.4, 0, 1)" : "0.5";
+  const LOUD = audio ? "clamp(op('lag_levels').chan.level * 0.6 + op('lag_levels').chan.low * 0.4, 0, 1)" : "0.5";
   // T1407b: the measured in-shot flicker of the glass and the lamps, and the kick lane's reach (shots/react.ts)
   const react = reactive(nodes, edges, REACT_PROFILES.tableau, audio ? "song" : undefined);
 
@@ -258,7 +259,7 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
         return [(b.min[0] + b.max[0]) / 2, (b.min[2] + b.max[2]) / 2, (b.max[0] - b.min[0]) / 2 - 0.12, (b.max[2] - b.min[2]) / 2 - 0.25] as const;
       })
     : [];
-  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: surfaceWgsl(footprints), headGain: base === "title" ? 0.04 : 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6 }, { label: "surf1" }));
+  nodes.push(node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: surfaceWgsl(footprints), headGain: base === "title" ? 0.04 : 1, wet: 0, wetGloss: 0.32, dryGloss: 0.6 }, { label: "material_surf" }));
 
   // ── Meshes ──
   plan.areas.flatMap((entry) => (entry === "cars" ? carAreas(facts) : [entry])).forEach((area, index) => {
@@ -266,17 +267,17 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
     if (mesh === undefined) throw new Error(`onNothingDocument: no "${area}" area in the GLB.`);
     // T1424b: a car's lamps switch per car — Lamp Gain 1 headlights, 2 DRLs, 3 tail lights (1 = as exported)
     const lamps = area.startsWith("car") ? { lamps: "material:headlight, material:drl, material:taillight" } : {};
-    nodes.push(node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, ...lamps }, { label: `mesh${area}1` }));
-    nodes.push(node(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "surf1" }, { label: `geo${area}1` }));
+    nodes.push(node(`mesh_${area}`, "meshFileIn", [-3600, index * 250], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, ...lamps }, { label: meshName(area) }));
+    nodes.push(node(`geo_${area}`, "geometry", [-3300, index * 250], { mode: "surface", material: "material_surf" }, { label: geometryName(area) }));
     if (rig !== undefined && area === rig.area) {
       // The rigged car drives; its wheels roll (car-rig.ts).
-      nodes.push(node("carRig", "pointKernel", [-3450, index * 250], { capacity: mesh.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: carRigKernel(mesh.partTable), drive: expressionSlot(WHEEL_DRIVE, 0), place: [...rig.place], turn: WHEEL_TURN }, { label: "carrig1" }));
+      nodes.push(node("carRig", "pointKernel", [-3450, index * 250], { capacity: mesh.vertices, attributes: CAR_RIG_ATTRIBUTES, kernel: carRigKernel(mesh.partTable), drive: expressionSlot(WHEEL_DRIVE, 0), place: [...rig.place], turn: WHEEL_TURN }, { label: "kernel_carrig" }));
       edges.push(edge("mesh-rig-car", [`mesh_${area}`, "out"], ["carRig", "in"]));
       edges.push(edge("rig-geo-car", ["carRig", "out"], [`geo_${area}`, "points"]));
     } else {
       edges.push(edge(`mesh-geo-${area}`, [`mesh_${area}`, "out"], [`geo_${area}`, "points"]));
     }
-    scenes.push(`geo${area}1`);
+    scenes.push(geometryName(area));
   });
 
   // ── Lamp glass: an ADDITIVE glint shell over every lamp (T1411b) ──
@@ -286,11 +287,11 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
   // instead of the lamp and put every headlight out (measured; see the T1400b row notes).
   const glassArea = facts.areas.get("lampglass");
   if (glassArea !== undefined && plan.areas.includes("cars")) {
-    nodes.push(node("mesh_lampglass", "meshFileIn", [-3600, 900], { file: facts.glbUrl, select: glassArea.select, vertices: glassArea.vertices, triangles: glassArea.triangles, parts: glassArea.parts }, { label: "meshlampglass1" }));
-    nodes.push(node("glassMat", "materialWgsl", [-3300, 950], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02 }, { label: "glassmat1" }));
-    nodes.push(node("geo_lampglint", "geometry", [-3000, 950], { mode: "surface", material: "glassmat1", blend: "additive" }, { label: "geolampglint1" }));
+    nodes.push(node("mesh_lampglass", "meshFileIn", [-3600, 900], { file: facts.glbUrl, select: glassArea.select, vertices: glassArea.vertices, triangles: glassArea.triangles, parts: glassArea.parts }, { label: "mesh_lampglass" }));
+    nodes.push(node("glassMat", "materialWgsl", [-3300, 950], { model: "unlit", source: LAMP_GLASS_WGSL, roughness: 0.02 }, { label: "material_glass" }));
+    nodes.push(node("geo_lampglint", "geometry", [-3000, 950], { mode: "surface", material: "material_glass", blend: "additive" }, { label: "geometry_lampglint" }));
     edges.push(edge("mesh-geo-lampglint", ["mesh_lampglass", "out"], ["geo_lampglint", "points"]));
-    scenes.push("geolampglint1");
+    scenes.push("geometry_lampglint");
   }
 
   // ── The figure, posed by the skin kernel ──
@@ -330,18 +331,18 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
           "place.z": expressionSlot(`${pz} + ${fz} * (abstime * 1.25 - 2.5)`, pz),
         }
       : { place: [px, py, pz] };
-    nodes.push(node("fig", "meshFileIn", [-3600, 1200], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, joints: mesh.joints }, { label: "fig1" }));
-    nodes.push(node("skin", "pointKernel", [-3300, 1200], { capacity: mesh.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: yawFor(stage.facing), ...place, ...pose }, { label: "skin1" }));
-    nodes.push(node("figGeo", "geometry", [-3000, 1200], { mode: "surface", material: "surf1" }, { label: "figgeo1" }));
+    nodes.push(node("fig", "meshFileIn", [-3600, 1200], { file: facts.glbUrl, select: mesh.select, vertices: mesh.vertices, triangles: mesh.triangles, parts: mesh.parts, joints: mesh.joints }, { label: "mesh_fig" }));
+    nodes.push(node("skin", "pointKernel", [-3300, 1200], { capacity: mesh.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), yaw: yawFor(stage.facing), ...place, ...pose }, { label: "kernel_skin" }));
+    nodes.push(node("figGeo", "geometry", [-3000, 1200], { mode: "surface", material: "material_surf" }, { label: "geometry_fig" }));
     edges.push(edge("fig-skin", ["fig", "out"], ["skin", "in"]));
     edges.push(edge("skin-geo", ["skin", "out"], ["figGeo", "points"]));
-    scenes.push("figgeo1");
+    scenes.push("geometry_fig");
   }
 
   // ── Light ──
   if (plan.headlights) {
-    nodes.push(node("cookieSeed", "ramp", [-3000, 1600], {}, { label: "cookieseed1", resolution: { mode: "fixed", width: 256, height: 128 } }));
-    nodes.push(node("cookie", "customWgsl", [-2800, 1600], { source: HEADLIGHT_COOKIE_WGSL }, { label: "cookie1", resolution: { mode: "fixed", width: 256, height: 128 } }));
+    nodes.push(node("cookieSeed", "ramp", [-3000, 1600], {}, { label: "ramp_cookieseed", resolution: { mode: "fixed", width: 256, height: 128 } }));
+    nodes.push(node("cookie", "customWgsl", [-2800, 1600], { source: HEADLIGHT_COOKIE_WGSL }, { label: "wgsl_cookie", resolution: { mode: "fixed", width: 256, height: 128 } }));
     edges.push(edge("seed-cookie", ["cookieSeed", "out"], ["cookie", "input"]));
     // One projector per CAR, from between its headlights, throwing a two-lobed cookie: a
     // Render binds two textures per projector (cookie, occlusion) against a 16-texture stage.
@@ -364,9 +365,9 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
         color: [0.78, 0.92, 1, 1],
         falloff: true,
         occlusion: true,
-      }, { label: `${id}1` }));
+      }, { label: `projector_${id}` }));
       edges.push(edge(`cookie-${id}`, ["cookie", "out"], [id, "cookie"]));
-      projectors.push(`${id}1`);
+      projectors.push(`projector_${id}`);
     });
   }
   /**
@@ -376,17 +377,17 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
    */
   function sodium(): void {
     const warm = [1, 0.52, 0.2, 1];
-    nodes.push(node("sodiumPool", "light", [-2600, 2000], { kind: "point", position: [0.4, 2.6, 6.5], color: warm, intensity: 4, shadows: true, shadowExtent: 16, shadowSoftness: 2 }, { label: "sodiumpool1" }));
-    nodes.push(node("sodiumA", "light", [-2600, 2100], { kind: "point", position: [-9, 7.2, -6], color: warm, intensity: 4 }, { label: "sodiuma1" }));
-    nodes.push(node("sodiumB", "light", [-2600, 2200], { kind: "point", position: [10, 7.2, -9], color: warm, intensity: 3 }, { label: "sodiumb1" }));
-    lights.push("sodiumpool1", "sodiuma1", "sodiumb1");
+    nodes.push(node("sodiumPool", "light", [-2600, 2000], { kind: "point", position: [0.4, 2.6, 6.5], color: warm, intensity: 4, shadows: true, shadowExtent: 16, shadowSoftness: 2 }, { label: "light_sodiumpool" }));
+    nodes.push(node("sodiumA", "light", [-2600, 2100], { kind: "point", position: [-9, 7.2, -6], color: warm, intensity: 4 }, { label: "light_sodiuma" }));
+    nodes.push(node("sodiumB", "light", [-2600, 2200], { kind: "point", position: [10, 7.2, -9], color: warm, intensity: 3 }, { label: "light_sodiumb" }));
+    lights.push("light_sodiumpool", "light_sodiuma", "light_sodiumb");
   }
   if (plan.tubes) {
     const tubes = [...facts.markers.values()].filter((marker) => marker.name.startsWith("lamp.tube.")).sort((a, b) => (a.name < b.name ? -1 : 1));
     tubes.forEach((marker, index) => {
       const id = `tube${index}`;
-      nodes.push(node(id, "light", [-2600, 2200 + index * 60], { kind: "point", color: [0.9, 0.95, 1, 1], intensity: 1.6, position: vec(marker.position) }, { label: `${id}1` }));
-      lights.push(`${id}1`);
+      nodes.push(node(id, "light", [-2600, 2200 + index * 60], { kind: "point", color: [0.9, 0.95, 1, 1], intensity: 1.6, position: vec(marker.position) }, { label: lightName(id) }));
+      lights.push(lightName(id));
     });
   }
   if (base === "tableau") {
@@ -402,67 +403,67 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
     // shadow over it).
     const heroShot = shot === "tableau" || shot === "zoom";
     const mark = stage[2] + (heroShot ? TABLEAU_NEARER : 0);
-    nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: heroShot ? [stage[0] + 0.3, 2.4, mark + 1.3] : [stage[0] - 1.1, 2.1, stage[2] + 1.5], color: [0.88, 0.92, 1, 1], intensity: heroShot ? 1.6 : 5 }, { label: "fill1" }));
+    nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: heroShot ? [stage[0] + 0.3, 2.4, mark + 1.3] : [stage[0] - 1.1, 2.1, stage[2] + 1.5], color: [0.88, 0.92, 1, 1], intensity: heroShot ? 1.6 : 5 }, { label: "light_fill1" }));
     // The room's own light: a soft top, so the white bodies and the roof read at a few percent.
-    nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.15], color: [0.9, 0.93, 1, 1], intensity: 0.12 }, { label: "top1" }));
+    nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.15], color: [0.9, 0.93, 1, 1], intensity: 0.12 }, { label: "light_top" }));
     // The cars' own key: a broad soft source behind the camera, high — the reference's white
     // bodies read clearly, grille chrome and all, while the room stays black.
     // LOW, beside the camera (out of frame): in the reference only the cars' lower fronts catch light (bumpers, grilles,
     // lamps) and their roofs fall into black. A point low in front of the row, falling off with
     // height and distance, does that; a sun lit them top to bottom and made them read huge.
     // it CASTS: the cars throw their shadows back onto the floor under and behind them
-    nodes.push(node("carKey", "light", [-2600, 800], { kind: "point", position: [0, 0.45, 13.5], color: [0.88, 0.94, 1, 1], intensity: heroShot ? 8 : 22, shadows: true, shadowExtent: 30, shadowSoftness: 2 }, { label: "carkey1" }));
+    nodes.push(node("carKey", "light", [-2600, 800], { kind: "point", position: [0, 0.45, 13.5], color: [0.88, 0.94, 1, 1], intensity: heroShot ? 8 : 22, shadows: true, shadowExtent: 30, shadowSoftness: 2 }, { label: "light_carkey" }));
     // no top light: the reference's roofs fall into black
-    lights.push("fill1", "carkey1");
+    lights.push("light_fill1", "light_carkey");
     if (heroShot) {
-      nodes.push(node("heroKey", "light", [-2600, 700], { kind: "point", position: [0, 0.9, 1.2], color: [0.88, 0.94, 1, 1], intensity: 3 }, { label: "herokey1" }));
-      nodes.push(node("floorLamp", "light", [-2600, 600], { kind: "point", position: [0.5, 1.5, 7.0], color: [0.9, 0.94, 1, 1], intensity: 3 }, { label: "floorlamp1" }));
-      lights.push("herokey1", "floorlamp1");
+      nodes.push(node("heroKey", "light", [-2600, 700], { kind: "point", position: [0, 0.9, 1.2], color: [0.88, 0.94, 1, 1], intensity: 3 }, { label: "light_herokey" }));
+      nodes.push(node("floorLamp", "light", [-2600, 600], { kind: "point", position: [0.5, 1.5, 7.0], color: [0.9, 0.94, 1, 1], intensity: 3 }, { label: "light_floorlamp" }));
+      lights.push("light_herokey", "light_floorlamp");
     }
     sodium();
   }
   if (rig !== undefined) {
     wheelLights(rig).forEach((light, index) => {
-      nodes.push(node(`wheelLight${index}`, "light", [-2600, 2000 + index * 100], light, { label: `wheellight${index}1` }));
-      lights.push(`wheellight${index}1`);
+      nodes.push(node(`wheelLight${index}`, "light", [-2600, 2000 + index * 100], light, { label: `light_wheellight${index}` }));
+      lights.push(`light_wheellight${index}`);
     });
   } else if (base === "wheel") {
     // no rigged car in this GLB: the interim raking key (the rig's own lights are shots/wheel.ts)
     sodium();
     // a low raking key along the car's flank: the wheel's spokes and the door read, as in 2:00
-    nodes.push(node("wheelKey", "light", [-2600, 700], { kind: "point", position: [eye[0] + 2.5, 0.6, eye[2] + 1.0], color: [0.9, 0.95, 1, 1], intensity: 14 }, { label: "wheelkey1" }));
-    lights.push("wheelkey1");
+    nodes.push(node("wheelKey", "light", [-2600, 700], { kind: "point", position: [eye[0] + 2.5, 0.6, eye[2] + 1.0], color: [0.9, 0.95, 1, 1], intensity: 14 }, { label: "light_wheelkey" }));
+    lights.push("light_wheelkey");
   }
   if (base === "title") {
     sodium();
     // A soft top over the bonnet: the chrome script and the grille bars catch it; the room stays dim.
-    nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: [0, 2.6, 0.9], color: [1, 0.97, 0.92, 1], intensity: 5 }, { label: "fill1" }));
-    nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.3], color: [1, 0.93, 0.85, 1], intensity: 0.12 }, { label: "top1" }));
-    lights.push("fill1", "top1");
+    nodes.push(node("fill", "light", [-2600, 1000], { kind: "point", position: [0, 2.6, 0.9], color: [1, 0.97, 0.92, 1], intensity: 5 }, { label: "light_fill1" }));
+    nodes.push(node("top", "light", [-2600, 900], { kind: "directional", direction: [0.1, -1, 0.3], color: [1, 0.93, 0.85, 1], intensity: 0.12 }, { label: "light_top" }));
+    lights.push("light_fill1", "light_top");
   }
   if (base === "quad") {
     const back = markerOf(facts, "lamp.back.quad");
-    nodes.push(node("back", "light", [-2600, 1000], { kind: "point", color: [0.3, 0.8, 0.85, 1], intensity: 9, position: vec(back.position) }, { label: "back1" }));
+    nodes.push(node("back", "light", [-2600, 1000], { kind: "point", color: [0.3, 0.8, 0.85, 1], intensity: 9, position: vec(back.position) }, { label: "light_back" }));
     // Two rims just behind the figure, either side, grazing its edges: the thin bright outline.
     const stage = facts.stages.get("quad")!.position;
-    nodes.push(node("rimA", "light", [-2600, 1100], { kind: "point", color: [0.75, 0.95, 1, 1], intensity: 1.6, position: [stage[0] - 0.55, 1.55, stage[2] - 0.7] }, { label: "rima1" }));
-    nodes.push(node("rimB", "light", [-2600, 1200], { kind: "point", color: [0.75, 0.95, 1, 1], intensity: 1.6, position: [stage[0] + 0.55, 1.55, stage[2] - 0.7] }, { label: "rimb1" }));
-    lights.push("back1", "rima1", "rimb1");
+    nodes.push(node("rimA", "light", [-2600, 1100], { kind: "point", color: [0.75, 0.95, 1, 1], intensity: 1.6, position: [stage[0] - 0.55, 1.55, stage[2] - 0.7] }, { label: "light_rima" }));
+    nodes.push(node("rimB", "light", [-2600, 1200], { kind: "point", color: [0.75, 0.95, 1, 1], intensity: 1.6, position: [stage[0] + 0.55, 1.55, stage[2] - 0.7] }, { label: "light_rimb" }));
+    lights.push("light_back", "light_rima", "light_rimb");
   }
   if (base === "cyc") {
     const key = markerOf(facts, "lamp.key.cyc");
     const dir = (key.extras?.["loom_light_dir"] as number[] | undefined) ?? [-0.4, -0.7, -0.6];
-    nodes.push(node("key", "light", [-2600, 1000], { kind: "directional", direction: [dir[0]!, dir[1]!, dir[2]!], color: [1, 0.99, 0.97, 1], intensity: 3.2, shadows: true, shadowExtent: 9, shadowSoftness: 1 }, { label: "key1" }));
-    lights.push("key1");
+    nodes.push(node("key", "light", [-2600, 1000], { kind: "directional", direction: [dir[0]!, dir[1]!, dir[2]!], color: [1, 0.99, 0.97, 1], intensity: 3.2, shadows: true, shadowExtent: 9, shadowSoftness: 1 }, { label: "light_key1" }));
+    lights.push("light_key1");
   }
 
   // ── Environment (reflections) ──
-  nodes.push(node("envSeed", "ramp", [-2700, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 1024, height: 512 } }));
-  nodes.push(node("env", "customWgsl", [-2700, 500], { source: ENVIRONMENT_WGSL, white: plan.whiteRoom ? 1 : 0, bars: base === "title" ? 6 : base === "quad" ? 0 : 1.5, roof: base === "title" ? 0.35 : base === "quad" ? 0 : 0.006 }, { label: "env1", resolution: { mode: "fixed", width: 1024, height: 512 } }));
+  nodes.push(node("envSeed", "ramp", [-2700, 300], {}, { label: "ramp_envseed", resolution: { mode: "fixed", width: 1024, height: 512 } }));
+  nodes.push(node("env", "customWgsl", [-2700, 500], { source: ENVIRONMENT_WGSL, white: plan.whiteRoom ? 1 : 0, bars: base === "title" ? 6 : base === "quad" ? 0 : 1.5, roof: base === "title" ? 0.35 : base === "quad" ? 0 : 0.006 }, { label: "wgsl_env", resolution: { mode: "fixed", width: 1024, height: 512 } }));
   edges.push(edge("seed-env", ["envSeed", "out"], ["env", "input"]));
   if (options.hdri === true && !plan.whiteRoom) {
-    nodes.push(node("hdri", "movieFileIn", [-2900, 700], { file: "media/on-nothing/hdri.png" }, { label: "hdri1", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
-    nodes.push(node("envHdri", "customWgsl", [-2700, 700], { source: ENVIRONMENT_HDRI_WGSL, gain: base === "title" ? 1.2 : 0.6, crush: base === "title" ? 0.3 : 0.7 }, { label: "envhdri1", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
+    nodes.push(node("hdri", "movieFileIn", [-2900, 700], { file: "media/on-nothing/hdri.png" }, { label: "movie_hdri", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
+    nodes.push(node("envHdri", "customWgsl", [-2700, 700], { source: ENVIRONMENT_HDRI_WGSL, gain: base === "title" ? 1.2 : 0.6, crush: base === "title" ? 0.3 : 0.7 }, { label: "wgsl_envhdri", resolution: { mode: "fixed", width: 2048, height: 1024 } }));
     edges.push(edge("hdri-env", ["hdri", "out"], ["envHdri", "input"]));
   }
 
@@ -511,10 +512,10 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
               // at least the operator tracks along the parked car instead of a dead frame
               ? handheld(eye, aim, { tiltIn: -4, tilt: -2, settle: 1, shake: 1.3, creep: 0 })
               : {};
-  nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200, ...cameraMove }, { label: "cam1" }));
+  nodes.push(node("cam", "camera", [-2700, -900], { eye: vec(eye), lookAt: aim, fov: camera.fovDeg, near: 0.05, far: 200, ...cameraMove }, { label: "camera1" }));
   nodes.push(node("shot", "render", [-2400, 0], {
     scenes: scenes.join(" "),
-    camera: "cam1",
+    camera: "camera1",
     lights: lights.join(" "),
     projectors: projectors.join(" "),
     ambientColor: [1, 1, 1, 1],
@@ -526,13 +527,13 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
     albedoOutput: true,
     environmentIntensity: plan.whiteRoom ? 0.6 : base === "title" ? 1 : base === "quad" ? 0 : 0.1,
     environmentTaps: 16,
-  }, { label: "shot1" }));
+  }, { label: "render_shot" }));
   edges.push(edge("env-shot", [options.hdri === true && !plan.whiteRoom ? "envHdri" : "env", "out"], ["shot", "environment"]));
 
   // ── Screen space: reflections, contact occlusion, haze ──
   let last: readonly [string, string] = ["shot", "out"];
   const pass = (id: string, source: string, extra: Record<string, StoredParameter>, more: readonly (readonly [string, string])[], position: readonly [number, number], scale = 1): void => {
-    nodes.push(node(id, more.length > 0 ? "customWgslMulti" : "customWgsl", position, { source, ...extra }, { label: `${id.toLowerCase()}1`, resolution: scale === 1 ? { mode: "project" } : { mode: "scale", factor: scale } }));
+    nodes.push(node(id, more.length > 0 ? "customWgslMulti" : "customWgsl", position, { source, ...extra }, { label: `wgsl_${id.toLowerCase()}`, resolution: scale === 1 ? { mode: "project" } : { mode: "scale", factor: scale } }));
     edges.push(edge(`${last[0]}-${id}`, last, [id, "input"]));
     more.forEach((port, index) => edges.push(edge(`${id}-more${index}`, port, [id, "more"], index)));
     last = [id, "out"];
@@ -569,10 +570,10 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
   // ── Optics: streak columns (half size), halo rings (quarter), bloom pyramid ──
   // A "scale" resolution is relative to the node's own INPUT, so each chained pass states its
   // factor against the pass before it: the bloom halves on the way down and doubles back up.
-  nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: plan.whiteRoom ? 3 : 1.4, knee: 0.8 }, { label: "bright1", resolution: { mode: "scale", factor: 0.5 } }));
+  nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: plan.whiteRoom ? 3 : 1.4, knee: 0.8 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }));
   // The streaks' OWN source, far above the bloom's: only clipped lamps streak in the reference —
   // never chrome glints, lit paint or a sodium pool (the owner: "over the top… sensitivity").
-  nodes.push(node("streakSrc", "customWgsl", [-1300, 200], { source: BRIGHT_PASS_WGSL, threshold: plan.whiteRoom ? 6 : 4.5, knee: 1.2 }, { label: "streaksrc1", resolution: { mode: "scale", factor: 0.5 } }));
+  nodes.push(node("streakSrc", "customWgsl", [-1300, 200], { source: BRIGHT_PASS_WGSL, threshold: plan.whiteRoom ? 6 : 4.5, knee: 1.2 }, { label: "wgsl_streaksrc", resolution: { mode: "scale", factor: 0.5 } }));
   edges.push(edge("scene-streaksrc", scene, ["streakSrc", "input"]));
   edges.push(edge("scene-bright", scene, ["bright", "input"]));
   // The streak glass copies each bright SHAPE straight up: a flat-sided slab exactly the width
@@ -591,19 +592,19 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
   const STREAK_DIV = [400, 60, 20] as const;
   STREAKS.forEach((step, index) => {
     const id = `streak${index}`;
-    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 && base !== "tableau" ? 0.003 : 0, compress: index === 0 ? (base === "tableau" ? 1.5 : 3) : 0, ...(index === 0 ? { minSize: 0.006 } : {}), down: 0, gain: 1.8, striation: 0.22, striationScale: 110 }, { label: `${id}1`, resolution: { mode: "scale", factor: 1 } }));
+    nodes.push(node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reachExpr} / ${STREAK_DIV[index]}`, step), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, spread: index === 0 && base !== "tableau" ? 0.003 : 0, compress: index === 0 ? (base === "tableau" ? 1.5 : 3) : 0, ...(index === 0 ? { minSize: 0.006 } : {}), down: 0, gain: 1.8, striation: 0.22, striationScale: 110 }, { label: `wgsl_${id}`, resolution: { mode: "scale", factor: 1 } }));
     edges.push(edge(`into-${id}`, [index === 0 ? "streakSrc" : `streak${index - 1}`, "out"], [id, "input"]));
   });
-  nodes.push(node("hot", "customWgsl", [-1300, 500], { source: BRIGHT_PASS_WGSL, threshold: 150, knee: 30 }, { label: "hot1", resolution: { mode: "scale", factor: 0.25 } }));
+  nodes.push(node("hot", "customWgsl", [-1300, 500], { source: BRIGHT_PASS_WGSL, threshold: 150, knee: 30 }, { label: "wgsl_hot", resolution: { mode: "scale", factor: 0.25 } }));
   edges.push(edge("scene-hot", scene, ["hot", "input"]));
-  nodes.push(node("halo", "customWgsl", [-1100, 500], { source: HALO_WGSL, radius: 0.3, width: 0.006, dispersion: 0.14, axis: 0.08 }, { label: "halo1", resolution: { mode: "scale", factor: 1 } }));
+  nodes.push(node("halo", "customWgsl", [-1100, 500], { source: HALO_WGSL, radius: 0.3, width: 0.006, dispersion: 0.14, axis: 0.08 }, { label: "wgsl_halo", resolution: { mode: "scale", factor: 1 } }));
   edges.push(edge("hot-halo", ["hot", "out"], ["halo", "input"]));
   for (const level of [1, 2, 3, 4]) {
-    nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `bloomdown${level}1`, resolution: { mode: "scale", factor: 0.5 } }));
+    nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } }));
     edges.push(edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]));
   }
   for (const level of [0, 1, 2, 3]) {
-    nodes.push(node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `bloomup${level}1`, resolution: { mode: "scale", factor: 2 } }));
+    nodes.push(node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } }));
     edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
     edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
   }
@@ -625,7 +626,7 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
   };
   pass("grade", GRADE_WGSL, grade[base], [], [-100, 0]);
   if (plan.echo) {
-    nodes.push(node("echoHistory", "feedback", [100, 300], { source: "echo1" }, { label: "echohistory1" }));
+    nodes.push(node("echoHistory", "feedback", [100, 300], { source: "wgsl_echo" }, { label: "feedback_echohistory" }));
     pass("echo", ECHO_WGSL, { amount: 0.55, darken: 1 }, [["echoHistory", "out"]], [100, 0]);
   }
   if (plan.mirror) {
@@ -634,7 +635,7 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
   if (options.crt === true) {
     pass("crt", CRT_WGSL, { amount: 1 }, [], [500, 0]);
   }
-  nodes.push(node("out", "output", [700, 0], { toneMap: "none" }, { label: "out1" }));
+  nodes.push(node("out", "output", [700, 0], { toneMap: "none" }, { label: "output1" }));
   edges.push(edge("last-out", last, ["out", "input"]));
 
   return {

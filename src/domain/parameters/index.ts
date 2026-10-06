@@ -45,9 +45,12 @@ export {
 export type { PulseFire, PulseWatcher } from "./pulse.ts";
 
 export {
+  STORED_READ,
   resolveParameter,
   resolveParameterSchema,
   resolveParameters,
+  resolveStored,
+  resolveStoredSchema,
   srgbToLinear,
 } from "./resolve.ts";
 export type {
@@ -59,18 +62,26 @@ export type {
   ParameterDriverContext,
   ParameterSource,
   ParentBindResolver,
-  ResolveParametersOptions,
+  ParameterRead,
+  ParameterReadOptions,
+  ResolveExtras,
   ResolvedComponent,
   ResolvedParameter,
   ResolvedParameters,
 } from "./resolve.ts";
 export {
+  NO_FLATTENING,
+  NO_INSTANCES,
   createNodeReferenceReader,
-  createParameterReadOptions,
   nodeReferenceMembers,
   nodeReferenceNames,
 } from "./node-references.ts";
+export { parameterReadOptions } from "./node-references.ts";
 export type {
+  FlatteningReads,
+  LiveParameterReads,
+  InstanceChannelSource,
+  InstanceChannelSources,
   NodeReferenceCatalogueOptions,
   NodeReferenceMember,
   NodeReferenceOptions,

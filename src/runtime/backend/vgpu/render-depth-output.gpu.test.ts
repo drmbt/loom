@@ -82,7 +82,7 @@ function planFor(graph: GraphDocument) {
 }
 
 describe("the render's depth output (T722, §V147, §V309)", () => {
-  it.each(["beam", "points"] as const)("%s: additive soft geometry exports its actual camera footprint without casting", async (mode) => {
+  it.each(["beam", "points"] as const)("%s: additive soft geometry with In Depth Output on exports its actual camera footprint without casting, and none with it off (§B256)", async (mode) => {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
     const graph = depthGraph(true, "materialUnlit");
@@ -103,7 +103,8 @@ describe("the render's depth output (T722, §V147, §V309)", () => {
       }`,
     }, "place1") as never;
     Object.assign(graph.nodes["geo"]!.parameters, {
-      mode, endpoint: "tip", soft: 1, spherical: true, blend: "additive", group: "p.enabled > 0.5",
+      // §B256: additive geometry is light, not a body — it reaches the Depth output only when asked.
+      mode, endpoint: "tip", soft: 1, spherical: true, blend: "additive", inDepthOutput: true, group: "p.enabled > 0.5",
       scale: { mode: "map", bindings: { static: { kind: "static", value: 0.4 }, map: { kind: "map", attribute: "size" } } },
     });
     graph.edges["e1"] = { id: "e1", source: { nodeId: "place", portId: "out" }, target: { nodeId: "geo", portId: "points" } };
@@ -147,6 +148,22 @@ describe("the render's depth output (T722, §V147, §V309)", () => {
         expect(depths[at(35,35)]).toBe(0x3c00);
         expect(colors[at(35,35)]).toBe(0);
       }
+      // The switch cut (the default): the same light is in the picture and leaves the depth at the far plane.
+      const offGraph = structuredClone(graph);
+      Object.assign(offGraph.nodes["geo"]!.parameters, { inDepthOutput: false });
+      const offPlan = planFor(offGraph);
+      expect(offPlan.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+      const offCompiled = await backend.compile(offPlan);
+      backend.render(offCompiled, {
+        frame: { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "offline", randomSeed: 7 },
+        pointer: { x: 0, y: 0, buttons: 0 }, resolution: [64, 64],
+      } as never);
+      const offDepth = await backend.readOutput("target:shot:depth");
+      const offColor = await backend.readOutput("target:shot:out");
+      const offDepths = new Uint16Array(offDepth.bytes.buffer, offDepth.bytes.byteOffset, offDepth.bytes.byteLength / 2);
+      const offColors = new Uint16Array(offColor.bytes.buffer, offColor.bytes.byteOffset, offColor.bytes.byteLength / 2);
+      expect(offDepths[at(32,32)]).toBe(0x3c00);
+      expect(offColors[at(32,32)]).toBe(colors[at(32,32)]);
     } finally { backend.dispose(); }
   }, 120_000);
 

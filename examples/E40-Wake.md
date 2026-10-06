@@ -14,40 +14,40 @@ frame can tell you whether it works.
 ## Graph
 
 ```
-bed1(noise, perlin4d) ────┐
-orb1(circle) ┄ pathx1/y1  ┴─► stand1(add) ─┐ order 0
-                                            ├─► pick1(switch, index 0) ─┬─► past1(cache)
-clip1(movieFileIn) ─────────────────────────┘ order 1                   │      6 frames back
-                                                                        │      │
-                              under1(level, brightness 0.2) ◄───────────┤      │
-                                                                        ▼      ▼
-                                                             moved1(difference)
-                                                                        │
-                                     gain1(level, whitelevel ┄ bite1) ◄──┘
+noise_bed(noise, perlin4d) ────────┐
+circle_orb(circle) ┄ lfo_pathx/y   ┴─► add_stand(add) ─┐ order 0
+                                                        ├─► switch_pick(switch, index 0) ─┬─► cache_past(cache)
+movie_clip(movieFileIn) ────────────────────────────────┘ order 1                         │      6 frames back
+                                                                                          │      │
+                              level_under(level, brightness 0.2) ◄────────────────────────┤      │
+                                                                                          ▼      ▼
+                                                             difference_moved(difference)
+                                                                                  │
+                                     level_gain(level, whitelevel ┄ limit_bite) ◄──┘
+                                                        │
+                             ┌──────────────────────────┼──────────────────────────────┐
+        transform_shiftr(transform) ┄ limit_tear   (unshifted green)   transform_shiftb(transform) ┄ limit_tearn
+                             └─► reorder_fuser(reorder) ─► reorder_fuseb(reorder) ◄────┘
+                                                                │
+                              add_born(add) ◄───────────────────┘        feedback_loop(feedback, source add_born)
+                                        │  ▲                        persistence ┄ limit_hold
+                                        │  └────────────────────────────┘
+                                        ▼
+                        lookup_paint(lookup) ◄─ ramp_palette(ramp)
                                           │
-                    ┌─────────────────────┼─────────────────────┐
-        shiftr1(transform) ┄ tear1   (unshifted green)   shiftb1(transform) ┄ tearn1
-                    └─► fuser1(reorder) ─► fuseb1(reorder) ◄────┘
-                                                │
-                              born1(add) ◄──────┘        loop1(feedback, source born1)
-                                  │  ▲                        persistence ┄ hold1
-                                  │  └────────────────────────────┘
-                                  ▼
-                        paint1(lookup) ◄─ palette1(ramp)
-                                  │
-              under1 ─► lay1(add) ◄┘ ─► trim1(level) ─► out1
+              level_under ─► add_lay(add) ◄┘ ─► level_trim(level) ─► output1
 
-beat1(audioPattern) ─► smooth1(valueLag) ─┬─► biteg1 ─► biteb1 ─► bite1(valueLimit)
-                                          ├─► tearg1 ─► tearb1 ─► tear1(valueLimit)
-                                          ├─► tearng1 ─► tearnb1 ─► tearn1(valueLimit)
-                                          └─► holdg1 ─► holdb1 ─► hold1(valueLimit)
+pattern_beat(audioPattern) ─► lag_smooth(valueLag) ─┬─► math_biteg ─► math_biteb ─► limit_bite(valueLimit)
+                                                    ├─► math_tearg ─► math_tearb ─► limit_tear(valueLimit)
+                                                    ├─► math_tearng ─► math_tearnb ─► limit_tearn(valueLimit)
+                                                    └─► math_holdg ─► math_holdb ─► limit_hold(valueLimit)
 ```
 
 ## A Cache is a delay line; here it is an instrument
 
 E24 reads three cache taps as an RGB delay, which uses the ring as an echo — one frame's
-picture, arriving late. This file uses it to ask a different question. `past1` holds the
-frame from six frames ago, `moved1` takes the absolute difference against the live one, and
+picture, arriving late. This file uses it to ask a different question. `cache_past` holds the
+frame from six frames ago, `difference_moved` takes the absolute difference against the live one, and
 what comes out is not a picture at all: it is a **motion field**, bright exactly where the
 image changed and black everywhere it did not.
 
@@ -70,12 +70,12 @@ node advances the *fourth* dimension, a 3D noise does not have one, and so the f
 changed — and the entire file rendered **pure black**, with every structural test in the
 tree green about it. Not dim. Black.
 
-So `bed1` is a `perlin4d` with a real `speed`, and the subject is `orb1` riding two LFOs.
+So `noise_bed` is a `perlin4d` with a real `speed`, and the subject is `circle_orb` riding two LFOs.
 The bed is nearly still **on purpose**: an earlier cut had it evolving about as fast as the
 subject travelled, the detector saw motion everywhere at once, and the subject never stood
 out. Something has to hold still for a wake to be a wake *on*.
 
-`under1` is that same source at a fifth brightness, laid back underneath at the end. It is
+`level_under` is that same source at a fifth brightness, laid back underneath at the end. It is
 the context — it is what tells you the trail is being extracted from a picture rather than
 generated — and it is also what keeps frame 0 off the floor while the cache ring is still
 filling (§V229).
@@ -88,7 +88,7 @@ nothing but tinting.
 
 Feeding the **raw** motion into the accumulator and grading what comes out makes the ramp a
 map of *how long ago a pixel moved* — fresh reads warm and white, older reads teal, oldest
-falls to blue and out. So the loop closes on `born1`, upstream of `paint1`, and not on the
+falls to blue and out. So the loop closes on `add_born`, upstream of `lookup_paint`, and not on the
 final output. That inverts §V471.5 for the same reason E34 inverts it: a loop closing on the
 finished frame would smear the still bed along with the wake, and the bed is the thing that
 must not move.
@@ -100,8 +100,8 @@ terminating a trail. E1's docstring says black level "crushes the dimmest surviv
 which is true in a unorm format and **false** in the `rgba16float` we actually ship.
 
 An empty pixel went to −0.008, the loop drove it further down every frame, and the
-downstream Add then came out *darker than its own base layer* — `lay1` measured a median of
-0.0000 where `under1` alone measured 0.0666. The bed vanished completely and it read as the
+downstream Add then came out *darker than its own base layer* — `add_lay` measured a median of
+0.0000 where `level_under` alone measured 0.0666. The bed vanished completely and it read as the
 compositor being broken.
 
 Persistence is already the decay and it cannot go negative, so the node is gone rather than
@@ -109,15 +109,15 @@ fixed. E39's bloom hit the same trap from the other direction; between them they
 §V694 is stated about black levels rather than about loops.
 
 That rule is now a structural claim rather than a paragraph — and it went red on **this**
-document within the hour, twice. `gain1` carried a black level of 0.02, which sent a zero
-pixel to −0.00917 and compounded to a −0.1835 floor inside the accumulator. `under1`
+document within the hour, twice. `level_gain` carried a black level of 0.02, which sent a zero
+pixel to −0.00917 and compounded to a −0.1835 floor inside the accumulator. `level_under`
 carried 0.06, which sent a **black source pixel** to −0.064.
 
-They were not equally bad, and the difference is the useful part. `gain1`'s negative was
-**contained**: `paint1` is a Lookup, a Lookup clamps by indexing, so a negative index reads
-the first stop and the value never escaped `born1`. `under1`'s was not — it feeds `lay1`
+They were not equally bad, and the difference is the useful part. `level_gain`'s negative was
+**contained**: `lookup_paint` is a Lookup, a Lookup clamps by indexing, so a negative index reads
+the first stop and the value never escaped `add_born`. `level_under`'s was not — it feeds `add_lay`
 directly, so it darkened the finished frame. And it was invisible here only because the
-synthetic bed sits near 0.6 luma. It would have shown up the moment someone pointed `clip1`
+synthetic bed sits near 0.6 luma. It would have shown up the moment someone pointed `movie_clip`
 at footage with real blacks, as a wake that thins over the dark parts of their video for no
 visible reason, and it would have been reported as "the trails are broken on my clip".
 
@@ -128,20 +128,20 @@ nominally buying.
 
 Four gain-and-bias pairs, each ending in a `valueLimit` that states its range out loud:
 
-- **low → `gain1.whitelevel`**, clamped 1.6..3.2, *inverted*. A louder kick lowers the white
+- **low → `level_gain.whitelevel`**, clamped 1.6..3.2, *inverted*. A louder kick lowers the white
   point, which raises the gain, so the wake flares on the beat.
-- **high → `shiftr1.t.x`** and **high → `shiftb1.t.x`**, clamped to ±0.001..0.03. Two pairs
+- **high → `transform_shiftr.t.x`** and **high → `transform_shiftb.t.x`**, clamped to ±0.001..0.03. Two pairs
   off one band with opposite bias, so red and blue tear apart in opposite directions and the
   hats put a chromatic edge on the trail.
-- **level → `loop1.persistence`**, clamped 0.92..0.972. Louder passages hold the trail
+- **level → `feedback_loop.persistence`**, clamped 0.92..0.972. Louder passages hold the trail
   longer, so the wake lengthens with the music instead of running at a fixed decay.
 
 Those numbers are fitted to a **measured** field, not an estimated one, and that distinction
-cost real time: `moved1` peaks around 0.058 when the subject crawls and around 0.756 when it
+cost real time: `difference_moved` peaks around 0.058 when the subject crawls and around 0.756 when it
 moves at performance speed — thirteen times — and a white point guessed against the wrong
 one mapped the field's median to 0.86 and blew the frame white.
 
-Swap `beat1` for an `audioFileIn` and point it at a track; the pairs are already scaled for
+Swap `pattern_beat` for an `audioFileIn` and point it at a track; the pairs are already scaled for
 the analyser's decibel domain, which is what the pattern node publishes in.
 
 ## Why the claims are asserted across frame pairs
@@ -154,9 +154,9 @@ the wiring; the look baseline catches drift; neither is a substitute for the oth
 
 ## The understudy, again
 
-`pick1` opens on branch 0 and `clip1` is still in the graph, still in the plan, and still
-compiled on a real device by `examples.gpu.test.ts`. Set `pick1.index` to 1 and drop a file
-into `clip1` and it is your footage — and this is the graph where that matters most, because
+`switch_pick` opens on branch 0 and `movie_clip` is still in the graph, still in the plan, and still
+compiled on a real device by `examples.gpu.test.ts`. Set `switch_pick.index` to 1 and drop a file
+into `movie_clip` and it is your footage — and this is the graph where that matters most, because
 frame differencing on real video is what the technique was invented for. A `webcam` wired as
 branch 2 works the same way; E27 established the pattern.
 

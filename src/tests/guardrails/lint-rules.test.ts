@@ -226,3 +226,189 @@ export const backdoor = store.raw;
     expect(ruleIdsOf(messages)).not.toContain("no-restricted-syntax");
   });
 });
+
+/**
+ * §V1028 / B246 — the layering zones.
+ *
+ * B246 was ONE line: `src/domain/parameters/node-references.ts` imported a value from the
+ * presets layer, which imports the parameter read path. That closed a cycle, a constant was
+ * read across it at module scope, and every plain-node entry point died at import. The zone
+ * is the guard against the cause (the edge), so what is asserted here is the edge in every
+ * spelling that reaches the module — and, as carefully, each legitimate import the rule sits
+ * next to and must not swallow: the SAME two directories in the direction that is correct.
+ */
+describe("§V1028 (B246) — a layer may not import the layer that imports it", () => {
+  const ZONE = "v1028/layering-zone";
+  const zoneMessages = (messages: { ruleId: string | null; message: string }[]) =>
+    messages.filter((message) => message.ruleId === ZONE).map((message) => message.message);
+
+  it("refuses B246's own line: parameters importing a VALUE from presets", async () => {
+    const { messages } = await lint(
+      'import { NO_MORPHS } from "../presets/morph-index.ts";\nexport const NO_FLATTENING = { morphs: NO_MORPHS };\n',
+      "src/domain/parameters/node-references.ts",
+    );
+    const [message, ...rest] = zoneMessages(messages);
+    expect(rest).toEqual([]);
+    // The message has to carry the reason AND the way out, or the next author aliases around it.
+    expect(message).toContain("§V1028");
+    expect(message).toContain("B246");
+    expect(message).toContain("declare what this layer needs HERE");
+  });
+
+  it("resolves the specifier, so every spelling of the same target is refused", async () => {
+    for (const specifier of ["../presets/morph-index.ts", "@domain/presets/morph-index.ts", "@/domain/presets/morph-index.ts"]) {
+      const { messages } = await lint(
+        `import { NO_MORPHS } from "${specifier}";\nexport const held = NO_MORPHS;\n`,
+        "src/domain/parameters/node-references.ts",
+      );
+      expect(zoneMessages(messages), specifier).toHaveLength(1);
+    }
+  });
+
+  it("refuses every form that reaches the module, not only a static import", async () => {
+    const forms = [
+      'export { NO_MORPHS } from "../presets/morph-index.ts";\n',
+      'export * from "../presets/morph-index.ts";\n',
+      'export const lazy = () => import("../presets/morph-index.ts");\n',
+      'export type Origins = import("../presets/morph-index.ts").PublishedOrigins;\n',
+    ];
+    for (const code of forms) {
+      const { messages } = await lint(code, "src/domain/parameters/node-references.ts");
+      expect(zoneMessages(messages), code).toHaveLength(1);
+    }
+  });
+
+  it("refuses a type-only import in both spellings (the inline one still loads the module)", async () => {
+    const erased = 'import type { PublishedOrigins } from "../presets/morph-index.ts";\nexport type Held = PublishedOrigins;\n';
+    const kept = 'import { type PublishedOrigins } from "../presets/morph-index.ts";\nexport type Held = PublishedOrigins;\n';
+    expect(zoneMessages((await lint(erased, "src/domain/parameters/resolve.ts")).messages)).toHaveLength(1);
+    expect(zoneMessages((await lint(kept, "src/domain/parameters/resolve.ts")).messages)).toHaveLength(1);
+  });
+
+  it("covers test-support.ts, which is a module and not a test (B246's fix had to change it)", async () => {
+    const { messages } = await lint(
+      'import { NO_MORPHS } from "../presets/morph-index.ts";\nexport const held = NO_MORPHS;\n',
+      "src/domain/parameters/test-support.ts",
+    );
+    expect(zoneMessages(messages)).toHaveLength(1);
+  });
+
+  it("does NOT refuse the same edge in the direction that is correct: presets importing parameters", async () => {
+    const result = await lint(
+      'import { NO_MORPHS, resolveParameter } from "../parameters/resolve.ts";\nexport { NO_MORPHS };\nexport const read = resolveParameter;\n',
+      "src/domain/presets/morph-index.ts",
+    );
+    expect(result.messages).toEqual([]);
+  });
+
+  it("does NOT refuse the parameters layer its own files, the types, or a name that merely contains the word", async () => {
+    const result = await lint(
+      [
+        'import { NO_MORPHS } from "./resolve.ts";',
+        'import type { ParameterValue } from "../types/parameters.ts";',
+        'import { presetsOf } from "./presets.ts";',
+        'import { migratePresets } from "../project/presets-migration.ts";',
+        "export const held: [typeof NO_MORPHS, ParameterValue | undefined, unknown, unknown] = [NO_MORPHS, undefined, presetsOf, migratePresets];",
+        "",
+      ].join("\n"),
+      "src/domain/parameters/node-references.ts",
+    );
+    expect(result.messages).toEqual([]);
+  });
+
+  it("does NOT refuse a test: a test file is its own first module and may compose the real layers", async () => {
+    const result = await lint(
+      'import { NO_MORPHS } from "../presets/morph-index.ts";\nexport const held = NO_MORPHS;\n',
+      "src/domain/parameters/resolve.test.ts",
+    );
+    expect(result.messages).toEqual([]);
+  });
+
+  it("holds §V81's direction too: parameters may not import components, components may import parameters", async () => {
+    const back = await lint(
+      'import { parentBindResolver } from "../components/parent-scope.ts";\nexport const held = parentBindResolver;\n',
+      "src/domain/parameters/resolve.ts",
+    );
+    const forward = await lint(
+      'import { resolveParameter } from "../parameters/resolve.ts";\nexport const held = resolveParameter;\n',
+      "src/domain/components/parent-scope.ts",
+    );
+    expect(zoneMessages(back.messages)).toHaveLength(1);
+    expect(zoneMessages(back.messages)[0]).toContain("ParentBindResolver");
+    expect(forward.messages).toEqual([]);
+  });
+
+  it("keeps the domain headless: no editor, no ui, no React — by any spelling", async () => {
+    const reaches = [
+      'import { nodeBox } from "@editor/nodes/node-box.ts";\nexport const held = nodeBox;\n',
+      'import { theme } from "../../ui/tokens.ts";\nexport const held = theme;\n',
+      'import { useState } from "react";\nexport const held = useState;\n',
+      'import { createRoot } from "react-dom/client";\nexport const held = createRoot;\n',
+      'import type { Node } from "@xyflow/react";\nexport type Held = Node;\n',
+    ];
+    for (const code of reaches) {
+      const { messages } = await lint(code, "src/domain/graph/layout.ts");
+      expect(zoneMessages(messages), code).toHaveLength(1);
+      expect(zoneMessages(messages)[0]).toContain("the domain is headless");
+    }
+  });
+
+  it("does NOT refuse the domain a package it really uses, nor the editor its import of the domain", async () => {
+    const store = await lint(
+      'import { createStore } from "zustand/vanilla";\nexport const held = createStore;\n',
+      "src/domain/graph/store.ts",
+    );
+    const editor = await lint(
+      'import { useState } from "react";\nimport { layoutGraph } from "@domain/graph/layout.ts";\nexport const held = [useState, layoutGraph];\n',
+      "src/editor/graph-canvas/arrange.ts",
+    );
+    expect(store.messages).toEqual([]);
+    expect(editor.messages).toEqual([]);
+  });
+
+  it("holds the two single-module promises in the presets layer, and only on those modules", async () => {
+    // cue-list.ts: commands.ts reads its constants at module scope, so it may not import back.
+    const cueList = await lint(
+      'import { planRecall } from "./commands.ts";\nimport { fireCue } from "./cue-commands.ts";\nexport const held = [planRecall, fireCue];\n',
+      "src/domain/presets/cue-list.ts",
+    );
+    expect(zoneMessages(cueList.messages)).toHaveLength(2);
+    // …while cue-commands.ts importing commands.ts is how the recall planner is reached.
+    const cueCommands = await lint(
+      'import { planRecall } from "./commands.ts";\nimport { MORPH_CURVES } from "./bank.ts";\nexport const held = [planRecall, MORPH_CURVES];\n',
+      "src/domain/presets/cue-commands.ts",
+    );
+    expect(cueCommands.messages).toEqual([]);
+
+    // morph.ts: data only, because graph/names.ts imports it.
+    const morph = await lint(
+      [
+        'import { nodeNames } from "../graph/names.ts";',
+        'import type { NodeRegistryView } from "../../nodes/registry/registry.ts";',
+        'import { resolveParameter } from "../parameters/resolve.ts";',
+        "export const held: [unknown, NodeRegistryView | undefined, unknown] = [nodeNames, undefined, resolveParameter];",
+        "",
+      ].join("\n"),
+      "src/domain/presets/morph.ts",
+    );
+    expect(zoneMessages(morph.messages)).toHaveLength(3);
+    // …while the index beside it is exactly where the graph, the registry and the resolver meet.
+    const morphIndex = await lint(
+      [
+        'import { nodeNames } from "../graph/names.ts";',
+        'import type { NodeRegistryView } from "../../nodes/registry/registry.ts";',
+        'import { resolveParameter } from "../parameters/resolve.ts";',
+        'import { MORPH_CURVES } from "./bank.ts";',
+        "export const held: [unknown, NodeRegistryView | undefined, unknown, unknown] = [nodeNames, undefined, resolveParameter, MORPH_CURVES];",
+        "",
+      ].join("\n"),
+      "src/domain/presets/morph-index.ts",
+    );
+    expect(morphIndex.messages).toEqual([]);
+    const morphOwn = await lint(
+      'import { MORPH_CURVES } from "./bank.ts";\nexport const held = MORPH_CURVES;\n',
+      "src/domain/presets/morph.ts",
+    );
+    expect(morphOwn.messages).toEqual([]);
+  });
+});

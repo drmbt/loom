@@ -17,7 +17,7 @@ One `customWgsl` pass holds the whole thing: a full-screen raymarcher, in E55/E5
 lane rather than the scene node family's.
 
 ```
-sky1(solid) ─► temple1(customWgsl: the nave marcher) ─► out1(output)
+solid_sky(solid) ─► wgsl_temple(customWgsl: the nave marcher) ─► output1(output)
 ```
 
 ## The hall costs about what one pillar costs
@@ -554,20 +554,20 @@ the picture knew which surface it belonged to.
 
 ## The audio lands rather than breathes
 
-One `AudioAnalysis` instance, two bags: `lvl1` for the ranked levels, `hit1` for the drum
+One `AudioAnalysis` instance, two bags: `select_lvl` for the ranked levels, `select_hit` for the drum
 counts. A deterministic pattern plays at index 0 so the file is reactive on open with no
 track at all, and a real file is one drop away on index 1.
 
 | what | channel | why that one |
 | --- | --- | --- |
-| the conduits' emission | `hit1.kickCount` | a count is 1 on the frame the drum lands and 0 between, so the conduits **fire** |
-| the junction pools | `hit1.snareCount` | a backbeat on the **finest** structure in the hall, not on the brightest object in frame |
-| how many ring members are lit | `hit1.hatCount` | the finest event in a kit ticking the finest structure |
-| the primary light's strength | `lvl1.lowMid` | a rank rests at its middle, so the hall's own light **swells** |
-| the doorway's beam | `lvl1.high` | a continuous property on a continuous channel |
-| the counter-light | `lvl1.highMid` | the frame's second colour breathes where the conduits land |
-| the dust density | `lvl1.low` | a rank rests at its middle, so the air **breathes** |
-| the exposure | `lvl1.low` | dynamic range **in time**: a quiet passage sits down, a loud one up |
+| the conduits' emission | `select_hit.kickCount` | a count is 1 on the frame the drum lands and 0 between, so the conduits **fire** |
+| the junction pools | `select_hit.snareCount` | a backbeat on the **finest** structure in the hall, not on the brightest object in frame |
+| how many ring members are lit | `select_hit.hatCount` | the finest event in a kit ticking the finest structure |
+| the primary light's strength | `select_lvl.lowMid` | a rank rests at its middle, so the hall's own light **swells** |
+| the doorway's beam | `select_lvl.high` | a continuous property on a continuous channel |
+| the counter-light | `select_lvl.highMid` | the frame's second colour breathes where the conduits land |
+| the dust density | `select_lvl.low` | a rank rests at its middle, so the air **breathes** |
+| the exposure | `select_lvl.low` | dynamic range **in time**: a quiet passage sits down, a loud one up |
 
 ### "Too blinky blinky" was two numbers, not a curve
 

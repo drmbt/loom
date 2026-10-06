@@ -606,7 +606,7 @@
       "analysis": {
         "definitionVersion": 1,
         "id": "analysis",
-        "label": "analysis1",
+        "label": "audioanalysis1",
         "parameters": {
           "envelope": 0.08,
           "hitDecay": 250,
@@ -622,7 +622,7 @@
       "bg": {
         "definitionVersion": 1,
         "id": "bg",
-        "label": "bg1",
+        "label": "solid_background",
         "parameters": {
           "color": [
             0.03,
@@ -640,7 +640,7 @@
       "clip": {
         "definitionVersion": 1,
         "id": "clip",
-        "label": "clip1",
+        "label": "audiofile_clip",
         "parameters": {
           "beatOffset": 0.484,
           "beatsPerBar": 4,
@@ -667,7 +667,7 @@
       "core": {
         "definitionVersion": 1,
         "id": "core",
-        "label": "core1",
+        "label": "circle_core",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -691,7 +691,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.05 + 0.16 * op('lvl1').chan.low"
+                "source": "0.05 + 0.16 * op('select_lvl').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -704,7 +704,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.05 + 0.16 * op('lvl1').chan.low"
+                "source": "0.05 + 0.16 * op('select_lvl').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -724,14 +724,14 @@
       "flash": {
         "definitionVersion": 1,
         "id": "flash",
-        "label": "flash1",
+        "label": "level_flash",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1 + 3 * op('hit1').chan.onsetCount"
+                "source": "1 + 3 * op('select_hit').chan.onsetCount"
               },
               "static": {
                 "kind": "static",
@@ -755,14 +755,14 @@
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
-        "label": "glow1",
+        "label": "level_glow",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.2 + 1.4 * op('lvl1').chan.high"
+                "source": "0.2 + 1.4 * op('select_lvl').chan.high"
               },
               "static": {
                 "kind": "static",
@@ -786,7 +786,7 @@
       "grain": {
         "definitionVersion": 1,
         "id": "grain",
-        "label": "grain1",
+        "label": "noise_grain",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -813,7 +813,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -821,7 +821,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "4 + 56 * op('lvl1').chan.level"
+                "source": "4 + 56 * op('select_lvl').chan.level"
               },
               "static": {
                 "kind": "static",
@@ -840,7 +840,7 @@
       "hand": {
         "definitionVersion": 1,
         "id": "hand",
-        "label": "hand1",
+        "label": "rectangle_hand",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -875,14 +875,14 @@
       "hats": {
         "definitionVersion": 1,
         "id": "hats",
-        "label": "hats1",
+        "label": "level_hats",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.9 * op('hit1').chan.hatCount"
+                "source": "0.9 * op('select_hit').chan.hatCount"
               },
               "static": {
                 "kind": "static",
@@ -906,7 +906,7 @@
       "hit": {
         "definitionVersion": 1,
         "id": "hit",
-        "label": "hit1",
+        "label": "select_hit",
         "parameters": {
           "channels": "*"
         },
@@ -919,7 +919,7 @@
       "hole": {
         "definitionVersion": 1,
         "id": "hole",
-        "label": "hole1",
+        "label": "circle_hole",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -954,7 +954,7 @@
       "kick": {
         "definitionVersion": 1,
         "id": "kick",
-        "label": "kick1",
+        "label": "transform_kick",
         "parameters": {
           "aspectcorrect": true,
           "extend": "zero",
@@ -967,7 +967,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1 + 0.35 * op('hit1').chan.kickCount"
+                "source": "1 + 0.35 * op('select_hit').chan.kickCount"
               },
               "static": {
                 "kind": "static",
@@ -980,7 +980,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1 + 0.35 * op('hit1').chan.kickCount"
+                "source": "1 + 0.35 * op('select_hit').chan.kickCount"
               },
               "static": {
                 "kind": "static",
@@ -1004,7 +1004,7 @@
       "lvl": {
         "definitionVersion": 1,
         "id": "lvl",
-        "label": "lvl1",
+        "label": "select_lvl",
         "parameters": {
           "channels": "*"
         },
@@ -1017,7 +1017,7 @@
       "mix": {
         "definitionVersion": 1,
         "id": "mix",
-        "label": "mix1",
+        "label": "add_mix",
         "parameters": {
           "opacity": 1
         },
@@ -1043,7 +1043,7 @@
       "ring": {
         "definitionVersion": 1,
         "id": "ring",
-        "label": "ring1",
+        "label": "multiply_ring",
         "parameters": {
           "opacity": 1
         },
@@ -1056,7 +1056,7 @@
       "ringo": {
         "definitionVersion": 1,
         "id": "ringo",
-        "label": "ringo1",
+        "label": "circle_ringo",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -1091,14 +1091,14 @@
       "snap": {
         "definitionVersion": 1,
         "id": "snap",
-        "label": "snap1",
+        "label": "level_snap",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('hit1').chan.snareCount"
+                "source": "op('select_hit').chan.snareCount"
               },
               "static": {
                 "kind": "static",
@@ -1122,7 +1122,7 @@
       "spark": {
         "definitionVersion": 1,
         "id": "spark",
-        "label": "spark1",
+        "label": "threshold_spark",
         "parameters": {
           "channel": "luminance",
           "compare": "greater",
@@ -1138,7 +1138,7 @@
       "sweep": {
         "definitionVersion": 1,
         "id": "sweep",
-        "label": "sweep1",
+        "label": "transform_sweep",
         "parameters": {
           "aspectcorrect": true,
           "extend": "zero",
@@ -1150,7 +1150,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "360 * op('clip1').chan.barPhase"
+                "source": "360 * op('audiofile_clip').chan.barPhase"
               },
               "static": {
                 "kind": "static",
@@ -1178,14 +1178,14 @@
       "tick": {
         "definitionVersion": 1,
         "id": "tick",
-        "label": "tick1",
+        "label": "level_tick",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.35 + 1.4 * (1 - op('clip1').chan.beatPhase)"
+                "source": "0.35 + 1.4 * (1 - op('audiofile_clip').chan.beatPhase)"
               },
               "static": {
                 "kind": "static",
@@ -1209,13 +1209,13 @@
       "tint": {
         "definitionVersion": 1,
         "id": "tint",
-        "label": "tint1",
+        "label": "hsv_tint",
         "parameters": {
           "hueoffset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "-60 + 160 * op('lvl1').chan.centroid"
+                "source": "-60 + 160 * op('select_lvl').chan.centroid"
               },
               "static": {
                 "kind": "static",

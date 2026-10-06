@@ -1,4 +1,5 @@
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
+import { ZERO_FRAME } from "../types/frame.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { GraphNode } from "../types/graph.ts";
 import type { NodeDefinition } from "../types/node-definition.ts";
@@ -12,7 +13,10 @@ import type {
 } from "../types/parameters.ts";
 import {
   evaluateExpression,
+  nearestSpelling,
   scopeFromFrame,
+  type ExpressionFailure,
+  type ExpressionFailureKind,
   type ExpressionScope,
   type NodeReferenceReader,
 } from "../expressions/index.ts";
@@ -179,16 +183,101 @@ export interface ParameterMorphs {
 }
 
 /**
- * T897/T901: the marker a chan read's no-resolver failure carries, matched above the
- * expression fallback to give that state the INFO tier the old driven mode gave it. Lives
- * here (the leaf both sides import) so the two spellings cannot drift and no import cycle
- * forms — `node-references.ts` already imports this module.
+ * The index of a document with nothing fading. One object, so "none" is an identity check.
+ * It lives here, beside the interface, and not in the presets layer that builds the real
+ * ones: this layer's own "no flattening" read names it, and importing it from
+ * `presets/morph-index.ts` (which imports this module) closed a cycle that left it
+ * uninitialised whenever the presets layer happened to load first.
+ */
+export const NO_MORPHS: ParameterMorphs = {
+  keysOf: () => undefined,
+  stepsAt: () => undefined,
+  activeAt: () => false,
+};
+
+/**
+ * T897/T901: what a chan read's no-resolver failure SAYS. Its INFO tier (the one the old
+ * driven mode gave that state) comes from the failure's kind since §T1641b, not from a
+ * search for this text. Lives here (the leaf both sides import) so the reader's wording and
+ * the driven mode's cannot drift — `node-references.ts` already imports this module.
  */
 export const CHANNEL_RESOLVER_MISSING = "this context has no channel resolver";
 
+/** §V152's code: the whole-document check's (`reference-cycles.ts`) and the resolver's own. */
+export const REFERENCE_CYCLE_CODE = "parameter.referenceCycle";
+
+/** §V338's code: this caller has no channel resolver. Said of the caller, never of the document. */
+export const CHANNELS_UNAVAILABLE_CODE = "parameter.channels.unavailable";
+
+/**
+ * §T1641b — ONE FAILURE KIND, ONE CODE, and through the code one class
+ * (`src/domain/diagnostics/classes.ts`).
+ *
+ * All of these were `parameter.expression` at WARNING: a function the grammar does not have
+ * (§B262) beside a channel that is not published yet. So a guard could only stop on every
+ * one of them or on none, and a render script that stopped on none shipped three lamps at
+ * their stored values. The kinds that can NEVER read as written are errors (`syntax`,
+ * `name`, an `unreadable` or `ambiguous` reference, a `cycle`); the retained value still
+ * stands in (§V108), and the table marks all but the loop `local`, so the plan stays whole
+ * (a loop withdrew the plan before this, through the whole-document check, and still
+ * does). The kinds that read once something else arrives, or at another frame, stay
+ * warnings; the caller with no channel resolver stays the INFO it was (§V338).
+ */
+const EXPRESSION_FAILURES: Readonly<
+  Record<ExpressionFailureKind, { readonly severity: RuntimeDiagnostic["severity"]; readonly code: string }>
+> = {
+  syntax: { severity: "error", code: "parameter.expression.syntax" },
+  name: { severity: "error", code: "parameter.expression.name" },
+  value: { severity: "warning", code: "parameter.expression.value" },
+  "reference.unreadable": { severity: "error", code: "parameter.reference.unreadable" },
+  "reference.ambiguous": { severity: "error", code: "parameter.reference.ambiguous" },
+  "reference.cycle": { severity: "error", code: REFERENCE_CYCLE_CODE },
+  "reference.node": { severity: "warning", code: "parameter.reference.node" },
+  "reference.channel": { severity: "warning", code: "parameter.reference.channel" },
+  "reference.upstream": { severity: "warning", code: "parameter.reference.upstream" },
+  "reference.unknownType": { severity: "warning", code: "parameter.reference.unknownType" },
+  "reference.noResolver": { severity: "info", code: CHANNELS_UNAVAILABLE_CODE },
+  "reference.noGraph": { severity: "warning", code: "parameter.reference.unavailable" },
+};
+
+/**
+ * §T1641b slice 1b — WHY a bind did not read, as slice 1 did for an expression. They were
+ * all `parameter.bind` at warning: a ref that names nothing this node has beside a value
+ * that is past a limit at the moment.
+ *
+ *  - `unreadable`  the ref can never read: it names no parameter of this node, a component
+ *                  the parameter does not have, the parameter itself, or a parent key no
+ *                  component around the node publishes.
+ *  - `cycle`       the chain of binds returns to itself (§V110). The guard fires one hop
+ *                  inside the loop, and a bind reads what its sibling is IN EFFECT, fallback
+ *                  included, so this kind does not reach the parameter at the top: the loop
+ *                  is reported for the whole node by `bindCycleDiagnostics`, under this code.
+ *  - `unavailable` THIS resolution was handed no parent scope, or no sibling schema. A state
+ *                  of the caller, never of the document.
+ */
+export type BindFailureKind = "unreadable" | "cycle" | "unavailable";
+
+/**
+ * A supplied `parent.*` resolver may leave `kind` out; its refusal is then read as
+ * `unreadable`, like a hand-built node reader's (slice 1).
+ */
 export type BindLookupResult =
   | { ok: true; value: ParameterValue }
-  | { ok: false; message: string };
+  | { ok: false; kind?: BindFailureKind; message: string; suggestion?: string };
+
+/** The resolver's own lookups always say why: a failure site here cannot leave its kind out. */
+type KindedBindLookup =
+  | { ok: true; value: ParameterValue }
+  | { ok: false; kind: BindFailureKind; message: string; suggestion?: string };
+
+/** One bind failure kind, one code (see `EXPRESSION_FAILURES`). The loop keeps §V110's code. */
+const BIND_FAILURES: Readonly<
+  Record<BindFailureKind, { readonly severity: RuntimeDiagnostic["severity"]; readonly code: string }>
+> = {
+  unreadable: { severity: "error", code: "parameter.bind.unreadable" },
+  cycle: { severity: "error", code: "parameter.bindCycle" },
+  unavailable: { severity: "warning", code: "parameter.bind.unavailable" },
+};
 
 /**
  * Resolves a `parent.*` bind ref. The components track supplies one
@@ -234,6 +323,44 @@ export interface ResolveParametersOptions {
    */
   morphs?: ParameterMorphs | undefined;
 }
+
+/** §T1557b: the brand. Declared, never defined, so no module can spell a value carrying it. */
+declare const PARAMETER_READ: unique symbol;
+
+/**
+ * §T1557b — WHAT AN EVALUATION READ IS RESOLVED WITH: the frame, the channels, the
+ * cross-node reader and the morphs, as ONE value produced by `parameterReadOptions`
+ * (`node-references.ts`) and nowhere else.
+ *
+ * Branded, so an object literal cannot stand in for it. Every recurrence of §B8's shape
+ * (§T593, §T1000, §T1001, §B46, §B181) was a call site that wrote its own options from
+ * whatever it held — `{ channels }` with no reader — and still compiled. The brand makes
+ * that a type error: the only ways to hold one are the factory, which takes a
+ * `ParameterReadContext` whose every field is required, and `STORED_READ`, which says by
+ * name that this read is of the document and not of a moment.
+ */
+export type ParameterReadOptions = Readonly<Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs">> & {
+  readonly [PARAMETER_READ]: true;
+};
+
+/**
+ * What a call site may add to a read: the per-node inputs no factory can know — the
+ * `parent.*` scope (§V81), the drivers a component scope supplies, the sibling schema.
+ */
+export type ResolveExtras = Pick<ResolveParametersOptions, "drivers" | "parentBind" | "schema">;
+
+/** A read plus its extras: what `resolveParameters` and its siblings take. */
+export type ParameterRead = ParameterReadOptions & ResolveExtras;
+
+/**
+ * §T1557b — THE STORAGE READ: no frame, no channels, no cross-node reader, no morphs. What
+ * the document says, with an expression at the zero frame and a driven value at its
+ * retained static (§V108). For a command locating a slot, a structural classification
+ * memoized per document revision, a detach or a flattening that bakes values back into
+ * storage. Named, so "this read is not of a moment" is a decision a reviewer can see, and
+ * never the silent result of leaving an input out. `resolveStored` is the spelled-out form.
+ */
+export const STORED_READ: ParameterReadOptions = Object.freeze({}) as ParameterReadOptions;
 
 export interface ResolvedParameters {
   entries: readonly ResolvedParameter[];
@@ -362,16 +489,11 @@ function checkAgainstManifest(
  * `abstime * 2` failed outright and fell back to the manifest default. A clock the rest of
  * the app offers, refused in one corner.
  *
- * Deriving it from `scopeFromFrame` of an all-zero frame means scope name #N+1 arrives
- * here by construction, the way `frameVariableNames` already does for the completion menu.
+ * Deriving it from `scopeFromFrame` of the zero frame means scope name #N+1 arrives here by
+ * construction, the way `frameVariableNames` already does for the completion menu — and,
+ * since T1554b, that zero frame is the domain's one `ZERO_FRAME`, not a fifth copy of it.
  */
-const ZERO_FRAME_SCOPE: ExpressionScope = scopeFromFrame({
-  timeSeconds: 0,
-  deltaSeconds: 0,
-  frameIndex: 0,
-  mode: "offline",
-  randomSeed: 0,
-});
+const ZERO_FRAME_SCOPE: ExpressionScope = scopeFromFrame(ZERO_FRAME);
 
 /** No frame = the deterministic zero frame (§V44), so a compile-time resolve of `time*2` is 0, not an error. */
 function expressionScope(options: ResolveParametersOptions): ExpressionScope {
@@ -515,6 +637,50 @@ function fallback(
   };
 }
 
+/**
+ * §T1641b — what to do about a bare name nothing supplies: whether a clock, a parameter of
+ * this node, a node or a published channel is spelled like it, and the form that reads each.
+ * A refusal that lists nine clocks does not help the author who meant a node.
+ */
+function unknownNameRemedy(context: ResolveContext, name: string | undefined): string {
+  const forms = "An expression reads the clocks and other nodes: op('name').par.key, op('name').chan.channel.";
+  if (name === undefined) return forms;
+  const hints: string[] = [];
+  const clock = nearestSpelling(name, Object.keys(ZERO_FRAME_SCOPE).sort());
+  if (clock !== null) hints.push(`Nearest clock: ${clock}.`);
+  const schema = context.options.schema;
+  if (schema !== undefined && Object.hasOwn(schema, name)) {
+    hints.push(`"${name}" is a parameter of this node: read it in Bind mode.`);
+  }
+  const like = context.options.nodes?.spelledLike?.(name);
+  for (const node of (like?.nodes ?? []).slice(0, 3)) {
+    hints.push(`A node is named "${node}": write op('${node}').par.<parameter> or op('${node}').chan.<channel>.`);
+  }
+  for (const publisher of (like?.publishers ?? []).slice(0, 3)) {
+    hints.push(`"${publisher}" publishes a channel "${name}": write op('${publisher}').chan.${name}.`);
+  }
+  if (hints.length > 0) return hints.join(" ");
+  // Only a reader that looked may say nothing is spelled like it.
+  return like === undefined ? forms : `No node, channel or parameter of this node is spelled "${name}". ${forms}`;
+}
+
+/** What a failed expression's diagnostic suggests. A NEVER kind always says something. */
+function expressionRemedy(context: ResolveContext, failure: ExpressionFailure): string | undefined {
+  switch (failure.kind) {
+    case "reference.noResolver":
+      return "Channels are published by the running app; a headless caller has none, so the retained value is in effect.";
+    case "name":
+      return unknownNameRemedy(context, failure.subject);
+    case "reference.cycle":
+      return "Break the loop: one of these expressions must stop reading the other (§V152).";
+    default:
+      if (failure.suggestion !== undefined) return failure.suggestion;
+      return EXPRESSION_FAILURES[failure.kind].severity === "error"
+        ? "The parameter holds its stored value until the expression reads."
+        : undefined;
+  }
+}
+
 /** Per-resolution state: the visited set is the runtime bind-cycle backstop (§V110). */
 /** One mapped parameter, as data (T286/§V287): the consumer's compile reads this. */
 export interface ParameterMapBinding {
@@ -531,7 +697,7 @@ interface ResolveContext {
   maps?: Map<string, ParameterMapBinding>;
 }
 
-function resolveStored(
+function resolveSlot(
   context: ResolveContext,
   key: string,
   definition: ParameterDefinition,
@@ -597,41 +763,43 @@ function resolveStored(
       );
       if (!evaluated.ok) {
         /**
+         * §T1641b: the failure's KIND picks the code and the severity (`EXPRESSION_FAILURES`).
+         *
          * T897: a chan read failing ONLY because this context has no channel resolver is
          * the state the old driven mode called normal — a structural compile, a headless
          * validate — and reported at INFO (§V338). The expression that carries the read
          * inherits that tier, or the driven→expression migration would turn every clean
          * example compile into a wall of warnings the driven form never produced.
          */
-        const resolverless = evaluated.reason.includes(CHANNEL_RESOLVER_MISSING);
+        const failure = EXPRESSION_FAILURES[evaluated.kind];
         return fallback(
           node,
           key,
           definition,
           slot,
           diag(
-            resolverless ? "info" : "warning",
-            resolverless ? "parameter.channels.unavailable" : "parameter.expression",
+            failure.severity,
+            failure.code,
             `Parameter "${key}" expression "${binding.source}" failed: ${evaluated.reason}`,
             node.id,
-            resolverless
-              ? "Channels are published by the running app; a headless caller has none, so the retained value is in effect."
-              : undefined,
+            expressionRemedy(context, evaluated),
           ),
         );
       }
       const coerced = coerceExpressionResult(definition, evaluated.value);
       if (!coerced.ok) {
+        // §T1641b: NEVER. No expression can drive a parameter of this type (§V107).
         return fallback(
           node,
           key,
           definition,
           slot,
           diag(
-            "warning",
-            "parameter.expression",
+            "error",
+            "parameter.expression.type",
             `Parameter "${key}" expression "${binding.source}": ${coerced.message}.`,
             node.id,
+            `Switch "${key}" back to Constant: its stored value is in effect.`,
           ),
         );
       }
@@ -666,31 +834,44 @@ function resolveStored(
     case "bind": {
       const lookup = resolveBindRef(context, key, definition, binding.ref);
       if (!lookup.ok) {
+        // §T1641b slice 1b: the failure's KIND picks the code and the severity.
+        const failure = BIND_FAILURES[lookup.kind];
         return fallback(
           node,
           key,
           definition,
           slot,
           diag(
-            "warning",
-            "parameter.bind",
+            failure.severity,
+            failure.code,
             `Parameter "${key}" is bound to "${binding.ref}": ${lookup.message}`,
             node.id,
+            lookup.suggestion ??
+              (failure.severity === "error" ? "The parameter holds its stored value until the bind reads." : undefined),
           ),
         );
       }
       const checked = checkAgainstManifest(key, definition, lookup.value, node);
       if (checked.diagnostic !== null) {
+        /*
+         * §T1641b slice 1b: a value of another TYPE never fits, whatever the bound
+         * parameter holds: NEVER. One past this parameter's limit, or not among its
+         * options, fits at another value of what is bound: DEGRADED, and a warning.
+         */
+        const never = checked.diagnostic.code === "parameter.type";
         return fallback(
           node,
           key,
           definition,
           slot,
           diag(
-            "warning",
-            "parameter.bind",
+            never ? "error" : "warning",
+            never ? "parameter.bind.type" : "parameter.bind.value",
             `Parameter "${key}" is bound to "${binding.ref}", which does not fit it: ${checked.diagnostic.message}`,
             node.id,
+            never
+              ? `Bind "${key}" to a parameter of its own type, or switch it back to Constant: its stored value is in effect.`
+              : undefined,
           ),
         );
       }
@@ -877,14 +1058,14 @@ function blendValues(
 /**
  * T1497b — WHAT ONE STORED KEY IS WORTH AT A FRAME, preset morphs included.
  *
- * Every read of a stored key comes through here rather than through `resolveStored`
+ * Every read of a stored key comes through here rather than through `resolveSlot`
  * directly — the bare key, a compound's base, each of its component slots, and a sibling
  * read by a bind — so a morphing value is the same number to all of them (§V109).
  *
  * The fold is the design doc's §5.3, verbatim: start from the OLDEST running record's
  * `from` slot and blend through the records in order,
  * `V = blend(V, resolve(to_i), progress_i)`. Both ends are RESOLVED, at this frame, by the
- * same `resolveStored` everything else uses — so an end that is an expression keeps
+ * same `resolveSlot` everything else uses — so an end that is an expression keeps
  * moving through the fade, and a second recall mid-fade starts from the value the first
  * had reached on screen, with no jump. The newest step's `to` is the slot the document
  * stores, so its resolution is the settled one and is not computed twice.
@@ -899,7 +1080,7 @@ function resolveStoredAt(
   definition: ParameterDefinition,
   stored: StoredParameter | undefined,
 ): StoredResolution {
-  const settled = resolveStored(context, key, definition, stored);
+  const settled = resolveSlot(context, key, definition, stored);
   const { frame, morphs } = context.options;
   if (frame === undefined || morphs === undefined) return settled;
   const steps = morphs.stepsAt(context.node.id, key, frame);
@@ -908,14 +1089,14 @@ function resolveStoredAt(
   // The ends are resolved for their VALUE only: a `from` slot in map mode must not file a
   // mapping for a parameter that is no longer mapped.
   const ends: ResolveContext = { node: context.node, options: context.options, visited: context.visited };
-  let value: ParameterValue | undefined = resolveStored(ends, key, definition, (steps[0] as ParameterMorphStep).from).value;
+  let value: ParameterValue | undefined = resolveSlot(ends, key, definition, (steps[0] as ParameterMorphStep).from).value;
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index] as ParameterMorphStep;
     // T1508b: a timed step's end is the CUE's, never the stored slot, so it is resolved; and
     // a timed step that has arrived IS its end — exactly, with no `mix(a, b, 1)` rounding —
     // which is also how a type with no in-between (an enum, a string) cuts at its cue.
     const target =
-      index === steps.length - 1 && step.timed !== true ? settled.value : resolveStored(ends, key, definition, step.to).value;
+      index === steps.length - 1 && step.timed !== true ? settled.value : resolveSlot(ends, key, definition, step.to).value;
     value = step.timed === true && step.progress >= 1 ? target : blendValues(definition, value, target, step.progress);
     if (value === undefined) return settled;
   }
@@ -934,23 +1115,24 @@ function resolveBindRef(
   key: string,
   definition: ParameterDefinition,
   ref: string,
-): BindLookupResult {
+): KindedBindLookup {
   void definition;
   if (ref.startsWith("parent.")) {
     const resolver = context.options.parentBind;
     if (resolver === undefined) {
-      return { ok: false, message: "no parent scope is attached to this resolution (§V81)." };
+      return { ok: false, kind: "unavailable", message: "no parent scope is attached to this resolution (§V81)." };
     }
-    return resolver(ref);
+    const found = resolver(ref);
+    return found.ok ? found : { ...found, kind: found.kind ?? "unreadable" };
   }
 
   const schema = context.options.schema;
   if (schema === undefined) {
-    return { ok: false, message: "the sibling schema is unavailable in this resolution." };
+    return { ok: false, kind: "unavailable", message: "the sibling schema is unavailable in this resolution." };
   }
 
   if (Object.hasOwn(schema, ref)) {
-    if (ref === key) return { ok: false, message: "a parameter cannot bind to itself." };
+    if (ref === key) return { ok: false, kind: "unreadable", message: "a parameter cannot bind to itself." };
     const target = resolveEffective(context, ref, schema[ref] as ParameterDefinition);
     if (!target.ok) return target;
     return target;
@@ -964,6 +1146,7 @@ function resolveBindRef(
     if (names === null || index < 0) {
       return {
         ok: false,
+        kind: "unreadable",
         message: `"${parsed.base}" has no component "${parsed.component}"${
           names === null ? "" : ` (it has ${names.join(", ")})`
         }.`,
@@ -974,18 +1157,21 @@ function resolveBindRef(
     const tuple = target.value;
     const component = Array.isArray(tuple) ? tuple[index] : undefined;
     if (typeof component !== "number") {
-      return { ok: false, message: `"${parsed.base}" did not resolve to a numeric tuple.` };
+      return { ok: false, kind: "unreadable", message: `"${parsed.base}" did not resolve to a numeric tuple.` };
     }
     return { ok: true, value: component };
   }
 
   const known = Object.keys(schema).sort();
   const crossNode = crossNodeRemedy(context, schema, ref);
+  const near = nearestSpelling(ref, known);
   return {
     ok: false,
+    kind: "unreadable",
     message: `it names no parameter on this node${
       known.length === 0 ? "" : ` (it has ${known.join(", ")})`
     }.${crossNode === null ? "" : ` ${crossNode}`}`,
+    ...(near === null ? {} : { suggestion: `Nearest: "${near}".` }),
   };
 }
 
@@ -1001,7 +1187,8 @@ function resolveBindRef(
  * So a ref SHAPED like a node reference names the exact replacement, in the caller's own
  * text. This beats a document on reach: it arrives at the moment of the mistake, to every
  * agent (MCP, WebMCP, the next one) and to the human reading the same string in the
- * inspector's mode panel, which renders `diagnostic.message` and nothing else.
+ * inspector's mode panel, which rendered `diagnostic.message` and nothing else when this was
+ * written (it shows the suggestion beside it since §T1641b).
  *
  * WHICH namespace is PROBED, never guessed. `par` and `chan` are both real (T316, T901)
  * and neither is right for every node: `constant1.value` is a parameter AND a published
@@ -1041,11 +1228,13 @@ function resolveEffective(
   context: ResolveContext,
   key: string,
   definition: ParameterDefinition,
-): BindLookupResult {
+): KindedBindLookup {
   if (context.visited.has(key)) {
     return {
       ok: false,
+      kind: "cycle",
       message: `the bind chain is circular (through "${key}"); authoring should have refused it (§V110).`,
+      suggestion: "Break the loop: one of these binds must become a static value or an expression (§V110).",
     };
   }
   context.visited.add(key);
@@ -1135,11 +1324,24 @@ function resolveCompound(
   return { ...base, value: assembled, driven, components };
 }
 
+/**
+ * One parameter, through the one read path (§V61). §T1557b: `read` is required and comes from
+ * `parameterReadOptions` (or is `STORED_READ`, spread with the sibling schema).
+ */
 export function resolveParameter(
   node: GraphNode,
   key: string,
   definition: ParameterDefinition,
-  options: ResolveParametersOptions = {},
+  read: ParameterRead,
+): ResolvedParameter {
+  return resolveOne(node, key, definition, read);
+}
+
+function resolveOne(
+  node: GraphNode,
+  key: string,
+  definition: ParameterDefinition,
+  options: ResolveParametersOptions,
   /** T286: shared collector for map-mode bindings, threaded by resolveParameterSchema. */
   maps?: Map<string, ParameterMapBinding>,
 ): ResolvedParameter {
@@ -1211,10 +1413,22 @@ export function resolveParameter(
  * instance's parameter page is the component's PUBLISHED definitions, which exist
  * before any node manifest does (§V80) — and one resolver is the point.
  */
-export function resolveParameterSchema(
+export function resolveParameterSchema(node: GraphNode, schema: ParameterSchema, read: ParameterRead): ResolvedParameters {
+  return resolveSchemaWith(node, schema, read);
+}
+
+/**
+ * §T1557b — the storage read of a bare schema (`STORED_READ`): a component's published page
+ * as the document holds it, for a detach that writes it back.
+ */
+export function resolveStoredSchema(node: GraphNode, schema: ParameterSchema, extras: ResolveExtras = {}): ResolvedParameters {
+  return resolveSchemaWith(node, schema, { ...STORED_READ, ...extras });
+}
+
+function resolveSchemaWith(
   node: GraphNode,
   schema: ParameterSchema,
-  options: ResolveParametersOptions = {},
+  options: ResolveParametersOptions,
 ): ResolvedParameters {
   const entries: ResolvedParameter[] = [];
   const values: Record<string, ParameterValue> = {};
@@ -1224,7 +1438,7 @@ export function resolveParameterSchema(
     options.schema === undefined ? { ...options, schema } : options;
 
   for (const [key, parameter] of Object.entries(schema)) {
-    const resolved = resolveParameter(node, key, parameter, withSchema, maps);
+    const resolved = resolveOne(node, key, parameter, withSchema, maps);
     entries.push(resolved);
     values[key] = evaluationValue(parameter, resolved.value);
     if (resolved.diagnostic !== null) diagnostics.push(resolved.diagnostic);
@@ -1290,10 +1504,17 @@ export function effectiveParameterSchema(
  * Effective parameters of a node, in manifest order. An unknown node type (§V10
  * placeholder) resolves to nothing rather than guessing a schema.
  */
-export function resolveParameters(
-  node: GraphNode,
-  definition: NodeDefinition | undefined,
-  options: ResolveParametersOptions = {},
-): ResolvedParameters {
-  return resolveParameterSchema(node, effectiveParameterSchema(definition, node.parameters), options);
+export function resolveParameters(node: GraphNode, definition: NodeDefinition | undefined, read: ParameterRead): ResolvedParameters {
+  return resolveSchemaWith(node, effectiveParameterSchema(definition, node.parameters), read);
+}
+
+/**
+ * §T1557b — THE STORAGE READ of a node (`STORED_READ`): what the document says, with no
+ * frame, no channels, no cross-node reader and no morphs. For the reads that want the
+ * document on purpose — a command locating a slot, a classification memoized per document
+ * revision, a detach. An EVALUATION read (what is on screen, what the plan renders) goes
+ * through `parameterReadOptions` instead; the design doc's table records which is which.
+ */
+export function resolveStored(node: GraphNode, definition: NodeDefinition | undefined, extras: ResolveExtras = {}): ResolvedParameters {
+  return resolveSchemaWith(node, effectiveParameterSchema(definition, node.parameters), { ...STORED_READ, ...extras });
 }

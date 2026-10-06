@@ -2,6 +2,7 @@ import type { z } from "zod";
 
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { HistorySummary } from "@domain/commands/graph-commands.ts";
+import { describeInputIssue } from "@domain/commands/input-schema.ts";
 import type { Actor, CapabilityClass, InvocationContext } from "@domain/types/commands.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { Revision } from "@domain/types/ids.ts";
@@ -497,11 +498,9 @@ export function createAgentToolSurface(options: AgentSurfaceOptions): AgentToolS
          * because it is the machine-readable half.
          */
         diagnostics: parsed.error.issues.map((issue) =>
-          diagnostic(
-            "error",
-            "tool.input",
-            `Input to "${tool.name}" is invalid at ${issue.path.join(".") || "(root)"} (${issue.code}): ${issue.message}`,
-          ),
+          // §T1556b: the bus's own sentence (`describeInputIssue`), so a field a caller got
+          // wrong reads the same whether a tool or the command it runs refused it.
+          diagnostic("error", "tool.input", describeInputIssue(tool.name, issue)),
         ),
       });
     }
@@ -535,7 +534,7 @@ export function createAgentToolSurface(options: AgentSurfaceOptions): AgentToolS
         tool: tool.name,
         label: tool.title,
         baseRevision,
-        operations: tool.preview(parsed.data),
+        operations: tool.preview(parsed.data, bus.registry),
         transactionId,
       });
       return result(tool.name, "awaiting-approval", null, {

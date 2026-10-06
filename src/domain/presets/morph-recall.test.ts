@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
@@ -11,17 +12,19 @@ import { createDomainBus } from "../commands/index.ts";
 import type { LoomBus } from "../commands/bus.ts";
 import { alice, bob, contextFor, patch } from "../commands/test-support.ts";
 import { createValueGraphSession } from "../channels/value-graph.ts";
-import { hasAnimatedParameters } from "../channels/graph-channels.ts";
-import { createParameterReadOptions } from "../parameters/node-references.ts";
+import { graphChannelResolver, hasAnimatedParameters } from "../channels/graph-channels.ts";
+import { NO_FLATTENING, parameterReadOptions } from "../parameters/node-references.ts";
 import { resolveParameters, srgbToLinear } from "../parameters/resolve.ts";
 import { liveClock } from "../transport/live-clock.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { levelNode } from "../../nodes/definitions/color.ts";
+import { controlSliderNode } from "../../nodes/definitions/controls.ts";
 import { presetsNode } from "../../nodes/definitions/presets.ts";
 import { constantNode } from "../../nodes/definitions/values.ts";
 import { serializePresetBank, type MorphSpec, type Preset } from "./bank.ts";
 import { parseMorphRecords, type MorphRecord } from "./morph.ts";
 import { buildMorphIndex } from "./morph-index.ts";
+import { testRead } from "../parameters/test-support.ts";
 
 /**
  * T1497b (§T1398b S2) — A RECALL WITH A MORPH, through the real bus, the real live clock
@@ -67,7 +70,7 @@ const knobsNode: NodeDefinition = {
   compile: () => ({ passes: [] }),
 };
 
-const registry: NodeRegistryView = createNodeRegistry([levelNode, presetsNode, constantNode, knobsNode]).view();
+const registry: NodeRegistryView = createNodeRegistry([levelNode, presetsNode, constantNode, knobsNode, controlSliderNode]).view();
 
 function node(id: NodeId, type: string, label: string, parameters: Record<string, StoredParameter> = {}): GraphNode {
   return { id, type, label, definitionVersion: 1, position: { x: 0, y: 0 }, parameters };
@@ -151,7 +154,7 @@ function session(nodes: GraphNode[], options: { attachClock?: boolean } = {}): S
       const target = graph.nodes[nodeId];
       if (target === undefined) throw new Error(`no node ${nodeId}`);
       const morphs = buildMorphIndex({ document: graph, registry });
-      return resolveParameters(target, registry.get(target.type), createParameterReadOptions({ graph, registry, frame, morphs })).values[key];
+      return resolveParameters(target, registry.get(target.type), parameterReadOptions({ graph: flatDocument(graph), registry, frame, channels: undefined, flattening: { ...NO_FLATTENING, morphs } })).values[key];
     },
     records: (bankId = "bank") => parseMorphRecords(store.view.getGraph().nodes[bankId]?.parameters["morphs"]),
     stored: (nodeId, key) => store.view.getGraph().nodes[nodeId]?.parameters[key],
@@ -483,6 +486,27 @@ describe("a manual edit of a morphing key wins at once", () => {
     const later = run.frames(30);
     expect(run.shown("level", "brightness")).toBe(blend(0.6, 0.2, second, later));
   });
+
+  it("a control reset in mid-fade is such an edit: THAT control cuts to its default, and the recall's other key keeps fading (T1619b)", async () => {
+    const run = session([
+      node("level", "level", "level1", { brightness: 0.2 }),
+      node("heat", "slider", "slider_heat", { channel: "heat", value: 0.2, min: 0, max: 2, defaultValue: 0.5 }),
+      bank("bank", "looks", [preset("hot", { level1: { brightness: 0.8 }, slider_heat: { value: 1.8 } })]),
+    ]);
+    run.frames(5);
+    await recall(run, "hot", LINEAR_1S);
+    const [record] = run.records();
+    if (record === undefined) throw new Error("no record");
+    const half = run.frames(30);
+    // Both keys are on their way: the slider between 0.2 and 1.8, not at either and not at its default.
+    expect(run.shown("heat", "value")).toBe(blend(0.2, 1.8, record, half));
+
+    const reset = await run.bus.execute("control.reset", { nodeIds: ["heat"] }, contextFor(alice));
+    expect(reset.status).toBe("applied");
+    const next = run.frames(1);
+    expect(run.shown("heat", "value")).toBe(0.5);
+    expect(run.shown("level", "brightness")).toBe(blend(0.2, 0.8, record, next));
+  });
 });
 
 describe("exports and reopened documents render the END state (§5.4)", () => {
@@ -520,7 +544,7 @@ describe("exports and reopened documents render the END state (§5.4)", () => {
     // And frameless — a control, a validate, a structural compile — is the destination too.
     const graph = run.store.view.getGraph();
     const level = graph.nodes["level"] as GraphNode;
-    expect(resolveParameters(level, registry.get("level"), { morphs: buildMorphIndex({ document: graph, registry }) }).values["brightness"]).toBe(0.8);
+    expect(resolveParameters(level, registry.get("level"), testRead({ morphs: buildMorphIndex({ document: graph, registry }) })).values["brightness"]).toBe(0.8);
   });
 });
 
@@ -588,7 +612,10 @@ describe("which morph applies (§5.1): the recall's own, else the preset's, else
     const revision = run.store.view.getRevision();
     const result = await run.bus.execute("preset.recall", { nodeId: "bank", name: "plain", morph: { seconds: -1, curve: "linear" } }, contextFor(alice));
     expect(result.status).toBe("rejected");
-    expect(result.diagnostics[0]?.code).toBe("preset.recall.morph");
+    // §T1556b: the bus refuses it against the recall's input schema (`morphSpecSchema`, the
+    // one the agent's recall_preset also extends), naming the field.
+    expect(result.diagnostics[0]?.code).toBe("command.input");
+    expect(result.diagnostics[0]?.message).toContain("morph.seconds");
     expect(run.store.view.getRevision()).toBe(revision);
     expect(run.stored("level", "brightness")).toBe(0.2);
   });
@@ -676,10 +703,10 @@ describe("the value graph reads the same fade (§V61)", () => {
     const frame = run.frames(30);
     const graph = run.store.view.getGraph();
     const values = createValueGraphSession(registry);
-    const fading = values.evaluate(graph, frame, { morphs: buildMorphIndex({ document: graph, registry }) });
+    const fading = values.evaluate(flatDocument(graph), frame, { flattening: { ...NO_FLATTENING, morphs: buildMorphIndex({ document: graph, registry }) } });
     expect(fading.byName.get("constant1")?.["value"]).toBe(blend(0, 1, record, frame));
     // Cut the wire: without the index the same frame publishes the destination.
-    expect(values.evaluate(graph, frame).byName.get("constant1")?.["value"]).toBe(1);
+    expect(values.evaluate(flatDocument(graph), frame, { flattening: NO_FLATTENING }).byName.get("constant1")?.["value"]).toBe(1);
   });
 });
 
@@ -689,7 +716,7 @@ describe("a rename carries a fade in flight (§V128, §V320)", () => {
     run.frames(5);
     await recall(run, "bright", LINEAR_1S);
     run.frames(20);
-    const renamed = await run.bus.execute("node.rename", { nodeId: "level", label: "grade" }, contextFor(alice));
+    const renamed = await run.bus.execute("node.rename", { nodeId: "level", label: "grade", exact: true }, contextFor(alice));
     expect(renamed.status).toBe("applied");
     const [record] = run.records();
     if (record === undefined) throw new Error("no record");
@@ -722,5 +749,35 @@ describe("a bank keeps at most four records (§5.2)", () => {
     expect(said[0]?.message).toContain('"blacklevel"');
     // The key only the dropped record covered is at its end value.
     expect(run.shown("level", "blacklevel")).toBe(0.5);
+  });
+});
+
+/**
+ * §T1557b / §B181's shape — A RECALL READS ITS BANK'S MORPH AT THIS MOMENT, through the
+ * command's read scope.
+ *
+ * `resolvedBank` used to resolve the bank with `{ channels }` and nothing else: no cross-node
+ * reader, so `op('k1').chan.value` on the bank's Morph reported "no reader" and fell back to
+ * its retained static (0 — a cut) while the channel said 3. The bus is wired here as the app
+ * wires it: the channel resolver (`graphChannelResolver`, the backstop of the app's ladder)
+ * and the frame the transport last produced.
+ */
+describe("§T1557b — a bank's Morph driven by op('k1').chan.value (B181's shape)", () => {
+  it("fades for the channel's seconds, not the retained static", async () => {
+    const run = session([
+      node("level", "level", "level1", { brightness: 0.2 }),
+      node("k1", "constant", "k1", { value: 3 }),
+      bank("bank", "looks", [preset("bright", { level1: { brightness: 0.8 } })], { morph: expression("op('k1').chan.value", 0) }),
+    ]);
+    run.bus.attachChannelResolver(() => graphChannelResolver(flatDocument(run.store.view.getGraph()), registry));
+    run.bus.attachFrame(() => run.latest());
+    run.frames(1);
+
+    const result = await recall(run, "bright");
+    expect(result.status).toBe("applied");
+    // 3 s only if the bank's Morph was read through a reader with the channels behind it.
+    // The bug read the retained static: `morph: null`, a cut.
+    expect(result.output.morph).toEqual({ seconds: 3, curve: "smooth" });
+    expect(run.records().map((each) => each.seconds)).toEqual([3]);
   });
 });

@@ -79,12 +79,23 @@ describe("E20 Gooeyball", () => {
     expect(draw.textures?.some((t) => t.binding === "albedoMap" && t.resourceId === "target:paint:out")).toBe(true);
     expect(draw.textures?.some((t) => t.binding === "roughnessMap" && t.resourceId === "target:wobble:out")).toBe(true);
     expect(draw.shader).toContain("albedoMap");
-    // TWO lights reached the shader, one of them the orbiting fill.
-    expect(draw.shader).toContain("light1Meta");
+    // TWO lights reached the Render, one of them the orbiting fill. Neither casts, so each is
+    // a ROW of the Render's light table (T1623b), written as values: the lit draw walks the
+    // table, and its text holds no block for either. The fill, a point light with no Range,
+    // stands ahead of the key, a directional one: the table's order is by kind.
+    expect(draw.shader).toContain("lightTable");
+    expect(draw.shader).not.toMatch(/light\d+Meta/);
+    const written = plan.passes.find((pass) => pass.kind === "write" && (pass as { id: string }).id.endsWith(":lights:named")) as unknown as { values: { rows: number[]; count: number } };
+    expect(written.values.count).toBe(2);
+    // A row's kind is its fourteenth float (1 point, 0 directional), its place in the Render's list its sixteenth.
+    expect([0, 1].map((row) => [written.values.rows[row * 16 + 13], written.values.rows[row * 16 + 15]])).toEqual([
+      [1, 1],
+      [0, 0],
+    ]);
     const fill = document.graph.nodes["fill"] as GraphNode;
     const slot = fill.parameters["position.x"] as { mode?: string; bindings?: { expression?: { source?: string } } };
     expect(slot.mode).toBe("expression");
-    expect(channelOf(slot?.bindings?.expression?.source)).toBe("orbitx1");
+    expect(channelOf(slot?.bindings?.expression?.source)).toBe("lfo_orbitx");
   });
 
   /** B14's lesson, pinned again: animated goo needs a 4D noise with speed set. */

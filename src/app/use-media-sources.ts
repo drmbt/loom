@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph, GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
-import { resolveParameters } from "@domain/parameters/index.ts";
+import { resolveStored } from "@domain/parameters/index.ts";
 import { storedStaticValue } from "@domain/parameters/slots.ts";
 import { mediaNodeDefinitions, mediaSourceIdFor, phoneCameraName } from "@nodes/definitions/index.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
@@ -17,12 +17,12 @@ import type { MediaControlRegistry } from "./media-commands.ts";
 import type { PhoneCameraOpener } from "./use-phone-cameras.ts";
 import {
   createMediaTransportRunner,
-  durationOf,
   playableMedia,
   type MediaTransportRunner,
   type PlayableMedia,
 } from "./media-playback.ts";
-import { createMovieAudioPlayback, type MovieAudioPlayback } from "./movie-audio-playback.ts";
+import { createMovieAudioPlayback, movieLoopOf, type MovieAudioPlayback } from "./movie-audio-playback.ts";
+import { appMovieAudioOutput } from "./app-audio-context.ts";
 import {
   hdrPictureRefusal,
   pictureFileKind,
@@ -228,7 +228,7 @@ function colorValue(
 /**
  * What a Text node wants drawn (T243), or null while its size is unknown.
  *
- * Parameters are read through `resolveParameters` — §V61's single read path — so an
+ * Parameters are read through `resolveStored` — §V61's single read path — so an
  * expression or a driven slot on the string, the size or the colour reaches the canvas
  * like any other mode (§V107). Colours come from `entries[].value`, which stays in the
  * space the user picked (display/sRGB); a canvas paints in sRGB and the external texture
@@ -247,7 +247,10 @@ function textRasterFor(
 ): TextRaster | null {
   const node = graph.nodes[nodeId];
   if (node === undefined || size === undefined) return null;
-  const resolved = resolveParameters(node, registry.get(node.type));
+  // §T1559b: the storage read, by name — the raster is pushed per document change, not per
+  // frame, so it draws what the document says (an expression at the zero frame, a driven
+  // slot at its retained static, §V108); it never was a read of a moment.
+  const resolved = resolveStored(node, registry.get(node.type));
   const read = (key: string): ParameterValue | undefined => resolved.get(key)?.value;
 
   const align = text(read("align"), "center");
@@ -408,7 +411,7 @@ export interface MediaWiring {
 export function useMediaSources(
   runtime: AppRuntime,
   backend: LoomBackend | null,
-  graph: GraphDocument,
+  graph: FlatGraph,
   /** Resolved output sizes (T312). Null before the first successful compile. */
   resolved: ResolvedSizeSource | null,
   environment?: MediaEnvironment,
@@ -475,10 +478,17 @@ export function useMediaSources(
    * T493 — live movie transports by node: the element to drive, and the runner that owns
    * its free-run accumulator. A webcam is deliberately absent — a live camera has no
    * playhead to derive, which is why the transport is on the FILE node and not on
-   * `compileMedia`'s shared shape.
+   * `compileMedia`'s shared shape. §T1548b: `partner` opens the second element a free-run
+   * Loop hands over to at a lap, once, on the first frame that could need it; §T1560b:
+   * `release` drops it again when the loop goes back to one element (a silent whole file).
    */
   const playersRef = useRef(
-    new Map<NodeId, { element: PlayableMedia; runner: MediaTransportRunner; audio: MovieAudioPlayback }>(),
+    new Map<NodeId, {
+      runner: MediaTransportRunner;
+      audio: MovieAudioPlayback;
+      partner: () => void;
+      release: () => void;
+    }>(),
   );
   /**
    * T1043 — live cameras by node: what was asked for, and the door that can still be asked
@@ -767,9 +777,10 @@ export function useMediaSources(
               graph: () => graphRef.current,
               registry: runtimeRef.current.registry,
               channels: () => channelsRef.current,
-              // T1524b: the index of the same flattening `graph` is (T615), read per step.
-              morphs: () => runtimeRef.current.flattened.current().morphs,
+              // T1524b / §T1559b: the same flattening `graph` is (T615), whole, read per step.
+              flattening: () => runtimeRef.current.flattened.current(),
             });
+            // §T1548b: through the app's one AudioContext — null where there is no Web Audio.
             const audio = createMovieAudioPlayback(playable, window, message => {
               if (!live) return;
               setPlaybackDiagnostics(previous => {
@@ -779,10 +790,66 @@ export function useMediaSources(
                   suggestion: "Click or press a key in the page to retry movie playback.",
                 }];
               });
-            });
+            }, appMovieAudioOutput());
             audio.setRenderMuted(renderMuteLeases.current > 0);
             if (!runningRef.current) audio.pause();
-            livePlayers.set(request.nodeId, { element: playable, runner, audio });
+            /*
+             * §T1548b — the loop PARTNER: a second element on the same file, so a free-run
+             * lap is a hand-over rather than a seek (`createMovieAudioPlayback`). Opened on
+             * first need, not here, so a movie that is locked, held or never loops costs no
+             * second decoder, and only for a window that hands over (`movieLoopOf`): a
+             * trimmed one, or the whole file with Audio on (§T1560b). Until it is primed, and
+             * if it never opens, a lap seeks as it always did — the partner refines a working
+             * lap (a whole file loops natively meanwhile).
+             *
+             * §T1560b — a silent whole file loops natively on ONE element, so `release` drops
+             * the one not playing and empties it: its decoder goes now, not at a garbage
+             * collection. Either element can be the one dropped, so the picture source is
+             * told which ELEMENT plays through this map, not by "the second or the first".
+             */
+            const shownAs = new Map<PlayableMedia, MediaElement>([[playable, element]]);
+            // "refused": the file would not open a second time, or not as a second element —
+            // not asked again every frame.
+            let partnerState: "none" | "opening" | "attached" | "refused" = "none";
+            let partnerWanted = false;
+            const unload = (dropped: PlayableMedia) => {
+              shownAs.delete(dropped);
+              dropped.pause();
+              if (typeof HTMLMediaElement !== "undefined" && dropped instanceof HTMLMediaElement) {
+                dropped.removeAttribute("src");
+                dropped.load();
+              }
+            };
+            const partner = () => {
+              partnerWanted = true;
+              if (partnerState !== "none") return;
+              partnerState = "opening";
+              void env.openFile(request.url).then((second) => {
+                partnerState = "none";
+                const playable2 = playableMedia(second);
+                if (playable2 === null || shownAs.has(playable2)) {
+                  partnerState = "refused";
+                  return;
+                }
+                shownAs.set(playable2, second);
+                if (live && partnerWanted && audio.attachPartner(playable2, (playing) => {
+                  const shown = shownAs.get(playing);
+                  if (shown !== undefined) media.show(shown);
+                })) {
+                  partnerState = "attached";
+                } else {
+                  unload(playable2);
+                }
+              }, () => { partnerState = "refused"; });
+            };
+            const dropPartner = () => {
+              partnerWanted = false;
+              if (partnerState !== "attached") return;
+              partnerState = "none";
+              const dropped = audio.releasePartner();
+              if (dropped !== null) unload(dropped);
+            };
+            livePlayers.set(request.nodeId, { runner, audio, partner, release: dropPartner });
             playerOpened.push(request.nodeId);
             const release = controls?.register(request.nodeId, {
               cue: () => runner.cue(),
@@ -881,9 +948,15 @@ export function useMediaSources(
   const sync = useCallback((frame: FrameEvaluationInput, channels?: ChannelResolver) => {
     channelsRef.current = channels;
     runningRef.current = true;
-    for (const { element, runner, audio } of playersRef.current.values()) {
-      const stepped = runner.step(frame, durationOf(element), element.currentTime);
+    for (const { runner, audio, partner, release } of playersRef.current.values()) {
+      // §T1548b: the playing element's clock, which after a loop hand-over is the partner's.
+      const duration = audio.duration();
+      const stepped = runner.step(frame, duration, audio.position());
       if (stepped === null) continue;
+      // §T1560b: Audio on a whole-file Loop opens the partner, and turning it off releases it.
+      const loop = movieLoopOf(stepped.transport, stepped.head, duration, frame.mode, stepped.read("audio") === true);
+      if (loop === "handOver") partner();
+      else if (loop === "native") release();
       audio.sync(stepped, frame.mode);
     }
   }, []);

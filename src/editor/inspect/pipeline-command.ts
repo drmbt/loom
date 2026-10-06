@@ -1,5 +1,6 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * `ui.showPipeline` — the ONE command that opens the pipeline inspector (T1188, §V307,
@@ -48,6 +49,7 @@ export function registerPipelineCommand(bus: LoomBus): PipelineHolder {
 
   bus.registerCommand({
     name: SHOW_PIPELINE_COMMAND,
+    inputSchema: NO_INPUT,
     description: "Show the pipeline — the passes, resources and decisions of the installed plan.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();

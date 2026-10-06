@@ -10,6 +10,13 @@ import { createSequentialIdFactory } from "@domain/graph/ids.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
+import type { GraphComponentDefinition } from "@domain/types/components.ts";
+import type { GraphDocument } from "@domain/types/graph.ts";
+import type { StoredParameter } from "@domain/types/parameters.ts";
+import { componentNodeType, createComponentSystem } from "@domain/components/index.ts";
+import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { flattenComponents } from "@compiler/index.ts";
+import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { Inspector } from "./inspector.tsx";
@@ -354,5 +361,145 @@ describe("§V272/§V844 — the app actually feeds the channel enumerator", () =
 
   it("forwards it from the pane into the Inspector", () => {
     expect(panes).toContain("{ channelNames }");
+  });
+});
+
+/**
+ * §T1485b — A COMPONENT INSTANCE'S CHANNELS COMPLETE, ON THE REAL PANE.
+ *
+ * `op('analysis1').chan.` offered nothing: the enumerator answers by the name a value node
+ * publishes under, and the value graph runs FLAT, where the instance is gone and its bags
+ * carry the inner labels. The supplies here are the real ones — the real flattener's
+ * instance map and the real value graph's bags — so this mount fails if the pane stops
+ * handing the map to its catalogue, not merely if a stub disagrees with itself.
+ */
+describe("§T1485b — op('<instance>').chan. offers the instance's channels", () => {
+  /** Two value outputs, `levels` and `hits`, one publisher each, and `shared` on both. */
+  const analysis: GraphComponentDefinition = {
+    componentId: "analysis",
+    version: 1,
+    name: "Analysis",
+    graph: {
+      revision: 1,
+      groups: {},
+      nodes: {
+        bands: { id: "bands", type: "valueExpression", label: "bands1", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { expressions: "level = 0.75; shared = 1" } },
+        onsets: { id: "onsets", type: "valueExpression", label: "onsets1", definitionVersion: 1, position: { x: 0, y: 100 }, parameters: { expressions: "kick = 0.6; shared = 2" } },
+        levels: { id: "levels", type: "componentOutValue", label: "levels", definitionVersion: 1, position: { x: 300, y: 0 }, parameters: {} },
+        hits: { id: "hits", type: "componentOutValue", label: "hits", definitionVersion: 1, position: { x: 300, y: 100 }, parameters: {} },
+      },
+      edges: {
+        a: { id: "a", source: { nodeId: "bands", portId: "out" }, target: { nodeId: "levels", portId: "in" } },
+        b: { id: "b", source: { nodeId: "onsets", portId: "out" }, target: { nodeId: "hits", portId: "in" } },
+      },
+    },
+    inputs: [],
+    outputs: [],
+    parameters: [],
+  };
+
+  /**
+   * The pane over a document holding the instance, fed exactly as `app.tsx` feeds it: the
+   * value graph's resolver and enumerator, and the flattening's instance map. `gain` is the
+   * selected node's stored Gain, so a test can open the pane on an expression already there.
+   */
+  async function mountWithInstance(gain?: StoredParameter): Promise<void> {
+    const system = createComponentSystem(createNodeRegistry([gainer, ...allNodeDefinitions]).view());
+    system.components.register(analysis);
+    const initialGraph: GraphDocument = {
+      revision: 0,
+      groups: {},
+      edges: {},
+      nodes: {
+        inst: { id: "inst", type: componentNodeType("analysis", 1), label: "analysis1", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
+        g: { id: "g", type: gainer.type, label: "gainer1", definitionVersion: 1, position: { x: 200, y: 0 }, parameters: gain === undefined ? {} : { gain } },
+      },
+    };
+    const { bus } = createDomainBus({ registry: system.nodes, initialGraph });
+    const flattened = flattenComponents({ graph: initialGraph, registry: system.nodes, components: system.components.view() });
+    const evaluated = createValueGraphSession(system.nodes).evaluate(flattened.graph, {
+      timeSeconds: 0,
+      deltaSeconds: 0,
+      frameIndex: 0,
+      mode: "offline",
+      randomSeed: 0,
+    }, { flattening: flattened });
+    render(
+      <Inspector
+        bus={bus}
+        context={context}
+        nodeId={"g" as NodeId}
+        settings={settings}
+        channels={evaluated.resolver}
+        channelNames={(name) => Object.keys(evaluated.byName.get(name) ?? {})}
+        instanceChannels={() => flattened.instanceChannels}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Gain", expanded: false }));
+    await settle();
+  }
+
+  async function offeredUnderInstance(source: string): Promise<string[]> {
+    await mountWithInstance();
+    const group = screen.getByRole("group", { name: "Gain mode" });
+    const expression = [...group.querySelectorAll("button")].find((button) =>
+      (button.getAttribute("aria-label") ?? "").startsWith("Expression"),
+    );
+    fireEvent.click(expression as HTMLButtonElement);
+    await settle();
+    fireEvent.change(screen.getByLabelText("Gain expression"), { target: { value: source } });
+    await settle();
+    const menu = screen.queryByRole("listbox", { name: "Expression completions" });
+    if (menu === null) return [];
+    return within(menu)
+      .getAllByRole("option")
+      .map((option) => option.querySelector("span")?.textContent ?? "");
+  }
+
+  /** What the mode panel's status line says about the stored Gain — the pane's own read. */
+  async function statusFor(source: string): Promise<string> {
+    await mountWithInstance({
+      mode: "expression",
+      bindings: { static: { kind: "static", value: 0.25 }, expression: { kind: "expression", source } },
+    });
+    const group = screen.getByRole("group", { name: "Gain mode" });
+    return group.parentElement?.querySelector('[role="status"]')?.textContent ?? "";
+  }
+
+
+  it("lists the union of the instance's value outputs, minus the name two of them carry", async () => {
+    // `shared` is on both outputs and the reader refuses it, so the menu may not offer it
+    // (§V150); `level` and `kick` each come from one output, in exposure order.
+    expect(await offeredUnderInstance("op('analysis1').chan.")).toEqual(["level", "kick"]);
+  });
+
+  it("names the instance among the op('…') names, as it always did", async () => {
+    expect(await offeredUnderInstance("op('ana")).toEqual(["analysis1"]);
+  });
+
+  /**
+   * The pane's READ, not only its menu: `readOptionsAt` hands the same map to the reader.
+   * The ambiguous name is refused with both ports named; a name one output carries reads
+   * cleanly (the status line is silent), which a read through no map cannot do — it would
+   * say "publishes no channel".
+   */
+  it("reads through the same map: the shared name is refused naming both ports, a unique one is silent", async () => {
+    const refused = await statusFor("op('analysis1').chan.shared");
+    expect(refused).toContain(`"levels"`);
+    expect(refused).toContain(`"hits"`);
+    cleanup();
+    expect(await statusFor("op('analysis1').chan.level")).toBe("");
+  });
+});
+
+describe("§T1485b/§V844 — the app actually feeds the instance map", () => {
+  const sourceOf = (relative: string): string =>
+    readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+
+  it("passes the value graph's instance map from app.tsx and forwards it into the Inspector", () => {
+    expect(sourceOf("../../app/app.tsx")).toContain("instanceChannels={valueGraph.instanceChannels}");
+    expect(sourceOf("../../app/side-panes.tsx")).toContain("{ instanceChannels }");
   });
 });

@@ -7,9 +7,10 @@ import {
   functionNames,
   functionSignature,
   parseExpression,
+  rewriteOf,
   scopeFromFrame,
 } from "./evaluate.ts";
-import { acceptedFunctionCalls } from "./reference.ts";
+import { acceptedFunctionCalls, CANDIDATE_FUNCTIONS } from "./reference.ts";
 import { offlineTransport } from "../../runtime/execution/offline-transport.ts";
 import { liveClock } from "../transport/live-clock.ts";
 import { DEFAULT_PROJECT_FPS } from "../types/graph.ts";
@@ -429,7 +430,7 @@ describe("T1176 — a rejection is CONTROL FLOW, and must not cost an Error stac
       // A well-formed source rejected by the EVALUATOR: `time` is not in scope, which is
       // exactly what a frameless compile hands it.
       const evaluated = fresh.evaluateExpression("time * 2", {});
-      expect(evaluated).toEqual({ ok: false, reason: 'unknown name "time"' });
+      expect(evaluated).toEqual({ ok: false, kind: "name", reason: 'unknown name "time"', subject: "time" });
 
       // And a legitimate expression still evaluates — the guard must not be satisfied by
       // a module that rejects everything.
@@ -481,5 +482,118 @@ describe("fps and subframes (T1426b, T1435b)", () => {
     expect(value("subframes", frame)).toBe(1);
     expect(value("fps", { ...frame, fps: 0 })).toBe(DEFAULT_PROJECT_FPS);
     expect(value("subframes", { ...frame, subframes: 0.5 })).toBe(1);
+  });
+});
+
+/**
+ * §T1641b — A FAILURE CARRIES ITS KIND, and a refused function carries what to write instead.
+ *
+ * Every failure was a reason string, so the resolver that turns one into a diagnostic could
+ * not tell an expression that can never evaluate (`pow(x, 2)`, §B262) from one that cannot
+ * evaluate at this frame, and reported both as one warning. The kind is what it reads now.
+ */
+describe("why an expression failed (T1641b)", () => {
+  const kindOf = (source: string, scope = {}, reader?: Parameters<typeof evaluateExpression>[2]): string => {
+    const result = evaluateExpression(source, scope, reader);
+    return result.ok ? "ok" : result.kind;
+  };
+
+  it("calls everything the parser refuses syntax, whichever site refused it", () => {
+    for (const bad of ["", "1 +", "(2", "a = 1", "pow(2, 2)", "clamp(1)", "op()", "op('a')", "1 2"]) {
+      expect(kindOf(bad), bad).toBe("syntax");
+    }
+  });
+
+  it("calls a bare name nothing supplies name, and says which", () => {
+    expect(evaluateExpression("flicker * 2", { time: 1 })).toMatchObject({ ok: false, kind: "name", subject: "flicker" });
+    // Nor does Object.prototype supply one.
+    expect(kindOf("constructor + 1", { time: 1 })).toBe("name");
+  });
+
+  it("calls arithmetic with no finite answer for these inputs value", () => {
+    for (const bad of ["1 / 0", "1 % 0", "mod(1, 0)", "clamp(1, 5, 0)", "smoothstep(1, 1, 0)", "exp(710)", "(0 - 1) ^ 0.5"]) {
+      expect(kindOf(bad), bad).toBe("value");
+    }
+    // A name the scope HAS, holding no finite number, is this frame's fault and not the text's.
+    expect(kindOf("x + 1", { x: Number.NaN })).toBe("value");
+  });
+
+  it("passes a reader's kind through, and says when there is no reader at all", () => {
+    expect(kindOf("op('a').par.gain")).toBe("reference.noGraph");
+    const reader = () => ({ ok: false as const, kind: "channel" as const, reason: "nothing yet" });
+    expect(kindOf("op('a').chan.value * 2", {}, reader)).toBe("reference.channel");
+    // A hand-built reader that refuses without saying when it would read is taken at its word.
+    expect(kindOf("op('a').chan.value", {}, () => ({ ok: false, reason: "no" }))).toBe("reference.unreadable");
+  });
+
+  const remedy = (source: string): string | undefined => {
+    const parsed = parseExpression(source);
+    return parsed.ok ? "it parsed" : parsed.suggestion;
+  };
+
+  it("writes a refused function out in the author's own operands", () => {
+    expect(remedy("pow(x, 2)")).toBe("Write x ^ 2.");
+    // More than one term is parenthesised where it becomes an operand…
+    expect(remedy("pow(time + 1, 2)")).toBe("Write (time + 1) ^ 2.");
+    expect(remedy("pow(-x, 0.5)")).toBe("Write (-x) ^ 0.5.");
+    // …and a call, a group and an op() reference already are one.
+    expect(remedy("sqrt(abs(time))")).toBe("Write abs(time) ^ 0.5.");
+    expect(remedy("sqrt((a + b))")).toBe("Write (a + b) ^ 0.5.");
+    expect(remedy("pow(op('slider_lamp').par.value, 2)")).toBe("Write op('slider_lamp').par.value ^ 2.");
+    expect(remedy("mix(0, 10, time)")).toBe("Write 0 + (10 - 0) * time.");
+    expect(remedy("lerp(a, b + 1, t)")).toBe("Write a + ((b + 1) - a) * t.");
+    expect(remedy("hypot(x, y)")).toBe("Write (x ^ 2 + y ^ 2) ^ 0.5.");
+    expect(remedy("step(0.5, time)")).toBe("Write (time >= 0.5).");
+    expect(remedy("tan(time * 2)")).toBe("Write sin(time * 2) / cos(time * 2).");
+    expect(remedy("atan(y / x)")).toBe("Write atan2(y / x, 1).");
+    expect(remedy("saturate(time)")).toBe("Write clamp(time, 0, 1).");
+  });
+
+  it("says something else when the operands cannot be placed, or there is nothing to write", () => {
+    // The wrong number of arguments: the general form.
+    expect(remedy("pow(x)")).toBe("pow(a, b) is written a ^ b.");
+    // A name left out on purpose says why.
+    expect(remedy("log(time)")).toBe("The grammar has no log(): its result is not finite for every input.");
+    // A misspelling names the function it most likely meant, with its call shape.
+    expect(remedy("smothstep(0, 1, time)")).toBe("Nearest: smoothstep(low, high, x).");
+    expect(remedy("Sin(time)")).toBe("Nearest: sin(x).");
+    // Two neighbours swapped is one slip, not two.
+    expect(remedy("clmap(time, 0, 1)")).toBe("Nearest: clamp(x, low, high).");
+    // A name near nothing gets the list alone, which the reason carries.
+    expect(remedy("alert(1)")).toBeUndefined();
+    const refused = parseExpression("alert(1)");
+    expect(refused.ok ? "" : refused.reason).toContain("available: abs, atan2");
+  });
+
+  it("writes rewrites the grammar itself evaluates, to the value the function has", () => {
+    // A remedy is one only if it parses and means the same number. `pow(-2, 2)` is the case
+    // the parentheses exist for: `-2 ^ 2` is -4.
+    const cases: ReadonlyArray<readonly [string, number]> = [
+      ["pow(3, 2)", 9],
+      ["pow(-2, 2)", 4],
+      ["pow(1 + 2, 1 + 1)", 9],
+      ["sqrt(16)", 4],
+      ["mix(2, 10, 0.25)", 4],
+      ["hypot(3, 4)", 5],
+      ["step(0.5, 0.75)", 1],
+      ["step(0.5, 0.25)", 0],
+      ["tan(0)", 0],
+      ["atan(1)", Math.PI / 4],
+      ["saturate(1.5)", 1],
+    ];
+    for (const [source, expected] of cases) {
+      const written = (remedy(source) ?? "").replace(/^Write /, "").replace(/\.$/, "");
+      const result = evaluateExpression(written);
+      expect(result.ok ? result.value : result.reason, `${source}, written ${written}`).toBeCloseTo(expected, 12);
+    }
+  });
+
+  it("has a row for every function an author reaches for and the grammar refuses, and none for one it has", () => {
+    const accepted = new Set(functionNames());
+    for (const name of CANDIDATE_FUNCTIONS) {
+      if (accepted.has(name)) continue;
+      expect(rewriteOf(name), `${name}() is refused with nothing to write instead: add a row to REWRITES in evaluate.ts`).not.toBeNull();
+    }
+    for (const name of accepted) expect(rewriteOf(name), `${name}() is in the grammar: its row would never be said`).toBeNull();
   });
 });

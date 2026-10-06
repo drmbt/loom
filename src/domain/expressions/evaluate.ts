@@ -1,11 +1,12 @@
 import {
   absFrameIndexOf,
   absTimeSecondsOf,
+  fpsOf,
+  subframesOf,
   wallDeltaSecondsOf,
   wallSecondsOf,
 } from "../types/frame.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
-import { DEFAULT_PROJECT_FPS } from "../types/graph.ts";
 
 /**
  * The parameter expression engine (T108, §V71): own closed grammar, jsep-style AST,
@@ -63,12 +64,75 @@ export type ExpressionScope = Readonly<Record<string, number>>;
  * a cycle" are three different problems and a silent `undefined` is none of them (§V148
  * wants a cross-node reference that fails to fail LOUDLY, with the name in the message).
  */
-export type NodeReferenceResult = { ok: true; value: number } | { ok: false; reason: string };
+export type NodeReferenceResult =
+  | { ok: true; value: number }
+  | { ok: false; kind?: ReferenceFailureKind; reason: string; suggestion?: string };
 
-export type NodeReferenceReader = (
-  name: string,
-  path: readonly string[],
-) => NodeReferenceResult;
+/**
+ * §T1641b: a read that ALWAYS says why it failed. The product's one reader
+ * (`node-references.ts`) is typed to return this, so a failure site there cannot leave its
+ * kind out. `NodeReferenceResult` lets a hand-built reader (a test's) omit it, and the
+ * evaluator then reads the failure as `unreadable`: a refusal that does not say when it
+ * would read gives no reason to think it will.
+ */
+export type KindedNodeReferenceResult =
+  | { ok: true; value: number }
+  | { ok: false; kind: ReferenceFailureKind; reason: string; suggestion?: string };
+
+/**
+ * §T1641b — WHY a node reference failed, as a KIND a caller can act on. The reason is for a
+ * person; the kind decides the diagnostic's code, and through the code its class
+ * (`src/domain/diagnostics/classes.ts`): whether the reference can never read as written,
+ * or reads once something else arrives. Before this the resolver told one kind from the
+ * others by searching the reason's text for a marker.
+ *
+ *  - `unreadable`  the path can never read: a shape the reader refuses, a parameter the
+ *                  target does not declare, a component it does not have, a compound read
+ *                  whole, a value that is not a number.
+ *  - `ambiguous`   an instance publishes that channel on more than one output.
+ *  - `cycle`       the chain of references returns to itself (§V152).
+ *  - `node`        no node has that name: it reads once one does.
+ *  - `channel`     the target publishes no such channel right now.
+ *  - `upstream`    the parameter read carries a failure of its own; this one clears with it.
+ *  - `unknownType` the target's type is not one this build has (a §V10 placeholder).
+ *  - `noResolver`  this context has no channel resolver (§V338): a state of the caller.
+ *  - `noGraph`     this context has no reader at all: a storage read, a bare evaluation.
+ */
+export type ReferenceFailureKind =
+  | "unreadable"
+  | "ambiguous"
+  | "cycle"
+  | "node"
+  | "channel"
+  | "upstream"
+  | "unknownType"
+  | "noResolver"
+  | "noGraph";
+
+/**
+ * §T1641b — why an expression failed. `syntax` is everything the parser refuses (a token,
+ * a parenthesis, a function the grammar lacks, a wrong number of arguments, a malformed
+ * `op()`); `name` is a bare name no scope supplies; `value` is arithmetic with no finite
+ * answer for THESE inputs (a division by zero, an inverted `clamp`), which another frame
+ * may not hit; the rest are the reader's.
+ */
+export type ExpressionFailureKind = "syntax" | "name" | "value" | `reference.${ReferenceFailureKind}`;
+
+/** What in a graph is spelled like a bare name (see `NodeReferenceReader.spelledLike`). */
+export interface SpelledLike {
+  /** Nodes named it, or named `kind_<it>`. */
+  readonly nodes: readonly string[];
+  /** Nodes publishing a channel of that name right now. */
+  readonly publishers: readonly string[];
+}
+
+export type NodeReferenceReader = ((name: string, path: readonly string[]) => NodeReferenceResult) & {
+  /**
+   * §T1641b: for the unknown-name message, which says whether a node or a channel of that
+   * spelling exists. Absent on a reader that cannot say (a hand-built one).
+   */
+  readonly spelledLike?: (name: string) => SpelledLike;
+};
 
 /**
  * The function whitelist (T370) — closed, small, and argued name by name.
@@ -117,7 +181,7 @@ interface FunctionSpec {
 /** Fails loud rather than defaulting: `undefined` here would mean the arity check missed. */
 function nth(args: readonly number[], index: number): number {
   const value = args[index];
-  if (value === undefined) fail(`argument ${index + 1} is missing`);
+  if (value === undefined) fail("syntax", `argument ${index + 1} is missing`);
   return value;
 }
 
@@ -132,7 +196,7 @@ const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
       const [x, low, high] = [nth(a, 0), nth(a, 1), nth(a, 2)];
       // An inverted range is a typo, not a value: silently returning `high` would pin the
       // parameter at a number the author never asked for and never sees a reason for.
-      if (low > high) fail(`clamp(): the low bound ${low} is above the high bound ${high}`);
+      if (low > high) fail("value", `clamp(): the low bound ${low} is above the high bound ${high}`);
       return Math.min(Math.max(x, low), high);
     },
   },
@@ -143,7 +207,7 @@ const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
       const value = Math.exp(nth(a, 0));
       // Refused HERE, by name, rather than as the generic "not a finite number" at the end:
       // an intermediate Infinity can also cancel into a finite number that means nothing.
-      if (!Number.isFinite(value)) fail(`exp(): exp(${nth(a, 0)}) overflows`);
+      if (!Number.isFinite(value)) fail("value", `exp(): exp(${nth(a, 0)}) overflows`);
       return value;
     },
   },
@@ -157,7 +221,7 @@ const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
     params: ["x", "period"],
     apply: (a) => {
       const period = nth(a, 1);
-      if (period === 0) fail("mod(): the period is zero");
+      if (period === 0) fail("value", "mod(): the period is zero");
       return nth(a, 0) - Math.floor(nth(a, 0) / period) * period;
     },
   },
@@ -174,7 +238,7 @@ const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
     params: ["low", "high", "x"],
     apply: (a) => {
       const [low, high, x] = [nth(a, 0), nth(a, 1), nth(a, 2)];
-      if (low === high) fail(`smoothstep(): the edges are equal (${low}), so the ramp has no width`);
+      if (low === high) fail("value", `smoothstep(): the edges are equal (${low}), so the ramp has no width`);
       const t = Math.min(Math.max((x - low) / (high - low), 0), 1);
       return t * t * (3 - 2 * t);
     },
@@ -192,8 +256,105 @@ export function functionSignature(name: string): string | null {
   return spec === undefined ? null : `${name}(${spec.params.join(", ")})`;
 }
 
-export type ParseResult = { ok: true; ast: ExpressionAst } | { ok: false; reason: string };
-export type EvaluateResult = { ok: true; value: number } | { ok: false; reason: string };
+/**
+ * §T1641b — WHAT TO WRITE INSTEAD of a function the grammar leaves out. The docblock above
+ * `FunctionSpec` argues each name in prose; this is the same argument as data, so the
+ * refusal hands the author the replacement in their own operands (§B262: `pow(x, 2)`
+ * shipped in three lamps, and the message listed fifteen other functions). A string is a
+ * name left out because it has no finite answer for every input, and says so.
+ *
+ * `write` takes each argument twice: ready to stand as an OPERAND (parenthesised when it
+ * is more than one term), and verbatim, for a slot that is already delimited.
+ */
+interface Rewrite {
+  readonly params: readonly string[];
+  readonly write: (operands: readonly string[], verbatim: readonly string[]) => string;
+}
+
+const NOT_FINITE = "its result is not finite for every input";
+const BLEND: Rewrite = { params: ["a", "b", "t"], write: ([a = "", b = "", t = ""]) => `${a} + (${b} - ${a}) * ${t}` };
+
+const REWRITES: Readonly<Record<string, Rewrite | string>> = {
+  acos: NOT_FINITE,
+  asin: NOT_FINITE,
+  atan: { params: ["x"], write: (_operands, [x = ""]) => `atan2(${x}, 1)` },
+  hypot: { params: ["a", "b"], write: ([a = "", b = ""]) => `(${a} ^ 2 + ${b} ^ 2) ^ 0.5` },
+  lerp: BLEND,
+  log: NOT_FINITE,
+  log2: NOT_FINITE,
+  mix: BLEND,
+  pow: { params: ["a", "b"], write: ([a = "", b = ""]) => `${a} ^ ${b}` },
+  saturate: { params: ["x"], write: (_operands, [x = ""]) => `clamp(${x}, 0, 1)` },
+  sqrt: { params: ["x"], write: ([x = ""]) => `${x} ^ 0.5` },
+  step: { params: ["edge", "x"], write: ([edge = "", x = ""]) => `(${x} >= ${edge})` },
+  tan: { params: ["x"], write: (_operands, [x = ""]) => `sin(${x}) / cos(${x})` },
+};
+
+/**
+ * The grammar's replacement for a function it leaves out, in general form
+ * (`pow(a, b) is written a ^ b.`), or why it has none. Null for a name with no row.
+ */
+export function rewriteOf(name: string): string | null {
+  const rewrite = Object.hasOwn(REWRITES, name) ? REWRITES[name] : undefined;
+  if (rewrite === undefined) return null;
+  if (typeof rewrite === "string") return `The grammar has no ${name}(): ${rewrite}.`;
+  return `${name}(${rewrite.params.join(", ")}) is written ${rewrite.write(rewrite.params, rewrite.params)}.`;
+}
+
+/**
+ * Edit distance: an insertion, a deletion, a substitution or a swap of two neighbours, one
+ * each. The swap is counted as one because it is the commonest slip (`gian` for `gain`).
+ */
+function editDistance(a: string, b: string): number {
+  let beforePrevious: number[] = [];
+  let previous = Array.from({ length: b.length + 1 }, (_unused, index) => index);
+  for (let row = 1; row <= a.length; row += 1) {
+    const current = [row];
+    for (let column = 1; column <= b.length; column += 1) {
+      const substitute = (previous[column - 1] ?? 0) + (a[row - 1] === b[column - 1] ? 0 : 1);
+      let best = Math.min(substitute, (previous[column] ?? 0) + 1, (current[column - 1] ?? 0) + 1);
+      if (row > 1 && column > 1 && a[row - 1] === b[column - 2] && a[row - 2] === b[column - 1]) {
+        best = Math.min(best, (beforePrevious[column - 2] ?? 0) + 1);
+      }
+      current.push(best);
+    }
+    beforePrevious = previous;
+    previous = current;
+  }
+  return previous[b.length] ?? 0;
+}
+
+/**
+ * The candidate a misspelling most likely meant, or null when none is close: at most two
+ * edits, and fewer than half the typed name, so `sine` finds `sin` and `x` finds nothing.
+ * Case is not an edit. The first of equally near candidates wins, so pass them sorted.
+ */
+export function nearestSpelling(typed: string, candidates: readonly string[]): string | null {
+  let best: string | null = null;
+  let bestDistance = 3;
+  for (const candidate of candidates) {
+    const distance = editDistance(typed.toLowerCase(), candidate.toLowerCase());
+    if (distance < bestDistance && distance * 2 < typed.length) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/** The failing half of a parse or an evaluation. §T1641b: it carries its KIND. */
+export interface ExpressionFailure {
+  ok: false;
+  kind: ExpressionFailureKind;
+  reason: string;
+  /** What to write instead, when the grammar or the reader can say. */
+  suggestion?: string;
+  /** The name the failure is about: the function, or the bare name, nothing supplies. */
+  subject?: string;
+}
+
+export type ParseResult = { ok: true; ast: ExpressionAst } | (ExpressionFailure & { kind: "syntax" });
+export type EvaluateResult = { ok: true; value: number } | ExpressionFailure;
 
 /** Names an expression may read when evaluated against a frame (§I.frame). */
 /**
@@ -236,19 +397,21 @@ export function scopeFromFrame(
     absframe: absFrameIndexOf(frame),
     // T1426b/T1435b: the rates. A transport that states none is a plain project at the
     // default rate with no accumulation, which is what `projectFps()` says of absent settings.
-    fps: frame.fps !== undefined && Number.isFinite(frame.fps) && frame.fps > 0 ? frame.fps : DEFAULT_PROJECT_FPS,
-    subframes: frame.subframes !== undefined && Number.isFinite(frame.subframes) && frame.subframes >= 1 ? frame.subframes : 1,
+    fps: fpsOf(frame),
+    subframes: subframesOf(frame),
   };
 }
 
-type Token =
+/** `at` and `end` are the token's span in the source: a refusal quotes the author's own text. */
+type Token = (
   | { kind: "number"; value: number }
   | { kind: "identifier"; value: string }
   | { kind: "string"; value: string }
   | { kind: "dot" }
   | { kind: "comma" }
   | { kind: "op"; value: "+" | "-" | "*" | "/" | "%" | "^" | "==" | "!=" | "<" | "<=" | ">" | ">=" }
-  | { kind: "paren"; value: "(" | ")" };
+  | { kind: "paren"; value: "(" | ")" }
+) & { at: number; end: number };
 
 const OPERATORS = new Set(["+", "-", "*", "/", "%", "^"]);
 
@@ -269,13 +432,13 @@ function tokenize(input: string): Token[] | string {
     }
 
     if (char === "(" || char === ")") {
-      tokens.push({ kind: "paren", value: char });
+      tokens.push({ kind: "paren", value: char, at: index, end: index + 1 });
       index += 1;
       continue;
     }
 
     if (char === ",") {
-      tokens.push({ kind: "comma" });
+      tokens.push({ kind: "comma", at: index, end: index + 1 });
       index += 1;
       continue;
     }
@@ -288,12 +451,12 @@ function tokenize(input: string): Token[] | string {
     if (char === "=" || char === "!" || char === "<" || char === ">") {
       const two = input.slice(index, index + 2);
       if (two === "==" || two === "!=" || two === "<=" || two === ">=") {
-        tokens.push({ kind: "op", value: two });
+        tokens.push({ kind: "op", value: two, at: index, end: index + 2 });
         index += 2;
         continue;
       }
       if (char === "<" || char === ">") {
-        tokens.push({ kind: "op", value: char });
+        tokens.push({ kind: "op", value: char, at: index, end: index + 1 });
         index += 1;
         continue;
       }
@@ -301,7 +464,7 @@ function tokenize(input: string): Token[] | string {
     }
 
     if (OPERATORS.has(char)) {
-      tokens.push({ kind: "op", value: char as "+" | "-" | "*" | "/" | "%" | "^" });
+      tokens.push({ kind: "op", value: char as "+" | "-" | "*" | "/" | "%" | "^", at: index, end: index + 1 });
       index += 1;
       continue;
     }
@@ -309,7 +472,7 @@ function tokenize(input: string): Token[] | string {
     if (isIdentStart(char)) {
       const start = index;
       while (index < input.length && isIdentPart(input[index] as string)) index += 1;
-      tokens.push({ kind: "identifier", value: input.slice(start, index) });
+      tokens.push({ kind: "identifier", value: input.slice(start, index), at: start, end: index });
       continue;
     }
 
@@ -317,14 +480,14 @@ function tokenize(input: string): Token[] | string {
     if (char === "'" || char === '"') {
       const close = input.indexOf(char, index + 1);
       if (close < 0) return "unterminated string";
-      tokens.push({ kind: "string", value: input.slice(index + 1, close) });
+      tokens.push({ kind: "string", value: input.slice(index + 1, close), at: index, end: close + 1 });
       index = close + 1;
       continue;
     }
 
     // A dot NOT starting a number is member access: op('x').par.gain.
     if (char === "." && !/[0-9]/.test(input[index + 1] ?? "")) {
-      tokens.push({ kind: "dot" });
+      tokens.push({ kind: "dot", at: index, end: index + 1 });
       index += 1;
       continue;
     }
@@ -346,7 +509,7 @@ function tokenize(input: string): Token[] | string {
       const text = input.slice(start, index);
       const value = Number(text);
       if (!Number.isFinite(value)) return `"${text}" is not a number`;
-      tokens.push({ kind: "number", value });
+      tokens.push({ kind: "number", value, at: start, end: index });
       continue;
     }
 
@@ -359,6 +522,8 @@ function tokenize(input: string): Token[] | string {
 interface Cursor {
   tokens: Token[];
   index: number;
+  /** The text the tokens were cut from, for a refusal that quotes it. */
+  source: string;
 }
 
 const peek = (cursor: Cursor): Token | undefined => cursor.tokens[cursor.index];
@@ -386,14 +551,35 @@ const peek = (cursor: Cursor): Token | undefined => cursor.tokens[cursor.index];
  * both of their entry points catch it.
  */
 class ParseFailure {
+  readonly kind: ExpressionFailureKind;
   readonly message: string;
-  constructor(message: string) {
+  readonly suggestion: string | undefined;
+  readonly subject: string | undefined;
+  constructor(kind: ExpressionFailureKind, message: string, suggestion: string | undefined, subject: string | undefined) {
+    this.kind = kind;
     this.message = message;
+    this.suggestion = suggestion;
+    this.subject = subject;
   }
 }
 
-function fail(reason: string): never {
-  throw new ParseFailure(reason);
+/** §T1641b: every failure names its kind at the site that knows it. */
+function fail(
+  kind: ExpressionFailureKind,
+  reason: string,
+  about: { suggestion?: string | undefined; subject?: string | undefined } = {},
+): never {
+  throw new ParseFailure(kind, reason, about.suggestion, about.subject);
+}
+
+function failureOf(thrown: ParseFailure): ExpressionFailure {
+  return {
+    ok: false,
+    kind: thrown.kind,
+    reason: thrown.message,
+    ...(thrown.suggestion === undefined ? {} : { suggestion: thrown.suggestion }),
+    ...(thrown.subject === undefined ? {} : { subject: thrown.subject }),
+  };
 }
 
 const COMPARISONS = new Set(["==", "!=", "<", "<=", ">", ">="]);
@@ -463,7 +649,7 @@ function parsePower(cursor: Cursor): ExpressionAst {
 
 function parsePrimary(cursor: Cursor): ExpressionAst {
   const token = peek(cursor);
-  if (token === undefined) fail("expression ended early");
+  if (token === undefined) fail("syntax", "expression ended early");
   if (token.kind === "number") {
     cursor.index += 1;
     return { kind: "number", value: token.value };
@@ -482,12 +668,12 @@ function parsePrimary(cursor: Cursor): ExpressionAst {
     const inner = parseComparison(cursor);
     const closing = peek(cursor);
     if (closing === undefined || closing.kind !== "paren" || closing.value !== ")") {
-      fail("missing closing parenthesis");
+      fail("syntax", "missing closing parenthesis");
     }
     cursor.index += 1;
     return inner;
   }
-  fail(`unexpected "${describeToken(token)}"`);
+  fail("syntax", `unexpected "${describeToken(token)}"`);
 }
 
 const describeToken = (token: Token): string =>
@@ -499,6 +685,85 @@ const describeToken = (token: Token): string =>
         ? `'${token.value}'`
         : String(token.value);
 
+/** One argument of a call the grammar refused, as the author wrote it. */
+interface WrittenArgument {
+  /** Verbatim. */
+  readonly text: string;
+  /** Ready to stand as an operand: parenthesised unless it is one term. */
+  readonly operand: string;
+}
+
+/** One term: a number, a name, a parenthesised group, a call, or an `op()` reference. */
+function isOneTerm(tokens: readonly Token[]): boolean {
+  if (tokens.length === 1) return true;
+  const [first, second] = tokens;
+  const opens = (token: Token | undefined): boolean => token?.kind === "paren" && token.value === "(";
+  const open = opens(first) ? 0 : first?.kind === "identifier" && opens(second) ? 1 : -1;
+  if (open < 0) return false;
+  let depth = 0;
+  let close = -1;
+  for (let index = open; index < tokens.length && close < 0; index += 1) {
+    const token = tokens[index];
+    if (token?.kind !== "paren") continue;
+    depth += token.value === "(" ? 1 : -1;
+    if (depth === 0) close = index;
+  }
+  if (close < 0) return false;
+  // What may follow the closing parenthesis and still be one term: `.par.gain`.
+  for (let index = close + 1; index < tokens.length; index += 2) {
+    if (tokens[index]?.kind !== "dot" || tokens[index + 1]?.kind !== "identifier") return false;
+  }
+  return true;
+}
+
+/**
+ * The arguments of the call the cursor stands on (at its opening paren), cut from the
+ * source by commas and parentheses alone, with nothing parsed: the call is being refused,
+ * and its arguments may hold what is refused next. Null when they cannot be told apart.
+ */
+function callArguments(cursor: Cursor): readonly WrittenArgument[] | null {
+  const groups: Token[][] = [[]];
+  let depth = 0;
+  for (let index = cursor.index; index < cursor.tokens.length; index += 1) {
+    const token = cursor.tokens[index] as Token;
+    if (token.kind === "paren") {
+      depth += token.value === "(" ? 1 : -1;
+      if (depth === 0) {
+        if (groups.length === 1 && groups[0]?.length === 0) return [];
+        const written: WrittenArgument[] = [];
+        for (const group of groups) {
+          const [first, last] = [group[0], group[group.length - 1]];
+          if (first === undefined || last === undefined) return null;
+          const text = cursor.source.slice(first.at, last.end);
+          written.push({ text, operand: isOneTerm(group) ? text : `(${text})` });
+        }
+        return written;
+      }
+      if (depth === 1 && token.value === "(") continue;
+    }
+    if (depth === 1 && token.kind === "comma") groups.push([]);
+    else groups[groups.length - 1]?.push(token);
+  }
+  return null;
+}
+
+/**
+ * §T1641b — what to write instead of a call to a function the grammar does not have: the
+ * rewrite in the author's own operands when the grammar has one on record and the
+ * arguments fit it, its general form when they do not, the reason a name is left out, or
+ * the function a misspelling most likely meant.
+ */
+function unknownFunctionRemedy(name: string, written: readonly WrittenArgument[] | null): string | undefined {
+  const rewrite = Object.hasOwn(REWRITES, name) ? REWRITES[name] : undefined;
+  if (rewrite !== undefined && typeof rewrite !== "string" && written?.length === rewrite.params.length) {
+    return `Write ${rewrite.write(written.map((argument) => argument.operand), written.map((argument) => argument.text))}.`;
+  }
+  const general = rewriteOf(name);
+  if (general !== null) return general;
+  const near = nearestSpelling(name, functionNames());
+  return near === null ? undefined : `Nearest: ${functionSignature(near) ?? near}.`;
+}
+
 /**
  * A whitelisted call — the cursor stands ON the opening paren (T370).
  *
@@ -509,9 +774,12 @@ const describeToken = (token: Token): string =>
  * checked HERE, once per parse, so the per-frame evaluation never re-validates it.
  */
 function parseCall(cursor: Cursor, name: string): ExpressionAst {
-  const spec = FUNCTIONS[name];
+  const spec = Object.hasOwn(FUNCTIONS, name) ? FUNCTIONS[name] : undefined;
   if (spec === undefined) {
-    fail(`unknown function "${name}" (available: ${functionNames().join(", ")})`);
+    fail("syntax", `unknown function "${name}" (available: ${functionNames().join(", ")})`, {
+      subject: name,
+      suggestion: unknownFunctionRemedy(name, callArguments(cursor)),
+    });
   }
   cursor.index += 1; // consume "("
   const args: ExpressionAst[] = [];
@@ -530,11 +798,12 @@ function parseCall(cursor: Cursor, name: string): ExpressionAst {
         cursor.index += 1;
         break;
       }
-      fail(`missing closing parenthesis in ${functionSignature(name) ?? name}`);
+      fail("syntax", `missing closing parenthesis in ${functionSignature(name) ?? name}`);
     }
   }
   if (args.length !== spec.params.length) {
     fail(
+      "syntax",
       `${name}() takes ${spec.params.length} argument${spec.params.length === 1 ? "" : "s"}` +
         `, got ${args.length}: ${functionSignature(name) ?? name}`,
     );
@@ -551,12 +820,12 @@ function parseOpReference(cursor: Cursor): ExpressionAst {
   cursor.index += 1; // consume "("
   const name = peek(cursor);
   if (name === undefined || name.kind !== "string" || name.value.length === 0) {
-    fail("op() takes a quoted node name: op('noise1')");
+    fail("syntax", "op() takes a quoted node name: op('noise1')");
   }
   cursor.index += 1;
   const closing = peek(cursor);
   if (closing === undefined || closing.kind !== "paren" || closing.value !== ")") {
-    fail("op() takes exactly one quoted node name");
+    fail("syntax", "op() takes exactly one quoted node name");
   }
   cursor.index += 1;
 
@@ -567,12 +836,12 @@ function parseOpReference(cursor: Cursor): ExpressionAst {
     cursor.index += 1;
     const member = peek(cursor);
     if (member === undefined || member.kind !== "identifier") {
-      fail("expected a member name after \".\"");
+      fail("syntax", "expected a member name after \".\"");
     }
     cursor.index += 1;
     path.push(member.value);
   }
-  if (path.length === 0) fail("an op() reference must read something: op('noise1').par.gain");
+  if (path.length === 0) fail("syntax", "an op() reference must read something: op('noise1').par.gain");
   return { kind: "opRef", name: name.value, path };
 }
 
@@ -609,7 +878,7 @@ const parsedBySource = new Map<string, ParseResult>();
 
 export function parseExpression(input: string): ParseResult {
   const trimmed = input.trim();
-  if (trimmed === "") return { ok: false, reason: "empty" };
+  if (trimmed === "") return { ok: false, kind: "syntax", reason: "empty" };
 
   const hit = parsedBySource.get(trimmed);
   if (hit !== undefined) return hit;
@@ -625,20 +894,21 @@ export function parseExpression(input: string): ParseResult {
 
 function parse(trimmed: string): ParseResult {
   const tokens = tokenize(trimmed);
-  if (!Array.isArray(tokens)) return { ok: false, reason: tokens };
-  if (tokens.length === 0) return { ok: false, reason: "empty" };
+  if (!Array.isArray(tokens)) return { ok: false, kind: "syntax", reason: tokens };
+  if (tokens.length === 0) return { ok: false, kind: "syntax", reason: "empty" };
 
-  const cursor: Cursor = { tokens, index: 0 };
+  const cursor: Cursor = { tokens, index: 0, source: trimmed };
   try {
     const ast = parseComparison(cursor);
     if (cursor.index !== tokens.length) {
-      return { ok: false, reason: "trailing input after the expression" };
+      return { ok: false, kind: "syntax", reason: "trailing input after the expression" };
     }
     return { ok: true, ast };
   } catch (thrown) {
-    if (thrown instanceof ParseFailure) return { ok: false, reason: thrown.message };
+    // Whatever the parser refuses is syntax, whichever site said so.
+    if (thrown instanceof ParseFailure) return { ...failureOf(thrown), kind: "syntax" };
     // A parser bug must degrade to "rejected", never to a crashed editor.
-    return { ok: false, reason: "could not parse the expression" };
+    return { ok: false, kind: "syntax", reason: "could not parse the expression" };
   }
 }
 
@@ -650,11 +920,11 @@ export function evaluateAst(
 ): EvaluateResult {
   try {
     const value = evaluateNode(ast, scope, readNode);
-    if (!Number.isFinite(value)) return { ok: false, reason: "result is not a finite number" };
+    if (!Number.isFinite(value)) return { ok: false, kind: "value", reason: "result is not a finite number" };
     return { ok: true, value };
   } catch (thrown) {
-    if (thrown instanceof ParseFailure) return { ok: false, reason: thrown.message };
-    return { ok: false, reason: "could not evaluate the expression" };
+    if (thrown instanceof ParseFailure) return failureOf(thrown);
+    return { ok: false, kind: "value", reason: "could not evaluate the expression" };
   }
 }
 
@@ -667,11 +937,15 @@ function evaluateNode(
     case "number":
       return ast.value;
     case "variable": {
-      const value = scope[ast.name];
-      if (value === undefined || !Number.isFinite(value)) {
+      const value = Object.hasOwn(scope, ast.name) ? scope[ast.name] : undefined;
+      if (value === undefined) {
         const known = Object.keys(scope).sort().join(", ");
-        fail(known === "" ? `unknown name "${ast.name}"` : `unknown name "${ast.name}" (available: ${known})`);
+        fail("name", known === "" ? `unknown name "${ast.name}"` : `unknown name "${ast.name}" (available: ${known})`, {
+          subject: ast.name,
+        });
       }
+      // A name the scope HAS, holding no finite number: this frame's fault, not the text's.
+      if (!Number.isFinite(value)) fail("value", `"${ast.name}" is not a finite number here`);
       return value;
     }
     case "opRef": {
@@ -685,10 +959,10 @@ function evaluateNode(
        * number that looks like an answer.
        */
       if (readNode === undefined) {
-        fail(`node references need a graph to read (op('${ast.name}'))`);
+        fail("reference.noGraph", `node references need a graph to read (op('${ast.name}'))`);
       }
       const read = readNode(ast.name, ast.path);
-      if (!read.ok) fail(read.reason);
+      if (!read.ok) fail(`reference.${read.kind ?? "unreadable"}`, read.reason, { suggestion: read.suggestion });
       return read.value;
     }
     case "call": {
@@ -696,9 +970,9 @@ function evaluateNode(
       // Unreachable through `parseExpression`, which refuses both cases. Reachable
       // through a hand-built AST, and a wrong-arity call must fail loud rather than read
       // a missing argument as zero.
-      if (spec === undefined) fail(`unknown function "${ast.name}"`);
+      if (spec === undefined) fail("syntax", `unknown function "${ast.name}"`, { subject: ast.name });
       if (ast.args.length !== spec.params.length) {
-        fail(`${ast.name}() takes ${spec.params.length} arguments, got ${ast.args.length}`);
+        fail("syntax", `${ast.name}() takes ${spec.params.length} arguments, got ${ast.args.length}`);
       }
       return spec.apply(ast.args.map((arg) => evaluateNode(arg, scope, readNode)));
     }
@@ -718,7 +992,7 @@ function evaluateNode(
           return left * right;
         case "%":
         case "/":
-          if (right === 0) fail("division by zero");
+          if (right === 0) fail("value", "division by zero");
           return ast.operator === "/" ? left / right : left % right;
         case "^":
           return left ** right;

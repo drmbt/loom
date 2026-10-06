@@ -15,7 +15,7 @@ eight expressions, for reasons the last section sets out with the numbers.
 
 ## What differs, and why it matters
 
-- **The audio drives the tube's *thickness*.** `pointgenerator1` is a torus with its
+- **The audio drives the tube's *thickness*.** `generator1` is a torus with its
   major radius standing still at 1 and its minor radius — `radius2` — driven by
   `0.18 + 0.3 · lowMid` off the ranked levels, spanning 0.183..0.427 on the shipped
   pattern. Corona's audio scales a sphere's whole radius; here the ring keeps its size
@@ -46,15 +46,15 @@ eight expressions, for reasons the last section sets out with the numbers.
   saved file. Corona's identical tipG/tip pair drives its third renderPoints' size on
   the cyan tips, and this file's third renderPoints is also the cyan sparkle group with
   its size sitting static — unfinished intent with a working precedent. It drives
-  `renderpoints3.sizePixels` now, on the hat COUNT rather than the high band (T1271, and
+  `points3.sizePixels` now, on the hat COUNT rather than the high band (T1271, and
   the next section says why). A parameter that drives nothing is a lie in a document:
   wire it or remove it, never ship it dead.
 - **The audio opens deterministic.** The saved file pointed at a `blob:` URL that is
   dead outside the browser session it was saved in. It ships with E24/E31's swap:
-  `music1` (audioPattern, 112 bpm) and the owner's `audiofilein1` — File parameter
-  empty, its transport kept — both wired permanently into `source1`, index 0 playing
-  the pattern. Drop a track on `audiofilein1` and flip the index; nothing downstream
-  changes, because everything downstream reads `source1`.
+  `pattern_music` (audioPattern, 112 bpm) and the owner's `audiofile1` — File parameter
+  empty, its transport kept — both wired permanently into `switch_source`, index 0 playing
+  the pattern. Drop a track on `audiofile1` and flip the index; nothing downstream
+  changes, because everything downstream reads `switch_source`.
 
 The one loud number the owner saved was the high band's brightness chain at ×20 — legal,
 because brightness is floor-ranged, and on screen it was the gold flash bursting through
@@ -64,17 +64,17 @@ display-encoded tile (§V618), where all of this file's look calls were made.
 
 ## One analysis instance, and eight expressions (T1271)
 
-What stood between `source1` and the picture was a 0.09 s Lag feeding eight
+What stood between `switch_source` and the picture was a 0.09 s Lag feeding eight
 gain·bias pairs — sixteen value-math nodes conditioning one source's RAW band energy.
-The rebuild replaces them with one `component:audioAnalysis@1`, two 0..1 bags (`lvl1` on
-its ranked levels, `hit1` on its drum counts) and one expression per property. The node
+The rebuild replaces them with one `component:audioAnalysis@1`, two 0..1 bags (`select_lvl` on
+its ranked levels, `select_hit` on its drum counts) and one expression per property. The node
 count is the visible change; two measurements are the reason.
 
 **The gains were fitted to this pattern's spread, and two lanes ran backwards.** Over 30 s
 of the shipped 112 bpm pattern, the `high` lanes spent **21–22% of the run negative**:
 `level2.brightness` was `23.2749 · high − 7.5588`, which reaches **−6.30** in the
 arrangement's quiet bar, and a negative brightness SUBTRACTS the cyan layer from the frame
-rather than dimming it; `renderpoints3.sizePixels` went to −1.88 on the same bars, which is
+rather than dimming it; `points3.sizePixels` went to −1.88 on the same bars, which is
 the sparkle layer switched off for a fifth of the piece. Neither is a tuning error — it is
 what happens when a lane multiplies raw band energy whose floor moves with the material.
 The ranked levels are 0..1 by construction (§V952), so `a + b · rank` cannot leave the
@@ -83,15 +83,15 @@ range its own two literals name.
 **And the retained values were a lie — the file rendered BLACK without its audio.** §V914
 asks that a driven parameter's retained value lie inside the range the drive produces. Six
 of the eight sat outside it, and three of those were **0** on parameters that draw:
-`renderpoints1.sizePixels` retained 0 is a point cloud with no points. Measured by cutting
+`points1.sizePixels` retained 0 is a point cloud with no points. Measured by cutting
 the audio path (not by muting): the shipped file rendered **0.0000 of the frame lit** —
 a black frame — where the rebuilt file renders a still, sane torus at 0.2256 lit. Every
 retained value now equals what silence renders, because silence IS the rank's own middle:
-`radius2` 0.33, `level1` 1.0, `level3` 1.45, `lookup1.scale` 1.45, `renderpoints1` 1.55 px,
+`radius2` 0.33, `level1` 1.0, `level3` 1.45, `lookup1.scale` 1.45, `points1` 1.55 px,
 `feedback1.persistence` 0.70, and the two hit lanes at their floor.
 
 **Six properties read the rank; the cyan sparkle reads a count.** A body that breathes
-wants a level, and six of these lanes are that. The sparkle is not a body — `renderpoints3`
+wants a level, and six of these lanes are that. The sparkle is not a body — `points3`
 selects the tips and `level2` grades them, so the two together are one flash — and a rank
 RESTS AT 0.5, which would leave that flash half-lit forever. A count rests at 0 and decays
 over 250 ms, which is what a flash is. Both arms were rendered and compared before the
@@ -126,4 +126,4 @@ counting across a timeline lap, so the tumble cannot snap at the loop point.
   slow-cycle end of that axis.
 - **The tumble and the band sweeping against it** — the turntable: watch the cyan band
   lap the ring while the whole braid slowly changes attitude.
-- Drop your own track on `audiofilein1`, set `source1.index` to 1.
+- Drop your own track on `audiofile1`, set `switch_source.index` to 1.

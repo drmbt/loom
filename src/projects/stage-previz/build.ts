@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { serializeProjectDocument } from "../../domain/project/serialize.ts";
+import { serializeCheckedProject } from "../../examples/checked-project.ts";
 import { stageDocument } from "./document.ts";
 import { stageFacts } from "./facts.ts";
 
@@ -34,7 +34,7 @@ mkdirSync("projects/stage-previz", { recursive: true });
 if (existsSync(path) && !force) {
   console.log(`kept ${path} (it holds your saved edits; pass --force to regenerate it); media in ${media}/stage.glb`);
 } else {
-  writeFileSync(path, serializeProjectDocument(stageDocument(facts)), "utf8");
+  writeFileSync(path, serializeCheckedProject(stageDocument(facts)), "utf8");
   console.log(`wrote ${path}; media in ${media}/stage.glb`);
 }
 for (const name of Object.keys(facts.projectors) as Array<keyof typeof facts.projectors>) {

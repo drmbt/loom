@@ -120,7 +120,10 @@ describe("a bad patch is refused, not coerced (§V37, §V68)", () => {
     );
     expect(result.status).toBe("rejected");
     expect(result.output.ok).toBe(false);
-    expect(result.diagnostics[0]?.code).toBe("project.settings.invalid");
+    // §T1556b: the bus refuses it against the command's input schema (the loader's settings
+    // schema, field by field), naming the field.
+    expect(result.diagnostics[0]?.code).toBe("command.input");
+    expect(result.diagnostics[0]?.message).toContain("settings.fps");
     expect(store.view.getRevision()).toBe(revision);
     expect(store.view.getSettings().fps).toBe(DEFAULT_PROJECT_SETTINGS.fps);
   });

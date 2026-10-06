@@ -5,7 +5,7 @@ import type {
   ParentScope,
 } from "../domain/types/components.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
-import type { GraphDocument, GraphEdge, GraphNode } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphDocument, GraphEdge, GraphNode } from "../domain/types/graph.ts";
 import type { NodeId, PortId } from "../domain/types/ids.ts";
 import type {
   ParameterSchema,
@@ -13,10 +13,12 @@ import type {
   StoredParameter,
 } from "../domain/types/parameters.ts";
 import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
-import { NO_MORPHS, buildMorphIndex, type PublishedOrigin } from "../domain/presets/morph-index.ts";
+import type { FlatteningReads, InstanceChannelSource, InstanceChannelSources } from "../domain/parameters/node-references.ts";
+import { NO_MORPHS, buildMorphIndex, type MorphIndexInput, type PublishedOrigin } from "../domain/presets/morph-index.ts";
+import { timelineCueProblems } from "../domain/presets/timeline-cues.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../domain/graph/names.ts";
 import { isPreviewablePortKind } from "../domain/graph/previewable.ts";
-import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
+import { effectiveParameterSchema, STORED_READ } from "../domain/parameters/resolve.ts";
 import { isParameterSlot, storedStaticValue } from "../domain/parameters/slots.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
@@ -30,15 +32,14 @@ import {
   componentSourcePath,
   describeRecursion,
   detectComponentRecursion,
-  effectiveInternalOverrides,
   instanceDisplayNames,
+  instanceOwnParameters,
   internalParameterPath,
   isComponentInstance,
   parentBindResolver,
   parentScopeDrivers,
   parseInternalParameterPath,
   parseParentReference,
-  publishedPage,
   publishedSchema,
   readComponentInstance,
   readParentBindings,
@@ -47,8 +48,8 @@ import type { ComponentRegistryView } from "../domain/components/index.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
 import { resolveNodeParameters } from "./validate.ts";
 import type { ActiveSink } from "./types.ts";
-import { COMPONENT_ID_SEPARATOR, flattenedNodeId, internalResolutions } from "../domain/components/internal-resolutions.ts";
-import { internalChannelMasks, projectInternalChannelMasks } from "../domain/components/internal-channel-masks.ts";
+import { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "../domain/components/internal-resolutions.ts";
+import { applyInstance } from "../domain/components/apply-instance.ts";
 import { isDefaultChannelMask } from "../domain/types/graph.ts";
 export { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "../domain/components/internal-resolutions.ts";
 
@@ -130,13 +131,18 @@ export interface FlattenRequest {
   readonly components: ComponentRegistryView;
 }
 
-export interface FlattenedGraph {
+/**
+ * §T1551b: a flattening IS what a parameter read needs from one (`FlatteningReads`), so the
+ * runtime hands it to readers whole — a field added there is a type error here first.
+ */
+export interface FlattenedGraph extends FlatteningReads {
   /** Effective component-instance nodes before inlining, for inspecting their published page. */
   readonly instanceNodes: ReadonlyMap<NodeId, GraphNode>;
   /** The parent logical graph with every instance inlined. No component types remain —
    *  except a MUTED or BYPASSED instance, kept whole so the compiler's splice can see
-   *  its flags (T1032); the splice removes it before any node compiles. */
-  readonly graph: GraphDocument;
+   *  its flags (T1032); the splice removes it before any node compiles. §T1552b: a
+   *  `FlatGraph`, so a consumer that needs this cannot be handed the authored document. */
+  readonly graph: FlatGraph;
   /** Flattened node id -> where it came from, sorted by id. */
   readonly sources: ReadonlyMap<NodeId, ComponentSource>;
   /**
@@ -144,6 +150,12 @@ export interface FlattenedGraph {
    * internal endpoint each became. This is what redirects a sink that named the instance.
    */
   readonly instanceOutputs: ReadonlyMap<NodeId, ReadonlyMap<PortId, FlatEndpoint>>;
+  /**
+   * T1485b: instance LABEL -> the inner labels its exposed VALUE outputs publish under,
+   * which is what lets `op('<instance>').chan.<c>` read an instance this flattening deleted.
+   * Derived from `instanceOutputs`, the redirect textures already use (`instanceChannelsOf`).
+   */
+  readonly instanceChannels: InstanceChannelSources;
   /** Sinks the flattened-away instances implied — a previewed instance (§V28, §V25). */
   readonly sinks: ReadonlyArray<ActiveSink>;
   /** Non-null when the graph recurses; the graph is returned untouched (§V83). */
@@ -396,9 +408,10 @@ function identityFlattening(graph: GraphDocument): FlattenedGraph {
   }
 
   return {
-    graph: { revision: graph.revision, nodes, edges, groups: {} },
+    graph: flat({ revision: graph.revision, nodes, edges, groups: {} }),
     sources,
     instanceOutputs: new Map(),
+    instanceChannels: new Map(),
     sinks: [],
     recursion: null,
     diagnostics: [],
@@ -419,13 +432,35 @@ function identityFlattening(graph: GraphDocument): FlattenedGraph {
  * T1176: `flatteningIsIdentity` answers first, for the documents that have no component
  * in them at all — which is most of them, on every commit.
  */
+/**
+ * §T1552b — THE MINT. A `FlatGraph` is made here and nowhere else (the gate in
+ * `frame-path-flattening.test.ts` refuses an `as FlatGraph` cast in any other module), so
+ * holding one means the flattener produced it.
+ */
+function flat(graph: GraphDocument): FlatGraph {
+  return graph as FlatGraph;
+}
+
+/**
+ * §T1552b — the graph a compile reads when it was handed NO catalogue: the document as it
+ * is. Not a flattening — an instance in it stays an instance and meets the manifest's
+ * `component.notFlattened` tripwire — but it is the graph that compile evaluates, so it is
+ * named here rather than cast at the compile. §T1559b: the node-body plot's cut-out
+ * (`value-plot-chain.ts`) is named the same way: no catalogue, and no instance in it.
+ */
+export function compiledWithoutCatalogue(graph: GraphDocument): FlatGraph {
+  return flat(graph);
+}
+
 export function flattenComponents(request: FlattenRequest): FlattenedGraph {
   // T1176: the overwhelming majority of documents have nothing to flatten. See
   // `flatteningIsIdentity`.
   if (flatteningIsIdentity(request.graph)) {
     const identity = identityFlattening(request.graph);
+    const indexed: MorphIndexInput = { document: request.graph, registry: request.registry, components: request.components, flattened: identity };
     // T1497b: nothing was inlined, so the document's own nodes are what resolves.
-    return { ...identity, morphs: buildMorphIndex({ document: request.graph, registry: request.registry, components: request.components, flattened: identity }) };
+    // §T1559b (2): and what its cue lists that follow the timeline cannot do as written.
+    return { ...identity, diagnostics: timelineCueProblems(indexed), morphs: buildMorphIndex(indexed) };
   }
 
   const diagnostics: RuntimeDiagnostic[] = [];
@@ -443,9 +478,11 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       }),
     );
     return {
-      graph: request.graph,
+      // §V83: untouched, and nothing compiles it — the compile stops on `recursion`.
+      graph: flat(request.graph),
       sources: new Map(),
       instanceOutputs: new Map(),
+      instanceChannels: new Map(),
       sinks: [],
       recursion,
       diagnostics,
@@ -751,31 +788,36 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       // its slot, so the internal parameter animates per frame while this walk stays a
       // pure function of the document (§V529's memo). `publishedPage` is the one place
       // both shapes are decided; see its docblock for why they are not two call sites.
+      //
+      // T1553b: the page, its fan-out and the instance's internal masks and resolution
+      // overrides are ONE projection, shared with `component.detach` (`applyInstance`).
       const publishedDiagnostics: RuntimeDiagnostic[] = [];
-      const page = publishedPage(
-        resolveNodeParameters(
-          resolved,
-          publishedSchema(componentDefinition),
-          node.type,
-          publishedDiagnostics,
-        ),
-        componentDefinition,
-      );
+      const applied = applyInstance({
+        definition: componentDefinition,
+        instance: resolved,
+        // §T1557b: the document, not a moment — this walk is a pure function of it (§V529).
+        // §T1641b slice 2: the page is the published parameters, and the instance's manifest
+        // declares more beside it (a look's own preset state). The same list the manifest is
+        // built from, so the compile cannot call a key the write gate accepts undeclared.
+        readPage: (instanceNode, pageSchema) =>
+          resolveNodeParameters(instanceNode, pageSchema, node.type, publishedDiagnostics, STORED_READ, {
+            retained: Object.keys(instanceOwnParameters(componentDefinition)),
+          }),
+      });
+      const page = applied.page;
       for (const diagnostic of publishedDiagnostics) {
         if (!page.deferred.has(diagnostic)) diagnostics.push(diagnostic);
       }
       const published = page.values;
-      const childOverrides = effectiveInternalOverrides(componentDefinition, resolved, page.stored);
 
-      const channelProjection = projectInternalChannelMasks(componentDefinition.graph, internalChannelMasks(resolved));
-      for (const path of channelProjection.missing) diagnostics.push({ severity: "error", code: "component.channelMaskTargetMissing", nodeId: flatId,
+      for (const path of applied.missing.channelMasks) diagnostics.push({ severity: "error", code: "component.channelMaskTargetMissing", nodeId: flatId,
         message: `Component channel mask override names missing internal node "${path}".` });
       const child = flattenLevel({
-        graph: channelProjection.graph,
+        graph: applied.graph,
         definition: componentDefinition,
         prefix: flatId,
         path: [...input.path, flatId],
-        overrides: childOverrides,
+        overrides: applied.overrides,
         origins: publishedOriginsFor(
           componentDefinition,
           resolved,
@@ -788,17 +830,13 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
           publishedKeyOrigins(componentDefinition, input.definition === null ? node.id : null, publishedFrom),
         ],
       });
-      // Inner overrides land first; the outer instance can override one nested
-      // descendant without editing the shared definition or its sibling instance.
-      for (const [relativeId, resolution] of Object.entries(internalResolutions(resolved))) {
-        const targetId = flattenedNodeId(flatId, relativeId);
-        const target = nodes[targetId];
-        if (!target) {
-          diagnostics.push({ severity: "error", code: "component.resolutionTargetMissing", nodeId: flatId,
-            message: `Component resolution override names missing internal node "${relativeId}".` });
-          continue;
-        }
-        nodes[targetId] = { ...target, resolution };
+      // Said after the child level, where they were always said. The overrides themselves
+      // landed on `applied.graph` before it: a nested path merged into the nested instance's
+      // own, outer winning, so one nested descendant is overridden without editing the
+      // shared definition or its sibling instance.
+      for (const relativeId of applied.missing.resolutions) {
+        diagnostics.push({ severity: "error", code: "component.resolutionTargetMissing", nodeId: flatId,
+          message: `Component resolution override names missing internal node "${relativeId}".` });
       }
       childInputs.set(nodeId, child.inputs);
       childOutputs.set(nodeId, child.outputs);
@@ -970,17 +1008,29 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       target: { nodeId: boundary.id, portId: "preserved" } };
   }
 
-  const graph: GraphDocument = {
+  const graph = flat({
     revision: request.graph.revision,
     nodes,
     edges,
     // Groups are a canvas affordance, not a logical one: a flattened graph has no canvas.
     groups: {},
-  };
+  });
+  // T1497b: against the ROOT document (the banks and the nodes they name live there)
+  // and this flattening (what actually resolves).
+  // T1541b: with the catalogue, so a timed cue can name a look's instance.
+  const indexed: MorphIndexInput = { document: request.graph, registry: request.registry, components: request.components, flattened: { graph, publishedOrigins, instanceSchemas } };
+  /*
+   * §T1559b (2): what the cue lists that follow the timeline cannot do as written, said
+   * HERE for the reason the morph index is built here: once per `(document revision,
+   * catalogue revision)`, however many frames and timeline segments compile over this
+   * flattening. The compile appends a flattening's diagnostics as they are.
+   */
+  diagnostics.push(...timelineCueProblems(indexed));
   return {
     graph,
     sources,
     instanceOutputs,
+    instanceChannels: instanceChannelsOf(instanceNodes, instanceOutputs, nodes, request.registry),
     sinks,
     recursion: null,
     diagnostics,
@@ -988,11 +1038,44 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     changed,
     instanceNodes,
     publishedOrigins,
-    // T1497b: against the ROOT document (the banks and the nodes they name live there)
-    // and this flattening (what actually resolves).
-    // T1541b: with the catalogue, so a timed cue can name a look's instance.
-    morphs: buildMorphIndex({ document: request.graph, registry: request.registry, components: request.components, flattened: { graph, publishedOrigins, instanceSchemas } }),
+    morphs: buildMorphIndex(indexed),
   };
+}
+
+/**
+ * T1485b — each labelled instance's exposed VALUE outputs, as the inner labels that publish
+ * them (see `InstanceChannelSource`).
+ *
+ * The kind is the INNER node's own declared port, judged as `instance-value-channels.ts`
+ * judges it for the plot. Two ports onto one inner node are one publisher (one bag); the
+ * first port to reach it names it. An unlabelled publisher has no address the value graph
+ * publishes under, so it is not listed. Duplicate instance labels (legacy documents) keep
+ * the first, as `nodeNames` does.
+ */
+function instanceChannelsOf(
+  instanceNodes: ReadonlyMap<NodeId, GraphNode>,
+  instanceOutputs: ReadonlyMap<NodeId, ReadonlyMap<PortId, FlatEndpoint>>,
+  nodes: Readonly<Record<NodeId, GraphNode>>,
+  registry: NodeRegistryView,
+): InstanceChannelSources {
+  const byLabel = new Map<string, readonly InstanceChannelSource[]>();
+  for (const instanceId of [...instanceOutputs.keys()].sort()) {
+    const label = instanceNodes.get(instanceId)?.label;
+    if (label === undefined || byLabel.has(label)) continue;
+    const sources: InstanceChannelSource[] = [];
+    const seen = new Set<NodeId>();
+    for (const [port, endpoint] of instanceOutputs.get(instanceId) ?? []) {
+      if (seen.has(endpoint.nodeId)) continue;
+      const inner = nodes[endpoint.nodeId];
+      if (inner?.label === undefined) continue;
+      const declared = registry.get(inner.type)?.outputs.find((output) => output.id === endpoint.portId);
+      if (declared?.type.kind !== "value") continue;
+      seen.add(endpoint.nodeId);
+      sources.push({ port, publisher: inner.label });
+    }
+    byLabel.set(label, sources);
+  }
+  return byLabel;
 }
 
 /**

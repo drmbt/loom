@@ -31,7 +31,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "noise_bed",
         "parameters": {
           "amp": 0.14,
           "offset": 0.06,
@@ -47,13 +47,13 @@
       "lantern": {
         "definitionVersion": 1,
         "id": "lantern",
-        "label": "lantern1",
+        "label": "wgsl_lantern",
         "parameters": {
           "amount": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('pulse1').chan.value"
+                "source": "op('lfo_pulse').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -95,7 +95,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": -120,
@@ -106,7 +106,7 @@
       "pulse": {
         "definitionVersion": 1,
         "id": "pulse",
-        "label": "pulse1",
+        "label": "lfo_pulse",
         "parameters": {
           "amplitude": 0.2,
           "frequency": 0.11,

@@ -9,6 +9,7 @@ import type { Actor, InvocationContext } from "@domain/types/commands.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { blurNode, compositeNode, solidNode } from "@nodes/registry/test-nodes.ts";
+import { saveProjectInput } from "./schemas.ts";
 // T1214: the REAL catalogue, so the description gate at the foot of this file reads the
 // text an agent actually receives rather than a fixture's stand-in.
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
@@ -150,6 +151,8 @@ let saved = 0;
 function registerSaveCommand(bus: LoomBus): void {
   (bus.registerCommand as unknown as (registration: unknown) => void)({
     name: "project.save",
+    // §T1556b: the real command's input (`project-commands.ts`), which the tool's schema matches.
+    inputSchema: saveProjectInput,
     handler: () => {
       saved += 1;
       return { status: "applied", output: { saved: true, fileName: "sketch.loom.json" } };

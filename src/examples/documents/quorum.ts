@@ -3,13 +3,13 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
 /**
  * E54 — Quorum (T1070, REWORKED T1138). THREE SLIME MOLDS AND ONE PIECE OF GROUND.
  *
- *   mesh1(pointKernel, 3000 agents) ─┬─► sow1(renderPoints, 288x288) ─► mix1 ─┐
+ *   kernel_mesh(pointKernel, 3000 agents) ─┬─► points_sow(renderPoints, 288x288) ─► add_mix ─┐
  *          ▲                         │                                        │
- *          │                         └─► bound1(pointRange, the drawn half) ─┬─► web1 ─► links1 ─► webs1 ─► thread1
- *          │                                                                 ├─► dots1 ──────────┐
- *          │                                                                 └─► frontdots1 ─────┴─► nodes1 ─┬─► white1
- *          └── mesh1.field ◄── spread1(blur) ◄── trail1(feedback ◄── mix1 BY NAME)                            └─► haze1 ─► pool1 ◄ neb1 ─► bed1
- *   white1, thread1, bed1 ─► sum1 ─► glow1 ─► lit1 ─► mask1 ◄ iris1 ─► paint1 ─► out1
+ *          │                         └─► range_bound(pointRange, the drawn half) ─┬─► proximity_web ─► geometry_links ─► render_webs ─► level_thread
+ *          │                                                                 ├─► geometry_dots ──────────┐
+ *          │                                                                 └─► geometry_frontdots ─────┴─► render_nodes ─┬─► hsv_white
+ *          └── kernel_mesh.field ◄── blur_spread(blur) ◄── feedback_trail(feedback ◄── add_mix BY NAME)                            └─► blur_haze ─► multiply_pool ◄ noise_neb ─► hsv_bed
+ *   hsv_white, level_thread, hsv_bed ─► add_sum ─► blur_glow ─► add_lit ─► multiply_mask ◄ ramp_iris ─► hsv_paint ─► output1
  *
  * ## The one idea, in two halves that had to be argued into the same file
  *
@@ -21,8 +21,8 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * abandoning another. Nothing here settles, and nothing here has to be shoved to stop it.
  *
  * THE PICTURE IS NODES AND A WEB, which is the half the former operator got right and the
- * first cut of this rework threw away. `web1` is `pointProximity {neighbors: 6}` and
- * `links1` draws every link, so what is on screen is DISCRETE UNITS WITH VISIBLE
+ * first cut of this rework threw away. `proximity_web` is `pointProximity {neighbors: 6}` and
+ * `geometry_links` draws every link, so what is on screen is DISCRETE UNITS WITH VISIBLE
  * RELATIONSHIPS between them — and because the units are actually going somewhere, the web
  * genuinely forms and breaks instead of converging. The first cut drew the trail field
  * itself and the owner named exactly what that costs: *"we don't see these networks that
@@ -37,7 +37,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * web renders as a BEAD CHAIN rather than a network. Rendered at 3000, 2400, 900, 600, 420
  * and 250 agents and the two failures meet in the middle: there is no count that is both.
  * So the scales are SEPARATED rather than averaged — three thousand agents deposit and
- * steer, and `bound1` parks all but the half with the lowest `sense.z` (a fixed per-agent
+ * steer, and `range_bound` parks all but the half with the lowest `sense.z` (a fixed per-agent
  * draw, so the sample never changes and a node cannot flicker in and out of the picture)
  * before the web is computed. Sampling lifts the spacing between drawn nodes enough that a
  * link reaches ACROSS to the next corridor instead of down its own.
@@ -192,29 +192,29 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * ## Deposit, decay, diffuse — and why the loop is legal
  *
- * `sow1` splats every agent into a 288x288 trail grid in its own army's colour, in ALPHA and
+ * `points_sow` splats every agent into a 288x288 trail grid in its own army's colour, in ALPHA and
  * not additive: a trail answers "is this path walked", which is bounded, and additive a
  * dozen agents standing together leave a dozen times the scent — a saturated texel has NO
- * GRADIENT left for the three sensors to answer. `trail1` is the Feedback node, which is
- * what makes the cycle a legal DAG: it names `mix1` as its source rather than being wired
+ * GRADIENT left for the three sensors to answer. `feedback_trail` is the Feedback node, which is
+ * what makes the cycle a legal DAG: it names `add_mix` as its source rather than being wired
  * from it (T350), so the back edge does not exist in `edges` and every agent smells LAST
- * frame's field. `spread1` is the diffusion, and `persistence` is the decay — deliberately
+ * frame's field. `blur_spread` is the diffusion, and `persistence` is the decay — deliberately
  * SHORT, for a reason measured at its own line.
  *
  * ## ONE CLOUD, FOUR READINGS (§V471.1)
  *
- * `sow1` is the SIMULATION and is never seen. `dots1` is the drawn half as nodes, sized by
+ * `points_sow` is the SIMULATION and is never seen. `geometry_dots` is the drawn half as nodes, sized by
  * `sense.w` — how deep the trail under each agent is, which is this system's answer to the
- * former operator's weighted degree. `links1` is the web over exactly the same half, at
+ * former operator's weighted degree. `geometry_links` is the web over exactly the same half, at
  * exactly the radius the kernel senses at (§V349), so the picture cannot show a relationship
- * the simulation is not using. And `frontdots1` is the caste on CONTESTED ground — agents
+ * the simulation is not using. And `geometry_frontdots` is the caste on CONTESTED ground — agents
  * where less than 55 % of the trail underneath is their own army's. §V912's lesson was that
  * a frontier COUNT can rise 3.6x with the picture visually identical; a frontier that is
  * drawn as pixels cannot.
  *
  * ## The instrument (§V471 — this is a VJ file, not a plate)
  *
- * The phrase is `Envoy`. `cstep1` holds a value for four bars, `clag1` eases it in, and the
+ * The phrase is `Envoy`. `step_envoy` holds a value for four bars, `lag_envoy` eases it in, and the
  * lane lands 83.3 % of its draws in the limiter's interior (§V903 — the number stated as a
  * DUTY CYCLE, because the version of this file that stated it as a RANGE spent thirty-three
  * continuous seconds pinned at maximum). At the floor (−0.55) each army keeps hard to its
@@ -253,15 +253,15 @@ const QUORUM_ATTRIBUTES = JSON.stringify([
  * SEMANTICS OF THE SCHEMA, because three of these four are read by nodes that are not this
  * kernel (§V471.2 — the kernel WRITES data for downstream selection):
  *
- *   position  clip space, z unused. `sow1` and `dots1` splat at `position.xy` and `fieldAt`
+ *   position  clip space, z unused. `points_sow` and `geometry_dots` splat at `position.xy` and `fieldAt`
  *             maps the same xy to the field's texels, so one coordinate system spans the
  *             agents, the picture and the simulation (T477/T512).
  *   heading   the unit direction. No inertia — an agent turns and walks.
- *   banner    the army, as a ONE-HOT RGB. It is the deposit colour (`sow1` maps it) and the
- *             agent's own colour (`dots1` maps it), which is why the two can never disagree.
+ *   banner    the army, as a ONE-HOT RGB. It is the deposit colour (`points_sow` maps it) and the
+ *             agent's own colour (`geometry_dots` maps it), which is why the two can never disagree.
  *   sense.x   how deep the trail under this agent is.
  *   sense.y   how much of that trail is SOMEBODY ELSE'S — `front1` draws these.
- *   sense.w   the agent's own sprite size, so `dots1` maps a per-point size (T286) rather
+ *   sense.w   the agent's own sprite size, so `geometry_dots` maps a per-point size (T286) rather
  *             than taking one number for the whole layer.
  */
 const QUORUM_KERNEL = `struct Params {
@@ -407,7 +407,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   q.position = vec3f(nextPos, 0.0);
   /* x = how deep the trail under this agent is, y = how much of it belongs to SOMEBODY ELSE
      (the contest, and the caste the front layer draws), z = spare, w = THE NODE'S DRAWN SIZE,
-     which dots1 maps: an agent standing on a trunk draws as a hub and one out in the open
+     which geometry_dots maps: an agent standing on a trunk draws as a hub and one out in the open
      draws small. This is the trail system's answer to the former operator's weighted degree,
      and it is measured in the same loop that steers. */
   q.sense = vec4f(depth, 1.0 - own, idRand(ctx.index, 77u), 0.45 + 1.15 * depth);
@@ -415,7 +415,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
 }`;
 
 const AGENTS = 3000;
-/* The fraction of the population the PICTURE draws — see `bound1`. */
+/* The fraction of the population the PICTURE draws — see `range_bound`. */
 const DRAWN_SHARE = 0.5;
 
 export const quorumDocument = document(
@@ -425,19 +425,19 @@ export const quorumDocument = document(
   graph(
     [
       // ---- the clock, and the three drives ------------------------------------------
-      /* E45's clock seam: every lane reads `clock1`, never `beat1`, so the tempo source is
+      /* E45's clock seam: every lane reads `switch_clock`, never `pattern_beat`, so the tempo source is
          one node to exchange for a real track's analysis. At index 0 it is the deterministic
          pattern, which is what ships (§V44/§V45 — no device on load). */
-      node("beat", "audioPattern", [-2560, 704], { bpm: 116, amount: 1 }, { label: "beat1" }),
-      node("clock", "valueSwitch", [-2260, 704], { index: 0 }, { label: "clock1" }),
+      node("beat", "audioPattern", [-2560, 704], { bpm: 116, amount: 1 }, { label: "pattern_beat" }),
+      node("clock", "valueSwitch", [-2260, 704], { index: 0 }, { label: "switch_clock" }),
       /* HIGH band -> how far ahead the agents look. Rest subtracted first (T701), then one
          envelope so the network breathes on strikes rather than flickering on every analyser
          frame (T824). 0.038 clip at rest is a 7-pixel sensor and a fine mesh; 0.073 on a hit
          is 13 pixels and a few thick trunks. */
-      node("hsub", "valueMath", [-1960, 704], { operation: "add", operand: -0.381 }, { label: "hsub1" }),
-      node("henv", "valueLag", [-1660, 704], { lag: 0.04, releaseRatio: 8 }, { label: "henv1" }),
-      node("rgain", "valueMath", [-1360, 704], { operation: "multiply", operand: 0.10 }, { label: "rgain1" }),
-      node("reach", "valueMath", [-1060, 704], { operation: "add", operand: 0.20 }, { label: "reach1" }),
+      node("hsub", "valueMath", [-1960, 704], { operation: "add", operand: -0.381 }, { label: "math_hsub" }),
+      node("henv", "valueLag", [-1660, 704], { lag: 0.04, releaseRatio: 8 }, { label: "lag_henv" }),
+      node("rgain", "valueMath", [-1360, 704], { operation: "multiply", operand: 0.10 }, { label: "math_rgain" }),
+      node("reach", "valueMath", [-1060, 704], { operation: "add", operand: 0.20 }, { label: "math_reach" }),
       /* THE PHRASE, on `Envoy`: how hard each army is pushed off the other two's scent, held
          four bars and eased in so a change of régime is a swell and not a snap.
 
@@ -449,22 +449,22 @@ export const quorumDocument = document(
          hard-edged networks and the ceiling is three interpenetrating ones, so the worst case
          this lane can produce is a different picture rather than no picture. That is the part
          the former file could not say. */
-      node("cstep", "valueStep", [-1960, 944], { every: 4, minimum: 0, maximum: 1, seed: 330 }, { label: "cstep1" }),
-      node("cmul", "valueMath", [-1660, 944], { operation: "multiply", operand: 0.6 }, { label: "cmul1" }),
-      node("csub", "valueMath", [-1360, 944], { operation: "add", operand: -0.6 }, { label: "csub1" }),
-      node("clim", "valueLimit", [-1060, 944], { minimum: -0.55, maximum: -0.05 }, { label: "clim1" }),
-      node("clag", "valueLag", [-760, 944], { lag: 0.9, releaseRatio: 3 }, { label: "clag1" }),
+      node("cstep", "valueStep", [-1960, 944], { every: 4, minimum: 0, maximum: 1, seed: 330 }, { label: "step_envoy" }),
+      node("cmul", "valueMath", [-1660, 944], { operation: "multiply", operand: 0.6 }, { label: "math_envoygain" }),
+      node("csub", "valueMath", [-1360, 944], { operation: "add", operand: -0.6 }, { label: "math_envoybias" }),
+      node("clim", "valueLimit", [-1060, 944], { minimum: -0.55, maximum: -0.05 }, { label: "limit_envoy" }),
+      node("clag", "valueLag", [-760, 944], { lag: 0.9, releaseRatio: 3 }, { label: "lag_envoy" }),
       /* THE DEPOSIT LANE, two bars against the phrase's four so the two never line up: how
-         much scent a footfall leaves, which is the balance against `trail1`'s decay and so
+         much scent a footfall leaves, which is the balance against `feedback_trail`'s decay and so
          how bold the network draws. [0.395, 0.875] into a clamp [0.44, 0.84] is the same 1.20
          clamp-widths and the same 83.3 % interior. It gets its own step rather than reading
-         `cstep1` because a threshold on the phrase's draw would fire in step with the phrase
+         `step_envoy` because a threshold on the phrase's draw would fire in step with the phrase
          instead of across it. */
-      node("dstep", "valueStep", [-1360, 1424], { every: 2, minimum: 0.395, maximum: 0.875, seed: 82 }, { label: "dstep1" }),
-      node("dlim", "valueLimit", [-1060, 1424], { minimum: 0.44, maximum: 0.84 }, { label: "dlim1" }),
-      node("dlag", "valueLag", [-760, 1424], { lag: 0.7, releaseRatio: 2 }, { label: "dlag1" }),
+      node("dstep", "valueStep", [-1360, 1424], { every: 2, minimum: 0.395, maximum: 0.875, seed: 82 }, { label: "step_deposit" }),
+      node("dlim", "valueLimit", [-1060, 1424], { minimum: 0.44, maximum: 0.84 }, { label: "limit_deposit" }),
+      node("dlag", "valueLag", [-760, 1424], { lag: 0.7, releaseRatio: 2 }, { label: "lag_deposit" }),
       /* The only free-running clock in the file, and it turns once every 80 seconds. */
-      node("hue", "lfo", [-1960, 1184], { shape: "sine", frequency: 0.0125, amplitude: 150, offset: 0, phase: 0 }, { label: "hue1" }),
+      node("hue", "lfo", [-1960, 1184], { shape: "sine", frequency: 0.0125, amplitude: 150, offset: 0, phase: 0 }, { label: "lfo_hue" }),
 
       // ---- the agents ----------------------------------------------------------------
       /* 120 000 agents, and the count is a density rather than a flourish: one agent per two
@@ -482,10 +482,10 @@ export const quorumDocument = document(
         turn: 25,
         wander: 2,
       }, {
-        label: "mesh1",
+        label: "kernel_mesh",
         parameters: {
-          senseDist: drivenSlot("reach1:high", 0.24),
-          envoy: drivenSlot("clag1:bar", -0.3),
+          senseDist: drivenSlot("math_reach:high", 0.24),
+          envoy: drivenSlot("lag_envoy:bar", -0.3),
         },
       }),
 
@@ -512,7 +512,7 @@ export const quorumDocument = document(
         count: AGENTS, blend: "alpha", accumulate: false,
         color: [1, 1, 1, 1], sizePixels: 5, group: "",
       }, {
-        label: "sow1",
+        label: "points_sow",
         resolution: { mode: "fixed", width: 288, height: 288 },
         parameters: {
           color: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "banner" } } },
@@ -531,9 +531,9 @@ export const quorumDocument = document(
          this file actually runs on is WHERE THE AGENTS ARE, which the lag profile measures in
          seconds; the field is the coupling medium, not the archive. */
       node("trail", "feedback", [-1660, 324], {
-        source: "mix1", persistence: 0.72, clearColor: [0, 0, 0, 0], reset: false, substeps: 1,
+        source: "add_mix", persistence: 0.72, clearColor: [0, 0, 0, 0], reset: false, substeps: 1,
       }, {
-        label: "trail1",
+        label: "feedback_trail",
         resolution: { mode: "fixed", width: 288, height: 288 },
         format: { mode: "fixed", format: "rgba16float" },
       }),
@@ -542,24 +542,24 @@ export const quorumDocument = document(
          isolated texels and the difference between two adjacent sensor readings is mostly
          quantisation. Three pixels of blur is a gradient the three sensors can answer. */
       node("spread", "blur", [-1360, 324], { size: 4, filter: "gaussian", extend: "hold" }, {
-        label: "spread1",
+        label: "blur_spread",
         resolution: { mode: "fixed", width: 288, height: 288 },
         format: { mode: "fixed", format: "rgba16float" },
       }),
       /* THE DEPOSIT ENTERING THE FIELD, and the port order is load-bearing — see the edge
          list. Composite's opacity scales THE FRONT LAYER, which is `in1`, so the deposit has
-         to be `in1` for `dlag1` to mean "how much scent a footfall leaves" rather than "how
+         to be `in1` for `lag_deposit` to mean "how much scent a footfall leaves" rather than "how
          much of last frame the field keeps". */
       node("mix", "add", [-1060, 324], { opacity: 0.6 }, {
-        label: "mix1",
+        label: "add_mix",
         resolution: { mode: "fixed", width: 288, height: 288 },
         format: { mode: "fixed", format: "rgba16float" },
-        parameters: { opacity: drivenSlot("dlag1:bar", 0.6) },
+        parameters: { opacity: drivenSlot("lag_deposit:bar", 0.6) },
       }),
 
       // ---- the draw: NODES AND A WEB, which is what a network looks like --------------
       /* ⚑ ONE REACH, TWO CONSUMERS (§V349), AND HERE IT IS THE SAME SENTENCE TWICE OVER: the
-         kernel's `senseDist` and `web1`'s Radius are THE SAME NUMBER, both reading `reach1`.
+         kernel's `senseDist` and `proximity_web`'s Radius are THE SAME NUMBER, both reading `math_reach`.
          So a drawn link is exactly a pair close enough for one to smell the other — the
          picture draws the agents' own sensing neighbourhood, and cannot show a relationship
          the simulation is not using.
@@ -591,22 +591,22 @@ export const quorumDocument = document(
          keep their slots and go on laying the trail the visible ones are walking. */
       node("bound", "pointRange", [-1660, 24], {
         attribute: "sense", component: "z", from: 0, to: DRAWN_SHARE, mode: "inside",
-      }, { label: "bound1" }),
+      }, { label: "range_bound" }),
       node("web", "pointProximity", [-1660, -176], { neighbors: 6, falloff: 3 }, {
-        label: "web1",
-        parameters: { radius: drivenSlot("reach1:high", 0.24) },
+        label: "proximity_web",
+        parameters: { radius: drivenSlot("math_reach:high", 0.24) },
       }),
-      node("ink", "materialUnlit", [-1660, -560], { color: [1, 1, 1, 1] }, { label: "ink1" }),
+      node("ink", "materialUnlit", [-1660, -560], { color: [1, 1, 1, 1] }, { label: "material_ink" }),
       /* Beams, additive and soft: many filaments crossing one cluster must SUM into light
          rather than fight a depth buffer (T917). Taper 0 pinches each link at its origin so
          six links leaving one node do not fuse into a wedge. Proximity writes a WHITE tint
          whose alpha is the link's strength, so the web is pale by construction — the colour
          in this picture belongs to the nodes. */
       node("links", "geometry", [-1360, -176], {
-        mode: "beam", endpoint: "tip", material: "ink1",
+        mode: "beam", endpoint: "tip", material: "material_ink",
         scale: 0.0022, taper: 0, soft: 0.9, blend: "additive",
       }, {
-        label: "links1",
+        label: "geometry_links",
         parameters: {
           /* Proximity's OWN `tint` — white with the link's strength in alpha — not the
              agents' `banner`: the link set is a different pointset and does not carry it,
@@ -619,9 +619,9 @@ export const quorumDocument = document(
          in the open draws small, and nothing here decides how big a hub is. That is the trail
          system's answer to the former operator's weighted degree. */
       node("dots", "geometry", [-1360, -440], {
-        mode: "points", material: "ink1", soft: 0.75, blend: "additive", scale: 0.009,
+        mode: "points", material: "material_ink", soft: 0.75, blend: "additive", scale: 0.009,
       }, {
-        label: "dots1",
+        label: "geometry_dots",
         parameters: {
           scale: { mode: "map", bindings: { static: { kind: "static", value: 0.009 }, map: { kind: "map", attribute: "sense", channel: "w" } } },
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "banner" } } },
@@ -634,9 +634,9 @@ export const quorumDocument = document(
          with the picture visually identical, because a pair sitting where the picture already
          had ink adds a number and no pixel. Drawn, it cannot. */
       node("frontdots", "geometry", [-1360, -700], {
-        mode: "points", material: "ink1", soft: 0.6, blend: "additive", scale: 0.016,
+        mode: "points", material: "material_ink", soft: 0.6, blend: "additive", scale: 0.016,
         group: "p.sense.y > 0.45",
-      }, { label: "frontdots1" }),
+      }, { label: "geometry_frontdots" }),
       /* ⚑ ORTHOGRAPHIC, AND THAT IS WHAT PUTS THE SIMULATION AND THE PICTURE IN ONE SPACE.
          With Ortho Height 2 a world unit is half the frame height in both axes, so the disc
          the kernel's rim fence holds the agents inside renders as a CIRCLE, and an agent's
@@ -645,50 +645,50 @@ export const quorumDocument = document(
          have said so. */
       node("cam", "camera", [-1360, -940], {
         eye: [0, 0, 2], lookAt: [0, 0, 0], fov: 52, ortho: true, orthoHeight: 2.16,
-      }, { label: "cam1" }),
+      }, { label: "camera1" }),
       /* Two passes, one camera, each layer graded for its job — blurring ONE render that held
          both would smear the web's filaments over the coloured nodes and the bed would come
          out grey. */
       node("webs", "render", [-1060, -176], {
-        scenes: "links1", camera: "cam1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1],
-      }, { label: "webs1" }),
+        scenes: "geometry_links", camera: "camera1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1],
+      }, { label: "render_webs" }),
       node("nodes", "render", [-1060, -440], {
-        scenes: "dots1 frontdots1", camera: "cam1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1],
-      }, { label: "nodes1" }),
+        scenes: "geometry_dots geometry_frontdots", camera: "camera1", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1],
+      }, { label: "render_nodes" }),
 
       // ---- the haze: a density field, not a decoration ------------------------------
       /* Blurring the NODES is the density of the nodes, so the haze pools where the network
          is dense because the network is dense there — and it carries each army's own colour
          because that is what was blurred. Nothing paints it. */
-      node("haze", "blur", [-760, -440], { size: 44, filter: "gaussian", extend: "hold" }, { label: "haze1" }),
+      node("haze", "blur", [-760, -440], { size: 44, filter: "gaussian", extend: "hold" }, { label: "blur_haze" }),
       /* §V880: perlin4d with a real time axis and an OFF-LATTICE t4d, so Speed is a control
          that does something. A 3d variant here would be a static poster wearing a clock. */
       node("neb", "noise", [-1060, 124], {
         type: "perlin4d", seed: 54, period: 0.42, harmon: 3, spread: 2, gain: 0.55,
         rough: 0.5, exp: 1.4, amp: 1, offset: 0.4, mono: true, aspectcorrect: true,
         speed: 0.055, t4d: 0.41, s4d: 1,
-      }, { label: "neb1" }),
-      node("pool", "multiply", [-460, -300], {}, { label: "pool1" }),
+      }, { label: "noise_neb" }),
+      node("pool", "multiply", [-460, -300], {}, { label: "multiply_pool" }),
       /* Lifted in saturation and pushed down in value: a haze reads as depth only while it
          stays below the thing it sits behind (§V471). */
-      node("bed", "hsv", [-160, -300], { hueoffset: 0, saturation: 1.9, value: 0.42 }, { label: "bed1" }),
+      node("bed", "hsv", [-160, -300], { hueoffset: 0, saturation: 1.9, value: 0.42 }, { label: "hsv_bed" }),
       /* The filaments, graded down so the web is structure rather than glare — a network
          reads its links as thread, not as light. */
-      node("thread", "level", [-760, -116], { brightness: 0.42, gamma1: 1.3 }, { label: "thread1" }),
+      node("thread", "level", [-760, -116], { brightness: 0.42, gamma1: 1.3 }, { label: "level_thread" }),
       /* THE NODES GO NEAR-WHITE AND THE COLOUR STAYS IN THE HAZE. It is one node in one
-         place because of where it sits: `haze1` taps `nodes1` UPSTREAM of this, so the blur
+         place because of where it sits: `blur_haze` taps `render_nodes` UPSTREAM of this, so the blur
          still sees fully saturated armies and the bed carries each army's own hue, while what
          lands on the FRONT of the frame is desaturated. Value is left at 1 and NOT lifted: in
          HSV, dropping saturation raises the two lower channels to meet the top one, so the
          nodes brighten on their own, and lifting value as well drove `range` and `f0max` to
          exactly 1.0000 — clipping, measured. */
-      node("white", "hsv", [-460, -500], { hueoffset: 0, saturation: 0.3, value: 1 }, { label: "white1" }),
+      node("white", "hsv", [-460, -500], { hueoffset: 0, saturation: 0.3, value: 1 }, { label: "hsv_white" }),
 
       // ---- assemble, glow, iris ------------------------------------------------------
       /* Front is the NODES; the filaments and the bed fold in behind, in that order. */
-      node("sum", "add", [140, -300], {}, { label: "sum1" }),
-      node("glow", "blur", [440, -136], { size: 16, filter: "gaussian", extend: "hold" }, { label: "glow1" }),
-      node("lit", "add", [740, -300], { opacity: 0.45 }, { label: "lit1" }),
+      node("sum", "add", [140, -300], {}, { label: "add_sum" }),
+      node("glow", "blur", [440, -136], { size: 16, filter: "gaussian", extend: "hold" }, { label: "blur_glow" }),
+      node("lit", "add", [740, -300], { opacity: 0.45 }, { label: "add_lit" }),
       /* The aperture the whole thing is observed through: a radial ramp, open in the middle
          and closed to black before the corners. */
       node("iris", "ramp", [440, 104], {
@@ -698,18 +698,18 @@ export const quorumDocument = document(
           { position: 0.58, color: [1, 1, 1, 1] },
           { position: 1, color: [0, 0, 0, 1] },
         ],
-      }, { label: "iris1", definitionVersion: 2 }),
-      node("mask", "multiply", [1040, -300], {}, { label: "mask1" }),
+      }, { label: "ramp_iris", definitionVersion: 2 }),
+      node("mask", "multiply", [1040, -300], {}, { label: "multiply_mask" }),
       /* The palette turn, last so it colours the whole frame at once. Hue rotation and NOT a
          lookup remap: §V784's lesson is that scrambling tonal ORDER kills a picture whose
          depth cue is ordering, and a hue turn preserves luminance exactly — and here it also
          preserves the RELATIONS, so the three armies stay three distinct hues and contested
          ground stays their mixture whatever the offset is. */
       node("paint", "hsv", [1340, -300], { saturation: 1.5, value: 1 }, {
-        label: "paint1",
-        parameters: { hueoffset: drivenSlot("hue1", 0) },
+        label: "hsv_paint",
+        parameters: { hueoffset: drivenSlot("lfo_hue", 0) },
       }),
-      node("out", "output", [1640, -300], {}, { label: "out1" }),
+      node("out", "output", [1640, -300], {}, { label: "output1" }),
     ],
     [
       edge("e1", ["beat", "out"], ["clock", "in1"]),
@@ -722,18 +722,18 @@ export const quorumDocument = document(
       edge("e8", ["cmul", "out"], ["csub", "a"]),
       edge("e9", ["csub", "out"], ["clim", "in"]),
       edge("e10", ["clim", "out"], ["clag", "in"]),
-      /* The deposit lane hangs off `clock1`, the same seam every other lane reads, so
+      /* The deposit lane hangs off `switch_clock`, the same seam every other lane reads, so
          swapping the pattern for a real track's analysis moves it with everything else. */
       edge("e10a", ["clock", "out"], ["dstep", "in"]),
       edge("e10b", ["dstep", "out"], ["dlim", "in"]),
       edge("e10c", ["dlim", "out"], ["dlag", "in"]),
 
-      /* THE LOOP, and the only back edge is `trail1`'s source REFERENCE, which is not here. */
+      /* THE LOOP, and the only back edge is `feedback_trail`'s source REFERENCE, which is not here. */
       edge("e11", ["spread", "out"], ["mesh", "field"]),
       edge("e12", ["mesh", "out"], ["sow", "points"]),
       edge("e13", ["trail", "out"], ["spread", "input"]),
       /* ⚑ THE DEPOSIT IS `in1` AND THE FIELD IS `in2`, AND THAT ORDER IS THE WHOLE MEANING
-         OF `dlag1`. Composite's `opacity` scales THE FRONT LAYER, which is `in1` — so wired
+         OF `lag_deposit`. Composite's `opacity` scales THE FRONT LAYER, which is `in1` — so wired
          the other way round (which this file was, for one build) the lane multiplies the
          RETAINED FIELD every frame instead of the footfall, `persistence` becomes very
          nearly inert, and the trail's memory collapses to about a frame. It still renders

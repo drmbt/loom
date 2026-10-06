@@ -6,7 +6,7 @@ import {
 } from "./attributes.ts";
 import type { PackedLayout } from "./packing.ts";
 import type { EmittedWgsl } from "../runtime/backend/wgsl.ts";
-import { wgsl } from "../runtime/backend/wgsl.ts";
+import { generatedOnce, wgsl } from "../runtime/backend/wgsl.ts";
 
 /**
  * Scan-based lifecycle compaction (T119, §V74/§V76).
@@ -242,7 +242,8 @@ ${copies}
 }`;
 }
 
-export function generateCompactionModule(
+export const generateCompactionModule = generatedOnce("generateCompactionModule", buildGenerateCompactionModule);
+function buildGenerateCompactionModule(
   attributes: ReadonlyArray<PointAttributeSchema>,
   capacity: number,
   /**
@@ -544,7 +545,8 @@ export interface SpawnModule {
  * (T1076 — it was one dispatch per attribute), identity, finalize. Bindings are named; the node maps them to resources exactly as
  * it does for compaction.
  */
-export function generateSpawnModule(
+export const generateSpawnModule = generatedOnce("generateSpawnModule", buildGenerateSpawnModule);
+function buildGenerateSpawnModule(
   attributes: ReadonlyArray<PointAttributeSchema>,
   /** T1076: the packed layout the copies address, from the node that allocated it. */
   layout: PackedLayout,

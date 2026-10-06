@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 
 import type { LoomBus } from "@domain/commands/bus.ts";
+import { z } from "zod";
+import { nodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * The two MEDIA PULSES, registered (T493, §V125, §V123).
@@ -118,6 +120,7 @@ export function useMediaCommands(bus: LoomBus, registry: MediaControlRegistry): 
 
     bus.registerCommand({
       name: "media.cue",
+      inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
       description: "Jump a media node's playhead to its cue point.",
       handler: (input) => {
         const { count, missing, unsupported } = run(registryRef.current, input.nodeIds, "cue");
@@ -155,6 +158,7 @@ export function useMediaCommands(bus: LoomBus, registry: MediaControlRegistry): 
 
     bus.registerCommand({
       name: "media.reload",
+      inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
       description: "Re-open a media node's file from source.",
       handler: (input) => {
         const { count, missing } = run(registryRef.current, input.nodeIds, "reload");

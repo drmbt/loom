@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledGraph } from "@compiler/index.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { NodeMetricSink } from "@runtime/telemetry/index.ts";
 import {
@@ -70,6 +70,8 @@ import { createModelFetch } from "./model-fetch.ts";
 import { inferenceParametersAt, type InferenceParameterReads } from "./inference-parameters.ts";
 import type { Notice } from "./notices.tsx";
 import type { InferenceNote } from "@editor/graph-canvas/node-runtime.ts";
+import { z } from "zod";
+import { nodeIdsInput } from "@domain/commands/input-schema.ts";
 
 declare module "@domain/types/commands.ts" {
   interface CommandMap {
@@ -416,7 +418,7 @@ export interface ModelInferenceBinding {
   /** Frame-loop observer. Publishes staleness, then queues the next inference. Stable. */
   readonly observe: (frame: FrameEvaluationInput) => void;
   /** Re-derives the tracked set. Call after each compile. Stable. */
-  readonly track: (graph: GraphDocument, compiled: CompiledGraph | null) => void;
+  readonly track: (graph: FlatGraph, compiled: CompiledGraph | null) => void;
   /**
    * T747: awaited by the export path after each frame renders (§V586's blocking half).
    *
@@ -428,7 +430,7 @@ export interface ModelInferenceBinding {
   readonly settle: (frameIndex: number) => Promise<void>;
   /** Acquire offline ownership; release after success, failure, or cancellation. */
   readonly prepareForRender: () => Promise<() => void>;
-  /** Consent, progress and failure, for the strip under the top bar. */
+  /** Consent, progress and failure, for the notice strip at the foot of the window. */
   readonly notices: readonly Notice[];
   /**
    * §T976 — the fourth resolver in the composition root's `externalChannels` merge.
@@ -492,7 +494,7 @@ export function useModelInference(
   // RUN resolves its per-run parameters (Detail Ratio, Smoothing) with, in `describe`.
   const parametersRef = useRef(parameters);
   parametersRef.current = parameters;
-  const trackedGraphRef = useRef<GraphDocument | null>(null);
+  const trackedGraphRef = useRef<FlatGraph | null>(null);
   const frameRef = useRef<FrameEvaluationInput | undefined>(undefined);
   /**
    * The tracked set MIRRORED INTO STATE, and the duplication is the fix rather than the
@@ -845,6 +847,7 @@ export function useModelInference(
     if (bus === undefined || bus.hasCommand("runtime.resetInference")) return;
     bus.registerCommand({
       name: "runtime.resetInference",
+      inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
       description:
         "Restart inference: the worker thread, model sessions and provider ladders, and the named nodes' results. Keeps the downloaded models.",
       handler: (input) => ({
@@ -856,7 +859,7 @@ export function useModelInference(
   }, [bus]);
 
   const track = useCallback(
-    (graph: GraphDocument, compiled: CompiledGraph | null) => {
+    (graph: FlatGraph, compiled: CompiledGraph | null) => {
       const allocated = new Set((compiled?.resources ?? []).map((resource) => resource.id));
       const sized = new Map<string, readonly [number, number]>();
       for (const resource of compiled?.resources ?? []) {

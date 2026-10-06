@@ -3,21 +3,21 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
 /**
  * E64 — Relay (T1193). THE LOOP, CLOSED THROUGH A UDP SOCKET.
  *
- *   sweep1(lfo) ─► beam1.center.x
- *   beam1(circle) ─┬─► field1(add) ◄─ bed1(noise) ─► bedclip1(limit), gate1(rectangle), wash1(ramp)
+ *   lfo_sweep(lfo) ─► circle_beam.center.x
+ *   circle_beam(circle) ─┬─► add_field(add) ◄─ noise_bed(noise) ─► limit_bedclip(limit), rectangle_gate(rectangle), ramp_wash(ramp)
  *                  │        │
  *                  │        ▼
- *                  │   dim1(level ┄ ctl1:level)  ─┬─► win1(crop) ─► meter1(analyze)   the SENSOR
- *                  │                              └─► plate1(over)                    the PICTURE
- *   probe1(channelIn "meter1") ─► wire1(valueMath range) ─► send1(oscOut → 127.0.0.1:9107 /loom/relay)
+ *                  │   level_dim(level ┄ math_ctl:level)  ─┬─► crop_win(crop) ─► analyze_meter(analyze)   the SENSOR
+ *                  │                              └─► over_plate(over)                    the PICTURE
+ *   channelin_probe(channelIn "analyze_meter") ─► math_wire(valueMath range) ─► oscout_send(oscOut → 127.0.0.1:9107 /loom/relay)
  *                                                                       │
  *                                                            ~~ UDP, out of the page ~~
  *                                                                       │
- *   hear1(oscIn ◄ 127.0.0.1:9107 /loom/relay) ─┬─► ctl1(valueMath range) = dim1.brightness   the ACTUATOR
- *                                              └─► penB1 ─► penb1(circle)
- *   wire1 ─► penA1 ─► pena1(circle)
- *   pena1+penb1 ─► ink1(over) ─► tape1(over) ◄─ roll1(transform) ◄─ hist1(feedback "tape1")   the CHART
- *   tape1 ─► plate1 ◄─ panel1(rectangle), dim1
+ *   oscin_hear(oscIn ◄ 127.0.0.1:9107 /loom/relay) ─┬─► math_ctl(valueMath range) = level_dim.brightness   the ACTUATOR
+ *                                              └─► math_penB ─► circle_penb(circle)
+ *   math_wire ─► math_penA ─► circle_pena(circle)
+ *   circle_pena+circle_penb ─► over_ink(over) ─► over_tape(over) ◄─ transform_roll(transform) ◄─ feedback_hist(feedback "over_tape")   the CHART
+ *   over_tape ─► over_plate ◄─ rectangle_panel(rectangle), level_dim
  *
  * ## Why this file exists
  *
@@ -40,36 +40,36 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * If the graph sent a number and read the same number back, the picture would be a
  * tautology: the value that returns is the value you sent. So what goes out is a
- * measurement of the picture ITSELF — `meter1` reduces the metered window to the
+ * measurement of the picture ITSELF — `analyze_meter` reduces the metered window to the
  * brightest luminance in it — and what comes back DRIVES that picture's brightness, in the
  * corrective direction. E14 Self-Regulating Bloom closes exactly this loop inside the process, with
  * `channelIn` feeding a proportional controller. This file is that same loop with the
  * wire replaced by a UDP socket, and the extra latency is the whole demonstration.
  *
  * Loop sign is NEGATIVE and the gain is deliberately small: brighter window → higher
- * reading → lower `dim1.brightness` → dimmer window. `ctl1`'s range runs 1.24 down to
+ * reading → lower `level_dim.brightness` → dimmer window. `math_ctl`'s range runs 1.24 down to
  * 0.86 across the full 0…1 of the returned control, and both remaps CLAMP, so a value
  * arriving from anywhere — this graph, or a fader somebody else points at port 9107 —
  * cannot drive the picture out of its rails.
  *
  * ## THE TRANSFORM IS ALSO A LESSON ABOUT UNITS
  *
- * `wire1` normalises the raw reading (a peak luminance inside the window, which lives
- * between 0.075 and 0.42) onto 0…1 BEFORE the send, and `ctl1` denormalises AFTER the
+ * `math_wire` normalises the raw reading (a peak luminance inside the window, which lives
+ * between 0.075 and 0.42) onto 0…1 BEFORE the send, and `math_ctl` denormalises AFTER the
  * receive. That is deliberate and is not symmetry for its own sake: what goes on the wire
  * should be in the units the far end expects, because the far end might not be you. Point
- * `send1` at a lighting desk and 0…1 is what a fader wants; point something else at 9107
+ * `oscout_send` at a lighting desk and 0…1 is what a fader wants; point something else at 9107
  * and 0…1 is what this document promises to accept.
  *
  * ## THE CHART IS THE LATENCY, DRAWN
  *
- * `pena1` (amber, small) plots what was SENT this frame; `penb1` (cyan, wider) plots what
+ * `circle_pena` (amber, small) plots what was SENT this frame; `circle_penb` (cyan, wider) plots what
  * has come BACK. Both draw at x = 0.94 and the whole strip scrolls left, so x is time and
  * a feature that appears in cyan some frames after it appeared in amber is **displaced to
  * the right by exactly the round trip**. That displacement is the measurement this file
  * exists to make visible, and it is not a number anybody has to be told.
  *
- * `roll1` translates by EXACTLY eight texels (8/1280 = 0.00625) with `aspectcorrect` off.
+ * `transform_roll` translates by EXACTLY eight texels (8/1280 = 0.00625) with `aspectcorrect` off.
  * A fractional shift resampled a couple of hundred times turns a trace into fog; an exact texel
  * shift is a bilinear identity, so the history stays a line.
  *
@@ -80,7 +80,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * That state is designed for rather than apologised for.
  *
  *  - `oscIn` ALWAYS publishes: an unheard address falls to its declared Rest, so
- *    `hear1:level` reads 0.42 and `dim1` sits at a fixed, well-exposed brightness. The
+ *    `oscin_hear:level` reads 0.42 and `level_dim` sits at a fixed, well-exposed brightness. The
  *    picture is a picture.
  *  - The cyan trace goes **dead flat** while the amber one keeps moving. One live trace
  *    and one straight line is a legible statement that nothing is coming back — it is not
@@ -101,7 +101,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * ## Motion is not on the loop
  *
- * `sweep1` is a free-running LFO and `bed1` is a moving 4D noise, so the picture animates
+ * `lfo_sweep` is a free-running LFO and `noise_bed` is a moving 4D noise, so the picture animates
  * whether or not a helper is anywhere. That is a requirement rather than a nicety: the
  * headless gates render this file with no device attached at all, and an example whose
  * only motion came from the round trip would read as a still to every one of them — and,
@@ -109,7 +109,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  */
 
 /**
- * The metered window, in uv. `gate1` paints it and `win1` crops to it, from the SAME four
+ * The metered window, in uv. `rectangle_gate` paints it and `crop_win` crops to it, from the SAME four
  * numbers — a sensor you cannot see is a sensor nobody believes, and two hand-typed copies
  * of a rectangle drift the moment one of them is nudged.
  */
@@ -135,13 +135,13 @@ const GATE_SIZE: readonly [number, number] = [
 /**
  * The reading's working span, MEASURED rather than guessed (the md carries the table).
  *
- * `meter1` reports the MAXIMUM rather than the average, and that is the one measurement
+ * `analyze_meter` reports the MAXIMUM rather than the average, and that is the one measurement
  * decision in the file worth arguing. `crop` blanks everything outside the window and
  * `analyze` reduces the WHOLE frame, so an average is the window's own mean scaled by the
  * window's area — here about 0.003 to 0.013, a band three decades below the 0…1 anything
  * downstream expects. The maximum is the brightest thing the sensor can see, is not
  * diluted by the blanked region at all, and lands in 0.075…0.42: a number a person can read
- * and a receiver can use. `wire1` still normalises it, because 0.06…0.60 is not 0…1.
+ * and a receiver can use. `math_wire` still normalises it, because 0.06…0.60 is not 0…1.
  */
 const READING_LOW = 0.075;
 const READING_HIGH = 0.42;
@@ -158,7 +158,7 @@ const LOOPBACK_PORT = 9107;
 const RELAY_ADDRESS = "/loom/relay";
 
 /**
- * What `hear1` publishes when nothing is arriving, and what `dim1` retains.
+ * What `oscin_hear` publishes when nothing is arriving, and what `level_dim` retains.
  *
  * 0.42 rather than 0 or 1 on purpose: it is inside the range the live loop settles
  * through, so the no-helper picture is the same picture at a fixed exposure rather than a
@@ -193,7 +193,7 @@ export const relayDocument = document(
             { position: 1, color: [0.02, 0.03, 0.07, 1] },
           ],
         },
-        { definitionVersion: 2, label: "wash1" },
+        { definitionVersion: 2, label: "ramp_wash" },
       ),
       /* Texture, and the second free-running clock. Dim: the bed is what the beam is seen
          against, so it must not be a second light. */
@@ -219,10 +219,10 @@ export const relayDocument = document(
           t4d: 0.37,
           s4d: 1,
         },
-        { label: "bed1" },
+        { label: "noise_bed" },
       ),
-      /* THE SENSOR, PAINTED. A faint cool wash exactly where `win1` crops, so a viewer can
-         see what the number is a number OF. It is added BEFORE `dim1`, so the controller
+      /* THE SENSOR, PAINTED. A faint cool wash exactly where `crop_win` crops, so a viewer can
+         see what the number is a number OF. It is added BEFORE `level_dim`, so the controller
          scales it along with everything else it measures — a marker outside the loop would
          be a constant the loop could not see and the reader would have to be told about. */
       node(
@@ -241,7 +241,7 @@ export const relayDocument = document(
           // rectangle would paint a window that is not the window being measured.
           aspectcorrect: false,
         },
-        { label: "gate1" },
+        { label: "rectangle_gate" },
       ),
       node(
         "sweep",
@@ -250,7 +250,7 @@ export const relayDocument = document(
         // 0.33 Hz — 182 frames a cycle against 160 frames of visible chart, so the strip
         // always carries most of a crossing and the lag has a feature to be measured against.
         { shape: "sine", frequency: 0.33, amplitude: 0.42, offset: 0.5, phase: 0 },
-        { label: "sweep1" },
+        { label: "lfo_sweep" },
       ),
       node(
         "beam",
@@ -265,25 +265,25 @@ export const relayDocument = document(
           bgcolor: [0, 0, 0, 0],
           aspectcorrect: true,
         },
-        { label: "beam1", parameters: { "center.x": drivenSlot("sweep1", 0.5) } },
+        { label: "circle_beam", parameters: { "center.x": drivenSlot("lfo_sweep", 0.5) } },
       ),
       /* E14's `clipbase` idiom, and load-bearing for the same reason: the bed's `offset` is
          negative — that is how a noise centred on 0.5 becomes a dark ground with no extra
          Level in the chain — and a negative in an rgba16float working format would SUBTRACT
          from the wash and the marker it is composited with. Clamped at the source, so
          everything downstream is adding light to light. */
-      node("bedclip", "limit", [-2100, -40], { mode: "clamp", low: 0, high: 4, steps: 4 }, { label: "bedclip1" }),
-      node("field", "add", [-1800, -340], { opacity: 1 }, { label: "field1" }),
+      node("bedclip", "limit", [-2100, -40], { mode: "clamp", low: 0, high: 4, steps: 4 }, { label: "limit_bedclip" }),
+      node("field", "add", [-1800, -340], { opacity: 1 }, { label: "add_field" }),
 
       // ---- the actuator: the one number the returned value owns --------------------
       /**
        * THE ACTUATOR, and the only thing in the picture the loop controls.
        *
-       * `brightness` is driven by `ctl1:level` — the channel name carries `:level` because
-       * `hear1` declares a control called `level` and every value node downstream maps the
+       * `brightness` is driven by `math_ctl:level` — the channel name carries `:level` because
+       * `oscin_hear` declares a control called `level` and every value node downstream maps the
        * bag per channel, so the name rides all the way through the arithmetic.
        *
-       * The retained value is `ctl1`'s own output at the Rest reading, so a host with no
+       * The retained value is `math_ctl`'s own output at the Rest reading, so a host with no
        * value graph at all renders the same exposure the no-helper session does.
        */
       node(
@@ -291,7 +291,7 @@ export const relayDocument = document(
         "level",
         [-1500, -340],
         { blacklevel: 0, whitelevel: 1, gamma1: 1, contrast: 1, invert: 0, opacity: 1 },
-        { label: "dim1", parameters: { brightness: drivenSlot("ctl1:level", 1.0804) } },
+        { label: "level_dim", parameters: { brightness: drivenSlot("math_ctl:level", 1.0804) } },
       ),
 
       // ---- the sensor --------------------------------------------------------------
@@ -300,7 +300,7 @@ export const relayDocument = document(
         "crop",
         [-1200, -640],
         { left: GATE.left, right: GATE.right, bottom: GATE.bottom, top: GATE.top },
-        { label: "win1" },
+        { label: "crop_win" },
       ),
       /* Its NAME is the channel (§V129), and the reading is one frame late by design
          (§V144) — which is the first of the three delays the chart adds up. */
@@ -309,7 +309,7 @@ export const relayDocument = document(
         "analyze",
         [-900, -640],
         { channel: "luminance", operation: "maximum" },
-        { label: "meter1" },
+        { label: "analyze_meter" },
       ),
 
       // ---- out of the page ---------------------------------------------------------
@@ -321,8 +321,8 @@ export const relayDocument = document(
         "probe",
         "channelIn",
         [-900, -40],
-        { channel: "meter1", fallback: READING_LOW + (READING_HIGH - READING_LOW) * 0.25 },
-        { label: "probe1" },
+        { channel: "analyze_meter", fallback: READING_LOW + (READING_HIGH - READING_LOW) * 0.25 },
+        { label: "channelin_probe" },
       ),
       node(
         "wire",
@@ -336,7 +336,7 @@ export const relayDocument = document(
           toHigh: 1,
           outside: "clamp",
         },
-        { label: "wire1" },
+        { label: "math_wire" },
       ),
       /**
        * THE EGRESS HALF. Host and Port are set because `oscOut` has no default destination
@@ -355,7 +355,7 @@ export const relayDocument = document(
         "oscOut",
         [-300, -40],
         { host: LOOPBACK_HOST, port: LOOPBACK_PORT, address: RELAY_ADDRESS, rate: 60 },
-        { label: "send1" },
+        { label: "oscout_send" },
       ),
 
       // ---- back into the page ------------------------------------------------------
@@ -365,7 +365,7 @@ export const relayDocument = document(
        * `controls` declaration GROWS this node's own schema: naming `level` here is what
        * creates the `levelAddress` and `levelRest` parameters below.
        *
-       * The address it learns is the address `send1` writes. The two halves of the circuit
+       * The address it learns is the address `oscout_send` writes. The two halves of the circuit
        * meet here and nowhere else.
        */
       node(
@@ -378,7 +378,7 @@ export const relayDocument = document(
           levelAddress: RELAY_ADDRESS,
           levelRest: RELAY_REST,
         },
-        { label: "hear1" },
+        { label: "oscin_hear" },
       ),
       /* The denormalise, and the loop's sign. INVERTED bounds — 0 maps to the bright end
          and 1 to the dim end — which is the whole of what makes this negative feedback
@@ -396,7 +396,7 @@ export const relayDocument = document(
           toHigh: 0.86,
           outside: "clamp",
         },
-        { label: "ctl1" },
+        { label: "math_ctl" },
       ),
 
       // ---- the chart: two pens, one strip -------------------------------------------
@@ -412,7 +412,7 @@ export const relayDocument = document(
           toHigh: PEN_HIGH,
           outside: "clamp",
         },
-        { label: "penA1" },
+        { label: "math_penA" },
       ),
       node(
         "penB",
@@ -426,7 +426,7 @@ export const relayDocument = document(
           toHigh: PEN_HIGH,
           outside: "clamp",
         },
-        { label: "penB1" },
+        { label: "math_penB" },
       ),
       /* RECEIVED, drawn wide and cool. Behind the sent pen deliberately: when the two
          agree the amber sits inside the cyan, and when they do not the amber rides out of
@@ -447,7 +447,7 @@ export const relayDocument = document(
              is NARROWER in x at 16:9, which is the wrong way round. */
           aspectcorrect: false,
         },
-        { label: "penb1", parameters: { "center.y": drivenSlot("penB1:level", 0.15) } },
+        { label: "circle_penb", parameters: { "center.y": drivenSlot("math_penB:level", 0.15) } },
       ),
       /* SENT, drawn small and hot. */
       node(
@@ -463,20 +463,20 @@ export const relayDocument = document(
           bgcolor: [0, 0, 0, 0],
           aspectcorrect: false,
         },
-        { label: "pena1", parameters: { "center.y": drivenSlot("penA1", 0.15) } },
+        { label: "circle_pena", parameters: { "center.y": drivenSlot("math_penA", 0.15) } },
       ),
-      node("ink", "over", [900, 460], { opacity: 1 }, { label: "ink1" }),
-      /* THE STRIP. `tape1` is this frame's ink over the scrolled history; `hist1` records
-         `tape1` by NAME (T350 — the loop is a reference, not a back-edge) and `roll1`
+      node("ink", "over", [900, 460], { opacity: 1 }, { label: "over_ink" }),
+      /* THE STRIP. `over_tape` is this frame's ink over the scrolled history; `feedback_hist` records
+         `over_tape` by NAME (T350 — the loop is a reference, not a back-edge) and `transform_roll`
          shifts what came back. Persistence 1: the fade here is the LEFT EDGE, not a decay,
          so the whole visible history is equally legible. */
-      node("tape", "over", [1200, 460], { opacity: 1 }, { label: "tape1" }),
+      node("tape", "over", [1200, 460], { opacity: 1 }, { label: "over_tape" }),
       node(
         "hist",
         "feedback",
         [1200, 800],
-        { source: "tape1", persistence: 1, clearColor: [0, 0, 0, 0], reset: false, substeps: 1 },
-        { label: "hist1" },
+        { source: "over_tape", persistence: 1, clearColor: [0, 0, 0, 0], reset: false, substeps: 1 },
+        { label: "feedback_hist" },
       ),
       /* Exactly four texels of a 1280-wide frame. See the module note on why the number is
          a texel count and not a taste. `zero` so the right-hand edge stays empty rather
@@ -493,7 +493,7 @@ export const relayDocument = document(
           extend: "zero",
           aspectcorrect: false,
         },
-        { label: "roll1" },
+        { label: "transform_roll" },
       ),
 
       // ---- the frame ----------------------------------------------------------------
@@ -515,10 +515,10 @@ export const relayDocument = document(
           bgcolor: [0, 0, 0, 0],
           aspectcorrect: false,
         },
-        { label: "panel1" },
+        { label: "rectangle_panel" },
       ),
-      node("plate", "over", [1500, -340], { opacity: 1 }, { label: "plate1" }),
-      node("out", "output", [1800, -340], {}, { label: "out1" }),
+      node("plate", "over", [1500, -340], { opacity: 1 }, { label: "over_plate" }),
+      node("out", "output", [1800, -340], {}, { label: "output1" }),
     ],
     [
       edge("e-beam-field", ["beam", "out"], ["field", "in1"]),
@@ -527,7 +527,7 @@ export const relayDocument = document(
       edge("e-gate-field", ["gate", "out"], ["field", "in2"], 1),
       edge("e-wash-field", ["wash", "out"], ["field", "in2"], 2),
       edge("e-field-dim", ["field", "out"], ["dim", "input"]),
-      // Cut this and the sensor goes blind: `meter1` stops publishing, `probe1` falls to
+      // Cut this and the sensor goes blind: `analyze_meter` stops publishing, `channelin_probe` falls to
       // its fallback, and the same number leaves and returns for ever.
       edge("e-dim-win", ["dim", "out"], ["win", "input"]),
       edge("e-win-meter", ["win", "out"], ["meter", "input"]),

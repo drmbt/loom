@@ -9,9 +9,13 @@ import { createAgentToolSurface } from "../agent/surface.ts";
 import { attachStateSources } from "../domain/commands/index.ts";
 import { registerCompileCommand } from "../app/compile-command.ts";
 import { registerResetFeedbackCommand } from "../app/runtime-commands.ts";
+import { readProblemSources, type ProblemSource } from "../app/problem-sources.ts";
+import { retainDiagnostic } from "../app/diagnostic-buffer.ts";
+import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import { compileGraph, timelineStructureRequest, type CompileRequest } from "../compiler/index.ts";
 import { buildTimelineStructure } from "../domain/presets/timeline-cues.ts";
 import type { BackendCapabilities } from "../domain/types/backend.ts";
+import { frameFromClock } from "../domain/types/frame.ts";
 import type { ProjectSettings } from "../domain/types/graph.ts";
 import { createVgpuBackend } from "../runtime/backend/vgpu/vgpu-backend.ts";
 import { nodeGpuHost, probeDawn } from "../runtime/backend/vgpu/node-gpu-host.ts";
@@ -190,6 +194,15 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
 
   let backend: ReturnType<typeof createVgpuBackend> | undefined;
   let compiled: ReturnType<typeof compileGraph> | null = null;
+  /*
+   * B244: the compile last ATTEMPTED, which is what `diagnostics.get` reports. `compiled` is
+   * the plan the backend accepted and renders, which the pixel tools and metrics describe;
+   * after a backend refusal the two differ, and the problems belong to the refused one.
+   */
+  let attempted: ReturnType<typeof compileGraph> | null = null;
+  // T1555b: why there is no GPU, and what the backend has reported, held for `diagnostics.get`.
+  let gpuProblems: readonly RuntimeDiagnostic[] = [];
+  let backendProblems: readonly RuntimeDiagnostic[] = [];
   let frameIndex = 0;
   let disposed = false;
   /**
@@ -254,8 +267,8 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
    * T597 (§V39): the headless twin registers the SAME commands and queries the page
    * registers, with headless-truthful sources — so an in-page agent and a desktop
    * client are told one story about one product. `selection.get` answers empty (no
-   * editor is open, and empty IS the truth); `diagnostics.get` reports the last
-   * compile; `runtime.metrics` counts the offline frames this server rendered.
+   * editor is open, and empty IS the truth); `diagnostics.get` reads `problemSources`
+   * below (T1555b); `runtime.metrics` counts the offline frames this server rendered.
    * `project.compile` and `runtime.resetFeedback` come from the same registration
    * modules the app uses, never a re-implementation. What is NOT registered is waived
    * BY NAME in the T597 parity gates: transport.play/pause (there is no frame loop —
@@ -263,11 +276,21 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
    * targets a browser project store this process does not have), graph.setOutput
    * (a deliberate stub on every surface, see mutate.ts), and component.import/export
    * (T1494b: this twin has no component catalogue at all).
+   *
+   * T1555b: `problemSources` is the Problems registry the page reads too
+   * (`app/problem-sources.ts`), holding the sources this process actually has. Every other
+   * app source is named, with the reason, in `HEADLESS_ABSENT_PROBLEM_SOURCES`, and
+   * `problem-sources.test.ts` checks that the two agree.
    */
+  const problemSources: readonly ProblemSource[] = [
+    { id: "gpu", read: () => gpuProblems },
+    { id: "compile", read: () => attempted?.diagnostics ?? [] },
+    { id: "backend", read: () => backendProblems },
+  ];
   attachStateSources(bus, {
     selection: () => ({ nodeIds: [], edgeIds: [] }),
     diagnostics: () => ({
-      diagnostics: compiled?.diagnostics ?? [],
+      diagnostics: readProblemSources(problemSources),
       revision: store.view.getGraph().revision,
     }),
     metrics: () => ({
@@ -391,6 +414,7 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
     if (capabilities === null || capabilities === undefined) return;
     // §T1544b: in the timeline's structure at the frame this renders.
     const plan = compileGraph(requestAt(frameIndex, capabilities));
+    attempted = plan;
     if (!plan.ok) {
       compiled = plan;
       return;
@@ -398,13 +422,18 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
     const built = await live.compile(plan);
     compiled = plan;
     live.render(built, {
-      frame: {
+      // T1554b: the rate is stated, so `fps` reads HEADLESS_FPS rather than agreeing with
+      // the default by coincidence. This frame index never wraps, so the absolute pair the
+      // constructor fills from the timeline is the absolute clock; and the server mints no
+      // epoch (no app attaches a frame clock here, so a morph commits as a cut, T1497b).
+      frame: frameFromClock({
         timeSeconds: frameIndex / HEADLESS_FPS,
         deltaSeconds: 1 / HEADLESS_FPS,
         frameIndex,
         mode: "offline",
         randomSeed: HEADLESS_SETTINGS.randomSeed,
-      },
+        fps: HEADLESS_FPS,
+      }),
       pointer: { x: 0, y: 0, buttons: 0 },
       resolution: [HEADLESS_SETTINGS.outputResolution.width, HEADLESS_SETTINGS.outputResolution.height],
     });
@@ -421,13 +450,14 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
   const ready = (async () => {
     const probe = await probeDawn();
     if (!probe.available) {
-      connection.notifyDiagnostics([
+      gpuProblems = [
         {
           severity: "info",
           code: "mcp/no-gpu",
           message: `No GPU attached (${probe.error ?? "Dawn unavailable"}); graph tools work in full, pixel tools report unavailable.`,
         },
-      ]);
+      ];
+      connection.notifyDiagnostics(gpuProblems as unknown as Record<string, unknown>[]);
       return;
     }
     if (options.grantExport !== true) {
@@ -444,6 +474,8 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
     live.onDiagnostic((diagnostic) => {
       // T294: the backend's verdicts ride the EXISTING notification channel.
       connection.notifyDiagnostics([diagnostic as unknown as Record<string, unknown>]);
+      // T1555b: and are held, one slot per condition (T596), so `diagnostics.get` has them too.
+      backendProblems = retainDiagnostic(backendProblems, diagnostic);
     });
     await live.initialize({});
     if (disposed) {
@@ -464,6 +496,7 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
         // backend holds — so the report and the pixels describe one structure.
         const plan = compileGraph(requestAt(Math.max(0, frameIndex - 1), capabilities));
         compiled = plan;
+        attempted = plan;
         return { compiled: plan, diagnostics: [...plan.diagnostics] };
       },
     };

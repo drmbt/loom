@@ -15,6 +15,8 @@ import {
 } from "../../nodes/definitions/grid-warp.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
+import { z } from "zod";
+import { finiteInput, idInput } from "./input-schema.ts";
 
 /**
  * T1534b — `gridWarp.insertLine` and `gridWarp.deleteLine`: a row or column inserted at a
@@ -145,10 +147,14 @@ function runLineEdit(
   };
 }
 
+/** §T1556b: the two axes a line can run along. */
+const gridAxisSchema = z.enum(["column", "row"]) satisfies z.ZodType<GridAxis>;
+
 export function registerGridWarpCommands(bus: LoomBus): void {
   if (!bus.hasCommand(GRID_WARP_INSERT_LINE_COMMAND)) {
     bus.registerCommand({
       name: GRID_WARP_INSERT_LINE_COMMAND,
+      inputSchema: z.object({ nodeId: idInput, axis: gridAxisSchema, at: finiteInput }).strict(),
       description: "Insert a column or row into a Grid Warp at a place on its current surface, keeping the picture where it is (§T1534b).",
       handler: (input, context) =>
         runLineEdit(GRID_WARP_INSERT_LINE_COMMAND, input ?? {}, context, (grid, axis) => insertGridLine(grid, axis, typeof input?.at === "number" ? input.at : Number.NaN)),
@@ -158,6 +164,7 @@ export function registerGridWarpCommands(bus: LoomBus): void {
   if (!bus.hasCommand(GRID_WARP_DELETE_LINE_COMMAND)) {
     bus.registerCommand({
       name: GRID_WARP_DELETE_LINE_COMMAND,
+      inputSchema: z.object({ nodeId: idInput, axis: gridAxisSchema, index: z.number().int() }).strict(),
       description: "Delete one column or row of a Grid Warp; every other point keeps its place (§T1534b).",
       handler: (input, context) =>
         runLineEdit(GRID_WARP_DELETE_LINE_COMMAND, input ?? {}, context, (grid, axis) => deleteGridLine(grid, axis, typeof input?.index === "number" ? input.index : Number.NaN)),

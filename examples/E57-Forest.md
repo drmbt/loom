@@ -171,19 +171,19 @@ Skipping the march where the forward lobe is small was tried and **refused** at 
 
 | parameter | what it is | chain | range |
 | --- | --- | --- | --- |
-| `mist` | the density of the air | `air1` (1.2 s) → `airRank1` (18 s) → `airSmooth1` (0.6 s) | 0.155 … 0.285 |
-| `moonGain` | the moon's own output — the gain everything else is measured against | `dim1` (3 s) → `dimRank1` (40 s) → `dimSmooth1` (1 s) | 0.85 … 1.22 |
+| `mist` | the density of the air | `lag_air` (1.2 s) → `normalize_airRank` (18 s) → `lag_airSmooth` (0.6 s) | 0.155 … 0.285 |
+| `moonGain` | the moon's own output — the gain everything else is measured against | `lag_dim` (3 s) → `normalize_dimRank` (40 s) → `lag_dimSmooth` (1 s) | 0.85 … 1.22 |
 
 Both go through `valueNormalize`, which is why there is no floor and no gain to eyeball per track: it maps a channel through its *own* recent distribution, so equal amounts of time map to equal amounts of range and the lane can neither pin nor idle.
 
 ### ⚑ But Normalize alone does not buy "not flickery", and that is this pass's sharpest finding
 
-A percentile **flattens** a distribution, and flattening it means **steepening the map wherever the signal is dense** — so a signal that was already smooth going in can come out as a jump. Measured over 3600 frames with the follower only on the input side, `airRank1` moved **20.9% of its own span in one frame**: 1257% a second, and `mist` stepping 0.21 to 0.24 between two frames is a visible lurch in the fog. Lengthening the input lag cannot fix it — the input was not the rough thing, the *map* was. So each lane carries a **second follower after the rank**, which bounds the output's step directly, and it costs about a tenth of the coverage at the tails:
+A percentile **flattens** a distribution, and flattening it means **steepening the map wherever the signal is dense** — so a signal that was already smooth going in can come out as a jump. Measured over 3600 frames with the follower only on the input side, `normalize_airRank` moved **20.9% of its own span in one frame**: 1257% a second, and `mist` stepping 0.21 to 0.24 between two frames is a visible lurch in the fog. Lengthening the input lag cannot fix it — the input was not the rough thing, the *map* was. So each lane carries a **second follower after the rank**, which bounds the output's step directly, and it costs about a tenth of the coverage at the tails:
 
 | lane | per twentieth of its own span | max step per frame | mean | longest still |
 | --- | --- | --- | --- | --- |
-| `airMap1:low` → `mist` | 1.3% … 7.9% | **2.09% of span** (126%/s) | 0.2123 | 1 frame |
-| `dimMap1:lowMid` → `moonGain` | 1.6% … 8.4% | **0.78% of span** (47%/s) | 0.9951 | 1 frame |
+| `math_airMap:low` → `mist` | 1.3% … 7.9% | **2.09% of span** (126%/s) | 0.2123 | 1 frame |
+| `math_dimMap:lowMid` → `moonGain` | 1.6% … 8.4% | **0.78% of span** (47%/s) | 0.9951 | 1 frame |
 
 Before the second follower those steps were 20.9% and 8.6%. Neither lane ever repeats a value on two consecutive frames, so there is no silent run to report at all. The gate asserts the bound *and* re-points each map at its rank directly, so removing the second follower cannot be silent.
 
@@ -200,7 +200,7 @@ So there is a third lane, and it is the only one with a sharp edge: `beat1`, a 1
 | parameter | channel | what it does | range |
 | --- | --- | --- | --- |
 | `fog` | `onsetCount` | the gloom: the aerial perspective swells, the middle distance shuts, and the depth comes back over 250 ms | 0.03 … 0.052 |
-| `moonGain` | `kickCount` | the dimming, on top of the section lane: `dimMap1 × (1 − 0.3 · kickCount)` | ×1 … ×0.7 |
+| `moonGain` | `kickCount` | the dimming, on top of the section lane: `math_dimMap × (1 − 0.3 · kickCount)` | ×1 … ×0.7 |
 | `shafts` | `snareCount` | the reveal: shafts are the one term here that **adds** light between the trunks | 0.85 … 1.30 |
 
 **Why counts and not the ranked levels the other two lanes use.** A percentile cannot spread a tie, and a count is 0 on almost every frame — through a rank it rests at its *mid* and the beat becomes a permanent half-lit nothing (T1234 measured 0.53 on this pattern). Continuous properties on ranks, drums on counts.
@@ -209,7 +209,7 @@ So there is a third lane, and it is the only one with a sharp edge: `beat1`, a 1
 
 **The gloom's size is a look call, made by eye.** The first cut was `+0.045` on `fog` and it swallowed the wood whole at the peak: two near trunks and a glow, which reads as the render failing rather than as a beat. `+0.022` shuts the middle distance and leaves the near stems standing, which is a wood closing.
 
-⚠ **On the shipped pattern the fog and the moon fire together, and that is the fixture rather than the wiring.** `audioPattern` defines `kickCount = onsetCount` — a kick on every beat — so the two channels are one signal here. On a real track dropped into `track1` they separate: `onsetCount` is a spectral-flux detector that fires on any transient, `kickCount` is the low-band heuristic, so the gloom fires more often than the moon dips. The split is what the wiring *says*; the fixture cannot show it.
+⚠ **On the shipped pattern the fog and the moon fire together, and that is the fixture rather than the wiring.** `audioPattern` defines `kickCount = onsetCount` — a kick on every beat — so the two channels are one signal here. On a real track dropped into `audiofile_track` they separate: `onsetCount` is a spectral-flux detector that fires on any transient, `kickCount` is the low-band heuristic, so the gloom fires more often than the moon dips. The split is what the wiring *says*; the fixture cannot show it.
 
 **The beats cost nothing.** GPU frame extent on Dawn, 300 frames an arm after 30 warm-up, arms alternated over three passes: the driven file measures 4.170 / 4.109 / 4.168 ms mean against 4.102 / 4.094 / 4.424 for the same file with the three slots pinned at rest — inside the control's own run-to-run spread. Pinned at the **peak** of all three at once, which the document never does, the p50 is *below* rest in every pass (3.867 / 3.932 / 4.194 against 3.998 / 3.998 / 4.325): the gloom shortens the march more than the shafts lengthen it. E57's budget is untouched.
 
@@ -219,7 +219,7 @@ So there is a third lane, and it is the only one with a sharp edge: `beat1`, a 1
 
 The ask was depth of field, and half of it was already here: `fog` attenuates everything with distance, so a far-field blur would duplicate what the fog does and then compete with it for the same pixels — two "this is far away" cues arguing. What fog cannot do is soften something that is too **close**, and a trunk sliding past at arm's length out of focus is the difference between walking through a wood and looking at one. So the circle of confusion is one-sided: zero at `focus` and beyond, opening as a surface comes toward the eye. There is no far knob, and that is deliberate.
 
-It is a second pass rather than lens sampling inside the march. Sampling an aperture means N rays a pixel and N times the DDA; the budget above dies at N = 2. A gather over the finished frame is twelve texture reads within about twenty pixels of each other. `forest1` writes the ray's distance in metres into its **alpha channel** — a `customWgsl` node has one texture in and one out, so the channel the picture does not use is where the geometry the next pass needs has to travel — and `dof1` writes an opaque frame back. A preview tapped off `forest1` rather than the output will show a non-opaque alpha; that is a real consequence of the trick rather than a bug.
+It is a second pass rather than lens sampling inside the march. Sampling an aperture means N rays a pixel and N times the DDA; the budget above dies at N = 2. A gather over the finished frame is twelve texture reads within about twenty pixels of each other. `wgsl_forest` writes the ray's distance in metres into its **alpha channel** — a `customWgsl` node has one texture in and one out, so the channel the picture does not use is where the geometry the next pass needs has to travel — and `wgsl_dof` writes an opaque frame back. A preview tapped off `wgsl_forest` rather than the output will show a non-opaque alpha; that is a real consequence of the trick rather than a bug.
 
 **Scatter written as a gather, which is the part that is easy to get wrong.** The naive version reads the centre pixel's depth, picks a radius and averages — which blurs the inside of a near trunk and leaves its silhouette razor sharp, because the background just outside the edge is far away and chooses radius zero. Here every tap is weighted by *its own* circle of confusion against *its own* distance from the centre: a tap reaches this pixel only if its own blur circle is wide enough to get here, so near geometry spreads outward over the background the way a lens does.
 
@@ -241,7 +241,7 @@ Its falloff is long on purpose. A shorter one drew a visible dark ellipse, which
 
 **The gait is derived from the walk rather than added beside it**, which is the only reason it is not that second source. A step is about 0.72 m, so the stride rate is the walk's own speed over that: the body rises twice a stride, once per foot, and rolls sideways once, and the 2:1 relation is the cue. The first version bobbed at a fixed 1.6 rad/s — four cycles a minute, which is breathing, not walking.
 
-**The camera never turns, and that is load-bearing twice**: the per-pixel sky direction is constant, which is what makes the screen-space cloud veil on `veil1` correct here rather than a cheat; and the moon and the quiet zone hold still, which is what a headline needs. Heading drift was refused for exactly that reason. What let the gait and the ground swell in is that both are **translations**, and a translation cannot change a ray direction — which the claims assert to the byte: with no trees and no haze, every pixel above the horizon is identical with them on and off, while the ground below it is not.
+**The camera never turns, and that is load-bearing twice**: the per-pixel sky direction is constant, which is what makes the screen-space cloud veil on `noise_veil` correct here rather than a cheat; and the moon and the quiet zone hold still, which is what a headline needs. Heading drift was refused for exactly that reason. What let the gait and the ground swell in is that both are **translations**, and a translation cannot change a ray direction — which the claims assert to the byte: with no trees and no haze, every pixel above the horizon is identical with them on and off, while the ground below it is not.
 
 Per frame the pace, averaged over four pairs spread across the first sixteen seconds and four across the last fifteen, is 7.977e-4 opening and 7.855e-4 closing — 98% of where it opened after a full minute; with the walk cut the closing figure is 6.130e-7. Averaging is not a nicety: the gait puts a 1.18 Hz oscillation into the per-frame delta and the clumped field puts a thicket-or-a-clearing into each frame, so a *single* pair now reads anywhere from 2.9e-4 to 1.35e-3 on phase and stand alone. The one-pair version of this claim failed at 0.54 of the opening pace, and it was right to — it was measuring one draw, not the pace.
 
@@ -255,16 +255,16 @@ It ships at 1280×720, which is the frame the budget above is defended at, and i
 
 ## The knobs are the shader's own struct
 
-There is no project-level publish surface in this build (T1143), so the top level is `forest1`'s own parameter page. Every field of `struct Params` reflects into a named, typed control with the shader's trailing comment as its description: the walk (`walkSpeed`, `sway`, `bob`, `eyeHeight`, `pitch`, `lens`), the grid (`spacing`, `density`, `clumping`, `relief`, `snags`), the tree (`treeHeight`, `heightVary`, `trunkWidth`, `lean`, `branches`, `branchSpread`, `branchRise`, `gnarl`, `barkColor`, `groundColor`), the air (`fog`, `mist`, `fogHeight`, `fogColor`, `shafts`, `skyColor`, `cloud`), the moon (`moonSize`, `moonHeight`, `moonAzimuth`, `moonColor`, `moonGain`, `ambient`) and the composition (`quiet`, `quietAt`, `quietSize`, `vignette`, `exposure`). `dof1` carries two of its own: `focus`, in metres, and `blur`.
+There is no project-level publish surface in this build (T1143), so the top level is `wgsl_forest`'s own parameter page. Every field of `struct Params` reflects into a named, typed control with the shader's trailing comment as its description: the walk (`walkSpeed`, `sway`, `bob`, `eyeHeight`, `pitch`, `lens`), the grid (`spacing`, `density`, `clumping`, `relief`, `snags`), the tree (`treeHeight`, `heightVary`, `trunkWidth`, `lean`, `branches`, `branchSpread`, `branchRise`, `gnarl`, `barkColor`, `groundColor`), the air (`fog`, `mist`, `fogHeight`, `fogColor`, `shafts`, `skyColor`, `cloud`), the moon (`moonSize`, `moonHeight`, `moonAzimuth`, `moonColor`, `moonGain`, `ambient`) and the composition (`quiet`, `quietAt`, `quietSize`, `vignette`, `exposure`). `wgsl_dof` carries two of its own: `focus`, in metres, and `blur`.
 
 ## The chain
 
 ```
-veil1(noise) -> forest1(customWgsl) -> dof1(customWgsl) -> out1(output)
+noise_veil(noise) -> wgsl_forest(customWgsl) -> wgsl_dof(customWgsl) -> output1(output)
 
-music1(audioPattern) -+
-track1(audioFileIn)  -+-> source1(valueSwitch) -+-> air1(valueLag) -> airRank1(valueNormalize) -> airSmooth1(valueLag) -> airMap1(valueMath) => forest1.mist
-                                                +-> dim1(valueLag) -> dimRank1(valueNormalize) -> dimSmooth1(valueLag) -> dimMap1(valueMath) => forest1.moonGain
+pattern_music(audioPattern) -+
+audiofile_track(audioFileIn)  -+-> switch_source(valueSwitch) -+-> lag_air(valueLag) -> normalize_airRank(valueNormalize) -> lag_airSmooth(valueLag) -> math_airMap(valueMath) => wgsl_forest.mist
+                                                +-> lag_dim(valueLag) -> normalize_dimRank(valueNormalize) -> lag_dimSmooth(valueLag) -> math_dimMap(valueMath) => wgsl_forest.moonGain
 ```
 
 ## What was refused

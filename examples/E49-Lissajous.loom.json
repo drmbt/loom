@@ -108,7 +108,7 @@
       "draw": {
         "definitionVersion": 1,
         "id": "draw",
-        "label": "draw1",
+        "label": "points_draw",
         "parameters": {
           "accumulate": false,
           "blend": "additive",
@@ -143,7 +143,7 @@
       "echo": {
         "definitionVersion": 1,
         "id": "echo",
-        "label": "echo1",
+        "label": "feedback_echo",
         "parameters": {
           "clearColor": [
             0,
@@ -152,7 +152,7 @@
             1
           ],
           "persistence": 0.9,
-          "source": "trace1"
+          "source": "add_trace"
         },
         "position": {
           "x": -900,
@@ -163,7 +163,7 @@
       "gen": {
         "definitionVersion": 1,
         "id": "gen",
-        "label": "gen1",
+        "label": "kernel_gen",
         "parameters": {
           "attributes": "",
           "capacity": 1200,
@@ -184,7 +184,7 @@
       "glow": {
         "definitionVersion": 1,
         "id": "glow",
-        "label": "glow1",
+        "label": "add_glow",
         "parameters": {},
         "position": {
           "x": 300,
@@ -195,7 +195,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -210,7 +210,7 @@
       "hot": {
         "definitionVersion": 1,
         "id": "hot",
-        "label": "hot1",
+        "label": "threshold_hot",
         "parameters": {
           "channel": "luminance",
           "compare": "greater",
@@ -226,7 +226,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 600,
@@ -237,7 +237,7 @@
       "scope": {
         "definitionVersion": 1,
         "id": "scope",
-        "label": "scope1",
+        "label": "laserpath_scope",
         "parameters": {
           "closed": true,
           "color": [
@@ -261,7 +261,7 @@
       "trace": {
         "definitionVersion": 1,
         "id": "trace",
-        "label": "trace1",
+        "label": "add_trace",
         "parameters": {},
         "position": {
           "x": -600,

@@ -2,6 +2,7 @@ import { compileGraph, flattenComponents } from "../../compiler/index.ts";
 import type { CompiledGraph } from "../../compiler/index.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import type { ComponentRegistryView } from "../../domain/components/index.ts";
+import { frameFromClock } from "../../domain/types/frame.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument, GraphNode, ProjectDocument } from "../../domain/types/graph.ts";
 import type { SelectableColorFormat } from "../../domain/types/node-definition.ts";
@@ -182,23 +183,26 @@ export function valueGraphRun(document: ProjectDocument) {
    * instance read "publishes no channel" — silent until §B231 surfaced component-slot
    * diagnostics, and then E51's churn LFOs inside `wall1` failed step 0.
    */
-  const flat = flattenComponents({ graph: document.graph, registry: nodes, components }).graph;
+  const flattened = flattenComponents({ graph: document.graph, registry: nodes, components });
   let frameIndex = 0;
 
-  const frameAt = (index: number): FrameEvaluationInput => ({
-    timeSeconds: index / 60,
-    deltaSeconds: 1 / 60,
-    frameIndex: index,
-    mode: "offline",
-    randomSeed: document.settings.randomSeed,
-  });
+  const frameAt = (index: number): FrameEvaluationInput =>
+    frameFromClock({
+      timeSeconds: index / 60,
+      deltaSeconds: 1 / 60,
+      frameIndex: index,
+      mode: "offline",
+      randomSeed: document.settings.randomSeed,
+      fps: 60,
+    });
 
   return {
     /** Advance one frame at this pointer and compile at the values it produced. */
     step(pointer: Pointer): { plan: CompiledGraph; frame: FrameEvaluationInput } {
       const frame = frameAt(frameIndex);
       frameIndex += 1;
-      const { resolver } = session.evaluate(flat, frame, { pointer: { ...pointer } });
+      // §T1559b: the flattening whole, as the app's value graph is handed it.
+      const { resolver } = session.evaluate(flattened.graph, frame, { flattening: flattened, pointer: { ...pointer } });
       const plan = requireLivePlan(
         compileGraph({
           graph: document.graph,

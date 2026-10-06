@@ -95,7 +95,7 @@ describe("T1514b — right-click a parameter in the Inspector", () => {
     });
     await settle();
 
-    const slider = named(runtime, "brightness");
+    const slider = named(runtime, "slider_brightness");
     expect(slider.parameters).toMatchObject({ value: 3, min: 0, max: 8 });
     const [panel] = Object.values(runtime.bus.store.getGraph().nodes).filter((node) => node.type === "panel");
     expect(panelMembers(runtime.bus.store.getGraph(), panel as GraphNode).map((node) => node.id)).toEqual([slider.id]);
@@ -139,7 +139,7 @@ describe("T1514b — right-click a parameter in the Inspector", () => {
     });
     await settle();
     const graph = runtime.bus.store.getGraph();
-    expect(panelMembers(graph, named(runtime, "deskB")).map((node) => node.label)).toEqual(["contrast"]);
+    expect(panelMembers(graph, named(runtime, "deskB")).map((node) => node.label)).toEqual(["slider_contrast"]);
     expect(panelMembers(graph, named(runtime, "deskA"))).toEqual([]);
   });
 

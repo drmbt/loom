@@ -770,6 +770,9 @@ function passDetail(pass: PassDescriptor, byId: Map<string, ResourceDescriptor>)
       return `${pass.op} ${pass.resourceId}`;
     case "loop":
       return pass.edge === "begin" ? `begin ×${pass.count ?? 1}` : "end";
+    // T1623b: a table of rows written into a region of a buffer, as values.
+    case "write":
+      return `${pass.values.count} of ${pass.capacity} rows → ${pass.resourceId} at byte ${pass.offset}`;
   }
 }
 

@@ -14,7 +14,7 @@ import type { Page } from "@playwright/test";
  *  - every bar list mounts at most its scroll box plus one row either side, however many
  *    channels it holds.
  *
- * ## Why the headed lane
+ * ## Why the GPU lane
  *
  * The bar list is windowed from MEASURED row pitch, and jsdom has no layout — there every
  * row mounts by design (`barWindow`), so the claim can only be made where rows have a

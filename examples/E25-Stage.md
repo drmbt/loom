@@ -10,16 +10,16 @@ interestingly." The TD/Notch classic.
 ## Graph
 
 ```
-scene A:  ringa1(pointTorus) ─► geoa1(geometry: octahedra, mata1 phong)
-          cama1(camera, eye.x/z ┄ orbax1/orbaz1)   keya1(light)
-          shota1(render) ─────────────────► a TEXTURE
+scene A:  torus_ringa(pointTorus) ─► geometry_a(geometry: octahedra, material_a phong)
+          camera_a(camera, eye.x/z ┄ lfo_orbax/lfo_orbaz)   light_keya(light)
+          render_shota(render) ─────────────────► a TEXTURE
 
-the crossing:  shota1.out ──► screenmat1.albedo     ← ONE texture edge (V372)
+the crossing:  render_shota.out ──► material_screen.albedo     ← ONE texture edge (V372)
 
-scene B:  screengrid1 ─► screen1(geometry: surface, screenmat1)
-          floorpts1 ─► floorkernel1 ─► floor1(geometry: boxes, matfloor1)
-          camb1(camera, eye.x ┄ orbbx1)   keyb1(light, intensity ┄ breathe1)
-          shotb1(render, scenes: "screen1 floor1") ─► out1
+scene B:  grid_screen ─► geometry_screen(geometry: surface, material_screen)
+          grid_floor ─► kernel_floor ─► geometry_floor(geometry: boxes, material_floor)
+          camera_b(camera, eye.x ┄ lfo_orbbx)   light_keyb(light, intensity ┄ lfo_breathe)
+          render_shotb(render, scenes: "geometry_screen geometry_floor") ─► output1
 ```
 
 ## The two sentences that ARE the example
@@ -50,8 +50,8 @@ regression note.
 - The screen vanishes and the torus floats → render A's background stopped painting
   (the backdrop pass) or the screen material went lit and shadowed to black.
 - The torus on the screen stops moving while the screen still drifts → camera A's
-  orbit broke (drive on `cama1.eye.x/z`); the reverse means camera B's did.
+  orbit broke (drive on `camera_a.eye.x/z`); the reverse means camera B's did.
 - The screen shows scene B's own view (feedback hall-of-mirrors) → someone rewired the
-  albedo edge to `shotb1.out`; A-before-B ordering is pinned by test.
+  albedo edge to `render_shotb.out`; A-before-B ordering is pinned by test.
 - Both scenes light identically → the renders are sharing a light list; each names its
   own.

@@ -7,6 +7,8 @@ import { enterPath, parentPath } from "@domain/components/navigation.ts";
 import type { ResolvedComponentPath } from "@domain/components/navigation.ts";
 import type { ComponentRegistryView } from "@domain/components/registry.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
+import { NO_INPUT, idInput, nodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `graph.diveIn` / `graph.jumpUp` — subgraph navigation (T423, §V307, §V82).
@@ -144,6 +146,7 @@ export function registerComponentNavigationCommands(bus: LoomBus): {
 
   bus.registerCommand({
     name: "graph.diveIn",
+    inputSchema: z.object({ nodeId: idInput.optional(), nodeIds: nodeIdsInput.optional() }).strict(),
     description: "Open a component instance and edit its internals (T130, §V82).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -225,6 +228,7 @@ export function registerComponentNavigationCommands(bus: LoomBus): {
 
   bus.registerCommand({
     name: "graph.jumpUp",
+    inputSchema: NO_INPUT,
     description: "Leave the current component for the graph one level out (T130).",
     handler: (_input, context) => {
       const revision = context.store.getRevision();
@@ -303,6 +307,7 @@ export function registerCreateComponentCommand(bus: LoomBus): CreateComponentHol
 
   bus.registerCommand({
     name: "ui.createComponent",
+    inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
     description: "Name the selected nodes and save them as a reusable component (§V79).",
     handler: (input, context) => {
       const revision = context.store.getRevision();

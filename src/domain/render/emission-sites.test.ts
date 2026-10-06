@@ -90,6 +90,23 @@ const NOT_A_PUMP_SITE = [
   // Pure node-type/transport-name tables shared by the inspector and existing
   // native pumps. No bridge access, publication or device ownership in this file.
   "src/devices/native-video.ts",
+  /*
+   * T1593b — THE KIND TABLE NAMES EVERY NODE TYPE AS DATA, the five emitters among them.
+   *
+   * `NODE_KINDS` maps each node type to the word its nodes are named with (`oscOut` →
+   * `oscout`, `laserOut` → `laserout`), and it is TOTAL over the catalogue by design:
+   * `node-names.test.ts` fails when a registered type has no row. So it has to spell
+   * `oscOut`, `laserOut`, `syphonOut`, `ndiOut` and `spoutOut`, as keys of a table of
+   * strings. Leaving the emitters out to pass this scan would be this gate deciding that
+   * an OSC Out may not have a name of its kind, which is the product decision §T1162
+   * refused to let it make.
+   *
+   * THE FILE, not `src/domain/graph`, so a real pump landing beside it is still caught.
+   * What it holds is strings and pure functions over strings: its one import is
+   * `isComponentNodeType`, a string predicate; it reaches no registry, no definition, no
+   * ledger and no transport, and nothing in it can know that a node is running.
+   */
+  "src/domain/graph/node-kinds.ts",
 ];
 
 /** Every non-test source module a pump could hide in: all of `src`, minus the exclusions. */

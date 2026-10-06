@@ -1,3 +1,4 @@
+import { ZERO_FRAME } from "../types/frame.ts";
 import { evaluateExpression, functionSignature, scopeFromFrame } from "./evaluate.ts";
 
 /**
@@ -87,12 +88,5 @@ export function acceptedFunctionCalls(): ReadonlyArray<{ name: string; signature
  * works and a menu that waits for wiring that may never arrive.
  */
 export function frameVariableNames(): readonly string[] {
-  const zeroFrame = {
-    timeSeconds: 0,
-    deltaSeconds: 0,
-    frameIndex: 0,
-    mode: "realtime" as const,
-    randomSeed: 0,
-  };
-  return Object.keys(scopeFromFrame(zeroFrame)).sort();
+  return Object.keys(scopeFromFrame(ZERO_FRAME)).sort();
 }

@@ -117,7 +117,9 @@ describe("node output overrides", () => {
     );
 
     expect(result.status).toBe("rejected");
-    expect(result.diagnostics.some((d) => d.code === "node.format.invalid")).toBe(true);
+    // §T1556b: refused by the bus against the command's input schema (`nodeFormatOverrideSchema`,
+    // the same one the patch applies), naming the field, before any patch is built.
+    expect(result.diagnostics.some((d) => d.code === "command.input" && d.message.includes("format.format"))).toBe(true);
     expect(node()).toEqual(before);
   });
 
@@ -231,7 +233,7 @@ describe("component processing channel overrides", () => {
     const { bus, store } = createDomainBus({ registry: system.nodes });
     const created = await bus.execute("graph.applyPatch", patch(0, [{ op: "addNode", ref: "$c", type: componentNodeType("image", 1), position: { x: 0, y: 0 } }]), contextFor(alice));
     const id = created.output.createdIds.$c!;
-    bus.attachFlattenedGraph(() => flattenComponents({ graph: store.view.getGraph(), registry: system.nodes, components: system.components.view() }).graph);
+    bus.attachFlattenedGraph(() => flattenComponents({ graph: store.view.getGraph(), registry: system.nodes, components: system.components.view() }));
     const channelMask = { r: true, g: true, b: true, a: false };
     const result = await bus.execute("node.setChannelMask", { nodeId: `${id}/src`, channelMask }, contextFor(alice));
     expect(result.status).toBe("applied");
@@ -275,12 +277,12 @@ describe("node.rename", () => {
   });
 
   it("sets a label", async () => {
-    await h2.bus.execute("node.rename", { nodeId: id, label: "Bloom pass" }, contextFor(alice));
+    await h2.bus.execute("node.rename", { nodeId: id, label: "Bloom pass", exact: true }, contextFor(alice));
     expect(node2()?.label).toBe("Bloom pass");
   });
 
   it("trims surrounding whitespace rather than storing it", async () => {
-    await h2.bus.execute("node.rename", { nodeId: id, label: "  Edge detect  " }, contextFor(alice));
+    await h2.bus.execute("node.rename", { nodeId: id, label: "  Edge detect  ", exact: true }, contextFor(alice));
     expect(node2()?.label).toBe("Edge detect");
   });
 
@@ -308,8 +310,8 @@ describe("node.rename", () => {
   });
 
   it("is undoable as one step", async () => {
-    await h2.bus.execute("node.rename", { nodeId: id, label: "First" }, contextFor(alice));
-    await h2.bus.execute("node.rename", { nodeId: id, label: "Second" }, contextFor(alice));
+    await h2.bus.execute("node.rename", { nodeId: id, label: "First", exact: true }, contextFor(alice));
+    await h2.bus.execute("node.rename", { nodeId: id, label: "Second", exact: true }, contextFor(alice));
     await h2.bus.execute("graph.undo", {}, contextFor(alice));
     expect(node2()?.label).toBe("First");
   });

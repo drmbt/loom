@@ -14,19 +14,19 @@ could not express before T1347b/T1348b: a spectrum row picked off the source, pu
 its measured occupied range, and turned into a beat or a tail.
 
 ```
-clip1(audioFileIn) ─ band109x1(valueSelect) ─ beatrange1(valueRange) ─ beat1(valueBeat) ─ punch1(valueLag)
-clip1(audioFileIn) ─ band968x1(valueSelect) ─ tailrange1(valueRange) ─ tail1(valueTail)
-clip1(audioFileIn) ─ band380x1(valueSelect) ─ range380x1(valueRange) ─ tail380x1(valueTail)
-clip1(audioFileIn) ─ band1300x1(valueSelect) ─ range1300x1(valueRange) ─ beat1300x1(valueBeat)
-clip1(audioFileIn) ─ band3400x1(valueSelect) ─ range3400x1(valueRange) ─ tail3400x1(valueTail)
+audiofile_clip(audioFileIn) ─ select_band109(valueSelect) ─ range_beat(valueRange) ─ beat1(valueBeat) ─ lag_punch(valueLag)
+audiofile_clip(audioFileIn) ─ select_band968(valueSelect) ─ range_tail(valueRange) ─ tail1(valueTail)
+audiofile_clip(audioFileIn) ─ select_band380(valueSelect) ─ range_band380(valueRange) ─ tail_band380(valueTail)
+audiofile_clip(audioFileIn) ─ select_band1300(valueSelect) ─ range_band1300(valueRange) ─ beat_band1300(valueBeat)
+audiofile_clip(audioFileIn) ─ select_band3400(valueSelect) ─ range_band3400(valueRange) ─ tail_band3400(valueTail)
 ```
 
 `beat1` (109 Hz) flashes the halo from ember to white and lights the core's plate edges;
-through `punch1` (a 50 ms attack) it drives `halolight1` and the haze flare and splits the
+through `lag_punch` (a 50 ms attack) it drives `light_halo` and the haze flare and splits the
 belts, so a hit punches rather than strobes. `tail1` (968 Hz) twists and squares the core and
-drives the green `accentlight1`. `tail380x1` drives the amber `amberlight1` deep left and the
-inner modules' strips; `beat1300x1` the white-blue `flashlight1` high right and the mid hulls'
-strips; `tail3400x1` the cyan `cyanlight1` low behind and the giants' strips. Every Range's
+drives the green `light_accent`. `tail_band380` drives the amber `light_amber` deep left and the
+inner modules' strips; `beat_band1300` the white-blue `light_flash` high right and the mid hulls'
+strips; `tail_band3400` the cyan `light_cyan` low behind and the giants' strips. Every Range's
 bounds are measured on the shipped clip (band109 rests 0.30–0.35 and peaks ~0.60 per kick;
 band968 0.42–0.50; band380 0.32–0.78; band1300 0.46–0.58; band3400 0.27–0.33). A different
 track retunes those numbers and nothing else.

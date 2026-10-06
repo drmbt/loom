@@ -13,13 +13,21 @@ import type {
   QueryOutput,
 } from "../types/commands.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
-import type { FrameClock } from "../types/frame.ts";
-import type { GraphDocument, ProjectSettings } from "../types/graph.ts";
+import type { FrameClock, FrameEvaluationInput } from "../types/frame.ts";
+import { authoredGraph, type FlatGraph, type GraphDocument, type ProjectSettings } from "../types/graph.ts";
 import type { ChannelResolver } from "../parameters/resolve.ts";
+import { NO_FLATTENING, type FlatteningReads, type ParameterReadContext } from "../parameters/node-references.ts";
 import type { Revision } from "../types/ids.ts";
 import type { IdFactory } from "../graph/ids.ts";
 import type { GraphStore, GraphStoreView, HistoryOutcome } from "../graph/store.ts";
 import { createCapabilityGrantStore, type CapabilityGrantStore } from "./grants.ts";
+import {
+  inputRefusal,
+  isAnyInput,
+  type AnyInput,
+  type CommandInputSchema,
+  type InputKeysCovered,
+} from "./input-schema.ts";
 import { createGraphStore } from "../graph/store.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
@@ -43,6 +51,7 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
  *
  * bus.registerCommand({
  *   name: "node.setOutput",
+ *   inputSchema: z.object({ nodeId: z.string().min(1) }).strict(),
  *   handler: (input, ctx) => {
  *     const applied = ctx.apply({ label: "Set output", recipe: (draft) => { ... } });
  *     return { status: "applied", output: { ok: true }, revision: applied.revision };
@@ -155,6 +164,23 @@ export interface CommandContext {
    * transport, and a morph requested there commits as a cut and says why.
    */
   readonly frameClock: FrameClock | undefined;
+  /**
+   * §T1557b — WHAT A PARAMETER READ AT THIS MOMENT IS MADE OF, every field filled: this
+   * command's `graph` and `registry`, the frame the transport last produced, the app's
+   * channel resolver (`channels`), and its flattening (the morphs in flight and the
+   * instances `op('<instance>').chan.<c>` names). Hand it to `parameterReadOptions`.
+   *
+   * It exists because a command could not supply the frame, the morphs or the instances,
+   * so the reads that wanted the live value (a recall's Select, Morph and Curve, a cue
+   * list's position) passed `{ channels }` alone — §B181's shape: `op('x').chan.y` fell back
+   * to the stored static while the plan animated. A read that wants the DOCUMENT instead —
+   * locating a slot, seeding a mode — calls `resolveStored`, and says so.
+   *
+   * Attached by the composition root (`attachFlattenedGraph`, `attachFrame`, beside
+   * `attachChannelResolver`); with nothing attached it is the frameless, flattening-free
+   * scope a headless bus truthfully has (§V338).
+   */
+  readonly readScope: () => ParameterReadContext;
   /** The sole mutation primitive available to a handler (§V29). */
   apply: (request: ApplyRequest) => AppliedInfo;
   /**
@@ -213,17 +239,26 @@ export type CommandHandler<TName extends CommandName> = (
 
 export interface CommandRegistration<TName extends CommandName> {
   name: TName;
+  /**
+   * §T1556b — what input this command takes, parsed by `execute` before the handler runs,
+   * so every door (menu, keymap, palette, phone, agent) gets the same refusal. REQUIRED: a
+   * command cannot be registered without saying. `ANY_INPUT(reason)` is the named escape
+   * for an input the bus genuinely cannot describe.
+   */
+  inputSchema: CommandInputSchema<TName> | AnyInput;
   handler: CommandHandler<TName>;
   /** Capability classes that must be granted before this command runs (§V38). */
   requiredCapabilities?: readonly CapabilityClass[];
   description?: string;
   /**
    * Builds the output value returned when the bus itself rejects the call (a missing
-   * capability grant). Without it the bus throws instead, because it cannot invent a
-   * typed result.
+   * capability grant, input its schema refuses — T1556b). Without it the bus throws
+   * instead, because it cannot invent a typed result.
+   *
+   * `input` is `unknown` because on an input refusal it is exactly what the schema refused.
    */
   rejectionOutput?: (
-    input: CommandInput<TName>,
+    input: unknown,
     diagnostics: RuntimeDiagnostic[],
     revision: Revision,
   ) => CommandOutput<TName>;
@@ -270,6 +305,21 @@ export class InvalidInvocationError extends Error {
   }
 }
 
+/**
+ * §T1556b: input a command's schema refused, thrown when the command has no
+ * `rejectionOutput` to answer with (the capability path's rule). The message is the
+ * diagnostics' sentences, so a thrower and a returner say the same thing.
+ */
+export class InvalidCommandInputError extends Error {
+  readonly diagnostics: readonly RuntimeDiagnostic[];
+
+  constructor(diagnostics: readonly RuntimeDiagnostic[]) {
+    super(diagnostics.map((diagnostic) => diagnostic.message).join(" "));
+    this.name = "InvalidCommandInputError";
+    this.diagnostics = diagnostics;
+  }
+}
+
 export class CapabilityDeniedError extends Error {
   readonly missing: readonly CapabilityClass[];
 
@@ -282,6 +332,7 @@ export class CapabilityDeniedError extends Error {
 
 interface StoredCommand {
   name: string;
+  inputSchema: CommandInputSchema<CommandName> | AnyInput;
   handler: (input: unknown, context: CommandContext) => unknown;
   requiredCapabilities: readonly CapabilityClass[];
   description: string | undefined;
@@ -303,11 +354,23 @@ export interface LoomBus extends AppCommandBus {
    * bus checks here; adapters cannot reach it through a tool call.
    */
   readonly grants: CapabilityGrantStore;
-  registerCommand: <TName extends CommandName>(registration: CommandRegistration<TName>) => void;
+  /** `S` is inferred from `inputSchema` so `InputKeysCovered` can name a key it forgot (§T1556b). */
+  registerCommand: <
+    TName extends CommandName,
+    S extends CommandRegistration<TName>["inputSchema"] = CommandRegistration<TName>["inputSchema"],
+  >(
+    registration: Omit<CommandRegistration<TName>, "inputSchema"> & { readonly inputSchema: S } & InputKeysCovered<TName, S>,
+  ) => void;
   registerQuery: <TName extends QueryName>(registration: QueryRegistration<TName>) => void;
   hasCommand: (name: string) => boolean;
   hasQuery: (name: string) => boolean;
   listCommands: () => readonly string[];
+  /**
+   * §T1556b — the input schema a command registered (`ANY_INPUT` included), or undefined for
+   * a name nothing registered. Read-only, for the gates that hold DATA (keymap bindings,
+   * menu rows, pulse templates) to the input the command takes.
+   */
+  inputSchemaOf: (name: string) => CommandRegistration<CommandName>["inputSchema"] | undefined;
   listQueries: () => readonly string[];
   /**
    * Publishes the composition root's ONE channel resolver into every `CommandContext`
@@ -333,6 +396,18 @@ export interface LoomBus extends AppCommandBus {
   /** What a command invoked now would read, for the composition root and its gates. */
   readonly frameClock: () => FrameClock | undefined;
   /**
+   * §T1557b — publishes the frame the running transport last produced, for `readScope`. A
+   * READ FUNCTION like the others: the frame moves every tick. Undefined = no frame yet, and
+   * a read resolves at the zero frame. Last attach wins.
+   */
+  attachFrame: (read: () => FrameEvaluationInput | undefined) => void;
+  /**
+   * §T1557b — `CommandContext.readScope` for a reader outside a command (the camera gizmo's
+   * pose read), over the store's current document. The same producer, so the two cannot be
+   * assembled differently.
+   */
+  readonly readScope: () => ParameterReadContext;
+  /**
    * Publishes the composition root's ONE flattened document (T615, §V82).
    *
    * A command addresses a node by id, and inside a component instance the only id that
@@ -348,10 +423,13 @@ export interface LoomBus extends AppCommandBus {
    * Null until a composition root attaches one, and null means "there is no app", not
    * "there are no components" — a handler falls back to the document, which is what every
    * bus without a rendered tree has always seen.
+   *
+   * §T1557b: the flattening WHOLE (`runtime.flattened.current()`), not its graph alone, so
+   * `readScope` carries the morphs and instances off the same object (`FlatteningReads`).
    */
-  attachFlattenedGraph: (read: () => GraphDocument | undefined) => void;
+  attachFlattenedGraph: (read: () => (FlatteningReads & { readonly graph: FlatGraph }) | undefined) => void;
   /** The flattened document, or undefined when nothing has attached one. */
-  readonly flattenedGraph: () => GraphDocument | undefined;
+  readonly flattenedGraph: () => FlatGraph | undefined;
   /** Read-only document access for the UI. Mutation stays behind `execute` (§V29). */
   readonly store: GraphStoreView;
   readonly registry: NodeRegistryView;
@@ -401,9 +479,22 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
   /** T593: null until a composition root attaches one. Null means "no app", not "empty". */
   let readChannels: (() => ChannelResolver | undefined) | null = null;
   /** T615: likewise — null is "no app", and a handler falls back to the document. */
-  let readFlattened: (() => GraphDocument | undefined) | null = null;
+  let readFlattened: (() => (FlatteningReads & { readonly graph: FlatGraph }) | undefined) | null = null;
   /** T1497b: likewise — null is "no app", and a morph commits as a cut. */
   let readFrameClock: (() => FrameClock | undefined) | null = null;
+  /** §T1557b: likewise — null is "no app", and a read resolves at the zero frame. */
+  let readFrame: (() => FrameEvaluationInput | undefined) | null = null;
+  /** §T1557b: the one producer behind `bus.readScope` and every `CommandContext.readScope`. */
+  const readScopeOver = (graph: GraphDocument): ParameterReadContext => ({
+    // §T1552b: a command addresses the document AS AUTHORED (the ids it patches, an instance
+    // whole), on purpose. A site that must read the flattening overrides `graph` with
+    // `flattenedGraph()`, which is a `FlatGraph` and says so.
+    graph: authoredGraph(graph),
+    registry,
+    frame: readFrame?.() ?? undefined,
+    channels: readChannels?.() ?? undefined,
+    flattening: readFlattened?.() ?? NO_FLATTENING,
+  });
 
   const bus: LoomBus = {
     store: store.view,
@@ -415,10 +506,15 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
     },
     channelResolver: () => readChannels?.() ?? undefined,
 
-    attachFlattenedGraph(read: () => GraphDocument | undefined): void {
+    attachFlattenedGraph(read: () => (FlatteningReads & { readonly graph: FlatGraph }) | undefined): void {
       readFlattened = read;
     },
-    flattenedGraph: () => readFlattened?.() ?? undefined,
+    flattenedGraph: () => readFlattened?.()?.graph ?? undefined,
+
+    attachFrame(read: () => FrameEvaluationInput | undefined): void {
+      readFrame = read;
+    },
+    readScope: () => readScopeOver(store.view.getGraph()),
 
     attachFrameClock(read: () => FrameClock | undefined): void {
       readFrameClock = read;
@@ -429,8 +525,13 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
       if (commands.has(registration.name)) {
         throw new Error(`Command "${registration.name}" is already registered.`);
       }
+      if (registration.inputSchema === undefined || registration.inputSchema === null) {
+        // The type already requires it; this is for a caller that cast its way past.
+        throw new Error(`Command "${registration.name}" is registered without an inputSchema (§T1556b).`);
+      }
       commands.set(registration.name, {
         name: registration.name,
+        inputSchema: registration.inputSchema as StoredCommand["inputSchema"],
         handler: registration.handler as StoredCommand["handler"],
         requiredCapabilities: registration.requiredCapabilities ?? [],
         description: registration.description,
@@ -453,6 +554,7 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
     hasCommand: (name: string) => commands.has(name),
     hasQuery: (name: string) => queries.has(name),
     listCommands: () => [...commands.keys()].sort(),
+    inputSchemaOf: (name: string) => commands.get(name)?.inputSchema,
     listQueries: () => [...queries.keys()].sort(),
 
     async query<TName extends QueryName>(
@@ -487,6 +589,28 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
       if (registration === undefined) throw new UnknownCommandError(name);
 
       const dryRun = context.dryRun === true;
+
+      // §T1556b: the input is checked HERE, before grants and before the handler, so a
+      // menu, a keybind, the phone and an agent get one refusal for one mistake. The
+      // handler then receives the input as sent: the schema is a gate, never a transform.
+      if (!isAnyInput(registration.inputSchema)) {
+        const parsed = registration.inputSchema.safeParse(input);
+        if (!parsed.success) {
+          const diagnostics = inputRefusal(name, parsed.error.issues);
+          const revision = store.view.getRevision();
+          if (!dryRun) {
+            store.internals.recordAudit({ revision, actor: context.actor, command: name, status: "rejected" });
+          }
+          if (registration.rejectionOutput === undefined) throw new InvalidCommandInputError(diagnostics);
+          return {
+            status: "rejected",
+            revision,
+            diagnostics,
+            output: registration.rejectionOutput(input, diagnostics, revision) as CommandOutput<TName>,
+          };
+        }
+      }
+
       const missing = missingCapabilities(registration.requiredCapabilities, context.actor, grants);
       if (missing.length > 0) {
         const diagnostics: RuntimeDiagnostic[] = [
@@ -512,12 +636,13 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
         };
       }
 
+      const graph = store.view.getGraph();
       const commandContext: CommandContext = {
         invocation: context,
         actor: context.actor,
         dryRun,
         commandName: name,
-        graph: store.view.getGraph(),
+        graph,
         registry,
         store: store.view,
         ids: store.internals.ids,
@@ -526,6 +651,7 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
         channels: readChannels?.() ?? undefined,
         // T1497b: likewise read AT INVOCATION — the frame on screen when the command ran.
         frameClock: readFrameClock?.() ?? undefined,
+        readScope: () => readScopeOver(graph),
         holds: (capability: CapabilityClass): boolean => grants.has(context.actor, capability),
         applySettings: (request: ApplySettingsRequest): AppliedInfo =>
           store.internals.applySettings({

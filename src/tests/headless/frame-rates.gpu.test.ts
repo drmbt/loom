@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { stopsFinalRender } from "../../domain/diagnostics/classes.ts";
 import type { GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
@@ -72,7 +73,8 @@ async function level(fps: number, subframes?: number): Promise<number> {
     outputNodeId: "fx",
     animate: true,
   });
-  expect(result.diagnostics.filter((d) => d.severity === "error" || d.code === "parameter.expression")).toEqual([]);
+  // §T1641b: by class, not by code. No error, nothing that can never take effect, nothing waiting.
+  expect(result.diagnostics.filter(stopsFinalRender)).toEqual([]);
   const frame = result.frames[0]!;
   return decodeComponents(frame.bytes, frame.format)[0]!;
 }

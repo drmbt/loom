@@ -6,7 +6,7 @@ import type { Viewport } from "@xyflow/react";
 import type { CommandResult, CommandStatus } from "@domain/types/commands.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { LoomBus } from "@domain/commands/index.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId, PortId } from "@domain/types/ids.ts";
 import { publishesValueChannels } from "@domain/types/node-definition.ts";
 import { bypassPassthroughPorts } from "@domain/graph/bypass.ts";
@@ -16,7 +16,8 @@ import type { PortType } from "@domain/types/ports.ts";
 import type { ResolvedOutput } from "@compiler/index.ts";
 import { GraphCanvas } from "@editor/graph-canvas/index.ts";
 import { type CameraPose, createCameraGizmoStore } from "@editor/viewer/camera-gizmo-store.ts";
-import { movableChannels, poseFromFacts, readCameraPoseFacts } from "@editor/viewer/camera-pose.ts";
+import { previewCameraAbsenceSentence, type PreviewCameraAbsence } from "@compiler/preview-orbit.ts";
+import { cameraPoseAt, cameraPoseDrivenSentence } from "@editor/viewer/camera-pose.ts";
 import type { ControlWrite } from "@editor/controls/control-widget.tsx";
 import { useControlBodies } from "@editor/controls/control-bodies.tsx";
 import type { PhoneDoorView } from "@editor/controls/phone-door-copy.ts";
@@ -51,6 +52,7 @@ import { registerViewCommands } from "./view-commands.ts";
 import { useNodePreviews } from "./use-node-previews.ts";
 import type { NodeStackBox } from "./use-node-previews.ts";
 import { useGraphBackground } from "./use-graph-background.ts";
+import { revisionWatchFor } from "./revision-watch.ts";
 import styles from "./panes.module.css";
 
 /**
@@ -102,6 +104,8 @@ export interface GraphPaneProps {
   previewBackend?: LoomBackend | null;
   graph?: GraphDocument;
   compiledOutputs?: ReadonlyArray<ResolvedOutput>;
+  /** T1655b: the newest values of the installed rows, for the synthesized tiles (`live-synthesis.ts`). */
+  liveOutputs?: (() => ReadonlyArray<ResolvedOutput> | null) | undefined;
   previewFps?: number;
   previewLongEdge?: number;
   /** T252 (§V158): sink for the preview scheduler's kept set, gating compilation. */
@@ -199,6 +203,7 @@ function GraphPaneInner({
   previewBackend = null,
   graph = EMPTY_GRAPH,
   compiledOutputs = EMPTY_OUTPUTS,
+  liveOutputs,
   previewFps = 20,
   previewLongEdge = 192,
   previewSinks,
@@ -345,6 +350,7 @@ function GraphPaneInner({
     flatPrefix,
     registry,
     compiledOutputs,
+    liveOutputs,
     nodeRuntime,
     views: previewViews,
     orbits: previewOrbits,
@@ -394,14 +400,15 @@ function GraphPaneInner({
     useMemo(() => {
       const nodes = new Set<NodeId>();
       for (const output of compiledOutputs) {
-        if (output.synthesis?.kind === "camera") nodes.add(output.nodeId as NodeId);
+        // T1655b: the compiler's own answer, on the row. A camera with exactly one Render
+        // borrows that Render's row (T546), which has no `synthesis` to read a kind off, so
+        // the gizmo used to be offered only on a camera nothing rendered through.
+        if (output.previewCamera?.kind === "pose") nodes.add(output.nodeId as NodeId);
       }
       return nodes;
     }, [compiledOutputs]),
   );
 
-  const graphRef = useRef(graph);
-  graphRef.current = graph;
   /**
    * The document's pose, read at gesture start (§V657) — RESOLVED, and per channel.
    *
@@ -411,33 +418,80 @@ function GraphPaneInner({
    * schema default while the camera sat somewhere else entirely. `readCameraPoseFacts` asks
    * per channel and returns null only when every one of them is decided elsewhere.
    *
-   * The resolver comes off the BUS (`attachChannelResolver`, filled by `useGraphCompile`),
-   * which this pane already holds — so reading where the camera actually is needs no new
-   * prop and no new seam.
+   * §T1557b: the read comes off the BUS (`readScope`: the channel resolver, the frame on
+   * screen and the flattening, attached by the composition root), over the graph this pane
+   * shows — so `op('k1').chan.value` on an eye channel reads where the camera actually is.
+   *
+   * T1652b: off the STORE at the gesture, not off the `graph` this pane last rendered with.
+   * A camera's eye is a number, a drag of it is a run of values-only revisions, and the pane
+   * is not rendered for one it draws nothing of — so the prop can be a pose behind.
    */
-  const readCameraPose = useCallback(
-    (nodeId: NodeId): CameraPose | null => {
-      const node = graphRef.current.nodes[nodeId];
-      if (node === undefined) return null;
-      const facts = readCameraPoseFacts(node, registry.get(node.type), {
-        channels: bus.channelResolver(),
-      });
-      if (facts === null) return null;
-      const { eye, lookAt } = poseFromFacts(facts);
-      return {
-        eye,
-        lookAt,
-        eyeMask: movableChannels(facts.eye),
-        lookAtMask: movableChannels(facts.lookAt),
-      };
+  /** The node a pose is read from, with the scope to read it in: ONE read of the store for both readers below. */
+  const poseSubject = useCallback(
+    (nodeId: NodeId) => {
+      const current = bus.store.getGraph();
+      const node = current.nodes[nodeId];
+      return { current, node, scope: { ...bus.readScope(), graph: authoredGraph(current), registry } };
     },
     [bus, registry],
+  );
+  const readCameraPose = useCallback(
+    (nodeId: NodeId): CameraPose | null => {
+      const { node, scope } = poseSubject(nodeId);
+      if (node === undefined) return null;
+      return cameraPoseAt(node, registry.get(node.type), scope);
+    },
+    [poseSubject, registry],
+  );
+
+  /**
+   * T1655b — WHY A 3D TILE HAS NO CAMERA, for the overlay to say in the control's place
+   * (§T1049). Two sources and no third: the compiler's reason on the row (a picture taken
+   * through another node's camera, a tile that draws no object), and, for a tile whose
+   * gestures would write this node's own pose, whether any channel of that pose is free.
+   */
+  const cameraAbsences = useMemo(() => {
+    const reasons = new Map<NodeId, PreviewCameraAbsence>();
+    for (const output of compiledOutputs) {
+      if (output.previewCamera?.kind === "none" && !reasons.has(output.nodeId as NodeId)) {
+        reasons.set(output.nodeId as NodeId, output.previewCamera.reason);
+      }
+    }
+    return reasons;
+  }, [compiledOutputs]);
+  const drivenSaid = useRef<{ graph: GraphDocument | null; said: Map<NodeId, string | null> }>({ graph: null, said: new Map() });
+  const previewCameraNote = useCallback(
+    (nodeId: NodeId): string | null => {
+      // Off the store, by the read `readCameraPose` makes (T1652b): the two must agree.
+      const { current, node, scope } = poseSubject(nodeId);
+      if (cameraGizmoNodes.has(nodeId)) {
+        if (node === undefined) return null;
+        /* Which MODE decides each channel is a fact of the revision, not of the frame, so it
+           is asked once per revision and node. The overlay asks on every pan and zoom, and
+           resolving six expressions per camera per frame of a pan is not a caption's price. */
+        if (drivenSaid.current.graph !== current) drivenSaid.current = { graph: current, said: new Map() };
+        const known = drivenSaid.current.said.get(nodeId);
+        if (known !== undefined) return known;
+        const said = cameraPoseDrivenSentence(node, registry.get(node.type), scope);
+        drivenSaid.current.said.set(nodeId, said);
+        return said;
+      }
+      const reason = cameraAbsences.get(nodeId);
+      if (reason === undefined) return null;
+      return previewCameraAbsenceSentence(reason, (id) => current.nodes[id]?.label ?? id);
+    },
+    [cameraAbsences, cameraGizmoNodes, poseSubject, registry],
   );
 
   const parameterEditor = useMemo(
     () => createParameterEditor({ bus, context: invocation }),
     [bus, invocation],
   );
+  /** T1652b: this pane's document as of its last structural revision, for the canvas's reference lines. */
+  const structure = useMemo(() => {
+    const watch = revisionWatchFor(bus.store, registry);
+    return { subscribe: watch.subscribeStructure, get: watch.structure };
+  }, [bus, registry]);
   useEffect(() => () => parameterEditor.dispose(), [parameterEditor]);
   /**
    * T1388b — a live control's body IS the control: a slider, toggle, button or XY pad on
@@ -561,12 +615,15 @@ function GraphPaneInner({
    */
   const renderPreview = useCallback(
     (nodeId: NodeId) => {
-      // T714: the REF, so this function's identity does not move with the document.
-      // It is called during a node's own render, and a node re-renders on its own slice
-      // of the store (§V16) — so the read is as fresh as the render that asks for it,
-      // while closing over `graph` instead would re-key the canvas context on every
-      // revision and repaint all of them.
-      const type = graphRef.current.nodes[nodeId]?.type;
+      // T714: read where it is asked, so this function's identity does not move with the
+      // document. It is called during a node's own render, and a node re-renders on its
+      // own slice of the store (§V16) — so the read is as fresh as the render that asks
+      // for it, while closing over `graph` instead would re-key the canvas context on
+      // every revision and repaint all of them. T1652b: off the STORE, which is what the
+      // node's own slice is a slice of; the pane's `graph` prop is not rendered anew for a
+      // control's value, and a plot's source would be a value behind.
+      const current = bus.store.getGraph();
+      const type = current.nodes[nodeId]?.type;
       const definition = type === undefined ? undefined : registry.get(type);
       // T438 (§V316): the DECLARED channel, not the category shelf — audio moved to
       // "input" and must keep its plot; a camera never earns one.
@@ -576,7 +633,7 @@ function GraphPaneInner({
         // whether it has a curve. The pure/stateful split lives THERE, in one place, so
         // there is exactly one thing to get right and one thing to test — a second copy
         // of the condition here would be redundant and, being redundant, untested.
-        const node = graphRef.current.nodes[nodeId];
+        const node = current.nodes[nodeId];
         const source =
           node === undefined
             ? null
@@ -595,7 +652,7 @@ function GraphPaneInner({
                  * hundred times a minute, jumping the whole trace vertically each time,
                  * while the signal itself was clean.
                  */
-                chain: resolveValuePlotChain(graphRef.current, nodeId, registry),
+                chain: resolveValuePlotChain(current, nodeId, registry),
                 registry,
               };
         /*
@@ -1091,6 +1148,8 @@ function GraphPaneInner({
           renderPreview={renderPreview}
           renderControls={renderControls}
           renderHeaderControls={renderHeaderControls}
+          // T1652b: who reads whom is structure; the lines are not re-derived for a value.
+          structure={structure}
           previewLens={previewLens}
           onSelectionChange={onSelectionChange}
           onHoveredNodeChange={onHoveredNodeChange}
@@ -1101,7 +1160,7 @@ function GraphPaneInner({
           }
         />
       </GraphMenuHost>
-      <PreviewInspectOverlays bounds={previewBounds} inspect={previewInspect} />
+      <PreviewInspectOverlays bounds={previewBounds} inspect={previewInspect} note={previewCameraNote} />
       <PreviewGizmoOverlays
         bounds={previewBounds}
         tile={gizmoTile}

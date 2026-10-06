@@ -15,6 +15,21 @@
   align-items: center;
   gap: var(--space-4);
 }
+.midiToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+}
+.pane[data-midi-learning] [data-control-node] {
+  outline: 1px dashed var(--signal);
+  outline-offset: 2px;
+}
+.pane[data-midi-learning] [data-control-node] * {
+  cursor: crosshair;
+}
 .title {
   flex: 1 1 auto;
   margin: 0;

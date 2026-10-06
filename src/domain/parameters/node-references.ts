@@ -1,16 +1,27 @@
 import { nodeByName, nodeNames } from "../graph/names.ts";
-import type { NodeReferenceReader, NodeReferenceResult } from "../expressions/index.ts";
+import { nearestSpelling } from "../expressions/index.ts";
+import type {
+  KindedNodeReferenceResult as NodeReferenceResult,
+  NodeReferenceReader,
+  ReferenceFailureKind,
+  SpelledLike,
+} from "../expressions/index.ts";
+import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
-import type { GraphDocument, GraphNode } from "../types/graph.ts";
-import type { NodeId } from "../types/ids.ts";
+import type { FlatOrAuthoredGraph, GraphDocument, GraphNode } from "../types/graph.ts";
+import type { NodeId, PortId } from "../types/ids.ts";
 import type { ParameterDefinition, ParameterSchema, ParameterValue } from "../types/parameters.ts";
 import { componentKey, componentNamesFor } from "./slots.ts";
 import {
   CHANNEL_RESOLVER_MISSING,
+  CHANNELS_UNAVAILABLE_CODE,
   effectiveParameterSchema,
+  NO_MORPHS,
+  REFERENCE_CYCLE_CODE,
   resolveParameterSchema,
   type ChannelResolver,
   type ParameterMorphs,
+  type ParameterReadOptions,
   type ParameterSchemaSource,
   type ResolvedParameters,
   type ResolveParametersOptions,
@@ -64,6 +75,54 @@ const PARAMETER_NAMESPACE = "par";
 const CHANNEL_NAMESPACE = "chan";
 
 /**
+ * T1485b — ONE EXPOSED VALUE OUTPUT OF A COMPONENT INSTANCE, and the node publishing it.
+ *
+ * `op('analysis1').chan.level` names an instance, and flattening DELETES the instance: the
+ * compiler reads `op()` against the flat graph, where nothing is called `analysis1`, and
+ * the inspector reads against the document, where `analysis1` exists but no channel
+ * resolver has ever published under its name (the value graph runs flat, so its bags are
+ * keyed by the INNER labels). So neither side could read it, and examples read through a
+ * labelled node downstream instead.
+ *
+ * The flattening already knows the answer — `instanceOutputs` maps each exposed port to the
+ * inner endpoint it became — so it records, once, which inner LABEL publishes each value
+ * output (`FlattenedGraph.instanceChannels`), and the reader turns an instance read into
+ * reads of those labels through whichever channel resolver it was handed. No resolver
+ * learns what an instance is; the address it is asked for is one it already answers.
+ */
+export interface InstanceChannelSource {
+  /** The exposed output port — what a refusal names. */
+  readonly port: PortId;
+  /** The publisher's LABEL in the flattened graph: the address its bag is read under (§V129). */
+  readonly publisher: string;
+}
+
+/**
+ * Instance LABEL → its exposed value outputs, in exposure order, ONE ENTRY PER DISTINCT
+ * PUBLISHER (two ports onto one inner node are one bag — the value graph publishes per
+ * node — so they carry one signal and cannot disagree).
+ */
+export type InstanceChannelSources = ReadonlyMap<string, readonly InstanceChannelSource[]>;
+
+/**
+ * The channel names `op('<instance>').chan.` can complete to: the union of what the
+ * instance's publishers carry right now, MINUS every name two of them carry — the reader
+ * refuses those by name (§V150: the menu may not offer what the reader rejects).
+ */
+function instanceChannelNames(
+  sources: readonly InstanceChannelSource[],
+  channelsOf: ((name: string) => readonly string[]) | undefined,
+): readonly string[] {
+  const carriers = new Map<string, number>();
+  for (const source of sources) {
+    for (const channel of new Set(channelsOf?.(source.publisher) ?? [])) {
+      carriers.set(channel, (carriers.get(channel) ?? 0) + 1);
+    }
+  }
+  return [...carriers].filter(([, count]) => count === 1).map(([channel]) => channel);
+}
+
+/**
  * WHAT `op('…')` CAN COMPLETE TO (T990), answered by the module that decides what it can
  * READ.
  *
@@ -105,6 +164,8 @@ export interface NodeReferenceCatalogueOptions {
    * which is the truth: nothing here knows what is on the wire.
    */
   readonly channelsOf?: (name: string) => readonly string[];
+  /** T1485b: the component instances `op('…').chan` can name — the reader's own map. */
+  readonly instances?: InstanceChannelSources | undefined;
 }
 
 /** Every name `op('…')` can address — LABELS (§B170), in the graph's own sorted order. */
@@ -143,6 +204,8 @@ export function nodeReferenceMembers(
   if (namespace === CHANNEL_NAMESPACE) {
     // `.chan.<channel>` is the whole path the reader accepts — nothing hangs off a channel.
     if (key !== undefined) return [];
+    const sources = options.instances?.get(name);
+    if (sources !== undefined) return instanceChannelNames(sources, options.channelsOf).map((text) => ({ text }));
     return (options.channelsOf?.(name) ?? []).map((text) => ({ text }));
   }
   if (namespace !== PARAMETER_NAMESPACE) return [];
@@ -190,6 +253,11 @@ export interface NodeReferenceOptions {
    * value that is right on its own and wrong in context.
    */
   readonly base?: Omit<ResolveParametersOptions, "nodes" | "schema">;
+  /**
+   * T1485b: the component instances `op('<instance>').chan.<c>` can name. Absent, an
+   * instance's channels are unreadable, as they were before.
+   */
+  readonly instances?: InstanceChannelSources | undefined;
 }
 
 /**
@@ -205,15 +273,67 @@ export interface NodeReferenceOptions {
 function asNumber(value: ParameterValue | undefined, reference: string): NodeReferenceResult {
   if (typeof value === "number") return { ok: true, value };
   if (typeof value === "boolean") return { ok: true, value: value ? 1 : 0 };
-  if (value === undefined) return { ok: false, reason: `${reference} has no value` };
+  if (value === undefined) return { ok: false, kind: "unreadable", reason: `${reference} has no value` };
   return {
     ok: false,
+    kind: "unreadable",
     reason: `${reference} is ${Array.isArray(value) ? "a list" : typeof value}, and an expression reads a number`,
   };
 }
 
 export function createNodeReferenceReader(options: NodeReferenceOptions): NodeReferenceReader {
-  return readerWithin(options, new Set(), { index: null, resolved: new Map(), cycles: 0 });
+  const scope: ReaderScope = { index: null, resolved: new Map(), cycles: 0 };
+  return Object.assign(readerWithin(options, new Set(), scope), {
+    spelledLike: (bare: string): SpelledLike => spelledLike(options, scope, bare),
+  });
+}
+
+/**
+ * §T1641b: a read of a parameter that carries a failure of its own is `upstream`: it clears
+ * when that one does. Two kinds pass UP the chain instead, because they are as true of the
+ * reader as of what it read:
+ *
+ *  - a CYCLE. §V152's guard fires one hop inside the loop, so the reader at the top of a
+ *    chain only ever sees the loop as its target's diagnostic; passing the kind up is what
+ *    lets each parameter on the loop say so where its author is looking, at the severity a
+ *    loop has everywhere else.
+ *  - NO CHANNEL RESOLVER. A parameter that reads a parameter that reads a channel is waiting
+ *    on the same caller (§V338). While the tier was found by searching the message, this
+ *    held by accident of the text being quoted; 159 reads in the shipped examples depend on
+ *    it at every structural compile (E55's haze reads the reactor's knobs).
+ */
+function upstreamKind(diagnostic: RuntimeDiagnostic): ReferenceFailureKind {
+  if (diagnostic.code === REFERENCE_CYCLE_CODE) return "cycle";
+  if (diagnostic.code === CHANNELS_UNAVAILABLE_CODE) return "noResolver";
+  return "upstream";
+}
+
+/**
+ * §T1641b — what in the graph is spelled like a bare name an expression could not read: a
+ * node named it, or named `kind_<it>` (T1593b: the role is what an author remembers), and
+ * every node publishing a channel of that name right now. For the message only. It runs on
+ * a failure that can never evaluate, never on a read.
+ */
+function spelledLike(options: NodeReferenceOptions, scope: ReaderScope, bare: string): SpelledLike {
+  scope.index ??= nodeNames(options.graph);
+  const wanted = bare.toLowerCase();
+  const channels = options.base?.channels;
+  const nodes: string[] = [];
+  const publishers: string[] = [];
+  for (const [name, id] of scope.index) {
+    const spelled = name.toLowerCase();
+    if (spelled === wanted || spelled.endsWith(`_${wanted}`)) nodes.push(name);
+    const node = options.graph.nodes[id];
+    if (channels === undefined || node === undefined) continue;
+    const supplied = channels(`${name}:${bare}`, {
+      node,
+      key: bare,
+      definition: { type: "number", label: bare, default: 0 } as const,
+      ...(options.base?.frame === undefined ? {} : { frame: options.base.frame }),
+    });
+    if (typeof supplied === "number" && Number.isFinite(supplied)) publishers.push(name);
+  }
+  return { nodes, publishers };
 }
 
 /**
@@ -234,7 +354,7 @@ export function createNodeReferenceReader(options: NodeReferenceOptions): NodeRe
  * one's `uniqueNodeName` MUST see the node the first one added. A memo keyed on graph
  * identity would hand it the index from before the first add and mint a duplicate name,
  * which §V127 says cannot exist. So this memo lives where the graph provably does not
- * move: inside ONE reader, which is built by `createParameterReadOptions` per compile,
+ * move: inside ONE reader, which is built by `parameterReadOptions` per compile,
  * per inspector render, per OSC event, and is only ever read from. A new frame builds a
  * new reader and therefore a new index; there is nothing to invalidate and nothing that
  * could forget to. `names.ts` itself is left alone, which is what keeps the draft path
@@ -269,7 +389,7 @@ function nodeIdNamed(scope: ReaderScope, graph: GraphDocument, name: string): No
  * chained refs 5.4 ms/frame, 40 chained 15.3, 160 nodes + 160 chained **306 ms**.
  *
  * The memo is per READER, which is per frame — the same scope the name index lives in, and
- * for the same reason: a reader is built by `createParameterReadOptions` and only ever read
+ * for the same reason: a reader is built by `parameterReadOptions` and only ever read
  * from, so there is no window in which the graph it was built over can change underneath it.
  * A new frame builds a new reader and resolves everything again, which is what keeps a
  * driven value MOVING (§B181: a memo that survived the frame would freeze every reference
@@ -301,17 +421,69 @@ function targetOf(
   // The recursive step. The target resolves with the same frame and channels, and with
   // a reader that remembers we came through here — so a loop is caught one hop before
   // it would repeat rather than however many frames later the stack gives out.
-  const resolved = resolveParameterSchema(target, schema, {
+  const resolved = resolveParameterSchema(target, schema, readOptionsOf({
     ...options.base,
     nodes: readerWithin(options, new Set([...visited, targetId]), scope),
-  });
+  }));
   if (scope.cycles === firesBefore) scope.resolved.set(targetId, resolved);
   return resolved;
 }
 
-/** What a call site knows: the graph being read, the catalogue, and WHEN. */
+/**
+ * §T1551b — WHAT A FLATTENING CONTRIBUTES TO A READ, beside its graph.
+ *
+ * `FlattenedGraph` carries both, so the runtime hands its flattening over WHOLE
+ * (`runtime.flattened.current()`) and no consumer picks fields off it. That is the point:
+ * every evaluation input the flattening grew — the morphs (T1497b), the instances
+ * (T1485b) — was threaded by hand into each of a dozen readers, and the ones that were
+ * missed still compiled. A field added HERE reaches every reader handed a flattening, and
+ * is a type error at every site that spells one out (`NO_FLATTENING`, the compiler's
+ * `flatteningReadsOf`, the inspector).
+ */
+export interface FlatteningReads {
+  /** T1497b: the preset morphs in flight — a reference to a fading parameter reads the fade. */
+  readonly morphs: ParameterMorphs;
+  /** T1485b: the component instances `op('<instance>').chan.<c>` can name. */
+  readonly instanceChannels: InstanceChannelSources;
+}
+
+/** No component instance to name. One object, so "none" is an identity check. */
+export const NO_INSTANCES: InstanceChannelSources = new Map();
+
+/**
+ * A read with no flattening behind it: nothing fading, no instance to name. A caller that
+ * has none says so with this, by name — there is no omitted field for it to forget.
+ */
+export const NO_FLATTENING: FlatteningReads = { morphs: NO_MORPHS, instanceChannels: NO_INSTANCES };
+
+/**
+ * §T1551b — THE LIVE READ WORLD: what every CPU reader outside the plan resolves with — the
+ * compile's channel resolver and the runtime's flattening, each a getter read at the moment
+ * of a resolve. Produced ONCE, by the composition root (`app.tsx`'s `liveReads`), and handed
+ * to the analyze, depth, vision, perform-window and viewer readers whole, so none of them
+ * assembles its own from whatever it happens to hold.
+ */
+export interface LiveParameterReads {
+  readonly channels: () => ChannelResolver | undefined;
+  /** The runtime's flattening (`runtime.flattened.current()`), or `NO_FLATTENING`. */
+  readonly flattening: () => FlatteningReads;
+}
+
+/**
+ * What a call site knows: the graph being read, the catalogue, WHEN, the channels, and the
+ * flattening. §T1551b: EVERY FIELD IS REQUIRED. `frame` and `channels` may be `undefined`,
+ * but the key must be written, so "no moment" and "no resolver" are things a caller says
+ * rather than things it leaves out — and an input added here later is a type error at every
+ * site that does not supply it, which is the whole guard.
+ */
 export interface ParameterReadContext {
-  readonly graph: GraphDocument;
+  /**
+   * The graph `op()` names resolve in, and WHICH one (§T1552b): the flattening a frame path
+   * evaluates (`runtime.flattened.current().graph`), or the document as authored, said by
+   * name (`authoredGraph(document)`: the inspector, a command's read scope). A bare
+   * `GraphDocument` is a type error, so no reader evaluates one side believing it the other.
+   */
+  readonly graph: FlatOrAuthoredGraph;
   /**
    * The catalogue, as the ONE thing this reads from it: a type's schema source (§T903).
    * Structural, so the pulse watcher — which is handed exactly that and no more — asks
@@ -321,16 +493,17 @@ export interface ParameterReadContext {
   /**
    * The moment. A PARAMETER rather than a field the caller sets afterwards, because
    * setting it on the resolve and forgetting it on the reader is the entire bug (§B46).
+   * `undefined` = the zero frame: what the document says.
    */
-  readonly frame?: FrameEvaluationInput | undefined;
-  /** Absent = `op('x').chan.*` reports "no channel resolver" and §V108's static stands. */
-  readonly channels?: ChannelResolver | undefined;
+  readonly frame: FrameEvaluationInput | undefined;
+  /** `undefined` = `op('x').chan.*` reports "no channel resolver" and §V108's static stands. */
+  readonly channels: ChannelResolver | undefined;
   /**
-   * T1497b: the preset morphs in flight. Here for the reason `frame` is: `op('level1').par.brightness`
-   * is resolved INSIDE the reader, and a reader built without them would hand a reference
-   * the destination while the parameter it reads is still fading on screen.
+   * The morphs in flight and the instances `op()` can name (`FlatteningReads`): the
+   * runtime's flattening, whole, or `NO_FLATTENING`. Read INSIDE the reader, which is why
+   * they are here at all.
    */
-  readonly morphs?: ParameterMorphs | undefined;
+  readonly flattening: FlatteningReads;
 }
 
 /**
@@ -350,16 +523,20 @@ export interface ParameterReadContext {
  * site four spell it. So the pairing is no longer spelled at a call site at all. A caller
  * says WHICH graph, WHICH catalogue and WHEN; it cannot say "reader without base",
  * because there is no longer an argument for it.
+ *
+ * §T1551b closed the same hole one level up: the CONTEXT's fields were optional, so the
+ * morphs (T1497b) and the instances (T1485b) each reached only the readers someone
+ * remembered to hand them to. They are required now (`ParameterReadContext`), and
+ * `parameter-read-context.test.ts` holds that no product file builds a reader any other way.
  */
-export function createParameterReadOptions(
-  context: ParameterReadContext,
-): Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs"> {
+export function parameterReadOptions(context: ParameterReadContext): ParameterReadOptions {
+  const { morphs, instanceChannels } = context.flattening;
   const base = {
     ...(context.channels === undefined ? {} : { channels: context.channels }),
     ...(context.frame === undefined ? {} : { frame: context.frame }),
-    ...(context.morphs === undefined ? {} : { morphs: context.morphs }),
+    morphs,
   };
-  return {
+  return readOptionsOf({
     nodes: createNodeReferenceReader({
       graph: context.graph,
       /*
@@ -367,11 +544,79 @@ export function createParameterReadOptions(
        * exists in the node's REFLECTED schema, and a static-schema reader would answer
        * "no such parameter" for a control the inspector is showing.
        */
-      schemaOf: (node) => effectiveParameterSchema(context.registry.get(node.type), node.parameters),
+      schemaOf: (node) => {
+        // §T1641b: a type this build does not have is NOT a node with no parameters. Read as
+        // an empty schema, every reference to a placeholder said "has no parameter", which
+        // is a claim about the document; the truth is about the build (§V10).
+        const source = context.registry.get(node.type);
+        return source === undefined ? undefined : effectiveParameterSchema(source, node.parameters);
+      },
       base,
+      instances: instanceChannels,
     }),
     ...base,
-  };
+  });
+}
+
+/**
+ * §T1557b — THE BRAND, applied. This module is the producer of `ParameterReadOptions`, and
+ * the only one: `node-references.test.ts` refuses the cast anywhere else, so a read is
+ * either built here from a complete `ParameterReadContext` or it is `STORED_READ`.
+ */
+function readOptionsOf(options: Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs">): ParameterReadOptions {
+  return options as ParameterReadOptions;
+}
+
+/**
+ * T1485b — `op('<instance>').chan.<c>`: the union of the instance's exposed value outputs.
+ *
+ * Each publisher is asked for `<c>` exactly as `op('<publisher>').chan.<c>` would ask, so an
+ * instance reads the same number as the node inside it. A name more than one publisher
+ * carries RIGHT NOW is refused, naming every port it arrived on: picking one would be a
+ * number that looks like an answer while the other output says something else (§V71's
+ * reasoning, one level up). The bare-channel fallback of `.chan.value` holds only for an
+ * instance with ONE publisher, which is the case where it reads exactly like that node.
+ */
+function readInstanceChannel(
+  reference: string,
+  name: string,
+  key: string,
+  sources: readonly InstanceChannelSource[],
+  channels: ChannelResolver,
+  frame: FrameEvaluationInput | undefined,
+  nodeNamed: (label: string) => GraphNode | undefined,
+): NodeReferenceResult {
+  const found: Array<{ port: PortId; value: number }> = [];
+  for (const source of sources) {
+    // The context rides along for resolvers that want the frame; they key on the ADDRESS.
+    // The publisher is in the flat graph; in the document, the instance stands for it.
+    const node = nodeNamed(source.publisher) ?? nodeNamed(name);
+    if (node === undefined) return { ok: false, kind: "node", reason: `${reference}: there is no node named "${name}"` };
+    const context = {
+      node,
+      key,
+      definition: { type: "number", label: key, default: 0 } as const,
+      ...(frame === undefined ? {} : { frame }),
+    };
+    const direct = channels(`${source.publisher}:${key}`, context);
+    const supplied =
+      direct ?? (key === "value" && sources.length === 1 ? channels(source.publisher, context) : undefined);
+    if (typeof supplied === "number" && Number.isFinite(supplied)) found.push({ port: source.port, value: supplied });
+  }
+  const [first, ...others] = found;
+  if (first === undefined) {
+    return { ok: false, kind: "channel", reason: `${reference}: "${name}" publishes no channel "${key}" right now` };
+  }
+  if (others.length > 0) {
+    const ports = found.map((entry) => `"${entry.port}"`);
+    const listed = `${ports.slice(0, -1).join(", ")} and ${ports[ports.length - 1]}`;
+    return {
+      ok: false,
+      kind: "ambiguous",
+      reason: `${reference}: "${name}" publishes "${key}" on ${found.length} outputs, ${listed}, so the read is ambiguous — rename the channel on one of them inside the component, or read the node that feeds one`,
+    };
+  }
+  return { ok: true, value: first.value };
 }
 
 /**
@@ -405,25 +650,41 @@ function readerWithin(
       if (key === undefined || component !== undefined || rest.length > 0) {
         return {
           ok: false,
+          kind: "unreadable",
           reason: `${reference}: name one channel, as op('${name}').chan.value or op('${name}').chan.low`,
         };
       }
       const channels = options.base?.channels;
-      if (channels === undefined) {
-        // §V338: name what would make it present, not accuse the graph — same contract as
-        // the old driven mode's missing-resolver case, and the same INFO tier: resolve.ts
-        // matches this marker to degrade the failure, because a headless caller with no
-        // resolver is a normal state, not a broken document.
-        return {
-          ok: false,
-          reason: `${reference}: ${CHANNEL_RESOLVER_MISSING}, so "${name}"'s channels cannot be read`,
-        };
+      // §V338: name what would make it present, not accuse the graph — same contract as the
+      // old driven mode's missing-resolver case, and the same INFO tier (the resolver gives
+      // this KIND that tier), because a headless caller with no resolver is a normal state,
+      // not a broken document.
+      const resolverless: NodeReferenceResult = {
+        ok: false,
+        kind: "noResolver",
+        reason: `${reference}: ${CHANNEL_RESOLVER_MISSING}, so "${name}"'s channels cannot be read`,
+      };
+      // T1485b: an INSTANCE is read through the inner nodes its value outputs expose. Asked
+      // before the node lookup: in the flat graph the instance is gone, and in the document
+      // it is present but publishes nothing under its own name.
+      const sources = options.instances?.get(name);
+      if (sources !== undefined) {
+        if (channels === undefined) return resolverless;
+        return readInstanceChannel(reference, name, key, sources, channels, options.base?.frame, (label) => {
+          const id = nodeIdNamed(scope, options.graph, label);
+          return id === undefined ? undefined : options.graph.nodes[id];
+        });
       }
+      // §T1641b: whether the node EXISTS is a fact about the document, so it is decided
+      // before "no channel resolver", which is a fact about the caller. In the other order
+      // every headless reader (a validate, a build script, a structural compile) answered a
+      // read of a name nothing holds with the resolver's INFO, and said nothing of the name.
       const channelTarget = nodeIdNamed(scope, options.graph, name);
       const channelNode = channelTarget === undefined ? undefined : options.graph.nodes[channelTarget];
       if (channelNode === undefined) {
-        return { ok: false, reason: `${reference}: there is no node named "${name}"` };
+        return { ok: false, kind: "node", reason: `${reference}: there is no node named "${name}"` };
       }
+      if (channels === undefined) return resolverless;
       // The resolvers in use (value graph, analyze) key on the ADDRESS; the context rides
       // along for ones that want the frame. The definition is nominal — a channel is a
       // number by contract (§V143).
@@ -438,6 +699,7 @@ function readerWithin(
       if (typeof supplied !== "number" || !Number.isFinite(supplied)) {
         return {
           ok: false,
+          kind: "channel",
           reason: `${reference}: "${name}" publishes no channel "${key}" right now`,
         };
       }
@@ -447,19 +709,21 @@ function readerWithin(
     if (namespace !== PARAMETER_NAMESPACE) {
       return {
         ok: false,
+        kind: "unreadable",
         reason: `${reference}: only .${PARAMETER_NAMESPACE} and .${CHANNEL_NAMESPACE} are readable (op('${name}').par.<parameter>, op('${name}').chan.<channel>)`,
       };
     }
     if (key === undefined || rest.length > 0) {
       return {
         ok: false,
+        kind: "unreadable",
         reason: `${reference}: name one parameter, as op('${name}').par.gain, or one of its components, as op('${name}').par.color.r`,
       };
     }
 
     const targetId = nodeIdNamed(scope, options.graph, name);
     if (targetId === undefined) {
-      return { ok: false, reason: `${reference}: there is no node named "${name}"` };
+      return { ok: false, kind: "node", reason: `${reference}: there is no node named "${name}"` };
     }
     if (visited.has(targetId)) {
       // §V152. Named, not "maximum call stack exceeded": the user joined two specific
@@ -468,20 +732,31 @@ function readerWithin(
       scope.cycles += 1;
       return {
         ok: false,
+        kind: "cycle",
         reason: `${reference}: that reference is a cycle (${[...visited, targetId].join(" → ")})`,
       };
     }
     const target = options.graph.nodes[targetId];
     if (target === undefined) {
-      return { ok: false, reason: `${reference}: there is no node named "${name}"` };
+      return { ok: false, kind: "node", reason: `${reference}: there is no node named "${name}"` };
     }
     const schema = options.schemaOf(target);
     if (schema === undefined) {
-      return { ok: false, reason: `${reference}: "${name}" has an unknown node type` };
+      return { ok: false, kind: "unknownType", reason: `${reference}: "${name}" has an unknown node type` };
     }
-    const definition = schema[key];
+    const definition = Object.hasOwn(schema, key) ? schema[key] : undefined;
     if (definition === undefined) {
-      return { ok: false, reason: `${reference}: "${name}" has no parameter "${key}"` };
+      const declared = Object.keys(schema).sort();
+      const near = nearestSpelling(key, declared);
+      return {
+        ok: false,
+        kind: "unreadable",
+        reason: `${reference}: "${name}" has no parameter "${key}"`,
+        suggestion:
+          declared.length === 0
+            ? `"${name}" (${target.type}) declares no parameters.`
+            : `${near === null ? "" : `Nearest: "${near}". `}"${name}" (${target.type}) declares: ${declared.join(", ")}.`,
+      };
     }
 
     /**
@@ -510,12 +785,14 @@ function readerWithin(
       if (componentNames === null) {
         return {
           ok: false,
+          kind: "unreadable",
           reason: `${reference}: "${key}" is a ${definition.type} and has no components`,
         };
       }
       if (!componentNames.includes(component)) {
         return {
           ok: false,
+          kind: "unreadable",
           reason: `${reference}: "${key}" has no component "${component}" (it has ${componentNames.join(", ")})`,
         };
       }
@@ -556,18 +833,19 @@ function readerWithin(
       const storedItself = target.parameters[componentKey(key, component)] !== undefined;
       const governing =
         resolvedComponent?.diagnostic ?? (storedItself ? null : (entry?.diagnostic ?? null));
-      if (governing !== null) return { ok: false, reason: `${reference}: ${governing.message}` };
+      if (governing !== null) return { ok: false, kind: upstreamKind(governing), reason: `${reference}: ${governing.message}` };
       return asNumber(resolvedComponent?.value, reference);
     }
 
     if (entry?.diagnostic != null) {
-      return { ok: false, reason: `${reference}: ${entry.diagnostic.message}` };
+      return { ok: false, kind: upstreamKind(entry.diagnostic), reason: `${reference}: ${entry.diagnostic.message}` };
     }
     if (componentNames !== null) {
       // A compound read WHOLE. Taking channel 0 would be a number that looks like an
       // answer (§V71); the fix is one keystroke away, so the message spells it.
       return {
         ok: false,
+        kind: "unreadable",
         reason: `${reference} is a ${definition.type}, and an expression reads a number — name a component, as ${reference}.${componentNames[0] ?? "r"}`,
       };
     }

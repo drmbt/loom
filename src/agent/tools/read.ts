@@ -6,6 +6,7 @@ import type { StoredParameter } from "@domain/types/parameters.ts";
 import type { PortDefinition, PortType } from "@domain/types/ports.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
+import { kindOf } from "@domain/graph/node-kinds.ts";
 
 import {
   emptyInput,
@@ -104,6 +105,11 @@ export interface ProjectSummary {
 
 export interface NodeDefinitionSummary {
   readonly type: string;
+  /**
+   * T1593b: the word a node of this type is named with (`kernel` for `pointKernel`). A
+   * name is `kind_role`, so this is what an agent needs to write one in full.
+   */
+  readonly kind: string;
   readonly version: number;
   readonly title: string;
   readonly category: string;
@@ -200,6 +206,7 @@ function definitionSummary(
 ): NodeDefinitionSummary {
   return {
     type: definition.type,
+    kind: kindOf(definition),
     version: definition.version,
     title: definition.title,
     category: definition.category,

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { StrictMode } from "react";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -57,7 +58,7 @@ async function setup(environment: ScreenCaptureEnvironment, withoutBackend = fal
   const id = Object.keys(graph.nodes)[0]!;
   const gpu = backend();
   const props = { runtime, graph, backend: withoutBackend ? null : gpu.backend, environment };
-  const hook = renderHook(input => useScreenSources(input.runtime, input.backend, input.graph, input.environment), {
+  const hook = renderHook(input => useScreenSources(input.runtime, input.backend, flatDocument(input.graph), input.environment), {
     initialProps: props, wrapper: StrictMode,
   });
   return { ...hook, props, id, gpu, runtime };

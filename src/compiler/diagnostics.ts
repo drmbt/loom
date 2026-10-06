@@ -1,5 +1,6 @@
 import type { NodeId, PortId } from "../domain/types/ids.ts";
 import type { DiagnosticSeverity, RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
+import { leavesPlanUsable } from "../domain/diagnostics/classes.ts";
 
 /**
  * Diagnostic codes emitted by the graph compiler (§I.diag, T30).
@@ -12,7 +13,6 @@ import type { DiagnosticSeverity, RuntimeDiagnostic } from "../domain/types/diag
 export const CompilerDiagnosticCode = {
   unknownNodeType: "compiler/unknown-node-type",
   definitionVersion: "compiler/definition-version",
-  parameterUnknown: "compiler/parameter-unknown",
   edgeEndpointMissing: "compiler/edge-endpoint-missing",
   portMissing: "compiler/port-missing",
   portIncompatible: "compiler/port-incompatible",
@@ -67,6 +67,12 @@ export const CompilerDiagnosticCode = {
    * picture is plausible and the simulation is fifty times slower than the number says.
    */
   substepsRefused: "compiler/substeps-refused",
+  /**
+   * B263: a pass's WGSL divides the high half of a 32-bit value by a constant, which Apple
+   * GPUs get wrong. A WARNING on the author's node and line: the code is valid and is right
+   * elsewhere, so nothing is refused and nothing is rewritten (`wgsl-high-half.ts`).
+   */
+  wgslHighHalfDivide: "compiler/wgsl-high-half-divide",
 } as const;
 
 export type CompilerDiagnosticCodeValue =
@@ -94,7 +100,16 @@ export function compilerDiagnostic(
   };
 }
 
-/** A compilation is usable only when nothing failed outright; warnings are reported, not fatal. */
+/**
+ * A compilation is usable only when nothing failed outright; warnings are reported, not fatal.
+ *
+ * §T1641b: nor is an error the class table marks `local` (`leavesPlanUsable`). Such a
+ * finding is a stored thing that can never take effect (an expression calling a function the
+ * grammar lacks, §B262): it is inert, its stated fallback is in effect, and every pass is
+ * whole. It is an ERROR wherever it is read, and the picture keeps rendering: the frame loop
+ * installs only a plan that is `ok`, so without this a document that rendered yesterday with
+ * a warning would open black the day the report got louder.
+ */
 export function hasError(diagnostics: ReadonlyArray<RuntimeDiagnostic>): boolean {
-  return diagnostics.some((diagnostic) => diagnostic.severity === "error");
+  return diagnostics.some((diagnostic) => diagnostic.severity === "error" && !leavesPlanUsable(diagnostic.code));
 }

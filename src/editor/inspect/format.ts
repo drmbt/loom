@@ -1,4 +1,4 @@
-import type { CostBucket, TimingBucket } from "@runtime/telemetry/index.ts";
+import type { CostBucket, PassTimingRow, TimingBucket } from "@runtime/telemetry/index.ts";
 
 /**
  * Display formatters shared by the node info popup and the performance tab.
@@ -27,6 +27,19 @@ export function formatMs(bucket: TimingBucket): FormattedMs {
     case "measured":
       return { text: `${(bucket.gpuMs ?? 0).toFixed(3)} ms`, absent: false };
   }
+}
+
+/**
+ * One pass's GPU figure (T1604b). A pass drawn in one device render pass with the rest of
+ * its run has no figure of its own: the measurement is the run's, shown on the run's first
+ * pass, and the others say they SHARE it rather than reading "measuring…" for a number that
+ * will not come, or a share of it that nobody measured.
+ */
+export function formatPassMs(row: Pick<PassTimingRow, "availability" | "gpuMs" | "nodeId" | "run">): FormattedMs {
+  if (row.run !== undefined && row.gpuMs === null && row.availability !== "unavailable") {
+    return { text: "shared", absent: true };
+  }
+  return formatMs({ availability: row.availability, gpuMs: row.gpuMs, passCount: 1, nodeCount: row.nodeId === null ? 0 : 1 });
 }
 
 /**

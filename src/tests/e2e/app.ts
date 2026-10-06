@@ -4,17 +4,21 @@ import type { Locator, Page } from "@playwright/test";
 /**
  * Shared driving for the browser suite (T48, §V15).
  *
- * ## What this environment can and cannot run, measured PER LANE (§V895, T1086)
+ * ## What this environment can and cannot run, measured PER LANE (§V895, T1086, T1616b)
  *
  * **WebGPU here is a property of the Playwright project, not of Playwright.** Measured
  * 2026-09-03, bundled Chromium 151.0.7922.34 on macOS, against a real http origin — the
  * broader sentence that used to live here ("`navigator.gpu` is undefined … headless and
  * headed — measured, not assumed") was a real measurement of a `data:` URL, an opaque
  * origin where WebGPU is correctly absent, over-generalised into a platform verdict;
- * §V895 is that lesson filed:
+ * §V895 is that lesson filed. T1616b (2026-10-06, same Chromium) found the next one in
+ * this very list: it said "headless has no adapter", and what has none is the headless
+ * SHELL — the full browser in the new headless mode has the real one:
  *
- *   - **Headless** — the default `chromium` project, i.e. every spec that imports this
- *     file: `navigator.gpu` is PRESENT and `requestAdapter()` resolves null. No device.
+ *   - **The default `chromium` project** — no `channel`, so Playwright launches
+ *     `chrome-headless-shell`; every spec that imports this file and is not named in
+ *     `NEEDS_A_REAL_ADAPTER`: `navigator.gpu` is PRESENT and `requestAdapter()` resolves
+ *     null. No device.
  *     The app degrades honestly (`gpu.unavailable`, "Editing still works"), which is
  *     what makes these specs possible at all: connecting, undo/redo, parameter drag and
  *     save/reload are editor-and-domain behaviour and none of them needs a device. What
@@ -22,11 +26,12 @@ import type { Locator, Page } from "@playwright/test";
  *     preview, a viewer image, a rendered output, and the half of "shader error
  *     recovery" that is about the last valid output continuing to render.
  *
- *   - **Headed** — the `chromium-headed-gpu` project (`playwright.config.ts`):
+ *   - **The `chromium-gpu` project** (`playwright.config.ts`; it was `chromium-headed-gpu`
+ *     and opened a window until T1616b) — `channel: "chromium"`, headless, no window:
  *     `requestAdapter()` returns a real `apple`/`metal-3` adapter and the app renders
  *     for real. Pixel claims about what the user SEES — the actual viewer canvas,
  *     through the presentation blit — live in `presentation-pixels.spec.ts`, whose
- *     first test re-measures this adapter split so the claim above can never rot into a
+ *     premise test re-measures this adapter split so the claim above can never rot into a
  *     docblock again.
  *
  * The Dawn suites (`src/tests/headless/**`, `src/tests/acceptance/**`) still carry the

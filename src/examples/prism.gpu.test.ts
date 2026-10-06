@@ -54,7 +54,7 @@ interface Frame {
 /**
  * The bloom, MUTED, for the measurements that are about geometry rather than glow.
  *
- * Level's window is pushed above every value in the frame, so `clip1` clamps the whole
+ * Level's window is pushed above every value in the frame, so `limit_clip` clamps the whole
  * thing to zero and `add` adds nothing — the real chain still runs, no pass is removed,
  * and nothing downstream has to know. A blur of 22px would otherwise smear a 2px rim
  * thread over the body it is being compared against, which would make the ring/interior
@@ -178,7 +178,7 @@ const soloBackdropOff = (graph: GraphDocument): void => {
 };
 
 /** The prism alone, no beams, no bloom — the mask every geometry claim is measured on. */
-/* T928: the body TILTS with the pointer (form1 reads follow1 through value1/value2).
+/* T928: the body TILTS with the pointer (kernel_form reads lag_follow through value1/value2).
    Geometry gates measure the NEUTRAL tilt — 0.227 on both slots is yaw = nod = 0 by the
    kernel's own rest offsets — so where-things-land claims stay claims about the optics,
    not about where the swivel happened to be. The tilt has its own gate below. */
@@ -191,14 +191,14 @@ const lockTilt = (graph: GraphDocument): void => {
 };
 
 const soloCore = (graph: GraphDocument): void => {
-  param(graph, "shot", "scenes", "core1");
+  param(graph, "shot", "scenes", "geometry_core");
   muteBloom(graph);
   soloBackdropOff(graph);
   soloHard(graph, "core");
 };
 
 const soloPrism = (graph: GraphDocument): void => {
-  param(graph, "shot", "scenes", "solid1");
+  param(graph, "shot", "scenes", "geometry_solid");
   muteBloom(graph);
   soloBackdropOff(graph);
 };
@@ -211,13 +211,13 @@ const soloHard = (graph: GraphDocument, id: string): void => {
   param(graph, id, "blend", "opaque");
 };
 const soloFan = (graph: GraphDocument): void => {
-  param(graph, "shot", "scenes", "fan1");
+  param(graph, "shot", "scenes", "geometry_fan");
   muteBloom(graph);
   soloBackdropOff(graph);
   soloHard(graph, "fan");
 };
 const soloShaft = (graph: GraphDocument): void => {
-  param(graph, "shot", "scenes", "shaft1");
+  param(graph, "shot", "scenes", "geometry_shaft");
   muteBloom(graph);
   soloBackdropOff(graph);
   soloHard(graph, "shaft");
@@ -309,7 +309,7 @@ describe("E13 Prism — the picture", () => {
    * THE DISPERSION TRACKS THE BEAM ANGLE — the claim that separates a working prism from
    * a picture of one, and the reason this example was rebuilt rather than retouched.
    *
-   * `optics1.value1` is the aim, normally driven by `swing1 → ease1`; the two clones
+   * `kernel_optics.value1` is the aim, normally driven by `swing1 → ease1`; the two clones
    * below pin it static at each end of the swing so the measurement does not depend on
    * where an LFO happens to be. The measure is the fan's vertical span at one screen
    * column, which is the thing a viewer actually sees widen.
@@ -364,7 +364,7 @@ describe("E13 Prism — the picture", () => {
   /**
    * THE CONTROL, and the one that proves the fan is DISPERSION rather than geometry.
    *
-   * `optics1.value2` is the glass's dispersive power — the whole span of n across the
+   * `kernel_optics.value2` is the glass's dispersive power — the whole span of n across the
    * band, 0.085 as shipped. At zero every band refracts identically, so 61 rays leave
    * along one line: the spectrum is not merely desaturated, it CEASES TO BE A FAN. That
    * is a different failure from "the colours went wrong", and it is the one a reader
@@ -405,7 +405,7 @@ describe("E13 Prism — the picture", () => {
   /**
    * BLUE BENDS FURTHEST, which is the physics the ramp and the refractive index have to
    * agree about. `t` is BOTH the band's index and its hue — n = 1.50 + value2·t, colour =
-   * `spectrum1` sampled at u = t — so a reversed n(λ) reverses the fan without changing
+   * `ramp_spectrum` sampled at u = t — so a reversed n(λ) reverses the fan without changing
    * anything else about the picture, and every other assertion in this file still passes.
    *
    * The prism deviates toward its base, and the base is DOWN, so more deviation means
@@ -451,7 +451,7 @@ describe("E13 Prism — the picture", () => {
   /**
    * THE BEAM ARRIVES WHERE THE GLASS IS, and this is the assertion §V655 is about.
    *
-   * `form1` builds the mesh and `optics1` solves the optics, and the ONLY thing making
+   * `kernel_form` builds the mesh and `kernel_optics` solves the optics, and the ONLY thing making
    * them agree is that a rounded triangle's flat run sits at RC/2 from the axis for every
    * corner radius, so both read one constant. Nothing in the compiler checks it. Change
    * one and the picture stays completely plausible — a prism, a beam, a spectrum — while
@@ -561,7 +561,7 @@ describe("E13 Prism — the picture", () => {
    * THE SWIVEL IS REAL ON SCREEN (T928): the body's silhouette at one tilt extreme is a
    * genuinely different set of pixels from the other — not a lighting flicker. The
    * differential is on solo renders of the prism alone with everything else muted, so
-   * nothing but form1's rotation can move the mask.
+   * nothing but kernel_form's rotation can move the mask.
    */
   it(
     "tilts the body's silhouette with the tilt slots (T928)",

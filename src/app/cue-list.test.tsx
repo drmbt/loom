@@ -102,7 +102,7 @@ async function stage(listParameters: Record<string, StoredParameter> = {}): Prom
     expect(bankName).not.toBe("");
     list = await addList(runtime, bankName, listParameters);
   });
-  runtime.bus.attachFlattenedGraph(() => runtime.flattened.current().graph);
+  runtime.bus.attachFlattenedGraph(() => runtime.flattened.current());
   return { runtime, level, list };
 }
 

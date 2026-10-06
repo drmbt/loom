@@ -503,7 +503,7 @@ describe("T497 — the sites T497 moved are, and stay, on the absolute clock", (
    * uniforms by NAME, so a declared-but-unwritten member reads zero forever and looks like a
    * stopped clock). Asserting the generated text is asserting the whole chain, T489's §V309.
    *
-   * T710 moved E13-Prism off this list and E9-Ember onto it: E9's `fire1` names
+   * T710 moved E13-Prism off this list and E9-Ember onto it: E9's `kernel_fire` names
    * `ctx.absTime` on purpose (its draught and per-vent flare are free-running, T511/T579),
    * which is the same reason it stopped being a witness for the NEGATIVE property below.
    */

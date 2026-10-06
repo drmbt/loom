@@ -123,17 +123,17 @@ describe("examples with a temporal loop", () => {
       // T538: the owner's own file. Its loop closes on the FINAL output (§V471.5), so the
       // trails carry the graded colour rather than a ghost of the raw render.
       "E31-Corona.loom.json",
-      // T621: E32 carries TWO loops and they are different animals. `state1` is a
+      // T621: E32 carries TWO loops and they are different animals. `feedback_state` is a
       // simulation the POINT KERNEL is inside — the herd reads the reaction and writes
       // back into it, so the compiler's substep body contains a compute dispatch and its
       // buffer pairs, which is why `substeps` is refused there and the reaction's speed
-      // is a chain of eight nodes instead. `loop1` is the ordinary trail, closing on the
+      // is a chain of eight nodes instead. `feedback_loop` is the ordinary trail, closing on the
       // final output (§V471.5).
       "E32-Pasture.loom.json",
       // T711: E34's loop is the set's fifth use and the first that is SELECTIVE — a
       // luminance threshold decides what enters it, so only the glowing marks and beams
       // trail while the lit ground does not. It therefore does NOT close on the final
-      // output (§V471.5's shape): it closes on `smear1`, a side branch that is added back
+      // output (§V471.5's shape): it closes on `add_smear`, a side branch that is added back
       // into the bloom's own composite, because a loop closing on the finished frame
       // would smear everything the frame contains.
       "E34-Lidar.loom.json",
@@ -143,13 +143,13 @@ describe("examples with a temporal loop", () => {
       // T729: E40's loop is the set's sixth use and the first fed by a DIFFERENCE rather
       // than by a picture — only what moved between now and six frames ago ever enters it,
       // so the still bed underneath never smears. Like E34 it therefore does NOT close on
-      // the final output (§V471.5's shape): it closes on `born1`, upstream of the Lookup,
+      // the final output (§V471.5's shape): it closes on `add_born`, upstream of the Lookup,
       // because grading BEFORE the accumulator makes the loop sum coloured light and the
       // head pin white, while grading after it makes the palette a map of trail AGE.
       // §V694 was found here: a Level with a positive blacklevel inside this loop drove
       // empty pixels NEGATIVE in rgba16float and cancelled the base layer downstream.
       "E40-Wake.loom.json",
-      // T947: the loop as an INSTRUMENT'S GLOW. E49's `echo1` is a CRT phosphor
+      // T947: the loop as an INSTRUMENT'S GLOW. E49's `feedback_echo` is a CRT phosphor
       // (persistence 0.9 ≈ 1/e in ten frames, a P31's order of magnitude); E50's is the
       // EYE — persistence of vision at 0.55, a much shorter tail, because a galvo wall
       // has no phosphor and the afterimage is the viewer's. Same node, two decay
@@ -162,7 +162,7 @@ describe("examples with a temporal loop", () => {
       // those same agents on the next frame, so the feedback is stigmergy rather than
       // persistence: cut it and the colony does not merely stop smearing, it stops
       // communicating and the territories never form. That is why its 0.72 is not a tail
-      // length but an evaporation rate, and why it closes on `mix1` (the deposit) rather
+      // length but an evaporation rate, and why it closes on `add_mix` (the deposit) rather
       // than on the final output (§V471.5) — grading the field the agents SENSE would
       // make them chase the look instead of the signal.
       "E54-Quorum.loom.json",

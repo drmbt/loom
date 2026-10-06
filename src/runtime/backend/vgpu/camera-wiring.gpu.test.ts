@@ -405,9 +405,13 @@ describe("the camera link, as a property (B104/T500, §V437, §V372, §V147)", (
         const written = createUniformAnimator().push(backend, basePlan, nextPlan);
         // `null` means the animator refused: the two plans are not values-only variations
         // of each other, so a camera edit would have cost a rebuild (§V5 broken).
+        // TWO passes read the camera, and each is written once: the lit draw (its
+        // view-projection, and the depth row its walk of the light table finds its cell by)
+        // and the build of that table's grid over the view. Every Render with a lit Surface
+        // has a light table since T1623b slice 3, lights or none; before it this was one.
         expect({ parameter, written }, `the camera edit "${parameter}" was not uniform-only`).toEqual({
           parameter,
-          written: 1,
+          written: 2,
         });
         backend.render(handle, FRAME);
         const pushed = (await backend.readOutput("target:shot:out")).bytes;

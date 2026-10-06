@@ -86,7 +86,7 @@
       "bars": {
         "definitionVersion": 1,
         "id": "bars",
-        "label": "bars1",
+        "label": "checker_bars",
         "parameters": {
           "color1": [
             0,
@@ -118,7 +118,7 @@
       "chart": {
         "definitionVersion": 1,
         "id": "chart",
-        "label": "chart1",
+        "label": "multiply_chart",
         "parameters": {
           "opacity": 1
         },
@@ -131,7 +131,7 @@
       "mark": {
         "definitionVersion": 1,
         "id": "mark",
-        "label": "mark1",
+        "label": "circle_mark",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -148,7 +148,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sweep1').chan.value"
+                "source": "op('lfo_sweep').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -179,7 +179,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "reference1",
+        "label": "output_reference",
         "parameters": {},
         "position": {
           "x": 120,
@@ -190,7 +190,7 @@
       "receive": {
         "definitionVersion": 1,
         "id": "receive",
-        "label": "receive1",
+        "label": "syphonin_receive",
         "parameters": {
           "source": ""
         },
@@ -203,7 +203,7 @@
       "returnOut": {
         "definitionVersion": 1,
         "id": "returnOut",
-        "label": "returned1",
+        "label": "output_returned",
         "parameters": {},
         "position": {
           "x": 120,
@@ -214,7 +214,7 @@
       "send": {
         "definitionVersion": 1,
         "id": "send",
-        "label": "send1",
+        "label": "syphonout_send",
         "parameters": {
           "enabled": true,
           "name": "Loom E71 Syphon"
@@ -228,7 +228,7 @@
       "signal": {
         "definitionVersion": 1,
         "id": "signal",
-        "label": "signal1",
+        "label": "over_signal",
         "parameters": {
           "opacity": 1
         },
@@ -241,7 +241,7 @@
       "sweep": {
         "definitionVersion": 1,
         "id": "sweep",
-        "label": "sweep1",
+        "label": "lfo_sweep",
         "parameters": {
           "amplitude": 0.4,
           "frequency": 0.09,
@@ -258,7 +258,7 @@
       "tint": {
         "definitionVersion": 2,
         "id": "tint",
-        "label": "tint1",
+        "label": "ramp_tint",
         "parameters": {
           "interp": "linear",
           "period": 1,

@@ -1,4 +1,5 @@
-import type { FrameEvaluationInput, TransportSource } from "../types/frame.ts";
+import { frameFromClock } from "../types/frame.ts";
+import type { EvaluationFrame, TransportSource } from "../types/frame.ts";
 import { DEFAULT_PROJECT_FPS, projectFps } from "../types/graph.ts";
 
 export interface LiveClockOptions {
@@ -197,7 +198,7 @@ export function liveClock(options: LiveClockOptions = {}): TransportSource {
   let wrapTarget: number | null = null;
 
   return {
-    next(): FrameEvaluationInput {
+    next(): EvaluationFrame {
       const nowMs = now();
       const rawDelta = lastMs === null ? 0 : (nowMs - lastMs) / 1000;
       lastMs = nowMs;
@@ -284,7 +285,7 @@ export function liveClock(options: LiveClockOptions = {}): TransportSource {
       const timelineDelta = steps / fps;
       lastTimelineSeconds = timelineSeconds;
 
-      return {
+      return frameFromClock({
         timeSeconds: useTimeline ? timelineSeconds : wallSeconds,
         deltaSeconds: useTimeline ? timelineDelta : wallDeltaSeconds,
         frameIndex: index,
@@ -301,7 +302,7 @@ export function liveClock(options: LiveClockOptions = {}): TransportSource {
         // T1426b: the project's rate, not the display's; live frames are never accumulated.
         fps,
         subframes: 1,
-      };
+      });
     },
     /**
      * T467 — the ONE caller with the right to zero the absolute clock: a RENDER. A take

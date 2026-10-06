@@ -10,6 +10,7 @@ import type { AppRuntime } from "./app-runtime.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
 
 /**
  * §B220 — SELECTING A SCENE NODE IN THE VIEWER HAS TO SHOW SOMETHING.
@@ -135,7 +136,7 @@ async function mount(kind: "scene" | "texture") {
           graph={graph}
           backend={backend}
           previewSinks={{ set: (refs) => sinkRefs.push(refs) }}
-          liveReads={{ channels: () => undefined, morphs: () => undefined, frame: () => undefined }}
+          liveReads={{ channels: () => undefined, flattening: () => NO_FLATTENING, frame: () => undefined }}
         />
       </AppRuntimeContext.Provider>
     </TooltipProvider>,

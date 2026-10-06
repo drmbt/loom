@@ -1,12 +1,12 @@
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
-import type { GraphDocument, GraphNode, ProjectSettings } from "../domain/types/graph.ts";
+import type { FlatGraph, GraphNode, ProjectSettings } from "../domain/types/graph.ts";
 import { projectFps } from "../domain/types/graph.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
-import { createParameterReadOptions } from "../domain/parameters/node-references.ts";
+import { parameterReadOptions } from "../domain/parameters/node-references.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
-import { resolveNodeParameters } from "./validate.ts";
+import { flatteningReadsOf, resolveNodeParameters } from "./validate.ts";
 import type { ParameterResolution } from "./validate.ts";
 
 /**
@@ -45,7 +45,8 @@ function shiftFrame(frame: FrameEvaluationInput, offsetSeconds: number): FrameEv
 export function timeProbeFor(
   node: GraphNode,
   definition: NodeDefinition,
-  graph: GraphDocument,
+  /** §T1552b: the retained compile's flat graph — what `op()` reads against. */
+  graph: FlatGraph,
   registry: NodeRegistryView,
   options: ParameterResolution,
   settings: ProjectSettings,
@@ -59,10 +60,7 @@ export function timeProbeFor(
     parametersAt(offsetSeconds: number) {
       const shifted = shiftFrame(frame, offsetSeconds);
       // The frame's own reading, moved: the same construction validateGraph makes.
-      const reading: ParameterResolution =
-        options.nodes === undefined
-          ? { ...options, frame: shifted, ...createParameterReadOptions({ graph, registry, frame: shifted, channels: options.channels, morphs: options.morphs }) }
-          : { ...options, frame: shifted };
+      const reading = parameterReadOptions({ graph, registry, frame: shifted, channels: options.channels, flattening: flatteningReadsOf(options) });
       return resolveNodeParameters(node, effectiveParameterSchema(definition, node.parameters), definition.type, [], reading).values;
     },
   };

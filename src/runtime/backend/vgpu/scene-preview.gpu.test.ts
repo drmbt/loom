@@ -8,6 +8,7 @@ import { createVgpuBackend } from "./vgpu-backend.ts";
 import { probeDawn } from "./node-gpu-host.ts";
 import { capturingHost, drawSynthesizedPreview } from "./preview-synthesis-fixture.ts";
 import { encodePng } from "../../export/png.ts";
+import { authoredPoints, curveEdge, curveGraph, curveNode } from "../../../nodes/definitions/curve-test-support.ts";
 import type { GraphDocument, GraphNode } from "../../../domain/types/graph.ts";
 
 /**
@@ -491,6 +492,65 @@ describe("scene payload previews render exactly (T462, §V147, §V384)", () => {
     }
     // The bigger primitive covers strictly more of the tile — the scale reaches pixels.
     expect(countDifferingFromBackdrop(big)).toBeGreaterThan(countDifferingFromBackdrop(small));
+  }, 120_000);
+
+  /**
+   * T1587b slice 2 — a grid of several SHEETS on the tile. The tile draws the Render's own
+   * grid program, so it has to take the same variant: without it the draw has every sheet's
+   * vertices and joins the last row of one sheet to the first row of the next.
+   *
+   * Two flat squares either side of the origin, which the tile's camera looks at. As two
+   * sheets nothing lies on the origin; as ONE grid of four rows the piece from the first
+   * square's far edge to the second's near edge crosses it.
+   */
+  it("a grid of several sheets previews as its sheets, each as it previews alone, and nothing joins them", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    const SQUARES: Array<[number, number, number]> = [
+      [-0.8, -0.25, 0], [-0.3, -0.25, 0], [-0.8, 0.25, 0], [-0.3, 0.25, 0],
+      [0.3, -0.25, 0], [0.8, -0.25, 0], [0.3, 0.25, 0], [0.8, 0.25, 0],
+    ];
+    const tileOf = async (points: ReadonlyArray<[number, number, number]>, claim: Record<string, unknown>): Promise<Uint8Array> =>
+      (
+        await renderPreviews(
+          curveGraph(
+            [
+              authoredPoints("kernel_squares", points).node,
+              curveNode("topology_squares", "pointTopology", { connectivity: "grid", ...claim }),
+              curveNode("geometry_skin", "geometry", { mode: "surface" }),
+            ],
+            [curveEdge(["kernel_squares", "out"], ["topology_squares", "points"]), curveEdge(["topology_squares", "out"], ["geometry_skin", "points"])],
+          ),
+          [{ nodeId: "geometry_skin", portId: "out" }],
+        )
+      ).get("geometry_skin")!;
+
+    const sheets = await tileOf(SQUARES, { cols: 2, rows: 2, sheets: 2 });
+    savePng("scene-preview-geometry-sheets.png", sheets);
+    const backdrop = texel(sheets, 2, 2);
+    // Between the two sheets, on the origin: the backdrop.
+    expect(texel(sheets, CENTRE, CENTRE)).toEqual(backdrop);
+
+    // Each sheet is what its four points preview as alone, to the byte, and there is nothing else.
+    const left = await tileOf(SQUARES.slice(0, 4), { cols: 2, rows: 2 });
+    const right = await tileOf(SQUARES.slice(4), { cols: 2, rows: 2 });
+    expect(countDifferingFromBackdrop(left)).toBeGreaterThan(1000);
+    expect(countDifferingFromBackdrop(right)).toBeGreaterThan(1000);
+    let moved = 0;
+    for (let pixel = 0; pixel < EDGE * EDGE; pixel += 1) {
+      const x = pixel % EDGE;
+      const y = Math.floor(pixel / EDGE);
+      const alone = texel(left, x, y);
+      const from = alone[0] !== backdrop[0] || alone[1] !== backdrop[1] || alone[2] !== backdrop[2] ? alone : texel(right, x, y);
+      const here = texel(sheets, x, y);
+      if (here[0] !== from[0] || here[1] !== from[1] || here[2] !== from[2]) moved += 1;
+    }
+    expect(moved).toBe(0);
+
+    // The control: the same eight points as one grid of four rows cover the origin.
+    const joined = await tileOf(SQUARES, { cols: 2, rows: 4 });
+    expect(texel(joined, CENTRE, CENTRE)).not.toEqual(backdrop);
+    expect(countDifferingFromBackdrop(joined)).toBeGreaterThan(countDifferingFromBackdrop(sheets));
   }, 120_000);
 });
 

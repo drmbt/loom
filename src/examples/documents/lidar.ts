@@ -4,7 +4,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * E34 — Lidar (T641). THE RAY POP, WORKING FOR ITS LIVING.
  *
  * A night survey: a mast at the origin sweeps a ring of 240 rays over a dark noise
- * terrain. Every ray is AIMED BY AN ATTRIBUTE — `aim1` writes a vec3f `direction` per
+ * terrain. Every ray is AIMED BY AN ATTRIBUTE — `kernel_aim` writes a vec3f `direction` per
  * point (azimuth from the point's index, the ring's tilt breathing on a driven Value
  * slot) — which is the reason Ray is a POP and not a SOP: a grid of downward rays is a
  * heightmap lookup, a cloud of independently-aimed rays is an instrument.
@@ -15,20 +15,20 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * and nothing checks that for you. The bridge (`textureToAttribute`) samples at the
  * point's clip xy with v INVERTED (uv = (x/2+0.5, 0.5−y/2), T512); the Ray field maps
  * world x,z ∈ [−extent, +extent] with NO inversion (uv = (x,z)/(2·extent)+0.5). So
- * `unfold1` parks the sample sheet at (X/extent, −Z/extent) — the minus sign IS the
- * agreement — and `raise1` rebuilds (X, height, Z) from the same indices. Get that sign
+ * `kernel_unfold` parks the sample sheet at (X/extent, −Z/extent) — the minus sign IS the
+ * agreement — and `kernel_raise` rebuilds (X, height, Z) from the same indices. Get that sign
  * wrong and the scan line drapes over a terrain the picture mirrors front-to-back:
  * plausible at a glance, wrong everywhere, invisible until a ray "hits" a valley.
  *
- * T672 gave that agreement a THIRD reader: `pool1` parks each return at the same clip
+ * T672 gave that agreement a THIRD reader: `kernel_pool` parks each return at the same clip
  * (X/extent, −Z/extent) so the light pool lands on the terrain that made it. See the
  * kernel's own comment for why the minus sign survives the composition.
  *
  * ## Reflection, literally (the owner's "raycasting / reflection ala TD POPs")
  *
- * TWO Ray nodes, chained. `ricochet1` reflects each hit's direction about its
+ * TWO Ray nodes, chained. `kernel_ricochet` reflects each hit's direction about its
  * `hitNormal` and re-origins at the hit (lifted 0.03 along the normal so the second
- * march does not start inside the ground it just found); `rebound1` casts again. A
+ * march does not start inside the ground it just found); `ray_rebound` casts again. A
  * first-leg MISS keeps marching from its end — physically fine — and is masked out of
  * the echo reading by `echo = hit₁` carried across the second cast, because the second
  * Ray writes its own `hit` over the first one's.
@@ -45,7 +45,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * to y = −60), and since T642 the SELECTION itself is a group predicate on the lit draw
  * — §V471's idiom, running through the shared camera and depth buffer rather than as a
  * predicate-filtered 2D overlay under its own projection, which cannot sit on a 3D
- * camera's picture. T672 makes this file run BOTH halves of that resolver: `poolmap1` is
+ * camera's picture. T672 makes this file run BOTH halves of that resolver: `points_poolmap` is
  * a genuine `renderPoints` draw, into a texture, feeding the terrain's albedo.
  *
  * ## Why the dots are unlit and the ground is not
@@ -71,7 +71,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * size, so growing the ground changed the geometry and not the look.
  *
  * And the trap worth one line: THE ORBIT RADIUS IS NOT IN THE CAMERA. `eye.x` and
- * `eye.z` are driven by `orbx1`/`orbz1`, so the static `eye` vector's x and z are
+ * `eye.z` are driven by `lfo_orbx`/`lfo_orbz`, so the static `eye` vector's x and z are
  * inert (§V465) — editing them to reframe is a no-op that looks like a fix in a diff.
  *
  * SHADOWS (T666/§V617). Not the slope-scaled bias — forcing the old constant 0.002
@@ -92,7 +92,7 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * ## The sky is the same map (T659)
  *
- * `skyband1` is now DRAWN as well as taken — `showEnvironment` on this render. Until
+ * `ramp_skyband` is now DRAWN as well as taken — `showEnvironment` on this render. Until
  * T659 the environment had exactly two readers, the reflection vector and the five
  * irradiance taps, and no pass ever rendered it: the visible night was the `background`
  * colour, so tuning the ramp changed the fill and the rim and never the sky. One map now
@@ -105,21 +105,21 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * The owner, on the shipped T658 build: "it feels like some weird noise still and
  * missing something that ties it together". THE BEAMS ARE THE THING THAT TIES IT
  * TOGETHER. A lidar without them is a hillside with dots appearing on it, and the owner
- * read it exactly that way; `rays1` draws the causal chain in `beam` mode (T680), which
- * spans each ray's origin to the `hitPosition` `cast1` already carries.
+ * read it exactly that way; `geometry_rays` draws the causal chain in `beam` mode (T680), which
+ * spans each ray's origin to the `hitPosition` `ray_cast` already carries.
  *
  * THE GROUND IS NOW LIT BY ITS OWN RETURNS, through the albedo map rather than through
- * 240 lights: `pool1` → `poolmap1` → `poolsoft1` → `poolbase1` → `basalt1.albedo`. §V644
- * lives in `poolbase1`'s comment and is the one thing here that fails as a lighting bug.
+ * 240 lights: `kernel_pool` → `points_poolmap` → `blur_poolsoft` → `level_poolbase` → `material_basalt.albedo`. §V644
+ * lives in `level_poolbase`'s comment and is the one thing here that fails as a lighting bug.
  *
  * AND THE "FLICKER" WAS SEMANTIC (T681). Camera frozen, the terrain contributes EXACTLY
  * ZERO frame-to-frame energy and the echoes carried 82% of it; colouring each echo by
  * the index of the ray that made it shows the primary ring as a smooth colour wheel and
  * the echoes SCRAMBLED — adjacent rays land metres apart, so the second leg's landing
  * point is a chaotic function of azimuth and a marker that re-reads while lit teleports
- * constantly. Sample-and-hold on `mark2a` is the fix, in one condition.
+ * constantly. Sample-and-hold on `kernel_mark2a` is the fix, in one condition.
  *
- * MEASURED — camera frozen (orbx1/orbz1 at frequency 0), 15 frame-pairs over frames
+ * MEASURED — camera frozen (lfo_orbx/lfo_orbz at frequency 0), 15 frame-pairs over frames
  * 400–415, full 1280×720 (§V627), display-encoded (§V618). Both halves re-measured back
  * to back on ONE tree so the comparison is not an argument (§V641): engine `d8ed47e`,
  * "before" = this entry as shipped at `83e03ff`.
@@ -149,16 +149,16 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  *
  * THE REFUSALS ARE THE INTERESTING HALF, and they all fail the same test: a knob you can
  * turn to make the file WRONG is not a control. `LIDAR_EXTENT`, `LIDAR_HEIGHT_SCALE` and
- * `LIDAR_HEIGHT_OFFSET` appear in `unfold1`, `raise1` AND on both Ray nodes, and the whole
- * teaching above is that those readings AGREE; `LIDAR_MAST` is written in `aim1`,
- * `ricochet1`, `mark2a` and `lamp1`'s position. `LIDAR_RANGE` and its `- 0.01` epsilon are
- * the frontier `sight1` and `mark1` must cross on the SAME frame. §V638's `wake.w < 0.06`
+ * `LIDAR_HEIGHT_OFFSET` appear in `kernel_unfold`, `kernel_raise` AND on both Ray nodes, and the whole
+ * teaching above is that those readings AGREE; `LIDAR_MAST` is written in `kernel_aim`,
+ * `kernel_ricochet`, `kernel_mark2a` and `light_lamp`'s position. `LIDAR_RANGE` and its `- 0.01` epsilon are
+ * the frontier `kernel_sight` and `kernel_mark` must cross on the SAME frame. §V638's `wake.w < 0.06`
  * gate and its 0.94 decay are the fix for a defect measured across frame PAIRS. The park
- * depth `-80.0` must stay below `mark2a`'s `> -10.0` sentinel, `0.03` and `0.0001` are
+ * depth `-80.0` must stay below `kernel_mark2a`'s `> -10.0` sentinel, `0.03` and `0.0001` are
  * epsilons, `6.28318530718` is 2π, and `LIDAR_SPOKE_EVERY` is a modulus that divides by
  * zero if you drag it there. The terrain's amplitude and roughness and both lights' colour
- * and intensity were never hidden: they are ordinary parameters on `relief1`, `carve1`,
- * `moon1` and `lamp1` already.
+ * and intensity were never hidden: they are ordinary parameters on `noise_relief`, `level_carve`,
+ * `light_moon` and `light_lamp` already.
  */
 const LIDAR_EXTENT = 4.8;
 
@@ -265,7 +265,7 @@ const LIDAR_AIM_ATTRIBUTES = JSON.stringify([
 ]);
 
 /* The instrument. Azimuth from the INDEX (240 rays around the full circle), the ring's
-   tilt on the driven value slot (T479): tiltwave1 breathes it steep↔shallow, and the
+   tilt on the driven value slot (T479): lfo_tiltwave breathes it steep↔shallow, and the
    whole ring turns on the absolute clock. maxDistance is chosen against these angles —
 
    see the ray node's comment. */
@@ -296,7 +296,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
 /* T711 — THE BEAM'S OWN COLOUR, one slot per attribute and four of them (§V588 again).
    `spoke` is declared because the draw's predicate reads it and this kernel sits between
 
-   `cast1` and the draw; `hitPosition` because the beam's far end is written here. */
+   `ray_cast` and the draw; `hitPosition` because the beam's far end is written here. */
 const LIDAR_SIGHT_ATTRIBUTES = JSON.stringify([
   { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
   { name: "spoke", type: "f32", default: [0] },
@@ -305,10 +305,10 @@ const LIDAR_SIGHT_ATTRIBUTES = JSON.stringify([
 ]);
 
 /* T711 — A RAY AND THE MARK IT MAKES SHARE A COLOUR, which is the whole reason this
-   kernel exists. `haze1` used to be a FLAT [0.36, 0.21, 0.08] — one colour for every
+   kernel exists. `material_haze` used to be a FLAT [0.36, 0.21, 0.08] — one colour for every
    beam, unrelated to the box it lands on — and the mechanism nobody had named is that
-   0.36 sits just BELOW `cut1`'s 0.42 bloom knee, so 24 lit ribbons read as matte orange
-   sticks while the ring they end on glowed. The expression here is `mark1`'s own return
+   0.36 sits just BELOW `level_cut`'s 0.42 bloom knee, so 24 lit ribbons read as matte orange
+   sticks while the ring they end on glowed. The expression here is `kernel_mark`'s own return
    colour at a lower gain, so the beam is the same yellow as its impact and lands ABOVE
    the knee: the eye traces cause to effect because the two are literally one colour.
 
@@ -403,7 +403,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   return q;
 }`;
 
-/* FOUR again (see mark1's comment). Even the first leg's `hit` flag goes: a miss
+/* FOUR again (see kernel_mark's comment). Even the first leg's `hit` flag goes: a miss
    carries the ray's FULL-RANGE end, so length(hitPosition − mast) says which leg this
    was without a flag — the verdict travels as geometry. A first-leg miss is PARKED at
    y = −80; its second cast from the parking depth hits instantly below the field, and
@@ -461,7 +461,7 @@ const LIDAR_MARK2_ATTRIBUTES = JSON.stringify([
    lagged rise moved 4.5%, decay 0.90 → 0.98 moved the hard-flip rate 39.1% → 34.7%),
    because the churn was BIRTHS and not the tail.
 
-   `hit` is derived rather than carried, buying the slot (see mark1's note): the Ray
+   `hit` is derived rather than carried, buying the slot (see kernel_mark's note): the Ray
    node's contract is that a MISS ends exactly `maxDistance` from its origin, and this
    ray's origin arrives as `position` from upstream. A parked first-leg miss re-casts
 
@@ -484,7 +484,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   q.position = pos;
   /* T711 — the BOUNCE LEG's far end, and the only place it can live. \`p.position\` here
      is the FIRST hit, the primary ray's landing, and this kernel's own \`hitPosition\`
-     slot is a LEAF: nothing downstream reads it, because the only consumer of mark2a is
+     slot is a LEAF: nothing downstream reads it, because the only consumer of kernel_mark2a is
      the draw. Four attributes is the whole budget (§V588), so the segment gets published
      through a slot that already exists rather than through a fifth pair. The far end is
      LIVE while the near end is HELD, which is the right way round: the first hit is a
@@ -504,7 +504,7 @@ const LIDAR_POOL_ATTRIBUTES = JSON.stringify([
   { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [1, 1, 1, 1] },
 ]);
 
-/* T672 — THE SAME AGREEMENT, STATED A SECOND TIME. `unfold1` parks the sample sheet at
+/* T672 — THE SAME AGREEMENT, STATED A SECOND TIME. `kernel_unfold` parks the sample sheet at
    clip (X/extent, −Z/extent); this parks each RETURN at exactly the same place, and that
    is not a coincidence to be maintained by luck. The terrain surface samples its albedo
    map by GRID uv, grid v runs along world Z, and `renderPoints` draws at clip xy where
@@ -530,7 +530,7 @@ export const lidarDocument = document(
         type: "perlin4d", seed: 11, period: 0.40 * 3.2 / LIDAR_EXTENT, harmon: 4, spread: 2, gain: 0.58,
         rough: 0.5, exp: 1, amp: 1, offset: 0, mono: true, aspectcorrect: false,
         t4d: 0.37, s4d: 1, speed: 0, /* static ground; T535's slice, off the lattice plane */
-      }, { label: "relief1", resolution: { mode: "fixed", width: 512, height: 512 } }),
+      }, { label: "noise_relief", resolution: { mode: "fixed", width: 512, height: 512 } }),
       /* E27's lesson, reapplied: four perlin harmonics sum to a SLIVER (measured here:
          r in 0.63..0.80), and a terrain built on a sliver is a plain with a rumor of
          hills. The stretch to full range happens ONCE, on the texture BOTH readers
@@ -541,38 +541,38 @@ export const lidarDocument = document(
            numbers through the OUTPUT node was display-encoded and off by a transfer
            curve, which is exactly the trap §V56 keeps warning about. */
         blacklevel: 0.36, whitelevel: 0.62, contrast: 1, brightness: 1, gamma1: 1, opacity: 1,
-      }, { label: "carve1", resolution: { mode: "fixed", width: 512, height: 512 } }),
+      }, { label: "level_carve", resolution: { mode: "fixed", width: 512, height: 512 } }),
 
       /* ---- the terrain MESH: unfold → sample → raise -------------------------- */
-      node("sheet", "pointGrid", [-2560, -440], { cols: LIDAR_GRID, rows: LIDAR_GRID, count: LIDAR_SHEET_COUNT }, { label: "sheet1" }),
+      node("sheet", "pointGrid", [-2560, -440], { cols: LIDAR_GRID, rows: LIDAR_GRID, count: LIDAR_SHEET_COUNT }, { label: "grid_sheet" }),
       node("unfold", "pointKernel", [-2240, -440], {
         capacity: LIDAR_SHEET_COUNT, attributes: LIDAR_SHEET_ATTRIBUTES, kernel: LIDAR_UNFOLD_KERNEL,
-      }, { label: "unfold1" }),
-      node("probe", "textureToAttribute", [-1920, -440], {}, { label: "probe1" }),
+      }, { label: "kernel_unfold" }),
+      node("probe", "textureToAttribute", [-1920, -440], {}, { label: "sample_probe" }),
       node("raise", "pointKernel", [-1600, -440], {
         capacity: LIDAR_SHEET_COUNT, attributes: LIDAR_RAISE_ATTRIBUTES, kernel: LIDAR_RAISE_KERNEL,
-      }, { label: "raise1" }),
+      }, { label: "kernel_raise" }),
       node("basalt", "materialPhong", [-1600, -920], {
         color: [0.14, 0.15, 0.18, 1], specular: [0.30, 0.33, 0.40, 1], shininess: 26, roughness: 0.82,
-      }, { label: "basalt1" }),
+      }, { label: "material_basalt" }),
       node("ground", "geometry", [-1280, -440], {
-        mode: "surface", material: "basalt1", tint: [1, 1, 1, 1],
-      }, { label: "ground1" }),
+        mode: "surface", material: "material_basalt", tint: [1, 1, 1, 1],
+      }, { label: "geometry_ground" }),
 
       /* ---- the instrument: aim → cast → readings ------------------------------ */
       node("tiltwave", "lfo", [-2880, 40], {
         shape: "sine", frequency: 0.045, amplitude: 0.5, offset: 0.5, phase: 0,
-      }, { label: "tiltwave1" }),
-      node("fan", "pointLine", [-2560, 40], { count: 240 }, { label: "fan1" }),
+      }, { label: "lfo_tiltwave" }),
+      node("fan", "pointLine", [-2560, 40], { count: 240 }, { label: "line_fan" }),
       /* T1053 — THE INSTRUMENT'S AIM, AS KNOBS. The kernel's `struct Params` reflects into
          real controls (T900), so these three are the same numbers they always were and are
          now drivable, expressible and publishable instead of frozen in WGSL. The mast height
          and the 240-ray azimuth wrap deliberately stayed constants: the mast must agree with
-         `lamp1`'s position and `ricochet1`'s slant, and 2π is arithmetic, not direction. */
+         `light_lamp`'s position and `kernel_ricochet`'s slant, and 2π is arithmetic, not direction. */
       node("aim", "pointKernel", [-2240, 40], {
         capacity: 240, attributes: LIDAR_AIM_ATTRIBUTES, kernel: LIDAR_AIM_KERNEL,
         sweepRate: LIDAR_SWEEP_RATE, tiltMin: LIDAR_TILT_MIN, tiltSpan: LIDAR_TILT_SPAN,
-      }, { label: "aim1", parameters: { value1: drivenSlot("tiltwave1", 0.5) } }),
+      }, { label: "kernel_aim", parameters: { value1: drivenSlot("lfo_tiltwave", 0.5) } }),
       /* RANGE 3.4 against a 2.7 m mast and 41°..73° tilts: the steep ring's slant
          (~2.8) is inside range, the shallow ring's (~4.1) is not — the breathing ring
          CROSSES the range boundary, and ridges (shorter slant) come into range before
@@ -580,21 +580,21 @@ export const lidarDocument = document(
       node("cast", "pointRay", [-1920, 40], {
         steps: 64, maxDistance: LIDAR_RANGE, direction: [0, -1, 0],
         extent: LIDAR_EXTENT, heightScale: LIDAR_HEIGHT_SCALE, heightOffset: LIDAR_HEIGHT_OFFSET,
-      }, { label: "cast1" }),
+      }, { label: "ray_cast" }),
       /* T1053 — the return's LOOK and its PERSISTENCE, exposed. The two rates were the
          file's most carefully argued numbers and the least reachable; they are now the two
          knobs that decide how much a moving return smears. The range frontier and its
          epsilon stayed in the kernel: `slant < RANGE - 0.01` has to be the SAME frontier
-         `sight1` uses or a beam draws to an impact that has already gone steel. */
+         `kernel_sight` uses or a beam draws to an impact that has already gone steel. */
       node("mark", "pointKernel", [-1600, 40], {
         capacity: 240, attributes: LIDAR_MARK_ATTRIBUTES, kernel: LIDAR_MARK_KERNEL,
         returnBase: 0.5, returnGain: 1.6, lostLevel: 0.32, holdRate: 0.22, fadeRate: 0.10,
-      }, { label: "mark1" }),
-      node("spark", "materialUnlit", [-1600, 520], { color: [1, 1, 1, 1] }, { label: "spark1" }),
+      }, { label: "kernel_mark" }),
+      node("spark", "materialUnlit", [-1600, 520], { color: [1, 1, 1, 1] }, { label: "material_spark" }),
       node("impacts", "geometry", [-1280, 40], {
-        mode: "instances", shape: "octahedron", scale: 0.052, material: "spark1",
+        mode: "instances", shape: "octahedron", scale: 0.052, material: "material_spark",
       }, {
-        label: "impacts1",
+        label: "geometry_impacts",
         /* T478: the kernel's per-point verdict IS the colour — tint in MAP mode. */
         parameters: {
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
@@ -604,24 +604,24 @@ export const lidarDocument = document(
       /* ---- the beams: the cause, drawn (T672/T680), coloured by it (T711) ------- */
       node("sight", "pointKernel", [-1920, 900], {
         capacity: 240, attributes: LIDAR_SIGHT_ATTRIBUTES, kernel: LIDAR_SIGHT_KERNEL,
-        /* T1053: the beam's brightness ramp. The HUE stayed in the kernel — it is `mark1`'s
+        /* T1053: the beam's brightness ramp. The HUE stayed in the kernel — it is `kernel_mark`'s
            own return colour at a lower gain, and the point of T711 was that the two are ONE
            colour; a picker that can break that agreement is not a control, it is a trap. */
         beamBase: 0.35, beamGain: 0.90,
-      }, { label: "sight1" }),
+      }, { label: "kernel_sight" }),
       /* WHITE, and UNLIT on purpose: a beam is scattered light in the air, not a surface —
          and an unlit primitive takes no part in shadowing either (§V617). T711 moved the
          colour off this material and onto the POINT, because one flat colour for every
          beam is exactly what stopped the beams reading as the cause of the marks; the
          material is now the identity element so the tint IS the colour. */
-      node("haze", "materialUnlit", [-1600, 900], { color: [1, 1, 1, 1] }, { label: "haze1" }),
+      node("haze", "materialUnlit", [-1600, 900], { color: [1, 1, 1, 1] }, { label: "material_haze" }),
       node("rays", "geometry", [-1280, 900], {
         /* `beam` spans each ray's `position` — the mast — to its `hitPosition`, which
-           `cast1` ALREADY carries, so 24 beams cost 24 instances of six vertices and NOT
+           `ray_cast` ALREADY carries, so 24 beams cost 24 instances of six vertices and NOT
            ONE extra ray march. The sampled-billboard fake was built and measured first:
            983,000 texture reads a frame against this file's 15,400, for a serrated ribbon
            that cannot taper (T680). */
-        /* T711: the far end is now `sight1`'s, not `cast1`'s — same attribute, one kernel
+        /* T711: the far end is now `kernel_sight`'s, not `ray_cast`'s — same attribute, one kernel
            later, so a ray with no return arrives with both ends on the same point and
            collapses to zero area instead of drawing a hit that did not happen. */
         mode: "beam", endpoint: "hitPosition", scale: 0.013,
@@ -630,13 +630,13 @@ export const lidarDocument = document(
            whatever their number. Pinching the near end to a point is both the cure and
            what a divergent beam actually does. */
         taper: 0,
-        material: "haze1",
+        material: "material_haze",
         /* §V471's idiom, on the DRAW: every ray is cast, every tenth is drawn. Empty this
            predicate and 240 beams fuse into an opaque cone that hides the terrain — which
            is why the subset is measured rather than chosen. */
         group: "p.spoke > 0.5",
       }, {
-        label: "rays1",
+        label: "geometry_rays",
         /* T478 again, on a BEAM this time: the kernel's per-ray colour IS the beam's. */
         parameters: {
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
@@ -646,14 +646,14 @@ export const lidarDocument = document(
       /* ---- the ground, LIT BY ITS OWN RETURNS (T672, §V644) -------------------- */
       node("pool", "pointKernel", [-1280, 300], {
         capacity: 240, attributes: LIDAR_POOL_ATTRIBUTES, kernel: LIDAR_POOL_KERNEL,
-      }, { label: "pool1" }),
+      }, { label: "kernel_pool" }),
       node("poolmap", "renderPoints", [-960, 300], {
         count: 240, sizePixels: 22, blend: "additive", accumulate: false,
         /* only RETURNS light the ground — the steel out-of-range markers hang in the air
            and have nothing under them to light. */
         group: "p.tint.r > 0.3",
       }, {
-        label: "poolmap1",
+        label: "points_poolmap",
         resolution: { mode: "fixed", width: LIDAR_POOL_RES, height: LIDAR_POOL_RES },
         parameters: {
           color: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
@@ -661,7 +661,7 @@ export const lidarDocument = document(
       }),
       node("poolsoft", "blur", [-640, 300], {
         size: 26, filter: "gaussian", extend: "hold",
-      }, { label: "poolsoft1", resolution: { mode: "fixed", width: LIDAR_POOL_RES, height: LIDAR_POOL_RES } }),
+      }, { label: "blur_poolsoft", resolution: { mode: "fixed", width: LIDAR_POOL_RES, height: LIDAR_POOL_RES } }),
       /* §V644 — THE IDENTITY ELEMENT, and the one thing in this chain that looks like a
          lighting bug when it is missing. An albedo map MULTIPLIES, so an additive
          contribution through it must read 1.0 where nothing is lit. Black point −0.1 with
@@ -671,16 +671,16 @@ export const lidarDocument = document(
          element going missing. */
       node("poolbase", "level", [-320, 300], {
         blacklevel: -0.1, whitelevel: 0, contrast: 1, brightness: 1, gamma1: 1, opacity: 1,
-      }, { label: "poolbase1", resolution: { mode: "fixed", width: LIDAR_POOL_RES, height: LIDAR_POOL_RES } }),
+      }, { label: "level_poolbase", resolution: { mode: "fixed", width: LIDAR_POOL_RES, height: LIDAR_POOL_RES } }),
 
       /* ---- the bounce: reflection, literally ---------------------------------- */
       node("ricochet", "pointKernel", [-1920, 520], {
         capacity: 240, attributes: LIDAR_RICOCHET_ATTRIBUTES, kernel: LIDAR_RICOCHET_KERNEL,
-      }, { label: "ricochet1" }),
+      }, { label: "kernel_ricochet" }),
       node("rebound", "pointRay", [-1280, 520], {
         steps: 48, maxDistance: LIDAR_RANGE, direction: [0, -1, 0],
         extent: LIDAR_EXTENT, heightScale: LIDAR_HEIGHT_SCALE, heightOffset: LIDAR_HEIGHT_OFFSET,
-      }, { label: "rebound1" }),
+      }, { label: "ray_rebound" }),
       node("mark2", "pointKernel", [-960, 520], {
         capacity: 240, attributes: LIDAR_MARK2_ATTRIBUTES, kernel: LIDAR_MARK2_KERNEL,
         /* T1053: the echo's brightness ramp only. §V638's sample-and-hold — the `wake.w <
@@ -688,15 +688,15 @@ export const lidarDocument = document(
            a defect measured across FRAME PAIRS, invisible in any still, and this example's
            own claims pin them as the thing that must not move. */
         echoBase: 0.15, echoGain: 1.35,
-      }, { label: "mark2a" }),
+      }, { label: "kernel_mark2a" }),
       node("echoes", "geometry", [-640, 520], {
-        mode: "instances", shape: "octahedron", scale: 0.030, material: "spark1",
+        mode: "instances", shape: "octahedron", scale: 0.030, material: "material_spark",
         /* T642: the reading IS a selection — §V471's idiom, in the lit path. T658: and
            it selects on the PERSISTENT level rather than on the raw verdict, so an echo
            leaves a fading wake instead of vanishing between one frame and the next. */
         group: "p.wake.w > 0.03",
       }, {
-        label: "echoes1",
+        label: "geometry_echoes",
         parameters: {
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
         },
@@ -704,10 +704,10 @@ export const lidarDocument = document(
 
       /* ---- the bounce leg, DRAWN (T711) --------------------------------------- */
       /* THIS WAS REJECTED ONCE, BY MEASUREMENT, AND THE REJECTION WAS RIGHT FOR ITS TREE.
-         T681 drew this segment off `rebound1`'s RAW verdict and it cost green energy
+         T681 drew this segment off `ray_rebound`'s RAW verdict and it cost green energy
          873k → 1,399k, "because the segments pop in and out with the raw verdict and
          have no persistence to inherit". §V638's sample-and-hold then landed — and a
-         beam hung on mark2a inherits exactly the persistence the rejected version
+         beam hung on kernel_mark2a inherits exactly the persistence the rejected version
          lacked. Re-measured on THIS tree, same ten rays, same width, same colour, camera
          frozen, 15 frame-pairs, the ONLY variable being where the segment reads from:
 
@@ -718,23 +718,23 @@ export const lidarDocument = document(
          The hold is worth 6.5× the green energy and 3.2× the churn, and 2.2% sits under
          the amber band T681 itself judged against. A conclusion measured on one tree is
          not evidence about another one. */
-      node("mist", "materialUnlit", [-960, 900], { color: [0.85, 0.85, 0.85, 1] }, { label: "mist1" }),
+      node("mist", "materialUnlit", [-960, 900], { color: [0.85, 0.85, 0.85, 1] }, { label: "material_mist" }),
       node("bounce", "geometry", [-640, 900], {
-        /* `position` is the HELD echo point and `hitPosition` the first hit mark2a
+        /* `position` is the HELD echo point and `hitPosition` the first hit kernel_mark2a
            publishes, so the segment is the echo's own cause. Taper 1: unlike the
            primaries these share no origin, so there is no apex to pinch. */
-        mode: "beam", endpoint: "hitPosition", scale: 0.006, taper: 1, material: "mist1",
-        /* Both halves matter. `wake.w` is echoes1's OWN predicate, so a bounce beam
+        mode: "beam", endpoint: "hitPosition", scale: 0.006, taper: 1, material: "material_mist",
+        /* Both halves matter. `wake.w` is geometry_echoes's OWN predicate, so a bounce beam
            lights, holds, fades and re-arms with the box it belongs to — that is where the
            persistence comes from. `spoke` is the same every-tenth subset the primaries
            use, and it reaches this draw for free: an attribute a pointKernel does not
-           DECLARE still flows through the pointset, so mark2a never had to spend a slot
+           DECLARE still flows through the pointset, so kernel_mark2a never had to spend a slot
            on it. Drop it and all 240 legs draw: the basin becomes green spaghetti, green
            energy ×6.5 again, and it is T681's picture exactly. */
         group: "p.wake.w > 0.03 && p.spoke > 0.5",
       }, {
-        label: "bounce1",
-        /* mark2a's tint, unchanged — so the leg and the echo it ends on are ONE colour,
+        label: "geometry_bounce",
+        /* kernel_mark2a's tint, unchanged — so the leg and the echo it ends on are ONE colour,
            the same agreement the primaries and their boxes now keep. */
         parameters: {
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
@@ -749,7 +749,7 @@ export const lidarDocument = document(
            UNSHADOWED — "outside the volume means the light simply shines" — which is a
            discontinuity across the frame that reads as a rendering fault. */
         intensity: 0.50, shadows: true, shadowExtent: 7.0,
-      }, { label: "moon1" }),
+      }, { label: "light_moon" }),
       /* T658, the owner's "more interesting lights": the instrument LIGHTS ITS OWN
          GROUND. A point light at the mast, warm against the moon's cool key, with the
          1/(1+d²) falloff putting a pool of amber under the emitter and nothing at the
@@ -762,7 +762,7 @@ export const lidarDocument = document(
            was really the moon's shadow boundary — a second light is meant to say where
            the instrument is, not to relight the scene. */
         intensity: 0.8, shadows: false,
-      }, { label: "lamp1" }),
+      }, { label: "light_lamp" }),
       node("skyband", "ramp", [-960, -1400], {
         /* T659 retune, now that this map is DRAWN and not only taken. v = acos(y)/π,
            so position 0 is the zenith and 1 the nadir; the camera's 46° frustum, tilted
@@ -779,14 +779,14 @@ export const lidarDocument = document(
           { position: 0.78, color: [0.150, 0.130, 0.150, 1] },
           { position: 1.0, color: [0.020, 0.018, 0.030, 1] },
         ],
-      }, { label: "skyband1", definitionVersion: 2, resolution: { mode: "fixed", width: 256, height: 128 } }),
+      }, { label: "ramp_skyband", definitionVersion: 2, resolution: { mode: "fixed", width: 256, height: 128 } }),
       /* THE ORBIT RADIUS IS HERE, in the two amplitudes — see LIDAR_ORBIT. */
       node("orbx", "lfo", [-2880, 520], {
         shape: "sine", frequency: 0.019, amplitude: LIDAR_ORBIT, offset: 0, phase: 0.25,
-      }, { label: "orbx1" }),
+      }, { label: "lfo_orbx" }),
       node("orbz", "lfo", [-2880, 1000], {
         shape: "sine", frequency: 0.019, amplitude: LIDAR_ORBIT, offset: 0, phase: 0,
-      }, { label: "orbz1" }),
+      }, { label: "lfo_orbz" }),
       node("eye", "camera", [-640, -440], {
         /* T672 — `lookAt` IS live, unlike eye.x and eye.z, and 1.60 rather than 0.55 is
            what puts the beams' convergence at the mast just above the frame instead of
@@ -796,16 +796,16 @@ export const lidarDocument = document(
            2369, corners at 395/1184/1974/2763 — and the near rim stays behind the camera. */
         eye: [LIDAR_ORBIT, 3.1, 0], lookAt: [0, 1.60, 0], fov: 46, near: 0.1, far: 40, ortho: false,
       }, {
-        label: "eye1",
+        label: "camera_eye",
         parameters: {
-          "eye.x": drivenSlot("orbx1", LIDAR_ORBIT),
-          "eye.z": drivenSlot("orbz1", 0),
+          "eye.x": drivenSlot("lfo_orbx", LIDAR_ORBIT),
+          "eye.z": drivenSlot("lfo_orbz", 0),
         },
       }),
       node("shot", "render", [-320, -140], {
-        scenes: "ground1 impacts1 echoes1 rays1 bounce1",
-        camera: "eye1",
-        lights: "moon1 lamp1",
+        scenes: "geometry_ground geometry_impacts geometry_echoes geometry_rays geometry_bounce",
+        camera: "camera_eye",
+        lights: "light_moon light_lamp",
         ambientColor: [0.50, 0.60, 0.92, 1],
         /* 0.11, down from 0.16: the sky is now a real diffuse source AND a visible
            backdrop, so the flat ambient floor that used to stand in for it can step
@@ -821,7 +821,7 @@ export const lidarDocument = document(
            colour and nothing else, which is why the night read as flat black however the
            ramp was tuned. This is the opt-in — the switch is off everywhere else. */
         showEnvironment: true,
-      }, { label: "shot1" }),
+      }, { label: "render_shot" }),
 
       /* ---- the returns glow --------------------------------------------------- */
       /* The glow's window. 0.95 rather than 1.15 for the white point — the owner's
@@ -829,14 +829,14 @@ export const lidarDocument = document(
          rather than by turning something up downstream. */
       node("cut", "level", [0, -140], {
         blacklevel: 0.42, whitelevel: 0.95, gamma1: 1, contrast: 1, brightness: 1, opacity: 1,
-      }, { label: "cut1" }),
+      }, { label: "level_cut" }),
       /* The clamp is LOAD-BEARING, not tidiness (E33's lesson, relearned the hard way):
          Level is a SIGNED pipeline — below blacklevel it emits NEGATIVES, the blur
          spreads them across the whole frame, and add then SUBTRACTS the halo from the
          picture. On this night scene almost everything sits below the threshold, so the
          un-clamped chain blacked out the entire film. */
-      node("clip", "limit", [320, -140], { mode: "clamp", low: 0, high: 6, steps: 4 }, { label: "clip1" }),
-      node("halo", "blur", [640, -140], { size: 28, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
+      node("clip", "limit", [320, -140], { mode: "clamp", low: 0, high: 6, steps: 4 }, { label: "limit_clip" }),
+      node("halo", "blur", [640, -140], { size: 28, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
 
       /* ---- the trail: a LUMINANCE-thresholded feedback (T711) ------------------ */
       /* THE TUNING QUESTION IS WHERE THIS SITS RELATIVE TO THE POOL-LIT GROUND, and it
@@ -849,27 +849,27 @@ export const lidarDocument = document(
          raise it past 0.40 and only the 0.7% of the frame that is core survives. */
       node("hot", "threshold", [0, 340], {
         threshold: 0.16, softness: 0.10, channel: "luminance", compare: "greater",
-      }, { label: "hot1" }),
+      }, { label: "threshold_hot" }),
       /* Threshold emits a MASK in rgb and alpha alike, so the colour has to be put back:
          multiply keeps what passed and discards what did not. `opacity` scales the FRONT
          layer, which makes it the loop's INJECTION GAIN and the only place it lives. */
-      node("stain", "multiply", [320, 340], { opacity: 0.05 }, { label: "stain1" }),
-      node("smear", "add", [640, 340], {}, { label: "smear1" }),
+      node("stain", "multiply", [320, 340], { opacity: 0.05 }, { label: "multiply_stain" }),
+      node("smear", "add", [640, 340], {}, { label: "add_smear" }),
       /* §V631 — BOUNDED BY ARITHMETIC, not by hope: steady state is injection ÷ (1 −
          persistence), so 0.90 settles at 10× the injection and 0.05 × 10 = 0.5 of the
          source at a mark that holds still. Positive gain below 1: convergent, and no sign
          alternation (§V630's oscillator needs a NEGATIVE gain, which needs a Screen this
          path does not have). Measured rather than assumed, and not over a short window:
-         `smear1`'s own alpha reads [0, 0.47] at frame 60 and [0, 0.50] at frame 800, and
+         `add_smear`'s own alpha reads [0, 0.47] at frame 60 and [0, 0.50] at frame 800, and
          the sink's stays inside [0, 1]. What it buys, camera frozen: the amber band's
          hard-flip rate 2.9% → 0.5% at the steep end and 4.5% → 1.0% at the shallow one,
          with TOTAL energy down 1.6% — trails add frame-to-frame correlation, which is
          the point, and here they paid for themselves in energy as well. */
       node("trail", "feedback", [640, 560], {
-        source: "smear1", persistence: 0.90, clearColor: [0, 0, 0, 0],
-      }, { label: "trail1" }),
-      node("glow", "add", [960, -140], {}, { label: "glow1" }),
-      node("out", "output", [1280, -140], {}, { label: "out1" }),
+        source: "add_smear", persistence: 0.90, clearColor: [0, 0, 0, 0],
+      }, { label: "feedback_trail" }),
+      node("glow", "add", [960, -140], {}, { label: "add_glow" }),
+      node("out", "output", [1280, -140], {}, { label: "output1" }),
     ],
     [
       edge("e-sheet-unfold", ["sheet", "out"], ["unfold", "in"]),

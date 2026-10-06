@@ -1,5 +1,6 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * Arming, disarming and saving an audio feature track (T452, §V352).
@@ -74,6 +75,7 @@ export function registerAudioTrackCommands(bus: LoomBus): AudioTrackHolder {
 
   bus.registerCommand({
     name: "audio.toggleTrackRecording",
+    inputSchema: NO_INPUT,
     description: "Start or stop recording the session's audio features to a track.",
     handler: (_input, context) => {
       const revision = context.store.getRevision();
@@ -109,6 +111,7 @@ export function registerAudioTrackCommands(bus: LoomBus): AudioTrackHolder {
 
   bus.registerCommand({
     name: "audio.saveTrack",
+    inputSchema: NO_INPUT,
     description: "Write the recorded audio feature track to a file.",
     handler: async (_input, context) => {
       const revision = context.store.getRevision();

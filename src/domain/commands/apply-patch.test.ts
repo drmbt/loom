@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { GraphDocument } from "../types/graph.ts";
 import type { GraphPatchOperation } from "../types/patch.ts";
 import { alice, bob, contextFor, createHarness, patch, type Harness } from "./test-support.ts";
+import { z } from "zod";
 
 /**
  * `graph.applyPatch` invariants: §V13 §V14 §V32 §V33 §V34 §V35 §V36 §V40.
@@ -607,6 +608,10 @@ describe("graph.applyPatch — parameters and shader source", () => {
  * no audit entry, and an unhandled rejection at whatever called `bus.execute`. A caller
  * that sends garbage must get an answer, and the log must show that something was
  * refused (§V31).
+ *
+ * §T1556b: the BUS refuses it now, with the patch schema as `graph.applyPatch`'s input
+ * schema (`command.input`), before the handler's own structural check (`patch.malformed`,
+ * still there for the commands that build a patch and call `applyGraphPatch` directly).
  */
 describe("graph.applyPatch — structural validation of untrusted input (§V66)", () => {
   /** Bypasses the typed helper on purpose: this is what arrives over a transport. */
@@ -625,7 +630,7 @@ describe("graph.applyPatch — structural validation of untrusted input (§V66)"
     });
 
     expect(result.status).toBe("rejected");
-    expect(result.diagnostics[0]?.code).toBe("patch.malformed");
+    expect(result.diagnostics[0]?.code).toBe("command.input");
     // The path is what makes a rejected batch fixable.
     expect(result.diagnostics[0]?.message).toContain("operations.0.position");
     expect(graph()).toBe(before);
@@ -650,7 +655,7 @@ describe("graph.applyPatch — structural validation of untrusted input (§V66)"
         operations: [{ op: "addNode", ref: "$a", type: "test.solid", position: { x: bad, y: 0 } }],
       });
       expect(result.status).toBe("rejected");
-      expect(result.diagnostics[0]?.code).toBe("patch.malformed");
+      expect(result.diagnostics[0]?.code).toBe("command.input");
       expect(nodeCount()).toBe(0);
       expect(JSON.stringify({ x: bad })).toBe('{"x":null}');
     }
@@ -686,7 +691,7 @@ describe("graph.applyPatch — structural validation of untrusted input (§V66)"
       harness = createHarness();
       const result = await raw(patchInput);
       expect(result.status).toBe("rejected");
-      expect(result.diagnostics[0]?.code).toBe("patch.malformed");
+      expect(result.diagnostics[0]?.code).toBe("command.input");
       expect(harness.store.view.getAudit()).toHaveLength(1);
     }
   });
@@ -704,6 +709,7 @@ describe("graph.applyPatch — structural validation of untrusted input (§V66)"
   it("turns a throwing handler into an audited rejection", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
       handler: () => {
         throw new TypeError("boom");
       },

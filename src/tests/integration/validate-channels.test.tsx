@@ -245,19 +245,29 @@ describe("T593 — one resolver, two readers", () => {
     await settle();
     const first = result.current.channels;
 
+    // Nothing is called `knob_late` yet: nobody answers for it.
+    expect(first("knob_late", {} as never)).toBeUndefined();
+
     await act(async () => {
       await patch(runtime, [
-        { op: "addNode", ref: "$k", type: "constant", position: { x: 0, y: 0 } },
+        { op: "addNode", ref: "$k", type: "constant", position: { x: 0, y: 0 }, label: "knob_late", parameters: { value: 0.625 } },
       ]);
     });
     rerender();
     await settle();
 
-    // The memo is keyed on the document, so this IS a new object — and the bus must be
-    // handing out the new one. An effect that captured the first would pin every later
-    // command to a resolver built from a document that no longer exists.
-    expect(result.current.channels).not.toBe(first);
+    /*
+     * What a command must never read is a ladder built from a document that no longer
+     * exists. T1652b: the resolver is ONE object for the life of the runtime now and reads
+     * the flattening the store is on when it is ASKED (a values-only revision is compiled
+     * without a render, with the very reader its base was compiled with) — so the claim is
+     * no longer "a new object per revision", which was the mechanism, but what the reader
+     * gets back: the bus hands out the hook's resolver, and it answers for the node that
+     * was added after it was built.
+     */
     expect(runtime.bus.channelResolver()).toBe(result.current.channels);
+    expect(runtime.bus.channelResolver()?.("knob_late", {} as never)).toBe(0.625);
+    expect(first("knob_late", {} as never)).toBe(0.625);
   }, 30_000);
 
   it("validates a VALUE-GRAPH channel clean, on the plan that carries its number", async () => {

@@ -6,7 +6,7 @@ import { createComponentSystem } from "../domain/components/registry.ts";
 import { graphComponentDefinitionSchema } from "../domain/components/schemas.ts";
 import { readComponentInstance } from "../domain/components/instance.ts";
 import { defaultParameterValue } from "../domain/parameters/validate.ts";
-import { createParameterReadOptions } from "../domain/parameters/node-references.ts";
+import { parameterReadOptions } from "../domain/parameters/node-references.ts";
 import { effectiveParameterSchema, resolveParameterSchema } from "../domain/parameters/resolve.ts";
 import {
   PROJECT_FILE_EXTENSION,
@@ -144,7 +144,7 @@ describe("the shipped starter components are what the save path writes (§V94)",
     const indexOf = (instance: string) => {
       const history = flat.graph.nodes[flattenedNodeId(instance, "history")]!;
       const resolved = resolveParameterSchema(history, effectiveParameterSchema(system.nodes.get(history.type), history.parameters),
-        createParameterReadOptions({ graph: flat.graph, registry: system.nodes, channels: name => channels.get(name) }));
+        parameterReadOptions({ graph: flat.graph, registry: system.nodes, frame: undefined, channels: name => channels.get(name), flattening: flat }));
       expect(resolved.diagnostics).toEqual([]);
       return resolved.values["index"];
     };

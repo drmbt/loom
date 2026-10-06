@@ -89,3 +89,10 @@ public/media/furnace/
 
 # T1400b: On Nothing media — build products of src/projects/on-nothing/build.ts (GLB, song, HDRI); never commit
 public/media/on-nothing/
+
+# T1561b: the sentinel kit is a build product of tools/blender/sentinel-bot from a third-party FBX; never commit
+public/media/sentinel-bot/
+# T1561b: the owner's reference stills (film frames, a third-party model's render); not ours to distribute
+projects/sentinel-bot/inspo/
+# T1561b: the sentinel built to a track of somebody's own (build.ts --track --out); the committed project plays the shipped beat
+projects/sentinel-bot/local/

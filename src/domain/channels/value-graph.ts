@@ -1,12 +1,15 @@
-import type { GraphDocument } from "../types/graph.ts";
+import type { FlatGraph, GraphDocument } from "../types/graph.ts";
 import type { NodeId, PortId } from "../types/ids.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../types/frame.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { NodeDefinition, ValueChannels } from "../types/node-definition.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
-import type { ChannelResolver, ParameterMorphs } from "../parameters/resolve.ts";
+import type { ChannelResolver } from "../parameters/resolve.ts";
 import { resolveParameterSchema, effectiveParameterSchema } from "../parameters/resolve.ts";
 import { bypassPassthroughPorts } from "../graph/bypass.ts";
+import { nodeNames } from "../graph/names.ts";
+import { bindingTargets, parameterDependencies } from "../graph/parameter-dependencies.ts";
+import { parameterReadOptions, type FlatteningReads } from "../parameters/node-references.ts";
 
 /**
  * The value graph (T273/T274, §V179): TD's CHOP layer, CPU-side, evaluated once per
@@ -18,7 +21,8 @@ import { bypassPassthroughPorts } from "../graph/bypass.ts";
  * why that is safe — these are SCALARS — and why the reasoning must not be generalised
  * to pixels.
  *
- * Evaluation is topological over the value edges (Kahn, sorted, deterministic). A
+ * Evaluation is topological over value wires and active parameter dependencies (Kahn,
+ * sorted, deterministic). Only actual wires contribute input channel bags. A
  * cycle is reported and its members emit empty bags — the command-time rejection
  * (§V152) is the real gate; this is the runtime backstop. Each node produces a channel
  * BAG (`{ x, y }`, `{ value }`), addressed downstream as `name` or `name:channel`
@@ -26,10 +30,9 @@ import { bypassPassthroughPorts } from "../graph/bypass.ts";
  * frames (§V181), cleared on `reset()` — which is what ties them to §V170's seek
  * rules: their output is not a function of frame index alone.
  *
- * A node's own parameters resolve with the frame but WITHOUT channels — a value
- * node's parameter driven by another value node is the value graph's own wiring
- * question (connect them instead); resolving it through the resolver here would be
- * recursion through the seam this module implements.
+ * Parameters read channel bags already published in this evaluation. Reference ordering
+ * makes those bags current without recursively evaluating a node or advancing its state
+ * twice. External names use the caller's channel source; muted value nodes remain silent.
  *
  * ## MUTE and BYPASS (T541/B114)
  *
@@ -101,19 +104,29 @@ export interface ValueGraphResult {
 
 export interface ValueGraphSession {
   evaluate(
-    graph: GraphDocument,
+    /**
+     * §T1552b/§T1559b: the FLATTENING (`runtime.flattened.current().graph`). A component's
+     * value nodes exist only there (T615), so the authored document is a type error here.
+     */
+    graph: FlatGraph,
     frame: FrameEvaluationInput,
-    extras?: {
+    extras: {
+      /**
+       * §T1559b: what the flattening knows, WHOLE — the runtime passes its `FlattenedGraph`
+       * (§T1551b), the one `graph` came from. Its morphs in flight: a widget or a Constant a
+       * bank recalls with a morph publishes the FADING value, the same number the plan's
+       * uniforms carry that frame (T1497b, §V61, §V109). And its instances: a value node's
+       * own parameter reads `op('<instance>').chan.<c>` as the compiler does (T1485b).
+       *
+       * REQUIRED, as every field of a `ParameterReadContext` is (§T1551b): while it was
+       * optional the reader was built with no instances and nothing failed to compile. A
+       * caller with no flattening behind its graph says so by name, with `NO_FLATTENING`.
+       */
+      flattening: FlatteningReads;
       pointer?: { x: number; y: number; buttons: number };
       audio?: AudioFeatures;
       /** T654: external channels (analyze, or anything published) for `channelIn`. */
       channels?: (name: string) => number | undefined;
-      /**
-       * T1497b: the preset morphs in flight (`FlattenedGraph.morphs`). A widget or a
-       * Constant a bank recalls with a morph publishes the FADING value, the same number
-       * the plan's uniforms carry that frame — one read path (§V61, §V109).
-       */
-      morphs?: ParameterMorphs;
     },
   ): ValueGraphResult;
   /** Clears every node's persistent state (§V181) — transport reset, backward seek. */
@@ -130,14 +143,17 @@ const valuePortIds = (definition: NodeDefinition): ReadonlySet<PortId> =>
 export function createValueGraphSession(registry: NodeRegistryView): ValueGraphSession {
   /** nodeId → persistent state bag. Survives frames; dies on reset() or node removal. */
   const states = new Map<NodeId, Record<string, unknown>>();
+  // Authored reference parsing belongs to graph changes, never the frame path.
+  const dependenciesByGraph = new WeakMap<GraphDocument, ReadonlyMap<NodeId, ReadonlySet<NodeId>>>();
 
   return {
     reset() {
       states.clear();
     },
 
-    evaluate(graph, frame, extras = {}) {
+    evaluate(graph, frame, extras) {
       const diagnostics: RuntimeDiagnostic[] = [];
+      const { flattening } = extras;
 
       interface Member {
         readonly nodeId: NodeId;
@@ -157,9 +173,16 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
 
       /** Value edges between members, target input port → sorted upstream sources. */
       const incoming = new Map<NodeId, Array<{ edgeId: string; source: NodeId; port: PortId }>>();
-      const dependents = new Map<NodeId, NodeId[]>();
+      const dependents = new Map<NodeId, Set<NodeId>>();
       const indegree = new Map<NodeId, number>();
       for (const nodeId of members.keys()) indegree.set(nodeId, 0);
+      const orderAfter = (source: NodeId, target: NodeId): void => {
+        const dependentList = dependents.get(source) ?? new Set<NodeId>();
+        if (dependentList.has(target)) return;
+        dependentList.add(target);
+        dependents.set(source, dependentList);
+        indegree.set(target, (indegree.get(target) ?? 0) + 1);
+      };
       for (const edgeId of Object.keys(graph.edges).sort()) {
         const edge = graph.edges[edgeId];
         if (edge === undefined) continue;
@@ -170,10 +193,57 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
         const list = incoming.get(edge.target.nodeId) ?? [];
         list.push({ edgeId, source: edge.source.nodeId, port: edge.target.portId });
         incoming.set(edge.target.nodeId, list);
-        const dependentList = dependents.get(edge.source.nodeId) ?? [];
-        dependentList.push(edge.target.nodeId);
-        dependents.set(edge.source.nodeId, dependentList);
-        indegree.set(edge.target.nodeId, (indegree.get(edge.target.nodeId) ?? 0) + 1);
+        orderAfter(edge.source.nodeId, edge.target.nodeId);
+      }
+      let dependencies = dependenciesByGraph.get(graph);
+      if (dependencies === undefined) {
+        const authored = parameterDependencies(graph);
+        /*
+         * T1485b: `op('<instance>')` names no node of the flattening (the instance was
+         * inlined), so `parameterDependencies` finds nothing for it. The read goes to the
+         * inner nodes the instance's value outputs publish from, and it has to be ordered
+         * after them like any other reference — or a reader whose id sorts first reads a
+         * bag that is not published yet. The instances are the flattening's own, so they
+         * are as fixed as the graph this memo is keyed on.
+         */
+        const named = flattening.instanceChannels.size === 0 ? null : nodeNames(graph);
+        const readsOf = (owner: NodeId): NodeId[] => {
+          const reads = (authored.get(owner) ?? [])
+            .filter((reference) => reference.kind === "reference" || reference.kind === "driven")
+            .map((reference) => reference.to);
+          if (named === null) return reads;
+          for (const target of bindingTargets(graph.nodes[owner]?.parameters ?? {})) {
+            if (target.kind !== "reference") continue;
+            for (const source of flattening.instanceChannels.get(target.address) ?? []) {
+              const publisher = named.get(source.publisher);
+              if (publisher !== undefined) reads.push(publisher);
+            }
+          }
+          return reads;
+        };
+        const compiled = new Map<NodeId, Set<NodeId>>();
+        for (const target of members.keys()) {
+          const sources = new Set<NodeId>();
+          const visited = new Set<NodeId>();
+          const pending = [target];
+          while (pending.length > 0) {
+            const owner = pending.pop()!;
+            if (visited.has(owner)) continue;
+            visited.add(owner);
+            for (const read of readsOf(owner)) {
+              if (members.has(read)) sources.add(read);
+              // A nonvalue parameter owner may itself read a value channel. Walk that
+              // chain once when the graph changes, without evaluating any node's state.
+              else pending.push(read);
+            }
+          }
+          if (sources.size > 0) compiled.set(target, sources);
+        }
+        dependencies = compiled;
+        dependenciesByGraph.set(graph, dependencies);
+      }
+      for (const [target, sources] of dependencies) {
+        for (const source of sources) orderAfter(source, target);
       }
 
       // Kahn, deterministic: the ready set stays sorted.
@@ -203,6 +273,23 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
 
       const byId = new Map<NodeId, ValueChannels>();
       const byName = new Map<string, ValueChannels>();
+      const valueNames = new Set([...members.keys()].map(nodeId => graph.nodes[nodeId]?.label));
+      const resolver: ChannelResolver = (channel) => {
+        const colon = channel.indexOf(":");
+        const name = colon < 0 ? channel : channel.slice(0, colon);
+        const bag = byName.get(name);
+        if (bag === undefined) return undefined;
+        if (colon >= 0) return bag[channel.slice(colon + 1)];
+        if (bag["value"] !== undefined) return bag["value"];
+        const keys = Object.keys(bag);
+        return keys.length === 1 ? bag[keys[0] as string] : undefined;
+      };
+      const channels: ChannelResolver = (channel, context) => {
+        const name = channel.split(":", 1)[0]!;
+        if (valueNames.has(name)) return resolver(channel, context);
+        return extras.channels?.(channel);
+      };
+      const readOptions = parameterReadOptions({ graph, registry, channels, frame, flattening });
       /** Publishes a node's bag. A node that never calls this is SILENT (see the note). */
       const publish = (nodeId: NodeId, bag: ValueChannels): void => {
         // Non-finite numbers never leave a stage: downstream math on NaN is a graph
@@ -283,11 +370,7 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
           continue;
         }
 
-        // Frame-scoped, channel-free parameter resolution (see the module note).
-        const resolved = resolveParameterSchema(node, effectiveParameterSchema(member.definition, node.parameters), {
-          frame,
-          ...(extras.morphs === undefined ? {} : { morphs: extras.morphs }),
-        });
+        const resolved = resolveParameterSchema(node, effectiveParameterSchema(member.definition, node.parameters), readOptions);
         const state = states.get(nodeId) ?? {};
         states.set(nodeId, state);
 
@@ -316,17 +399,6 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
         }
         publish(nodeId, channels);
       }
-
-      const resolver: ChannelResolver = (channel) => {
-        const colon = channel.indexOf(":");
-        const name = colon < 0 ? channel : channel.slice(0, colon);
-        const bag = byName.get(name);
-        if (bag === undefined) return undefined;
-        if (colon >= 0) return bag[channel.slice(colon + 1)];
-        if (bag["value"] !== undefined) return bag["value"];
-        const keys = Object.keys(bag);
-        return keys.length === 1 ? bag[keys[0] as string] : undefined;
-      };
 
       return { byName, byId, diagnostics, resolver };
     },

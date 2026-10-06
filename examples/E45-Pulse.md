@@ -70,7 +70,7 @@ catalogue has now paid for twice.
 
 ## One node exchanges the clock
 
-Every lane references `clock1`, never the audio pattern directly. `clock1` is a
+Every lane references `switch_clock`, never the audio pattern directly. `switch_clock` is a
 `valueSwitch` with the pattern on its first input, so the whole set's tempo source is one
 node to swap. This is the seam for a real track: a file publishes no bar or barPhase, so
 playing to one means an `audioPattern` beside it at the known BPM — wire that as the
@@ -79,9 +79,9 @@ rewiring every drive.
 
 ## What to drive
 
-- `prox1.radius` — THE knob. Wider = denser web; drive it from anything.
+- `proximity1.radius` — THE knob. Wider = denser web; drive it from anything.
 - `step1.every` — phrase length in bars. 1 = cut every bar, frantic; 8 = long holds.
-- `paint1.hueoffset` — the palette. Already phrase-held; point it at anything else.
-- `spliceP1.amount` — the tear. Already on the high band; scale `hd1`'s operand.
-- `beat1.arrangement` — the downtime's depth. 0 flattens the breakdown away entirely.
-- `beat1.bpm` — the whole set's clock; every hold, sweep and breakdown follows it.
+- `hsv_paint.hueoffset` — the palette. Already phrase-held; point it at anything else.
+- `wgsl_spliceP.amount` — the tear. Already on the high band; scale `math_glitchgain`'s operand.
+- `pattern_beat.arrangement` — the downtime's depth. 0 flattens the breakdown away entirely.
+- `pattern_beat.bpm` — the whole set's clock; every hold, sweep and breakdown follows it.

@@ -141,7 +141,7 @@
       "atBrushed": {
         "definitionVersion": 1,
         "id": "atBrushed",
-        "label": "atbrushed1",
+        "label": "kernel_atbrushed",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 3072,
@@ -157,7 +157,7 @@
       "atGlass": {
         "definitionVersion": 1,
         "id": "atGlass",
-        "label": "atglass1",
+        "label": "kernel_atglass",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 3072,
@@ -173,7 +173,7 @@
       "atMirror": {
         "definitionVersion": 1,
         "id": "atMirror",
-        "label": "atmirror1",
+        "label": "kernel_atmirror",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 3072,
@@ -189,7 +189,7 @@
       "atRough": {
         "definitionVersion": 1,
         "id": "atRough",
-        "label": "atrough1",
+        "label": "kernel_atrough",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 3072,
@@ -205,7 +205,7 @@
       "ballPts": {
         "definitionVersion": 1,
         "id": "ballPts",
-        "label": "ballpts1",
+        "label": "grid_ball",
         "parameters": {
           "cols": 64,
           "count": 3072,
@@ -222,9 +222,9 @@
       "brushed": {
         "definitionVersion": 1,
         "id": "brushed",
-        "label": "brushed1",
+        "label": "geometry_brushed",
         "parameters": {
-          "material": "matbrushed1",
+          "material": "material_brushed",
           "mode": "surface"
         },
         "position": {
@@ -236,13 +236,13 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "camera1",
         "parameters": {
           "eye.x": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drift1').chan.value"
+                "source": "op('lfo_drift').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -269,7 +269,7 @@
       "drift": {
         "definitionVersion": 1,
         "id": "drift",
-        "label": "drift1",
+        "label": "lfo_drift",
         "parameters": {
           "amplitude": 1.6,
           "frequency": 0.02,
@@ -286,9 +286,9 @@
       "glass": {
         "definitionVersion": 1,
         "id": "glass",
-        "label": "glass1",
+        "label": "geometry_glass",
         "parameters": {
-          "material": "matglass1",
+          "material": "material_glass",
           "mode": "surface"
         },
         "position": {
@@ -300,7 +300,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "light_key",
         "parameters": {
           "color": [
             1,
@@ -327,7 +327,7 @@
       "matBrushed": {
         "definitionVersion": 1,
         "id": "matBrushed",
-        "label": "matbrushed1",
+        "label": "material_brushed",
         "parameters": {
           "color": [
             0.92,
@@ -347,7 +347,7 @@
       "matGlass": {
         "definitionVersion": 1,
         "id": "matGlass",
-        "label": "matglass1",
+        "label": "material_glass",
         "parameters": {
           "color": [
             0.22,
@@ -367,7 +367,7 @@
       "matMirror": {
         "definitionVersion": 1,
         "id": "matMirror",
-        "label": "matmirror1",
+        "label": "material_mirror",
         "parameters": {
           "color": [
             0.92,
@@ -387,7 +387,7 @@
       "matPlate": {
         "definitionVersion": 1,
         "id": "matPlate",
-        "label": "matplate1",
+        "label": "material_plate",
         "parameters": {
           "color": [
             0.16,
@@ -407,7 +407,7 @@
       "matRough": {
         "definitionVersion": 1,
         "id": "matRough",
-        "label": "matrough1",
+        "label": "material_rough",
         "parameters": {
           "color": [
             0.92,
@@ -427,9 +427,9 @@
       "mirror": {
         "definitionVersion": 1,
         "id": "mirror",
-        "label": "mirror1",
+        "label": "geometry_mirror",
         "parameters": {
-          "material": "matmirror1",
+          "material": "material_mirror",
           "mode": "surface"
         },
         "position": {
@@ -441,7 +441,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "filmic"
         },
@@ -454,9 +454,9 @@
       "plate": {
         "definitionVersion": 1,
         "id": "plate",
-        "label": "plate1",
+        "label": "geometry_plate",
         "parameters": {
-          "material": "matplate1",
+          "material": "material_plate",
           "mode": "surface"
         },
         "position": {
@@ -468,7 +468,7 @@
       "plateLay": {
         "definitionVersion": 1,
         "id": "plateLay",
-        "label": "platelay1",
+        "label": "kernel_platelay",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 1728,
@@ -484,7 +484,7 @@
       "platePts": {
         "definitionVersion": 1,
         "id": "platePts",
-        "label": "platepts1",
+        "label": "grid_plate",
         "parameters": {
           "cols": 48,
           "count": 1728,
@@ -501,9 +501,9 @@
       "rough": {
         "definitionVersion": 1,
         "id": "rough",
-        "label": "rough1",
+        "label": "geometry_rough",
         "parameters": {
-          "material": "matrough1",
+          "material": "material_rough",
           "mode": "surface"
         },
         "position": {
@@ -515,7 +515,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0.45,
@@ -531,11 +531,11 @@
             0.05,
             1
           ],
-          "camera": "cam1",
+          "camera": "camera1",
           "environmentIntensity": 1,
           "environmentTaps": 8,
-          "lights": "key1",
-          "scenes": "plate1 mirror1 brushed1 rough1 glass1"
+          "lights": "light_key",
+          "scenes": "geometry_plate geometry_mirror geometry_brushed geometry_rough geometry_glass"
         },
         "position": {
           "x": -60,
@@ -546,7 +546,7 @@
       "sky": {
         "definitionVersion": 2,
         "id": "sky",
-        "label": "sky1",
+        "label": "ramp_sky",
         "parameters": {
           "interp": "linear",
           "period": 1,

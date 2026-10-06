@@ -84,7 +84,7 @@ describe("E39 Rosette claims", () => {
    * §V694, as a gate rather than as a paragraph. A positive black level is a SUBTRACTION
    * and nothing clamps it in float, so the bloom that reads "keep only the highlights"
    * sends every darker pixel negative and the Add composite that consumes it comes out
-   * DARKER than its other input. `haze1` must threshold with gamma, which cannot cross zero.
+   * DARKER than its other input. `level_haze` must threshold with gamma, which cannot cross zero.
    */
   it("thresholds the bloom with gamma and never with a black level", () => {
     expect(nodes["haze"]?.parameters["blacklevel"]).toBe(0);

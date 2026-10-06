@@ -5,11 +5,11 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 /**
  * E48 — Marionette (T956). POSE, SHOWCASED — the README's claim, finally in a picture.
  *
- *   cam1(webcam) ─► pose1(pose) ── index 1 ─┐
- *   dancer1(customWgsl, 17x1)  ── index 0 ──┴─► pick1(switch) ─┬─► bones1(customWgsl)
- *                                                              └─► joints1(pointsFromTexture, VALUE)
- *   joints1 ─► marks1(geometry points) ─► shot1(render) ─┐
- *   bones1 ──────────────────────────────► glow1(add) ◄──┘ ─► echo loop ─► out1
+ *   webcam1(webcam) ─► pose1(pose) ── index 1 ─┐
+ *   wgsl_dancer(customWgsl, 17x1)  ── index 0 ──┴─► switch_pick(switch) ─┬─► wgsl_bones(customWgsl)
+ *                                                              └─► texturepoints_joints(pointsFromTexture, VALUE)
+ *   texturepoints_joints ─► geometry_marks(geometry points) ─► render_shot(render) ─┐
+ *   wgsl_bones ──────────────────────────────► add_glow(add) ◄──┘ ─► echo loop ─► output1
  *
  * ## What the picture is
  *
@@ -17,24 +17,24 @@ import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
  * an echo trail that turns motion into ribbons. The shipped performer is SYNTHETIC — a
  * procedural walk cycle emitted as the SAME 17x1 keypoint texture MoveNet produces (one
  * texel per joint: r,g the position across the frame, b the confidence) — so every gate
- * and the gallery card see a dancer, deterministically. Flip `pick1` to 1 and the same
+ * and the gallery card see a dancer, deterministically. Flip `switch_pick` to 1 and the same
  * two consumers read `pose1` tracking whoever is at the webcam.
  *
  * ## The keypoint texture IS the contract (T386's design, exercised end to end)
  *
  * Neither consumer knows which source is live, because both read the texture contract
- * rather than the model: `joints1` is `pointsFromTexture` in VALUE mode — texel i's
+ * rather than the model: `texturepoints_joints` is `pointsFromTexture` in VALUE mode — texel i's
  * CONTENTS are point i, "the model says where the wrist is, not the texture's layout" —
- * and `bones1` textureLoads the same seventeen texels and draws the skeleton's eighteen
+ * and `wgsl_bones` textureLoads the same seventeen texels and draws the skeleton's eighteen
  * segments analytically. Confidence gates both: a joint below threshold is PARKED by
- * `joints1` (E34's idiom) and its bones fade in `bones1`, so a person walking out of
+ * `texturepoints_joints` (E34's idiom) and its bones fade in `wgsl_bones`, so a person walking out of
  * shot dissolves instead of collapsing to the origin.
  *
  * ## §T715, again, deliberately
  *
  * Without the model, `pose1` publishes zero-confidence keypoints: nothing drawn on the
  * ML branch, never a failure — and the switch's default means the document opens on the
- * synthetic dancer regardless. Webcam permission is only requested when `cam1`
+ * synthetic dancer regardless. Webcam permission is only requested when `webcam1`
  * activates, never on load (E27/E47's precedent).
  */
 
@@ -180,46 +180,46 @@ export const marionetteDocument = document(
         stride: 0.09,
         bob: 0.012,
         tempo: 0.55,
-      }, { label: "dancer1" }),
+      }, { label: "wgsl_dancer" }),
       /* The dancer's seed exists only to size the 17x1 keypoint canvas (customWgsl
          inherits its input's resolution); its pixels are never read. */
       node("seed", "ramp", [-2520, -160], { type: "horizontal", interp: "linear", phase: 0, period: 1, stops: [
         { position: 0, color: [0, 0, 0, 1] },
         { position: 1, color: [0, 0, 0, 1] },
-      ] }, { label: "seed1", definitionVersion: 2, resolution: { mode: "fixed", width: 17, height: 1 } }),
-      node("cam", "webcam", [-2220, 120], {}, { label: "cam1" }),
+      ] }, { label: "ramp_seed", definitionVersion: 2, resolution: { mode: "fixed", width: 17, height: 1 } }),
+      node("cam", "webcam", [-2220, 120], {}, { label: "webcam1" }),
       node("pose", "pose", [-1920, 120], {}, { label: "pose1" }),
-      node("pick", "switch", [-1620, -20], { index: 0 }, { label: "pick1" }),
+      node("pick", "switch", [-1620, -20], { index: 0 }, { label: "switch_pick" }),
 
       // ---- the two consumers of the one contract ----------------------------------
       node("joints", "pointsFromTexture", [-1320, -160], {
         mode: "value", cols: 17, rows: 1, threshold: 0.3, sizeX: 2, sizeY: 2, depth: 0,
-      }, { label: "joints1" }),
+      }, { label: "texturepoints_joints" }),
       node("marks", "geometry", [-1020, -160], {
         mode: "points", scale: 0.017, soft: 1, spherical: true, blend: "additive",
-        material: "spark1", tint: [1, 0.85, 0.6, 1],
-      }, { label: "marks1" }),
-      node("spark", "materialUnlit", [-1020, -380], { color: [1, 1, 1, 1] }, { label: "spark1" }),
+        material: "material_spark", tint: [1, 0.85, 0.6, 1],
+      }, { label: "geometry_marks" }),
+      node("spark", "materialUnlit", [-1020, -380], { color: [1, 1, 1, 1] }, { label: "material_spark" }),
       node("eye", "camera", [-1020, 60], {
         eye: [0, 0, 2.6], lookAt: [0, 0, 0], fov: 45, near: 0.1, far: 20, ortho: false,
-      }, { label: "eye1" }),
+      }, { label: "camera_eye" }),
       node("shot", "render", [-720, -160], {
-        scenes: "marks1", camera: "eye1", lights: "",
+        scenes: "geometry_marks", camera: "camera_eye", lights: "",
         ambientColor: [0, 0, 0, 1], ambientIntensity: 0,
         background: [0, 0, 0, 1],
         antialias: "msaa",
-      }, { label: "shot1" }),
+      }, { label: "render_shot" }),
       node("bones", "customWgsl", [-1320, 120], {
         [SHADER_SOURCE_PARAMETER]: BONES_WGSL,
         width: 0.0045,
         gain: 0.7,
         /* customWgsl inherits its INPUT's resolution — which here is the 17x1 keypoint
            strip. The skeleton needs the frame. */
-      }, { label: "bones1", resolution: { mode: "fixed", width: 1280, height: 720 } }),
+      }, { label: "wgsl_bones", resolution: { mode: "fixed", width: 1280, height: 720 } }),
 
       // ---- the composite and its memory --------------------------------------------
-      node("glow", "add", [-420, -20], { opacity: 1 }, { label: "glow1" }),
-      node("out", "output", [-120, -20], {}, { label: "out1" }),
+      node("glow", "add", [-420, -20], { opacity: 1 }, { label: "add_glow" }),
+      node("out", "output", [-120, -20], {}, { label: "output1" }),
     ],
     [
       edge("e-seed-dancer", ["seed", "out"], ["dancer", "input"]),

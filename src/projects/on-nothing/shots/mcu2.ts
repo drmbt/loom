@@ -407,7 +407,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 function renamed(nodes: readonly GraphNode[], edges: readonly GraphEdge[], suffix: string): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const ids = new Map(nodes.map((n) => [n.id, `${n.id}${suffix}`]));
   return {
-    nodes: nodes.map((n) => ({ ...n, id: ids.get(n.id)!, ...(n.label === undefined ? {} : { label: `${n.label.replace(/1$/, "")}${suffix}1` }) })),
+    nodes: nodes.map((n) => ({ ...n, id: ids.get(n.id)!, ...(n.label === undefined ? {} : { label: `${n.label}${suffix}` }) })),
     edges: edges.map((e) => ({ ...e, id: `${e.id}${suffix}`, source: { ...e.source, nodeId: ids.get(e.source.nodeId) ?? e.source.nodeId }, target: { ...e.target, nodeId: ids.get(e.target.nodeId) ?? e.target.nodeId } })),
   };
 }
@@ -462,7 +462,7 @@ export function mcu2Document(facts: OnNothingFacts, options: McuOptions): Projec
     const place: [number, number, number] = [eye[0]! + fw[0]! * distance + right[0]! * across, eye[1]! - 0.9 - (0.52 - 0.5) * 2 * tanV * distance, eye[2]! + fw[2]! * distance + right[2]! * across];
     const second = figureNodes(facts, {
       area: "figcap",
-      material: "surf1",
+      material: "material_surf",
       yaw: Math.atan2(-fw[0]!, -fw[2]!) + 0.5,
       place,
       pose: { "upperarmL.z": "-0.9", "upperarmR.z": "0.75", "forearmL.x": "-0.3", "forearmR.x": "-0.2", "neck.x": "0.1", "thighL.z": "0.08", "thighR.z": "-0.08" },
@@ -471,11 +471,11 @@ export function mcu2Document(facts: OnNothingFacts, options: McuOptions): Projec
     for (const node of copy.nodes) cut.nodes[node.id] = node;
     for (const edge of copy.edges) cut.edges[edge.id] = edge;
     const shot = cut.nodes["shot"]!;
-    setParams(cut, "shot", { scenes: `${shot.parameters["scenes"] as string} figgeob1` });
+    setParams(cut, "shot", { scenes: `${shot.parameters["scenes"] as string} geometry_figb` });
     // light it as the cyc does: a broad soft front light on it alone
-    addNode(cut, "l_cyc", "light", [-2600, 1900], { kind: "point", position: [place[0] - fw[0]! * 2.5, place[1] + 2.2, place[2] - fw[2]! * 2.5], color: [0.9, 0.97, 1, 1], intensity: 14 }, { label: "lcyc1" });
-    setParams(cut, "shot", { lights: `${cut.nodes["shot"]!.parameters["lights"] as string} lcyc1` });
-    addNode(cut, "cycGround", "customWgslMulti", [-2250, 150], { source: CYC_GROUND_WGSL, edge: 0.2, soft: 0.025, cyc: [2.2, 2.4, 2.45], ground: [0.2, 0.27, 0.29], fall: 1.6 }, { label: "cycground1", resolution: { mode: "project" } });
+    addNode(cut, "l_cyc", "light", [-2600, 1900], { kind: "point", position: [place[0] - fw[0]! * 2.5, place[1] + 2.2, place[2] - fw[2]! * 2.5], color: [0.9, 0.97, 1, 1], intensity: 14 }, { label: "light_lcyc" });
+    setParams(cut, "shot", { lights: `${cut.nodes["shot"]!.parameters["lights"] as string} light_lcyc` });
+    addNode(cut, "cycGround", "customWgslMulti", [-2250, 150], { source: CYC_GROUND_WGSL, edge: 0.2, soft: 0.025, cyc: [2.2, 2.4, 2.45], ground: [0.2, 0.27, 0.29], fall: 1.6 }, { label: "wgsl_cycground", resolution: { mode: "project" } });
     spliceAfter(cut, "shot", "cycGround");
     connect(cut, ["shot", "depth"], ["cycGround", "more"], 0);
   }

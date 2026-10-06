@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
+import { flatDocument } from "../compiler/test-support.ts";
+import { NO_FLATTENING } from "../domain/parameters/node-references.ts";
 import { resolveParameters } from "../domain/parameters/index.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
@@ -24,6 +26,7 @@ import type { UdpSocket, UdpSocketFactory } from "./device-hub.ts";
 import { encodeOscMessage } from "./osc-codec.ts";
 import type { OscBridgeState } from "../domain/osc/osc-status.ts";
 import type { OscSendOutcome } from "./device-protocol.ts";
+import { testRead } from "../domain/parameters/test-support.ts";
 
 /**
  * THE DEVICE BRIDGE, OVER A REAL SOCKET (T942 tier 3, §V382).
@@ -260,7 +263,8 @@ describe("GATE 1 — an OSC message drives a parameter, end to end", () => {
       mode: "realtime",
       randomSeed: 1,
     };
-    const evaluated = session.evaluate(graph, frame, {
+    const evaluated = session.evaluate(flatDocument(graph), frame, {
+      flattening: NO_FLATTENING,
       pointer: { x: 0, y: 0, buttons: 0 },
       // The session's OWN resolver shape: `osc:` names, exactly as `app.tsx` merges it.
       channels: (name) => device.readings.get(name),
@@ -287,7 +291,7 @@ describe("GATE 1 — an OSC message drives a parameter, end to end", () => {
         },
       } as unknown as GraphNode,
       registry.get("blur"),
-      { frame, channels: evaluated.resolver },
+      testRead({ frame, channels: evaluated.resolver }),
     );
     expect(driven.get("size")?.value).toBeCloseTo(0.625, 6);
   });
@@ -433,9 +437,9 @@ describe("GATE 3 — an unreachable bridge degrades with a STATED reason (§V359
     );
     // NO `channels` at all — the shape a session with no device attachment has.
     const evaluated = session.evaluate(
-      graph,
+      flatDocument(graph),
       { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "realtime", randomSeed: 1 },
-      { pointer: { x: 0, y: 0, buttons: 0 } },
+      { flattening: NO_FLATTENING, pointer: { x: 0, y: 0, buttons: 0 } },
     );
     expect(evaluated.byId.get("osc1" as NodeId)).toEqual({ cutoff: 0.37, pan: -1 });
   });
@@ -715,7 +719,8 @@ describe("GATE 5 — devices with no agent server (T1111)", () => {
       mode: "realtime",
       randomSeed: 1,
     };
-    const evaluated = session.evaluate(graph, frame, {
+    const evaluated = session.evaluate(flatDocument(graph), frame, {
+      flattening: NO_FLATTENING,
       pointer: { x: 0, y: 0, buttons: 0 },
       channels: (name) => device.readings.get(name),
     });
@@ -735,7 +740,7 @@ describe("GATE 5 — devices with no agent server (T1111)", () => {
         },
       } as unknown as GraphNode,
       registry.get("blur"),
-      { frame, channels: evaluated.resolver },
+      testRead({ frame, channels: evaluated.resolver }),
     );
     expect(driven.get("size")?.value).toBeCloseTo(0.625, 6);
   });

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { resolveParameterSchema } from "../parameters/resolve.ts";
-import { createNodeReferenceReader } from "../parameters/node-references.ts";
+import { STORED_READ, resolveParameterSchema } from "../parameters/resolve.ts";
+import { testRead } from "../parameters/test-support.ts";
 import type { GraphNode } from "../types/graph.ts";
 import { validateStoredParameter } from "../parameters/validate.ts";
 import type { PulseParameter } from "../types/parameters.ts";
@@ -14,6 +14,7 @@ import { SHADER_SOURCE_PARAMETER } from "./apply-patch.ts";
 import { createDomainBus } from "./index.ts";
 import type { LoomBus } from "./bus.ts";
 import { alice, contextFor, createHarness, patch, type Harness } from "./test-support.ts";
+import { z } from "zod";
 
 /**
  * Firing a pulse (T214, §V123, §V124, §V125).
@@ -95,6 +96,7 @@ describe("parameter.pulse", () => {
     // backend. The pulse's own contract is that it names a command and the bus finds it.
     harness.bus.registerCommand({
       name: "test.clearHistory",
+      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
       handler: (input) => {
         fired.push(input);
         return { status: "applied", output: { cleared: input.nodeIds?.length ?? 0 } };
@@ -341,6 +343,60 @@ describe("copy (T246)", () => {
   });
 });
 
+/**
+ * §T1559b (2), ruled live: a copy copies what the row SHOWS (T1008), and the row is the
+ * live read — the frame on screen, the app's channels, `op()` reads of other nodes. The
+ * copy used to read `STORED_READ` (no frame, no reader), so off a parameter following
+ * another node or the clock it copied the retained static (2) while the row showed the
+ * running number. The bus is wired as the composition root wires it: `attachFrame`.
+ */
+describe("§T1559b — a copy reads what the row shows, not the stored static", () => {
+  it("copies the value an op() reference and the clock give right now", async () => {
+    const harness = createMenuHarness();
+    const source = await named(harness.bus, "blur1");
+    const target = await named(harness.bus, "blur2");
+    await harness.bus.execute(
+      "graph.applyPatch",
+      patch(harness.bus.store.getRevision(), [{ op: "setParameters", nodeId: source, parameters: { radius: 9 } }]),
+      context,
+    );
+    await withExpressionOn(harness, target, "radius", "op('blur1').par.radius");
+    await withExpressionOn(harness, target, "amount", "time * 2");
+    harness.bus.attachFrame(() => ({ timeSeconds: 5, deltaSeconds: 1 / 60, frameIndex: 300, mode: "realtime", randomSeed: 0 }));
+
+    const referenced = await harness.bus.execute("parameter.copyValue", { nodeId: target, parameterKey: "radius" }, context);
+    // 9 — blur1's radius, which is what the row shows; the bug copied the static 2.
+    expect(referenced.output.text).toBe("9");
+    const timed = await harness.bus.execute("parameter.copyValue", { nodeId: target, parameterKey: "amount" }, context);
+    // 10 at t = 5 s; the bug copied the zero-frame read (0).
+    expect(timed.output.text).toBe("10");
+  });
+
+  it("a compound's component copies its live channel too (T1008's component path)", async () => {
+    const harness = createMenuHarness();
+    const nodeId = await named(harness.bus, "blur1");
+    await harness.bus.execute(
+      "graph.applyPatch",
+      patch(harness.bus.store.getRevision(), [
+        {
+          op: "setParameters",
+          nodeId,
+          parameters: {
+            tint: [0.2, 0.2, 0.2, 1],
+            "tint.g": { mode: "expression", bindings: { expression: { kind: "expression", source: "time / 10" } } },
+          },
+        },
+      ]),
+      context,
+    );
+    harness.bus.attachFrame(() => ({ timeSeconds: 5, deltaSeconds: 1 / 60, frameIndex: 300, mode: "realtime", randomSeed: 0 }));
+
+    const result = await harness.bus.execute("parameter.copyValue", { nodeId, parameterKey: "tint.g" }, context);
+    // 0.5 at t = 5 s; the stored read gave the zero frame's 0.
+    expect(result.output.text).toBe("0.5");
+  });
+});
+
 describe("copy → paste → the value is the source's (§V148)", () => {
   /**
    * The round trip the invariant asks for, run all the way through the resolver — which
@@ -372,7 +428,7 @@ describe("copy → paste → the value is the source's (§V148)", () => {
 
     const node = harness.bus.store.getGraph().nodes[nodeId];
     if (node === undefined) throw new Error("the node vanished");
-    const resolved = resolveParameterSchema(node, menuNode.parameters);
+    const resolved = resolveParameterSchema(node, menuNode.parameters, STORED_READ);
     expect(resolved.get("amount")?.value).toBe(12);
     // And the source value MOVES with it: this is a reference, not a copy of a number.
     expect(copied.output.text).toBe("op('blur1').par.radius");
@@ -399,7 +455,7 @@ describe("copy → paste → the value is the source's (§V148)", () => {
 
     const node = harness.bus.store.getGraph().nodes[nodeId];
     if (node === undefined) throw new Error("the node vanished");
-    expect(resolveParameterSchema(node, menuNode.parameters).get("amount")?.value).toBe(9);
+    expect(resolveParameterSchema(node, menuNode.parameters, STORED_READ).get("amount")?.value).toBe(9);
   });
 
   it("refuses a self-reference instead of storing a cycle", async () => {
@@ -453,13 +509,12 @@ describe("copy → paste → the value is the source's (§V148)", () => {
 
     // The reader is the seam (§V61): resolving WITHOUT one still reports, because a
     // caller that cannot see the graph must not invent a number.
-    const unreadable = resolveParameterSchema(node, menuNode.parameters);
-    expect(unreadable.get("amount")?.diagnostic?.code).toBe("parameter.expression");
+    const unreadable = resolveParameterSchema(node, menuNode.parameters, STORED_READ);
+    // §T1641b: its own code. Nothing is wrong with the reference; this READ has no graph.
+    expect(unreadable.get("amount")?.diagnostic?.code).toBe("parameter.reference.unavailable");
 
     // With it, the round trip closes: the pasted reference is worth what it points at.
-    const resolved = resolveParameterSchema(node, menuNode.parameters, {
-      nodes: createNodeReferenceReader({ graph, schemaOf: () => menuNode.parameters }),
-    });
+    const resolved = resolveParameterSchema(node, menuNode.parameters, testRead({ graph, registry: { get: () => menuNode } }));
     expect(resolved.get("amount")?.diagnostic).toBeNull();
     expect(resolved.get("amount")?.value).toBe(17);
 
@@ -473,9 +528,7 @@ describe("copy → paste → the value is the source's (§V148)", () => {
       context,
     );
     const after = harness.bus.store.getGraph();
-    const moved = resolveParameterSchema(after.nodes[target] as GraphNode, menuNode.parameters, {
-      nodes: createNodeReferenceReader({ graph: after, schemaOf: () => menuNode.parameters }),
-    });
+    const moved = resolveParameterSchema(after.nodes[target] as GraphNode, menuNode.parameters, testRead({ graph: after, registry: { get: () => menuNode } }));
     expect(moved.get("amount")?.value).toBe(4);
   });
 });
@@ -629,7 +682,7 @@ describe("one copy, three pastes (T1004)", () => {
     await withExpressionOn(harness, source, "radius", "3 + 40");
     const node = harness.bus.store.getGraph().nodes[target];
     if (node === undefined) throw new Error("the node vanished");
-    expect(resolveParameterSchema(node, menuNode.parameters).get("amount")?.value).toBe(7);
+    expect(resolveParameterSchema(node, menuNode.parameters, STORED_READ).get("amount")?.value).toBe(7);
   });
 
   it("lands the REFERENCE — a live pointer, not the number it was worth", async () => {
@@ -661,9 +714,7 @@ describe("one copy, three pastes (T1004)", () => {
       const graph = harness.bus.store.getGraph();
       const node = graph.nodes[target];
       if (node === undefined) throw new Error("the node vanished");
-      return resolveParameterSchema(node, menuNode.parameters, {
-        nodes: createNodeReferenceReader({ graph, schemaOf: () => menuNode.parameters }),
-      }).get("amount")?.value;
+      return resolveParameterSchema(node, menuNode.parameters, testRead({ graph, registry: { get: () => menuNode } })).get("amount")?.value;
     };
     expect(read()).toBe(7);
     await withExpressionOn(harness, source, "radius", "3 + 40");
@@ -699,7 +750,7 @@ describe("one copy, three pastes (T1004)", () => {
     await withExpressionOn(harness, source, "radius", "3 + 40");
     const node = harness.bus.store.getGraph().nodes[target];
     if (node === undefined) throw new Error("the node vanished");
-    expect(resolveParameterSchema(node, menuNode.parameters).get("amount")?.value).toBe(7);
+    expect(resolveParameterSchema(node, menuNode.parameters, STORED_READ).get("amount")?.value).toBe(7);
   });
 
   it("carries all three members whichever COPY row was clicked", async () => {

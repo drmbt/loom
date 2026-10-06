@@ -5,6 +5,8 @@ import type { BackendCapabilities } from "../../domain/types/backend.ts";
 import type { GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
 import { compileGraph } from "../../compiler/index.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 import { constantNode, lfoNode, lfoValue, timerNode } from "./values.ts";
@@ -183,7 +185,7 @@ describe("value sources are wirable (T325, §V237)", () => {
 
     const seen: number[] = [];
     for (let frame = 0; frame < 30; frame += 1) {
-      const result = session.evaluate(graph, sessionFrame(frame / 60));
+      const result = session.evaluate(flatDocument(graph), sessionFrame(frame / 60), { flattening: NO_FLATTENING });
       const lagged = result.byName.get("lag1")?.["value"];
       expect(lagged, `frame ${frame}`).toBeTypeOf("number");
       seen.push(lagged as number);
@@ -208,7 +210,7 @@ describe("value sources are wirable (T325, §V237)", () => {
         ["const2", "out", "math1", "b"],
       ],
     );
-    const result = createValueGraphSession(registry).evaluate(graph, sessionFrame(0));
+    const result = createValueGraphSession(registry).evaluate(flatDocument(graph), sessionFrame(0), { flattening: NO_FLATTENING });
     expect(result.byName.get("math1")?.["value"]).toBe(14);
   });
 

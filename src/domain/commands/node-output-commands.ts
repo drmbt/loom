@@ -7,7 +7,9 @@ import type { GraphPatchResult } from "../types/patch.ts";
 import type { LoomBus } from "./bus.ts";
 import { COMPONENT_ID_SEPARATOR, INTERNAL_RESOLUTIONS_KEY, internalResolutions } from "../components/internal-resolutions.ts";
 import { isComponentInstance } from "../components/instance.ts";
-import { channelMaskSchema, nodeResolutionOverrideSchema } from "../types/schemas.ts";
+import { channelMaskSchema, nodeFormatOverrideSchema, nodeResolutionOverrideSchema } from "../types/schemas.ts";
+import { z } from "zod";
+import { idInput } from "./input-schema.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
 
 /**
@@ -51,6 +53,7 @@ const rejection = (
 export function registerNodeOutputCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: "node.setChannelMask",
+    inputSchema: z.object({ nodeId: idInput, channelMask: channelMaskSchema.nullable(), internalNodeId: idInput.optional() }).strict(),
     description: "Choose processed image channels; disabled channels preserve the first texture input.",
     handler: (input, context) => {
       if (input.internalNodeId !== undefined) {
@@ -89,6 +92,7 @@ export function registerNodeOutputCommands(bus: LoomBus): void {
   });
   bus.registerCommand({
     name: "node.setResolution",
+    inputSchema: z.object({ nodeId: idInput, resolution: nodeResolutionOverrideSchema.nullable() }).strict(),
     description: "Set or clear a node's output resolution override (§V50).",
     handler: (input, context) => {
       if (!context.graph.nodes[input.nodeId] && bus.flattenedGraph()?.nodes[input.nodeId]) {
@@ -131,6 +135,7 @@ export function registerNodeOutputCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: "node.setFormat",
+    inputSchema: z.object({ nodeId: idInput, format: nodeFormatOverrideSchema.nullable() }).strict(),
     description: "Set or clear a node's output pixel format override (§V51).",
     handler: (input, context) =>
       applyGraphPatch(

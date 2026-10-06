@@ -6,6 +6,8 @@ import type { GraphDocument } from "../types/graph.ts";
 import type { NodeId, Revision } from "../types/ids.ts";
 import type { GraphPatchOperation, GraphPatchResult } from "../types/patch.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
+import { z } from "zod";
+import { NO_INPUT, nodeIdsInput } from "./input-schema.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "./bus.ts";
 
 /**
@@ -134,6 +136,7 @@ export function registerLayoutCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: "graph.layoutAll",
+    inputSchema: NO_INPUT,
     description: "Arrange every node in reading order: data flows left to right (§V189).",
     handler: (_input, context) => {
       if (Object.keys(context.graph.nodes).length === 0) {
@@ -146,6 +149,7 @@ export function registerLayoutCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: "graph.layout",
+    inputSchema: z.object({ nodeIds: nodeIdsInput }).strict(),
     description: "Arrange the selected nodes into the positions the whole-graph layout gives them.",
     handler: (input, context) => {
       const asked = [...new Set(input.nodeIds)].sort();

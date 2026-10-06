@@ -2,10 +2,14 @@ import { z } from "zod";
 
 import {
   graphPatchOperationSchema as domainGraphPatchOperationSchema,
+  graphPatchSchema,
   storedParameterSchema,
 } from "@domain/types/schemas.ts";
 import { channelExpression } from "@domain/parameters/slots.ts";
-import { MORPH_CURVES, type MorphCurve } from "@domain/presets/bank.ts";
+import { componentExportInputSchema, componentImportInputSchema } from "@domain/components/component-file.ts";
+import { presetRecallInputSchema, presetStoreInputSchema } from "@domain/presets/commands.ts";
+import { presetDeleteInputSchema } from "@domain/presets/delete-command.ts";
+import { cueNamedInputSchema, cueStepInputSchema } from "@domain/presets/cue-commands.ts";
 
 /**
  * Tool input schemas — the "schema" half of "transport plus schema" (§V39, §V66).
@@ -66,6 +70,32 @@ export const PARAMETER_MODES =
   "or `parent.<key>` inside a component — and NOTHING on another node; " +
   "`map` a per-point attribute on a points input; " +
   "`driven` is RETIRED and refused here — a channel read is an expression, `op('lfo1').chan.value`.";
+
+/**
+ * T1593b — HOW A NODE IS NAMED, in the one place an agent reads it.
+ *
+ * A model over stdio has the `instructions` and the tool descriptions and nothing else, so
+ * the naming convention lives here as a sentence and is imported by both, the way
+ * `PARAMETER_MODES` is: one string, so the tool that prefixes a label and the instructions
+ * that explain why cannot drift apart.
+ *
+ * What it has to carry is what an agent gets WRONG without it: it writes `op('lamp')`
+ * against a node it asked to be called `lamp`, and the node is `slider_lamp`. So the
+ * sentence says which doors add the kind, that they report the name they stored, and that
+ * a label inside a patch is stored exactly as written.
+ */
+export const NODE_NAMES =
+  "A node's name is `kind_role`: its kind word, an underscore, then what the node is for " +
+  "(`slider_lamp`, `blur_diffuse`, `lfo_pathx`), and `op('slider_lamp')` reads it by that name. " +
+  "The kind is per node type and `list_node_definitions` gives it (`pointKernel` is `kernel`). " +
+  "An instance of a component is named for the component: one of Bloom is `bloom1`, then `bloom_glow`; " +
+  "`get_node` gives its kind. A new node with no label is auto-named kind plus a number " +
+  "(`blur1`), which already conforms. `add_node` with a `label`, and `rename_node`, put the kind " +
+  "in front of a label that lacks it and report the name they stored: read it from the result " +
+  "before writing an `op('…')` against it. A `label` inside `apply_graph_patch` is stored exactly " +
+  "as written, so write it in full there; one without its kind is still stored, with a warning and " +
+  "its conforming form in `data.unconformingLabels`. A component's In and Out are the exception: " +
+  "their name is the socket's label and takes no kind.";
 
 /**
  * T1208 — `driven` IS REFUSED AT THIS BOUNDARY, and the owner's question is why it needed
@@ -158,11 +188,12 @@ export const graphPatchOperationSchema = domainGraphPatchOperationSchema
  * built against a snapshot at all, so there they may default — a human clicking "add
  * node" does not carry a base revision either.
  */
-export const applyGraphPatchInput = z
-  .object({
-    baseRevision: z.number().int().nonnegative(),
-    operations: z.array(graphPatchOperationSchema).min(1),
-    label: z.string().max(200).optional(),
+export const applyGraphPatchInput = graphPatchSchema
+  // §T1556b: the command's own schema (`graph.applyPatch` parses it on the bus), with this
+  // boundary's policy on each operation and an empty patch refused. The cap is the command's
+  // (`graphPatchSchema`), which the bus applies to this input anyway.
+  .extend({
+    operations: z.array(graphPatchOperationSchema).min(1).max(10_000),
     /** §V36: validate and report, mutate nothing. */
     dryRun: z.boolean().optional(),
   })
@@ -252,7 +283,30 @@ export const addNodeInput = z
       .strict()
       .optional(),
     parameters: parameters.optional(),
+    /**
+     * T1593b: the node's name. Absent, it is auto-named kind plus a number. Given without
+     * the kind, the kind goes in front (`lamp` on a slider is stored `slider_lamp`) and the
+     * result names what was stored.
+     */
+    label: z.string().min(1).max(120).optional(),
+    /** Store `label` exactly as written, kind or no kind. */
+    exactLabel: z.boolean().optional(),
     baseRevision,
+    dryRun,
+  })
+  .strict();
+
+/**
+ * T1593b: rename by the same door a person's title editor uses (`node.rename`), so an
+ * agent's rename keeps the kind for the same reason and by the same rule. `label: null`
+ * clears the name.
+ */
+export const renameNodeInput = z
+  .object({
+    nodeId: z.string().min(1),
+    label: z.string().min(1).max(120).nullable(),
+    /** Store `label` exactly as written, kind or no kind. */
+    exact: z.boolean().optional(),
     dryRun,
   })
   .strict();
@@ -326,23 +380,14 @@ export const saveProjectInput = z.object({ saveAs: z.boolean().optional() }).str
  * T1494b: a component file crosses as TEXT, never as a path — the page cannot open a path,
  * and a tool that works on one transport is the split §V39 exists to prevent (§V485).
  */
-export const importComponentInput = z
-  .object({
-    text: z.string().min(1),
-    /** Named in every refusal, so the message says which file. */
-    fileName: z.string().min(1).optional(),
-    position: position.optional(),
-    dryRun,
-  })
+export const importComponentInput = componentImportInputSchema
+  // §T1556b: the command's own schema, with the one thing that differs at this door: an
+  // agent has no file picker, so the text is required here.
+  .extend({ text: z.string().min(1), dryRun })
   .strict();
 
-export const exportComponentInput = z
-  .object({
-    componentId: z.string().min(1),
-    /** Omitted: the latest installed version. */
-    version: z.number().int().positive().optional(),
-  })
-  .strict();
+/** §T1556b: the command's schema; the tool itself picks `destination` (text). */
+export const exportComponentInput = componentExportInputSchema.omit({ destination: true }).strict();
 
 /**
  * T1502b: preset banks and the cue list. Every field is one the COMMAND reads
@@ -350,16 +395,9 @@ export const exportComponentInput = z
  * `cue.setStandby`) — nothing here is a tool-side option, because a field the command does
  * not take would have to be implemented in the adapter (§V39).
  *
- * The curve list is the domain's (`MORPH_CURVES`), not a second copy of it: a curve added
- * to the bank's parser is one the agent can ask for in the same commit.
+ * §T1556b: and so each tool's schema IS the command's (`presetRecallInputSchema` and the
+ * rest, which the bus parses), extended with `dryRun` — one definition, not a mirror.
  */
-const morphSpec = z
-  .object({
-    /** 0 is a cut, whatever the preset or the bank says. */
-    seconds: finite.min(0),
-    curve: z.enum(MORPH_CURVES as unknown as [MorphCurve, ...MorphCurve[]]),
-  })
-  .strict();
 
 export const listPresetsInput = z
   .object({
@@ -368,20 +406,11 @@ export const listPresetsInput = z
   })
   .strict();
 
-export const storePresetInput = z.object({ nodeId: z.string().min(1), name: z.string().min(1), dryRun }).strict();
+export const storePresetInput = presetStoreInputSchema.extend({ dryRun }).strict();
 
-export const recallPresetInput = z
-  .object({
-    nodeId: z.string().min(1),
-    /** Omitted: the preset named in the bank's Select. */
-    name: z.string().min(1).optional(),
-    /** How THIS recall is carried out, over the preset's and the bank's own morph. */
-    morph: morphSpec.optional(),
-    dryRun,
-  })
-  .strict();
+export const recallPresetInput = presetRecallInputSchema.extend({ dryRun }).strict();
 
-export const deletePresetInput = z.object({ nodeId: z.string().min(1), name: z.string().min(1), dryRun }).strict();
+export const deletePresetInput = presetDeleteInputSchema.extend({ dryRun }).strict();
 
 export const listCuesInput = z
   .object({
@@ -390,15 +419,10 @@ export const listCuesInput = z
   })
   .strict();
 
-export const cueStepInput = z
-  .object({
-    /** Omitted: the one cue list whose Keys switch is on — refused, naming them, when none or several are. */
-    nodeId: z.string().min(1).optional(),
-    dryRun,
-  })
-  .strict();
+/** Omitted `nodeId`: the one cue list whose Keys switch is on — refused, naming them, when none or several are. */
+export const cueStepInput = cueStepInputSchema.extend({ dryRun }).strict();
 
-export const cueNamedInput = z.object({ nodeId: z.string().min(1), cue: z.string().min(1), dryRun }).strict();
+export const cueNamedInput = cueNamedInputSchema.extend({ dryRun }).strict();
 
 /**
  * Tool input types are INFERRED from the schemas above, never hand-written beside them.
@@ -429,6 +453,7 @@ export type ListExamplesInput = z.infer<typeof listExamplesInput>;
 export type GetExampleInput = z.infer<typeof getExampleInput>;
 export type GetDiagnosticsInput = z.infer<typeof getDiagnosticsInput>;
 export type AddNodeInput = z.infer<typeof addNodeInput>;
+export type RenameNodeInput = z.infer<typeof renameNodeInput>;
 export type DescribeOutputInput = z.infer<typeof describeOutputInput>;
 export type LayoutGraphInput = z.infer<typeof layoutGraphInput>;
 export type RemoveNodesInput = z.infer<typeof removeNodesInput>;

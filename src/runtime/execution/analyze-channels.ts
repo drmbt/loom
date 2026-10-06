@@ -1,10 +1,10 @@
-import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
+import type { FlatGraph, GraphNode } from "../../domain/types/graph.ts";
 import type { NodeId } from "../../domain/types/ids.ts";
 import type { ChannelResolver } from "../../domain/parameters/resolve.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { scratchResourceId } from "../../compiler/resources.ts";
 import { resolveParameters } from "../../domain/parameters/resolve.ts";
-import { createParameterReadOptions, type ParameterReadContext } from "../../domain/parameters/node-references.ts";
+import { NO_FLATTENING, parameterReadOptions, type ParameterReadContext } from "../../domain/parameters/node-references.ts";
 
 /**
  * Analyze readback channels (T236, §V144, §V48).
@@ -44,23 +44,23 @@ export interface AnalyzeEntry {
  * here. All four reductions are computed every frame and this only picks one, so it is
  * the CPU's to resolve — at the moment the caller hands in (`read.frame`), with the
  * channels and the preset morphs in flight then. An Operation never fades itself (an enum
- * cuts), but its expression can read a parameter that does. No `read`: what the document
- * says, an expression at the zero frame.
+ * cuts), but its expression can read a parameter that does. §T1551b: `read` is required —
+ * the flattening rides in it, so `op('<instance>').chan.<c>` reads here as it does in the plan.
  */
 export function analyzeOperationOf(
   node: GraphNode,
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
-  read: Pick<ParameterReadContext, "frame" | "channels" | "morphs"> = {},
+  read: Pick<ParameterReadContext, "frame" | "channels" | "flattening">,
 ): AnalyzeEntry["operation"] {
-  const resolved = resolveParameters(node, registry.get(node.type), createParameterReadOptions({ graph, registry, ...read }));
+  const resolved = resolveParameters(node, registry.get(node.type), parameterReadOptions({ graph, registry, ...read }));
   const operation = resolved.get("operation")?.value;
   return operation === "minimum" || operation === "maximum" || operation === "logAverage" ? operation : "average";
 }
 
 /** The entries the current document declares — recomputed after each compile. */
 export function analyzeChannelEntries(
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
   resultKey = "result",
 ): AnalyzeEntry[] {
@@ -74,7 +74,9 @@ export function analyzeChannelEntries(
       channel: node.label,
       nodeId,
       resourceId: scratchResourceId(nodeId, resultKey),
-      operation: analyzeOperationOf(node, graph, registry),
+      // The compile's snapshot: what the document says, at the zero frame. The live set is
+      // re-resolved each frame with the channels and the flattening (`refreshOperations`).
+      operation: analyzeOperationOf(node, graph, registry, { frame: undefined, channels: undefined, flattening: NO_FLATTENING }),
     });
   }
   return entries;

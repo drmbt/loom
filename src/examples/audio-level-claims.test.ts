@@ -5,6 +5,8 @@ import type { FrameEvaluationInput } from "../domain/types/frame.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
+import { flatDocument } from "../compiler/test-support.ts";
+import { NO_FLATTENING } from "../domain/parameters/node-references.ts";
 import { valueLagNode } from "../nodes/definitions/value-graph-nodes.ts";
 import { audioLevelHost } from "./starter-components.ts";
 
@@ -58,7 +60,7 @@ function traceLow(graph: GraphDocument, nodeId: string, frames: number): number[
   const session = createValueGraphSession(registry);
   const out: number[] = [];
   for (let index = 0; index < frames; index += 1) {
-    const result = session.evaluate(graph, frameAt(index), {});
+    const result = session.evaluate(flatDocument(graph), frameAt(index), { flattening: NO_FLATTENING });
     out.push(result.byId.get(nodeId as never)?.["low"] ?? NaN);
   }
   return out;

@@ -22,12 +22,12 @@ describe("E14 Self-Regulating Bloom claims", () => {
   it("closes analyze → channelIn → error chain → driven brightness, with negative sign", () => {
     // Sensor on the final add, the same node the output shows.
     expect(nodes["meter"]?.type).toBe("analyze");
-    expect(nodes["meter"]?.label).toBe("meter1");
+    expect(nodes["meter"]?.label).toBe("analyze_meter");
     expect(into("meter")).toEqual(["glow"]);
     expect(into("out")).toEqual(["glow"]);
     // The crossing reads it back by name.
     expect(nodes["probe"]?.type).toBe("channelIn");
-    expect(nodes["probe"]?.parameters["channel"]).toBe("meter1");
+    expect(nodes["probe"]?.parameters["channel"]).toBe("analyze_meter");
     // The chain: probe → neg(×−1) → err(+target) → push(×K) → lift(+base) → clampg.
     expect(into("neg")).toEqual(["probe"]);
     expect(into("err")).toEqual(["neg"]);
@@ -39,13 +39,13 @@ describe("E14 Self-Regulating Bloom claims", () => {
     // The actuator wears the SWITCH, and the switch ships closed: in1 is the chain,
     // in2 is the bare base, and the open branch equals `lift`'s operand exactly, so
     // flipping the index changes one thing — whether the measurement pushes back.
-    expect(nodes["engage"]?.label).toBe("gain1");
+    expect(nodes["engage"]?.label).toBe("switch_gain");
     expect(nodes["engage"]?.parameters["index"]).toBe(0);
     expect(into("engage").sort()).toEqual(["clampg", "rest"]);
     expect(nodes["rest"]?.parameters["value"]).toBe(nodes["lift"]?.parameters["operand"]);
     const brightness = nodes["gain"]?.parameters["brightness"] as ParameterSlot;
     expect(brightness.mode).toBe("expression");
-    expect(brightness.bindings["expression"]).toEqual({ kind: "expression", source: "op('gain1').chan.value" });
+    expect(brightness.bindings["expression"]).toEqual({ kind: "expression", source: "op('switch_gain').chan.value" });
   });
 
   /**
@@ -56,11 +56,11 @@ describe("E14 Self-Regulating Bloom claims", () => {
    * clamp's floor is the safety, so its floor being POSITIVE is gated, not trusted.
    */
   it("clamps the palette phase strictly above the wrap", () => {
-    expect(nodes["swirlclamp"]?.label).toBe("swirl1");
+    expect(nodes["swirlclamp"]?.label).toBe("limit_swirl");
     expect(Number(nodes["swirlclamp"]?.parameters["minimum"])).toBeGreaterThan(0);
     const phase = nodes["palette"]?.parameters["phase"] as ParameterSlot;
     expect(phase.mode).toBe("expression");
-    expect(phase.bindings["expression"]).toEqual({ kind: "expression", source: "op('swirl1').chan.value" });
+    expect(phase.bindings["expression"]).toEqual({ kind: "expression", source: "op('limit_swirl').chan.value" });
     // The retained value sits inside the clamp's window too: a host without the
     // channel must not render the wrapped picture either (§V107).
     const retained = (phase.bindings["static"] as { value?: unknown }).value;

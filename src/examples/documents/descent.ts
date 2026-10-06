@@ -32,16 +32,16 @@ import { settings, node, edge, graph, document, drivenSlot } from "./builders.ts
  * across a timeline lap like any other frame boundary (T489). An example whose animation
  * comes from state rather than from a clock position is loop-proof BY CONSTRUCTION, which
  * for a piece meant to run for an hour behind a set is worth more than it sounds. The one
- * clock reader is `beat1`, which is timeline-anchored ON PURPOSE (§V436): it stands in for
+ * clock reader is `pattern_beat`, which is timeline-anchored ON PURPOSE (§V436): it stands in for
  * a track, so bar one lands on the in point.
  *
  * ## The sound, and what happens when you drop your own in
  *
- * `beat1` is the deterministic Audio Pattern, so the file OPENS PLAYING with no asset
+ * `pattern_beat` is the deterministic Audio Pattern, so the file OPENS PLAYING with no asset
  * bound (§V363, B74) and an offline render of it reproduces (§V45). The kick drives two
  * things at different time constants — the zoom, through a fast Lag so the surge is felt
  * as an impact, and the ring's own brightness, through a slower one so the corridor stays
- * lit between beats. Swap `beat1` for an `audioFileIn` and keep its label and every
+ * lit between beats. Swap `pattern_beat` for an `audioFileIn` and keep its label and every
  * mapping downstream follows.
  */
 export const descentDocument = document(
@@ -51,7 +51,7 @@ export const descentDocument = document(
   graph(
     [
       // ---- the sound -------------------------------------------------------------
-      node("beat", "audioPattern", [-1560, 600], { bpm: 124, amount: 1 }, { label: "beat1" }),
+      node("beat", "audioPattern", [-1560, 600], { bpm: 124, amount: 1 }, { label: "pattern_beat" }),
       /* Two envelopes off one source, and the difference between them is the feel — but
          also, for the ring, the difference between a stable loop and a white frame. The
          slow one (0.28 s) reaches the ZOOM, where a smooth surge is what you want. The fast
@@ -60,7 +60,7 @@ export const descentDocument = document(
          settles at `x / 0.015` — sixty-odd times itself. A ring lit by an ENVELOPE is a DC
          term. A ring lit by a STRIKE is not, and that is why this one is nearly zero
          between beats rather than merely dimmer. */
-      node("punch", "valueLag", [-1300, 480], { lag: 0.28 }, { label: "punch1" }),
+      node("punch", "valueLag", [-1300, 480], { lag: 0.28 }, { label: "lag_punch" }),
       /* THE RING IS BORN BY A TRIGGER, not by an envelope, and this is the load-bearing
          line in the graph. Whatever the ring adds is added into a loop whose gain is 0.985,
          so the loop integrates roughly 67 frames of it: a DC term of `x` settles at
@@ -69,15 +69,15 @@ export const descentDocument = document(
          being "not strong enough". A Trigger emits 1 for the ONE frame the kick crosses its
          threshold and 0 for the other twenty-eight, so the mean input is a twenty-ninth of
          the peak and the steady state lands under one by arithmetic instead of by luck. */
-      node("hit", "valueTrigger", [-1300, 740], { threshold: 0.84 }, { label: "hit1" }),
-      node("zgain", "valueMath", [-1040, 480], { operation: "multiply", operand: 0.107 }, { label: "zgain1" }),
-      node("zbase", "valueMath", [-780, 480], { operation: "add", operand: 0.9466 }, { label: "zbase1" }),
+      node("hit", "valueTrigger", [-1300, 740], { threshold: 0.84 }, { label: "trigger_hit" }),
+      node("zgain", "valueMath", [-1040, 480], { operation: "multiply", operand: 0.107 }, { label: "math_zgain" }),
+      node("zbase", "valueMath", [-780, 480], { operation: "add", operand: 0.9466 }, { label: "math_zbase" }),
       /* Two fences, like E24's: above ~1.13 per frame the corridor outruns the eye and
          reads as a flash, and at or below 1.0 the loop stops expanding and piles up into
          white. The clamp is not tuning, it is what keeps a loud passage recoverable. */
-      node("zcap", "valueLimit", [-520, 480], { minimum: 1.006, maximum: 1.048 }, { label: "zoom1" }),
-      node("strike", "valueMath", [-1040, 740], { operation: "multiply", operand: 0.85 }, { label: "strike1" }),
-      node("bcap", "valueLimit", [-780, 740], { minimum: 0, maximum: 0.85 }, { label: "lamp1" }),
+      node("zcap", "valueLimit", [-520, 480], { minimum: 1.006, maximum: 1.048 }, { label: "limit_zoom" }),
+      node("strike", "valueMath", [-1040, 740], { operation: "multiply", operand: 0.85 }, { label: "math_strike" }),
+      node("bcap", "valueLimit", [-780, 740], { minimum: 0, maximum: 0.85 }, { label: "limit_lamp" }),
 
       // ---- the ring that is born every frame --------------------------------------
       /* THE FRAME, as two rounded squares and a Difference.
@@ -96,12 +96,12 @@ export const descentDocument = document(
       node("bore", "rectangle", [-1560, -80], {
         mode: "fill", center: [0.5, 0.5], size: [0.124, 0.124], roundness: 0.028, softness: 0.004,
         fillcolor: [1, 1, 1, 1], bgcolor: [0, 0, 0, 1], aspectcorrect: true,
-      }, { label: "bore1" }),
+      }, { label: "rectangle_bore" }),
       node("core", "rectangle", [-1560, 180], {
         mode: "fill", center: [0.5, 0.5], size: [0.113, 0.113], roundness: 0.028, softness: 0.004,
         fillcolor: [1, 1, 1, 1], bgcolor: [0, 0, 0, 1], aspectcorrect: true,
-      }, { label: "core1" }),
-      node("ring", "difference", [-1300, 50], {}, { label: "ring1" }),
+      }, { label: "rectangle_core" }),
+      node("ring", "difference", [-1300, 50], {}, { label: "difference_ring" }),
       /* The kick lands HERE — AFTER the palette, and that ordering is the whole of it. Put
          the same gain BEFORE the lookup and a quiet moment does not dim the ring, it moves
          it to the DARK END OF THE RAMP: the ring turns black-purple instead of faint, and
@@ -110,14 +110,14 @@ export const descentDocument = document(
       node("lamp", "level", [-780, -80], {
         blacklevel: 0, whitelevel: 1, contrast: 1, brightness: 1, gamma1: 1, opacity: 1,
       }, {
-        label: "lampl1",
-        parameters: { brightness: drivenSlot("lamp1:low", 1) },
+        label: "level_lampl",
+        parameters: { brightness: drivenSlot("limit_lamp:low", 1) },
       }),
       /* The frame's colour, and the crest is SATURATED rather than white — which is not a
          taste call, it is what makes the hue rotation inside the loop do anything at all.
          Rotating the hue of a neutral is a no-op: the first coloured build ended on
          (1, 0.98, 0.92), every ring came out white, and thirty degrees per ring changed
-         nothing. Ending on a saturated teal gives `shift1` something to turn, so depth
+         nothing. Ending on a saturated teal gives `hsv_shift` something to turn, so depth
          reads as colour down the whole corridor. */
       node("hue", "ramp", [-1300, -280], {
         type: "horizontal", interp: "smooth", phase: 0, period: 1,
@@ -127,8 +127,8 @@ export const descentDocument = document(
           { position: 0.72, color: [0.05, 0.42, 0.6, 1] },
           { position: 1, color: [0.1, 0.95, 0.88, 1] },
         ],
-      }, { label: "hue1", definitionVersion: 2 }),
-      node("paint", "lookup", [-1040, -80], { channel: "luminance", row: 0.5, scale: 1, offset: 0 }, { label: "paint1" }),
+      }, { label: "ramp_hue", definitionVersion: 2 }),
+      node("paint", "lookup", [-1040, -80], { channel: "luminance", row: 0.5, scale: 1, offset: 0 }, { label: "lookup_paint" }),
 
       // ---- the loop: magnify, turn, shift hue, add the new ring ---------------------
       /* THE TEMPORAL BOUNDARY (§V4/§V22). `source` names the node whose output is captured,
@@ -141,22 +141,22 @@ export const descentDocument = document(
            pass magnifies the centre and DUPLICATES its pixels — nothing leaves the frame
            and nothing is diluted. With a near-unity gain the corridor went to white in
            under four seconds. Every bit of the decay here is deliberate. */
-        source: "born1", persistence: 0.985, clearColor: [0, 0, 0, 1],
-      }, { label: "loop1" }),
+        source: "add_born", persistence: 0.985, clearColor: [0, 0, 0, 1],
+      }, { label: "feedback_loop" }),
       node("fall", "transform", [-520, 230], {
         /* Scale ABOVE ONE about the centre: the corridor's whole geometry, in one number.
            `extend: "zero"` matters — with `hold`, the edge pixels of an expanding image
            streak outward forever and the corners fill with smeared colour. */
         t: [0, 0], r: 0.55, s: [1.019, 1.019], p: [0, 0], xord: "srt", extend: "zero", aspectcorrect: true,
       }, {
-        label: "fall1",
+        label: "transform_fall",
         parameters: {
-          "s.x": drivenSlot("zoom1:low", 1.019),
-          "s.y": drivenSlot("zoom1:low", 1.019),
+          "s.x": drivenSlot("limit_zoom:low", 1.019),
+          "s.y": drivenSlot("limit_zoom:low", 1.019),
         },
       }),
       node("fade", "level", [-260, 230], {
-        /* Two jobs, neither of them the fade (that is `loop1`'s persistence). `blacklevel`
+        /* Two jobs, neither of them the fade (that is `feedback_loop`'s persistence). `blacklevel`
            above zero gives the corridor an END — without it the far rings asymptote toward
            a permanent grey haze instead of going out. GAMMA above one fights the other
            thing the loop does to a picture: every pass resamples bilinearly, so an edge
@@ -174,7 +174,7 @@ export const descentDocument = document(
            the first build went to white in seven seconds with contrast 1.05.
            Every stage inside a feedback loop has to be sign-checked like this. */
         blacklevel: 0.006, whitelevel: 1, contrast: 1, brightness: 1, gamma1: 1.12, opacity: 1,
-      }, { label: "fade1" }),
+      }, { label: "level_fade" }),
       node("shift", "hsv", [0, 230], {
         /* Three degrees per pass. Each frame of the corridor has been round the loop one
            more time than the one inside it, so ~90° separates one square from the next and
@@ -182,30 +182,30 @@ export const descentDocument = document(
            already blurred into each other. Small numbers do not work here: at 1.6° the
            corridor was one colour with a fringe. */
         hueoffset: 3.1, saturation: 1.004, value: 1,
-      }, { label: "shift1" }),
+      }, { label: "hsv_shift" }),
       /* ADD, not Screen. Screen is `1 − (1 − a)(1 − b)`: it saturates toward white by
          construction, which is fine once but is a ratchet inside a loop — the first build
          used it and the corridor was solid white within four seconds, whatever the fade
          was set to. Add is linear, so the steady state is the ring's height over one minus
          the loop gain, which is a number you can choose. */
-      node("born", "add", [260, 60], {}, { label: "born1" }),
+      node("born", "add", [260, 60], {}, { label: "add_born" }),
 
       // ---- the look ---------------------------------------------------------------
-      node("halo", "blur", [520, 340], { size: 26, filter: "gaussian", extend: "zero" }, { label: "halo1" }),
+      node("halo", "blur", [520, 340], { size: 26, filter: "gaussian", extend: "zero" }, { label: "blur_halo" }),
       node("haze", "level", [780, 340], {
         /* The bloom's own gain. A blur normalises, so adding it back at unity doubles the
            picture's total light; at 0.55 it reads as glow around the rings rather than as
            a second, softer copy of them. */
         blacklevel: 0, whitelevel: 1, contrast: 1, brightness: 0.5, gamma1: 1, opacity: 1,
-      }, { label: "haze1" }),
-      node("burn", "add", [1040, 60], {}, { label: "burn1" }),
+      }, { label: "level_haze" }),
+      node("burn", "add", [1040, 60], {}, { label: "add_burn" }),
       node("trim", "level", [1300, 60], {
         /* W5, stated: there is no tone map yet, so an additive bloom over an additive loop
            clips at the encode. This is the hand gain that keeps the crest inside the range,
            and it should come OUT the day an output transform lands. */
         blacklevel: 0, whitelevel: 1, contrast: 1, brightness: 1, gamma1: 1, opacity: 1,
-      }, { label: "trim1" }),
-      node("out", "output", [1560, 60], {}, { label: "out1" }),
+      }, { label: "level_trim" }),
+      node("out", "output", [1560, 60], {}, { label: "output1" }),
     ],
     [
       edge("e-beat-punch", ["beat", "out"], ["punch", "in"]),

@@ -2,10 +2,12 @@ import type { NodeDefinition, CompiledNodeDescription } from "../../domain/types
 import type { EffectPassDescriptor } from "../../runtime/backend/plan.ts";
 import { SHADER_SOURCE_PARAMETER } from "../../domain/commands/apply-patch.ts";
 import { codeParametersLast } from "../../domain/parameters/code.ts";
+import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { declaredNames, resolveSharedModules, SHARED_WGSL_MODULES } from "../shaders/shared-modules.ts";
 import {
+  REFLECTED_PARAMETER_KEYS_NOTE,
   declaresUniformBlock,
   reflectParamsStruct,
   reflectedParamCollisions,
@@ -216,9 +218,13 @@ export const customWgslNode: NodeDefinition = {
    * static schema above stays the fallback where there is no stored source to read.
    */
   parametersFor(stored) {
-    const raw = stored[SHADER_SOURCE_PARAMETER];
+    // §B266: the document's TEXT, whatever mode the slot is in. Read raw, a slot is not a
+    // string, the schema fell back to the default shader's, and every control the real text
+    // declares read as a key of nothing. The kernels have read it this way since T1210.
+    const raw = storedStaticValue(stored[SHADER_SOURCE_PARAMETER] as never);
     return reflectedSchema(typeof raw === "string" ? raw : CUSTOM_WGSL_DEFAULT_SOURCE);
   },
+  parameterKeysNote: REFLECTED_PARAMETER_KEYS_NOTE,
   resolutionPolicy: { kind: "inherit", input: "input" },
   formatPolicy: { kind: "inherit", input: "input" },
   compile(context): CompiledNodeDescription {

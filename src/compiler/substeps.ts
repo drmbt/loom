@@ -1,8 +1,10 @@
 import type { NodeId } from "../domain/types/ids.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
+import type { KernelStepsDeclaration } from "../domain/types/node-definition.ts";
 import type { CompileEdge, ResolvedOutput } from "./types.ts";
 import type { ResolvedNode } from "./validate.ts";
-import { MAX_SUBSTEPS } from "../runtime/backend/plan.ts";
+import { MAX_KERNEL_STEPS, MAX_KERNEL_SUBSTEPS, MAX_SUBSTEPS, rateStepBounds, rateSubsteps } from "../runtime/backend/plan.ts";
+import type { KernelStepRate } from "../runtime/backend/plan.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
 import { swapPassId } from "./resources.ts";
 
@@ -325,4 +327,345 @@ export function applySubstepLoops(
   }
 
   return entries.flatMap((entry) => [...entry.passes]);
+}
+
+/**
+ * KERNEL STEPS (T1583b) — a point kernel run several times per displayed frame.
+ *
+ * ## Why this is not the loop planning above
+ *
+ * A feedback loop is a CYCLE of nodes found on the graph, and iterating it means moving
+ * its passes together and repeating all of them, swap included. A kernel reads last frame
+ * out of its own buffer pair and writes this frame into the other half, with no cycle on
+ * the graph at all: the "loop" is one dispatch. So there is nothing to find and nothing to
+ * reorder — the dispatch is wrapped where it stands.
+ *
+ * The same begin/end markers carry the count, because everything a count needs already
+ * hangs off them: the encoder expands the region against a live value, the per-frame
+ * compile re-derives that value, the animator pushes it, and the GPU timer sums the runs
+ * back onto the pass. What differs is on the `begin`: `steps.pair` tells the encoder to
+ * swap the pair BETWEEN runs (`KernelStepsDescriptor` says why the swap is not a pass).
+ *
+ * ## Two counts
+ *
+ * `substeps` divides the frame's time, `iterations` repeats inside a substep, and the
+ * region runs substeps × iterations times. Notch's Physics Root and TouchDesigner's Flex
+ * Solver both expose that pair; TouchDesigner's GLSL POP `Passes` is the second one alone.
+ *
+ * ## What it refuses, by name (§V288)
+ *
+ *  - a kernel that reads NONE of its own pair. Wired as a processor whose whole schema the
+ *    incoming point set provides, every attribute is re-read from upstream each run, so N
+ *    runs write the same result N times. It gets no region and, asked for more than one
+ *    step, a warning. (A processor that keeps even one attribute of its own steps: that is
+ *    a solver with its own state over an animated input.)
+ *  - a kernel inside a region a feedback loop iterates. Regions do not nest
+ *    (`loopStructureDiagnostics`), so the kernel keeps one run per pass of that loop.
+ *
+ * Neither refusal depends on the count, so the region's existence never changes when a
+ * count does (§V358).
+ *
+ * ## A count that follows the frame, and a pass that does not step (T1585b)
+ *
+ * A solver node (the Rope) declares its substeps as a RATE: the count is
+ * `clamp(round(delta × rate), min, max)` of the frame being rendered, which only the
+ * backend knows for certain — the structural compile has no frame, and half the hosts
+ * that render one never run a per-frame compile. So the compiler does not own that count.
+ * It puts the three numbers on the region (`KernelStepsDescriptor.rate`), states the count
+ * of the frame it was compiled at with the same function the backend uses
+ * (`rateSubsteps`), and the backend re-derives it for each frame it renders.
+ *
+ * Such a node may also emit a dispatch that is NOT stepped beside the one that is: a search
+ * done once per frame for what every step then tests (the rope's nearest colliders). The
+ * stepped one is the dispatch that reads and writes a buffer pair of its own; exactly one
+ * of a node's dispatches may, and the others stay where the node put them and run once.
+ */
+
+/** What a kernel's two step parameters resolve to. */
+export interface KernelStepCounts {
+  readonly substeps: number;
+  readonly iterations: number;
+  /** Dispatches per displayed frame: substeps × iterations, at most `MAX_KERNEL_STEPS`. */
+  readonly count: number;
+  /** The iterations ASKED for, present only when the dispatch ceiling lowered them. */
+  readonly askedIterations?: number;
+  /** T1585b: the rate `substeps` was derived from, when the node declares one. */
+  readonly rate?: KernelStepRate;
+}
+
+/**
+ * The counts two resolved parameter VALUES ask for.
+ *
+ * Exported for the per-frame values-only path, like `substepCount` above, so the count it
+ * splices and the full compile's cannot disagree about rounding or the ceiling.
+ *
+ * When the product is over the ceiling it is ITERATIONS that give way. Substeps set the
+ * time step, and a step that silently grew is the instability the parameter was raised to
+ * prevent; fewer iterations is a less converged frame.
+ */
+export function kernelStepCounts(rawSubsteps: unknown, rawIterations: unknown): KernelStepCounts {
+  const whole = (raw: unknown, max: number): number => {
+    const asked = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 1;
+    return Math.min(Math.max(1, asked), max);
+  };
+  const substeps = whole(rawSubsteps, MAX_KERNEL_SUBSTEPS);
+  const asked = whole(rawIterations, MAX_KERNEL_STEPS);
+  const iterations = Math.min(asked, Math.floor(MAX_KERNEL_STEPS / substeps));
+  return {
+    substeps,
+    iterations,
+    count: substeps * iterations,
+    ...(iterations === asked ? {} : { askedIterations: asked }),
+  };
+}
+
+/**
+ * T1585b — the counts a node's DECLARATION asks for, at a frame of `deltaSeconds`.
+ *
+ * The one reading of `KernelStepsDeclaration` for both paths that need it (the full
+ * compile's region and the per-frame splice), so a declaration's two shapes cannot come to
+ * be read two ways. A count declaration ignores the frame; a rate declaration is the rule
+ * in `rateSubsteps`, and hands back the three numbers it used for the region to carry.
+ */
+export function kernelStepsFor(
+  declared: KernelStepsDeclaration,
+  parameters: Readonly<Record<string, unknown>>,
+  deltaSeconds: number,
+): KernelStepCounts {
+  const rawIterations = declared.iterations === undefined ? 1 : parameters[declared.iterations];
+  if (typeof declared.substeps === "string") return kernelStepCounts(parameters[declared.substeps], rawIterations);
+  const finite = (key: string, fallback: number): number => {
+    const raw = parameters[key];
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : fallback;
+  };
+  const rate: KernelStepRate = {
+    perSecond: Math.max(0, finite(declared.substeps.rate, 0)),
+    min: finite(declared.substeps.min, 1),
+    max: finite(declared.substeps.max, 1),
+  };
+  return { ...kernelStepCounts(rateSubsteps(deltaSeconds, rate), rawIterations), rate };
+}
+
+export interface KernelStepsInput {
+  readonly nodes: ReadonlyMap<NodeId, ResolvedNode>;
+  /** Every `bufferPair` resource id in the plan. */
+  readonly pairs: ReadonlySet<string>;
+  /**
+   * T1585b: the step of the frame this compile was asked at; 0 when it was asked at none
+   * (the structural compile). Only a rate declaration reads it.
+   */
+  readonly deltaSeconds?: number;
+  /**
+   * Can this stored parameter change between frames — an expression, a bind, a preset
+   * morph? Such a count arrives inside the frame, so its slots are prepared to the
+   * parameter's ceiling up front (`KernelStepsDescriptor.prepare`).
+   */
+  readonly moves: (nodeId: NodeId, key: string) => boolean;
+}
+
+/**
+ * Wraps the dispatch of every node that declares `steps` in a loop region, in place.
+ *
+ * Runs after `applySubstepLoops`, so a feedback loop's region already exists and a kernel
+ * inside one is seen to be inside it.
+ */
+export function applyKernelSteps(
+  passes: ReadonlyArray<RawPass>,
+  input: KernelStepsInput,
+  diagnostics: RuntimeDiagnostic[],
+): ReadonlyArray<RawPass> {
+  /* Per declaring node: how many dispatches it emitted, and how many of them STEP — read
+     and write a buffer pair of their own. T1585b: exactly one may; the rest run once. */
+  const dispatchesOf = new Map<NodeId, number>();
+  const steppingOf = new Map<NodeId, number>();
+  for (const pass of passes) {
+    if (pass["kind"] !== "dispatch" || typeof pass["nodeId"] !== "string") continue;
+    const nodeId = pass["nodeId"] as NodeId;
+    if (input.nodes.get(nodeId)?.definition.steps === undefined) continue;
+    dispatchesOf.set(nodeId, (dispatchesOf.get(nodeId) ?? 0) + 1);
+    if (steppedPair(pass, input.pairs) !== undefined) steppingOf.set(nodeId, (steppingOf.get(nodeId) ?? 0) + 1);
+  }
+  if (dispatchesOf.size === 0) return passes;
+
+  const out: RawPass[] = [];
+  /** A node with several dispatches and none that steps is told once, not once per pass. */
+  const told = new Set<NodeId>();
+  /** The feedback loop region the walk is inside, if any. */
+  let enclosing: RawPass | undefined;
+  for (const pass of passes) {
+    if (pass["kind"] === "loop") enclosing = pass["edge"] === "begin" ? pass : undefined;
+    const nodeId =
+      pass["kind"] === "dispatch" && typeof pass["nodeId"] === "string" ? (pass["nodeId"] as NodeId) : undefined;
+    const resolved = nodeId === undefined ? undefined : input.nodes.get(nodeId);
+    const declared = resolved?.definition.steps;
+    if (nodeId === undefined || resolved === undefined || declared === undefined) {
+      out.push(pass);
+      continue;
+    }
+
+    const counts = kernelStepsFor(declared, resolved.parameters, input.deltaSeconds ?? 0);
+    const words = stepWords(declared, counts);
+    /* What the node can ask for at all. A count declaration asks for what it resolved to; a
+       rate asks for its Max on a long enough frame, whatever this compile's frame was. */
+    const most = counts.rate === undefined ? counts.count : rateStepBounds(counts.rate).max * counts.iterations;
+    const refuse = (why: string, suggestion: string): void => {
+      out.push(pass);
+      // At one step nothing was asked for and nothing is lost.
+      if (most <= 1) return;
+      diagnostics.push(
+        compilerDiagnostic(
+          "warning",
+          CompilerDiagnosticCode.substepsRefused,
+          `Node "${nodeId}" asked for ${words.asked}, but ${why} It runs one step per frame.`,
+          { nodeId, suggestion },
+        ),
+      );
+    };
+
+    const emitted = dispatchesOf.get(nodeId) ?? 0;
+    const stepping = steppingOf.get(nodeId) ?? 0;
+    const pair = steppedPair(pass, input.pairs);
+    if (stepping > 1) {
+      // Two dispatches over one node's state cannot both be the step: neither is wrapped.
+      if (pair === undefined) out.push(pass);
+      else
+        refuse(
+          `it emitted ${stepping} dispatch passes, and kernel steps repeat exactly one.`,
+          `This is a fault in the node's definition; ${words.backToOne}.`,
+        );
+      continue;
+    }
+    if (pair === undefined) {
+      if (stepping === 1) {
+        // T1585b: the node's other dispatch — it steps nothing, and runs once where it stands.
+        out.push(pass);
+        continue;
+      }
+      if (emitted === 1) {
+        refuse(
+          "every attribute in its schema is read from the incoming point set, so each pass would start from the same values and write the same result.",
+          `Declare an attribute the incoming point set does not provide, so the kernel has state of its own to carry from step to step, or ${words.backToOne}.`,
+        );
+        continue;
+      }
+      if (told.has(nodeId)) {
+        out.push(pass);
+        continue;
+      }
+      told.add(nodeId);
+      refuse(
+        `none of its ${emitted} dispatch passes reads and writes a buffer pair of its own, so there is no state to carry from step to step.`,
+        `This is a fault in the node's definition; ${words.backToOne}.`,
+      );
+      continue;
+    }
+    if (enclosing !== undefined) {
+      const owner = typeof enclosing["nodeId"] === "string" ? `"${enclosing["nodeId"] as string}"` : "another node";
+      refuse(
+        `it sits inside the feedback loop that ${owner} iterates, and one loop region cannot run inside another.`,
+        `Iterate one of the two: this kernel's steps, or that loop's Substeps. Or ${words.backToOne}.`,
+      );
+      continue;
+    }
+
+    if (counts.askedIterations !== undefined && declared.iterations !== undefined) {
+      diagnostics.push(
+        compilerDiagnostic(
+          "warning",
+          CompilerDiagnosticCode.substepsRefused,
+          `Node "${nodeId}" asked for ${words.substeps} ${counts.substeps} × "${declared.iterations}" ${counts.askedIterations} = ${counts.substeps * counts.askedIterations} steps per frame, above the ceiling of ${MAX_KERNEL_STEPS}; it runs ${counts.iterations} iterations per substep.`,
+          {
+            nodeId,
+            suggestion: `Lower "${declared.iterations}" to ${counts.iterations}, or lower ${words.substeps}.`,
+          },
+        ),
+      );
+    }
+    const iterationCeiling =
+      declared.iterations !== undefined && input.moves(nodeId, declared.iterations) ? MAX_KERNEL_STEPS : counts.iterations;
+    out.push(
+      {
+        kind: "loop",
+        id: `${pair}#loop:begin`,
+        edge: "begin",
+        loopId: pair,
+        count: counts.count,
+        nodeId,
+        steps: {
+          pair,
+          iterations: counts.iterations,
+          prepare: Math.min(MAX_KERNEL_STEPS, substepCeilingOf(nodeId, declared, counts, input.moves) * iterationCeiling),
+          ...(counts.rate === undefined ? {} : { rate: counts.rate }),
+        },
+      },
+      pass,
+      { kind: "loop", id: `${pair}#loop:end`, edge: "end", loopId: pair, nodeId },
+    );
+  }
+  return out;
+}
+
+/**
+ * The most substeps a region has to have uniform blocks ready for (§V8).
+ *
+ * A count that cannot move is prepared for as it stands. A rate's count moves with every
+ * frame by design, so it is prepared to its Max — or to the ceiling when Min or Max can
+ * themselves move, since Min wins over a Max below it.
+ */
+function substepCeilingOf(
+  nodeId: NodeId,
+  declared: KernelStepsDeclaration,
+  counts: KernelStepCounts,
+  moves: KernelStepsInput["moves"],
+): number {
+  if (typeof declared.substeps === "string") return moves(nodeId, declared.substeps) ? MAX_KERNEL_SUBSTEPS : counts.substeps;
+  if (counts.rate === undefined || moves(nodeId, declared.substeps.min) || moves(nodeId, declared.substeps.max)) {
+    return MAX_KERNEL_SUBSTEPS;
+  }
+  return rateStepBounds(counts.rate).max;
+}
+
+/**
+ * How a declaration is named in a sentence about its counts. A count declaration with both
+ * keys reads exactly as it has since T1583b; the shapes T1585b added name what they have.
+ */
+function stepWords(
+  declared: KernelStepsDeclaration,
+  counts: KernelStepCounts,
+): { readonly asked: string; readonly substeps: string; readonly backToOne: string } {
+  const iterations = declared.iterations === undefined ? "" : ` × "${declared.iterations}" ${counts.iterations}`;
+  if (typeof declared.substeps === "string") {
+    return {
+      asked: `${counts.count} steps per frame ("${declared.substeps}" ${counts.substeps}${iterations})`,
+      substeps: `"${declared.substeps}"`,
+      backToOne:
+        declared.iterations === undefined
+          ? `set "${declared.substeps}" back to 1`
+          : `set "${declared.substeps}" and "${declared.iterations}" back to 1`,
+    };
+  }
+  const most = counts.rate === undefined ? counts.substeps : rateStepBounds(counts.rate).max;
+  return {
+    asked: `up to ${most * counts.iterations} steps per frame ("${declared.substeps.rate}" ${counts.rate?.perSecond ?? 0} a second, at most "${declared.substeps.max}" ${most}${iterations})`,
+    substeps: `"${declared.substeps.max}"`,
+    backToOne: `set "${declared.substeps.max}" to 1`,
+  };
+}
+
+/**
+ * The one buffer pair a dispatch both reads (its read half) and writes (its write half) —
+ * the state that carries from run to run. `undefined` when there is not exactly one.
+ */
+function steppedPair(pass: RawPass, pairs: ReadonlySet<string>): string | undefined {
+  const buffers = Array.isArray(pass["buffers"]) ? (pass["buffers"] as ReadonlyArray<RawPass>) : [];
+  const halvesOf = new Map<string, Set<string>>();
+  for (const binding of buffers) {
+    const resourceId = binding["resourceId"];
+    if (typeof resourceId !== "string" || !pairs.has(resourceId)) continue;
+    const halves = halvesOf.get(resourceId) ?? new Set<string>();
+    halves.add(binding["half"] === "write" ? "write" : "read");
+    halvesOf.set(resourceId, halves);
+  }
+  const both = [...halvesOf].filter(([, halves]) => halves.has("read") && halves.has("write"));
+  return both.length === 1 ? (both[0] as [string, Set<string>])[0] : undefined;
 }

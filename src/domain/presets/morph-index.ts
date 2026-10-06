@@ -5,7 +5,7 @@ import type { NodeDefinition } from "../types/node-definition.ts";
 import type { ParameterSchema, StoredParameter } from "../types/parameters.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { nodeNames } from "../graph/names.ts";
-import { effectiveParameterSchema, resolveParameter, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
+import { effectiveParameterSchema, NO_MORPHS, resolveParameter, STORED_READ, type ParameterMorphStep, type ParameterMorphs } from "../parameters/resolve.ts";
 import { componentAddressedDefinition, componentNamesFor, isParameterSlot, parseComponentKey } from "../parameters/slots.ts";
 import { isComponentNodeType } from "../components/component-type.ts";
 import { PAGE_TARGET, PRESET_MORPHS_KEY, isPresetsNode, type BankCatalogue } from "./bank-view.ts";
@@ -92,12 +92,7 @@ export interface PublishedOrigin {
 /** Flattened node id → key → where that value was published from. */
 export type PublishedOrigins = ReadonlyMap<NodeId, Readonly<Record<string, PublishedOrigin>>>;
 
-/** The index of a document with nothing fading. One object, so "none" is an identity check. */
-export const NO_MORPHS: ParameterMorphs = {
-  keysOf: () => undefined,
-  stepsAt: () => undefined,
-  activeAt: () => false,
-};
+export { NO_MORPHS };
 
 /**
  * Every bank's records, in bank-id order. Banks with none are absent.
@@ -171,7 +166,7 @@ function bakedEnd(node: GraphNode, schema: ParameterSchema, key: string, stored:
   const base = channel === null ? key : channel.base;
   const definition = schema[base];
   if (definition === undefined) return undefined;
-  const resolved = resolveParameter({ ...node, parameters: { ...node.parameters, [key]: stored } }, base, definition, { schema });
+  const resolved = resolveParameter({ ...node, parameters: { ...node.parameters, [key]: stored } }, base, definition, { ...STORED_READ, schema });
   if (channel === null) return resolved.value;
   return resolved.components?.find((each) => each.name === channel.component)?.value;
 }

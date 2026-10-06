@@ -119,13 +119,22 @@ const NOT_CONSTRUCTED: ReadonlyArray<{ name: string; reason: string }> = [
   {
     name: "createNodeReferenceReader",
     reason:
-      "T1129: composed by `createParameterReadOptions` in the SAME module, and that is now the " +
+      "T1129: composed by `parameterReadOptions` in the SAME module, and that is now the " +
       "point. The reader is a CLOSURE over its `base`, so a caller that builds one alone can be " +
       "handed a frame and channels on the resolve that never reach it — §B8's shape, four " +
       "recurrences deep (§B46, §T593, §T1000, §T1001). The inspector, the compiler and the OSC " +
       "pump all reach it through the factory, and `node-references.test.ts`'s T1129 scan fails " +
       "if any product module calls it directly again. It stays exported for its own unit tests, " +
       "which drive the reader with and without a base on purpose.",
+  },
+  {
+    name: "createRopeState",
+    reason:
+      "T1585b: `src/points/rope.ts` is the Rope's CPU REFERENCE — the same step as the shader, " +
+      "operation for operation, in single precision — and this allocates the plain arrays it " +
+      "steps. No product path runs a rope on the CPU: the node's state is three GPU buffers the " +
+      "compiler allocates. Its callers are the oracle's own closed-form tests (rope.test.ts) and " +
+      "the Dawn tests that hold the device to it word for word (point-rope.gpu.test.ts).",
   },
   {
     name: "createComponentRegistry",
@@ -1143,6 +1152,10 @@ const COMMANDS_WITH_NO_INVOKER: ReadonlyArray<{ name: string; reason: string }> 
    * `cue.setStandby`, each excused as "sliced on purpose" until the agent's tools landed.
    * `src/agent/tools/presets.ts` names all three (and `preset.delete`, which arrived with
    * an invoker). The inspector's buttons and the Panel rows are still §T1501b's.
+   *
+   * T1619b S2 removed two: `control.reset` and `control.setDefault`, "sliced on purpose" in
+   * S1. The desk names both now: the right-click `control` menu, the Controls tab's header
+   * ↺, the board's edit toolbar, and a key for the first.
    */
 ];
 

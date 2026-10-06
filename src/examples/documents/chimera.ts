@@ -3,8 +3,8 @@ import { CHIMERA_WGSL } from "../shaders/chimera.wgsl.ts";
 import { FXAA_WGSL } from "../shaders/fxaa.wgsl.ts";
 
 /** §V966's idiom: continuous properties read the RANK; TRANSIENTS read the band ENVELOPES. */
-const LEVELS = (key: string): string => `op('lvl1').chan.${key}`;
-const HITS = (key: string): string => `op('hit1').chan.${key}`;
+const LEVELS = (key: string): string => `op('select_lvl').chan.${key}`;
+const HITS = (key: string): string => `op('select_hit').chan.${key}`;
 
 /**
  * E70 — CHIMERA (T1310b). A distance-estimated fold chain that travels through three
@@ -18,11 +18,11 @@ const HITS = (key: string): string => `op('hit1').chan.${key}`;
  * into one interesting thing… the most critical part is to have something interesting and
  * not just very flat and boring after 15 seconds."*
  *
- *   sky1(solid) ─► shape1(customWgsl: the fold chain) ─► fxaa1(customWgsl) ─► out1(output)
+ *   solid_sky(solid) ─► wgsl_shape(customWgsl: the fold chain) ─► wgsl_fxaa(customWgsl) ─► output1(output)
  *
- *   music1(audioPattern) ─┐
- *                          source1(valueSwitch) ─► analysis1(audioAnalysis) ─┬─► lvl1
- *   track1(audioFileIn) ──┘                                                  └─► hit1
+ *   pattern_music(audioPattern) ─┐
+ *                          switch_source(valueSwitch) ─► audioanalysis1(audioAnalysis) ─┬─► select_lvl
+ *   audiofile_track(audioFileIn) ──┘                                                  └─► select_hit
  *
  * ## "Not boring after fifteen seconds" is the acceptance criterion, and it is structural
  *
@@ -64,7 +64,7 @@ const HITS = (key: string): string => `op('hit1').chan.${key}`;
  * arithmetic rather than by luck — the shipped picture and the rest state are the same
  * picture, and a 140 BPM track moves the morph 25% faster without retuning anything.
  *
- * ⚑ It is read from `source1` rather than from `lvl1`, and that is load-bearing: the levels
+ * ⚑ It is read from `switch_source` rather than from `select_lvl`, and that is load-bearing: the levels
  * bag RANKS everything to 0..1 over a sliding window, so a bpm through it would read 0.5
  * forever (§T1302b's clamping-tap lesson, one lane over).
  *
@@ -83,7 +83,7 @@ export const chimeraDocument = document(
     [
       /* The marcher writes every pixel, so its input is a formality — but a `customWgsl`
          node takes one, and a black solid is the honest "nothing comes in here". */
-      node("sky", "solid", [-600, 0], { color: [0, 0, 0, 1] }, { label: "sky1" }),
+      node("sky", "solid", [-600, 0], { color: [0, 0, 0, 1] }, { label: "solid_sky" }),
 
       /* §V920/§T1184: every reflected value is STORED rather than inherited from the
          shader's own `// @default` lines. A declared default is a fallback for a node
@@ -762,10 +762,10 @@ export const chimeraDocument = document(
         highlightCeiling: 1.1,
         steps: 132,
       }, {
-        label: "shape1",
+        label: "wgsl_shape",
         parameters: {
           /* ─── THE TRANSIENTS, ON ENVELOPES (§V966) ─────────────────────────────────
-           * `hit1.kick` is the kick BAND ENVELOPE carried through the hits lane's 1 ms
+           * `select_hit.kick` is the kick BAND ENVELOPE carried through the hits lane's 1 ms
            * attack and 420 ms release — the same event a count marks, but with the
            * transient's own rise and fall, so it SWELLS and GUTTERS where a count would
            * step in a single frame.
@@ -922,13 +922,13 @@ export const chimeraDocument = document(
           saturation: expressionSlot(`1.1 + 0.24 * ${LEVELS("centroid")}`, 1.22),
 
           /* ─── THE TEMPO (T1309b) ────────────────────────────────────────────────────
-           * Read from `source1`, NOT from the analysis bags: the levels lane ranks
+           * Read from `switch_source`, NOT from the analysis bags: the levels lane ranks
            * everything to 0..1 over a window, so a bpm through it would read 0.5 forever.
            * The form is chosen so the term VANISHES whenever there is no tempo claim —
            * `bpmConfidence` is 0 on a live source that estimates nothing and on no audio at
            * all — and so it is exactly 1 on the shipped pattern, whose bpm IS 112. */
           tempoScale: expressionSlot(
-            `1 + op('source1').chan.bpmConfidence * (op('source1').chan.bpm - 112) / 112`,
+            `1 + op('switch_source').chan.bpmConfidence * (op('switch_source').chan.bpm - 112) / 112`,
             1,
           ),
         },
@@ -938,28 +938,28 @@ export const chimeraDocument = document(
          that is free only on the rasterised path — and the owner refused a 1.69x supersample
          on E67. Clean edges are a large part of what "8K" actually means here, and this is
          the version of them that costs one pass rather than two and a half frames. */
-      node("fxaa", "customWgsl", [0, 0], { source: FXAA_WGSL, amount: 1 }, { label: "fxaa1" }),
+      node("fxaa", "customWgsl", [0, 0], { source: FXAA_WGSL, amount: 1 }, { label: "wgsl_fxaa" }),
 
-      node("out", "output", [300, 0], { toneMap: "filmic" }, { label: "out1" }),
+      node("out", "output", [300, 0], { toneMap: "filmic" }, { label: "output1" }),
 
       /* ── THE DRIVE ────────────────────────────────────────────────────────────────────
        * The catalogue's fixed shape: a deterministic pattern at index 0 so the file is
        * audio-reactive on open with no track at all (§V363), and a real file at index 1 one
-       * drop away. Everything downstream reads `source1`, so swapping the source changes
+       * drop away. Everything downstream reads `switch_source`, so swapping the source changes
        * nothing else.
        *
-       * ONE analysis instance, two bags — `lvl1` for the ranked levels and `hit1` for the
+       * ONE analysis instance, two bags — `select_lvl` for the ranked levels and `select_hit` for the
        * transients. The split is the finding (§T1234/§T1271): a percentile cannot spread a
        * tie, so a transient read through a rank rests at its mid and becomes a permanent
        * half-lit nothing.
        *
        * ⚑ NOTHING DRIVES THE CAMERA, and nothing drives a clock except `tempoScale`. */
-      node("music1", "audioPattern", [-1200, 400], { amount: 1, bpm: 112 }, { label: "music1" }),
+      node("music1", "audioPattern", [-1200, 400], { amount: 1, bpm: 112 }, { label: "pattern_music" }),
       node("track1", "audioFileIn", [-1200, 624], {
         cue: false, cuePoint: 0, extend: "loop", file: "", monitor: true, play: true,
         playMode: "freeRun", speed: 1, trimEnd: 0, trimStart: 0, volume: 1,
-      }, { label: "track1" }),
-      node("source1", "valueSwitch", [-960, 510], { index: 0 }, { label: "source1" }),
+      }, { label: "audiofile_track" }),
+      node("source1", "valueSwitch", [-960, 510], { index: 0 }, { label: "switch_source" }),
       node("analysis1", "component:audioAnalysis@1", [-720, 510], {
         /* hitDecay 420 rather than 250 (T1304c): 250 ms puts a whole gesture inside fifteen
            frames, which is what "too blinky blinky" named. On an ENVELOPE lane the decay
@@ -986,11 +986,11 @@ export const chimeraDocument = document(
            material (p50 0.002 on this track, §V992), which is one more reason the form lane
            above is driven from a ranked BAND and not from a hit. */
         envelope: 0.08, window: 60, settle: 0.15, hitDecay: 420,
-      }, { label: "analysis1" }),
+      }, { label: "audioanalysis1" }),
       /* T1302b: a Select at `*` passes every channel through unchanged — a Limit at 0..1
          would clip the tempo claims the hits bag also carries. */
-      node("lvl1", "valueSelect", [-480, 420], { channels: "*" }, { label: "lvl1" }),
-      node("hit1", "valueSelect", [-480, 604], { channels: "*" }, { label: "hit1" }),
+      node("lvl1", "valueSelect", [-480, 420], { channels: "*" }, { label: "select_lvl" }),
+      node("hit1", "valueSelect", [-480, 604], { channels: "*" }, { label: "select_hit" }),
     ],
     [
       edge("e-sky-shape", ["sky", "out"], ["shape", "input"]),

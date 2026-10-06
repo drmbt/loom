@@ -7,7 +7,8 @@ import * as acquisitionModule from "@runtime/models/model-acquisition.ts";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { compileGraph } from "@compiler/index.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph, GraphDocument } from "@domain/types/graph.ts";
+import { flatDocument } from "@compiler/test-support.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { EXAMPLE_DOCUMENTS } from "@/examples/documents.ts";
 import { TIER_B_CAPABILITIES, exampleRegistry } from "@/examples/runner.ts";
@@ -51,7 +52,7 @@ function preprocessId(plan: CompiledGraph, nodeId: string): string {
 }
 
 /** A document with nothing inferential in it — E44 with the graph emptied. */
-const EMPTY_GRAPH: GraphDocument = { revision: 1, nodes: {}, edges: {}, groups: {} };
+const EMPTY_GRAPH: FlatGraph = flatDocument({ revision: 1, nodes: {}, edges: {}, groups: {} });
 
 /** `refresh` reads the (absent) store on a microtask; let it land. */
 async function settleRefresh(): Promise<void> {
@@ -117,7 +118,7 @@ it("T1323: graph deletion retires worker history; lack of demand does not", asyn
     readBuffer: async () => new ArrayBuffer(16),
     registerMediaSource: () => () => undefined,
   } as unknown as LoomBackend;
-  const graph = sounding!.graph as GraphDocument;
+  const graph = flatDocument(sounding!.graph as GraphDocument);
   const plan = planFor(graph);
   const view = renderHook(() => useModelInference(backend));
   act(() => view.result.current.track(graph, plan));
@@ -172,7 +173,7 @@ it("T1487b: a held model's run state is published to its node, and cleared when 
       if ("inferenceNote" in patch) published.push([nodeId, patch["inferenceNote"]]);
     },
   };
-  const graph = sounding!.graph as GraphDocument;
+  const graph = flatDocument(sounding!.graph as GraphDocument);
   const depthId = Object.keys(graph.nodes).find(id => graph.nodes[id]!.type === "depth")!;
   const frame = { frameIndex: 0, timeSeconds: 0, absTimeSeconds: 0 } as never;
   const view = renderHook(() => useModelInference(backend, sink as never));
@@ -227,7 +228,7 @@ describe("§T976 — a real document's Depth node publishes its timing channels"
     view.result.current.resolver(channel, { frame } as never);
 
   it("answers `<nodeName>:ready` for E44's Depth node, tracked from the real graph", async () => {
-    const graph = sounding!.graph as GraphDocument;
+    const graph = flatDocument(sounding!.graph as GraphDocument);
     const view = renderHook(() => useModelInference(null));
     act(() => {
       view.result.current.track(graph, planFor(graph));
@@ -243,7 +244,7 @@ describe("§T976 — a real document's Depth node publishes its timing channels"
   });
 
   it("refuses a channel it does not own, so it can sit in the merge without shadowing", async () => {
-    const graph = sounding!.graph as GraphDocument;
+    const graph = flatDocument(sounding!.graph as GraphDocument);
     const view = renderHook(() => useModelInference(null));
     act(() => {
       view.result.current.track(graph, planFor(graph));
@@ -259,7 +260,7 @@ describe("§T976 — a real document's Depth node publishes its timing channels"
   });
 
   it("stops answering for a node the document no longer has", async () => {
-    const graph = sounding!.graph as GraphDocument;
+    const graph = flatDocument(sounding!.graph as GraphDocument);
     const view = renderHook(() => useModelInference(null));
     act(() => {
       view.result.current.track(graph, planFor(graph));
@@ -280,7 +281,7 @@ describe("§T976 — a real document's Depth node publishes its timing channels"
 describe("the model notice for a document whose star node has no model", () => {
   it("names what is ON THE SCREEN for E44 Sounding, and warns rather than offers", async () => {
     expect(sounding, "E44 Sounding is missing from the catalogue").toBeDefined();
-    const graph = sounding!.graph as GraphDocument;
+    const graph = flatDocument(sounding!.graph as GraphDocument);
     const plan = planFor(graph);
 
     const view = renderHook(() => useModelInference(null));
@@ -313,7 +314,7 @@ describe("the model notice for a document whose star node has no model", () => {
   });
 
   it("goes away when the document that needed it is closed", async () => {
-    const graph = sounding!.graph as GraphDocument;
+    const graph = flatDocument(sounding!.graph as GraphDocument);
     const view = renderHook(() => useModelInference(null));
     act(() => {
       view.result.current.track(graph, planFor(graph));
@@ -508,7 +509,7 @@ describe("T1044 — the inference result is registered on whichever backend is l
     let live = first.backend;
     const view = renderHook(() => useModelInference(live));
     act(() => {
-      view.result.current.track(graph, plan);
+      view.result.current.track(flatDocument(graph), plan);
     });
     await settleRefresh();
     // The premise: backend one really did get it, so a failure below is the SWAP and not
@@ -524,7 +525,7 @@ describe("T1044 — the inference result is registered on whichever backend is l
     live = second.backend;
     view.rerender();
     act(() => {
-      view.result.current.track(graph, planFor(graph));
+      view.result.current.track(flatDocument(graph), planFor(graph));
     });
     await settleRefresh();
 
@@ -557,7 +558,7 @@ it("an offline lease prepares each export input and releases to the live rate ga
     status: { framesSubmitted: 0 },
     readBuffer, registerDispatchGate: gates.registerDispatchGate, registerMediaSource: () => () => undefined,
   } as unknown as LoomBackend;
-  const graph = structuredClone(sounding!.graph) as GraphDocument;
+  const graph = flatDocument(structuredClone(sounding!.graph) as GraphDocument);
   const depthId = Object.keys(graph.nodes).find(id => graph.nodes[id]!.type === "depth")!;
   graph.nodes[depthId]!.parameters["rateLimit"] = 2;
   const plan = planFor(graph);
@@ -635,7 +636,7 @@ it.each(["depth", "pose", "matte"])("%s skips unsubmitted input and preserves ca
     readBuffer, registerDispatchGate: gates.registerDispatchGate, registerMediaSource: () => () => undefined,
   } as unknown as LoomBackend;
   const view = renderHook(() => useModelInference(backend));
-  act(() => view.result.current.track(graph, plan));
+  act(() => view.result.current.track(flatDocument(graph), plan));
   await settleRefresh();
   const gate = gates.gates.get(preprocessId(plan, nodeId));
   expect(gate).toBeTypeOf("function");
@@ -657,7 +658,7 @@ it.each(["depth", "pose", "matte"])("%s skips unsubmitted input and preserves ca
   expect(requests[0]).toMatchObject({ nodeId, nodeType: type, sourceWidth: 1280, sourceHeight: 720 });
   if (type === "pose") expect(requests[0]).toMatchObject({ width: 17, height: 1 });
   // Uniform-only tracking retains the gate; the next real compiled dispatch still starts.
-  act(() => view.result.current.track({ ...graph, revision: 2 }, planFor(graph)));
+  act(() => view.result.current.track(flatDocument({ ...graph, revision: 2 }), planFor(graph)));
   expect(gates.registerDispatchGate).toHaveBeenCalledOnce();
   const next = inferenceFrame(60);
   // The live open-frame dispatch sees render1's pixels, even though the project

@@ -1,11 +1,13 @@
-import { compileGraph } from "../compiler/index.ts";
-import type { CompiledGraph } from "../compiler/index.ts";
+import { compileGraph, flattenComponents } from "../compiler/index.ts";
+import type { CompiledGraph, FlattenedGraph } from "../compiler/index.ts";
+import { documentFindings, requireCodeBuilt, type DocumentFinding } from "../compiler/document-findings.ts";
 import { loadProject } from "../domain/project/index.ts";
 import { createComponentSystem } from "../domain/components/registry.ts";
 import type { ComponentRegistryView } from "../domain/components/index.ts";
 import type { UnknownNodePlaceholder } from "../domain/project/index.ts";
 import type { BackendCapabilities, FrameInputs } from "../domain/types/backend.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
+import { frameFromClock } from "../domain/types/frame.ts";
 import type { ProjectDocument } from "../domain/types/graph.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
@@ -56,6 +58,15 @@ export interface RunExampleResult {
   readonly placeholders: readonly UnknownNodePlaceholder[];
   readonly plan: CompiledGraph | undefined;
   readonly read: PlanReadResult | undefined;
+  /**
+   * §T1641b slice 3: what `documentFindings` says of the loaded document, the compile above
+   * included. The write gate over every stored node and every definition the file carries,
+   * each finding with its class: what a structural compile alone cannot say (a payload a
+   * slot keeps, a definition nothing instances). Empty when the file did not load.
+   */
+  readonly findings: readonly DocumentFinding[];
+  /** The flattening the compile above read, for a reader that evaluates frames over it. */
+  readonly flattened?: FlattenedGraph;
   /** T956: the file's own embedded component library, for harness renders. */
   readonly components?: ComponentRegistryView;
   /**
@@ -98,15 +109,19 @@ export function runExample(file: ExampleFile): RunExampleResult {
       placeholders: [],
       plan: undefined,
       read: undefined,
+      findings: [],
     };
   }
 
+  // One flattening, read by the compile and by the document check after it.
+  const flattened = flattenComponents({ graph: loaded.document.graph, registry, components: components.view() });
   const plan = compileGraph({
     graph: loaded.document.graph,
     settings: loaded.document.settings,
     registry,
     capabilities: TIER_B_CAPABILITIES,
     components: components.view(),
+    flattened,
   });
 
   return {
@@ -118,12 +133,28 @@ export function runExample(file: ExampleFile): RunExampleResult {
     placeholders: loaded.placeholders,
     plan,
     read: readExecutionPlan(plan),
+    findings: documentFindings({
+      graph: loaded.document.graph,
+      settings: loaded.document.settings,
+      registry,
+      components: components.view(),
+      capabilities: TIER_B_CAPABILITIES,
+      compiled: { plan, flattened },
+    }),
+    flattened,
     components: components.view(),
     nodes: registry,
   };
 }
 
-/** `runExample`, with the two "this cannot have happened" cases turned into a throw. */
+/**
+ * `runExample`, with the two "this cannot have happened" cases turned into a throw.
+ *
+ * §T1641b slice 3: and THE LOAD FOR CODE. A script or a test that reads a file to render or
+ * measure it is about to trust it, so it is refused what the save by code is refused
+ * (`refusedAtCodeSave`): anything that can never take effect, and an error on a node a sink
+ * reaches. The app's open is not this door; it opens every file and reports.
+ */
 export function requireExample(file: ExampleFile): {
   document: ProjectDocument;
   plan: CompiledGraph;
@@ -133,6 +164,7 @@ export function requireExample(file: ExampleFile): {
   if (result.document === undefined || result.plan === undefined) {
     throw new Error(`${file.fileName} did not load: ${result.reason ?? "unknown reason"}`);
   }
+  requireCodeBuilt(`${file.fileName} was not loaded`, result.findings);
   return { document: result.document, plan: result.plan, result };
 }
 
@@ -160,14 +192,18 @@ export function frameSequence(document: ProjectDocument, frameCount: number): re
     document.settings.outputResolution.width,
     document.settings.outputResolution.height,
   ];
+  // T1554b: the rate the sequence steps at is stated, not left to the readers' default; a
+  // sequence that never wraps has the timeline as its absolute clock, which the constructor
+  // fills in, and no epoch (an export's, T1497b).
   return Array.from({ length: frameCount }, (_unused, frameIndex) => ({
-    frame: {
+    frame: frameFromClock({
       timeSeconds: frameIndex / 60,
       deltaSeconds: 1 / 60,
       frameIndex,
-      mode: "offline" as const,
+      mode: "offline",
       randomSeed: document.settings.randomSeed,
-    },
+      fps: 60,
+    }),
     pointer: { x: 0, y: 0, buttons: 0 },
     resolution,
   }));

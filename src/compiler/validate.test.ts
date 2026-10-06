@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { flatDocument } from "@compiler/test-support.ts";
 import { validateGraph, validateRequiredInputs } from "./validate.ts";
 import { CompilerDiagnosticCode } from "./diagnostics.ts";
 import { createCompilerTestRegistry, testEdge, testGraph, testNode } from "./test-support.ts";
@@ -10,38 +11,46 @@ const registry = createCompilerTestRegistry().view();
 describe("validateGraph — definitions and parameters (T24)", () => {
   it("reports an unknown node type instead of throwing", () => {
     const graph = testGraph([testNode("a", "fx.nope")]);
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.nodes.has("a")).toBe(false);
     expect(result.diagnostics.map((d) => d.code)).toContain(CompilerDiagnosticCode.unknownNodeType);
   });
 
   it("fills declared parameters from their defaults", () => {
-    const result = validateGraph(testGraph([testNode("a", "fx.blur")]), registry);
+    const result = validateGraph(flatDocument(testGraph([testNode("a", "fx.blur")])), registry);
     expect(result.nodes.get("a")?.parameters).toEqual({ radius: 4 });
   });
 
   /** A wrong-typed value is a reported error and falls back to the default — never a silent cast. */
   it("rejects an out-of-range parameter and uses the default", () => {
     const graph = testGraph([testNode("a", "fx.blur", { parameters: { radius: 999 } })]);
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.nodes.get("a")?.parameters["radius"]).toBe(4);
     expect(result.diagnostics.some((d) => d.severity === "error" && d.nodeId === "a")).toBe(true);
   });
 
-  it("warns about a parameter the definition does not declare", () => {
-    const graph = testGraph([testNode("a", "fx.blur", { parameters: { radius: 2, ghost: 1 } })]);
-    const result = validateGraph(graph, registry);
+  it("says a stored key the definition does not declare is read by nothing: the write gate's own finding, at rest", () => {
+    const graph = testGraph([testNode("a", "fx.blur", { parameters: { radius: 2, ghost: 1, radus: 3 } })]);
+    const result = validateGraph(flatDocument(graph), registry);
 
-    expect(
-      result.diagnostics.some((d) => d.code === CompilerDiagnosticCode.parameterUnknown),
-    ).toBe(true);
+    // §T1641b slice 2: one code for the write and for the document at rest, at error.
+    const unknown = result.diagnostics.filter((d) => d.code === "parameter.unknown");
+    expect(unknown.map((d) => [d.severity, d.nodeId])).toEqual([
+      ["error", "a"],
+      ["error", "a"],
+    ]);
+    expect(unknown[0]?.message).toBe('Node "a" stores a value under "ghost", which "fx.blur" does not declare: nothing reads it.');
+    expect(unknown[0]?.suggestion).toBe("Declared: radius. Or remove the stored value: parameter.removeUndeclared (in a patch: removeParameters).");
+    expect(unknown[1]?.suggestion).toBe('Nearest: "radius". Declared: radius. Or remove the stored value: parameter.removeUndeclared (in a patch: removeParameters).');
+    // The declared value beside them is still the one handed on.
+    expect(result.nodes.get("a")?.parameters).toEqual({ radius: 2 });
   });
 
   it("warns when the saved definition version differs from the registry's", () => {
     const graph = testGraph([testNode("a", "fx.blur", { definitionVersion: 0 })]);
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(
       result.diagnostics.some((d) => d.code === CompilerDiagnosticCode.definitionVersion),
@@ -55,7 +64,7 @@ describe("validateGraph — connections (§V13, §V14)", () => {
       [testNode("gen", "fx.generator"), testNode("mono", "fx.mono")],
       [testEdge("e1", ["gen", "out"], ["mono", "source"])],
     );
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.edges).toHaveLength(0);
     const diagnostic = result.diagnostics.find(
@@ -74,7 +83,7 @@ describe("validateGraph — connections (§V13, §V14)", () => {
         testEdge("e2", ["b", "out"], ["blur", "source"]),
       ],
     );
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.edges.map((edge) => edge.id)).toEqual(["e1"]);
     expect(result.diagnostics.some((d) => d.code === CompilerDiagnosticCode.portOccupied)).toBe(true);
@@ -88,7 +97,7 @@ describe("validateGraph — connections (§V13, §V14)", () => {
         testEdge("e2", ["b", "out"], ["c", "layers"]),
       ],
     );
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     expect(result.edges.map((edge) => edge.id)).toEqual(["e1", "e2"]);
     expect(result.diagnostics).toHaveLength(0);
@@ -99,13 +108,13 @@ describe("validateGraph — connections (§V13, §V14)", () => {
       [testNode("fb", "fx.feedback"), testNode("blur", "fx.blur")],
       [testEdge("e1", ["fb", "out"], ["blur", "source"])],
     );
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
     expect(result.edges[0]?.temporal).toBe(true);
   });
 
   it("reports a required input with nothing connected, for kept nodes only", () => {
     const graph = testGraph([testNode("blur", "fx.blur"), testNode("lonely", "fx.blur")]);
-    const result = validateGraph(graph, registry);
+    const result = validateGraph(flatDocument(graph), registry);
 
     const reported = validateRequiredInputs(result.nodes, result.edges, new Set(["blur"]));
     expect(reported).toHaveLength(1);
@@ -141,8 +150,9 @@ describe("validateGraph — per-component expressions (§B231)", () => {
       expression: { kind: "expression" as const, source },
     },
   });
+  // §T1641b: each way an expression fails has its own code, under these two stems.
   const expressionDiagnostics = (result: ReturnType<typeof validateGraph>) =>
-    result.diagnostics.filter((d) => d.code === "parameter.expression");
+    result.diagnostics.filter((d) => d.code.startsWith("parameter.expression.") || d.code.startsWith("parameter.reference."));
 
   it("reports an unknown function on a reflected kernel component, naming node, key and function", () => {
     const graph = testGraph([
@@ -150,12 +160,15 @@ describe("validateGraph — per-component expressions (§B231)", () => {
         parameters: { kernel: KERNEL, place: [1, 2, 3], "place.x": slot("saturate(abstime)", 0.25) },
       }),
     ]);
-    const result = validateGraph(graph, shipped);
+    const result = validateGraph(flatDocument(graph), shipped);
     const [reported, ...rest] = expressionDiagnostics(result);
     expect(rest).toEqual([]);
     expect(reported?.nodeId).toBe("k");
     expect(reported?.message).toContain('"place.x"');
     expect(reported?.message).toContain('unknown function "saturate"');
+    // §T1641b: it can never evaluate, so it is an error, and it says what to write instead.
+    expect([reported?.severity, reported?.code]).toEqual(["error", "parameter.expression.syntax"]);
+    expect(reported?.suggestion).toBe("Write clamp(abstime, 0, 1).");
     // What the kernel is handed: the retained x, the bare key's y and z.
     expect(result.nodes.get("k")?.parameters["place"]).toEqual([0.25, 2, 3]);
   });
@@ -164,11 +177,13 @@ describe("validateGraph — per-component expressions (§B231)", () => {
     const graph = testGraph([
       testNode("cam", "camera", { parameters: { "lookAt.y": slot("mod(abstime, 0)", 0.5) } }),
     ]);
-    const [reported, ...rest] = expressionDiagnostics(validateGraph(graph, shipped));
+    const [reported, ...rest] = expressionDiagnostics(validateGraph(flatDocument(graph), shipped));
     expect(rest).toEqual([]);
     expect(reported?.nodeId).toBe("cam");
     expect(reported?.message).toContain('"lookAt.y"');
     expect(reported?.message).toContain("mod(): the period is zero");
+    // §T1641b: arithmetic that fails for THESE inputs may read at another frame: a warning.
+    expect([reported?.severity, reported?.code]).toEqual(["warning", "parameter.expression.value"]);
   });
 
   it("stays silent on a valid component expression, whose value is the one handed on", () => {
@@ -177,7 +192,7 @@ describe("validateGraph — per-component expressions (§B231)", () => {
         parameters: { kernel: KERNEL, place: [1, 2, 3], "place.x": slot("clamp(7, 0, 5) + abstime", 0.25) },
       }),
     ]);
-    const result = validateGraph(graph, shipped);
+    const result = validateGraph(flatDocument(graph), shipped);
     expect(result.diagnostics.filter((d) => d.nodeId === "k" && d.code.startsWith("parameter."))).toEqual([]);
     // `abstime` is 0 in the frameless compile (§V44's zero frame): 5, not the retained 0.25.
     expect(result.nodes.get("k")?.parameters["place"]).toEqual([5, 2, 3]);

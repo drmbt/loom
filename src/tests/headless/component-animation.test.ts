@@ -6,8 +6,9 @@ import { testCapabilities } from "../../compiler/test-support.ts";
 import { hasAnimatedParameters } from "../../domain/channels/graph-channels.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { createPulseWatcher, pulseCommandInput } from "../../domain/parameters/pulse.ts";
+import { NO_FLATTENING, type FlatteningReads } from "../../domain/parameters/node-references.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
-import { DEFAULT_PROJECT_SETTINGS } from "../../domain/types/graph.ts";
+import { DEFAULT_PROJECT_SETTINGS, type FlatGraph } from "../../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import { analyzeChannelEntries, createAnalyzeChannels } from "../../runtime/execution/index.ts";
 import {
@@ -72,14 +73,14 @@ function fixture(): {
 
 /** Runs the value graph forward, exactly as `advanceChannels` does, and keeps the last. */
 function runValueGraph(
-  graph: Parameters<ReturnType<typeof createValueGraphSession>["evaluate"]>[0],
+  flattened: FlatteningReads & { readonly graph: FlatGraph },
   registry: ReturnType<typeof animatedComponentSystem>["registry"],
   frames: number,
 ) {
   const session = createValueGraphSession(registry);
-  let last = session.evaluate(graph, frameAt(0), { pointer: POINTER });
+  let last = session.evaluate(flattened.graph, frameAt(0), { flattening: flattened, pointer: POINTER });
   for (let index = 1; index < frames; index += 1) {
-    last = session.evaluate(graph, frameAt(index), { pointer: POINTER });
+    last = session.evaluate(flattened.graph, frameAt(index), { flattening: flattened, pointer: POINTER });
   }
   return last;
 }
@@ -89,10 +90,11 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const { raw, flat, registry } = fixture();
 
     // The control: on the raw document the component's internals do not exist at all.
-    const dead = runValueGraph(raw, registry, 16);
+    // §T1552b: the defect, forced past the brand — the raw document, with no flattening behind it.
+    const dead = runValueGraph({ ...NO_FLATTENING, graph: raw as FlatGraph }, registry, 16);
     expect([...dead.byId.keys()]).toEqual([]);
 
-    const live = runValueGraph(flat.graph, registry, 16);
+    const live = runValueGraph(flat, registry, 16);
     const one = live.byId.get("c1/wob")?.["value"];
     const two = live.byId.get("c2/wob")?.["value"];
     expect(typeof one).toBe("number");
@@ -111,7 +113,7 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const one: number[] = [];
     const two: number[] = [];
     for (let index = 0; index < 24; index += 1) {
-      const result = session.evaluate(flat.graph, frameAt(index), { pointer: POINTER });
+      const result = session.evaluate(flat.graph, frameAt(index), { flattening: flat, pointer: POINTER });
       one.push(result.byId.get("c1/lag")?.["value"] as number);
       two.push(result.byId.get("c2/lag")?.["value"] as number);
     }
@@ -123,14 +125,14 @@ describe("T615 — a component's own animation runs, per instance", () => {
     expect(two.every((value) => Number.isFinite(value))).toBe(true);
     expect(one).not.toEqual(two);
     // And each one is a SMOOTHING, not a copy of its input — it lags behind the LFO.
-    const lastFrame = session.evaluate(flat.graph, frameAt(24), { pointer: POINTER });
+    const lastFrame = session.evaluate(flat.graph, frameAt(24), { flattening: flat, pointer: POINTER });
     expect(lastFrame.byId.get("c1/lag")?.["value"]).not.toBe(lastFrame.byId.get("c1/wob")?.["value"]);
   });
 
   it("mechanism 3 (EXPRESSION): the operand expression evaluates inside the component, per instance", () => {
     const { flat, registry } = fixture();
     const frames = 16;
-    const live = runValueGraph(flat.graph, registry, frames);
+    const live = runValueGraph(flat, registry, frames);
 
     const time = frameAt(frames - 1).timeSeconds;
     const expected = (instance: string): number =>
@@ -157,7 +159,7 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const { raw, flat, registry } = fixture();
     const frames = 16;
     const frame = frameAt(frames - 1);
-    const live = runValueGraph(flat.graph, registry, frames);
+    const live = runValueGraph(flat, registry, frames);
 
     // B41's `withUniqueNames` renamed instance 2's `amt` and REWROTE the binding that
     // reads it — this is the property the whole flat route rests on.
@@ -198,7 +200,9 @@ describe("T615 — a component's own animation runs, per instance", () => {
 
     // The control, and the exact shape T608 measured: the reduction buffer IS allocated
     // by the plan; only the CPU sampler could not see it.
-    expect(analyzeChannelEntries(raw, registry)).toEqual([]);
+    // §T1552b: the raw document is no longer a type the sampler accepts; forced past the
+    // brand ON PURPOSE, because this control IS the defect.
+    expect(analyzeChannelEntries(raw as FlatGraph, registry)).toEqual([]);
 
     const entries = analyzeChannelEntries(flat.graph, registry);
     expect(entries.map((entry) => entry.nodeId).sort()).toEqual(["c1/an", "c2/an"]);
@@ -246,14 +250,14 @@ describe("T615 — a component's own animation runs, per instance", () => {
     const deadWatcher = createPulseWatcher(registry);
     const deadFires: string[] = [];
     for (let index = 0; index < 40; index += 1) {
-      for (const fire of deadWatcher.step(raw, frameAt(index))) deadFires.push(fire.nodeId);
+      for (const fire of deadWatcher.step(raw as FlatGraph, frameAt(index), undefined, NO_FLATTENING)) deadFires.push(fire.nodeId); // §T1552b: the defect, forced past the brand
     }
     expect(deadFires).toEqual([]);
 
     const watcher = createPulseWatcher(registry);
     const fires: Array<{ nodeId: string; key: string; frame: number }> = [];
     for (let index = 0; index < 40; index += 1) {
-      for (const fire of watcher.step(flat.graph, frameAt(index))) {
+      for (const fire of watcher.step(flat.graph, frameAt(index), undefined, flat)) {
         fires.push({ nodeId: fire.nodeId, key: fire.key, frame: index });
       }
     }

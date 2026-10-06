@@ -1,18 +1,16 @@
-import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
-import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
+import { parameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import type { LiveParameterReads } from "@domain/parameters/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { FlatGraph, GraphNode } from "@domain/types/graph.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 
 /**
- * T1525b — what a model node's OWN parameters are read with: the catalogue, the compile's
- * channel resolver and the preset morphs in flight over the graph the seam tracks
- * (`FlattenedGraph.morphs`). Getters, read at each use, like the media transport's (§T1524b).
+ * T1525b — what a model node's OWN parameters are read with: the catalogue and the live read
+ * world (§T1551b: the compile's channel resolver and the runtime's flattening, so a fade and
+ * an `op('<instance>').chan` read both reach the seam). Getters, read at each use.
  */
-export interface InferenceParameterReads {
+export interface InferenceParameterReads extends LiveParameterReads {
   readonly registry: NodeRegistryView;
-  readonly channels: () => ChannelResolver | undefined;
-  readonly morphs: () => ParameterMorphs | undefined;
 }
 
 /**
@@ -30,12 +28,12 @@ export interface InferenceParameterReads {
  */
 export function inferenceParametersAt(
   node: GraphNode,
-  graph: GraphDocument,
+  graph: FlatGraph,
   reads: InferenceParameterReads | undefined,
   frame: FrameEvaluationInput | undefined,
 ): Readonly<Record<string, unknown>> {
   if (reads === undefined) return node.parameters;
   const { registry } = reads;
-  const options = createParameterReadOptions({ graph, registry, frame, channels: reads.channels(), morphs: reads.morphs() });
+  const options = parameterReadOptions({ graph, registry, frame, channels: reads.channels(), flattening: reads.flattening() });
   return resolveParameters(node, registry.get(node.type), options).values;
 }

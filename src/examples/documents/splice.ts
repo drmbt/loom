@@ -12,13 +12,13 @@ import { SPLICE_WGSL } from "../shaders/splice.wgsl.ts";
  * the node was born for), slammed by a CROP letterbox riding the onsets (crop blanks —
  * that is its literal job), with a scaled echo COMPOSITED over the top on the kick.
  *
- *   bed1/orb1 (the moving understudy) ─► stand1 ─┐ order 0
- *   clip1(movieFileIn) ────────────────────────── ┴─► pick1(switch)
- *   pick1 ─► splice1(customWgsl: the glitch) ─► fold1(mirror ┄ spin1) ─┬─► slam1(crop ┄ onset)
- *   beat1(audioPattern) ┄ gsub1·gd1·genv1 ┄► splice1.amount            │        │
- *          ┄ esub1·ed1·lenv1 ┄► punch1.opacity                         └► echo1(transform, ×1.28)
+ *   noise_bed/circle_orb (the moving understudy) ─► add_stand ─┐ order 0
+ *   movie_clip(movieFileIn) ────────────────────────── ┴─► switch_pick(switch)
+ *   switch_pick ─► wgsl_splice(customWgsl: the glitch) ─► mirror_fold(mirror ┄ lfo_spin) ─┬─► crop_slam(crop ┄ onset)
+ *   pattern_beat(audioPattern) ┄ math_glitchrest·math_glitchgain·lag_glitch ┄► wgsl_splice.amount            │        │
+ *          ┄ math_echorest·math_echogain·lag_echo ┄► composite_punch.opacity                         └► transform_echo(transform, ×1.28)
  *                                                                                │
- *                                                    punch1(composite: echo over slam) ─► out1
+ *                                                    composite_punch(composite: echo over slam) ─► output1
  *
  * ## The identity discipline, extended to USER code (§V147)
  *
@@ -47,61 +47,61 @@ export const spliceDocument = document(
         type: "perlin4d", seed: 11, period: 0.11, harmon: 3, spread: 2, gain: 0.5,
         rough: 0.5, exp: 1.6, amp: 0.36, offset: -0.32, mono: true, aspectcorrect: true,
         speed: 0.035, t4d: 0.37, s4d: 1, // T786: off the 4D lattice plane (T535) — t4d=0 collapses perlin4d's amplitude, so frame 0, which is the gallery card, was systematically flatter than every frame after it
-      }, { label: "bed1" }),
+      }, { label: "noise_bed" }),
       node("orb", "circle", [-2220, -140], {
         mode: "fill", center: [0.5, 0.5], radius: [0.13, 0.13], softness: 0.045,
         fillcolor: [1, 0.42, 0.12, 1], bgcolor: [0, 0, 0, 0], aspectcorrect: true,
-      }, { label: "orb1", parameters: { "center.x": drivenSlot("pathx1", 0.5), "center.y": drivenSlot("pathy1", 0.5) } }),
-      node("pathx", "lfo", [-2220, 424], { shape: "sine", frequency: 0.29, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "pathx1" }),
-      node("pathy", "lfo", [-2220, 704], { shape: "sine", frequency: 0.203, amplitude: 0.3, offset: 0.5, phase: 0.25 }, { label: "pathy1" }),
-      node("clip", "movieFileIn", [-2220, 140], { file: "", playMode: "freeRun", speed: 1 }, { label: "clip1" }),
-      node("stand", "add", [-1920, -280], { opacity: 1 }, { label: "stand1" }),
-      node("pick", "switch", [-1920, 20], { index: 0 }, { label: "pick1" }),
+      }, { label: "circle_orb", parameters: { "center.x": drivenSlot("lfo_pathx", 0.5), "center.y": drivenSlot("lfo_pathy", 0.5) } }),
+      node("pathx", "lfo", [-2220, 424], { shape: "sine", frequency: 0.29, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "lfo_pathx" }),
+      node("pathy", "lfo", [-2220, 704], { shape: "sine", frequency: 0.203, amplitude: 0.3, offset: 0.5, phase: 0.25 }, { label: "lfo_pathy" }),
+      node("clip", "movieFileIn", [-2220, 140], { file: "", playMode: "freeRun", speed: 1 }, { label: "movie_clip" }),
+      node("stand", "add", [-1920, -280], { opacity: 1 }, { label: "add_stand" }),
+      node("pick", "switch", [-1920, 20], { index: 0 }, { label: "switch_pick" }),
 
       // ---- the beat, and the rest-subtracted drives (T701) --------------------------
-      node("beat", "audioPattern", [-1920, 424], { bpm: 122, amount: 1 }, { label: "beat1" }),
+      node("beat", "audioPattern", [-1920, 424], { bpm: 122, amount: 1 }, { label: "pattern_beat" }),
       /* HIGH band → the glitch. Rest 0.3809 subtracted first (T701), so silence drives
          EXACTLY zero and the §V147 identity is the rack's own resting state. */
-      node("gsub", "valueMath", [-1620, 424], { operation: "add", operand: -0.381 }, { label: "gsub1" }),
-      node("gmul", "valueMath", [-1320, 424], { operation: "multiply", operand: 5.5 }, { label: "gd1" }),
+      node("gsub", "valueMath", [-1620, 424], { operation: "add", operand: -0.381 }, { label: "math_glitchrest" }),
+      node("gmul", "valueMath", [-1320, 424], { operation: "multiply", operand: 5.5 }, { label: "math_glitchgain" }),
       /* T824 — envelope the tear MAGNITUDE. The deal timing is the shader's own
          floor(absTime·DEALS) clock, so the §T749 hold-and-slam is untouched; this only
          stops the per-frame band wobble the shader's own §V681 warns is noise. Fast
          attack, slow release — a hit blooms and decays like a hit, not a jitter. At
          silence the rest-subtracted band is 0 and the lag of 0 is 0, so §V147 holds. */
-      node("genv", "valueLag", [-1020, 424], { lag: 0.02, releaseRatio: 6 }, { label: "genv1" }),
+      node("genv", "valueLag", [-1020, 424], { lag: 0.02, releaseRatio: 6 }, { label: "lag_glitch" }),
       /* LOW band → the echo. Rest 0.7119 (T701). */
-      node("esub", "valueMath", [-1620, 664], { operation: "add", operand: -0.712 }, { label: "esub1" }),
-      node("emul", "valueMath", [-1320, 664], { operation: "multiply", operand: 1.7 }, { label: "ed1" }),
+      node("esub", "valueMath", [-1620, 664], { operation: "add", operand: -0.712 }, { label: "math_echorest" }),
+      node("emul", "valueMath", [-1320, 664], { operation: "multiply", operand: 1.7 }, { label: "math_echogain" }),
       /* T824 — envelope the echo opacity so it blooms on the kick and decays, instead
          of flickering per frame. Slower than the glitch: the echo is a sustain. */
-      node("lenv", "valueLag", [-1020, 664], { lag: 0.05, releaseRatio: 5 }, { label: "lenv1" }),
+      node("lenv", "valueLag", [-1020, 664], { lag: 0.05, releaseRatio: 5 }, { label: "lag_echo" }),
       /* ONSETS → the letterbox slam, through a lag so the bar decays like a hit. */
-      node("slag", "valueLag", [-1620, 904], { lag: 0.14 }, { label: "slag1" }),
-      node("smul", "valueMath", [-1320, 904], { operation: "multiply", operand: 0.24 }, { label: "sl1" }),
+      node("slag", "valueLag", [-1620, 904], { lag: 0.14 }, { label: "lag_slam" }),
+      node("smul", "valueMath", [-1320, 904], { operation: "multiply", operand: 0.24 }, { label: "math_slamgain" }),
       /* The fold axis drifts — a locked mirror reads as a screenshot (E13's lesson). */
-      node("spin", "lfo", [-1320, 1144], { shape: "sine", frequency: 0.019, amplitude: 22, offset: 8, phase: 0 }, { label: "spin1" }),
+      node("spin", "lfo", [-1320, 1144], { shape: "sine", frequency: 0.019, amplitude: 22, offset: 8, phase: 0 }, { label: "lfo_spin" }),
 
       // ---- the rack -----------------------------------------------------------------
       node("splice", "customWgsl", [-1620, -60], { source: SPLICE_WGSL }, {
-        label: "splice1",
-        parameters: { amount: drivenSlot("genv1:high", 0) },
+        label: "wgsl_splice",
+        parameters: { amount: drivenSlot("lag_glitch:high", 0) },
       }),
       node("fold", "mirror", [-1320, -60], {
         mirrorx: true, mirrory: false, pivot: [0.5, 0.5], keephigh: false, extend: "mirror",
-      }, { label: "fold1", parameters: { rotate: drivenSlot("spin1", 12) } }),
+      }, { label: "mirror_fold", parameters: { rotate: drivenSlot("lfo_spin", 12) } }),
       node("slam", "crop", [-1020, -60], { left: 0, right: 1, top: 1 }, {
-        label: "slam1",
-        parameters: { bottom: drivenSlot("sl1:onset", 0) },
+        label: "crop_slam",
+        parameters: { bottom: drivenSlot("math_slamgain:onset", 0) },
       }),
       node("echo", "transform", [-1020, 240], {
         t: [0, 0], r: 0, s: [1.18, 1.18], p: [0.5, 0.5], xord: "srt", extend: "zero", aspectcorrect: false,
-      }, { label: "echo1" }),
+      }, { label: "transform_echo" }),
       node("punch", "composite", [-720, -60], { operation: "over" }, {
-        label: "punch1",
-        parameters: { opacity: drivenSlot("lenv1:low", 0) },
+        label: "composite_punch",
+        parameters: { opacity: drivenSlot("lag_echo:low", 0) },
       }),
-      node("out", "output", [-420, -60], {}, { label: "out1" }),
+      node("out", "output", [-420, -60], {}, { label: "output1" }),
     ],
     [
       edge("e-bed-stand", ["bed", "out"], ["stand", "in1"]),

@@ -1,16 +1,22 @@
 import type { NodeId, PortId } from "../domain/types/ids.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
-import type { GraphDocument, GraphNode } from "../domain/types/graph.ts";
+import type { FlatOrAuthoredGraph, GraphNode } from "../domain/types/graph.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
 import type { ParameterSchema, ParameterValue } from "../domain/types/parameters.ts";
 import type { PortDefinition } from "../domain/types/ports.ts";
 import { arePortsCompatible, describePortType } from "../domain/graph/port-compat.ts";
 import { resolveParameterSchema, effectiveParameterSchema, type ParameterMapBinding } from "../domain/parameters/resolve.ts";
-import { createParameterReadOptions } from "../domain/parameters/node-references.ts";
-import type { ResolveParametersOptions } from "../domain/parameters/resolve.ts";
+import {
+  NO_INSTANCES,
+  parameterReadOptions,
+  type FlatteningReads,
+  type InstanceChannelSources,
+} from "../domain/parameters/node-references.ts";
+import { NO_MORPHS } from "../domain/presets/morph-index.ts";
+import type { ParameterReadOptions, ResolveParametersOptions } from "../domain/parameters/resolve.ts";
 import { bindCycleDiagnostics } from "../domain/parameters/bind-cycles.ts";
 import { referenceCycleDiagnostics } from "../domain/graph/reference-cycles.ts";
-import { isComponentKeyOf } from "../domain/parameters/slots.ts";
+import { undeclaredKeys, undeclaredParameter } from "../domain/parameters/validate.ts";
 import type { ResolvedParameters } from "../domain/parameters/resolve.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
@@ -33,7 +39,24 @@ import type { CompileEdge } from "./types.ts";
  * topology, same resources — so the resulting plan differs only in its uniform VALUES,
  * which is what makes the update path `updateUniforms` rather than a recompile (§V5).
  */
-export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "channels" | "nodes" | "morphs">;
+export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "channels" | "morphs"> & {
+  /**
+   * T1485b: the component instances `op('<instance>').chan.<c>` can name — the flattening's
+   * `instanceChannels`, carried beside `morphs` for the same reason: the reader is built
+   * here, so a `compileGraph` caller cannot forget it.
+   */
+  readonly instances?: InstanceChannelSources | undefined;
+};
+
+/**
+ * §T1551b — the flattening a compile reads `op()` through, off the resolution that carries
+ * it. `compileGraphRetaining` fills both from the flattening it compiled; a resolution
+ * without them is a document with no flattening behind it (a direct `validateGraph`), and
+ * reads nothing fading and no instance — said here, once, for the three compiler readers.
+ */
+export function flatteningReadsOf(resolution: ParameterResolution): FlatteningReads {
+  return { morphs: resolution.morphs ?? NO_MORPHS, instanceChannels: resolution.instances ?? NO_INSTANCES };
+}
 
 export interface ResolvedNode {
   readonly node: GraphNode;
@@ -47,6 +70,12 @@ export interface ResolvedNode {
   readonly parameters: Readonly<Record<string, ParameterValue>>;
   /** T286 (§V287): parameters whose active mode is `map` — the consumer compiles from this. */
   readonly parameterMaps: Readonly<Record<string, ParameterMapBinding>>;
+  /**
+   * T1652b: what resolving THIS node's parameters reported, in the order it was pushed
+   * onto the compilation's list. Kept per node so a values-only revision can ask whether
+   * a node says something different about its new value (`rebaseOnValues`).
+   */
+  readonly said: ReadonlyArray<RuntimeDiagnostic>;
 }
 
 export interface ValidatedGraph {
@@ -66,6 +95,25 @@ export function isTemporalOutput(definition: NodeDefinition, portId: PortId): bo
   return definition.temporal?.outputs.includes(portId) === true;
 }
 
+/** §T1641b slice 2: what `resolveNodeParameters` is told about the keys a node may store. */
+export interface StoredKeyRules {
+  /**
+   * Keys the document may hold beside the schema: a definition's `retainedParameterKeys`,
+   * or what an instance's manifest declares beside its published page.
+   */
+  readonly retained?: readonly string[] | undefined;
+  /** `NodeDefinition.parameterKeysNote`: the node's own naming rule, said beside a refusal. */
+  readonly note?: string | undefined;
+  /**
+   * The node was saved against ANOTHER version of its definition than this build has. A key
+   * this build does not declare may be that version's: a newer build's, or an older one's
+   * that the node's migration would rewrite (a document that went through `loadProject` is
+   * never in that state). Either way it is not a key of nothing, and "remove it" would be
+   * the wrong remedy: the version mismatch is what is said (`compiler/definition-version`).
+   */
+  readonly otherVersion?: boolean | undefined;
+}
+
 /**
  * One node's parameters, resolved through THE parameter read path (§V61, T168).
  *
@@ -79,24 +127,30 @@ export function isTemporalOutput(definition: NodeDefinition, portId: PortId): bo
  *    validation itself belongs to the shared resolver, because validating is what picks
  *    the value (reject → default, accept → stored); a caller that validated on its own
  *    would resolve differently, which is B8 wearing another parameter type.
- *  - the "carries a parameter this type does not declare" warning, which is about keys
- *    OUTSIDE the schema, is worded in terms of a node type, and carries a compiler
- *    diagnostic code. Nothing an inspector would ever want.
+ *  - the finding for a stored key OUTSIDE the schema, which nothing reads. §T1641b slice 2:
+ *    it is the write gate's own finding (`undeclaredParameter`, `parameter.unknown`), asked
+ *    of what the document already holds. It used to be this function's own loop, under its
+ *    own code and severity, with its own words (§B264).
  *
  * Takes a bare schema rather than a `NodeDefinition` because a component instance's
  * parameter page is the component's PUBLISHED definitions, which exist before any node
- * manifest does (§V80) — and one resolver is the point. `typeLabel` is only for the
- * "carries a parameter this type does not declare" message.
+ * manifest does (§V80) — and one resolver is the point. `typeLabel` is only for that
+ * finding's message.
  */
 export function resolveNodeParameters(
   node: GraphNode,
   parameters: ParameterSchema,
   typeLabel: string,
   diagnostics: RuntimeDiagnostic[],
-  options: ParameterResolution = {},
-  retainedParameterKeys: readonly string[] = [],
+  /**
+   * §T1557b: REQUIRED. `parameterReadOptions(…)` for a read at a moment (`validateGraph`,
+   * the time probe, the per-frame compile), or `STORED_READ` for a read of the document
+   * itself (flattening's published page, a requirement classification).
+   */
+  read: ParameterReadOptions,
+  keys: StoredKeyRules = {},
 ): ResolvedParameters {
-  const resolved = resolveParameterSchema(node, parameters, options);
+  const resolved = resolveParameterSchema(node, parameters, read);
 
   // §V110 belt-and-braces: the patch gate refuses cycles at write time, but a document
   // can arrive from a file. Surfacing them here keeps compile the second line, and the
@@ -116,21 +170,15 @@ export function resolveNodeParameters(
     }
   }
 
-  for (const key of Object.keys(node.parameters).sort()) {
-    if (key in parameters) continue;
-    // Variant settings stay in the document for a later switch, without becoming
-    // active parameters. Only the definition's explicit declaration exempts a key.
-    if (retainedParameterKeys.includes(key)) continue;
-    // `color.r` addresses a component of a declared compound (§V113), not an unknown key.
-    if (isComponentKeyOf(parameters, key)) continue;
-    diagnostics.push(
-      compilerDiagnostic(
-        "warning",
-        CompilerDiagnosticCode.parameterUnknown,
-        `Node "${node.id}" carries parameter "${key}", which "${typeLabel}" does not declare.`,
-        { nodeId: node.id, suggestion: "The value is ignored; remove it or update the node definition." },
-      ),
-    );
+  // Variant settings stay in the document for a later switch, without becoming active
+  // parameters: only an explicit declaration exempts a key. `color.r` addresses a component
+  // of a declared compound (§V113), not an undeclared key; `undeclaredKeys` knows both.
+  if (keys.otherVersion !== true) {
+    for (const key of undeclaredKeys(parameters, node.parameters, keys.retained)) {
+      diagnostics.push(
+        undeclaredParameter(parameters, key, node.id, { stored: { nodeId: node.id, type: typeLabel }, keysNote: keys.note }),
+      );
+    }
   }
 
   return resolved;
@@ -149,9 +197,9 @@ export function resolveParameterValues(
   parameters: ParameterSchema,
   typeLabel: string,
   diagnostics: RuntimeDiagnostic[],
-  options: ParameterResolution = {},
+  read: ParameterReadOptions,
 ): Record<string, ParameterValue> {
-  return { ...resolveNodeParameters(node, parameters, typeLabel, diagnostics, options).values };
+  return { ...resolveNodeParameters(node, parameters, typeLabel, diagnostics, read).values };
 }
 
 /**
@@ -159,9 +207,13 @@ export function resolveParameterValues(
  *
  * Runs over the WHOLE document rather than the pruned subgraph: a miswired branch that
  * nothing renders is still a mistake worth surfacing in the problems tab.
+ *
+ * §T1552b: either side, said by the caller — the compile validates its flattening,
+ * `project.validate` the document as authored (`authoredGraph(…)`), and `op()` names
+ * resolve in whichever it was handed.
  */
 export function validateGraph(
-  graph: GraphDocument,
+  graph: FlatOrAuthoredGraph,
   registry: NodeRegistryView,
   options: ParameterResolution = {},
 ): ValidatedGraph {
@@ -182,23 +234,19 @@ export function validateGraph(
    * `op('noise1').par.gain` resolves against the graph being compiled, and this function
    * is the one place that has it: every compiler entry point comes through here, so
    * building the reader once means the plan's uniforms carry referenced values without a
-   * single `compileGraph` caller having to know the seam exists. A caller MAY pass its
-   * own (`options.nodes`) — the flattener does, so an instance's internals read against
-   * the flattened graph they actually live in — and its choice wins.
+   * single `compileGraph` caller having to know the seam exists. §T1557b: a caller can no
+   * longer pass a reader of its own (`ParameterResolution` has no `nodes`): the flattener
+   * that once did reads its published page with `STORED_READ`, and every other reader is
+   * this one, built from the one factory.
    *
    * §V61 in one line: the compiler and the inspector read through the same resolver with
    * the same reader, so a reference cannot mean one thing on screen and another on the
    * GPU. That divergence is B8, and it cost this project a day.
    */
-  const resolution: ParameterResolution =
-    options.nodes === undefined
-      ? // T1129/§V837: the reader and its base come from the one factory, not from a
-        // `base` spelled out here. The `frame` and `channels` it re-supplies are the ones
-        // `options` already carries, so this spread changes nothing but where they come from.
-        // T1497b: and the preset morphs in flight, for the same reason — a reference to a
-        // fading parameter must read the fading value.
-        { ...options, ...createParameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels, morphs: options.morphs }) }
-      : options;
+  // T1129/§V837: the reader and its base come from the one factory, not from a `base`
+  // spelled out here. T1497b: and the preset morphs in flight, for the same reason — a
+  // reference to a fading parameter must read the fading value.
+  const read = parameterReadOptions({ graph, registry, frame: options.frame, channels: options.channels, flattening: flatteningReadsOf(options) });
 
   for (const nodeId of Object.keys(graph.nodes).sort()) {
     const node = graph.nodes[nodeId];
@@ -227,6 +275,7 @@ export function validateGraph(
         ),
       );
     }
+    const saidFrom = diagnostics.length;
     const resolvedParameters = resolveNodeParameters(
       node,
       // T880: the node's EFFECTIVE schema — a customWgsl reflects its own shader's struct, so
@@ -235,14 +284,19 @@ export function validateGraph(
       effectiveParameterSchema(definition, node.parameters),
       definition.type,
       diagnostics,
-      resolution,
-      definition.retainedParameterKeys,
+      read,
+      {
+        retained: definition.retainedParameterKeys,
+        note: definition.parameterKeysNote,
+        otherVersion: node.definitionVersion !== definition.version,
+      },
     );
     nodes.set(nodeId, {
       node,
       definition,
       parameters: { ...resolvedParameters.values },
       parameterMaps: resolvedParameters.maps,
+      said: diagnostics.slice(saidFrom),
     });
   }
 

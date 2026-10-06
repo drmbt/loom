@@ -5,7 +5,7 @@ import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
 import { isParameterSlot, staticBindingValue } from "@domain/parameters/slots.ts";
 import { isPresetsNode, morphRunning, parseMorphRecords } from "@domain/presets/index.ts";
-import { controlNameOf, layerPicture } from "@nodes/definitions/controls.ts";
+import { layerPicture, surfaceNameOf } from "@nodes/definitions/controls.ts";
 import { SELECT_NODES_COMMAND } from "@editor/selection/select-created.ts";
 import { MORPH_POLL_MS } from "./board-members.tsx";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
@@ -94,7 +94,8 @@ interface LayerRowProps extends Omit<LayersViewProps, "graph"> {
 }
 
 function LayerRow({ node, bus, invocation, write, picture, morphing }: LayerRowProps) {
-  const name = controlNameOf(node);
+  // T1593b: a row is drawn as a layer, so it is called by its ROLE (`graphic`, not `layer_graphic`).
+  const name = surfaceNameOf(node);
   const on = node.ui?.bypassed !== true;
   const blend = blendLabel(bus, node);
   return (

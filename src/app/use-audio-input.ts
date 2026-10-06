@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { AudioFeatures, FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { FrameRange, GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { FlatGraph, FrameRange, GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
-import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
+import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import { NO_FLATTENING, type FlatteningReads } from "@domain/parameters/node-references.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
 import { createHopAnalyser } from "@domain/audio/analysis/hop-analyser.ts";
 import { mediaTransportFrom, type MediaPlayhead, type MediaTransportValues } from "@domain/media/transport.ts";
 import { awaitMediaReady } from "./media-sources.ts";
+import { appAudioContext } from "./app-audio-context.ts";
 import { createAudioHopReducer } from "./audio-analysis-frame.ts";
 import {
   AUDIO_ANALYSIS_OPTIONS,
   AUDIO_ANALYSIS_PROCESSOR_NAME,
   analysisOptionsFor,
   type AudioAnalysisProcessorOptions,
+  type AudioAnalysisStopMessage,
   type AudioAnalysisWorkletMessage,
   type DetectorSettings,
 } from "./audio-analysis-protocol.ts";
@@ -121,6 +124,9 @@ function polledReader(
 
 type EngineAttachment = { readonly node: AudioWorkletNode; readonly read: FeatureReader } | { readonly failure: string };
 
+/** §T1548b: the analysis worklet module, added once per context. */
+const workletModules = new WeakMap<BaseAudioContext, Promise<void>>();
+
 /**
  * T1226 — the engine on `context`'s audio thread, or the reason it could not be. Never
  * throws: a missing `audioWorklet` (an old WebView), a rejected `addModule` (the chunk
@@ -132,7 +138,15 @@ async function attachAnalysisEngine(
 ): Promise<EngineAttachment> {
   try {
     if (context.audioWorklet === undefined) throw new Error("AudioWorklet is not supported here");
-    await context.audioWorklet.addModule(AUDIO_ANALYSIS_WORKLET_URL);
+    // §T1548b: the context is the app's one (`appAudioContext`) and outlives a capture, so
+    // the module is added once per context, not once per capture.
+    let loaded = workletModules.get(context);
+    if (loaded === undefined) {
+      loaded = context.audioWorklet.addModule(AUDIO_ANALYSIS_WORKLET_URL);
+      workletModules.set(context, loaded);
+      void loaded.catch(() => workletModules.delete(context));
+    }
+    await loaded;
     const node = new AudioWorkletNode(context, AUDIO_ANALYSIS_PROCESSOR_NAME, {
       numberOfInputs: 1,
       numberOfOutputs: 0,
@@ -243,8 +257,9 @@ export function syncAudioMediaElement(
   head: MediaPlayhead,
   offlineRender: boolean,
   continuous?: boolean,
+  correction?: number,
 ): boolean {
-  if (!offlineRender) return applyMediaPlayhead(element, transport, head, continuous);
+  if (!offlineRender) return applyMediaPlayhead(element, transport, head, continuous, correction);
   if (!element.paused) element.pause();
   return false;
 }
@@ -432,7 +447,7 @@ interface LiveCapture {
 }
 
 export function useAudioInput(
-  getGraph: () => GraphDocument,
+  getGraph: () => FlatGraph,
   /**
    * T493 — the node registry, so transport parameters resolve through the ONE read path
    * (§V61) and take every mode. Optional because `captureConfigOf` and the analysis half
@@ -445,10 +460,12 @@ export function useAudioInput(
   /** T1229: the project's frame rate — the grid a file is pre-analysed on. Absent, no file is pre-analysed. */
   fps?: () => number,
   /**
-   * T1524b: the preset morphs in flight over the graph `getGraph` returns, so a transport
-   * parameter or the volume a bank is fading follows the fade instead of cutting to its end.
+   * §T1559b: the flattening the graph `getGraph` returns came out of, whole — the preset
+   * morphs in flight (T1524b: a transport parameter or the volume a bank is fading follows
+   * the fade) and the instances `op('<instance>').chan.<c>` names (T1485b). Absent (a test
+   * that pins capture alone), the transport reads with `NO_FLATTENING`.
    */
-  getMorphs?: () => ParameterMorphs | undefined,
+  getFlattening?: () => FlatteningReads,
 ): AudioInputSource {
   const captureRef = useRef<LiveCapture | null>(null);
   const configRef = useRef<CaptureConfig | null>(null);
@@ -471,8 +488,8 @@ export function useAudioInput(
   const configKeyRef = useRef<string>("");
   const getGraphRef = useRef(getGraph);
   getGraphRef.current = getGraph;
-  const getMorphsRef = useRef(getMorphs);
-  getMorphsRef.current = getMorphs;
+  const getFlatteningRef = useRef(getFlattening);
+  getFlatteningRef.current = getFlattening;
   const registryRef = useRef(registry);
   registryRef.current = registry;
   /** T493: the transport of the node whose file is playing. Null for a mic. */
@@ -511,8 +528,30 @@ export function useAudioInput(
     };
 
     const acquire = async (config: CaptureConfig): Promise<void> => {
-      const context = new AudioContext();
-      const analyser = context.createAnalyser();
+      /*
+       * §T1548b — the app's ONE context, shared with movie sound, so it is never closed
+       * here: a capture that ends disconnects the nodes it made (`release`) and leaves the
+       * context to the movies routed into it. That disconnect is what takes a muted node off
+       * the speakers (T555).
+       */
+      const context = appAudioContext();
+      if (context === null) {
+        statusRef.current = { kind: "error", message: "This browser has no Web Audio." };
+        return;
+      }
+      const nodes: AudioNode[] = [];
+      const made = <T extends AudioNode>(node: T): T => {
+        nodes.push(node);
+        return node;
+      };
+      let stopEngine = (): void => undefined;
+      const release = (): void => {
+        stopEngine();
+        stopEngine = () => undefined;
+        for (const node of nodes) node.disconnect();
+        nodes.length = 0;
+      };
+      const analyser = made(context.createAnalyser());
       // The engine's window, so the polled fallback analyses exactly what the worklet would.
       analyser.fftSize = AUDIO_ANALYSIS_OPTIONS.fftSize;
       // Zero: valueLag downstream owns smoothing; the default 0.8 would pre-damp
@@ -529,6 +568,15 @@ export function useAudioInput(
       const options = analysisOptionsFor(config.detector, context.sampleRate);
       const engine = await attachAnalysisEngine(context, options);
       if ("failure" in engine) messages.push(workletFallbackMessage(engine.failure));
+      else {
+        made(engine.node);
+        // The processor runs until told otherwise; the context outlives this capture.
+        const stop: AudioAnalysisStopMessage = { type: "stop" };
+        stopEngine = () => {
+          engine.node.port.onmessage = null;
+          engine.node.port.postMessage(stop);
+        };
+      }
       const attachEngine = (input: AudioNode): void => {
         if ("failure" in engine) {
           readerRef.current = polledReader(context, analyser, options);
@@ -545,7 +593,7 @@ export function useAudioInput(
         };
       };
       if (cancelled) {
-        void context.close();
+        release();
         return;
       }
 
@@ -573,10 +621,10 @@ export function useAudioInput(
           }
           if (cancelled) {
             for (const track of stream.getTracks()) track.stop();
-            void context.close();
+            release();
             return;
           }
-          const input = context.createMediaStreamSource(stream);
+          const input = made(context.createMediaStreamSource(stream));
           input.connect(analyser);
           attachEngine(input);
           captureRef.current = {
@@ -584,13 +632,13 @@ export function useAudioInput(
             analyser,
             dispose: () => {
               for (const track of stream.getTracks()) track.stop();
-              void context.close();
+              release();
             },
           };
         } else {
           if (config.url.trim() === "") {
             statusRef.current = { kind: "error", message: "File source needs a URL." };
-            void context.close();
+            release();
             return;
           }
           const element = new Audio();
@@ -600,7 +648,7 @@ export function useAudioInput(
           // wrapping now, and the element's own loop would fight every seek.
           element.loop = false;
           element.src = config.url;
-          const input = context.createMediaElementSource(element);
+          const input = made(context.createMediaElementSource(element));
           input.connect(analyser);
           attachEngine(input);
           /*
@@ -612,7 +660,7 @@ export function useAudioInput(
            * slider a hidden master fader on the whole graph — the plausible-wrong wiring,
            * with no error to find it by.
            */
-          const gain = context.createGain();
+          const gain = made(context.createGain());
           gain.gain.value = monitorGainLevel(monitorLevelRef.current, renderMutedRef.current);
           analyser.connect(gain);
           if (config.monitor) gain.connect(context.destination);
@@ -624,7 +672,7 @@ export function useAudioInput(
           await awaitMediaReady(element);
           if (cancelled) {
             element.pause();
-            void context.close();
+            release();
             return;
           }
           captureRef.current = {
@@ -635,7 +683,7 @@ export function useAudioInput(
             dispose: () => {
               element.pause();
               element.src = "";
-              void context.close();
+              release();
             },
           };
           const nodeId = config.nodeId;
@@ -645,7 +693,7 @@ export function useAudioInput(
               graph: () => getGraphRef.current(),
               registry: nodeRegistry,
               channels: () => channelsRef.current,
-              morphs: () => getMorphsRef.current?.(),
+              flattening: () => getFlatteningRef.current?.() ?? NO_FLATTENING,
             });
             runnerRef.current = runner;
             releaseControlRef.current =
@@ -691,7 +739,7 @@ export function useAudioInput(
           );
         }
       } catch (error) {
-        void context.close();
+        release();
         statusRef.current = {
           kind: "error",
           message: error instanceof Error ? error.message : String(error),
@@ -796,7 +844,7 @@ export function useAudioInput(
     const deterministicOfflineAudio = renderMutedRef.current &&
       offlineRef.current !== null &&
       stepped.transport.playMode !== "freeRun";
-    syncAudioMediaElement(capture.element, stepped.transport, stepped.head, deterministicOfflineAudio, stepped.continuous);
+    syncAudioMediaElement(capture.element, stepped.transport, stepped.head, deterministicOfflineAudio, stepped.continuous, stepped.correction);
     if (capture.gain !== undefined) {
       // Read from the SAME resolve the playhead came from, so volume and position can
       // never come from two different reads of one frame (§B8's shape). And `visible`

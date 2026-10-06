@@ -53,7 +53,7 @@
       "birds": {
         "definitionVersion": 1,
         "id": "birds",
-        "label": "birds1",
+        "label": "instances_birds",
         "parameters": {
           "color": {
             "bindings": {
@@ -103,7 +103,7 @@
       "flock": {
         "definitionVersion": 1,
         "id": "flock",
-        "label": "flock1",
+        "label": "kernel_flock",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"velocity\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"offset\",\"type\":\"vec3f\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0.25,0.35,0.9,1]}]",
           "capacity": 2000,
@@ -119,7 +119,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 40,
@@ -130,7 +130,7 @@
       "part": {
         "definitionVersion": 1,
         "id": "part",
-        "label": "part1",
+        "label": "kernel_part",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 2000,

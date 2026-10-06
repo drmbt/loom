@@ -15,6 +15,7 @@ import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { Inspector } from "./inspector.tsx";
 import type { InspectorProjectSettings } from "./inspector.tsx";
 import { resolveParameters } from "./parameter-resolver.ts";
+import { STORED_READ } from "@domain/parameters/resolve.ts";
 
 /**
  * T204 / T207 — parameter modes, asserted on the ASSEMBLED pane.
@@ -99,7 +100,7 @@ async function setup() {
     effective: (key: string) => {
       const current = node();
       if (current === undefined) return undefined;
-      return resolveParameters(current, moded).values[key];
+      return resolveParameters(current, moded, STORED_READ).values[key];
     },
     /** Opens the mode panel the way a user does: by clicking the parameter NAME. */
     async expand(label: string) {

@@ -5,6 +5,8 @@ import { BYTES_PER_PIXEL } from "../runtime/export/pixel-format.ts";
 import type { GraphDocument } from "../domain/types/graph.ts";
 import type { FrameEvaluationInput } from "../domain/types/frame.ts";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
+import { flatDocument } from "../compiler/test-support.ts";
+import { NO_FLATTENING } from "../domain/parameters/node-references.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
 import { renderHeadless } from "../tests/headless/render-harness.ts";
@@ -96,9 +98,9 @@ const DRIVE_WARMUP = 600;
  */
 const DRIVEN_LANES = new Map<string, { parameter: string; retained: number; maxStepFraction: number }>([
   // measured: mean 0.2123, max step 2.09% of span
-  ["airMap1:low", { parameter: "mist", retained: 0.212, maxStepFraction: 0.032 }],
+  ["math_airMap:low", { parameter: "mist", retained: 0.212, maxStepFraction: 0.032 }],
   // measured: mean 0.9951, max step 0.78% of span
-  ["dimMap1:lowMid", { parameter: "moonGain", retained: 0.995, maxStepFraction: 0.013 }],
+  ["math_dimMap:lowMid", { parameter: "moonGain", retained: 0.995, maxStepFraction: 0.013 }],
 ]);
 
 /** The static half of a driven slot — the value that stands when no drive arrives (§V914). */
@@ -107,7 +109,7 @@ function retainedOf(graph: GraphDocument, parameter: string): number {
     | { bindings?: { static?: { value?: unknown } } }
     | undefined;
   const value = slot?.bindings?.static?.value;
-  if (typeof value !== "number") throw new Error(`E57's forest1.${parameter} is not a driven slot`);
+  if (typeof value !== "number") throw new Error(`E57's wgsl_forest.${parameter} is not a driven slot`);
   return value;
 }
 
@@ -126,18 +128,18 @@ function e57() {
   };
 }
 
-/** The shipped value of one of `forest1`'s knobs — derivations read the file, never a copy. */
+/** The shipped value of one of `wgsl_forest`'s knobs — derivations read the file, never a copy. */
 function knob(name: string): number[] {
   const value = (e57().graph.nodes["forest"]?.parameters ?? {})[name];
   if (typeof value === "number") return [value];
   if (Array.isArray(value) && value.every((entry) => typeof entry === "number")) return value as number[];
-  throw new Error(`E57's forest1 has no numeric parameter "${name}"`);
+  throw new Error(`E57's wgsl_forest has no numeric parameter "${name}"`);
 }
 
-/** The shipped value of one of `dof1`'s knobs (T1170) — same rule: read the file. */
+/** The shipped value of one of `wgsl_dof`'s knobs (T1170) — same rule: read the file. */
 function dofKnob(name: string): number {
   const value = (e57().graph.nodes["dof"]?.parameters ?? {})[name];
-  if (typeof value !== "number") throw new Error(`E57's dof1 has no numeric parameter "${name}"`);
+  if (typeof value !== "number") throw new Error(`E57's wgsl_dof has no numeric parameter "${name}"`);
   return value;
 }
 
@@ -171,7 +173,7 @@ async function shoot(
   overrides: Record<string, unknown>,
   frames: readonly number[],
   veilAmp?: number,
-  /** T1170: `dof1`'s own knobs — `focus` and `blur` live on the defocus pass, not on `forest1`. */
+  /** T1170: `wgsl_dof`'s own knobs — `focus` and `blur` live on the defocus pass, not on `wgsl_forest`. */
   dof?: Record<string, unknown>,
 ): Promise<Shot[]> {
   const { graph, settings } = e57();
@@ -301,7 +303,7 @@ function quietGeometry() {
     centre: { u: at[0]!, v: at[1]! },
     size,
     aspect,
-    /* T1170: AND PAST THE DEFOCUS PASS'S OWN REACH. `dof1` gathers over `uv + d * blur *
+    /* T1170: AND PAST THE DEFOCUS PASS'S OWN REACH. `wgsl_dof` gathers over `uv + d * blur *
        (1, aspect)` with `|d| <= 1`, so its widest horizontal reach is exactly `blur` in
        u — which means a pixel within `blur` of the column below can still collect a tap
        from INSIDE the quiet zone, and the byte-identity claim would be false by one
@@ -969,7 +971,9 @@ describe("E57 Forest — claims", () => {
           mode: "offline",
           randomSeed: 57,
         };
-        const evaluated = session.evaluate(subject, frame, {
+        const evaluated = session.evaluate(flatDocument(subject), frame, {
+          // E57 holds no component instance (`flatDocument` refuses one) and no bank.
+          flattening: NO_FLATTENING,
           pointer: { x: 0.5, y: 0.5, buttons: 0 },
           channels: () => undefined,
         });
@@ -1141,11 +1145,11 @@ describe("E57 Forest — claims", () => {
     const series: number[] = [];
     for (let frameIndex = 0; frameIndex < 1200; frameIndex += 1) {
       const evaluated = session.evaluate(
-        graph,
+        flatDocument(graph),
         { timeSeconds: frameIndex / 60, deltaSeconds: 1 / 60, frameIndex, mode: "offline", randomSeed: 57 },
-        { pointer: { x: 0.5, y: 0.5, buttons: 0 }, channels: () => undefined },
+        { flattening: NO_FLATTENING, pointer: { x: 0.5, y: 0.5, buttons: 0 }, channels: () => undefined },
       );
-      const value = evaluated.resolver("rise1:onset", undefined as never);
+      const value = evaluated.resolver("lag_rise:onset", undefined as never);
       if (typeof value === "number" && Number.isFinite(value)) series.push(value);
     }
     const late = series.slice(600);

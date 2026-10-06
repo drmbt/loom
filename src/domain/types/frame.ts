@@ -1,4 +1,5 @@
 import type { AudioSpectrumBands } from "../audio/spectrum-bands.ts";
+import { DEFAULT_PROJECT_FPS } from "./graph.ts";
 
 /**
  * Transport-independent frame input (§I.frame, doc §16.4).
@@ -7,6 +8,12 @@ import type { AudioSpectrumBands } from "../audio/spectrum-bands.ts";
  * them from playhead state; a future offline renderer supplies exact frame numbers and
  * fixed steps. Time-dependent nodes read ONLY from here — never `Date.now`,
  * `performance.now`, or rAF (§V44, §V49).
+ *
+ * T1554b: this is the shape a frame is READ as, and its clock fields stay optional so a
+ * test can hand a consumer the five fields it cares about. Product code never builds one:
+ * every frame it produces comes from `frameFromClock` or `ZERO_FRAME` below, as an
+ * `EvaluationFrame` with every clock filled, and `frame-literals.test.ts` fails on a frame
+ * object literal anywhere else.
  */
 export interface FrameEvaluationInput {
   /**
@@ -260,9 +267,107 @@ export function absFrameIndexOf(frame: FrameEvaluationInput): number {
   return frame.absFrameIndex ?? frame.frameIndex;
 }
 
+/**
+ * T1426b — the project's rate at a frame. A transport that states none (or a nonsense one) is
+ * a plain project at the default rate, which is what `projectFps()` says of absent settings.
+ */
+export function fpsOf(frame: Pick<FrameEvaluationInput, "fps">): number {
+  return frame.fps !== undefined && Number.isFinite(frame.fps) && frame.fps > 0 ? frame.fps : DEFAULT_PROJECT_FPS;
+}
+
+/** T1435b — sub-frames accumulated per output frame; 1 (no accumulation) when none is stated. */
+export function subframesOf(frame: Pick<FrameEvaluationInput, "subframes">): number {
+  return frame.subframes !== undefined && Number.isFinite(frame.subframes) && frame.subframes >= 1 ? frame.subframes : 1;
+}
+
+/**
+ * T1554b — A FRAME AS A PRODUCER HANDS IT OVER: every clock filled.
+ *
+ * `FrameEvaluationInput` leaves six clock fields optional and every reader falls back to the
+ * timeline for an absent one. That is how the absolute clock reached the app one site at a
+ * time (T461, T468, B97, T489 — §V437): a hand-built frame that left a field out still
+ * compiled, and on a timeline that never wrapped it still looked right. This type is the
+ * fix's other half. The fallbacks are applied ONCE, in `frameFromClock`, and what comes out
+ * has nothing left to fall back on. `TransportSource.next()` returns it, so a transport that
+ * forgets a clock is a type error rather than a frame that agrees with the timeline until
+ * the first lap.
+ *
+ * `absEpoch` stays optional, and that is not a fallback: its absence is the fact "this
+ * transport mints no epoch" (an export, a preview's own clock, the headless server), which
+ * makes every morph record finished (T1497b). Nothing reads it as "use the timeline".
+ *
+ * Consumers keep taking `FrameEvaluationInput`, which this is assignable to; the reason is
+ * the ~185 test files that hand a consumer a five-field frame. Product frames are complete
+ * by construction (`frame-literals.test.ts`), so the `*Of` accessors above are where an
+ * incomplete one — a test's — is completed, and the only place.
+ */
+export interface EvaluationFrame extends FrameEvaluationInput {
+  wallSeconds: number;
+  wallDeltaSeconds: number;
+  absFrameIndex: number;
+  absTimeSeconds: number;
+  fps: number;
+  subframes: number;
+}
+
+/**
+ * What a producer knows about one frame: the timeline reading, the seed, and the project
+ * rate — `fps` is REQUIRED, because a transport always knows the rate it steps at and the
+ * reader's default (`DEFAULT_PROJECT_FPS`) is only right by coincidence. Every other clock
+ * is optional, and absent means "this transport has no such clock": the timeline reading
+ * stands in for it (wall, absolute) or no accumulation does (sub-frames).
+ */
+export interface FrameClockReading extends FrameEvaluationInput {
+  fps: number;
+}
+
+/**
+ * T1554b — the one way product code makes a frame (the other is `ZERO_FRAME`).
+ *
+ * The fallbacks are exactly the `*Of` accessors', applied here once, so a frame built from a
+ * timeline-only reading reads the same through either. Keys come out in the order both
+ * transports always wrote them, and `absEpoch` is omitted rather than `undefined` when the
+ * reading has none (T1497b: a frame without the field has no epoch at all).
+ */
+export function frameFromClock(reading: FrameClockReading): EvaluationFrame {
+  return {
+    timeSeconds: reading.timeSeconds,
+    deltaSeconds: reading.deltaSeconds,
+    frameIndex: reading.frameIndex,
+    mode: reading.mode,
+    randomSeed: reading.randomSeed,
+    wallSeconds: wallSecondsOf(reading),
+    wallDeltaSeconds: wallDeltaSecondsOf(reading),
+    absFrameIndex: absFrameIndexOf(reading),
+    absTimeSeconds: absTimeSecondsOf(reading),
+    ...(reading.absEpoch === undefined ? {} : { absEpoch: reading.absEpoch }),
+    fps: reading.fps,
+    subframes: reading.subframes ?? 1,
+  };
+}
+
+/**
+ * T1554b — §V44's deterministic zero frame: what a read OUTSIDE any frame resolves at
+ * (a compile-time resolve, a stored read, a completion menu's variable names). Time zero on
+ * every clock, seed zero, the default project rate, no epoch. Frozen, because it is shared.
+ *
+ * Before this there were four of it, hand-written in four modules, and none carried `fps`.
+ */
+export const ZERO_FRAME: Readonly<EvaluationFrame> = Object.freeze(
+  frameFromClock({
+    timeSeconds: 0,
+    deltaSeconds: 0,
+    frameIndex: 0,
+    mode: "offline",
+    randomSeed: 0,
+    fps: DEFAULT_PROJECT_FPS,
+  }),
+);
+
 /** Supplies frame input. Swappable: live clock now, playhead or offline queue later (§V49). */
 export interface TransportSource {
-  next(): FrameEvaluationInput;
+  /** T1554b: a complete frame — every clock this transport has, and the timeline's for the rest. */
+  next(): EvaluationFrame;
   /**
    * Start over: the timeline goes back to zero AND stateful stages are cleared by the
    * caller alongside it (§V170, §V181). This is what a SEEK does.

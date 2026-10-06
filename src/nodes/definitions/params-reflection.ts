@@ -265,9 +265,29 @@ export function reflectParamsStruct(source: string): readonly ReflectedField[] {
 /** The fields are `readonly`, so a cached array is safe to hand to every caller. */
 const reflectedFieldsBySource = new Map<string, readonly ReflectedField[]>();
 
+const INSTANCE_STRUCT = /struct\s+Instance\s*\{([^}]*)\}/;
+
+/**
+ * T1581b: the fields a Material · WGSL's `struct Instance { … }` declares — what the
+ * material asks of each INSTANCE it is drawn on. The same scan as `struct Params`, so a
+ * field's `// @default` and its sentence are read the same way (§V349); what differs is
+ * where the value comes from: a point attribute per instance, not a control.
+ */
+export function reflectInstanceStruct(source: string): readonly ReflectedField[] {
+  const hit = instanceFieldsBySource.get(source);
+  if (hit !== undefined) return hit;
+  return remember(instanceFieldsBySource, source, scanStruct(source, INSTANCE_STRUCT));
+}
+
+const instanceFieldsBySource = new Map<string, readonly ReflectedField[]>();
+
 function scanParamsStruct(source: string): readonly ReflectedField[] {
+  return scanStruct(source, PARAMS_STRUCT);
+}
+
+function scanStruct(source: string, pattern: RegExp): readonly ReflectedField[] {
   const masked = maskComments(source);
-  const match = PARAMS_STRUCT.exec(masked);
+  const match = pattern.exec(masked);
   if (match === null) return [];
   const body = match[1] ?? "";
   /*
@@ -275,7 +295,7 @@ function scanParamsStruct(source: string): readonly ReflectedField[] {
    * length as the source (that is the whole reason it blanks rather than deletes), so an index
    * into one is an index into the other — which is what lets the field be FOUND in the masked
    * text, where a `//` cannot lie about a declaration, and its note READ from the original,
-   * where the comment still exists. `match[0]` is `struct Params {` + body + `}`, so the body
+   * where the comment still exists. `match[0]` is `struct <Name> {` + body + `}`, so the body
    * ends exactly one character before the match does.
    */
   const bodyStart = match.index + match[0].length - 1 - body.length;
@@ -372,10 +392,29 @@ function colourDefault(rgba: readonly number[]): [number, number, number, number
   return [rgba[0] ?? 1, rgba[1] ?? 1, rgba[2] ?? 1, rgba[3] ?? 1];
 }
 
+/**
+ * What a field's name must contain for a `vec3f` or `vec4f` to be a COLOUR. One list:
+ * `looksLikeColour` tests it and `REFLECTED_PARAMETER_KEYS_NOTE` quotes it, so the refusal
+ * of `eyeColor.x` states the rule that made `eyeColor` a colour (§B264 (2)) and cannot state
+ * another.
+ */
+const COLOUR_NAME_PARTS = ["colour", "color", "tint", "rgb", "albedo", "emissi"] as const;
+const COLOUR_NAME = new RegExp(COLOUR_NAME_PARTS.join("|"), "i");
+
 /** A field whose NAME reads as colour intent gets an RGBA picker; every other vector stays one. */
 function looksLikeColour(name: string): boolean {
-  return /colou?r|tint|rgb|albedo|emissi/i.test(name);
+  return COLOUR_NAME.test(name);
 }
+
+/**
+ * §T1641b slice 2: the naming rule above, as a reflecting node's `parameterKeysNote`.
+ * Nothing in `struct Params { eyeColor: vec3f }` says its parts are r, g, b, so the refusal
+ * of a key that got them wrong has to.
+ */
+export const REFLECTED_PARAMETER_KEYS_NOTE =
+  `Its parameters are the fields of the struct Params its code declares: a vec3f or vec4f whose name contains ` +
+  `${COLOUR_NAME_PARTS.slice(0, -1).join(", ")} or ${COLOUR_NAME_PARTS[COLOUR_NAME_PARTS.length - 1]} ` +
+  `is a colour, with parts r, g, b, a; any other vector has parts x, y, z, w.`;
 
 /** A readable label from a camelCase / snake_case field name. */
 function labelOf(name: string): string {

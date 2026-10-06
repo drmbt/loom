@@ -1,6 +1,6 @@
 import type { PointAttributeSchema } from "./attributes.ts";
 import { packAttributes, type PackedLayout, type PackedLayoutResult } from "./packing.ts";
-import { decodeGlb, type DecodedJoint, type DecodedMesh } from "../domain/mesh/glb.ts";
+import { decodeGlb, type DecodedJoint, type DecodedMesh, type MeshFrame } from "../domain/mesh/glb.ts";
 
 /**
  * T1353b — a decoded mesh AS A POINTSET: the vertex attributes a `meshFileIn` publishes,
@@ -107,7 +107,49 @@ export function meshFacts(mesh: DecodedMesh): MeshFacts {
     joints: formatJointTable(mesh.skin?.joints ?? []),
     clips: (mesh.clips ?? []).map((name) => name.replace(/\s+/g, "_")).join(" "),
     clipFrames: mesh.skin?.pose?.frames ?? 0,
+    frameOrigin: mesh.frame === undefined ? "" : `${mesh.frame.node.replace(/\s+/g, "_")}@${mesh.frame.origin.map((value) => String(Number(value.toFixed(4)))).join(",")}`,
+    bounds: formatMeshBounds(mesh.positions, mesh.vertexCount),
   };
+}
+
+/**
+ * T1598b — the sphere that holds every vertex, as the node's `bounds` parameter: `x,y,z,r`
+ * in metres, in the frame the vertices are in. The centre is the middle of the vertices'
+ * box; the radius reaches the furthest vertex FROM THE CENTRE AS WRITTEN (four decimals)
+ * and is rounded UP, so the text describes a sphere that really does hold the mesh. Empty
+ * for no vertices.
+ */
+export function formatMeshBounds(positions: ArrayLike<number>, vertexCount: number): string {
+  if (vertexCount <= 0) return "";
+  const low = [Infinity, Infinity, Infinity];
+  const high = [-Infinity, -Infinity, -Infinity];
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      const value = positions[vertex * 3 + axis] as number;
+      if (value < (low[axis] as number)) low[axis] = value;
+      if (value > (high[axis] as number)) high[axis] = value;
+    }
+  }
+  const center = low.map((value, axis) => Number(((value + (high[axis] as number)) / 2).toFixed(4)));
+  let furthest = 0;
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const distance = Math.hypot(
+      (positions[vertex * 3] as number) - (center[0] as number),
+      (positions[vertex * 3 + 1] as number) - (center[1] as number),
+      (positions[vertex * 3 + 2] as number) - (center[2] as number),
+    );
+    if (distance > furthest) furthest = distance;
+  }
+  const radius = Math.ceil(furthest * 1e4 + 1e-6) / 1e4;
+  return [...center, radius].map((value) => String(Number(value.toFixed(4)))).join(",");
+}
+
+/** The `bounds` text back as a sphere; `undefined` for empty or malformed text (an unbounded mesh is always drawn). */
+export function parseMeshBounds(text: unknown): { center: [number, number, number]; radius: number } | undefined {
+  if (typeof text !== "string" || text.trim() === "") return undefined;
+  const parts = text.split(",").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value)) || (parts[3] as number) < 0) return undefined;
+  return { center: [parts[0] as number, parts[1] as number, parts[2] as number], radius: parts[3] as number };
 }
 
 export interface MeshFacts {
@@ -120,6 +162,17 @@ export interface MeshFacts {
   readonly clips: string;
   /** T1410b: frames in the chosen clip's baked pose table; 0 = no clip chosen (or none in the file). */
   readonly clipFrames: number;
+  /**
+   * T1581b: `name@x,y,z` — the node whose frame the vertices are in (Frame: Object or Part)
+   * and where it stands in the file's world, metres. Empty: the vertices are in the world.
+   */
+  readonly frameOrigin: string;
+  /**
+   * T1598b: `x,y,z,r` — the sphere holding every vertex, in the frame the vertices are in,
+   * metres (`formatMeshBounds`). What lets a Render leave the mesh out of a shadow sweep
+   * that cannot reach it. It sizes nothing.
+   */
+  readonly bounds: string;
 }
 
 /**
@@ -155,9 +208,11 @@ export function prepareMesh(
   select: string,
   clip: { readonly name?: string; readonly rate?: number } = {},
   lamps = "",
+  frame: MeshFrame = "world",
 ): PreparedMesh | null {
   const mesh = decodeGlb(glb, {
     select,
+    ...(frame === "world" ? {} : { frame }),
     ...(clip.name === undefined || clip.name === "" ? {} : { clip: clip.name, ...(clip.rate === undefined ? {} : { clipRate: clip.rate }) }),
     ...(lamps.trim() === "" ? {} : { lamps }),
   });

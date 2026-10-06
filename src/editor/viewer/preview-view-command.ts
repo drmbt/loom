@@ -8,6 +8,8 @@ import type { PreviewLens, PreviewLensKind } from "@runtime/previews/index.ts";
 import { previewViewStoreFor } from "./preview-view-store.ts";
 import type { PreviewViewStore } from "./preview-view-store.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
+import { finiteInput, idInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `preview.setView` / `preview.resetView` — the ONE way a preview's lens changes (T336).
@@ -92,6 +94,7 @@ export function registerPreviewViewCommands(bus: LoomBus): PreviewViewStore {
 
   bus.registerCommand({
     name: SET_PREVIEW_VIEW_COMMAND,
+    inputSchema: z.object({ nodeId: idInput.optional(), lens: z.enum(PREVIEW_LENSES).optional(), exposureStops: finiteInput.optional(), tonemap: z.boolean().optional() }).strict(),
     description: "Set a node preview's lens — isolate a channel, change exposure, tonemap.",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -156,6 +159,7 @@ export function registerPreviewViewCommands(bus: LoomBus): PreviewViewStore {
 
   bus.registerCommand({
     name: RESET_PREVIEW_VIEW_COMMAND,
+    inputSchema: z.object({ nodeId: idInput.optional() }).strict(),
     description: "Reset a node preview's lens back to the plain picture.",
     handler: (input, context) => {
       const revision = context.store.getRevision();

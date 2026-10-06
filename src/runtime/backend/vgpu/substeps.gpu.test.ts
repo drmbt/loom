@@ -265,4 +265,57 @@ describe("substeps advance the simulation N times per displayed frame (T387, §V
     }
   }, 120_000);
 
+  /*
+   * Found while building kernel steps (T1583b): every encode of a looped pass takes a GPU
+   * timer span, the timer holds 2048 per frame, and vgpu THROWS on the next one — so a
+   * loop whose body × count passed 2048 did not render at all. Nine passes at 250 substeps
+   * is 2250. The frame used to end in `VGPU-TIMER-CAPACITY`; now every pass keeps one span,
+   * the repeats past the budget run untimed, and the frame says so.
+   */
+  it("a loop with more encodes than the GPU timer has spans still runs every one of them", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+
+    const result = await renderHeadless({
+      host: nodeGpuHost(),
+      graph: longLoopGraph(250),
+      settings,
+      frames: 1,
+      capture: [0],
+      outputNodeId: "out",
+    });
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    // 250 iterations of a body that adds one step of red — the frame rendered, in full.
+    expect(redOf(result.frames[0]!.bytes)).toBe(250);
+    // 8 kernels and the feedback's own write, 250 times each, plus the output's blit:
+    // 2251 passes that want a span, 203 more than there are.
+    expect(result.diagnostics.filter((d) => d.message.includes("GPU timer")).map((d) => d.message)).toEqual([
+      "This frame encodes 2251 timed passes and the GPU timer holds 2048 per frame; 203 repeats of looped passes carry no GPU time, so the GPU time of the nodes they belong to is under-reported.",
+    ]);
+  }, 120_000);
 });
+
+/** `counterGraph` with seven more passes in the loop that hand the picture on untouched. */
+function longLoopGraph(substeps: number): GraphDocument {
+  const PASS_WGSL = COUNTER_WGSL.replace("previous.r + (1.0 / 255.0)", "previous.r");
+  const base = counterGraph(substeps);
+  const nodes: Record<string, unknown> = { ...base.nodes };
+  const edges: Record<string, unknown> = { ...base.edges };
+  let last = "kernel";
+  for (let index = 2; index <= 8; index += 1) {
+    const id = `pass${index}`;
+    nodes[id] = {
+      id,
+      type: "customWgsl",
+      label: `kernel${index}`,
+      definitionVersion: 1,
+      position: { x: 200 * index, y: 0 },
+      parameters: { source: PASS_WGSL },
+    };
+    edges[`e-${last}-${id}`] = { id: `e-${last}-${id}`, source: { nodeId: last, portId: "out" }, target: { nodeId: id, portId: "input" } };
+    last = id;
+  }
+  // The loop now closes on the LAST pass, and the output watches it.
+  nodes["state"] = { ...(base.nodes["state"] as object), parameters: { source: "kernel8", persistence: 1, clearColor: [0, 0, 0, 0], substeps } };
+  edges["e-kernel-out"] = { id: "e-kernel-out", source: { nodeId: last, portId: "out" }, target: { nodeId: "out", portId: "input" } };
+  return { ...base, nodes, edges } as never as GraphDocument;
+}

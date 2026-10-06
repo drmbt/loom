@@ -901,7 +901,7 @@ describe("TimeGrid — one stream, many moments", () => {
    * T1042 — E51's MATTE, on the shipped bytes, in two halves.
    * ─────────────────────────────────────────────────────────────────────────────────
    *
-   * The bug: `mpick1` shipped at index 0, so the MATTE NODE's output reached no pixel of
+   * The bug: `switch_mpick` shipped at index 0, so the MATTE NODE's output reached no pixel of
    * the wall. The owner changed its model, its backend and its resolution and the picture
    * never moved, because the thing he was tuning was not on the path the output takes. The
    * claim above — nine cells holding nine moments — could not have caught it: it says
@@ -912,7 +912,7 @@ describe("TimeGrid — one stream, many moments", () => {
    * THE ROUTE is structural and must be asserted structurally, because the pixel half is
    * nearly blind. TimeGrid consumes its matte in exactly ONE place — the per-cell dropout —
    * and a dropout is rare on purpose (period 47, life 12, share 0.30, odds scaling with
-   * cell brightness). MEASURED over frames 60-479 of this document: driving `wall1.matte`
+   * cell brightness). MEASURED over frames 60-479 of this document: driving `timegrid_wall.matte`
    * from all-white to all-black moves SIX frames out of 420 and not one component
    * elsewhere. A pixel gate alone would therefore pass on 414 of every 420 frames with the
    * matte severed — which is exactly the state that shipped.
@@ -934,23 +934,23 @@ describe("TimeGrid — one stream, many moments", () => {
      * day someone reorders the branches.
      */
     const chosen = graph.nodes["mpick"]?.parameters?.["index"];
-    expect(typeof chosen, "mpick1 must carry a plain numeric index").toBe("number");
+    expect(typeof chosen, "switch_mpick must carry a plain numeric index").toBe("number");
     const feeding = Object.values(graph.edges).filter(
       (edge) => edge.target.nodeId === "mpick" && edge.target.portId === "inputs",
     );
     const selected = feeding.find((edge) => (edge.order ?? 0) === chosen);
-    expect(selected, `no edge arrives at mpick1 order ${String(chosen)}`).toBeDefined();
+    expect(selected, `no edge arrives at switch_mpick order ${String(chosen)}`).toBeDefined();
     const source = graph.nodes[selected!.source.nodeId];
     expect(
       source?.type,
-      "the branch mpick1 selects must be the matte node — the one whose Inspector page a " +
+      "the branch switch_mpick selects must be the matte node — the one whose Inspector page a " +
         "user tunes. At index 0 it was `threshold` and the matte node reached no pixel.",
     ).toBe("matte");
     expect(
       Object.values(graph.edges).some(
         (edge) => edge.source.nodeId === "mpick" && edge.target.nodeId === "wall" && edge.target.portId === "matte",
       ),
-      "mpick1 must reach the wall's matte input",
+      "switch_mpick must reach the wall's matte input",
     ).toBe(true);
 
     /*
@@ -998,7 +998,7 @@ describe("TimeGrid — one stream, many moments", () => {
      * THE CLAIM. Cutting the matte must change the frame — measured at 288-293 on
      * 2026-09-04. If this window ever comes back empty, the first thing to check is not
      * this wire but whether the source got darker: the dropout's odds scale with cell
-     * brightness, so retuning `bed1` or `flare1` moves the burst.
+     * brightness, so retuning `noise_bed` or `level_flare` moves the burst.
      */
     expect(moved, "cutting the matte changed no frame in the window where the dropout fires").not.toEqual([]);
 

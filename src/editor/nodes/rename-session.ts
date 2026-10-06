@@ -1,6 +1,8 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { sharedForBus } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
+import { nodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `ui.beginRename` — the ONE way the inline name editor opens (T415, B60, §V307, §V342).
@@ -114,6 +116,7 @@ export function registerRenameSessionCommand(bus: LoomBus): RenameSessionStore {
 
   bus.registerCommand({
     name: BEGIN_RENAME_COMMAND,
+    inputSchema: z.object({ nodeIds: nodeIdsInput }).strict(),
     description: "Edit a node's name in place, on its title (§V29, T415).",
     handler: (input, context) => {
       const revision = context.store.getRevision();

@@ -16,5 +16,5 @@ export function resonancePaletteExpression(channel:0|1|2):string {
   const fade=`(${t} * ${t} * (3 - 2 * ${t}))`;
   const sum=(next:boolean)=>COLOURS.map((_,i)=>`${COLOURS[(i+(next?1:0))%COLOURS.length]![channel]} * max(0, 1 - abs(${part} - ${i}))`).join(' + ');
   const base=COLOURS[0][channel];
-  return `${base} + clamp(op('room1').par.paletteCycle, 0, 1) * ((1 - ${fade}) * (${sum(false)}) + ${fade} * (${sum(true)}) - ${base})`;
+  return `${base} + clamp(op('wgsl_room').par.paletteCycle, 0, 1) * ((1 - ${fade}) * (${sum(false)}) + ${fade} * (${sum(true)}) - ${base})`;
 }

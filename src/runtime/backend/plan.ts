@@ -4,6 +4,7 @@ import type { TextureFormat } from "../../domain/types/node-definition.ts";
 import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
 import type { LogicalExecutionPlan } from "../../domain/types/backend.ts";
 import { BackendDiagnosticCode, backendDiagnostic } from "./diagnostics.ts";
+import { bufferWriteDiagnostics, readBufferWritePass } from "./buffer-write.ts";
 import type { EmittedWgsl } from "./wgsl.ts";
 import { wgslFromPlan } from "./wgsl.ts";
 import type { WgslSourceMap } from "./wgsl-source-map.ts";
@@ -317,6 +318,89 @@ export interface LoopPassDescriptor {
   /** On `begin`: how many times the enclosed passes run. Integer in [1, MAX_SUBSTEPS]. */
   readonly count?: number;
   readonly nodeId?: NodeId;
+  /** T1583b: on `begin`, this region is a kernel stepping its own buffer pair. */
+  readonly steps?: KernelStepsDescriptor;
+}
+
+/**
+ * KERNEL STEPS (T1583b): a loop region whose body is ONE dispatch that reads the read half
+ * of its own buffer pair and writes the write half, run `count` times inside one displayed
+ * frame, each run reading what the run before it wrote.
+ *
+ * `count` on the marker is the number of dispatches: substeps × iterations. A SUBSTEP
+ * divides the frame's time (the pass's `deltaSeconds` is the frame's divided by the substep
+ * count); an ITERATION repeats inside a substep at the same time step, which is what a
+ * constraint solver relaxes with. That is the Flex / Blender XPBD pair, and TouchDesigner's
+ * GLSL POP `Passes` when iterations is all that is turned up.
+ *
+ * WHY THE SWAP IS NOT IN THE PASS LIST. A texture feedback loop's region holds its own swap
+ * pass, because its consumers read the READ half. A kernel's consumers bind the WRITE half
+ * (the edge payload names it, §V231), so a `[dispatch, swap] × N` region would leave them
+ * on the half written by run N−2. The encoder therefore swaps `pair` BETWEEN runs only, and
+ * the pair's one swap pass stays where §V22 put it, after the last consumer. It also keeps
+ * the direct path's segmenting unchanged: N dispatches in a row are one segment.
+ */
+export interface KernelStepsDescriptor {
+  /** STRUCTURE: the buffer pair the region's dispatch steps. Part of the structure key. */
+  readonly pair: string;
+  /**
+   * VALUE: runs per substep, in [1, count]; `count` is a whole multiple of it. Per frame
+   * like `count`, and written the same way (`updateUniforms` on the `begin` pass).
+   */
+  readonly iterations: number;
+  /**
+   * VALUE, per compile and never per frame: how many runs to have uniform slots ready for.
+   * Every run reads its own uniform block, and a block is a buffer, which may not be
+   * created while a frame is being encoded (§V8). A count that an expression drives arrives
+   * INSIDE the frame, so the compiler says here how far it can go and the backend allocates
+   * that many when the plan is installed. At least `count`.
+   */
+  readonly prepare: number;
+  /**
+   * VALUE, T1585b: present when the SUBSTEP count follows the frame it renders rather than
+   * a parameter — Notch's Update Frame Rate with its Min and Max Update Steps. The backend
+   * derives each render's count from that render's own `deltaSeconds` (`rateSubsteps`), so
+   * a frame that covers two project frames runs twice the steps at the same step size,
+   * and every host that renders a frame gets it without evaluating anything itself.
+   * `count` on the marker is then what the frame the plan was compiled at asks for.
+   */
+  readonly rate?: KernelStepRate;
+}
+
+/** T1585b: the three numbers a rate-driven kernel region's substep count comes from. */
+export interface KernelStepRate {
+  /** Solver steps per second of the piece. */
+  readonly perSecond: number;
+  /** Fewest and most substeps one displayed frame may run. */
+  readonly min: number;
+  readonly max: number;
+}
+
+/**
+ * T1585b — the SUBSTEPS one frame runs under a rate: `clamp(round(delta × rate), min, max)`.
+ *
+ * The one place that rule is written. The compiler states the count of the frame it compiled
+ * at with it, and the backend the count of the frame it is rendering, so the two cannot
+ * disagree about rounding or the clamps. `round`, not `ceil`: a live delta is a whole number
+ * of project frames (`k ÷ fps`), and `(1 ÷ 60) × 240` must be 4 whichever side of 4 its
+ * last bit lands on. Min wins over a Max below it, and both stay inside what a region may
+ * run; a delta that is not a number runs the minimum.
+ */
+export function rateSubsteps(deltaSeconds: number, rate: KernelStepRate): number {
+  const { min, max } = rateStepBounds(rate);
+  const asked = deltaSeconds * rate.perSecond;
+  return Math.min(max, Math.max(min, Number.isFinite(asked) ? Math.round(asked) : min));
+}
+
+/**
+ * T1585b: the fewest and the most substeps a rate can ever ask for — its Min and Max as
+ * whole numbers a region may run. `max` is what uniform blocks are prepared for (§V8).
+ */
+export function rateStepBounds(rate: KernelStepRate): { readonly min: number; readonly max: number } {
+  const whole = (raw: number, floor: number): number =>
+    Math.min(MAX_KERNEL_SUBSTEPS, Math.max(floor, Number.isFinite(raw) ? Math.round(raw) : floor));
+  const min = whole(rate.min, 1);
+  return { min, max: whole(rate.max, min) };
 }
 
 /**
@@ -328,6 +412,28 @@ export interface LoopPassDescriptor {
  * inside it and the substep cost stays MEASURABLE, which is the point of the feature.
  */
 export const MAX_SUBSTEPS = 256;
+
+/**
+ * The spans the GPU pass timer can hold in ONE frame: WebGPU caps a query set at 4096
+ * queries and a span is a begin/end pair. vgpu throws on span 2049, so the encoder counts
+ * (T1583b): past this, repeats of looped passes run untimed and the frame says so, rather
+ * than a frame that encodes more work than the timer can measure failing to render at all.
+ */
+export const MAX_TIMED_SPANS_PER_FRAME = 2048;
+
+/**
+ * T1583b: the most dispatches one kernel runs per displayed frame, substeps × iterations.
+ * The loop ceiling, because a kernel's region IS a loop region and the encoder clamps
+ * every region to it. One kernel at the ceiling is an eighth of the timer's 2048 spans.
+ */
+export const MAX_KERNEL_STEPS = MAX_SUBSTEPS;
+
+/**
+ * T1583b: the most SUBSTEPS a kernel may ask for. Lower than the dispatch ceiling on
+ * purpose: at 60 fps, 64 substeps is a 1/3840 s step, and the room above it belongs to
+ * iterations (64 substeps × 4 iterations is the ceiling).
+ */
+export const MAX_KERNEL_SUBSTEPS = 64;
 
 /**
  * Compute dispatch. Declared now so scheduling, pruning and resource assignment are
@@ -398,6 +504,18 @@ export interface DrawPassDescriptor {
    * no clear hook yet — documented gap, not a decision).
    */
   readonly clear?: boolean;
+  /**
+   * T1598b: true = NOTHING IS DRAWN THIS FRAME (a pass that clears still clears). A VALUE,
+   * never structure, exactly as a loop's count is (T425): it is outside the structure key,
+   * the per-frame compile carries it, and `updateUniforms` moves it. The pass, its pipeline
+   * and its bindings stay built, so flipping it costs nothing.
+   *
+   * Set only where the draw is PROVABLY EMPTY — a shadow caster wholly outside the light's
+   * reach, whose every fragment the sweep would discard — so a path that ignores it draws
+   * the same picture. It is an optimisation that cannot be wrong by being missed, and it
+   * must stay one: never use it to hide something that would have been visible.
+   */
+  readonly skip?: boolean;
 }
 
 /**
@@ -417,13 +535,69 @@ export interface CounterPassDescriptor {
   readonly outputResourceId?: string;
 }
 
+/** T1623b: the type of one 32-bit word of a row a `write` pass carries. */
+export type BufferWord = "f32" | "u32" | "i32";
+
+/**
+ * T1623b: a region's values. `rows` is the live rows, row after row, one number a word;
+ * `count` is how many rows that is. A type and not an interface, so it is a `UniformValues`
+ * and travels every road a uniform block's values travel.
+ */
+export type BufferRegionValues = { readonly rows: readonly number[]; readonly count: number };
+
+/**
+ * T1623b slice 2 — VALUES FOR A REGION OF A BUFFER (`docs/light-cost-investigation-2026-10-06.md`
+ * section 13).
+ *
+ * A table of rows whose values are known on the CPU: a named Light's row of the Render's
+ * light table, a Ramp's stops. A uniform block cannot hold one without its length in the
+ * shader's text (`UniformValue` is a scalar or one flat vector, so tables became numbered
+ * members and numbered code, §B260, §T1640b). This pass is the table as VALUES: the backend
+ * writes `values.rows` into the region when the plan is installed and whenever they change,
+ * and the count beside them, exactly as it writes a uniform block.
+ *
+ * It is a pass and not a field of the buffer so that it has an id: `updateUniforms` addresses
+ * it, the uniform animator diffs and pushes it, and a values-only frame re-emits it, all by
+ * the roads a uniform block already takes. It encodes nothing: its bytes are in the buffer
+ * before the frame's first pass runs, wherever it stands in the list. It still ends a run of
+ * draws, as every pass that is not a draw does (`renderPassRuns`), so a node emits it ahead
+ * of its draws.
+ *
+ * STRUCTURE: the buffer, the offset, the row's words, the capacity, where the count goes.
+ * VALUES, never structure (§V5): the rows and how many of them are live. A count within the
+ * capacity is a write; a count over it is refused by name and the rows already there stay.
+ *
+ * A shader reads the region through an ordinary buffer binding (`offset` and `bytes`, T1076).
+ * WHAT A READER MUST KNOW: only the live rows are written. Rows past the count keep whatever
+ * they last held (a shrunken table's old rows, or zeros), so a reader walks `count` rows and
+ * never the capacity. Only this region's bytes are written, and only when its values move,
+ * so a dispatch may own other bytes of the same buffer.
+ */
+export interface BufferWritePassDescriptor {
+  readonly kind: "write";
+  readonly id: string;
+  readonly nodeId?: string;
+  /** A plain storage `buffer`: not a pair, not fed by a source. */
+  readonly resourceId: string;
+  /** Byte offset of the first row inside the buffer. A multiple of 4. */
+  readonly offset: number;
+  /** One row: the type of each of its 32-bit words, in order. A row is four bytes a word. */
+  readonly row: ReadonlyArray<BufferWord>;
+  /** Rows the region holds: what the buffer has room for, not what is live. */
+  readonly capacity: number;
+  /** Byte offset in the buffer where the live row count is written as one u32. Absent: it is not written. */
+  readonly countOffset?: number;
+  readonly values: BufferRegionValues;
+}
+
 export type PassDescriptor =
   | EffectPassDescriptor
   | SwapPassDescriptor
   | LoopPassDescriptor
   | DispatchPassDescriptor
   | DrawPassDescriptor
-  | CounterPassDescriptor;
+  | CounterPassDescriptor
+  | BufferWritePassDescriptor;
 
 export interface PlanReadResult {
   readonly resources: ReadonlyArray<ResourceDescriptor>;
@@ -632,6 +806,11 @@ export function readPass(value: unknown): PassDescriptor | undefined {
         return undefined;
       }
     }
+    // T1583b: like the count, the step facts are stated once, on the `begin`.
+    const rawSteps = value["steps"];
+    if (edge === "end" && rawSteps !== undefined) return undefined;
+    const steps = rawSteps === undefined ? undefined : readKernelSteps(rawSteps, count as number);
+    if (rawSteps !== undefined && steps === undefined) return undefined;
     return {
       kind: "loop",
       id,
@@ -639,11 +818,13 @@ export function readPass(value: unknown): PassDescriptor | undefined {
       loopId,
       ...(edge === "begin" ? { count: count as number } : {}),
       ...(typeof nodeId === "string" ? { nodeId: nodeId as NodeId } : {}),
+      ...(steps === undefined ? {} : { steps }),
     };
   }
 
   if (kind === "dispatch") return readDispatchPass(id, value);
   if (kind === "draw") return readDrawPass(id, value);
+  if (kind === "write") return readBufferWritePass(id, value);
   if (kind !== "effect") return undefined;
 
   const shader = value["shader"];
@@ -687,6 +868,33 @@ export function readPass(value: unknown): PassDescriptor | undefined {
     ...(typeof label === "string" ? { label } : {}),
     ...(sourceMap === undefined ? {} : { sourceMap }),
   };
+}
+
+/**
+ * T1583b: a kernel region's step facts, or `undefined` when they contradict the count —
+ * `count` is substeps × iterations, so iterations must divide it, and slots prepared for
+ * fewer runs than the plan itself asks for would be a plan that cannot run as written.
+ */
+function readKernelSteps(value: unknown, count: number): KernelStepsDescriptor | undefined {
+  if (!isRecord(value)) return undefined;
+  const { pair, iterations, prepare } = value;
+  if (typeof pair !== "string" || pair.length === 0) return undefined;
+  if (!Number.isInteger(iterations) || (iterations as number) < 1 || count % (iterations as number) !== 0) {
+    return undefined;
+  }
+  if (!Number.isInteger(prepare) || (prepare as number) < count || (prepare as number) > MAX_KERNEL_STEPS) {
+    return undefined;
+  }
+  // T1585b: a rate is three finite numbers or it is not there. A region whose rate did not
+  // read would run its declared count every frame, whatever the frame's length: a plausible
+  // simulation at the wrong step, so it is refused rather than dropped.
+  const rawRate = value["rate"];
+  if (rawRate === undefined) return { pair, iterations: iterations as number, prepare: prepare as number };
+  if (!isRecord(rawRate)) return undefined;
+  const { perSecond, min, max } = rawRate;
+  const finite = (entry: unknown): entry is number => typeof entry === "number" && Number.isFinite(entry);
+  if (!finite(perSecond) || perSecond < 0 || !finite(min) || !finite(max)) return undefined;
+  return { pair, iterations: iterations as number, prepare: prepare as number, rate: { perSecond, min, max } };
 }
 
 function readBufferBindings(value: unknown): ReadonlyArray<BufferBindingDescriptor> | undefined {
@@ -803,6 +1011,8 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
   if (depthWrite !== undefined && typeof depthWrite !== "boolean") return undefined;
   const clear = value["clear"];
   if (clear !== undefined && typeof clear !== "boolean") return undefined;
+  const skip = value["skip"];
+  if (skip !== undefined && typeof skip !== "boolean") return undefined;
 
   const nodeId = value["nodeId"];
   const sourceMap = readSourceMap(value["sourceMap"]);
@@ -822,6 +1032,8 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
     ...(blend === undefined ? {} : { blend }),
     ...(depthWrite === undefined ? {} : { depthWrite }),
     ...(clear === undefined ? {} : { clear }),
+    // T1598b: only `true` is kept, so a pass that is drawn has the bytes it always had.
+    ...(skip === true ? { skip: true } : {}),
     ...(typeof nodeId === "string" ? { nodeId } : {}),
     ...(sourceMap === undefined ? {} : { sourceMap }),
   };
@@ -893,8 +1105,9 @@ export function readExecutionPlan(plan: LogicalExecutionPlan): PlanReadResult {
       case "swap":
         return [pass.resourceId];
       // T387: a loop marker names no resource — it delimits passes that name their own.
+      // T1583b: except a kernel region's, which names the pair the encoder swaps.
       case "loop":
-        return [];
+        return pass.steps === undefined ? [] : [pass.steps.pair];
       case "effect":
         return [
           pass.target,
@@ -918,6 +1131,8 @@ export function readExecutionPlan(plan: LogicalExecutionPlan): PlanReadResult {
         ];
       case "counter":
         return [pass.resourceId, ...(pass.outputResourceId === undefined ? [] : [pass.outputResourceId])];
+      case "write":
+        return [pass.resourceId];
     }
   }
 
@@ -939,6 +1154,8 @@ export function readExecutionPlan(plan: LogicalExecutionPlan): PlanReadResult {
   }
 
   diagnostics.push(...loopStructureDiagnostics(passes));
+  diagnostics.push(...kernelStepsDiagnostics(passes, resources));
+  diagnostics.push(...bufferWriteDiagnostics(passes, resources));
 
   const ok = diagnostics.every((diagnostic) => diagnostic.severity !== "error");
   return { resources, passes, diagnostics, ok };
@@ -990,6 +1207,42 @@ function loopStructureDiagnostics(passes: ReadonlyArray<PassDescriptor>): Runtim
       ),
     );
   }
+  return out;
+}
+
+/**
+ * T1583b: a kernel region is ONE dispatch that reads and writes the pair it names.
+ *
+ * The encoder swaps that pair between runs and nothing else. A region holding a second
+ * pass would run it N times against halves it does not expect, and a dispatch that does
+ * not read the pair's read half would compute the same thing N times — both render a
+ * plausible picture (§V147), so both are refused here.
+ */
+function kernelStepsDiagnostics(
+  passes: ReadonlyArray<PassDescriptor>,
+  resources: ReadonlyArray<ResourceDescriptor>,
+): RuntimeDiagnostic[] {
+  const out: RuntimeDiagnostic[] = [];
+  const pairs = new Set(resources.filter((resource) => resource.kind === "bufferPair").map((resource) => resource.id));
+  passes.forEach((pass, index) => {
+    if (pass.kind !== "loop" || pass.edge !== "begin" || pass.steps === undefined) return;
+    const pair = pass.steps.pair;
+    const body = passes[index + 1];
+    const closing = passes[index + 2];
+    const closed = closing !== undefined && closing.kind === "loop" && closing.edge === "end" && closing.loopId === pass.loopId;
+    const halves = body !== undefined && body.kind === "dispatch"
+      ? new Set((body.buffers ?? []).filter((binding) => binding.resourceId === pair).map((binding) => binding.half ?? "read"))
+      : new Set<string>();
+    if (closed && pairs.has(pair) && halves.has("read") && halves.has("write")) return;
+    out.push(
+      backendDiagnostic(
+        "error",
+        BackendDiagnosticCode.planInvalid,
+        `Kernel steps "${pass.loopId}" must enclose exactly one dispatch that binds both halves of the buffer pair "${pair}".`,
+        pass.nodeId === undefined ? {} : { nodeId: pass.nodeId },
+      ),
+    );
+  });
   return out;
 }
 
@@ -1051,17 +1304,124 @@ export function iterationSpanName(passId: string, iteration: number): string {
 /** Separator between a pass id and its substep iteration index in a timer span name. */
 export const SPAN_ITERATION_SEPARATOR = "~";
 
-/** The base pass id a span name belongs to — the inverse of `iterationSpanName`. */
-export function spanBasePassId(spanName: string): string {
+/**
+ * T1604b — WHERE THE DEVICE'S RENDER PASSES ARE.
+ *
+ * A plan pass of kind `draw` is one draw: its own id, shader, bindings, uniforms and node.
+ * The device does not need a render pass for each. Opening one costs encode and submit time
+ * on the CPU and, on a tile-based GPU, a store and a load of the target (and a resolve, when
+ * it is multisampled), so two hundred draws into twenty targets were two hundred passes.
+ *
+ * A RUN is the draws one device render pass holds: consecutive `draw` passes of ONE NODE
+ * into ONE TARGET, of which only the first may clear. Anything else ends it — an effect, a
+ * dispatch, a swap, a loop marker, another target, another node, a draw that clears. So a
+ * run is passes that were already adjacent and already drew over one another in this
+ * order: grouping them moves nothing and changes no pixel.
+ *
+ * One node, because the run has ONE GPU timer span and the per-node figure must stay a
+ * measurement: a span that covered two nodes' draws could only be divided between them by
+ * invention. Inside the node the span belongs to the run, and its passes share it
+ * (`runSpanName`); a person who wants each pass's own figure gets one pass per draw again
+ * (`LoomBackend.setExactPassTiming`).
+ *
+ * A loop marker ends a run, so a substep region keeps its boundary: read off the plan as it
+ * is written, never off the expanded order, where the body's last draw would sit next to
+ * its own first.
+ *
+ * A MULTISAMPLED target is the exception: its draws stay a pass each. MEASURED, not
+ * reasoned: with them grouped, sentinel-bot's colour (Dawn on Metal, rgba16float, 4× MSAA,
+ * 640 × 360) differed from one pass per draw on 0 to 8 of 230,400 pixels a frame, each by
+ * one unit in the last place of one channel, where two mesh-instanced geometries meet (the
+ * claws on the last rings). Every single-sampled target was byte-identical. The cause was
+ * NOT established: it did not need the document's own materials (the stock one showed it
+ * too), and a built scene of 8,192 interpenetrating instanced meshes under three casting
+ * lights did not show it at all. So this is a rule about what was seen, on the safe side of
+ * it. Nobody could see
+ * one unit in the last place; but the frame would then depend on `setExactPassTiming`,
+ * that is on whether someone had the performance panel open, and every byte-exact gate
+ * assumes it does not. Pass the plan's resources to have the rule applied; without them no
+ * target is known to be multisampled.
+ *
+ * Pure, and the ONE definition: the encoder groups by it, and anything that describes what
+ * the device does (the telemetry hub, the pipeline inspector) reads it rather than
+ * restating the rule.
+ */
+export interface RenderPassRun {
+  /** The run's passes in plan order. The first is its HEAD: its `clear` is the pass's, and its id names the span. */
+  readonly passIds: ReadonlyArray<string>;
+  readonly target: string;
+  readonly nodeId: string | undefined;
+}
+
+export function renderPassRuns(
+  passes: ReadonlyArray<PassDescriptor>,
+  resources: ReadonlyArray<ResourceDescriptor> = [],
+): ReadonlyArray<RenderPassRun> {
+  const multisampled = new Set<string>();
+  for (const resource of resources) {
+    if (resource.kind === "target" && resource.msaa === true) multisampled.add(resource.id);
+  }
+  const runs: Array<{ passIds: string[]; target: string; nodeId: string | undefined }> = [];
+  let open: (typeof runs)[number] | undefined;
+  for (const pass of passes) {
+    if (pass.kind !== "draw") {
+      open = undefined;
+      continue;
+    }
+    if (open !== undefined && pass.clear === false && pass.target === open.target && pass.nodeId === open.nodeId && !multisampled.has(pass.target)) {
+      open.passIds.push(pass.id);
+      continue;
+    }
+    open = { passIds: [pass.id], target: pass.target, nodeId: pass.nodeId };
+    runs.push(open);
+  }
+  return runs;
+}
+
+/** Separator between a run head's pass id and how many OTHER passes share its span. */
+export const SPAN_RUN_SEPARATOR = "+";
+
+/**
+ * T1604b: the timer span name of a RUN — its head's pass id and the number of passes after
+ * it that the span also covers (`head+13`). A run of one is just the pass id, so a draw on
+ * its own has the name it always had. The name says what the number is: a reader that knows
+ * nothing of runs bills it to the head (`spanBasePassId`), which is the right node, and one
+ * that does can say which passes share it (`spanSharedPasses`).
+ */
+export function runSpanName(headPassId: string, sharedPasses: number): string {
+  return sharedPasses <= 0 ? headPassId : `${headPassId}${SPAN_RUN_SEPARATOR}${sharedPasses}`;
+}
+
+/** How many passes AFTER its head a span covers: 0 for a pass's own span. Takes a name with or without its iteration suffix. */
+export function spanSharedPasses(spanName: string): number {
+  const name = withoutIteration(spanName);
+  const at = name.lastIndexOf(SPAN_RUN_SEPARATOR);
+  if (at === -1) return 0;
+  const suffix = name.slice(at + 1);
+  return suffix.length > 0 && /^\d+$/.test(suffix) ? Number(suffix) : 0;
+}
+
+function withoutIteration(spanName: string): string {
   const at = spanName.lastIndexOf(SPAN_ITERATION_SEPARATOR);
   if (at === -1) return spanName;
   // Only a trailing all-digit suffix is an iteration index. A pass id that happens to
   // contain the separator keeps its own name rather than being silently truncated onto a
   // pass that does not exist.
   const suffix = spanName.slice(at + 1);
-  if (suffix.length === 0 || !/^\d+$/.test(suffix)) return spanName;
-  return spanName.slice(0, at);
+  return suffix.length === 0 || !/^\d+$/.test(suffix) ? spanName : spanName.slice(0, at);
 }
+
+/**
+ * The base pass id a span name belongs to — the inverse of `iterationSpanName`, and of
+ * `runSpanName` (T1604b): a run's span is billed to its head.
+ */
+export function spanBasePassId(spanName: string): string {
+  const name = withoutIteration(spanName);
+  const run = name.lastIndexOf(SPAN_RUN_SEPARATOR);
+  if (run !== -1 && /^\d+$/.test(name.slice(run + 1))) return name.slice(0, run);
+  return name;
+}
+
 
 /**
  * Identity of everything that requires GPU objects to be (re)built: resources, shader
@@ -1112,6 +1472,30 @@ export function resourceStructureKey(resource: ResourceDescriptor): string {
 /** Per-pass structural identity. Uniform NAMES only, never values (§V5). */
 export function passStructureKey(pass: PassDescriptor): string {
   return JSON.stringify(passKeyParts(pass));
+}
+
+/**
+ * T1603b: whether two passes have the same structure — exactly
+ * `passStructureKey(a) === passStructureKey(b)`, without building either key.
+ *
+ * The per-frame verifier (`frame-compile.ts`) asks this of every pass a frame re-emits,
+ * against the base plan's. The key serialises the pass, SHADER TEXT INCLUDED, so asking it
+ * by key escaped ten to twenty kilobytes per pass per frame to compare two strings that
+ * are, on a values-only frame, the same object (the generators remember their text). This
+ * walks the same parts the key is made of — one source for what "structure" means — and
+ * compares them where they stand.
+ */
+export function samePassStructure(a: PassDescriptor, b: PassDescriptor): boolean {
+  return a === b || sameKeyParts(passKeyParts(a), passKeyParts(b));
+}
+
+function sameKeyParts(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (!sameKeyParts(a[index], b[index])) return false;
+  }
+  return true;
 }
 
 /**
@@ -1220,8 +1604,12 @@ function passKeyParts(pass: PassDescriptor): unknown[] {
       // writes per frame (an audio band driving substeps is the case that forced it).
       // The loop REGION — that the markers exist, where they sit, what they enclose —
       // stays structural.
+      // T1583b: so is WHICH pair a kernel region steps, appended only when there is one,
+      // so a texture loop's key is the one it had. `iterations` and `prepare` are values.
       case "loop":
-        return ["loop", pass.id, pass.edge, pass.loopId];
+        return pass.steps === undefined
+          ? ["loop", pass.id, pass.edge, pass.loopId]
+          : ["loop", pass.id, pass.edge, pass.loopId, pass.steps.pair];
       case "effect":
         return [
           "effect",
@@ -1268,6 +1656,9 @@ function passKeyParts(pass: PassDescriptor): unknown[] {
         ];
       case "counter":
         return ["counter", pass.id, pass.op, pass.resourceId, pass.outputResourceId ?? null];
+      // T1623b: where the rows go and what a row is. The rows and their count are values.
+      case "write":
+        return ["write", pass.id, pass.resourceId, pass.offset, pass.row.join(","), pass.capacity, pass.countOffset ?? null];
   }
 }
 
@@ -1320,6 +1711,18 @@ export function estimateResourceBytes(resources: ReadonlyArray<ResourceDescripto
 }
 
 /** Uniform values a plan carries, keyed by pass id. Extracted after the signature is taken. */
+/**
+ * T1598b: the draws a plan SKIPS — its other per-frame value beside the uniform blocks.
+ * One reader for the backend (what it does not encode) and the animator (what it pushes).
+ */
+export function planSkippedDraws(passes: ReadonlyArray<PassDescriptor>): Set<string> {
+  const skipped = new Set<string>();
+  for (const pass of passes) {
+    if (pass.kind === "draw" && pass.skip === true) skipped.add(pass.id);
+  }
+  return skipped;
+}
+
 export function planUniformValues(
   passes: ReadonlyArray<PassDescriptor>,
 ): ReadonlyMap<string, UniformValues> {
@@ -1328,6 +1731,8 @@ export function planUniformValues(
     if ((pass.kind === "effect" || pass.kind === "dispatch" || pass.kind === "draw") && pass.uniforms) {
       out.set(pass.id, pass.uniforms as UniformValues);
     }
+    // T1623b: a region's rows travel with the uniform blocks, keyed by their own pass id.
+    if (pass.kind === "write") out.set(pass.id, pass.values);
   }
   return out;
 }

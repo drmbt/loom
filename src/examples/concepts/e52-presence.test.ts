@@ -31,7 +31,7 @@ describe("E52 Presence", () => {
   });
 
   it("the key multiplies the SOURCE by ITS OWN mask — same switch, never a stale branch", () => {
-    // Both of key1's inputs trace to src1's output family: the picture being keyed and
+    // Both of multiply_key's inputs trace to switch_src's output family: the picture being keyed and
     // the picture the mask was cut FROM are the same switch. Wiring the mask to the
     // understudy while keying the webcam (or vice versa) compiles fine and cuts the
     // wrong person — §V655's crossed-pair family, pinned here like E47 pins its carve.
@@ -55,7 +55,7 @@ describe("E52 Presence", () => {
   });
 
   it("coverage drives the wash's LIGHT: §V856's scalar is wired, not just published", () => {
-    /* The saturation slot is an EXPRESSION over mask1's coverage channel. The channel
+    /* The saturation slot is an EXPRESSION over personmask1's coverage channel. The channel
        itself exists only in a live session (the seam publishes it; headless has no
        pump), so a render-diff on the cut edge cannot run here — what CAN be pinned is
        that the document actually spends the scalar: delete this slot and the example's
@@ -65,7 +65,7 @@ describe("E52 Presence", () => {
       | { mode?: string; bindings?: { expression?: { source?: string } } }
       | undefined;
     expect(slot?.mode).toBe("expression");
-    expect(slot?.bindings?.expression?.source).toContain("mask1");
+    expect(slot?.bindings?.expression?.source).toContain("personmask1");
     expect(slot?.bindings?.expression?.source).toContain("coverage");
   });
 

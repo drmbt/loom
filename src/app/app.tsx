@@ -1,5 +1,6 @@
 import { createRenderCanvasCapture } from "./render-canvas-capture.ts";
 import { ControlsPane } from "@editor/controls/controls-pane.tsx";
+import { ContextMenuHost } from "@editor/menus/index.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { scopeFromFrame } from "@domain/expressions/index.ts";
 import type { ExpressionScope } from "@domain/expressions/index.ts";
@@ -19,7 +20,7 @@ import type { KeymapEnvironment } from "@editor/keymap/index.ts";
 import { ComponentLibrary, ExampleLibrary, useDocumentDirty } from "@editor/library/index.ts";
 import type { ExampleProject } from "@editor/library/example-catalogue.ts";
 import { CommandPalette } from "@editor/palette/index.ts";
-import { ProblemsPanel } from "@editor/shader-editor/index.ts";
+import { ProblemsPanel, type ProblemAction } from "@editor/shader-editor/index.ts";
 import { Button, ErrorBoundary } from "@ui/index.ts";
 import { UnsavedChangesDialog } from "@ui/primitives/unsaved-changes-dialog.tsx";
 import { AppRuntimeContext } from "./app-context.ts";
@@ -42,7 +43,7 @@ import type { FrameRange, ProjectSettings } from "@domain/types/graph.ts";
 import { projectFps, projectRange } from "@domain/types/graph.ts";
 import { ComponentBar } from "./component-bar.tsx";
 import { useComponentEditing } from "./use-component-editing.ts";
-import { humanizeDiagnostics } from "@domain/graph/index.ts";
+import { useProblems } from "./use-problems.ts";
 import { GraphPane } from "./graph-pane.tsx";
 import { createPreviewInterestStore, createPreviewOrbitStore } from "@editor/viewer/index.ts";
 import type { GraphActions, PortDragOrigin } from "./graph-pane.tsx";
@@ -87,6 +88,8 @@ import { instanceValueChannels } from "./instance-value-channels.ts";
 import { useAnalyzeChannels } from "./use-analyze-channels.ts";
 import { useModelInference } from "./use-model-inference.ts";
 import { useGraphCompile } from "./use-graph-compile.ts";
+import { LiveGraph } from "./live-graph.tsx";
+import { canvasShows, controlsShow, inspectorShows } from "./use-live-graph.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { useValueGraph } from "./use-value-graph.ts";
 import { useMidiInput } from "./use-midi-input.ts";
@@ -395,13 +398,13 @@ export function App({
   /*
    * T1525b: what the CPU readers outside the plan resolve their nodes' OWN parameters with —
    * the compile's channel resolver (read late: the compile is built below, from these
-   * readers' channels) and the morph index of the runtime's flattening, the one the plan
-   * and the value graph resolve with (§T1524b).
+   * readers' channels) and the runtime's flattening, whole — its morph index, the one the
+   * plan and the value graph resolve with (§T1524b), and its instances (§T1551b).
    */
   const liveReads = {
     registry: runtime.registry,
     channels: () => compileRef.current.channels,
-    morphs: () => runtime.flattened.current().morphs,
+    flattening: () => runtime.flattened.current(),
   };
 
   /**
@@ -807,6 +810,20 @@ export function App({
     });
   }, [backend, runtime]);
 
+  /**
+   * T1604b — THE THIRD SIBLING: who is looking decides how the frame is encoded.
+   *
+   * A run of a node's draws is one device render pass by default, with one GPU span its
+   * passes share. The performance panel shows a figure per pass, so while it is open it
+   * holds a demand on the hub (`demandPassDetail`), and this is where that demand reaches
+   * the backend: one pass per draw while anyone holds one. Without this call the panel
+   * would ask and nothing would answer.
+   */
+  useEffect(() => {
+    if (backend === undefined) return;
+    return runtime.telemetry.attachPassDetailSwitch((exact) => backend.setExactPassTiming?.(exact));
+  }, [backend, runtime]);
+
   // The frame loop (T184): the only caller of `backend.loop()` in the app. Without it
   // the compiler, the backend and the renderer each pass their own suite while zero
   // frames are ever submitted — see `use-frame-loop.ts`.
@@ -898,8 +915,9 @@ export function App({
     mediaControls,
     // T1229: the grid a bound file is pre-analysed on — the same rate the track below records at.
     () => projectFps(runtime.settings),
-    // T1524b: the morph index of that same flattening, so a fading volume or speed follows the fade.
-    () => runtime.flattened.current().morphs,
+    // T1524b / §T1559b: that same flattening, whole — a fading volume or speed follows the
+    // fade, and an `op('<instance>').chan.<c>` on a transport parameter reads the instance.
+    () => runtime.flattened.current(),
   );
   // T452: the recorder WRAPS that read, so the track holds what the engine actually saw.
   const audioTrack = useAudioTrack({
@@ -956,8 +974,8 @@ export function App({
          * and one frame is a real firing for the hardware this axis exists to protect.
          */
         renderRangeHolderFor(runtime.bus).current?.busy() === true ? "blocked" : "live-session",
-        // T1524b: the same index the value graph above and the plan resolve with.
-        runtime.flattened.current().morphs,
+        // T1524b/§T1551b: the same flattening the value graph above and the plan resolve with.
+        runtime.flattened.current(),
       );
       // T950 — the laser pump's assessment, same policy source and the same reasoning
       // as osc.sync above: a take is not a live session, checked per frame.
@@ -983,6 +1001,8 @@ export function App({
     },
     pointer,
     valuesOnly: compile.valuesOnly,
+    // T1652b: a revision that only moved values arrives here, without this component rendering.
+    values: compile.values,
     // T519/B106 — a load is a discontinuity: the incoming plan must land on cleared
     // temporal history, because the backend carries feedback pairs and rings over BY
     // RESOURCE ID and two documents share those ids as soon as they share node names.
@@ -1371,23 +1391,6 @@ export function App({
     openText: openProjectText,
   });
 
-  /**
-   * T465: Clear EMPTIES every accumulating source; the list rebuilds from the current
-   * compile on the next render, so live problems return immediately (the proof they
-   * are live) and resolved ones do not. Deliberately no dismissed-set — nothing can
-   * be silenced while still true.
-   */
-  const { clearDiagnostics: clearEditingDiagnostics } = editing;
-  const clearProblems = useCallback(() => {
-    setRejection(NO_DIAGNOSTICS);
-    autosave.clearDiagnostics();
-    media.clearDiagnostics();
-    project.clearDiagnostics();
-    recovery.clearDiagnostics();
-    frameLoop.clearDiagnostics();
-    clearEditingDiagnostics();
-  }, [autosave, clearEditingDiagnostics, frameLoop, media, project, recovery]);
-
   // T1531b: the LAST-CLICKED node of a multi-selection — the canvas reports in append order.
   const selectedNodeId = primaryOf(selection);
 
@@ -1469,84 +1472,92 @@ export function App({
    * Every diagnostic the session has to offer, in one list (§V338: the honest answer has
    * to be OBTAINABLE, which means one place holds it).
    *
+   * T1555b: the list is a registry (`problem-sources.ts`). Each source is ONE entry here,
+   * read in this order. An entry with `clear` is an ACCUMULATING source, and the Problems
+   * pane's Clear empties it (T465). The list rebuilds from the current state on the next
+   * render, so live problems come back at once (the proof they are live) and resolved ones
+   * do not. There is deliberately no dismissed-set: nothing can be silenced while still
+   * true. `problem-sources.test.ts` fails on a hook that hands this file diagnostics
+   * without an entry, and `mcp/serve.ts` registers the subset a headless process can have.
+   *
    * Declared after `useRenderRange` rather than before it only because it now reads that
    * hook's output — T586's free-run render warning. It is consumed first by the agent
    * surface immediately below, so nothing moved relative to a reader.
    */
-  const problems = useMemo<RuntimeDiagnostic[]>(() => {
-    const list: RuntimeDiagnostic[] = [];
-    if (status.kind === "unavailable") {
-      list.push({
-        severity: "error",
-        code: "gpu.unavailable",
-        message: status.reason,
-        suggestion:
-          "Editing still works. Open this in Chrome or Edge 128+ on a machine with WebGPU to render.",
-      });
-    }
-    list.push(
-      ...compile.diagnostics,
-      ...valueGraph.diagnostics,
-      ...media.diagnostics,
-      ...fileReferences.diagnostics,
-      ...screenCapture.diagnostics,
-      ...meshes.diagnostics,
-      ...nativeInputs.diagnostics,
-      ...phoneCameras.diagnostics,
-      ...nativeOutputs.diagnostics,
+  const gpuProblems = useMemo<readonly RuntimeDiagnostic[]>(
+    () =>
+      status.kind === "unavailable"
+        ? [
+            {
+              severity: "error",
+              code: "gpu.unavailable",
+              message: status.reason,
+              suggestion: "Editing still works. Open this in Chrome or Edge 128+ on a machine with WebGPU to render.",
+            },
+          ]
+        : NO_DIAGNOSTICS,
+    [status],
+  );
+  const { problems, clearProblems } = useProblems(
+    [
+      { id: "gpu", read: () => gpuProblems },
+      { id: "compile", read: () => compile.diagnostics },
+      { id: "valueGraph", read: () => valueGraph.diagnostics },
+      { id: "media", read: () => media.diagnostics, clear: () => media.clearDiagnostics() },
+      { id: "fileReferences", read: () => fileReferences.diagnostics },
+      { id: "screenCapture", read: () => screenCapture.diagnostics },
+      { id: "meshes", read: () => meshes.diagnostics },
+      { id: "nativeInputs", read: () => nativeInputs.diagnostics },
+      { id: "phoneCameras", read: () => phoneCameras.diagnostics },
+      { id: "nativeOutputs", read: () => nativeOutputs.diagnostics },
       // T1340b — the host-level limitation a node declares about itself. Same list as
       // everything else, which is what makes the node badge and this panel agree.
-      ...requirements,
+      { id: "requirements", read: () => requirements },
       // T942 tier 3 — why OSC is not working, keyed to the node it concerns. It joins the
       // ONE list rather than growing a panel of its own: the owner's ruling is that a
       // device's interface lives in its NODE, so its degraded reason belongs on the
       // surface every other node-scoped problem already uses (§V365, §V338).
-      ...osc.diagnostics,
+      { id: "osc", read: () => osc.diagnostics },
       // T950 — the laser pump's honest state, on the same one-list rule as OSC's.
-      ...laser.diagnostics,
-      ...vision.diagnostics,
-      ...rejection,
-      ...autosave.diagnostics,
-      ...project.diagnostics,
-      ...recovery.diagnostics,
-      ...frameLoop.diagnostics,
+      { id: "laser", read: () => laser.diagnostics },
+      { id: "vision", read: () => vision.diagnostics },
+      { id: "rejection", read: () => rejection, clear: () => setRejection(NO_DIAGNOSTICS) },
+      { id: "autosave", read: () => autosave.diagnostics, clear: () => autosave.clearDiagnostics() },
+      { id: "project", read: () => project.diagnostics, clear: () => project.clearDiagnostics() },
+      { id: "backend", read: () => recovery.diagnostics, clear: () => recovery.clearDiagnostics() },
+      { id: "frameLoop", read: () => frameLoop.diagnostics, clear: () => frameLoop.clearDiagnostics() },
       // §T1543b — the component editor's held notes: why it put you back out, and the
       // session it reopened over an outside write.
-      ...editing.diagnostics,
+      { id: "componentEditing", read: () => editing.diagnostics, clear: () => editing.clearDiagnostics() },
       // T586 — what the LAST TAKE had to say about itself. A refusal reaches the user
       // through `reportRefusal`, which returns early on `applied`; a take that succeeds
       // and is nonetheless not reproducible had no channel at all before this.
-      ...renderRange.diagnostics,
-    );
-    // T599: the message boundary — any quoted node id becomes the node's display label,
-    // so the pane says `blur1` like every other surface, not the minted receipt.
-    return [...humanizeDiagnostics(list, compile.graph)];
-  }, [
+      { id: "renderRange", read: () => renderRange.diagnostics },
+    ],
     compile.graph,
-    autosave.diagnostics,
-    compile.diagnostics,
-    frameLoop.diagnostics,
-    valueGraph.diagnostics,
-    media.diagnostics,
-    fileReferences.diagnostics,
-    screenCapture.diagnostics,
-    meshes.diagnostics,
-    nativeInputs.diagnostics,
-    phoneCameras.diagnostics,
-    nativeOutputs.diagnostics,
-    osc.diagnostics,
-    laser.diagnostics,
-    requirements,
-    vision.diagnostics,
-    project.diagnostics,
-    recovery.diagnostics,
-    rejection,
-    editing.diagnostics,
-    renderRange.diagnostics,
-    status,
-  ]);
+  );
 
   const errorCount = problems.filter((diagnostic) => diagnostic.severity === "error").length;
+  /**
+   * §T1641b slice 2: what a Problems row can DO. A stored key the node does not declare
+   * (`parameter.unknown`) has no row in the inspector to be removed from, because the
+   * inspector draws what the node declares. So the row that reports it removes it: every
+   * such key on that node, one patch, one undo. Offered for a node of THIS document only;
+   * one inside a component is fixed in its definition.
+   */
+  const problemAction = useCallback(
+    (diagnostic: RuntimeDiagnostic): ProblemAction | null => {
+      const nodeId = diagnostic.nodeId;
+      const node = nodeId === undefined ? undefined : compile.graph.nodes[nodeId];
+      if (diagnostic.code !== "parameter.unknown" || nodeId === undefined || node === undefined) return null;
+      return {
+        label: "remove",
+        description: `Remove what "${node.label ?? nodeId}" stores under keys it does not declare`,
+        run: () => void runtime.bus.execute("parameter.removeUndeclared", { nodeId }, runtime.invocation).then(reportRefusal),
+      };
+    },
+    [compile.graph, reportRefusal, runtime],
+  );
   /**
    * T1299: what `get_channels` reads — the SAME bags the value history sampler above
    * pushes, root nodes and component instances alike, read on demand. Never a second
@@ -1566,7 +1577,8 @@ export function App({
       selection,
       playing: frameLoop.playing,
       diagnostics: problems,
-      diagnosticsRevision: compile.graph.revision,
+      // T1652b: asked when the surface is, so a value written since the last render counts as looked at.
+      diagnosticsRevision: compile.answersFor ?? compile.graph.revision,
       channels: agentChannels,
     },
     agentPorts,
@@ -1834,7 +1846,8 @@ export function App({
    * T1238 — THE PANES THAT DO NOT READ THE DOCUMENT ARE BUILT ONCE PER CHANGE OF WHAT
    * THEY DO READ, NOT ONCE PER RENDER OF `App`.
    *
-   * `App` subscribes to the store (`useGraphCompile`) and re-renders on every revision;
+   * `App` subscribes to the store (`useGraphCompile`) and re-renders on every STRUCTURAL
+   * revision (T1652b: no longer for one that only moved a value — `revision-watch.ts`);
    * it also holds selection and port-drag state. That is its job. What it must not do is
    * hand every pane a FRESH ELEMENT each time, because a fresh element is a re-render
    * whatever its props say — and §T1235 measured what that cost: on E24 a 2 s knob drag
@@ -2134,6 +2147,9 @@ export function App({
                 onCreated={selectNodes}
               />
               <AppRuntimeContext.Provider value={editing.runtime}>
+              {/* T1652b: the pane's document is the store's, live, for a value the pane draws
+                  itself (a handle on a tile); a control's value is drawn by its own node. */}
+              <LiveGraph store={editing.bus.store} registry={runtime.registry} shows={canvasShows}>{(liveGraph) => (
               <GraphPane
                 selection={selection}
                 onSelectionChange={onSelectionChange}
@@ -2152,7 +2168,7 @@ export function App({
                  * flat plan rows addressable from a dived pane and both guards obsolete.
                  */
                 previewBackend={backend ?? null}
-                graph={editing.graph}
+                graph={liveGraph}
                 /*
                  * T1051 — the SAME outputs inside a component as outside, and the pane's
                  * `flatPrefix` is what makes that safe. This used to be [] inside, from a
@@ -2175,6 +2191,7 @@ export function App({
                  * refused plan bind a resource the installed program never had.
                  */
                 compiledOutputs={installedPlan?.outputs ?? EMPTY_OUTPUTS}
+                liveOutputs={frameLoop.liveOutputs}
                 previewFps={runtime.settings.previewFps}
                 previewLongEdge={runtime.settings.previewLongEdge}
                 previewSinks={previewSinks}
@@ -2199,6 +2216,7 @@ export function App({
                 // T1512b: the Panel's header phone icon opens this door's popover.
                 phone={phoneView}
               />
+              )}</LiveGraph>
               </AppRuntimeContext.Provider>
             </NodeInfoHost>
             </ErrorBoundary>
@@ -2206,6 +2224,8 @@ export function App({
           inspector={
             <ErrorBoundary name="Inspector">
               <AppRuntimeContext.Provider value={editing.runtime}>
+              {/* T1652b: live for what it inspects and what that reads; no other write renders it. */}
+              <LiveGraph store={editing.bus.store} registry={runtime.registry} shows={inspectorShows(selection)}>{(liveGraph) => (
               <InspectorPane
                 nodeId={selectedNodeId}
                 selection={selection}
@@ -2218,7 +2238,7 @@ export function App({
                         components: componentsView,
                       },
                     })}
-                graph={editing.graph}
+                graph={liveGraph}
                 /*
                  * T1202/§B189 — THE SAME STARVATION §T1051 FOUND ON THE CANVAS, one pane
                  * over, and the last one of its family.
@@ -2254,6 +2274,8 @@ export function App({
                 // publishing. THE supply the completion menu spent its life without
                 // (§V272) — `expression-references.test.tsx` fails if it stops.
                 channelNames={valueGraph.channelNames}
+                // T1485b: which instances `op('…').chan` can name, off the same flattening.
+                instanceChannels={valueGraph.instanceChannels}
                 status={status}
                 unknownParameters={runtime.unknownParameters}
                 audioStatus={audioInput.status}
@@ -2267,6 +2289,7 @@ export function App({
                 laser={laser.session}
                 performWindows={perform.surface}
               />
+              )}</LiveGraph>
               </AppRuntimeContext.Provider>
             </ErrorBoundary>
           }
@@ -2289,6 +2312,7 @@ export function App({
                  * state: the backend has never been given a program to present from.
                  */
                 compiled={installedPlan}
+                liveOutputs={frameLoop.liveOutputs}
                 graph={compile.graph}
                 backend={backend ?? null}
                 pointer={pointer}
@@ -2318,7 +2342,7 @@ export function App({
           }
           problems={
             <ErrorBoundary name="Problems">
-              <ProblemsPanel diagnostics={problems} onClear={clearProblems} />
+              <ProblemsPanel diagnostics={problems} onClear={clearProblems} actionFor={problemAction} />
             </ErrorBoundary>
           }
           performance={performancePane}
@@ -2326,7 +2350,16 @@ export function App({
           terminal={terminalPane}
           controls={
             <ErrorBoundary name="Controls">
-              <ControlsPane graph={compile.graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} phone={phoneView} />
+              {/* T1619b: the control menu (Reset, Set as default) is mounted HERE for the Controls
+                  tab; a Panel's body on the canvas is under the graph pane's host. No fallback
+                  surface: a right-click on the tab's chrome opens nothing. */}
+              <ContextMenuHost bus={runtime.bus}>
+                {/* T1652b: live for a control, a Panel and what a Panel lists; no other write renders it. */}
+                <LiveGraph store={runtime.bus.store} registry={runtime.registry} shows={controlsShow}>{(liveGraph) => (
+                <ControlsPane graph={liveGraph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation}
+                  phone={phoneView} midi={midi} channels={compile.channels} latestFrame={frameLoop.latestFrame} />
+                )}</LiveGraph>
+              </ContextMenuHost>
             </ErrorBoundary>
           }
         />

@@ -38,10 +38,10 @@ export function layerWarmRequest(request: CompileRequest): CompileRequest | null
     const node = nodes[nodeId]!;
     nodes[nodeId] = { ...node, ui: { ...node.ui, bypassed: false } };
   }
-  const warm: GraphDocument = { ...flat, nodes };
+  // §T1552b: spread onto the graph it came from, so the flattening stays a `FlatGraph`.
   return request.flattened === undefined
-    ? { ...request, graph: warm }
-    : { ...request, flattened: { ...request.flattened, graph: warm } };
+    ? { ...request, graph: { ...request.graph, nodes } }
+    : { ...request, flattened: { ...request.flattened, graph: { ...request.flattened.graph, nodes } } };
 }
 
 /** The plan of {@link layerWarmRequest}, or null when there is nothing to build ahead. */

@@ -10,7 +10,7 @@ import { SPLICE_WGSL } from "../shaders/splice.wgsl.ts";
  * effect chain — two complete shots, each rendered by its own camera into its own
  * render, crossfaded by a value held PER PHRASE:
  *
- *   bar ─► step1 (hold 4 bars) ─► lag1 (the crossfade's ease) ─► mix1.cross
+ *   bar ─► step1 (hold 4 bars) ─► lag1 (the crossfade's ease) ─► cross_mix.cross
  *
  * The cut lands on a STRUCTURAL BOUNDARY, never a timer — §T548's machinery verbatim,
  * and the difference between a VJ set and a slideshow. The held value is CONTINUOUS
@@ -140,50 +140,50 @@ export const pulseDocument = document(
   graph(
     [
       // ---- the clock and the drives (T701's rest-subtracted chains) -----------------
-      node("beat", "audioPattern", [-2900, 900], { bpm: 122, amount: 1 }, { label: "beat1" }),
-      /* T828 (5) — THE CLOCK SEAM: every lane references `clock1`, never `beat1`
+      node("beat", "audioPattern", [-2900, 900], { bpm: 122, amount: 1 }, { label: "pattern_beat" }),
+      /* T828 (5) — THE CLOCK SEAM: every lane references `switch_clock`, never `pattern_beat`
          directly, so the whole set's tempo source is ONE node to exchange. A
          `valueSwitch` rather than a bare null because §T825 is the concrete reason it
          exists: a real track publishes no bar/barPhase, so playing to one means an
          audioPattern beside the file at the known BPM (both timeline-anchored) — wire
          that as in2 and flip Index, and the switch is exactly the one-node swap the
          owner asked for. At index 0 it is the pattern, byte-for-byte. */
-      node("clock", "valueSwitch", [-2600, 900], { index: 0 }, { label: "clock1" }),
+      node("clock", "valueSwitch", [-2600, 900], { index: 0 }, { label: "switch_clock" }),
       /* HIGH band: rest 0.3809 out first, then two gains — one for the web's radius,
          one for the glitch. One subtraction, two consumers, so the two cannot disagree
          about what "silence" is. */
-      node("hsub", "valueMath", [-2300, 900], { operation: "add", operand: -0.381 }, { label: "hs1" }),
+      node("hsub", "valueMath", [-2300, 900], { operation: "add", operand: -0.381 }, { label: "math_highrest" }),
       /* T824's lesson, applied BEFORE it bites here: a raw per-frame band on a visible
          parameter is jitter (E27's owner report, E43's second instance). One §T814
          envelope right after the subtraction — fast attack, slow release — feeds BOTH
          high-band consumers, so the glitch and the web breathe on strikes instead of
          flickering on every analyser frame. */
-      node("henv", "valueLag", [-2000, 900], { lag: 0.03, releaseRatio: 10 }, { label: "henv1" }),
+      node("henv", "valueLag", [-2000, 900], { lag: 0.03, releaseRatio: 10 }, { label: "lag_high" }),
       /* T828 round two — THE TEAR IS AN EVENT, NOT A TEXTURE: a threshold before the
          gain means only a strong strike tears at all, and the quiet phrases carry no
          glitch rather than a faint strobe of one. The slam stays a slam (§T749); it
          just stops being ambient. */
-      node("gth", "valueMath", [-1400, 820], { operation: "add", operand: -0.03 }, { label: "gth1" }),
-      node("hglitch", "valueMath", [-1700, 820], { operation: "multiply", operand: 8 }, { label: "hd1" }),
-      node("glim", "valueLimit", [-1100, 820], { minimum: 0, maximum: 1 }, { label: "glim1" }),
+      node("gth", "valueMath", [-1400, 820], { operation: "add", operand: -0.03 }, { label: "math_glitchthreshold" }),
+      node("hglitch", "valueMath", [-1700, 820], { operation: "multiply", operand: 8 }, { label: "math_glitchgain" }),
+      node("glim", "valueLimit", [-1100, 820], { minimum: 0, maximum: 1 }, { label: "limit_glitch" }),
       /* T828 — DOWNTIME floor: base radius 0.12 (a trace of a web, not a web) with the
          band's gain raised so full music still reaches ~0.55. Quiet is now a state the
          PICTURE has: in the arrangement's breakdown bar the web thins to filaments. */
-      node("hrad", "valueMath", [-1700, 1050], { operation: "multiply", operand: 0.32 }, { label: "hm1" }),
-      node("radd", "valueMath", [-1400, 1050], { operation: "add", operand: 0.12 }, { label: "rad1" }),
+      node("hrad", "valueMath", [-1700, 1050], { operation: "multiply", operand: 0.32 }, { label: "math_radiusgain" }),
+      node("radd", "valueMath", [-1400, 1050], { operation: "add", operand: 0.12 }, { label: "math_radius" }),
       /* LOW band → the constellation's breath. Rest 0.7119 (T701), same envelope idiom. */
-      node("lsub", "valueMath", [-2300, 1280], { operation: "add", operand: -0.712 }, { label: "ls1" }),
-      node("lenv", "valueLag", [-2000, 1280], { lag: 0.05, releaseRatio: 5 }, { label: "lenv1" }),
-      node("lbreath", "valueMath", [-1700, 1280], { operation: "multiply", operand: 1.4 }, { label: "ld1" }),
+      node("lsub", "valueMath", [-2300, 1280], { operation: "add", operand: -0.712 }, { label: "math_lowrest" }),
+      node("lenv", "valueLag", [-2000, 1280], { lag: 0.05, releaseRatio: 5 }, { label: "lag_low" }),
+      node("lbreath", "valueMath", [-1700, 1280], { operation: "multiply", operand: 1.4 }, { label: "math_breath" }),
       /* THE STRUCTURE: bar count → a value held four bars → a CUT, mostly. T828: the
          held 0..1 is reshaped (×3, −1, clamp) so the outer thirds land on the POLES —
          a VJ set cuts hard and blends as the exception, and the always-half-blended
          frame was exactly the "busy and unchanging" the owner named. Phrases whose
          pick lands mid-range still blend; that is the exception kept on purpose. */
       node("step", "valueStep", [-2300, 1510], { every: 4, minimum: 0, maximum: 1, seed: 5 }, { label: "step1" }),
-      node("smul", "valueMath", [-2000, 1510], { operation: "multiply", operand: 12 }, { label: "sm1" }),
-      node("ssub", "valueMath", [-1700, 1510], { operation: "add", operand: -5.5 }, { label: "ss1" }),
-      node("slim", "valueLimit", [-1400, 1510], { minimum: 0, maximum: 1 }, { label: "sl1" }),
+      node("smul", "valueMath", [-2000, 1510], { operation: "multiply", operand: 12 }, { label: "math_shotgain" }),
+      node("ssub", "valueMath", [-1700, 1510], { operation: "add", operand: -5.5 }, { label: "math_shotbias" }),
+      node("slim", "valueLimit", [-1400, 1510], { minimum: 0, maximum: 1 }, { label: "limit_shot" }),
       node("lag", "valueLag", [-1100, 1510], { lag: 0.4 }, { label: "lag1" }),
       /* T828 addendum — THE COLOUR EVOLVES ON THE SAME STRUCTURE: a second phrase-held
          value (its own seed, so palette and shot select independently) swings the whole
@@ -192,23 +192,23 @@ export const pulseDocument = document(
          cue is ordering — a hue turn preserves luminance exactly, so the additive glow
          keeps reading while the palette becomes the thing that changes per phrase. The
          snap on the boundary is the point: the cut and the colour land together. */
-      node("pstep", "valueStep", [-2300, 1730], { every: 4, minimum: 0, maximum: 1, seed: 9 }, { label: "pstep1" }),
-      node("pmul", "valueMath", [-2000, 1730], { operation: "multiply", operand: 320 }, { label: "pm1" }),
-      node("padd", "valueMath", [-1700, 1730], { operation: "add", operand: -160 }, { label: "pal1" }),
+      node("pstep", "valueStep", [-2300, 1730], { every: 4, minimum: 0, maximum: 1, seed: 9 }, { label: "step_palette" }),
+      node("pmul", "valueMath", [-2000, 1730], { operation: "multiply", operand: 320 }, { label: "math_palettegain" }),
+      node("padd", "valueMath", [-1700, 1730], { operation: "add", operand: -160 }, { label: "math_palette" }),
 
       // ---- SHOT A: the constellation (Cross 0) --------------------------------------
-      node("seedA", "pointSphere", [-2600, -420], { count: 600, radius: 1 }, { label: "seedA1" }),
+      node("seedA", "pointSphere", [-2600, -420], { count: 600, radius: 1 }, { label: "sphere_seedA" }),
       node("swarm", "pointKernel", [-2300, -420], {
         capacity: 600, attributes: VJ_SWARM_ATTRIBUTES, kernel: VJ_SWARM_KERNEL,
-      }, { label: "swarm1", parameters: { value1: drivenSlot("ld1:low", 0), value2: drivenSlot("henv1:high", 0) } }),
+      }, { label: "kernel_swarm", parameters: { value1: drivenSlot("math_breath:low", 0), value2: drivenSlot("lag_high:high", 0) } }),
       node("prox", "pointProximity", [-2000, -300], {
         neighbors: 2, falloff: 2,
-      }, { label: "prox1", parameters: { radius: drivenSlot("rad1:high", 0.3) } }),
-      node("sparkA", "materialUnlit", [-2000, -560], { color: [1, 1, 1, 1] }, { label: "sparkA1" }),
+      }, { label: "proximity1", parameters: { radius: drivenSlot("math_radius:high", 0.3) } }),
+      node("sparkA", "materialUnlit", [-2000, -560], { color: [1, 1, 1, 1] }, { label: "material_sparkA" }),
       node("dots", "geometry", [-1700, -480], {
-        mode: "instances", shape: "octahedron", scale: 0.018, material: "sparkA1",
+        mode: "instances", shape: "octahedron", scale: 0.018, material: "material_sparkA",
       }, {
-        label: "dots1",
+        label: "geometry_dots",
         parameters: {
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
         },
@@ -216,81 +216,81 @@ export const pulseDocument = document(
       /* The web: T819's link set through the beam path, tint carrying the node's own
          distance fade — nearer links brighter, absent links zero-length (§V788). */
       node("links", "geometry", [-1700, -240], {
-        mode: "beam", endpoint: "tip", scale: 0.003, taper: 0, material: "sparkA1",
+        mode: "beam", endpoint: "tip", scale: 0.003, taper: 0, material: "material_sparkA",
       }, {
-        label: "links1",
+        label: "geometry_links",
         parameters: {
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
         },
       }),
-      node("orbAx", "lfo", [-2600, -160], { shape: "sine", frequency: 0.013, amplitude: 0.7, offset: 0, phase: 0 }, { label: "orbAx1" }),
-      node("orbAz", "lfo", [-2600, 40], { shape: "sine", frequency: 0.013, amplitude: 0.7, offset: 2.9, phase: 0.25 }, { label: "orbAz1" }),
+      node("orbAx", "lfo", [-2600, -160], { shape: "sine", frequency: 0.013, amplitude: 0.7, offset: 0, phase: 0 }, { label: "lfo_orbAx" }),
+      node("orbAz", "lfo", [-2600, 40], { shape: "sine", frequency: 0.013, amplitude: 0.7, offset: 2.9, phase: 0.25 }, { label: "lfo_orbAz" }),
       node("camA", "camera", [-1400, -60], { eye: [0, 0.2, 3.1], lookAt: [0, 0, 0] }, {
-        label: "camA1",
-        parameters: { "eye.x": drivenSlot("orbAx1", 0), "eye.z": drivenSlot("orbAz1", 2.9) },
+        label: "camera_A",
+        parameters: { "eye.x": drivenSlot("lfo_orbAx", 0), "eye.z": drivenSlot("lfo_orbAz", 2.9) },
       }),
       node("shotA", "render", [-1400, -330], {
-        scenes: "dots1 links1", camera: "camA1", lights: "",
-      }, { label: "shotA1" }),
+        scenes: "geometry_dots geometry_links", camera: "camera_A", lights: "",
+      }, { label: "render_shotA" }),
 
       // ---- SHOT B: the scanline (Cross 1) -------------------------------------------
       node("terrainB", "noise", [-2600, 300], {
         type: "perlin4d", seed: 45, period: 0.34, harmon: 3, spread: 2, gain: 0.5,
         rough: 0.5, exp: 1, amp: 1, offset: 0, mono: true, aspectcorrect: false,
         speed: 0.04, t4d: 0.37, s4d: 1,
-      }, { label: "terrainB1" }),
-      node("fanB", "pointLine", [-2600, 540], { count: 180, sizeX: 3.4 }, { label: "fanB1" }),
+      }, { label: "noise_terrainB" }),
+      node("fanB", "pointLine", [-2600, 540], { count: 180, sizeX: 3.4 }, { label: "line_fanB" }),
       node("aimB", "pointKernel", [-2300, 540], {
         capacity: 180, attributes: VJ_SCAN_ATTRIBUTES, kernel: VJ_SCAN_KERNEL,
-      }, { label: "aimB1", parameters: { value1: drivenSlot("clock1:barPhase", 0) } }),
+      }, { label: "kernel_aimB", parameters: { value1: drivenSlot("switch_clock:barPhase", 0) } }),
       node("castB", "pointRay", [-2000, 460], {
         steps: 48, maxDistance: 4, direction: [0, -1, 0],
         extent: 2, heightScale: 0.9, heightOffset: -1.2,
-      }, { label: "castB1" }),
+      }, { label: "ray_castB" }),
       node("hitsB", "pointKernel", [-1700, 380], {
         capacity: 180, attributes: VJ_HIT_ATTRIBUTES, kernel: VJ_IMPACT_KERNEL,
-      }, { label: "hitsB1", parameters: { value1: drivenSlot("henv1:high", 0) } }),
+      }, { label: "kernel_hitsB", parameters: { value1: drivenSlot("lag_high:high", 0) } }),
       node("sightB", "pointKernel", [-1700, 620], {
         capacity: 180, attributes: VJ_HIT_ATTRIBUTES, kernel: VJ_BEAM_KERNEL,
-      }, { label: "sightB1", parameters: { value1: drivenSlot("henv1:high", 0) } }),
-      node("sparkB", "materialUnlit", [-1700, 180], { color: [1, 1, 1, 1] }, { label: "sparkB1" }),
+      }, { label: "kernel_sightB", parameters: { value1: drivenSlot("lag_high:high", 0) } }),
+      node("sparkB", "materialUnlit", [-1700, 180], { color: [1, 1, 1, 1] }, { label: "material_sparkB" }),
       node("impactsB", "geometry", [-1400, 380], {
-        mode: "instances", shape: "octahedron", scale: 0.05, material: "sparkB1",
+        mode: "instances", shape: "octahedron", scale: 0.05, material: "material_sparkB",
       }, {
-        label: "impactsB1",
+        label: "geometry_impactsB",
         parameters: {
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
         },
       }),
       node("raysB", "geometry", [-1400, 620], {
-        mode: "beam", endpoint: "hitPosition", scale: 0.008, taper: 0.15, material: "sparkB1",
+        mode: "beam", endpoint: "hitPosition", scale: 0.008, taper: 0.15, material: "material_sparkB",
       }, {
-        label: "raysB1",
+        label: "geometry_raysB",
         parameters: {
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
         },
       }),
-      node("camB", "camera", [-1400, 140], { eye: [0, 1.1, 3.4], lookAt: [0, 0.1, 0] }, { label: "camB1" }),
+      node("camB", "camera", [-1400, 140], { eye: [0, 1.1, 3.4], lookAt: [0, 0.1, 0] }, { label: "camera_B" }),
       node("shotB", "render", [-1100, 460], {
-        scenes: "impactsB1 raysB1", camera: "camB1", lights: "",
-      }, { label: "shotB1" }),
+        scenes: "geometry_impactsB geometry_raysB", camera: "camera_B", lights: "",
+      }, { label: "render_shotB" }),
 
       // ---- the set: blend, tear, out ------------------------------------------------
       node("mix", "cross", [-800, 60], {}, {
-        label: "mix1",
+        label: "cross_mix",
         parameters: { cross: drivenSlot("lag1:bar", 0) },
       }),
       /* T828 addendum: the evolving colour layer — one hue turn per phrase, before the
          tear so the glitch tears the coloured frame. */
       node("paint", "hsv", [-800, 300], { saturation: 1.15, value: 1 }, {
-        label: "paint1",
-        parameters: { hueoffset: drivenSlot("pal1:bar", 0) },
+        label: "hsv_paint",
+        parameters: { hueoffset: drivenSlot("math_palette:bar", 0) },
       }),
       node("splice", "customWgsl", [-500, 300], { source: SPLICE_WGSL }, {
-        label: "spliceP1",
-        parameters: { amount: drivenSlot("glim1:high", 0) },
+        label: "wgsl_spliceP",
+        parameters: { amount: drivenSlot("limit_glitch:high", 0) },
       }),
-      node("out", "output", [-200, 300], {}, { label: "out1" }),
+      node("out", "output", [-200, 300], {}, { label: "output1" }),
     ],
     [
       edge("e-beat-clock", ["beat", "out"], ["clock", "in1"]),

@@ -12,7 +12,7 @@ import type { GraphDocument } from "../domain/types/graph.ts";
  * several times the clamp's width, the clamp stops being a limiter and becomes THE SIGNAL —
  * the value spends its life on one bound or the other and the envelope the author wrote
  * exists only in the parameters. E54's Coupling lane spanned 2.600 into a clamp 0.700 wide
- * and `clag1:bar` sat at EXACTLY 0.950000 from f989 to f2979; its disturbance lane spanned
+ * and `lag_envoy:bar` sat at EXACTLY 0.950000 from f989 to f2979; its disturbance lane spanned
  * 4.200 into a clamp 0.500 wide and was silent for 29 consecutive seconds. Both read from
  * outside as a step that never fires, and the owner reported them that way, correctly.
  *

@@ -1,0 +1,97 @@
+import { describe, expect, it } from "vitest";
+import { evaluateExpression } from "../../domain/expressions/evaluate.ts";
+import { CHAMBERS, PATH, chamberAt, chamberExpression, pathAt, pathExpression } from "./path.ts";
+import { LAMP_GAINS, LAMP_SPACING, LAMP_TONES, lampTone, lampToneExpression } from "./tunnel.ts";
+import { hueColour, hueExpression } from "./surface.ts";
+
+/**
+ * T1561b — the tunnel's centreline has three readers (the joints and the tunnel on the GPU,
+ * the camera on the CPU) and one definition. This file holds the CPU half to it; the GPU half
+ * is read off a kernel's own buffer in rig.gpu.test.ts.
+ */
+describe("the tunnel path", () => {
+  const SAMPLES = [0, 0.37, 12.5, 233.3, 479.9, 959.99];
+
+  it("the camera's expression is the same line", () => {
+    const expression = pathExpression("z");
+    for (const z of SAMPLES) {
+      const [x, y] = pathAt(z);
+      const readX = evaluateExpression(expression.x, { z });
+      const readY = evaluateExpression(expression.y, { z });
+      if (!readX.ok || !readY.ok) throw new Error(`the path expression does not evaluate at z = ${z}`);
+      // The expression carries its constants to nine significant digits: over 960 m that is
+      // 2e-8 rad of phase on a 14 m amplitude, well under a micrometre.
+      expect(Math.abs(readX.value - x)).toBeLessThan(1e-6);
+      expect(Math.abs(readY.value - y)).toBeLessThan(1e-6);
+    }
+  });
+
+  it("closes on itself after one period, so the travel distance can wrap unseen", () => {
+    for (const z of SAMPLES) {
+      const here = pathAt(z);
+      const lap = pathAt(z + PATH.period);
+      // Every term runs a whole number of cycles per period: the only difference is the sine's own rounding at the larger argument.
+      expect(Math.abs(lap[0] - here[0])).toBeLessThan(1e-9);
+      expect(Math.abs(lap[1] - here[1])).toBeLessThan(1e-9);
+    }
+  });
+
+  it("the expression's chambers are the reference's, flare and all", () => {
+    for (let z = 0; z < PATH.period; z += 0.37) {
+      const read = evaluateExpression(chamberExpression("z"), { z });
+      if (!read.ok) throw new Error(`the chamber expression does not evaluate at z = ${z}`);
+      // The same arithmetic in the same 64 bits: only the order of two subtractions differs.
+      expect(Math.abs(read.value - chamberAt(z))).toBeLessThan(1e-12);
+    }
+    // …and it does both: a hall's middle is 1 and the bore between halls is 0.
+    expect([chamberAt(CHAMBERS.spacing / 2), chamberAt(0)]).toEqual([1, 0]);
+  });
+
+  it("a lamp's light is the colour of its plate at every station of the tunnel, wrap included", () => {
+    const stations = Math.round(PATH.period / LAMP_SPACING);
+    const seen = new Set<string>();
+    // One station before the start and one past the end: the lamp behind the robot as the travel wraps must not change colour.
+    for (let station = -1; station <= stations; station += 1) {
+      const expected = lampTone(station);
+      const read = lampToneExpression("n").map((source) => evaluateExpression(source, { n: station }));
+      for (const [index, channel] of read.entries()) {
+        if (!channel.ok) throw new Error(`the lamp tone expression does not evaluate at station ${station}`);
+        expect([station, index, channel.value]).toEqual([station, index, expected[index]]);
+      }
+      seen.add(expected.join());
+    }
+    // All three tones occur at full light, and so do a failing lamp and one as good as dead, so
+    // the rule is not one colour that trivially agrees with itself.
+    for (const tone of [LAMP_TONES.bore, LAMP_TONES.hall, LAMP_TONES.alarm]) expect(seen.has(tone.join())).toBe(true);
+    expect(seen.has(LAMP_TONES.bore.map((channel) => channel * 0.4).join())).toBe(true);
+    expect(seen.has(LAMP_TONES.bore.map((channel) => channel * 0.06).join())).toBe(true);
+    // A third of a run gives a fifth of its light or less, and the alarm all of it.
+    expect(LAMP_GAINS.filter((gain) => gain <= 0.2).length).toBe(5);
+    expect(LAMP_GAINS[LAMP_TONES.alarmAt]).toBe(1);
+    // The same lamp either side of the wrap.
+    expect(lampTone(-1)).toEqual(lampTone(stations - 1));
+    expect(LAMP_TONES.alarmEvery).toBeGreaterThan(1);
+  });
+
+  it("a hue is the same colour to the light that throws it and to the lens that shows it", () => {
+    // The wheel's corners, a breath of white in each: 0 red, a third green, two thirds blue; and round again past 1.
+    expect(hueColour(0).map((channel) => Math.round(channel * 100) / 100)).toEqual([1, 0.04, 0.04]);
+    expect(hueColour(1 / 3).map((channel) => Math.round(channel * 100) / 100)).toEqual([0.04, 1, 0.04]);
+    expect(hueColour(2 / 3).map((channel) => Math.round(channel * 100) / 100)).toEqual([0.04, 0.04, 1]);
+    for (const hue of [0, 0.03, 0.2, 0.5, 0.77, 0.95, 1.1, 1.45]) {
+      const read = hueExpression("h").map((source) => evaluateExpression(source, { h: hue }));
+      for (const [index, channel] of read.entries()) {
+        if (!channel.ok) throw new Error(`the hue expression does not evaluate at ${hue}`);
+        expect(channel.value).toBeCloseTo(hueColour(hue)[index] as number, 12);
+      }
+      // Past 1 is the same colour as the hue less 1.
+      if (hue > 1) expect(hueColour(hue).map((channel) => Math.round(channel * 1e9))).toEqual(hueColour(hue - 1).map((channel) => Math.round(channel * 1e9)));
+    }
+  });
+
+  it("refuses to be a straight pipe: it wanders by metres, not millimetres", () => {
+    // What the camera, the lights and every bend of the tunnel read. A path that flattened to the axis would pass the two checks above.
+    const xs = Array.from({ length: 96 }, (_, index) => pathAt(index * 10)[0]);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(10);
+  });
+});

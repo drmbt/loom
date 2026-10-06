@@ -1,5 +1,6 @@
 import type { LoomBus } from "../../domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * The palette's own bus commands (§V52, §V29).
@@ -41,6 +42,7 @@ export function registerPaletteCommands(bus: LoomBus): PaletteHolder {
   if (!bus.hasCommand("ui.openCommandPalette")) {
     bus.registerCommand({
       name: "ui.openCommandPalette",
+      inputSchema: NO_INPUT,
       description: "Open the command palette.",
       handler: (_input, context) => {
         if (context.dryRun) {
@@ -55,6 +57,7 @@ export function registerPaletteCommands(bus: LoomBus): PaletteHolder {
   if (!bus.hasCommand("ui.closeCommandPalette")) {
     bus.registerCommand({
       name: "ui.closeCommandPalette",
+      inputSchema: NO_INPUT,
       description: "Close the command palette.",
       handler: (_input, context) => {
         if (context.dryRun) {

@@ -7,7 +7,7 @@ import type {
   ParameterValue,
 } from "../types/parameters.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
-import { resolveParameters } from "../parameters/index.ts";
+import { resolveStored } from "../parameters/index.ts";
 import { isStillPictureFile } from "./picture-file.ts";
 
 /**
@@ -152,10 +152,10 @@ function finite(value: number, fallback: number): number {
  * The whole transport, as arithmetic.
  *
  * `elapsedSeconds` is the CLOCK the caller decided this node reads — `frame.timeSeconds`
- * under the timeline lock (§V436: that is the decision, and it is why a scrub works), or
- * the caller's own accumulated media time in free-run. Everything downstream of that
- * choice is identical, which is what makes the two modes one implementation rather than
- * two transports that drift.
+ * under the timeline lock (§V436: that is the decision, and it is why a scrub works). Free
+ * run integrates its own offset instead (`MediaClock`, B187) and enters through
+ * `mediaPlayheadAt` below. Everything downstream of that choice is identical, which is what
+ * makes the two modes one implementation rather than two transports that drift.
  *
  * `duration` is the file's length in seconds, or `0` while it is not known (nothing
  * loaded, headless, a node whose file was never picked). An unknown duration does not
@@ -166,6 +166,21 @@ function finite(value: number, fallback: number): number {
 export function mediaPlayhead(
   transport: MediaTransportValues,
   elapsedSeconds: number,
+  duration: number,
+): MediaPlayhead {
+  return mediaPlayheadAt(transport, finite(elapsedSeconds, 0) * finite(transport.speed, 1), duration);
+}
+
+/**
+ * B187 — the same transport, fed MEDIA seconds travelled from the in point rather than
+ * clock seconds. `mediaPlayhead` is this with `offset = elapsed × speed`, which is right
+ * for the timeline lock (§V436: the position is `f(frame)`, and a speed edit re-prices the
+ * whole timeline BY DESIGN) and wrong for free run, where the offset is `∫ speed dt` and a
+ * speed change continues from where the playhead is. `MediaClock` integrates that offset.
+ */
+export function mediaPlayheadAt(
+  transport: MediaTransportValues,
+  offsetSeconds: number,
   duration: number,
 ): MediaPlayhead {
   const length = Math.max(0, finite(duration, 0));
@@ -191,7 +206,7 @@ export function mediaPlayhead(
     };
   }
 
-  const offset = finite(elapsedSeconds, 0) * finite(transport.speed, 1);
+  const offset = finite(offsetSeconds, 0);
 
   // An unknown window cannot wrap, hold or mirror — there is nothing to wrap AGAINST.
   // Advance from the in point and claim nothing else; the element will do whatever its
@@ -513,9 +528,10 @@ export interface FreeRunMediaNode {
  *
  * DERIVED, not a hand list (§V316, and the same derivation `hasMediaTransport` already
  * powers): media node N+1 is covered the moment it declares the transport, with nothing to
- * remember to update here. Read through `resolveParameters` (§V61) so a `playMode` on an
+ * remember to update here. Read through `resolveStored` (§V61) so a `playMode` on an
  * expression or a bind answers the same way a typed one does — this is the one parameter
- * read path, not a second opinion about what the document says.
+ * read path, not a second opinion about what the document says. A storage read on purpose
+ * (§T1559b): the warning is about the document's take, built per revision, with no frame.
  */
 export function freeRunMediaNodes(
   graph: GraphDocument,
@@ -525,7 +541,7 @@ export function freeRunMediaNodes(
   for (const [nodeId, node] of Object.entries(graph.nodes)) {
     const definition = registry.get(node.type);
     if (definition === undefined || !hasMediaTransport(definition)) continue;
-    const resolved = resolveParameters(node, definition, {});
+    const resolved = resolveStored(node, definition);
     /*
      * T1223 — A STILL IN FREE RUN STILL REPRODUCES, so naming it here would be a NEW lie
      * of exactly the kind T586 wrote this function to avoid. The warning's claim is "this
@@ -614,18 +630,25 @@ export function mediaTransportFrom(
  * over real frames, which is the state that makes the mode non-reproducible. Holding it in
  * one factory means the movie hook and the audio hook cannot disagree about what "paused"
  * did to the elapsed time — the drift this task was told to design out.
+ *
+ * B187 — WHAT IT HOLDS IS THE OFFSET, `∫ speed dt`, and every method returns it: feed it to
+ * `mediaPlayheadAt`, never to `mediaPlayhead`, which would multiply by the speed a second
+ * time. It used to hold raw elapsed seconds that `mediaPlayhead` multiplied by the CURRENT
+ * speed, so the moment a driven speed went from 1 to 2 the whole history was re-priced and
+ * the playhead leapt from 5 s to 10 s. Under the lock it holds `timeline × speed`, the same
+ * pure product `mediaPlayhead` computes, so nothing there became path-dependent (§V436).
  */
 export interface MediaClock {
-  /** Advance by one frame's delta and return the elapsed media time to feed the playhead. */
+  /** Advance by one frame's delta and return the media offset to feed `mediaPlayheadAt`. */
   advance(transport: MediaTransportValues, deltaSeconds: number, timelineSeconds: number): number;
-  /** A cue pulse: put the playhead at `head.start + offset` and carry on from there. */
-  cueTo(transport: MediaTransportValues, head: MediaPlayhead, position: number): void;
+  /** A cue pulse: put the playhead at `position` in `head`'s window and carry on from there. */
+  cueTo(head: MediaPlayhead, position: number): void;
   /**
-   * §V1027: re-base on where a playing element actually is, and return the new elapsed.
+   * §V1027: re-base on where a playing element actually is, and return the new offset.
    * `head` is the playhead `advance` just produced, running forward in the lap the
    * element is in; `position` is the element's own.
    */
-  adopt(transport: MediaTransportValues, head: MediaPlayhead, position: number): number;
+  adopt(head: MediaPlayhead, position: number): number;
   reset(): void;
 }
 
@@ -639,42 +662,37 @@ export interface MediaClock {
 const LAP_EDGE_SECONDS = 1e-9;
 
 export function createMediaClock(): MediaClock {
-  let elapsed = 0;
+  let offset = 0;
   return {
     advance(transport, deltaSeconds, timelineSeconds) {
-      // Under the lock there is no accumulator at all — the timeline IS the elapsed time,
-      // and keeping the free-run one in step means switching modes does not jump.
+      // Under the lock there is no accumulator at all — the timeline IS the clock and the
+      // offset is its pure product with the speed (§V436). Keeping the free-run one in step
+      // means switching modes does not jump.
       if (transport.playMode !== "freeRun") {
-        elapsed = timelineSeconds;
-        return timelineSeconds;
+        offset = finite(timelineSeconds, 0) * finite(transport.speed, 1);
+        return offset;
       }
+      // B187: integrated, so a speed change continues from where the playhead is. Speed 0
+      // freezes it in place and a negative speed runs back from there.
       if (transport.play) {
-        elapsed += Number.isFinite(deltaSeconds) ? Math.max(0, deltaSeconds) : 0;
+        offset += (Number.isFinite(deltaSeconds) ? Math.max(0, deltaSeconds) : 0) * finite(transport.speed, 1);
       }
-      return elapsed;
+      return offset;
     },
-    cueTo(transport, head, position) {
-      // Stored as ELAPSED, so the very next `advance` continues from the cue point rather
-      // than snapping back — and inverted through the SAME arithmetic `mediaPlayhead`
-      // applies (`offset = elapsed * speed`, `position = start + offset`), so a cue lands
-      // on the frame the playhead function itself would report. Speed 0 has no elapsed
-      // time that maps to a position, so the jump is held by `cue` rather than silently
-      // doing nothing (§V123).
-      const speed = finite(transport.speed, 1);
-      if (speed === 0) return;
-      elapsed = (position - head.start) / speed;
+    cueTo(head, position) {
+      // Stored as the offset from the in point, so the very next `advance` continues from
+      // the cue point rather than snapping back — at any speed, 0 included.
+      offset = position - head.start;
     },
-    adopt(transport, head, position) {
-      // `cueTo`'s inverse with the laps already played kept. An element past the out
-      // point therefore lands in the next lap, and `mediaPlayhead` reports that as one.
-      const speed = finite(transport.speed, 1);
-      if (speed === 0) return elapsed;
+    adopt(head, position) {
+      // `cueTo` with the laps already played kept. An element past the out point therefore
+      // lands in the next lap, and `mediaPlayheadAt` reports that as one.
       const into = Math.max(position - head.start, LAP_EDGE_SECONDS);
-      elapsed = (head.laps * (head.end - head.start) + into) / speed;
-      return elapsed;
+      offset = head.laps * (head.end - head.start) + into;
+      return offset;
     },
     reset() {
-      elapsed = 0;
+      offset = 0;
     },
   };
 }

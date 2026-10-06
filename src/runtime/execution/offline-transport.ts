@@ -1,4 +1,5 @@
-import type { FrameEvaluationInput, TransportSource } from "../../domain/types/frame.ts";
+import { frameFromClock } from "../../domain/types/frame.ts";
+import type { EvaluationFrame, TransportSource } from "../../domain/types/frame.ts";
 
 export interface OfflineTransportOptions {
   /** Frames per second of the rendered sequence. */
@@ -60,14 +61,14 @@ export function offlineTransport(options: OfflineTransportOptions): TransportSou
   let absFrameIndex = startFrame;
 
   return {
-    next(): FrameEvaluationInput {
+    next(): EvaluationFrame {
       const current = frameIndex;
       frameIndex += 1;
       const absIndex = absFrameIndex;
       absFrameIndex += 1;
       const timeSeconds = current / options.fps;
       const step = current === startFrame && !wrapped ? 0 : deltaSeconds;
-      return {
+      return frameFromClock({
         // Divided, not accumulated: frame N always lands on exactly N/fps.
         timeSeconds,
         deltaSeconds: step,
@@ -89,7 +90,7 @@ export function offlineTransport(options: OfflineTransportOptions): TransportSou
         // T1426b/T1435b: the rates an expression reads as `fps` and `subframes`.
         fps: projectRate,
         subframes,
-      };
+      });
     },
     /**
      * Start the sequence over. The absolute clock goes back WITH the timeline here, where

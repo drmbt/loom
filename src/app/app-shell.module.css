@@ -1,6 +1,9 @@
 .shell {
   display: grid;
-  grid-template-rows: var(--topbar-h) auto 1fr;
+  /* The top bar, the panes, the notices. The notices' row is LAST (B265): a row that
+     comes and goes above the panes moves every pane, and this one comes and goes with the
+     document's compile errors. Under them it only ends the body sooner. */
+  grid-template-rows: var(--topbar-h) 1fr auto;
   height: 100%;
   width: 100%;
   overflow: hidden;

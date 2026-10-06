@@ -1,14 +1,16 @@
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
-import type { GraphDocument, GraphNode } from "../types/graph.ts";
+import { authoredGraph, type GraphDocument, type GraphNode } from "../types/graph.ts";
 import type { NodeId, Revision } from "../types/ids.ts";
-import type { ChannelResolver } from "../parameters/resolve.ts";
+import { parameterReadOptions, type ParameterReadContext } from "../parameters/node-references.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
+import { z } from "zod";
+import { idInput } from "../commands/input-schema.ts";
 import { nodeByName } from "../graph/names.ts";
 import { resolveParameters } from "../parameters/resolve.ts";
 import { parsePresetBank, type MorphCurve, type MorphSpec, type Preset } from "./bank.ts";
-import { bankLookupRefusal, planPresetRecall, presetCatalogueOf, presetMorph } from "./commands.ts";
+import { bankLookupRefusal, bankSettings, planPresetRecall, presetCatalogueOf, presetMorph } from "./commands.ts";
 import { bankViewOf, bankOf, type BankView, type PresetCatalogue } from "./bank-view.ts";
 import {
   CUE_BACK_COMMAND,
@@ -116,6 +118,15 @@ export interface CueSetStandbyInput {
   cue: string;
 }
 
+/**
+ * §T1556b — the cue commands' input schemas: THE definition, which the agent's cue tools
+ * extend with `dryRun` rather than copy.
+ */
+export const cueStepInputSchema = z.object({ nodeId: idInput.optional() }).strict();
+
+/** `cue.fire` and `cue.setStandby`: a cue list and one of its cues, by name. */
+export const cueNamedInputSchema = z.object({ nodeId: idInput, cue: z.string().min(1) }).strict();
+
 export interface CueFireOutput {
   ok: boolean;
   /** The cue that fired, or — on a refusal — the cue that would have, when one was picked. */
@@ -218,13 +229,17 @@ function nameOf(node: GraphNode): string {
   return node.label ?? node.id;
 }
 
-/** A node's own parameters, through the one read path (§V61). */
+/**
+ * A node's own parameters at this moment, through the one read path (§V61) and the read
+ * scope. §T1557b: this used to be `{ channels }` alone, so an `op('x').chan.y` on a cue
+ * list's Keys or position read its static (§B181's shape).
+ */
 function resolvedValues(
   node: GraphNode,
   registry: NodeRegistryView,
-  channels: ChannelResolver | undefined,
+  scope: ParameterReadContext,
 ): Readonly<Record<string, unknown>> {
-  return resolveParameters(node, registry.get(node.type), { ...(channels === undefined ? {} : { channels }) }).values;
+  return resolveParameters(node, registry.get(node.type), parameterReadOptions(scope)).values;
 }
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
@@ -267,7 +282,7 @@ function requireListNode(context: CommandContext, nodeId: unknown, keyed: boolea
   if (!keyed) return { ok: false, diagnostic: diagnostic("error", "cue.list.missing", "No cue list was named.") };
 
   const lists = cueListNodes(context.graph);
-  const answering = lists.filter((node) => resolvedValues(node, context.registry, context.channels)["keys"] === true);
+  const answering = lists.filter((node) => resolvedValues(node, context.registry, context.readScope())["keys"] === true);
   if (answering.length === 1) return { ok: true, node: answering[0] as GraphNode };
   if (answering.length === 0) {
     return {
@@ -313,7 +328,7 @@ function requireList(context: CommandContext, nodeId: unknown, keyed: boolean): 
       ),
     };
   }
-  return { ok: true, node, list: parsed.list, position: positionOf(resolvedValues(node, context.registry, context.channels)) };
+  return { ok: true, node, list: parsed.list, position: positionOf(resolvedValues(node, context.registry, context.readScope())) };
 }
 
 /** The bank a cue names and the preset it recalls, or the refusal naming what is missing. */
@@ -450,7 +465,7 @@ function fireCue(
 
   const plan = planPresetRecall(context.graph, context.registry, bank, preset, {
     // §5.1: the cue's morph sits where a recall's own would, above the preset's and the bank's.
-    morph: presetMorph(cue.morph, preset, resolvedValues(bank.bank, context.registry, context.channels)),
+    morph: presetMorph(cue.morph, preset, bankSettings(bank, context.registry, context.readScope())),
     clock: context.frameClock,
     catalogue,
   });
@@ -523,8 +538,7 @@ const emptyFireOutput = (): CueFireOutput => ({
 
 /** One list as `cue.list` reports it. */
 function reportList(bus: LoomBus, graph: GraphDocument, node: GraphNode): CueListReport {
-  const channels = bus.channelResolver();
-  const values = resolvedValues(node, bus.registry, channels);
+  const values = resolvedValues(node, bus.registry, { ...bus.readScope(), graph: authoredGraph(graph) });
   const position = positionOf(values);
   const parsed = parseCueList(node.parameters["cues"]);
   const list: CueList = parsed.ok ? parsed.list : { version: 1, cues: [] };
@@ -580,6 +594,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_GO_COMMAND,
+    inputSchema: cueStepInputSchema,
     description:
       "GO: fire a cue list's standby cue — its preset recalled and the list advanced as one patch, one undo step (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
     handler: (input, context) => fireCue(context, input?.nodeId, true, "GO", standbyCue, presetCatalogueOf(bus)),
@@ -588,6 +603,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_BACK_COMMAND,
+    inputSchema: cueStepInputSchema,
     description:
       "BACK: fire the cue before a cue list's current one, with that cue's own morph (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
     handler: (input, context) => fireCue(context, input?.nodeId, true, "BACK", previousCue, presetCatalogueOf(bus)),
@@ -596,6 +612,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_FIRE_COMMAND,
+    inputSchema: cueNamedInputSchema,
     description: "Fire a named cue of a cue list directly; the standby becomes the cue after it (§T1500b).",
     handler: (input, context) => {
       const name = typeof input?.cue === "string" ? input.cue.trim() : "";
@@ -606,6 +623,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_SET_STANDBY_COMMAND,
+    inputSchema: cueNamedInputSchema,
     description: "Move a cue list's standby — the cue GO fires next — without firing anything (§T1500b).",
     handler: (input, context) => {
       const revision = context.store.getRevision();

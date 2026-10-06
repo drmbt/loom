@@ -60,17 +60,17 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // kernel, so the sphere's radius is the audio's way in: length is divided
   // straight back out and what survives is a continuous 0..1 control.
   //
-  // THESE TWO CONSTANTS ARE swell1's BIAS AND GAIN, and they are a SILENT
-  // COUPLING (T554). The radius is driven by swell1 = "lowMid x 1.25 + 0.68",
+  // THESE TWO CONSTANTS ARE math_swell's BIAS AND GAIN, and they are a SILENT
+  // COUPLING (T554). The radius is driven by math_swell = "lowMid x 1.25 + 0.68",
   // so subtracting the bias and dividing by the gain is the only thing that
   // makes a 0..1 band arrive here as a 0..1 control. They were 1.0 and 0.6 -
-  // swell1's values from BEFORE T547 lowered the bias to 0.68 - and the
+  // math_swell's values from BEFORE T547 lowered the bias to 0.68 - and the
   // mismatch did not warn, it just quietly stopped delivering: MEASURED on
-  // the shipped Beat source, damp1:lowMid spans 0.152..0.327, so the radius
+  // the shipped Beat source, lag_damp:lowMid spans 0.152..0.327, so the radius
   // spans 0.870..1.088 and the old "(inR - 1.0) / 0.6" yielded fromAudio
   // 0.000..0.147 - CLAMPED FLAT AT ZERO for most of every beat. The eight
   // post-processing pairs kept reacting, so the picture still moved and the
-  // severed kernel looked like a style choice. Retune swell1 and you MUST
+  // severed kernel looked like a style choice. Retune math_swell and you MUST
   // retune these in the same commit.
   let pin = p.position;
   let inR = max(1.0e-4, length(pin));
@@ -155,14 +155,14 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  *
  * ## 1. ONE SOURCE, THREE READINGS — and this is the transferable one
  *
- * `drawbase1`, `drawmid1` and `drawtip1` are three `renderPoints` over the SAME point
+ * `points_drawbase`, `points_drawmid` and `points_drawtip` are three `renderPoints` over the SAME point
  * cloud. They differ only in a GROUP PREDICATE, a colour and a size:
  *
  * | | predicate | colour | reads as |
  * | --- | --- | --- | --- |
- * | `drawbase1` | (none — all 65,536) | deep blue | the body |
- * | `drawmid1` | `p.velocity.y > 0.04` | orange | the lit crests |
- * | `drawtip1` | `p.velocity.y > 0.17` | cyan | the sharpest tips only |
+ * | `points_drawbase` | (none — all 65,536) | deep blue | the body |
+ * | `points_drawmid` | `p.velocity.y > 0.04` | orange | the lit crests |
+ * | `points_drawtip` | `p.velocity.y > 0.17` | cyan | the sharpest tips only |
  *
  * Structure comes from SELECTION, not from adding elements. Three draws over one
  * simulation give a picture with three depths in it and cost one more node each — where
@@ -186,7 +186,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  * `valueLag` at 0.09 s sits between the audio and all eight, so nothing jitters.
  *
  * SEVEN of the eight land on a post-processing parameter and take effect directly. The
- * eighth, `swell1`, is different in kind and T554 is the bill for not noticing: it drives
+ * eighth, `math_swell`, is different in kind and T554 is the bill for not noticing: it drives
  * the point generator's RADIUS, which exists only so the kernel can divide it back out and
  * recover the band. That makes it a TRANSPORT with a decoder at the far end, and a
  * transport whose two constants are duplicated in a WGSL string is a coupling no gate sees.
@@ -199,7 +199,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  *
  * ## 5. THE FEEDBACK CLOSES ON THE FINAL OUTPUT
  *
- * `loop1.source` is `tail1` — the very last node — not the raw render. So the trails carry
+ * `feedback_loop.source` is `null_tail` — the very last node — not the raw render. So the trails carry
  * the GRADED, hue-drifted colour, and a trail looks like it belongs to the image rather
  * than like a ghost of an earlier stage.
  *
@@ -211,12 +211,12 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  *
  * ## 7. THE GRADE ITSELF BREATHES
  *
- * `coat1.scale` is driven by `highMid`, so the whole image slides along the ramp with the
+ * `lookup_coat.scale` is driven by `highMid`, so the whole image slides along the ramp with the
  * music instead of the ramp being a fixed decision.
  *
  * ## 8. THE SLOWEST THING IS SLOWER THAN YOUR ATTENTION SPAN
  *
- * `hue1`'s LFO runs at 0.035 Hz — a 29-second cycle — and swings ±30 degrees on it. It
+ * `hsv_hue`'s LFO runs at 0.035 Hz — a 29-second cycle — and swings ±30 degrees on it. It
  * takes BOTH numbers (T574): `lfoValue`'s amplitude is in the driven parameter's units, so
  * a period this slow with a swing too small to see is a cycle nothing travels through.
  * Together they are most of why it does not get boring: at any moment something is
@@ -247,7 +247,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
  *    in a WGSL string rather than in the value chain where T547 could see it. Now
  *    `0.05 + 0.04·sin`: a shimmer, not a performance.
  * 3. **The decoder had drifted off the encoder.** See the kernel comment: T547 lowered
- *    `swell1`'s bias and the kernel kept subtracting the old one, which clamped the Beat
+ *    `math_swell`'s bias and the kernel kept subtracting the old one, which clamped the Beat
  *    source's contribution flat at zero for most of every beat. Nothing warned, because the
  *    other seven pairs went on reacting and the picture went on moving.
  *
@@ -265,12 +265,12 @@ export const coronaDocument = document(
   graph(
     [
       // ---- the sound: pattern or your track, exclusively (T504's shape) ------------
-      node("beat", "audioPattern", [-1800, 700], { bpm: 124, amount: 1 }, { label: "beat1" }),
-      node("track", "audioFileIn", [-1800, 980], { monitor: true }, { label: "track1" }),
-      node("source", "valueSwitch", [-1520, 840], { index: 0 }, { label: "source1" }),
+      node("beat", "audioPattern", [-1800, 700], { bpm: 124, amount: 1 }, { label: "pattern_beat" }),
+      node("track", "audioFileIn", [-1800, 980], { monitor: true }, { label: "audiofile_track" }),
+      node("source", "valueSwitch", [-1520, 840], { index: 0 }, { label: "switch_source" }),
       /* ONE Lag for all eight mappings. The bands are already noisy; smoothing once at the
          source means every driven property agrees about what "now" is. */
-      node("damp", "valueLag", [-1240, 840], { lag: 0.09 }, { label: "damp1" }),
+      node("damp", "valueLag", [-1240, 840], { lag: 0.09 }, { label: "lag_damp" }),
 
       /* EIGHT multiply -> add PAIRS, one band to one property, each with its own gain and
          bias. This is §V471's third idea and it is the difference between a reactive image
@@ -281,21 +281,21 @@ export const coronaDocument = document(
          there was no contracted state to expand FROM and the audio could only ever add.
          0.68 rest / 1.93 peak gives the creature somewhere to come back to, which is what
          makes the expansion read as an expansion rather than as jitter on a still image. */
-      node("swellG", "valueMath", [-960, 520], { operation: "multiply", operand: 3.724 }, { label: "swellg1" }),
-      node("swell", "valueMath", [-700, 520], { operation: "add", operand: -1.1733 }, { label: "swell1" }),
-      node("glowG", "valueMath", [-960, 780], { operation: "multiply", operand: 6.0207 }, { label: "glowg1" }),
-      node("glow", "valueMath", [-700, 780], { operation: "add", operand: -3.6202 }, { label: "glow1" }),
-      node("dotG", "valueMath", [-960, 1040], { operation: "multiply", operand: 2.2 }, { label: "dotg1" }),
-      node("dot", "valueMath", [-700, 1040], { operation: "add", operand: 1.2 }, { label: "dot1" }),
-      node("heatG", "valueMath", [-960, 1300], { operation: "multiply", operand: 7.3587 }, { label: "heatg1" }),
-      node("heat", "valueMath", [-700, 1300], { operation: "add", operand: -4.7247 }, { label: "heat1" }),
+      node("swellG", "valueMath", [-960, 520], { operation: "multiply", operand: 3.724 }, { label: "math_swellg" }),
+      node("swell", "valueMath", [-700, 520], { operation: "add", operand: -1.1733 }, { label: "math_swell" }),
+      node("glowG", "valueMath", [-960, 780], { operation: "multiply", operand: 6.0207 }, { label: "math_glowg" }),
+      node("glow", "valueMath", [-700, 780], { operation: "add", operand: -3.6202 }, { label: "math_glow" }),
+      node("dotG", "valueMath", [-960, 1040], { operation: "multiply", operand: 2.2 }, { label: "math_dotg" }),
+      node("dot", "valueMath", [-700, 1040], { operation: "add", operand: 1.2 }, { label: "math_dot" }),
+      node("heatG", "valueMath", [-960, 1300], { operation: "multiply", operand: 7.3587 }, { label: "math_heatg" }),
+      node("heat", "valueMath", [-700, 1300], { operation: "add", operand: -4.7247 }, { label: "math_heat" }),
       /* T547 asked whether ×20 was deliberate. It was not: on the Beat source `high` rests
          around 0.2, so ×20 rested at 4 and the Limit below PINNED at its ceiling on every
          loud frame — the cyan band was in blast mode permanently, which is §V477 stated as
          a symptom. ×6 rests near 0.5 and travels to ~3, and the Limit goes back to being a
          fence for a real track rather than the thing setting the level. */
-      node("sparkG", "valueMath", [-440, 520], { operation: "multiply", operand: 6.9825 }, { label: "sparkg1" }),
-      node("sparkAdd", "valueMath", [-180, 520], { operation: "add", operand: -2.1476 }, { label: "sparkadd1" }),
+      node("sparkG", "valueMath", [-440, 520], { operation: "multiply", operand: 6.9825 }, { label: "math_sparkg" }),
+      node("sparkAdd", "valueMath", [-180, 520], { operation: "add", operand: -2.1476 }, { label: "math_sparkadd" }),
       /* THE THIRD FENCE, and the pair above is why it has to exist. A gain of 20 is the
          right sensitivity — `high` is a small channel and the cyan tips are the faintest
          thing in the frame, so a quiet passage still has to light them — but ×20 + 0.1 over
@@ -304,25 +304,25 @@ export const coronaDocument = document(
          against its TARGET, or the idiom ships a clamp. Two fences, E24's shape: the Limit
          holds the value in the graph where you can see it, and T368's clamp is the backstop
          rather than the mechanism. */
-      node("spark", "valueLimit", [80, 520], { minimum: 0.05, maximum: 5 }, { label: "spark1" }),
+      node("spark", "valueLimit", [80, 520], { minimum: 0.05, maximum: 5 }, { label: "limit_spark" }),
       /* T547 — "colors down, not always in blast mode", and the number is the BIAS again.
          Rest scale was 1.4, which drives the lookup coordinate far up a seven-stop ramp that
          ENDS IN WHITE: the palette sat permanently at its hot end, so a peak had nowhere to
          climb to and the seven stops might as well have been two. Resting near 0.85 puts the
          calm state in the navy and blue and lets a loud passage reach the gold — which is
          §V471's sixth idea finally doing something. */
-      node("gradeG", "valueMath", [-440, 780], { operation: "multiply", operand: 4.1815 }, { label: "gradeg1" }),
-      node("grade", "valueMath", [-180, 780], { operation: "add", operand: -1.5173 }, { label: "grade1" }),
+      node("gradeG", "valueMath", [-440, 780], { operation: "multiply", operand: 4.1815 }, { label: "math_gradeg" }),
+      node("grade", "valueMath", [-180, 780], { operation: "add", operand: -1.5173 }, { label: "math_grade" }),
       /* T538 FOLLOW-UP: this gain was 0.95 in the owner's file, which put persistence at
          0.62..1.57 against a range of 0..1 — so it raised a `parameter.range` problem on any
          moderately loud passage, and T368's clamp was the only thing standing between the
          piece and PERSISTENCE 1.0, which is perfect accumulation: an image that never
          decays. Retuning to 0.30 is a better LOOK, not a compromise for a warning: it keeps
          "louder means longer trails" and tops out at 0.92, where a trail still ends. */
-      node("trailG", "valueMath", [-440, 1040], { operation: "multiply", operand: 0.3 }, { label: "trailg1" }),
-      node("trail", "valueMath", [-180, 1040], { operation: "add", operand: 0.62 }, { label: "trail1" }),
-      node("tipG", "valueMath", [-440, 1300], { operation: "multiply", operand: 10.4737 }, { label: "tipg1" }),
-      node("tip", "valueMath", [-180, 1300], { operation: "add", operand: -2.4465 }, { label: "tip1" }),
+      node("trailG", "valueMath", [-440, 1040], { operation: "multiply", operand: 0.3 }, { label: "math_trailg" }),
+      node("trail", "valueMath", [-180, 1040], { operation: "add", operand: 0.62 }, { label: "math_trail" }),
+      node("tipG", "valueMath", [-440, 1300], { operation: "multiply", operand: 10.4737 }, { label: "math_tipg" }),
+      node("tip", "valueMath", [-180, 1300], { operation: "add", operand: -2.4465 }, { label: "math_tip" }),
 
       // ---- the body ----------------------------------------------------------------
       /* `radius` is the ONLY drivable number that reaches a point kernel, so the owner used
@@ -336,22 +336,22 @@ export const coronaDocument = document(
         shape: "sphere", cols: 256, rows: 256, count: CORONA_POINTS,
         radius2: 0.25, sizeX: 2, sizeY: 2, sizeZ: 2,
       }, {
-        label: "gen1",
-        parameters: { radius: drivenSlot("swell1:lowMid", 1.2) },
+        label: "generator1",
+        parameters: { radius: drivenSlot("math_swell:lowMid", 1.2) },
       }),
       node("shape", "pointKernel", [-960, 0], {
         capacity: CORONA_POINTS, seed: 7, attributes: "", group: "",
         kernel: CORONA_KERNEL,
         value1: 0, value2: 0, value3: 0, value4: 0,
-      }, { label: "shape1" }),
+      }, { label: "kernel_shape" }),
 
       // ---- ONE cloud, THREE readings (§V471.1) --------------------------------------
       node("drawBase", "renderPoints", [-700, -240], {
         count: CORONA_POINTS, blend: "additive", accumulate: false,
         color: [0.17, 0.27, 0.54, 1], group: "",
       }, {
-        label: "drawbase1",
-        parameters: { sizePixels: drivenSlot("dot1:level", 1.4) },
+        label: "points_drawbase",
+        parameters: { sizePixels: drivenSlot("math_dot:level", 1.4) },
       }),
       node("drawMid", "renderPoints", [-700, 20], {
         count: CORONA_POINTS, blend: "additive", accumulate: false,
@@ -359,29 +359,29 @@ export const coronaDocument = document(
         /* The kernel wrote `creases` into velocity.y (§V471.2), so this predicate reads
            "only where the surface is creased" — a selection on SHAPE, not on position. */
         group: "p.velocity.y > 0.04",
-      }, { label: "drawmid1" }),
+      }, { label: "points_drawmid" }),
       node("drawTip", "renderPoints", [-700, 280], {
         count: CORONA_POINTS, blend: "additive", accumulate: false,
         color: [0.1, 0.85, 1, 1], group: "p.velocity.y > 0.17",
       }, {
-        label: "drawtip1",
-        parameters: { sizePixels: drivenSlot("tip1:high", 1.4) },
+        label: "points_drawtip",
+        parameters: { sizePixels: drivenSlot("math_tip:high", 1.4) },
       }),
 
-      node("base", "null", [-440, -240], {}, { label: "base1" }),
+      node("base", "null", [-440, -240], {}, { label: "null_base" }),
       node("heatLvl", "level", [-440, 20], {
         blacklevel: 0, whitelevel: 1, contrast: 1, gamma1: 1, invert: 0, opacity: 1,
-      }, { label: "heatlvl1", parameters: { brightness: drivenSlot("heat1:low", 0.8) } }),
+      }, { label: "level_heat", parameters: { brightness: drivenSlot("math_heat:low", 0.8) } }),
       node("sparkLvl", "level", [-440, 280], {
         blacklevel: 0, whitelevel: 1, contrast: 1, gamma1: 1, invert: 0, opacity: 1,
-      }, { label: "sparklvl1", parameters: { brightness: drivenSlot("spark1:high", 0.6) } }),
+      }, { label: "level_spark", parameters: { brightness: drivenSlot("limit_spark:high", 0.6) } }),
 
       // ---- the post, one job per stage (§V471.4) -------------------------------------
-      node("halo", "blur", [-180, -480], { size: 34, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
+      node("halo", "blur", [-180, -480], { size: 34, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
       node("haloLvl", "level", [80, -480], {
         blacklevel: 0.01, whitelevel: 1, contrast: 1, gamma1: 1, invert: 0, opacity: 1,
-      }, { label: "halolvl1", parameters: { brightness: drivenSlot("glow1:low", 1.1) } }),
-      node("burn", "add", [340, -240], {}, { label: "burn1" }),
+      }, { label: "level_halo", parameters: { brightness: drivenSlot("math_glow:low", 1.1) } }),
+      node("burn", "add", [340, -240], {}, { label: "add_burn" }),
       node("palette", "ramp", [340, 20], {
         type: "horizontal", interp: "smooth", phase: 0, period: 1,
         /* SEVEN stops, and they travel (§V471.6): black, a near-black navy, blue, purple,
@@ -395,26 +395,26 @@ export const coronaDocument = document(
           { position: 0.89, color: [1, 0.74, 0.3, 1] },
           { position: 1, color: [1, 0.98, 0.93, 1] },
         ],
-      }, { label: "palette1", definitionVersion: 2 }),
+      }, { label: "ramp_palette", definitionVersion: 2 }),
       node("coat", "lookup", [600, -240], {
         channel: "luminance", row: 0.5, offset: 0,
-      }, { label: "coat1", parameters: { scale: drivenSlot("grade1:highMid", 1.6) } }),
-      node("liftHeat", "screen", [860, -240], {}, { label: "liftheat1" }),
-      node("liftSpark", "screen", [1120, -240], {}, { label: "liftspark1" }),
-      /* THE TRAILS CLOSE ON THE FINAL OUTPUT (§V471.5), not on the raw render: `tail1` is
+      }, { label: "lookup_coat", parameters: { scale: drivenSlot("math_grade:highMid", 1.6) } }),
+      node("liftHeat", "screen", [860, -240], {}, { label: "screen_liftheat" }),
+      node("liftSpark", "screen", [1120, -240], {}, { label: "screen_liftspark" }),
+      /* THE TRAILS CLOSE ON THE FINAL OUTPUT (§V471.5), not on the raw render: `null_tail` is
          the last node, so what smears is the GRADED, hue-drifted picture. A trail taken
          from an earlier stage looks like a ghost of something else. */
       node("loop", "feedback", [1120, 60], {
-        source: "tail1", clearColor: [0, 0, 0, 1], reset: false, substeps: 1,
-      }, { label: "loop1", parameters: { persistence: drivenSlot("trail1:level", 0.9) } }),
-      node("mixTrail", "screen", [1380, -240], {}, { label: "mixtrail1" }),
+        source: "null_tail", clearColor: [0, 0, 0, 1], reset: false, substeps: 1,
+      }, { label: "feedback_loop", parameters: { persistence: drivenSlot("math_trail:level", 0.9) } }),
+      node("mixTrail", "screen", [1380, -240], {}, { label: "screen_mixtrail" }),
       /* 0.035 Hz — a 29-SECOND cycle (§V471.8). The slowest thing in the piece is slower
          than the viewer's attention span, which is most of why an hour of it is watchable.
          Free-running (§V436, B98), so a timeline lap does not restart the drift.
 
          T574 — AND THE AMPLITUDE IS IN THE TARGET'S UNITS, which is what this file got
          wrong for four rounds. `lfoValue` returns `offset + amplitude·wave` in whatever
-         the DRIVEN PARAMETER measures, and `hue1.hueoffset` is DEGREES on a -180..180
+         the DRIVEN PARAMETER measures, and `hsv_hue.hueoffset` is DEGREES on a -180..180
          range. So the old `0.35` swung ±0.35 DEGREES — a tenth of a percent of a turn —
          while the .md claimed the drift was most of why the piece does not get boring.
          The period was always right; the travel was ~100x short and no test could see it
@@ -422,17 +422,17 @@ export const coronaDocument = document(
          so this one is checked BY EYE).
 
          30 is 30 degrees either side — 60 PEAK-TO-PEAK, a sixth of the wheel. Calibrated
-         against E32-Pasture, which runs 24 on this identical `drift1 -> hueoffset` shape
+         against E32-Pasture, which runs 24 on this identical `lfo_drift -> hueoffset` shape
          and reads as genuinely travelling: a quarter more than Pasture, which suits Corona
          being the more colour-forward piece, and nowhere near a rainbow cycle. The palette
          should be somewhere else than it was a moment ago, not somewhere ELSE ENTIRELY. */
-      node("drift", "lfo", [1380, 60], { shape: "sine", frequency: 0.035, amplitude: 30, offset: 0, phase: 0 }, { label: "drift1" }),
+      node("drift", "lfo", [1380, 60], { shape: "sine", frequency: 0.035, amplitude: 30, offset: 0, phase: 0 }, { label: "lfo_drift" }),
       node("hue", "hsv", [1640, -240], { saturation: 1.12, value: 1 }, {
-        label: "hue1",
-        parameters: { hueoffset: drivenSlot("drift1", 0) },
+        label: "hsv_hue",
+        parameters: { hueoffset: drivenSlot("lfo_drift", 0) },
       }),
-      node("tail", "null", [1900, -240], {}, { label: "tail1" }),
-      node("out", "output", [2160, -240], {}, { label: "out1" }),
+      node("tail", "null", [1900, -240], {}, { label: "null_tail" }),
+      node("out", "output", [2160, -240], {}, { label: "output1" }),
     ],
     [
       edge("e-beat-source", ["beat", "out"], ["source", "in1"]),

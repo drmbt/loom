@@ -8,17 +8,17 @@ remain separate so a running generator cannot masquerade as a working connection
 
 1. Start the Apple Silicon desktop app with `pnpm desktop:dev`. See the
    [desktop setup](../src/desktop/README.md) for toolchain and first-build requirements.
-2. Open this example. `signal1` feeds `send1`, named **Loom E71 Syphon**.
+2. Open this example. `over_signal` feeds `syphonout_send`, named **Loom E71 Syphon**.
    Accept the native-video consent request when prompted.
-3. Select `receive1`, refresh its source list and choose that live publisher.
+3. Select `syphonin_receive`, refresh its source list and choose that live publisher.
    The saved source is empty: discovery UUIDs belong to your running publisher,
    not to an example file.
-4. Compare viewer outputs **reference1** (local) and **returned1** (received).
-   Both should animate. The `send1` preview alone proves only its local input.
+4. Compare viewer outputs **output_reference** (local) and **output_returned** (received).
+   Both should animate. The `syphonout_send` preview alone proves only its local input.
 
-`signal1 → send1`, `signal1 → reference1`, `receive1 → returned1`.
+`over_signal → syphonout_send`, `over_signal → output_reference`, `syphonin_receive → output_returned`.
 
-What `signal1` sends is a **reference chart**, not a texture chosen for looks: a
+What `over_signal` sends is a **reference chart**, not a texture chosen for looks: a
 black-and-white checkerboard tinted by a four-stop colour sweep, with a marker
 crossing the frame. Each part answers a question the round trip poses — the checker
 shows resampling as moiré on its edges, the sweep shows orientation and channel

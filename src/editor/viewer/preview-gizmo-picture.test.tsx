@@ -10,7 +10,7 @@ import { createDomainBus } from "@domain/commands/index.ts";
 import { alice, contextFor } from "@domain/commands/test-support.ts";
 import { createSequentialIdFactory } from "@domain/graph/ids.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
-import { effectiveParameterSchema, resolveParameters } from "@domain/parameters/resolve.ts";
+import { STORED_READ, effectiveParameterSchema, resolveParameters } from "@domain/parameters/resolve.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
@@ -98,14 +98,14 @@ async function mountCornerPin() {
     const node = store.view.getGraph().nodes[nodeId];
     const definition = registry.get("cornerPin");
     if (node === undefined || definition === undefined) throw new Error("the Corner Pin left the document");
-    return resolveParameters(node, definition).values;
+    return resolveParameters(node, definition, STORED_READ).values;
   };
   const tile = (id: NodeId): PreviewGizmoTile | null => {
     if (id !== nodeId) return null;
     const node = store.view.getGraph().nodes[nodeId];
     const definition = registry.get("cornerPin");
     if (node === undefined || definition === undefined) return null;
-    const resolved = resolveParameters(node, definition);
+    const resolved = resolveParameters(node, definition, STORED_READ);
     const handles = pictureHandlesFor({
       schema: effectiveParameterSchema(definition, node.parameters),
       resolved: resolved.entries,

@@ -135,6 +135,12 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "manifest so a newly added owned parameter is reserved by construction.",
     reads: ["materialWgslNode.parameters"],
   },
+  "src/tests/integration/command-input-data.test.ts": {
+    reason:
+      "§T1556b: finds every PULSE a node TYPE declares, to hold its `fires` template to that " +
+      "command's input schema. A pulse's template is manifest data; there is no instance.",
+    reads: ["definition.parameters"],
+  },
   "src/nodes/definitions/custom-wgsl.test.ts": {
     reason:
       `${TYPE_ONLY_UNIT_TEST} ${HOOK_UNDER_TEST} SIX hook calls now, not two — each drives ` +
@@ -297,17 +303,13 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
   },
   "src/domain/commands/parameter-commands.test.ts": {
     reason:
-      `${TYPE_ONLY_UNIT_TEST} ELEVEN now, not seven, and every one is the funnel's own ` +
+      `${TYPE_ONLY_UNIT_TEST} EIGHT (§T1557b: the three reader-schemaOf reads became testRead reads over a registry), and every one is the funnel's own ` +
       "argument: `menuNode` is a fixture definition declared in this file, and each read " +
-      "hands its declared block INTO `resolveParameterSchema(node, menuNode.parameters)` or " +
-      "into a `createNodeReferenceReader({ schemaOf })`. Calling `effectiveParameterSchema` " +
+      "hands its declared block INTO `resolveParameterSchema(node, menuNode.parameters)`. Calling `effectiveParameterSchema` " +
       "first would only pre-apply the funnel to its own input — the fixture has no " +
       "`parametersFor`, so the two are the same object, and the indirection would hide " +
       "which schema the resolver was actually given.",
     reads: [
-      "menuNode.parameters",
-      "menuNode.parameters",
-      "menuNode.parameters",
       "menuNode.parameters",
       "menuNode.parameters",
       "menuNode.parameters",
@@ -387,6 +389,22 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "pointSphereNode.parameters",
       "pointSphereNode.parameters",
     ],
+  },
+  "src/nodes/definitions/point-curve-frames.test.ts": {
+    reason: `${TYPE_ONLY_UNIT_TEST} §T1587b C13's one read is Extrapolate Ends' own \`inactiveWhen\`: it applies only where a frame is published.`,
+    reads: ["pointCurveFramesNode.parameters"],
+  },
+  "src/nodes/definitions/point-sweep.test.ts": {
+    reason: `${TYPE_ONLY_UNIT_TEST} T1587b's one read is each parameter's own \`inactiveWhen\`: which profile Sides and Smooth apply to.`,
+    reads: ["pointSweepNode.parameters"],
+  },
+  "src/nodes/definitions/grid-uv.test.ts": {
+    reason: `${TYPE_ONLY_UNIT_TEST} T1618b's one read is the declared shape of Map Extend on the three stock materials: two structural enums, Hold by default.`,
+    reads: ["definition.parameters"],
+  },
+  "src/nodes/definitions/point-topology.test.ts": {
+    reason: `${TYPE_ONLY_UNIT_TEST} T1587b's one read is Sheets' own \`inactiveWhen\`: only a Grid is cut into sheets.`,
+    reads: ["pointTopologyNode.parameters"],
   },
   "src/nodes/definitions/slit-scan.test.ts": { reason: TYPE_ONLY_UNIT_TEST, reads: ["slitScanNode.parameters"] },
   "src/nodes/definitions/solid.test.ts": {
@@ -504,6 +522,14 @@ function programOf(configPath: string): { program: ts.Program; checker: ts.TypeC
   return { program, checker: program.getTypeChecker() };
 }
 
+/**
+ * ONE program for the repo, built once: it is the whole cost of this gate (~8 s), and
+ * `test:gates` runs before every commit.
+ */
+let repoProgram: { program: ts.Program; checker: ts.TypeChecker } | undefined;
+const repo = (): { program: ts.Program; checker: ts.TypeChecker } =>
+  (repoProgram ??= programOf(path.join(REPO_ROOT, "tsconfig.app.json")));
+
 function tally(entries: readonly { file: string; read: string }[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const entry of entries) {
@@ -522,7 +548,7 @@ const FIX =
 
 describe("§T903 — nothing reads a node's parameter schema outside the funnel", () => {
   const collected = (() => {
-    const { program, checker } = programOf(path.join(REPO_ROOT, "tsconfig.app.json"));
+    const { program, checker } = repo();
     return collectSchemaReads(program, checker, path.join(REPO_ROOT, "src"));
   })();
 
@@ -606,4 +632,75 @@ describe("§T903 — nothing reads a node's parameter schema outside the funnel"
     expect(collected.length).toBeGreaterThan(50);
     expect(collected.some((entry) => entry.file === FUNNEL)).toBe(true);
   });
+});
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ * §T1557b — NO PARAMETER READ IS BUILT WITHOUT ITS INPUTS
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ *
+ * `resolveParameters`, `resolveParameterSchema` and `resolveParameter` take a `ParameterRead`:
+ * a branded value only `parameterReadOptions` (every input required) or `STORED_READ` (the
+ * document, said by name) can produce. An options literal — `{ channels }` with no reader,
+ * §B181's shape and the fifth recurrence of §B8's — does not typecheck, and neither does
+ * leaving the read out.
+ *
+ * §T1559b: the `@deprecated` optional-options overloads are deleted (the last caller,
+ * `value-graph.ts`, reads through `parameterReadOptions`), and the ledger that held the line
+ * while they lived went with them. What stays is the CHECKER'S OWN ANSWER, so a loose
+ * signature cannot come back on any of the three readers without this failing.
+ */
+describe("§T1557b — a parameter read cannot be built without its inputs", () => {
+  it("refuses an options literal and a missing read on every reader, and accepts the named storage read", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "shaderloom-parameter-read-"));
+    try {
+      const resolve = path.join(REPO_ROOT, "src/domain/parameters/resolve.ts");
+      const graph = path.join(REPO_ROOT, "src/domain/types/graph.ts");
+      const nodeDefinition = path.join(REPO_ROOT, "src/domain/types/node-definition.ts");
+      const parameters = path.join(REPO_ROOT, "src/domain/types/parameters.ts");
+      const file = path.join(directory, "b181.ts");
+      const lines = [
+        `import { resolveParameter, resolveParameters, resolveParameterSchema, STORED_READ, type ChannelResolver } from ${JSON.stringify(resolve)};`,
+        `import type { GraphNode } from ${JSON.stringify(graph)};`,
+        `import type { NodeDefinition } from ${JSON.stringify(nodeDefinition)};`,
+        `import type { ParameterDefinition } from ${JSON.stringify(parameters)};`,
+        "",
+        "export function settings(node: GraphNode, definition: NodeDefinition, one: ParameterDefinition, channels: ChannelResolver) {",
+        "  return [",
+        // The legitimate case a refusal must not swallow: the branded storage read.
+        "    resolveParameters(node, definition, STORED_READ),",
+        "    resolveParameterSchema(node, definition.parameters, STORED_READ),",
+        "    resolveParameter(node, 'key', one, STORED_READ),",
+        "    resolveParameters(node, definition, { channels }), // REFUSED",
+        "    resolveParameterSchema(node, definition.parameters, { channels }), // REFUSED",
+        "    resolveParameter(node, 'key', one, { channels }), // REFUSED",
+        "    resolveParameters(node, definition), // REFUSED",
+        "    resolveParameterSchema(node, definition.parameters), // REFUSED",
+        "    resolveParameter(node, 'key', one), // REFUSED",
+        "  ];",
+        "}",
+        "",
+      ];
+      writeFileSync(file, lines.join("\n"), "utf8");
+      const config = ts.readConfigFile(path.join(REPO_ROOT, "tsconfig.app.json"), ts.sys.readFile);
+      const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, REPO_ROOT);
+      const program = ts.createProgram([file], parsed.options);
+      const source = program.getSourceFile(file);
+      if (source === undefined) throw new Error("the probe file did not load");
+      const errorLines = [
+        ...new Set(
+          program
+            .getSemanticDiagnostics(source)
+            .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error && diagnostic.start !== undefined)
+            .map((diagnostic) => source.getLineAndCharacterOfPosition(diagnostic.start as number).line),
+        ),
+      ].sort((a, b) => a - b);
+      // Exactly the marked lines: the three storage reads above them typecheck.
+      const refused = lines.flatMap((line, index) => (line.includes("// REFUSED") ? [index] : []));
+      expect(refused).toHaveLength(6);
+      expect(errorLines).toEqual(refused);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 180_000);
 });

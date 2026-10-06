@@ -163,7 +163,7 @@
       "air": {
         "definitionVersion": 1,
         "id": "air",
-        "label": "air1",
+        "label": "lag_air",
         "parameters": {
           "lag": 1.2,
           "releaseRatio": 2
@@ -177,7 +177,7 @@
       "airMap": {
         "definitionVersion": 1,
         "id": "airMap",
-        "label": "airMap1",
+        "label": "math_airMap",
         "parameters": {
           "fromHigh": 1,
           "fromLow": 0,
@@ -195,7 +195,7 @@
       "airRank": {
         "definitionVersion": 1,
         "id": "airRank",
-        "label": "airRank1",
+        "label": "normalize_airRank",
         "parameters": {
           "window": 18
         },
@@ -208,7 +208,7 @@
       "airSmooth": {
         "definitionVersion": 1,
         "id": "airSmooth",
-        "label": "airSmooth1",
+        "label": "lag_airSmooth",
         "parameters": {
           "lag": 0.6,
           "releaseRatio": 1
@@ -222,7 +222,7 @@
       "dim": {
         "definitionVersion": 1,
         "id": "dim",
-        "label": "dim1",
+        "label": "lag_dim",
         "parameters": {
           "lag": 3,
           "releaseRatio": 1.5
@@ -236,7 +236,7 @@
       "dimMap": {
         "definitionVersion": 1,
         "id": "dimMap",
-        "label": "dimMap1",
+        "label": "math_dimMap",
         "parameters": {
           "fromHigh": 1,
           "fromLow": 0,
@@ -254,7 +254,7 @@
       "dimRank": {
         "definitionVersion": 1,
         "id": "dimRank",
-        "label": "dimRank1",
+        "label": "normalize_dimRank",
         "parameters": {
           "window": 40
         },
@@ -267,7 +267,7 @@
       "dimSmooth": {
         "definitionVersion": 1,
         "id": "dimSmooth",
-        "label": "dimSmooth1",
+        "label": "lag_dimSmooth",
         "parameters": {
           "lag": 1,
           "releaseRatio": 1
@@ -281,7 +281,7 @@
       "dof": {
         "definitionVersion": 1,
         "id": "dof",
-        "label": "dof1",
+        "label": "wgsl_dof",
         "parameters": {
           "blur": 0.016,
           "focus": 8.5,
@@ -296,7 +296,7 @@
       "forest": {
         "definitionVersion": 1,
         "id": "forest",
-        "label": "forest1",
+        "label": "wgsl_forest",
         "parameters": {
           "ambient": 0.5,
           "barkColor": [
@@ -318,7 +318,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.03 + 0.11 * op('rise1').chan.onset"
+                "source": "0.03 + 0.11 * op('lag_rise').chan.onset"
               },
               "static": {
                 "kind": "static",
@@ -348,7 +348,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('airMap1').chan.low"
+                "source": "op('math_airMap').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -368,7 +368,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('dimMap1').chan.lowMid * (1 - 1.5 * op('rise1').chan.kick)"
+                "source": "op('math_dimMap').chan.lowMid * (1 - 1.5 * op('lag_rise').chan.kick)"
               },
               "static": {
                 "kind": "static",
@@ -391,7 +391,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.85 + 2.3 * op('rise1').chan.snare"
+                "source": "0.85 + 2.3 * op('lag_rise').chan.snare"
               },
               "static": {
                 "kind": "static",
@@ -424,7 +424,7 @@
       "music": {
         "definitionVersion": 1,
         "id": "music",
-        "label": "music1",
+        "label": "pattern_music",
         "parameters": {
           "amount": 1,
           "beatsPerBar": 4,
@@ -439,7 +439,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "filmic"
         },
@@ -452,7 +452,7 @@
       "rise": {
         "definitionVersion": 1,
         "id": "rise",
-        "label": "rise1",
+        "label": "lag_rise",
         "parameters": {
           "lag": 0.14,
           "releaseRatio": 2.2
@@ -466,7 +466,7 @@
       "source": {
         "definitionVersion": 1,
         "id": "source",
-        "label": "source1",
+        "label": "switch_source",
         "parameters": {
           "index": 0
         },
@@ -479,7 +479,7 @@
       "track": {
         "definitionVersion": 1,
         "id": "track",
-        "label": "track1",
+        "label": "audiofile_track",
         "parameters": {
           "cue": false,
           "cuePoint": 0,
@@ -502,7 +502,7 @@
       "veil": {
         "definitionVersion": 1,
         "id": "veil",
-        "label": "veil1",
+        "label": "noise_veil",
         "parameters": {
           "amp": 1.15,
           "exp": 1,

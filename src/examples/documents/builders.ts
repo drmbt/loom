@@ -8,6 +8,7 @@ import type {
 import type { ParameterSlot, ParameterValue } from "../../domain/types/parameters.ts";
 import { channelExpression } from "../../domain/parameters/slots.ts";
 import { parseComponentNodeType } from "../../domain/components/component-type.ts";
+import { conformsToKind, kindBindsName, kindFromName, kindOfType, withKind } from "../../domain/graph/node-kinds.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
 
@@ -27,10 +28,11 @@ import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
  * all. It reads the directory.
  *
  * Every parameter key below is taken from the node's manifest under
- * `src/nodes/definitions/`. A key that does not exist there is a compiler WARNING, not an
- * error, so the runner asserts zero diagnostics of any severity rather than zero errors:
- * a typo'd parameter renders silently wrong, which is exactly the class of mistake an
- * executable spec is for.
+ * `src/nodes/definitions/`. A key that does not exist there was a compiler WARNING, which is
+ * why the runner asserts zero diagnostics of any severity rather than zero errors: a typo'd
+ * parameter rendered silently wrong, exactly the class of mistake an executable spec is
+ * for. Since §T1641b it is an error (`parameter.unknown`) in every compile, and
+ * `never-effective.test.ts` holds it for every shipped document.
  */
 
 /** Stamped into `createdAt`/`updatedAt` so a regenerated file is byte-stable. */
@@ -123,6 +125,130 @@ export function node(
   };
 }
 
+/**
+ * A node NAMED BY THE RULE (T1593b): write the role once, and the name is `kind_role`.
+ *
+ *     named("lamp", "slider", [0, 0])            // `slider_lamp`
+ *     named("lamp", "light", [0, 300])           // `light_lamp`: same role, another kind
+ *     named("joints", "pointKernel", [0, 0])     // `kernel_joints`
+ *     named("pathx", "lfo", [0, 0])              // `lfo_pathx`
+ *
+ * ## The rule
+ *
+ * A node's name carries its kind as a prefix, so it says what it is on the canvas at any
+ * zoom and inside every `op('…')` that reads it. The kind is one lowercase word per node
+ * type (`kindOfType`; the full table is `NODE_KINDS` in `src/domain/graph/node-kinds.ts`),
+ * then ONE underscore, then the role: what this node is FOR in this graph. The role holds
+ * letters, digits and underscores, nothing else, because a name is also what a name list,
+ * a preset target and a cue hold, and those split on spaces, commas, dots and colons.
+ *
+ * EVERY NEW EXAMPLE AND PROJECT DOCUMENT USES THIS, and `src/examples/node-names.test.ts`
+ * (on `pnpm test:gates`) fails a shipped node whose name does not carry its kind. The
+ * documents written before the rule are listed in that gate's ledger until the sweep
+ * renames them; a file that is not in the ledger has no excuse.
+ *
+ * ## The id is the name
+ *
+ * `node("dish", "screen", …, { label: "dish1" })` writes the role twice and the kind never,
+ * and leaves the document with two words for one node: edges say `dish`, expressions say
+ * `dish1`. Here the author writes the role once and the node has ONE identifier,
+ * `screen_dish`, for its id and its name alike. An edge is `["slider_lamp", "out"]` and an
+ * expression is `op('slider_lamp')`.
+ *
+ * It cannot be the bare role, and the reason is the convention's own first example: a
+ * Slider and a Light may both be for the `lamp`. Their NAMES differ by kind; an id of
+ * `lamp` for both is the collision `graph()` refuses (two nodes under one id, and the
+ * scene had no light).
+ *
+ * `extra.id` still wins, for the one case that needs it: giving a node that already
+ * shipped its `kind_role` name while keeping the id its edges, tests and thumbnails are
+ * addressed by.
+ *
+ * ## What it refuses
+ *
+ * Each of these is a mistake at the call site, named there instead of shipping:
+ *  - a role with a character a name may not hold (`"key light"`);
+ *  - a role that already carries the kind (`named("blur_soft", "blur")` would be
+ *    `blur_blur_soft`): write the role alone;
+ *  - `label` in `extra`: that is a second name;
+ *  - a component's In or Out: its name is the socket's label, not a role. Use `node()`;
+ *  - a component INSTANCE: its kind is its component's own name, which the type string
+ *    does not carry. Use `namedInstance()`.
+ */
+export function named(
+  role: string,
+  type: string,
+  position: readonly [number, number],
+  parameters: Record<string, ParameterValue> = {},
+  extra: Partial<GraphNode> = {},
+): GraphNode {
+  if (parseComponentNodeType(type) !== null) {
+    throw new Error(
+      `named("${role}", "${type}"): a component instance is named for its component, and the type does not carry the component's name. Use namedInstance("${role}", "<Component name>", "${type}", …).`,
+    );
+  }
+  if (!kindBindsName(type)) {
+    throw new Error(
+      `named("${role}", "${type}"): a component's In and Out are named for the socket they publish, not by kind_role. Use node("${role}", "${type}", …, { label: "<socket name>" }).`,
+    );
+  }
+  return namedUnder(kindOfType(type), role, type, position, parameters, extra);
+}
+
+/**
+ * `named()` for an INSTANCE OF A COMPONENT, whose kind is the component's own name.
+ *
+ *     namedInstance("holo", "Depth Points", "component:depthPoints@1", [0, 0])   // `depthpoints_holo`
+ *
+ * The name is written here because nothing else at this call site knows it: the type
+ * carries the component's id, and an id is not a name. It is not taken on trust. The
+ * shipped file embeds the component's definition, and `node-names.test.ts` judges the
+ * instance's name against the name THAT definition holds, so a name misspelled here fails
+ * the gate by the name it should have had.
+ */
+export function namedInstance(
+  role: string,
+  componentName: string,
+  type: string,
+  position: readonly [number, number],
+  parameters: Record<string, ParameterValue> = {},
+  extra: Partial<GraphNode> = {},
+): GraphNode {
+  if (parseComponentNodeType(type) === null) {
+    throw new Error(
+      `namedInstance("${role}", "${componentName}", "${type}"): "${type}" is not a component instance type (component:<id>@<version>). Use named() for a built-in node.`,
+    );
+  }
+  return namedUnder(kindFromName(componentName), role, type, position, parameters, extra);
+}
+
+function namedUnder(
+  kind: string,
+  role: string,
+  type: string,
+  position: readonly [number, number],
+  parameters: Record<string, ParameterValue>,
+  extra: Partial<GraphNode>,
+): GraphNode {
+  if (extra.label !== undefined) {
+    throw new Error(
+      `named("${role}", "${type}"): extra.label "${extra.label}" is a second name. named() makes the name from the role; use node() to name a node by hand.`,
+    );
+  }
+  if (role === "" || conformsToKind(role, kind)) {
+    throw new Error(
+      `named("${role}", "${type}"): the role is what the node is FOR, without its kind. "${role}" would be named "${withKind(kind, role)}"; write the role alone (named("lamp", "slider") is "slider_lamp").`,
+    );
+  }
+  const label = withKind(kind, role);
+  if (!conformsToKind(label, kind)) {
+    throw new Error(
+      `named("${role}", "${type}"): "${label}" is not a name. A role holds letters, digits and underscores only, starting with a letter or a digit.`,
+    );
+  }
+  return node(label, type, position, parameters, { ...extra, label });
+}
+
 export function edge(
   id: string,
   from: readonly [string, string],
@@ -154,7 +280,7 @@ export function edge(
  * one edit away instead of a mode change. `name` maps to `.chan.value` and `name:c` to
  * `.chan.c`, which resolve identically to the old bare/suffixed driven addresses.
  */
-export function drivenSlot(channel: string, retained: number): ParameterSlot {
+export function drivenSlot(channel: string, retained: RetainedValue): ParameterSlot {
   return {
     mode: "expression",
     bindings: {
@@ -164,8 +290,26 @@ export function drivenSlot(channel: string, retained: number): ParameterSlot {
   };
 }
 
+/**
+ * What a slot keeps for the parameter it sits on, in THAT PARAMETER'S OWN TYPE (§T1641b
+ * slice 3): a number for a number, `false` for a boolean or a pulse, an option's name for a
+ * menu, the text for a string, the whole compound for a vector or a colour. These are the
+ * types an expression can drive (§V107).
+ *
+ * The parameter was `retained: number`, and a boolean driven by an expression then had no
+ * way to be written right: `false` did not compile, so its author wrote `0`, which the
+ * write gate refuses and nothing here did. It shipped (the consumer's `reset`).
+ *
+ * THE WRONG TYPE STILL COMPILES, and cannot be made not to: a slot is built before it is
+ * put under a key, and a node's parameters are a `Record<string, …>` with no type per key
+ * to check the value against. So it is refused where the key is known, at the build: the
+ * checked save names the node, the parameter and the type to keep (`parameter.retained`,
+ * `checked-project.ts`).
+ */
+export type RetainedValue = number | boolean | string | readonly number[];
+
 /** An `expression` slot (§V71): our own grammar, arithmetic over the frame's variables. */
-export function expressionSlot(source: string, retained: number): ParameterSlot {
+export function expressionSlot(source: string, retained: RetainedValue): ParameterSlot {
   return {
     mode: "expression",
     bindings: {
@@ -175,11 +319,33 @@ export function expressionSlot(source: string, retained: number): ParameterSlot 
   };
 }
 
+/**
+ * The map is keyed by id, so a repeated id would replace the earlier entry without a word
+ * and the file would save whatever was left. Refused here, by name, at the call site.
+ */
+function keyedOnce<T extends { readonly id: string }>(entries: readonly T[], kind: string, describe: (entry: T) => string): Record<string, T> {
+  const keyed: Record<string, T> = {};
+  for (const entry of entries) {
+    const earlier = keyed[entry.id];
+    if (earlier !== undefined) {
+      throw new Error(
+        `graph(): two ${kind}s share the id "${entry.id}" (${describe(earlier)}, then ${describe(entry)}). An id names one ${kind}; rename one.`,
+      );
+    }
+    keyed[entry.id] = entry;
+  }
+  return keyed;
+}
+
 export function graph(nodes: readonly GraphNode[], edges: readonly GraphEdge[]): GraphDocument {
   return {
     revision: 1,
-    nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])),
-    edges: Object.fromEntries(edges.map((entry) => [entry.id, entry])),
+    nodes: keyedOnce(nodes, "node", (entry) => entry.type),
+    edges: keyedOnce(
+      edges,
+      "edge",
+      (entry) => `${entry.source.nodeId}.${entry.source.portId} → ${entry.target.nodeId}.${entry.target.portId}`,
+    ),
     groups: {},
   };
 }

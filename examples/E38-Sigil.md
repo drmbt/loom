@@ -12,17 +12,17 @@ it. The cycle is slow, and the mark comes apart into the population it was made 
 ## Graph
 
 ```
-disc1(circle) ─┐                         cycle1(lfo) ─► shape1(valueMath) ─► hold1(valueLimit)
-hole1(circle) ─┴─► ring1(difference) ─┐                                            │ value1
-pip1(circle) ─────────────────────────┴─► emblem1(add) ─────────────► gather1(pointKernel)
-                                                                         ▲ field    │
-grid1(pointGrid 384x216) ────────────────────────────────────────────────┘ in       │
-                                                       ┌────────────────────────────┘
-                                    haze1(renderPoints  p.mark <= 0.5) ─┐
-                                    glyph1(renderPoints p.mark >  0.5) ─┴─► both1(add)
+circle_disc(circle) ─┐                         lfo_cycle(lfo) ─► math_shape(valueMath) ─► limit_hold(valueLimit)
+circle_hole(circle) ─┴─► difference_ring(difference) ─┐                                                     │ value1
+circle_pip(circle) ───────────────────────────────────┴─► add_emblem(add) ─────────────► kernel_gather(pointKernel)
+                                                                                            ▲ field          │
+grid1(pointGrid 384x216) ───────────────────────────────────────────────────────────────────┘ in             │
+                                                       ┌─────────────────────────────────────────────────────┘
+                                    points_haze(renderPoints  p.mark <= 0.5) ─┐
+                                    points_glyph(renderPoints p.mark >  0.5) ─┴─► add_both(add)
 
-both1 ─┬────────────────────────────► burn1(add) ─► hue1(hsv ┄ drift1) ─► out1
-       └─► halo1(blur) ─► halolvl1(level) ─┘
+add_both ─┬────────────────────────────► add_burn(add) ─► hsv_hue(hsv ┄ lfo_drift) ─► output1
+          └─► blur_halo(blur) ─► level_halo(level) ─┘
 ```
 
 ## What it proves
@@ -72,7 +72,7 @@ both1 ─┬──────────────────────�
 - **The cycle is shaped, not just an LFO.** A sine spends almost no time at its extremes, so
   on its own the glyph would never *hold* — it would pass through legible on its way
   somewhere. Gain then clamp is the standard shape for that, and it is two nodes doing one
-  job each: `shape1` multiplies by 1.6, `hold1` clamps to 0…1, and real dwells appear at
+  job each: `math_shape` multiplies by 1.6, `limit_hold` clamps to 0…1, and real dwells appear at
   both ends. The result reaches the kernel as `ctx.value1`, an ordinary drivable parameter,
   so the cycle lives in the value graph where it can be seen and retimed rather than buried
   in WGSL where only a recompile could reach it.

@@ -18,21 +18,21 @@ import { settings, node, edge, graph, document } from "./builders.ts";
  *
  * ## ONE SOURCE, THREE READINGS (§V471.1) — and the split is the LIFECYCLE
  *
- * `bed1`, `body1` and `spark1` are three `renderPoints` over the SAME cloud, differing
+ * `points_bed`, `points_body` and `points_spark` are three `renderPoints` over the SAME cloud, differing
  * only in a group predicate, a colour and a size:
  *
  * | | predicate | colour | reads as |
  * | --- | --- | --- | --- |
- * | `bed1` | (none — every ember) | deep red, largest | the dying bed and its glow |
- * | `body1` | `p.velocity.z > 0.30` | orange | the burning column |
- * | `spark1` | `p.velocity.z > 0.72` | white-gold, smallest | the newest sparks only |
+ * | `points_bed` | (none — every ember) | deep red, largest | the dying bed and its glow |
+ * | `points_body` | `p.velocity.z > 0.30` | orange | the burning column |
+ * | `points_spark` | `p.velocity.z > 0.72` | white-gold, smallest | the newest sparks only |
  *
  * E31 splits its cloud on how CREASED a point is; this one splits on how OLD it is, and
  * age is a thing that only exists because points are born. The three draws are additive
  * and stacked, so an ember carries all three where it qualifies: a fresh one is a small
  * white core inside an orange middle inside a red halo — a black-body gradient PER
  * PARTICLE, out of selection alone, with no per-point colour attribute anywhere. As it
- * cools it drops out of `spark1`, then out of `body1`, and ends as one dim red dot.
+ * cools it drops out of `points_spark`, then out of `points_body`, and ends as one dim red dot.
  * Watching a single ember fall down the table is watching it die.
  *
  * ## HEAT RIDES IN `velocity.z`, and the binding budget is why (§V471.2)
@@ -290,7 +290,7 @@ export const emberDocument = document(
           kernel: EMBER_KERNEL,
           spawn: EMBER_SPAWN,
         },
-        { label: "fire1" },
+        { label: "kernel_fire" },
       ),
 
       // ---- ONE cloud, THREE readings, split on AGE (§V471.1) -------------------------
@@ -311,7 +311,7 @@ export const emberDocument = document(
           accumulate: false,
           group: "p.velocity.z < 0.34",
         },
-        { label: "bed1" },
+        { label: "points_bed" },
       ),
       /* The kernel wrote heat into velocity.z (§V471.2), so this predicate reads "only
          where the fire is still burning" — a selection on AGE, not on position. */
@@ -327,7 +327,7 @@ export const emberDocument = document(
           accumulate: false,
           group: "p.velocity.z > 0.22",
         },
-        { label: "body1" },
+        { label: "points_body" },
       ),
       /* The newest few percent only. Smallest and brightest: a spark is a POINT of light,
          and a big bright sprite is a blob. */
@@ -343,22 +343,22 @@ export const emberDocument = document(
           accumulate: false,
           group: "p.velocity.z > 0.62",
         },
-        { label: "spark1" },
+        { label: "points_spark" },
       ),
 
-      node("stack", "add", [-240, -140], {}, { label: "stack1" }),
-      node("fuse", "add", [40, 0], {}, { label: "fuse1" }),
+      node("stack", "add", [-240, -140], {}, { label: "add_stack" }),
+      node("fuse", "add", [40, 0], {}, { label: "add_fuse" }),
 
       // ---- the post, one job per stage (§V471.4) -------------------------------------
-      node("halo", "blur", [320, -280], { size: 30, filter: "gaussian", extend: "hold" }, { label: "halo1" }),
+      node("halo", "blur", [320, -280], { size: 30, filter: "gaussian", extend: "hold" }, { label: "blur_halo" }),
       node(
         "haloLvl",
         "level",
         [600, -280],
         { blacklevel: 0.01, whitelevel: 1, contrast: 1, gamma1: 1, invert: 0, opacity: 1, brightness: 1.4 },
-        { label: "halolvl1" },
+        { label: "level_halo" },
       ),
-      node("burn", "add", [880, 0], {}, { label: "burn1" }),
+      node("burn", "add", [880, 0], {}, { label: "add_burn" }),
       /* The trail closes on the FINAL output (§V471.5), so what smears is the picture
          with its glow already on it. `screen` rather than `add` on purpose: the loop is
          where a mistake compounds sixty times a second (§V481), and screen saturates
@@ -368,12 +368,12 @@ export const emberDocument = document(
         "loop",
         "feedback",
         [880, 280],
-        { source: "ash1", clearColor: [0, 0, 0, 1], reset: false, substeps: 1, persistence: 0.62 },
-        { label: "loop1" },
+        { source: "null_ash", clearColor: [0, 0, 0, 1], reset: false, substeps: 1, persistence: 0.62 },
+        { label: "feedback_loop" },
       ),
-      node("mix", "screen", [1160, 0], {}, { label: "mix1" }),
-      node("ash", "null", [1440, 0], {}, { label: "ash1" }),
-      node("out", "output", [1720, 0], {}, { label: "out1" }),
+      node("mix", "screen", [1160, 0], {}, { label: "screen_mix" }),
+      node("ash", "null", [1440, 0], {}, { label: "null_ash" }),
+      node("out", "output", [1720, 0], {}, { label: "output1" }),
     ],
     [
       edge("e-sim-bed", ["sim", "out"], ["bed", "points"]),

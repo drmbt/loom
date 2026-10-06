@@ -108,7 +108,7 @@
       "chart": {
         "definitionVersion": 1,
         "id": "chart",
-        "label": "chart1",
+        "label": "checker_chart",
         "parameters": {
           "color1": [
             0.05,
@@ -140,7 +140,7 @@
       "cornLay": {
         "definitionVersion": 1,
         "id": "cornLay",
-        "label": "cornlay1",
+        "label": "kernel_cornlay",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 9,
@@ -155,7 +155,7 @@
       "cornPts": {
         "definitionVersion": 1,
         "id": "cornPts",
-        "label": "cornpts1",
+        "label": "grid_corn",
         "parameters": {
           "cols": 9,
           "count": 9,
@@ -172,7 +172,7 @@
       "cornice": {
         "definitionVersion": 1,
         "id": "cornice",
-        "label": "cornice1",
+        "label": "geometry_cornice",
         "parameters": {
           "mode": "instances",
           "scale": 0.22,
@@ -187,7 +187,7 @@
       "drift": {
         "definitionVersion": 1,
         "id": "drift",
-        "label": "drift1",
+        "label": "lfo_drift",
         "parameters": {
           "amplitude": 0.35,
           "frequency": 0.03,
@@ -204,7 +204,7 @@
       "drive": {
         "definitionVersion": 1,
         "id": "drive",
-        "label": "drive1",
+        "label": "lfo_drive",
         "parameters": {
           "amplitude": 0.5,
           "frequency": 0.05,
@@ -221,7 +221,7 @@
       "ground": {
         "definitionVersion": 1,
         "id": "ground",
-        "label": "ground1",
+        "label": "geometry_ground",
         "parameters": {
           "mode": "surface"
         },
@@ -234,7 +234,7 @@
       "groundLay": {
         "definitionVersion": 1,
         "id": "groundLay",
-        "label": "groundlay1",
+        "label": "kernel_groundlay",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 384,
@@ -249,7 +249,7 @@
       "groundPts": {
         "definitionVersion": 1,
         "id": "groundPts",
-        "label": "groundpts1",
+        "label": "grid_ground",
         "parameters": {
           "cols": 24,
           "count": 384,
@@ -266,7 +266,7 @@
       "moon": {
         "definitionVersion": 1,
         "id": "moon",
-        "label": "moon1",
+        "label": "light_moon",
         "parameters": {
           "color": [
             0.5,
@@ -292,7 +292,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 0,
@@ -303,7 +303,7 @@
       "projL": {
         "definitionVersion": 1,
         "id": "projL",
-        "label": "projL1",
+        "label": "projector_left",
         "parameters": {
           "brightness": 1.1,
           "eye": [
@@ -328,7 +328,7 @@
       "projR": {
         "definitionVersion": 1,
         "id": "projR",
-        "label": "projR1",
+        "label": "projector_right",
         "parameters": {
           "brightness": 1.1,
           "eye": [
@@ -353,7 +353,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             0.55,
@@ -368,10 +368,10 @@
             0.028,
             1
           ],
-          "camera": "view1",
-          "lights": "moon1",
-          "projectors": "projL1 projR1",
-          "scenes": "wall1 ground1 cornice1"
+          "camera": "camera_view",
+          "lights": "light_moon",
+          "projectors": "projector_left projector_right",
+          "scenes": "geometry_wall geometry_ground geometry_cornice"
         },
         "position": {
           "x": -320,
@@ -382,7 +382,7 @@
       "view": {
         "definitionVersion": 1,
         "id": "view",
-        "label": "view1",
+        "label": "camera_view",
         "parameters": {
           "eye": [
             3.4,
@@ -393,7 +393,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drift1').chan.value"
+                "source": "op('lfo_drift').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -421,7 +421,7 @@
       "wall": {
         "definitionVersion": 1,
         "id": "wall",
-        "label": "wall1",
+        "label": "geometry_wall",
         "parameters": {
           "mode": "surface"
         },
@@ -434,7 +434,7 @@
       "wallLay": {
         "definitionVersion": 1,
         "id": "wallLay",
-        "label": "walllay1",
+        "label": "kernel_walllay",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]}]",
           "capacity": 576,
@@ -449,7 +449,7 @@
       "wallPts": {
         "definitionVersion": 1,
         "id": "wallPts",
-        "label": "wallpts1",
+        "label": "grid_wall",
         "parameters": {
           "cols": 32,
           "count": 576,
@@ -466,7 +466,7 @@
       "warm": {
         "definitionVersion": 2,
         "id": "warm",
-        "label": "warm1",
+        "label": "ramp_warm",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -474,7 +474,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drive1').chan.value"
+                "source": "op('lfo_drive').chan.value"
               },
               "static": {
                 "kind": "static",

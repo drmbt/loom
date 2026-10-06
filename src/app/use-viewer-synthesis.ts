@@ -6,6 +6,7 @@ import { liveClock } from "@domain/transport/live-clock.ts";
 import { DEFAULT_PREVIEW_VIEW, createPreviewSystem } from "@runtime/previews/index.ts";
 import type { PreviewRequest, PreviewSystem } from "@runtime/previews/index.ts";
 import type { PreviewOrbitStore } from "@editor/viewer/index.ts";
+import { createLiveSynthesis } from "./live-synthesis.ts";
 
 /**
  * §B220 — THE VIEWER'S SECOND PRESENTATION PATH, for the rows the first one cannot reach.
@@ -63,6 +64,8 @@ export interface ViewerSynthesisInputs {
   readonly documentIdentity: string;
   /** The same store the tiles orbit with, so the viewer's gesture reaches this surface. */
   readonly orbits?: PreviewOrbitStore | undefined;
+  /** T1655b: as `useNodePreviews` takes it — the newest values of the row, read per tick. */
+  readonly liveOutputs?: (() => ReadonlyArray<ResolvedOutput> | null) | undefined;
 }
 
 
@@ -91,6 +94,7 @@ export function useViewerSynthesis(inputs: ViewerSynthesisInputs): void {
 
     const host = backend.previewHost(canvas);
     const system: PreviewSystem = createPreviewSystem({ host, capacity: 1 });
+    const liveSynthesis = createLiveSynthesis(() => inputsRef.current.liveOutputs?.() ?? null);
     /* ⚑ T740/T742 — THIS CLOCK ALWAYS PRESENTS, and the reason is the same one that makes
        `use-node-previews` opt in rather than the one that makes `use-graph-background` refuse.
        The background is AMBIENT: nothing on screen shows the same thing at the same time, so
@@ -150,7 +154,10 @@ export function useViewerSynthesis(inputs: ViewerSynthesisInputs): void {
         view: current.alphaDisplay === "rgb" ? { ...DEFAULT_PREVIEW_VIEW, mode: "rgb" } : DEFAULT_PREVIEW_VIEW,
         fps: current.previewFps,
         ...(orbitOf(current, output.nodeId)),
-        ...(output.synthesis === undefined ? {} : { synthesis: output.synthesis }),
+        ...(() => {
+          const synthesis = liveSynthesis.of(output);
+          return synthesis === undefined ? {} : { synthesis };
+        })(),
       };
 
       system.update({

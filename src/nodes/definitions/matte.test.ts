@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { flatDocument } from "@compiler/test-support.ts";
 import { createDomainBus } from "../../domain/commands/index.ts";
 import { alice, contextFor } from "../../domain/commands/test-support.ts";
 import { createGraphStore } from "../../domain/graph/store.ts";
@@ -265,21 +266,21 @@ describe("§V146 — the producer-shaped knobs exist only where they mean someth
     expect(node.parameters).toMatchObject({ backend: "webgpu", inputSide: "320", downsampleRatio: "0.375" });
     const schema = schemaFor(node.parameters);
     for (const key of ["backend", "inputSide", "downsampleRatio"]) expect(schema[key]).toBeUndefined();
-    const validated = validateGraph(graph, registry);
-    expect(validated.diagnostics.filter(d => d.code === "compiler/parameter-unknown")).toEqual([]);
+    const validated = validateGraph(flatDocument(graph), registry);
+    expect(validated.diagnostics.filter(d => d.code === "parameter.unknown")).toEqual([]);
     for (const key of ["backend", "inputSide", "downsampleRatio"]) {
       expect(validated.nodes.get(id)?.parameters[key]).toBeUndefined();
     }
     const withTypo = { ...graph, nodes: { ...graph.nodes, [id]: { ...node, parameters: { ...node.parameters, ghost: 1 } } } };
-    expect(validateGraph(withTypo, registry).diagnostics.filter(d => d.code === "compiler/parameter-unknown"))
+    expect(validateGraph(flatDocument(withTypo), registry).diagnostics.filter(d => d.code === "parameter.unknown"))
       .toEqual([expect.objectContaining({ message: expect.stringContaining('"ghost"') })]);
     await change({ model: MATTE_ACCURATE.id });
     const restored = store.view.getGraph().nodes[id]!;
     expect(schemaFor(restored.parameters)["backend"]).toBeDefined();
     expect(schemaFor(restored.parameters)["inputSide"]).toBeDefined();
-    expect(validateGraph(store.view.getGraph(), registry).nodes.get(id)?.parameters)
+    expect(validateGraph(flatDocument(store.view.getGraph()), registry).nodes.get(id)?.parameters)
       .toMatchObject({ backend: "webgpu", inputSide: "320" });
-    expect(validateGraph(store.view.getGraph(), registry).diagnostics.filter(d => d.code === "compiler/parameter-unknown"))
+    expect(validateGraph(flatDocument(store.view.getGraph()), registry).diagnostics.filter(d => d.code === "parameter.unknown"))
       .toEqual([]);
     await bus.execute("graph.undo", {}, context);
     expect(store.view.getGraph().nodes[id]?.parameters["model"]).toBe(MATTE_MEDIAPIPE.id);

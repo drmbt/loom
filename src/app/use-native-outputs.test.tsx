@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { createAppRuntime } from "./app-runtime.ts";
@@ -29,7 +30,7 @@ function setup(type = "syphonOut", backend = {} as LoomBackend) {
   vi.stubGlobal("requestAnimationFrame", vi.fn((fn: FrameRequestCallback) => { callback = fn; return 1; }));
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   const tick = () => act(async () => { callback(0); });
-  const view = renderHook(({ graph, compiled }) => useNativeOutputs(runtime, backend, graph, compiled), { initialProps: { graph, compiled } });
+  const view = renderHook(({ graph, compiled }) => useNativeOutputs(runtime, backend, flatDocument(graph), compiled), { initialProps: { graph, compiled } });
   return { runtime, graph, compiled, sessions, tick, view };
 }
 it.each(["syphonOut", "ndiOut", "spoutOut"])("%s publishes full input size, survives movement, closes on deletion", async type => {
@@ -135,7 +136,7 @@ it("publishes nothing, and says nothing of its own, when there is no bridge", as
   const h = setup(); h.view.unmount();
   vi.mocked(desktopOutputBridge).mockReturnValue(undefined);
   const backend = {} as LoomBackend;
-  const view = renderHook(() => useNativeOutputs(h.runtime, backend, h.graph, h.compiled));
+  const view = renderHook(() => useNativeOutputs(h.runtime, backend, flatDocument(h.graph), h.compiled));
   await h.tick();
   expect(createNativeOutputSession).not.toHaveBeenCalled();
   expect(view.result.current.diagnostics).toEqual([]);
@@ -187,4 +188,32 @@ it("switching to Spout drains the previous publisher before opening a dedicated 
   expect(h.sessions[0]!.close).toHaveBeenCalledOnce();
   finish(); await h.tick(); await h.tick();
   expect(createNativeOutputSession).toHaveBeenLastCalledWith(expect.anything(), spout, expect.anything(), "Test");
+});
+
+/* §T1559b (2), ruled live: Publish follows a driven value. The request read `enabled` from
+   the document (`resolveStored`), so an expression on it was read at the zero frame and the
+   output never followed the clock. The bus carries the frame on screen as the composition
+   root attaches it (`attachFrame`), and the hook reads through `bus.readScope()`. The value
+   is read every frame, but the session reacts to its EDGES: one open per rising edge, one
+   close per falling edge, nothing re-applied while it holds. */
+it("§T1559b — Publish driven by an expression opens and closes on the resolved value's edges", async () => {
+  let seconds = 0;
+  const h = setup();
+  h.runtime.bus.attachFrame(() => ({ timeSeconds: seconds, deltaSeconds: 1 / 60, frameIndex: Math.round(seconds * 60), mode: "realtime", randomSeed: 0 }));
+  const enabled = { mode: "expression", bindings: { static: { kind: "static", value: false }, expression: { kind: "expression", source: "(time > 1) * (time < 3)" } } };
+  const driven = { ...h.graph, revision: 2, nodes: { ...h.graph.nodes, sink: { ...h.graph.nodes["sink"]!, parameters: { name: "Test", enabled } } } } as GraphDocument;
+  h.view.rerender({ graph: driven, compiled: h.compiled });
+  await h.tick(); await h.tick();
+  // t = 0: the expression says off (and so does the retained static), so nothing opens.
+  expect(createNativeOutputSession).not.toHaveBeenCalled();
+  seconds = 2; await h.tick(); await h.tick(); await h.tick();
+  // t = 2: on — the bug never got here. ONE session across three frames of "on": an edge,
+  // not a re-open per frame.
+  expect(h.sessions).toHaveLength(1);
+  expect(h.sessions[0]!.close).not.toHaveBeenCalled();
+  expect(h.sessions[0]!.pump).toHaveBeenCalledTimes(3);
+  seconds = 4; await h.tick(); await h.tick();
+  // t = 4: off again — closed once, and not reopened.
+  expect(h.sessions[0]!.close).toHaveBeenCalledOnce();
+  expect(h.sessions).toHaveLength(1);
 });

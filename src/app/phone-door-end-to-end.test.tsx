@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
@@ -372,7 +373,7 @@ function CameraDesk({ runtime, deviceClient, environment }: {
   const graph = useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
   // As `app.tsx` composes them: the phone hook's opener is how the media hook opens a phone.
   const cameras = usePhoneCameras({ deviceClient, door: door.state, environment });
-  useMediaSources(runtime, environmentBackend, graph, null, noLocalMedia, undefined, cameras.opener);
+  useMediaSources(runtime, environmentBackend, flatDocument(graph), null, noLocalMedia, undefined, cameras.opener);
   const view = useMemo(() => ({ ...door, cameras: cameras.feeds }), [door, cameras.feeds]);
   return <ControlsPane graph={graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} phone={view} />;
 }

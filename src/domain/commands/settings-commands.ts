@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { projectSettingsSchema } from "../types/schemas.ts";
 import type { ProjectSettings } from "../types/graph.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
@@ -71,6 +72,7 @@ export function registerSettingsCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: SET_SETTINGS_COMMAND,
     description: "Change project settings: resolution, format, frame rate, seed, limits.",
+    inputSchema: z.object({ settings: projectSettingsSchema.partial(), label: z.string().optional() }).strict(),
     handler: (input, context) => {
       const revision = context.store.getRevision();
       const diagnostics: RuntimeDiagnostic[] = [];

@@ -41,15 +41,15 @@ describe("E25 Stage", () => {
       };
       return channelOf(stored?.bindings?.expression?.source);
     };
-    expect(drivenChannel("camA", "eye.x")).toBe("orbax1");
-    expect(drivenChannel("camB", "eye.x")).toBe("orbbx1");
-    expect(drivenChannel("keyB", "intensity")).toBe("breathe1");
+    expect(drivenChannel("camA", "eye.x")).toBe("lfo_orbax");
+    expect(drivenChannel("camB", "eye.x")).toBe("lfo_orbbx");
+    expect(drivenChannel("keyB", "intensity")).toBe("lfo_breathe");
   });
 
   /** Scene B is a MULTI-OBJECT scene: the screen and the floor, in list order. */
   it("draws two named geometries in scene B, screen first", () => {
     const scenes = (document.graph.nodes["shotB"] as GraphNode).parameters["scenes"];
-    expect(scenes).toBe("screen1 floor1");
+    expect(scenes).toBe("geometry_screen geometry_floor");
     const bDraws = plan.passes.filter(
       (pass) =>
         pass.kind === "draw" &&

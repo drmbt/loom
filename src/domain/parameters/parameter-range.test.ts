@@ -5,6 +5,7 @@ import type { NumberParameter, ParameterDefinition, VectorParameter } from "../t
 import { numericRangeOf } from "./expression-range.ts";
 import { resolveParameterSchema } from "./resolve.ts";
 import { validateParameterValue } from "./validate.ts";
+import { testRead } from "./test-support.ts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
@@ -92,6 +93,8 @@ const CYCLIC = [
   "lfo.phase",
   "mirror.rotate",
   "noise.r",
+  // T1586b: a curve frame's roll about its tangent — past 180 is the same frame from the other side.
+  "pointCurveFrames.roll",
   "ramp.phase",
   "renderInstances.rotate",
   "slope.angle",
@@ -115,6 +118,10 @@ const BOUNDED_DEGREES: Readonly<Record<string, string>> = {
   "crtTube.fov": "the projection matrix is singular at 0° and at 180°",
   "crtTube.pitch": "±80° off the face's normal: at 90° the camera sees the glass edge-on and the tube vanishes",
   "crtTube.yaw": "same as pitch: past ±80° the glass is edge-on, never a wrap",
+  "pointCurve.maxTurn":
+    "a cap on how far ONE arc may turn: 360° is a full circle, the most a single constant-curvature span can be, never a wrap",
+  "pointCurveFrames.twist":
+    "a twist is spread ALONG the strip from its start to its end: 720° is two turns of the frame, not the same as 0°",
 };
 
 describe("§B111 — every numeric parameter declares whether its bounds are a limit", () => {
@@ -221,7 +228,7 @@ function resolveRoll(definition: ParameterDefinition): { value: unknown; clamped
       parameters: { r: { mode: "expression", bindings: { expression: { kind: "expression", source: "abstime * 7" } } } },
     } as never,
     { r: definition },
-    { frame: AT_100_SECONDS as never },
+    testRead({ frame: AT_100_SECONDS as never }),
   );
   return {
     value: resolved.values.r,

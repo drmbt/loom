@@ -245,11 +245,161 @@ fn lightDepthDirectionalVisible(map: texture_2d<f32>, direction: vec3f, extent: 
 }`,
 };
 
+/**
+ * T1581b (F9) — QUATERNIONS, for a kernel that writes a per-instance `orient`.
+ *
+ * A Geometry in Instances mode turns each instance by a unit quaternion, and until now a
+ * kernel had to write the four numbers by hand. These are the handful of operations that
+ * builds them: from an axis and an angle, from a frame, toward a direction, between two
+ * directions, composed, interpolated.
+ *
+ * ONE CONVENTION, the engine's (docs/mesh-instancing-design-2026-10-05.md, D5): a unit
+ * quaternion is a vec4f (x, y, z, w), a turn is RIGHT-HANDED about its axis and ACTIVE —
+ * `quatAxisAngle(vec3f(0, 0, 1), 1.5707963)` carries +X to +Y — and `quatMul(a, b)` turns
+ * by `b` FIRST, then by `a`, as a matrix product does. `quatRotate` is the arithmetic the
+ * renderer itself turns an instance by, so what a kernel computes with it is what is drawn.
+ */
+const QUAT_MODULE: SharedWgslModule = {
+  summary: "unit quaternions (x, y, z, w) for per-instance orient: axis-angle, multiply, rotate, from a frame, look-at, from-to, slerp",
+  source: `fn quatAxisAngle(axis: vec3f, angle: f32) -> vec4f {
+  let halfAngle = angle * 0.5;
+  return vec4f(normalize(axis) * sin(halfAngle), cos(halfAngle));
+}
+
+fn quatMul(a: vec4f, b: vec4f) -> vec4f {
+  return vec4f(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz));
+}
+
+fn quatRotate(q: vec4f, v: vec3f) -> vec3f {
+  let t = 2.0 * cross(q.xyz, v);
+  return v + q.w * t + cross(q.xyz, t);
+}
+
+fn quatFromFrame(x: vec3f, y: vec3f, z: vec3f) -> vec4f {
+  let trace = x.x + y.y + z.z;
+  if (trace > 0.0) {
+    let s = sqrt(trace + 1.0) * 2.0;
+    return vec4f((y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s, 0.25 * s);
+  }
+  if (x.x > y.y && x.x > z.z) {
+    let s = sqrt(1.0 + x.x - y.y - z.z) * 2.0;
+    return vec4f(0.25 * s, (y.x + x.y) / s, (z.x + x.z) / s, (y.z - z.y) / s);
+  }
+  if (y.y > z.z) {
+    let s = sqrt(1.0 + y.y - x.x - z.z) * 2.0;
+    return vec4f((y.x + x.y) / s, 0.25 * s, (z.y + y.z) / s, (z.x - x.z) / s);
+  }
+  let s = sqrt(1.0 + z.z - x.x - y.y) * 2.0;
+  return vec4f((z.x + x.z) / s, (z.y + y.z) / s, 0.25 * s, (x.y - y.x) / s);
+}
+
+fn quatLookAt(forward: vec3f, up: vec3f) -> vec4f {
+  let z = normalize(forward);
+  let side = cross(up, z);
+  let sideLength = length(side);
+  let spare = cross(select(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(z.x) > 0.9), z);
+  let x = select(side / max(sideLength, 1e-12), normalize(spare), sideLength < 1e-6);
+  return quatFromFrame(x, cross(z, x), z);
+}
+
+fn quatFromTo(a: vec3f, b: vec3f) -> vec4f {
+  let u = normalize(a);
+  let v = normalize(b);
+  let cosine = dot(u, v);
+  if (cosine < -0.999999) {
+    let axis = normalize(cross(select(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), abs(u.x) > 0.9), u));
+    return vec4f(axis, 0.0);
+  }
+  return normalize(vec4f(cross(u, v), 1.0 + cosine));
+}
+
+fn quatSlerp(a: vec4f, b: vec4f, t: f32) -> vec4f {
+  var end = b;
+  var cosine = dot(a, b);
+  if (cosine < 0.0) {
+    end = -b;
+    cosine = -cosine;
+  }
+  if (cosine > 0.9995) {
+    return normalize(mix(a, end, t));
+  }
+  let angle = acos(cosine);
+  return (a * sin((1.0 - t) * angle) + end * sin(t * angle)) / sin(angle);
+}`,
+};
+
+/**
+ * B263 — A LOT IN 0 .. n − 1 FROM A HASH, without a divide.
+ *
+ * The line everyone writes is `hash % n`. On Apple GPUs the remainder (and the quotient) of
+ * the HIGH HALF of a 32-bit value by a constant is wrong: `(h >> 16u) % 97u` returned 63993
+ * where the CPU says 9, in a kernel and in a fragment shader alike, with every shift and
+ * mask around it correct (`docs/apple-gpu-divide-high-half-2026-10-06.md`). The high half is
+ * exactly what a careful author takes from a multiplicative hash, because its low bits are
+ * its worst.
+ *
+ * So the lot is a scale, not a remainder: the high half is a number in 0 .. 65535, times n,
+ * shifted down by 16. One multiply, exact, the same on every device and equal to
+ * `hashLotReference` below to the bit. n may be anything up to 65536; above that the
+ * product leaves 32 bits.
+ *
+ * A module of its own and not three more lines of `hash`: that text is in every shipped
+ * shader that includes the hashes, and adding to it would move every one of them (§V309).
+ * It calls nothing, so it is used after any u32 hash, the author's own included.
+ */
+const LOT_MODULE: SharedWgslModule = {
+  summary: "hashLot(h, n): a lot in 0..n-1 from a u32 hash, exact on every GPU (never hash % n)",
+  source: `fn hashLot(h: u32, n: u32) -> u32 {
+  return ((h >> 16u) * n) >> 16u;
+}`,
+};
+
+/**
+ * The CPU's `hashLot`, bit for bit: what a test, an oracle or a document source computes to
+ * know which lot a shader will draw. `nodes/definitions/hash-lot.gpu.test.ts` holds the two
+ * together on Dawn, in a kernel and in a fragment shader.
+ */
+export function hashLotReference(hash: number, n: number): number {
+  return (Math.imul(hash >>> 16, n) >>> 16) >>> 0;
+}
+
+/**
+ * T1618b — A COORDINATE FOLDED INTO ONE TILE: how a map is read past its edge.
+ *
+ * A texture coordinate from 0 to 1 covers a map once. What a coordinate outside that reads
+ * is a choice about the SAMPLING, not about the coordinate: the map carries on tile after
+ * tile (repeat), or every other tile is turned round so no tile shows a seam (mirror). Each
+ * function takes one axis's coordinate and returns where in the tile it reads, 0 to 1.
+ *
+ * ⚑ ONE TEXT, TWO READERS. The stock materials' Map Extend reads its maps through exactly
+ * this (`scene-render.wgsl.ts` pastes this source), and a Material · WGSL or a Custom WGSL
+ * that says `// @use extend` gets the same two functions: a procedural pattern keyed to
+ * `s.uv` then tiles where a stock map on the same surface does.
+ *
+ * `extendRepeat` is the coordinate's fraction: 1.25 reads what 0.25 reads, −0.25 what 0.75
+ * does, and a whole number reads the tile's start. `extendMirror` turns every odd tile
+ * round: 1.25 reads what 0.75 reads, and a whole number is an edge the two tiles share.
+ */
+const EXTEND_MODULE: SharedWgslModule = {
+  summary: "extendRepeat(c), extendMirror(c): a coordinate folded into one tile, 0..1 — how a stock material's Map Extend tiles",
+  source: `fn extendRepeat(coordinate: f32) -> f32 {
+  return fract(coordinate);
+}
+
+fn extendMirror(coordinate: f32) -> f32 {
+  let turn = coordinate - 2.0 * floor(coordinate * 0.5);
+  return 1.0 - abs(1.0 - turn);
+}`,
+};
+
 export const SHARED_WGSL_MODULES: Readonly<Record<string, SharedWgslModule>> = {
   hash: HASH_MODULE,
+  lot: LOT_MODULE,
+  extend: EXTEND_MODULE,
   grid: GRID_MODULE,
   "surface-detail": SURFACE_DETAIL_MODULE,
   "light-depth": LIGHT_DEPTH_MODULE,
+  quat: QUAT_MODULE,
 };
 
 /** The directive a source writes, in the file's own `// @` comment idiom. */

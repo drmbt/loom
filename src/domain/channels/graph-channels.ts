@@ -1,11 +1,13 @@
-import type { GraphDocument } from "../types/graph.ts";
+import type { FlatGraph, GraphDocument } from "../types/graph.ts";
+import { ZERO_FRAME } from "../types/frame.ts";
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import type { ParameterValue, StoredParameter } from "../types/parameters.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { effectiveParameterSchema, resolveParameterSchema, type ChannelResolver, type ParameterMorphs } from "../parameters/resolve.ts";
+import { NO_INSTANCES, parameterReadOptions } from "../parameters/node-references.ts";
 import { nodeNames } from "../graph/names.ts";
-import { hasMorphRecords } from "../presets/morph-index.ts";
+import { NO_MORPHS, hasMorphRecords } from "../presets/morph-index.ts";
 import { hasTimelineCueLists } from "../presets/timeline-cues.ts";
 import { storedStaticValue } from "../parameters/slots.ts";
 import { defaultParameterValue } from "../parameters/validate.ts";
@@ -37,7 +39,7 @@ import { defaultParameterValue } from "../parameters/validate.ts";
  * therefore read through the resolver's own fold, over that same static view.
  */
 export function graphChannelResolver(
-  graph: GraphDocument,
+  graph: FlatGraph,
   registry: NodeRegistryView,
   morphs?: ParameterMorphs,
 ): ChannelResolver {
@@ -108,7 +110,11 @@ export function graphChannelResolver(
         const retained = storedStaticValue(stored);
         if (retained !== undefined) parameters[key] = retained;
       }
-      const resolved = resolveParameterSchema({ ...node, parameters }, schema, { frame: context.frame, morphs });
+      // §T1557b: through the factory, with NO channel resolver on purpose (said, not omitted):
+      // this IS a channel resolver, and every slot was settled to its static above, so the
+      // reader has no expression to answer — only the fold reads the frame and the morphs.
+      const read = parameterReadOptions({ graph, registry, frame: context.frame, channels: undefined, flattening: { morphs: morphs ?? NO_MORPHS, instanceChannels: NO_INSTANCES } });
+      const resolved = resolveParameterSchema({ ...node, parameters }, schema, read);
       for (const key of fading) {
         const root = key.split(".")[0] as string;
         if (resolved.get(root)?.driven === true) values[root] = resolved.values[root] as ParameterValue;
@@ -119,15 +125,6 @@ export function graphChannelResolver(
     return Number.isFinite(value) ? value : undefined;
   };
 }
-
-/** §V44's deterministic zero frame: resolving outside a frame is t=0, not an error. */
-const ZERO_FRAME: FrameEvaluationInput = {
-  timeSeconds: 0,
-  deltaSeconds: 0,
-  frameIndex: 0,
-  mode: "offline",
-  randomSeed: 0,
-};
 
 /**
  * True when any parameter in the document animates per frame — an expression or driven

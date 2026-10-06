@@ -1,0 +1,296 @@
+/*
+ * The snap (T1639b): what `wire-snap.ts` appends to a node and to the viewport for
+ * 0.72 s when a wire lands. Sizes, timings and what they are measured from are in
+ * docs/wire-snap-design-2026-10-06.md.
+ *
+ * Every colour is `--snap-color`, which the script sets to the port type's token (§V26,
+ * §V17); this file names no colour of its own. Every size that has to hold on screen is a
+ * design size times `--snap-k` (`wireScale`), written on the effect's own two elements.
+ *
+ * Where a node's box cannot change: everything here is absolutely positioned inside
+ * `.snap`, which is `inset: 0` in the node's wrapper (§V389).
+ */
+
+.snap {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.art,
+.bleedArt {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+/* The bar and the rings carry a little light of their own, outside the node too: beside a
+   live preview tile the border line and what is outside it are all that can be seen. */
+.art {
+  filter: drop-shadow(0 0 calc(2.5px * var(--snap-k)) var(--snap-color));
+}
+
+/*
+ * The glow in the node's body: the same two bars, wide and blurred, cut at the node's
+ * own edge. The clip is on the box and the blur is on the drawing inside it, in that
+ * order, so the light spreads into the body and stops at the border.
+ */
+.bleed {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.bleedArt {
+  filter: blur(calc(9px * var(--snap-k)));
+}
+
+/*
+ * THE BAR. The border is one `<rect>` with `pathLength="1"`, so a dash is a share of the
+ * border's length: `--snap-dash` long, starting at `--snap-at`, the port. Both are written
+ * as lengths (`0.06px` is 6 % of the border), because a `calc()` that comes to a bare
+ * number is not a length and the declaration would be dropped. The pattern is one dash
+ * and one gap that together are the whole border, so a dash that runs past the outline's
+ * start comes round without a seam.
+ *
+ * Two copies. One moves clockwise and one the other way, each to the point opposite the
+ * port, half the border away. Both grow from nothing in the first 12 %: together that is
+ * the single bar at the port that splits in two.
+ */
+.bar {
+  fill: none;
+  stroke: var(--snap-color);
+  stroke-linecap: round;
+  stroke-dasharray: var(--snap-dash) calc(1px - var(--snap-dash));
+  animation-duration: 720ms;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+.core {
+  stroke-width: calc(2.5px * var(--snap-k));
+}
+
+.glow {
+  stroke-width: calc(30px * var(--snap-k));
+  opacity: 0.5;
+}
+
+.clockwise {
+  animation-name: wire-snap-clockwise, wire-snap-bar-fade;
+}
+
+.counter {
+  animation-name: wire-snap-counter, wire-snap-bar-fade;
+}
+
+.glow.clockwise {
+  animation-name: wire-snap-clockwise, wire-snap-glow-fade;
+}
+
+.glow.counter {
+  animation-name: wire-snap-counter, wire-snap-glow-fade;
+}
+
+/* The dash covers [at, at + dash] at the start and [at + 0.5 - dash, at + 0.5] at the end. */
+@keyframes wire-snap-clockwise {
+  from {
+    stroke-dasharray: 0px 1px;
+    stroke-dashoffset: calc(-1 * var(--snap-at));
+  }
+  12% {
+    stroke-dasharray: var(--snap-dash) calc(1px - var(--snap-dash));
+    stroke-dashoffset: calc(-1 * var(--snap-at) - 0.12 * (0.5px - var(--snap-dash)));
+  }
+  to {
+    stroke-dasharray: var(--snap-dash) calc(1px - var(--snap-dash));
+    stroke-dashoffset: calc(-1 * var(--snap-at) - (0.5px - var(--snap-dash)));
+  }
+}
+
+/* The mirror: [at - dash, at] at the start and [at - 0.5, at - 0.5 + dash] at the end. */
+@keyframes wire-snap-counter {
+  from {
+    stroke-dasharray: 0px 1px;
+    stroke-dashoffset: calc(-1 * var(--snap-at));
+  }
+  12% {
+    stroke-dasharray: var(--snap-dash) calc(1px - var(--snap-dash));
+    stroke-dashoffset: calc(var(--snap-dash) - var(--snap-at) + 0.12 * (0.5px - var(--snap-dash)));
+  }
+  to {
+    stroke-dasharray: var(--snap-dash) calc(1px - var(--snap-dash));
+    stroke-dashoffset: calc(0.5px - var(--snap-at));
+  }
+}
+
+/* Bright from the first frame, fading over the last third, gone where the two would meet. */
+@keyframes wire-snap-bar-fade {
+  from {
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes wire-snap-glow-fade {
+  from {
+    opacity: 0.5;
+  }
+  55% {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * THE RINGS. Two, out of the port, the inner one gone first. `r` is animated and not a
+ * scale, so the line stays a hairline as the ring grows.
+ */
+.ring {
+  fill: none;
+  stroke: var(--snap-color);
+  stroke-width: calc(1.25px * var(--snap-k));
+  animation-timing-function: var(--ease-out);
+  animation-fill-mode: both;
+}
+
+.ringOuter {
+  animation-name: wire-snap-ring-outer;
+  animation-duration: 460ms;
+}
+
+.ringInner {
+  animation-name: wire-snap-ring-inner;
+  animation-duration: 360ms;
+}
+
+@keyframes wire-snap-ring-outer {
+  from {
+    r: calc(8px * var(--snap-k));
+    opacity: 0.95;
+  }
+  to {
+    r: calc(22px * var(--snap-k));
+    opacity: 0;
+  }
+}
+
+@keyframes wire-snap-ring-inner {
+  from {
+    r: calc(5px * var(--snap-k));
+    opacity: 0.8;
+  }
+  to {
+    r: calc(15px * var(--snap-k));
+    opacity: 0;
+  }
+}
+
+/* The dot's pulse. The node's own dot is drawn above this one and does not change. */
+.dot {
+  fill: var(--snap-color);
+  animation: wire-snap-dot 220ms var(--ease-out) both;
+}
+
+@keyframes wire-snap-dot {
+  from {
+    r: 3.5px;
+    opacity: 0.9;
+  }
+  40% {
+    r: calc(3.5px + 3px * var(--snap-k));
+    opacity: 0.7;
+  }
+  to {
+    r: 3.5px;
+    opacity: 0;
+  }
+}
+
+/*
+ * THE WIRE'S COLOUR FILL: the curve the new edge takes, bright in its type's colour,
+ * fading into the quiet hairline that is arriving under it through the document. It sits
+ * where the wire in flight sat (React Flow's connection line is at this z-index).
+ */
+.fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1001;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.fillCore,
+.fillGlow {
+  fill: none;
+  stroke-linecap: round;
+  animation: wire-snap-fill 420ms var(--ease-out) both;
+}
+
+.fillCore {
+  stroke: var(--snap-color);
+  stroke-width: calc(2px * var(--snap-k));
+}
+
+.fillGlow {
+  stroke: color-mix(in srgb, var(--snap-color) 30%, transparent);
+  stroke-width: calc(7px * var(--snap-k));
+}
+
+@keyframes wire-snap-fill {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * REDUCED MOTION (§V19). The script does not create the bars, the glow, the inner ring or
+ * the dot, so nothing travels and nothing grows. What is left is a still ring at the port
+ * and the wire in its colour, shown for 0.3 s and removed by the same timer. The rules
+ * are stated here as well as decided in the script, so neither can be wrong alone.
+ */
+.snap[data-reduced] .ring,
+.fill[data-reduced] .fillCore,
+.fill[data-reduced] .fillGlow {
+  animation: none;
+}
+
+.snap[data-reduced] .ring {
+  r: calc(8px * var(--snap-k));
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .ring,
+  .dot,
+  .fillCore,
+  .fillGlow {
+    animation: none;
+  }
+
+  .bar,
+  .dot {
+    display: none;
+  }
+
+  .ring {
+    r: calc(8px * var(--snap-k));
+    opacity: 0.9;
+  }
+}

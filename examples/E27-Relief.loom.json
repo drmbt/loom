@@ -343,7 +343,7 @@
       "beat": {
         "definitionVersion": 1,
         "id": "beat",
-        "label": "beat1",
+        "label": "pattern_beat",
         "parameters": {
           "amount": 1,
           "bpm": 112
@@ -357,7 +357,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "level_bed",
         "parameters": {
           "blacklevel": 0.12,
           "brightness": 1,
@@ -375,7 +375,7 @@
       "bgain": {
         "definitionVersion": 1,
         "id": "bgain",
-        "label": "kick1",
+        "label": "math_kick",
         "parameters": {
           "operand": 0,
           "operation": "multiply"
@@ -389,9 +389,9 @@
       "body": {
         "definitionVersion": 1,
         "id": "body",
-        "label": "body1",
+        "label": "geometry_body",
         "parameters": {
-          "material": "phosphor1",
+          "material": "material_phosphor",
           "mode": "instances",
           "scale": 0.0026,
           "shape": "quad",
@@ -423,7 +423,7 @@
       "braid": {
         "definitionVersion": 1,
         "id": "braid",
-        "label": "braid1",
+        "label": "reorder_braid",
         "parameters": {
           "outa": "in2lum",
           "outb": "in1b",
@@ -439,7 +439,7 @@
       "bridge": {
         "definitionVersion": 1,
         "id": "bridge",
-        "label": "bridge1",
+        "label": "sample_bridge",
         "parameters": {
           "count": 105600
         },
@@ -452,7 +452,7 @@
       "bsub": {
         "definitionVersion": 1,
         "id": "bsub",
-        "label": "bsub1",
+        "label": "math_bsub",
         "parameters": {
           "operand": -0.713,
           "operation": "add"
@@ -466,7 +466,7 @@
       "burn": {
         "definitionVersion": 1,
         "id": "burn",
-        "label": "burn1",
+        "label": "add_burn",
         "parameters": {},
         "position": {
           "x": 1320,
@@ -477,7 +477,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "webcam1",
         "parameters": {},
         "position": {
           "x": -1080,
@@ -488,9 +488,9 @@
       "ceil": {
         "definitionVersion": 1,
         "id": "ceil",
-        "label": "ceil1",
+        "label": "channelin_ceil",
         "parameters": {
-          "channel": "roof1",
+          "channel": "analyze_roof",
           "fallback": 1
         },
         "position": {
@@ -502,14 +502,14 @@
       "coat": {
         "definitionVersion": 1,
         "id": "coat",
-        "label": "coat1",
+        "label": "lookup_coat",
         "parameters": {
           "channel": "luminance",
           "offset": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cycle1').chan.value"
+                "source": "op('lfo_cycle').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -530,7 +530,7 @@
       "cycle": {
         "definitionVersion": 1,
         "id": "cycle",
-        "label": "cycle1",
+        "label": "lfo_cycle",
         "parameters": {
           "amplitude": 0,
           "frequency": 0.035,
@@ -547,7 +547,7 @@
       "driftx": {
         "definitionVersion": 1,
         "id": "driftx",
-        "label": "driftx1",
+        "label": "lfo_driftx",
         "parameters": {
           "amplitude": 0.3,
           "frequency": 0.019,
@@ -564,7 +564,7 @@
       "drifty": {
         "definitionVersion": 1,
         "id": "drifty",
-        "label": "drifty1",
+        "label": "lfo_drifty",
         "parameters": {
           "amplitude": 0.22,
           "frequency": 0.013,
@@ -581,7 +581,7 @@
       "env": {
         "definitionVersion": 1,
         "id": "env",
-        "label": "env1",
+        "label": "lag_env",
         "parameters": {
           "lag": 0.04,
           "releaseRatio": 8
@@ -595,7 +595,7 @@
       "eye": {
         "definitionVersion": 1,
         "id": "eye",
-        "label": "eye1",
+        "label": "camera_eye",
         "parameters": {
           "eye": [
             0,
@@ -606,7 +606,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('sway1').chan.value"
+                "source": "op('lfo_sway').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -634,7 +634,7 @@
       "guard": {
         "definitionVersion": 1,
         "id": "guard",
-        "label": "roofsafe1",
+        "label": "limit_roofsafe",
         "parameters": {
           "maximum": 2,
           "minimum": 0.06
@@ -648,7 +648,7 @@
       "halo": {
         "definitionVersion": 1,
         "id": "halo",
-        "label": "halo1",
+        "label": "blur_halo",
         "parameters": {
           "extend": "hold",
           "filter": "gaussian",
@@ -663,7 +663,7 @@
       "heat": {
         "definitionVersion": 1,
         "id": "heat",
-        "label": "heat1",
+        "label": "add_heat",
         "parameters": {},
         "position": {
           "x": -180,
@@ -674,17 +674,17 @@
       "lift": {
         "definitionVersion": 1,
         "id": "lift",
-        "label": "lift1",
+        "label": "kernel_lift",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"sample\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 105600,
-          "kernel": "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  /* p.sample is the bridge's pair, bound from UPSTREAM (T401), and it carries TWO fields:\n     rgb is the paletted colour, alpha is the SOURCE's own luminance (braid1). Height comes\n     off alpha so the palette never doubles as a height curve — see the note above. */\n  let height = p.sample.a;\n  /* T676 — THE SHEET STANDS UP, 70 degrees off the floor, and ORIENTATION FOLLOWS THE\n     SOURCE.\n\n     Owner: \"its on its Back both in preview and final output. we're laying the points on\n     their back which makes sense for the mountains but looks weird when we do webcam\n     right\". That sentence is the rule, and it is why this is not a tuning change. A\n     HEIGHTFIELD is read from above, so T503 was right to lay the sheet down for the\n     noise-and-dome understudy. A SCANNED VIDEO IMAGE is read FACE-ON — you look at a face\n     the way you looked at it — and this example's real subject is the webcam on branch 1.\n     Face-on with a slight lean is also the historical Rutt-Etra frame, which is what this\n     document is quoting.\n\n     WHY 70 AND NOT THE 90 THE OWNER SAID. The owner gave a number describing the problem.\n     A true 90 with a camera in front puts the view direction straight back down the height\n     axis, which is EXACTLY the failure T503 fixed (the first build looked 86% down it and\n     the relief did not project at all). It also removes both cues this example actually\n     reads by, and it has no third one to fall back on: the material is UNLIT, so there is\n     no shading and no raking light — a bas-relief's usual mechanism is simply unavailable\n     here. What is left is SILHOUETTE against the far ground and SCAN LINES BUNCHING on a\n     rising slope, and both are obliquity cues. Leaning the sheet back 20 degrees keeps the\n     camera about 20-25 degrees off its normal: the image reads face-on, and the relief\n     still has somewhere to project.\n\n     THE GEOMETRY. The grid arrives in the xy plane. Read 'u' as across, 'v' as up the\n     sheet, 'h' as out along its normal, then rotate (v, h) about x by 70 degrees:\n       y = v*sin70 + h*cos70,  z = -v*cos70 + h*sin70\n     so the sheet's own up axis leans back and its normal leans toward the camera on +z.\n     At 0 degrees this collapses to the old (u, h, v) lay-down, which is the check that the\n     rotation is the only thing that changed.\n\n     THE 'v' SIGN IS T512's AND IT SURVIVES INTACT. The bridge reads\n     uv.y = 0.5 - position.y*0.5, so position.y = +1 is TEXEL ROW 0 — the row an output\n     shows at the TOP of the frame. Laid flat, the top of a picture belonged at the FAR\n     edge, which is z NEGATIVE from a camera on +z. STOOD UP, the top of a picture belongs\n     at the TOP, which is y POSITIVE — and the same negation delivers both, because the\n     rotation carries it. Read the mapping in points/codegen.ts rather than guessing: this\n     sign is coupled to it and B105 is what guessing costs.\n\n     Baked rather than parameterised: this kernel has exactly one consumer, the 'lift1'\n     node below. A shared kernel that could only do one orientation would be the same fault\n     as two hand-maintained branches — but there is nothing here to share it with.\n     Sampled on a square (the mapping demands it), drawn 16:9. */\n  let v = p.position.y * 1.15;\n  /* T809 — THE AUDIO SCALES THE LIFT AMPLITUDE, AND NOTHING ELSE.\n     ctx.value1 is the kick, rest-subtracted so silence IS zero (T479, T701). It is added\n     to the 1.05 here rather than driving norm1's white point, because the white point\n     belongs to the exposure loop and a second driver on it would fight the normalisation\n     T797 just gave this file (§V730: one decision, one site). Shipped at gain 0, which\n     makes this term EXACTLY 1.05 + 0.0 — an f32 add of zero is exact, so the shipped\n     picture is byte-identical to the pre-T809 file and relief-claims measures it. */\n  let h = height * (1.05 + ctx.value1) - 0.16;\n  q.position = vec3f(p.position.x * 1.7778, v * 0.9397 + h * 0.3420, -v * 0.3420 + h * 0.9397);\n  /* Alpha has done its job, so it goes back to 1 before the draw: body1 maps this same\n     attribute onto the material TINT (T478), and a tint whose alpha carried the HEIGHT\n     would have made the low ground transparent as well as dark. */\n  q.sample = vec4f(p.sample.rgb, 1.0);\n  return q;\n}",
+          "kernel": "fn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  /* p.sample is the bridge's pair, bound from UPSTREAM (T401), and it carries TWO fields:\n     rgb is the paletted colour, alpha is the SOURCE's own luminance (reorder_braid). Height comes\n     off alpha so the palette never doubles as a height curve — see the note above. */\n  let height = p.sample.a;\n  /* T676 — THE SHEET STANDS UP, 70 degrees off the floor, and ORIENTATION FOLLOWS THE\n     SOURCE.\n\n     Owner: \"its on its Back both in preview and final output. we're laying the points on\n     their back which makes sense for the mountains but looks weird when we do webcam\n     right\". That sentence is the rule, and it is why this is not a tuning change. A\n     HEIGHTFIELD is read from above, so T503 was right to lay the sheet down for the\n     noise-and-dome understudy. A SCANNED VIDEO IMAGE is read FACE-ON — you look at a face\n     the way you looked at it — and this example's real subject is the webcam on branch 1.\n     Face-on with a slight lean is also the historical Rutt-Etra frame, which is what this\n     document is quoting.\n\n     WHY 70 AND NOT THE 90 THE OWNER SAID. The owner gave a number describing the problem.\n     A true 90 with a camera in front puts the view direction straight back down the height\n     axis, which is EXACTLY the failure T503 fixed (the first build looked 86% down it and\n     the relief did not project at all). It also removes both cues this example actually\n     reads by, and it has no third one to fall back on: the material is UNLIT, so there is\n     no shading and no raking light — a bas-relief's usual mechanism is simply unavailable\n     here. What is left is SILHOUETTE against the far ground and SCAN LINES BUNCHING on a\n     rising slope, and both are obliquity cues. Leaning the sheet back 20 degrees keeps the\n     camera about 20-25 degrees off its normal: the image reads face-on, and the relief\n     still has somewhere to project.\n\n     THE GEOMETRY. The grid arrives in the xy plane. Read 'u' as across, 'v' as up the\n     sheet, 'h' as out along its normal, then rotate (v, h) about x by 70 degrees:\n       y = v*sin70 + h*cos70,  z = -v*cos70 + h*sin70\n     so the sheet's own up axis leans back and its normal leans toward the camera on +z.\n     At 0 degrees this collapses to the old (u, h, v) lay-down, which is the check that the\n     rotation is the only thing that changed.\n\n     THE 'v' SIGN IS T512's AND IT SURVIVES INTACT. The bridge reads\n     uv.y = 0.5 - position.y*0.5, so position.y = +1 is TEXEL ROW 0 — the row an output\n     shows at the TOP of the frame. Laid flat, the top of a picture belonged at the FAR\n     edge, which is z NEGATIVE from a camera on +z. STOOD UP, the top of a picture belongs\n     at the TOP, which is y POSITIVE — and the same negation delivers both, because the\n     rotation carries it. Read the mapping in points/codegen.ts rather than guessing: this\n     sign is coupled to it and B105 is what guessing costs.\n\n     Baked rather than parameterised: this kernel has exactly one consumer, the 'kernel_lift'\n     node below. A shared kernel that could only do one orientation would be the same fault\n     as two hand-maintained branches — but there is nothing here to share it with.\n     Sampled on a square (the mapping demands it), drawn 16:9. */\n  let v = p.position.y * 1.15;\n  /* T809 — THE AUDIO SCALES THE LIFT AMPLITUDE, AND NOTHING ELSE.\n     ctx.value1 is the kick, rest-subtracted so silence IS zero (T479, T701). It is added\n     to the 1.05 here rather than driving level_norm's white point, because the white point\n     belongs to the exposure loop and a second driver on it would fight the normalisation\n     T797 just gave this file (§V730: one decision, one site). Shipped at gain 0, which\n     makes this term EXACTLY 1.05 + 0.0 — an f32 add of zero is exact, so the shipped\n     picture is byte-identical to the pre-T809 file and relief-claims measures it. */\n  let h = height * (1.05 + ctx.value1) - 0.16;\n  q.position = vec3f(p.position.x * 1.7778, v * 0.9397 + h * 0.3420, -v * 0.3420 + h * 0.9397);\n  /* Alpha has done its job, so it goes back to 1 before the draw: geometry_body maps this same\n     attribute onto the material TINT (T478), and a tint whose alpha carried the HEIGHT\n     would have made the low ground transparent as well as dark. */\n  q.sample = vec4f(p.sample.rgb, 1.0);\n  return q;\n}",
           "seed": 41,
           "value1": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('kick1').chan.low"
+                "source": "op('math_kick').chan.low"
               },
               "static": {
                 "kind": "static",
@@ -703,7 +703,7 @@
       "moved": {
         "definitionVersion": 1,
         "id": "moved",
-        "label": "moved1",
+        "label": "difference_moved",
         "parameters": {},
         "position": {
           "x": -780,
@@ -714,7 +714,7 @@
       "norm": {
         "definitionVersion": 1,
         "id": "norm",
-        "label": "norm1",
+        "label": "level_norm",
         "parameters": {
           "blacklevel": 0,
           "brightness": 1,
@@ -726,7 +726,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('roofsafe1').chan.value"
+                "source": "op('limit_roofsafe').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -745,7 +745,7 @@
       "now": {
         "definitionVersion": 1,
         "id": "now",
-        "label": "now1",
+        "label": "cache_now",
         "parameters": {
           "frames": 2,
           "index": 1,
@@ -760,7 +760,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 1620,
@@ -771,7 +771,7 @@
       "palette": {
         "definitionVersion": 2,
         "id": "palette",
-        "label": "palette1",
+        "label": "ramp_palette",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -843,7 +843,7 @@
       "past": {
         "definitionVersion": 1,
         "id": "past",
-        "label": "past1",
+        "label": "cache_past",
         "parameters": {
           "frames": 8,
           "index": 6,
@@ -858,7 +858,7 @@
       "phosphor": {
         "definitionVersion": 1,
         "id": "phosphor",
-        "label": "phosphor1",
+        "label": "material_phosphor",
         "parameters": {
           "color": [
             1,
@@ -876,7 +876,7 @@
       "pick": {
         "definitionVersion": 1,
         "id": "pick",
-        "label": "pick1",
+        "label": "switch_pick",
         "parameters": {
           "index": 0
         },
@@ -889,7 +889,7 @@
       "ripple": {
         "definitionVersion": 1,
         "id": "ripple",
-        "label": "ripple1",
+        "label": "noise_ripple",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -916,7 +916,7 @@
       "roof": {
         "definitionVersion": 1,
         "id": "roof",
-        "label": "roof1",
+        "label": "analyze_roof",
         "parameters": {
           "channel": "luminance",
           "operation": "maximum"
@@ -945,7 +945,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             1,
@@ -960,9 +960,9 @@
             0.011,
             1
           ],
-          "camera": "eye1",
+          "camera": "camera_eye",
           "lights": "",
-          "scenes": "body1"
+          "scenes": "geometry_body"
         },
         "position": {
           "x": 720,
@@ -973,7 +973,7 @@
       "stir": {
         "definitionVersion": 1,
         "id": "stir",
-        "label": "stir1",
+        "label": "level_stir",
         "parameters": {
           "blacklevel": 0,
           "brightness": 1,
@@ -992,7 +992,7 @@
       "sum": {
         "definitionVersion": 1,
         "id": "sum",
-        "label": "sum1",
+        "label": "add_sum",
         "parameters": {},
         "position": {
           "x": -1080,
@@ -1003,7 +1003,7 @@
       "sway": {
         "definitionVersion": 1,
         "id": "sway",
-        "label": "sway1",
+        "label": "lfo_sway",
         "parameters": {
           "amplitude": 1.15,
           "frequency": 0.024,
@@ -1020,7 +1020,7 @@
       "swell": {
         "definitionVersion": 1,
         "id": "swell",
-        "label": "swell1",
+        "label": "circle_swell",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -1037,7 +1037,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('driftx1').chan.value"
+                "source": "op('lfo_driftx').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1050,7 +1050,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('drifty1').chan.value"
+                "source": "op('lfo_drifty').chan.value"
               },
               "static": {
                 "kind": "static",

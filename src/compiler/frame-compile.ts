@@ -1,19 +1,20 @@
 import type { NodeId } from "../domain/types/ids.ts";
-import type { GraphNode } from "../domain/types/graph.ts";
-import type { NodeDefinition, CompiledNodeDescription } from "../domain/types/node-definition.ts";
+import type { FlatGraph, GraphNode } from "../domain/types/graph.ts";
+import { parameterDependencies } from "../domain/graph/parameter-dependencies.ts";
+import type { NodeDefinition, CompiledNodeDescription, KernelStepsDeclaration } from "../domain/types/node-definition.ts";
 import type { ScenePayload } from "../domain/types/scene.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { ParameterMapBinding, ParameterMorphs } from "../domain/parameters/resolve.ts";
-import { createParameterReadOptions } from "../domain/parameters/node-references.ts";
+import { parameterReadOptions } from "../domain/parameters/node-references.ts";
 import type { PassDescriptor } from "../runtime/backend/plan.ts";
-import { passStructureKey, readPass } from "../runtime/backend/plan.ts";
+import { readPass, samePassStructure } from "../runtime/backend/plan.ts";
 import { compileGraphRetaining, descriptionStructureKey, normalizePass } from "./compile.ts";
 import type { CompileGraphResult, RetainedCompile, RetainedNodeCompile } from "./compile.ts";
 import { isParameterPolicy } from "./resolution.ts";
-import { substepCount } from "./substeps.ts";
-import { resolveNodeParameters } from "./validate.ts";
+import { kernelStepsFor, substepCount } from "./substeps.ts";
+import { flatteningReadsOf, resolveNodeParameters } from "./validate.ts";
 import { scaleOutputPixels } from "./pixel-scale.ts";
 import { timeProbeFor } from "./time-probe.ts";
 import { outputPixelScale } from "../domain/types/graph.ts";
@@ -49,7 +50,8 @@ import type { ActiveSink, CompileRequest, CompiledGraph, CompiledInputBinding, C
  *      (camera → render), so its consumers' uniforms move when it does;
  *   3. PROVES each re-run is structure-preserving: same scratch and pointset
  *      declarations (`descriptionStructureKey`), same pass ids in the same order, and
- *      the same `passStructureKey` per pass as the base plan carries — and
+ *      the same structure per pass as the base plan's (`samePassStructure`: what
+ *      `passStructureKey` compares, without serialising the shader text to do it) — and
  *   4. splices the re-emitted passes over the base plan's, re-deriving loop-begin counts
  *      through `substepCount`, so the result's `signature` is the base's by construction.
  *
@@ -163,13 +165,16 @@ interface AnimatedNode {
 
 function classify(
   retained: RetainedCompile,
+  /** T1652b: re-resolve exactly these nodes, animated or not (`rebaseOnValues`). */
+  only?: ReadonlySet<NodeId>,
 ): { animated: AnimatedNode[]; reason: string | null } {
   const animated: AnimatedNode[] = [];
   for (const nodeId of retained.order) {
     const record = retained.nodes.get(nodeId);
     if (record === undefined) continue;
+    if (only !== undefined && !only.has(nodeId)) continue;
     const keys = animatedRootKeys(record.node, retained.morphs);
-    if (keys.size === 0) continue;
+    if (keys.size === 0 && only === undefined) continue;
     const structural = structuralParameterKeys(record.definition, record.node.parameters);
     for (const key of [...keys].sort()) {
       if (structural.has(key)) {
@@ -246,7 +251,6 @@ function baseMismatch(built: CompileRequest, request: CompileRequest): string | 
   if (!sameSinks(built.sinks, request.sinks)) return "sinks";
   if (built.resolution?.frame !== undefined || request.resolution?.frame !== undefined) return "resolution.frame";
   if (built.resolution?.channels !== request.resolution?.channels) return "resolution.channels";
-  if (built.resolution?.nodes !== request.resolution?.nodes) return "resolution.nodes";
   return null;
 }
 
@@ -276,23 +280,46 @@ export function prepareFrameCompiler(request: CompileRequest, base?: CompileGrap
   return frameCompilerOver(request, base ?? compileGraphRetaining(request));
 }
 
-function frameCompilerOver(request: CompileRequest, result: CompileGraphResult): FrameCompiler {
+/** T1652b: what a re-run left behind, for the caller that keeps it (`rebaseOnValues`). */
+interface RerunCapture {
+  /** The context each re-run node compiled with. */
+  readonly contexts: Map<NodeId, CompilerNodeContext>;
+  /** Scene payloads after the re-run. */
+  scene: ReadonlyMap<string, ScenePayload> | null;
+  /** What each re-run node said: resolving its parameters, then compiling them. */
+  readonly said: Map<NodeId, RuntimeDiagnostic[]>;
+}
+
+function frameCompilerOver(
+  request: CompileRequest,
+  result: CompileGraphResult,
+  only?: ReadonlySet<NodeId>,
+): FrameCompiler & { compileFrame(resolution: ParameterResolution, capture?: RerunCapture): CompiledGraph | null } {
   const { compiled: base, retained } = result;
   if (retained === null) {
     return { base, uniformOnly: false, reason: "The compile produced no plan to splice over.", compileFrame: () => null };
   }
-  const { animated, reason: classified } = classify(retained);
+  const { animated, reason: classified } = classify(retained, only);
   if (classified !== null) {
     return { base, uniformOnly: false, reason: classified, compileFrame: () => null };
   }
 
-  const basePassKeys = new Map<string, string>();
-  for (const entry of base.passSignatures) basePassKeys.set(entry.id, entry.signature);
+  /* T1603b: the base's own passes, to compare a re-emitted one against where it stands
+     (`samePassStructure`) instead of serialising it, shader text and all, every frame. */
+  const basePasses = new Map<string, PassDescriptor>();
+  for (const pass of base.passes) basePasses.set(pass.id, pass);
   /** Loop-begin markers, with the parameter whose value sets their count. */
   const loopCounts = new Map<string, { nodeId: NodeId; key: string }>();
+  /** T1583b: kernel regions, whose count is two parameters' product (T1585b: or a rate's). */
+  const kernelSteps = new Map<string, { nodeId: NodeId; declared: KernelStepsDeclaration }>();
   for (const pass of base.passes) {
     if (pass.kind !== "loop" || pass.edge !== "begin" || pass.nodeId === undefined) continue;
-    const key = retained.nodes.get(pass.nodeId)?.definition.temporal?.substeps;
+    const definition = retained.nodes.get(pass.nodeId)?.definition;
+    if (pass.steps !== undefined) {
+      if (definition?.steps !== undefined) kernelSteps.set(pass.id, { nodeId: pass.nodeId, declared: definition.steps });
+      continue;
+    }
+    const key = definition?.temporal?.substeps;
     if (key !== undefined) loopCounts.set(pass.id, { nodeId: pass.nodeId, key });
   }
 
@@ -302,25 +329,21 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
     return null;
   };
 
-  const compileFrame = (resolution: ParameterResolution): CompiledGraph | null => {
+  const compileFrame = (resolution: ParameterResolution, capture?: RerunCapture): CompiledGraph | null => {
     if (reason !== null) return null;
     // T1497b: the morph index the BASE was compiled and classified with, unless the
     // caller brings its own — the same precedence `compileGraphRetaining` applies.
     const morphs = resolution.morphs ?? retained.morphs;
-    // The same reader `validateGraph` builds (§V939): a caller's own `nodes` wins, as there.
-    const reader: ParameterResolution =
-      resolution.nodes === undefined
-        ? {
-            ...resolution,
-            ...createParameterReadOptions({
-              graph: retained.graph,
-              registry: request.registry,
-              frame: resolution.frame,
-              channels: resolution.channels,
-              morphs,
-            }),
-          }
-        : { ...resolution, morphs };
+    // T1485b: the instances the BASE compile read through, by the same precedence.
+    const instances = resolution.instances ?? retained.instances;
+    // The same reader `validateGraph` builds (§V939).
+    const reader = parameterReadOptions({
+      graph: retained.graph,
+      registry: request.registry,
+      frame: resolution.frame,
+      channels: resolution.channels,
+      flattening: flatteningReadsOf({ morphs, instances }),
+    });
     // Per-frame resolution diagnostics (a clamped expression, an unattached channel) are
     // dropped, exactly as the full per-frame compile's were by its one consumer.
     const discarded: RuntimeDiagnostic[] = [];
@@ -328,7 +351,18 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
     // T1432b: the same pixel scale the full compile gave the node's context.
     const pixelScale = outputPixelScale(retained.request.settings);
     for (const entry of animated) {
-      const resolved = resolveNodeParameters(entry.record.node, entry.schema, entry.record.definition.type, discarded, reader);
+      // T1652b: a rebase keeps what the node said, exactly as `validateGraph` collects it.
+      const said: RuntimeDiagnostic[] | undefined = capture === undefined ? undefined : [];
+      // §T1641b: the retained keys ride along so that a variant's kept settings are not
+      // written up as undeclared sixty times a second only to be discarded below.
+      // The note and the version are what `validateGraph` passes too: a rebase compares what
+      // the node says with what it said there, sentence for sentence.
+      const resolved = resolveNodeParameters(entry.record.node, entry.schema, entry.record.definition.type, said ?? discarded, reader, {
+        retained: entry.record.definition.retainedParameterKeys,
+        note: entry.record.definition.parameterKeysNote,
+        otherVersion: entry.record.node.definitionVersion !== entry.record.definition.version,
+      });
+      if (said !== undefined && said.length > 0) capture?.said.set(entry.nodeId, said);
       values.set(entry.nodeId, { parameters: scaleOutputPixels({ ...resolved.values }, entry.schema, pixelScale), parameterMaps: resolved.maps });
     }
 
@@ -342,7 +376,7 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       const sceneMoved = bindingsReadScene(record.context.inputs, recompiled);
       if (frameValues === undefined && !sceneMoved) continue;
       // T1421b: the probe moves with the frame, exactly as the full compile's does.
-      const probe = timeProbeFor(record.node, record.definition, retained.graph, request.registry, { ...resolution, morphs }, retained.request.settings);
+      const probe = timeProbeFor(record.node, record.definition, retained.graph, request.registry, { ...resolution, morphs, ...(instances === undefined ? {} : { instances }) }, retained.request.settings);
       const context: CompilerNodeContext = {
         ...record.context,
         ...(frameValues === undefined ? {} : frameValues),
@@ -357,6 +391,12 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       }
       if (descriptionStructureKey(description) !== record.structureKey) {
         return degrade(`Node "${nodeId}" (${record.node.type}) declared different scratch or pointset storage at this frame; a value-only parameter changed structure.`);
+      }
+      if (capture !== undefined) {
+        capture.contexts.set(nodeId, context);
+        if (description.diagnostics !== undefined && description.diagnostics.length > 0) {
+          capture.said.set(nodeId, [...(capture.said.get(nodeId) ?? []), ...description.diagnostics]);
+        }
       }
       const sceneRaw = (description as { scene?: unknown }).scene;
       if (typeof sceneRaw === "object" && sceneRaw !== null) {
@@ -380,7 +420,8 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       }
       for (let index = 0; index < passes.length; index += 1) {
         const pass = passes[index] as PassDescriptor;
-        if (pass.id !== record.passIds[index] || passStructureKey(pass) !== basePassKeys.get(pass.id)) {
+        const basePass = basePasses.get(pass.id);
+        if (pass.id !== record.passIds[index] || basePass === undefined || !samePassStructure(pass, basePass)) {
           return degrade(`Node "${nodeId}" (${record.node.type}) emitted pass "${pass.id}" with a different structure at this frame; a value-only parameter changed structure.`);
         }
         replacements.set(pass.id, pass);
@@ -392,12 +433,37 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       const replacement = replacements.get(pass.id);
       if (replacement !== undefined) return replacement;
       if (pass.kind !== "loop" || pass.edge !== "begin") return pass;
+      const stepped = kernelSteps.get(pass.id);
+      if (stepped !== undefined && pass.steps !== undefined) {
+        /* T1585b: a RATE's count is this frame's own whether or not any parameter of the
+           node animates, so it is re-derived from the node's base values when none does —
+           which keeps this path saying what a full compile at this frame says. A count
+           declaration with nothing animating has nothing that can have moved. */
+        const node =
+          values.get(stepped.nodeId) ??
+          (typeof stepped.declared.substeps === "string" ? undefined : retained.nodes.get(stepped.nodeId)?.context);
+        if (node === undefined) return pass;
+        // The same function the full compile's region came from, so the two cannot disagree.
+        // The backend derives a rate's count again, for the frame it renders.
+        const { count, iterations, rate } = kernelStepsFor(stepped.declared, node.parameters, resolution.frame?.deltaSeconds ?? 0);
+        const sameRate =
+          rate === undefined
+            ? pass.steps.rate === undefined
+            : pass.steps.rate !== undefined &&
+              rate.perSecond === pass.steps.rate.perSecond &&
+              rate.min === pass.steps.rate.min &&
+              rate.max === pass.steps.rate.max;
+        return count === pass.count && iterations === pass.steps.iterations && sameRate
+          ? pass
+          : { ...pass, count, steps: { ...pass.steps, iterations, ...(rate === undefined ? {} : { rate }) } };
+      }
       const loop = loopCounts.get(pass.id);
       const owner = loop === undefined ? undefined : values.get(loop.nodeId);
       if (loop === undefined || owner === undefined) return pass;
       const count = substepCount(owner.parameters[loop.key]);
       return count === pass.count ? pass : { ...pass, count };
     });
+    if (capture !== undefined) capture.scene = scene;
     return { ...base, passes };
   };
 
@@ -409,4 +475,283 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
     },
     compileFrame,
   };
+}
+
+/**
+ * T1652b — who reads a node's VALUES, per retained compile, kept apart by HOW they read:
+ *
+ *  - `links`: a wire that carries a value or a payload, and a source named by a reference
+ *    parameter (a Render's lights, a Feedback's source). What flows is baked into the
+ *    reader when it compiles, and the per-frame compile re-bakes it only in a frame where
+ *    the producer itself re-ran. So when a stored value moves, these readers move with it.
+ *  - `expressions`: `op('a')` in an expression, a driven channel. A parameter that reads
+ *    this way is resolved by the per-frame compile at EVERY frame (`animatedRootKeys`), from
+ *    the document in hand and that frame's channels. Its value in a frameless plan is never
+ *    what is drawn.
+ *
+ * Built once per structural compile, on the first value written after it, and carried from
+ * each rebase to the next (a values-only revision changes no reference and no wire).
+ */
+interface ValueReaders {
+  readonly links: ReadonlyMap<NodeId, ReadonlyArray<NodeId>>;
+  readonly expressions: ReadonlyMap<NodeId, ReadonlyArray<NodeId>>;
+}
+
+const VALUE_READERS = new WeakMap<RetainedCompile, ValueReaders>();
+
+/** Port kinds that carry a GPU resource: what flows is pixels or points, never a parameter's value. */
+const RESOURCE_PORT_KINDS: ReadonlySet<string> = new Set(["texture2d", "pointset", "buffer"]);
+
+function valueReadersOf(retained: RetainedCompile, registry: CompileRequest["registry"]): ValueReaders {
+  const known = VALUE_READERS.get(retained);
+  if (known !== undefined) return known;
+  const links = new Map<NodeId, NodeId[]>();
+  const expressions = new Map<NodeId, NodeId[]>();
+  const add = (table: Map<NodeId, NodeId[]>, source: NodeId, reader: NodeId): void => {
+    const list = table.get(source);
+    if (list === undefined) table.set(source, [reader]);
+    else if (!list.includes(reader)) list.push(reader);
+  };
+  // §V154, the one traversal: an expression's `op('a')` and a driven channel are READS AT A
+  // FRAME; every other kind is a source named by a reference parameter.
+  for (const [reader, dependencies] of parameterDependencies(retained.graph)) {
+    for (const dependency of dependencies) {
+      add(dependency.kind === "reference" || dependency.kind === "driven" ? expressions : links, dependency.to, reader);
+    }
+  }
+  // A wire that carries a VALUE: a value channel into the next value stage, a scene payload
+  // into its consumer. A texture or a pointset wire carries a resource, and what its
+  // consumer reads of the producer is structure (size, format, attributes).
+  for (const edge of Object.values(retained.graph.edges)) {
+    const source = retained.graph.nodes[edge.source.nodeId];
+    const port = source === undefined ? undefined : registry.get(source.type)?.outputs.find((candidate) => candidate.id === edge.source.portId);
+    if (port !== undefined && RESOURCE_PORT_KINDS.has(port.type.kind)) continue;
+    add(links, edge.source.nodeId, edge.target.nodeId);
+  }
+  const readers: ValueReaders = { links, expressions };
+  VALUE_READERS.set(retained, readers);
+  return readers;
+}
+
+const saidKey = (said: ReadonlyArray<RuntimeDiagnostic> | undefined): string =>
+  said === undefined || said.length === 0 ? "" : JSON.stringify(said);
+
+/**
+ * Whether two flattened nodes (or wires) are the same: the same object, or — a flattening
+ * with instances mints a copy per walk — objects whose fields are the same objects, or say
+ * the same. A document is JSON, so "says the same" is its serialisation; it is only asked
+ * of the fields a copy rebuilt.
+ */
+function sameFlattened(a: object | undefined, b: object | undefined): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+  const left = a as Readonly<Record<string, unknown>>;
+  const right = b as Readonly<Record<string, unknown>>;
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) return false;
+  for (const key of keys) {
+    if (left[key] === right[key]) continue;
+    if (typeof left[key] !== "object" || left[key] === null || JSON.stringify(left[key]) !== JSON.stringify(right[key])) return false;
+  }
+  return true;
+}
+
+/**
+ * T1652b — THE VALUES LANE: the compile of `request`, from the compile of the revision
+ * before it, when only VALUES moved between them (`classifyRevision` in the app says
+ * which revisions those are, and which nodes were `written`).
+ *
+ * A value written on a 150-node document used to re-run the whole of `compileGraph`:
+ * every node re-resolved, the graph re-pruned and re-ordered, every node re-compiled,
+ * every pass re-keyed (10.8 ms of a 57 ms task, measured). The plan that came back
+ * differed from the one before it in the uniform values of a handful of passes.
+ *
+ * This re-resolves the written nodes and what reads them through a LINK (a payload wire, a
+ * reference parameter: `valueReadersOf`), and re-runs `definition.compile` for those,
+ * through the per-frame compile's own re-run and UNDER ITS VERIFIER (§V936): same scratch
+ * and pointset declarations, same pass ids in the same order, the same structure per pass.
+ * Then it is the base plan with those passes spliced, and the base's retained records with
+ * those nodes' moved, so the frames after it splice over this revision.
+ *
+ * ## What reads through an EXPRESSION is the frame's, not this function's
+ *
+ * A parameter with an expression is resolved by the per-frame compile at every frame, from
+ * the retained document (which this function moves to the revision) and that frame's
+ * channels; its uniform in a frameless plan is overwritten before anything is drawn. So a
+ * value read through `op('slider').chan.x`, and everything downstream of that read, costs
+ * a write NOTHING here and arrives with the next frame — which is when it arrived before,
+ * because the frameless value this function used to push for it was a frame-zero value the
+ * frame then replaced. Re-running that closure per write did, per write, what the frame
+ * loop does per frame, and marked every pass in it dirty twice (measured on a 200-node
+ * document: a control read by one expression whose channel most of the document reads,
+ * 44 nodes re-resolved and 82 of 201 passes re-written for each value).
+ *
+ * The plan this returns is therefore NOT the full compile's pass for pass: it is the full
+ * compile's wherever no expression is involved, and the FRAME compiled over it is the frame
+ * compiled over the full compile's (`values-lane.test.ts` holds both).
+ *
+ * The one thing an expression reader is still asked, one hop out: the nodes that read a
+ * WRITTEN node directly are resolved frameless and compared with what they SAID (a slider
+ * dragged past the range of the opacity that reads it must raise its clamp warning). What
+ * a node two or more reads away says is NOT asked on a value write: a finding that depends
+ * on a value carried by a channel is a matter of the frame it is carried at, and the
+ * frameless one in the Problems list stays as of the last structural revision until
+ * §T1646b gives compiled nodes a per-frame problem carrier.
+ *
+ * Returns the reason, as a sentence, whenever it cannot PROVE the result is the full
+ * compile's. The caller then compiles in full, which is what every revision did before
+ * this existed, so a refusal costs time and never a wrong picture or a lost diagnostic:
+ *
+ *  - an input other than the document moved (settings, sinks, device, catalogue, reader);
+ *  - the flattening differs anywhere but at the written nodes (a component instance);
+ *  - a node that reads a written value animates a STRUCTURAL parameter;
+ *  - a re-run node emitted another structure, or threw, or a loop's count moved;
+ *  - a node SAYS something different about its new value: a diagnostic appeared, went or
+ *    changed its words. Diagnostics are part of what a compile answers, and the spliced
+ *    plan carries the base's.
+ *
+ * `frame-compile.test.ts` holds the result against `compileGraphRetaining(request)` pass
+ * for pass on shipped examples.
+ */
+export function rebaseOnValues(previous: CompileGraphResult, request: CompileRequest, written: ReadonlyArray<NodeId>): CompileGraphResult | string {
+  const { compiled: base, retained } = previous;
+  if (retained === null) return "The compile before this value produced no plan to splice over.";
+  if (!base.ok) return "The plan before this value has errors, so it is compiled in full.";
+  const built = retained.request;
+  for (const input of ["settings", "registry", "capabilities", "components"] as const) {
+    if (built[input] !== request[input]) return `The compile's ${input} moved with the value.`;
+  }
+  if (!sameSinks(built.sinks, request.sinks)) return "The compile's sinks moved with the value.";
+  if (built.resolution?.frame !== undefined || request.resolution?.frame !== undefined) return "A plan resolved at a frame is not a base.";
+  if (built.resolution?.channels !== request.resolution?.channels) return "The compile's channel reader moved with the value.";
+
+  const before = built.flattened?.graph;
+  const after = request.flattened?.graph;
+  if (before === undefined || after === undefined) return "No flattening to compare the two revisions by.";
+  // The flattening of a document with no instance holds the document's OWN node and wire
+  // objects (`identityFlattening`), so two revisions compare by reference. The walk of a
+  // document with instances mints copies, and those are compared by what they say: the two
+  // flattenings must differ at the written nodes and nowhere else.
+  const wires = Object.keys(after.edges);
+  if (wires.length !== Object.keys(before.edges).length || wires.some((id) => !sameFlattened(after.edges[id], before.edges[id]))) {
+    return "The flattening's wires differ between the two revisions.";
+  }
+  const moved = new Set<NodeId>(written);
+  const ids = Object.keys(after.nodes) as NodeId[];
+  if (ids.length !== Object.keys(before.nodes).length) return "The flattening holds a different set of nodes.";
+  for (const id of ids) {
+    if (!moved.has(id) && !sameFlattened(after.nodes[id], before.nodes[id])) return `The flattening differs at "${id}", which was not written.`;
+  }
+  /*
+   * T1655b: a WRITTEN node whose own scene-payload preview is being watched. That tile's
+   * draw passes and their uniform values live on the node's ROW (`ResolvedOutput.synthesis`),
+   * not in `passes`, and the splice below keeps the base's rows: the tile would go on
+   * drawing the value before this one. Measured in the app before the lane existed, as the
+   * camera gizmo (T692): the drag wrote the pose and the tile it was dragged on stood still.
+   * So the revision is compiled in full, which mints the row afresh. It costs what every
+   * revision cost before the lane, and only for an edit made ON a camera, light, material,
+   * geometry or projector whose stock-scene tile is on screen. A pointset's splat is not
+   * refused: its block is the stock rig and the granted tile, and no parameter reaches it.
+   *
+   * NOT refused, and so still stale (reported with T1655b, to be fixed by re-deriving the
+   * rows from the payloads this re-run already captures): such a node that only READS the
+   * written value, through an expression. Refusing there would send every slider that
+   * tints a light down the structural road whenever that light's tile is on screen.
+   */
+  for (const id of moved) {
+    const watched = base.outputs.some(
+      (output) => output.nodeId === id && output.synthesis !== undefined && output.synthesis.kind !== "pointset",
+    );
+    if (watched) return `"${id}" is drawn on its own preview tile, whose values are on its row and not in a pass.`;
+  }
+  for (const id of moved) {
+    if (after.nodes[id] === undefined) return `"${id}" was written and is not in the flattening.`;
+    // The node the base read must be the flattening's own, not a timeline override of it.
+    if (!sameFlattened(retained.graph.nodes[id], before.nodes[id])) return `The base compiled "${id}" under a structure override.`;
+  }
+
+  const readers = valueReadersOf(retained, request.registry);
+  // Re-run: the written nodes and what reads them through links, as far as links go.
+  const linked = new Set<NodeId>(moved);
+  const queue = [...moved];
+  for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
+    for (const reader of readers.links.get(next) ?? []) {
+      if (linked.has(reader)) continue;
+      linked.add(reader);
+      queue.push(reader);
+    }
+  }
+  // Asked what they say, and no more: the expressions that read a written node itself.
+  const affected = new Set<NodeId>(linked);
+  for (const id of moved) {
+    for (const reader of readers.expressions.get(id) ?? []) affected.add(reader);
+  }
+
+  const nodes: Record<NodeId, GraphNode> = { ...retained.graph.nodes };
+  for (const id of moved) nodes[id] = after.nodes[id] as GraphNode;
+  const graph: FlatGraph = { ...retained.graph, nodes };
+  const morphs = request.resolution?.morphs ?? request.flattened?.morphs ?? retained.morphs;
+  const instances = request.resolution?.instances ?? request.flattened?.instanceChannels;
+  const records = new Map(retained.nodes);
+  for (const id of moved) {
+    const record = records.get(id);
+    if (record !== undefined) records.set(id, { ...record, node: nodes[id] as GraphNode });
+  }
+  const staged: RetainedCompile = { ...retained, request, graph, nodes: records, morphs, instances };
+
+  const rerun = new Set<NodeId>([...linked].filter((id) => records.has(id)));
+  const compiler = frameCompilerOver(request, { compiled: base, retained: staged }, rerun);
+  if (!compiler.uniformOnly) return compiler.reason ?? "A node that reads the value animates a structural parameter.";
+  const capture: RerunCapture = { contexts: new Map(), scene: null, said: new Map() };
+  const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs, ...(instances === undefined ? {} : { instances }) };
+  const spliced = compiler.compileFrame(reading, capture);
+  if (spliced === null) return compiler.reason ?? "A re-run node could not be proven structure-preserving.";
+  for (const id of capture.contexts.keys()) {
+    if (!rerun.has(id)) return `"${id}" re-ran through a scene payload and was not known to read the value.`;
+  }
+  for (let index = 0; index < spliced.passes.length; index += 1) {
+    const pass = spliced.passes[index] as PassDescriptor;
+    if (pass.kind === "loop" && pass !== base.passes[index]) return `The count of loop "${pass.id}" follows the value.`;
+  }
+
+  // A node that is asked and was not re-run — one that compiles nothing (a control, a lag),
+  // or an expression that reads a written node — still resolves, and may say something: the
+  // same call `validateGraph` makes for it.
+  const reader = parameterReadOptions({
+    graph,
+    registry: request.registry,
+    frame: undefined,
+    channels: reading.channels,
+    flattening: flatteningReadsOf(reading),
+  });
+  for (const id of affected) {
+    if (rerun.has(id)) continue;
+    const node = nodes[id];
+    const definition = node === undefined ? undefined : request.registry.get(node.type);
+    if (node === undefined || definition === undefined) continue;
+    const said: RuntimeDiagnostic[] = [];
+    resolveNodeParameters(node, effectiveParameterSchema(definition, node.parameters), definition.type, said, reader, {
+      retained: definition.retainedParameterKeys,
+      note: definition.parameterKeysNote,
+      otherVersion: node.definitionVersion !== definition.version,
+    });
+    if (said.length > 0) capture.said.set(id, said);
+  }
+  const said = new Map(retained.said);
+  for (const id of affected) {
+    const now = capture.said.get(id);
+    if (saidKey(now) !== saidKey(retained.said.get(id))) {
+      return `Node "${id}" says something different about its new value, so the revision is compiled in full.`;
+    }
+    if (now === undefined) said.delete(id);
+    else said.set(id, now);
+  }
+
+  for (const [id, context] of capture.contexts) {
+    const record = records.get(id);
+    if (record !== undefined) records.set(id, { ...record, context });
+  }
+  const rebased: RetainedCompile = { ...staged, scenePayloads: capture.scene ?? retained.scenePayloads, said };
+  VALUE_READERS.set(rebased, readers);
+  return { compiled: spliced, retained: rebased };
 }

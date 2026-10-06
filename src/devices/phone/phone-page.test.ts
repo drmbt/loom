@@ -1,7 +1,16 @@
 import { createRequire } from "node:module";
+import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PHONE_EXPIRED_SENTENCE, PHONE_NAME_STORAGE_KEY, PHONE_TAB_STORAGE_KEY, phonePageHtml } from "./phone-page.ts";
+import {
+  PHONE_EXPIRED_SENTENCE,
+  PHONE_NAME_STORAGE_KEY,
+  PHONE_PAGE_LOGIC,
+  PHONE_PAGE_STORAGE_KEY,
+  PHONE_TAB_STORAGE_KEY,
+  PHONE_TRIAL_STORAGE_KEY,
+  phonePageHtml,
+} from "./phone-page.ts";
 import { cueListBoardLayout, layerBoardLayout, presetStripGrid } from "../../editor/controls/board-fit.ts";
 import {
   PHONE_EVENTS_PATH,
@@ -171,7 +180,18 @@ interface CueLayout {
   readonly list: number;
 }
 
-function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: Record<string, string>; cueLayout?: CueLayout } = {}) {
+function openPage(
+  options: {
+    hello?: boolean;
+    camera?: CameraOptions;
+    storage?: Record<string, string>;
+    cueLayout?: CueLayout;
+    /** T1647b trial: the Touch mode this phone has chosen (a key of TOUCH_MODES). Default: none chosen, so the page's own default. */
+    touch?: string;
+    /** T1647b trial: the row height this phone has chosen, px. */
+    rows?: number;
+  } = {},
+) {
   const frames: (() => void)[] = [];
   /** T1526b: the page's own timers (its notice, a refusal's few seconds), run by `elapse`. */
   let timers: Array<{ id: number; at: number; callback: () => void }> = [];
@@ -198,6 +218,9 @@ function openPage(options: { hello?: boolean; camera?: CameraOptions; storage?: 
       // One storage per origin across every JSDOM in this process: start each page clean.
       win.localStorage.clear();
       for (const [key, value] of Object.entries(options.storage ?? {})) win.localStorage.setItem(key, value);
+      if (options.touch !== undefined || options.rows !== undefined) {
+        win.localStorage.setItem(PHONE_TRIAL_STORAGE_KEY, JSON.stringify({ touch: options.touch, rows: options.rows }));
+      }
       const camera = options.camera ?? {};
       if (camera.userAgent !== undefined) {
         Object.defineProperty(win.navigator, "userAgent", { value: camera.userAgent, configurable: true });
@@ -450,6 +473,23 @@ function track(page: ReturnType<typeof openPage>, caption: string): HTMLElement 
   return control;
 }
 
+/**
+ * T1607b: a slider, fader or pad takes a touch once it has travelled 12 px along it, and
+ * moves by the travel AFTER that — `grab` is a finger landing at (x, y) and going exactly
+ * that far, so the control holds the touch at (x + 12, y) with its value untouched. Every
+ * control here is a 200 px box (jsdom lays nothing out): 20 px along a slider is a tenth
+ * of its range.
+ *
+ * T1647b: where the finger LANDS now matters. The page's default asks for the knob — within
+ * 28 px of where the handle is drawn (Bloom, at 0.25 of a 200 px track: x from 22 to 78) —
+ * so every `grab` in this file that is not about the landing lands there. It is then a
+ * take in every mode but the ones that ask for a rest first (`take`, further down).
+ */
+function grab(page: ReturnType<typeof openPage>, target: HTMLElement, x: number, y = 0, pointerId = 1): void {
+  page.pointer("pointerdown", target, x, y, pointerId);
+  page.pointer("pointermove", target, x + 12, y, pointerId);
+}
+
 describe("T1396b phone page — the document the helper serves", () => {
   it("is one self-contained document: nothing fetched from anywhere but its own two endpoints", () => {
     const html = phonePageHtml();
@@ -545,7 +585,7 @@ describe("T1396b phone page — the document the helper serves", () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
     const bloom = track(page, "Bloom");
-    page.pointer("pointerdown", bloom, 50);
+    grab(page, bloom, 38); // taken at x = 50, still 0.25
     page.pointer("pointermove", bloom, 60);
     page.pointer("pointermove", bloom, 80);
     expect(page.posts).toHaveLength(0); // nothing leaves between frames
@@ -575,10 +615,11 @@ describe("T1396b phone page — the document the helper serves", () => {
   it("a stepped slider snaps to its step and clamps to its range", async () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
-    const steps = track(page, "Steps");
-    page.pointer("pointerdown", steps, 110); // 5.5 → 6
+    const steps = track(page, "Steps"); // 4 of 0..10 in steps of 2: 20 px is one unit
+    grab(page, steps, 100);
+    page.pointer("pointermove", steps, 142); // 4 + 1.5 = 5.5 → 6
     page.frame();
-    page.pointer("pointerup", steps, -40); // below min → 0
+    page.pointer("pointerup", steps, -40); // far below the start → 0
     await page.drain();
     expect(page.posts.map((p) => [p.set.phase, p.set.values["value"]])).toEqual([
       ["live", 6],
@@ -586,17 +627,32 @@ describe("T1396b phone page — the document the helper serves", () => {
     ]);
   });
 
-  it("a button is held:true live on down and held:false commit on up — even a tap faster than a frame", async () => {
+  /*
+   * T1607b: a momentary Button on a page that scrolls. A touch on it may be the start of a
+   * scroll, so touch-down sends nothing. A finger that RESTS on it holds it down (the
+   * button's `held` is 1 for as long, as its node says); a quick tap is a whole press,
+   * sent when the finger lifts inside the button. Either way the document sees held:true
+   * then held:false, which is what counts a press.
+   */
+  it("a button a finger rests on is held:true once it has rested, and held:false when it lifts", async () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
     const flash = track(page, "Flash");
-    page.pointer("pointerdown", flash);
+    page.pointer("pointerdown", flash, 10, 10);
+    page.elapse(149);
+    page.frame();
+    expect(page.posts).toHaveLength(0);
+    expect(page.value("Flash")).toBe("Press");
+    page.elapse(1);
     page.frame();
     expect(page.value("Flash")).toBe("Held");
-    page.pointer("pointerup", flash);
+    expect(page.posts.map((p) => p.set)).toEqual([{ handle: "h-flash", values: { held: true }, phase: "live" }]);
+    // Held is held: where the finger lifts does not matter, and neither does a cancel.
+    page.pointer("pointerup", flash, 900, 900);
     await page.drain();
-    // A tap with no frame between down and up: the press must still reach the page.
-    page.pointer("pointerdown", flash, 0, 0, 2);
+    expect(page.value("Flash")).toBe("Press");
+    page.pointer("pointerdown", flash, 10, 10, 2);
+    page.elapse(150);
     page.pointer("pointercancel", flash, 0, 0, 2);
     await page.drain();
     expect(page.posts.map((p) => p.set)).toEqual([
@@ -605,6 +661,43 @@ describe("T1396b phone page — the document the helper serves", () => {
       { handle: "h-flash", values: { held: true }, phase: "live" },
       { handle: "h-flash", values: { held: false }, phase: "commit" },
     ]);
+  });
+
+  it("a tap on a button is one whole press, sent on release — even a tap faster than a frame", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const flash = track(page, "Flash");
+    page.pointer("pointerdown", flash, 10, 10);
+    page.frame();
+    expect(page.posts).toHaveLength(0); // touch-down sends nothing
+    page.pointer("pointerup", flash, 12, 11);
+    await page.drain();
+    expect(page.posts.map((p) => p.set)).toEqual([
+      { handle: "h-flash", values: { held: true }, phase: "live" },
+      { handle: "h-flash", values: { held: false }, phase: "commit" },
+    ]);
+    // The tap's own timer is gone with it: nothing fires later.
+    page.elapse(1000);
+    await page.drain();
+    expect(page.posts).toHaveLength(2);
+  });
+
+  it("a button under a finger that scrolls away, or lifts outside it, is never pressed", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const flash = track(page, "Flash");
+    // The browser took the touch for a scroll before the finger had rested.
+    page.pointer("pointerdown", flash, 10, 10);
+    page.elapse(60);
+    page.pointer("pointercancel", flash, 0, 0);
+    // A finger that slid off the button and lifted there.
+    page.pointer("pointerdown", flash, 10, 10, 2);
+    page.elapse(60);
+    page.pointer("pointerup", flash, 10, 260, 2);
+    page.elapse(1000);
+    await page.drain();
+    expect(page.posts).toHaveLength(0);
+    expect(page.value("Flash")).toBe("Press");
   });
 
   it("a toggle tap is exactly one commit of the flipped state", async () => {
@@ -619,10 +712,11 @@ describe("T1396b phone page — the document the helper serves", () => {
   it("an XY pad writes x and y together, y up, in its range", async () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
-    const pad = track(page, "Center");
-    page.pointer("pointerdown", pad, 150, 50);
+    const pad = track(page, "Center"); // (0, 0) of -1..1: 100 px is one unit, either way
+    grab(page, pad, 80, 100); // taken at (92, 100)
+    page.pointer("pointermove", pad, 142, 50); // 50 px right, 50 px UP the screen
     page.frame();
-    page.pointer("pointerup", pad, 0, 200);
+    page.pointer("pointerup", pad, -300, 400); // far left and down: both ends
     await page.drain();
     expect(page.posts.map((p) => p.set)).toEqual([
       { handle: "h-center", values: { x: 0.5, y: 0.5 }, phase: "live" },
@@ -634,13 +728,14 @@ describe("T1396b phone page — the document the helper serves", () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
     const bloom = track(page, "Bloom");
-    page.pointer("pointerdown", bloom, 180);
+    grab(page, bloom, 30);
+    page.pointer("pointermove", bloom, 172); // 0.25 + 130 px of 200
     page.frame();
     // The page republishes with a Bloom that is not the finger's (the live write not yet applied).
     page.snapshot(withWidget(6, "h-bloom", { value: 0.1 }));
     expect(page.value("Bloom")).toBe("0.90");
     expect(track(page, "Bloom").getAttribute("aria-valuenow")).toBe("0.9");
-    page.pointer("pointerup", bloom, 180);
+    page.pointer("pointerup", bloom, 172);
     await page.drain();
     // Acknowledged: the next snapshot is the truth again, whatever it says.
     page.snapshot(withWidget(7, "h-bloom", { value: 0.3 }));
@@ -650,7 +745,9 @@ describe("T1396b phone page — the document the helper serves", () => {
   it("the other snapshot fields still land while one control is held", () => {
     const page = openPage();
     page.snapshot(SNAPSHOT);
-    page.pointer("pointerdown", track(page, "Bloom"), 180);
+    const bloom = track(page, "Bloom");
+    grab(page, bloom, 30);
+    page.pointer("pointermove", bloom, 172);
     page.snapshot(withWidget(6, "h-steps", { value: 8 }));
     expect(page.value("Steps")).toBe("8.00");
     expect(page.value("Bloom")).toBe("0.90");
@@ -663,7 +760,10 @@ describe("T1396b phone page — the document the helper serves", () => {
     expect(page.notice()).toBe("Loom closed the phone door.");
     expect(page.source.closed).toBe(true);
     track(page, "Strobe").click();
-    page.pointer("pointerdown", track(page, "Bloom"), 100);
+    grab(page, track(page, "Bloom"), 30);
+    page.pointer("pointermove", track(page, "Bloom"), 130);
+    page.pointer("pointerdown", track(page, "Flash"), 10, 10, 2);
+    page.elapse(1000);
     page.frame();
     expect(page.posts).toHaveLength(0);
     expect(page.sources).toHaveLength(1); // no reconnect of its own
@@ -1104,7 +1204,7 @@ describe("T1517b phone page — tabs, the board, the Camera tab", () => {
     const page = openPage();
     page.snapshot(BOARD);
     const bloom = track(page, "Bloom");
-    page.pointer("pointerdown", bloom, 50);
+    grab(page, bloom, 38); // taken at x = 50, at its 0.25
     page.pointer("pointermove", bloom, 80);
     expect(page.posts).toHaveLength(0);
     page.frame();
@@ -1345,7 +1445,7 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
     const page = openPage();
     page.snapshot(show(1));
     const fader = layer(page, "fx").querySelector<HTMLElement>(".fader")!;
-    page.pointer("pointerdown", fader, 50);
+    grab(page, fader, 88); // taken at x = 100, at its 0.5
     page.pointer("pointermove", fader, 80);
     expect(page.posts).toHaveLength(0);
     page.frame();
@@ -1373,21 +1473,23 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
     expect(fader.querySelector(".val")?.textContent).toBe("driven");
     expect(fader.getAttribute("aria-disabled")).toBe("true");
     expect(fader.classList.contains("driven")).toBe(true);
-    page.pointer("pointerdown", fader, 50);
-    page.pointer("pointermove", fader, 150);
+    page.pointer("pointerdown", fader, 100);
+    page.pointer("pointermove", fader, 200);
     page.frame();
-    page.pointer("pointerup", fader, 150);
+    page.pointer("pointerup", fader, 200);
     await page.drain();
     expect(page.posts).toHaveLength(0);
     layer(page, "fx").querySelector<HTMLButtonElement>(".sw")!.click();
     await page.drain();
     expect(sets(page)).toEqual([{ handle: "h-fx", values: { on: false }, phase: "commit" }]);
-    // Freed again at the desk: the fader takes the finger.
+    // Freed again at the desk: the fader takes the finger — the same drag now moves it.
     page.snapshot(show(2, { "h-fx": { opacityWritable: true, on: false } }));
-    page.pointer("pointerdown", fader.isConnected ? fader : layer(page, "fx").querySelector<HTMLElement>(".fader")!, 100);
-    page.pointer("pointerup", layer(page, "fx").querySelector<HTMLElement>(".fader")!, 100);
+    const freed = layer(page, "fx").querySelector<HTMLElement>(".fader")!;
+    page.pointer("pointerdown", freed, 100);
+    page.pointer("pointermove", freed, 200); // taken here, at its 0.5
+    page.pointer("pointerup", freed, 220);
     await page.drain();
-    expect(sets(page).at(-1)).toEqual({ handle: "h-fx", values: { opacity: 0.5 }, phase: "commit" });
+    expect(sets(page).at(-1)).toEqual({ handle: "h-fx", values: { opacity: 0.6 }, phase: "commit" });
   });
 
   it("GO and BACK are one commit each, a cue tapped in the list stands it by, and the names follow Loom's answer", async () => {
@@ -1630,7 +1732,8 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
       page.snapshot(show(1));
       const fader = layer(page, "fx").querySelector<HTMLElement>(".fader")!;
       const shown = (): string => fader.querySelector(".val")?.textContent ?? "";
-      page.pointer("pointerdown", fader, 150);
+      grab(page, fader, 88); // taken at x = 100, at its 0.5
+      page.pointer("pointermove", fader, 150);
       page.frame();
       await page.settle();
       refuse(page, "h-fx", "“fx” has its opacity driven by the document, so a phone cannot move it.");
@@ -1759,6 +1862,1358 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
       expect(list.scrollTop).toBe(0);
       part(page, '#tabs [data-tab="panel:Show"]').click();
       expect(list.scrollTop).toBe(214 - 72);
+    });
+  });
+});
+
+/**
+ * T1607b — SCROLL TO EVERY CONTROL WITHOUT MOVING ONE, AND PAGES. Owner: "we can still
+ * scroll with touch on the page to get to all the controls without constantly accidentally
+ * moving sliders". What a phone user must be able to rely on: a touch that LANDS on a
+ * control changes nothing; a control moves only for a finger that travels along it, by
+ * that travel; and a board's labelled sections can be shown one at a time.
+ *
+ * Three layers. The rules are plain functions (`PHONE_PAGE_LOGIC`), run here from the very
+ * string the phone runs. What reaches the wire is asserted on the served page in jsdom.
+ * What the BROWSER does with a touch that goes up the page (it scrolls, and cancels the
+ * pointer) is not something jsdom has: that is `src/tests/e2e/phone-touch.spec.ts`.
+ */
+/**
+ * B269 — A BOARD OF NARROW COLUMNS IS NEVER CRUSHED OR CLIPPED. Owner, on a real phone the
+ * day a project went from eight columns to ten: "on the phone the sliders are now crunched
+ * and some buttons cut off". A row was as tall as a column is wide, whatever that came to.
+ *
+ * jsdom lays nothing out, so what is asserted here is the rule the browser is handed for
+ * each case — a row's height, where a handle sits, what a heading, a strip of presets and a
+ * pad's caption do when they do not fit. That those rules produce boxes a finger can press
+ * with nothing cut is asserted on real boxes in `src/tests/e2e/phone-touch.spec.ts`.
+ */
+describe("B269 phone page — a board of narrow columns is never crushed or clipped", () => {
+  type Page = ReturnType<typeof openPage>;
+  const LOOKS = ["reset_robot", "reset_scene", "reset_lights", "reset_all", "soft_amber", "hard_strobe"];
+  const slider = (handle: string, caption: string, value: number) => ({ kind: "slider", handle, caption, value, min: 0, max: 1, step: 0 }) as const;
+  /** Ten columns, as the project that hit this laid its panels out: on a 375 px phone a column is 30 px. */
+  const NARROW: PhoneSnapshot = {
+    seq: 2,
+    panels: [
+      {
+        title: "Narrow",
+        rows: [],
+        board: {
+          columns: 10,
+          rows: 6,
+          items: [
+            { kind: "label", rect: { x: 0, y: 0, w: 4, h: 1 }, text: "A heading far longer than its four cells" },
+            { kind: "widget", rect: { x: 0, y: 1, w: 8, h: 1 }, widget: { kind: "preset", handle: "h-looks", caption: "looks", presets: LOOKS, current: "reset_all", morphing: false } },
+            { kind: "widget", rect: { x: 0, y: 2, w: 8, h: 1 }, widget: slider("h-top", "Top", 1) },
+            { kind: "widget", rect: { x: 0, y: 3, w: 8, h: 1 }, widget: slider("h-foot", "Foot", 0) },
+            { kind: "widget", rect: { x: 0, y: 4, w: 3, h: 1 }, widget: { kind: "toggle", handle: "h-long", caption: "Follow the track closely", on: true } },
+            { kind: "widget", rect: { x: 6, y: 4, w: 2, h: 2 }, widget: { kind: "xyPad", handle: "h-pad", caption: "Chase side / height", x: 0, y: 0, min: -2, max: 2 } },
+          ],
+        },
+      },
+    ],
+  };
+  const part = (page: Page, selector: string): HTMLElement => {
+    const found = page.doc.querySelector<HTMLElement>(selector);
+    if (found === null) throw new Error(`nothing matches ${selector}`);
+    return found;
+  };
+  /** The declarations the page's stylesheet gives a selector, as written (jsdom computes no layout and knows no `max()`). */
+  const rule = (page: Page, selector: string): string => {
+    const css = page.doc.querySelector("style")?.textContent ?? "";
+    const at = css.indexOf(`\n${selector} {`);
+    if (at < 0) throw new Error(`the stylesheet has no rule for ${selector}`);
+    return css.slice(at, css.indexOf("}", at));
+  };
+
+  /*
+   * The floor is the owner's eye, not a guideline: 30 px rows were "crunched", 39 to 45 px
+   * "a smidge too chunky", so it is 36 until he has tried 32, 36 and 44 (§T1647b). It must
+   * hold on BOTH lines that size a row — the container-unit one phones use and the viewport
+   * one for a browser without it — and must not replace the column width: a board of wide
+   * columns keeps its square cells.
+   */
+  it("a board's row is as tall as its column is wide, and never lower than the floor", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    expect(rule(page, "body")).toContain("--row: 36px;");
+    const rows = [...rule(page, ".board").matchAll(/grid-auto-rows:\s*([^;]+);/g)].map((match) => match[1] ?? "");
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row).toMatch(/^max\(var\(--row\), calc\(\(100(vw|cqi) .*\/ var\(--cols\)\)\)$/);
+    // The columns are the author's: ten stay ten.
+    expect(part(page, ".board").style.getPropertyValue("--cols")).toBe("10");
+  });
+
+  /*
+   * A row drawn 36 px tall is lower than a finger is wide. So what a finger can HIT is more
+   * than what is drawn: half the gap all round a control answers too, which makes a hit area
+   * of the row plus the gap and leaves no dead strip between two controls — and no overlap,
+   * each taking its own half. The margin belongs to the board ITEM, so a touch there has the
+   * item as its target, and the item hands it to its control.
+   */
+  it("a control answers from half the gap round it: a tap there flips a toggle, a touch there takes a slider", async () => {
+    // "now": the one Touch mode left where a pad owns every touch on it (§T1647b).
+    const page = openPage({ touch: "now" });
+    page.snapshot(NARROW);
+    expect(rule(page, "body")).toContain("--gap: 6px;");
+    expect(rule(page, ".board .w.slider::before, .board .w.toggle::before, .board .w.button::before, .board .w.xyPad::before")).toContain(
+      "inset: calc(var(--gap) / -2);",
+    );
+    // A scroll must still start from a slider's margin, and a pad's is the pad's.
+    expect(page.win.getComputedStyle(page.widget("Top")).touchAction).toBe("pan-y");
+    expect(page.win.getComputedStyle(page.widget("Chase side / height")).touchAction).toBe("none");
+
+    const toggle = page.widget("Follow the track closely");
+    toggle.dispatchEvent(new page.win.MouseEvent("click", { bubbles: true }));
+    await page.drain();
+    expect(page.posts.map((post) => post.set)).toEqual([{ handle: "h-long", values: { on: false }, phase: "commit" }]);
+
+    // The item's own margin, not its control: the same drag as from the track.
+    const foot = page.widget("Foot");
+    page.pointer("pointerdown", foot, 0, 0);
+    page.pointer("pointermove", foot, 12, 0);
+    page.pointer("pointermove", foot, 52, 0);
+    page.pointer("pointerup", foot, 52, 0);
+    await page.drain();
+    expect(page.posts.at(-1)?.set).toEqual({ handle: "h-foot", values: { value: 0.2 }, phase: "commit" });
+  });
+
+  it("a momentary button is pressed by a tap that lifts within its reach, three pixels past what is drawn, and no further", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const flash = track(page, "Flash"); // drawn 0..200, as every box is here
+    page.pointer("pointerdown", flash, 100, 100);
+    page.pointer("pointerup", flash, 100, 204);
+    await page.drain();
+    expect(page.posts).toHaveLength(0);
+    page.pointer("pointerdown", flash, 100, 100, 2);
+    page.pointer("pointerup", flash, 100, 203, 2);
+    await page.drain();
+    expect(page.posts.map((post) => post.set.values)).toEqual([{ held: true }, { held: false }]);
+  });
+
+  it("a press in the margin above or below a preset button recalls THAT preset, not its neighbour", async () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const strip = part(page, ".w.preset > .strip");
+    // Six buttons 48 px wide, side by side, drawn from y = 3 to y = 39 inside a strip that reaches from 0 to 42.
+    [...strip.children].forEach((button, index) => {
+      (button as HTMLElement).getBoundingClientRect = () => ({ left: index * 50, right: index * 50 + 48, top: 3, bottom: 39, width: 48, height: 36, x: index * 50, y: 3 }) as DOMRect;
+    });
+    const press = (clientX: number, clientY: number): boolean => strip.dispatchEvent(new page.win.MouseEvent("click", { bubbles: true, clientX, clientY }));
+    press(120, 1); // above the third
+    press(270, 41); // below the sixth
+    press(120, 60); // well below the strip: nobody's
+    await page.drain();
+    expect(page.posts.map((post) => post.set)).toEqual([
+      { handle: "h-looks", values: { recall: "reset_lights" }, phase: "commit" },
+      { handle: "h-looks", values: { recall: "hard_strobe" }, phase: "commit" },
+    ]);
+    expect(rule(page, ".board .w.preset > .strip")).toContain("inset: calc(var(--gap) / -2) 0;");
+  });
+
+  /*
+   * Two things a desktop browser's phone emulation does not show and an iPhone does; both
+   * are fixed from the documentation and wait for the owner's phone.
+   *  - 100vh is the viewport with Safari's bars away, taller than what shows while they are
+   *    there; 100dvh is what shows now. The vh line stays first, for a browser without dvh.
+   *  - Safari before 16 has no container queries. The toggle's state line used to be HIDDEN
+   *    by one where the button is low, so there it showed — two lines in a one-row button,
+   *    cut off top and bottom. Now it is hidden unless a container query shows it.
+   */
+  it("the page is as tall as what shows now, and a toggle's second line shows only where a container query makes room", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    expect([...rule(page, "body").matchAll(/min-height:\s*([^;]+);/g)].map((match) => match[1])).toEqual(["100vh", "100dvh"]);
+    const state = part(page, ".w.toggle button.ctl .state");
+    expect(state.textContent).toBe("On");
+    expect(page.win.getComputedStyle(state).display).toBe("none");
+    const css = page.doc.querySelector("style")?.textContent ?? "";
+    expect(css).toContain("@container (min-height: 47px) { .board .w > button.ctl .state { display: block; } }");
+    expect(css).not.toMatch(/@container \(max-height/);
+    // Outside a board a button has its own 56 px: both lines, always.
+    page.snapshot(SNAPSHOT);
+    expect(page.win.getComputedStyle(part(page, ".w.toggle button.ctl .state")).display).toBe("block");
+  });
+
+  it("a slider's handle is whole at both ends of its track: moved back by its own share of its width", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const handle = (caption: string): string[] => {
+      const thumb = page.widget(caption).querySelector<HTMLElement>(".thumb")!;
+      return [thumb.style.left, thumb.style.transform];
+    };
+    expect(handle("Top")).toEqual(["100%", "translateX(-100%)"]);
+    expect(handle("Foot")).toEqual(["0%", "translateX(-0%)"]);
+    // No fixed pull to the left any more: that was what hung half the handle outside the track.
+    expect(rule(page, ".thumb")).not.toContain("margin-left");
+  });
+
+  it("a heading that does not fit its cell ends in an ellipsis on one line", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const heading = part(page, ".board .label");
+    expect(heading.textContent).toBe("A heading far longer than its four cells");
+    // The text is in a box of its own: bare text in the heading's flex box wraps, and is cut at the top.
+    expect([...heading.childNodes].map((node) => node.nodeName)).toEqual(["SPAN"]);
+    const style = page.win.getComputedStyle(heading.firstElementChild!);
+    expect([style.whiteSpace, style.overflow, style.textOverflow]).toEqual(["nowrap", "hidden", "ellipsis"]);
+  });
+
+  /*
+   * A preset is recalled by its name. Six buttons squeezed into one row all read "res…":
+   * so a button is at least its name wide, and the STRIP scrolls sideways. The strip is a
+   * box inside the item, because the item must not clip — Loom's sentence for a refused
+   * recall hangs under it (§T1526b).
+   */
+  it("a strip of more presets than its row holds scrolls sideways with every name whole, and still shows a refusal under it", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const item = part(page, ".w.preset");
+    const strip = part(page, ".w.preset > .strip");
+    expect([...strip.children].map((button) => button.textContent)).toEqual(LOOKS);
+    // The desk's arrangement still: one row of six.
+    expect([item.style.getPropertyValue("--rows"), item.style.getPropertyValue("--per")]).toEqual(["1", "6"]);
+    const strips = rule(page, ".board .w.preset > .strip");
+    expect(strips).toContain("grid-template-columns: repeat(var(--per), minmax(min-content, 1fr));");
+    expect(strips).toContain("overflow-x: auto;");
+    expect(page.win.getComputedStyle(strip.firstElementChild!).minWidth).toBe("var(--row)");
+    // The item clips nothing, and the sentence is the item's child, not the strip's.
+    expect(page.win.getComputedStyle(item).overflow).not.toBe("hidden");
+    page.emit({ type: "refused", handle: "h-looks", reason: "“looks” has no preset by that name." });
+    expect(part(page, ".w.preset > .said").textContent).toBe("“looks” has no preset by that name.");
+  });
+
+  it("a toggle's caption ends in an ellipsis inside its button; a pad's caption gets the pad's whole width before it does", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const name = page.win.getComputedStyle(part(page, ".w.toggle button.ctl .name"));
+    expect([name.whiteSpace, name.overflow, name.textOverflow, name.maxWidth]).toEqual(["nowrap", "hidden", "ellipsis", "100%"]);
+    const caption = page.win.getComputedStyle(part(page, ".w.xyPad > .cap"));
+    expect(caption.flexWrap).toBe("wrap");
+    expect(page.win.getComputedStyle(part(page, ".w.xyPad > .cap .name")).textOverflow).toBe("ellipsis");
+  });
+});
+
+describe("T1607b phone page — the gesture and paging rules, as the phone runs them", () => {
+  interface Cell {
+    readonly label: string | null;
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly h: number;
+  }
+  interface PageBox {
+    readonly name: string;
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly h: number;
+    readonly cells: readonly number[];
+  }
+  interface Logic {
+    readonly SLOP: number;
+    claims(axes: "x" | "xy", dx: number, dy: number): boolean;
+    nudge(value: number, travel: number, length: number, min: number, max: number): number;
+    settle(value: number, step: number, min: number, max: number): number;
+    pagesOf(cells: readonly Cell[]): PageBox[];
+  }
+  const logic = runInNewContext(`${PHONE_PAGE_LOGIC}; ({ SLOP: SLOP, claims: claims, nudge: nudge, settle: settle, pagesOf: pagesOf })`) as Logic;
+  /** Pages as plain data of this realm (the functions ran in another). */
+  const pagesOf = (cells: readonly Cell[]): PageBox[] => JSON.parse(JSON.stringify(logic.pagesOf(cells))) as PageBox[];
+  const label = (name: string, x: number, y: number, w: number): Cell => ({ label: name, x, y, w, h: 1 });
+  const control = (x: number, y: number, w: number, h = 1): Cell => ({ label: null, x, y, w, h });
+
+  /*
+   * A browser decides a touch is a scroll once it has moved about 8 px (Android) or 10 px
+   * (iOS). A slider that started before that could start and THEN be cancelled — a write
+   * the hand did not mean. So the slider's own threshold must stay above both.
+   */
+  it("a slider waits longer than the browser does to decide a touch is a scroll", () => {
+    expect(logic.SLOP).toBeGreaterThan(10);
+    // ...and not so long that a deliberate drag feels dead: under a fingertip's width.
+    expect(logic.SLOP).toBeLessThanOrEqual(16);
+  });
+
+  it("a slider takes a touch that has gone along it, never one going up or down the page", () => {
+    expect(logic.claims("x", logic.SLOP - 1, 0)).toBe(false);
+    expect(logic.claims("x", logic.SLOP, 0)).toBe(true);
+    expect(logic.claims("x", -logic.SLOP, 0)).toBe(true);
+    // A flick up the page wobbles sideways; however far it wobbles, it went further up.
+    expect(logic.claims("x", 30, -200)).toBe(false);
+    expect(logic.claims("x", -60, 61)).toBe(false);
+    // A tie is the browser's: Chromium scrolls unless the travel across is the larger.
+    expect(logic.claims("x", 20, 20)).toBe(false);
+    expect(logic.claims("x", 21, -20)).toBe(true);
+  });
+
+  it("an XY pad owns both axes: any travel past the slop is its own", () => {
+    expect(logic.claims("xy", 0, logic.SLOP)).toBe(true);
+    expect(logic.claims("xy", 0, -logic.SLOP)).toBe(true);
+    expect(logic.claims("xy", 8, 8)).toBe(false); // 11.3 px
+    expect(logic.claims("xy", 9, -9)).toBe(true); // 12.7 px
+  });
+
+  it("a drag moves a value by the finger's travel over the track, and stops at the ends without remembering the overshoot", () => {
+    expect(logic.nudge(0.25, 40, 200, 0, 1)).toBeCloseTo(0.45, 12);
+    expect(logic.nudge(0.25, -40, 200, 0, 1)).toBeCloseTo(0.05, 12);
+    // A range that is not 0..1, and one that runs backwards (max on the left).
+    expect(logic.nudge(0, 50, 200, -1, 1)).toBeCloseTo(0.5, 12);
+    expect(logic.nudge(0.5, 20, 200, 1, 0)).toBeCloseTo(0.4, 12);
+    // 100 px past the top: held at 1. Coming back 20 px moves it by 20 px — at once.
+    const top = logic.nudge(0.9, 120, 200, 0, 1);
+    expect(top).toBe(1);
+    expect(logic.nudge(top, -20, 200, 0, 1)).toBeCloseTo(0.9, 12);
+  });
+
+  it("a stepped slider shows and sends only its steps, inside its range", () => {
+    expect(logic.settle(5.5, 2, 0, 10)).toBe(6);
+    expect(logic.settle(4.9, 2, 0, 10)).toBe(4);
+    expect(logic.settle(11, 2, 0, 10)).toBe(10);
+    expect(logic.settle(0.30000000000000004, 0, 0, 1)).toBe(0.3);
+  });
+
+  /*
+   * sentinel-bot's first board, in small: three columns of sections on twelve cells, one
+   * column holding a second label lower down, and a master fader above every label.
+   */
+  const DESK: readonly Cell[] = [
+    control(0, 0, 12), // 0  master: under no label
+    label("Robot", 0, 1, 4), // 1
+    control(0, 2, 4), // 2
+    control(0, 3, 4), // 3
+    label("Scene", 4, 1, 4), // 4
+    control(4, 2, 4), // 5
+    label("Camera", 4, 3, 4), // 6
+    control(4, 4, 4), // 7
+    control(4, 5, 3, 3), // 8  the pad
+    label("Lights", 8, 1, 4), // 9
+    control(8, 2, 4), // 10
+    control(8, 3, 4), // 11
+  ];
+
+  it("a board's pages are its labelled sections: each control under the nearest label above it, each page the box round one section", () => {
+    expect(pagesOf(DESK)).toEqual([
+      { name: "Robot", x: 0, y: 1, w: 4, h: 3, cells: [1, 2, 3] },
+      { name: "Scene", x: 4, y: 1, w: 4, h: 2, cells: [4, 5] },
+      { name: "Camera", x: 4, y: 3, w: 4, h: 5, cells: [6, 7, 8] },
+      { name: "Lights", x: 8, y: 1, w: 4, h: 3, cells: [9, 10, 11] },
+    ]);
+  });
+
+  it("sections stacked down one column page the same way; a control beside a label, or above every label, is on no page", () => {
+    const stacked = [label("Scene", 0, 0, 8), control(0, 1, 8), label("Camera", 0, 2, 8), control(0, 3, 8), control(2, 4, 4, 3)];
+    expect(pagesOf(stacked).map((page) => [page.name, page.y, page.h, page.cells])).toEqual([
+      ["Scene", 0, 2, [0, 1]],
+      ["Camera", 2, 5, [2, 3, 4]],
+    ]);
+    const beside = [label("A", 0, 0, 2), control(2, 0, 4), control(0, 1, 2), label("B", 0, 2, 2), control(0, 3, 2)];
+    expect(pagesOf(beside).map((page) => page.cells)).toEqual([
+      [0, 2],
+      [3, 4],
+    ]);
+  });
+
+  it("a control under two labels side by side goes with the one it overlaps most; a page grows to hold what is its own", () => {
+    const cells = [label("Left", 0, 0, 4), label("Right", 4, 0, 4), control(0, 1, 4), control(3, 2, 5)];
+    expect(pagesOf(cells)).toEqual([
+      { name: "Left", x: 0, y: 0, w: 4, h: 2, cells: [0, 2] },
+      { name: "Right", x: 3, y: 0, w: 5, h: 3, cells: [1, 3] },
+    ]);
+  });
+
+  it("a board with fewer than two sections has no pages: one label, labels with nothing under them, or none", () => {
+    expect(pagesOf([label("Look", 0, 0, 8), control(0, 1, 4), control(4, 1, 4)])).toEqual([]);
+    expect(pagesOf([label("Look", 0, 0, 8), control(0, 1, 8), label("Notes", 0, 2, 8)])).toEqual([]);
+    expect(pagesOf([control(0, 0, 8), control(0, 1, 8)])).toEqual([]);
+    expect(pagesOf([label("", 0, 0, 8), control(0, 1, 8), label("", 0, 2, 8), control(0, 3, 8)])).toEqual([]);
+  });
+});
+
+describe("T1607b phone page — a touch that lands on a control is not yet the control's", () => {
+  const sent = (page: ReturnType<typeof openPage>) => page.posts.map((post) => post.set);
+
+  it("touching a slider, tapping it, or dragging up the page from it puts NOTHING on the wire and moves nothing", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    // A finger lands and rests.
+    page.pointer("pointerdown", bloom, 150, 100);
+    page.frame();
+    page.elapse(2000);
+    // It goes up the page, wobbling sideways; then the browser takes it for the scroll it is.
+    page.pointer("pointermove", bloom, 153, 80);
+    page.pointer("pointermove", bloom, 158, 20);
+    page.pointer("pointermove", bloom, 170, -140);
+    page.pointer("pointercancel", bloom, 0, 0);
+    // A tap, and a touch that moves less than the slop along the track before lifting.
+    page.pointer("pointerdown", bloom, 30, 100, 2);
+    page.pointer("pointerup", bloom, 30, 100, 2);
+    page.pointer("pointerdown", bloom, 30, 100, 3);
+    page.pointer("pointermove", bloom, 41, 100, 3);
+    page.pointer("pointerup", bloom, 41, 100, 3);
+    await page.drain();
+    expect(sent(page)).toEqual([]);
+    expect(page.value("Bloom")).toBe("0.25");
+    expect(bloom.classList.contains("held")).toBe(false);
+  });
+
+  /* Never jump-to-touch: where on the track the finger lands says nothing about the value. */
+  it("a slider starts from what it shows, wherever the finger lands: the same travel is the same change", async () => {
+    for (const landing of [5, 90, 170]) {
+      // "now": the Touch mode in which a slider takes a touch anywhere along it (§T1647b).
+      const page = openPage({ touch: "now" });
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom");
+      grab(page, bloom, landing);
+      expect(page.value("Bloom"), `landing at ${String(landing)}`).toBe("0.25"); // taking it moved nothing
+      page.pointer("pointermove", bloom, landing + 12 + 40);
+      page.pointer("pointerup", bloom, landing + 12 + 40);
+      await page.drain();
+      expect(sent(page).at(-1), `landing at ${String(landing)}`).toEqual({ handle: "h-bloom", values: { value: 0.45 }, phase: "commit" });
+    }
+  });
+
+  it("a slider that has a touch keeps it when the finger strays up or down — only the travel along it counts", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    grab(page, bloom, 30, 100);
+    page.pointer("pointermove", bloom, 62, 300); // 20 px along, 200 px down
+    page.pointer("pointerup", bloom, 82, -400);
+    await page.drain();
+    expect(sent(page).at(-1)).toEqual({ handle: "h-bloom", values: { value: 0.45 }, phase: "commit" });
+  });
+
+  /*
+   * iOS may take a touch back for a scroll after a slider has it. The hand moved the slider
+   * to where it is and saw the stage follow: the value stays (Android's rule for a SeekBar).
+   * A cancel carries no position (0, 0), so the drag must not read one from it.
+   */
+  it("a slider the browser takes the touch back from stays where the hand put it, and says so once", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    grab(page, bloom, 30);
+    expect(bloom.classList.contains("held")).toBe(true);
+    page.pointer("pointermove", bloom, 82);
+    page.frame();
+    page.pointer("pointercancel", bloom, 0, 0);
+    await page.drain();
+    expect(sent(page)).toEqual([
+      { handle: "h-bloom", values: { value: 0.45 }, phase: "live" },
+      { handle: "h-bloom", values: { value: 0.45 }, phase: "commit" },
+    ]);
+    expect(page.value("Bloom")).toBe("0.45");
+    expect(bloom.classList.contains("held")).toBe(false);
+  });
+
+  it("a slider that took a touch and was not moved writes nothing; one moved and brought back commits where it is", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    grab(page, bloom, 30);
+    page.pointer("pointerup", bloom, 42);
+    await page.drain();
+    expect(sent(page)).toEqual([]);
+    // Out and back before a frame passed: the document may have seen nothing, but the
+    // gesture moved the control, so it ends with one commit of where it stands.
+    grab(page, bloom, 30, 0, 2);
+    page.pointer("pointermove", bloom, 82, 0, 2);
+    page.pointer("pointerup", bloom, 42, 0, 2);
+    await page.drain();
+    expect(sent(page).at(-1)).toEqual({ handle: "h-bloom", values: { value: 0.25 }, phase: "commit" });
+  });
+
+  it("an XY pad does not jump to the finger either: it moves by the finger's travel, from where it is", async () => {
+    // "now": the Touch mode in which a pad takes a touch anywhere on it (§T1647b).
+    const page = openPage({ touch: "now" });
+    page.snapshot(SNAPSHOT);
+    const pad = track(page, "Center");
+    page.pointer("pointerdown", pad, 190, 10); // a corner: an absolute pad would jump to (0.9, 0.9)
+    page.frame();
+    page.pointer("pointerup", pad, 190, 10);
+    await page.drain();
+    expect(sent(page)).toEqual([]);
+    expect(page.value("Center")).toBe("0.00, 0.00");
+    page.pointer("pointerdown", pad, 190, 10, 2);
+    page.pointer("pointermove", pad, 190, 22, 2); // taken, going DOWN the screen
+    page.pointer("pointermove", pad, 170, 42, 2);
+    page.pointer("pointerup", pad, 170, 42, 2);
+    await page.drain();
+    expect(sent(page).at(-1)).toEqual({ handle: "h-center", values: { x: -0.2, y: -0.2 }, phase: "commit" });
+  });
+
+  it("two fingers on two sliders are two drags, each from its own value", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const bloom = track(page, "Bloom");
+    const steps = track(page, "Steps");
+    grab(page, bloom, 30, 0, 1);
+    grab(page, steps, 100, 0, 2);
+    page.pointer("pointermove", bloom, 82, 0, 1);
+    page.pointer("pointermove", steps, 152, 0, 2);
+    page.pointer("pointerup", bloom, 82, 0, 1);
+    page.pointer("pointerup", steps, 152, 0, 2);
+    await page.drain();
+    const commits = sent(page).filter((set) => set.phase === "commit");
+    expect(commits).toEqual([
+      { handle: "h-bloom", values: { value: 0.45 }, phase: "commit" },
+      { handle: "h-steps", values: { value: 6 }, phase: "commit" },
+    ]);
+  });
+});
+
+describe("T1607b phone page — pages of a board, and the scroll rail", () => {
+  type Page = ReturnType<typeof openPage>;
+  const slider = (handle: string, caption: string) => ({ kind: "slider", handle, caption, value: 0.5, min: 0, max: 1, step: 0 }) as const;
+  /** sentinel-bot's first board in small: sections drawn as columns, and a second label lower in one. */
+  const DESK: PhoneSnapshot = {
+    seq: 3,
+    panels: [
+      {
+        title: "Sentinel",
+        rows: [],
+        board: {
+          columns: 12,
+          rows: 8,
+          items: [
+            { kind: "widget", rect: { x: 0, y: 0, w: 12, h: 1 }, widget: slider("h-master", "Master") },
+            { kind: "label", rect: { x: 0, y: 1, w: 4, h: 1 }, text: "Robot" },
+            { kind: "widget", rect: { x: 0, y: 2, w: 4, h: 1 }, widget: slider("h-speed", "Speed") },
+            { kind: "label", rect: { x: 4, y: 1, w: 4, h: 1 }, text: "Scene" },
+            { kind: "widget", rect: { x: 4, y: 2, w: 4, h: 1 }, widget: slider("h-bore", "Bore") },
+            { kind: "label", rect: { x: 4, y: 3, w: 4, h: 1 }, text: "Camera" },
+            { kind: "widget", rect: { x: 4, y: 4, w: 4, h: 1 }, widget: { kind: "toggle", handle: "h-cuts", caption: "Cuts", on: false } },
+            {
+              kind: "widget",
+              rect: { x: 4, y: 5, w: 3, h: 3 },
+              widget: { kind: "xyPad", handle: "h-view", caption: "View", x: 0, y: 0, min: -1, max: 1 },
+            },
+            { kind: "label", rect: { x: 8, y: 1, w: 4, h: 1 }, text: "Lights" },
+            { kind: "widget", rect: { x: 8, y: 2, w: 4, h: 1 }, widget: slider("h-glow", "Glow") },
+          ],
+        },
+      },
+      { title: "Plain", rows: [{ kind: "widgets", widgets: [slider("h-dim", "Dim")] }] },
+    ],
+  };
+  const pager = (page: Page): HTMLElement => page.camera("pager");
+  const chips = (page: Page): string[] => [...pager(page).querySelectorAll("[role=tab]")].map((chip) => chip.textContent ?? "");
+  const chosen = (page: Page): string[] => [...pager(page).querySelectorAll("[aria-selected=true]")].map((chip) => chip.textContent ?? "");
+  const choose = (page: Page, name: string): void => {
+    const chip = [...pager(page).querySelectorAll<HTMLElement>("[role=tab]")].find((each) => each.textContent === name);
+    if (chip === undefined) throw new Error(`no page "${name}"`);
+    chip.click();
+  };
+  const tab = (page: Page, name: string): void => {
+    const found = [...page.doc.querySelectorAll<HTMLElement>("#tabs [role=tab]")].find((each) => each.textContent === name);
+    if (found === undefined) throw new Error(`no tab "${name}"`);
+    found.click();
+  };
+  /** What the shown board draws: [what it is, grid column, grid row] of every cell not hidden, and the columns the width is divided by. */
+  const drawn = (page: Page) => {
+    const grid = page.doc.querySelector<HTMLElement>('#panels section[aria-label="Sentinel"] .board')!;
+    return {
+      columns: grid.style.getPropertyValue("--cols"),
+      cells: [...grid.children]
+        .map((child) => child as HTMLElement)
+        .filter((cell) => !cell.hidden)
+        .map((cell) => [cell.querySelector(".name")?.textContent ?? cell.textContent, cell.style.gridColumn, cell.style.gridRow]),
+    };
+  };
+
+  it("a board with labelled sections gets a pager above the tabs: All — the board as its owner drew it — and a page per label", () => {
+    const page = openPage();
+    page.snapshot(DESK);
+    expect(pager(page).hidden).toBe(false);
+    expect(pager(page).getAttribute("role")).toBe("tablist");
+    expect(chips(page)).toEqual(["All", "Robot", "Scene", "Camera", "Lights"]);
+    expect(chosen(page)).toEqual(["All"]);
+    expect(page.doc.body.classList.contains("paged")).toBe(true);
+    expect(drawn(page).columns).toBe("12");
+    expect(drawn(page).cells).toHaveLength(10);
+    expect(drawn(page).cells[7]).toEqual(["View", "5 / span 3", "6 / span 3"]);
+  });
+
+  it("a page shows its section and nothing else, moved to the top-left, on a grid of ITS columns — so its controls fill the phone's width", () => {
+    const page = openPage();
+    page.snapshot(DESK);
+    choose(page, "Camera");
+    expect(chosen(page)).toEqual(["Camera"]);
+    expect(drawn(page)).toEqual({
+      columns: "4",
+      cells: [
+        ["Camera", "1 / span 4", "1 / span 1"],
+        ["Cuts", "1 / span 4", "2 / span 1"],
+        ["View", "1 / span 3", "3 / span 3"],
+      ],
+    });
+    choose(page, "Lights");
+    expect(drawn(page).cells.map((cell) => cell[0])).toEqual(["Lights", "Glow"]);
+    // All is the whole board again, each control back at its own rect.
+    choose(page, "All");
+    expect(drawn(page).columns).toBe("12");
+    expect(drawn(page).cells[7]).toEqual(["View", "5 / span 3", "6 / span 3"]);
+    expect(drawn(page).cells[0]).toEqual(["Master", "1 / span 12", "1 / span 1"]);
+  });
+
+  it("the controls on a page are the same live controls: one still drags, and a redraw of the board keeps the page", async () => {
+    const page = openPage();
+    page.snapshot(DESK);
+    choose(page, "Robot");
+    const speed = track(page, "Speed");
+    grab(page, speed, 88); // on its knob: Speed shows 0.5
+    page.pointer("pointermove", speed, 140);
+    page.pointer("pointerup", speed, 140);
+    await page.drain();
+    expect(page.posts.at(-1)?.set).toEqual({ handle: "h-speed", values: { value: 0.7 }, phase: "commit" });
+    // The desk adds a control to another section: a new shape, the same page.
+    const board = DESK.panels[0]!.board!;
+    const spark = { kind: "widget", rect: { x: 8, y: 3, w: 4, h: 1 }, widget: slider("h-spark", "Spark") } as const;
+    page.snapshot({ seq: 4, panels: [{ ...DESK.panels[0]!, board: { ...board, items: [...board.items, spark] } }, DESK.panels[1]!] });
+    expect(chosen(page)).toEqual(["Robot"]);
+    expect(drawn(page).cells.map((cell) => cell[0])).toEqual(["Robot", "Speed"]);
+  });
+
+  it("the pager belongs to the shown Panel: a Panel without sections, and the Camera tab, show none", () => {
+    const page = openPage();
+    page.snapshot(DESK);
+    choose(page, "Scene");
+    tab(page, "Plain");
+    expect(pager(page).hidden).toBe(true);
+    expect(chips(page)).toEqual([]);
+    expect(page.doc.body.classList.contains("paged")).toBe(false);
+    tab(page, "Camera");
+    expect(pager(page).hidden).toBe(true);
+    // Back on the Panel: its page is the one it was left on.
+    tab(page, "Sentinel");
+    expect(chosen(page)).toEqual(["Scene"]);
+    expect(drawn(page).cells.map((cell) => cell[0])).toEqual(["Scene", "Bore"]);
+  });
+
+  it("the phone remembers each Panel's page; a section that is gone shows All without forgetting the choice", () => {
+    const first = openPage();
+    first.snapshot(DESK);
+    choose(first, "Lights");
+    const kept = first.win.localStorage.getItem(PHONE_PAGE_STORAGE_KEY);
+    expect(JSON.parse(kept ?? "null")).toEqual({ "panel:Sentinel": "Lights" });
+
+    const again = openPage({ storage: { [PHONE_PAGE_STORAGE_KEY]: kept! } });
+    again.snapshot(DESK);
+    expect(chosen(again)).toEqual(["Lights"]);
+    expect(drawn(again).cells.map((cell) => cell[0])).toEqual(["Lights", "Glow"]);
+    // Choosing All forgets it.
+    choose(again, "All");
+    expect(JSON.parse(again.win.localStorage.getItem(PHONE_PAGE_STORAGE_KEY) ?? "null")).toEqual({});
+
+    const gone = openPage({ storage: { [PHONE_PAGE_STORAGE_KEY]: JSON.stringify({ "panel:Sentinel": "Encore" }) } });
+    gone.snapshot(DESK);
+    expect(chosen(gone)).toEqual(["All"]);
+    expect(drawn(gone).cells).toHaveLength(10);
+    expect(JSON.parse(gone.win.localStorage.getItem(PHONE_PAGE_STORAGE_KEY) ?? "null")).toEqual({ "panel:Sentinel": "Encore" });
+    // Storage that holds something else entirely is not a page: the board, whole.
+    const junk = openPage({ storage: { [PHONE_PAGE_STORAGE_KEY]: "[1,2" } });
+    junk.snapshot(DESK);
+    expect(chosen(junk)).toEqual(["All"]);
+  });
+
+  /*
+   * An XY pad takes every touch that lands on it, so it is the one control a scroll cannot
+   * start from. The rail is for exactly that: a view that scrolls AND shows a pad. jsdom
+   * lays nothing out, so the test says how tall the page is; that a touch on the rail really
+   * scrolls is the browser's doing, asserted in the e2e spec.
+   */
+  it("the scroll rail shows only where a pad could trap a scroll: the view scrolls and a pad is on it", () => {
+    // "now": a Touch mode in which a pad takes every touch on it, and so can trap a scroll (§T1647b).
+    const page = openPage({ touch: "now" });
+    let tall = true;
+    Object.defineProperty(page.doc.documentElement, "clientHeight", { configurable: true, get: () => 700 });
+    Object.defineProperty(page.doc.documentElement, "scrollHeight", { configurable: true, get: () => (tall ? 2100 : 700) });
+    const rail = page.camera("rail");
+    const railed = (): boolean[] => [!rail.hidden, page.doc.body.classList.contains("railed")];
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    page.snapshot(DESK); // All: the pad is on it, and it is three screens tall
+    expect(railed()).toEqual([true, true]);
+    // The thumb says where the page is: the first third of it.
+    const thumb = rail.querySelector<HTMLElement>(".railthumb")!;
+    expect([thumb.style.top, parseFloat(thumb.style.height).toFixed(1)]).toEqual(["0%", "33.3"]);
+    choose(page, "Lights"); // no pad on this page: every control lets a scroll through
+    expect(railed()).toEqual([false, false]);
+    choose(page, "Camera"); // the pad's own page
+    expect(railed()).toEqual([true, true]);
+    tab(page, "Plain");
+    expect(railed()).toEqual([false, false]);
+    tab(page, "Sentinel");
+    expect(railed()).toEqual([true, true]);
+    // The phone is turned and the page now fits: nothing to scroll, no rail.
+    tall = false;
+    page.win.dispatchEvent(new page.win.Event("resize"));
+    expect(railed()).toEqual([false, false]);
+  });
+});
+
+/**
+ * T1647b TRIAL — DELETED WHEN THE OWNER HAS CHOSEN (the modes that lose; the winner's cases
+ * stay and lose their loop). §T1607b's rule failed in the owner's hand: "still pretty hard
+ * to not screw with the sliders when scrolling on mobile". The page now holds the candidate
+ * rules as modes of one "Touch" setting, kept on the phone, to be tried in one sitting:
+ *
+ *   K knob only · H hold to grab · L a Play / Scroll lock · G a scroll strip · A as before
+ *
+ * What every mode must keep: touch-down writes nothing; a touch that goes up the page from
+ * a control writes nothing; a deliberate drag still moves a slider, by its travel; toggles
+ * and buttons act on release. What each mode ADDS is what must be true before a slider,
+ * fader or pad may take a touch at all — and that is what its own cases assert. Which of
+ * them is right is not something a test can say: it is decided on the phone.
+ */
+describe("T1647b phone page — the Touch trial", () => {
+  type Page = ReturnType<typeof openPage>;
+  interface Mode {
+    readonly letter: string;
+    readonly says: string;
+    readonly from: "any" | "knob";
+    readonly rest: number;
+    readonly strip: "" | "right" | "left";
+    readonly lock: boolean;
+  }
+  interface Trial {
+    readonly TOUCH_MODES: Readonly<Record<string, Mode>>;
+    readonly TOUCH_DEFAULT: string;
+    readonly SLOP: number;
+    readonly REST: number;
+    readonly GRIP: number;
+    knobAt(share: number, length: number): number;
+    grips(a: number, b: number): boolean;
+  }
+  const rules = runInNewContext(
+    `${PHONE_PAGE_LOGIC}; ({ TOUCH_MODES: TOUCH_MODES, TOUCH_DEFAULT: TOUCH_DEFAULT, SLOP: SLOP, REST: REST, GRIP: GRIP, knobAt: knobAt, grips: grips })`,
+  ) as Trial;
+  const MODES = JSON.parse(JSON.stringify(rules.TOUCH_MODES)) as Record<string, Mode>;
+  const KEYS = Object.keys(MODES);
+  const sent = (page: Page) => page.posts.map((post) => post.set);
+  const classes = (page: Page): string[] => [...page.doc.body.classList].sort();
+  const choose = (page: Page, id: "touchMode" | "rowsMode", value: string): void => {
+    const select = page.camera(id) as HTMLSelectElement;
+    select.value = value;
+    select.dispatchEvent(new page.win.Event("change", { bubbles: true }));
+  };
+  const modeOf = (page: Page): Mode => MODES[(page.camera("touchMode") as HTMLSelectElement).value]!;
+
+  /** Where a control's knob is in its 200 px box: a slider's or fader's handle (kept whole inside the track), a pad's puck. */
+  const knobOf = (target: HTMLElement): { x: number; y: number } => {
+    const puck = target.querySelector<HTMLElement>(".puck");
+    if (puck !== null) return { x: (parseFloat(puck.style.left) / 100) * 200, y: (parseFloat(puck.style.top) / 100) * 200 };
+    const thumb = target.querySelector<HTMLElement>(".thumb");
+    if (thumb === null) throw new Error("this control has no knob");
+    return { x: rules.knobAt(parseFloat(thumb.style.left) / 100, 200), y: 100 };
+  };
+  /**
+   * A DELIBERATE take, as a hand would do it in the mode the page is in: land on the knob,
+   * rest as long as the mode asks, go SLOP along. Returns where the control took the touch.
+   */
+  const take = (page: Page, target: HTMLElement, pointerId = 1): { x: number; y: number } => {
+    const at = knobOf(target);
+    page.pointer("pointerdown", target, at.x, at.y, pointerId);
+    if (modeOf(page).rest > 0) page.elapse(modeOf(page).rest);
+    page.pointer("pointermove", target, at.x + rules.SLOP, at.y, pointerId);
+    return { x: at.x + rules.SLOP, y: at.y };
+  };
+
+  /* ------------------------------------------------------------------ the numbers */
+
+  it("the candidates are named, and the one a phone starts in is K", () => {
+    expect(Object.fromEntries(KEYS.map((key) => [key, MODES[key]!.letter]))).toEqual({
+      knob: "K",
+      hold: "H",
+      lock: "L",
+      gutter: "G",
+      gutterleft: "G",
+      now: "A",
+      knobgutter: "K+G",
+      knobhold: "K+H",
+    });
+    expect(rules.TOUCH_DEFAULT).toBe("knob");
+    // A mode differs from "as before" in exactly the conditions its letter names.
+    const adds = (mode: Mode): string[] => [mode.from === "knob" ? "knob" : "", mode.rest > 0 ? "rest" : "", mode.strip !== "" ? "strip" : "", mode.lock ? "lock" : ""].filter((each) => each !== "");
+    expect(Object.fromEntries(KEYS.map((key) => [key, adds(MODES[key]!)]))).toEqual({
+      knob: ["knob"],
+      hold: ["rest"],
+      lock: ["lock"],
+      gutter: ["strip"],
+      gutterleft: ["strip"],
+      now: [],
+      knobgutter: ["knob", "strip"],
+      knobhold: ["knob", "rest"],
+    });
+  });
+
+  /*
+   * A knob is sized for a FINGER, not for the row it sits in (a row may be drawn 32 px
+   * tall): at least Apple's 44 pt, and not so wide that most of a short slider is knob.
+   * A rest is longer than a scroll takes to start and shorter than a long press.
+   */
+  it("a knob is a finger wide, a rest is between a tap and a long press, and a resting finger may wander less than it takes to drag", () => {
+    expect(rules.GRIP).toBeGreaterThanOrEqual(44);
+    expect(rules.GRIP).toBeLessThanOrEqual(64);
+    expect([MODES["hold"]!.rest, MODES["knobhold"]!.rest]).toEqual([200, 100]);
+    expect(rules.REST).toBe(8);
+    expect(rules.REST).toBeLessThan(rules.SLOP);
+  });
+
+  it("a knob is centred on the value and whole inside its track: at either end it is the last finger-width", () => {
+    const half = rules.GRIP / 2;
+    expect(rules.knobAt(0.5, 300)).toBe(150);
+    expect(rules.knobAt(0, 300)).toBe(half);
+    expect(rules.knobAt(1, 300)).toBe(300 - half);
+    expect(rules.knobAt(0.05, 300)).toBe(half); // 15 px along: still the first finger-width
+    // A track narrower than a finger is all knob.
+    expect(rules.knobAt(0, 40)).toBe(half);
+    expect(rules.knobAt(1, 40)).toBe(half);
+    expect([rules.grips(100, 100 + half), rules.grips(100, 100 + half + 1), rules.grips(100 - half, 100)]).toEqual([true, false, true]);
+  });
+
+  /* --------------------------------------------- what every mode keeps (T1607b's acceptance) */
+
+  describe.each(KEYS)("in mode %s", (key) => {
+    it("a deliberate drag moves a slider by the finger's travel: a live write, then one commit", async () => {
+      const page = openPage({ touch: key });
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom");
+      const at = take(page, bloom);
+      expect(page.value("Bloom")).toBe("0.25"); // taking it moved nothing
+      expect(bloom.classList.contains("held")).toBe(true);
+      page.pointer("pointermove", bloom, at.x + 40, at.y);
+      page.frame();
+      page.pointer("pointerup", bloom, at.x + 40, at.y);
+      await page.drain();
+      expect(sent(page)).toEqual([
+        { handle: "h-bloom", values: { value: 0.45 }, phase: "live" },
+        { handle: "h-bloom", values: { value: 0.45 }, phase: "commit" },
+      ]);
+      expect(bloom.classList.contains("held")).toBe(false);
+    });
+
+    it("a touch that goes up the page from a slider writes nothing — from its knob or beside it, at once or after a pause", async () => {
+      const page = openPage({ touch: key });
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom"); // its knob is at x = 50
+      let pointer = 0;
+      for (const landing of [50, 150]) {
+        for (const pause of [0, 400]) {
+          pointer += 1;
+          page.pointer("pointerdown", bloom, landing, 100, pointer);
+          page.elapse(pause);
+          // Up the page, wobbling sideways as a thumb does; then the browser takes it for the scroll it is.
+          page.pointer("pointermove", bloom, landing + 3, 80, pointer);
+          page.pointer("pointermove", bloom, landing + 8, 20, pointer);
+          page.pointer("pointermove", bloom, landing + 20, -140, pointer);
+          page.frame();
+          page.pointer("pointercancel", bloom, 0, 0, pointer);
+        }
+      }
+      page.elapse(1000);
+      await page.drain();
+      expect(sent(page)).toEqual([]);
+      expect(page.value("Bloom")).toBe("0.25");
+      expect(bloom.classList.contains("held")).toBe(false);
+    });
+
+    it("touch-down writes nothing on any control, and a toggle flips on its click alone", async () => {
+      const page = openPage({ touch: key });
+      page.snapshot(SNAPSHOT);
+      let pointer = 0;
+      for (const caption of ["Bloom", "Steps", "Strobe", "Flash", "Center"]) {
+        const control = track(page, caption);
+        const at = caption === "Strobe" || caption === "Flash" ? { x: 100, y: 100 } : knobOf(control);
+        pointer += 1;
+        page.pointer("pointerdown", control, at.x, at.y, pointer);
+      }
+      page.frame();
+      await page.flush();
+      expect(sent(page)).toEqual([]);
+      track(page, "Strobe").click();
+      await page.drain();
+      expect(sent(page).filter((set) => set.handle === "h-strobe")).toEqual([{ handle: "h-strobe", values: { on: true }, phase: "commit" }]);
+    });
+  });
+
+  /* ------------------------------------------------------------------------ K: the knob only */
+
+  describe("K — a slider follows only a touch that starts on its knob", () => {
+    it("landing on the knob takes it; landing anywhere else on the track does nothing, however far along it goes", async () => {
+      const page = openPage({ touch: "knob" });
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom"); // 0.25 of 200 px: the knob is 22..78
+      for (const [pointer, landing] of [79, 110, 190, 21].entries()) {
+        page.pointer("pointerdown", bloom, landing, 100, pointer + 1);
+        page.pointer("pointermove", bloom, landing + 12, 100, pointer + 1);
+        page.pointer("pointermove", bloom, landing - 80, 100, pointer + 1);
+        page.frame();
+        page.pointer("pointerup", bloom, landing - 80, 100, pointer + 1);
+      }
+      await page.drain();
+      expect(sent(page)).toEqual([]);
+      expect(page.value("Bloom")).toBe("0.25");
+      // The two edges of the knob, and no jump: the same travel is the same change from either.
+      for (const landing of [22, 78]) {
+        const again = openPage({ touch: "knob" });
+        again.snapshot(SNAPSHOT);
+        const slider = track(again, "Bloom");
+        again.pointer("pointerdown", slider, landing, 100);
+        again.pointer("pointermove", slider, landing + 12, 100);
+        again.pointer("pointerup", slider, landing + 52, 100);
+        await again.drain();
+        expect(sent(again), `landing at ${String(landing)}`).toEqual([{ handle: "h-bloom", values: { value: 0.45 }, phase: "commit" }]);
+      }
+    });
+
+    it("the knob is where the value is — it moves with a drag, with the desk, and stays whole at the ends", async () => {
+      const page = openPage({ touch: "knob" });
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom");
+      const grip = bloom.querySelector<HTMLElement>(".grip")!;
+      // Drawn: as wide as it is to a finger, at the value.
+      const drawn = page.win.getComputedStyle(grip);
+      expect([drawn.display, drawn.width, grip.style.getPropertyValue("--at")]).toEqual(["block", `${String(rules.GRIP)}px`, "25%"]);
+      // ...by the very rule that says where it is hit (knobAt): on the value, whole inside the track.
+      const half = `${String(rules.GRIP / 2)}px`;
+      expect(page.doc.querySelector("style")?.textContent).toContain(`left: clamp(${half}, var(--at), calc(100% - ${half}));`);
+      /** Does a touch that lands at `landing` and goes 16 px to the left move the slider? (It is put back before it lifts.) */
+      const tries = (landing: number, pointer: number): boolean => {
+        const before = page.value("Bloom");
+        page.pointer("pointerdown", bloom, landing, 100, pointer);
+        page.pointer("pointermove", bloom, landing - 12, 100, pointer);
+        page.pointer("pointermove", bloom, landing - 16, 100, pointer);
+        const moved = page.value("Bloom") !== before;
+        page.pointer("pointermove", bloom, landing - 12, 100, pointer);
+        page.pointer("pointerup", bloom, landing - 12, 100, pointer);
+        return moved;
+      };
+      expect([tries(50, 1), tries(150, 2)]).toEqual([true, false]);
+      // The desk moves it to 0.75: the knob is at 150 now, and 50 is bare track.
+      await page.drain();
+      page.snapshot(withWidget(6, "h-bloom", { value: 0.75 }));
+      expect(grip.style.getPropertyValue("--at")).toBe("75%");
+      expect([tries(50, 3), tries(150, 4)]).toEqual([false, true]);
+      // At its top the knob is the last finger-width of the track, not half off its end.
+      await page.drain();
+      page.snapshot(withWidget(7, "h-bloom", { value: 1 }));
+      expect([tries(140, 5), tries(146, 6)]).toEqual([false, true]);
+      await page.drain();
+    });
+
+    it("an XY pad follows only from its puck, by the finger's travel; the rest of it is the page's, so it traps no scroll and needs no rail", async () => {
+      const page = openPage({ touch: "knob" });
+      Object.defineProperty(page.doc.documentElement, "clientHeight", { configurable: true, get: () => 700 });
+      Object.defineProperty(page.doc.documentElement, "scrollHeight", { configurable: true, get: () => 2100 });
+      page.snapshot(SNAPSHOT);
+      const pad = track(page, "Center"); // the puck is at (100, 100)
+      // From a corner: far enough to be taken twice over, were the pad taking touches there.
+      page.pointer("pointerdown", pad, 190, 10);
+      page.pointer("pointermove", pad, 178, 22);
+      page.pointer("pointermove", pad, 150, 60);
+      page.pointer("pointerup", pad, 150, 60);
+      await page.drain();
+      expect(sent(page)).toEqual([]);
+      expect(page.value("Center")).toBe("0.00, 0.00");
+      page.pointer("pointerdown", pad, 120, 80, 2);
+      page.pointer("pointermove", pad, 120, 92, 2); // taken, going down the screen
+      page.pointer("pointermove", pad, 100, 112, 2);
+      page.pointer("pointerup", pad, 100, 112, 2);
+      await page.drain();
+      expect(sent(page).at(-1)).toEqual({ handle: "h-center", values: { x: -0.2, y: -0.2 }, phase: "commit" });
+      // What the browser is told: the pad lets a touch that goes up or down scroll; the puck does not.
+      expect(page.win.getComputedStyle(pad).touchAction).toBe("pan-y");
+      const puck = page.win.getComputedStyle(pad.querySelector(".puck")!);
+      expect([puck.touchAction, puck.pointerEvents]).toEqual(["none", "auto"]);
+      expect(page.camera("rail").hidden).toBe(true);
+    });
+
+    it("a layer's fader has a knob too", async () => {
+      const page = openPage({ touch: "knob" });
+      page.snapshot({
+        seq: 1,
+        panels: [{ title: "P", rows: [], board: { columns: 8, rows: 1, items: [{ kind: "widget", rect: { x: 0, y: 0, w: 6, h: 1 }, widget: { kind: "layer", handle: "h-fx", caption: "fx", on: true, opacity: 0.5, opacityWritable: true, picture: "" } }] } }],
+      });
+      const fader = page.doc.querySelector<HTMLElement>(".w.layer .fader")!; // 0.5 of 200 px: the knob is 72..128
+      page.pointer("pointerdown", fader, 20, 100);
+      page.pointer("pointermove", fader, 32, 100);
+      page.pointer("pointermove", fader, 70, 100);
+      page.pointer("pointerup", fader, 70, 100);
+      await page.drain();
+      expect(sent(page)).toEqual([]);
+      const at = take(page, fader, 2);
+      page.pointer("pointerup", fader, at.x + 20, at.y, 2);
+      await page.drain();
+      expect(sent(page)).toEqual([{ handle: "h-fx", values: { opacity: 0.6 }, phase: "commit" }]);
+    });
+
+    it("outside K no knob is drawn and a slider takes a touch anywhere along it", () => {
+      const page = openPage({ touch: "now" });
+      page.snapshot(SNAPSHOT);
+      expect(page.win.getComputedStyle(track(page, "Bloom").querySelector(".grip")!).display).toBe("none");
+      expect(page.win.getComputedStyle(track(page, "Center")).touchAction).toBe("none");
+    });
+  });
+
+  /* --------------------------------------------------------------------- H: hold to grab */
+
+  describe("H — a control follows only after the finger has rested on it", () => {
+    it("the outline arrives when the finger has rested 200 ms, not a millisecond sooner, and nothing is written by resting", async () => {
+      const page = openPage({ touch: "hold" });
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom");
+      page.pointer("pointerdown", bloom, 150, 100); // anywhere on it: H has no knob
+      page.elapse(199);
+      expect(bloom.classList.contains("held")).toBe(false);
+      page.elapse(1);
+      expect(bloom.classList.contains("held")).toBe(true);
+      page.elapse(2000);
+      page.frame();
+      expect(sent(page)).toEqual([]);
+      // Then it drags as ever: SLOP along takes it, the travel after that moves it.
+      page.pointer("pointermove", bloom, 162, 100);
+      page.pointer("pointerup", bloom, 202, 100);
+      await page.drain();
+      expect(sent(page)).toEqual([{ handle: "h-bloom", values: { value: 0.45 }, phase: "commit" }]);
+      expect(bloom.classList.contains("held")).toBe(false);
+    });
+
+    it("a finger that moves before it has rested is let go: it does not grab then, or later in the same touch", async () => {
+      const page = openPage({ touch: "hold" });
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom");
+      // A deliberate-looking drag along the slider, started at once.
+      page.pointer("pointerdown", bloom, 50, 100);
+      page.elapse(60);
+      page.pointer("pointermove", bloom, 62, 100);
+      page.pointer("pointermove", bloom, 110, 100);
+      // ...and then it stops and rests, still down. Too late: this touch was let go.
+      page.elapse(1000);
+      expect(bloom.classList.contains("held")).toBe(false);
+      page.pointer("pointermove", bloom, 160, 100);
+      page.pointer("pointerup", bloom, 160, 100);
+      await page.drain();
+      expect(sent(page)).toEqual([]);
+      expect(page.value("Bloom")).toBe("0.25");
+    });
+
+    it("a resting finger may wander 8 px and still be resting; 9 px is a move", async () => {
+      const wander = async (px: number): Promise<boolean> => {
+        const page = openPage({ touch: "hold" });
+        page.snapshot(SNAPSHOT);
+        const bloom = track(page, "Bloom");
+        page.pointer("pointerdown", bloom, 50, 100);
+        page.elapse(100);
+        page.pointer("pointermove", bloom, 50, 100 + px);
+        page.elapse(100);
+        await page.drain();
+        expect(sent(page)).toEqual([]);
+        return bloom.classList.contains("held");
+      };
+      expect([await wander(rules.REST), await wander(rules.REST + 1)]).toEqual([true, false]);
+    });
+
+    it("a pad is grabbed the same way; a toggle and a button are not made to wait", async () => {
+      const page = openPage({ touch: "hold" });
+      page.snapshot(SNAPSHOT);
+      const pad = track(page, "Center");
+      page.pointer("pointerdown", pad, 30, 30);
+      page.pointer("pointermove", pad, 60, 60);
+      page.pointer("pointerup", pad, 60, 60);
+      const at = take(page, pad, 2);
+      page.pointer("pointerup", pad, at.x + 20, at.y, 2);
+      await page.drain();
+      expect(sent(page)).toEqual([{ handle: "h-center", values: { x: 0.2, y: 0 }, phase: "commit" }]);
+      track(page, "Strobe").click();
+      await page.drain();
+      expect(sent(page).at(-1)).toEqual({ handle: "h-strobe", values: { on: true }, phase: "commit" });
+    });
+  });
+
+  /* ---------------------------------------------------------------------------- L: a lock */
+
+  describe("L — one switch puts the page in Play or in Scroll", () => {
+    const LOCKED: PhoneSnapshot = {
+      seq: 2,
+      panels: [
+        {
+          title: "Stage",
+          rows: [],
+          board: {
+            columns: 8,
+            rows: 6,
+            items: [
+              { kind: "label", rect: { x: 0, y: 0, w: 8, h: 1 }, text: "Look" },
+              { kind: "widget", rect: { x: 0, y: 1, w: 8, h: 1 }, widget: { kind: "preset", handle: "h-looks", caption: "looks", presets: ["soft", "hard"], current: "soft", morphing: false } },
+              { kind: "widget", rect: { x: 0, y: 2, w: 8, h: 1 }, widget: { kind: "slider", handle: "h-bloom", caption: "Bloom", value: 0.25, min: 0, max: 1, step: 0 } },
+              { kind: "label", rect: { x: 0, y: 3, w: 8, h: 1 }, text: "Hits" },
+              { kind: "widget", rect: { x: 0, y: 4, w: 4, h: 1 }, widget: { kind: "toggle", handle: "h-strobe", caption: "Strobe", on: false } },
+              { kind: "widget", rect: { x: 4, y: 4, w: 4, h: 1 }, widget: { kind: "button", handle: "h-flash", caption: "Flash", held: false } },
+              { kind: "widget", rect: { x: 0, y: 5, w: 3, h: 3 }, widget: { kind: "xyPad", handle: "h-center", caption: "Center", x: 0, y: 0, min: -1, max: 1 } },
+            ],
+          },
+        },
+        { title: "Other", rows: [{ kind: "widgets", widgets: [{ kind: "slider", handle: "h-dim", caption: "Dim", value: 0.5, min: 0, max: 1, step: 0 }] }] },
+      ],
+    };
+    const lock = (page: Page): HTMLElement => page.camera("lock");
+    /** Everything a hand can do to the board: drag a slider and the pad, tap the toggle and a preset, rest on the button. */
+    const everything = async (page: Page, pointer: number): Promise<void> => {
+      const bloom = track(page, "Bloom");
+      const at = take(page, bloom, pointer);
+      page.pointer("pointermove", bloom, at.x + 40, at.y, pointer);
+      page.pointer("pointerup", bloom, at.x + 40, at.y, pointer);
+      const pad = track(page, "Center");
+      const on = take(page, pad, pointer + 1);
+      page.pointer("pointerup", pad, on.x + 20, on.y, pointer + 1);
+      track(page, "Strobe").click();
+      page.doc.querySelector<HTMLElement>('.w.preset [data-preset="hard"]')!.click();
+      page.pointer("pointerdown", track(page, "Flash"), 100, 100, pointer + 2);
+      page.elapse(300);
+      page.pointer("pointerup", track(page, "Flash"), 100, 100, pointer + 2);
+      await page.drain();
+    };
+
+    it("the switch is there in L and nowhere else, and the page starts in Play", () => {
+      for (const key of KEYS) {
+        const page = openPage({ touch: key });
+        page.snapshot(LOCKED);
+        expect(lock(page).hidden, key).toBe(key !== "lock");
+        expect(classes(page).includes("scrollonly"), key).toBe(false);
+      }
+      const page = openPage({ touch: "lock" });
+      expect([lock(page).tagName, lock(page).getAttribute("aria-pressed"), lock(page).textContent]).toEqual(["BUTTON", "false", "PlayScroll"]);
+    });
+
+    it("in Scroll no control answers — not a drag, not a tap, not a rest — and in Play they all do, as before", async () => {
+      const page = openPage({ touch: "lock" });
+      page.snapshot(LOCKED);
+      lock(page).click();
+      expect([lock(page).getAttribute("aria-pressed"), classes(page).includes("scrollonly")]).toEqual(["true", true]);
+      // What makes the browser scroll from anywhere on the board: it takes no touch at all.
+      expect(page.win.getComputedStyle(page.camera("panels")).pointerEvents).toBe("none");
+      await everything(page, 1);
+      expect(sent(page)).toEqual([]);
+      expect([page.value("Bloom"), page.value("Strobe"), page.value("Center")]).toEqual(["0.25", "Off", "0.00, 0.00"]);
+
+      lock(page).click();
+      expect([lock(page).getAttribute("aria-pressed"), classes(page).includes("scrollonly")]).toEqual(["false", false]);
+      await everything(page, 11);
+      expect(sent(page).filter((set) => set.phase === "commit")).toEqual([
+        { handle: "h-bloom", values: { value: 0.45 }, phase: "commit" },
+        { handle: "h-center", values: { x: 0.2, y: 0 }, phase: "commit" },
+        { handle: "h-strobe", values: { on: true }, phase: "commit" },
+        { handle: "h-looks", values: { recall: "hard" }, phase: "commit" },
+        { handle: "h-flash", values: { held: false }, phase: "commit" },
+      ]);
+    });
+
+    it("the tab bar and the pager answer in Scroll as in Play, and getting around does not change the mode", () => {
+      const page = openPage({ touch: "lock" });
+      page.snapshot(LOCKED);
+      lock(page).click();
+      const chip = (name: string): HTMLElement => [...page.doc.querySelectorAll<HTMLElement>("#pager [role=tab]")].find((each) => each.textContent === name)!;
+      const tab = (name: string): HTMLElement => [...page.doc.querySelectorAll<HTMLElement>("#tabs [role=tab]")].find((each) => each.textContent === name)!;
+      chip("Hits").click();
+      expect([...page.doc.querySelectorAll("#pager [aria-selected=true]")].map((each) => each.textContent)).toEqual(["Hits"]);
+      tab("Other").click();
+      expect([...page.doc.querySelectorAll("#tabs [aria-selected=true]")].map((each) => each.textContent)).toEqual(["Other"]);
+      tab("Stage").click();
+      expect(classes(page).includes("scrollonly")).toBe(true);
+      expect(lock(page).getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("going to Scroll with a slider in hand lets it go where it is", async () => {
+      const page = openPage({ touch: "lock" });
+      page.snapshot(LOCKED);
+      const bloom = track(page, "Bloom");
+      const at = take(page, bloom);
+      page.pointer("pointermove", bloom, at.x + 40, at.y);
+      page.frame();
+      lock(page).click();
+      page.pointer("pointermove", bloom, at.x + 120, at.y);
+      page.pointer("pointerup", bloom, at.x + 120, at.y);
+      await page.drain();
+      expect(sent(page)).toEqual([
+        { handle: "h-bloom", values: { value: 0.45 }, phase: "live" },
+        { handle: "h-bloom", values: { value: 0.45 }, phase: "commit" },
+      ]);
+    });
+  });
+
+  /* --------------------------------------------------------------------------- G: a gutter */
+
+  describe("G — a strip of every board is never a control", () => {
+    const BARE: PhoneSnapshot = {
+      seq: 2,
+      panels: [
+        {
+          title: "Sliders",
+          rows: [],
+          board: { columns: 8, rows: 1, items: [{ kind: "widget", rect: { x: 0, y: 0, w: 8, h: 1 }, widget: { kind: "slider", handle: "h-bloom", caption: "Bloom", value: 0.25, min: 0, max: 1, step: 0 } }] },
+        },
+      ],
+    };
+    const tall = (page: Page, height: number): void => {
+      Object.defineProperty(page.doc.documentElement, "clientHeight", { configurable: true, get: () => 700 });
+      Object.defineProperty(page.doc.documentElement, "scrollHeight", { configurable: true, get: () => height });
+    };
+    /** [the strip shows, the board is inset for it, it is the wide one, it is on the left]. */
+    const strip = (page: Page): boolean[] => [!page.camera("rail").hidden, ...["railed", "gutter", "railleft"].map((name) => page.doc.body.classList.contains(name))];
+
+    it("a board of nothing but sliders gets the strip where it scrolls — on the right, or on the left — and no mode without a strip gives it one", () => {
+      const shows = (key: string, height: number): boolean[] => {
+        const page = openPage({ touch: key });
+        tall(page, height);
+        page.snapshot(BARE);
+        return strip(page);
+      };
+      expect(shows("gutter", 2100)).toEqual([true, true, true, false]);
+      expect(shows("gutterleft", 2100)).toEqual([true, true, true, true]);
+      expect(shows("knobgutter", 2100)).toEqual([true, true, true, false]);
+      // Nothing to scroll: no strip, and the board keeps its whole width.
+      expect(shows("gutter", 700).slice(0, 2)).toEqual([false, false]);
+      for (const key of ["knob", "hold", "lock", "now", "knobhold"]) expect(shows(key, 2100).slice(0, 2), key).toEqual([false, false]);
+    });
+
+    it("the strip is a thumb wide and the board is inset beside it; it is the page's own rail, with its thumb", () => {
+      const page = openPage({ touch: "gutter" });
+      tall(page, 2100);
+      page.snapshot(BARE);
+      const css = page.doc.querySelector("style")?.textContent ?? "";
+      expect(css).toContain(`body.gutter #rail { width: calc(${String(rules.GRIP)}px + env(safe-area-inset-right)); }`);
+      expect(css).toContain(`body.gutter.railed { --rail: ${String(rules.GRIP - 4)}px; }`);
+      const thumb = page.camera("rail").querySelector<HTMLElement>(".railthumb")!;
+      expect([thumb.style.top, parseFloat(thumb.style.height).toFixed(1)]).toEqual(["0%", "33.3"]);
+      // Nothing listens on it: a touch there is the browser's, to scroll.
+      expect(page.win.getComputedStyle(page.camera("rail")).touchAction).toBe("pan-y");
+      // The Camera tab is no board: no strip.
+      [...page.doc.querySelectorAll<HTMLElement>("#tabs [role=tab]")].find((each) => each.textContent === "Camera")!.click();
+      expect(strip(page).slice(0, 2)).toEqual([false, false]);
+    });
+  });
+
+  /* ------------------------------------------------------------------------ combinations */
+
+  it("K with a short rest asks for both: on the knob AND rested 100 ms", async () => {
+    const attempt = async (landing: number, rest: number): Promise<number> => {
+      const page = openPage({ touch: "knobhold" });
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom");
+      page.pointer("pointerdown", bloom, landing, 100);
+      page.elapse(rest);
+      page.pointer("pointermove", bloom, landing + 12, 100);
+      page.pointer("pointerup", bloom, landing + 52, 100);
+      await page.drain();
+      return sent(page).length;
+    };
+    expect([await attempt(50, 100), await attempt(50, 99), await attempt(150, 100)]).toEqual([1, 0, 0]);
+  });
+
+  /* ----------------------------------------------------------------------- the setting */
+
+  describe("the Touch control — on the phone page, kept by the phone", () => {
+    it("offers every mode by its letter and what it does, and starts on K when the phone has kept nothing", () => {
+      const page = openPage();
+      const select = page.camera("touchMode") as HTMLSelectElement;
+      expect([...select.options].map((option) => [option.value, option.textContent])).toEqual(KEYS.map((key) => [key, `${MODES[key]!.letter} · ${MODES[key]!.says}`]));
+      expect(select.value).toBe("knob");
+      expect(page.camera("touchNow").textContent).toBe("K");
+      expect(classes(page)).toEqual(["knobs"]);
+      expect(page.win.localStorage.getItem(PHONE_TRIAL_STORAGE_KEY)).toBeNull();
+    });
+
+    it("a choice takes effect at once, is kept on the phone, and is there on the next visit", async () => {
+      const page = openPage();
+      page.snapshot(SNAPSHOT);
+      choose(page, "touchMode", "now");
+      expect([page.camera("touchNow").textContent, classes(page)]).toEqual(["A", []]);
+      // At once: a slider now takes a touch that lands far from its knob.
+      const bloom = track(page, "Bloom");
+      page.pointer("pointerdown", bloom, 150, 100);
+      page.pointer("pointermove", bloom, 162, 100);
+      page.pointer("pointerup", bloom, 202, 100);
+      await page.drain();
+      expect(sent(page)).toEqual([{ handle: "h-bloom", values: { value: 0.45 }, phase: "commit" }]);
+      const kept = page.win.localStorage.getItem(PHONE_TRIAL_STORAGE_KEY);
+      expect(JSON.parse(kept ?? "null")).toEqual({ touch: "now", rows: 36 });
+
+      const again = openPage({ storage: { [PHONE_TRIAL_STORAGE_KEY]: kept! } });
+      expect([(again.camera("touchMode") as HTMLSelectElement).value, again.camera("touchNow").textContent]).toEqual(["now", "A"]);
+    });
+
+    it("each mode puts its own marks on the page, and leaves none of another's", () => {
+      const page = openPage();
+      const marks: Record<string, string[]> = {};
+      for (const key of KEYS) {
+        choose(page, "touchMode", key);
+        marks[key] = classes(page);
+      }
+      expect(marks).toEqual({
+        knob: ["knobs"],
+        hold: [],
+        lock: ["locking"],
+        gutter: ["gutter"],
+        gutterleft: ["gutter", "railleft"],
+        now: [],
+        knobgutter: ["gutter", "knobs"],
+        knobhold: ["knobs"],
+      });
+    });
+
+    it("what the phone kept that is not a choice — nothing, junk, a mode since deleted — is the default", () => {
+      for (const kept of ["", "[1,2", "null", '"knob"', JSON.stringify({ touch: "pinch", rows: 9 }), JSON.stringify({ touch: 3, rows: "36" })]) {
+        const page = openPage({ storage: { [PHONE_TRIAL_STORAGE_KEY]: kept } });
+        expect([(page.camera("touchMode") as HTMLSelectElement).value, (page.camera("rowsMode") as HTMLSelectElement).value], kept).toEqual(["knob", "36"]);
+      }
+    });
+
+    it("changing the mode with a slider in hand lets it go where it is", async () => {
+      const page = openPage({ touch: "now" });
+      page.snapshot(SNAPSHOT);
+      const bloom = track(page, "Bloom");
+      const at = take(page, bloom);
+      page.pointer("pointermove", bloom, at.x + 40, at.y);
+      page.frame();
+      choose(page, "touchMode", "hold");
+      page.pointer("pointermove", bloom, at.x + 120, at.y);
+      page.pointer("pointerup", bloom, at.x + 120, at.y);
+      await page.drain();
+      expect(sent(page)).toEqual([
+        { handle: "h-bloom", values: { value: 0.45 }, phase: "live" },
+        { handle: "h-bloom", values: { value: 0.45 }, phase: "commit" },
+      ]);
+    });
+  });
+
+  /* --------------------------------------------------------------------- the row's height */
+
+  describe("Rows — how tall a row is drawn (§B269's floor), tried in the same sitting", () => {
+    const row = (page: Page): string => page.doc.body.style.getPropertyValue("--row");
+
+    it("offers 32, 36 and 44 px, starts at 36, and a choice is the floor at once and on the next visit", () => {
+      const page = openPage();
+      const select = page.camera("rowsMode") as HTMLSelectElement;
+      expect([...select.options].map((option) => option.value)).toEqual(["32", "36", "44"]);
+      expect([select.value, page.camera("rowsNow").textContent, row(page)]).toEqual(["36", "36", "36px"]);
+      choose(page, "rowsMode", "44");
+      expect([page.camera("rowsNow").textContent, row(page)]).toEqual(["44", "44px"]);
+      const kept = page.win.localStorage.getItem(PHONE_TRIAL_STORAGE_KEY);
+      expect(JSON.parse(kept ?? "null")).toEqual({ touch: "knob", rows: 44 });
+      const again = openPage({ storage: { [PHONE_TRIAL_STORAGE_KEY]: kept! } });
+      expect(row(again)).toBe("44px");
+      expect(row(openPage({ rows: 32 }))).toBe("32px");
+    });
+
+    it("the two choices are kept together and do not disturb each other", () => {
+      const page = openPage();
+      choose(page, "rowsMode", "32");
+      choose(page, "touchMode", "hold");
+      expect(JSON.parse(page.win.localStorage.getItem(PHONE_TRIAL_STORAGE_KEY) ?? "null")).toEqual({ touch: "hold", rows: 32 });
+      expect([row(page), page.camera("touchNow").textContent]).toEqual(["32px", "H"]);
     });
   });
 });

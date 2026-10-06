@@ -1,8 +1,7 @@
 import type { FrameClock } from "@domain/types/frame.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument, type GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { nodeByName } from "@domain/graph/names.ts";
-import { resolveParameters } from "@domain/parameters/resolve.ts";
 import {
   parsePresetBank,
   parsePresetTargets,
@@ -10,7 +9,7 @@ import {
   type MorphSpec,
   type PresetValues,
 } from "@domain/presets/bank.ts";
-import { presetMorph, type PresetRecallOutput, type PresetStoreOutput } from "@domain/presets/commands.ts";
+import { bankSettings, presetMorph, type PresetRecallOutput, type PresetStoreOutput } from "@domain/presets/commands.ts";
 import type { CueFireOutput, CueListQueryOutput, CueSetStandbyOutput } from "@domain/presets/cue-commands.ts";
 import type { PresetDeleteOutput } from "@domain/presets/delete-command.ts";
 import { morphProgress, morphRunning, type MorphRecord } from "@domain/presets/morph.ts";
@@ -211,12 +210,12 @@ async function fadeReport(
 /** The component catalogue the bus's preset commands read (T1505b), or none (the headless server). */
 const catalogueOf = (runtime: ToolRuntime) => presetCatalogueHolderFor(runtime.bus).current?.components;
 
-function bankView(view: BankView, runtime: ToolRuntime, clock: FrameClock | undefined): PresetBankView {
+function bankView(view: BankView, runtime: ToolRuntime, clock: FrameClock | undefined, graph: GraphDocument): PresetBankView {
   const node = view.holder;
-  const channels = runtime.bus.channelResolver();
-  // The bank's own settings through the one read path (§V61), as the commands read them —
-  // for a look's instance, its component's page bank's.
-  const settings = resolveParameters(view.bank, runtime.bus.registry.get(view.bank.type), channels === undefined ? {} : { channels }).values;
+  // The bank's own settings as the commands read them (`bankSettings`: at this moment, through
+  // the bus's read scope; for a look's instance, its component's page bank's). §T1557b: this
+  // was `{ channels }` alone, so a Morph on `op('k1').chan.value` listed as its static.
+  const settings = bankSettings(view, runtime.bus.registry, { ...runtime.bus.readScope(), graph: authoredGraph(graph) });
   const parsed = parsePresetBank(view.bank.parameters["presets"]);
   const instance = node.label ?? node.id;
   // A look's preset holds `parent`; what a recall writes is the instance's own page.
@@ -276,7 +275,7 @@ export const listPresets: AgentTool<ListPresetsInput, PresetListing> = {
     const clock = runtime.bus.frameClock();
     return ok(
       "list_presets",
-      { banks: banks.map((view) => bankView(view, runtime, clock)), clockSeconds: clock?.absTimeSeconds ?? null },
+      { banks: banks.map((view) => bankView(view, runtime, clock, graph)), clockSeconds: clock?.absTimeSeconds ?? null },
       { revision: graph.revision },
     );
   },

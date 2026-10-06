@@ -33,27 +33,27 @@ export const currentDocument = document(
         type: "perlin4d", seed: 11, period: 0.11, harmon: 3, spread: 2, gain: 0.5,
         rough: 0.5, exp: 1.4, amp: 1.5, offset: 0.1, mono: true, aspectcorrect: true,
         speed: 0.035, t4d: 0.37, s4d: 1, // T786: off the 4D lattice plane (T535) — t4d=0 collapses perlin4d's amplitude, so frame 0, which is the gallery card, was systematically flatter than every frame after it
-      }, { label: "bed1" }),
+      }, { label: "noise_bed" }),
       node("orb", "circle", [-2220, -140], {
         mode: "fill", center: [0.5, 0.5], radius: [0.085, 0.085], softness: 0.09,
         fillcolor: [1, 0.82, 0.5, 1], bgcolor: [0, 0, 0, 0], aspectcorrect: true,
-      }, { label: "orb1", parameters: { "center.x": drivenSlot("pathx1", 0.5), "center.y": drivenSlot("pathy1", 0.5) } }),
-      node("pathx", "lfo", [-2220, 420], { shape: "sine", frequency: 0.29, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "pathx1" }),
-      node("pathy", "lfo", [-2220, 700], { shape: "sine", frequency: 0.203, amplitude: 0.3, offset: 0.5, phase: 0.25 }, { label: "pathy1" }),
-      node("clip", "movieFileIn", [-2220, 140], { file: "", playMode: "freeRun", speed: 1 }, { label: "clip1" }),
-      node("stand", "add", [-1920, -280], { opacity: 1 }, { label: "stand1" }),
-      node("pick", "switch", [-1920, 20], { index: 0 }, { label: "pick1" }),
+      }, { label: "circle_orb", parameters: { "center.x": drivenSlot("lfo_pathx", 0.5), "center.y": drivenSlot("lfo_pathy", 0.5) } }),
+      node("pathx", "lfo", [-2220, 420], { shape: "sine", frequency: 0.29, amplitude: 0.33, offset: 0.5, phase: 0 }, { label: "lfo_pathx" }),
+      node("pathy", "lfo", [-2220, 700], { shape: "sine", frequency: 0.203, amplitude: 0.3, offset: 0.5, phase: 0.25 }, { label: "lfo_pathy" }),
+      node("clip", "movieFileIn", [-2220, 140], { file: "", playMode: "freeRun", speed: 1 }, { label: "movie_clip" }),
+      node("stand", "add", [-1920, -280], { opacity: 1 }, { label: "add_stand" }),
+      node("pick", "switch", [-1920, 20], { index: 0 }, { label: "switch_pick" }),
 
       // ---- the motion instrument and the pack ---------------------------------------
-      node("past", "cache", [-1620, 240], { frames: 8, index: 6, scale: 1 }, { label: "past1" }),
-      node("moved", "difference", [-1620, -60], {}, { label: "moved1" }),
+      node("past", "cache", [-1620, 240], { frames: 8, index: 6, scale: 1 }, { label: "cache_past" }),
+      node("moved", "difference", [-1620, -60], {}, { label: "difference_moved" }),
       /* §V694: range from whitelevel alone; nothing subtracts. */
       node("gain", "level", [-1320, -60], {
         blacklevel: 0, whitelevel: 0.6, gamma1: 1, contrast: 1, brightness: 1, invert: 0, opacity: 1,
-      }, { label: "gain1" }),
+      }, { label: "level_gain" }),
       node("pack", "reorder", [-1020, -60], {
         outr: "in1r", outg: "in1g", outb: "in1b", outa: "in2lum",
-      }, { label: "pack1" }),
+      }, { label: "reorder_pack" }),
 
       // ---- the tiles: a fixed grid, spun and leant by the flow ----------------------
       node("grid", "pointGrid", [-1020, 240], {
@@ -62,16 +62,16 @@ export const currentDocument = document(
       node("flow", "pointKernel", [-720, -60], {
         capacity: CURRENT_COLS * CURRENT_ROWS, seed: 42, group: "",
         attributes: CURRENT_ATTRIBUTES, kernel: CURRENT_KERNEL,
-      }, { label: "flow1" }),
+      }, { label: "kernel_flow" }),
       /* PHONG, because the whole point is that the LEAN reads as shading: a specular
          facet under a raking key answers "which way is this tile turned" per pixel. */
       node("facet", "materialPhong", [-720, 240], {
         color: [0.82, 0.82, 0.85, 1], specular: [1, 1, 1, 1], shininess: 64, roughness: 0.3,
-      }, { label: "facet1" }),
+      }, { label: "material_facet" }),
       node("tiles", "geometry", [-420, -60], {
-        mode: "instances", shape: "quad", scale: 0.033, material: "facet1",
+        mode: "instances", shape: "quad", scale: 0.033, material: "material_facet",
       }, {
-        label: "tiles1",
+        label: "geometry_tiles",
         parameters: {
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
           scale: { mode: "map", bindings: { static: { kind: "static", value: 0.033 }, map: { kind: "map", attribute: "tint", channel: "w" } } },
@@ -82,15 +82,15 @@ export const currentDocument = document(
          its face toward the light and a leftward one turns away. Direction as light. */
       node("rake", "light", [-420, 240], {
         kind: "directional", direction: [0.8, -0.35, -0.5], color: [1, 0.95, 0.85, 1], intensity: 1.1, shadows: false,
-      }, { label: "rake1" }),
+      }, { label: "light_rake" }),
       node("view", "camera", [-120, 240], {
         eye: [0, 0, 4], lookAt: [0, 0, 0], fov: 40, near: 0.1, far: 40, ortho: true, orthoHeight: 2,
-      }, { label: "view1" }),
+      }, { label: "camera_view" }),
       node("shot", "render", [-120, -60], {
-        scenes: "tiles1", camera: "view1", lights: "rake1",
+        scenes: "geometry_tiles", camera: "camera_view", lights: "light_rake",
         ambientColor: [1, 1, 1, 1], ambientIntensity: 0.34, background: [0.012, 0.012, 0.016, 1],
-      }, { label: "shot1" }),
-      node("out", "output", [180, -60], {}, { label: "out1" }),
+      }, { label: "render_shot" }),
+      node("out", "output", [180, -60], {}, { label: "output1" }),
     ],
     [
       edge("e-bed-stand", ["bed", "out"], ["stand", "in1"]),

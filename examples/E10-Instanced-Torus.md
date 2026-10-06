@@ -9,7 +9,7 @@ is a driven parameter — nothing here recompiles while it moves.
 ## Graph
 
 ```
-torus1(pointTorus) ─► instances1.points ─► instances1(renderInstances) ─► out1(output)
+torus1(pointTorus) ─► instances1.points ─► instances1(renderInstances) ─► output1(output)
 
 lfo1(lfo, saw 0.1 Hz × 360°) ┄┄drives┄┄► instances1.rotate.y
 ```

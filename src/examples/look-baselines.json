@@ -40,9 +40,10 @@
     "f0max": 0.9344
   },
   "E20-Gooeyball.loom.json": {
-    "motion": 0.01149,
+    "motion": 0.0116,
     "range": 0.628,
-    "f0max": 0.6839
+    "f0max": 0.6839,
+    "cardFloor": 0
   },
   "E24-Audio-Reaction-Diffusion.loom.json": {
     "motion": 0.00563,

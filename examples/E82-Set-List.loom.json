@@ -176,7 +176,7 @@
       "black": {
         "definitionVersion": 1,
         "id": "black",
-        "label": "black",
+        "label": "solid_black",
         "parameters": {
           "color": [
             0,
@@ -194,9 +194,9 @@
       "desk": {
         "definitionVersion": 1,
         "id": "desk",
-        "label": "desk",
+        "label": "panel_desk",
         "parameters": {
-          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Shots\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"shots\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"set\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":2}},\n    {\"label\":\"Glitch FX\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"layerFx\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"master\",\"rect\":{\"x\":0,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"keystone\",\"rect\":{\"x\":4,\"y\":4,\"w\":4,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 8,\n  \"items\": [\n    {\"label\":\"Shots\",\"rect\":{\"x\":0,\"y\":0,\"w\":8,\"h\":1}},\n    {\"member\":\"presets_shots\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"cuelist_set\",\"rect\":{\"x\":0,\"y\":2,\"w\":4,\"h\":2}},\n    {\"label\":\"Glitch FX\",\"rect\":{\"x\":4,\"y\":2,\"w\":4,\"h\":1}},\n    {\"member\":\"layer_fx\",\"rect\":{\"x\":4,\"y\":3,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_master\",\"rect\":{\"x\":0,\"y\":4,\"w\":4,\"h\":1}},\n    {\"member\":\"slider_keystone\",\"rect\":{\"x\":4,\"y\":4,\"w\":4,\"h\":1}}\n  ]\n}",
           "remote": true,
           "title": "Show desk"
         },
@@ -209,13 +209,13 @@
       "dim": {
         "definitionVersion": 1,
         "id": "dim",
-        "label": "dim",
+        "label": "level_dim",
         "parameters": {
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('master').chan.master"
+                "source": "op('slider_master').chan.master"
               },
               "static": {
                 "kind": "static",
@@ -234,10 +234,10 @@
       "fx": {
         "definitionVersion": 1,
         "id": "fx",
-        "label": "fx",
+        "label": "presets_fx",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"clean\",\n      \"values\": {\n        \"shear\": {\n          \"weight\": [\n            0,\n            0\n          ]\n        },\n        \"glitch\": {\n          \"hueoffset\": 0,\n          \"saturation\": 1,\n          \"value\": 1\n        }\n      }\n    },\n    {\n      \"name\": \"dirty\",\n      \"values\": {\n        \"shear\": {\n          \"weight\": [\n            0.15,\n            0\n          ]\n        },\n        \"glitch\": {\n          \"hueoffset\": -30,\n          \"saturation\": 1.6,\n          \"value\": 1.1\n        }\n      }\n    },\n    {\n      \"name\": \"acid\",\n      \"values\": {\n        \"shear\": {\n          \"weight\": [\n            0.05,\n            0.05\n          ]\n        },\n        \"glitch\": {\n          \"hueoffset\": 140,\n          \"saturation\": 2,\n          \"value\": 1\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "shear.weight glitch"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"clean\",\n      \"values\": {\n        \"displace_shear\": {\n          \"weight\": [\n            0,\n            0\n          ]\n        },\n        \"hsv_glitch\": {\n          \"hueoffset\": 0,\n          \"saturation\": 1,\n          \"value\": 1\n        }\n      }\n    },\n    {\n      \"name\": \"dirty\",\n      \"values\": {\n        \"displace_shear\": {\n          \"weight\": [\n            0.15,\n            0\n          ]\n        },\n        \"hsv_glitch\": {\n          \"hueoffset\": -30,\n          \"saturation\": 1.6,\n          \"value\": 1.1\n        }\n      }\n    },\n    {\n      \"name\": \"acid\",\n      \"values\": {\n        \"displace_shear\": {\n          \"weight\": [\n            0.05,\n            0.05\n          ]\n        },\n        \"hsv_glitch\": {\n          \"hueoffset\": 140,\n          \"saturation\": 2,\n          \"value\": 1\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "displace_shear.weight hsv_glitch"
         },
         "position": {
           "x": -2180,
@@ -248,7 +248,7 @@
       "glitch": {
         "definitionVersion": 1,
         "id": "glitch",
-        "label": "glitch",
+        "label": "hsv_glitch",
         "parameters": {
           "hueoffset": 0,
           "saturation": 1,
@@ -263,7 +263,7 @@
       "grid": {
         "definitionVersion": 1,
         "id": "grid",
-        "label": "grid",
+        "label": "transform_grid",
         "parameters": {
           "extend": "repeat",
           "r": 0,
@@ -281,7 +281,7 @@
       "gridSrc": {
         "definitionVersion": 1,
         "id": "gridSrc",
-        "label": "gridSrc",
+        "label": "checker_gridSrc",
         "parameters": {
           "color1": [
             0.22,
@@ -307,12 +307,13 @@
         "type": "checker"
       },
       "keystone": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "keystone",
-        "label": "keystone",
+        "label": "slider_keystone",
         "parameters": {
           "caption": "Keystone",
           "channel": "keystone",
+          "defaultValue": 0.12,
           "max": 0.4,
           "min": 0,
           "step": 0,
@@ -327,11 +328,11 @@
       "layerFx": {
         "definitionVersion": 1,
         "id": "layerFx",
-        "label": "layerFx",
+        "label": "layer_fx",
         "parameters": {
           "blend": "replace",
           "opacity": 0,
-          "picture": "glitch"
+          "picture": "hsv_glitch"
         },
         "position": {
           "x": -900,
@@ -342,11 +343,11 @@
       "layerGrid": {
         "definitionVersion": 1,
         "id": "layerGrid",
-        "label": "layerGrid",
+        "label": "layer_grid",
         "parameters": {
           "blend": "multiply",
           "opacity": 0,
-          "picture": "grid"
+          "picture": "transform_grid"
         },
         "position": {
           "x": -1500,
@@ -357,11 +358,11 @@
       "layerRings": {
         "definitionVersion": 1,
         "id": "layerRings",
-        "label": "layerRings",
+        "label": "layer_rings",
         "parameters": {
           "blend": "screen",
           "opacity": 0.25,
-          "picture": "rings"
+          "picture": "hsv_rings"
         },
         "position": {
           "x": -1800,
@@ -372,10 +373,10 @@
       "looks": {
         "definitionVersion": 1,
         "id": "looks",
-        "label": "looks",
+        "label": "presets_looks",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"dawn\",\n      \"values\": {\n        \"ringsSrc\": {\n          \"period\": 2.5\n        },\n        \"rings\": {\n          \"hueoffset\": 0,\n          \"saturation\": 0.7,\n          \"value\": 1\n        },\n        \"grid\": {\n          \"r\": 0,\n          \"s\": [\n            1,\n            1\n          ]\n        }\n      }\n    },\n    {\n      \"name\": \"noon\",\n      \"values\": {\n        \"ringsSrc\": {\n          \"period\": 5\n        },\n        \"rings\": {\n          \"hueoffset\": 40,\n          \"saturation\": 1.2,\n          \"value\": 1.1\n        },\n        \"grid\": {\n          \"r\": 15,\n          \"s\": [\n            1.5,\n            1.5\n          ]\n        }\n      }\n    },\n    {\n      \"name\": \"riot\",\n      \"values\": {\n        \"ringsSrc\": {\n          \"period\": 9\n        },\n        \"rings\": {\n          \"hueoffset\": 120,\n          \"saturation\": 1.8,\n          \"value\": 1.2\n        },\n        \"grid\": {\n          \"r\": {\n            \"mode\": \"expression\",\n            \"bindings\": {\n              \"static\": {\n                \"kind\": \"static\",\n                \"value\": 45\n              },\n              \"expression\": {\n                \"kind\": \"expression\",\n                \"source\": \"sin(abstime * 0.7) * 45\"\n              }\n            }\n          },\n          \"s\": [\n            0.6,\n            0.6\n          ]\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "ringsSrc.period rings grid.r grid.s"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"dawn\",\n      \"values\": {\n        \"ramp_ringsSrc\": {\n          \"period\": 2.5\n        },\n        \"hsv_rings\": {\n          \"hueoffset\": 0,\n          \"saturation\": 0.7,\n          \"value\": 1\n        },\n        \"transform_grid\": {\n          \"r\": 0,\n          \"s\": [\n            1,\n            1\n          ]\n        }\n      }\n    },\n    {\n      \"name\": \"noon\",\n      \"values\": {\n        \"ramp_ringsSrc\": {\n          \"period\": 5\n        },\n        \"hsv_rings\": {\n          \"hueoffset\": 40,\n          \"saturation\": 1.2,\n          \"value\": 1.1\n        },\n        \"transform_grid\": {\n          \"r\": 15,\n          \"s\": [\n            1.5,\n            1.5\n          ]\n        }\n      }\n    },\n    {\n      \"name\": \"riot\",\n      \"values\": {\n        \"ramp_ringsSrc\": {\n          \"period\": 9\n        },\n        \"hsv_rings\": {\n          \"hueoffset\": 120,\n          \"saturation\": 1.8,\n          \"value\": 1.2\n        },\n        \"transform_grid\": {\n          \"r\": {\n            \"mode\": \"expression\",\n            \"bindings\": {\n              \"static\": {\n                \"kind\": \"static\",\n                \"value\": 45\n              },\n              \"expression\": {\n                \"kind\": \"expression\",\n                \"source\": \"sin(abstime * 0.7) * 45\"\n              }\n            }\n          },\n          \"s\": [\n            0.6,\n            0.6\n          ]\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "ramp_ringsSrc.period hsv_rings transform_grid.r transform_grid.s"
         },
         "position": {
           "x": -2400,
@@ -384,12 +385,13 @@
         "type": "presets"
       },
       "master": {
-        "definitionVersion": 1,
+        "definitionVersion": 2,
         "id": "master",
-        "label": "master",
+        "label": "slider_master",
         "parameters": {
           "caption": "Master",
           "channel": "master",
+          "defaultValue": 1,
           "max": 1.5,
           "min": 0,
           "step": 0,
@@ -404,9 +406,9 @@
       "noteBanks": {
         "definitionVersion": 1,
         "id": "noteBanks",
-        "label": "noteBanks",
+        "label": "note_banks",
         "parameters": {
-          "body": "A Presets node is a bank. Targets lists what it holds: a node, or node.key.\nStore saves the targets under a name. Recall writes them back in one undo step.\nA preset keeps the whole slot: riot holds an expression for the grid's rotation, and Recall brings the expression back.\nlooks holds both looks' settings; fx holds the glitch chain's.",
+          "body": "A Presets node is a bank. Targets lists what it holds: a node, or node.key.\nStore saves the targets under a name. Recall writes them back in one undo step.\nA preset keeps the whole slot: riot holds an expression for the grid's rotation, and Recall brings the expression back.\npresets_looks holds both looks' settings; presets_fx holds the glitch chain's.",
           "color": "value",
           "title": "Banks: Store and Recall"
         },
@@ -423,9 +425,9 @@
       "noteCues": {
         "definitionVersion": 1,
         "id": "noteCues",
-        "label": "noteCues",
+        "label": "note_cues",
         "parameters": {
-          "body": "set is the running order: each cue names a bank and a preset, with its own morph time.\nGO fires the next cue and moves on; BACK fires the one before. Wrap goes round after the last.\nPress GO on the Show desk, or use the GO key and the BACK key (Help lists them under Shortcuts).\n1 open fades over 2 s, 2 warm over 4 s, 3 cross over 1 s, 4 drop cuts, 5 out fades over 4 s.",
+          "body": "cuelist_set is the running order: each cue names a bank and a preset, with its own morph time.\nGO fires the next cue and moves on; BACK fires the one before. Wrap goes round after the last.\nPress GO on the Show desk, or use the GO key and the BACK key (Help lists them under Shortcuts).\n1 open fades over 2 s, 2 warm over 4 s, 3 cross over 1 s, 4 drop cuts, 5 out fades over 4 s.",
           "color": "temporal",
           "title": "Cue list"
         },
@@ -442,9 +444,9 @@
       "noteLayers": {
         "definitionVersion": 1,
         "id": "noteLayers",
-        "label": "noteLayers",
+        "label": "note_layers",
         "parameters": {
-          "body": "The stack runs left to right through Below. Picture names the look a layer adds (the dashed line).\nOff is bypass: the stack passes through and the look stops rendering, so an off layer costs nothing.\nOpacity is the fade. At 0 the look still renders until you switch the layer off.\nlayerFx shows glitch, the stack run through the effect, with Replace: its Opacity is the wet/dry.",
+          "body": "The stack runs left to right through Below. Picture names the look a layer adds (the dashed line).\nOff is bypass: the stack passes through and the look stops rendering, so an off layer costs nothing.\nOpacity is the fade. At 0 the look still renders until you switch the layer off.\nlayer_fx shows hsv_glitch, the stack run through the effect, with Replace: its Opacity is the wet/dry.",
           "color": "composite",
           "title": "Layers"
         },
@@ -461,9 +463,9 @@
       "noteLooks": {
         "definitionVersion": 1,
         "id": "noteLooks",
-        "label": "noteLooks",
+        "label": "note_looks",
         "parameters": {
-          "body": "A look is a picture a layer shows by name: here rings (ringsSrc into rings) and grid (gridSrc into grid).\nsource stands in for a camera. Wire a Webcam there instead, or pick its device Phone · <name>.\nA look can be any chain, or a component you saved.",
+          "body": "A look is a picture a layer shows by name: here hsv_rings (ramp_ringsSrc into hsv_rings) and transform_grid (checker_gridSrc into transform_grid).\nnoise_source stands in for a camera. Wire a Webcam there instead, or pick its device Phone · <name>.\nA look can be any chain, or a component you saved.",
           "color": "generator",
           "title": "Looks"
         },
@@ -480,9 +482,9 @@
       "noteMapping": {
         "definitionVersion": 1,
         "id": "noteMapping",
-        "label": "noteMapping",
+        "label": "note_mapping",
         "parameters": {
-          "body": "pin is the last stage: it pins the picture's corners onto your surface.\nDrag the pins on its preview tile. The Keystone slider pulls the two top pins in.\nFor a projector, add a Window Out, set its Source to onBlack and open it on that screen.",
+          "body": "cornerpin1 is the last stage: it pins the picture's corners onto your surface.\nDrag the pins on its preview tile. The Keystone slider pulls the two top pins in.\nFor a projector, add a Window Out, set its Source to over_onBlack and open it on that screen.",
           "color": "output",
           "title": "Mapping: Corner Pin"
         },
@@ -499,9 +501,9 @@
       "notePhone": {
         "definitionVersion": 1,
         "id": "notePhone",
-        "label": "notePhone",
+        "label": "note_phone",
         "parameters": {
-          "body": "desk shows the shots, GO and BACK, the FX layer's switch and fader, and two sliders.\nDrop a bank, a layer or a cue list on a Panel to add it; arrange it with the pencil.\n1. Start the helper: pnpm helper --phone\n2. Pair it in Agent → Connections.\n3. Press the phone icon on desk's header and scan the QR code.\nThe phone gets this desk and nothing else in the project.",
+          "body": "panel_desk shows the shots, GO and BACK, the FX layer's switch and fader, and two sliders.\nDrop a bank, a layer or a cue list on a Panel to add it; arrange it with the pencil.\n1. Start the helper: pnpm helper --phone\n2. Pair it in Agent → Connections.\n3. Press the phone icon on panel_desk's header and scan the QR code.\nThe phone gets this desk and nothing else in the project.",
           "color": "input",
           "title": "Show desk and phone"
         },
@@ -518,9 +520,9 @@
       "noteShots": {
         "definitionVersion": 1,
         "id": "noteShots",
-        "label": "noteShots",
+        "label": "note_shots",
         "parameters": {
-          "body": "A shot is a preset that sets layers and recalls other banks' presets in the same step.\ndrop switches layerRings off and layerFx on, sets the FX to 0.85, and recalls looks riot and fx dirty.\nIts own values win over what it recalls. A shot with a morph fades everything it changed together.",
+          "body": "A shot is a preset that sets layers and recalls other banks' presets in the same step.\ndrop switches layer_rings off and layer_fx on, sets the FX to 0.85, and recalls presets_looks riot and presets_fx dirty.\nIts own values win over what it recalls. A shot with a morph fades everything it changed together.",
           "color": "color",
           "title": "Shots"
         },
@@ -537,7 +539,7 @@
       "onBlack": {
         "definitionVersion": 1,
         "id": "onBlack",
-        "label": "onBlack",
+        "label": "over_onBlack",
         "parameters": {
           "opacity": 1
         },
@@ -550,7 +552,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 300,
@@ -561,7 +563,7 @@
       "pin": {
         "definitionVersion": 1,
         "id": "pin",
-        "label": "pin",
+        "label": "cornerpin1",
         "parameters": {
           "extend": "zero",
           "feather": 0,
@@ -573,7 +575,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('keystone').chan.keystone"
+                "source": "op('slider_keystone').chan.keystone"
               },
               "static": {
                 "kind": "static",
@@ -590,7 +592,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1 - op('keystone').chan.keystone"
+                "source": "1 - op('slider_keystone').chan.keystone"
               },
               "static": {
                 "kind": "static",
@@ -609,7 +611,7 @@
       "rings": {
         "definitionVersion": 1,
         "id": "rings",
-        "label": "rings",
+        "label": "hsv_rings",
         "parameters": {
           "hueoffset": 0,
           "saturation": 0.7,
@@ -624,7 +626,7 @@
       "ringsSrc": {
         "definitionVersion": 2,
         "id": "ringsSrc",
-        "label": "ringsSrc",
+        "label": "ramp_ringsSrc",
         "parameters": {
           "interp": "linear",
           "period": 2.5,
@@ -699,9 +701,9 @@
       "set": {
         "definitionVersion": 1,
         "id": "set",
-        "label": "set",
+        "label": "cuelist_set",
         "parameters": {
-          "cues": "{\n  \"version\": 1,\n  \"cues\": [\n    {\n      \"name\": \"1 open\",\n      \"bank\": \"shots\",\n      \"preset\": \"open\",\n      \"note\": \"rings alone\"\n    },\n    {\n      \"name\": \"2 warm\",\n      \"bank\": \"looks\",\n      \"preset\": \"noon\",\n      \"morph\": {\n        \"seconds\": 4,\n        \"curve\": \"smooth\"\n      },\n      \"note\": \"the looks go to noon\"\n    },\n    {\n      \"name\": \"3 cross\",\n      \"bank\": \"shots\",\n      \"preset\": \"cross\",\n      \"morph\": {\n        \"seconds\": 1,\n        \"curve\": \"linear\"\n      },\n      \"note\": \"grid fades in over the rings\"\n    },\n    {\n      \"name\": \"4 drop\",\n      \"bank\": \"shots\",\n      \"preset\": \"drop\",\n      \"note\": \"cut: rings off, riot, glitch on\"\n    },\n    {\n      \"name\": \"5 out\",\n      \"bank\": \"shots\",\n      \"preset\": \"out\",\n      \"note\": \"back to the rings; GO again wraps to 1\"\n    }\n  ]\n}\n",
+          "cues": "{\n  \"version\": 1,\n  \"cues\": [\n    {\n      \"name\": \"1 open\",\n      \"bank\": \"presets_shots\",\n      \"preset\": \"open\",\n      \"note\": \"rings alone\"\n    },\n    {\n      \"name\": \"2 warm\",\n      \"bank\": \"presets_looks\",\n      \"preset\": \"noon\",\n      \"morph\": {\n        \"seconds\": 4,\n        \"curve\": \"smooth\"\n      },\n      \"note\": \"the looks go to noon\"\n    },\n    {\n      \"name\": \"3 cross\",\n      \"bank\": \"presets_shots\",\n      \"preset\": \"cross\",\n      \"morph\": {\n        \"seconds\": 1,\n        \"curve\": \"linear\"\n      },\n      \"note\": \"grid fades in over the rings\"\n    },\n    {\n      \"name\": \"4 drop\",\n      \"bank\": \"presets_shots\",\n      \"preset\": \"drop\",\n      \"note\": \"cut: rings off, riot, glitch on\"\n    },\n    {\n      \"name\": \"5 out\",\n      \"bank\": \"presets_shots\",\n      \"preset\": \"out\",\n      \"note\": \"back to the rings; GO again wraps to 1\"\n    }\n  ]\n}\n",
           "keys": true,
           "wrap": true
         },
@@ -714,7 +716,7 @@
       "shear": {
         "definitionVersion": 1,
         "id": "shear",
-        "label": "shear",
+        "label": "displace_shear",
         "parameters": {
           "extend": "repeat",
           "sourcex": "red",
@@ -733,10 +735,10 @@
       "shots": {
         "definitionVersion": 1,
         "id": "shots",
-        "label": "shots",
+        "label": "presets_shots",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"open\",\n      \"values\": {\n        \"layerRings\": {\n          \"opacity\": 1\n        },\n        \"layerGrid\": {\n          \"opacity\": 0\n        },\n        \"layerFx\": {\n          \"opacity\": 0\n        }\n      },\n      \"on\": {\n        \"layerRings\": true,\n        \"layerGrid\": false,\n        \"layerFx\": false\n      },\n      \"recalls\": [\n        {\n          \"bank\": \"looks\",\n          \"preset\": \"dawn\"\n        },\n        {\n          \"bank\": \"fx\",\n          \"preset\": \"clean\"\n        }\n      ],\n      \"morph\": {\n        \"seconds\": 2,\n        \"curve\": \"smooth\"\n      }\n    },\n    {\n      \"name\": \"cross\",\n      \"values\": {\n        \"layerGrid\": {\n          \"opacity\": 1\n        }\n      },\n      \"on\": {\n        \"layerGrid\": true\n      },\n      \"morph\": {\n        \"seconds\": 2,\n        \"curve\": \"smooth\"\n      }\n    },\n    {\n      \"name\": \"drop\",\n      \"values\": {\n        \"layerFx\": {\n          \"opacity\": 0.85\n        }\n      },\n      \"on\": {\n        \"layerRings\": false,\n        \"layerFx\": true\n      },\n      \"recalls\": [\n        {\n          \"bank\": \"looks\",\n          \"preset\": \"riot\"\n        },\n        {\n          \"bank\": \"fx\",\n          \"preset\": \"dirty\"\n        }\n      ]\n    },\n    {\n      \"name\": \"out\",\n      \"values\": {\n        \"layerRings\": {\n          \"opacity\": 1\n        },\n        \"layerGrid\": {\n          \"opacity\": 0\n        },\n        \"layerFx\": {\n          \"opacity\": 0\n        }\n      },\n      \"on\": {\n        \"layerRings\": true\n      },\n      \"recalls\": [\n        {\n          \"bank\": \"looks\",\n          \"preset\": \"dawn\"\n        }\n      ],\n      \"morph\": {\n        \"seconds\": 4,\n        \"curve\": \"smooth\"\n      }\n    }\n  ]\n}\n",
-          "targets": "layerRings.opacity layerGrid.opacity layerFx.opacity"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"open\",\n      \"values\": {\n        \"layer_rings\": {\n          \"opacity\": 1\n        },\n        \"layer_grid\": {\n          \"opacity\": 0\n        },\n        \"layer_fx\": {\n          \"opacity\": 0\n        }\n      },\n      \"on\": {\n        \"layer_rings\": true,\n        \"layer_grid\": false,\n        \"layer_fx\": false\n      },\n      \"recalls\": [\n        {\n          \"bank\": \"presets_looks\",\n          \"preset\": \"dawn\"\n        },\n        {\n          \"bank\": \"presets_fx\",\n          \"preset\": \"clean\"\n        }\n      ],\n      \"morph\": {\n        \"seconds\": 2,\n        \"curve\": \"smooth\"\n      }\n    },\n    {\n      \"name\": \"cross\",\n      \"values\": {\n        \"layer_grid\": {\n          \"opacity\": 1\n        }\n      },\n      \"on\": {\n        \"layer_grid\": true\n      },\n      \"morph\": {\n        \"seconds\": 2,\n        \"curve\": \"smooth\"\n      }\n    },\n    {\n      \"name\": \"drop\",\n      \"values\": {\n        \"layer_fx\": {\n          \"opacity\": 0.85\n        }\n      },\n      \"on\": {\n        \"layer_rings\": false,\n        \"layer_fx\": true\n      },\n      \"recalls\": [\n        {\n          \"bank\": \"presets_looks\",\n          \"preset\": \"riot\"\n        },\n        {\n          \"bank\": \"presets_fx\",\n          \"preset\": \"dirty\"\n        }\n      ]\n    },\n    {\n      \"name\": \"out\",\n      \"values\": {\n        \"layer_rings\": {\n          \"opacity\": 1\n        },\n        \"layer_grid\": {\n          \"opacity\": 0\n        },\n        \"layer_fx\": {\n          \"opacity\": 0\n        }\n      },\n      \"on\": {\n        \"layer_rings\": true\n      },\n      \"recalls\": [\n        {\n          \"bank\": \"presets_looks\",\n          \"preset\": \"dawn\"\n        }\n      ],\n      \"morph\": {\n        \"seconds\": 4,\n        \"curve\": \"smooth\"\n      }\n    }\n  ]\n}\n",
+          "targets": "layer_rings.opacity layer_grid.opacity layer_fx.opacity"
         },
         "position": {
           "x": -1960,
@@ -747,7 +749,7 @@
       "source": {
         "definitionVersion": 1,
         "id": "source",
-        "label": "source",
+        "label": "noise_source",
         "parameters": {
           "amp": 0.4,
           "harmon": 2,
@@ -766,7 +768,7 @@
       "tear": {
         "definitionVersion": 1,
         "id": "tear",
-        "label": "tear",
+        "label": "noise_tear",
         "parameters": {
           "amp": 1,
           "harmon": 0,

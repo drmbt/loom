@@ -517,7 +517,7 @@
       "bloomDown1": {
         "definitionVersion": 1,
         "id": "bloomDown1",
-        "label": "bloomdown11",
+        "label": "wgsl_bloomdown1",
         "parameters": {
           "clampLuma": 1,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -535,7 +535,7 @@
       "bloomDown2": {
         "definitionVersion": 1,
         "id": "bloomDown2",
-        "label": "bloomdown21",
+        "label": "wgsl_bloomdown2",
         "parameters": {
           "clampLuma": 0,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -553,7 +553,7 @@
       "bloomDown3": {
         "definitionVersion": 1,
         "id": "bloomDown3",
-        "label": "bloomdown31",
+        "label": "wgsl_bloomdown3",
         "parameters": {
           "clampLuma": 0,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -571,7 +571,7 @@
       "bloomDown4": {
         "definitionVersion": 1,
         "id": "bloomDown4",
-        "label": "bloomdown41",
+        "label": "wgsl_bloomdown4",
         "parameters": {
           "clampLuma": 0,
           "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
@@ -589,7 +589,7 @@
       "bloomUp0": {
         "definitionVersion": 1,
         "id": "bloomUp0",
-        "label": "bloomup01",
+        "label": "wgsl_bloomup0",
         "parameters": {
           "lower": 1,
           "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
@@ -607,7 +607,7 @@
       "bloomUp1": {
         "definitionVersion": 1,
         "id": "bloomUp1",
-        "label": "bloomup11",
+        "label": "wgsl_bloomup1",
         "parameters": {
           "lower": 1,
           "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
@@ -625,7 +625,7 @@
       "bloomUp2": {
         "definitionVersion": 1,
         "id": "bloomUp2",
-        "label": "bloomup21",
+        "label": "wgsl_bloomup2",
         "parameters": {
           "lower": 1,
           "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
@@ -643,7 +643,7 @@
       "bloomUp3": {
         "definitionVersion": 1,
         "id": "bloomUp3",
-        "label": "bloomup31",
+        "label": "wgsl_bloomup3",
         "parameters": {
           "lower": 1,
           "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
@@ -661,7 +661,7 @@
       "bright": {
         "definitionVersion": 1,
         "id": "bright",
-        "label": "bright1",
+        "label": "wgsl_bright",
         "parameters": {
           "knee": 0.8,
           "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
@@ -680,7 +680,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "camera1",
         "parameters": {
           "eye": [
             -59.95,
@@ -796,7 +796,7 @@
       "env": {
         "definitionVersion": 1,
         "id": "env",
-        "label": "env1",
+        "label": "wgsl_env",
         "parameters": {
           "source": "struct Params {\n  bars: f32, // @default 3  Radiance of the vertical light bars.\n  barCount: f32, // @default 22  Bars around the horizon.\n  roof: f32, // @default 0.006  Radiance of the roof.\n  floor: f32, // @default 0.002  Radiance below the horizon.\n  white: f32, // @default 0  1 = the white cyc room instead.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn barHash(i: f32) -> f32 {\n  return fract(sin(i * 91.3458 + 7.1) * 47453.5453);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let unused = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).a * 0.0;\n  let phi = (uv.x - 0.5) * 6.2831853;\n  let theta = uv.y * 3.1415927;\n  let d = vec3f(sin(theta) * sin(phi), cos(theta), -sin(theta) * cos(phi));\n  if (params.white > 0.5) {\n    let wall = mix(0.55, 1.0, smoothstep(-0.3, 0.4, d.y));\n    return vec4f(vec3f(wall * 1.6) + vec3f(unused), 1.0);\n  }\n  var radiance = mix(vec3f(params.floor), vec3f(params.roof), smoothstep(-0.05, 0.2, d.y));\n  // Vertical bars: each its own azimuth jitter, width and height.\n  let slot = uv.x * params.barCount;\n  let index = floor(slot);\n  let within = fract(slot) - 0.5 - (barHash(index) - 0.5) * 0.6;\n  let width = 0.05 + 0.06 * barHash(index + 3.0);\n  let top = 0.1 + 0.35 * barHash(index + 7.0);\n  let lit = step(0.35, barHash(index + 11.0));\n  let bar = smoothstep(width, width * 0.4, abs(within)) * smoothstep(-0.08, -0.04, d.y) * (1.0 - smoothstep(top - 0.04, top, d.y)) * lit;\n  radiance = radiance + vec3f(0.92, 0.96, 1.0) * params.bars * bar;\n  return vec4f(radiance + vec3f(unused), 1.0);\n}",
           "white": 1
@@ -815,7 +815,7 @@
       "envSeed": {
         "definitionVersion": 2,
         "id": "envSeed",
-        "label": "envseed1",
+        "label": "ramp_envseed",
         "parameters": {},
         "position": {
           "x": -2700,
@@ -831,7 +831,7 @@
       "fig": {
         "definitionVersion": 1,
         "id": "fig",
-        "label": "fig1",
+        "label": "mesh_fig",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "joints": "0:pelvis@0,0.9618,0.0048 1:spine<0@0,1.0506,-0.0276 2:chest<1@0,1.1862,-0.0263 3:neck<2@0,1.5378,0.0131 4:head<3@0,1.6366,0.0473 5:shoulder.L<2@0.0234,1.4616,0.0258 6:upperarm.L<5@0.1906,1.4317,0.0196 7:forearm.L<6@0.3632,1.2339,0.0184 8:hand.L<7@0.5003,1.1029,0.2135 9:thumb1.L<8@0.5017,1.0961,0.2636 10:thumb2.L<9@0.4782,1.0871,0.2875 11:thumb3.L<10@0.464,1.073,0.3235 12:index1.L<8@0.5313,1.0611,0.3216 13:index2.L<12@0.5349,1.0449,0.3456 14:index3.L<13@0.5344,1.0271,0.3649 15:middle1.L<8@0.5497,1.0479,0.3023 16:middle2.L<15@0.5578,1.0195,0.3264 17:middle3.L<16@0.5608,0.9963,0.3464 18:ring1.L<8@0.5583,1.0389,0.2831 19:ring2.L<18@0.5686,1.0117,0.3 20:ring3.L<19@0.5736,0.9888,0.3152 21:pinky1.L<8@0.5598,1.0281,0.2615 22:pinky2.L<21@0.5665,1.007,0.2709 23:pinky3.L<22@0.5686,0.9911,0.278 24:shoulder.R<2@-0.0234,1.4616,0.0258 25:upperarm.R<24@-0.1906,1.4317,0.0196 26:forearm.R<25@-0.3632,1.2339,0.0184 27:hand.R<26@-0.5003,1.1029,0.2135 28:thumb1.R<27@-0.5017,1.0961,0.2636 29:thumb2.R<28@-0.4782,1.0871,0.2875 30:thumb3.R<29@-0.464,1.073,0.3235 31:index1.R<27@-0.5313,1.0611,0.3216 32:index2.R<31@-0.5349,1.0449,0.3456 33:index3.R<32@-0.5344,1.0271,0.3649 34:middle1.R<27@-0.5497,1.0479,0.3023 35:middle2.R<34@-0.5578,1.0195,0.3264 36:middle3.R<35@-0.5608,0.9963,0.3464 37:ring1.R<27@-0.5583,1.0389,0.2831 38:ring2.R<37@-0.5686,1.0117,0.3 39:ring3.R<38@-0.5736,0.9888,0.3152 40:pinky1.R<27@-0.5598,1.0281,0.2615 41:pinky2.R<40@-0.5665,1.007,0.2709 42:pinky3.R<41@-0.5686,0.9911,0.278 43:thigh.L<0@0.1113,0.9562,-0.0059 44:shin.L<43@0.1549,0.5171,0.0291 45:foot.L<44@0.2015,0.0739,0.0154 46:thigh.R<0@-0.1113,0.9562,-0.0059 47:shin.R<46@-0.1549,0.5171,0.0291 48:foot.R<47@-0.2015,0.0739,0.0154",
@@ -849,9 +849,9 @@
       "figCast": {
         "definitionVersion": 1,
         "id": "figCast",
-        "label": "figcast1",
+        "label": "geometry_figcast",
         "parameters": {
-          "material": "surf1",
+          "material": "material_surf",
           "mode": "surface",
           "shadowOnly": true
         },
@@ -864,9 +864,9 @@
       "figGeo": {
         "definitionVersion": 1,
         "id": "figGeo",
-        "label": "figgeo1",
+        "label": "geometry_fig",
         "parameters": {
-          "material": "surf1",
+          "material": "material_surf",
           "mode": "surface"
         },
         "position": {
@@ -878,7 +878,7 @@
       "fill": {
         "definitionVersion": 1,
         "id": "fill",
-        "label": "fill1",
+        "label": "light_fill1",
         "parameters": {
           "color": [
             0.9,
@@ -903,7 +903,7 @@
       "grade": {
         "definitionVersion": 1,
         "id": "grade",
-        "label": "grade1",
+        "label": "wgsl_grade",
         "parameters": {
           "black": 0.03,
           "bleach": 0.25,
@@ -939,9 +939,9 @@
       "gunGeo": {
         "definitionVersion": 1,
         "id": "gunGeo",
-        "label": "figgungeo1",
+        "label": "geometry_figgun",
         "parameters": {
-          "material": "surf1",
+          "material": "material_surf",
           "mode": "surface"
         },
         "position": {
@@ -953,7 +953,7 @@
       "gunIn": {
         "definitionVersion": 1,
         "id": "gunIn",
-        "label": "gunin1",
+        "label": "mesh_gunin",
         "parameters": {
           "file": "media/on-nothing/on-nothing.glb",
           "joints": "0:pelvis@0,0.9618,0.0048 1:spine<0@0,1.0506,-0.0276 2:chest<1@0,1.1862,-0.0263 3:neck<2@0,1.5378,0.0131 4:head<3@0,1.6366,0.0473 5:shoulder.L<2@0.0234,1.4616,0.0258 6:upperarm.L<5@0.1906,1.4317,0.0196 7:forearm.L<6@0.3632,1.2339,0.0184 8:hand.L<7@0.5003,1.1029,0.2135 9:thumb1.L<8@0.5017,1.0961,0.2636 10:thumb2.L<9@0.4782,1.0871,0.2875 11:thumb3.L<10@0.464,1.073,0.3235 12:index1.L<8@0.5313,1.0611,0.3216 13:index2.L<12@0.5349,1.0449,0.3456 14:index3.L<13@0.5344,1.0271,0.3649 15:middle1.L<8@0.5497,1.0479,0.3023 16:middle2.L<15@0.5578,1.0195,0.3264 17:middle3.L<16@0.5608,0.9963,0.3464 18:ring1.L<8@0.5583,1.0389,0.2831 19:ring2.L<18@0.5686,1.0117,0.3 20:ring3.L<19@0.5736,0.9888,0.3152 21:pinky1.L<8@0.5598,1.0281,0.2615 22:pinky2.L<21@0.5665,1.007,0.2709 23:pinky3.L<22@0.5686,0.9911,0.278 24:shoulder.R<2@-0.0234,1.4616,0.0258 25:upperarm.R<24@-0.1906,1.4317,0.0196 26:forearm.R<25@-0.3632,1.2339,0.0184 27:hand.R<26@-0.5003,1.1029,0.2135 28:thumb1.R<27@-0.5017,1.0961,0.2636 29:thumb2.R<28@-0.4782,1.0871,0.2875 30:thumb3.R<29@-0.464,1.073,0.3235 31:index1.R<27@-0.5313,1.0611,0.3216 32:index2.R<31@-0.5349,1.0449,0.3456 33:index3.R<32@-0.5344,1.0271,0.3649 34:middle1.R<27@-0.5497,1.0479,0.3023 35:middle2.R<34@-0.5578,1.0195,0.3264 36:middle3.R<35@-0.5608,0.9963,0.3464 37:ring1.R<27@-0.5583,1.0389,0.2831 38:ring2.R<37@-0.5686,1.0117,0.3 39:ring3.R<38@-0.5736,0.9888,0.3152 40:pinky1.R<27@-0.5598,1.0281,0.2615 41:pinky2.R<40@-0.5665,1.007,0.2709 42:pinky3.R<41@-0.5686,0.9911,0.278 43:thigh.L<0@0.1113,0.9562,-0.0059 44:shin.L<43@0.1549,0.5171,0.0291 45:foot.L<44@0.2015,0.0739,0.0154 46:thigh.R<0@-0.1113,0.9562,-0.0059 47:shin.R<46@-0.1549,0.5171,0.0291 48:foot.R<47@-0.2015,0.0739,0.0154",
@@ -971,7 +971,7 @@
       "gunSkin": {
         "definitionVersion": 1,
         "id": "gunSkin",
-        "label": "gunskin1",
+        "label": "kernel_gunskin",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"joints\",\"type\":\"vec4f\",\"default\":[0,0,0,0]},{\"name\":\"weights\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 208,
@@ -1336,7 +1336,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "light_key1",
         "parameters": {
           "color": [
             1,
@@ -1361,7 +1361,7 @@
       "keyShadow": {
         "definitionVersion": 1,
         "id": "keyShadow",
-        "label": "keyshadow1",
+        "label": "light_keyshadow",
         "parameters": {
           "color": [
             1,
@@ -1389,7 +1389,7 @@
       "lens": {
         "definitionVersion": 1,
         "id": "lens",
-        "label": "lens1",
+        "label": "wgsl_lens",
         "parameters": {
           "aberration": 0.0012,
           "distortion": 0.02,
@@ -1410,7 +1410,7 @@
       "look": {
         "definitionVersion": 1,
         "id": "look",
-        "label": "look1",
+        "label": "wgsl_look",
         "parameters": {
           "contrast": 0.95,
           "grain": 0.006,
@@ -1452,7 +1452,7 @@
       "lookDown": {
         "definitionVersion": 1,
         "id": "lookDown",
-        "label": "lookdown1",
+        "label": "wgsl_lookdown",
         "parameters": {
           "source": "struct Params {\n  gain: f32, // @default 1  Scales the downsampled picture.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  // one output texel's footprint in uv\n  let foot = vec2f(abs(dpdx(uv).x), abs(dpdy(uv).y));\n  var sum = vec3f(0.0);\n  for (var j = 0; j < 4; j = j + 1) {\n    for (var i = 0; i < 4; i = i + 1) {\n      let o = (vec2f(f32(i), f32(j)) + 0.5) / 4.0 - 0.5;\n      sum = sum + max(textureSampleLevel(inputTexture, inputSampler, uv + o * foot, 0.0).rgb, vec3f(0.0));\n    }\n  }\n  return vec4f(sum / 16.0 * params.gain, 1.0);\n}"
         },
@@ -1470,7 +1470,7 @@
       "lookNear": {
         "definitionVersion": 1,
         "id": "lookNear",
-        "label": "looknear1",
+        "label": "blur_looknear",
         "parameters": {
           "size": 4
         },
@@ -1483,7 +1483,7 @@
       "lookWide": {
         "definitionVersion": 1,
         "id": "lookWide",
-        "label": "lookwide1",
+        "label": "blur_lookwide",
         "parameters": {
           "size": 24
         },
@@ -1496,7 +1496,7 @@
       "occlusion": {
         "definitionVersion": 1,
         "id": "occlusion",
-        "label": "occlusion1",
+        "label": "wgsl_occlusion",
         "parameters": {
           "aim": [
             -60.04,
@@ -1507,7 +1507,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera1').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -1520,7 +1520,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera1').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -1533,7 +1533,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera1').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -1551,7 +1551,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera1').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -1564,7 +1564,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera1').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -1577,7 +1577,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera1').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -1590,7 +1590,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -1603,7 +1603,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.fov"
+                "source": "op('camera1').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -1618,7 +1618,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.roll"
+                "source": "op('camera1').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -1642,7 +1642,7 @@
       "optics": {
         "definitionVersion": 1,
         "id": "optics",
-        "label": "optics1",
+        "label": "wgsl_optics",
         "parameters": {
           "bloom": 0.1,
           "halo": 0,
@@ -1667,7 +1667,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "none"
         },
@@ -1680,7 +1680,7 @@
       "shot": {
         "definitionVersion": 1,
         "id": "shot",
-        "label": "shot1",
+        "label": "render_shot",
         "parameters": {
           "ambientColor": [
             1,
@@ -1696,13 +1696,13 @@
             0,
             0
           ],
-          "camera": "cam1",
+          "camera": "camera1",
           "depthOutput": true,
           "environmentIntensity": 0.22,
           "environmentTaps": 16,
-          "lights": "key1 fill1",
+          "lights": "light_key1 light_fill1",
           "normalOutput": true,
-          "scenes": "figgeo1 figgungeo1"
+          "scenes": "geometry_fig geometry_figgun"
         },
         "position": {
           "x": -2400,
@@ -1713,7 +1713,7 @@
       "skin": {
         "definitionVersion": 1,
         "id": "skin",
-        "label": "skin1",
+        "label": "kernel_skin",
         "parameters": {
           "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"normal\",\"type\":\"vec3f\",\"qualifier\":\"direction\",\"default\":[0,1,0]},{\"name\":\"joints\",\"type\":\"vec4f\",\"default\":[0,0,0,0]},{\"name\":\"weights\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
           "capacity": 103369,
@@ -2078,7 +2078,7 @@
       "streak0": {
         "definitionVersion": 1,
         "id": "streak0",
-        "label": "streak01",
+        "label": "wgsl_streak0",
         "parameters": {
           "compress": 3,
           "decay": 50,
@@ -2103,7 +2103,7 @@
       "streak1": {
         "definitionVersion": 1,
         "id": "streak1",
-        "label": "streak11",
+        "label": "wgsl_streak1",
         "parameters": {
           "compress": 0,
           "decay": 50,
@@ -2128,7 +2128,7 @@
       "streak2": {
         "definitionVersion": 1,
         "id": "streak2",
-        "label": "streak21",
+        "label": "wgsl_streak2",
         "parameters": {
           "compress": 0,
           "decay": 1.6,
@@ -2153,7 +2153,7 @@
       "streakSrc": {
         "definitionVersion": 1,
         "id": "streakSrc",
-        "label": "streaksrc1",
+        "label": "wgsl_streaksrc",
         "parameters": {
           "knee": 1.2,
           "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
@@ -2172,7 +2172,7 @@
       "surf": {
         "definitionVersion": 1,
         "id": "surf",
-        "label": "surf1",
+        "label": "material_surf",
         "parameters": {
           "model": "pbr",
           "source": "// @use surface-detail\nconst CONTACT_COUNT: u32 = 0u;\nconst CONTACT = array<vec4f, 1>(vec4f(0.0, 0.0, -1.0, -1.0));\nstruct Params {\n  headGain: f32, // @default 1  Headlight and DRL radiance multiplier.\n  tubeGain: f32, // @default 1  LED tube radiance multiplier.\n  tailGain: f32, // @default 1  Tail light radiance multiplier.\n  wet: f32, // @default 0.4  Share of the floor that is damp and glossy.\n  wetGloss: f32, // @default 0.22  Roughness of the damp patches.\n  contactDepth: f32, // @default 0.93  How dark the floor gets under a parked car (0 off).\n  contactReach: f32, // @default 1.1  How far the contact shadow reaches beyond the footprint, metres.\n  dryGloss: f32, // @default 0.62  Roughness of the dry floor (worn concrete: past the reflections' cutoff).\n  peel: f32, // @default 0.25  Orange-peel strength on the clear coat.\n  silverAlbedo: f32, // @default 0.45  The hero's satin silver: its albedo (linear).\n  silverRoughness: f32, // @default 0.3  The hero's satin silver: its roughness.\n  silverMetallic: f32, // @default 0.2  The hero's satin silver: how metallic (a flake coat, mostly dielectric).\n  cycAlbedo: f32, // @default 0.9  Albedo of the white cyc.\n  ice: f32, // @default 0.075  The ice's own mirrored studio (jewel class only; T1407b closeups2).\n};\n\nfn classOf(s: SurfaceIn) -> u32 {\n  return u32(s.attr.z * 64.0 + 0.5);\n}\n\n// Scratch lines: per 0.6 m cell, a random direction and offset; thin, broken, short.\nfn scratchAt(w: vec2f, scale: f32, seed: u32) -> f32 {\n  let q = w / scale;\n  let cell = floor(q);\n  let h = vec3f(unitFloat(hash3i(vec3i(vec3f(cell, 1.0)), seed)), unitFloat(hash3i(vec3i(vec3f(cell, 2.0)), seed + 7u)), unitFloat(hash3i(vec3i(vec3f(cell, 3.0)), seed + 13u)));\n  let a = h.x * 3.14159;\n  let local = q - cell - vec2f(0.5);\n  let across = dot(local, vec2f(-sin(a), cos(a))) - (h.y - 0.5) * 0.6;\n  let along = dot(local, vec2f(cos(a), sin(a)));\n  let seg = smoothstep(0.45, 0.2, abs(along)) * step(0.35, h.z);\n  return smoothstep(0.012, 0.0, abs(across)) * seg;\n}\n\n// CONTACT SHADOWS under the parked cars: each footprint (generated from the GLB, see\n// contactFootprints) darkens the floor with a soft falloff — near black under the body, a\n// short penumbra beyond it — the sky/room occlusion a screen-space pass cannot reach at 15 m.\nfn contactShadow(q: vec2f, p: Params) -> f32 {\n  var k = 1.0;\n  for (var i = 0u; i < CONTACT_COUNT; i = i + 1u) {\n    let f = CONTACT[i];\n    let d = abs(q - f.xy) - f.zw;\n    let outside = length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);\n    let shadow = pow(1.0 - smoothstep(-0.6, p.contactReach, outside), 1.6);\n    k = k * (1.0 - shadow * p.contactDepth);\n  }\n  return k;\n}\n\nfn floorSurface(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  // DRY, WORN warehouse concrete: satin, never glossy. A traffic-polished lane catches the\n  // lamps as a soft sheen; scuffs, stains, aggregate and scratches break it everywhere.\n  var r = o;\n  let w = s.world;\n  let large = detailFbm(vec3f(w.x * 0.18, 0.0, w.z * 0.18), 4, s.footprint);\n  let mid = detailFbm(vec3f(w.x * 0.9, 5.0, w.z * 0.9), 4, s.footprint);\n  let fine = detailFbm(w * 3.1, 5, s.footprint);\n  let grit = detailFbm(w * 21.0, 3, s.footprint);\n  let damp = smoothstep(1.0 - p.wet - 0.15, 1.0 - p.wet + 0.15, large.value + (fine.value - 0.5) * 0.25);\n  // tyre scuffs and oil stains\n  let scuff = smoothstep(0.6, 0.8, detailNoise(vec3f(w.x * 1.7, 0.0, w.z * 0.12)).value) * 0.45;\n  let stain = smoothstep(0.62, 0.78, mid.value) * 0.35;\n  // aggregate: a speckle of lighter and darker stones in the cement\n  let stone = smoothstep(0.7, 0.85, grit.value) * 0.18 - smoothstep(0.3, 0.15, grit.value) * 0.12;\n  let crack = smoothstep(0.006, 0.0, abs(detailNoise(vec3f(w.x * 0.9, 3.0, w.z * 0.9)).value - 0.5)) * 0.5;\n  let scratches = max(scratchAt(w.xz, 0.6, 3u), scratchAt(w.xz + vec2f(0.21, 0.37), 0.35, 11u) * 0.6) * (1.0 - smoothstep(0.004, 0.02, s.footprint));\n  let shade = (0.88 + 0.24 * fine.value + stone) * (0.85 + 0.3 * large.value);\n  r.albedo = vec4f(o.albedo.rgb * shade * mix(1.0, 0.6, damp) * (1.0 - scuff * 0.5) * (1.0 - stain) * (1.0 - crack * 0.6) * (1.0 + scratches * 0.5) * contactShadow(w.xz, p), 1.0);\n  // satin, never a mirror: polished where traffic ran, rough where it did not\n  let polish = smoothstep(0.35, 0.75, large.value);\n  r.roughness = clamp(mix(p.dryGloss + 0.12, p.dryGloss - 0.08, polish) + (grit.value - 0.5) * 0.1 + stain * 0.1 - scratches * 0.15, 0.3, 0.95);\n  r.roughness = mix(r.roughness, p.wetGloss, damp);\n  r.metallic = 0.0;\n  r.normal = detailBump(s.normal, grit.gradient * 0.006 + fine.gradient * 0.015 + mid.gradient * 0.02, 1.0);\n  return r;\n}\n\nfn brickSurface(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let w = s.world;\n  let course = w.y / 0.075;\n  let row = floor(course);\n  let along = (w.x + w.z) / 0.23 + row * 0.5;\n  let mortar = max(smoothstep(0.1, 0.0, fract(course)), smoothstep(0.06, 0.0, fract(along)));\n  let n = detailFbm(w * 6.0, 4, s.footprint);\n  r.albedo = vec4f(o.albedo.rgb * (0.7 + 0.6 * n.value) * mix(1.0, 1.6, mortar), 1.0);\n  r.roughness = 0.9;\n  r.normal = detailBump(s.normal, n.gradient * 0.01, 1.0);\n  return r;\n}\n\nfn clearCoat(s: SurfaceIn, p: Params, o: SurfaceOut, roughness: f32) -> SurfaceOut {\n  var r = o;\n  let peel = detailFbm(s.world * 90.0, 2, s.footprint);\n  r.roughness = roughness;\n  r.normal = detailBump(s.normal, peel.gradient * 0.00045 * p.peel, 1.0);\n  return r;\n}\n\n// ICE (T1407b closeups2): the chain, the bracelet, the pendant slab. As a pure mirror the ice\n// showed only the dark room and read black in every shot; the reference's reads WHITE. A pavé\n// is not a mirror: every stone returns light from inside, so it is (1) a bright white body the\n// scene's lights light like a diffuse surface, and (2) a scatter of facets, each mirroring the\n// set's lights as a glint. The room gives the facets nothing to mirror, so the ice carries its\n// OWN reflected studio — a soft overhead box and a horizon band, seen through each stone's\n// facet normal — as emission scaled by params.ice. It is the jewel-only environment gain: the\n// Render's IBL (and so the skin) stays as low as each shot sets it.\nfn jewel(s: SurfaceIn, p: Params, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  // stones ~3 mm apart; each a facet tilted its own way\n  let q = s.world * 330.0;\n  let cell = floor(q);\n  let h = vec3f(unitFloat(hash3i(vec3i(cell), 11u)), unitFloat(hash3i(vec3i(cell), 23u)), unitFloat(hash3i(vec3i(cell), 37u)));\n  // facets finer than a pixel sparkle and crawl frame to frame: fade them to the smooth normal\n  let resolved = 1.0 - smoothstep(0.0015, 0.005, s.footprint);\n  // each stone ROUND in its cell (a cell's sphere cut by the surface), the metal of the setting\n  // showing darker between them, so close up it reads as pavé rather than a mosaic of squares\n  let seat = length(q - cell - vec3f(0.5) - (h - vec3f(0.5)) * 0.25);\n  let stone = mix(1.0, 1.0 - smoothstep(0.36, 0.48, seat), resolved);\n  let n = normalize(s.normal);\n  let facet = normalize(n + (h - vec3f(0.5)) * 1.1 * resolved * stone);\n  r.normal = facet;\n  r.roughness = mix(0.25, 0.12, stone);\n  r.metallic = mix(0.9, 0.45, stone);\n  r.albedo = vec4f(vec3f(0.92, 0.94, 0.97) * mix(0.55, 1.0, stone), 1.0);\n  // the ice's own studio, mirrored by the facet: a broad soft box overhead and toward the lens,\n  // a dimmer horizon band, a few stones catching it hard (a sparkle, per stone)\n  let v = normalize(s.eye - s.world);\n  let refl = reflect(-v, facet);\n  let box = smoothstep(0.1, 0.7, refl.y) * 0.8 + smoothstep(0.35, 0.95, dot(refl, v)) * 0.6;\n  let band = smoothstep(0.25, 0.0, abs(refl.y - 0.05)) * 0.35;\n  let sparkle = select(0.0, 3.0, h.x > 0.93) * resolved;\n  // an unresolved pavé averages its stones: a steady satin white\n  let studio = mix(0.55, box + band + sparkle, resolved);\n  r.emissive = vec3f(0.93, 0.97, 1.0) * p.ice * studio * mix(0.3, 1.0, stone);\n  return r;\n}\n\nconst HEAD_UV_PER_M: f32 = 0.9;\n// the body's islands (torso 0.58, forearm 0.5, hand 0.48, upper arm 0.41 UV a metre, measured)\nconst BODY_UV_PER_M: f32 = 0.5;\n// the luma of head.py's FACE_MEAN (0.27, 0.16, 0.105): the baked complexion's mean\nconst SKIN_LUMA: f32 = 0.179;\n// pores ~0.7 mm apart; hair follicles ~0.8 mm apart (in UV cells)\nconst PORE_FREQ: f32 = 1587.3;\nconst HAIR_FREQ: f32 = 1388.9;\nconst HAIR_COLOUR: vec3f = vec3f(0.012, 0.009, 0.008);\n// the face's centre line in v, and the eyes' line in u (brows above it), measured on the MPFB head's UV\nconst FACE_V: f32 = 0.5168;\nconst BROW_U: f32 = 0.83;\n\nfn headHash4(c: vec2f, seed: u32) -> vec4f {\n  let i = vec3i(vec3f(c, f32(seed)));\n  return vec4f(unitFloat(hash3i(i, seed)), unitFloat(hash3i(i, seed + 101u)), unitFloat(hash3i(i, seed + 211u)), unitFloat(hash3i(i, seed + 307u)));\n}\n\nfn headSegment(p: vec2f, a: vec2f, b: vec2f) -> f32 {\n  let ab = b - a;\n  let t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);\n  return length(p - (a + ab * t));\n}\n\n// Hair coverage at uv (0..1): at most one hair per cell (a follicle ~0.8 mm from the next),\n// present where the density allows, a stroke 2-3.5 cells long, thick at the root and thin at the\n// tip. The beard grows down the face (+u in MakeHuman's layout); above the eyes (u < BROW_U) the\n// brows grow out from the nose, along v, rising a little. HAIR_MEAN is the coverage these strokes\n// average to, so the footprint fade does not change the beard's darkness.\nfn hairCoverage(uv: vec2f, density: f32, freq: f32, onHead: bool) -> f32 {\n  let q = uv * freq;\n  let base = floor(q);\n  let brow = onHead && uv.x < BROW_U;\n  let out = select(-1.0, 1.0, uv.y > FACE_V);\n  var cover = 0.0;\n  for (var a = -4; a <= 1; a = a + 1) {\n    for (var b = -1; b <= 1; b = b + 1) {\n      // a hair reaches up to 3.5 cells from its root: the beard searches up the face (-u), a brow inwards along v\n      let cell = base + select(vec2f(f32(a), f32(b)), vec2f(f32(b), f32(a) * out), brow);\n      let h = headHash4(cell, 17u);\n      if (h.x < density) {\n        let root = cell + h.yz;\n        let dir = select(normalize(vec2f(1.0, (h.w - 0.5) * 0.9)), normalize(vec2f(-0.35 + (h.w - 0.5) * 0.5, out)), brow);\n        let length = 2.0 + 1.5 * h.y;\n        let d = headSegment(q, root, root + dir * length);\n        let along = clamp(dot(q - root, dir) / length, 0.0, 1.0);\n        let width = mix(0.2, 0.07, along);\n        cover = max(cover, 1.0 - smoothstep(width * 0.5, width, d));\n      }\n    }\n  }\n  return cover;\n}\n\n// Pores: one per cell at most, a round pit (Worley: the nearest pore of the 3x3 cells). Returns the\n// pit depth (0..1) and its gradient in cell units (for the bump).\nfn poreAt(uv: vec2f, freq: f32) -> vec3f {\n  let q = uv * freq;\n  let base = floor(q);\n  var best = vec3f(0.0);\n  for (var dy = -1; dy <= 1; dy = dy + 1) {\n    for (var dx = -1; dx <= 1; dx = dx + 1) {\n      let cell = base + vec2f(f32(dx), f32(dy));\n      let h = headHash4(cell, 29u);\n      if (h.x < 0.75) {\n        let centre = cell + vec2f(0.15) + h.yz * 0.7;\n        let radius = 0.18 + 0.14 * h.w;\n        let v = q - centre;\n        let d = length(v);\n        let t = clamp(1.0 - d / radius, 0.0, 1.0);\n        let depth = t * t * (3.0 - 2.0 * t);\n        if (depth > best.x) {\n          // d(depth)/dq = s'(t) * dt/dq, with dt/dq = -v / (d * radius)\n          let slope = 6.0 * t * (1.0 - t) / max(d * radius, 1e-4);\n          best = vec3f(depth, -v * slope);\n        }\n      }\n    }\n  }\n  return best;\n}\n\nfn hairMean(density: f32) -> f32 {\n  return 1.0 - exp(-density * 0.55);\n}\n\nfn headSkin(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  // COLOR_0 alpha: the head's UV island carries 1 - density/2 (0.5..1), every other island BODY_CODE\n  let body = s.tint.a < 0.375;\n  let density = clamp(select((1.0 - s.tint.a) * 2.0, 1.0 - s.tint.a * 4.0, body), 0.0, 1.0);\n  let base = s.albedo.rgb;\n  // UV units per pixel, and how resolved the pores and the hairs are at this distance. The body's\n  // islands are laid out at about half the head's UV scale, so its pores take a lower UV frequency.\n  let uvPerM = select(HEAD_UV_PER_M, BODY_UV_PER_M, body);\n  let poreFreq = PORE_FREQ * uvPerM / HEAD_UV_PER_M;\n  let uvPx = s.footprint * uvPerM;\n  let poreSeen = 1.0 - smoothstep(0.35, 0.9, uvPx * poreFreq);\n  let hairFreq = HAIR_FREQ * uvPerM / HEAD_UV_PER_M;\n  let hairSeen = 1.0 - smoothstep(0.3, 0.8, uvPx * hairFreq);\n  let n = normalize(s.normal);\n  // A frame for the bump: MakeHuman's head UV runs u DOWN the face and v across it (towards the\n  // subject's right), so with the head upright, -u is world up and +v is the figure's right.\n  // There is no tangent attribute; this frame turns with the normal, so a pore stays a pit as the head turns.\n  let side = normalize(select(cross(vec3f(0.0, 1.0, 0.0), n), vec3f(1.0, 0.0, 0.0), abs(n.y) > 0.98));\n  let up = cross(n, side);\n  let pore = poreAt(s.uv, poreFreq);\n  let pit = pore.x * poreSeen;\n  // the pit's slope in world terms (per cell -> a tilt); a pit tilts the normal towards its centre\n  // and a finer-than-the-bake unevenness (2-5 mm): a height field's gradient in the same frame\n  let fineScale = poreFreq * 0.3;\n  let fine = detailFbm(vec3f(s.uv * fineScale, 5.0), 3, uvPx * fineScale);\n  // the body's islands are not laid out like the head's, so its frame is only roughly right: a gentler bump\n  let bump = select(1.0, 0.45, body);\n  let slope = ((-up * pore.y - side * pore.z) * 0.035 * poreSeen + (-up * fine.gradient.x - side * fine.gradient.y) * 0.012) * bump;\n  let blotch = detailFbm(vec3f(s.uv * poreFreq * 0.08, 2.0), 3, uvPx * poreFreq * 0.08);\n  var albedo = base * (1.0 - select(0.22, 0.12, body) * pit) * (0.94 + 0.12 * blotch.value);\n  // oil: on the face, the lighter, raised planes (nose, forehead, cheekbones) are glossier; the\n  // body is drier and broader in its sheen (no plastic hot spot under a hard key); pores are dull\n  let luma = dot(base, vec3f(0.2126, 0.7152, 0.0722));\n  let oily = clamp(0.47 - 1.2 * (luma - SKIN_LUMA), 0.36, 0.6);\n  var rough = clamp(select(oily, 0.6, body) + 0.15 * pit + 0.08 * (blotch.value - 0.5) + 0.1 * (fine.value - 0.5), 0.34, 0.7);\n  var normal = normalize(n + slope - n * dot(slope, n));\n  // the hairs, or their average darkness where they are finer than a pixel\n  let cover = select(0.0, hairCoverage(s.uv, density, hairFreq, !body), hairSeen > 0.0 && density > 0.02);\n  let mean = hairMean(density);\n  let hair = mix(mean, cover, hairSeen);\n  albedo = mix(albedo, HAIR_COLOUR, hair * 0.92);\n  rough = mix(rough, 0.55, hair);\n  r.albedo = vec4f(albedo, 1.0);\n  r.roughness = rough;\n  r.metallic = 0.0;\n  r.normal = normal;\n  return r;\n}\n\n// MakeHuman's eye texture holds two eyes; their iris centres and radii, measured on the PNG. glTF UVs run v DOWN\n// (the exporter flips Blender's v), which is the PNG's own row order.\nconst IRIS_A: vec2f = vec2f(0.703, 0.298);\nconst IRIS_B: vec2f = vec2f(0.288, 0.708);\nconst IRIS_R: f32 = 0.113;\nconst PUPIL_R: f32 = 0.036;\n\nfn headEye(s: SurfaceIn, o: SurfaceOut) -> SurfaceOut {\n  var r = o;\n  let da = s.uv - IRIS_A;\n  let db = s.uv - IRIS_B;\n  let d2 = select(db, da, dot(da, da) < dot(db, db));\n  let d = length(d2);\n  let angle = atan2(d2.y, d2.x);\n  let aa = max(s.footprint * 4.0, 0.004);\n  // the iris: dark brown, radial fibres, a darker collarette and a dark limbal ring\n  let fibres = 0.75 + 0.5 * detailNoise(vec3f(angle * 18.0, d * 40.0, 0.0)).value;\n  var iris = vec3f(0.1, 0.05, 0.024) * fibres;\n  iris = iris * mix(0.6, 1.0, smoothstep(PUPIL_R, PUPIL_R * 1.8, d));\n  iris = iris * mix(1.0, 0.35, smoothstep(IRIS_R * 0.8, IRIS_R, d));\n  let inIris = 1.0 - smoothstep(IRIS_R - aa, IRIS_R + aa, d);\n  let inPupil = 1.0 - smoothstep(PUPIL_R - aa, PUPIL_R + aa, d);\n  // the sclera from the bake, a little shadowed and warm, never paper white\n  let sclera = s.albedo.rgb * vec3f(0.62, 0.58, 0.55);\n  var albedo = mix(sclera, iris, inIris);\n  albedo = mix(albedo, vec3f(0.004), inPupil);\n  r.albedo = vec4f(albedo, 1.0);\n  r.roughness = 0.03;\n  r.metallic = 0.0;\n  return r;\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let c = classOf(s);\n  switch c {\n    case 1u: { return floorSurface(s, p, o); }\n    case 2u: { return brickSurface(s, o); }\n    case 4u: { o.emissive = s.emissive * p.tubeGain; }\n    case 10u, 13u: { return clearCoat(s, p, o, 0.035); }\n    case 11u: {\n      // The hero's SATIN SILVER (T1407b wide, round 4). As a 0.85-metallic mirror it showed only\n      // the black room and read near-black in every wide; the reference hero is a light satin\n      // grey that takes the set's low keys on its bumper and bonnet. A light, mostly dielectric\n      // albedo with a broad sheen does that. (The title keeps its own matte grey, title.ts.)\n      o.albedo = vec4f(vec3f(p.silverAlbedo) * vec3f(0.98, 1.0, 1.02), 1.0);\n      o.metallic = p.silverMetallic;\n      return clearCoat(s, p, o, p.silverRoughness);\n    }\n    case 12u: { return clearCoat(s, p, o, 0.42); }\n    case 14u, 19u: { o.roughness = 0.035; o.metallic = 1.0; }\n    case 15u: { o.roughness = 0.015; o.metallic = 0.0; }\n    case 17u: {\n      let n = detailFbm(s.world * 40.0, 3, s.footprint);\n      o.roughness = 0.65 + 0.2 * n.value;\n      o.normal = detailBump(s.normal, n.gradient * 0.002, 1.0);\n    }\n    case 18u: { o.emissive = s.emissive * p.headGain; }\n    case 20u: { o.emissive = s.emissive * p.tailGain; }\n    case 30u: {\n      let luma = dot(o.albedo.rgb, vec3f(0.2126, 0.7152, 0.0722));\n      o.albedo = vec4f(mix(vec3f(luma), o.albedo.rgb, 0.6), 1.0);\n      o.roughness = 0.45;\n    }\n    case 31u, 32u: {\n      let n = detailFbm(s.world * 55.0, 3, s.footprint);\n      o.roughness = 0.9;\n      o.normal = detailBump(s.normal, n.gradient * 0.0012, 1.0);\n    }\n    case 35u: { return jewel(s, p, o); }\n    case 36u: { return headSkin(s, o); }\n    case 37u: { return headEye(s, o); }\n    case 40u: { o.albedo = vec4f(vec3f(p.cycAlbedo), 1.0); o.roughness = 0.95; o.metallic = 0.0; }\n    default: {}\n  }\n  return o;\n}"
@@ -2186,7 +2186,7 @@
       "wall": {
         "definitionVersion": 1,
         "id": "wall",
-        "label": "wall1",
+        "label": "wgsl_wall",
         "parameters": {
           "aim": [
             -60.04,
@@ -2197,7 +2197,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.x"
+                "source": "op('camera1').par.lookAt.x"
               },
               "static": {
                 "kind": "static",
@@ -2210,7 +2210,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.y"
+                "source": "op('camera1').par.lookAt.y"
               },
               "static": {
                 "kind": "static",
@@ -2223,7 +2223,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.lookAt.z"
+                "source": "op('camera1').par.lookAt.z"
               },
               "static": {
                 "kind": "static",
@@ -2249,7 +2249,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.x"
+                "source": "op('camera1').par.eye.x"
               },
               "static": {
                 "kind": "static",
@@ -2262,7 +2262,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.y"
+                "source": "op('camera1').par.eye.y"
               },
               "static": {
                 "kind": "static",
@@ -2275,7 +2275,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.eye.z"
+                "source": "op('camera1').par.eye.z"
               },
               "static": {
                 "kind": "static",
@@ -2288,7 +2288,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.far"
+                "source": "op('camera1').par.far"
               },
               "static": {
                 "kind": "static",
@@ -2314,7 +2314,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.fov"
+                "source": "op('camera1').par.fov"
               },
               "static": {
                 "kind": "static",
@@ -2342,7 +2342,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('cam1').par.roll"
+                "source": "op('camera1').par.roll"
               },
               "static": {
                 "kind": "static",
@@ -2375,7 +2375,7 @@
       "wallGeo": {
         "definitionVersion": 1,
         "id": "wallGeo",
-        "label": "wallgeo1",
+        "label": "geometry_wall",
         "parameters": {
           "mode": "surface"
         },
@@ -2388,7 +2388,7 @@
       "wallGrid": {
         "definitionVersion": 1,
         "id": "wallGrid",
-        "label": "wallgrid1",
+        "label": "grid_wall",
         "parameters": {
           "cols": 2,
           "count": 4,
@@ -2405,7 +2405,7 @@
       "wallPlace": {
         "definitionVersion": 1,
         "id": "wallPlace",
-        "label": "wallplace1",
+        "label": "transform_wallplace",
         "parameters": {
           "translate": [
             -60,
@@ -2422,7 +2422,7 @@
       "wallShot": {
         "definitionVersion": 1,
         "id": "wallShot",
-        "label": "wallshot1",
+        "label": "render_wallshot",
         "parameters": {
           "ambientIntensity": 0,
           "background": [
@@ -2431,10 +2431,10 @@
             0,
             0
           ],
-          "camera": "cam1",
+          "camera": "camera1",
           "environmentIntensity": 0,
-          "lights": "keyshadow1",
-          "scenes": "figcast1 wallgeo1",
+          "lights": "light_keyshadow",
+          "scenes": "geometry_figcast geometry_wall",
           "shadowOutput": true
         },
         "position": {

@@ -33,6 +33,7 @@ import { previewablePort } from "@domain/graph/previewable.ts";
 import { parseComponentNodeType } from "@domain/components/component-type.ts";
 import { isComponentOutputBoundary } from "@nodes/definitions/index.ts";
 import type { ComponentRegistryView } from "@domain/components/index.ts";
+import { createLiveSynthesis, type LiveSynthesis } from "./live-synthesis.ts";
 
 /**
  * Mounts the shared preview surface and feeds it every node's tile request (T185).
@@ -128,6 +129,11 @@ export interface NodePreviewInputs {
   readonly graph: GraphDocument;
   readonly registry: NodeRegistryView;
   readonly compiledOutputs: ReadonlyArray<ResolvedOutput>;
+  /**
+   * T1655b: the rows of the installed plan's newest values-only variation, so a synthesized
+   * tile draws its node's current values (`live-synthesis.ts`). Absent: the installed rows.
+   */
+  readonly liveOutputs?: (() => ReadonlyArray<ResolvedOutput> | null) | undefined;
   readonly nodeRuntime: NodeRuntimeStore;
   readonly getViewport: () => ViewportTransform;
   /**
@@ -332,6 +338,15 @@ export function componentPreviewTarget(
   return { nodeId: `${nodeId}/${produced.nodeId}` as NodeId, portId: port.id };
 }
 
+/** `exactOptionalPropertyTypes`: no synthesis must be an ABSENT key. T1655b: the live values, where there are any. */
+function synthesisOf(live: LiveSynthesis, output: ResolvedOutput): { synthesis?: NonNullable<ResolvedOutput["synthesis"]> } {
+  const synthesis = live.of(output);
+  return synthesis === undefined ? {} : { synthesis };
+}
+
+/** T1655b: the middle of the 16 px corner control, in node pixels from the tile's corner. */
+const CHROME_CORNER_INSET = 11;
+
 export function useNodePreviews(inputs: NodePreviewInputs): void {
   // These indexes depend on the immutable plan/document, never on frame cadence.
   // Preserve first bindable row and last resolved facts for each port (T527/T1174).
@@ -348,6 +363,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
   const nodeCount = useMemo(() => Object.keys(inputs.graph.nodes).length, [inputs.graph.nodes]);
   const inputsRef = useRef({ ...inputs, outputIndex, nodeCount });
   inputsRef.current = { ...inputs, outputIndex, nodeCount };
+  const liveSynthesis = useMemo(() => createLiveSynthesis(() => inputsRef.current.liveOutputs?.() ?? null), []);
   /** The live tick body, for the T620 resync effect below. Null while not mounted. */
   const stepRef = useRef<(() => void) | null>(null);
   /** The live document-boundary body, for the B143 effect below. Null while not mounted. */
@@ -652,6 +668,23 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
         }
         return occluders.length === 0 ? undefined : subtractRects(tileRect, occluders);
       };
+      /**
+       * T1655b: is this tile's chrome corner (bottom-right, where the camera toggle or its
+       * sentence sits) under a node painted in front? The same stack the clip reads.
+       */
+      const cornerCoveredNodes = new Set<NodeId>();
+      const cornerCovered = (nodeId: NodeId, tileRect: PreviewRect): boolean => {
+        const depth = stackDepth.get(nodeId);
+        if (depth === undefined) return false;
+        const inset = CHROME_CORNER_INSET * viewport.zoom;
+        const x = tileRect.x + tileRect.width - inset;
+        const y = tileRect.y + tileRect.height - inset;
+        for (let index = depth + 1; index < occluderRect.length; index += 1) {
+          const front = occluderRect[index];
+          if (front !== undefined && x >= front.x && x <= front.x + front.width && y >= front.y && y <= front.y + front.height) return true;
+        }
+        return false;
+      };
 
       // Nodes the compiler already keeps on its own, so they must not be asked for as
       // preview sinks (see `previewCandidates`).
@@ -785,7 +818,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
               occluded: false,
               view: current.views?.viewFor(nodeId) ?? DEFAULT_PREVIEW_VIEW,
               fps: current.previewFps,
-              ...(output.synthesis === undefined ? {} : { synthesis: output.synthesis }),
+              ...synthesisOf(liveSynthesis, output),
               ...(() => {
                 const orbit = current.orbits?.get(nodeId);
                 return orbit === undefined ? {} : { orbit };
@@ -858,6 +891,10 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
         };
         const screenRect = slotScreenRect(box, viewport);
         const clip = clipFor(nodeId, screenRect);
+        // The chrome sits on the SLOT's corner, not the letterboxed picture's.
+        if (clip !== undefined && cornerCovered(nodeId, slotScreenRect({ x: position.x + offset.x, y: position.y + offset.y, width: offset.width, height: offset.height }, viewport))) {
+          cornerCoveredNodes.add(nodeId);
+        }
         requests.push({
           ref: { nodeId, portId },
           // T375 (§V57): `space` travels with the texture. `output` is the compiler's
@@ -890,7 +927,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
           fps: current.previewFps,
           // T563: a synthesized preview's draw passes travel with the request — the
           // preview program owns their target and runs them on the preview cadence.
-          ...(output.synthesis === undefined ? {} : { synthesis: output.synthesis }),
+          ...synthesisOf(liveSynthesis, output),
           // T561: this pane's inspection orbit, when the user has set one.
           ...(() => {
             const orbit = current.orbits?.get(nodeId);
@@ -899,6 +936,7 @@ export function useNodePreviews(inputs: NodePreviewInputs): void {
         });
       }
 
+      current.bounds.setCornerCovered(cornerCoveredNodes);
       const result = system.update({
         requests,
         frame: clock.next(),

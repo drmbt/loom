@@ -46,6 +46,15 @@ describe("negotiatedFeatures (B172)", () => {
     expect(negotiatedFeatures(["timestamp-query"], ["timestamp-query"])).toEqual(["timestamp-query"]);
   });
 
+  it("asks for indirect-first-instance when the adapter advertises it (T1581b F1)", () => {
+    // Dawn validates indirect arguments on the GPU, a compute pass per render pass, unless
+    // the device was granted this — and it is granted only if the request names it.
+    expect(negotiatedFeatures(undefined, ["indirect-first-instance"])).toEqual(["indirect-first-instance"]);
+    expect(negotiatedFeatures(undefined, ["indirect-first-instance", "timestamp-query"])).toEqual(["timestamp-query", "indirect-first-instance"]);
+    // Never when it is not offered: over-requesting fails device creation outright.
+    expect(negotiatedFeatures(undefined, ["timestamp-query"])).toEqual(["timestamp-query"]);
+  });
+
   it("omits it when the adapter does not — optional never becomes required (§V12)", () => {
     // Over-requesting FAILS device creation outright, so a device without the feature
     // must still get a working app. The honest "unavailable" message becomes TRUE here.

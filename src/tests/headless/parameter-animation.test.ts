@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import { createUniformAnimator } from "../../app/animate-parameters.ts";
 import { compileGraph, flattenComponents } from "../../compiler/index.ts";
 import type { CompiledGraph } from "../../compiler/index.ts";
@@ -172,7 +173,7 @@ async function render(
 
     // Exactly the gate the frame loop uses, on exactly the graph it uses it on (T615).
     // A static graph gets no animator at all.
-    const flatGraph = flattened?.graph ?? graph;
+    const flatGraph = flattened?.graph ?? flatDocument(graph);
     const animated = hasAnimatedParameters(flatGraph);
     const channels = graphChannelResolver(flatGraph, registry);
     const animator = createUniformAnimator();

@@ -194,7 +194,7 @@ describe.each(examples)("example $fileName", (file) => {
     // therefore fail on a working document, so the claim is split: everything is live,
     // and everything that should compile did.
     expect([...documentLiveness(document.graph, registry).dead]).toEqual(unwireable);
-    /* T956: a component INSTANCE flattens into `<id>/<inner>` plan nodes (E47's holo1 is
+    /* T956: a component INSTANCE flattens into `<id>/<inner>` plan nodes (E47's depthpoints_holo1 is
        the first shipped case), and the plan is compiled from that FLATTENED document — so
        the flattened document is where the expected order is read from. T1236: an instance
        of value nodes only (E66's AudioAnalysis) expands to NO plan node at all and is
@@ -234,12 +234,12 @@ describe.each(examples)("example $fileName", (file) => {
   /**
    * T826/§B163 — a LABEL IS AN ADDRESS, so it must be unique per document (§V782's family).
    *
-   * A driven or bound parameter names its source by LABEL (`drivenSlot("tearn1:high")`),
+   * A driven or bound parameter names its source by LABEL (`drivenSlot("limit_tearn:high")`),
    * and `nodeNames` resolves a label to the FIRST node id that carries it and silently
    * drops the rest — so two nodes sharing a label is not an error, it is a binding that
    * quietly resolves to whichever id sorts first while the branch it was built for goes
-   * dead. E40 shipped exactly that: `tearb` and `tearn` both labelled `tearb1`, and
-   * `shiftb1` bound the positive intermediate instead of the negative clamp. A count, not
+   * dead. E40 shipped exactly that: `tearb` and `tearn` both labelled `math_tearb`, and
+   * `transform_shiftb` bound the positive intermediate instead of the negative clamp. A count, not
    * `nodeNames`, because the point is to catch the collision the resolver hides.
    */
   it("gives every node a UNIQUE label — a label is an address (§B163)", () => {

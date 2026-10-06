@@ -12,7 +12,9 @@ import { pointKernelAdvancedNode, pointKernelNode } from "./index.ts";
 import { reflectParamsStruct as reflectFromNode } from "./custom-wgsl.ts";
 import { reflectParamsStruct, extractParamsStruct } from "./params-reflection.ts";
 import { compileContext } from "./test-support.ts";
+import { pointStorageId } from "./point-storage.ts";
 import type { ParameterValue } from "../../domain/types/parameters.ts";
+import type { PassDescriptor } from "../../runtime/backend/plan.ts";
 
 /**
  * T900 — POINT KERNELS ON THE REFLECTION, NOT ON THE FIXED SLOTS.
@@ -421,6 +423,19 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
      reach a pixel. E13/E34/E54/E63 are the four with kernels among those thirteen. The
      pictures are held where they always were: `quorum-claims`, `skin-claims`, `prism.gpu`
      and `prism-trace.gpu` all green across this change. */
+  /* ⚑ T1593b RE-STAMPS A ROW WHEREVER A KERNEL'S COMMENT NAMES A NODE, AND THE MOVE IS
+     TEXT AND NOT PICTURE. The naming sweep renamed every shipped node to `kind_role`. A
+     node's name is not in a kernel's code, so the sweep moves no digest by itself: E9, E13,
+     E16, E20, E25, E28 and E30 were renamed and kept theirs. But a kernel's own comments
+     say which nodes feed it (`value1 is swell1's level`), those words ship inside the
+     shader a person opens in the editor, and the sweep moved them with the nodes they
+     name. A comment is bytes, and this digest hashes them.
+     The check that says it is only a comment, run before each of these documents was
+     regenerated: build the document from the rewritten source, take the SAME document
+     renamed in memory (which does not touch a shader), rename the node names inside its
+     shader COMMENTS and nowhere else, and the two are byte-identical
+     (`apply-rename.ts --written --build-in`, "the same but for prose").
+     Rows moved for that reason, as the batches landed: E27, E31, E32, E33, E34, E54. */
   /* T1290: E69-Burnish, new in this commit rather than re-stamped. Its digest is the
      resolved passes of its four sphere kernels — one `pointGrid` folded onto a ball four
      times, differing only in where each stands. */
@@ -434,24 +449,24 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   "E16-Murmuration.loom.json": "2b02e7a2f6ae8dc8",
   "E20-Gooeyball.loom.json": "ae38e4e6b4c4a6be",
   "E25-Stage.loom.json": "39f2763f1195dd59",
-  "E27-Relief.loom.json": "670d97efe970595c",
+  "E27-Relief.loom.json": "ea734f0522f5d94d",
   "E28-Sundial.loom.json": "fd30a6a5d8a12088",
   "E30-Nave.loom.json": "79f18c0c294ff3c0",
-  "E31-Corona.loom.json": "cdf805800334b838",
-  /* T1399b re-pinned: `herd1`'s kernel changed on purpose — four roosts (`roost()`, keyed
+  "E31-Corona.loom.json": "8072ed2da615ef10",
+  /* T1399b re-pinned: `kernel_herd`'s kernel changed on purpose — four roosts (`roost()`, keyed
      by `ctx.index % ROOSTS`), each herd seeded on its own roost, and the homing fence
      pulled in to 0.45…0.8 — and its capacity went 5 000 → 12 000, which moves the
      dispatch size. The picture is held by the example's look baseline and its .md's
      re-measured claims, not by this number. */
-  "E32-Pasture.loom.json": "13534a2ee6ac29f6",
-  "E33-Obol.loom.json": "68029203112b3bbc",
-  /* T1053 re-pinned this one, and the module's gain is enumerable: `aim1`, `sight1`,
-     `mark1` and `mark2a` each grew a `struct Params` and its uniform members, and twelve
+  "E32-Pasture.loom.json": "f3aa1a3557dbd524",
+  "E33-Obol.loom.json": "30e1616cff75e4e0",
+  /* T1053 re-pinned this one, and the module's gain is enumerable: `kernel_aim`, `kernel_sight`,
+     `kernel_mark` and `kernel_mark2a` each grew a `struct Params` and its uniform members, and twelve
      literals became `ctx.params.<name>` reads. NO PICTURE MOVED — every promoted uniform
      carries the exact f32 the literal it replaced was, checked pass by pass against the
-     HEAD file, and E34's other four kernels (unfold1, raise1, pool1, ricochet1) are
+     HEAD file, and E34's other four kernels (kernel_unfold, kernel_raise, multiply_pool, kernel_ricochet) are
      byte-identical because nothing in them was artistic direction. */
-  "E34-Lidar.loom.json": "4ef176c1ad25ab03",
+  "E34-Lidar.loom.json": "948ea8f3284db431",
   "E35-Nova-Torus.loom.json": "738e4e77f2cf31d4",
   "E36-Facade.loom.json": "019eaf2401006054",
   "E37-Sirocco.loom.json": "2087d8858acc22c2",
@@ -487,7 +502,7 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
      rewritten. The picture is asserted by the ten claims in `quorum-claims.gpu.test.ts` —
      rewritten in the same commit — and by a re-measured §V885 look row (motion 0.02956 →
      0.05087, whole minute 0.03706 → 0.06468, both moving the same way, §V913). */
-  "E54-Quorum.loom.json": "1abe2f8d3023ef7f",
+  "E54-Quorum.loom.json": "f091d626f54b8a3a",
   /* T1169: E63 Skin's kernels are the SKIN chain — one pointset rolled into a tube three
      times, differing only in where each stands. The digest covers all three, which is why
      one row stands for what reads on screen as three separate claims. */
@@ -512,17 +527,35 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
 
+/**
+ * T1583b: shipped Point Kernels whose dispatch reads its own pair — the ones with a region.
+ * Counted off the plans when steps landed: 128 plain kernel dispatches ship, 67 of them
+ * with state of their own and 61 pure processors; this file sees the 126 kernels that are
+ * in a document's own graph, which leaves out E47's (inside a component) and two regions.
+ */
+const SHIPPED_STEP_REGIONS = 65;
+
 describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
   const digests = new Map<string, string>();
+  /** T1583b: the loop markers the kernels' dispatches sit between, per loom. */
+  const stepMarkers = new Map<string, PassDescriptor[]>();
   let kernelCount = 0;
   for (const file of listExamples()) {
     const result = runExample(file);
     const graph = result.document?.graph;
     if (graph === undefined) continue;
-    const passes = (result.read?.passes ?? []).filter((pass) => {
+    const owned = (result.read?.passes ?? []).filter((pass) => {
       const nodeId = (pass as { nodeId?: string }).nodeId;
       return nodeId !== undefined && POINT_KERNEL_TYPES.has(graph.nodes[nodeId]?.type ?? "");
     });
+    /* T1583b: a Point Kernel's dispatch now sits between two loop markers that carry its
+       node id (§V358: the region exists at count 1). They are held OUT of the digest and
+       pinned field by field in their own case below, so what the digest covers is what it
+       always covered — the dispatch and the passes beside it. Every digest in the table
+       survived that row unchanged, which is the proof that no shipped kernel's shader
+       text, bindings, workgroups or uniform values moved when steps arrived. */
+    const passes = owned.filter((pass) => pass.kind !== "loop");
+    stepMarkers.set(file.fileName, owned.filter((pass) => pass.kind === "loop"));
     if (passes.length === 0) continue;
     kernelCount += Object.values(graph.nodes).filter((node) => POINT_KERNEL_TYPES.has(node.type)).length;
     // T1523b: a pass's `sourceMap` says where the author's lines sit in its shader, for error
@@ -545,5 +578,38 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
 
   it.each(Object.keys(FRAME_ZERO_DIGESTS))("%s is unchanged at frame 0", (fileName) => {
     expect(digests.get(fileName)).toBe(FRAME_ZERO_DIGESTS[fileName]);
+  });
+
+  /*
+   * T1583b — what the digest no longer hashes, asserted exactly instead. A region that
+   * came out at any other count would run a shipped kernel more than once a frame, and a
+   * `prepare` above 1 would allocate uniform blocks for kernels nobody steps.
+   */
+  it("every shipped Point Kernel region is one run per frame, with nothing prepared beyond it", () => {
+    let regions = 0;
+    for (const [fileName, markers] of stepMarkers) {
+      for (const marker of markers) {
+        if (marker.kind !== "loop" || marker.edge !== "begin") continue;
+        regions += 1;
+        const pair = marker.loopId;
+        expect(marker, `${fileName} ${marker.id}`).toEqual({
+          kind: "loop",
+          id: `${pair}#loop:begin`,
+          edge: "begin",
+          loopId: pair,
+          count: 1,
+          nodeId: marker.nodeId,
+          steps: { pair, iterations: 1, prepare: 1 },
+        });
+        expect(pair, fileName).toBe(pointStorageId(marker.nodeId ?? ""));
+      }
+      expect(markers.filter((marker) => marker.kind === "loop" && marker.edge === "end").length, fileName).toBe(
+        markers.filter((marker) => marker.kind === "loop" && marker.edge === "begin").length,
+      );
+    }
+    // The plain Point Kernels holding state of their own. The rest are advanced kernels,
+    // which do not step, and processors whose whole schema the incoming point set
+    // provides, which have nothing to carry from run to run.
+    expect(regions).toBe(SHIPPED_STEP_REGIONS);
   });
 });

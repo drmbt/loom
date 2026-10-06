@@ -6,6 +6,7 @@ import { createFrameRecorder } from "@runtime/export/index.ts";
 import type { RecordingReport, VideoEncoderSink } from "@runtime/export/index.ts";
 import type { TransportHandlers } from "./transport-commands.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { NO_INPUT } from "@domain/commands/input-schema.ts";
 
 /**
  * RENDERING THE TIMELINE OUT (T433, §V48, §V170).
@@ -383,6 +384,7 @@ export function registerRenderRangeCommand(bus: LoomBus): RenderRangeHolder {
 
   bus.registerCommand({
     name: "export.renderRange",
+    inputSchema: NO_INPUT,
     description: "Render the timeline's in/out range to a video file.",
     handler: async (_input, context) => {
       const revision = context.store.getRevision();

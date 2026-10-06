@@ -62,6 +62,33 @@ export function listStarterComponentFiles(): readonly ExampleFile[] {
 }
 
 /**
+ * Where the PROJECT documents live: `projects/<name>/…`, generated from `src/projects/**`
+ * through the same save path as the examples.
+ */
+export const PROJECTS_DIR = fileURLToPath(new URL("../../projects/", import.meta.url));
+
+/**
+ * Every project document under `projects/`, at any depth, sorted (T1593b).
+ *
+ * `fileName` is the path below `projects/` with forward slashes (`furnace/furnace.loom.json`),
+ * because two projects may each hold a file of the same name. Same discovery rule as the
+ * examples: dropping a `.loom.json` in is the whole registration step, so a gate that reads
+ * this cannot be walked past by a project nobody listed.
+ */
+export function listProjectDocuments(): readonly ExampleFile[] {
+  const walk = (directory: string, below: string): ExampleFile[] => {
+    const here = listDirectory(directory).map((file) => ({ ...file, fileName: `${below}${file.fileName}` }));
+    const deeper = readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort()
+      .flatMap((name) => walk(join(directory, name), `${below}${name}/`));
+    return [...here, ...deeper];
+  };
+  return walk(PROJECTS_DIR, "");
+}
+
+/**
  * The shipped corpus, as the HEADLESS MCP server reads it (T1211).
  *
  * The browser half is `createAgentLibraryCatalogue` in `src/editor/library/agent-library.ts`.

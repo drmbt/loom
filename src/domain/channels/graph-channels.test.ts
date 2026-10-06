@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import type { GraphComponentDefinition } from "../types/components.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { ComponentId, NodeId, PortId } from "../types/ids.ts";
@@ -19,6 +20,7 @@ import { effectiveParameterSchema, resolveParameters } from "../parameters/resol
 import { buildMorphIndex } from "../presets/morph-index.ts";
 import { presetBankNode, presetSession } from "../presets/test-support.ts";
 import { graphChannelResolver, hasAnimatedParameters } from "./graph-channels.ts";
+import { testRead } from "../parameters/test-support.ts";
 
 /**
  * The driven mode comes ALIVE (T238, T203, §V143): a parameter driven by channel
@@ -69,10 +71,10 @@ describe("graphChannelResolver (T238-T240)", () => {
 
   it("drives a parameter from an LFO by NAME, per frame — something finally moves", () => {
     const graph = graphWith(lfo, driven);
-    const channels = graphChannelResolver(graph, registry);
+    const channels = graphChannelResolver(flatDocument(graph), registry);
 
     const at = (t: number) =>
-      resolveParameters(driven, blurNode, { frame: frameAt(t), channels }).values["size"];
+      resolveParameters(driven, blurNode, testRead({ frame: frameAt(t), channels })).values["size"];
 
     expect(at(0.25)).toBeCloseTo(1, 10); // crest: 0.5 + 0.5·sin(π/2)
     expect(at(0.75)).toBeCloseTo(0, 10); // trough
@@ -81,8 +83,8 @@ describe("graphChannelResolver (T238-T240)", () => {
 
   it("returns undefined — retained value in effect — for a name that is no value source", () => {
     const graph = graphWith(driven); // no lfo1 in the document
-    const channels = graphChannelResolver(graph, registry);
-    const resolved = resolveParameters(driven, blurNode, { frame: frameAt(1), channels });
+    const channels = graphChannelResolver(flatDocument(graph), registry);
+    const resolved = resolveParameters(driven, blurNode, testRead({ frame: frameAt(1), channels }));
     expect(resolved.get("size")?.value).toBe(8); // blur's manifest default
     expect(resolved.get("size")?.diagnostic?.code).toBe("parameter.driven");
   });
@@ -98,7 +100,7 @@ describe("graphChannelResolver (T238-T240)", () => {
       },
     });
     const graph = graphWith(recursive, driven);
-    const channels = graphChannelResolver(graph, registry);
+    const channels = graphChannelResolver(flatDocument(graph), registry);
     // Frequency's driven slot has no static payload, so the manifest default (1) rules;
     // the point is that this terminates and yields a finite number.
     const value = channels("lfo1", { node: driven, key: "size", definition: blurNode.parameters["size"]!, frame: frameAt(0.5) });
@@ -149,8 +151,8 @@ describe("hasAnimatedParameters", () => {
     // The reason, measured rather than asserted: resolve the same parameter a thousand
     // frames apart and it is the retained 12 both times. If that ever stopped being true,
     // THIS is the assertion that has to fail before the predicate is changed.
-    const early = resolveParameters(mapped, blurNode, { frame: frameAt(0) }).values["size"];
-    const late = resolveParameters(mapped, blurNode, { frame: frameAt(1000) }).values["size"];
+    const early = resolveParameters(mapped, blurNode, testRead({ frame: frameAt(0) })).values["size"];
+    const late = resolveParameters(mapped, blurNode, testRead({ frame: frameAt(1000) })).values["size"];
     expect(early).toBe(12);
     expect(late).toBe(early);
 
@@ -196,7 +198,7 @@ const constantNode = (id: string, label: string, value: number): GraphNode =>
 
 /** What the parameter resolver reads back for a size driven by `channel`. */
 const sizeDrivenBy = (channels: ChannelResolver, channel: string): ResolvedParameter | undefined =>
-  resolveParameters(drivenBlur(channel), blurNode, { frame: frameAt(0), channels }).get("size");
+  resolveParameters(drivenBlur(channel), blurNode, testRead({ frame: frameAt(0), channels })).get("size");
 
 /** Blur's manifest default — what a driven slot RETAINS when its channel answers nothing. */
 const NO_CHANNEL = 8;
@@ -207,7 +209,7 @@ describe("T1245 — the resolver's name index gives the same answers", () => {
     // that is correct in blocks can still be wrong read alternately — which is how a
     // frame reads it, one driven parameter after another.
     const channels = graphChannelResolver(
-      graphWith(constantNode("n-a", "knobA", 3), constantNode("n-b", "knobB", 5)),
+      flatDocument(graphWith(constantNode("n-a", "knobA", 3), constantNode("n-b", "knobB", 5))),
       registry,
     );
     expect(sizeDrivenBy(channels, "knobA")?.value).toBe(3);
@@ -222,7 +224,7 @@ describe("T1245 — the resolver's name index gives the same answers", () => {
     // first label wins. Insertion order is REVERSED against id order here, so a "cleaner"
     // last-wins or an insertion-order tiebreak reads 5 and fails.
     const channels = graphChannelResolver(
-      graphWith(constantNode("n-b", "knob", 5), constantNode("n-a", "knob", 3)),
+      flatDocument(graphWith(constantNode("n-b", "knob", 5), constantNode("n-a", "knob", 3))),
       registry,
     );
     expect(sizeDrivenBy(channels, "knob")?.value).toBe(3);
@@ -232,7 +234,7 @@ describe("T1245 — the resolver's name index gives the same answers", () => {
   it("goes on answering nothing for a name that matches nothing, before and after a hit", () => {
     // The miss is the read that has no entry to cache, so it is the one a memo gets
     // wrong: it must stay a miss across the read that populates the index.
-    const channels = graphChannelResolver(graphWith(constantNode("n-a", "knob", 3)), registry);
+    const channels = graphChannelResolver(flatDocument(graphWith(constantNode("n-a", "knob", 3))), registry);
     expect(sizeDrivenBy(channels, "nope")?.value).toBe(NO_CHANNEL);
     expect(sizeDrivenBy(channels, "nope")?.diagnostic?.code).toBe("parameter.driven");
     expect(sizeDrivenBy(channels, "knob")?.value).toBe(3);
@@ -293,17 +295,17 @@ function scene(definitions: GraphComponentDefinition[] = []): ChannelScene {
       return (result.output as { createdIds: Record<string, string> }).createdIds;
     },
     async rename(nodeId, label) {
-      const result = await bus.execute("node.rename", { nodeId, label }, contextFor(alice));
+      const result = await bus.execute("node.rename", { nodeId, label, exact: true }, contextFor(alice));
       expect(result.status).toBe("applied");
     },
     sizeOf(nodeId) {
       const resolver = channels();
       const blur = flattened.current().graph.nodes[nodeId as NodeId];
       expect(blur).toBeDefined();
-      return resolveParameters(blur as GraphNode, blurNode, {
+      return resolveParameters(blur as GraphNode, blurNode, testRead({
         frame: frameAt(0),
         channels: resolver,
-      }).get("size");
+      })).get("size");
     },
   };
 }
@@ -442,7 +444,7 @@ describe("T1524b: a source parameter a bank is fading publishes the fading value
     const { graph, level } = await fading();
     // The document holds the destination, which is what the static view reads.
     expect(graph.nodes["n-knob"]?.parameters["value"]).toBe(0.8);
-    const channels = graphChannelResolver(graph, registry, buildMorphIndex({ document: graph, registry }));
+    const channels = graphChannelResolver(flatDocument(graph), registry, buildMorphIndex({ document: graph, registry }));
     const context = (frame?: FrameEvaluationInput) => ({ node: level, key: "brightness", definition: brightnessOf(level), frame });
 
     expect(channels("knob", context(at(0)))).toBe(0.2);
@@ -455,14 +457,14 @@ describe("T1524b: a source parameter a bank is fading publishes the fading value
     expect(channels("knob", context())).toBe(0.8);
 
     // What the consumer reads back: the parameter the channel drives, through the one resolver.
-    const driven = (frame: FrameEvaluationInput): unknown => resolveParameters(level, levelNode, { frame, channels }).values["brightness"];
+    const driven = (frame: FrameEvaluationInput): unknown => resolveParameters(level, levelNode, testRead({ frame, channels })).values["brightness"];
     expect(driven(at(30))).toBe(0.5);
     expect(driven(at(60))).toBe(0.8);
   });
 
   it("cut the wire: built without the index, the same frame reads the destination", async () => {
     const { graph, level } = await fading();
-    const channels = graphChannelResolver(graph, registry);
+    const channels = graphChannelResolver(flatDocument(graph), registry);
     expect(channels("knob", { node: level, key: "brightness", definition: brightnessOf(level), frame: at(30) })).toBe(0.8);
   });
 
@@ -470,7 +472,7 @@ describe("T1524b: a source parameter a bank is fading publishes the fading value
     const { graph, level } = await fading();
     const knob = graph.nodes["n-knob"] as GraphNode;
     const edited: GraphDocument = { ...graph, nodes: { ...graph.nodes, "n-knob": { ...knob, parameters: { ...knob.parameters, value: 0.6 } } } };
-    const channels = graphChannelResolver(edited, registry, buildMorphIndex({ document: edited, registry }));
+    const channels = graphChannelResolver(flatDocument(edited), registry, buildMorphIndex({ document: edited, registry }));
     expect(channels("knob", { node: level, key: "brightness", definition: brightnessOf(level), frame: at(30) })).toBe(0.6);
   });
 });

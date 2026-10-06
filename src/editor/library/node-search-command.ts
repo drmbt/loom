@@ -1,5 +1,7 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
+import { z } from "zod";
+import { pointInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `ui.openNodeSearch` — the ONE command every route to the node browser names
@@ -93,6 +95,7 @@ export function registerNodeSearchCommand(bus: LoomBus): NodeSearchHolder {
 
   bus.registerCommand({
     name: OPEN_NODE_SEARCH_COMMAND,
+    inputSchema: z.object({ position: pointInput.optional() }).strict(),
     description: "Search the node catalogue and add one at the cursor.",
     handler: (input, context) => {
       const revision = context.store.getRevision();

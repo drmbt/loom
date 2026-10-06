@@ -132,11 +132,11 @@ const DROP = then(CROSS, [RIOT, DIRTY, { layerFx: { opacity: 0.85 } }], ["layerR
 const OUT = then(DROP, [DAWN, opacities(1, 0, 0)], []);
 
 const SET: readonly CueClaim[] = [
-  { cue: "1 open", bank: "shots", preset: "open", morph: { seconds: 2, curve: "smooth" }, state: OPEN },
-  { cue: "2 warm", bank: "looks", preset: "noon", morph: { seconds: 4, curve: "smooth" }, state: WARM },
-  { cue: "3 cross", bank: "shots", preset: "cross", morph: { seconds: 1, curve: "linear" }, state: CROSS },
-  { cue: "4 drop", bank: "shots", preset: "drop", morph: null, state: DROP },
-  { cue: "5 out", bank: "shots", preset: "out", morph: { seconds: 4, curve: "smooth" }, state: OUT },
+  { cue: "1 open", bank: "presets_shots", preset: "open", morph: { seconds: 2, curve: "smooth" }, state: OPEN },
+  { cue: "2 warm", bank: "presets_looks", preset: "noon", morph: { seconds: 4, curve: "smooth" }, state: WARM },
+  { cue: "3 cross", bank: "presets_shots", preset: "cross", morph: { seconds: 1, curve: "linear" }, state: CROSS },
+  { cue: "4 drop", bank: "presets_shots", preset: "drop", morph: null, state: DROP },
+  { cue: "5 out", bank: "presets_shots", preset: "out", morph: { seconds: 4, curve: "smooth" }, state: OUT },
 ];
 
 /** The shipped graph with `state` written straight onto the nodes: no bank, no recall. */
@@ -286,7 +286,7 @@ describe("E82 Set List — every cue arrives at the state its note promises", ()
 
 describe("E82 Set List — a cue's morph is on the pixels at its analytic value", () => {
   /**
-   * `3 cross` is the crossfade idiom: the shot switches `layerGrid` ON (a cut, at the start)
+   * `3 cross` is the crossfade idiom: the shot switches `layer_grid` ON (a cut, at the start)
    * and its opacity goes 0 → 1. The cue's morph is 1 s LINEAR, so on frame 30 of 60 fps the
    * opacity the shader reads is exactly 0.5 — and a Layer's output is
    * `mix(below, blend(picture, below), opacity)`, linear in opacity, so that frame is the
@@ -464,11 +464,14 @@ describe("E82 Set List — the banks, the desk and the notes", () => {
    * graph nobody can make.
    */
   it("every layer names its picture, and nothing is wired into a Picture input", () => {
-    expect(LAYERS.map((layer) => graph.nodes[layer]!.parameters["picture"])).toEqual(["rings", "grid", "glitch"]);
+    const pictures = LAYERS.map((layer) => graph.nodes[layer]!.parameters["picture"]);
+    expect(pictures).toEqual(["hsv_rings", "transform_grid", "hsv_glitch"]);
     const wired = Object.values(graph.edges).filter((edge) => edge.target.portId === "picture" && graph.nodes[edge.target.nodeId]?.type === "layer");
     expect(wired).toEqual([]);
     // Each name is a node, and it is the end of the chain the plan claim above calls that layer's.
-    expect([LOOK_RINGS.at(-1), LOOK_GRID.at(-1), FX_CHAIN.at(-1)]).toEqual(["rings", "grid", "glitch"]);
+    // (The chains are node ids; a Picture is a name. They are the same node, found by its name.)
+    const named = pictures.map((picture) => nodes.find((node) => node.label === picture)?.id);
+    expect(named).toEqual([LOOK_RINGS.at(-1), LOOK_GRID.at(-1), FX_CHAIN.at(-1)]);
   });
 
   it("has one Panel, the Show desk, published to phones: the shots, the cue list and the FX layer by name, the two sliders by wire, placed without overlap", () => {
@@ -477,17 +480,17 @@ describe("E82 Set List — the banks, the desk and the notes", () => {
     const panel = panels[0]!;
     expect(panel.parameters["title"]).toBe("Show desk");
     expect(panel.parameters["remote"]).toBe(true);
-    expect(panelMembers(graph, panel).map(controlNameOf)).toEqual(["master", "keystone"]);
+    expect(panelMembers(graph, panel).map(controlNameOf)).toEqual(["slider_master", "slider_keystone"]);
     const board = panelBoard(graph, panel)!;
     const placed = board.items.flatMap((item) => (item.kind === "widget" ? [[controlNameOf(item.node), item.node.type, item.rect] as const] : []));
     expect(placed.map(([name, type]) => `${name}(${type})`).sort()).toEqual(
-      ["keystone(slider)", "layerFx(layer)", "master(slider)", "set(cueList)", "shots(presets)"].sort(),
+      ["slider_keystone(slider)", "layer_fx(layer)", "slider_master(slider)", "cuelist_set(cueList)", "presets_shots(presets)"].sort(),
     );
     expect(board.items.some((item) => item.kind === "label")).toBe(true);
     // The layer's rect is four cells wide — room for its fader beside its switch — and the
     // cue list's is two rows — room for the current and next cue above GO and BACK.
-    expect(placed.find(([name]) => name === "layerFx")![2].w).toBeGreaterThanOrEqual(4);
-    expect(placed.find(([name]) => name === "set")![2].h).toBeGreaterThanOrEqual(2);
+    expect(placed.find(([name]) => name === "layer_fx")![2].w).toBeGreaterThanOrEqual(4);
+    expect(placed.find(([name]) => name === "cuelist_set")![2].h).toBeGreaterThanOrEqual(2);
     for (const [index, item] of board.items.entries()) {
       expect(item.rect.x + item.rect.w).toBeLessThanOrEqual(board.columns);
       for (const other of board.items.slice(index + 1)) expect(boardRectsOverlap(item.rect, other.rect), `${item.key} on ${other.key}`).toBe(false);

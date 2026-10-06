@@ -211,7 +211,7 @@
             "break": {
               "definitionVersion": 1,
               "id": "break",
-              "label": "break1",
+              "label": "wgsl_break",
               "parameters": {
                 "amount": 0.35,
                 "grid": [
@@ -222,7 +222,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -235,7 +235,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -257,7 +257,7 @@
             "churnx": {
               "definitionVersion": 1,
               "id": "churnx",
-              "label": "churnx1",
+              "label": "lfo_churnx",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.062,
@@ -274,7 +274,7 @@
             "churny": {
               "definitionVersion": 1,
               "id": "churny",
-              "label": "churny1",
+              "label": "lfo_churny",
               "parameters": {
                 "amplitude": 0,
                 "frequency": 0.041,
@@ -291,7 +291,7 @@
             "crush": {
               "definitionVersion": 1,
               "id": "crush",
-              "label": "crush1",
+              "label": "level_crush",
               "parameters": {
                 "blacklevel": 0.03,
                 "brightness": 1,
@@ -310,7 +310,7 @@
             "fit": {
               "definitionVersion": 1,
               "id": "fit",
-              "label": "fit1",
+              "label": "transform_fit",
               "parameters": {
                 "aspectcorrect": false,
                 "extend": "hold",
@@ -327,7 +327,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churnx1').chan.value) / max(1, op('churny1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churnx').chan.value) / max(1, op('lfo_churny').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -340,7 +340,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, max(1, op('churny1').chan.value) / max(1, op('churnx1').chan.value))"
+                      "source": "max(1, max(1, op('lfo_churny').chan.value) / max(1, op('lfo_churnx').chan.value))"
                     },
                     "static": {
                       "kind": "static",
@@ -364,7 +364,7 @@
             "grid": {
               "definitionVersion": 1,
               "id": "grid",
-              "label": "grid1",
+              "label": "tile_grid",
               "parameters": {
                 "mirrorx": false,
                 "mirrory": false,
@@ -380,7 +380,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -393,7 +393,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -417,7 +417,7 @@
             "guard": {
               "definitionVersion": 1,
               "id": "guard",
-              "label": "guard1",
+              "label": "limit_guard",
               "parameters": {
                 "high": 1,
                 "low": 0,
@@ -455,7 +455,7 @@
             "map": {
               "definitionVersion": 1,
               "id": "map",
-              "label": "map1",
+              "label": "wgsl_map",
               "parameters": {
                 "grid": [
                   3,
@@ -465,7 +465,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -478,7 +478,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -501,7 +501,7 @@
             "mix": {
               "definitionVersion": 1,
               "id": "mix",
-              "label": "mix1",
+              "label": "cross_mix",
               "parameters": {
                 "cross": 0.55
               },
@@ -525,7 +525,7 @@
             "pack": {
               "definitionVersion": 1,
               "id": "pack",
-              "label": "pack1",
+              "label": "reorder_pack",
               "parameters": {
                 "outa": "in2lum",
                 "outb": "in1b",
@@ -546,7 +546,7 @@
             "paint": {
               "definitionVersion": 1,
               "id": "paint",
-              "label": "paint1",
+              "label": "solid_paint",
               "parameters": {
                 "color": [
                   1,
@@ -569,7 +569,7 @@
             "palette": {
               "definitionVersion": 2,
               "id": "palette",
-              "label": "palette1",
+              "label": "ramp_palette",
               "parameters": {
                 "interp": "smooth",
                 "period": 1,
@@ -667,7 +667,7 @@
             "scan": {
               "definitionVersion": 1,
               "id": "scan",
-              "label": "scan1",
+              "label": "slitscan1",
               "parameters": {
                 "depth": 1,
                 "frames": 61,
@@ -682,7 +682,7 @@
             "sweep": {
               "definitionVersion": 1,
               "id": "sweep",
-              "label": "sweep1",
+              "label": "wgsl_sweep",
               "parameters": {
                 "amount": 0.5,
                 "grid": [
@@ -693,7 +693,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churnx1').chan.value)"
+                      "source": "max(1, op('lfo_churnx').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -706,7 +706,7 @@
                   "bindings": {
                     "expression": {
                       "kind": "expression",
-                      "source": "max(1, op('churny1').chan.value)"
+                      "source": "max(1, op('lfo_churny').chan.value)"
                     },
                     "static": {
                       "kind": "static",
@@ -727,7 +727,7 @@
             "tint": {
               "definitionVersion": 1,
               "id": "tint",
-              "label": "tint1",
+              "label": "multiply_tint",
               "parameters": {
                 "opacity": 1
               },
@@ -740,7 +740,7 @@
             "tone": {
               "definitionVersion": 1,
               "id": "tone",
-              "label": "tone1",
+              "label": "lookup_tone",
               "parameters": {
                 "channel": "luminance",
                 "offset": 0.08,
@@ -1276,7 +1276,7 @@
       "bed": {
         "definitionVersion": 1,
         "id": "bed",
-        "label": "bed1",
+        "label": "noise_bed",
         "parameters": {
           "amp": 1.9,
           "aspectcorrect": true,
@@ -1303,7 +1303,7 @@
       "cam": {
         "definitionVersion": 1,
         "id": "cam",
-        "label": "cam1",
+        "label": "webcam1",
         "parameters": {},
         "position": {
           "x": -1700,
@@ -1314,7 +1314,7 @@
       "clip": {
         "definitionVersion": 1,
         "id": "clip",
-        "label": "clip1",
+        "label": "movie_clip",
         "parameters": {
           "file": "",
           "playMode": "freeRun",
@@ -1329,7 +1329,7 @@
       "cut": {
         "definitionVersion": 1,
         "id": "cut",
-        "label": "cut1",
+        "label": "matte_cut",
         "parameters": {},
         "position": {
           "x": -580,
@@ -1340,7 +1340,7 @@
       "env": {
         "definitionVersion": 1,
         "id": "env",
-        "label": "env1",
+        "label": "lag_env",
         "parameters": {
           "lag": 0.11
         },
@@ -1353,14 +1353,14 @@
       "flare": {
         "definitionVersion": 1,
         "id": "flare",
-        "label": "flare1",
+        "label": "level_flare",
         "parameters": {
           "blacklevel": 0,
           "brightness": {
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1 + 2.6 * (op('snap1').chan.high - 0.381)"
+                "source": "1 + 2.6 * (op('lag_snap').chan.high - 0.381)"
               },
               "static": {
                 "kind": "static",
@@ -1384,7 +1384,7 @@
       "key": {
         "definitionVersion": 1,
         "id": "key",
-        "label": "key1",
+        "label": "threshold_key",
         "parameters": {
           "channel": "luminance",
           "compare": "greater",
@@ -1400,7 +1400,7 @@
       "mate": {
         "definitionVersion": 1,
         "id": "mate",
-        "label": "mate1",
+        "label": "circle_mate",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -1417,7 +1417,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('matex1').chan.value"
+                "source": "op('lfo_matex').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1430,7 +1430,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('matey1').chan.value"
+                "source": "op('lfo_matey').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1461,7 +1461,7 @@
       "matex": {
         "definitionVersion": 1,
         "id": "matex",
-        "label": "matex1",
+        "label": "lfo_matex",
         "parameters": {
           "amplitude": 0.34,
           "frequency": 0.043,
@@ -1478,7 +1478,7 @@
       "matey": {
         "definitionVersion": 1,
         "id": "matey",
-        "label": "matey1",
+        "label": "lfo_matey",
         "parameters": {
           "amplitude": 0.24,
           "frequency": 0.029,
@@ -1495,7 +1495,7 @@
       "mpick": {
         "definitionVersion": 1,
         "id": "mpick",
-        "label": "mpick1",
+        "label": "switch_mpick",
         "parameters": {
           "index": 1
         },
@@ -1508,7 +1508,7 @@
       "music": {
         "definitionVersion": 1,
         "id": "music",
-        "label": "music1",
+        "label": "pattern_music",
         "parameters": {
           "amount": 1,
           "beatsPerBar": 4,
@@ -1523,7 +1523,7 @@
       "orb": {
         "definitionVersion": 1,
         "id": "orb",
-        "label": "orb1",
+        "label": "circle_orb",
         "parameters": {
           "aspectcorrect": true,
           "bgcolor": [
@@ -1540,7 +1540,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swoopa1').chan.value"
+                "source": "op('lag_swoopa').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1553,7 +1553,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('swoopb1').chan.value"
+                "source": "op('lag_swoopb').chan.value"
               },
               "static": {
                 "kind": "static",
@@ -1577,7 +1577,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.085 + 0.26 * (op('env1').chan.low - 0.7)"
+                "source": "0.085 + 0.26 * (op('lag_env').chan.low - 0.7)"
               },
               "static": {
                 "kind": "static",
@@ -1590,7 +1590,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.085 + 0.26 * (op('env1').chan.low - 0.7)"
+                "source": "0.085 + 0.26 * (op('lag_env').chan.low - 0.7)"
               },
               "static": {
                 "kind": "static",
@@ -1610,7 +1610,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {},
         "position": {
           "x": 280,
@@ -1621,7 +1621,7 @@
       "pathx": {
         "definitionVersion": 1,
         "id": "pathx",
-        "label": "pathx1",
+        "label": "lfo_pathx",
         "parameters": {
           "amplitude": 0.33,
           "frequency": 0.16,
@@ -1638,7 +1638,7 @@
       "pathy": {
         "definitionVersion": 1,
         "id": "pathy",
-        "label": "pathy1",
+        "label": "lfo_pathy",
         "parameters": {
           "amplitude": 0.28,
           "frequency": 0.125,
@@ -1655,7 +1655,7 @@
       "pick": {
         "definitionVersion": 1,
         "id": "pick",
-        "label": "pick1",
+        "label": "switch_pick",
         "parameters": {
           "index": 0
         },
@@ -1668,7 +1668,7 @@
       "snap": {
         "definitionVersion": 1,
         "id": "snap",
-        "label": "snap1",
+        "label": "lag_snap",
         "parameters": {
           "lag": 0.035
         },
@@ -1681,7 +1681,7 @@
       "source": {
         "definitionVersion": 1,
         "id": "source",
-        "label": "source1",
+        "label": "switch_source",
         "parameters": {
           "index": 0
         },
@@ -1694,7 +1694,7 @@
       "stand": {
         "definitionVersion": 1,
         "id": "stand",
-        "label": "stand1",
+        "label": "add_stand",
         "parameters": {
           "opacity": 1
         },
@@ -1707,7 +1707,7 @@
       "swoopa": {
         "definitionVersion": 1,
         "id": "swoopa",
-        "label": "swoopa1",
+        "label": "lag_swoopa",
         "parameters": {
           "lag": 0.3
         },
@@ -1720,7 +1720,7 @@
       "swoopb": {
         "definitionVersion": 1,
         "id": "swoopb",
-        "label": "swoopb1",
+        "label": "lag_swoopb",
         "parameters": {
           "lag": 0.3
         },
@@ -1733,7 +1733,7 @@
       "track": {
         "definitionVersion": 1,
         "id": "track",
-        "label": "track1",
+        "label": "audiofile_track",
         "parameters": {
           "monitor": true
         },
@@ -1746,7 +1746,7 @@
       "wall": {
         "definitionVersion": 1,
         "id": "wall",
-        "label": "wall1",
+        "label": "timegrid_wall",
         "parameters": {
           "blend": 0.82,
           "chroma": 0.55,

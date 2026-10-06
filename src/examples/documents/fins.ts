@@ -9,9 +9,9 @@ import { FXAA_WGSL } from "../shaders/fxaa.wgsl.ts";
  *
  * ## What is the owner's, unchanged
  *
- * Two customWgsl nodes and the output, exactly as built: `glassRT`, an analytic ray tracer
+ * Two customWgsl nodes and the output, exactly as built: `wgsl_glassRT`, an analytic ray tracer
  * for a stack of nine bevelled glass slabs, with refracted beams, thin film and a procedural
- * room; then `finalGrade`, a light-handed grade; then `finalImage` with the filmic tone map.
+ * room; then `wgsl_finalGrade`, a light-handed grade; then `output_finalImage` with the filmic tone map.
  * Both shader sources are verbatim (`fins.wgsl.ts`), and every parameter keeps the value
  * the owner left it at. The camera orbit on `eyeX`/`eyeZ` is the owner's own expression.
  *
@@ -20,10 +20,10 @@ import { FXAA_WGSL } from "../shaders/fxaa.wgsl.ts";
  *   - THE ROOM'S INPUT. The hand-built file wired a `movieFileIn` holding a latlong photo
  *     through a `blob:` URL, which is dead the moment the tab closes. It never reached the
  *     picture anyway: `envMix` was never set, so it sits at its declared default of 0, and
- *     the shader only samples the input above 0.001. The unconnected black `envSeed` solid
+ *     the shader only samples the input above 0.001. The unconnected black `solid_envSeed` solid
  *     in the same file now feeds that input, which leaves the picture unchanged and gives a
  *     dead node a job. To use a map, wire a latlong image in and raise `envMix`.
- *   - THE RESOLUTION. `glassRT` inherits its input's size, and the photo node was pinned to
+ *   - THE RESOLUTION. `wgsl_glassRT` inherits its input's size, and the photo node was pinned to
  *     2048x1024. So the hand-built piece traced at 2:1 and the output squashed that into
  *     1280x720, about 11% narrower than it was traced. The owner chose native 16:9 at
  *     1920x1080 for recording: the solid takes the project size, and the trace follows.
@@ -33,11 +33,11 @@ import { FXAA_WGSL } from "../shaders/fxaa.wgsl.ts";
  *
  * ## The lights on the beat (optional, and off means the hand-built look)
  *
- * `clip1` binds the shipped synthesised beat (`media/showcase-beat.m4a`, the same clip E66
+ * `audiofile_clip` binds the shipped synthesised beat (`media/showcase-beat.m4a`, the same clip E66
  * reads) under the timeline lock with a declared tempo, so a recording is frame-exact and
- * repeatable. `analysis1` is the starter `AudioAnalysis`. Its `hits` bag (each count is 1
- * on the frame it fires and decays over `hitDecay` ms) goes through ONE multiply, `react1`,
- * and `react1.operand` is the reactivity knob. Every driven parameter is written as the
+ * repeatable. `audioanalysis1` is the starter `AudioAnalysis`. Its `hits` bag (each count is 1
+ * on the frame it fires and decays over `hitDecay` ms) goes through ONE multiply, `math_react`,
+ * and `math_react.operand` is the reactivity knob. Every driven parameter is written as the
  * owner's value times (1 + gain × lane), or plus gain × lane, so a lane at 0 returns the
  * owner's value exactly:
  *
@@ -47,7 +47,7 @@ import { FXAA_WGSL } from "../shaders/fxaa.wgsl.ts";
  *   hatCount    the coloured gel panels lift a little on every eighth
  *
  * Only light parameters are driven. Geometry, camera and motion never hear the music, so a
- * beat frame and a rest frame show the same slabs in the same place. With `react1.operand`
+ * beat frame and a rest frame show the same slabs in the same place. With `math_react.operand`
  * at 0, or a silent passage, or a host that cannot hear the clip, every lane is 0 and the
  * frame is the owner's. `e67-fins-claims.gpu.test.ts` asserts both halves from pixels.
  *
@@ -55,7 +55,7 @@ import { FXAA_WGSL } from "../shaders/fxaa.wgsl.ts";
  * both run on the same timeline.
  */
 
-const HIT = (key: string): string => `op('react1').chan.${key}`;
+const HIT = (key: string): string => `op('math_react').chan.${key}`;
 
 export const finsDocument = document(
   "e67-fins",
@@ -64,7 +64,7 @@ export const finsDocument = document(
   graph(
     [
       // ── the hand-built chain ─────────────────────────────────────────────────
-      node("seed", "solid", [-343, -135], { color: [0, 0, 0, 1] }, { label: "envSeed" }),
+      node("seed", "solid", [-343, -135], { color: [0, 0, 0, 1] }, { label: "solid_envSeed" }),
       node("glass", "customWgsl", [-52, -128], {
         source: FINS_GLASS_WGSL,
         aa: 1, absorb: 2.6, amount: 1, beamSpan: 40, bevel: 0.009, bevelAmt: 1, bg: 0, chroma: 1,
@@ -83,7 +83,7 @@ export const finsDocument = document(
            Stored at exactly those values (§V920), so a later default edit cannot move this. */
         envMix: 0, envPunch: 0.6, envRotate: 0, envSpin: 0.006, beamBend: 1,
       }, {
-        label: "glassRT",
+        label: "wgsl_glassRT",
         parameters: {
           /* T1268 — THE CAMERA CIRCLES THE STACK, once every four minutes. The hand-built
              orbit swung ±0.30 rad over 503 s and read as a still; the owner picked a full
@@ -104,14 +104,14 @@ export const finsDocument = document(
       node("grade", "customWgsl", [300, -150], {
         source: FINS_GRADE_WGSL,
         amount: 1, ceiling: 3, exposure: 1, saturation: 1.28, tint: [1, 1, 1, 1], toe: 0.002, vignette: 0.12,
-      }, { label: "finalGrade" }),
+      }, { label: "wgsl_finalGrade" }),
       /* T1275 — EDGE SMOOTHING, AFTER THE GRADE. The glass traces 4 rays a pixel and those
          4 also carry its dispersion, so more rays was the only in-shader route, and it
          cost 1.69x (2 passes) to 3.95x (2x supersample) on a piece already near 30 fps
          (measured on a cleared machine). FXAA is one pass over the graded frame. `amount`
          0 returns the grade exactly, so it switches off without rewiring. */
-      node("fxaa", "customWgsl", [600, -150], { source: FXAA_WGSL, amount: 1 }, { label: "fxaa1" }),
-      node("out", "output", [900, -150], { toneMap: "filmic" }, { label: "finalImage" }),
+      node("fxaa", "customWgsl", [600, -150], { source: FXAA_WGSL, amount: 1 }, { label: "wgsl_fxaa" }),
+      node("out", "output", [900, -150], { toneMap: "filmic" }, { label: "output_finalImage" }),
 
       // ── the beat ─────────────────────────────────────────────────────────────
       node("clip", "audioFileIn", [-900, 300], {
@@ -120,13 +120,13 @@ export const finsDocument = document(
         trimStart: 0, trimEnd: 0, extend: "loop", volume: 1, monitor: true,
         tempoMode: "declared", bpm: SHOWCASE_BEAT.bpm, beatsPerBar: SHOWCASE_BEAT.beatsPerBar,
         beatOffset: Math.round(SHOWCASE_BEAT_OFFSET_SECONDS * 1000) / 1000,
-      }, { label: "clip1" }),
+      }, { label: "audiofile_clip" }),
       node("analysis", "component:audioAnalysis@1", [-600, 300], {
         envelope: 0.08, window: 16, settle: 0.15, hitDecay: 300,
-      }, { label: "analysis1" }),
+      }, { label: "audioanalysis1" }),
       /* THE REACTIVITY KNOB. A multiply maps every lane of the bag, so one operand scales all
          three lights: 1 as shipped, 0 is the hand-built piece, above 1 hits harder. */
-      node("react", "valueMath", [-300, 300], { operation: "multiply", operand: 1 }, { label: "react1" }),
+      node("react", "valueMath", [-300, 300], { operation: "multiply", operand: 1 }, { label: "math_react" }),
     ],
     [
       edge("e-seed-glass", ["seed", "out"], ["glass", "input"]),

@@ -36,17 +36,17 @@ import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
  * UNCHANGED (same object), so a caller can compare identities to see whether anything
  * was synthesized.
  */
-export interface SourceReferenceEdges {
-  /** The document plus one synthesized edge per resolved name. */
-  readonly graph: GraphDocument;
+export interface SourceReferenceEdges<G extends GraphDocument = GraphDocument> {
+  /** The document plus one synthesized edge per resolved name — the same kind it was handed (§T1552b: flat stays flat). */
+  readonly graph: G;
   /** Dangling names, ref-plus-wire ambiguities and type refusals (§V369). */
   readonly diagnostics: readonly RuntimeDiagnostic[];
 }
 
-export function synthesizeSourceReferenceEdges(
-  graph: GraphDocument,
+export function synthesizeSourceReferenceEdges<G extends GraphDocument>(
+  graph: G,
   registry: NodeRegistryView,
-): SourceReferenceEdges {
+): SourceReferenceEdges<G> {
   const diagnostics: RuntimeDiagnostic[] = [];
   let synthesized: Record<string, GraphEdge> | undefined;
   const names = nodeNames(graph);

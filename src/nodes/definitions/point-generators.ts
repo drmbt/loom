@@ -30,7 +30,8 @@ const POSITION_ATTRIBUTE: PointAttributeSchema = {
  *
  * A generator writes `position` — so it OWNS the position pair (§V197) — publishes the
  * T296 edge map, and emits `topology` for the surface renderer (T301): grid/tube/torus
- * carry their cols×rows connectivity analytically. Every OTHER shape publishes `points`,
+ * carry their cols×rows connectivity analytically, and line and circle are one STRIP of
+ * `count` points (T1586b). The sphere and the box publish `points`,
  * and the box (T1057) is the shape that proves the vocabulary rather than stretching it
  * — six disjoint faces are not one cols×rows sheet, and claiming a grid would hand
  * `renderSurface` a vertex count addressing points that are not neighbours. It publishes
@@ -154,10 +155,20 @@ function compileGenerator(fixedShape: GeneratorShape | null) {
           capacity,
           // T301's connectivity, in T302's vocabulary: a gridded shape publishes its
           // analytic topology, with the seams its parametrization actually closes.
+          //
+          // T1586b: a LINE and a CIRCLE are one strip of `count` points in slot order, so
+          // they say so — it is what lets a curve node or a kernel's `ctx.dim` follow them
+          // without a Topology node in between. The circle is an OPEN strip on purpose:
+          // its kernel runs the angle from 0 to TAU inclusive, so the last point already
+          // sits on the first and the loop is closed in the DATA. Claiming `:closed` as
+          // well would add a segment between two coincident points, whose direction is
+          // rounding noise (sin(TAU) is 1.7e-7 in f32, not 0).
           topology: formatTopology(
             shape === "grid" || shape === "tube" || shape === "torus"
               ? { kind: "grid", cols, rows, wrapU: shape !== "grid", wrapV: shape === "torus" }
-              : { kind: "points" },
+              : shape === "line" || shape === "circle"
+                ? { kind: "strips", cols: capacity, rows: 1, closed: false }
+                : { kind: "points" },
           ),
         },
       },

@@ -1,20 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import {
   SEEK_TOLERANCE_SECONDS,
   applyMediaPlayhead,
   createMediaTransportRunner,
   durationOf,
   playableMedia,
+  LOCK_RESYNC_SECONDS,
+  type MediaSteppedTransport,
+  type MediaTransportContext,
   type PlayableMedia,
 } from "./media-playback.ts";
 import { createMediaControlRegistry } from "./media-commands.ts";
+import { END_LEAD_MS, createMovieAudioPlayback, type MovieAudioOutput } from "./movie-audio-playback.ts";
 import { MEDIA_OPEN_TIMEOUT_MS, awaitMediaReady } from "./media-sources.ts";
 import { mediaPlayhead, type MediaTransportValues } from "@domain/media/transport.ts";
 import { liveClock } from "@domain/transport/live-clock.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { buildMorphIndex } from "@domain/presets/morph-index.ts";
+import { NO_FLATTENING } from "@domain/parameters/index.ts";
+import { flattenComponents } from "@compiler/index.ts";
+import { createValueGraphSession } from "@domain/channels/value-graph.ts";
+import { componentNodeType, createComponentSystem } from "@domain/components/index.ts";
+import type { GraphComponentDefinition } from "@domain/types/components.ts";
+import { expressionSlot } from "@/examples/documents/builders.ts";
 import { presetBankNode, presetSession } from "@domain/presets/test-support.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
@@ -74,31 +85,20 @@ function fakeElement(duration = 10, at = 0) {
 }
 
 describe("T493 — the element is corrected on DRIFT, not every frame", () => {
-  it("continuous playback recovers startup lag without repeatedly restarting decoder buffering", () => {
-    const element = fakeElement(60);
-    let buffering = 0.3;
-    applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, 0, 60), false);
-    // Native media advances on its own clock, after an initial audio-buffering delay.
-    // A seek would impose another delay, which reproduced the endless real Chrome loop.
-    const seekCount = () => element.calls.filter(call => call.startsWith("seek:")).length;
-    for (let tick = 1; tick <= 600; tick++) {
-      const delta = 1 / 60;
-      if (buffering > 0) buffering -= delta;
-      else {
-        // Mutate the double's clock without logging a decoder seek.
-        const prior = element.calls.length;
-        element.currentTime += delta * element.playbackRate;
-        (element.calls as string[]).splice(prior);
-      }
-      const before = seekCount();
-      const seeked = applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, tick / 60, 60), true);
-      if (seeked) buffering = 0.3;
-      expect(seekCount()).toBe(before);
-      expect(element.playbackRate).toBeGreaterThanOrEqual(0.95);
-      expect(element.playbackRate).toBeLessThanOrEqual(1.05);
-    }
-    expect(seekCount()).toBe(0);
-    expect(Math.abs(10 - element.currentTime)).toBeLessThan(0.04);
+  /*
+   * A continuous frame plays at the RUNNER's rate and never seeks, however far off it is:
+   * the runner holds the history a calm correction needs (§T1549b) and decides when a
+   * drift is worth its one seek. The startup-lag case this used to cover through a bare
+   * loop now runs through the real chain below ("a decoder that re-buffers after every
+   * seek"), because the decision it gated moved into the runner.
+   */
+  it("a continuous frame writes the runner's correction and does not seek, at any drift", () => {
+    const element = fakeElement(60, 2);
+    expect(applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, 3, 60), true, 0.03)).toBe(false);
+    expect(element.playbackRate).toBe(1.03);
+    expect(element.calls).toEqual(["play"]);
+    // A door that dropped the correction is told so rather than playing uncorrected.
+    expect(() => applyMediaPlayhead(element, BASE, mediaPlayhead(BASE, 3, 60), true)).toThrow(/correction/);
   });
 
   it("a deliberate discontinuity seeks exactly even inside the ordinary drift tolerance", () => {
@@ -209,7 +209,7 @@ describe("T493 — held states PAUSE the element, because the position no longer
     expect(element.currentTime).toBe(2);
     for (const duration of [0, Infinity]) {
       const unknown = fakeElement(duration);
-      applyMediaPlayhead(unknown, BASE, mediaPlayhead(BASE, 0, 0), true);
+      applyMediaPlayhead(unknown, BASE, mediaPlayhead(BASE, 0, 0), true, 0);
       expect(unknown.paused).toBe(false);
     }
   });
@@ -258,10 +258,10 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
 
   const runnerFor = (graph: GraphDocument) =>
     createMediaTransportRunner("m", {
-      graph: () => graph,
+      graph: () => flatDocument(graph),
       registry,
       channels: () => undefined,
-      morphs: () => undefined,
+      flattening: () => NO_FLATTENING,
     });
 
   it("marks ordinary playback continuous and cue pulses, trims, scrubs and laps as discontinuities", () => {
@@ -358,20 +358,20 @@ describe("T493 — the runner reads the node's REAL parameters, through the real
       speed: { mode: "driven", bindings: { driven: { kind: "driven", channel: "rate" } } },
     });
     const runner = createMediaTransportRunner("m", {
-      graph: () => graph,
+      graph: () => flatDocument(graph),
       registry,
       channels: () => (channel) => (channel === "rate" ? 4 : undefined),
-      morphs: () => undefined,
+      flattening: () => NO_FLATTENING,
     });
     expect(runner.step(frame(2), 10, null)?.head.position).toBe(8);
   });
 
   it("a node that has been DELETED steps to null rather than throwing into the frame loop", () => {
     const runner = createMediaTransportRunner("gone", {
-      graph: () => graphWith({}),
+      graph: () => flatDocument(graphWith({})),
       registry,
       channels: () => undefined,
-      morphs: () => undefined,
+      flattening: () => NO_FLATTENING,
     });
     expect(runner.step(frame(1), 10, null)).toBeNull();
   });
@@ -567,10 +567,10 @@ describe("T1155 — a DRIVEN transport parameter reaches the playhead", () => {
   it("holds at the CHANNEL's value, not at the retained static", () => {
     let index = 0;
     const runner = createMediaTransportRunner("m", {
-      graph: () => drivenCue,
+      graph: () => flatDocument(drivenCue),
       registry,
       channels: () => sweeping(index) as never,
-      morphs: () => undefined,
+      flattening: () => NO_FLATTENING,
     });
 
     const positions: number[] = [];
@@ -648,7 +648,7 @@ describe("T1524b — a morphing transport parameter reaches the runner at its ha
     // The document holds the destination from the moment of the recall.
     expect(graph.nodes["m"]?.parameters).toMatchObject({ speed: 3, trimStart: 2 });
     const morphs = buildMorphIndex({ document: graph, registry });
-    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => morphs });
+    const runner = createMediaTransportRunner("m", { graph: () => flatDocument(graph), registry, channels: () => undefined, flattening: () => ({ ...NO_FLATTENING, morphs }) });
 
     const start = runner.step(frameAt(0), 10, null);
     expect(start?.transport.speed).toBe(1);
@@ -673,8 +673,95 @@ describe("T1524b — a morphing transport parameter reaches the runner at its ha
 
   it("cut the wire: a runner handed no index hands over the end value at half-time", async () => {
     const graph = await fading();
-    const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => undefined });
+    const runner = createMediaTransportRunner("m", { graph: () => flatDocument(graph), registry, channels: () => undefined, flattening: () => NO_FLATTENING });
     expect(runner.step(frameAt(30), 10, null)?.transport.speed).toBe(3);
+  });
+});
+
+/**
+ * §T1559b — A TRANSPORT PARAMETER READING A COMPONENT INSTANCE'S CHANNEL REACHES THE PLAYHEAD.
+ *
+ * `op('<instance>').chan.<c>` names an instance the flattening deleted (§T1485b); the reader
+ * finds it only through the flattening's `instanceChannels`. The runner used to read through
+ * `createParameterReadOptions`, which handed the morphs and NO instances, so a Movie's Speed
+ * driven by an instance failed "there is no node named …" and played at the retained 1
+ * while the compiler and the inspector read 2. Everything is the real thing: the real
+ * flattener produces the map, the real value graph publishes the channel, and the runner
+ * reads them the way the app's doors hand them over (`() => runtime.flattened.current()`).
+ *
+ * Red-verified: with the runner's read handed the flattening minus its `instanceChannels`
+ * (the old adapter's shape), the first case fails on speed 1.
+ */
+describe("§T1559b — a Movie's Speed driven by op('<instance>').chan.<c> reaches the transport", () => {
+  const FRAME_30: FrameEvaluationInput = {
+    timeSeconds: 0.5, deltaSeconds: 1 / 60, frameIndex: 30, mode: "realtime", randomSeed: 1,
+    absFrameIndex: 30, absTimeSeconds: 0.5, absEpoch: "session-1",
+  };
+  const pace: GraphComponentDefinition = {
+    componentId: "pace",
+    version: 1,
+    name: "Pace",
+    graph: {
+      revision: 1,
+      groups: {},
+      nodes: {
+        source: { id: "source", type: "valueExpression", definitionVersion: 1, position: { x: 0, y: 0 }, label: "source1", parameters: { expressions: "rate = 2" } },
+        out: { id: "out", type: "componentOutValue", definitionVersion: 1, position: { x: 200, y: 0 }, label: "rates", parameters: {} },
+      },
+      edges: { a: { id: "a", source: { nodeId: "source", portId: "out" }, target: { nodeId: "out", portId: "in" } } },
+    },
+    inputs: [],
+    outputs: [],
+    parameters: [],
+  } as unknown as GraphComponentDefinition;
+
+  function world() {
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
+    system.components.register(pace);
+    const graph = {
+      revision: 1,
+      groups: {},
+      edges: {},
+      nodes: {
+        inst: { id: "inst", type: componentNodeType("pace", 1), definitionVersion: 1, position: { x: 0, y: 200 }, label: "pace1", parameters: {} },
+        m: {
+          id: "m", type: "movieFileIn", label: "movie1", definitionVersion: 1, position: { x: 0, y: 0 },
+          parameters: { playMode: "timeline", trimStart: 0, speed: expressionSlot("op('pace1').chan.rate", 1) },
+        },
+      },
+    } as unknown as GraphDocument;
+    const flattened = flattenComponents({ graph, registry: system.nodes, components: system.components.view() });
+    // The premise: the instance the expression names is not in the graph the runner reads.
+    expect(Object.keys(flattened.graph.nodes)).not.toContain("inst");
+    const channels = createValueGraphSession(system.nodes).evaluate(flattened.graph, FRAME_30, { flattening: flattened }).resolver;
+    return { registry: system.nodes, flattened, channels };
+  }
+
+  it("plays at the instance's 2: the transport speed and the playhead the element is put at", () => {
+    const { registry, flattened, channels } = world();
+    const runner = createMediaTransportRunner("m", {
+      graph: () => flattened.graph,
+      registry,
+      channels: () => channels,
+      flattening: () => flattened,
+    });
+    const stepped = runner.step(FRAME_30, 10, null);
+    expect(stepped?.transport.speed).toBe(2);
+    // Timeline lock: half a second at speed 2 from trim 0.
+    expect(stepped?.head.position).toBe(1);
+  });
+
+  it("cut the wire: handed no flattening, the read fails and the retained 1 plays", () => {
+    const { registry, flattened, channels } = world();
+    const runner = createMediaTransportRunner("m", {
+      graph: () => flattened.graph,
+      registry,
+      channels: () => channels,
+      flattening: () => NO_FLATTENING,
+    });
+    const stepped = runner.step(FRAME_30, 10, null);
+    expect(stepped?.transport.speed).toBe(1);
+    expect(stepped?.head.position).toBe(0.5);
   });
 });
 
@@ -702,21 +789,58 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
   const registry = createNodeRegistry(allNodeDefinitions);
 
   /** A `<video>` on its own clock, with every write a listener could hear counted. */
-  function ownClockElement(duration: number) {
+  function ownClockElement(
+    duration: number,
+    /**
+     * §T1548b: when true the element's clock does not move while it plays — an unmuted
+     * element routed into a SUSPENDED AudioContext (Chrome, measured: 0.002 s of media in
+     * 1 s of wall), or a decoder that will not run before the page's first gesture at all.
+     */
+    stalled: (element: { readonly muted: boolean }) => boolean = () => false,
+  ) {
     let paused = true;
     let currentTime = 0;
     let playbackRate = 1;
+    /** §T1548b: seconds a SEEK alone costs (decode), where a routed `play()` costs nothing. */
+    let decodeOnSeek = 0;
     /** Seconds of real time before a `play()` produces sound: decoder start-up. */
     let buffering = 0;
+    /**
+     * Seconds a SEEK, or a `play()` from paused, costs the decoder before sound resumes
+     * (0: free). Chrome pays it on both (B242).
+     */
+    let seekBuffering = 0;
+    /**
+     * B242, measured in Chrome: the element plays on for about a video frame after a seek
+     * or a `play()` BEFORE it freezes for its audio start. Wall seconds of that, per start.
+     */
+    let creep = 0;
+    let seekCreep = 0;
     const seeks: number[] = [];
+    /** §T1548b: the writes a listener HEARS — those made while the element plays. */
+    const writesWhilePlaying: number[] = [];
     const rates: number[] = [];
+    /**
+     * §T1560b: `play()` on an element stopped at the end of its file starts it again from 0
+     * (HTML: "seek to the earliest possible position") — an implicit seek, heard as one.
+     */
+    const restarts: number[] = [];
     let pauses = 0;
     const element: PlayableMedia & {
       readonly seeks: readonly number[];
+      readonly writesWhilePlaying: readonly number[];
       readonly rates: readonly number[];
       readonly pauses: number;
+      readonly restarts: readonly number[];
+      readonly seeking: boolean;
+      muted: boolean;
+      volume: number;
+      loop: boolean;
       advanceReal(seconds: number): void;
-      buffer(seconds: number): void;
+      buffer(seconds: number, creepSeconds?: number): void;
+      rebufferOnStart(seconds: number, creepSeconds?: number): void;
+      rebufferOnSeek(seconds: number): void;
+      skew(seconds: number): void;
     } = {
       get currentTime() {
         return currentTime;
@@ -724,7 +848,20 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       set currentTime(value: number) {
         currentTime = value;
         seeks.push(value);
+        if (!paused) writesWhilePlaying.push(value);
+        buffering = Math.max(buffering, seekBuffering, decodeOnSeek);
+        creep = seekCreep;
       },
+      // A real element's own loop: at the end it wraps to 0 with nothing written; without
+      // it, it ends there and pauses.
+      loop: false,
+      // A seek's cost is decode work, which a paused element does in the background: one
+      // put on a point and left there is ready to play from it once that time has passed.
+      get seeking() {
+        return paused && buffering > 0;
+      },
+      muted: true,
+      volume: 1,
       get playbackRate() {
         return playbackRate;
       },
@@ -739,6 +876,15 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         return paused;
       },
       play() {
+        if (paused && currentTime >= duration) {
+          restarts.push(currentTime);
+          currentTime = 0;
+          buffering = Math.max(buffering, decodeOnSeek);
+        }
+        if (paused) {
+          buffering = Math.max(buffering, seekBuffering);
+          creep = seekCreep;
+        }
         paused = false;
       },
       pause() {
@@ -749,15 +895,41 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         return pauses;
       },
       seeks,
+      writesWhilePlaying,
       rates,
+      restarts,
       advanceReal(seconds: number) {
-        if (paused) return;
-        const silent = Math.min(buffering, seconds);
+        if (paused) {
+          buffering = Math.max(0, buffering - seconds);
+          return;
+        }
+        if (stalled(element)) return;
+        const early = buffering > 0 ? Math.min(creep, seconds) : 0;
+        creep -= early;
+        const silent = Math.min(buffering, seconds - early);
         buffering -= silent;
         currentTime += (seconds - silent) * playbackRate;
+        if (currentTime < duration) return;
+        if (element.loop) currentTime %= duration;
+        else {
+          currentTime = duration;
+          paused = true;
+        }
       },
-      buffer(seconds: number) {
+      buffer(seconds: number, creepSeconds = 0) {
         buffering = seconds;
+        creep = creepSeconds;
+      },
+      rebufferOnStart(seconds: number, creepSeconds = 0) {
+        seekBuffering = seconds;
+        seekCreep = creepSeconds;
+      },
+      rebufferOnSeek(seconds: number) {
+        decodeOnSeek = seconds;
+      },
+      /** Move the element's own clock with no write anyone could count: injected drift. */
+      skew(seconds: number) {
+        currentTime += seconds;
       },
     };
     return element;
@@ -768,7 +940,11 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
    * `wall` moves real time for the element and the page alike; `frame` is one delivered
    * frame. A stall, a throttled rAF and a hidden tab are all "wall without frame".
    */
-  function session(parameters: Record<string, unknown> = {}, duration = 3600) {
+  function session(
+    parameters: Record<string, unknown> = {},
+    duration = 3600,
+    channels: MediaTransportContext["channels"] = () => undefined,
+  ) {
     let nowMs = 0;
     const clock = liveClock({ fps: 60, presenting: () => true, now: () => nowMs });
     const element = ownClockElement(duration);
@@ -780,10 +956,10 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
       edges: {},
     } as unknown as GraphDocument;
     const runner = createMediaTransportRunner("m", {
-      graph: () => graph,
+      graph: () => flatDocument(graph),
       registry,
-      channels: () => undefined,
-      morphs: () => undefined,
+      channels,
+      flattening: () => NO_FLATTENING,
     });
     const wall = (seconds: number): void => {
       nowMs += seconds * 1000;
@@ -792,15 +968,15 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
     const frame = () => {
       const stepped = runner.step(clock.next(), durationOf(element), element.currentTime);
       if (stepped === null) throw new Error("the node is in the graph, so the runner must step");
-      applyMediaPlayhead(element, stepped.transport, stepped.head, stepped.continuous);
+      applyMediaPlayhead(element, stepped.transport, stepped.head, stepped.continuous, stepped.correction);
       return stepped;
     };
     /** `seconds` of playback with the browser delivering `hz` frames a second. */
-    const play = (seconds: number, hz = 60, each?: () => void): void => {
+    const play = (seconds: number, hz = 60, each?: (stepped: MediaSteppedTransport) => void): void => {
       for (let tick = 0; tick < Math.round(seconds * hz); tick += 1) {
         wall(1 / hz);
-        frame();
-        each?.();
+        const stepped = frame();
+        each?.(stepped);
       }
     };
     frame();
@@ -898,19 +1074,803 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
 
   /**
    * §V436 and T1542b (4): the timeline lock is NOT covered. Its position is `f(frame)` —
-   * that is what a scrub and an offline render stand on — so the element cannot lead it,
-   * and who is master there is the owner's open call. Until it is made the lock keeps the
-   * bounded rate convergence, and this pins that the new rule did not leak into it.
+   * that is what a scrub and an offline render stand on — so the element cannot lead it.
+   * §T1549b ruled option (a): the frame stays master, and a stall the clamp turned into
+   * more than a quarter second of drift is ONE seek back to the frame's position.
    */
-  it("under the timeline lock the frame stays master and the element still converges", () => {
+  it("under the timeline lock the frame stays master: a 1 s stall is one seek back to the frame", () => {
     const { element, wall, frame, play } = session({ playMode: "timeline" });
     play(2);
     wall(1);
     const back = frame();
-    // The lock's playhead is the timeline's second, which the clamp left a stall behind.
-    expect(element.currentTime - back.head.position).toBeGreaterThan(0.7);
-    expect(element.playbackRate).toBe(0.95);
-    expect(element.seeks).toEqual([]);
+    // The lock's playhead is the timeline's second, which the clamp left 0.75 s behind
+    // the element — and the element is put back there, not left leading.
+    expect(back.head.position).toBeCloseTo(2.25, 9);
+    expect(element.seeks).toEqual([back.head.position]);
+    expect(element.rates).toEqual([]);
+    play(2, 60, () => expect(element.playbackRate).toBe(1));
+    expect(element.seeks.length).toBe(1);
+  });
+
+  /**
+   * §T1549b, option (a) — UNDER THE LOCK THE CORRECTION IS CALM. The owner's complaint
+   * (§B236) was the music stuttering; under the lock the frame must still be master
+   * (§V436), so what a listener hears is HOW the element is brought back: every
+   * `playbackRate` write is a resample and every seek a jump. The gate therefore reads the
+   * writes themselves, on an element advancing on its OWN clock: how many rate writes a
+   * second, that each is a whole percent within ±5%, how many seeks, and that it ends up
+   * within one delivered frame of the playhead and stays there with nothing written.
+   */
+  describe("§T1549b — the timeline lock's correction: 1-frame deadband, 1% steps, one seek past 0.25 s", () => {
+    /** `rates` as whole percents of the speed, or the first value that is not one. */
+    const percents = (rates: readonly number[], speed = 1): number[] =>
+      rates.map((rate) => {
+        const percent = (rate / speed - 1) * 100;
+        if (Math.abs(percent - Math.round(percent)) > 1e-9) throw new Error(`rate ${String(rate)} is not a whole percent of ${String(speed)}`);
+        return Math.round(percent);
+      });
+
+    for (const hz of [60, 30]) {
+      for (const drift of [0.1, -0.1, 0.3, -0.3, 1, -1]) {
+        const behind = drift > 0 ? "behind" : "ahead";
+        const size = Math.abs(drift);
+        it(`${String(hz)} Hz delivered, element ${String(size)} s ${behind}: ${size <= LOCK_RESYNC_SECONDS ? "converges by 1% steps with no seek" : "one seek, then calm"}`, () => {
+          const { element, play } = session({ playMode: "timeline" });
+          const frameSeconds = 1 / hz;
+          play(2, hz);
+          expect([element.rates, element.seeks]).toEqual([[], []]);
+          element.skew(-drift);
+
+          /** Rate writes, bucketed by the second of playback they fell in. */
+          const perSecond = new Array<number>(20).fill(0);
+          let tick = 0;
+          let written = 0;
+          let last: MediaSteppedTransport | null = null;
+          let seekedAt: number | null = null;
+          play(20, hz, (stepped) => {
+            perSecond[Math.floor(tick / hz)]! += element.rates.length - written;
+            written = element.rates.length;
+            if (seekedAt === null && element.seeks.length > 0) seekedAt = stepped.head.position;
+            last = stepped;
+            tick += 1;
+          });
+          // A few writes a second at most, never one a frame — and none at all once settled.
+          expect(Math.max(...perSecond)).toBeLessThanOrEqual(4);
+          expect(perSecond.slice(15)).toEqual([0, 0, 0, 0, 0]);
+          // Whole percents, within ±5%.
+          expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+
+          if (size <= LOCK_RESYNC_SECONDS) {
+            expect(element.seeks).toEqual([]);
+            // A correction happened (the deadband did not swallow 0.1 s), toward the target,
+            // stepping DOWN to the speed: 0.1 s × the 0.25 gain is 2–3% by the frame grid.
+            const steps = percents(element.rates);
+            expect(Math.sign(steps[0]!)).toBe(Math.sign(drift));
+            expect(Math.abs(steps[0]!)).toBeGreaterThanOrEqual(2);
+            expect(steps.at(-1)).toBe(0);
+          } else {
+            expect(element.seeks.length).toBe(1);
+            // ...to exactly the frame's position: the frame is master.
+            expect(element.seeks[0]).toBe(seekedAt);
+          }
+          const final = last as MediaSteppedTransport | null;
+          expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(frameSeconds);
+          expect(element.playbackRate).toBe(1);
+        });
+      }
+    }
+
+    it("inside one delivered frame nothing is written at all — the deadband", () => {
+      for (const hz of [60, 30]) {
+        const { element, play } = session({ playMode: "timeline" });
+        play(1, hz);
+        element.skew(-0.9 / hz);
+        play(10, hz);
+        expect([hz, element.rates, element.seeks]).toEqual([hz, [], []]);
+      }
+    });
+
+    /**
+     * The frame grid's own jitter: a 45 Hz display on a 60 fps timeline puts the playhead
+     * either side of real time by up to half a frame, every frame. Without the hysteresis
+     * that is a rate write on most frames, forever.
+     */
+    it("45 Hz delivered: the frame grid's jitter does not keep the rate flickering", () => {
+      const { element, play } = session({ playMode: "timeline" });
+      play(2, 45);
+      element.skew(-0.1);
+      const before = element.rates.length;
+      play(15, 45);
+      const correcting = element.rates.length - before;
+      play(15, 45);
+      expect(correcting).toBeLessThanOrEqual(8);
+      expect(element.rates.length - before - correcting).toBe(0);
+      expect(element.seeks).toEqual([]);
+    });
+
+    /**
+     * The trap a seek policy has to avoid (it reproduced an endless Chrome loop under
+     * T493): a seek costs the decoder its buffering again, so the drift that triggered it
+     * comes straight back. ONE seek, then the rate closes what the decoder lost.
+     */
+    /*
+     * B242 changed this case: it used to assert that the 0.3 s START-UP lag cost exactly
+     * one seek — the cost T1549b's row flagged as unmeasured, which Chrome turned into a
+     * storm. Start-up is now alignment (no seek), and the re-buffering decoder is exercised
+     * by the drift that legitimately seeks it: a 1 s jump once the element is playing.
+     */
+    it("a decoder that re-buffers 0.3 s after every seek is sought once, not forever", () => {
+      const { element, play } = session({ playMode: "timeline" });
+      element.rebufferOnStart(0.3);
+      element.buffer(0.3);
+      play(20);
+      expect(element.seeks).toEqual([]);
+      element.skew(-1);
+      let last: MediaSteppedTransport | null = null;
+      play(30, 60, (stepped) => { last = stepped; });
+      expect(element.seeks.length).toBe(1);
+      expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+      const final = last as MediaSteppedTransport | null;
+      expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / 60);
+      expect(element.playbackRate).toBe(1);
+    });
+
+    /**
+     * B242 — CHROME'S SEQUENCE, as the headed still-pixels run logged it. After a seek the
+     * element reports `seeked`, `readyState` 4, `paused` false within a millisecond, plays
+     * about one video frame past the seek point, then sits still for ~0.2 s (longer on a
+     * loaded machine) until its audio output starts. Nothing on the element says it is not
+     * playing. T1549b re-armed its one resync as soon as the element read past the seek
+     * point — inside that first frame — so every freeze over 0.25 s was another seek:
+     * 14 and 16 in the 3 s proof. Here the freeze is 0.3 s, after every `play()` and every
+     * seek: start-up costs nothing, a real 1 s drift costs exactly one seek, the freeze
+     * after it is not chased, and the rate steps close the rest to within one frame.
+     */
+    // 45 Hz on a 60 fps timeline lands the playhead either side of real time by up to half
+    // a frame: the drift jitters across the threshold while the rate closes it.
+    for (const hz of [60, 45, 30]) {
+      it(`${String(hz)} Hz delivered, Chrome's 0.3 s start-up freeze after a one-frame creep: at most one seek, then 1% steps to within a frame`, () => {
+        const { element, play } = session({ playMode: "timeline" });
+        element.rebufferOnStart(0.3, 1 / hz);
+        element.buffer(0.3, 1 / hz);
+        play(20, hz);
+        // Start-up lag is alignment: closed by the rate, never by a seek.
+        expect(element.seeks).toEqual([]);
+        expect(element.rates.length).toBeGreaterThan(0);
+        element.skew(-1);
+        let last: MediaSteppedTransport | null = null;
+        let maxGap = 0;
+        play(30, hz, (stepped) => {
+          last = stepped;
+          if (element.seeks.length === 1) maxGap = Math.max(maxGap, stepped.head.position - element.currentTime);
+        });
+        expect(element.seeks.length).toBe(1);
+        // The freeze after that seek really did reopen a gap past the threshold — the case a
+        // looser re-arm turns into the next seek — and it was closed by the rate instead.
+        expect(maxGap).toBeGreaterThan(LOCK_RESYNC_SECONDS);
+        expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+        const final = last as MediaSteppedTransport | null;
+        expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / hz);
+        expect(element.playbackRate).toBe(1);
+      });
+    }
+
+    /**
+     * B242 — A LAG NO START-UP EXPLAINS. An element that starts 30 s late (autoplay blocked
+     * under the lock, say) is never back inside the arming band, and 1% steps capped at 5%
+     * would take ten minutes over 30 s. Once it has played, a lag past a second gets its
+     * one seek armed or not — and the start-up freeze after THAT seek is alignment again.
+     */
+    for (const hz of [60, 30]) {
+      it(`${String(hz)} Hz delivered, an element that starts 30 s late: one seek once it plays, then within a frame`, () => {
+        const { element, play } = session({ playMode: "timeline" });
+        element.rebufferOnStart(0.3, 1 / hz);
+        element.buffer(30);
+        let last: MediaSteppedTransport | null = null;
+        play(55, hz, (stepped) => { last = stepped; });
+        expect(element.seeks.length).toBe(1);
+        // Taken after the element got going — it lands on the playhead, 30 s on.
+        expect(element.seeks[0]).toBeGreaterThan(30);
+        expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+        const final = last as MediaSteppedTransport | null;
+        expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / hz);
+        expect(element.playbackRate).toBe(1);
+      });
+    }
+
+    /**
+     * B242 — RESUME IS A START. A transport pause stops the frames and the door pauses the
+     * element (`setRunning(false)`); the first frame back carries up to 0.25 s of playhead
+     * (`liveClock`'s clamp) while the element sits where it was paused, then the element
+     * pays Chrome's start-up freeze. Together that is well past 0.25 s of lag, and none of
+     * it is drift: the rate closes it, no seek.
+     */
+    for (const hz of [60, 30]) {
+      it(`${String(hz)} Hz delivered, resume after a 2 s transport pause: no seek, then within a frame`, () => {
+        const { element, wall, play } = session({ playMode: "timeline" });
+        element.rebufferOnStart(0.3, 1 / hz);
+        play(5, hz);
+        expect(element.seeks).toEqual([]);
+        element.pause();
+        wall(2);
+        let last: MediaSteppedTransport | null = null;
+        let maxGap = 0;
+        play(30, hz, (stepped) => {
+          last = stepped;
+          maxGap = Math.max(maxGap, stepped.head.position - element.currentTime);
+        });
+        // The lag an armed resync would have sought.
+        expect(maxGap).toBeGreaterThan(LOCK_RESYNC_SECONDS);
+        expect(element.seeks).toEqual([]);
+        expect(percents(element.rates).every((percent) => Math.abs(percent) <= 5)).toBe(true);
+        const final = last as MediaSteppedTransport | null;
+        expect(Math.abs((final?.head.position ?? Infinity) - element.currentTime)).toBeLessThanOrEqual(1 / hz);
+        expect(element.playbackRate).toBe(1);
+      });
+    }
+  });
+
+  /**
+   * B187 — A DRIVEN SPEED MADE THE PLAYHEAD LEAP RETROACTIVELY. Free run multiplied the
+   * whole elapsed history by the current speed, so speed 1 → 2 five seconds in re-priced
+   * those five seconds and the playhead jumped to ten — and a speed change was a
+   * discontinuity, so the element was SOUGHT there (T1542b item 5). With the element as the
+   * clock a positive speed change is a `playbackRate` write and nothing else.
+   */
+  describe("B187 — a driven speed continues from where the playhead is", () => {
+    const DRIVEN_SPEED = { mode: "driven", bindings: { driven: { kind: "driven", channel: "rate" } } };
+
+    function driven(playMode: "freeRun" | "timeline") {
+      let rate = 1;
+      const run = session({ playMode, speed: DRIVEN_SPEED }, 3600, () => (channel) => (channel === "rate" ? rate : undefined));
+      return { ...run, drive: (value: number) => { rate = value; } };
+    }
+
+    it("free run, speed 1 → 2 at t = 5 s: the playhead is at ~5 s, not ~10 s, and nothing is sought", () => {
+      const { element, wall, frame, play, drive } = driven("freeRun");
+      play(5);
+      drive(2);
+      wall(1 / 60);
+      const changed = frame();
+      expect(changed.transport.speed).toBe(2);
+      expect(Math.abs(changed.head.position - 5)).toBeLessThan(0.05);
+      expect(changed.continuous).toBe(true);
+      expect(element.seeks).toEqual([]);
+      expect(element.rates).toEqual([2]);
+      // ...and it plays on from there at twice the speed, still with no seek.
+      play(2, 60, () => expect(element.playbackRate).toBe(2));
+      expect(element.seeks).toEqual([]);
+      expect(element.currentTime).toBeCloseTo(5 + 1 / 60 + 4, 9);
+    });
+
+    it("free run, speed → -1 is the held scrub, running back from where the playhead was", () => {
+      const { element, wall, frame, play, drive } = driven("freeRun");
+      play(5);
+      drive(-1);
+      wall(1 / 60);
+      const back = frame();
+      expect(back.head.position).toBeCloseTo(5 - 1 / 60, 9);
+      expect(element.paused).toBe(true);
+      expect(element.seeks).toEqual([back.head.position]);
+    });
+
+    /** ⚠ the row's warning: an integrator under the lock would make position path-dependent. */
+    it("under the lock the same change is still timeline × speed — a new target, one exact seek", () => {
+      const { element, wall, frame, play, drive } = driven("timeline");
+      play(5);
+      drive(2);
+      wall(1 / 60);
+      const changed = frame();
+      expect(changed.head.position).toBeCloseTo((5 + 1 / 60) * 2, 9);
+      expect(changed.continuous).toBe(false);
+      expect(element.seeks).toEqual([changed.head.position]);
+    });
+  });
+
+  /**
+   * §T1548b — GAPLESS LOOPING IN REALTIME FREE RUN. With the element as the clock a lap
+   * that SEEKS is taken where the element is and then waits on the decoder, so every lap
+   * lasts its window plus the seek latency — in picture and in sound (a 0.5 s window looped
+   * every 0.71 s in Chrome). A second element on the same file waits paused on the in point
+   * and takes the lap over. What a listener gets is read back: no write on an element while
+   * it plays, and N laps lasting N windows of wall time, to within one delivered frame.
+   */
+  describe("§T1548b — a free-run Loop lap hands over to a second element instead of seeking", () => {
+    /**
+     * Two elements on one file, through the real `liveClock` → runner → movie playback chain.
+     * `audio.output` routes them through a fake AudioContext door (null: their own outputs);
+     * `audio.stalled` is when an element's clock stops (see `ownClockElement`).
+     */
+    function pairSession(
+      parameters: Record<string, unknown>,
+      partner = true,
+      duration = 10,
+      audio: {
+        output: MovieAudioOutput | null;
+        stalled?: (element: { readonly muted: boolean }) => boolean;
+        /** §T1560b: called after every slice of wall time (fake timers: at most 1 ms each). */
+        listen?: (seconds: number) => void;
+      } = { output: null },
+    ) {
+      let nowMs = 0;
+      const clock = liveClock({ fps: 60, presenting: () => true, now: () => nowMs });
+      const first = ownClockElement(duration, audio.stalled);
+      const second = ownClockElement(duration, audio.stalled);
+      const graph = {
+        revision: 1,
+        nodes: {
+          m: { id: "m", type: "movieFileIn", definitionVersion: 1, position: { x: 0, y: 0 }, parameters },
+        },
+        edges: {},
+      } as unknown as GraphDocument;
+      const runner = createMediaTransportRunner("m", {
+        graph: () => flatDocument(graph),
+        registry,
+        channels: () => undefined,
+        flattening: () => NO_FLATTENING,
+      });
+      const playback = createMovieAudioPlayback(first, new EventTarget(), () => undefined, audio.output);
+      const shown: PlayableMedia[] = [];
+      if (partner) expect(playback.attachPartner(second, (playing) => shown.push(playing))).toBe(true);
+      const wall = (seconds: number): void => {
+        nowMs += seconds * 1000;
+        // §T1560b: under fake timers, real time moves in slices of at most 1 ms and a timer
+        // fires inside the frame it is due in, as a page's would.
+        const slices = vi.isFakeTimers() ? Math.ceil(seconds * 1000 - 1e-9) : 1;
+        for (let slice = 0; slice < slices; slice += 1) {
+          first.advanceReal(seconds / slices);
+          second.advanceReal(seconds / slices);
+          if (vi.isFakeTimers()) vi.advanceTimersByTime((seconds / slices) * 1000);
+          audio.listen?.(seconds / slices);
+        }
+      };
+      /** One frame; `beforeSync` runs where the hook releases a partner: after the step, before the sync. */
+      const frame = (beforeSync?: () => void) => {
+        const stepped = runner.step(clock.next(), playback.duration(), playback.position());
+        if (stepped === null) throw new Error("the node is in the graph, so the runner must step");
+        beforeSync?.();
+        playback.sync(stepped, "realtime");
+        return stepped;
+      };
+      /** `seconds` of playback delivered at `hz`; returns the last frame. */
+      const play = (seconds: number, hz: number, each?: (stepped: MediaSteppedTransport) => void): MediaSteppedTransport => {
+        let last: MediaSteppedTransport | null = null;
+        for (let tick = 0; tick < Math.round(seconds * hz); tick += 1) {
+          wall(1 / hz);
+          last = frame();
+          each?.(last);
+        }
+        if (last === null) throw new Error("play at least one frame");
+        return last;
+      };
+      const start = frame();
+      return { first, second, shown, graph, play, frame, wall, start, playback, wallSeconds: () => nowMs / 1000 };
+    }
+    /** §T1548b: the app's AudioContext door, faked — each route's gain, and the context's state. */
+    function fakeOutput(running: boolean) {
+      const gains = new Map<PlayableMedia, { value: number }>();
+      const context = { running };
+      const output: MovieAudioOutput = {
+        route(element) {
+          const gain = gains.get(element) ?? { value: 0 };
+          gains.set(element, gain);
+          return { gain, release: () => { gain.value = 0; } };
+        },
+        running: () => context.running,
+      };
+      return { output, gains, context };
+    }
+    /** Media seconds the playhead has travelled from the in point, laps included. */
+    const travelled = (stepped: MediaSteppedTransport): number =>
+      stepped.head.laps * (stepped.head.end - stepped.head.start) + stepped.head.position - stepped.head.start;
+
+    for (const hz of [60, 45, 30]) {
+      it(`${String(hz)} Hz delivered, 0.5 s window: 5.25 s of wall is ten laps, ten hand-overs, nothing written on a playing element`, () => {
+        // Routed through a running context, as the product is: a `play()` starts at once
+        // there (measured: 0.500 s laps), and the gain is what is heard.
+        const { output, gains } = fakeOutput(true);
+        const { first, second, shown, play, start, wallSeconds } = pairSession(
+          { trimStart: 1, trimEnd: 1.5, audio: true, volume: 0.5 }, true, 10, { output },
+        );
+        // What a Chrome seek costs before the element plays on: 40–200 ms, measured.
+        first.rebufferOnSeek(0.2);
+        second.rebufferOnSeek(0.2);
+        const heard = [first.writesWhilePlaying.length, second.writesWhilePlaying.length];
+        const last = play(5.25, hz, () => {
+          expect(first.playbackRate).toBe(1);
+          expect(second.playbackRate).toBe(1);
+          // The one playing is heard at the Volume, the one waiting not at all.
+          const playing = shown.at(-1) ?? first;
+          const waiting = playing === first ? second : first;
+          expect([gains.get(playing)?.value, gains.get(waiting)?.value]).toEqual([0.5, 0]);
+          expect([first.muted, second.muted, first.volume, second.volume]).toEqual([false, false, 1, 1]);
+        });
+        expect([first.writesWhilePlaying.length, second.writesWhilePlaying.length]).toEqual(heard);
+        expect(shown).toHaveLength(10);
+        expect(shown.slice(0, 2)).toEqual([second, first]);
+        expect(last.head.laps).toBe(10);
+        // The remainder past each out point is carried, so the error does not grow per lap.
+        expect(Math.abs(travelled(last) - travelled(start) - wallSeconds())).toBeLessThanOrEqual(1 / hz);
+      });
+    }
+
+    /** The same session with ONE element: the problem itself, so the gate above can fail. */
+    it("with no partner each lap is a seek on the playing element and pays the decoder's latency", () => {
+      const { first, play, start, wallSeconds } = pairSession({ trimStart: 1, trimEnd: 1.5 }, false, 10, fakeOutput(true));
+      first.rebufferOnSeek(0.2);
+      const heard = first.writesWhilePlaying.length;
+      const last = play(5.25, 60);
+      expect(first.writesWhilePlaying.length - heard).toBe(last.head.laps);
+      // 0.2 s lost per lap: 5.25 s of wall is 7 laps and change, not 10.
+      expect(last.head.laps).toBe(7);
+      expect(wallSeconds() - (travelled(last) - travelled(start))).toBeGreaterThan(1.3);
+    });
+
+    it("under the timeline lock a lap stays an exact seek: the partner never plays (§V436)", () => {
+      const { first, second, shown, play } = pairSession({ playMode: "timeline", trimStart: 1, trimEnd: 1.5 });
+      const heard = first.writesWhilePlaying.length;
+      const last = play(2, 60);
+      expect(last.head.laps).toBe(4);
+      expect(shown).toEqual([]);
+      expect(first.writesWhilePlaying.length - heard).toBe(4);
+      expect(second.paused).toBe(true);
+    });
+
+    it("a trim edit re-primes the waiting element on the new in point, and the next lap hands over there", () => {
+      const { first, second, shown, graph, play } = pairSession({ trimStart: 1, trimEnd: 1.5 });
+      play(0.25, 60);
+      expect(second.currentTime).toBe(1);
+      graph.nodes["m"]!.parameters["trimStart"] = 2;
+      graph.nodes["m"]!.parameters["trimEnd"] = 2.5;
+      play(0.25, 60);
+      expect(second.currentTime).toBe(2);
+      const heard = first.writesWhilePlaying.length;
+      let handedOverAt: number | null = null;
+      play(0.5, 60, () => {
+        if (shown.length === 1 && handedOverAt === null) handedOverAt = second.currentTime;
+      });
+      expect(shown).toEqual([second]);
+      expect(handedOverAt).toBe(2);
+      expect(first.writesWhilePlaying.length).toBe(heard);
+      expect(second.paused).toBe(false);
+    });
+
+    /**
+     * §T1548b, owner's ruling — a SILENT WHOLE FILE loops on its one element (`loop = true`):
+     * no partner, nothing written at the lap, and the lap lasts the file. The element runs
+     * back from the end to 0 by itself; the playhead must take that as a lap, not a scrub
+     * it then "corrects" with a seek. §T1560b: a whole file with Audio on does the same
+     * while it has no partner yet, so the partner opening late never costs a seek.
+     */
+    for (const [hz, audio] of [[60, false], [45, false], [60, true]] as const) {
+      it(`a whole-file Loop at ${String(hz)} Hz, Audio ${audio ? "on, no partner yet" : "off"}: the element loops itself, five laps in 5.25 s of a 1 s file, nothing written`, () => {
+        const { first, play, start, wallSeconds } = pairSession({ audio, volume: 1 }, false, 1, fakeOutput(true));
+        first.rebufferOnSeek(0.2);
+        const last = play(5.25, hz, (stepped) => {
+          expect(first.loop).toBe(true);
+          expect(first.playbackRate).toBe(1);
+          // The playhead IS the element, every frame, laps and all.
+          expect(stepped.head.position).toBeCloseTo(first.currentTime, 9);
+        });
+        expect(first.seeks).toEqual([]);
+        expect(last.head.laps).toBe(5);
+        expect(Math.abs(travelled(last) - travelled(start) - wallSeconds())).toBeLessThanOrEqual(1e-9);
+      });
+    }
+
+    it("a whole-file Loop before the gesture: the frame clock's lap is not a seek on the element looping itself", () => {
+      // Suspended: the playhead runs on the frame clock, and the element (muted, so on time)
+      // started a tenth late. The frame clock laps first; the element is still at 0.9.
+      const { first, play } = pairSession({}, false, 1, fakeOutput(false));
+      first.buffer(0.1);
+      const last = play(2.5, 60, () => expect(first.loop).toBe(true));
+      expect(last.head.laps).toBe(2);
+      expect(first.writesWhilePlaying).toEqual([]);
+      expect(first.currentTime).toBeCloseTo(0.4, 9);
+    });
+
+    it("a trim, the lock or a take turns the element's own loop off again: there a lap is the transport's", () => {
+      const { first, graph, play } = pairSession({}, false, 1, fakeOutput(true));
+      play(0.25, 60);
+      expect(first.loop).toBe(true);
+      graph.nodes["m"]!.parameters["trimEnd"] = 0.5;
+      play(1 / 60, 60);
+      expect(first.loop).toBe(false);
+      graph.nodes["m"]!.parameters["trimEnd"] = 0;
+      play(1 / 60, 60);
+      expect(first.loop).toBe(true);
+      graph.nodes["m"]!.parameters["playMode"] = "timeline";
+      play(1 / 60, 60);
+      expect(first.loop).toBe(false);
+    });
+
+    /**
+     * §T1560b, owner's ruling — A WHOLE FILE WITH AUDIO ON HANDS OVER TOO. Chrome's native
+     * loop costs ~20 ms and a 16 ms silence per wrap, which is heard: a click, and tempo
+     * drift against anything else in time. So with Audio on the whole file takes the
+     * partner, like a trimmed window. And an element STOPS at the end of its file (a
+     * trimmed one plays on past its out point), so the partner must start AT the end, off
+     * the element's own clock, not on the next frame: what is asserted is the silence a
+     * listener gets between laps, the lap count against wall time, and no write on an
+     * element while it plays.
+     */
+    describe("§T1560b — a whole-file Loop with Audio on hands over at the end of the file", () => {
+      beforeEach(() => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      });
+      afterEach(() => {
+        vi.restoreAllMocks();
+        vi.useRealTimers();
+      });
+
+      /** Wall seconds in which nothing was heard: no element playing with its gain up. */
+      function listener(
+        gains: Map<PlayableMedia, { value: number }>,
+        elements: () => PlayableMedia[],
+        /** Only while this holds is silence a gap (Audio off is silent by design). */
+        active: () => boolean = () => true,
+      ) {
+        let silent = 0;
+        let longest = 0;
+        let run = 0;
+        /** Where each element was when it stopped playing: the end of the file, unless a lap cut it. */
+        const ends: number[] = [];
+        const was = new Map<PlayableMedia, number>();
+        return {
+          listen(seconds: number) {
+            for (const element of elements()) {
+              const before = was.get(element);
+              if (element.paused && before !== undefined) ends.push(Math.max(before, element.currentTime));
+              if (element.paused) was.delete(element);
+              else was.set(element, element.currentTime);
+            }
+            if (!active()) {
+              run = 0;
+              return;
+            }
+            const heard = elements().some((element) => !element.paused && (gains.get(element)?.value ?? 0) > 0);
+            if (heard) {
+              run = 0;
+              return;
+            }
+            silent += seconds;
+            run += seconds;
+            longest = Math.max(longest, run);
+          },
+          silent: () => silent,
+          longest: () => longest,
+          ends: () => ends,
+        };
+      }
+
+      for (const hz of [60, 45, 30]) {
+        it(`${String(hz)} Hz, a 1.005 s file (its end off the frame grid): 5.25 s of wall is five hand-overs and five laps, no silence between them, nothing written on a playing element`, () => {
+          const { output, gains } = fakeOutput(true);
+          let elements: () => PlayableMedia[] = () => [];
+          const ear = listener(gains, () => elements());
+          const { first, second, shown, play, start, wallSeconds } = pairSession(
+            { audio: true, volume: 0.5 }, true, 1.005, { output, listen: ear.listen },
+          );
+          elements = () => [first, second];
+          first.rebufferOnSeek(0.2);
+          second.rebufferOnSeek(0.2);
+          // A routed `play()` sounds a few ms after it is called (Chrome, measured): the
+          // reason the partner is started `END_LEAD_MS` early. Without it the lead would be
+          // pure overlap here, 3 ms short a lap.
+          first.rebufferOnStart(END_LEAD_MS / 1000);
+          second.rebufferOnStart(END_LEAD_MS / 1000);
+          const heard = [first.writesWhilePlaying.length, second.writesWhilePlaying.length];
+          let overlaps = 0;
+          const last = play(5.25, hz, () => {
+            // What plays is heard at the Volume, what waits is not. Both play only while the
+            // finished one plays out its last milliseconds over the partner's start. (The
+            // playing one loops itself while the other re-primes after a seek, the fallback;
+            // five hand-overs in five laps below says no lap was taken that way.)
+            for (const element of [first, second]) expect(gains.get(element)?.value).toBe(element.paused ? 0 : 0.5);
+            if (!first.paused && !second.paused) overlaps += 1;
+          });
+          expect(overlaps).toBeLessThanOrEqual(5);
+          expect([first.writesWhilePlaying.length, second.writesWhilePlaying.length]).toEqual(heard);
+          expect(shown).toHaveLength(5);
+          expect(shown.slice(0, 2)).toEqual([second, first]);
+          expect(last.head.laps).toBe(5);
+          // N laps last N files: within one frame over all five.
+          expect(Math.abs(travelled(last) - travelled(start) - wallSeconds())).toBeLessThanOrEqual(1 / hz);
+          // Nothing heard is missing between laps, and no lap cut the end of the file off.
+          expect(ear.silent()).toBe(0);
+          expect(ear.ends()).toHaveLength(5);
+          for (const end of ear.ends()) expect(end).toBeCloseTo(1.005, 9);
+        });
+      }
+
+      /**
+       * The same session with the end-of-file timer defeated: the frame takes the lap after
+       * the element has stopped at the end, and the wait is silence — the T1548b worker's
+       * 15 ms. This is what the timer is for; the gate above must fail without it.
+       */
+      it("a hand-over left to the next frame is silent from the end of the file to that frame", () => {
+        const { output, gains } = fakeOutput(true);
+        let elements: () => PlayableMedia[] = () => [];
+        const ear = listener(gains, () => elements());
+        const { first, second, shown, play } = pairSession({ audio: true, volume: 0.5 }, true, 1, { output, listen: ear.listen });
+        elements = () => [first, second];
+        vi.spyOn(globalThis, "setTimeout").mockImplementation((() => 0) as unknown as typeof setTimeout);
+        play(5.25, 30);
+        expect(shown).toHaveLength(5);
+        expect(ear.silent()).toBeGreaterThan(0.02);
+      });
+
+      it("Audio off: one element loops itself, the partner never plays, nothing is written", () => {
+        const { output, gains } = fakeOutput(true);
+        const { first, second, shown, play } = pairSession({ audio: false, volume: 0.5 }, true, 1, { output });
+        const last = play(3.25, 60, () => {
+          expect([first.loop, second.loop, second.paused]).toEqual([true, false, true]);
+          expect([gains.get(first)?.value, gains.get(second)?.value]).toEqual([0, 0]);
+        });
+        expect(last.head.laps).toBe(3);
+        expect(shown).toEqual([]);
+        expect(first.seeks).toEqual([]);
+      });
+
+      /**
+       * Toggling Audio on a PLAYING whole-file loop switches mode with no seek on the element
+       * that plays: on, it stops looping itself and the partner takes the next lap; off, the
+       * one playing (now the partner) loops itself, and the one waiting can be released.
+       */
+      it("toggling Audio on a playing whole-file loop: hand-over from the next end of file, native again on the element then playing", () => {
+        const { output, gains } = fakeOutput(true);
+        let elements: () => PlayableMedia[] = () => [];
+        let audioOn = false;
+        const ear = listener(gains, () => elements(), () => audioOn);
+        const { first, second, shown, graph, play, playback } = pairSession(
+          { audio: false, volume: 0.5 }, true, 1, { output, listen: ear.listen },
+        );
+        elements = () => [first, second];
+        play(1.5, 60);
+        expect([first.loop, shown.length]).toEqual([true, 0]);
+        graph.nodes["m"]!.parameters["audio"] = true;
+        play(1 / 60, 60);
+        audioOn = true;
+        // On: the playing element stops looping itself (an attribute, not a seek) and is heard.
+        expect([first.loop, gains.get(first)?.value, gains.get(second)?.value]).toEqual([false, 0.5, 0]);
+        play(1, 60);
+        expect(shown).toEqual([second]);
+        expect([first.paused, second.paused]).toEqual([true, false]);
+        graph.nodes["m"]!.parameters["audio"] = false;
+        audioOn = false;
+        play(1 / 60, 60);
+        // Off: the one playing loops itself; nothing is heard, no element is held muted.
+        expect([second.loop, first.loop]).toEqual([true, false]);
+        expect([gains.get(first)?.value, gains.get(second)?.value]).toEqual([0, 0]);
+        expect([first.muted, second.muted]).toEqual([false, false]);
+        expect(playback.releasePartner()).toBe(first);
+        expect(playback.releasePartner()).toBeNull();
+        const last = play(2, 60);
+        expect(last.head.laps).toBe(4);
+        expect(shown).toEqual([second]);
+        expect([first.paused, second.paused]).toEqual([true, false]);
+        expect(first.writesWhilePlaying).toEqual([]);
+        expect(second.writesWhilePlaying).toEqual([]);
+        // While Audio was on, the switch from the first element's end to the partner was not heard as a gap.
+        expect(ear.longest()).toBeLessThan(0.002);
+      });
+
+      /*
+       * B245 — a FRAME between the end-of-file timer and the finished element's end. The
+       * partner already plays (Chrome advances its clock at once: 0.00557 s at the frame, in
+       * the headed run that caught it) while the finished one plays out its last
+       * milliseconds, so the frame is continuous and the partner is not yet the playing
+       * element. Nothing may treat it as the one WAITING on the in point and put it back
+       * there: that is a seek on a playing element, an audible micro-seek every such lap.
+       */
+      it("a frame between the end-of-file timer and the end of the file writes nothing on the partner the timer started (B245)", () => {
+        const { output } = fakeOutput(true);
+        const { first, second, shown, play, frame, wall, start, wallSeconds } = pairSession(
+          { audio: true, volume: 0.5 }, true, 1.005, { output },
+        );
+        play(1, 60);
+        expect([first.paused, second.paused]).toEqual([false, true]);
+        // The timer fires about 3 ms before the end; this frame lands after it, before the end.
+        wall(0.0035);
+        expect([first.paused, second.paused]).toEqual([false, false]);
+        expect(second.currentTime).toBeGreaterThan(0);
+        frame();
+        expect(second.writesWhilePlaying).toEqual([]);
+        expect([first.paused, second.paused]).toEqual([false, false]);
+        // The finished one reaches its end and the next frame hands over; laps go on.
+        const last = play(2.5, 60);
+        expect(shown.slice(0, 2)).toEqual([second, first]);
+        expect([first.writesWhilePlaying, second.writesWhilePlaying]).toEqual([[], []]);
+        expect(last.head.laps).toBe(3);
+        expect(Math.abs(travelled(last) - travelled(start) - wallSeconds())).toBeLessThanOrEqual(1 / 60);
+      });
+
+      /*
+       * Audio OFF in the one frame between the end-of-file timer and the hand-over: the partner
+       * already plays from the in point, and the finished element is a few milliseconds from
+       * the end of the file, or already stopped there. Looping the finished one again would
+       * restart it from 0 — an implicit seek on a playing element. The partner is already at
+       * the start, so IT plays on (and loops itself), and the finished one is released.
+       */
+      for (const [label, after] of [["still playing out its last milliseconds", 0.0035], ["already stopped at the end", 0.012]] as const) {
+        it(`Audio off between the end-of-file timer and the hand-over, the finished element ${label}: the partner plays on, nothing restarts`, () => {
+          const { output, gains } = fakeOutput(true);
+          const { first, second, shown, graph, play, frame, wall, playback, start, wallSeconds } = pairSession(
+            { audio: true, volume: 0.5 }, true, 1.005, { output },
+          );
+          first.rebufferOnStart(END_LEAD_MS / 1000);
+          second.rebufferOnStart(END_LEAD_MS / 1000);
+          play(1, 60);
+          expect([first.paused, second.paused, shown.length]).toEqual([false, true, 0]);
+          wall(after);
+          // The timer has started the partner; the frame that would hand over has not come.
+          expect([first.paused, second.paused]).toEqual([after > 0.005, false]);
+          graph.nodes["m"]!.parameters["audio"] = false;
+          let released: PlayableMedia | null = null;
+          frame(() => {
+            released = playback.releasePartner();
+          });
+          expect(released).toBe(first);
+          expect(shown).toEqual([second]);
+          expect([first.paused, second.paused, second.loop]).toEqual([true, false, true]);
+          expect([gains.get(first)?.value, gains.get(second)?.value]).toEqual([0, 0]);
+          const last = play(2.5, 60);
+          expect(first.paused).toBe(true);
+          expect([first.restarts, second.restarts]).toEqual([[], []]);
+          expect([first.writesWhilePlaying, second.writesWhilePlaying]).toEqual([[], []]);
+          // The partner's lap is the playhead's: three laps, the wall within one frame.
+          expect(last.head.laps).toBe(3);
+          expect(Math.abs(travelled(last) - travelled(start) - wallSeconds())).toBeLessThanOrEqual(1 / 60);
+        });
+      }
+    });
+
+    /**
+     * §T1548b — THE GESTURE RULE. Before the page's first gesture the app's context is
+     * suspended, and an UNMUTED routed element then nearly stops its clock (Chrome,
+     * measured: 0.002 s of media in 1 s). So the element is held muted, and the free-run
+     * playhead runs on the frame clock instead of adopting it; once the context runs, sound
+     * starts and the playhead follows the element again (§V1027).
+     */
+    it("suspended context: the element is held muted and keeps time; once the context runs it is heard and followed", () => {
+      const { output, gains, context } = fakeOutput(false);
+      const { first, play, start } = pairSession({ audio: true, volume: 0.5 }, false, 3600, {
+        output,
+        stalled: (element) => !element.muted && !context.running,
+      });
+      const before = play(2, 60, () => expect(first.muted).toBe(true));
+      // Muted, it did not stall: two seconds of media in two of wall, and the playhead too.
+      expect(first.currentTime).toBeCloseTo(2, 9);
+      expect(travelled(before) - travelled(start)).toBeCloseTo(2, 9);
+      context.running = true;
+      const heard = first.writesWhilePlaying.length;
+      const from = first.currentTime;
+      play(1, 60, (stepped) => {
+        expect([first.muted, gains.get(first)?.value]).toEqual([false, 0.5]);
+        expect(stepped.head.position).toBeCloseTo(first.currentTime, 9);
+      });
+      expect(first.currentTime - from).toBeCloseTo(1, 9);
+      expect(first.writesWhilePlaying.length).toBe(heard);
+    });
+
+    it("suspended context, a decoder that will not run before the gesture: the playhead still advances, then adopts the element", () => {
+      const { output, context } = fakeOutput(false);
+      const { first, play, start } = pairSession({ audio: true, volume: 0.5 }, false, 3600, {
+        output,
+        stalled: () => !context.running,
+      });
+      const before = play(2, 60);
+      expect(first.currentTime).toBe(0);
+      // The element is stuck; the playhead is not: it ran two seconds on the frame clock.
+      expect(travelled(before) - travelled(start)).toBeCloseTo(2, 9);
+      context.running = true;
+      const adopted = play(1 / 60, 60);
+      expect(adopted.head.position).toBeCloseTo(first.currentTime, 9);
+      expect(first.currentTime).toBeCloseTo(1 / 60, 9);
+      const heard = first.writesWhilePlaying.length;
+      play(1, 60, (stepped) => expect(stepped.head.position).toBeCloseTo(first.currentTime, 9));
+      expect(first.writesWhilePlaying.length).toBe(heard);
+    });
   });
 
   /** §V662: a take is silent and the frame is its master — an element's clock has no say. */
@@ -921,7 +1881,7 @@ describe("T1542b, §V1027 — in realtime free run the element is the clock", ()
         nodes: { m: { id: "m", type: "movieFileIn", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} } },
         edges: {},
       } as unknown as GraphDocument;
-      const runner = createMediaTransportRunner("m", { graph: () => graph, registry, channels: () => undefined, morphs: () => undefined });
+      const runner = createMediaTransportRunner("m", { graph: () => flatDocument(graph), registry, channels: () => undefined, flattening: () => NO_FLATTENING });
       const at = (index: number): FrameEvaluationInput =>
         ({ timeSeconds: index / 60, deltaSeconds: 1 / 60, frameIndex: index, mode, randomSeed: 1 });
       runner.step(at(0), 3600, 0);

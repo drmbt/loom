@@ -62,7 +62,8 @@ const topBrightCircle = () =>
     center: [0.5, 0.2],
     radius: [0.25, 0.25],
     softness: 0,
-    color: [1, 1, 1, 1],
+    // §T1641b: a Circle's colour is `fillcolor`. This said `color`, a key nothing reads.
+    fillcolor: [1, 1, 1, 1],
   });
 
 /**

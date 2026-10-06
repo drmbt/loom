@@ -1,5 +1,5 @@
 import type { CompiledExecutionPlan, FrameInputs } from "../../domain/types/backend.ts";
-import type { AudioFeatures, FrameEvaluationInput } from "../../domain/types/frame.ts";
+import type { AudioFeatures, EvaluationFrame, FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { TransportSource } from "../../domain/types/frame.ts";
 import type { FrameLoopControl, LoomBackend } from "../backend/backend-types.ts";
 import type { PointerSource } from "./pointer.ts";
@@ -70,7 +70,7 @@ export interface FrameDriverOptions {
    * installing is shown late rather than wrong. `step()` never asks: the offline and manual
    * paths are synchronous and own their own sequencing.
    */
-  readonly ready?: (frame: FrameEvaluationInput) => boolean;
+  readonly ready?: (frame: EvaluationFrame) => boolean;
 }
 
 export interface FrameDriver {
@@ -91,7 +91,7 @@ export function createFrameDriver(options: FrameDriverOptions): FrameDriver {
   let control: FrameLoopControl | undefined;
   let framesRendered = 0;
   /** §T1537b: a frame the scheduled loop held (`ready` said no), offered again next tick. */
-  let held: FrameEvaluationInput | null = null;
+  let held: EvaluationFrame | null = null;
 
   function tick(scheduled: boolean): FrameInputs | null {
     if (!plan) return null;

@@ -7,9 +7,9 @@ import { LANTERN_WGSL } from "../shaders/lantern.wgsl.ts";
  * the obstacles rather than clip through them. All of it off ONE distance field
  * (`docs/shader-example-references.md`: "glow and soft shadows come off the same field").
  *
- *   bed1(noise, near-black) ─► lantern1(customWgsl: the SDF lit scene) ─► out1
+ *   noise_bed(noise, near-black) ─► wgsl_lantern(customWgsl: the SDF lit scene) ─► output1
  *                                    ▲
- *                    pulse1(lfo) ┄breath┄► lantern1.amount
+ *                    lfo_pulse(lfo) ┄breath┄► wgsl_lantern.amount
  *
  * ## What the picture is
  *
@@ -30,7 +30,7 @@ import { LANTERN_WGSL } from "../shaders/lantern.wgsl.ts";
  *
  * ## It breathes, and that is the drive (§V471)
  *
- * `pulse1` swings `lantern1.amount` on a slow sine, so the light swells and dims — but the
+ * `lfo_pulse` swings `wgsl_lantern.amount` on a slow sine, so the light swells and dims — but the
  * room never blacks out (a floor of gain remains). `amount` is the customWgsl contract's one
  * generic scalar; the kernel makes it the light gain.
  *
@@ -51,13 +51,13 @@ export const lanternDocument = document(
          rather than a texture competing with it. Glowing lights want darkness to pop on. */
       node("bed", "noise", [-720, 0], {
         type: "perlin2d", period: 0.5, amp: 0.14, offset: 0.06,
-      }, { label: "bed1" }),
+      }, { label: "noise_bed" }),
 
       /* The breath — a slow sine into the glow gain (§V108: retained 0.8 is a sane still
          picture, so the examples gate frames a lit field even with no channel attached). */
       node("pulse", "lfo", [-720, 240], {
         shape: "sine", frequency: 0.11, amplitude: 0.2, offset: 0.8, phase: 0,
-      }, { label: "pulse1" }),
+      }, { label: "lfo_pulse" }),
 
       node("lantern", "customWgsl", [-420, 0], {
         source: LANTERN_WGSL,
@@ -72,11 +72,11 @@ export const lanternDocument = document(
         shadowSoftness: 11,
         floorLevel: 1,
       }, {
-        label: "lantern1",
-        parameters: { amount: drivenSlot("pulse1", 0.8) },
+        label: "wgsl_lantern",
+        parameters: { amount: drivenSlot("lfo_pulse", 0.8) },
       }),
 
-      node("out", "output", [-120, 0], {}, { label: "out1" }),
+      node("out", "output", [-120, 0], {}, { label: "output1" }),
     ],
     [
       edge("e-bed-lantern", ["bed", "out"], ["lantern", "input"]),

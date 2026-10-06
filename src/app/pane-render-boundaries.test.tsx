@@ -14,7 +14,11 @@ import type { GpuStatus } from "./gpu-status.ts";
 /**
  * T1238 — a document revision reaches only the panes that READ the document.
  *
- * `App` subscribes to the store and re-renders on every revision; that is its job. What
+ * `App` subscribes to the store and re-renders on every STRUCTURAL revision; that is its
+ * job. (When this was written it rendered for every revision. Since T1652b a revision that
+ * only moves a value does not render it at all — `value-write-boundaries.test.tsx` holds
+ * that — so the sixty knob edits below no longer reach `App`, and what this file still
+ * proves on its own is the selection change and the settings edit, which do.) What
  * it must not do is take the node library's 108 rows with it: they render the registry,
  * which no edit touches. §T1235 measured the cost of exactly that on E24 — 118 commits
  * of `NodeIdentity×108 CostCell×94 Presence×44` at 15.7 ms each inside one 2 s knob
@@ -186,8 +190,9 @@ describe("T1238 — the node library, the shell chrome and the top bar do not re
     const layoutMounted = layoutRenders.count;
     expect(layoutMounted).toBeGreaterThan(0);
 
-    // Sixty revisions, the knob-drag shape: each one re-renders `App` (it reads the
-    // document) and re-compiles. None may reach a library row or the layout menu.
+    // Sixty revisions, the knob-drag shape. T1652b: these are values-only and no longer
+    // render `App`; the selection and the settings edit after them still do, and none of
+    // the three may reach a library row or the layout menu.
     const before = runtime.bus.store.getRevision();
     for (let edit = 0; edit < 60; edit++) {
       await patch(runtime, "knob", [{ op: "setParameters", nodeId: level, parameters: { brightness: 0.4 + edit * 0.005 } }]);

@@ -4,7 +4,7 @@ One stream, played back at nine different moments at once. A wall of tiles, each
 the same performer a fraction of a second apart, a few of them tearing, all of them on one
 evolving palette so the nine read as a single picture rather than nine pictures.
 
-`wall1` is `component:timeGrid@1` from the starter set. The example feeds it a texture and
+`timegrid_wall` is `component:timeGrid@1` from the starter set. The example feeds it a texture and
 turns eight knobs; the chain inside — repeat the frame into a grid, give every cell its own
 delay out of a one-second history, break the loud cells, put the result on a palette — is
 the component's own business.
@@ -28,33 +28,33 @@ and each cell region has its own layers to pick from. Scan first and the grid re
 warped picture — every cell identical, which is the failure that looks like it works.
 
 ```
-bed1(noise, perlin4d) ─┐
-orb1(circle) ──────────┤
-mate1(circle) ─────────┴─► stand1(add) ──┐ order 0
-cam1(webcam) ────────────────────────────┤ order 1
-clip1(movieFileIn) ──────────────────────┴─► pick1(switch) ─► flare1(level) ─┬─► wall1.in1
-                                                                             ├─► key1(threshold) ─┐
-                                                                             └─► cut1(matte) ─────┴─► mpick1(switch) ─► wall1.in2
-wall1 ─► out1(output)
+noise_bed(noise, perlin4d) ──┐
+circle_orb(circle) ──────────┤
+circle_mate(circle) ─────────┴─► add_stand(add) ──┐ order 0
+webcam1(webcam) ──────────────────────────────────┤ order 1
+movie_clip(movieFileIn) ──────────────────────────┴─► switch_pick(switch) ─► level_flare(level) ─┬─► timegrid_wall.in1
+                                                                                                 ├─► threshold_key(threshold) ─┐
+                                                                                                 └─► matte_cut(matte) ─────────┴─► switch_mpick(switch) ─► timegrid_wall.in2
+timegrid_wall ─► output1(output)
 
-music1(audioPattern) ─┐ order 0
-track1(audioFileIn) ──┴─► source1(valueSwitch) ─┬─► env1(valueLag) ─┐
-                                                └─► snap1(valueLag) ┴─► the two drives below
+pattern_music(audioPattern) ───┐ order 0
+audiofile_track(audioFileIn) ──┴─► switch_source(valueSwitch) ─┬─► lag_env(valueLag) ─┐
+                                                               └─► lag_snap(valueLag) ┴─► the two drives below
 
-pathx1(lfo) ─► swoopa1(valueLag) ┄drives┄► orb1.center.x
-pathy1(lfo) ─► swoopb1(valueLag) ┄drives┄► orb1.center.y
-matex1(lfo) ┄drives┄► mate1.center.x
-env1(valueLag) ┄drives┄► orb1.radius.x
-snap1(valueLag) ┄drives┄► flare1.brightness
+lfo_pathx(lfo) ─► lag_swoopa(valueLag) ┄drives┄► circle_orb.center.x
+lfo_pathy(lfo) ─► lag_swoopb(valueLag) ┄drives┄► circle_orb.center.y
+lfo_matex(lfo) ┄drives┄► circle_mate.center.x
+lag_env(valueLag) ┄drives┄► circle_orb.radius.x
+lag_snap(valueLag) ┄drives┄► level_flare.brightness
 ```
 
 ## The source is a port, not a node
 
-`pick1` picks what the wall is made of. Index 0 (shipped) is a deterministic understudy:
+`switch_pick` picks what the wall is made of. Index 0 (shipped) is a deterministic understudy:
 two soft bodies on four incommensurate LFOs over a dark noise field, so every gate and the
-gallery card see a real wall. Index 1 is `cam1`, the **webcam** — flip it and the wall is
+gallery card see a real wall. Index 1 is `webcam1`, the **webcam** — flip it and the wall is
 nine moments of your own face, which is what this example is actually for. Index 2 takes a
-clip; drop a file on `clip1` and it plays.
+clip; drop a file on `movie_clip` and it plays.
 
 The component cannot tell the three apart. It takes a texture, so nothing inside it changes
 when you switch — which is the whole reason the source lives outside the boundary.
@@ -66,26 +66,26 @@ what a viewer reads as "a different moment".
 
 ## The matte is a port too — and it is a smaller thing than it looks
 
-`wall1.in2` wants a **matte texture**, not "the matte node", which is why a luma key, a
-person matte, a depth cut or a hand-drawn shape all feed the same component. `mpick1` picks
+`timegrid_wall.in2` wants a **matte texture**, not "the matte node", which is why a luma key, a
+person matte, a depth cut or a hand-drawn shape all feed the same component. `switch_mpick` picks
 which one arrives:
 
-- **Index 0** is `key1`, a luma **threshold** — the honest answer for a bright subject on a
+- **Index 0** is `threshold_key`, a luma **threshold** — the honest answer for a bright subject on a
   dark bed, and deterministic.
-- **Index 1 (shipped)** is `cut1`, the **Matte** node (MODNet). It used to be 0, and that
+- **Index 1 (shipped)** is `matte_cut`, the **Matte** node (MODNet). It used to be 0, and that
   was a bug (T1042): with the matte node's output reaching no pixel of the wall, nothing on
   its Inspector page — model, backend, resolution — could change the picture, and every
   experiment run against it was correctly reporting no difference. The node whose knobs the
   Inspector offers is the node on the path.
 
 Without the model the Matte node publishes zero everywhere — "nobody is here", §T715 — so a
-dropout blanks its cell instead of failing. `pick1` deliberately stays on the understudy: a
+dropout blanks its cell instead of failing. `switch_pick` deliberately stays on the understudy: a
 shipped example must not open a device on load, so *seeing* the matte work means flipping
-`pick1` to 1 with a camera attached.
+`switch_pick` to 1 with a camera attached.
 
 **Be honest about what that buys, because the switch was never the whole story.** TimeGrid
 consumes its matte in exactly one place — the per-cell **dropout** — and a dropout is rare
-by construction. Measured on Dawn over frames 60–479 of this document: driving `wall1.in2`
+by construction. Measured on Dawn over frames 60–479 of this document: driving `timegrid_wall.in2`
 from all-white to all-black changes **six frames out of four hundred and twenty**, one
 burst, in one cell, and not a single component anywhere else.
 `time-grid-claims.gpu.test.ts` asserts exactly that, so the route cannot silently die again
@@ -321,29 +321,29 @@ and its whole range to move in.
 
 ## Audio: wired, switch-ready, and driving two different things
 
-`source1` is a `valueSwitch` — E24's shape, and it has to be a switch rather than a wire:
+`switch_source` is a `valueSwitch` — E24's shape, and it has to be a switch rather than a wire:
 two audio sources landing on one value port *merge*, and both publish the same channel
 names, so the later edge would win and the other source would vanish with the graph still
 looking right. A `valueSwitch` is exclusive by construction.
 
-- **Index 0 (shipped)** is `music1`, an Audio Pattern at 124 bpm. It stays the default:
+- **Index 0 (shipped)** is `pattern_music`, an Audio Pattern at 124 bpm. It stays the default:
   a shipped example must not open a device, and every gate has to see the same performance
   twice.
-- **Index 1** is `track1`, an Audio File In with an empty File waiting. Drop a track on it,
+- **Index 1** is `audiofile_track`, an Audio File In with an empty File waiting. Drop a track on it,
   flip the index, and everything downstream follows because everything downstream reads
-  `source1`.
+  `switch_source`.
 - **A microphone is deliberately absent.** An unselected *texture* `switch` branch is NOT
-  pruned — measured on this very graph: `key1` and `cam1` both emit passes while sitting on
+  pruned — measured on this very graph: `threshold_key` and `webcam1` both emit passes while sitting on
   an unselected branch — and a shipped `audioIn` opens the device on load. To add one, drop an Audio In
-  beside `track1` and wire it to `source1.in3`; the value switch will keep it silent until
+  beside `audiofile_track` and wire it to `switch_source.in3`; the value switch will keep it silent until
   you select it, but the device opens regardless, so it is yours to add and not ours to
   ship.
 
 Two envelopes off that one source, because the piece has two timescales:
 
-- `env1` (110 ms) carries the **low** band to the body's **radius** — the kick as a swell.
+- `lag_env` (110 ms) carries the **low** band to the body's **radius** — the kick as a swell.
   The wall's cascade then turns one kick into a wave rolling across the grid.
-- `snap1` (35 ms) carries the **high** band to `flare1.brightness` — the hats, kept
+- `lag_snap` (35 ms) carries the **high** band to `level_flare.brightness` — the hats, kept
   transient. And that is how the audio reaches the *damage*: the vocabulary arms a cell in
   proportion to that cell's own brightness, so lifting the source on a transient makes more
   of the wall break. No channel crosses the component boundary.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import type { FlatGraph } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import { mediaSourceIdFor, SCREEN_IN_TYPE } from "@nodes/definitions/index.ts";
@@ -47,7 +47,7 @@ function errorMessage(error: unknown): string {
 export function useScreenSources(
   runtime: AppRuntime,
   backend: LoomBackend | null,
-  graph: GraphDocument,
+  graph: FlatGraph,
   environment?: ScreenCaptureEnvironment,
 ): ScreenCaptureWiring {
   const latest = useRef({ runtime, backend, graph, environment });

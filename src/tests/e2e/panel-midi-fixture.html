@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Panel MIDI proof</title></head>
+<body><div id="root"></div><script type="module">
+import React, { useSyncExternalStore } from "react";
+import { createRoot } from "react-dom/client";
+import { createAppRuntime } from "/src/app/app-runtime.ts";
+import { useMidiInput } from "/src/app/use-midi-input.ts";
+import { createValueGraphSession } from "/src/domain/channels/value-graph.ts";
+import { ControlsPane } from "/src/editor/controls/controls-pane.tsx";
+import { joinPanelOperations } from "/src/editor/controls/panel-join.ts";
+// Only the native MIDI boundary is fake; the hook and decoder are real. No GPU starts.
+const runtime = createAppRuntime({ identityStorage: null });
+const setup = await runtime.bus.execute("graph.applyPatch", { baseRevision: 0, operations: [
+  { op: "addNode", ref: "$fader", type: "slider", label: "heat", position: { x: 0, y: 0 }, parameters: { value: 4, min: 2, max: 8, caption: "Heat" } },
+  { op: "addNode", ref: "$panel", type: "panel", label: "controls", position: { x: 400, y: 0 }, parameters: { title: "Controls" } },
+] }, runtime.invocation);
+if (setup.status !== "applied") throw new Error("Fixture nodes were rejected");
+await runtime.bus.execute("graph.applyPatch", { baseRevision: runtime.bus.store.getRevision(), operations:
+  joinPanelOperations(runtime.bus.store.getGraph(), setup.output.createdIds.$fader, setup.output.createdIds.$panel),
+}, runtime.invocation);
+const port = { id: "proof-port", name: "Proof controller", onmidimessage: null };
+const access = { inputs: new Map([[port.id, port]]), onstatechange: null };
+let requests = 0, raw = () => undefined, result, frameIndex = 0, inputs = null;
+const requestAccess = async () => { requests++; return access; };
+const session = createValueGraphSession(runtime.registry);
+const channels = (name, context) => result?.resolver(name, context);
+const latestFrame = () => inputs;
+const root = createRoot(document.getElementById("root"));
+function Fixture() {
+  const graph = useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
+  const midi = useMidiInput({ requestAccess });
+  raw = midi.resolver;
+  return React.createElement(ControlsPane, { graph, registry: runtime.registry, bus: runtime.bus,
+    invocation: runtime.invocation, midi, channels, latestFrame });
+}
+root.render(React.createElement(Fixture));
+const timer = setInterval(() => {
+  const frame = { timeSeconds: frameIndex / 60, deltaSeconds: 1 / 60, frameIndex: frameIndex++, mode: "realtime", randomSeed: 7 };
+  const flattened = runtime.flattened.current();
+  result = session.evaluate(flattened.graph, frame, { flattening: flattened, channels: name => raw(name) });
+  inputs = { frame };
+}, 50);
+window.panelMidiProof = {
+  send(value) { port.onmidimessage?.({ data: new Uint8Array([0xb0, 74, value]) }); },
+  snapshot() { return { requests, revision: runtime.bus.store.getRevision(),
+    value: result?.byName.get("heat")?.value, diagnostics: result?.diagnostics }; },
+  dispose() { clearInterval(timer); root.unmount(); runtime.dispose(); },
+};
+</script></body></html>

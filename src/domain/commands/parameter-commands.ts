@@ -13,9 +13,14 @@ import type {
   StoredParameter,
 } from "../types/parameters.ts";
 import { nodeByName, nodeName } from "../graph/names.ts";
+import { z } from "zod";
+import { parameterModeSchema } from "../types/schemas.ts";
+import { idInput } from "./input-schema.ts";
 import { pulseCommandInput } from "../parameters/pulse.ts";
 import { parameterReference, parseParameterReference } from "../parameters/reference.ts";
-import { resolveParameter, effectiveParameterSchema } from "../parameters/resolve.ts";
+import { resolveParameter, effectiveParameterSchema, STORED_READ } from "../parameters/resolve.ts";
+import { parameterReadOptions } from "../parameters/node-references.ts";
+import { NO_MORPHS } from "../presets/morph-index.ts";
 import {
   componentAddressedDefinition,
   componentKey,
@@ -25,7 +30,7 @@ import {
   slotFromValue,
   withMode,
 } from "../parameters/slots.ts";
-import { defaultParameterValue, validateParameterValue } from "../parameters/validate.ts";
+import { defaultParameterValue, undeclaredKeys, validateParameterValue } from "../parameters/validate.ts";
 import { applyGraphPatch } from "./apply-patch.ts";
 import { encodeLoomClipboard, readLoomClipboard } from "./loom-clipboard.ts";
 import type { LoomClipboardPayload, SystemClipboard } from "./loom-clipboard.ts";
@@ -97,6 +102,9 @@ export interface ParameterRef {
   nodeId: NodeId;
   parameterKey: string;
 }
+
+/** §T1556b: `ParameterRef`'s schema, and the base of every parameter command's. */
+const parameterRefSchema = z.object({ nodeId: idInput, parameterKey: z.string().min(1) }).strict();
 
 export interface ParameterCopyOutput {
   /** The text that was copied, or null when nothing could be. */
@@ -178,8 +186,26 @@ declare module "../types/commands.ts" {
     "parameter.revert": { input: ParameterRef; output: GraphPatchResult };
     /** Switch which binding is in effect, keeping every other mode's payload (§V108). */
     "parameter.setMode": { input: ParameterSetModeInput; output: GraphPatchResult };
+    /**
+     * §T1641b slice 2: remove what a node stores under keys it does not declare, which
+     * nothing reads. All of them, or the ones named. One patch, one undo step.
+     */
+    "parameter.removeUndeclared": { input: ParameterRemoveUndeclaredInput; output: ParameterRemoveUndeclaredOutput };
   }
 }
+
+export interface ParameterRemoveUndeclaredInput {
+  nodeId: NodeId;
+  /** Absent: every key the node stores and does not declare. */
+  keys?: string[];
+}
+
+export interface ParameterRemoveUndeclaredOutput extends GraphPatchResult {
+  /** The keys that left the document, sorted. Empty when the command was refused. */
+  removed: string[];
+}
+
+const removeUndeclaredSchema = z.object({ nodeId: idInput, keys: z.array(z.string().min(1)).min(1).optional() }).strict();
 
 /**
  * What a copy put on the bus-local parameter clipboard (T246, T1004).
@@ -418,6 +444,14 @@ function capture(
 ): ParameterClipboard {
   const schema = effectiveParameterSchema(context.registry.get(found.node.type), found.node.parameters);
   /*
+   * §T1559b (2), ruled live — the read is the ROW's (T1008: a copy "copies what the row
+   * shows"): the command's read scope (the frame on screen, the app's channels, `op()` reads
+   * of the document as authored, the flattening's instances) with no fade, because the
+   * inspector's row shows the document's (destination) value mid-fade by design (T1525b).
+   */
+  const scope = context.readScope();
+  const read = parameterReadOptions({ ...scope, flattening: { morphs: NO_MORPHS, instanceChannels: scope.flattening.instanceChannels } });
+  /*
    * T1008 — a COMPONENT key copies what the channel row SHOWS. Resolving the dotted
    * key against its derived scalar definition would fall back to the compound's
    * DECLARED default whenever the component follows the compound (no slot of its
@@ -428,7 +462,7 @@ function capture(
   const parsed = schema[key] === undefined ? parseComponentKey(key) : null;
   const baseDefinition = parsed === null ? undefined : schema[parsed.base];
   if (parsed !== null && baseDefinition !== undefined) {
-    const base = resolveParameter(found.node, parsed.base, baseDefinition, { schema });
+    const base = resolveParameter(found.node, parsed.base, baseDefinition, { ...read, schema });
     const names = componentNamesFor(baseDefinition) ?? [];
     const component = base.components?.[names.indexOf(parsed.component)];
     const name = nodeName(found.node);
@@ -448,7 +482,7 @@ function capture(
       typeName: found.definition.type,
     };
   }
-  const resolved = resolveParameter(found.node, key, found.definition, { schema });
+  const resolved = resolveParameter(found.node, key, found.definition, { ...read, schema });
   const name = nodeName(found.node);
   const stored = found.node.parameters[key];
   const slot = isParameterSlot(stored) ? stored : null;
@@ -524,6 +558,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.pulse",
+    inputSchema: parameterRefSchema,
     description:
       "Fire a momentary pulse parameter. Audited, never undoable, never serialized (§V124).",
     handler: async (input, context) => {
@@ -648,6 +683,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.copy",
+    inputSchema: parameterRefSchema,
     description:
       "Copy a parameter WHOLE — value, reference and binding — so paste can choose.",
     // The reference is what a user most often wants out in the world (§V148); a node with
@@ -659,6 +695,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.copyValue",
+    inputSchema: parameterRefSchema,
     description: "Copy a parameter's effective value as text (T246).",
     handler: copyHandler("value", (payload) => payload.valueText),
     rejectionOutput: () => ({ text: null }),
@@ -666,6 +703,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.copyReference",
+    inputSchema: parameterRefSchema,
     description: "Copy a reference that pastes into an expression (T246, §V148).",
     // Null mirror = refuse. Unlike `parameter.copy`, this command's ENTIRE purpose is the
     // string, so an unnamed node has to be told rather than handed a number instead.
@@ -675,6 +713,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "channel.copy",
+    inputSchema: z.object({ nodeId: idInput, channel: z.string().min(1), value: z.number().optional() }).strict(),
     description:
       "Copy a value node's channel — its reference, its name and its reading — so paste can choose (T1393b).",
     handler: (input, context) => {
@@ -708,6 +747,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.paste",
+    inputSchema: parameterRefSchema.extend({ text: z.string().optional(), as: z.enum(["value", "reference", "binding", "name"]).optional() }).strict(),
     description:
       "Paste the copied value, reference or binding onto this parameter (T246).",
     handler: async (input, context) => {
@@ -957,6 +997,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.reset",
+    inputSchema: parameterRefSchema,
     description: "Restore the manifest default and the Constant mode (T246, §V149).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -1033,6 +1074,69 @@ export function registerParameterCommands(
 
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════
+   * `parameter.removeUndeclared` — HOW A KEY NOTHING READS LEAVES A DOCUMENT (T1641b)
+   * ═══════════════════════════════════════════════════════════════════════════════════
+   *
+   * A stored key the node does not declare is an error at rest (`parameter.unknown`), and
+   * it has no row in the inspector to fix it from: the inspector draws what the node
+   * declares. Such a key is usually nobody's write. A shader edit dropped the field it was
+   * stored under, and the edit was right not to drop the value with it (a field renamed for
+   * one commit would lose its expression). So the finding needs a way out that is a
+   * decision: this command, offered on the Problems row. It removes ONLY what the node does
+   * not declare, in one patch, and undo brings every value back.
+   */
+  bus.registerCommand({
+    name: "parameter.removeUndeclared",
+    inputSchema: removeUndeclaredSchema,
+    description: "Remove the values a node stores under keys it does not declare, which nothing reads (T1641b).",
+    handler: (input, context) => {
+      const revision = context.store.getRevision();
+      const refused = (diagnostic: RuntimeDiagnostic) => ({
+        status: "rejected" as const,
+        output: { ...rejectedPatch(revision, [diagnostic]), removed: [] },
+        diagnostics: [diagnostic],
+      });
+      const node = context.graph.nodes[input.nodeId];
+      if (node === undefined) return refused(refuse("parameter.node", `No node "${input.nodeId}".`));
+      const definition = context.registry.get(node.type);
+      if (definition === undefined) {
+        // §V10: what a placeholder's type declares is not known to this build.
+        return refused(
+          refuse(
+            "node.unknownType",
+            `Node "${node.id}" has unknown type "${node.type}", so nothing it stores can be called undeclared.`,
+            node.id,
+            "Install the node package that defines this type before editing it (§V10).",
+          ),
+        );
+      }
+      const keys =
+        input.keys ??
+        undeclaredKeys(effectiveParameterSchema(definition, node.parameters), node.parameters, definition.retainedParameterKeys);
+      if (keys.length === 0) {
+        return refused(
+          refuse("parameter.remove.none", `Node "${node.id}" stores nothing under a key it does not declare.`, node.id),
+        );
+      }
+      // The operation is the gate: it refuses a declared key and a key that is not stored,
+      // each by name, and nothing is removed unless every key named may be.
+      const removed = [...keys].sort();
+      const patched = applyGraphPatch(
+        { baseRevision: revision, label: "Remove undeclared parameters", operations: [{ op: "removeParameters", nodeId: node.id, keys: removed }] },
+        context,
+      );
+      const diagnostics = [...(patched.diagnostics ?? patched.output.diagnostics)];
+      return {
+        status: patched.status,
+        output: { ...patched.output, diagnostics, removed: patched.status === "applied" ? removed : [] },
+        diagnostics,
+      };
+    },
+    rejectionOutput: (_input, diagnostics, revision) => ({ ...rejectedPatch(revision, diagnostics), removed: [] }),
+  });
+
+  /**
+   * ═══════════════════════════════════════════════════════════════════════════════════
    * `parameter.revert` — THE OTHER HALF OF THE PAIR (T1184)
    * ═══════════════════════════════════════════════════════════════════════════════════
    *
@@ -1086,6 +1190,7 @@ export function registerParameterCommands(
    */
   bus.registerCommand({
     name: "parameter.revert",
+    inputSchema: parameterRefSchema,
     description: "Restore the value this document was opened with (T1184).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -1159,6 +1264,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.setMode",
+    inputSchema: parameterRefSchema.extend({ mode: parameterModeSchema }).strict(),
     description: "Switch a parameter's active mode, keeping every other payload (§V108).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -1185,7 +1291,7 @@ export function registerParameterCommands(
       // seed value against the static schema would hand a reflected control an unresolvable
       // key and seed the mode it is switching INTO from nothing.
       const schema = effectiveParameterSchema(context.registry.get(found.node.type), found.node.parameters);
-      const resolved = resolveParameter(found.node, input.parameterKey, found.definition, { schema });
+      const resolved = resolveParameter(found.node, input.parameterKey, found.definition, { ...STORED_READ, schema });
       const stored = found.node.parameters[input.parameterKey];
       const slot = isParameterSlot(stored) ? stored : slotFromValue(resolved.value);
       const next = withMode(slot, input.mode, resolved.value);

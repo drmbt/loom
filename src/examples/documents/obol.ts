@@ -248,7 +248,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
    substance: the medallion is not decorated with tiles and it is not a disc with tiles on
    it, it IS the tiles. That is what the owner asked for — "the obol thing should not have
    the disc behind the cubes assembling the yinyang" — and the mass is grown down to a
-   speck there rather than merely hidden, so that dropping `body1` from the render changes
+   speck there rather than merely hidden, so that dropping `geometry_body` from the render changes
    ZERO pixels of the emblem frame.
 
    AND THE GOO END IS THE ORGANIC BLOB, which is the gimmick (T724). The tiles do not have
@@ -290,7 +290,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   /* CONFIGURATION A — the tile IS the medallion. There is no bed behind it (T716): the
      face, the two tones and the dividing curve are carried by the tiles ALONE, and the
      mass is grown down to a speck at this end of the morph so that the disc the owner
-     objected to genuinely is not there. Measured: dropping body1 from the render
+     objected to genuinely is not there. Measured: dropping geometry_body from the render
      changes ZERO pixels of the emblem frame. The small height jitter is what keeps the
      tiles reading as laid pieces rather than as one plate, and it is what the key light's
      shadow and the occlusion pass bite on. */
@@ -404,7 +404,7 @@ const OBOL_SWEEP_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
  * mass is back at the goo end and FADES IN as the morph runs, with the tiles landing on
  * its surface and settling just inside it — discrete becoming continuous, which is a
  * better event than either end alone and is what makes a cube followable all the way in.
- * Measured: dropping `body1` changes 0 pixels of the emblem frame and 106,056 of the goo
+ * Measured: dropping `geometry_body` changes 0 pixels of the emblem frame and 106,056 of the goo
  * frame, and the goo end's object-to-room separation recovers to 41.7 luma — past T716's
  * 31.6 and past T673's own 38.4, because the gutters the tiles used to show through are
  * now closed by a skin.
@@ -450,7 +450,7 @@ const OBOL_SWEEP_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
  * dissolve.
  *
  * **THE EMBLEM IS NOW MADE OF PARTS** — the owner's own idea, and the strongest one in
- * the note. `segs1` is a second point system whose 720 slabs are laid out by golden angle
+ * the note. `kernel_segs` is a second point system whose 720 slabs are laid out by golden angle
  * (a polar lattice crowds at the centre; a square one leaves a stepped rim), each wearing
  * its own piece of `taiji` and each melting on the same `meltOrder` wave the mass melts
  * on, so a slab lifts exactly as the surface under it goes soft. Two things fall out of
@@ -493,7 +493,7 @@ const OBOL_SWEEP_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
  * What rims in this engine is the environment's Schlick term (T632): `envFresnel` rises
  * to 1 at grazing, and at grazing the reflection vector points away from the camera — so
  * the silhouette samples the equirect at its horizon, (0.5, 0.5), where nothing had ever
- * been put. `rimband1` is that texel — and it is a RIM ON THE GOO and a FILL ON THE
+ * been put. `circle_rimband` is that texel — and it is a RIM ON THE GOO and a FILL ON THE
  * EMBLEM, which is the Fresnel term working rather than a compromise: on the goo frame
  * the silhouette ring moves 45.8 luma against the body's 25.9, and on the emblem frame
  * 14.5 against 19.5. A flat disc facing the camera has almost no grazing surface for a
@@ -507,13 +507,13 @@ const OBOL_SWEEP_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
  *  circle ─┘  │                    │                            │
  *             ▼                    │                            add ── output
  *  pointTube ── pointKernel ── geometry (surface) ─┐             │
- *   (grid,wrapU)   (morph1)        (body1)         │             │
+ *   (grid,wrapU)   (kernel_morph)        (geometry_body)         │             │
  *                                                  ├── render ───┘
  *  pointGrid ── pointKernel ── geometry (instances)│   ▲  ▲
- *   (segpts1)     (segs1)         (shards1)        │   │  └── camera
+ *   (grid_seg)     (kernel_segs)         (geometry_shards)        │   │  └── camera
  *                                                  │   └── 3 lights
  *  pointGrid ── pointKernel ── geometry (surface) ─┘
- *   (sweeppts1)   (sweep1)         (cyc1)
+ *   (grid_sweep)   (kernel_sweep)         (geometry_cyc)
  *
  * ## What it took from §V471, and where
  *
@@ -524,7 +524,7 @@ const OBOL_SWEEP_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
  *    distance to the emblem's dividing curve, which the shape already knows. It decides
  *    the colour, the order the surface melts in AND the order the slabs leave, which is
  *    why they agree without either one being told about the other.
- *  - **§V471.3 / §V477 — gain and bias per band.** One source (`tide1`) drives three
+ *  - **§V471.3 / §V477 — gain and bias per band.** One source (`lfo_tide`) drives three
  *    properties, each through its OWN multiply→add pair rather than one shared knob:
  *    AO intensity 0.55→1.45, environment intensity 1.00→1.85, roughness 0.190→0.085.
  *    Every one rests where the eye expects calm and travels toward the interesting end.
@@ -587,7 +587,7 @@ export const obolDocument = document(
             { position: 1, color: [0.013, 0.013, 0.016, 1] },
           ],
         },
-        { label: "sky1", definitionVersion: 2 },
+        { label: "ramp_sky", definitionVersion: 2 },
       ),
       node(
         "keyBox",
@@ -605,7 +605,7 @@ export const obolDocument = document(
           bgcolor: [0, 0, 0, 1],
           aspectcorrect: false,
         },
-        { label: "keybox1" },
+        { label: "circle_keybox" },
       ),
       node(
         "fillBox",
@@ -619,7 +619,7 @@ export const obolDocument = document(
           bgcolor: [0, 0, 0, 1],
           aspectcorrect: false,
         },
-        { label: "fillbox1" },
+        { label: "circle_fillbox" },
       ),
       /*
        * THE RIM, and the whole point is that it is NOT A LIGHT.
@@ -659,16 +659,16 @@ export const obolDocument = document(
           bgcolor: [0, 0, 0, 1],
           aspectcorrect: false,
         },
-        { label: "rimband1" },
+        { label: "circle_rimband" },
       ),
-      node("studio", "add", [-2080, -740], {}, { label: "studio1" }),
+      node("studio", "add", [-2080, -740], {}, { label: "add_studio" }),
 
       /* ---- the emblem / the goo ---------------------------------------------- */
       node(
         "shell",
         "pointTube", [-2080, 200],
         { count: OBOL_POINTS, cols: OBOL_COLS, rows: OBOL_ROWS, radius: 1, sizeZ: 2 },
-        { label: "shell1" },
+        { label: "tube_shell" },
       ),
       node(
         "morph",
@@ -683,10 +683,10 @@ export const obolDocument = document(
           kernel: OBOL_KERNEL,
         },
         {
-          label: "morph1",
+          label: "kernel_morph",
           parameters: {
-            value1: drivenSlot("tide1", 0),
-            value2: drivenSlot("sheen1", 0.5),
+            value1: drivenSlot("lfo_tide", 0),
+            value2: drivenSlot("lfo_sheen", 0.5),
           },
         },
       ),
@@ -694,14 +694,14 @@ export const obolDocument = document(
         "oil",
         "materialPhong", [-1760, -260],
         { color: [1, 1, 1, 1], specular: [1, 0.97, 0.93, 1], shininess: 300, roughness: 0.190 },
-        { label: "oil1", parameters: { roughness: drivenSlot("glossrest1", 0.190) } },
+        { label: "material_oil", parameters: { roughness: drivenSlot("math_glossrest", 0.190) } },
       ),
       node(
         "body",
         "geometry", [-1440, 200],
-        { mode: "surface", material: "oil1", tint: [1, 1, 1, 1] },
+        { mode: "surface", material: "material_oil", tint: [1, 1, 1, 1] },
         {
-          label: "body1",
+          label: "geometry_body",
           parameters: {
             tint: {
               mode: "map",
@@ -719,7 +719,7 @@ export const obolDocument = document(
         "segPts",
         "pointGrid", [-2080, 1280],
         { count: OBOL_SEG_POINTS, cols: OBOL_SEG_COLS, rows: OBOL_SEG_ROWS, sizeX: 2, sizeY: 2 },
-        { label: "segpts1" },
+        { label: "grid_seg" },
       ),
       node(
         "segs",
@@ -734,13 +734,13 @@ export const obolDocument = document(
           kernel: OBOL_SEG_KERNEL,
         },
         {
-          label: "segs1",
-          /* One clock for one object: `tide1` is the morph and `sheen1` is the melt
+          label: "kernel_segs",
+          /* One clock for one object: `lfo_tide` is the morph and `lfo_sheen` is the melt
              front's spectrum. There is no second kernel to keep in step any more — T716
              deleted it — so this is the whole of the object's timing. */
           parameters: {
-            value1: drivenSlot("tide1", 0),
-            value2: drivenSlot("sheen1", 0.5),
+            value1: drivenSlot("lfo_tide", 0),
+            value2: drivenSlot("lfo_sheen", 0.5),
           },
         },
       ),
@@ -749,7 +749,7 @@ export const obolDocument = document(
         /*
          * INSTANCES mode, and §V617 is why that matters rather than being a draw-call
          * detail: an instanced primitive under a LIT material CASTS, and a points-mode
-         * billboard does not. These tiles wear `oil1`, so the depth sweep takes them and
+         * billboard does not. These tiles wear `material_oil`, so the depth sweep takes them and
          * the occlusion pass finds the gutters between them. That was worth having in
          * T673 and it is LOAD-BEARING after T716, because self-shadowing is now the only
          * thing giving the object a body — there is no mass under the mosaic to be solid
@@ -767,9 +767,9 @@ export const obolDocument = document(
          * field's natural size is 5.059, so the drop is drawn at 0.620 instead.
          */
         "geometry", [-1440, 1280],
-        { mode: "instances", shape: "box", scale: 0.019, material: "oil1", tint: [1, 1, 1, 1] },
+        { mode: "instances", shape: "box", scale: 0.019, material: "material_oil", tint: [1, 1, 1, 1] },
         {
-          label: "shards1",
+          label: "geometry_shards",
           parameters: {
             tint: {
               mode: "map",
@@ -787,7 +787,7 @@ export const obolDocument = document(
         "sweepPts",
         "pointGrid", [-2080, 660],
         { count: OBOL_SWEEP_POINTS, cols: OBOL_SWEEP_COLS, rows: OBOL_SWEEP_ROWS, sizeX: 2, sizeY: 2 },
-        { label: "sweeppts1" },
+        { label: "grid_sweep" },
       ),
       node(
         "sweep",
@@ -800,7 +800,7 @@ export const obolDocument = document(
           ]),
           kernel: OBOL_SWEEP_KERNEL,
         },
-        { label: "sweep1" },
+        { label: "kernel_sweep" },
       ),
       node(
         "plaster",
@@ -812,9 +812,9 @@ export const obolDocument = document(
            else, and 36% of the object's pixels sat within 12 luma of the room. At 46% of
            this albedo the same frame reads 72.5 against 34.3. */
         { color: [0.085, 0.090, 0.108, 1], specular: [0.101, 0.106, 0.133, 1], shininess: 40, roughness: 0.58 },
-        { label: "plaster1" },
+        { label: "material_plaster" },
       ),
-      node("cyc", "geometry", [-1440, 660], { mode: "surface", material: "plaster1", tint: [1, 1, 1, 1] }, { label: "cyc1" }),
+      node("cyc", "geometry", [-1440, 660], { mode: "surface", material: "material_plaster", tint: [1, 1, 1, 1] }, { label: "geometry_cyc" }),
 
       /* ---- lights, camera ----------------------------------------------------- */
       node(
@@ -835,13 +835,13 @@ export const obolDocument = document(
              1.02, and the slabs arc out past both at the half-way point. */
           shadowExtent: 3.2,
         },
-        { label: "key1" },
+        { label: "light_key" },
       ),
       node(
         "fill",
         "light", [-1120, -780],
         { kind: "directional", direction: [-0.85, -0.10, -0.52], color: [0.58, 0.70, 1, 1], intensity: 0.22 },
-        { label: "fill1" },
+        { label: "light_fill" },
       ),
       node(
         "crown",
@@ -855,17 +855,17 @@ export const obolDocument = document(
          */
         "light", [-1120, -360],
         { kind: "point", position: [0, 2.90, -3.40], color: [0.90, 0.95, 1, 1], intensity: 14 },
-        { label: "crown1" },
+        { label: "light_crown" },
       ),
       node(
         "eye",
         "camera", [-1120, 100],
         { eye: [0, 0.78, 3.70], lookAt: [0, -0.10, 0], fov: 42, near: 0.1, far: 40, ortho: false },
         {
-          label: "eye1",
+          label: "camera_eye",
           parameters: {
-            "eye.x": drivenSlot("swing1", 0.50),
-            "eye.y": drivenSlot("lift1", 0.78),
+            "eye.x": drivenSlot("lfo_swing", 0.50),
+            "eye.y": drivenSlot("lfo_lift", 0.78),
           },
         },
       ),
@@ -873,9 +873,9 @@ export const obolDocument = document(
         "shot",
         "render", [-800, 200],
         {
-          scenes: "cyc1 body1 shards1",
-          camera: "eye1",
-          lights: "key1 fill1 crown1",
+          scenes: "geometry_cyc geometry_body geometry_shards",
+          camera: "camera_eye",
+          lights: "light_key light_fill light_crown",
           ambientColor: [0.62, 0.68, 0.84, 1],
           /* DOWN from 0.62 (T673). Ambient is a constant added to every surface whatever
              it faces — it is the one term that cannot describe a shape — and at 0.62 it
@@ -896,10 +896,10 @@ export const obolDocument = document(
           aoQuality: "high",
         },
         {
-          label: "shot1",
+          label: "render_shot",
           parameters: {
-            environmentIntensity: drivenSlot("envrest1", 1.00),
-            aoIntensity: drivenSlot("aorest1", 0.55),
+            environmentIntensity: drivenSlot("math_envrest", 1.00),
+            aoIntensity: drivenSlot("math_aorest", 0.55),
           },
         },
       ),
@@ -912,19 +912,19 @@ export const obolDocument = document(
        * from the picture and the frame came back black with a blown object floating in
        * it. `limit` is the node that was missing — the same pairing E4 records.
        */
-      node("cut", "level", [-480, 660], { blacklevel: 0.55, whitelevel: 1.20, gamma1: 1, contrast: 1, brightness: 1 }, { label: "cut1" }),
-      node("clip", "limit", [-160, 660], { mode: "clamp", low: 0, high: 6, steps: 4 }, { label: "clip1" }),
-      node("halo", "blur", [160, 660], { size: 34, filter: "gaussian", extend: "hold" }, { label: "veil1" }),
-      node("glow", "add", [440, 200], {}, { label: "bloom1" }),
-      node("out", "output", [720, 200], {}, { label: "out1" }),
+      node("cut", "level", [-480, 660], { blacklevel: 0.55, whitelevel: 1.20, gamma1: 1, contrast: 1, brightness: 1 }, { label: "level_cut" }),
+      node("clip", "limit", [-160, 660], { mode: "clamp", low: 0, high: 6, steps: 4 }, { label: "limit_clip" }),
+      node("halo", "blur", [160, 660], { size: 34, filter: "gaussian", extend: "hold" }, { label: "blur_veil" }),
+      node("glow", "add", [440, 200], {}, { label: "add_bloom" }),
+      node("out", "output", [720, 200], {}, { label: "output1" }),
 
       /* ---- the value graph ---------------------------------------------------- */
-      node("tide", "lfo", [-2400, 1560], { shape: "sine", frequency: 0.062, amplitude: 0.5, offset: 0.5, phase: 0.75 }, { label: "tide1" }),
-      node("sheen", "lfo", [-2400, 1920], { shape: "sine", frequency: 0.011, amplitude: 0.5, offset: 0.5, phase: 0 }, { label: "sheen1" }),
-      node("swing", "lfo", [-2400, 2280], { shape: "sine", frequency: 0.035, amplitude: 1.35, offset: 0, phase: 0.06 }, { label: "swing1" }),
-      node("lift", "lfo", [-2400, 2640], { shape: "sine", frequency: 0.029, amplitude: 0.30, offset: 0.78, phase: 0.0 }, { label: "lift1" }),
-      node("aoswing", "valueMath", [-2080, 1560], { operation: "multiply", operand: 0.90 }, { label: "aoswing1" }),
-      node("aorest", "valueMath", [-1760, 1560], { operation: "add", operand: 0.55 }, { label: "aorest1" }),
+      node("tide", "lfo", [-2400, 1560], { shape: "sine", frequency: 0.062, amplitude: 0.5, offset: 0.5, phase: 0.75 }, { label: "lfo_tide" }),
+      node("sheen", "lfo", [-2400, 1920], { shape: "sine", frequency: 0.011, amplitude: 0.5, offset: 0.5, phase: 0 }, { label: "lfo_sheen" }),
+      node("swing", "lfo", [-2400, 2280], { shape: "sine", frequency: 0.035, amplitude: 1.35, offset: 0, phase: 0.06 }, { label: "lfo_swing" }),
+      node("lift", "lfo", [-2400, 2640], { shape: "sine", frequency: 0.029, amplitude: 0.30, offset: 0.78, phase: 0.0 }, { label: "lfo_lift" }),
+      node("aoswing", "valueMath", [-2080, 1560], { operation: "multiply", operand: 0.90 }, { label: "math_aoswing" }),
+      node("aorest", "valueMath", [-1760, 1560], { operation: "add", operand: 0.55 }, { label: "math_aorest" }),
       /*
        * BACK TO THE AUTHORED VALUES (T636), and the round trip is the story. These were
        * 1.00/0.85; T632's Fresnel removed the head-on reflection from the dielectric
@@ -936,10 +936,10 @@ export const obolDocument = document(
        * at 17.2 against the 17.3 that was judged (and the old 7× frame was blown to
        * chalk — the fill reads as oil where the re-exposure read as plaster).
        */
-      node("envswing", "valueMath", [-2080, 1920], { operation: "multiply", operand: 0.85 }, { label: "envswing1" }),
-      node("envrest", "valueMath", [-1760, 1920], { operation: "add", operand: 1.00 }, { label: "envrest1" }),
-      node("glossswing", "valueMath", [-2080, 2280], { operation: "multiply", operand: -0.105 }, { label: "glossswing1" }),
-      node("glossrest", "valueMath", [-1760, 2280], { operation: "add", operand: 0.190 }, { label: "glossrest1" }),
+      node("envswing", "valueMath", [-2080, 1920], { operation: "multiply", operand: 0.85 }, { label: "math_envswing" }),
+      node("envrest", "valueMath", [-1760, 1920], { operation: "add", operand: 1.00 }, { label: "math_envrest" }),
+      node("glossswing", "valueMath", [-2080, 2280], { operation: "multiply", operand: -0.105 }, { label: "math_glossswing" }),
+      node("glossrest", "valueMath", [-1760, 2280], { operation: "add", operand: 0.190 }, { label: "math_glossrest" }),
     ],
     [
       edge("e-sky-studio", ["sky", "out"], ["studio", "in1"]),

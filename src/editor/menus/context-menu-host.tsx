@@ -114,7 +114,7 @@ function MenuRow({ item }: { item: MenuItem }) {
   const body = (
     <>
       <span className={styles.label}>{item.label}</span>
-      {display === null || item.command === undefined ? null : (
+      {display === null || item.command === undefined || item.noShortcut === true ? null : (
         <ContextMenuShortcut>{display}</ContextMenuShortcut>
       )}
       {available ? null : <span className={styles.tag}>unavailable</span>}

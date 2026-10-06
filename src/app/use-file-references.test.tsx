@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { flatDocument } from "@compiler/test-support.ts";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFileReference } from "@domain/media/file-reference.ts";
@@ -60,7 +61,7 @@ function graph(...nodes: GraphNode[]): GraphDocument {
 describe("retained file runtime projection", () => {
   it("keeps the exact graph identity and legacy URLs when no retained references exist", () => {
     const document = graph(node("movie", "movieFileIn", "https://example.test/clip.mp4"));
-    const view = renderHook(({ graph }) => useFileReferences(graph), { initialProps: { graph: document } });
+    const view = renderHook(({ graph }) => useFileReferences(flatDocument(graph)), { initialProps: { graph: document } });
     expect(view.result.current.graph).toBe(document);
     expect(view.result.current.diagnostics).toEqual([]);
     expect(broker.acquire).not.toHaveBeenCalled();
@@ -74,7 +75,7 @@ describe("retained file runtime projection", () => {
 
   it("projects readiness, permission, and relink transitions without changing stored identities", async () => {
     const document = graph({ ...node("movie", "movieFileIn", CLIP), label: "Movie 1" });
-    const view = renderHook(() => useFileReferences(document));
+    const view = renderHook(() => useFileReferences(flatDocument(document)));
     expect(view.result.current.graph.nodes["movie"]!.parameters["file"]).toBe("");
     expect(view.result.current.diagnostics[0]).toMatchObject({ code: "asset.reference.pending", nodeId: "movie" });
     act(() => broker.publish(CLIP, { kind: "permission", message: "File permission required." }));
@@ -105,7 +106,7 @@ describe("retained file runtime projection", () => {
     } };
     const document = graph({ ...node("movie", "movieFileIn", slot), resolution: { mode: "fixed", width: 320, height: 180 } },
       node("untouched", "noise", ""));
-    const view = renderHook(() => useFileReferences(document));
+    const view = renderHook(() => useFileReferences(flatDocument(document)));
     act(() => broker.publish(CLIP, { kind: "ready", url: "blob:slot" }));
     const projected = view.result.current.graph;
     expect(projected.nodes["movie"]!.parameters["file"]).toEqual({ ...slot, bindings: {
@@ -122,7 +123,7 @@ describe("retained file runtime projection", () => {
     const movie = node("outer/movie", "movieFileIn", CLIP);
     const audio = node("outer/inner/audio", "audioFileIn", slotFromValue(CLIP));
     const document = graph(movie, audio);
-    const view = renderHook(({ graph }) => useFileReferences(graph), { initialProps: { graph: document } });
+    const view = renderHook(({ graph }) => useFileReferences(flatDocument(graph)), { initialProps: { graph: document } });
     expect(broker.acquire).toHaveBeenCalledOnce();
     act(() => broker.publish(CLIP, { kind: "ready", url: "blob:shared" }));
     expect(Object.keys(view.result.current.graph.nodes)).toEqual([movie.id, audio.id]);
@@ -143,7 +144,7 @@ describe("retained file runtime projection", () => {
   it("keeps unchanged leases on graph edits, adds only new references, and releases on unmount", () => {
     const movie = node("movie", "movieFileIn", CLIP);
     const document = graph(movie);
-    const view = renderHook(({ graph }) => useFileReferences(graph), { initialProps: { graph: document } });
+    const view = renderHook(({ graph }) => useFileReferences(flatDocument(graph)), { initialProps: { graph: document } });
     const edited = graph({ ...movie, parameters: { ...movie.parameters, speed: 2 } });
     view.rerender({ graph: edited });
     expect(broker.acquire).toHaveBeenCalledOnce();
@@ -158,7 +159,7 @@ describe("retained file runtime projection", () => {
 
   it("reacquires metadata changes under the same asset ID using the new canonical URI", () => {
     const renamed = createFileReference("clip-id", "video", "Renamed clip.mp4");
-    const view = renderHook(({ graph }) => useFileReferences(graph), {
+    const view = renderHook(({ graph }) => useFileReferences(flatDocument(graph)), {
       initialProps: { graph: graph(node("movie", "movieFileIn", CLIP)) },
     });
     view.rerender({ graph: graph(node("movie", "movieFileIn", renamed)) });
@@ -171,7 +172,7 @@ describe("retained file runtime projection", () => {
   it("reports broken retained references and broker errors on the exact field", () => {
     const broken = node("broken", "movieFileIn", "loom-file:not-a-valid-reference");
     const document = graph(broken, node("mesh", "meshFileIn", MESH));
-    const view = renderHook(() => useFileReferences(document));
+    const view = renderHook(() => useFileReferences(flatDocument(document)));
     act(() => broker.publish(MESH, { kind: "error", message: "Reading failed." }));
     expect(view.result.current.graph.nodes[broken.id]!.parameters["file"]).toBe("");
     expect(view.result.current.graph.nodes["mesh"]!.parameters["file"]).toBe("");

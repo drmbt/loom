@@ -31,7 +31,7 @@
       "alembic": {
         "definitionVersion": 1,
         "id": "alembic",
-        "label": "alembic1",
+        "label": "wgsl_alembic",
         "parameters": {
           "baseFreq": 3,
           "coil": 0.6,
@@ -71,7 +71,7 @@
       "out": {
         "definitionVersion": 1,
         "id": "out",
-        "label": "out1",
+        "label": "output1",
         "parameters": {
           "toneMap": "none"
         },
@@ -84,7 +84,7 @@
       "palette": {
         "definitionVersion": 2,
         "id": "palette",
-        "label": "palette1",
+        "label": "ramp_palette",
         "parameters": {
           "interp": "smooth",
           "period": 1,

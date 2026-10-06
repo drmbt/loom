@@ -4,7 +4,7 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import { OPEN_HELP_COMMAND } from "@editor/help/command.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { GraphDocument } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { effectiveParameterSchema } from "@domain/parameters/resolve.ts";
@@ -43,7 +43,7 @@ import { ComponentSection, componentSectionParameters } from "./component-sectio
 import type { FlattenedGraph } from "@compiler/index.ts";
 import { PresetBankSection, presetBankSectionParameters } from "./preset-bank-section.tsx";
 import { CueListSection, cueListSectionParameters } from "./cue-list-section.tsx";
-import { CUE_LIST_NODE_TYPE, PRESET_STATE_KEYS, bankViewOf, followsTimeline, presetCatalogueHolderFor } from "@domain/presets/index.ts";
+import { CUE_LIST_NODE_TYPE, NO_MORPHS, PRESET_STATE_KEYS, bankViewOf, followsTimeline, presetCatalogueHolderFor } from "@domain/presets/index.ts";
 import { isComponentNodeType } from "@domain/components/component-type.ts";
 import { supportsChannelMask } from "@domain/graph/channel-mask.ts";
 import { LASER_OUT_TYPE } from "@nodes/definitions/laser-out.ts";
@@ -57,9 +57,11 @@ import { parseComponentNodeType } from "@domain/components/component-type.ts";
 import type { ComponentRegistryView } from "@domain/components/index.ts";
 import { resolveParameters } from "./parameter-resolver.ts";
 import {
-  createParameterReadOptions,
+  NO_INSTANCES,
+  parameterReadOptions,
   nodeReferenceMembers,
   nodeReferenceNames,
+  type InstanceChannelSources,
 } from "@domain/parameters/index.ts";
 import type { ExpressionReferenceSource } from "@ui/controls/expression-completion.ts";
 import { resolvedCommonFor } from "./resolution.ts";
@@ -114,6 +116,15 @@ export interface InspectorProjectSettings {
 
 export interface InspectorProps {
   bus: LoomBus;
+  /**
+   * T1652b: the document, from a host that already decides WHEN this panel has something
+   * new to show (`useLiveGraph` and `inspectorShows` in the app: every structural revision,
+   * and a value on a node it inspects or that node reads). With it the panel renders when
+   * its host hands it another document, and holds no subscription of its own. Without it
+   * (a test, an embed) it subscribes to the bus's store and renders on every revision, as
+   * it always did.
+   */
+  graph?: GraphDocument;
   /** Actor/project/capabilities for every command the pane sends (§V30). Memoise it. */
   context: InvocationContext;
   nodeId: NodeId | null;
@@ -272,11 +283,21 @@ export interface InspectorProps {
    * and the registry this pane already holds.
    */
   channelNames?: ((nodeName: string) => readonly string[]) | undefined;
+  /**
+   * T1485b: the component instances `op('<instance>').chan.<c>` can name — each instance
+   * label and the inner labels its value outputs publish under, off the flattening the
+   * compile reads through. Handed to the reader AND the completion menu, so what the menu
+   * offers under an instance is what the reader accepts (§V150). Absent, an instance's
+   * channels neither read nor complete, as before.
+   */
+  instanceChannels?: (() => InstanceChannelSources) | undefined;
 }
 
 /** §V16: <= 10 Hz. Shared with `TimelineReadout`'s cap, for the same reason. */
 export const LIVE_VALUE_INTERVAL_MS = 100;
 const noInstanceSubscription = (): (() => void) => () => {};
+/** T1652b: the host hands the document over (`InspectorProps.graph`), so there is nothing to listen for. */
+const noGraphSubscription = (): (() => void) => () => {};
 const noInstanceGraph = (): GraphDocument | null => null;
 
 /**
@@ -348,6 +369,7 @@ export function Inspector({
   channels,
   latestFrame,
   channelNames,
+  instanceChannels,
   audioStatus,
   cameraStatus,
   screenCapture,
@@ -358,12 +380,14 @@ export function Inspector({
   components,
   flattened,
   instanceParameters,
+  graph: hostGraph,
 }: InspectorProps) {
-  const graph = useSyncExternalStore<GraphDocument>(
-    bus.store.subscribe,
+  const ownGraph = useSyncExternalStore<GraphDocument>(
+    hostGraph === undefined ? bus.store.subscribe : noGraphSubscription,
     bus.store.getGraph,
     bus.store.getGraph,
   );
+  const graph = hostGraph ?? ownGraph;
   // Parent edits do not notify the shared definition's authoring store.
   const instanceGraph = useSyncExternalStore(
     instanceParameters?.bus.store.subscribe ?? noInstanceSubscription,
@@ -416,21 +440,22 @@ export function Inspector({
    * `expression-references.test.tsx` holds that line: rename a node, type one character,
    * and the new name is offered.
    */
-  const sourceRef = useRef({ graph, registry: bus.registry, channelNames });
-  sourceRef.current = { graph, registry: bus.registry, channelNames };
+  const sourceRef = useRef({ graph, registry: bus.registry, channelNames, instanceChannels });
+  sourceRef.current = { graph, registry: bus.registry, channelNames, instanceChannels };
   const references = useMemo<ExpressionReferenceSource>(
     () => ({
       get names() {
         return nodeReferenceNames(sourceRef.current.graph);
       },
       membersOf: (name, path) => {
-        const { graph: current, registry, channelNames: channelsOf } = sourceRef.current;
+        const { graph: current, registry, channelNames: channelsOf, instanceChannels: instancesOf } = sourceRef.current;
         return nodeReferenceMembers(
           {
             graph: current,
             schemaOf: (target) =>
               effectiveParameterSchema(registry.get(target.type), target.parameters),
             ...(channelsOf === undefined ? {} : { channelsOf }),
+            ...(instancesOf === undefined ? {} : { instances: instancesOf() }),
           },
           name,
           path,
@@ -625,7 +650,21 @@ export function Inspector({
    * here is the panel's own question — which graph, which moment.
    */
   const readOptionsAt = (frame?: FrameEvaluationInput) =>
-    createParameterReadOptions({ graph: instanceRead?.graph ?? graph, registry: bus.registry, channels, frame });
+    parameterReadOptions({
+      // §T1552b: an instance's inner node reads its flattening; the panel otherwise reads the
+      // document AS AUTHORED, on purpose (the node the user selected, by its authored id).
+      graph: instanceRead?.graph ?? authoredGraph(graph),
+      registry: bus.registry,
+      channels,
+      frame,
+      /*
+       * §T1551b, said rather than left out: the panel reads the STORED document, so no
+       * fade (T1525b) — and the flattening's instances, so `op('<instance>').chan.<c>`
+       * reads here as it does in the plan (T1485b). No `instanceChannels` (a test mount
+       * with no value graph): no instance to name.
+       */
+      flattening: { morphs: NO_MORPHS, instanceChannels: instanceChannels?.() ?? NO_INSTANCES },
+    });
   const readOptions = readOptionsAt();
 
   /**

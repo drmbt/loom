@@ -1,8 +1,8 @@
 import { settings, node, edge, graph, document, expressionSlot } from "./builders.ts";
 
 /** T1279's idiom: continuous properties read the RANK, drums read the COUNTS. */
-const LEVELS = (key: string): string => `op('lvl1').chan.${key}`;
-const HITS = (key: string): string => `op('hit1').chan.${key}`;
+const LEVELS = (key: string): string => `op('select_lvl').chan.${key}`;
+const HITS = (key: string): string => `op('select_hit').chan.${key}`;
 import { SANCTUM_WGSL } from "../shaders/sanctum.wgsl.ts";
 
 /**
@@ -17,7 +17,7 @@ import { SANCTUM_WGSL } from "../shaders/sanctum.wgsl.ts";
  * "make it look right". Both choices are theirs, made twice, and they are why this file
  * sits beside E67 rather than beside E13.
  *
- *   sky1(solid) ─► temple1(customWgsl: the nave marcher) ─► out1(output)
+ *   solid_sky(solid) ─► wgsl_temple(customWgsl: the nave marcher) ─► output1(output)
  *
  * ## The shape of the piece
  *
@@ -55,7 +55,7 @@ export const sanctumDocument = document(
     [
       /* The marcher writes every pixel, so its input is a formality — but a `customWgsl`
          node takes one, and a black solid is the honest "nothing comes in here". */
-      node("sky", "solid", [-600, 0], { color: [0, 0, 0, 1] }, { label: "sky1" }),
+      node("sky", "solid", [-600, 0], { color: [0, 0, 0, 1] }, { label: "solid_sky" }),
       /* §V920/§T1184: every reflected value is STORED rather than inherited from the
          shader's own `// @default` lines. A declared default is a fallback for a node
          somebody just placed; a shipped example that leans on one moves the day the
@@ -232,7 +232,7 @@ export const sanctumDocument = document(
         reflectFade: 26,
         steps: 72,
       }, {
-        label: "temple1",
+        label: "wgsl_temple",
         parameters: {
           /* T1279's shape: the conduits FIRE on the kick. A count is 1 on the frame the
              drum lands and 0 between, so a bare gain on it rests at ZERO — the file with
@@ -292,16 +292,16 @@ export const sanctumDocument = document(
           exposure: expressionSlot(`1.22 + 0.26 * ${LEVELS("low")}`, 1.35),
         },
       }),
-      node("out", "output", [0, 0], { toneMap: "filmic" }, { label: "out1" }),
+      node("out", "output", [0, 0], { toneMap: "filmic" }, { label: "output1" }),
 
       /* ─── THE AUDIO ────────────────────────────────────────────────────────────────
        *
        * The catalogue's fixed drive shape: a deterministic pattern at index 0 so the file
        * is audio-reactive on open with no track at all (§V363), and a real file at index 1
-       * one drop away. Everything downstream reads `source1`, so swapping the source
+       * one drop away. Everything downstream reads `switch_source`, so swapping the source
        * changes nothing else.
        *
-       * ONE ANALYSIS INSTANCE, two bags — `lvl1` for the ranked levels, `hit1` for the
+       * ONE ANALYSIS INSTANCE, two bags — `select_lvl` for the ranked levels, `select_hit` for the
        * drum counts — which is the idiom §T1234 and §T1271 arrived at the hard way. The
        * split is the finding: a percentile cannot spread a tie, so a COUNT through a rank
        * rests at its mid and a beat becomes a permanent half-lit nothing.
@@ -310,22 +310,22 @@ export const sanctumDocument = document(
        * here unchanged: the move IS the piece's pace, and modulating it makes the walk a
        * limp rather than a groove.
        */
-      node("music1", "audioPattern", [-1200, 400], { amount: 1, bpm: 112 }, { label: "music1" }),
+      node("music1", "audioPattern", [-1200, 400], { amount: 1, bpm: 112 }, { label: "pattern_music" }),
       node("track1", "audioFileIn", [-1200, 624], {
         cue: false, cuePoint: 0, extend: "loop", file: "", monitor: true, play: true,
         playMode: "freeRun", speed: 1, trimEnd: 0, trimStart: 0, volume: 1,
-      }, { label: "track1" }),
-      node("source1", "valueSwitch", [-960, 510], { index: 0 }, { label: "source1" }),
+      }, { label: "audiofile_track" }),
+      node("source1", "valueSwitch", [-960, 510], { index: 0 }, { label: "switch_source" }),
       node("analysis1", "component:audioAnalysis@1", [-720, 510], {
         /* hitDecay 420 rather than 250 (T1304c): a count's fall is the ONLY shaping a hit
            lane has, and 250 ms puts the whole gesture inside fifteen frames. "Too blinky
            blinky" is a complaint about that number as much as about the gains above it. */
         envelope: 0.08, window: 16, settle: 0.15, hitDecay: 420,
-      }, { label: "analysis1" }),
+      }, { label: "audioanalysis1" }),
       /* T1302b: a Select at `*` passes every channel through unchanged — a Limit at 0..1
          would clip the tempo claims the hits bag also carries. */
-      node("lvl1", "valueSelect", [-480, 420], { channels: "*" }, { label: "lvl1" }),
-      node("hit1", "valueSelect", [-480, 604], { channels: "*" }, { label: "hit1" }),
+      node("lvl1", "valueSelect", [-480, 420], { channels: "*" }, { label: "select_lvl" }),
+      node("hit1", "valueSelect", [-480, 604], { channels: "*" }, { label: "select_hit" }),
     ],
     [
       edge("e-sky-temple", ["sky", "out"], ["temple", "input"]),

@@ -17,7 +17,7 @@ import { linearToSrgb, srgbToLinear } from "../runtime/export/pixel-format.ts";
  * Every comparison reads the output's half floats as rendered, not display bytes. The
  * output target is DISPLAY-ENCODED rgba16float, and near 1 that encoding folds several
  * coverages into one half (0.999 and 0.9995 both land on 0.99951), so the shape is never read
- * off its own colour: coverage is `cut1`'s ALPHA, which the output leaves linear. The solid
+ * off its own colour: coverage is `mask_cut`'s ALPHA, which the output leaves linear. The solid
  * region is where that alpha is at its maximum w — one half-float step under 1 where the
  * blur's weights sum — and there the frame is asserted as the mix `inner·w + outer·(1 − w)`
  * in linear light, re-encoded, to the half-float rounding of the result (§V147: derived,
@@ -31,7 +31,7 @@ beforeAll(async () => {
 const WIDTH = 320;
 const HEIGHT = 180;
 
-/** The shipped graph with the output fed from `from` instead of `wall1`, and `index` overrides. */
+/** The shipped graph with the output fed from `from` instead of `over_wall`, and `index` overrides. */
 function variant(from: string, indices: Record<string, number> = {}): GraphDocument {
   const graph = structuredClone(azulejoDocument.graph);
   graph.edges["e18"] = { ...graph.edges["e18"]!, source: { nodeId: from, portId: "out" } };
@@ -55,7 +55,7 @@ async function render(graph: GraphDocument): Promise<Float64Array> {
   return Float64Array.from(bits, decodeHalf);
 }
 
-/** The shape's coverage, read as `cut1`'s alpha: where it is at its maximum, and where it is 0. */
+/** The shape's coverage, read as `mask_cut`'s alpha: where it is at its maximum, and where it is 0. */
 async function maskRegions(): Promise<{ solid: number[]; empty: number[]; w: number }> {
   const cut = await render(variant("cut"));
   let w = 0;
@@ -117,7 +117,7 @@ describe("E80 Azulejo — the mask chooses the layer (T1486b)", () => {
     expect(unavailable).toBeUndefined();
     const { solid, empty } = await maskRegions();
     const city = await render(variant("wall"));
-    // inner1 index 1 is the empty Movie File In: black until a file is loaded.
+    // switch_inner index 1 is the empty Movie File In: black until a file is loaded.
     const clip = await render(variant("wall", { inner: 1 }));
     expect(differing(city, clip, empty)).toBe(0);
     expect(differing(city, clip, solid)).toBeGreaterThan(solid.length * 0.9);
@@ -125,7 +125,7 @@ describe("E80 Azulejo — the mask chooses the layer (T1486b)", () => {
 
   it("with an empty shape the wall is the outer layer alone", async () => {
     expect(unavailable).toBeUndefined();
-    // The shape cut to `size1`, the black Solid: nobody in front of the camera. (Not the
+    // The shape cut to `solid_size`, the black Solid: nobody in front of the camera. (Not the
     // Matte branch — headless, the camera's understudy is a picture the model finds a subject in.)
     const graph = variant("wall");
     graph.edges["e13"] = { ...graph.edges["e13"]!, source: { nodeId: "size", portId: "out" } };

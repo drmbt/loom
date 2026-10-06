@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { flatDocument } from "@compiler/test-support.ts";
 import { graph, node } from "../examples/documents/builders.ts";
 import { slotFromValue } from "../domain/parameters/slots.ts";
 import type { GraphDocument } from "../domain/types/graph.ts";
@@ -12,7 +13,7 @@ const REGISTRY = createNodeRegistry(allNodeDefinitions).view();
 const BROWSER: HostFacts = { shell: "browser", helper: "unknown", os: "macos" };
 const MAC_DESKTOP: HostFacts = { shell: "desktop", helper: "paired", os: "macos" };
 
-const on = (document: GraphDocument, host: HostFacts) => requirementDiagnostics(document, REGISTRY, host);
+const on = (document: GraphDocument, host: HostFacts) => requirementDiagnostics(flatDocument(document), REGISTRY, host);
 
 /**
  * T1340b — THE NODE CARRIES ITS OWN LIMITATION.

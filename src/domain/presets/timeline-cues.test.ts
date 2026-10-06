@@ -21,7 +21,9 @@ import {
   DOCUMENT_STRUCTURE,
   planTimelineCues,
   timelineCuePosition,
+  timelineCueWarnings,
 } from "./timeline-cues.ts";
+import { testRead } from "../parameters/test-support.ts";
 
 /**
  * T1508b — A CUE LIST THAT FOLLOWS THE TIMELINE, as the resolver reads it: values that are
@@ -93,7 +95,7 @@ const frame = (n: number, extra: Partial<FrameEvaluationInput> = {}): FrameEvalu
 function valueAt(graph: GraphDocument, nodeId: NodeId, key: string, n: number, extra: Partial<FrameEvaluationInput> = {}): unknown {
   const target = graph.nodes[nodeId] as GraphNode;
   const morphs = buildMorphIndex({ document: graph, registry });
-  return resolveParameters(target, registry.get(target.type), { frame: frame(n, extra), morphs }).values[key];
+  return resolveParameters(target, registry.get(target.type), testRead({ frame: frame(n, extra), morphs })).values[key];
 }
 const brightness = (graph: GraphDocument, n: number, extra: Partial<FrameEvaluationInput> = {}): unknown => valueAt(graph, "grade", "brightness", n, extra);
 
@@ -364,6 +366,51 @@ describe("T1508b — what covers a key, and what does not", () => {
   });
 });
 
+/**
+ * §T1559b (2) — a following list fires a bank whose Morph is DRIVEN. Its timed cues read the
+ * Morph stored, GO reads it live; the plan says so. What the compile then puts in the
+ * Problems list, and the fade's stored seconds in the uniform the GPU reads, are
+ * `compiler/timeline-cue-problems.test.ts`. Held here: the warning as the list's OWN surfaces
+ * read it (`timelineCueWarnings`: the inspector section and `cue.list`).
+ */
+describe("§T1559b (2) — a driven Morph on a bank a following list fires", () => {
+  const drivenMorph = {
+    mode: "expression",
+    bindings: { static: { kind: "static", value: 2 }, expression: { kind: "expression", source: "op('k1').chan.value" } },
+  } as const;
+  const stage = (follow: "live" | "timeline"): GraphDocument =>
+    doc([
+      node("grade", "level", "level1", { brightness: 0.2 }),
+      presetBankNode("looks", "looks", "level1", LOOKS, { morph: drivenMorph, curve: "linear" }),
+      list(
+        "show",
+        "show",
+        [
+          { name: "A", bank: "looks", preset: "bright", at: 1 },
+          { name: "B", bank: "looks", preset: "mid", at: 4 },
+        ],
+        follow,
+      ),
+    ]);
+
+  it("is one warning about the list (no cue), filed on the bank, and the fade is the stored 2 s", () => {
+    const graph = stage("timeline");
+    const said = timelineCueWarnings(graph, registry, "show");
+    expect(said.map((warning) => [warning.list, warning.cue, warning.diagnostic.code, warning.diagnostic.nodeId])).toEqual([
+      ["show", null, "cue.timeline.drivenMorph", "looks"],
+    ]);
+    expect(said[0]?.diagnostic.message).toContain('Cue list "show" follows the timeline and fires bank "looks", whose Morph is driven (expression)');
+    expect(said[0]?.diagnostic.message).toContain("the stored value, 2 s");
+    expect(brightness(graph, 45)).toBe(mix(0.2, 0.8, 0.25));
+  });
+
+  it("the same list switched to live says nothing: GO reads the driver", () => {
+    const graph = stage("live");
+    expect(timelineCueWarnings(graph, registry, "show")).toEqual([]);
+    expect(planTimelineCues(graph, registry).warnings).toEqual([]);
+  });
+});
+
 describe("T1508b — precedence: the timeline wins on what it covers (owner ruling 1)", () => {
   it("a fader on a covered key shows before the first cue and NOT once the list has it — and it stays stored", () => {
     const moved = show({ brightness: 0.6 });
@@ -426,7 +473,7 @@ describe("T1508b — inside a component: a timed cue on a look's published knob 
     const flattened = flattenComponents({ graph, registry, components: system.components.view() });
     const inner = Object.values(flattened.graph.nodes).find((each) => each?.type === "level") as GraphNode;
     const at = (n: number): unknown =>
-      resolveParameters(inner, registry.get("level"), { frame: frame(n), morphs: flattened.morphs }).values["brightness"];
+      resolveParameters(inner, registry.get("level"), testRead({ frame: frame(n), morphs: flattened.morphs })).values["brightness"];
     expect(at(15)).toBe(0.2);
     expect(at(45)).toBe(0.5);
     expect(at(60)).toBe(0.8);

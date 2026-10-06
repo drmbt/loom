@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import type { GraphDocument } from "../../domain/types/graph.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
+import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 import { valueSwitchNode } from "./value-graph-nodes.ts";
@@ -72,7 +74,7 @@ function switchGraph(
 
 function evaluated(index: number, wired: readonly string[], extra: Record<string, unknown> = {}) {
   const session = createValueGraphSession(registry);
-  return session.evaluate(switchGraph(index, wired, extra), frameAt(0));
+  return session.evaluate(flatDocument(switchGraph(index, wired, extra)), frameAt(0), { flattening: NO_FLATTENING });
 }
 
 function pickedBag(
@@ -231,7 +233,7 @@ describe("valueSwitch crossfade (T1054)", () => {
 
     // `constant` publishes {value}; `mouse` publishes {x, y, buttons}. No channel is shared,
     // so EVERY channel here is an orphan and each one carries its own side's weight.
-    const result = session.evaluate(graph, frameAt(0), { pointer: { x: 0.5, y: 0.25, buttons: 1 } });
+    const result = session.evaluate(flatDocument(graph), frameAt(0), { flattening: NO_FLATTENING, pointer: { x: 0.5, y: 0.25, buttons: 1 } });
     expect(result.diagnostics).toEqual([]);
     expect({ ...(result.byName.get("pick1") ?? {}) }).toEqual({
       value: 8 * 0.75, // 6 — source A's channel, three quarters of the way out

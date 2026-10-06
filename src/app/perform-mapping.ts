@@ -1,9 +1,10 @@
 import { synthesizeSourceReferenceEdges } from "@compiler/source-reference-edges.ts";
 import { bypassPassthroughPorts } from "@domain/graph/bypass.ts";
-import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
-import type { ChannelResolver, ParameterMorphs, ResolvedParameters } from "@domain/parameters/resolve.ts";
+import { parameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import type { ResolvedParameters } from "@domain/parameters/resolve.ts";
+import type { LiveParameterReads } from "@domain/parameters/index.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { FlatOrAuthoredGraph, GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import { applyHomography, cornerPinNode, cornerPinQuads, invertMat3, outputToSquare, quadDegeneracy, squareToQuad } from "@nodes/definitions/corner-pin.ts";
@@ -209,13 +210,12 @@ function walkMappingTargets(
 }
 
 /**
- * T1525b's live reads, as a perform window and the viewer pane hold them: the compile's
- * channel resolver, the preset morphs in flight and the frame the loop last rendered.
- * Getters, read at the moment of a resolve; no frame yet is the zero frame.
+ * T1525b's live reads, as a perform window and the viewer pane hold them: the live read
+ * world (§T1551b: the compile's channel resolver and the runtime's flattening) and the
+ * frame the loop last rendered. Getters, read at the moment of a resolve; no frame yet is
+ * the zero frame.
  */
-export interface LiveReads {
-  readonly channels: () => ChannelResolver | undefined;
-  readonly morphs: () => ParameterMorphs | undefined;
+export interface LiveReads extends LiveParameterReads {
   readonly frame: () => FrameEvaluationInput | undefined;
 }
 
@@ -228,17 +228,17 @@ export interface LiveReads {
  */
 export function liveParameters(
   node: GraphNode,
-  graph: GraphDocument,
+  graph: FlatOrAuthoredGraph,
   registry: NodeRegistryView,
   reads: LiveReads,
   at?: FrameEvaluationInput,
 ): ResolvedParameters {
-  const options = createParameterReadOptions({
+  const options = parameterReadOptions({
     graph,
     registry,
     frame: at ?? reads.frame(),
     channels: reads.channels(),
-    morphs: reads.morphs(),
+    flattening: reads.flattening(),
   });
   return resolveParameters(node, registry.get(node.type), options);
 }

@@ -4,12 +4,14 @@ import { liveClock } from "./live-clock.ts";
 import { componentNodeType, createComponentSystem } from "../components/index.ts";
 import { flattenComponents } from "../../compiler/flatten.ts";
 import { createValueGraphSession } from "../channels/value-graph.ts";
+import { flatDocument } from "../../compiler/test-support.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
-import type { GraphDocument } from "../types/graph.ts";
+import type { FlatGraph, GraphDocument } from "../types/graph.ts";
 import { offlineTransport } from "../../runtime/execution/offline-transport.ts";
 import { FRAME_RATE_NAMES, scopeFromFrame, evaluateExpression } from "../expressions/evaluate.ts";
-import { resolveParameters } from "../parameters/resolve.ts";
+import { NO_FLATTENING, type FlatteningReads } from "../parameters/node-references.ts";
+import { STORED_READ, resolveParameters } from "../parameters/resolve.ts";
 import { dispatchFrameUniforms, sharedUniformsFromFrame, SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { generateKernelModule, generateSpawnHookModule } from "../../points/codegen.ts";
 import { packAttributes } from "../../points/packing.ts";
@@ -252,7 +254,7 @@ const SURFACES: readonly ClockSurface[] = [
   {
     name: "frameless parameter resolve — Text raster, component instance values (T489)",
     read: () => {
-      const resolved = resolveParameters(ABSTIME_NODE, ABSTIME_DEFINITION);
+      const resolved = resolveParameters(ABSTIME_NODE, ABSTIME_DEFINITION, STORED_READ);
       const value = resolved.values["amount"];
       if (typeof value !== "number") throw new Error("frameless resolve did not produce a number");
       // Constant by construction (there IS no frame here), and constant is non-decreasing.
@@ -746,8 +748,15 @@ describe("B98 — the LFO is free-running, so it laps seamlessly at ANY frequenc
 describe("T615 — a free-running node inside a COMPONENT laps like one at the root (§V449)", () => {
   const LFO_VALUES = { shape: "saw", frequency: 0.3, amplitude: 1, offset: 0, phase: 0 };
 
+  /** What the value graph is handed: the flat graph, and what its flattening knows. */
+  interface Lapping {
+    readonly graph: FlatGraph;
+    readonly flattening: FlatteningReads;
+    readonly registry: NodeRegistryView;
+  }
+
   /** `wob` alone, exposed as a component with nothing else in it. */
-  function componentedLfo(): { graph: GraphDocument; registry: NodeRegistryView } {
+  function componentedLfo(): Lapping {
     const nodes = createNodeRegistry(allNodeDefinitions).view();
     const system = createComponentSystem(nodes);
     const inner: GraphDocument = {
@@ -796,14 +805,15 @@ describe("T615 — a free-running node inside a COMPONENT laps like one at the r
     });
     expect(flattened.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
     expect(Object.keys(flattened.graph.nodes)).toEqual(["c1/wob"]);
-    return { graph: flattened.graph, registry: system.nodes };
+    return { graph: flattened.graph, flattening: flattened, registry: system.nodes };
   }
 
-  /** The same node at the root, for the comparison. */
-  function rootLfo(): { graph: GraphDocument; registry: NodeRegistryView } {
+  /** The same node at the root, for the comparison: hand-built, so no flattening behind it. */
+  function rootLfo(): Lapping {
     const registry = createNodeRegistry(allNodeDefinitions).view();
     return {
-      graph: {
+      flattening: NO_FLATTENING,
+      graph: flatDocument({
         revision: 1,
         groups: {},
         nodes: {
@@ -817,25 +827,21 @@ describe("T615 — a free-running node inside a COMPONENT laps like one at the r
           },
         },
         edges: {},
-      },
+      }),
       registry,
     };
   }
 
-  function seriesAcrossLap(
-    graph: GraphDocument,
-    registry: NodeRegistryView,
-    nodeId: string,
-  ): number[] {
+  function seriesAcrossLap({ graph, flattening, registry }: Lapping, nodeId: string): number[] {
     const session = createValueGraphSession(registry);
     const clock = liveClock({ fps: 60, now: () => 0 });
     const series: number[] = [];
     for (let index = 0; index < LAP_AT; index += 1) {
-      series.push(session.evaluate(graph, clock.next(), { pointer: POINTER }).byId.get(nodeId)?.["value"] as number);
+      series.push(session.evaluate(graph, clock.next(), { flattening, pointer: POINTER }).byId.get(nodeId)?.["value"] as number);
     }
     clock.wrapTo?.(0);
     for (let index = 0; index < AFTER_LAP; index += 1) {
-      series.push(session.evaluate(graph, clock.next(), { pointer: POINTER }).byId.get(nodeId)?.["value"] as number);
+      series.push(session.evaluate(graph, clock.next(), { flattening, pointer: POINTER }).byId.get(nodeId)?.["value"] as number);
     }
     return series;
   }
@@ -843,8 +849,8 @@ describe("T615 — a free-running node inside a COMPONENT laps like one at the r
   it("produces the SAME series as the root node, lap included", () => {
     const root = rootLfo();
     const inside = componentedLfo();
-    const atRoot = seriesAcrossLap(root.graph, root.registry, "wob");
-    const inComponent = seriesAcrossLap(inside.graph, inside.registry, "c1/wob");
+    const atRoot = seriesAcrossLap(root, "wob");
+    const inComponent = seriesAcrossLap(inside, "c1/wob");
 
     // Non-vacuity: both series must actually be numbers that MOVE, or "identical" is being
     // satisfied by two rows of NaN (§V461).
@@ -855,7 +861,7 @@ describe("T615 — a free-running node inside a COMPONENT laps like one at the r
 
   it("keeps climbing THROUGH the lap, inside the component (T489's property)", () => {
     const inside = componentedLfo();
-    const series = seriesAcrossLap(inside.graph, inside.registry, "c1/wob");
+    const series = seriesAcrossLap(inside, "c1/wob");
     // A saw at 0.3 Hz against an 8-frame loop: the wrap lands nowhere near a cycle
     // boundary, so a timeline-clocked LFO would visibly snap back here.
     const lastBefore = series[LAP_AT - 1] as number;
@@ -945,7 +951,7 @@ describe("B97 — point kernels can read the clock that does not reset", () => {
  */
 describe("T489 — the frameless resolve scope offers the same names as a real frame", () => {
   it("resolves `abstime` to the deterministic zero rather than refusing it", () => {
-    const resolved = resolveParameters(ABSTIME_NODE, ABSTIME_DEFINITION);
+    const resolved = resolveParameters(ABSTIME_NODE, ABSTIME_DEFINITION, STORED_READ);
     // 0, not the manifest default of -1: the name is KNOWN here, it simply has no frame.
     expect(resolved.values["amount"]).toBe(0);
   });
@@ -963,7 +969,7 @@ describe("T489 — the frameless resolve scope offers the same names as a real f
       // Every CLOCK reads the deterministic zero; a RATE (T1426b/T1435b: `fps`, `subframes`)
       // reads its default, because a rate of 0 is a division by zero, not a quiet start.
       const expected = (FRAME_RATE_NAMES as readonly string[]).includes(name) ? zero[name] : 0;
-      expect(resolveParameters(node, ABSTIME_DEFINITION).values["amount"], `frameless scope knows "${name}"`).toBe(expected);
+      expect(resolveParameters(node, ABSTIME_DEFINITION, STORED_READ).values["amount"], `frameless scope knows "${name}"`).toBe(expected);
     }
   });
 });

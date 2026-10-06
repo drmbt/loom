@@ -175,8 +175,8 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
   const rise = keyed(t, [[0, -0.75], [0.55, 0, "snap"], [0.96, 0.02]]);
 
   const g = new ShotGraph();
-  g.node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL }, { label: "surf1" });
-  const figure = figureNodes(facts, { area: "fig", material: "surf1", yaw: Math.PI, place: [ax, rise, az], pose: performance(t, facts.bones), gun: facts.areas.has("figgun") });
+  g.node("surf", "materialWgsl", [-3000, -600], { model: "pbr", source: SURFACE_WGSL }, { label: "material_surf" });
+  const figure = figureNodes(facts, { area: "fig", material: "material_surf", yaw: Math.PI, place: [ax, rise, az], pose: performance(t, facts.bones), gun: facts.areas.has("figgun") });
   g.nodes.push(...figure.nodes);
   g.edges.push(...figure.edges);
 
@@ -194,7 +194,7 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
     fov,
     near: 0.05,
     far: 20,
-  }, { label: "cam1" });
+  }, { label: "camera1" });
 
   // The key: a hard lamp 2.7 m off, low and to camera-right, so every shadow lands up-left of
   // what casts it along the reference's 39° (its rise over its run, 1.2 over 1.5), shifted
@@ -202,16 +202,16 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
   // down toward the lamp throws the long black band lower right while the arm itself, off
   // its own shadow, is matted away.
   const key: [number, number, number] = [ax - 1.5, 0.35, az - 2.2];
-  g.node("key", "light", [-2600, 1000], { kind: "point", color: [1, 0.98, 0.95, 1], intensity: 16, position: key }, { label: "key1" });
-  g.node("fill", "light", [-2600, 1100], { kind: "point", color: [0.9, 0.95, 1, 1], intensity: 0.4, position: [ax + 0.8, 1.9, az - 1.2] }, { label: "fill1" });
+  g.node("key", "light", [-2600, 1000], { kind: "point", color: [1, 0.98, 0.95, 1], intensity: 16, position: key }, { label: "light_key1" });
+  g.node("fill", "light", [-2600, 1100], { kind: "point", color: [0.9, 0.95, 1, 1], intensity: 0.4, position: [ax + 0.8, 1.9, az - 1.2] }, { label: "light_fill1" });
   // The chains need a bright room to mirror: the white cyc environment.
-  g.node("envSeed", "ramp", [-2700, 300], {}, { label: "envseed1", resolution: { mode: "fixed", width: 1024, height: 512 } });
-  g.node("env", "customWgsl", [-2700, 500], { source: ENVIRONMENT_WGSL, white: 1 }, { label: "env1", resolution: { mode: "fixed", width: 1024, height: 512 } });
+  g.node("envSeed", "ramp", [-2700, 300], {}, { label: "ramp_envseed", resolution: { mode: "fixed", width: 1024, height: 512 } });
+  g.node("env", "customWgsl", [-2700, 500], { source: ENVIRONMENT_WGSL, white: 1 }, { label: "wgsl_env", resolution: { mode: "fixed", width: 1024, height: 512 } });
   g.edge("seed-env", ["envSeed", "out"], ["env", "input"]);
   g.node("shot", "render", [-2400, 0], {
     scenes: figure.scene,
-    camera: "cam1",
-    lights: "key1 fill1",
+    camera: "camera1",
+    lights: "light_key1 light_fill1",
     ambientColor: [1, 1, 1, 1],
     ambientIntensity: 0.02,
     background: [0, 0, 0, 0],
@@ -220,37 +220,37 @@ export function prismDocument(facts: OnNothingFacts, options: PrismOptions): Pro
     normalOutput: true,
     environmentIntensity: 0.22,
     environmentTaps: 16,
-  }, { label: "shot1" });
+  }, { label: "render_shot" });
   g.edge("env-shot", ["env", "out"], ["shot", "environment"]);
   // The shadow on the wall (T1414b): the wall plane and the figure SHADOW ONLY, seen by the
   // shot's own camera under a casting copy of the key; its Shadow output is the matte the
   // wall composite darkens by. Twice the frame, so the key's cube map (1.5x its Render per
   // face tile) keeps the shadow's edge near the old 2048-texel map's.
-  g.node("figCast", "geometry", [-3000, 1400], { mode: "surface", material: "surf1", shadowOnly: true }, { label: "figcast1" });
+  g.node("figCast", "geometry", [-3000, 1400], { mode: "surface", material: "material_surf", shadowOnly: true }, { label: "geometry_figcast" });
   g.edge("skin-figcast", ["skin", "out"], ["figCast", "points"]);
-  g.node("wallGrid", "pointGrid", [-3300, 1600], { cols: 2, rows: 2, count: 4, sizeX: 8, sizeY: 6 }, { label: "wallgrid1" });
-  g.node("wallPlace", "pointTransform", [-3150, 1600], { translate: [ax, 1.5, az + 0.12] }, { label: "wallplace1" });
-  g.node("wallGeo", "geometry", [-3000, 1600], { mode: "surface" }, { label: "wallgeo1" });
+  g.node("wallGrid", "pointGrid", [-3300, 1600], { cols: 2, rows: 2, count: 4, sizeX: 8, sizeY: 6 }, { label: "grid_wall" });
+  g.node("wallPlace", "pointTransform", [-3150, 1600], { translate: [ax, 1.5, az + 0.12] }, { label: "transform_wallplace" });
+  g.node("wallGeo", "geometry", [-3000, 1600], { mode: "surface" }, { label: "geometry_wall" });
   g.edge("wallgrid-place", ["wallGrid", "out"], ["wallPlace", "points"]);
   g.edge("wallplace-geo", ["wallPlace", "out"], ["wallGeo", "points"]);
-  g.node("keyShadow", "light", [-2600, 1200], { kind: "point", color: [1, 0.98, 0.95, 1], intensity: 16, position: key, shadows: true, shadowExtent: 6, shadowSoftness: 2 }, { label: "keyshadow1" });
+  g.node("keyShadow", "light", [-2600, 1200], { kind: "point", color: [1, 0.98, 0.95, 1], intensity: 16, position: key, shadows: true, shadowExtent: 6, shadowSoftness: 2 }, { label: "light_keyshadow" });
   g.node("wallShot", "render", [-2400, 300], {
-    scenes: "figcast1 wallgeo1",
-    camera: "cam1",
-    lights: "keyshadow1",
+    scenes: "geometry_figcast geometry_wall",
+    camera: "camera1",
+    lights: "light_keyshadow",
     background: [0, 0, 0, 0],
     ambientIntensity: 0,
     environmentIntensity: 0,
     shadowOutput: true,
-  }, { label: "wallshot1", resolution: { mode: "fixed", width: width * 2, height: height * 2 } });
+  }, { label: "render_wallshot", resolution: { mode: "fixed", width: width * 2, height: height * 2 } });
 
   // Occlusion on the figure itself: its creases, the arm against the head, the chain on the
   // tee — a small radius, this is a close-up (a hand's width is 0.1 m).
-  g.pass("occlusion", GTAO_WGSL, { ...cameraRefs("cam1", eye, aim, fov, 20), radius: 0.2, strength: 0.85, power: 1.4 }, ["shot", "out"], [["shot", "depth"], ["shot", "normal"]], [-2250, 0]);
+  g.pass("occlusion", GTAO_WGSL, { ...cameraRefs("camera1", eye, aim, fov, 20), radius: 0.2, strength: 0.85, power: 1.4 }, ["shot", "out"], [["shot", "depth"], ["shot", "normal"]], [-2250, 0]);
 
   const wallZ = az + 0.12;
   g.pass("wall", PRISM_WALL_WGSL, {
-    ...cameraRefs("cam1", eye, aim, fov, 20),
+    ...cameraRefs("camera1", eye, aim, fov, 20),
     wallPoint: [ax, 0, wallZ],
     wallNormal: [0, 0, -1],
     key,

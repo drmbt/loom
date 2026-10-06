@@ -112,6 +112,5 @@ property of the texture version.
 `pointGenerator` ships **line, circle, grid, sphere, tube, torus** (`point-generators.ts:28`).
 
 - **Sphere POP — we have it.**
-- **Box POP — genuinely missing**, and it is the cheapest addition on this page: one more
-  entry in `GENERATOR_SHAPES` plus its `SHAPE_USES` row (`sizeX/sizeY/sizeZ`) and the kernel
-  branch. The owner is right that it is simple and right that it should exist.
+- **Box POP — shipped since this page was written** (`pointBox`, "Box Points", in
+  `point-generators.ts`).

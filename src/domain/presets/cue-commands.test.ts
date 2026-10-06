@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { flatDocument } from "@compiler/test-support.ts";
 import type { FrameClock } from "../types/frame.ts";
 import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
@@ -13,6 +14,8 @@ import { createNodeRegistry, type NodeRegistryView } from "../../nodes/registry/
 import { testNodeDefinitions } from "../../nodes/registry/test-nodes.ts";
 import { cueListNode } from "../../nodes/definitions/cue-list.ts";
 import { presetsNode } from "../../nodes/definitions/presets.ts";
+import { constantNode } from "../../nodes/definitions/values.ts";
+import { graphChannelResolver } from "../channels/graph-channels.ts";
 import type { MorphSpec, Preset } from "./bank.ts";
 import { parseCueList, serializeCueList, type Cue } from "./cue-list.ts";
 import { parseMorphRecords } from "./morph.ts";
@@ -34,7 +37,7 @@ import { presetBankNode } from "./test-support.ts";
  *   3  looks/b      blur1.radius → 20
  */
 
-const registry: NodeRegistryView = createNodeRegistry([...testNodeDefinitions, presetsNode, cueListNode]).view();
+const registry: NodeRegistryView = createNodeRegistry([...testNodeDefinitions, presetsNode, cueListNode, constantNode]).view();
 
 function node(id: NodeId, type: string, label: string, parameters: Record<string, StoredParameter> = {}): GraphNode {
   return { id, type, label, definitionVersion: 1, position: { x: 0, y: 0 }, parameters };
@@ -582,8 +585,13 @@ describe("cue.fire fires a named cue; cue.setStandby moves the standby without f
     const { bus } = session();
     const fire = await bus.execute("cue.fire", { cue: "1" } as never, contextFor(alice));
     const standby = await bus.execute("cue.setStandby", { cue: "1" } as never, contextFor(alice));
-    expect(codes(fire)).toEqual(["cue.list.missing"]);
-    expect(codes(standby)).toEqual(["cue.list.missing"]);
+    // §T1556b: `nodeId` is required by both commands' input schema, so the bus refuses the
+    // call by the field it lacks, before the handler could look for a list.
+    for (const result of [fire, standby]) {
+      expect(result.status).toBe("rejected");
+      expect(codes(result)).toEqual(["command.input"]);
+      expect(result.diagnostics[0]?.message).toContain("invalid at nodeId");
+    }
   });
 
   it("a dry run validates and moves nothing (§V36)", async () => {
@@ -718,7 +726,7 @@ describe("a cue that fires a SHOT is still one GO (§T1499b's planner, T1500b)",
 describe("renaming a bank carries the cues that name it (§V128, T1500b)", () => {
   it("the cue follows the rename and GO still fires it", async () => {
     const { bus, store } = session();
-    const renamed = await bus.execute("node.rename", { nodeId: "looks", label: "city" }, contextFor(alice));
+    const renamed = await bus.execute("node.rename", { nodeId: "looks", label: "city", exact: true }, contextFor(alice));
     expect(renamed.status).toBe("applied");
     const parsed = parseCueList(value(store, "list", "cues"));
     expect(parsed.ok ? parsed.list.cues.map((each) => each.bank) : []).toEqual(["city", "fx", "city"]);
@@ -802,5 +810,31 @@ describe("T1508b — a list that follows the timeline is all-timed: GO, BACK and
     at({ epoch: "show", absTimeSeconds: 99, timeSeconds: 60 / 30, timelineRate: 30 });
     expect(await report()).toMatchObject({ timelineCurrent: "2", timelineNext: null });
     expect((await report())?.warnings).toEqual(['Cue "3" (set) has no At time, so the timeline skips it.']);
+  });
+});
+
+/**
+ * §T1557b / §B181's shape — GO reads the bank's Morph at this moment, through the command's
+ * read scope. `resolvedValues` used to resolve with `{ channels }` alone: no cross-node
+ * reader, so `op('k1').chan.value` on the bank's Morph fell back to its retained static (0, a
+ * cut) while the channel said 3. The bus is wired as the app wires it: the channel resolver
+ * (`graphChannelResolver`, the backstop of the app's ladder) and the frame clock.
+ */
+describe("§T1557b — GO on a bank whose Morph is op('k1').chan.value (B181's shape)", () => {
+  it("fades for the channel's seconds, not the retained static", async () => {
+    const driven = stage([node("k1", "constant", "k1", { value: 3 })]).map((each) =>
+      each.id === "looks"
+        ? { ...each, parameters: { ...each.parameters, morph: { mode: "expression", bindings: { static: { kind: "static", value: 0 }, expression: { kind: "expression", source: "op('k1').chan.value" } } } as StoredParameter } }
+        : each,
+    );
+    const { bus, store, at } = session(driven);
+    bus.attachChannelResolver(() => graphChannelResolver(flatDocument(store.view.getGraph()), registry));
+    at({ epoch: "show", absTimeSeconds: 5 });
+
+    const result = await go(bus);
+    expect(result.status).toBe("applied");
+    // Cue 1 (looks/a) carries no morph and neither does its preset: the bank's Morph decides.
+    // 3 s only if it was read through a reader with the channels behind it; the bug cut.
+    expect(parseMorphRecords(value(store, "looks", "morphs")).map((each) => each.seconds)).toEqual([3]);
   });
 });

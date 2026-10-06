@@ -1,7 +1,8 @@
-import type { ChannelResolver } from "@domain/parameters/resolve.ts";
-import { resolveParameters } from "@domain/parameters/resolve.ts";
+import { resolveParameters, type ParameterReadOptions } from "@domain/parameters/resolve.ts";
 import type { GraphNode } from "@domain/types/graph.ts";
 import type { NodeDefinition } from "@domain/types/node-definition.ts";
+import { parameterReadOptions, type ParameterReadContext } from "@domain/parameters/node-references.ts";
+import type { CameraPose } from "./camera-gizmo-store.ts";
 import { MODE_LABELS } from "@ui/controls/parameter-slot.ts";
 import { describeLabelDrag, type LabelDragChannel } from "@ui/controls/label-drag.ts";
 
@@ -30,9 +31,10 @@ import { describeLabelDrag, type LabelDragChannel } from "@ui/controls/label-dra
  *
  * A driven channel's stored static is stale by construction: it is the retained value, not
  * where the camera is. Orbiting about a pivot derived from stale numbers would swing the
- * free channels through the wrong arc. So the pose is resolved — and the resolver is already
- * on the bus (`attachChannelResolver`, `bus.channelResolver()`), attached by
- * `use-graph-compile.ts`, which `graph-pane` already holds. No new prop, no new seam.
+ * free channels through the wrong arc. So the pose is resolved — through the bus's read scope
+ * (`bus.readScope()`: the channel resolver, the frame on screen, the flattening), which
+ * `graph-pane` already holds. §T1557b: it used to be handed `{ channels }` alone, with no
+ * cross-node reader, so an `op('k1').chan.value` channel read its static (§B181's shape).
  *
  * ## The rule, which is one control over and already written
  *
@@ -67,11 +69,6 @@ export interface CameraPoseFacts {
   readonly held: string;
 }
 
-export interface CameraPoseOptions {
-  /** Resolves `op('x').chan.y`. Absent = driven channels report their retained static (§V108). */
-  readonly channels?: ChannelResolver | undefined;
-}
-
 const vectorChannels = (
   entry:
     | {
@@ -99,6 +96,57 @@ const vectorChannels = (
 const asChannels = (channels: readonly CameraChannel[]): readonly LabelDragChannel[] =>
   channels.map((channel) => ({ name: channel.name, drivenBy: channel.drivenBy }));
 
+const poseChannels = (
+  node: GraphNode,
+  definition: NodeDefinition | undefined,
+  read: ParameterReadOptions,
+): { eye: readonly CameraChannel[]; lookAt: readonly CameraChannel[] } => {
+  const resolved = resolveParameters(node, definition, read);
+  return {
+    eye: vectorChannels(resolved.get("eye"), [0, 0.5, 3]),
+    lookAt: vectorChannels(resolved.get("lookAt"), [0, 0, 0]),
+  };
+};
+
+/**
+ * T1655b — THE SENTENCE FOR A POSE NOTHING HERE CAN MOVE, or null while a channel is free.
+ *
+ * `readCameraPoseFacts` answers null for a fully driven pose and the caller offers no
+ * control, which is right (§T1049) and was half of the rule: the other half is that the
+ * absence is SAID where the control would have been. The owner's own camera has all six
+ * channels on expressions, and its tile showed nothing at all in that corner, so "this
+ * camera cannot be moved from here" and "this app forgot the control" were the same pixels.
+ *
+ * It names what decides the pose and where that is changed. It does not offer to free a
+ * channel: that would replace the rig the expressions are (§T970, §T1656b).
+ */
+export function cameraPoseDrivenSentence(
+  node: GraphNode,
+  definition: NodeDefinition | undefined,
+  /** The bus's read scope, as `cameraPoseAt` takes it: the same read the gizmo starts from. */
+  scope: ParameterReadContext,
+): string | null {
+  const { eye, lookAt } = poseChannels(node, definition, parameterReadOptions(scope));
+  const drivers = new Set<string>();
+  for (const channel of [...eye, ...lookAt]) {
+    if (channel.drivenBy === null) return null;
+    drivers.add(channel.drivenBy);
+  }
+  const by =
+    drivers.size === 1 && drivers.has(MODE_LABELS.expression)
+      ? "expressions"
+      : [...drivers].sort().join(" and ");
+  // Two short lines on a tile: what decides the pose, and the two parameters it is decided in.
+  return `Driven by ${by} (Eye, Look At).`;
+}
+
+/**
+ * T1655b: a picture drawn through its own node's pose, seen in the VIEWER, which cannot move
+ * it yet (flying a camera from there is §T970). Kept beside the sentence above so the two
+ * things a pose tile can say when it has no control are in one place.
+ */
+export const POSE_MOVED_FROM_ITS_TILE = "Drawn through this node's Eye and Look At: drag on its tile in the graph to move it.";
+
 /**
  * The camera's pose as the gesture must see it, or null when there is nothing to fly.
  *
@@ -110,13 +158,10 @@ const asChannels = (channels: readonly CameraChannel[]): readonly LabelDragChann
 export function readCameraPoseFacts(
   node: GraphNode,
   definition: NodeDefinition | undefined,
-  options: CameraPoseOptions = {},
+  /** §T1557b: `parameterReadOptions(…)` for where the camera IS; `STORED_READ` for the document. */
+  read: ParameterReadOptions,
 ): CameraPoseFacts | null {
-  const resolved = resolveParameters(node, definition, {
-    ...(options.channels === undefined ? {} : { channels: options.channels }),
-  });
-  const eye = vectorChannels(resolved.get("eye"), [0, 0.5, 3]);
-  const lookAt = vectorChannels(resolved.get("lookAt"), [0, 0, 0]);
+  const { eye, lookAt } = poseChannels(node, definition, read);
   const free = [...eye, ...lookAt].some((channel) => channel.drivenBy === null);
   if (!free) return null;
 
@@ -147,4 +192,16 @@ export function poseFromFacts(facts: CameraPoseFacts): {
 /** Which channels the gesture may write: the ones no other mode is deciding (`movableMask`'s rule). */
 export function movableChannels(channels: readonly CameraChannel[]): readonly boolean[] {
   return channels.map((channel) => channel.drivenBy === null);
+}
+
+/**
+ * §T1557b — THE POSE AS THE GIZMO READS IT AT GESTURE START (§V657), from the bus's read
+ * scope over the graph the pane shows: the numbers and which channels a drag may write.
+ * `graph-pane.tsx` calls exactly this, so the read a gesture starts from is the one tested.
+ */
+export function cameraPoseAt(node: GraphNode, definition: NodeDefinition | undefined, scope: ParameterReadContext): CameraPose | null {
+  const facts = readCameraPoseFacts(node, definition, parameterReadOptions(scope));
+  if (facts === null) return null;
+  const { eye, lookAt } = poseFromFacts(facts);
+  return { eye, lookAt, eyeMask: movableChannels(facts.eye), lookAtMask: movableChannels(facts.lookAt) };
 }

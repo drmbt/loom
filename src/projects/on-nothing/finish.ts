@@ -200,10 +200,10 @@ export function withFinish(document: ProjectDocument): ProjectDocument {
   const add = (entry: GraphNode): void => {
     nodes[entry.id] = entry;
   };
-  add(buildNode("lookDown", "customWgsl", [x, y + 300], { source: FINISH_DOWN_WGSL }, { label: "lookdown1", resolution: { mode: "fixed", ...GLOW_SIZE } }));
-  add(buildNode("lookNear", "blur", [x + 250, y + 300], { size: near }, { label: "looknear1" }));
-  add(buildNode("lookWide", "blur", [x + 500, y + 300], { size: wide }, { label: "lookwide1" }));
-  add(buildNode("look", "customWgslMulti", [x + 750, y], {}, { label: "look1", resolution: { mode: "project" }, parameters: params }));
+  add(buildNode("lookDown", "customWgsl", [x, y + 300], { source: FINISH_DOWN_WGSL }, { label: "wgsl_lookdown", resolution: { mode: "fixed", ...GLOW_SIZE } }));
+  add(buildNode("lookNear", "blur", [x + 250, y + 300], { size: near }, { label: "blur_looknear" }));
+  add(buildNode("lookWide", "blur", [x + 500, y + 300], { size: wide }, { label: "blur_lookwide" }));
+  add(buildNode("look", "customWgslMulti", [x + 750, y], {}, { label: "wgsl_look", resolution: { mode: "project" }, parameters: params }));
   nodes["out"] = { ...out, position: { x: x + 1050, y } };
   delete edges[into.id];
   for (const entry of [

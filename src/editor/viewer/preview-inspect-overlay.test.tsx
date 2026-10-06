@@ -94,10 +94,12 @@ interface MountOptions {
   measured?: boolean;
   /** Render the real tile beside the layer, so a press can be shown not to reach it. */
   withSlot?: boolean;
+  /** T1655b: why this node's tile has no camera, when the pane has a reason to give. */
+  note?: string | null;
 }
 
 function mount(options: MountOptions = {}) {
-  const { orbitable = true, measured = true, withSlot = false } = options;
+  const { orbitable = true, measured = true, withSlot = false, note = null } = options;
   const orbits = createPreviewOrbitStore();
   const bounds = createPreviewSlotBounds();
   const inspect = (nodeId: NodeId): PreviewOrbitStore | null =>
@@ -118,7 +120,7 @@ function mount(options: MountOptions = {}) {
           />
         </div>
       ) : null}
-      <PreviewInspectOverlays bounds={bounds} inspect={inspect} />
+      <PreviewInspectOverlays bounds={bounds} inspect={inspect} note={(nodeId) => (nodeId === NODE ? note : null)} />
     </ReactFlowProvider>,
   );
 
@@ -233,5 +235,70 @@ describe("T892 — the press belongs to the button, never to the camera under it
 
     fireEvent.click(button);
     expect(orbits.mode(NODE)).toBe("home");
+  });
+});
+
+/**
+ * T1655b — A 3D TILE WITH NO CAMERA SAYS WHY, IN THE CORNER THE CAMERA WOULD BE IN.
+ *
+ * §T1049's rule has two halves and T669 kept one: absent, never disabled. The other is that
+ * the absence is SAID. A fully driven camera, a Render and a geometry that draws only its
+ * backdrop all showed an empty corner, which is what a 2D tile shows and what a broken
+ * control shows.
+ */
+describe("T1655b — where a 3D tile has no camera, the reason sits where the toggle would", () => {
+  it("draws the sentence at the toggle's own anchor, wrapped inside the tile, and no button", () => {
+    mount({ orbitable: false, note: "Framed by camera_rig." });
+    const said = screen.getByTestId(`preview-camera-note-${NODE}`);
+    expect(said.textContent).toBe("Framed by camera_rig.");
+    // The same corner the toggle is asserted at above, and the same scale.
+    expect(said.style.left).toBe("588px");
+    expect(said.style.top).toBe("354px");
+    expect(said.style.getPropertyValue("--chrome-zoom")).toBe("2");
+    // The tile's own width, in node pixels: the sentence wraps inside the picture it is about.
+    expect(said.style.getPropertyValue("--tile-width")).toBe("170px");
+    // Absent, never disabled: there is no dead button beside the sentence.
+    expect(screen.queryByTestId(`preview-inspect-${NODE}`)).toBeNull();
+    expect(said.tagName).toBe("P");
+  });
+
+  it("a tile WITH a camera is never asked for a reason: the control wins", () => {
+    // The case a note could swallow: a working toggle replaced by a sentence about not having one.
+    mount({ orbitable: true, note: "Framed by camera_rig." });
+    expect(screen.getByTestId(`preview-inspect-${NODE}`)).toBeTruthy();
+    expect(screen.queryByTestId(`preview-camera-note-${NODE}`)).toBeNull();
+  });
+
+  it("a tile with nothing 3D about it gets no chrome at all", () => {
+    mount({ orbitable: false, note: null });
+    expect(screen.queryByTestId(`preview-camera-note-${NODE}`)).toBeNull();
+    expect(screen.queryByTestId("preview-inspect-overlays")).toBeNull();
+  });
+});
+
+/**
+ * T1655b — CHROME IS NOT DRAWN ON ANOTHER NODE'S PICTURE.
+ *
+ * This layer sits above every node, so it clipped nothing: in the owner's own document,
+ * where nodes overlap, a covered geometry's "No object drawn on this tile." was painted
+ * across the material tile in front of it, which plainly draws one. The preview tick knows
+ * the stacking order (it clips the tiles by it, T1102) and says which corners are covered.
+ */
+describe("T1655b — a tile whose corner is under a node in front carries no chrome there", () => {
+  it("draws neither the toggle nor the sentence while covered, and both come back when it is not", () => {
+    const { bounds } = mount({ orbitable: true });
+    expect(screen.getByTestId(`preview-inspect-${NODE}`)).toBeTruthy();
+    act(() => bounds.setCornerCovered(new Set([NODE])));
+    expect(screen.queryByTestId(`preview-inspect-${NODE}`)).toBeNull();
+    // The node in front moved away: the control is where it was.
+    act(() => bounds.setCornerCovered(new Set()));
+    expect(screen.getByTestId(`preview-inspect-${NODE}`)).toBeTruthy();
+  });
+
+  it("the same for a sentence: a reason drawn on the node in front would be a claim about that node", () => {
+    const { bounds } = mount({ orbitable: false, note: "No object drawn on this tile." });
+    expect(screen.getByTestId(`preview-camera-note-${NODE}`)).toBeTruthy();
+    act(() => bounds.setCornerCovered(new Set([NODE])));
+    expect(screen.queryByTestId(`preview-camera-note-${NODE}`)).toBeNull();
   });
 });

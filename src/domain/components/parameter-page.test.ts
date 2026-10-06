@@ -193,9 +193,14 @@ describe("`component.reorderParameter` on a session bus (T423, §V29)", () => {
       context,
     );
     expect(result.status).toBe("rejected");
-    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
-      "component.parameter.incomplete",
-    );
+    // §T1556b: the bus refuses it against the command's input schema now — every field the
+    // row did not supply is named (and the target keys it did send are unknown keys) — and
+    // the command answers a refusal rather than a throw (`editRejection`).
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message);
+    expect(result.diagnostics.every((diagnostic) => diagnostic.code === "command.input")).toBe(true);
+    for (const field of ["at key", "at definition", "at targets"]) {
+      expect(messages.some((message) => message.includes(field))).toBe(true);
+    }
     expect(harness.components.get("bloom", 1)?.parameters).toEqual([]);
     session.dispose();
   });

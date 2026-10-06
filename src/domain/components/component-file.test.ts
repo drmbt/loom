@@ -155,6 +155,8 @@ describe("component.import — the identity rule (§T962, owner ruling 2026-09-2
     const placed = target.store.view.getGraph().nodes[result.output.nodeId as string];
     expect(placed?.type).toBe(componentNodeType("stack", 1));
     expect(placed?.position).toEqual({ x: 320, y: -40 });
+    // T1593b: named for the component it is an instance of, as a library placement names it.
+    expect(placed?.label).toBe("stack1");
     // The published defaults, as a library placement would set them.
     expect(result.output.renamed).toEqual([]);
   });
@@ -191,6 +193,9 @@ describe("component.import — the identity rule (§T962, owner ruling 2026-09-2
     expect(target.store.view.getGraph().nodes[result.output.nodeId as string]?.type).toBe(
       componentNodeType("bloom1", 1),
     );
+    // T1593b: the component arrived as "Bloom1", and a kind holds letters only, so its
+    // instance is a `bloom` and takes the first free number.
+    expect(target.store.view.getGraph().nodes[result.output.nodeId as string]?.label).toBe("bloom1");
     expect(result.diagnostics.map((d) => d.code)).toEqual(["component.import.renamed"]);
   });
 

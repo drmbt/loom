@@ -15,38 +15,38 @@ the eight ideas underneath it. None of them is "add more nodes".
 ## Graph
 
 ```
-beat1(audioPattern) ─┐
-                     ├─► source1(valueSwitch) ─► damp1(lag 0.09) ─► EIGHT multiply→add pairs
-track1(audioFileIn) ─┘        0 = beat, 1 = your file             (one band → one property, RANGE-CHECKED)
+pattern_beat(audioPattern) ───┐
+                              ├─► switch_source(valueSwitch) ─► lag_damp(lag 0.09) ─► EIGHT multiply→add pairs
+audiofile_track(audioFileIn) ─┘        0 = beat, 1 = your file             (one band → one property, RANGE-CHECKED)
 
-gen1(pointGenerator: sphere 256×256, radius ┄ swell1:lowMid) ─► shape1(pointKernel)
-                                                                   │  ONE cloud
-      ┌────────────────────────────────────────────────────────────┤
-      ▼                            ▼                               ▼
- drawbase1(renderPoints)     drawmid1(renderPoints)          drawtip1(renderPoints)
+generator1(pointGenerator: sphere 256×256, radius ┄ math_swell:lowMid) ─► kernel_shape(pointKernel)
+                                                                               │  ONE cloud
+      ┌────────────────────────────────────────────────────────────────────────┤
+      ▼                                  ▼                                     ▼
+ points_drawbase(renderPoints)     points_drawmid(renderPoints)          points_drawtip(renderPoints)
    group: (none)               group: velocity.y > 0.04        group: velocity.y > 0.17
-   deep blue                   orange, 1.3px                   cyan, size ┄ tip1:high
-      │                            │                               │
-   base1(null)               heatlvl1(level)                 sparklvl1(level)
-      ├─► halo1(blur 34) ─► halolvl1(level) ─┐  │                  │
-      └───────────────────────────────────────┴─► burn1(add) ─► coat1(lookup ◄ palette1)
-                                                                   │
-                    coat1 ─► liftheat1(screen) ◄─ heatlvl1         │
-                             liftspark1(screen) ◄─ sparklvl1       │
-                             mixtrail1(screen) ◄─ loop1(feedback ← tail1)
-                             hue1(hsv, hue ┄ drift1 @ 0.035Hz) ─► tail1(null) ─► out1
+   deep blue                   orange, 1.3px                   cyan, size ┄ math_tip:high
+      │                                │                                 │
+   null_base(null)               level_heat(level)                 level_spark(level)
+      ├─► blur_halo(blur 34) ─► level_halo(level) ─┐  │                     │
+      └─────────────────────────────────────────────┴─► add_burn(add) ─► lookup_coat(lookup ◄ ramp_palette)
+                                                                                       │
+                    lookup_coat ─► screen_liftheat(screen) ◄─ level_heat               │
+                                   screen_liftspark(screen) ◄─ level_spark             │
+                                   screen_mixtrail(screen) ◄─ feedback_loop(feedback ← null_tail)
+                                   hsv_hue(hsv, hue ┄ lfo_drift @ 0.035Hz) ─► null_tail(null) ─► output1
 ```
 
 ## 1. One source, three readings — and this is the transferable one
 
-`drawbase1`, `drawmid1` and `drawtip1` are three `renderPoints` over the **same** point
+`points_drawbase`, `points_drawmid` and `points_drawtip` are three `renderPoints` over the **same** point
 cloud. They differ only in a group predicate, a colour and a size:
 
 | | predicate | colour | reads as |
 | --- | --- | --- | --- |
-| `drawbase1` | (none — all 65,536) | deep blue | the body |
-| `drawmid1` | `p.velocity.y > 0.04` | orange | the lit crests |
-| `drawtip1` | `p.velocity.y > 0.17` | cyan | the sharpest tips only |
+| `points_drawbase` | (none — all 65,536) | deep blue | the body |
+| `points_drawmid` | `p.velocity.y > 0.04` | orange | the lit crests |
+| `points_drawtip` | `p.velocity.y > 0.17` | cyan | the sharpest tips only |
 
 **Structure comes from SELECTION, not from adding elements.** Three draws over one
 simulation give a picture with three depths in it and cost one node each. Three separate
@@ -77,14 +77,14 @@ own scale and offset:
 
 | pair | band | × | + | drives |
 | --- | --- | --- | --- | --- |
-| `swell1` | lowMid | 1.25 | 0.68 | `gen1.radius` — a **transport** into the kernel |
-| `glow1` | low | 1.8 | 0.45 | bloom gain |
-| `dot1` | level | 2.2 | 1.2 | body point size |
-| `heat1` | low | 2.2 | 0.25 | orange band gain |
-| `spark1` | high | 6 | 0.15, then LIMIT 0.05…5 | cyan band gain |
-| `grade1` | highMid | 2.6 | 0.55 | palette scale |
-| `trail1` | level | 0.30 | 0.62 | trail persistence |
-| `tip1` | high | 9 | 1 | tip point size |
+| `math_swell` | lowMid | 1.25 | 0.68 | `generator1.radius` — a **transport** into the kernel |
+| `math_glow` | low | 1.8 | 0.45 | bloom gain |
+| `math_dot` | level | 2.2 | 1.2 | body point size |
+| `math_heat` | low | 2.2 | 0.25 | orange band gain |
+| `limit_spark` | high | 6 | 0.15, then LIMIT 0.05…5 | cyan band gain |
+| `math_grade` | highMid | 2.6 | 0.55 | palette scale |
+| `math_trail` | level | 0.30 | 0.62 | trail persistence |
+| `math_tip` | high | 9 | 1 | tip point size |
 
 `high × 6 + 0.15` and `level × 0.30 + 0.62` are not the same curve and must not be. **A
 single master gain makes everything move together, which reads as one thing pumping.** One
@@ -125,15 +125,15 @@ are one cause, and it is the same arithmetic seen from the other end:
 **The bias is the rest state. The gain is the swing.** Every pair in the original biased
 *into* the interesting part of its range, so there was nowhere to go but up:
 
-- `gen1.radius` rested at **1.0** — already the full sphere. There was no contracted state
+- `generator1.radius` rested at **1.0** — already the full sphere. There was no contracted state
   to expand *from*, so the audio could only add. Now 0.68 → 1.93: tighter core, bigger
   travel, and the expansion reads as an expansion instead of as jitter on a still image.
-- `coat1.scale` rested at **1.4**, which drives the lookup coordinate far up a seven-stop
+- `lookup_coat.scale` rested at **1.4**, which drives the lookup coordinate far up a seven-stop
   ramp that *ends in white*. The palette sat permanently at its hot end, a peak had nowhere
   to climb to, and the seven stops might as well have been two. Resting near 0.85 puts the
   calm state in the navy and blue and lets a loud passage reach the gold — which is idea 6
   finally doing something.
-- `sparklvl1.brightness` rested around **4** of a ceiling of 6, so the Limit was *pinning*
+- `level_spark.brightness` rested around **4** of a ceiling of 6, so the Limit was *pinning*
   on every loud frame and the cyan band was permanently blasting. ×6 rests near 0.5, and
   the Limit goes back to being a fence for a real track rather than the thing setting the
   level.
@@ -145,7 +145,7 @@ the Beat is what most people see first.
 ### …and a value chain can only retune what the shader already VARIES (T554)
 
 The owner came back: *"when there's no source input or very low levels I'd expect the
-corona to collapse further inwards and vice versa."* Retuning `swell1` again would not have
+corona to collapse further inwards and vice versa."* Retuning `math_swell` again would not have
 moved it one pixel, and the reason is worth more than the fix.
 
 **The extent was a constant.** The kernel's radius began at a literal `1.0`:
@@ -184,16 +184,16 @@ disease again, hiding **inside a WGSL string** where the value-chain retune abov
 see it. Now `0.05 + 0.04·sin(t·0.093)`: enough shimmer that a silent frame is not frozen —
 the rotation and the breath are still running (§V427) — and no more.
 
-**And the decoder had drifted off the encoder.** `swell1` drives `gen1.radius` purely so the
+**And the decoder had drifted off the encoder.** `math_swell` drives `generator1.radius` purely so the
 kernel can divide it back out and recover the band:
 
 ```wgsl
-let fromAudio = clamp((inR - 0.68) / 1.25, 0.0, 1.0);   // swell1's bias and gain
+let fromAudio = clamp((inR - 0.68) / 1.25, 0.0, 1.0);   // math_swell's bias and gain
 ```
 
-Those two constants **are** `swell1`'s bias and gain, written out a second time in a string
+Those two constants **are** `math_swell`'s bias and gain, written out a second time in a string
 no typechecker reads. When the retune above lowered the bias from 1.0 to 0.68, the kernel
-kept subtracting 1.0. On the Beat source `damp1:lowMid` spans 0.152…0.327, so the radius
+kept subtracting 1.0. On the Beat source `lag_damp:lowMid` spans 0.152…0.327, so the radius
 spans 0.870…1.088 and the old expression yielded `fromAudio` of 0.000…0.147 — **clamped flat
 at zero for most of every beat.** The audio had almost stopped reaching the kernel, and
 nothing warned, because the other seven pairs went on driving the post chain and the picture
@@ -210,7 +210,7 @@ doing two things. A stage that does two things is a stage you cannot tune.
 
 ## 5. The feedback closes on the final output
 
-`loop1.source` is `tail1` — the very last node — not the raw render. So what smears is the
+`feedback_loop.source` is `null_tail` — the very last node — not the raw render. So what smears is the
 **graded, hue-drifted** picture. A trail taken from an earlier stage looks like a ghost of
 something else that happens to be in the frame.
 
@@ -222,12 +222,12 @@ colours read as a hundred.
 
 ## 7. The grade itself breathes
 
-`coat1.scale` is driven by `highMid`, so the whole image slides along the ramp with the
+`lookup_coat.scale` is driven by `highMid`, so the whole image slides along the ramp with the
 music. The palette is a performance, not a decision made once.
 
 ## 8. The slowest thing is slower than your attention span
 
-`drift1` runs at **0.035 Hz — a 29-second cycle** — on hue, and swings **±30 degrees**
+`lfo_drift` runs at **0.035 Hz — a 29-second cycle** — on hue, and swings **±30 degrees**
 either side of it. It takes both numbers: `lfoValue` returns its amplitude in the DRIVEN
 PARAMETER'S units, so a period this slow with a swing too small to see is a cycle nothing
 travels through. 60 degrees peak-to-peak is a sixth of the wheel — the palette is
@@ -246,39 +246,39 @@ would silently vanish (§V457).
 
 Everything else is as the owner wrote it, including the two `null` nodes. Those are
 worth a line: `null` is spliced out by the compiler (no pass, no resource, zero render-time
-cost) and it is here purely as a **stable name** — `base1` is the fan-out point for the
-bloom, `tail1` is what the feedback names. That is what a Null is for, and this is the
+cost) and it is here purely as a **stable name** — `null_base` is the fan-out point for the
+bloom, `null_tail` is what the feedback names. That is what a Null is for, and this is the
 first shipped example that uses one.
 
 ## Clock
 
 The kernel reads `ctx.absTime` and the LFO is free-running, so the rotation, the taffy
 twist and the hue drift all survive a timeline lap (§V436, T489). The one timeline-anchored
-thing is `beat1`, deliberately: it stands in for a track, so bar one lands on the in point.
+thing is `pattern_beat`, deliberately: it stands in for a track, so bar one lands on the in point.
 
 ## Regression signatures
 
 - **The creature is one flat blue mass** → the group predicates lost their channel, or the
   kernel stopped writing `creases` into `velocity.y`. Both halves of §V471.2 have to hold.
 - **Everything pumps together on the beat** → the eight pairs collapsed toward one gain.
-- **The trails look like a separate ghost image** → `loop1.source` moved off `tail1`.
-- **It gets boring after a minute** → `drift1.frequency` went up. 0.035 Hz is the number.
+- **The trails look like a separate ghost image** → `feedback_loop.source` moved off `null_tail`.
+- **It gets boring after a minute** → `lfo_drift.frequency` went up. 0.035 Hz is the number.
 - **It is bright and busy from the first frame and the beat does nothing** → a bias crept
-  back up. Rest low and travel (§V477); check `swell1` and `grade1` first.
+  back up. Rest low and travel (§V477); check `math_swell` and `math_grade` first.
 - **The creature is the same SIZE loud and quiet** → the kernel's `core` term went back to a
   constant, or `drift`'s bias climbed and is drowning the audio. Measure it rather than
   squinting: 99% of the luminance mass should sit near 0.47 of half-frame-height in silence
   and near 0.72 at a loud passage.
 - **The picture still reacts but the SHAPE does not** → the kernel's `(inR - 0.68) / 1.25`
-  fell out of step with `swell1`'s `× 1.25 + 0.68`. Those four numbers are one decision
+  fell out of step with `math_swell`'s `× 1.25 + 0.68`. Those four numbers are one decision
   written in two places; they always move together. Symptom on the Beat source is the
   telling one, because `lowMid` there only reaches 0.33: a bias that is too high clamps
   `fromAudio` to zero for most of the beat and the post chain hides it.
-- **The image stops decaying and blows out to white** → `trailg1`'s gain went back up and
+- **The image stops decaying and blows out to white** → `math_trailg`'s gain went back up and
   persistence is pinning at 1.0.
 - **A `parameter.range` problem in the problems pane** → a gain/bias pair overshot its
   target. Compose the pair over 0…1 and compare; do not silence it at the clamp.
-- **A black frame on open** → `source1.index` moved to 1 with no file bound. That is honest
+- **A black frame on open** → `switch_source.index` moved to 1 with no file bound. That is honest
   silence in E24 because the picture animates anyway; here the audio drives the *shape*, so
   index 1 unbound is a much quieter creature rather than a dead one — but check it first.
 

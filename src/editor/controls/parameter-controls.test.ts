@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createAppRuntime, type AppRuntime } from "../../app/app-runtime.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
 import { resolveParameters } from "@domain/parameters/resolve.ts";
-import { createParameterReadOptions } from "@domain/parameters/node-references.ts";
+import { NO_FLATTENING, parameterReadOptions } from "@domain/parameters/node-references.ts";
 import { boxesOverlap, nodeBox } from "@domain/graph/node-box.ts";
-import type { GraphNode } from "@domain/types/graph.ts";
+import { authoredGraph, type GraphNode } from "@domain/types/graph.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import { panelMembers, panelTitle } from "@nodes/definitions/controls.ts";
@@ -39,9 +39,11 @@ const frame = { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "offl
 /** What the parameter resolves to this frame, channels from the real value session. */
 function resolved(runtime: AppRuntime, label: string, key: string): ParameterValue | undefined {
   const document = graph(runtime);
-  const channels = createValueGraphSession(runtime.registry).evaluate(document, frame).resolver;
+  // The runtime's own flattening, whole, as the app's value graph is handed it.
+  const flattened = runtime.flattened.current();
+  const channels = createValueGraphSession(runtime.registry).evaluate(flattened.graph, frame, { flattening: flattened }).resolver;
   const node = named(runtime, label);
-  const options = createParameterReadOptions({ graph: document, registry: runtime.registry, channels, frame });
+  const options = parameterReadOptions({ graph: authoredGraph(document), registry: runtime.registry, channels, frame, flattening: NO_FLATTENING });
   return resolveParameters(node, runtime.registry.get(node.type), options).values[key];
 }
 
@@ -73,26 +75,26 @@ describe("T1514b — Control from Panel", () => {
     expect(result.output.status).toBe("applied");
 
     // The slider carries Level's Brightness declaration (0..8, continuous) and the 3 it held.
-    const slider = named(runtime, "brightness");
+    const slider = named(runtime, "slider_brightness");
     expect(slider.type).toBe("slider");
     expect(slider.parameters).toMatchObject({ channel: "brightness", caption: "Brightness", value: 3, min: 0, max: 8, step: 0 });
     // Bound the way the controls always bind: the channel read, the 3 retained beside it.
     expect(named(runtime, "level1").parameters["brightness"]).toEqual({
       mode: "expression",
-      bindings: { static: { kind: "static", value: 3 }, expression: { kind: "expression", source: "op('brightness').chan.brightness" } },
+      bindings: { static: { kind: "static", value: 3 }, expression: { kind: "expression", source: "op('slider_brightness').chan.brightness" } },
     });
     // No Panel existed, so one was made — titled "Controls" — and the slider is on it.
     const [panel] = ofType(runtime, "panel");
     expect(panel).toBeDefined();
     expect(panelTitle(panel as GraphNode)).toBe("Controls");
-    expect(panelMembers(graph(runtime), panel as GraphNode).map((node) => node.label)).toEqual(["brightness"]);
+    expect(panelMembers(graph(runtime), panel as GraphNode).map((node) => node.label)).toEqual(["slider_brightness"]);
     // Placed beside what it drives, on top of nothing.
     const boxes = Object.values(graph(runtime).nodes).map((node) => nodeBox(node, runtime.registry.get(node.type), undefined, graph(runtime)));
     boxes.forEach((box, index) => boxes.slice(index + 1).forEach((other) => expect(boxesOverlap(box, other)).toBe(false)));
 
     // THE RENDER EFFECT: the parameter follows the slider, through the real value session.
     expect(resolved(runtime, "level1", "brightness")).toBe(3);
-    await set(runtime, "brightness", { value: 6.5 });
+    await set(runtime, "slider_brightness", { value: 6.5 });
     expect(resolved(runtime, "level1", "brightness")).toBe(6.5);
 
     // ONE undo: slider, Panel, wire and binding go together; Brightness is 3 again. (The
@@ -113,19 +115,19 @@ describe("T1514b — Control from Panel", () => {
     ]);
     await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "constant1").id, parameterKey: "value" }, runtime.invocation);
     await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "lfo1").id, parameterKey: "offset" }, runtime.invocation);
-    expect(named(runtime, "value").parameters).toMatchObject({ value: 5, min: 0, max: 5 });
-    expect(named(runtime, "offset").parameters).toMatchObject({ value: 0, min: 0, max: 1 });
+    expect(named(runtime, "slider_value").parameters).toMatchObject({ value: 5, min: 0, max: 5 });
+    expect(named(runtime, "slider_offset").parameters).toMatchObject({ value: 0, min: 0, max: 1 });
     expect(resolved(runtime, "constant1", "value")).toBe(5);
   });
 
   it("a boolean gets a toggle in its current state", async () => {
     const runtime = await runtimeWith([{ op: "addNode", ref: "$remap", type: "remap", position: { x: 400, y: 0 }, label: "remap1", parameters: { flipu: true } }]);
     await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "remap1").id, parameterKey: "flipu" }, runtime.invocation);
-    const toggle = named(runtime, "flipU");
+    const toggle = named(runtime, "toggle_flipU");
     expect(toggle.type).toBe("toggle");
     expect(toggle.parameters).toMatchObject({ channel: "flipU", caption: "Flip U", on: true });
     expect(resolved(runtime, "remap1", "flipu")).toBe(true);
-    await set(runtime, "flipU", { on: false });
+    await set(runtime, "toggle_flipU", { on: false });
     expect(resolved(runtime, "remap1", "flipu")).toBe(false);
   });
 
@@ -133,10 +135,33 @@ describe("T1514b — Control from Panel", () => {
     const runtime = await runtimeWith([{ op: "addNode", ref: "$pin", type: "cornerPin", position: { x: 400, y: 0 }, label: "pin1" }]);
     await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "pin1").id, parameterKey: "pintr" }, runtime.invocation);
     const pin = named(runtime, "pin1");
-    expect(pin.parameters["pintr.x"]).toMatchObject({ mode: "expression", bindings: { static: { value: 1 }, expression: { source: "op('pinTopRight').chan.pinTopRightX" } } });
-    expect(pin.parameters["pintr.y"]).toMatchObject({ mode: "expression", bindings: { static: { value: 1 }, expression: { source: "op('pinTopRight').chan.pinTopRightY" } } });
-    await set(runtime, "pinTopRight", { x: 0.25, y: 0.75 });
+    expect(pin.parameters["pintr.x"]).toMatchObject({ mode: "expression", bindings: { static: { value: 1 }, expression: { source: "op('xypad_pinTopRight').chan.pinTopRightX" } } });
+    expect(pin.parameters["pintr.y"]).toMatchObject({ mode: "expression", bindings: { static: { value: 1 }, expression: { source: "op('xypad_pinTopRight').chan.pinTopRightY" } } });
+    await set(runtime, "xypad_pinTopRight", { x: 0.25, y: 0.75 });
     expect(resolved(runtime, "pin1", "pintr")).toEqual([0.25, 0.75]);
+  });
+
+  it("each control is born AT its default: moved and then reset, the parameter reads the value the control took over (T1619b)", async () => {
+    const runtime = await runtimeWith([
+      level({ brightness: 3 }),
+      { op: "addNode", ref: "$remap", type: "remap", position: { x: 400, y: 600 }, label: "remap1", parameters: { flipu: true } },
+      { op: "addNode", ref: "$pin", type: "cornerPin", position: { x: 400, y: 1200 }, label: "pin1" },
+    ]);
+    await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "level1").id, parameterKey: "brightness" }, runtime.invocation);
+    await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "remap1").id, parameterKey: "flipu" }, runtime.invocation);
+    await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "pin1").id, parameterKey: "pintr" }, runtime.invocation);
+    // Nothing is away yet, so there is nothing to reset: a fresh control is not "moved".
+    expect((await runtime.bus.execute("control.reset", { all: true }, runtime.invocation)).status).toBe("rejected");
+
+    await set(runtime, "slider_brightness", { value: 6.5 });
+    await set(runtime, "toggle_flipU", { on: false });
+    await set(runtime, "xypad_pinTopRight", { x: 0.25, y: 0.75 });
+    expect([resolved(runtime, "level1", "brightness"), resolved(runtime, "remap1", "flipu"), resolved(runtime, "pin1", "pintr")]).toEqual([6.5, false, [0.25, 0.75]]);
+
+    const reset = await runtime.bus.execute("control.reset", { all: true }, runtime.invocation);
+    expect(reset.status).toBe("applied");
+    // THE RENDER EFFECT: what each parameter reads is what it held when its control was made.
+    expect([resolved(runtime, "level1", "brightness"), resolved(runtime, "remap1", "flipu"), resolved(runtime, "pin1", "pintr")]).toEqual([3, true, [1, 1]]);
   });
 
   it("joins the only Panel; with several it joins the one named, and refuses to guess", async () => {
@@ -144,14 +169,14 @@ describe("T1514b — Control from Panel", () => {
     const one = await runtimeWith([level(), panel("$a", "deskA", "Desk A")]);
     await one.bus.execute("control.fromParameter", { nodeId: named(one, "level1").id, parameterKey: "contrast" }, one.invocation);
     expect(ofType(one, "panel")).toHaveLength(1);
-    expect(panelMembers(graph(one), named(one, "deskA")).map((node) => node.label)).toEqual(["contrast"]);
+    expect(panelMembers(graph(one), named(one, "deskA")).map((node) => node.label)).toEqual(["slider_contrast"]);
 
     const two = await runtimeWith([level(), panel("$a", "deskA", "Desk A"), panel("$b", "deskB", "Desk B")]);
     const guess = await two.bus.execute("control.fromParameter", { nodeId: named(two, "level1").id, parameterKey: "contrast" }, two.invocation);
     expect(guess.output.status).toBe("rejected");
     expect(ofType(two, "slider")).toHaveLength(0);
     await two.bus.execute("control.fromParameter", { nodeId: named(two, "level1").id, parameterKey: "contrast", panelId: named(two, "deskB").id }, two.invocation);
-    expect(panelMembers(graph(two), named(two, "deskB")).map((node) => node.label)).toEqual(["contrast"]);
+    expect(panelMembers(graph(two), named(two, "deskB")).map((node) => node.label)).toEqual(["slider_contrast"]);
     expect(panelMembers(graph(two), named(two, "deskA"))).toEqual([]);
   });
 
@@ -168,7 +193,7 @@ describe("T1514b — Control from Panel", () => {
     const runtime = await runtimeWith([level(), { ...level(), ref: "$level2", label: "level2", position: { x: 400, y: 600 } } as GraphPatchOperation]);
     await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "level1").id, parameterKey: "brightness" }, runtime.invocation);
     await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "level2").id, parameterKey: "brightness" }, runtime.invocation);
-    expect(named(runtime, "level2").parameters["brightness"]).toMatchObject({ bindings: { expression: { source: "op('brightness1').chan.brightness" } } });
+    expect(named(runtime, "level2").parameters["brightness"]).toMatchObject({ bindings: { expression: { source: "op('slider_brightness1').chan.brightness" } } });
   });
 });
 

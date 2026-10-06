@@ -7,8 +7,11 @@ import type { GraphPatchOperation } from "../types/patch.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
+import { z } from "zod";
+import { finiteInput, idInput } from "../commands/input-schema.ts";
 import { nodeByName } from "../graph/names.ts";
-import { effectiveParameterSchema, resolveParameters } from "../parameters/resolve.ts";
+import { effectiveParameterSchema, resolveParameters, resolveStored } from "../parameters/resolve.ts";
+import { parameterReadOptions, type ParameterReadContext } from "../parameters/node-references.ts";
 import {
   componentAddressedDefinition,
   componentNamesFor,
@@ -57,6 +60,7 @@ import {
   type PresetCatalogue,
 } from "./bank-view.ts";
 import { isComponentNodeType } from "../components/component-type.ts";
+import { presetHolds } from "../../nodes/definitions/controls.ts";
 import { CUE_BACK_COMMAND, CUE_GO_COMMAND } from "./cue-list.ts";
 
 /**
@@ -174,6 +178,27 @@ export interface PresetStoreInput {
   /** The preset to write. An existing name is overwritten in place, keeping its position. */
   name: string;
 }
+
+/**
+ * §T1556b — the preset commands' input schemas: THE definition, which the agent's
+ * `store_preset` / `recall_preset` tools extend with `dryRun` rather than copy.
+ */
+export const presetStoreInputSchema = z.object({ nodeId: idInput, name: z.string().min(1) }).strict();
+
+/** 0 is a cut, whatever the preset or the bank says. The curve list is the bank parser's. */
+export const morphSpecSchema = z
+  .object({ seconds: finiteInput.min(0), curve: z.enum(MORPH_CURVES as unknown as [MorphCurve, ...MorphCurve[]]) })
+  .strict();
+
+export const presetRecallInputSchema = z
+  .object({
+    nodeId: idInput,
+    /** Omitted: the preset named in the bank's Select. */
+    name: z.string().min(1).optional(),
+    /** How THIS recall is carried out, over the preset's and the bank's own morph. */
+    morph: morphSpecSchema.optional(),
+  })
+  .strict();
 
 export interface PresetStoreOutput {
   ok: boolean;
@@ -457,6 +482,10 @@ export interface PresetCapture {
  * Store's capture (the design doc §4.3, ruling 3): every non-pulse parameter of a whole
  * target — a component instance's published page, since that IS its effective schema —
  * or just the named `node.key`, each AS STORED (a slot stays a slot, ruling 2).
+ *
+ * B261: of a whole Slider, Toggle, Button or XY Pad that is the keys a hand moves, not
+ * its channel, caption, range or step; and a control's default is never captured, whole or
+ * named (T1619b). Which keys those are is the controls' own table (`presetHolds`).
  */
 export function capturePresetValues(
   graph: GraphDocument,
@@ -492,7 +521,8 @@ export function capturePresetValues(
     const record = (values[target.node] ??= {});
     if (target.key !== undefined) {
       const keyDefinition = definitionFor(schema, target.key);
-      if (keyDefinition === undefined || keyDefinition.type === "pulse" || PRESET_STATE_KEYS.has(target.key)) {
+      // T1619b: a control's default is not a preset's to hold, even named (`presetHolds`).
+      if (keyDefinition === undefined || keyDefinition.type === "pulse" || PRESET_STATE_KEYS.has(target.key) || !presetHolds(node.type, target.key, false)) {
         skip(target.token, "preset.target.key", `Target "${target.token}": "${target.node}" has no storable parameter "${target.key}".`, node.id);
         continue;
       }
@@ -503,6 +533,8 @@ export function capturePresetValues(
     for (const [key, keyDefinition] of Object.entries(schema)) {
       // T1505b: an instance's own preset state is not part of the look it captures.
       if (keyDefinition.type === "pulse" || PRESET_STATE_KEYS.has(key)) continue;
+      // B261: of a whole CONTROL a preset holds what a hand moves, not its range, caption or default.
+      if (!presetHolds(node.type, key, true)) continue;
       const stored = node.parameters[key];
       record[key] = stored === undefined ? defaultParameterValue(keyDefinition) : copied(stored);
     }
@@ -829,6 +861,11 @@ export function planPresetRecall(
         skip(name, "preset.target.pulse", `${who}: "${name}" is a pulse, which fires rather than holds a value; skipped.`, node.id);
         continue;
       }
+      // T1619b: a preset written by hand may name a control's default. A recall never moves one.
+      if (!presetHolds(node.type, key, false)) {
+        skip(name, "preset.target.default", `${who}: "${name}" is a control's default, which a recall never changes; skipped.`, node.id);
+        continue;
+      }
       const invalid = validateParameters(schema, { [key]: stored }, node.id);
       if (invalid.length > 0) {
         skip(name, "preset.value.invalid", `${who}: the value for "${name}" does not fit it (${invalid[0]?.message ?? "invalid"}); skipped.`, node.id);
@@ -978,11 +1015,24 @@ export function planPresetRecall(
   return { operations, applied, skipped, diagnostics, morph, refused: false, after };
 }
 
-/** The bank's own parameters, through the one read path (§V61). */
-function resolvedBank(node: GraphNode, context: CommandContext): Readonly<Record<string, unknown>> {
-  return resolveParameters(node, context.registry.get(node.type), {
-    ...(context.channels === undefined ? {} : { channels: context.channels }),
-  }).values;
+/**
+ * §T1557b — A BANK'S OWN SETTINGS (Select, Morph, Curve) AT THIS MOMENT, through the one read
+ * path (§V61) and a read scope (`CommandContext.readScope`, `LoomBus.readScope`).
+ *
+ * This read used to be `{ channels }` alone — no cross-node reader — so `op('k1').chan.value`
+ * on a bank's Morph fell back to its retained static while the channel said otherwise
+ * (§B181's shape), here and in the three other readers of these settings (the cue list's GO,
+ * `list_presets`, and a Recall pulse fired inside a look, which reads its flat bank directly).
+ *
+ * An INSTANCE bank's settings live on its component's page bank, a node of the DEFINITION's
+ * graph: no live channel, morph or `op()` name of the root document belongs to it, and the
+ * per-instance read is the flat bank a pulse names. So it is read as the document holds it
+ * (`resolveStored`), which is what this read always was for it.
+ */
+export function bankSettings(view: BankView, registry: NodeRegistryView, scope: ParameterReadContext): Readonly<Record<string, unknown>> {
+  const definition = registry.get(view.bank.type);
+  if (view.kind === "instance") return resolveStored(view.bank, definition).values;
+  return resolveParameters(view.bank, definition, parameterReadOptions(scope)).values;
 }
 
 /** A `MorphSpec` off the wire, or `null` when it is not one. */
@@ -1084,6 +1134,7 @@ export function registerPresetCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_STORE_COMMAND,
+    inputSchema: presetStoreInputSchema,
     description:
       "Store a bank's targets, as their whole stored slots, under a preset name (§T1496b). On a component instance whose component holds a preset bank, the preset is written into the component, for every instance (§T1505b).",
     handler: (input, context) => {
@@ -1156,6 +1207,7 @@ export function registerPresetCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_RECALL_COMMAND,
+    inputSchema: presetRecallInputSchema,
     description:
       "Recall a bank's preset: every target it holds written back as one patch, one undo step (§T1496b); with a morph, the end state commits at once and the screen fades to it (§T1497b). A preset's recalls (other banks' presets) and its layer on/off ride in the same patch (§T1499b).",
     handler: (input, context) => {
@@ -1171,8 +1223,12 @@ export function registerPresetCommands(bus: LoomBus): void {
       if (inside !== null) return recallRefusal(revision, [inside]);
       // Select, Morph and Curve are the bank's — for an instance, its component's page bank's;
       // for a pulse from inside, that bank as THIS instance flattened it (its published Select).
-      const flatBank = pulse === null ? undefined : bus.flattenedGraph()?.nodes[pulse.flatId];
-      const settings = resolvedBank(flatBank ?? view.bank, context);
+      const flat = pulse === null ? undefined : bus.flattenedGraph();
+      const flatBank = pulse === null ? undefined : flat?.nodes[pulse.flatId];
+      const settings =
+        flat === undefined || flatBank === undefined
+          ? bankSettings(view, context.registry, context.readScope())
+          : resolveParameters(flatBank, context.registry.get(flatBank.type), parameterReadOptions({ ...context.readScope(), graph: flat })).values;
       const name = typeof input.name === "string" ? input.name.trim() : resolvedSelect(settings);
       if (name === "") {
         return recallRefusal(revision, [
@@ -1240,6 +1296,6 @@ export function registerPresetCommands(bus: LoomBus): void {
         output: { ok, preset: name, applied: ok ? plan.applied : [], skipped: plan.skipped, morph: ok ? plan.morph : null },
       };
     },
-    rejectionOutput: (input) => ({ ok: false, preset: typeof input?.name === "string" ? input.name : null, applied: [], skipped: [], morph: null }),
+    rejectionOutput: (input) => ({ ok: false, preset: typeof (input as Partial<PresetRecallInput> | null)?.name === "string" ? (input as PresetRecallInput).name ?? null : null, applied: [], skipped: [], morph: null }),
   });
 }

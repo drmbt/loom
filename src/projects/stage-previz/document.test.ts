@@ -47,8 +47,8 @@ function compiled(values: Readonly<Record<string, number>> = {}) {
   const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
   const loaded = loadProject(serializeProjectDocument(stageDocument(FACTS)), { nodes: system.nodes });
   if (!loaded.ok) throw new Error(`did not load: ${loaded.reason}`);
-  // A channel arrives as `<label>:<channel>`; every fader here publishes its own label.
-  const channels: ChannelResolver = (name, context) => (context.definition.type === "number" ? (values[name.split(":")[0] ?? ""] ?? 0.5) : undefined);
+  // A channel arrives as `<name>:<channel>`. A fader is named `slider_<role>` and publishes its role as its channel (T1593b), so values are keyed by the channel.
+  const channels: ChannelResolver = (name, context) => (context.definition.type === "number" ? (values[name.split(":")[1] ?? name] ?? 0.5) : undefined);
   const plan = compileGraph({
     graph: loaded.document.graph,
     settings: loaded.document.settings,
@@ -90,7 +90,7 @@ describe("stage previz session", () => {
     expect(into(graph, "feedSL", "inputs")).toEqual(["syphonSL", "testBeams", "testGrid"]);
     expect(into(graph, "feedDS", "inputs")).toEqual(["syphonDS", "testVideo", "testGrid"]);
     for (const feed of ["feedSR", "feedSL", "feedDS"]) {
-      expect(graph.nodes[feed]?.parameters["index"]).toMatchObject({ mode: "expression", bindings: { expression: { source: "op('source').chan.source" } } });
+      expect(graph.nodes[feed]?.parameters["index"]).toMatchObject({ mode: "expression", bindings: { expression: { source: "op('slider_source').chan.source" } } });
     }
   });
 
@@ -177,10 +177,10 @@ describe("stage previz session", () => {
     expect(upgraded.graph.nodes["dsTilt"]!.parameters["value"]).toBe(12);
     expect(upgraded.graph.nodes["syphonSR"]!.parameters["source"]).toBe("info.v002.Syphon.TEST");
     expect(upgraded.graph.nodes["projSL"]!.parameters["shiftY"]).toBe(0.051); // a lens shift set by hand stays
-    expect(String(upgraded.graph.nodes["stage"]!.parameters["scenes"]).split(" ").filter((name) => name === "geoRig")).toHaveLength(1);
+    expect(String(upgraded.graph.nodes["stage"]!.parameters["scenes"]).split(" ").filter((name) => name === "geometry_rig")).toHaveLength(1);
     const board = JSON.parse(String(upgraded.graph.nodes["desk"]!.parameters["board"])) as { items: Array<{ label?: string; member?: string }> };
     expect(board.items.filter((item) => item.label === "Projectors")).toHaveLength(1);
-    expect(board.items.filter((item) => item.member === "dsOffset")).toHaveLength(1);
+    expect(board.items.filter((item) => item.member === "slider_dsOffset")).toHaveLength(1);
   });
 
   it("VNB8: a kernel fed by a mesh follows the mesh's measured size, so a re-measured GLB still compiles", () => {
@@ -217,9 +217,9 @@ describe("stage previz session", () => {
     const { graph, plan } = compiled();
     for (const drape of ["geoCurtain", "geoKabuki"]) {
       expect(graph.nodes[drape]!.parameters["blend"]).toBe("additive");
-      expect(graph.nodes[drape]!.parameters["material"]).toBe("matDrape");
+      expect(graph.nodes[drape]!.parameters["material"]).toBe("material_drape");
     }
-    expect(graph.nodes["matDrape"]!.parameters["color"]).toMatchObject({ mode: "expression", bindings: { expression: { source: "op('scrim').chan.scrim" } } });
+    expect(graph.nodes["matDrape"]!.parameters["color"]).toMatchObject({ mode: "expression", bindings: { expression: { source: "op('slider_scrim').chan.scrim" } } });
     expect(plan.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
   });
 
@@ -228,7 +228,7 @@ describe("stage previz session", () => {
     // whatever is behind; the drapes' own depth arrives as the composite's third More.
     const { graph, plan } = compiled();
     const depth = graph.nodes["drapeDepth"]!;
-    expect(depth.parameters).toMatchObject({ scenes: "geoCurtainDepth geoKabukiDepth", camera: "view", depthOutput: true });
+    expect(depth.parameters).toMatchObject({ scenes: "geometry_curtainDepth geometry_kabukiDepth", camera: "camera_view", depthOutput: true });
     expect(into(graph, "geoCurtainDepth", "points")).toEqual(["meshCurtain"]);
     expect(into(graph, "geoKabukiDepth", "points")).toEqual(["kabukiFly"]); // it flies with the kabuki
     for (const id of ["geoCurtainDepth", "geoKabukiDepth"]) expect(graph.nodes[id]!.parameters["blend"] ?? "normal").not.toBe("additive");
@@ -276,16 +276,16 @@ describe("stage previz session", () => {
     const boardOf = (document: ReturnType<typeof stageDocument>) => JSON.parse(String(document.graph.nodes["desk"]!.parameters["board"])) as Board;
     const board = boardOf(stageDocument(FACTS));
     const at = (member: string) => board.items.find((item) => item.member === member)?.rect;
-    expect(at("orbit")?.y).toBe(at("shot")!.y + 1);
-    expect(at("zoom")?.y).toBe(at("orbit")?.y);
-    expect(at("source")?.y).toBe(at("shot")?.y);
+    expect(at("slider_orbit")?.y).toBe(at("slider_shot")!.y + 1);
+    expect(at("slider_zoom")?.y).toBe(at("slider_orbit")?.y);
+    expect(at("slider_source")?.y).toBe(at("slider_shot")?.y);
     for (const [index, a] of board.items.entries()) {
       for (const b of board.items.slice(index + 1)) {
         const apart = a.rect.x + a.rect.w <= b.rect.x || b.rect.x + b.rect.w <= a.rect.x || a.rect.y + a.rect.h <= b.rect.y || b.rect.y + b.rect.h <= a.rect.y;
         expect(apart, `${a.member ?? a.label} and ${b.member ?? b.label} overlap`).toBe(true);
       }
     }
-    for (const member of ["orbit", "zoom", "sideKeyH", "sideKeyV"]) expect(board.items.filter((item) => item.member === member)).toHaveLength(1);
+    for (const member of ["slider_orbit", "slider_zoom", "slider_sideKeyH", "slider_sideKeyV"]) expect(board.items.filter((item) => item.member === member)).toHaveLength(1);
     expect(boardOf(applyRig(applyRig(stageDocument(FACTS), FACTS), FACTS)).items).toEqual(board.items);
   });
 
@@ -309,17 +309,17 @@ describe("stage previz session", () => {
   it("one FX feed drives the pixel lines and the strobes: Syphon, test and the pixel-map template on the Source switch", () => {
     const { graph, plan } = compiled({ source: 1 });
     expect(into(graph, "feedFX", "inputs")).toEqual(["syphonFX", "testFX", "fxMap"]);
-    expect(graph.nodes["feedFX"]!.parameters["index"]).toMatchObject({ mode: "expression", bindings: { expression: { source: "op('source').chan.source" } } });
+    expect(graph.nodes["feedFX"]!.parameters["index"]).toMatchObject({ mode: "expression", bindings: { expression: { source: "op('slider_source').chan.source" } } });
     expect(graph.nodes["fxMap"]!.parameters["file"]).toBe("media/stage-previz/fx-pixel-map.png");
     // both emitter materials read the feed through the surface uv the GLB bakes per fixture
     expect(into(graph, "matLed", "albedo")).toEqual(["feedFX"]);
     expect(into(graph, "matStrobe", "albedo")).toEqual(["feedFX"]);
-    expect(graph.nodes["matLed"]!.parameters["color"]).toMatchObject({ bindings: { expression: { source: "op('leds').chan.leds * 2" } } });
-    expect(graph.nodes["matStrobe"]!.parameters["color"]).toMatchObject({ bindings: { expression: { source: "op('strobes').chan.strobes * 4" } } });
+    expect(graph.nodes["matLed"]!.parameters["color"]).toMatchObject({ bindings: { expression: { source: "op('slider_leds').chan.leds * 2" } } });
+    expect(graph.nodes["matStrobe"]!.parameters["color"]).toMatchObject({ bindings: { expression: { source: "op('slider_strobes').chan.strobes * 4" } } });
     expect(into(graph, "geoStrobe", "points")).toEqual(["meshStrobe"]);
     expect(graph.nodes["meshStrobe"]!.parameters["select"]).toBe("strobe.*");
     // the strobes draw in the house view; like the LEDs they are light, not occluders
-    expect(String(graph.nodes["stage"]!.parameters["scenes"]).split(" ")).toEqual(expect.arrayContaining(["geoLed", "geoStrobe"]));
+    expect(String(graph.nodes["stage"]!.parameters["scenes"]).split(" ")).toEqual(expect.arrayContaining(["geometry_led", "geometry_strobe"]));
     for (const render of ["shadowSR", "shadowSL", "shadowDS", "drapeDepth"]) expect(String(graph.nodes[render]!.parameters["scenes"]).split(" ")).not.toContain("geoStrobe");
     expect(plan.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
     expect(plan.passes.some((pass) => "nodeId" in pass && pass.nodeId === "testFX")).toBe(true);
@@ -330,7 +330,7 @@ describe("stage previz session", () => {
     const nodes = { ...saved.graph.nodes, syphonFX: { ...saved.graph.nodes["syphonFX"]!, parameters: { source: "Arena - FX" } } };
     const upgraded = applyRig({ ...saved, graph: { ...saved.graph, nodes } }, FACTS).graph;
     expect(upgraded.nodes["syphonFX"]!.parameters["source"]).toBe("Arena - FX");
-    expect(String(upgraded.nodes["stage"]!.parameters["scenes"]).split(" ").filter((name) => name === "geoStrobe")).toHaveLength(1);
+    expect(String(upgraded.nodes["stage"]!.parameters["scenes"]).split(" ").filter((name) => name === "geometry_strobe")).toHaveLength(1);
     expect(Object.values(upgraded.edges).filter((wire) => wire.target.nodeId === "feedFX")).toHaveLength(3);
   });
 
@@ -416,9 +416,9 @@ describe("stage previz session", () => {
 
   it("the deck floor has its own material on the Deck tone fader, drawn wherever the stage is", () => {
     const { graph, plan } = compiled({ deckTone: 0.6 });
-    expect(graph.nodes["matDeck"]!.parameters["color"]).toMatchObject({ mode: "expression", bindings: { expression: { source: "op('deckTone').chan.deckTone" } } });
-    expect(graph.nodes["geoDeck"]!.parameters["material"]).toBe("matDeck");
-    for (const render of ["stage", "shadowSR", "shadowSL", "shadowDS"]) expect(String(graph.nodes[render]!.parameters["scenes"]).split(" ")).toContain("geoDeck");
+    expect(graph.nodes["matDeck"]!.parameters["color"]).toMatchObject({ mode: "expression", bindings: { expression: { source: "op('slider_deckTone').chan.deckTone" } } });
+    expect(graph.nodes["geoDeck"]!.parameters["material"]).toBe("material_deck");
+    for (const render of ["stage", "shadowSR", "shadowSL", "shadowDS"]) expect(String(graph.nodes[render]!.parameters["scenes"]).split(" ")).toContain("geometry_deck");
     expect(plan.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
   });
 

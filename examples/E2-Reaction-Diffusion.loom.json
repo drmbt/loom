@@ -131,7 +131,7 @@
       "broad": {
         "definitionVersion": 1,
         "id": "broad",
-        "label": "broad1",
+        "label": "noise_broad",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -174,7 +174,7 @@
       "detail": {
         "definitionVersion": 1,
         "id": "detail",
-        "label": "detail1",
+        "label": "noise_detail",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -201,7 +201,7 @@
       "flow": {
         "definitionVersion": 1,
         "id": "flow",
-        "label": "flow1",
+        "label": "displace_flow",
         "parameters": {
           "extend": "hold",
           "offset": [
@@ -239,7 +239,7 @@
       "pack": {
         "definitionVersion": 1,
         "id": "pack",
-        "label": "pack1",
+        "label": "reorder_pack",
         "parameters": {
           "outa": "in1a",
           "outb": "in2lum",
@@ -255,7 +255,7 @@
       "palette": {
         "definitionVersion": 2,
         "id": "palette",
-        "label": "palette1",
+        "label": "ramp_palette",
         "parameters": {
           "interp": "smooth",
           "period": 1,
@@ -318,7 +318,7 @@
       "rd": {
         "definitionVersion": 1,
         "id": "rd",
-        "label": "rd1",
+        "label": "wgsl_reaction",
         "parameters": {
           "anisotropy": 0,
           "facet": 0,
@@ -339,7 +339,7 @@
       "shape": {
         "definitionVersion": 1,
         "id": "shape",
-        "label": "shape1",
+        "label": "level_shape",
         "parameters": {
           "blacklevel": 0.28,
           "brightness": 1,
@@ -368,7 +368,7 @@
             0
           ],
           "persistence": 1,
-          "source": "pack1",
+          "source": "reorder_pack",
           "substeps": 20
         },
         "position": {
@@ -385,7 +385,7 @@
       "swell": {
         "definitionVersion": 1,
         "id": "swell",
-        "label": "swell1",
+        "label": "noise_swell",
         "parameters": {
           "amp": 1,
           "aspectcorrect": true,
@@ -417,7 +417,7 @@
       "tint": {
         "definitionVersion": 1,
         "id": "tint",
-        "label": "tint1",
+        "label": "lookup_tint",
         "parameters": {
           "channel": "green",
           "offset": {
@@ -445,7 +445,7 @@
       "warp": {
         "definitionVersion": 1,
         "id": "warp",
-        "label": "warp1",
+        "label": "displace_warp",
         "parameters": {
           "extend": "mirror",
           "offset": [

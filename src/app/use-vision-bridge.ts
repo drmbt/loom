@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { ChannelResolver, ParameterMorphs } from "@domain/parameters/resolve.ts";
-import { createParameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
+import type { ChannelResolver } from "@domain/parameters/resolve.ts";
+import { parameterReadOptions, resolveParameters } from "@domain/parameters/index.ts";
+import type { LiveParameterReads } from "@domain/parameters/index.ts";
+import type { FlatGraph, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { FrameEvaluationInput } from "@domain/types/frame.ts";
 import { absTimeSecondsOf } from "@domain/types/frame.ts";
@@ -127,10 +128,8 @@ interface VisionTarget {
 }
 
 /** What a Person Mask's own parameters are read with (T1525b) — see `useVisionBridge`'s options. */
-interface VisionParameterReads {
+interface VisionParameterReads extends LiveParameterReads {
   readonly registry: NodeRegistryView;
-  readonly channels: () => ChannelResolver | undefined;
-  readonly morphs: () => ParameterMorphs | undefined;
 }
 
 /**
@@ -142,12 +141,12 @@ interface VisionParameterReads {
  */
 function minIntervalAt(
   node: GraphNode,
-  graph: GraphDocument,
+  graph: FlatGraph,
   reads: VisionParameterReads,
   frame: FrameEvaluationInput | undefined,
 ): number {
   const { registry } = reads;
-  const options = createParameterReadOptions({ graph, registry, frame, channels: reads.channels(), morphs: reads.morphs() });
+  const options = parameterReadOptions({ graph, registry, frame, channels: reads.channels(), flattening: reads.flattening() });
   const rate = resolveParameters(node, registry.get(node.type), options).get("rateLimit")?.value;
   return typeof rate === "number" ? Math.max(0, rate) : 0.1;
 }
@@ -177,21 +176,21 @@ export function useVisionBridge(options: {
    *  the seam's entries fill only after a compile allocates the node, and the first
    *  structural compile therefore resolved `mask1:coverage` as unknown and pinned a
    *  diagnostic nothing later cleared. The channel belongs to the NODE, not the seam. */
-  graph?: () => GraphDocument;
+  graph?: () => FlatGraph;
   /**
-   * T1525b: what the node's own parameters (Min interval) are resolved with — the catalogue,
-   * the compile's channel resolver and the preset morphs in flight over the graph `track`
-   * is handed (`FlattenedGraph.morphs`). Getters, read per frame. REQUIRED, like the media
+   * T1525b: what the node's own parameters (Min interval) are resolved with — the catalogue
+   * and the live read world (§T1551b: the compile's channel resolver and the runtime's
+   * flattening). Getters, read per frame. REQUIRED, like the media
    * transport's (§T1524b): an optional getter nothing supplies is how a reader ends up
    * resolving without it.
    */
   registry: NodeRegistryView;
-  channels: () => ChannelResolver | undefined;
-  morphs: () => ParameterMorphs | undefined;
+  channels: LiveParameterReads["channels"];
+  flattening: LiveParameterReads["flattening"];
 }): {
   readonly diagnostics: readonly RuntimeDiagnostic[];
   observe(frame: FrameEvaluationInput): void;
-  track(graph: GraphDocument, compiled: CompiledGraph | null): void;
+  track(graph: FlatGraph, compiled: CompiledGraph | null): void;
   settle(frameIndex: number): Promise<void>;
   prepareForRender(): Promise<void>;
   /** T1067 — `mask1:coverage` et al. Present whenever the NODE is tracked, whether or
@@ -247,7 +246,7 @@ export function useVisionBridge(options: {
      was last handed, the one each frame re-reads Min interval on. */
   const readsRef = useRef<VisionParameterReads>(options);
   readsRef.current = options;
-  const trackedGraphRef = useRef<GraphDocument | null>(null);
+  const trackedGraphRef = useRef<FlatGraph | null>(null);
   const unregisterRef = useRef(new Map<string, () => void>());
   const registeredOnRef = useRef<LoomBackend | null>(null);
 
@@ -285,7 +284,7 @@ export function useVisionBridge(options: {
   );
 
   const track = useCallback(
-    (graph: GraphDocument, compiled: CompiledGraph | null) => {
+    (graph: FlatGraph, compiled: CompiledGraph | null) => {
       const sized = new Map<string, readonly [number, number]>();
       const nativeResults = new Set<string>();
       for (const resource of compiled?.resources ?? []) {

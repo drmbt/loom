@@ -54,6 +54,7 @@ const PASS_TONE: Readonly<Record<PipelinePassRow["kind"], string>> = {
   counter: "utility",
   swap: "temporal",
   loop: "utility",
+  write: "utility",
 };
 
 function Meter({ label, value, tone }: { label: string; value: string; tone?: "signal" }) {

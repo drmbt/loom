@@ -158,7 +158,7 @@ function park(cut: Surgery, facts: OnNothingFacts, cars: NonNullable<WideTake["c
   delete cut.edges[edgeId];
   const id = `park_${mesh}`;
   const at = cut.nodes[mesh]!.position;
-  addNode(cut, id, "pointKernel", [at.x + 150, at.y + 60], { capacity, attributes: CAR_RIG_ATTRIBUTES, kernel: parkingKernel(facts), ...parkingParams(facts, cars) }, { label: `park${mesh.toLowerCase().replace(/_/g, "")}1` });
+  addNode(cut, id, "pointKernel", [at.x + 150, at.y + 60], { capacity, attributes: CAR_RIG_ATTRIBUTES, kernel: parkingKernel(facts), ...parkingParams(facts, cars) }, { label: `kernel_park${mesh.toLowerCase().replace(/_/g, "")}` });
   connect(cut, [mesh, "out"], [id, "in"]);
   connect(cut, [id, "out"], [geo, "points"]);
 }
@@ -288,12 +288,12 @@ export function wideDocument(facts: OnNothingFacts, options: ShotOptions & { rea
   if (take.second !== undefined) {
     // A second instance of the figure: its own mesh read, its own skin, its own geometry (row 69).
     const second = facts.areas.get(take.second.area)!;
-    addNode(cut, "fig2", "meshFileIn", [-3600, 1500], { file: facts.glbUrl, select: second.select, vertices: second.vertices, triangles: second.triangles, parts: second.parts, joints: second.joints }, { label: "figb1" });
-    addNode(cut, "skin2", "pointKernel", [-3300, 1500], { capacity: second.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), ...figureParams(facts, take.second) }, { label: "skinb1" });
-    addNode(cut, "figGeo2", "geometry", [-3000, 1500], { mode: "surface", material: "surf1" }, { label: "figgeob1" });
+    addNode(cut, "fig2", "meshFileIn", [-3600, 1500], { file: facts.glbUrl, select: second.select, vertices: second.vertices, triangles: second.triangles, parts: second.parts, joints: second.joints }, { label: "mesh_figb" });
+    addNode(cut, "skin2", "pointKernel", [-3300, 1500], { capacity: second.vertices, attributes: SKIN_ATTRIBUTES, kernel: skinKernel(facts), ...figureParams(facts, take.second) }, { label: "kernel_skinb" });
+    addNode(cut, "figGeo2", "geometry", [-3000, 1500], { mode: "surface", material: "material_surf" }, { label: "geometry_figb" });
     connect(cut, ["fig2", "out"], ["skin2", "in"]);
     connect(cut, ["skin2", "out"], ["figGeo2", "points"]);
-    scenes.push("figgeob1");
+    scenes.push("geometry_figb");
   }
   setParams(cut, "shot", { scenes: scenes.join(" ") });
 

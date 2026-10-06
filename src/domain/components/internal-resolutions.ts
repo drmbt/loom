@@ -23,11 +23,12 @@ export function internalResolutions(node: GraphNode): Readonly<Record<string, No
 }
 
 /**
- * B239 — an instance's internal resolution overrides written onto its definition graph, for
- * `component.detach`: a direct id sets that node's `resolution`, a nested path merges into
- * the nested instance's own overrides (its first segment must be an instance), outer
- * winning — what flattening does after each level expands (`compiler/flatten.ts`), applied
- * to real nodes once. `missing` lists the paths that name nothing, which flattening reports.
+ * B239 — an instance's internal resolution overrides written onto its definition graph: a
+ * direct id sets that node's `resolution`, a nested path merges into the nested instance's
+ * own overrides (its first segment must be an instance), outer winning, and the nested level
+ * applies them in turn. T1553b: flattening and `component.detach` both reach this through
+ * `applyInstance` (flattening used to apply the overrides itself after each level expanded).
+ * `missing` lists the paths that name nothing, which both report.
  */
 export function projectInternalResolutions(graph: GraphDocument, resolutions: Readonly<Record<string, NodeResolutionOverride>>): {
   readonly graph: GraphDocument; readonly missing: readonly string[];

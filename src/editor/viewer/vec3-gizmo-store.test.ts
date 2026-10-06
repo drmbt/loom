@@ -3,7 +3,7 @@ import type { GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
 import { defaultParameters } from "@domain/parameters/index.ts";
-import { effectiveParameterSchema, resolveParameters } from "@domain/parameters/resolve.ts";
+import { STORED_READ, effectiveParameterSchema, resolveParameters } from "@domain/parameters/resolve.ts";
 import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import { createNodeRegistry } from "@nodes/registry/index.ts";
 import {
@@ -312,7 +312,7 @@ describe("T935 — the derivation against the shipped node catalogue", () => {
   const handlesOf = (node: GraphNode) => {
     const definition = registry.get(node.type);
     if (definition === undefined) throw new Error("missing definition");
-    const resolved = resolveParameters(node, definition);
+    const resolved = resolveParameters(node, definition, STORED_READ);
     return gizmoHandlesFor({
       schema: effectiveParameterSchema(definition, node.parameters),
       resolved: resolved.entries,
@@ -374,7 +374,7 @@ describe("T1491b — which parameters are offered a PICTURE handle", () => {
       position: { x: 0, y: 0 },
       parameters: { ...defaultParameters(effectiveParameterSchema(definition, {})), ...overrides },
     };
-    const resolved = resolveParameters(node, definition);
+    const resolved = resolveParameters(node, definition, STORED_READ);
     return pictureHandlesFor({
       schema: effectiveParameterSchema(definition, node.parameters),
       resolved: resolved.entries,
