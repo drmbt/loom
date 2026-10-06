@@ -640,8 +640,8 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
 });
 
 /*
- * THE CONSUMER, AS SHIPPED: sentinel-bot's three published Panels, eight columns, every control
- * six of them wide — three tabs, each taller than a small phone's screen. (The owner, on a real
+ * THE CONSUMER, AS SHIPPED: sentinel-bot's three published Panels, every control most of the
+ * board's width with a bare strip beside it — three tabs, each taller than a small phone's screen. (The owner, on a real
  * phone after this page's scrolling had landed: "still pretty hard to not screw with the sliders
  * when scrolling on mobile". So the project now leaves the right quarter of each board bare, as
  * somewhere to scroll from. A flick that STARTS on a slider must still scroll and write nothing:
@@ -660,23 +660,28 @@ test.describe("§T1607b the phone page under a real touch — sentinel-bot's Pan
     try {
       await expect(phone.page.locator("#tabs [role=tab]")).toHaveCount(4);
       expect(await tabNames(phone.page)).toEqual(["Lights", "Robot", "Scene", "Camera"]);
+      const scrolled: string[] = [];
       for (const name of ["Lights", "Robot", "Scene"]) {
         await phone.page.locator("#tabs [role=tab]", { hasText: name }).tap();
         await expect(phone.page.locator("#tabs [aria-selected=true]")).toHaveText(name);
-        // The premise: taller than the screen, and its sliders run three quarters of the board (a bare quarter beside them).
+        // The premise: taller than the screen, and its sliders run most of the board's width (a bare strip beside them).
+        // (A Panel that fits the screen has nothing to scroll: the project's rows are lower now and its shortest
+        // Panel fits. The longest must still need it, or this case holds nothing.)
         const end = await scrollEnd(phone.page);
-        expect(end, `${name} must need scrolling`).toBeGreaterThan(0);
+        if (end === 0) continue;
+        scrolled.push(name);
         const widths = await phone.page.evaluate(() => {
           const board = document.querySelector("section.panel:not([hidden]) .board")!.getBoundingClientRect().width;
           return [...document.querySelectorAll("section.panel:not([hidden]) .track")].map((track) => track.getBoundingClientRect().width / board);
         });
         expect(widths.length).toBeGreaterThanOrEqual(8);
         expect(Math.min(...widths), `${name}: every slider is most of the board's width`).toBeGreaterThan(0.7);
-        expect(Math.max(...widths), `${name}: and none reaches into the bare quarter`).toBeLessThan(0.78);
+        expect(Math.max(...widths), `${name}: and none reaches into the bare strip beside them`).toBeLessThan(0.85);
 
         await flickFromSlider(phone, 240, true);
         expect(await atEnd(phone.page, end), `${name} must scroll to its end`).toBe(true);
       }
+      expect(scrolled).toContain("Robot");
       await phone.page.waitForTimeout(300);
       expect(stage.writes).toEqual([]);
       expect(phone.errors).toEqual([]);

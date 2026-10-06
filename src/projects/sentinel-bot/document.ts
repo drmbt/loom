@@ -494,13 +494,16 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   /**
    * THREE PANELS, not one board: the phone draws a tab for each (§T1517b), and a board taller than
    * the screen cannot be scrolled there without moving the sliders under the finger (§T1607b, the
-   * owner 2026-10-05). Eight columns across and every control the full width, so a row is an
-   * eighth of the phone's width tall and each panel is one screen.
+   * owner 2026-10-05). Each board is a few columns across and a row of it is as tall as a column is
+   * wide, so the column count below is how tall a control is on a phone and on the desk alike.
    */
   // Each is published to the phone (Phone: on). That opens nothing by itself: a phone reaches them only through
   // the helper's phone door, armed by its own flag and opened from the paired tab.
-  const COLUMNS = 8;
-  // A control takes six of the eight: the right quarter of every panel is bare board, so on a phone there is
+  // Ten columns: a row of a board is as tall as a column is wide, so more columns is a lower slider. (They
+  // were eight; the owner, 2026-10-06: "the sliders for the controls could be a tiny bit less high on both app
+  // pane and on mobile. just a smidge too chunky". Ten is a fifth lower.)
+  const COLUMNS = 10;
+  // A control takes eight of the ten: the right fifth of every panel is bare board, so on a phone there is
   // somewhere to put a thumb and scroll that is not a slider. (The owner, 2026-10-06, after the phone's own
   // scrolling had landed: "still pretty hard to not screw with the sliders when scrolling on mobile".)
   const row = (member: string, y: number): { member: string; rect: { x: number; y: number; w: number; h: number } } => ({ member, rect: { x: 0, y, w: COLUMNS - 2, h: 1 } });
@@ -537,7 +540,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       heading("Camera", 2 + SCENE.length),
       row("slider_shot", 3 + SCENE.length),
       row("toggle_cuts", 4 + SCENE.length),
-      { member: "xypad_view", rect: { x: 2, y: 5 + SCENE.length, w: 4, h: 3 } },
+      { member: "xypad_view", rect: { x: 2, y: 5 + SCENE.length, w: 4, h: 4 } },
     ],
     lights: [heading("Lights", 0), row(bankOf("lights"), 1), ...LIGHTS.map((slider, index) => row(slider.name, 2 + index))],
   };
@@ -813,7 +816,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${PLACE})`, 26),
       named: namedLamps.length > 0 ? 1 : 0,
     }, { label: "kernel_lamps" }),
-    node("light_lamps", "light", [-1500, -900], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 24 }, { label: "light_lamps" }),
+    // Spots, shining down: a lamp is a plate in the crown, and a plate lights what is under it and not the crown
+    // beside it. Wide and soft (the full angle 150 degrees, fading over most of it), as the lit air under it is.
+    node("light_lamps", "light", [-1500, -900], { kind: "spot", mode: "points", direction: [0, -1, 0], cone: 150, coneSoftness: 0.8, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 24 }, { label: "light_lamps" }),
     // The three nearest the robot as Lights of their own, where a lamp's shadow is wanted: a Light in Points
     // mode casts none. Offline only (see robotCasts); the kernel above dims those three by as much.
     ...namedLamps.map((lamp, index) =>
