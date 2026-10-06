@@ -44,8 +44,10 @@ export async function verifyMultiOutputs({ app, page, receive, emptyProject, rec
       assert.equal(result.ok, true); assert.equal(result.gpuDrained, true);
       for (const frame of result.frames) {
         assert.equal(frame.width, 1920); assert.equal(frame.height, 1080);
-        assert.deepEqual(frame.samples.slice(0, 2).map(sample => sample.rgba), [[0, 0, 255, 255], [0, 0, 255, 255]]);
-        assert.deepEqual(frame.samples.slice(2, 4).map(sample => sample.rgba), [[0, 128, 0, 255], [0, 128, 0, 255]]);
+        // VNB13: Syphon surfaces are bottom row first (OpenGL), and this Metal receiver samples memory
+        // rows top-down, so its first two samples (a tenth down) are the picture's BOTTOM corners.
+        assert.deepEqual(frame.samples.slice(0, 2).map(sample => sample.rgba), [[0, 128, 0, 255], [0, 128, 0, 255]]);
+        assert.deepEqual(frame.samples.slice(2, 4).map(sample => sample.rgba), [[0, 0, 255, 255], [0, 0, 255, 255]]);
       }
     }
     const samples = [await snapshot()];
@@ -100,8 +102,10 @@ export async function verifyMultiOutputs({ app, page, receive, emptyProject, rec
         assert.ok(result.receiveFps > 0); assert.ok(result.intervalP95Ms >= result.intervalP50Ms);
         for (const frame of result.frames) {
           assert.equal(frame.width, 1920); assert.equal(frame.height, 1080);
-          assert.deepEqual(frame.samples.slice(0, 2).map(sample => sample.rgba), [[0, 0, 255, 255], [0, 0, 255, 255]]);
-          assert.deepEqual(frame.samples.slice(2, 4).map(sample => sample.rgba), [[0, 128, 0, 255], [0, 128, 0, 255]]);
+          // VNB13: Syphon surfaces are bottom row first (OpenGL), and this Metal receiver samples memory
+          // rows top-down, so its first two samples (a tenth down) are the picture's BOTTOM corners.
+          assert.deepEqual(frame.samples.slice(0, 2).map(sample => sample.rgba), [[0, 128, 0, 255], [0, 128, 0, 255]]);
+          assert.deepEqual(frame.samples.slice(2, 4).map(sample => sample.rgba), [[0, 0, 255, 255], [0, 0, 255, 255]]);
         }
       }
       const after = await snapshot();

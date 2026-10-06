@@ -40,7 +40,11 @@ static void execute(napi_env, void *data) {
       if (job->server) {
         id<MTLCommandBuffer> command = [job->queue commandBuffer];
         if (!source || !command) throw std::runtime_error("Cannot import Syphon source texture");
-        [job->server publishFrameTexture:source onCommandBuffer:command imageRegion:NSMakeRect(0,0,width,height) flipped:NO];
+        // VNB13: publish in OpenGL's orientation, bottom row first, as every OpenGL publisher and
+        // client does (Resolume, TouchDesigner, VDMX, MadMapper). The surface Chromium hands us is
+        // top row first, and Syphon flips a texture marked flipped as it publishes it. With NO it
+        // blitted the rows as they were, and those apps showed Loom upside down.
+        [job->server publishFrameTexture:source onCommandBuffer:command imageRegion:NSMakeRect(0,0,width,height) flipped:YES];
         [command commit]; [command waitUntilCompleted];
         if (command.status != MTLCommandBufferStatusCompleted)
           throw std::runtime_error(command.error ? command.error.localizedDescription.UTF8String : "Syphon GPU publication failed");
