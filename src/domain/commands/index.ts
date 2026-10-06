@@ -15,6 +15,7 @@ import { registerCueCommands } from "../presets/cue-commands.ts";
 import { registerPresetDeleteCommand } from "../presets/delete-command.ts";
 import { registerPresetMoveCommand } from "../presets/move-command.ts";
 import { registerGridWarpCommands } from "./grid-warp-commands.ts";
+import { registerControlDefaultCommands } from "./control-default-commands.ts";
 
 export {
   CapabilityDeniedError,
@@ -139,6 +140,9 @@ export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus;
   registerPresetMoveCommand(bus);
   // T1534b: a Grid Warp's row/column insert and delete — document edits, so every bus has them.
   registerGridWarpCommands(bus);
+  // T1619b: a control back to its default, and its value made the default: document edits
+  // a phone's vetted write reaches too, so every bus has them.
+  registerControlDefaultCommands(bus);
   return { bus, store };
 }
 export { LOOM_CLIPBOARD_TYPE, decodeLoomClipboard, encodeLoomClipboard } from "./loom-clipboard.ts";

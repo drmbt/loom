@@ -97,10 +97,11 @@ export const phoneDeskDocument = document(
       node("out", "output", [0, 0], {}, { label: "output1" }),
 
       // ---- the controls: value nodes, each one a channel ------------------------------
-      node("heat", "slider", [-1500, 400], { channel: "heat", caption: "Heat", value: 1, min: 0, max: 2, step: 0 }, { label: "slider_heat" }),
-      node("invert", "toggle", [-1200, 400], { channel: "invert", caption: "Invert", on: false }, { label: "toggle_invert" }),
+      // T1619b: each ships AT its default (`default…` beside the value), so Reset returns here.
+      node("heat", "slider", [-1500, 400], { channel: "heat", caption: "Heat", value: 1, defaultValue: 1, min: 0, max: 2, step: 0 }, { label: "slider_heat" }),
+      node("invert", "toggle", [-1200, 400], { channel: "invert", caption: "Invert", on: false, defaultOn: false }, { label: "toggle_invert" }),
       node("flash", "button", [-900, 400], { channel: "flash", caption: "Next hue", held: false, presses: 0 }, { label: "button_flash" }),
-      node("warp", "xyPad", [-600, 400], { channel: "warp", caption: "Top-right pin", x: 0.82, y: 0.78, min: 0, max: 1 }, { label: "xypad_warp" }),
+      node("warp", "xyPad", [-600, 400], { channel: "warp", caption: "Top-right pin", x: 0.82, y: 0.78, defaultX: 0.82, defaultY: 0.78, min: 0, max: 1 }, { label: "xypad_warp" }),
 
       // ---- the surface a phone sees ---------------------------------------------------
       // T1512b: the widgets JOIN the Panel by their wires (e7–e10, below). Layout stays

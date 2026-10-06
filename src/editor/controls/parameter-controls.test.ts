@@ -141,6 +141,29 @@ describe("T1514b — Control from Panel", () => {
     expect(resolved(runtime, "pin1", "pintr")).toEqual([0.25, 0.75]);
   });
 
+  it("each control is born AT its default: moved and then reset, the parameter reads the value the control took over (T1619b)", async () => {
+    const runtime = await runtimeWith([
+      level({ brightness: 3 }),
+      { op: "addNode", ref: "$remap", type: "remap", position: { x: 400, y: 600 }, label: "remap1", parameters: { flipu: true } },
+      { op: "addNode", ref: "$pin", type: "cornerPin", position: { x: 400, y: 1200 }, label: "pin1" },
+    ]);
+    await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "level1").id, parameterKey: "brightness" }, runtime.invocation);
+    await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "remap1").id, parameterKey: "flipu" }, runtime.invocation);
+    await runtime.bus.execute("control.fromParameter", { nodeId: named(runtime, "pin1").id, parameterKey: "pintr" }, runtime.invocation);
+    // Nothing is away yet, so there is nothing to reset: a fresh control is not "moved".
+    expect((await runtime.bus.execute("control.reset", { all: true }, runtime.invocation)).status).toBe("rejected");
+
+    await set(runtime, "slider_brightness", { value: 6.5 });
+    await set(runtime, "toggle_flipU", { on: false });
+    await set(runtime, "xypad_pinTopRight", { x: 0.25, y: 0.75 });
+    expect([resolved(runtime, "level1", "brightness"), resolved(runtime, "remap1", "flipu"), resolved(runtime, "pin1", "pintr")]).toEqual([6.5, false, [0.25, 0.75]]);
+
+    const reset = await runtime.bus.execute("control.reset", { all: true }, runtime.invocation);
+    expect(reset.status).toBe("applied");
+    // THE RENDER EFFECT: what each parameter reads is what it held when its control was made.
+    expect([resolved(runtime, "level1", "brightness"), resolved(runtime, "remap1", "flipu"), resolved(runtime, "pin1", "pintr")]).toEqual([3, true, [1, 1]]);
+  });
+
   it("joins the only Panel; with several it joins the one named, and refuses to guess", async () => {
     const panel = (ref: `$${string}`, label: string, title: string): GraphPatchOperation => ({ op: "addNode", ref, type: "panel", position: { x: -800, y: label === "deskA" ? 0 : 600 }, label, parameters: { title } });
     const one = await runtimeWith([level(), panel("$a", "deskA", "Desk A")]);

@@ -1153,6 +1153,16 @@ const COMMANDS_WITH_NO_INVOKER: ReadonlyArray<{ name: string; reason: string }> 
    * `src/agent/tools/presets.ts` names all three (and `preset.delete`, which arrived with
    * an invoker). The inspector's buttons and the Panel rows are still §T1501b's.
    */
+  {
+    name: "control.reset",
+    reason:
+      "SLICED ON PURPOSE (T1619b S1 is the default and the two commands). Its doors are the next slices of the same row: S2, the desk's right-click `control` menu and the Controls tab's header ↺; S3, the phone's vetted `reset` write. This gate fails the day either names it, and this entry goes then.",
+  },
+  {
+    name: "control.setDefault",
+    reason:
+      "SLICED ON PURPOSE (T1619b S1). Its door is S2: \"Set as default\" on the desk's `control` menu and \"Set all as default\" in the board's edit toolbar. A phone never names it. This entry goes when S2 lands.",
+  },
 ];
 
 describe("§V356/B68 — every command has something that invokes it", () => {

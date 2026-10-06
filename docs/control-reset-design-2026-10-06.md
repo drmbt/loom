@@ -1,9 +1,10 @@
 # Reset a control, or all of them, to what was saved (§T1619b)
 
 2026-10-06. Owner: *"ways to reset controls individually or all according to what was saved or
-something should be something useful accessible on both phone and browser"*. Design only:
-nothing here is built. Today the one way back is a preset written by hand (sentinel-bot's three
-`saved` banks, `2bc870d4`).
+something should be something useful accessible on both phone and browser"*. Slice 1 of
+section 5 is built (the default and the two commands); the desk and the phone are not. Until
+they are, the way back is a preset written by hand (sentinel-bot's three `saved` banks,
+`2bc870d4`).
 
 ## What established tools call "saved", and how they reset
 
@@ -49,7 +50,8 @@ As stored:
 - The three definitions go to version 2 with a `migrate` (the Ramp's lane, §V10): an older file
   loads with default := its stored value. An older build keeps the unknown keys (T91). A
   document SOURCE is written at the current version, so E81, E82 and sentinel-bot must author
-  the key; a gate fails a shipped control that stores none.
+  the key (E81 and E82 do, as built). A gate that fails a shipped control storing none is NOT
+  built: it waits for sentinel-bot's source to author its defaults.
 - Each definition's `parametersFor` hands the stored default to its value key's schema default,
   so the inspector's existing "Reset to default" row, its `isOverridden` guard and the phone
   snapshot's `declared()` all mean this default. Today that row sends a Slider to 0.5 whatever
@@ -170,7 +172,11 @@ S2 and S3 are independent after S1 (disjoint paths); S4 needs S3.
    away: refused, revision unchanged. A version-1 file with value 1.1 loads with default 1.1.
    A Store of the whole node holds no default key. Mid-morph, the reset key resolves to its
    default at the next frame while a sibling key is still between its ends. `parameter.reset`
-   on Value gives the same number.
+   on Value gives the same number. BUILT, with two things this list did not name: a control
+   made from a parameter (`control.fromParameter`) is born at its default, and a preset whose
+   target is a whole control holds only what a hand moves (§B261), so it cannot hold a default
+   either. The two commands have no door yet and say so in `COMMANDS_WITH_NO_INVOKER`; S2
+   and S3 delete those entries.
 2. **S2, the desk** (`src/editor/controls`, menus, keymap). ACCEPT, jsdom and one Playwright
    test: drag a slider on the Controls tab, the tick brightens; right-click, Reset: it reads the
    default, the audit gained exactly one `control.reset`, ⌘Z returns the dragged value. A wheel

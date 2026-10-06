@@ -16,7 +16,7 @@ import {
 } from "@domain/parameters/slots.ts";
 import { freeRoleName, nodeNames, uniqueNodeName } from "@domain/graph/names.ts";
 import { boxesOverlap, nodeBox, NODE_WIDTH } from "@domain/graph/node-box.ts";
-import { CONTROL_WIDGET_TYPES, controlChannel, controlNameOf, panelTitle } from "@nodes/definitions/controls.ts";
+import { CONTROL_DEFAULT_KEYS, CONTROL_WIDGET_TYPES, controlChannel, controlNameOf, panelTitle } from "@nodes/definitions/controls.ts";
 import { joinPanelOperations } from "./panel-join.ts";
 
 /**
@@ -316,6 +316,11 @@ export function controlFromParameterPlan(
       [xKey]: controlSlot(node.parameters[xKey], read(`${channel}X`), x),
       [yKey]: controlSlot(node.parameters[yKey], read(`${channel}Y`), y),
     };
+  }
+  // T1619b: the control is born AT its default — the value it takes over from the parameter.
+  for (const [valueKey, defaultKey] of Object.entries(CONTROL_DEFAULT_KEYS[type] ?? {})) {
+    const taken = widget[valueKey];
+    if (taken !== undefined) widget[defaultKey] = taken;
   }
 
   const widgetAt = spotBeside(graph, registry, type, node.position, [], catalogue);

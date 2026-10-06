@@ -4,10 +4,11 @@ import type { GraphDocument } from "../../domain/types/graph.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { flatDocument } from "../../compiler/test-support.ts";
 import { NO_FLATTENING } from "../../domain/parameters/node-references.ts";
+import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 import type { GraphNode } from "../../domain/types/graph.ts";
-import { controlNameOf, panelTitle, parsePanelLayout, surfaceNameOf } from "./controls.ts";
+import { controlDefaultState, controlNameOf, controlSliderNode, panelTitle, parsePanelLayout, surfaceNameOf } from "./controls.ts";
 
 /**
  * T1388b — a live control publishes what it shows under the name it was given, and that
@@ -116,5 +117,50 @@ describe("surfaceNameOf — the caption a one-word surface shows", () => {
     expect(panelTitle(panel("panel_desk", ""))).toBe("desk");
     expect(panelTitle(panel("panel1", ""))).toBe("panel1");
     expect(panelTitle(panel("desk", ""))).toBe("desk");
+  });
+});
+
+/**
+ * T1619b — where a control stands against its default: the one answer the reset command,
+ * the desk's mark and the phone's snapshot all read, so "away" cannot mean two things.
+ */
+describe("T1619b — a control's default, and whether it is away from it", () => {
+  const control = (type: string, parameters: Record<string, unknown>) => ({ type, parameters }) as Pick<GraphNode, "type" | "parameters">;
+  const driven = { mode: "expression", bindings: { expression: { kind: "expression", source: "0.9" }, static: { kind: "static", value: 0.2 } } };
+
+  it("a control that stores a default and no value publishes the default: nothing stored IS at the default", () => {
+    const out = evaluate({ s: { type: "slider", label: "slider_heat", parameters: { channel: "heat", min: 0, max: 2, defaultValue: 1.5 } } });
+    expect(out.get("slider_heat")).toEqual({ heat: 1.5 });
+    expect(controlDefaultState(control("slider", { min: 0, max: 2, defaultValue: 1.5 }))).toEqual({ defaults: { value: 1.5 }, current: { value: 1.5 }, away: [], driven: [] });
+  });
+
+  it("away is further than a ten-thousandth of the range: float noise is at the default, a hand's move is not", () => {
+    const slider = (value: number) => controlDefaultState(control("slider", { value, min: 0, max: 2, defaultValue: 1 }));
+    expect(slider(1)?.away).toEqual([]);
+    expect(slider(1.0001)?.away).toEqual([]);
+    expect(slider(1.001)?.away).toEqual(["value"]);
+    // A value written past the range is carried as the edge (`valueEvaluate`), and compared as it.
+    expect(controlDefaultState(control("slider", { value: 5, min: 0, max: 2, defaultValue: 2 }))?.away).toEqual([]);
+  });
+
+  it("a toggle is away when its state is not its default; a pad per axis; a driven key is never away", () => {
+    expect(controlDefaultState(control("toggle", { on: true }))).toMatchObject({ defaults: { on: false }, away: ["on"] });
+    expect(controlDefaultState(control("toggle", { on: true, defaultOn: true }))?.away).toEqual([]);
+    expect(controlDefaultState(control("xyPad", { x: 0.82, y: 0.1, defaultX: 0.82, defaultY: 0.78 }))?.away).toEqual(["y"]);
+    expect(controlDefaultState(control("slider", { value: driven, defaultValue: 0.7 }))).toMatchObject({ away: [], driven: ["value"] });
+  });
+
+  it("a Button and a Panel hold no default", () => {
+    expect(controlDefaultState(control("button", { held: false, presses: 3 }))).toBeNull();
+    expect(controlDefaultState(control("panel", { title: "Desk" }))).toBeNull();
+  });
+
+  it("hands out ONE schema per default, and the declared one while the default is the declared one: schemas are read per frame", () => {
+    const declared = effectiveParameterSchema(controlSliderNode, {});
+    expect(effectiveParameterSchema(controlSliderNode, { value: 0.9 })).toBe(declared);
+    const moved = effectiveParameterSchema(controlSliderNode, { value: 0.1, defaultValue: 0.8 });
+    expect(moved).not.toBe(declared);
+    expect(effectiveParameterSchema(controlSliderNode, { value: 0.6, defaultValue: 0.8 })).toBe(moved);
+    expect((moved["value"] as { default?: unknown }).default).toBe(0.8);
   });
 });

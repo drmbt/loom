@@ -267,8 +267,9 @@ export const setListDocument = document(
       }, { label: "cuelist_set" }),
 
       // ---- the desk: two sliders by wire; the bank, the list and the layer by name -------
-      node("master", "slider", [-1000, DESK_Y], { channel: "master", caption: "Master", value: 1, min: 0, max: 1.5, step: 0 }, { label: "slider_master" }),
-      node("keystone", "slider", [-780, DESK_Y], { channel: "keystone", caption: "Keystone", value: KEYSTONE, min: 0, max: 0.4, step: 0 }, { label: "slider_keystone" }),
+      // T1619b: each ships AT its default, so Reset returns to the desk as it opens.
+      node("master", "slider", [-1000, DESK_Y], { channel: "master", caption: "Master", value: 1, defaultValue: 1, min: 0, max: 1.5, step: 0 }, { label: "slider_master" }),
+      node("keystone", "slider", [-780, DESK_Y], { channel: "keystone", caption: "Keystone", value: KEYSTONE, defaultValue: KEYSTONE, min: 0, max: 0.4, step: 0 }, { label: "slider_keystone" }),
       node("desk", "panel", [-560, DESK_Y], { title: "Show desk", remote: true, board: SHOW_DESK_BOARD }, { label: "panel_desk" }),
 
       // ---- the annotations ----------------------------------------------------------------

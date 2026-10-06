@@ -60,6 +60,7 @@ import {
   type PresetCatalogue,
 } from "./bank-view.ts";
 import { isComponentNodeType } from "../components/component-type.ts";
+import { presetHolds } from "../../nodes/definitions/controls.ts";
 import { CUE_BACK_COMMAND, CUE_GO_COMMAND } from "./cue-list.ts";
 
 /**
@@ -481,6 +482,10 @@ export interface PresetCapture {
  * Store's capture (the design doc §4.3, ruling 3): every non-pulse parameter of a whole
  * target — a component instance's published page, since that IS its effective schema —
  * or just the named `node.key`, each AS STORED (a slot stays a slot, ruling 2).
+ *
+ * B261: of a whole Slider, Toggle, Button or XY Pad that is the keys a hand moves, not
+ * its channel, caption, range or step; and a control's default is never captured, whole or
+ * named (T1619b). Which keys those are is the controls' own table (`presetHolds`).
  */
 export function capturePresetValues(
   graph: GraphDocument,
@@ -516,7 +521,8 @@ export function capturePresetValues(
     const record = (values[target.node] ??= {});
     if (target.key !== undefined) {
       const keyDefinition = definitionFor(schema, target.key);
-      if (keyDefinition === undefined || keyDefinition.type === "pulse" || PRESET_STATE_KEYS.has(target.key)) {
+      // T1619b: a control's default is not a preset's to hold, even named (`presetHolds`).
+      if (keyDefinition === undefined || keyDefinition.type === "pulse" || PRESET_STATE_KEYS.has(target.key) || !presetHolds(node.type, target.key, false)) {
         skip(target.token, "preset.target.key", `Target "${target.token}": "${target.node}" has no storable parameter "${target.key}".`, node.id);
         continue;
       }
@@ -527,6 +533,8 @@ export function capturePresetValues(
     for (const [key, keyDefinition] of Object.entries(schema)) {
       // T1505b: an instance's own preset state is not part of the look it captures.
       if (keyDefinition.type === "pulse" || PRESET_STATE_KEYS.has(key)) continue;
+      // B261: of a whole CONTROL a preset holds what a hand moves, not its range, caption or default.
+      if (!presetHolds(node.type, key, true)) continue;
       const stored = node.parameters[key];
       record[key] = stored === undefined ? defaultParameterValue(keyDefinition) : copied(stored);
     }
@@ -851,6 +859,11 @@ export function planPresetRecall(
       }
       if (keyDefinition.type === "pulse") {
         skip(name, "preset.target.pulse", `${who}: "${name}" is a pulse, which fires rather than holds a value; skipped.`, node.id);
+        continue;
+      }
+      // T1619b: a preset written by hand may name a control's default. A recall never moves one.
+      if (!presetHolds(node.type, key, false)) {
+        skip(name, "preset.target.default", `${who}: "${name}" is a control's default, which a recall never changes; skipped.`, node.id);
         continue;
       }
       const invalid = validateParameters(schema, { [key]: stored }, node.id);
