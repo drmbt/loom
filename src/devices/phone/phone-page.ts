@@ -128,6 +128,9 @@ body {
   --gap: 6px;
   --pager: 0px;
   --rail: 0px;
+  /* B269: the least a board's row may be — Apple's 44 pt minimum for anything a finger
+     presses (Material asks 48 dp; rows sit --gap apart, so targets are 50 px centre to centre). */
+  --row: 44px;
   min-height: 100vh;
   padding: calc(var(--pad) + env(safe-area-inset-top)) calc(var(--pad) + var(--rail) + env(safe-area-inset-right))
     calc(var(--bar) + var(--pager) + var(--pad) + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left));
@@ -298,7 +301,9 @@ body.railed { --rail: 28px; }
   overflow: hidden;
 }
 .fill { position: absolute; left: 0; top: 0; bottom: 0; background: color-mix(in srgb, var(--signal) 45%, transparent); }
-.thumb { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; background: var(--signal); }
+/* B269: the handle is moved back by its own share of its width (transform, set with left),
+   so at either end of the track it is whole, not half cut off by the track's edge. */
+.thumb { position: absolute; top: 0; bottom: 0; width: 4px; background: var(--signal); }
 button.ctl {
   min-height: 56px;
   width: 100%;
@@ -363,18 +368,23 @@ button.ctl.on .state { color: var(--text); }
 }
 .w > .said.end { left: auto; right: 0; }
 /*
- * T1517b: a Panel's BOARD (T1516b) — the owner's arrangement on a grid of square cells,
- * one column = the page's width / columns. The row height is that same column width, read
+ * T1517b: a Panel's BOARD (T1516b) — the owner's arrangement on a grid of cells, one column
+ * = the page's width / columns. A row is as tall as a column is wide (square cells), read
  * from the wrapper's inline size (cqi); the vw line before it is for a browser without
  * container units. Each item sits at its rect through grid-column / grid-row.
+ *
+ * B269: ...AND NEVER LOWER THAN A FINGER NEEDS (--row). The column count is the author's,
+ * chosen at a desk; ten columns on a 375 px phone made a column, and so every slider, toggle
+ * and preset button, 30 px tall. A board whose columns are narrower than --row keeps its
+ * columns and gets taller rows: it grows and scrolls, it is never squeezed.
  */
 .boardwrap { container-type: inline-size; }
 .board {
   display: grid;
   gap: var(--gap);
   grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-  grid-auto-rows: calc((100vw - 2 * var(--pad) - var(--rail) - (var(--cols) - 1) * var(--gap)) / var(--cols));
-  grid-auto-rows: calc((100cqi - (var(--cols) - 1) * var(--gap)) / var(--cols));
+  grid-auto-rows: max(var(--row), calc((100vw - 2 * var(--pad) - var(--rail) - (var(--cols) - 1) * var(--gap)) / var(--cols)));
+  grid-auto-rows: max(var(--row), calc((100cqi - (var(--cols) - 1) * var(--gap)) / var(--cols)));
 }
 .board .w { position: relative; display: block; min-height: 0; }
 .board .w > .ctl { position: absolute; inset: 0; width: auto; height: auto; min-height: 0; aspect-ratio: auto; border-radius: 10px; }
@@ -389,7 +399,10 @@ button.ctl.on .state { color: var(--text); }
   color: var(--text);
   pointer-events: none;
 }
-.board .w.xyPad > .cap { top: 6px; bottom: auto; }
+/* B269: a pad narrower than its caption and value side by side puts the value on a line of
+   its own, so the caption has the pad's whole width before it is elided. */
+.board .w.xyPad > .cap { top: 6px; bottom: auto; flex-wrap: wrap; row-gap: 0; }
+.board .w.xyPad > .cap .name { max-width: 100%; }
 /* The slider's handle passes under its caption and value: each sits on a chip of the
    page's ground, so the line never cuts through the text. */
 .board .w.slider > .cap .name, .board .w.slider > .cap .val {
@@ -416,6 +429,9 @@ button.ctl.on .state { color: var(--text); }
   text-transform: uppercase;
   color: var(--text-dim);
 }
+/* B269: the heading's text is one line that ends in an ellipsis. Bare text in the flex box
+   above wrapped instead, and its upper lines were cut off at the top of the cell. */
+.board .label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /*
  * T1503b: a bank, a layer and a cue list on a board. .press is every button in them; the
  * parts share the item's rect the way the desk's do (data-layout).
@@ -440,12 +456,27 @@ button.ctl.on .state { color: var(--text); }
 .board .w .press:active { background: color-mix(in srgb, var(--signal) 45%, var(--bg-raise)); }
 .board .w .press:disabled { opacity: 0.4; }
 .stopped .press, .stopped .fader { opacity: 0.4; }
-.board .w.preset {
+/*
+ * A bank's strip: the desk's rows and buttons-per-row (--rows, --per). B269: a preset is
+ * recalled by its NAME, so a button is never narrower than its name (min-content) or than a
+ * finger (--row); a strip with more of them than its row holds scrolls sideways inside its
+ * own rect — it used to shrink every button until six of them read "res…". The strip is its
+ * own box inside the item so that the item does not clip: a refusal's sentence still hangs
+ * under it.
+ */
+.board .w.preset > .strip {
+  position: absolute;
+  inset: 0;
   display: grid;
   gap: 2px;
-  grid-template-columns: repeat(var(--per), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--per), minmax(min-content, 1fr));
   grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+.board .w.preset > .strip::-webkit-scrollbar { display: none; }
+.board .w.preset .press { min-width: var(--row); }
 .board .w.preset .none { align-self: center; color: var(--text-dim); font-size: 13px; }
 /* The fade mark: a bar along the foot of the preset being faded to, until the fade ends. */
 .board .w .press.fading::after {
@@ -912,6 +943,11 @@ ${PHONE_PAGE_LOGIC}
   }
   function box(node) { return node.getBoundingClientRect(); }
   function share(v, min, max) { return max === min ? 0 : clamp01((v - min) / (max - min)); }
+  /* B269: a handle s% of the way along its track — and back by s% of its own width, so it is whole at both ends. */
+  function handleAt(thumb, s) {
+    thumb.style.left = s + "%";
+    thumb.style.transform = "translateX(-" + s + "%)";
+  }
 
   function capture(target, event) {
     try { if (target.setPointerCapture) target.setPointerCapture(event.pointerId); } catch (x) { /* already gone */ }
@@ -938,7 +974,7 @@ ${PHONE_PAGE_LOGIC}
       var c = current(w.handle);
       var s = share(c.value, c.min, c.max) * 100;
       fill.style.width = s + "%";
-      thumb.style.left = s + "%";
+      handleAt(thumb, s);
       val.textContent = format(c.value);
       track.setAttribute("aria-valuemin", String(c.min));
       track.setAttribute("aria-valuemax", String(c.max));
@@ -1165,14 +1201,18 @@ ${PHONE_PAGE_LOGIC}
     var rows = Math.max(1, Math.min(cells(rect, "h"), names.length));
     root.style.setProperty("--rows", String(rows));
     root.style.setProperty("--per", String(Math.max(1, Math.ceil(names.length / rows))));
+    // B269: the buttons sit in a strip of their own, which scrolls sideways when their
+    // names do not fit the rect; the item itself clips nothing.
+    var strip = el("div", "strip");
+    root.appendChild(strip);
     var buttons = names.map(function (name) {
       var b = pressButton("", String(name));
       b.setAttribute("data-preset", String(name));
       b.addEventListener("click", function () { press(w.handle, { recall: name }); });
-      root.appendChild(b);
+      strip.appendChild(b);
       return b;
     });
-    if (buttons.length === 0) root.appendChild(el("span", "none", "No presets"));
+    if (buttons.length === 0) strip.appendChild(el("span", "none", "No presets"));
     var view = { widget: w, el: root };
     view.update = function () {
       var c = views[w.handle].widget;
@@ -1236,7 +1276,7 @@ ${PHONE_PAGE_LOGIC}
       if (free) fader.setAttribute("aria-valuenow", String(c.opacity));
       else fader.removeAttribute("aria-valuenow");
       fill.style.width = s + "%";
-      thumb.style.left = s + "%";
+      handleAt(thumb, s);
       val.textContent = free ? format(c.opacity) : "driven";
     };
     view.axes = "x";
@@ -1447,7 +1487,11 @@ ${PHONE_PAGE_LOGIC}
     var cells = [];
     board.items.forEach(function (item) {
       var node = null;
-      if (item.kind === "label") node = el("div", "label", String(item.text || ""));
+      if (item.kind === "label") {
+        // B269: the text in a span of its own, which elides (a bare text node wraps and is cut).
+        node = el("div", "label");
+        node.appendChild(el("span", "", String(item.text || "")));
+      }
       else if (item.kind === "widget" && item.widget) node = place(item.widget.handle, item.widget, item.rect);
       if (node === null) return;
       var r = item.rect || {};

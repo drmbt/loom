@@ -1858,6 +1858,131 @@ describe("T1503b phone page — banks, layers and cue lists", () => {
  * What the BROWSER does with a touch that goes up the page (it scrolls, and cancels the
  * pointer) is not something jsdom has: that is `src/tests/e2e/phone-touch.spec.ts`.
  */
+/**
+ * B269 — A BOARD OF NARROW COLUMNS IS NEVER CRUSHED OR CLIPPED. Owner, on a real phone the
+ * day a project went from eight columns to ten: "on the phone the sliders are now crunched
+ * and some buttons cut off". A row was as tall as a column is wide, whatever that came to.
+ *
+ * jsdom lays nothing out, so what is asserted here is the rule the browser is handed for
+ * each case — a row's height, where a handle sits, what a heading, a strip of presets and a
+ * pad's caption do when they do not fit. That those rules produce boxes a finger can press
+ * with nothing cut is asserted on real boxes in `src/tests/e2e/phone-touch.spec.ts`.
+ */
+describe("B269 phone page — a board of narrow columns is never crushed or clipped", () => {
+  type Page = ReturnType<typeof openPage>;
+  const LOOKS = ["reset_robot", "reset_scene", "reset_lights", "reset_all", "soft_amber", "hard_strobe"];
+  const slider = (handle: string, caption: string, value: number) => ({ kind: "slider", handle, caption, value, min: 0, max: 1, step: 0 }) as const;
+  /** Ten columns, as the project that hit this laid its panels out: on a 375 px phone a column is 30 px. */
+  const NARROW: PhoneSnapshot = {
+    seq: 2,
+    panels: [
+      {
+        title: "Narrow",
+        rows: [],
+        board: {
+          columns: 10,
+          rows: 6,
+          items: [
+            { kind: "label", rect: { x: 0, y: 0, w: 4, h: 1 }, text: "A heading far longer than its four cells" },
+            { kind: "widget", rect: { x: 0, y: 1, w: 8, h: 1 }, widget: { kind: "preset", handle: "h-looks", caption: "looks", presets: LOOKS, current: "reset_all", morphing: false } },
+            { kind: "widget", rect: { x: 0, y: 2, w: 8, h: 1 }, widget: slider("h-top", "Top", 1) },
+            { kind: "widget", rect: { x: 0, y: 3, w: 8, h: 1 }, widget: slider("h-foot", "Foot", 0) },
+            { kind: "widget", rect: { x: 0, y: 4, w: 3, h: 1 }, widget: { kind: "toggle", handle: "h-long", caption: "Follow the track closely", on: true } },
+            { kind: "widget", rect: { x: 6, y: 4, w: 2, h: 2 }, widget: { kind: "xyPad", handle: "h-pad", caption: "Chase side / height", x: 0, y: 0, min: -2, max: 2 } },
+          ],
+        },
+      },
+    ],
+  };
+  const part = (page: Page, selector: string): HTMLElement => {
+    const found = page.doc.querySelector<HTMLElement>(selector);
+    if (found === null) throw new Error(`nothing matches ${selector}`);
+    return found;
+  };
+  /** The declarations the page's stylesheet gives a selector, as written (jsdom computes no layout and knows no `max()`). */
+  const rule = (page: Page, selector: string): string => {
+    const css = page.doc.querySelector("style")?.textContent ?? "";
+    const at = css.indexOf(`\n${selector} {`);
+    if (at < 0) throw new Error(`the stylesheet has no rule for ${selector}`);
+    return css.slice(at, css.indexOf("}", at));
+  };
+
+  /*
+   * 44 px is Apple's minimum for anything a finger presses (Material asks 48 dp). The floor
+   * must hold on BOTH lines that size a row — the container-unit one phones use and the
+   * viewport one for a browser without it — and must not replace the column width: a board
+   * of wide columns keeps its square cells.
+   */
+  it("a board's row is as tall as its column is wide, and never lower than a finger needs", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    expect(rule(page, "body")).toContain("--row: 44px;");
+    const rows = [...rule(page, ".board").matchAll(/grid-auto-rows:\s*([^;]+);/g)].map((match) => match[1] ?? "");
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row).toMatch(/^max\(var\(--row\), calc\(\(100(vw|cqi) .*\/ var\(--cols\)\)\)$/);
+    // The columns are the author's: ten stay ten.
+    expect(part(page, ".board").style.getPropertyValue("--cols")).toBe("10");
+  });
+
+  it("a slider's handle is whole at both ends of its track: moved back by its own share of its width", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const handle = (caption: string): string[] => {
+      const thumb = page.widget(caption).querySelector<HTMLElement>(".thumb")!;
+      return [thumb.style.left, thumb.style.transform];
+    };
+    expect(handle("Top")).toEqual(["100%", "translateX(-100%)"]);
+    expect(handle("Foot")).toEqual(["0%", "translateX(-0%)"]);
+    // No fixed pull to the left any more: that was what hung half the handle outside the track.
+    expect(rule(page, ".thumb")).not.toContain("margin-left");
+  });
+
+  it("a heading that does not fit its cell ends in an ellipsis on one line", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const heading = part(page, ".board .label");
+    expect(heading.textContent).toBe("A heading far longer than its four cells");
+    // The text is in a box of its own: bare text in the heading's flex box wraps, and is cut at the top.
+    expect([...heading.childNodes].map((node) => node.nodeName)).toEqual(["SPAN"]);
+    const style = page.win.getComputedStyle(heading.firstElementChild!);
+    expect([style.whiteSpace, style.overflow, style.textOverflow]).toEqual(["nowrap", "hidden", "ellipsis"]);
+  });
+
+  /*
+   * A preset is recalled by its name. Six buttons squeezed into one row all read "res…":
+   * so a button is at least its name wide, and the STRIP scrolls sideways. The strip is a
+   * box inside the item, because the item must not clip — Loom's sentence for a refused
+   * recall hangs under it (§T1526b).
+   */
+  it("a strip of more presets than its row holds scrolls sideways with every name whole, and still shows a refusal under it", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const item = part(page, ".w.preset");
+    const strip = part(page, ".w.preset > .strip");
+    expect([...strip.children].map((button) => button.textContent)).toEqual(LOOKS);
+    // The desk's arrangement still: one row of six.
+    expect([item.style.getPropertyValue("--rows"), item.style.getPropertyValue("--per")]).toEqual(["1", "6"]);
+    const strips = rule(page, ".board .w.preset > .strip");
+    expect(strips).toContain("grid-template-columns: repeat(var(--per), minmax(min-content, 1fr));");
+    expect(strips).toContain("overflow-x: auto;");
+    expect(page.win.getComputedStyle(strip.firstElementChild!).minWidth).toBe("var(--row)");
+    // The item clips nothing, and the sentence is the item's child, not the strip's.
+    expect(page.win.getComputedStyle(item).overflow).not.toBe("hidden");
+    page.emit({ type: "refused", handle: "h-looks", reason: "“looks” has no preset by that name." });
+    expect(part(page, ".w.preset > .said").textContent).toBe("“looks” has no preset by that name.");
+  });
+
+  it("a toggle's caption ends in an ellipsis inside its button; a pad's caption gets the pad's whole width before it does", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const name = page.win.getComputedStyle(part(page, ".w.toggle button.ctl .name"));
+    expect([name.whiteSpace, name.overflow, name.textOverflow, name.maxWidth]).toEqual(["nowrap", "hidden", "ellipsis", "100%"]);
+    const caption = page.win.getComputedStyle(part(page, ".w.xyPad > .cap"));
+    expect(caption.flexWrap).toBe("wrap");
+    expect(page.win.getComputedStyle(part(page, ".w.xyPad > .cap .name")).textOverflow).toBe("ellipsis");
+  });
+});
+
 describe("T1607b phone page — the gesture and paging rules, as the phone runs them", () => {
   interface Cell {
     readonly label: string | null;

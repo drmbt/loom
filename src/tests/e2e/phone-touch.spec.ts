@@ -5,7 +5,7 @@ import { expect, test, type Browser, type BrowserContext, type CDPSession, type 
 
 import { createPhoneWrites } from "@/app/phone-writes.ts";
 import { createPhoneDoor } from "@devices/phone/phone-door.ts";
-import type { PhoneSet, PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
+import type { PhonePanel, PhoneSet, PhoneSnapshot } from "@devices/phone/phone-protocol.ts";
 import { buildPhoneSnapshot } from "@devices/phone/phone-snapshot.ts";
 import { createDomainBus } from "@domain/commands/index.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
@@ -302,6 +302,16 @@ async function flickFromSlider(phone: Phone, distance: number, hesitant = false)
   await touch.up();
   await settledScroll(phone.page);
   return start;
+}
+
+/** Flick up from sliders until the page is at its end, `end` px down. Every flick must move it. */
+async function flickToEnd(phone: Phone, end: number, hesitant = false): Promise<void> {
+  for (let flick = 1; !(await atEnd(phone.page, end)); flick += 1) {
+    if (flick > 12) throw new Error("twelve flicks did not reach the foot of the board");
+    const before = await scrollTop(phone.page);
+    await flickFromSlider(phone, 240, hesitant);
+    expect(await scrollTop(phone.page), `flick ${String(flick)} must move the page`).toBeGreaterThan(before);
+  }
 }
 
 const center = async (page: Page, selector: string): Promise<Point & { width: number; height: number }> => {
@@ -676,8 +686,8 @@ test.describe("§T1607b the phone page under a real touch — a project's Panels
           expect(Math.max(...widths), `${name}: and none reaches into the bare strip beside them`).toBeLessThan(0.85);
         }
 
-        await flickFromSlider(phone, 240, true);
-        expect(await atEnd(phone.page, end), `${name} must scroll to its end`).toBe(true);
+        // To its foot, however many flicks that takes (a row is at least a finger tall, §B269, so these are long boards).
+        await flickToEnd(phone, end, true);
       }
       await phone.page.waitForTimeout(300);
       expect(stage.writes).toEqual([]);
@@ -717,7 +727,7 @@ test.describe("§T1607b the phone page under a real touch — a project's Panels
       await expect(phone.page.locator("#pager")).toBeHidden();
       const end = await scrollEnd(phone.page);
       expect(end).toBeGreaterThan(0);
-      await flickFromSlider(phone, 240);
+      await flickToEnd(phone, end);
       const left = await scrollTop(phone.page);
       expect(left).toBeGreaterThanOrEqual(end - 1);
 
@@ -740,6 +750,146 @@ test.describe("§T1607b the phone page under a real touch — a project's Panels
       expect(await shownCells(phone.page)).toBe(whole);
 
       expect(stage.writes).toEqual([]);
+      expect(phone.errors).toEqual([]);
+    } finally {
+      await phone.context.close();
+      stage.close();
+    }
+  });
+});
+
+/*
+ * §B269 — A BOARD OF NARROW COLUMNS IS NEVER CRUSHED OR CLIPPED. Owner, on his phone, the day
+ * a project re-gridded its panels from eight columns to ten: "on the phone the sliders are now
+ * crunched and some buttons cut off". A board's row was as tall as its column is wide, so ten
+ * columns on a 375 px phone made every slider, toggle and preset button 30 px tall.
+ *
+ * What a phone user must be able to rely on, whatever grid an author chose: everything a
+ * finger presses is at least a finger tall (FLOOR), and nothing is cut — a caption that does
+ * not fit ends in an ellipsis, a strip of presets too long for its row scrolls sideways with
+ * every name whole, a slider's handle stays inside its track at both ends. Asserted on real
+ * boxes: the two frozen ten-column Panels, and CRAMPED, a board made of the awkward cases.
+ */
+const FLOOR = 44;
+const LOOKS = ["reset_robot", "reset_scene", "reset_lights", "reset_all", "soft_amber", "hard_strobe"] as const;
+const CRAMPED: PhonePanel = {
+  title: "Cramped",
+  rows: [],
+  board: {
+    columns: 10,
+    rows: 7,
+    items: [
+      { kind: "label", rect: { x: 0, y: 0, w: 4, h: 1 }, text: "A heading far longer than its four cells" },
+      { kind: "widget", rect: { x: 0, y: 1, w: 8, h: 1 }, widget: { kind: "preset", handle: "presets_looks", caption: "looks", presets: LOOKS, current: "reset_all", morphing: false } },
+      { kind: "widget", rect: { x: 0, y: 2, w: 8, h: 1 }, widget: { kind: "slider", handle: "slider_top", caption: "At its top", value: 1, min: 0, max: 1, step: 0 } },
+      { kind: "widget", rect: { x: 0, y: 3, w: 8, h: 1 }, widget: { kind: "slider", handle: "slider_foot", caption: "At its foot, under a caption much longer than the slider is wide", value: 0, min: 0, max: 1, step: 0 } },
+      { kind: "widget", rect: { x: 0, y: 4, w: 3, h: 1 }, widget: { kind: "toggle", handle: "toggle_long", caption: "Follow the track closely", on: true } },
+      { kind: "widget", rect: { x: 3, y: 4, w: 3, h: 1 }, widget: { kind: "button", handle: "button_long", caption: "Flash everything", held: false } },
+      { kind: "widget", rect: { x: 6, y: 4, w: 2, h: 2 }, widget: { kind: "xyPad", handle: "xypad_small", caption: "Chase side / height", x: 2, y: 2, min: -2, max: 2 } },
+      { kind: "widget", rect: { x: 0, y: 5, w: 6, h: 1 }, widget: { kind: "layer", handle: "layer_fx", caption: "fx", on: true, opacity: 1, opacityWritable: true, picture: "" } },
+      { kind: "widget", rect: { x: 0, y: 6, w: 8, h: 1 }, widget: { kind: "slider", handle: "slider_last", caption: "Last", value: 0.5, min: 0, max: 1, step: 0 } },
+    ],
+  },
+};
+
+test.describe("§B269 the phone page — a board of narrow columns is never crushed or clipped", () => {
+  /** What is wrong with the board showing: parts lower than a finger, content cut by its own box, preset names not whole. */
+  const faults = (page: Page) =>
+    page.evaluate((floor) => {
+      const board = document.querySelector<HTMLElement>("section.panel:not([hidden]) .board");
+      if (board === null) throw new Error("no board is showing");
+      const say = (part: Element): string => `<${part.tagName.toLowerCase()}.${part.className}> "${(part.textContent ?? "").trim().slice(0, 24)}"`;
+      const showing = (part: Element): boolean => part.closest("[hidden]") === null && getComputedStyle(part).display !== "none";
+      const low: string[] = [];
+      for (const part of board.querySelectorAll<HTMLElement>(".ctl, .press, .fader")) {
+        const height = part.getBoundingClientRect().height;
+        if (showing(part) && height < floor - 0.5) low.push(`${say(part)} is ${height.toFixed(1)} px tall`);
+      }
+      // CUT: a box that hides what does not fit, holding content that reaches past it — on any
+      // side (a caption that wraps upward out of a bottom-aligned heading is cut at the TOP,
+      // which a scroll size does not report). The one exception is a box that ends its single
+      // line of text in an ellipsis: that is how a caption that does not fit is shown.
+      const cut: string[] = [];
+      const range = document.createRange();
+      for (const part of board.querySelectorAll<HTMLElement>("*")) {
+        if (!showing(part)) continue;
+        const style = getComputedStyle(part);
+        const hides = (value: string): boolean => value === "hidden" || value === "clip";
+        if (!hides(style.overflowX) && !hides(style.overflowY)) continue;
+        // What the box holds directly: its child elements' boxes and its own text. (What a
+        // child holds is that child's business, and is looked at when the walk reaches it.)
+        let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+        for (const child of part.childNodes) {
+          let rect: DOMRect | null = null;
+          if (child instanceof HTMLElement) rect = showing(child) ? child.getBoundingClientRect() : null;
+          else if ((child.textContent ?? "").trim() !== "") {
+            range.selectNodeContents(child);
+            rect = range.getBoundingClientRect();
+          }
+          if (rect === null) continue;
+          left = Math.min(left, rect.left);
+          top = Math.min(top, rect.top);
+          right = Math.max(right, rect.right);
+          bottom = Math.max(bottom, rect.bottom);
+        }
+        if (left === Infinity) continue;
+        const outer = part.getBoundingClientRect();
+        const box = { left: outer.left + part.clientLeft, top: outer.top + part.clientTop, right: outer.left + part.clientLeft + part.clientWidth, bottom: outer.top + part.clientTop + part.clientHeight };
+        const elides = style.textOverflow === "ellipsis" && style.whiteSpace === "nowrap";
+        const across = Math.max(box.left - left, right - box.right);
+        const down = Math.max(box.top - top, bottom - box.bottom);
+        if (hides(style.overflowX) && across > 1 && !elides) cut.push(`${say(part)} is cut across by ${across.toFixed(0)} px`);
+        if (hides(style.overflowY) && down > 1) cut.push(`${say(part)} is cut down by ${down.toFixed(0)} px`);
+      }
+      // A preset is recalled by its NAME: six buttons that all read "reset…" are six unknowns.
+      const unnamed = [...board.querySelectorAll<HTMLElement>(".w.preset .press")].filter((button) => button.scrollWidth > button.clientWidth + 1).map((button) => button.textContent ?? "");
+      const sideways = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+      return { low, cut, unnamed, sideways };
+    }, FLOOR);
+
+  test("at 375 px wide every part a finger presses is a finger tall, nothing is cut, and a long strip of presets scrolls to its last button", async ({ browser }) => {
+    const stage = await openStage(
+      (seq) => ({ seq, panels: [...FROZEN_PANELS, CRAMPED] }),
+      () => Promise.resolve(),
+      () => () => undefined,
+    );
+    const phone = await openPhone(browser, stage.url, { width: 375, height: 667 });
+    try {
+      const tab = (name: string) => phone.page.locator("#tabs [role=tab]", { hasText: name });
+      // The premise: these boards are ten columns, so a column — and, before the floor, a row — is about 30 px.
+      const found: Record<string, Awaited<ReturnType<typeof faults>>> = {};
+      for (const name of ["Robot", "Scene", "Cramped"]) {
+        await tab(name).tap();
+        await expect(phone.page.locator("#tabs [aria-selected=true]")).toHaveText(name);
+        const column = await phone.page.evaluate(() => {
+          const grid = document.querySelector<HTMLElement>("section.panel:not([hidden]) .board")!;
+          const columns = Number(grid.style.getPropertyValue("--cols"));
+          return (grid.getBoundingClientRect().width - (columns - 1) * 6) / columns;
+        });
+        expect(column, `${name}: a column narrower than a finger`).toBeLessThan(FLOOR - 8);
+        found[name] = await faults(phone.page);
+      }
+      const none = { low: [], cut: [], unnamed: [], sideways: 0 };
+      expect(found).toEqual({ Robot: none, Scene: none, Cramped: none });
+
+      // The strip of six presets is wider than its row: it scrolls sideways, and its last button can be reached and pressed.
+      const strip = phone.page.locator("section.panel:not([hidden]) .w.preset .strip");
+      const reach = await strip.evaluate((element) => element.scrollWidth - element.clientWidth);
+      expect(reach).toBeGreaterThan(0);
+      const last = phone.page.getByRole("button", { name: "hard_strobe" });
+      await expect(last).not.toBeInViewport();
+      const box = (await strip.boundingBox())!;
+      const touch = finger(phone.cdp);
+      await touch.down({ x: box.x + box.width - 30, y: box.y + box.height / 2 });
+      await touch.travel(-(box.width - 60), 2, 8);
+      await touch.up();
+      await expect.poll(() => strip.evaluate((element) => Math.round(element.scrollLeft))).toBeGreaterThan(0);
+      await phone.page.waitForTimeout(400);
+      expect(stage.writes, "a swipe along the strip recalls nothing").toEqual([]);
+      await expect(last).toBeInViewport();
+      await last.tap();
+      await expect.poll(() => stage.writes.length).toBe(1);
+      expect(stage.writes).toEqual([{ handle: "presets_looks", values: { recall: "hard_strobe" }, phase: "commit" }]);
       expect(phone.errors).toEqual([]);
     } finally {
       await phone.context.close();
