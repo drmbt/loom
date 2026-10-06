@@ -70,8 +70,10 @@ This baseline is SDR8, not float-preserving transport.
 **Do not follow the header's early-reuse wording literally.** The method only
 encodes GPU work; another process must not overwrite the source before GPU
 completion. Hold the incoming Electron frame lease through that completion.
-`flipped:NO` preserves rows in the BGRA8 blit path and is the expected choice
-for the Chromium/Metal surface path. Confirm with asymmetric corner pixels in
+`flipped:NO` preserves rows in the BGRA8 blit path. (Superseded by VNB13, 2026-10-06:
+that leaves the surface top row first, which every OpenGL Syphon app — Resolume, TouchDesigner —
+shows upside down; Loom now publishes `flipped:YES`, bottom row first, and flips Syphon input
+on upload. A Metal-only receiver cannot see the difference.) Confirm with asymmetric corner pixels in
 an independent receiver; framework build success alone proves no orientation,
 latency, discovery or end-to-end delivery claim.
 

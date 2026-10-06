@@ -73,6 +73,20 @@ describe("decoded source extent is separate from media output extent", () => {
     } finally { f.backend.dispose(); vi.useRealTimers(); }
   });
 
+  it("VNB13: a bottom-first frame (a Syphon surface) is flipped on the copy itself; a top-first one is not", async () => {
+    const f = await setup();
+    try {
+      const compiled = await f.backend.compile(plan());
+      const image = { videoWidth: 64, videoHeight: 64 };
+      f.set({ frameId: 1, image, flipY: true });
+      f.backend.render(compiled, input);
+      expect(f.copy.mock.calls[0]?.[0]).toEqual({ source: image, flipY: true });
+      f.set({ frameId: 2, image });
+      f.backend.render(compiled, input);
+      expect(f.copy.mock.calls[1]?.[0]).toEqual({ source: image, flipY: false });
+    } finally { f.backend.dispose(); }
+  });
+
   it("copies the full 5184×2880 video instead of cropping to a smaller output, and reuses it", async () => {
     const f = await setup();
     try {

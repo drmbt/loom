@@ -51,6 +51,19 @@ the copy. GPU-loss recovery, Electron import consumption and graph integration
 remain separate gates. A stuck native GPU wait stays busy; there is no timeout
 which falsely makes the resource reusable.
 
+## Orientation (VNB13)
+
+A Syphon surface is laid out **bottom row first**, OpenGL's way: every OpenGL publisher
+(Resolume Arena, TouchDesigner, VDMX, MadMapper) renders into it with a bottom-left origin
+(`SyphonServerRendererLegacyGL`: `glOrtho(0, w, 0, h)`, the texture drawn upright), and their
+clients read it back the same way. This addon copies rows as they are and does not flip;
+the renderer marks Syphon frames bottom-first (`BOTTOM_UP_TRANSPORTS` in
+`src/devices/native-input.ts`) and the backend flips them in `copyExternalImageToTexture`
+(`flipY`). Loom's own Syphon Out publishes in the same orientation (`flipped:YES` in
+`syphon-output.mm`), so Loom → Resolume and Loom → Loom are both upright. A `SyphonMetalServer`
+publishing `flipped:NO` writes top row first; such a source arrives upside down here exactly as
+it does in Resolume or TouchDesigner.
+
 ## Verified native lifecycle test
 
 `src/desktop/testing/syphon-input-fixture.mm` is a test-only publisher

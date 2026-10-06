@@ -1,4 +1,4 @@
-import type { MediaSource } from "@runtime/backend/backend-types.ts";
+import type { MediaSource, MediaSourceFrame } from "@runtime/backend/backend-types.ts";
 import type { NativeVideoTransport } from "./native-video.ts";
 
 export interface NativeInputSourceInfo { id: string; name: string; app: string }
@@ -19,11 +19,25 @@ export function desktopInputBridge(transport: NativeInputTransport = "syphon"): 
   }
 }
 
+/**
+ * VNB13: whether a transport's frames arrive BOTTOM row first. Syphon's do: its surfaces follow
+ * OpenGL, which every OpenGL publisher (Resolume, TouchDesigner, VDMX) draws into with a
+ * bottom-left origin, and which Loom's own Syphon Out matches. NDI and Spout frames are top first.
+ */
+export const BOTTOM_UP_TRANSPORTS: ReadonlySet<NativeInputTransport> = new Set<NativeInputTransport>(["syphon"]);
+
+/** A native frame as the backend takes it, its orientation set by its transport — the ONE place that rule lives. */
+export function nativeMediaFrame(transport: NativeInputTransport, image: VideoFrame, frameId: number): MediaSourceFrame {
+  return { image, frameId, ...(BOTTOM_UP_TRANSPORTS.has(transport) ? { flipY: true } : {}) };
+}
+
 /** One owned GPU frame. Never retain a preload-owned VideoFrame after callback return. */
 export function createNativeInputSource(bridge: DesktopInputBridge, uuid: string, options: {
   size(): readonly [number, number] | undefined;
   resize(width: number, height: number): Promise<void>;
   report(message: string | null): void;
+  /** Where the frames come from: it decides their orientation (BOTTOM_UP_TRANSPORTS). */
+  transport: NativeInputTransport;
 }) {
   let closed = false;
   let leaving = false;
@@ -57,7 +71,7 @@ export function createNativeInputSource(bridge: DesktopInputBridge, uuid: string
           if (pending === frame) discard();
         });
       }
-      return { image: frame.image, frameId: frame.frameId };
+      return nativeMediaFrame(options.transport, frame.image, frame.frameId);
     },
   };
   const poll = async () => {

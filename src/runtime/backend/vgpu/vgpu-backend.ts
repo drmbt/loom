@@ -1690,7 +1690,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         } else if (mediaFrame.image !== undefined && typeof queue.copyExternalImageToTexture === "function") {
           // Browser fast path: ImageBitmap / VideoFrame / canvas, no CPU readback.
           queue.copyExternalImageToTexture(
-            { source: mediaFrame.image as GPUCopyExternalImageSource },
+            // VNB13: a bottom-first image (a Syphon surface) is flipped on the copy itself
+            { source: mediaFrame.image as GPUCopyExternalImageSource, flipY: mediaFrame.flipY === true },
             { texture: entry.texture.gpu },
             { width: entry.size[0], height: entry.size[1] },
           );

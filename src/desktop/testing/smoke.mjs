@@ -343,8 +343,10 @@ export async function verifyDesktop({ executable, main, env, startupOnly = false
         for (const frame of received.frames) {
           assert.equal(frame.width, selection.width); assert.equal(frame.height, selection.height);
           assert.equal(frame.format, 'bgra8unorm');
-          assert.deepEqual(frame.samples.slice(0, 2).map(sample => sample.rgba), [selection.color, selection.color]);
-          assert.deepEqual(frame.samples.slice(2, 4).map(sample => sample.rgba), [[0, 128, 0, 255], [0, 128, 0, 255]]);
+          // VNB13: Syphon surfaces are bottom row first (OpenGL), and this Metal receiver samples memory
+          // rows top-down, so its first two samples (a tenth down) are the picture's BOTTOM corners.
+          assert.deepEqual(frame.samples.slice(0, 2).map(sample => sample.rgba), [[0, 128, 0, 255], [0, 128, 0, 255]]);
+          assert.deepEqual(frame.samples.slice(2, 4).map(sample => sample.rgba), [selection.color, selection.color]);
         }
         console.log('LOOM_SYPHON_RECEIVER_PASS', JSON.stringify({ ...received, frames: [received.frames[0], received.frames.at(-1)] }));
         console.log('LOOM_NATIVE_PRESENTATION_MEASUREMENT', JSON.stringify({ width: selection.width, height: selection.height,
