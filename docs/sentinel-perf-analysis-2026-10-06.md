@@ -4,6 +4,8 @@
 
 What was measured: `projects/sentinel-bot/sentinel.loom.json` as committed at `0fbe1348` (220 nodes, live tier, three robots built), with the kit of the main checkout (`sentinel.glb`, dated 18:11 today; the same vertex and triangle counts as the committed file was built with, one lens 3.7 cm further forward).
 
+Sections 9 and 10 were added later the same day: the app measured again on main after T1653b landed (row 1 of the ranked list), the rings with the shadow off, and the expression census retaken on main. Sections 1 to 8 stand as measured at `0fbe1348`; where section 9 re-states a row, section 9 is the newer.
+
 A figure is **measured** unless it says estimated. A figure taken once says so. The machine was never quiet (section 2), so every timing carries a reference taken beside it.
 
 ## 1. The answer
@@ -419,3 +421,159 @@ Scratch, not in the repository: the worker's `scratchpad/t1666/`, copied with th
 | `app-dist.mjs`, `app-series.mjs`, `app-slow.mjs` | distributions, time series and slow-frame groups from a run |
 | `trace-lib.mjs`, `trace.mjs`, `trace-slow.mjs`, `prof.mjs` | the trace by thread and event; the profile through the source map |
 | `gpu-util.sh` | the machine's GPU utilisation |
+| `app-ab.mjs`, `section9.sh` | section 9: two builds alternated in one browser, the write census, the subtraction probes |
+
+## 9. The app again, on main, after T1653b
+
+Later the same day. Sections 1 to 8 measured `0fbe1348`. Since then T1653b landed (`65eb883f`): the canvas root's wheel listener is no longer re-bound on every render, and a share (a slider's fill, a node's value bars) is drawn in a fixed box. That was row 1. This section measures what it did to this document and what is left.
+
+**How.** Two production builds, the tree at `0fbe1348` ("before") and main at `13a1e12d` ("after"), served side by side and visited in turn by ONE browser: before, after, before, after, before. The same project file in both (the one committed at `0fbe1348`), the fields held with the pack out, the same four layouts, 8 s a window and 4 s of trace, the GPU probe and the CPU spin beside every window. Then one visit of the build of main with one kind of DOM write hidden at a time, and one 160 s run of each build.
+
+**The machine was worse than in the afternoon.** Other sessions held 81 to 83 % of the GPU when the alternation started and took it again for whole windows. A window whose probe read over 1.8 ms is marked and not used for frame rates. Layerize is main-thread time and is used from every window.
+
+### 9.1 In ten lines
+
+1. **The spike is gone.** A Layerize over 10 ms: before, in 17 to 39 of every 65 to 141 frame tasks, 109 to 149 ms apart, up to 29.7 ms. After: in none of 488 frame tasks over five windows (fitted and fullscreen); the longest was 5.8 ms.
+2. **What is left on the main thread is small and steady**: 1.7 to 2.5 ms of Layerize a main frame (it was 4.5 to 10.5), on most frames instead of a third of them.
+3. **The frame task lost its tail**: p90 and worst 28 and 33 ms after, against 39 to 49 and 58 to 68 before.
+4. **No long task in 160 s of the show on main**; 140 in the same run of the old build, 263 ms apart.
+5. **The frame rate with the whole graph fitted did not move.** Like for like (the first 16 s of the show, GPU clear, spin 1.83 and 1.84): 30.9 frames a second after, 31.3 before; 43 % and 44 % of frames over 33.3 ms. Over 112 s with a clear GPU, main: 31.0 frames a second, median interval 33.5 ms, p95 51, p99 61, worst 83, 49 % over 33.3 ms.
+6. **Because that layout was never bound by the main thread.** The GPU process's main thread is 97 to 98 % busy after as before, and its raster of the canvas is what it was: 7.0 to 10.4 ms a main frame after, 8.1 to 14.1 before.
+7. **What makes the raster now is the value bars' 10 Hz writes**, all of them still made: each second 342 `data-channel-value` attributes, 262 `title` attributes, 262 number texts and 265 fill styles, on about 190 elements. With the bar rows hidden by a probe the raster is 0.1 ms, the GPU process 48 % busy and the scene runs at 47 frames a second with 4 frames of 380 over 33.3 ms.
+8. **Hiding the numbers alone, or the fills alone, changes nothing** (raster 13.3 and 14.3 ms): either kind of write is enough to raster the canvas. The value plots are not part of it in this document: no 2D canvas was cleared in any census (the tiles show bars).
+9. **Fullscreen still pays the raster**: 9.7 and 10.2 ms a main frame behind the Viewer after, with the Layerize down to 2.4 ms. T1683b stands for that half.
+10. **Zoomed in is still the way to play today**: 40 frames a second and 3 frames of 324 over 33.3 ms on main in a window where the thread ran slow (spin 2.56); 44 and 57 on the old build.
+
+### 9.2 The alternation
+
+Fields, pack of three. "Taken": the probe read over 1.8 ms, another session was on the GPU.
+
+| Visit | Build | Layout | Probe | Spin | Frames a second | Over 33.3 ms | Frame task p50 / p90 / worst | Layerize, mean (p50 / p90 / worst) | Frames over 10 ms of Layerize, and how far apart | Raster, GPU process | GPU process busy |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | before | editor | 1.44 (GPU shared: the plan took 32 ms) | 1.84 | 26.1 | 122 of 209 | 26.5 / 48.9 / 58 | 10.5 (4.6 / 25.1 / 29.7) | 37 of 86, 111 ms | 14.1 | 98 % |
+| 1 | before | zoom | 1.70 | 1.82 | 57.2 | 0 of 458 | 20.0 / 25.1 / 30 | 0.8 (0.0 / 2.5 / 3.9) | 0 of 178 | 3.2 | 65 % |
+| 1 | before | no canvas | 1.77 | 2.27 | 33.3 | 52 of 268 | 24.8 / 31.1 / 38 | 0.0 | 0 of 145 | 0.1 | 37 % |
+| 1 | before | Viewer | 1.44 | 1.91 | 32.3 | 84 of 260 | 32.8 / 59.1 / 63 | 8.3 (4.8 / 24.4 / 25.9) | 28 of 98, 149 ms | 11.9 | 61 % |
+| 2 | **after** | editor | 1.44 | 1.88 | 33.2 | 92 of 266 | 21.4 / 28.1 / 33 | 2.3 (3.4 / 4.9 / 5.8) | **0 of 129** | 10.0 | 97 % |
+| 2 | after | zoom | 1.70 | 2.56 | 40.4 | 3 of 324 | 22.9 / 27.0 / 31 | 0.5 (0.0 / 1.1 / 1.3) | 0 of 155 | 4.0 | 64 % |
+| 2 | after | no canvas | 2.03 | 1.82 | 46.7 | 1 of 374 | 19.2 / 24.8 / 30 | 0.0 | 0 of 192 | 0.1 | 70 % |
+| 2 | after | Viewer | 3.08, taken | 1.34 | (25.7) | | 19.3 / 20.6 / 22 | 2.4 (2.8 / 2.9 / 3.4) | **0 of 72** | 9.7 | 99 % |
+| 3 | before | editor | 1.38 | 1.84 | 36.0 | 95 of 289 | 18.3 / 39.4 / 68 | 6.2 (3.1 / 21.0 / 29.5) | 36 of 141, 116 ms | 8.1 | 95 % |
+| 3 | before | zoom | 1.77 | 2.18 | 43.7 | 2 of 350 | 19.8 / 24.5 / 32 | 0.8 | 0 of 176 | 3.4 | 67 % |
+| 3 | before | no canvas | 2.03 | 1.62 | 50.3 | 0 of 403 | 17.4 / 21.7 / 28 | 0.0 | 0 of 213 | 0.1 | 67 % |
+| 3 | before | Viewer | 3.54, taken | 1.00 | (24.5) | | 16.8 / 26.2 / 31 | 4.5 (2.4 / 10.5 / 10.7) | 17 of 99, 117 ms | 6.3 | 98 % |
+| 4 | after | editor | 2.10, taken | 1.10 | (26.0) | | 14.9 / 15.9 / 17 | 2.5 (2.5 / 2.6 / 2.7) | **0 of 62** | 10.1 | 99 % |
+| 4 | after | zoom | 3.15, taken | 1.09 | (33.2) | | 13.0 / 14.8 / 18 | 0.4 | 0 of 137 | 2.5 | 99 % |
+| 4 | after | no canvas | 2.23 | 1.44 | 53.9 | 0 of 432 | 17.5 / 21.0 / 25 | 0.0 | 0 of 214 | 0.1 | 58 % |
+| 4 | after | Viewer | 3.47, taken | 1.09 | (22.1) | | 17.8 / 19.2 / 19 | 2.4 (2.5 / 2.6 / 2.7) | **0 of 72** | 10.2 | 99 % |
+| 5 | before | editor | 6.82, taken | 1.00 | (16.2) | | 24.0 / 24.6 / 30 | 7.6 (11.5 / 11.8 / 12.0) | 39 of 65, 122 ms | 8.9 | 98 % |
+| 5 | before | zoom | 4.06, taken | 1.01 | (29.0) | | 11.7 / 14.3 / 15 | 0.8 | 0 of 106 | 3.3 | 98 % |
+| 5 | before | no canvas | 2.29 | 1.58 | 52.1 | 0 of 418 | 18.7 / 22.9 / 27 | 0.0 | 0 of 200 | 0.1 | 61 % |
+| 5 | before | Viewer | 3.01, taken | 1.26 | (29.6) | | 19.3 / 29.6 / 36 | 6.3 (2.9 / 12.1 / 12.7) | 38 of 84, 109 ms | 9.1 | 99 % |
+
+- The period before is this document's own 116 ms again: 111, 116, 122 in the editor windows, 109 to 149 behind the Viewer.
+- A spike's size follows the thread: 21 to 30 ms where the spin read 1.84, 12 ms where it read 1.00.
+- The two editor windows with a clear GPU and the same spin (visits 2 and 3): 33.2 frames a second after and 36.0 before, 35 % and 33 % of frames over 33.3 ms. The difference is inside what one window gives.
+
+**The writes, counted** (a `MutationObserver` on the page for 4 s at the start of each visit; a second, on about 190 distinct elements):
+
+| Write | Before | After |
+|---|---|---|
+| `data-channel-value` on a bar's row | 344 | 342 |
+| `title` on a bar's track | 246 | 262 |
+| the number beside a bar (text) | 246 | 262 |
+| the bar's fill (`style`) | 223, on a box that changes size | 265, on the fixed box |
+| the header: frame, in and out points, time, playhead, GPU, fps | 105 | 107 |
+| a 2D canvas cleared (a value plot) | none | none |
+
+**What makes what is left** (the build of main, one visit, the editor layout with one style injected at a time; spin 1.9 to 2.2, probe 1.44 to 1.97):
+
+| Hidden | Raster, GPU process | GPU process busy | Frames a second | Over 33.3 ms | Layerize, mean (worst) |
+|---|---|---|---|---|---|
+| nothing | 7.0 | 98 % | 26.9 | 132 of 215 | 1.7 (4.0) |
+| the numbers beside the bars | 13.3 | 99 % | 29.4 | 120 of 235 | 3.1 (5.6) |
+| the bars' fills | 14.3 | 97 % | 27.9 | 131 of 224 | 3.5 (5.6) |
+| the bar rows whole | **0.1** | **48 %** | **47.4** | **4 of 380** | 1.6 (5.3) |
+
+- One window each, and the first three differ by no more than windows of one kind do in 9.2. The fourth is not close.
+- A fifth probe hid the header's readouts and read 12.6 ms of Layerize on every one of 119 frames, with the raster at 3.6 ms. I do not know why a hidden readout costs a Layerize a frame; it is one window and a style no product state has. Noted, not explained.
+
+### 9.3 The distribution on main
+
+One run of 160 s on each build, back to back, the old file. Another session took the GPU from 112 s of the first to 96 s of the second (probe 3 to 5 ms, the plan at 37 to 50 ms), so each is read where the probe was at 1.44.
+
+| Build | Window | Frames a second | Median | p95 | p99 | Worst | Over 33.3 ms | Over 50 ms | Long tasks | rAF, median | Spin |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| after | 0 to 112 s | 31.0 | 33.5 | 51.1 | 61.1 | 83 | 1,690 of 3,476 (49 %) | 175 (5.0 %) | 0 | 13.8 | 1.59 |
+| after | the first 16 s | 30.9 | 30.3 | 53.8 | 61.2 | 65 | 213 of 494 (43 %) | 31 (6.3 %) | 0 | 15.4 | 1.83 |
+| before | the first 16 s | 31.3 | 31.2 | 52.5 | 61.0 | 66 | 221 of 500 (44 %) | 40 (8.0 %) | 22 | 15.2 | 1.84 |
+| before | 96 to 160 s (a later stretch of the show: not comparable with the rows above) | 34.4 | 25.6 | 52.7 | 61.1 | 205 | 697 of 2,199 (32 %) | 131 (6.0 %) | 115 | 15.7 | 1.84 |
+| after | the whole run, GPU taken for its last 48 s | 27.4 | 37.0 | 65.8 | 73.0 | 90 | 57 % | 17 % | 0 | 13.2 | 1.46 |
+| before | the whole run, GPU taken for 80 s of it | 25.8 | 36.4 | 68.4 | 75.0 | 205 | 53 % | 30 % | 140 | 13.9 | 1.50 |
+
+- The only like-for-like pair is the two "first 16 s" rows: the same stretch of the show, a clear GPU, the same spin. They are the same.
+- The afternoon's figures for the old build (A1: 31.2 to 34.4 frames a second, 38 to 45 % over 33.3 ms) stand beside main's 31.0 and 49 %. Not a regression: a different hour of a loaded machine, and the 16 s pair says so.
+
+### 9.4 Rows 1, 1a and 2, re-stated
+
+| # | What | State on main | What is left, measured | Gain still to have |
+|---|---|---|---|---|
+| 1 | A change inside a node repaints that node, not the canvas | **The main-thread half is done** (T1653b): no Layerize over 5.8 ms, no long task, the frame task's worst 33 ms where it was 58 to 68 | **The GPU-process half is whole**: 7 to 10 ms of raster a main frame, that thread 97 to 99 % busy, the fitted editor at 31 to 33 frames a second with 35 to 49 % of frames over 33.3 ms | with the bar rows hidden: 47 frames a second, 1 % over 33.3 ms. The cause is the bars' 10 Hz writes (9.1, line 7) landing in a canvas that is one compositor layer (T1653b's own note: "measured, not changed") |
+| 1a | Play with the canvas zoomed in | unchanged, and still the largest thing a person can do today | zoomed: raster 2.5 to 4.0 ms, 3 frames of 324 over 33.3 ms on main | |
+| 2 | A Viewer that covers the editor stops the editor's updates (T1683b) | the Layerize behind the Viewer fell with row 1 (2.4 ms from 4.5 to 8.3) | the raster did not: 9.7 and 10.2 ms a main frame, the GPU process 99 % busy (both windows with the GPU taken; the raster is that thread's own time) | the same as row 1's, for anyone performing fullscreen |
+
+- **What row 1 needs now is in the GPU process, not on the main thread.** Two candidates, neither tested: the bars' writes not made while a tile is too small to read them (at zoom 0.05 a bar is under a pixel tall, and the canvas already knows its zoom, T1597b); or the canvas's tiles on layers of their own, so a write rasters one tile. The first is small and is this document's whole remaining cost; the second is T1653b's unfinished half.
+- `title` and `data-channel-value` are 600 attribute writes a second that paint nothing. They are cheap (style recalculation is 0.2 ms a frame) and are still writes into the one layer.
+
+### 9.5 The rings with the body light's shadow off
+
+Asked for by the project's session: six of the rings' nine passes are the body light's cube faces, so the shadow (row 9) and the rings (row 4) are largely one cost. Headless, main's document (233 passes), reference beside every frame, each scene's baseline read first and last.
+
+| | swim (tunnel, 3) | fields (3) |
+|---|---|---|
+| The frame | 12.35, 12.42 | 10.56, 10.51 |
+| Shadow off | 9.38 (saves 3.0) | 7.72 (saves 2.8) |
+| Rings out, shadow on | 7.72 (saves 4.7) | 6.69 (saves 3.8) |
+| Shadow off and rings out | 7.38 | 6.23 |
+| **The rings with the shadow off** | **2.0** | **1.5** |
+| The rings' share of the shadow | 2.7 of 3.0 | 2.3 of 2.8 |
+
+- **So the rings are 2.0 and 1.5 ms in the three layers and 2.7 and 2.3 ms in the shadow's six faces.** More than half of what the rings cost is that one light's shadow, and nine tenths of what that shadow costs is the rings.
+- What each lever is then worth with three robots out, by B3's and C3's arithmetic (a quarter of the triangles removes 73 % of the part that grows with them):
+  - a shadow switched off by a value where it is not seen (T1688b): 2.8 to 3.0 ms, all of it;
+  - a lighter mesh for the shadow's sweep alone (T1689b), at a quarter of the triangles: about 1.7 to 2.0 ms, and the lit rings untouched;
+  - a level of detail for the lit rings alone: about 1.1 to 1.5 ms;
+  - both of the last two: about 2.8 to 3.4 ms, which is row 4's 3.5.
+- Row 4 and row 9 are therefore not two gains to add. The shadow off and the lit rings at a quarter are about 4.5 ms in the tunnel and 3.9 in the fields; the two rows' own figures added would have said 6.5.
+
+## 10. For T1684b, not started: the census on main, and what the reading found
+
+T1684b (row 3, the expressions) was queued to me and stopped before any design or code, on the owner's word. Nothing was written under `src/`. Two things from the reading are worth keeping.
+
+**The census, retaken on main.** D2's is of the file before `9db66c1f`. The searchlights' kernels went from eighteen long expressions each to three short ones, and the camera grew.
+
+| | At `0fbe1348` (D2) | On main (`13a1e12d`) |
+|---|---|---|
+| Expressions | 365 | 361 |
+| Distinct texts | 206 | 195 |
+| Characters | 186,805 | 141,704 |
+| Syntax-tree nodes | 26,218 | 18,739 |
+| - median, p90, largest | 17, 220, 443 | 6, 176, 638 |
+| `.chan` reads in the text | 3,210 | 2,595 |
+| `.par` reads in the text | 28 | 7 |
+| Distinct read targets | 88 | 93 |
+| Distinct subtrees | 2,290 (8.7 %) | 2,164 (11.5 %) |
+| Where the nodes are | `kernel_search` and `kernel_searchlights` 4,785 each; `wgsl_haze` 3,741; `expression_camera` 1,602; `material_hull` 1,390 | `wgsl_haze` 3,741; `camera_rig` 2,753; `expression_camera` 1,602; `material_hull` 1,391; the two followers' lights 1,196 and 1,153 |
+| Most repeated | a 75-node subtree 55 times; a 26-node one 147 times | the same 75-node subtree 45 times; "which place" (28 nodes) 74 times; `floor(fields + 0.5)` 294 times |
+
+- **The ranking holds.** 88 % of the tree nodes are still a subexpression already evaluated that frame, so the gain row 3 expects scales with the document: about seven tenths of what it was. The profile and the per-frame counts of A3 and D2 were not retaken on main.
+- The camera now reads `op('camera_rig').chan.*` (T1674b's `parameterChannels`), which goes through the same reader and composes the whole pose on every read.
+
+**What the reading found, for whoever builds it.**
+
+- **Where.** `createNodeReferenceReader`'s `ReaderScope` (`node-references.ts`) is already the per-frame, per-moment store T1172 made: one reader per `parameterReadOptions` call, the name index and the resolved targets on it. The values lane builds one a frame for every animated node (`frame-compile.ts`); the time probe builds its own with the shifted frame (`time-probe.ts`); the value graph builds one per evaluation. A memo of channel reads and of subtree values belongs on that scope, not beside it.
+- **The scope of a slot's expression is the frame alone** (`expressionScope` in `resolve.ts` is `scopeFromFrame(options.frame)`), so within one reader every slot sees the same variables. A Value Expression node's statements see their wires' channels as variables: another scope, and they must not share the memo. A memo that is only used when the scope object handed to the evaluator is the reader's own makes that impossible to get wrong.
+- **A cycle.** T1172's target memo refuses an entry when §V152's guard fired during the resolve. A subtree memo has the same hazard one step on: a value remembered at the top of a chain, reused inside a nested resolve where the same read would have tripped the guard, turns a "cycle" fallback into a number. Before the first fire a hit is exact (the target it read is already memoised, so the nested resolve cannot be running); after one, the memo has to be off for the rest of that reader.
+- **The value graph publishes as it goes.** Its one reader reads bags that fill during the pass, so a channel read that fails early can succeed later in the same pass. Remember successes only.
+- **Readers that live past a moment.** About twenty product sites build a reader; the ones I read (the pulse watcher, the perform mapping, the graph channel resolver, the inspector's two) build it per step or per render. The inspector hands its options on to children; whether any child keeps them across frames was not checked, and today a `.chan` read through a kept reader is live where a `.par` read is already frozen by T1172's memo.
+- **Sharing subtrees at parse time needs a bound.** The parse memo is 512 texts, first in first out; an intern table beside it grows with every keystroke in an expression field unless both are emptied together.
