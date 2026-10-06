@@ -27,6 +27,13 @@ import type { AppRuntime } from "./app-runtime.ts";
  * HONEST LIMIT: the decode runs on the main thread. A 100 MB export takes on the order of
  * a second, once per file and selection; moving it to a worker is the follow-up if a
  * scene's reload makes that visible.
+ *
+ * VNB8: the two caches below live as long as ONE DOCUMENT, not as long as the app. They used
+ * to outlive every load: rebuild a GLB on disk, open a project sized for the new export, and
+ * the loader measured the bytes it had read hours earlier and wrote THEIR counts back over
+ * the project's — a Point Kernel sized to the new mesh then refused it and the document
+ * stopped compiling. Every load mints a new `documentIdentity` (`app-runtime.ts`), so a new
+ * identity drops both caches and re-runs the effect: opening a project reads its files.
  */
 
 export interface MeshWiring {
@@ -79,6 +86,9 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
   const filesRef = useRef(new Map<string, Promise<Uint8Array>>());
   /** Prepared meshes by `file|select`: the facts write re-runs the effect, not the decode. */
   const preparedRef = useRef(new Map<string, PreparedMesh | null>());
+  /** VNB8: the document those caches were filled for. */
+  const cachedForRef = useRef<string | null>(null);
+  const documentIdentity = runtime.documentIdentity;
 
   const requests = meshRequests(graph);
   // A flat string, so an unrelated recompile does not re-open every mesh.
@@ -92,6 +102,11 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
     let cancelled = false;
     const unregisters: Array<() => void> = [];
     const found: RuntimeDiagnostic[] = [];
+    if (cachedForRef.current !== documentIdentity) {
+      cachedForRef.current = documentIdentity;
+      filesRef.current.clear();
+      preparedRef.current.clear();
+    }
 
     const readFile = (url: string): Promise<Uint8Array> => {
       const cached = filesRef.current.get(url);
@@ -197,7 +212,7 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
     };
     // `requests` is derived from `key`; the key is the dependency by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backend, key]);
+  }, [backend, key, documentIdentity]);
 
   return { diagnostics };
 }
