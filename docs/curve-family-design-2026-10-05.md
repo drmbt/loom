@@ -1,6 +1,6 @@
 # A curve family: curves as strips of a pointset (T1586b)
 
-**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`), on main as `b9e63995`. Slice 2, the Curve node, is built with its authored table (`6f303252`, on main as `a4a4c0fb`). Slice 6, strips longer than 1,024 points, is built (`fe489f4d`), and so are slice 8, the Arc Chain (`bac160bf`), and slice 7, Resample by Curvature (`cfb2c429`). Section 7.4 lists what changed from this design as they were built. Beam drawing a strip (the rest of slice 5) is design only.
+**Status, 2026-10-05: ruled and partly built.** Every decision in section 7.3 was ruled as recommended, and the consumer (shaderloom-f1) reviewed the design with no objection. Slices 1, 3 and 4 are built: Strips (`726cc203`), Curve Frames (`c8fd00ba`) and Resample (`dbb5c761`), on main as `b9e63995`. Slice 2, the Curve node, is built with its authored table (`6f303252`, on main as `a4a4c0fb`). Slice 6, strips longer than 1,024 points, is built (`fe489f4d`), and so are slice 8, the Arc Chain (`bac160bf`), and slice 7, Resample by Curvature (`cfb2c429`). Curve Frames' Extrapolate Ends (the sweep row's follow-up C13) is built, 2026-10-06 (`f917677e`). Section 7.4 lists what changed from this design as they were built. Beam drawing a strip (the rest of slice 5) is design only.
 
 The row asks for a Curve node, a Resample node and a Curve Frames node, with instancing along a curve (T1581b), sweep (T1587b), a path follower (T1590b) and rope (T1585b) as consumers. The owner's standard for it (2026-10-05): consider how TouchDesigner and Notch do this, build the right general shape and not the first consumer's minimum, no brittle or unscalable shortcuts.
 
@@ -364,6 +364,7 @@ The one node that measures a strip.
 | `roll` | number, degrees; Map f32 | 0 | a turn about the tangent, the same at every point; a mapped attribute adds per point |
 | `twist` | number, degrees | 0 | a turn about the tangent that grows from 0 at the start to this at the end, by distance |
 | `closeTwist` | boolean | on | closed strips: spread the mismatch after one lap along the strip, so the frame meets itself |
+| `extrapolateEnds` ⓢ | boolean | on | open strips: aim each end's frame by its two nearest segments, in place of its end segment's own direction (built 2026-10-06; below) |
 | `frame` ⓢ | boolean | on | publish `orient` |
 | `vectors` ⓢ | boolean | off | publish `tangent`, `normal`, `binormal` |
 | `metrics` ⓢ | boolean | on | publish `distance`, `curveU`, `curveLength`, `curvature` |
@@ -384,6 +385,15 @@ The one node that measures a strip.
 - **Closing.** On a closed strip the carried frame arrives back at the first point turned by some angle about the tangent. With `closeTwist` on, each point is turned back by that angle times its `curveU`, so the seam matches. Sweep needs this. Neither product documents how it treats the seam.
 - **Roll and Twist** are applied last: `roll` (plus the mapped attribute) and `twist × curveU` about the tangent. They are TouchDesigner's Roll and Twist on the Sweep SOP, and Notch's Radial Rotation Offset and the bank its cloner follows.
 - **A strip of no length** has no direction: its frame is the seed's and its metrics are zero. Nothing divides by a zero length.
+- **The two ends of an open strip are extrapolated** (built 2026-10-06, from the sweep row's follow-up C13).
+  - The walk gives an end point its end segment's direction, the only one it has. On points taken from a smooth curve that is the curve's direction half a segment further on: off the end's own tangent by half the turn across the segment, where an interior bisector is off by the square of it. On the sentinel tunnel's bore it was the largest error of the whole comparison: 2.7 mm at the first ring against 0.11 mm inside (`docs/sweep-design-2026-10-05.md`, 11.2).
+  - With Extrapolate Ends on, an end's tangent is `d + (d − e) × h ÷ (h + g)`, for the end's own segment (direction `d`, length `h`) and the next one (`e`, `g`): the slope, at the end, of the parabola through their three points. For even spacing it is the one-sided difference `(−3 p0 + 4 p1 − p2) ÷ 2h`. On a circle of equal chords that each turn by `2a` it is off by about `2a³` where the chord is off by `a`.
+  - Houdini's Orientation Along Curve has the same switch, Extrapolate End Tangents: "end (including beginning) tangents will be extrapolated based on the Tangent Type and the two edges closest to the end, instead of just being chosen as the end edge direction".
+  - The frame is the walk's own, re-aimed. Minimise Twist: turned by the smallest rotation that takes the end segment's direction onto the new tangent, so its roll and twist come with it. Fixed Up: the normal leans toward Up about the new tangent, at the angle the walk left it; where Up runs along the end, that point keeps its chord's frame.
+  - An end is a RUN: every repeat of the end point takes the new frame, so padding sweeps to rings of no area as before.
+  - Left alone: a closed strip (it has no ends); a strip with fewer than two segments of any length (two points say nothing about how a curve turns); an end whose two segments run the same way to the bit, so a straight end is exactly what it was.
+  - **Every other value is the same word, on or off.** It is done by passes AFTER the walk that rewrite the two end runs' frames and nothing else, because two shader programs may round one expression differently: the only way to leave the interior to the bit is to leave the walk's program alone. The walk's frozen fingerprints did not move.
+  - **When to turn it off:** a path of straight legs with a corner next to its end. The parabola through an L leans the end back by 18°. That is what the switch is for, and what the by-hand corner tests use.
 
 ### 3.5 Which curves keep their length
 
@@ -862,6 +872,16 @@ Names as built: node types `pointCurve` (Curve), `pointCurveFrames` (Curve Frame
 - The Topology node's Columns and Rows are limited by the points the edge carries and no longer by 4,096 each. Found while measuring: a kernel's strip of 16,384 points could not be claimed.
 - The CPU reference takes the block size as an argument, so its tests cut eleven points into blocks of four.
 - Found while testing: two programs that compute the same expression can differ in its last bit on this device, so "the first block of a long strip is the short strip, byte for byte" is not a statement a test can make across them. The promise that holds is the one that is tested: a short strip's own program does not change.
+
+**Extrapolate Ends, 2026-10-06** (§T1587b C13; section 3.4's last paragraph says what it computes)
+
+- It is a parameter, `extrapolateEnds`, on by default. The follow-up asked for the estimate; the switch is there because a path of straight legs with a corner next to its end is leaned back by it (18° on an L), and Houdini offers the same choice.
+- It is two passes after the walk, never a change to it: FIND, an invocation per strip, leaves four vectors a strip (each end's new tangent, its chord, and the slot its run reaches); WRITE, an invocation per 64 slots, rewrites the slots of its own that lie in a run. On a strip longer than one block FIND reads the walk's block summaries, so it opens two blocks whatever the padding.
+- The passes exist only where there is an end and a frame to aim: an open strip of three points or more with Frame or Vectors on.
+- Tested: the walk's nine frozen fingerprints are unchanged, and with the switch off the node's whole program is the one that shipped. On Dawn, on and off are the same WORDS at every interior slot of every attribute and at every slot of every metric, on a short strip and on one cut into blocks with most of it padding; the ends are the reference's; a right angle and a circle by hand and in closed form. Fourteen mutations seen red.
+- Measured (Dawn on Metal, on less off, ms a frame). Without repeats the two passes are their own submission: 0.02 to 0.05. With repeats the cost is the repeats rewritten: 976 strips of 1,024 slots with 624 repeats each, 0.18 to 0.21 for the quaternion alone and 0.36 to 0.42 with the three vectors; one strip of a million slots with 900,000 repeats, 0.41 to 0.43 and 0.77 to 0.83. That is a plain kernel pass over as many points.
+- A first version rewrote each run in one thread per strip. It cost the same with repeats and half as much without, and its depth followed the run: it was replaced before landing.
+- A consequence for a frame measured far from the origin: an aimed end counts a point's rounding twice (1.5 of one chord less 0.5 of the next). The tunnel's repeated part is 1.1 mm from its first part at an end ring, where it was 0.8 mm.
 
 **Owed**
 

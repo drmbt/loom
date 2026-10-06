@@ -420,7 +420,7 @@ As built for slices 1 and 3. On Dawn through the compiler and the backend; exact
 | C10 | Resample: a Range that wraps on a closed strip, so a window can ride round a loop | a change to the curve row's Resample, not to the sweep. The tunnel turned out not to need it: it is periodic, not a loop (6.1) |
 | C11 | The way round a Custom outline by its sides' lengths, not their count | a walk over the outline for every vertex, or the outline's own `curveU`; uneven outlines stretch a texture meanwhile |
 | C12 | A typed centre line longer than 64 control points, or a CPU reader of a formula path | the tunnel's line needs about 900; today the camera and the wall each evaluate the formula (T1590b) |
-| C13 | The tangent at a strip's two ends | Curve Frames has one chord there: the bore's first ring is 2.7 mm off where the rest are 0.11 mm (11.2). A path a point longer than is drawn hides it |
+| C13 | ~~The tangent at a strip's two ends~~ | **built 2026-10-06** (`f917677e`): Curve Frames' Extrapolate Ends, on by default. The bore's first ring went from 2.7 mm to 0.014 mm and its last from 0.7 mm to 0.040 mm, with every ring between them unchanged to the bit (11.2; `docs/curve-family-design-2026-10-05.md`, 3.4) |
 | C14 | A port that can say "one strip with a frame" | the catalogue's minimal graph names the Sweep to feed it one (`test-support.ts`): a port's `requires` is matched against what the producer's port declares, and Curve Frames declares no `orient` |
 
 ### 8.3 Decisions, as ruled
@@ -480,15 +480,15 @@ Notch, fetched 2026-10-05 (page updated 16 Sep 2026):
 
 ### 11.2 The worked check: the consumer's bore from the stock nodes
 
-`src/nodes/definitions/point-sweep-bore.gpu.test.ts` builds the sentinel tunnel's bore from the stock nodes and holds it against the project's own kernel-bent grid (`src/projects/sentinel-bot/tunnel.ts`, read and not edited), with the relief off and the deck out of the way. Dawn on Metal. Every figure has a bound in the test derived from what explains it.
+`src/nodes/definitions/point-sweep-bore.gpu.test.ts` builds the sentinel tunnel's bore from the stock nodes and holds it against the project's kernel-bent grid, with the relief off and the deck out of the way. That grid is FROZEN in `point-sweep-bore.fixture.ts` (`c52c636a`) as it stood at `src/projects/sentinel-bot/tunnel.ts` 14b66ed2 and `path.ts` 1bc118e6 (2026-10-05): the test imports nothing from the project, so it is a fact about a fixed input and a later change to the project's bore neither reddens it nor is covered by it. Dawn on Metal. Every figure has a bound in the test derived from what explains it.
 
 **On the bore's own rows.** The path's 768 points come from the project's formula at the bore's rows; Curve Frames (Fixed Up) and a Sweep lay the wall. Against the project's kernel, vertex for vertex, all 196,608:
 
 | | Worst difference | What explains it |
 |---|---|---|
 | The 766 inner rings | 0.11 mm | rounding: the frame's tangent is measured from points a float holds to 0.004 mm, across a 0.15 m chord, and a hall's 5 m radius multiplies the angle |
-| The first ring | 2.7 mm | a strip's end has one chord to take its tangent from, off the end's own by half the turn across it (C13) |
-| The last ring | 0.7 mm | the same |
+| The first ring | 0.014 mm | aimed by its two nearest segments (Curve Frames' Extrapolate Ends, C13). On its one chord, with the switch off: 2.7 mm, off the end's own tangent by half the turn across the chord |
+| The last ring | 0.040 mm | the same. On its one chord: 0.7 mm |
 
 A Custom outline of the bore's 256 columns (the seam's two in one place) and a Ring of 255 with the frame rolled a quarter turn give the same figures.
 
@@ -508,7 +508,7 @@ A Custom outline of the bore's 256 columns (the seam's two in one place) and a R
 
 | | Rows a period on, against the first part's | The wall |
 |---|---|---|
-| Rows at the curve's own points | 0.14 mm | 0.8 mm |
+| Rows at the curve's own points | 0.14 mm | 1.1 mm, at an end ring: an aimed end counts the rounding twice (0.8 mm before C13) |
 | Rows by Distance, the Range started a period on | 0.23 mm | 0.9 mm |
 | Rows by Distance, the Range stepped in rows of 0.15 m | 7.4 mm off: a period is 7,055.05 rows | not built |
 
