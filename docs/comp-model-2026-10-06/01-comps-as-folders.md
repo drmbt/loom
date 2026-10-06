@@ -15,7 +15,7 @@ The one escape hatch is `component.instantiate` with `mode: "detached"` (`src/do
 
 ## 2. Motivating evidence (from a real project)
 
-The touring-stage previz (`projects/stage-previz/stage-previz-8.loom.json`, VN12) packages a 94-node network into six components: feeds, the stage set, the camera, the work lights, the projector rig, and the haze render. Each of the five limits below forced a workaround in that file.
+The touring-stage previz (`projects/stage-previz/stage-previz-8.loom.json`, in #2 as commit 5, VN12) packages a 94-node network into six components: feeds, the stage set, the camera, the work lights, the projector rig, and the haze render. Each of the five limits below forced a workaround in that file.
 
 ### 2.1 Loaders cannot write back into a component
 
@@ -42,7 +42,7 @@ So a reusable projector component is **impossible today**, and a single-use one 
 
 `parent.<key>` exists, but only as a **whole-parameter link**. `src/domain/components/parent-scope.ts:20-26` explains that parent scope is "a driver factory": the bare string `"parent.blur"` would be refused by `validateParameters`, and the binding lives in `node.state.parentBindings`. The expression grammar (`src/domain/expressions/evaluate.ts:26`) is "numbers, operators, parentheses, scope variables, `op()` references, and the closed function whitelist". It has no `parent` term. The MCP server's own tool notes say the same thing: `bind` reaches "`parent.<key>` inside a component", and expressions reach other nodes through `op()`.
 
-So `parent.gain * 0.5 + op('lfo1').chan.value` cannot be written. In the previz the workaround was **Constant "knob" holder nodes** inside each component: a published parameter targets the Constant's `value`, and the compound expressions read `op('knob_dsTilt').par.value`. That is one extra node per published parameter a formula reads (ten in v8). It also *adds* bare names to the global namespace from §2.2.
+So `parent.gain * 0.5 + op('lfo1').chan.value` cannot be written. In the previz the workaround was **Constant "knob" holder nodes** inside each component: a published parameter targets the Constant's `value`, and the compound expressions read `op('knob_dsTilt').par.value`. That is one extra node per published parameter a formula reads, in every component that reads it: 17 in v8. It also *adds* bare names to the global namespace from §2.2.
 
 ### 2.4 Organising pays the reuse tax
 
@@ -55,7 +55,7 @@ A Panel and the phone door both look only at top-level document nodes, so a cont
 - **Panel membership.** A Panel's members are the widgets wired into its Controls input, plus banks, layers and cue lists named on its board (`panelBoard`, `src/nodes/definitions/controls.ts:595`). Both are looked up in the document graph. A slider inside a component cannot be wired to a Panel outside it, and a board item naming it resolves nothing.
 - **Phone door.** The phone snapshot builds its pages from `remoteLayouts(graph)` over the document (`src/devices/phone/phone-snapshot.ts:473`). Every phone write is vetted against `publishedWidgets(graph)` and `publishedMembers(graph, …)` (`vetPhoneSet`, `:538`). A widget or bank inside a component is refused as "a control that is not published to the phone door". A layer toggle reads and writes `ui.bypassed` by document id (`src/app/phone-writes.ts:150`, a `setNodeUi` patch). For a layer inside a component the read finds nothing and the patch targets a node the store does not hold.
 
-The previz cost: all 25 sliders and the toggle had to stay at the root beside the Panel. Each one now drives its component through a published parameter set to `op('dsThrow').chan.dsThrow`. That is 29 instance-parameter expressions (some sliders feed two components) whose only job is to cross a boundary the user never asked for. A reusable "Projector" component cannot carry its own control strip either: the strip has to be rebuilt beside every instance.
+The previz cost: all 24 controls (23 sliders and a toggle) had to stay at the root beside the Panel. Each one now drives its component through a published parameter set to `op('dsThrow').chan.dsThrow`. That is 28 instance-parameter expressions (some sliders feed two components) whose only job is to cross a boundary the user never asked for. A reusable "Projector" component cannot carry its own control strip either: the strip has to be rebuilt beside every instance.
 
 With folders, `rig/dsThrow` is a document node, so the Panel can wire it and the phone can vet it. The open design question is whether a Panel should list *published parameters* of a linked instance directly (TD's parameter page on a COMP), which would remove the root slider entirely.
 

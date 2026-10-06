@@ -4,7 +4,7 @@
 
 ## 1. Why
 
-A Loom component cannot carry its own control layout (VN10). The only control surface is a Panel node, and a Panel only sees widgets in the top-level graph (`panelBoard`, `src/nodes/definitions/controls.ts:595`), as does the phone door (`vetPhoneSet`, `src/devices/phone/phone-snapshot.ts:538`). In the stage previz that forced 25 widget nodes and 29 boundary-crossing expressions at the root, to move parameters the components already publish ([01](01-comps-as-folders.md) §2.5).
+A Loom component cannot carry its own control layout (VN10). The only control surface is a Panel node, and a Panel only sees widgets in the top-level graph (`panelBoard`, `src/nodes/definitions/controls.ts:595`), as does the phone door (`vetPhoneSet`, `src/devices/phone/phone-snapshot.ts:538`). In the stage previz that forced 24 widget nodes and 28 boundary-crossing expressions at the root, to move parameters the components already publish ([01](01-comps-as-folders.md) §2.5).
 
 The underlying choice: in Loom, **widget nodes are the source of truth for control**, and parameters read them. TouchDesigner works the other way round. **Custom parameters are the source of truth**, and a panel is a view of them, owned by the COMP it controls. This document proposes TD's model.
 
@@ -55,7 +55,7 @@ Shortcuts are stable addresses that survive renames and moves of everything exce
 
 ## 5. Effect on the previz
 
-The 25 widget nodes, the Panel node and the 29 boundary-crossing expressions go. ProjectorRig's ten lens controls, HazeRender's haze, fog and beams, and the camera's shot are custom parameters on their own COMPs, laid out on their own panels and composed into one desk Container. The stage camera gets a viewport you can drag, and the desk publishes to the phone.
+The 24 widget nodes, the Panel node, the 28 boundary-crossing expressions and the 17 knob holders go. ProjectorRig's ten lens controls, HazeRender's haze, fog and beams, and the camera's shot are custom parameters on their own COMPs, laid out on their own panels and composed into one desk Container. The stage camera gets a viewport you can drag, and the desk publishes to the phone.
 
 ## Proposed §T rows
 
