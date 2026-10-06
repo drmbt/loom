@@ -533,6 +533,49 @@ export const POINT_FALLOFF_WGSL = `      attenuation = select(1.0 / (1.0 + dista
 `;
 
 /**
+ * B260 — ABOVE THIS MANY LIGHTS, each light's block does its work under a test that the
+ * light is on (`lightGuardWgsl`). At and below it the lit text is what it always was.
+ *
+ * The cause it answers. The lit sum is one chain of `lit +=` through every light's block.
+ * Apple's Metal compiler runs with fast math: it takes every light's terms out of their
+ * blocks, sums them at the END of the fragment function, and so moves each light's lobe
+ * below every light's kind and range branch. What a fragment holds live at once then grows
+ * with the light count, and past the GPU's registers its cost jumps: on a PBR floor 0.39 ms
+ * at 20 lights and 1.51 ms at 24, 18.7 ms at 64 where the guarded text takes 1.3. A branch
+ * on the light's own intensity ends the chain at every light.
+ *
+ * Why 8 and not the 20 where that floor's cliff is: a Material · WGSL moves it to between 16
+ * and 20, a casting point light too, and both together are a timer step apart at 16. A file
+ * mesh with surface rows, several casting lights, a projector and an environment in one
+ * shader were not measured. The guard costs nothing that could be resolved at 8, 12 or 16
+ * lights, so the margin goes to the side that cannot hurt.
+ *
+ * The count is LIGHTS. A projector adds into the same sum, but its addition has always sat
+ * under two tests of the fragment's own place (in front of the lens, inside the frustum), so
+ * `lit` is a merge after every projector and the chain ends there: 8 lights with 24
+ * projectors cost what 24 projectors cost one by one, guarded or not. The gate
+ * (`scene-light-guard.test.ts`) counts a projector written without its tests as a light.
+ *
+ * A stopgap with a named end: it goes when named Lights are rows walked by a loop (T1623b).
+ * Measured and derived in `docs/light-cost-investigation-2026-10-06.md`.
+ */
+export const LIGHT_GUARD_ABOVE = 8;
+
+/**
+ * B260 — the two lines round a light block's work, after its three uniform reads and
+ * before its closing brace; both empty at or below `LIGHT_GUARD_ABOVE`.
+ *
+ * The test is `lightMeta.y != 0.0`: the Light's Intensity. A light of intensity 0 adds
+ * `0 × lobe` without it, which is zero wherever the lobe is finite, so the sum is the same
+ * sum. Where the lobe is NaN or infinite (a halfway vector of zero length, a light exactly
+ * at the fragment) the unguarded block adds NaN for a light that is switched off and the
+ * guarded one adds nothing. A light that is on runs the same code either way, NaN included,
+ * and a NaN intensity is "not zero", so it still shows.
+ */
+export const lightGuardWgsl = (lightCount: number): { readonly open: string; readonly close: string } =>
+  lightCount > LIGHT_GUARD_ABOVE ? { open: "    if (lightMeta.y != 0.0) {\n", close: "    }\n" } : { open: "", close: "" };
+
+/**
  * T1437b — the `light{i}Meta` row every lit draw writes, in ONE place (the render's two
  * generators and the light preview wrote it three times): x = 1 for a point light, y = the
  * intensity, z = the falloff law (1 inverse square), w = the range (0 unlimited).
@@ -1425,11 +1468,12 @@ ${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradianc
     ? `clamp(${roughnessBase} * ${mapLoad("roughnessMap")}.r, 0.04, 1.0)`
     : roughnessBase;
 
+  const lightGuard = lightGuardWgsl(lightCount);
   const lightBlock = (index: number): string => `  {
     let lightMeta = params.light${index}Meta;
     let lightColor = params.light${index}Color;
     let lightVector = params.light${index}Vector;
-    var toLight: vec3f;
+${lightGuard.open}    var toLight: vec3f;
     var attenuation = 1.0;
     if (lightMeta.x < 0.5) {
       toLight = normalize(-lightVector.xyz);
@@ -1467,7 +1511,7 @@ ${
     lit += params.specular.rgb * radiance * highlight;
 `
         : "")
-}  }
+}${lightGuard.close}  }
 `;
 
   const needsViewDir = lightCount > 0 || environment;
@@ -1978,11 +2022,12 @@ ${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradianc
   const lightField = Array.from({ length: lightCount }, (_, index) =>
     `  light${index}Meta: vec4f,\n  light${index}Color: vec4f,\n  light${index}Vector: vec4f,\n`,
   ).join("");
+  const lightGuard = lightGuardWgsl(lightCount);
   const lightBlock = (index: number): string => `  {
     let lightMeta = params.light${index}Meta;
     let lightColor = params.light${index}Color;
     let lightVector = params.light${index}Vector;
-    var toLight: vec3f;
+${lightGuard.open}    var toLight: vec3f;
     var attenuation = 1.0;
     if (lightMeta.x < 0.5) {
       toLight = normalize(-lightVector.xyz);
@@ -2011,7 +2056,7 @@ ${
     lit += params.specular.rgb * radiance * highlight;
 `
         : "")
-}  }
+}${lightGuard.close}  }
 `;
   const needsViewDir = lightCount > 0 || environment;
   const aoLookup = ambientOcclusion
