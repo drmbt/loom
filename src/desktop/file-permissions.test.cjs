@@ -20,15 +20,10 @@ function harness() {
   contents.isDestroyed = () => false;
   const reports = [];
   const prompts = [];
-  let answer;
-  let fail;
   installFilePermissions({ session, origin, report: message => reports.push(message),
     requestSystemAccess: async () => true,
     notify: () => {},
-    confirm: async (_contents, options) => {
-      prompts.push(options);
-      return new Promise((resolve, reject) => { answer = resolve; fail = reject; });
-    } });
+    confirm: async (_contents, options) => { prompts.push(options); return false; } });
   return { session, contents, reports, prompts,
     check: (...args) => check(...args),
     request: (permission = 'fileSystem', requested = details, from = contents) => {
@@ -36,78 +31,60 @@ function harness() {
       request(from, permission, result => replies.push(result), requested);
       return replies;
     },
-    answer: allowed => answer(allowed), fail: () => fail(new Error('dialog unavailable')),
   };
 }
 const tick = () => new Promise(resolve => require('node:timers').setImmediate(resolve));
 
-test('exact file/read-write consent; isMainFrame=false is valid for current Electron fileSystem', async () => {
-  for (const fileAccessType of ['readable', 'writable']) {
-    const h = harness();
-    assert.equal(h.check(h.contents, 'fileSystem', origin, details), false);
-    const replies = h.request('fileSystem', { ...details, fileAccessType });
-    await tick();
-    assert.equal(h.prompts[0].detail, details.filePath);
-    assert.match(h.prompts[0].message, fileAccessType === 'readable' ? /read/ : /modify/);
-    assert.equal(h.prompts[0].cancelId, 0);
-    assert.equal(h.prompts[0].defaultId, 0);
-    assert.deepEqual(replies, []);
-    h.answer(true);
-    await tick();
-    assert.deepEqual(replies, [true]);
-    assert.equal(h.contents.listenerCount('did-start-navigation'), 0);
-  }
-});
+/*
+ * VNB4: a fileSystem CHECK is the whole decision (Electron 44.5.1 never reaches the request
+ * handler for one), and it arrives with NO webContents and no requestingUrl: just the
+ * requesting origin, as a URL, and the file details. These are that shape exactly, as
+ * logged from real Electron; testing/file-access.test.cjs runs the same handler in Electron.
+ */
+const fileCheck = { fileAccessType: 'readable', filePath: resolve('clip.mov'), isDirectory: false, isMainFrame: false };
 
-test('invalid, foreign, directory and non-file permissions never open a prompt', async () => {
+test('VNB4: a file Loom was given is readable and writable, in the shape Electron sends', () => {
   const h = harness();
-  for (const patch of [{ requestingUrl: 'https://example.com/' }, { requestingUrl: undefined },
-    { filePath: undefined }, { filePath: 'relative.json' }, { isDirectory: true },
-    { isDirectory: undefined }, { fileAccessType: 'unknown' }]) {
-    assert.deepEqual(h.request('fileSystem', { ...details, ...patch }), [false]);
+  for (const fileAccessType of ['readable', 'writable']) {
+    assert.equal(h.check(null, 'fileSystem', `${origin}/`, { ...fileCheck, fileAccessType }), true);
   }
-  assert.deepEqual(h.request('media'), [false]);
-  assert.deepEqual(h.request('fileSystem', details, null), [false]);
-  h.contents.getURL = () => 'https://example.com/';
-  assert.deepEqual(h.request(), [false]);
-  await tick();
+  // A webContents, should a later Electron pass one, must be Loom's too.
+  assert.equal(h.check(h.contents, 'fileSystem', `${origin}/`, fileCheck), true);
+  const foreign = new EventEmitter();
+  foreign.getURL = () => 'https://example.com/';
+  foreign.isDestroyed = () => false;
+  assert.equal(h.check(foreign, 'fileSystem', `${origin}/`, fileCheck), false);
+  h.contents.isDestroyed = () => true;
+  assert.equal(h.check(h.contents, 'fileSystem', `${origin}/`, fileCheck), false);
   assert.deepEqual(h.prompts, []);
 });
 
-test('deny and dialog failure reject rather than granting or throwing silently', async () => {
-  for (const fail of [false, true]) {
-    const h = harness();
-    const replies = h.request();
-    await tick();
-    if (fail) h.fail(); else h.answer(false);
-    await tick();
-    assert.deepEqual(replies, [false]);
-    assert.equal(h.reports.length, fail ? 1 : 0);
-  }
-});
-
-test('navigation or destruction rejects immediately; late consent cannot grant a new document', async () => {
-  for (const event of ['did-start-navigation', 'destroyed']) {
-    const h = harness();
-    const replies = h.request();
-    await tick();
-    h.contents.emit(event);
-    assert.deepEqual(replies, [false]);
-    h.answer(true);
-    await tick();
-    assert.deepEqual(replies, [false]);
-    assert.equal(h.contents.listenerCount('destroyed'), 0);
-  }
-});
-
-test('simultaneous prompts are denied and restricted OS paths cannot be approved', async () => {
+test('VNB4: another origin, a directory, a relative or missing path and an unknown access are refused', () => {
   const h = harness();
-  const first = h.request();
-  assert.deepEqual(h.request(), [false]);
+  for (const requestingOrigin of ['https://example.com/', 'http://127.0.0.1:5188/', '', undefined]) {
+    assert.equal(h.check(null, 'fileSystem', requestingOrigin, fileCheck), false, String(requestingOrigin));
+  }
+  for (const patch of [{ isDirectory: true }, { isDirectory: undefined }, { filePath: 'relative.mov' },
+    { filePath: undefined }, { fileAccessType: 'unknown' }, { fileAccessType: undefined }]) {
+    assert.equal(h.check(null, 'fileSystem', `${origin}/`, { ...fileCheck, ...patch }), false, JSON.stringify(patch));
+  }
+  assert.equal(h.check(null, 'fileSystem', `${origin}/`, undefined), false);
+  // Only fileSystem is widened: another permission with the same details is not.
+  assert.equal(h.check(null, 'geolocation', `${origin}/`, fileCheck), false);
+});
+
+test('a fileSystem request that reaches the request handler is refused without a prompt', async () => {
+  const h = harness();
+  assert.deepEqual(h.request('fileSystem', { ...details, fileAccessType: 'readable' }), [false]);
+  assert.deepEqual(h.request('fileSystem', details, null), [false]);
+  assert.deepEqual(h.request('geolocation'), [false]);
   await tick();
-  h.answer(false);
-  await tick();
-  assert.deepEqual(first, [false]);
+  assert.deepEqual(h.prompts, []);
+  assert.equal(h.reports.length, 3);
+});
+
+test('restricted OS paths are denied', () => {
+  const h = harness();
   let action;
   h.session.emit('file-system-access-restricted', {}, {}, result => { action = result; });
   assert.equal(action, 'deny');
