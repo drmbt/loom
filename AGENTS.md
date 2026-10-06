@@ -51,7 +51,7 @@ For application or shared-library changes, run:
 pnpm lint
 pnpm typecheck
 pnpm test        # >2 min. Prefer the ladder below.
-pnpm test:gates  # ~15 s. The 58 gate files no selector can find. Not optional. Cap with `--maxWorkers=2` and no `--` before it.
+pnpm test:gates  # ~15 s. The 59 gate files no selector can find. Not optional. Cap with `--maxWorkers=2` and no `--` before it.
 pnpm test:first-import  # every domain/compiler/runtime module as the first module of a fresh node (V1028)
 pnpm build
 ```
