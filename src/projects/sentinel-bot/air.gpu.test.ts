@@ -4,6 +4,7 @@ import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { srgbToLinear } from "../../domain/parameters/resolve.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
 import { HAZE_WGSL } from "./air.ts";
+import { FLOOD_TONE, floodAt } from "./dock.ts";
 import { strikeAt } from "./field.ts";
 import { CHAMBERS, chamberAt, pathAt } from "./path.ts";
 import { BEAM_GAIN, LAMPS_MIRRORED, LAMP_HANGS, LAMP_TONES, lampParameter } from "./tunnel.ts";
@@ -200,3 +201,34 @@ describe("the fields' air: mist low down, and lightning in it (T1561b)", () => {
     expect(other[2] as number).toBeLessThan((lit[2] as number) / 4);
   }, 240_000);
 });
+
+/**
+ * THE DOCK'S AIR (air.ts, lampNow): the lamps the pass is handed there are the crown's floods, and the lit air
+ * under one is that flood's, cold white, whatever tone the tunnel's lamp of that number has; a dead flood lights
+ * none. The beam's shape is the tunnel's own (a plate shining down), proved above.
+ */
+describe("the dock's air: a cone under every flood that burns (T1561b)", () => {
+  const EYE: Vec = [0, 0, 0];
+  const AHEAD: Vec = [0, 0, 1];
+  const over: Vec = [0, 2, 5];
+  /** A rib whose flood burns and one whose flood is dead, by the dock's own lot. */
+  const ribs = Array.from({ length: 40 }, (_, rib) => rib);
+  const [burning, dead] = [ribs.find((rib) => floodAt(rib).burns), ribs.find((rib) => !floodAt(rib).burns)];
+
+  it("in the dock the lit air is the flood's, cold white, and a dead flood's is none; out of it, the tunnel's lamp's as before", async () => {
+    if (burning === undefined || dead === undefined) throw new Error("the first forty ribs hold no burning flood, or no dead one");
+    const beamed = beam(EYE, AHEAD, over);
+    const lit = await middlePixel(EYE, AHEAD, over, { dock: 1, station: burning });
+    // The flood's own colour times the beam: no hall's swell in it, no tunnel tone.
+    expect(lit).toEqual(FLOOD_TONE.map((channel) => Math.round(Math.min(1, channel * LAMP * BEAM_GAIN * beamed) * 255)));
+    // Cold: more blue in it than red, where the tunnel's lamp at that number is whatever its plate is.
+    expect(lit[2] as number).toBeGreaterThan(lit[0] as number);
+    // A dead flood: dark air under it.
+    expect(await middlePixel(EYE, AHEAD, over, { dock: 1, station: dead })).toEqual([0, 0, 0]);
+    // The same two numbers with the dock off are tunnel stations, and the cold station's lamp is the tunnel's own.
+    expect(await middlePixel(EYE, AHEAD, over, { dock: 0 })).toEqual(expected(EYE, AHEAD, over));
+    // The chase is the tunnel's: in the dock it moves nothing.
+    expect(await middlePixel(EYE, AHEAD, over, { dock: 1, station: burning, chaseAt: 3.3, chase: 1 })).toEqual(lit);
+  }, 240_000);
+});
+

@@ -1,5 +1,6 @@
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { CAMERA_PARAMS, VIEW } from "../furnace/screen-space.ts";
+import { DOCK_LOT_WGSL, FLOOD_TONE } from "./dock.ts";
 import { FIELD, strikeWgsl } from "./field.ts";
 import { BEAM_GAIN, LAMPS_MIRRORED, LAMP_HANGS, LAMP_PARAMS_WGSL, LAMP_TONE_WGSL, NEAR_LAMPS, lampParameter } from "./tunnel.ts";
 
@@ -39,6 +40,7 @@ ${LAMP_PARAMS_WGSL}
   eyesAt: vec3f, // @default [0, 0, 0.9]  Where the robot's face is.
   eyeColor: vec3f, // @default [1, 0.04, 0.04]  Its light's colour.
   eyes: f32, // @default 1.6  …and intensity, as its light has it.
+  dock: f32, // @default 0  1 in the dock: the lamps handed in are its crown floods (dock.ts), Station is the rib the robot is at, and their lit air is theirs.
   place: f32, // @default 0  0 the tunnel, 1 the fields: thin air, mist low down, a sky.
   mist: f32, // @default 1  How much mist lies low in the fields.
   podColor: vec3f, // @default [1, 0.04, 0.04]  The pods' light, which is in the mist a little.
@@ -53,7 +55,14 @@ ${LAMP_PARAMS_WGSL}
 @group(0) @binding(3) var<uniform> params: Params;
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
 ${VIEW}
-${strikeWgsl(FIELD.trunks)}${LAMP_TONE_WGSL}
+${strikeWgsl(FIELD.trunks)}${LAMP_TONE_WGSL}${DOCK_LOT_WGSL}
+// The lamp \`step\` on from the robot's own: the tunnel's, in its plate's tone and as the chase has it; or, in the
+// dock, the crown flood of that rib, cold white, or nothing where that one is dead.
+fn lampNow(step: f32) -> vec3f {
+  if (params.dock > 0.5) { return vec3f(${FLOOD_TONE.map((part) => part.toFixed(3)).join(", ")}) * dockLampBurns(i32(params.station + step), 2); }
+  return lampTone(params.station + step) * lampChase(params.station + step, params.chaseAt, params.chase);
+}
+
 // A lamp's light hangs this far under its plate (document.ts, lampAt); its lit air starts at the plate.
 const LAMP_HANGS: f32 = ${LAMP_HANGS.toFixed(2)};
 const BEAM_GAIN: f32 = ${BEAM_GAIN.toFixed(2)};
@@ -193,7 +202,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let reach = select(z / max(dot(ray, view.forward), 1e-4), params.far, z < 0.0);
   let clear = exp(-reach * params.density);
   var air = params.eyeColor * params.eyes * airlight(params.eye, ray, reach, params.eyesAt);
-${NEAR_LAMPS.map((index) => `  air = air + lampTone(params.station + ${(index - LAMPS_MIRRORED).toFixed(1)}) * lampChase(params.station + ${(index - LAMPS_MIRRORED).toFixed(1)}, params.chaseAt, params.chase) * params.lamp * hallLamp(params.${lampParameter(index)}.z) * beamlight(params.eye, ray, reach, params.${lampParameter(index)} + vec3f(0.0, LAMP_HANGS, 0.0));`).join("\n")}
+${NEAR_LAMPS.map((index) => `  air = air + lampNow(${(index - LAMPS_MIRRORED).toFixed(1)}) * params.lamp * mix(hallLamp(params.${lampParameter(index)}.z), 1.0, step(0.5, params.dock)) * beamlight(params.eye, ray, reach, params.${lampParameter(index)} + vec3f(0.0, LAMP_HANGS, 0.0));`).join("\n")}
   if (params.place > 0.5) {
     let field = fieldAir(params.eye, ray, reach);
     return vec4f(lit.rgb * field.clear + field.light + air * params.glow, lit.a);

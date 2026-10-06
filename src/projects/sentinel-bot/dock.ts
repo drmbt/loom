@@ -110,13 +110,25 @@ export function bridgeAt(rib: number): { height: number; z: number; there: boole
 /** Where the line is at `z`, for a test. */
 export const dockLine = (z: number): readonly [number, number, number] => pathAt(z);
 
-const DOCK_WGSL = `${pathWgsl()}
-const DOCK_RADIUS: f32 = ${f(DOCK.radius)};
-const DOCK_LIFT: f32 = ${f(DOCK.lift)};
-const DOCK_DECK: f32 = ${f(DOCK.deck)};
-const DOCK_RIB: f32 = ${f(DOCK.rib)};
-const DOCK_LAP: i32 = ${Math.round(PATH.period / DOCK.rib)};
-const DOCK_TIERS = array<f32, ${DOCK.tiers.length}>(${DOCK.tiers.map(f).join(", ")});
+/** Which of a rib's three lamps is which, in the lamps' kernel and in its lots: the two gantries', then the crown's flood. */
+const FLOOD = 2;
+/** The share of the dock's lamps that are dead. */
+const DEAD = 0.2;
+
+/** Whether the crown flood at rib `rib` burns (the WGSL's dockFloodBurns: the same rule), and where it hangs: metres along the hall and over the line. */
+export function floodAt(rib: number): { burns: boolean; z: number; height: number } {
+  const laps = Math.round(PATH.period / DOCK.rib);
+  const lap = rib - laps * Math.floor(rib / laps);
+  return { burns: dockLot(lap, 9 + FLOOD) >= DEAD, z: (rib + 0.5) * DOCK.rib, height: DOCK.lift + DOCK.radius - DOCK.ribDeep - 1 };
+}
+/** A flood's colour: cold white. */
+export const FLOOD_TONE = [0.82, 0.9, 1] as const;
+
+/**
+ * The dock's lots, alone: for the air pass (air.ts), which lights the air under the crown's floods and must know
+ * which of them are dead. No line and no hall in it.
+ */
+export const DOCK_LOT_WGSL = `const DOCK_LAP: i32 = ${Math.round(PATH.period / DOCK.rib)};
 
 // A number 0 to 1 for a thing of the dock numbered (a, b) (dock.ts, dockLot: the same line).
 fn dockLot(a: i32, b: i32) -> f32 {
@@ -130,6 +142,20 @@ fn dockLap(rib: i32) -> i32 {
   return rib - DOCK_LAP * i32(floor(f32(rib) / f32(DOCK_LAP)));
 }
 
+// Whether lamp \`which\` of rib \`rib\` burns: one in five is dead.
+fn dockLampBurns(rib: i32, which: i32) -> f32 {
+  return step(${f(DEAD)}, dockLot(dockLap(rib), 9 + which));
+}
+`;
+
+const DOCK_WGSL = `${pathWgsl()}
+const DOCK_RADIUS: f32 = ${f(DOCK.radius)};
+const DOCK_LIFT: f32 = ${f(DOCK.lift)};
+const DOCK_DECK: f32 = ${f(DOCK.deck)};
+const DOCK_RIB: f32 = ${f(DOCK.rib)};
+const DOCK_TIERS = array<f32, ${DOCK.tiers.length}>(${DOCK.tiers.map(f).join(", ")});
+
+${DOCK_LOT_WGSL}
 // How far from the vault's centre the bare shell is in a direction: the vault, or the deck where that is nearer.
 fn hallShell(theta: f32) -> f32 {
   let down = -sin(theta);
@@ -244,12 +270,12 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let which = ctx.index % 3u;
   let rib = i32(floor(ctx.params.travel / DOCK_RIB)) + i32(ctx.index / 3u) - ${DOCK.lampRibsBehind};
   let z = (f32(rib) + 0.5) * DOCK_RIB;
-  let alive = step(0.2, dockLot(dockLap(rib), 9 + i32(which))) * step(0.5, ctx.params.place);
+  let alive = dockLampBurns(rib, i32(which)) * step(0.5, ctx.params.place);
   let own = dockLot(dockLap(rib), 7 + i32(which));
-  if (which == 2u) {
+  if (which == ${FLOOD}u) {
     // The crown's flood: just under the rib, on the middle line.
     q.position = hallCentre(z) + vec3f(0.0, DOCK_RADIUS - ${f(DOCK.ribDeep + 1.0)}, 0.0);
-    q.tint = vec4f(0.82, 0.9, 1.0, 1.0);
+    q.tint = vec4f(${FLOOD_TONE.map(f).join(", ")}, 1.0);
     q.power = ctx.params.flood * alive;
     q.aim = vec3f(0.0, -1.0, 0.0);
     return q;

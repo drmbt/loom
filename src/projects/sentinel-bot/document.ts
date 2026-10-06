@@ -454,6 +454,26 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   /** The legs' light: a tentacle's colours run the whole range, so it throws the range's two halves mixed; brighter with the lows (the meter) and on a kick (the pulse). */
   const legTone = ([0, 1, 2] as const).map((channel) => `((${hueExpression(hueAt(0.25))[channel]} + ${hueExpression(hueAt(0.75))[channel]}) / 2)`) as [string, string, string];
   const legLevel = `(${on("slider_legs")} * (0.5 + 2.4 * ${on("slider_meter")} * ${LOW} + 1.6 * ${KICK}))`;
+  /**
+   * The lamps the AIR is lit under (air.ts): the tunnel's own five, or in the dock the crown floods of the five
+   * ribs round the robot (dock.ts, floodAt: where the lamps' kernel hangs them).
+   */
+  const airLamp = (step: number): Record<"x" | "y" | "z", StoredParameter> => {
+    const tunnel = lampAt(step);
+    const z = `((floor(${TRAVEL} / ${DOCK.rib}) + ${step + 0.5}) * ${DOCK.rib})`;
+    const at = pathExpression(z);
+    const source = (slot: StoredParameter): string => {
+      if (typeof slot !== "object" || slot === null || !("bindings" in slot) || slot.bindings.expression?.kind !== "expression") throw new Error("sentinelDocument: a lamp's place is not an expression");
+      return slot.bindings.expression.source;
+    };
+    const either = (own: StoredParameter, docks: string, retained: number): StoredParameter => expressionSlot(`(1 - ${DOCKED}) * (${source(own)}) + ${DOCKED} * (${docks})`, retained);
+    return {
+      x: either(tunnel.position.x, at.x, 0),
+      y: either(tunnel.position.y, `${at.y} + ${DOCK.lift + DOCK.radius - DOCK.ribDeep - 1}`, 2.25),
+      z: either(tunnel.position.z, z, (step + 0.5) * LAMP_SPACING),
+    };
+  };
+  const aired = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => airLamp(index - LAMPS_MIRRORED));
   /** The lamps the robot's steel can show a reflection of (surface.ts). */
   const mirrored = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => lampAt(index - LAMPS_MIRRORED));
   /**
@@ -1185,10 +1205,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       "color.b": expressionSlot(`0.044 + 0.25 * ${PLACE} + 0.02 * ${DOCKED} - 0.01 * ${TEMPLED}`, 0.044),
       // More air, more of it lit.
       glow: expressionSlot(`${on("slider_haze")} * 0.05`, 0.002),
-      ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
-      station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
+      // The lamps whose lit air it draws: the tunnel's, or in the dock the crown's floods (a cone under each).
+      ...Object.fromEntries(aired.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp[axis]]))),
+      station: expressionSlot(`(1 - ${DOCKED}) * floor(${TRAVEL} / ${LAMP_SPACING}) + ${DOCKED} * floor(${TRAVEL} / ${DOCK.rib})`, 37),
       ...chasing,
-      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${OUT})`, 26),
+      dock: expressionSlot(DOCKED, 0),
+      // (A flood's lit air at an eighth of its light's own strength: the lens flies INSIDE these cones, fifty metres
+      // tall, and at the light's strength the whole frame was milk.)
+      lamp: expressionSlot(`${on("slider_lamp")} * (${LAMP_BREATH} * (1 - ${OUT}) + 12 * ${DOCK_BREATH} * ${DOCKED})`, 26),
       eyesAt: [0, 0, 0.9],
       "eyesAt.x": glow.x,
       "eyesAt.y": glow.y,
