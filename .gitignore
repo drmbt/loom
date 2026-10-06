@@ -89,6 +89,3 @@ public/media/furnace/
 
 # T1400b: On Nothing media — build products of src/projects/on-nothing/build.ts (GLB, song, HDRI); never commit
 public/media/on-nothing/
-
-# VN11: stage previz GLB, a build product of tools/blender/stage-previz + src/projects/stage-previz/build.ts
-public/media/stage-previz/
