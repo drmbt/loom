@@ -27,6 +27,7 @@ It is staged so that each piece ships alone, and stage 0 is a small fix that nee
 | [06. Tables](06-tables.md) | A table node (DAT analog), TSV/CSV/JSON/XML, one Lister-style editor ported from [drmbt/TD-table-editor](https://github.com/drmbt/TD-table-editor) | You want a piece that can start now | Skim; independent |
 | [07. Command bus](07-command-bus.md) | Why no eval; what a bus command is; a generated command bible; RFEs for command arguments and user-defined commands | You own the bus or the agent surface | Skim; RFE-level |
 | [08. Families, colour, palette](08-families-colour-and-palette.md) | Family colour matching the port hue; MAT and DAT families; "component" = a published, versioned COMP; built-in / community / local palette tiers with publish-as-PR | You own node styling or the library | ⚑ Please read §2.1 (reverses T712's "very subtle") |
+| [09. Versioned save](09-versioned-save.md) | Mod+S follows TD: the previous numbered file moves to `Backup/`, the index bumps, and the unnumbered file is always the latest | You own project save | Skim; independent |
 
 ## Why these depend on each other
 
@@ -89,7 +90,7 @@ What each arrow means:
 - **The table type comes before mappers and the command bible** (06 → 05, 07) because both *are* tables in one editor. It depends on nothing, so it can start in parallel with stage 1.
 - **The command bible comes before command actions, and actions before user commands** (07). An action names a command and has to be checked against that command's schema and trigger-safe flag, which the bible makes visible. A user command is a sequence of actions, so it can live in the library.
 
-Parallel tracks the dependencies allow: {stage 0}, {stage 1 → 02}, {06 → 07's bible}, {08's family colour and MAT split}, then the rest as the graph frees them.
+Parallel tracks the dependencies allow: {stage 0}, {stage 1 → 02}, {06 → 07's bible}, {08's family colour and MAT split}, {09's versioned save}, then the rest as the graph frees them.
 
 ## Risks across the whole proposal
 
