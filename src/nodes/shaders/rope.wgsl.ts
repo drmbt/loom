@@ -17,6 +17,8 @@ import {
   ROPE_MAX_ITERATIONS,
   ROPE_PIN_SOFTENING,
   ROPE_PIVOT_FLOOR,
+  ROPE_REACH_SHARE,
+  ROPE_REACH_SLACK,
   ROPE_TOLERANCE,
   ROPE_TOLERANCE_FLOOR,
 } from "../../points/rope.ts";
@@ -438,7 +440,7 @@ export function ropeStepWgsl(options: RopeShaderOptions): EmittedWgsl {
       var higherInverse = 0.0;
       var gathered = 0.0;
       if (iteration == 0u) {
-        s_reach = s_reach + rest * (1.0 + limit);
+        s_reach = s_reach + rest * (1.0 + min(limit, max(REACH_SLACK, (REACH_SHARE * ((params.stretch * rest) / hh)) / params.inverseMass)));
         let placed = place(k + 1u);
         higher = placed.xyz;
         higherInverse = placed.w;
@@ -554,6 +556,9 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
      the step was solved more than once, whether a joint pushed, and whether one gave more
      than the yield. */
   var withLimit = true;
+  /* With the limit on, what asks for another solve AND what calls the guard: a segment beyond
+     Max Stretch by more than the solve's own tolerance (B277). The exact test fails on a
+     rounding in every step at a Max Stretch of nothing. */
   var beyond = false;
   var lengthsOpen = false;
   var finished = true;
@@ -609,7 +614,7 @@ ${tension("      storeTension(slot, (-total) / hh);\n")}      if (k + 1u < segme
         var pushed = 0.0;
         if (iteration == 0u) {
           if (attempt == 0u) {
-            s_reach = s_reach + rest * (1.0 + limit);
+            s_reach = s_reach + rest * (1.0 + min(limit, max(REACH_SLACK, (REACH_SHARE * ((params.stretch * rest) / hh)) / params.inverseMass)));
             let placed = place(k + 1u);
             higher = placed.xyz;
             higherInverse = placed.w;
@@ -939,6 +944,10 @@ const TOLERANCE_FLOOR: f32 = ${ROPE_TOLERANCE_FLOOR};
 const MAX_ITERATIONS: u32 = ${ROPE_MAX_ITERATIONS}u;
 /* What each pivot is raised by, as a share of it, on a strand with two or more anchors. */
 const PIN_SOFTENING: f32 = ${literal(ROPE_PIN_SOFTENING)};
+/* How far past its rest length a pin may ask a segment to be, as a share of Stretch x length x mass / step squared (B276). */
+const REACH_SHARE: f32 = ${literal(ROPE_REACH_SHARE)};
+/* ...and the least it reaches past it where Max Stretch allows any: an eighth of the solve's tolerance of a length. */
+const REACH_SLACK: f32 = ${literal(ROPE_REACH_SLACK)};
 /* A pin attribute is named: every point may be anchored, and keeps its target's history. */
 const PINNED: bool = ${pinned ? "true" : "false"};
 const TAU: f32 = 6.283185307179586;
@@ -1368,7 +1377,7 @@ ${tension("  storeTension(base + segments, 0.0);\n")}
   }
 
 ${bend ? bandedLoop : tridiagonalLoop}  /* The guard: only on a step that left a segment beyond Max Stretch, or let one go. Positions only. */
-  if (!exceeded && s_released == cols) {
+  if (!${bend ? "beyond" : "exceeded"} && s_released == cols) {
     return;
   }
   /* BACK FROM THE LAST PIN FIRST (the design's D24). The walk out from the first point

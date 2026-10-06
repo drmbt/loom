@@ -100,14 +100,19 @@ describe("rope: held at both ends (T1585b slice 2, the design's 4.6)", () => {
 
   /*
    * OUT OF REACH, THE EARLIER PIN WINS. The last target is put at twice the strand's length
-   * along it: it is drawn in to the rope's length times 1 + Max Stretch, on the line to it.
-   * The first point does not move; length is kept and the target is not. The reach is a sum
-   * of sixteen exact products; where the device divides it by a square root the last point
-   * is held to one last place of where it stands.
+   * along it: it is drawn in to the rope's REACH, on the line to it. The first point does not
+   * move; length is kept and the target is not. The reach is a sum of sixteen exact products;
+   * where the device divides it by a square root the last point is held to one last place of
+   * where it stands.
+   *
+   * THE REACH IS WHAT THE ROPE CAN BE IN A STEP (B276, slice 4d; it was the rope's length
+   * times 1 + Max Stretch whatever its Stretch). A segment of length l reaches
+   * l × (1 + min(Max Stretch, max(2⁻¹⁶, ¼·Stretch·l·m ÷ h²))). Here l is 1/16 m and a step
+   * 1/256 s, so l ÷ 4h² is 1,024.
    */
   it("a last target out of reach is drawn in to the rope's length on the line to it, and the first point holds", async () => {
-    const lastAt = async (maxStretch: number, pose: RopePose): Promise<RopeRead> =>
-      onRope({ cols: POINTS, pose, rope: stepping({ gravity: 0, anchorLast: 1, maxStretch }) }, async (rope) => {
+    const lastAt = async (maxStretch: number, pose: RopePose, more: Readonly<Record<string, unknown>> = {}): Promise<RopeRead> =>
+      onRope({ cols: POINTS, pose, rope: stepping({ gravity: 0, anchorLast: 1, maxStretch, ...more }) }, async (rope) => {
         await frames(rope, 6);
         return rope.read();
       });
@@ -117,9 +122,19 @@ describe("rope: held at both ends (T1585b slice 2, the design's 4.6)", () => {
     expect(Math.abs(component(beyond.position, LINKS, 0) - 1)).toBeLessThanOrEqual(2 ** -23);
     expect(Math.abs(component(beyond.position, LINKS, 1))).toBe(0);
     for (let k = 0; k < LINKS; k += 1) expect(Math.abs(segmentLength(beyond.position, k) - REST), `segment ${k}`).toBeLessThanOrEqual(TAU + 2 ** -22);
-    // With Max Stretch at a quarter the rope gives that much before the target is lost.
-    const giving = await lastAt(0.25, drawnIn(2));
-    expect(Math.abs(component(giving.position, LINKS, 0) - 1.25)).toBeLessThanOrEqual(2 ** -22);
+    // With Max Stretch at a quarter a rope with NO Stretch still reaches its own length, and the
+    // slack a rounding needs, 2⁻¹⁶ of it. (Seen red at 1.25 with the old reach.)
+    const rigid = await lastAt(0.25, drawnIn(2));
+    expect(Math.abs(component(rigid.position, LINKS, 0) - (1 + 2 ** -16))).toBeLessThanOrEqual(2 ** -22);
+    // With a Stretch of 2⁻¹³ a segment may be an eighth longer (1,024 × 2⁻¹³)…
+    const giving = await lastAt(0.25, drawnIn(2), { stretch: 2 ** -13 });
+    expect(Math.abs(component(giving.position, LINKS, 0) - 1.125)).toBeLessThanOrEqual(2 ** -22);
+    // …and the same with half the Stretch on twice the mass.
+    const heavy = await lastAt(0.25, drawnIn(2), { stretch: 2 ** -14, mass: 2 });
+    expect(Math.abs(component(heavy.position, LINKS, 0) - 1.125)).toBeLessThanOrEqual(2 ** -22);
+    // With a Stretch of 2⁻¹¹ it could be half as long again, and Max Stretch stops it at a quarter.
+    const capped = await lastAt(0.25, drawnIn(2), { stretch: 2 ** -11 });
+    expect(Math.abs(component(capped.position, LINKS, 0) - 1.25)).toBeLessThanOrEqual(2 ** -22);
     // The control: a target inside the rope's length is the last point, to the bit.
     const within = await lastAt(0, drawnIn(0.5, 0.25));
     expect(pointOf(within.position, LINKS)).toEqual([0.5, 0.25, 0]);

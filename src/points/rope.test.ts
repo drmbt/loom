@@ -6,6 +6,8 @@ import {
   ROPE_BEND_TOLERANCE,
   ROPE_DEFAULTS,
   ROPE_HELD_FROM,
+  ROPE_REACH_SHARE,
+  ROPE_REACH_SLACK,
   ROPE_TOLERANCE,
   ROPE_TOLERANCE_FLOOR,
   advanceRope,
@@ -693,8 +695,13 @@ describe("rope reference: two anchors (T1585b slice 2, the design's 4.6)", () =>
   /*
    * OUT OF REACH, THE EARLIER PIN WINS. A straight strand of 2⁻⁶ m along +X whose last
    * target is put at twice that: the target is drawn in along the line to it, to the rope's
-   * length times 1 + Max Stretch, and the last point is stored THERE. Length is kept and the
-   * target is not — the Curve node's Arc out of reach, in the same words.
+   * REACH, and the last point is stored THERE. Length is kept and the target is not — the
+   * Curve node's Arc out of reach, in the same words.
+   *
+   * THE REACH IS WHAT THE ROPE CAN BE IN A STEP (B276; it was the rope's length times
+   * 1 + Max Stretch whatever its Stretch, which a rope with no Stretch cannot be). A segment
+   * of length l reaches l × (1 + min(Max Stretch, max(2⁻¹⁶, ¼·Stretch·l·m ÷ h²))). Here
+   * l = 2⁻¹⁰ m and a step is 1/256 s, so l ÷ 4h² is 16, and every figure below is a float.
    */
   it("a last target out of reach is drawn in to the rope's length on the line to it; the first point does not move", () => {
     const both = rope({ gravity: 0, anchorLast: 1, maxStretch: 0 });
@@ -704,16 +711,39 @@ describe("rope reference: two anchors (T1585b slice 2, the design's 4.6)", () =>
     expect(pointOf(state.position, 0)).toEqual([0, 0, 0]);
     expect(pointOf(state.position, LINKS)).toEqual([2 ** -6, 0, 0]);
     expect(axis(state.position, 0)).toEqual(Array.from({ length: POINTS }, (_unused, point) => point * REST));
-    // With Max Stretch at a quarter the rope gives that much before the target is lost.
-    const giving = rope({ gravity: 0, anchorLast: 1, maxStretch: 0.25 });
-    const stretched = seeded(levelAt(REST), giving);
-    run(stretched, far, giving, 4, 4);
-    expect(pointOf(stretched.position, LINKS)).toEqual([1.25 * 2 ** -6, 0, 0]);
+    // With Max Stretch at a quarter a rope with NO Stretch still reaches its own length, and
+    // the slack a rounding needs: 2⁻¹⁶ of it. (Seen red at 1.25 times it with the old reach.)
+    const reached = (more: Partial<RopeParameters>): Vec3 => {
+      const giving = rope({ gravity: 0, anchorLast: 1, maxStretch: 0.25, ...more });
+      const stretched = seeded(levelAt(REST), giving);
+      run(stretched, far, giving, 4, 4);
+      return pointOf(stretched.position, LINKS);
+    };
+    expect(ROPE_REACH_SHARE).toBe(1 / 4);
+    expect(ROPE_REACH_SLACK).toBe(2 ** -16);
+    expect(reached({})).toEqual([(1 + 2 ** -16) * 2 ** -6, 0, 0]);
+    // With a Stretch of 2⁻⁷ a segment may be an eighth longer (16 × 2⁻⁷)…
+    expect(reached({ stretch: 2 ** -7 })).toEqual([1.125 * 2 ** -6, 0, 0]);
+    // …and the same with half the Stretch on twice the mass: the tension a step carries is per mass.
+    expect(reached({ stretch: 2 ** -8, mass: 2 })).toEqual([1.125 * 2 ** -6, 0, 0]);
+    // With a Stretch of 2⁻⁵ it could be half as long again, and Max Stretch stops it at a quarter.
+    expect(reached({ stretch: 2 ** -5 })).toEqual([1.25 * 2 ** -6, 0, 0]);
     // The control: a target inside the rope's length is the last point, to the bit.
     const near = strand(POINTS, (i) => (i === LINKS ? [2 ** -7, 2 ** -8, 0] : [i * REST, 0, 0]));
-    const reached = seeded(levelAt(REST), both);
-    run(reached, near, both, 8, 4);
-    expect(pointOf(reached.position, LINKS)).toEqual([2 ** -7, 2 ** -8, 0]);
+    const inside = seeded(levelAt(REST), both);
+    run(inside, near, both, 8, 4);
+    expect(pointOf(inside.position, LINKS)).toEqual([2 ** -7, 2 ** -8, 0]);
+  });
+
+  it("each segment reaches by its OWN length: a strand measured with segments of 2⁻¹⁰ and 2⁻⁹ m in turn reaches the sum of what each can be", () => {
+    // No Segment Length: each segment is measured from the seed. Eight of 2⁻¹⁰ m and eight of 2⁻⁹.
+    const laid = strand(POINTS, (i) => [(Math.floor(i / 2) * 3 + (i % 2)) * REST, 0, 0]);
+    const far = strand(POINTS, (i) => (i === LINKS ? [1, 0, 0] : [(Math.floor(i / 2) * 3 + (i % 2)) * REST, 0, 0]));
+    const giving = rope({ gravity: 0, anchorLast: 1, maxStretch: 0.25, stretch: 2 ** -7 });
+    const state = seeded(laid, giving);
+    run(state, far, giving, 4, 4);
+    // A short segment may be an eighth longer; a long one a quarter (twice the length, twice the share). 8 × 1.125 + 16 × 1.25 = 29.
+    expect(pointOf(state.position, LINKS)).toEqual([29 * REST, 0, 0]);
   });
 
   it("the reach is measured from the NEAREST earlier pin: with the second point held too, it is one segment shorter", () => {
@@ -1563,6 +1593,8 @@ describe("rope reference: the first consumer's strand with its socket facing awa
     fastest: number;
     stretch: number;
     worst: number;
+    /** Where the last point stood at the end, along X. */
+    end: number;
   }
   const ease = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10));
   const reaching = (t: number): Float32Array => {
@@ -1578,12 +1610,13 @@ describe("rope reference: the first consumer's strand with its socket facing awa
   const play = (more: Partial<RopeParameters>, substeps: number): Seen[] => {
     const parameters: RopeParameters = { ...ROPE_DEFAULTS, gravity: 1.5, damping: 1.5, anchorSecond: 1, anchorLast: 1, segmentLength: PITCH, iterations: 8, minBendRadius: 0.15, ...more };
     const state = seeded(reaching(0), parameters, FARS.length);
-    const rows: Seen[] = FARS.map(() => ({ fastest: 0, stretch: 0, worst: 0 }));
+    const rows: Seen[] = FARS.map(() => ({ fastest: 0, stretch: 0, worst: 0, end: 0 }));
     for (let frame = 1; frame <= 12 * 64; frame += 1) {
       advanceRope(state, reaching(frame / 64), parameters, { deltaSeconds: FRAME, substeps });
       if (frame <= 10 * 64) continue;
       rows.forEach((seen, row) => {
         const position = state.position.subarray(row * COLS * 4, (row + 1) * COLS * 4);
+        seen.end = position[(COLS - 1) * 4] as number;
         const velocity = state.velocity.subarray(row * COLS * 4, (row + 1) * COLS * 4);
         for (let point = 2; point < COLS - 1; point += 1) seen.fastest = Math.max(seen.fastest, Math.hypot(...pointOf(velocity, point)));
         for (let k = 1; k < COLS - 1; k += 1) seen.stretch = Math.max(seen.stretch, Math.abs(lengthOf(position, k) / PITCH - 1));
@@ -1607,7 +1640,7 @@ describe("rope reference: the first consumer's strand with its socket facing awa
    * a joint that pushes under the yield left to push.)
    */
   it.each([4, 16])(
-    "at %i steps a frame it is at rest with the claw 2.9 m and 3.0 m off and nearly so with the rope taut at 3.06 m, every segment its length; with slack the limit is given by four times and no more",
+    "at %i steps a frame it is at rest with the claw 2.9 m and 3.0 m off and nearly so with the rope taut at 3.06 m, every segment its length; with slack the limit is given by four times and no more; and with the claw out of reach at 3.1 m it is the taut strand, 40 mm short",
     (substeps) => {
       const limited = play({ bendLimit: true }, substeps);
       const free = play({}, substeps);
@@ -1619,15 +1652,23 @@ describe("rope reference: the first consumer's strand with its socket facing awa
         if (row < 2) expect(on.worst / LIMIT, `claw ${FARS[row]} m`).toBeLessThan(4.5);
       }
       /*
-       * THE CLAW AT 3.1 M IS OUT OF THE ROPE'S REACH, and what the strand does there is not
-       * the limit's doing. A far pin is drawn in only when it is further than the rope with
-       * Max Stretch on top (3.18 m here), and a rope whose Stretch is nothing cannot take
-       * that 2 %: with NO limit this strand is thrown at 11 m/s at four steps a frame and 52
-       * at sixteen, a segment 11 % long. That is the reach rule's own defect (the design's
-       * section 18.7, with its bug row's text). This assertion is the repro of it.
+       * THE CLAW AT 3.1 M IS OUT OF THE ROPE'S REACH (B276, slice 4d). This rope has no
+       * Stretch, so it reaches its own length: the pin is drawn in to 3.06 m, the far end
+       * stands 40 mm short of it, and the strand is the taut one of the row before. With NO
+       * limit it rests. With the limit it is nearly still, as that row is.
+       *
+       * WHAT IT WAS: a far pin was drawn in only beyond the rope's length with Max Stretch
+       * on top (3.18 m here), which a rope with no Stretch cannot be. With no limit this
+       * strand was thrown at 11 m/s at four steps a frame and 52 at sixteen, a segment 11 %
+       * long; with the limit at 8.7 and 41.
        */
-      expect((free[3] as Seen).fastest).toBeGreaterThan(1);
-      expect((free[3] as Seen).stretch).toBeGreaterThan(0.02);
+      const [on, off] = [limited[3] as Seen, free[3] as Seen];
+      expect(off.fastest).toBeLessThanOrEqual(0.03);
+      expect(off.stretch).toBeLessThanOrEqual(0.001);
+      expect(on.fastest).toBeLessThanOrEqual(0.25);
+      expect(on.stretch).toBeLessThanOrEqual(0.001);
+      // Short of its pin by what it cannot reach: 3.1 m asked, 3.06 m and the reach's slack (48 µm) had.
+      for (const seen of [on, off]) expect(Math.abs(seen.end - (3.06 + 3.12 * ROPE_REACH_SLACK))).toBeLessThan(2e-5);
     },
     600_000,
   );
@@ -1635,20 +1676,27 @@ describe("rope reference: the first consumer's strand with its socket facing awa
 
 describe("rope reference: what leaving a joint alone buys, and what the wait buys (T1585b slice 4b, the design's D41)", () => {
   /*
-   * LEFT ALONE, PINNED BY A COUNT. The consumer's strand with the claw 3.0 m off: its limit
-   * cannot be met, and a joint that pushes there pushes on a strand that cannot finish its
-   * step. Its limit is put where the joint stands and LEFT ALONE, so the steps after are a
-   * rope with nothing pushing in it: one or two Newton steps a step (measured). With the
-   * limit put there and then closed onto the joint again in the next step, the strand is as
-   * still, and every step is spent trying: 7 to 8.
+   * LEFT ALONE, PINNED BY A COUNT. The consumer's strand with the claw 2.95, 3.0 and 3.03 m
+   * off: its limit cannot be met, and a joint that pushes there pushes on a strand that
+   * cannot finish its step. Its limit is put where the joint stands and LEFT ALONE, so the
+   * steps after are a rope with nothing pushing in it: one or two Newton steps a step. With
+   * the limit put there and then closed onto the joint again in the next step, the strand is
+   * as still, and every step is spent trying: 7 to 8.
+   *
+   * AT SIXTEEN STEPS A FRAME, where that is so on every path tried (three distances, two
+   * frame rates: 1.0 to 2.2 against 7.1 to 8.0). At FOUR it is not, and this test used to
+   * claim it of one path there: the same strand also comes to rest with two joints giving
+   * just under the yield, inside the band where a limit neither opens nor closes, and then
+   * takes 5 to 7 Newton steps a step, left alone or not (B282; seen when a change elsewhere
+   * moved that one path from 1.4 to 5.5).
    */
-  it("the consumer's strand with the claw 3.0 m off takes one or two Newton steps a step once its limit has given", () => {
+  it.each([2.95, 3.0, 3.03])("the consumer's strand with the claw %f m off takes one or two Newton steps a step once its limit has given, at sixteen steps a frame", (far) => {
     const COLS = 54;
     const PITCH = 0.06;
     const ease = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10));
     const reaching = (t: number): Float32Array => {
       const way = ease(t / 4);
-      const reach = 3.12 - 0.12 * way;
+      const reach = 3.12 + (far - 3.12) * way;
       return strand(COLS, (i) => (i === COLS - 1 && t > 0 ? [Math.cos(Math.PI * (1 - way)) * reach, Math.sin(Math.PI * (1 - way)) * reach * 0.6, 0] : [-i * PITCH, 0, 0]));
     };
     const parameters: RopeParameters = { ...ROPE_DEFAULTS, gravity: 1.5, damping: 1.5, anchorSecond: 1, anchorLast: 1, segmentLength: PITCH, iterations: 8, minBendRadius: 0.15, bendLimit: true };
@@ -1656,11 +1704,11 @@ describe("rope reference: what leaving a joint alone buys, and what the wait buy
     const tally = { newton: 0 };
     for (let frame = 1; frame <= 12 * 64; frame += 1) {
       if (frame === 10 * 64 + 1) tally.newton = 0;
-      advanceRope(state, reaching(frame / 64), parameters, { deltaSeconds: FRAME, substeps: 4, tally });
+      advanceRope(state, reaching(frame / 64), parameters, { deltaSeconds: FRAME, substeps: 16, tally });
     }
-    // The limit has given: the joint after the held pair stands far past 23°.
-    expect(turnAt(state.position, 1)).toBeGreaterThan(1);
-    expect(tally.newton / (2 * 64 * 4)).toBeLessThanOrEqual(3);
+    // The limit has given: a joint beside the held pair stands far past 23°.
+    expect(Math.max(turnAt(state.position, 1), turnAt(state.position, 2))).toBeGreaterThan(1);
+    expect(tally.newton / (2 * 64 * 16)).toBeLessThanOrEqual(3);
   });
 
   /*
@@ -1669,6 +1717,12 @@ describe("rope reference: what leaving a joint alone buys, and what the wait buy
    * and swept at 8 m/s, sixteen steps a frame, loads joints past the yield in bursts shorter
    * than that, and its limit does not open: the worst turn of four seconds is 1.03 of the
    * limit, as it was in slice 4. With no wait a burst opens it: 1.58.
+   *
+   * THIS IS ONE SWEEP, AND A WHIPPED ROPE IS CHAOTIC (found in slice 4d): over it and the
+   * eight sweeps beside it (the pin 1.15 to 1.25 m off, 7.5 to 8.5 m/s) the worst turn is
+   * 1.03 to 1.65 of the limit with the wait and 1.08 to 1.66 without, and this one moved to
+   * 1.68 for a day when a pin's reach changed by a micrometre. It holds the wait on the one
+   * path it was written on, and is no bound on the others.
    */
   it("a sweep that loads its joints past the yield only in bursts opens no limit: 8 m/s at sixteen steps a frame stays within a tenth of it", () => {
     const LENGTH = 3.24;
@@ -1951,5 +2005,187 @@ describe("rope reference: Bend Limit with a Max Stretch of nothing solves a step
     expect(none.worst).toBeGreaterThan(1);
     // Seen red at 11 and at 12.
     expect(none.newton).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("rope reference: the reach is what the rope can be in a step (T1585b slice 4d, B276)", () => {
+  /*
+   * A PIN MAY NOT ASK OF A ROPE IN ONE STEP WHAT ITS STIFFEST MODE CANNOT GIVE IN ONE STEP.
+   * A far pin beyond the rope's length asks every segment to be longer than it is, which a
+   * rope answers with a tension of the stretch over its Stretch; and a step that takes each
+   * segment's direction from where the step began carries a tension only up to
+   * ¼·l·m ÷ h² (a taut string's fastest sideways mode). So a segment reaches
+   * l × (1 + min(Max Stretch, max(2⁻¹⁶, ¼·Stretch·l·m ÷ h²))), and a pin beyond that is
+   * drawn in: the far end stands short of it.
+   *
+   * THE CONSUMER'S STRAND, no bend limit: 53 segments of 0.06 m, its first two points held,
+   * the claw carried round to 3.1 m where 3.06 m is the rope's own length and 3.12 m its
+   * length with Max Stretch. With the old reach (the rope's length with Max Stretch, whatever
+   * its Stretch) the fastest point in the last two seconds, m/s, at four steps a frame and
+   * at sixteen:
+   *
+   *   Stretch 0       11.5,  52        Stretch 1.6·10⁻⁶   0.46, 0.00
+   *   Stretch 10⁻⁸    11.4,  36        Stretch 6.4·10⁻⁶   0.30, 0.01
+   *   Stretch 10⁻⁷     8.9,  1.9       Stretch 2.6·10⁻⁵   0.01, 0.01
+   *   Stretch 4·10⁻⁷   3.9,  1.2
+   *
+   * No step at a Stretch of nothing, then: a rope that barely stretches was thrown as the
+   * rope that does not. Now every one of them rests, 0.000 to 0.016 m/s.
+   */
+  const COLS = 54;
+  const ease = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10));
+  /** Where point i lies along the strand as laid: segments of 0.06 m, or of 0.04 and 0.08 m in turn. */
+  const along = (i: number, unequal: boolean): number => (unequal ? Math.floor(i / 2) * 0.12 + (i % 2) * 0.04 : i * 0.06);
+  interface Reached {
+    /** The fastest free point in the last two seconds, m/s; the worst segment's share off its rest length; how far short of its pin the far end stands, metres. */
+    fastest: number;
+    stretch: number;
+    short: number;
+    first: Vec3;
+    second: Vec3;
+  }
+  const FAR = 3.1;
+  const reachFor = (more: Partial<RopeParameters>, unequal: boolean, substeps: number): Reached => {
+    const parameters: RopeParameters = { ...ROPE_DEFAULTS, gravity: 1.5, damping: 1.5, anchorSecond: 1, anchorLast: 1, segmentLength: unequal ? 0 : 0.06, iterations: 8, ...more };
+    // The rope after the held pair is 3.12 m in both layouts.
+    const carried = (t: number): Float32Array => {
+      const way = ease(t / 4);
+      const out = 3.12 + (FAR - 3.12) * way;
+      return strand(COLS, (i) => (i === COLS - 1 && t > 0 ? [Math.cos(Math.PI * (1 - way)) * out, Math.sin(Math.PI * (1 - way)) * out * 0.6, 0] : [-along(i, unequal), 0, 0]));
+    };
+    const state = seeded(carried(0), parameters);
+    const seen: Reached = { fastest: 0, stretch: 0, short: 0, first: [0, 0, 0], second: [0, 0, 0] };
+    for (let frame = 1; frame <= 12 * 64; frame += 1) {
+      advanceRope(state, carried(frame / 64), parameters, { deltaSeconds: FRAME, substeps });
+      if (frame <= 10 * 64) continue;
+      for (let point = 2; point < COLS - 1; point += 1) seen.fastest = Math.max(seen.fastest, Math.hypot(...pointOf(state.velocity, point)));
+      for (let k = 1; k < COLS - 1; k += 1) seen.stretch = Math.max(seen.stretch, Math.abs(lengthOf(state.position, k) / (along(k + 1, unequal) - along(k, unequal)) - 1));
+    }
+    seen.short = FAR - (state.position[(COLS - 1) * 4] as number);
+    seen.first = pointOf(state.position, 0);
+    seen.second = pointOf(state.position, 1);
+    return seen;
+  };
+  /** How far short of a pin at 3.1 m a strand of these segments stands: what is asked, less what each segment after the held pair can be. */
+  const shortOf = (stretch: number, mass: number, unequal: boolean, substeps: number): number => {
+    const h = FRAME / substeps;
+    let reach = 0;
+    for (let k = 1; k < COLS - 1; k += 1) {
+      const l = along(k + 1, unequal) - along(k, unequal);
+      reach += l * (1 + Math.min(0.02, Math.max(ROPE_REACH_SLACK, (ROPE_REACH_SHARE * stretch * l * mass) / (h * h))));
+    }
+    return Math.max(0, FAR + along(1, unequal) - reach);
+  };
+
+  it.each([
+    ["no Stretch", 0, 1, false, [4, 16]],
+    ["a Stretch of 10⁻⁸", 1e-8, 1, false, [4, 16]],
+    ["a Stretch of 10⁻⁷", 1e-7, 1, false, [4, 16]],
+    ["a Stretch of 4·10⁻⁷", 4e-7, 1, false, [4, 16]],
+    ["a Stretch of 1.6·10⁻⁶", 1.6e-6, 1, false, [4]],
+    ["a Stretch of 6.4·10⁻⁶", 6.4e-6, 1, false, [4]],
+    ["a Stretch of 2.6·10⁻⁵", 2.6e-5, 1, false, [4]],
+    ["no Stretch and a mass of 4", 0, 4, false, [4]],
+    ["a Stretch of 10⁻⁷ and a mass of 4", 1e-7, 4, false, [4, 16]],
+    ["a Stretch of 6.4·10⁻⁶ and a mass of a quarter", 6.4e-6, 0.25, false, [4]],
+    ["no Stretch and segments of 0.04 and 0.08 m", 0, 1, true, [4, 16]],
+    ["a Stretch of 4·10⁻⁷ and segments of 0.04 and 0.08 m", 4e-7, 1, true, [4, 16]],
+    ["a Stretch of 1.6·10⁻⁶ and segments of 0.04 and 0.08 m", 1.6e-6, 1, true, [4]],
+  ] as const)("with %s, a claw 40 mm past the rope's own length: the strand rests, no segment is past Max Stretch, and its far end is short of the pin by what the rope cannot be", (_name, stretch, mass, unequal, rates) => {
+    // Every row at four steps a frame; at sixteen the rows a finer step draws in too.
+    for (const substeps of rates) {
+      const seen = reachFor({ stretch, mass }, unequal, substeps);
+      const at = `${substeps} steps`;
+      // Seen red at 0.3 to 52 m/s with the old reach, on every row with a Stretch under 10⁻⁵.
+      expect(seen.fastest, at).toBeLessThanOrEqual(0.03);
+      expect(seen.stretch, at).toBeLessThanOrEqual(0.02 + 2 ** -13);
+      // The held pair is where it is told to be.
+      const held = strand(2, (i) => [-along(i, unequal), 0, 0]);
+      expect(seen.first, at).toEqual(pointOf(held, 0));
+      expect(seen.second, at).toEqual(pointOf(held, 1));
+      // Short by what is asked less what each segment can be in a step: 40 mm with no Stretch, less with one, nothing where the reach covers it.
+      const short = shortOf(stretch, mass, unequal, substeps);
+      expect(Math.abs(seen.short - short), `${at}: ${seen.short} against ${short}`).toBeLessThan(5e-5);
+    }
+  }, 120_000);
+
+  it("the share is a quarter and not more: the same strand with a Stretch that makes the pin's asking 0.43 of l·m ÷ h² does not rest when it is allowed to reach it", () => {
+    // What the test above holds from the other side, in the reach's own terms. A Max Stretch of
+    // 1.3 % is the pin's asking at 3.1 m; a Stretch whose quarter-share is a little under it is drawn in, and rests.
+    const h = FRAME / 4;
+    const asked = (FAR + 0.06) / 3.12 - 1;
+    const stretch = (asked * h * h) / (0.43 * 0.06);
+    const seen = reachFor({ stretch }, false, 4);
+    expect(seen.fastest).toBeLessThanOrEqual(0.03);
+    // Drawn in: 0.25 ÷ 0.43 of what was asked is reached, and the rest is what it stands short by.
+    expect(seen.short).toBeGreaterThan(0.3 * asked * 3.12);
+  });
+});
+
+describe("rope reference: a pin at the end of a strand laid straight is in reach (T1585b slice 4d, the reach's slack)", () => {
+  /*
+   * The rope's own length is a sum of single-precision lengths. A strand laid straight and
+   * pinned at both ends where it lies has its far pin AT that length, and in or out of reach
+   * by a rounding: out, it is drawn in by a micrometre, and a held point is then not its
+   * incoming point. So a pin within 2⁻¹⁶ of the rope's length past it is in reach. Seen here
+   * on strands of 53 segments of 0.06 m laid along 64 directions of a plane.
+   */
+  it("held at both ends where it lies, in 64 directions: the far point is its incoming point to the bit, and nothing moves", () => {
+    const COLS = 54;
+    const ROWS = 64;
+    const laid = new Float32Array(ROWS * COLS * 4);
+    for (let row = 0; row < ROWS; row += 1) {
+      const angle = (2 * Math.PI * row) / ROWS + 0.1;
+      for (let i = 0; i < COLS; i += 1) laid.set([Math.cos(angle) * 0.06 * i, Math.sin(angle) * 0.06 * i, row], (row * COLS + i) * 4);
+    }
+    const parameters: RopeParameters = { ...ROPE_DEFAULTS, gravity: 0, damping: 0, anchorLast: 1, segmentLength: 0.06, iterations: 8 };
+    const state = seeded(laid, parameters, ROWS);
+    for (let frame = 0; frame < 8; frame += 1) advanceRope(state, laid, parameters, { deltaSeconds: FRAME, substeps: 4 });
+    for (let row = 0; row < ROWS; row += 1) {
+      const [position, incoming] = [state.position.subarray(row * COLS * 4, (row + 1) * COLS * 4), laid.subarray(row * COLS * 4, (row + 1) * COLS * 4)];
+      // Seen red on some of the 64 with no slack: the far point a float or two inside its pin.
+      expect(pointOf(position, COLS - 1), `direction ${row}`).toEqual(pointOf(incoming, COLS - 1));
+    }
+  });
+});
+
+describe("rope reference: at a Max Stretch of nothing the guard does not walk a strand on a rounding, with the limit on (T1585b slice 4d)", () => {
+  /*
+   * The guard's test is exact, and at a Max Stretch of nothing a rounding fails it in every
+   * step. With Bend Limit on, a guard that walks the strand to its exact lengths in every
+   * step turns its joints, and their rows push back in the next: the consumer's strand with
+   * its limit given moved at 0.05 to 0.33 m/s where it rests at 0.000 with a Max Stretch of
+   * 0.02. With the limit on, the guard is now called as length before bend is (B277): by a
+   * segment beyond Max Stretch by more than the solve's own tolerance of a length.
+   */
+  const COLS = 54;
+  const PITCH = 0.06;
+  const ease = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10));
+  it.each([
+    [2.9, 4],
+    [2.9, 16],
+    [3.0, 4],
+    [3.0, 16],
+  ])("the consumer's strand with the claw %f m off, at %i steps a frame, Max Stretch 0 and the limit on, is at rest", (far, substeps) => {
+    const reaching = (t: number): Float32Array => {
+      const way = ease(t / 4);
+      const reach = 3.12 + (far - 3.12) * way;
+      return strand(COLS, (i) => (i === COLS - 1 && t > 0 ? [Math.cos(Math.PI * (1 - way)) * reach, Math.sin(Math.PI * (1 - way)) * reach * 0.6, 0] : [-i * PITCH, 0, 0]));
+    };
+    const parameters: RopeParameters = { ...ROPE_DEFAULTS, gravity: 1.5, damping: 1.5, anchorSecond: 1, anchorLast: 1, segmentLength: PITCH, iterations: 8, minBendRadius: 0.15, bendLimit: true, maxStretch: 0 };
+    const state = seeded(reaching(0), parameters);
+    let fastest = 0;
+    let stretch = 0;
+    for (let frame = 1; frame <= 12 * 64; frame += 1) {
+      advanceRope(state, reaching(frame / 64), parameters, { deltaSeconds: FRAME, substeps });
+      if (frame <= 10 * 64) continue;
+      for (let point = 2; point < COLS - 1; point += 1) fastest = Math.max(fastest, Math.hypot(...pointOf(state.velocity, point)));
+      for (let k = 1; k < COLS - 1; k += 1) stretch = Math.max(stretch, Math.abs(lengthOf(state.position, k) / PITCH - 1));
+    }
+    // Seen red at 0.05 to 0.33 m/s with the guard's exact test.
+    expect(fastest).toBeLessThanOrEqual(0.03);
+    // Every segment is its length within the solve's tolerance and a stored position's spacing: the guard is not what keeps it.
+    expect(stretch).toBeLessThanOrEqual(ROPE_TOLERANCE + 2 ** -16);
+    expect(Math.max(turnAt(state.position, 1), turnAt(state.position, 2))).toBeGreaterThan(1);
   });
 });

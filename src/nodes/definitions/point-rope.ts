@@ -62,8 +62,10 @@ import type { ScalarMap } from "./points.ts";
  * read at that strand's own station: a weight per strand, which is "this claw lets go and
  * that one holds". A Pin Attribute is a weight on every point. Hard, a weight of 1 is the
  * incoming point itself and anything less is a spring that stiffens toward it; Soft, 1 is
- * still a spring. Two anchors further apart than the rope is long: the earlier holds, and
- * the later falls short (the Curve node's Arc, in the same words).
+ * still a spring. Two anchors further apart than the rope can reach: the earlier holds, and
+ * the later falls short (the Curve node's Arc, in the same words). The reach is what the
+ * rope can be in a solver step (B276): its own length with no Stretch, more with one and at
+ * a higher Update Rate, never past Max Stretch.
  *
  * ⚑ BEND LIMIT (slice 4). With it on, no joint turns tighter than a circle of Min Bend
  * Radius: rigid rings instanced along the rope do not pass through each other. It is a
@@ -268,7 +270,7 @@ const ROPE_PARAMETERS: ParameterSchema = {
     max: 10,
     range: "floor",
     description:
-      "The most a segment may be longer or shorter than its rest length at the end of a step, as a fraction: 0.02 is two percent. A guard for a step too coarse for what the rope is being put through; it moves points and adds no speed. Raise it to let a Stretch give more.",
+      "The most a segment may be longer or shorter than its rest length at the end of a step, as a fraction: 0.02 is two percent. A guard for a step too coarse for what the rope is being put through; it moves points and adds no speed. Raise it to let a Stretch give more. It is also the most a held point may ask a segment to reach (see Anchor Last).",
   },
   bendLimit: {
     type: "boolean",
@@ -323,7 +325,7 @@ const ROPE_PARAMETERS: ParameterSchema = {
     max: 1,
     range: "bounded",
     description:
-      "The same for the last point of each strand: a rope held at both ends hangs between them. In Map mode the attribute is read at each strand's last point, so one strand can hold while its neighbour lets go; a weight within a millionth of 1 is 1. A target further from an earlier held point than the rope between them is long is not reached: the rope keeps its length and its end falls short. (That is for a target with rope to solve between it and the held point before it. A held point that directly follows a held point is always its incoming point.)",
+      "The same for the last point of each strand: a rope held at both ends hangs between them. In Map mode the attribute is read at each strand's last point, so one strand can hold while its neighbour lets go; a weight within a millionth of 1 is 1. A target further from an earlier held point than the rope between them can REACH is not reached: the rope keeps its length and its end stands short of the target (40 mm short of one 3.10 m off on 3.06 m of rope). A rope with no Stretch reaches its own length. One with a Stretch reaches further, up to Max Stretch, and further at a higher Update Rate: it is what a solver step can pull the rope to, not what the rope could bear. (That is for a target with rope to solve between it and the held point before it. A held point that directly follows a held point is always its incoming point.)",
   },
   anchorMode: {
     type: "enum",

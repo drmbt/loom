@@ -134,9 +134,14 @@ import { ZERO_SEGMENT_SQUARED } from "./curve.ts";
  *    would carry it as speed). A weight under 1 holds no segment long: it is a pull, and
  *    the segment between two pulled points is in the solve.
  *  - THE EARLIER PIN WINS (the design's 4.6), across points the solve can move. A target
- *    further from the nearest earlier hard pin than the rope between them, times
- *    `1 + Max Stretch`, is drawn in to that reach along the line to it: length is kept and
- *    the target is not. The rope keeps its length where it is free to have one.
+ *    further from the nearest earlier hard pin than the rope between them can REACH is drawn
+ *    in to that reach along the line to it: length is kept and the target is not. The rope
+ *    keeps its length where it is free to have one.
+ *  - THE REACH IS WHAT THE ROPE CAN BE IN A STEP (B276). A segment of rest length `l`
+ *    reaches `l × (1 + min(Max Stretch, max(2⁻¹⁶, ¼·Stretch·l·m ÷ h²)))`: its own length
+ *    where Stretch is nothing (to an eighth of what the solve calls its length), more as the
+ *    rope gives more, and never more than Max Stretch. This is a stability bound of THIS
+ *    solver and not a property of rope: see `ROPE_REACH_SHARE` and `ROPE_REACH_SLACK`.
  *  - Between two anchors a taut, straight strand makes the chain system singular, so with
  *    two or more anchored stations (or a pin attribute) each pivot carries `ROPE_PIN_SOFTENING`.
  *    With one anchor or none it is zero, and a hanging strand is an exact fixed point.
@@ -167,6 +172,52 @@ export const ROPE_MAX_STRAND_POINTS = 1024;
  * constraints do not determine, and the system is then singular without it.
  */
 export const ROPE_PIN_SOFTENING = 2 ** -12;
+
+/**
+ * THE REACH OF A SEGMENT (B276): how far past its rest length a pin may ask a segment to be,
+ * as a share of `Stretch·l·m ÷ h²`. A quarter.
+ *
+ * A pin further off than the rope's rest length asks every segment between it and the pin
+ * before it to be `s` longer than it is, which a rope of that Stretch answers with a tension
+ * of `s ÷ Stretch`. A step of length `h` takes each segment's direction from where the step
+ * began, so a taut strand's fastest sideways mode (stiffness `4T ÷ l` on a mass `m`) is
+ * stepped explicitly, and is stable only while `4T·h² ÷ (l·m)` is at most 1: while
+ * `s ≤ ¼·Stretch·l·m ÷ h²`. A pin may not ask of a rope in one step what its stiffest mode
+ * cannot give in one step. So the reach depends on Update Rate, and a pin beyond it is drawn
+ * in: the far end stands short of its target.
+ *
+ * MEASURED (the design's 19.1; the consumer's strand, 53 segments of 0.06 m, a far pin
+ * between the rope's length and 2 % past it, ten Stretches from 5·10⁻⁸ to 2.6·10⁻⁵, at 240
+ * and 960 steps a second): with `s·h² ÷ (Stretch·l·m)` at 0.29 and under, every strand
+ * rests, 0.00 to 0.02 m/s; at 0.43 and over none does, 0.2 to 15 m/s. With no Stretch at all
+ * and the old reach, the rope's length plus Max Stretch whatever its Stretch: 11.5 and 52 m/s.
+ */
+export const ROPE_REACH_SHARE = 1 / 4;
+
+/**
+ * The least a segment reaches past its rest length, as a share of it, where Max Stretch
+ * allows any: AN EIGHTH OF THE SOLVE'S OWN TOLERANCE of a length (2⁻¹⁶, fifteen millionths).
+ *
+ * A reach of the rope's rest length to the bit is a sum of single-precision lengths, and a
+ * pin that stands exactly at the end of a strand laid straight is then in or out of reach by
+ * a rounding: a strand hung from its first point and pinned where its last point hangs was
+ * drawn in by a micrometre in some frames and not in others (seen: every swept fixture's
+ * figures moved). A pin well within what the solve calls the rope's length is not out of
+ * reach.
+ *
+ * AN EIGHTH, MEASURED. A strand drawn in to its reach is taut and that much over-long. On
+ * the consumer's strand with no Stretch and no bend limit it rests pinned up to 1.6 mm past
+ * its 3.12 m (thrown at 3.2), in 2 Newton steps a step up to 0.2 mm and in all 8 from 0.4,
+ * where the solve's tolerance is. With the limit on and the strand folded back on its socket,
+ * at sixteen steps a frame: at half the tolerance it cycles at 0.26 to 0.34 m/s; at an
+ * eighth, a thirty-second and a hundred-and-twenty-eighth it rests at 0.000 in one. An
+ * eighth is 48 µm on that strand, above what its lengths' rounding can sum to.
+ *
+ * It is inside the stability bound: two anchors soften each pivot by `ROPE_PIN_SOFTENING`,
+ * which gives a rope with no Stretch the give of `2 × 2⁻¹²` of that bound's unit, a quarter
+ * of which is 2⁻¹³. At a Max Stretch of nothing there is no slack: the reach is exact.
+ */
+export const ROPE_REACH_SLACK = ROPE_TOLERANCE / 8;
 
 /**
  * A bend row's COMPLIANCE, as a share of the diagonal its rest lengths give it: 2⁻¹⁰. A
@@ -613,6 +664,8 @@ function stepStrand(
   const given = f(parameters.segmentLength);
   const restOf = (k: number): number => f((given > 0 ? given : (state.kept[(base + k) * 8 + 3] as number)) * restScale);
   const softness = (rest: number): number => f(f(stretch * rest) / hh);
+  /** How far a pin may ask a segment of this rest length to reach: what the rope can be in a step (`ROPE_REACH_SHARE`). */
+  const reachOf = (rest: number): number => f(rest * f(1 + f(Math.min(limit, f(Math.max(ROPE_REACH_SLACK, f(f(ROPE_REACH_SHARE * softness(rest)) / inverseMass)))))));
 
   /** The nearest hard pin the walk has passed, and how much rope there is from it to here. */
   let pinAt: Vec3 = [0, 0, 0];
@@ -729,6 +782,16 @@ function stepStrand(
 
   const iterations = Math.min(ROPE_MAX_ITERATIONS, Math.max(1, Math.round(parameters.iterations)));
   let exceeded = false;
+  /**
+   * With Bend Limit on: whether the last Newton step run left a segment beyond Max Stretch by
+   * more than the solve's own tolerance of its length (B277). `exceeded` is exact, and at a
+   * Max Stretch of nothing a rounding fails it in every step. So with the limit on it is
+   * `past` that asks for a step to be solved again, and `past` that calls the guard: a guard
+   * that walks a strand to its exact lengths on every rounding turns its joints, and their
+   * rows push back in the next step (measured 0.06 to 0.32 m/s on a strand that rests at
+   * 0.000 without it; the design's 19.3).
+   */
+  let past = false;
 
   // ── Bend Limit on: the stretch rows and the limit's active rows, one banded system ──
   const bend = parameters.bendLimit === true;
@@ -772,13 +835,6 @@ function stepStrand(
     // no limit — the first answer is the better one to hand the guard, and it is solved a
     // third time as it was the first.
     let withLimit = true;
-    /**
-     * Whether the last Newton step run left a segment beyond Max Stretch by more than the
-     * solve's own tolerance of its length (B277). The guard's test, `exceeded`, is exact, and
-     * is not what asks for another solve: at a Max Stretch of nothing a rounding fails it in
-     * every step, and every step was then solved two or three times.
-     */
-    let past = false;
     /** Whether the last Newton step run left a segment out of its tolerance; whether it left anything out of its own. */
     let lengthsOpen = false;
     let finished = true;
@@ -855,7 +911,7 @@ function stepStrand(
           const rest = restOf(k);
           if (iteration === 0) {
             if (attempt === 0) {
-              reach = f(reach + f(rest * f(1 + limit)));
+              reach = f(reach + reachOf(rest));
               place(k + 1);
               placedAt[k + 1] = work[k + 1] as Vec3;
             } else {
@@ -1132,7 +1188,7 @@ function stepStrand(
     for (let k = 0; k < segments; k += 1) {
       const rest = restOf(k);
       if (iteration === 0) {
-        reach = f(reach + f(rest * f(1 + limit)));
+        reach = f(reach + reachOf(rest));
         place(k + 1);
         multiplier[k] = 0;
       }
@@ -1213,7 +1269,7 @@ function stepStrand(
   }
 
   // ── The guard: only on a step that left a segment beyond Max Stretch, or let one go. Positions only. ──
-  if (!exceeded && released === cols) return;
+  if (!(bend ? past : exceeded) && released === cols) return;
   /**
    * A point set no nearer and no further from `from` than its segment may be. The segment
    * that ends at point `i` is taken up to its own length, not to Max Stretch, in the step it

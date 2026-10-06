@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { pointStorageId } from "../../nodes/definitions/point-storage.ts";
 import { ANCHOR, ROPE, component, incomingOf, ropeGraph, ropeRegionOf, segmentLength, type RopeFixture } from "../../nodes/definitions/rope-test-support.ts";
-import { ROPE_TOLERANCE, ROPE_TOLERANCE_FLOOR } from "../../points/rope.ts";
+import { ROPE_REACH_SHARE, ROPE_REACH_SLACK, ROPE_TOLERANCE, ROPE_TOLERANCE_FLOOR } from "../../points/rope.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "./render-harness.ts";
 
@@ -415,10 +415,10 @@ describe("rope: a pose the limit cannot meet comes to rest, with the limit givin
     expect(out / LIMIT).toBeGreaterThan(2);
     // Seen red with an open limit that never closes; and, at a Max Stretch of nothing, with D36 asking the guard's exact test.
     expect(turnsOf(back, POINTS).worst / LIMIT).toBeLessThanOrEqual(1.02);
-    // At rest. At a Max Stretch of nothing it is NEARLY so and no more is claimed: the guard's
-    // own test is still exact there, so it walks the strand to its lengths in every step, and
-    // with the limit on that shows (measured 0.035 m/s at Update Rate 240; the design's 19.3).
-    expect(fastest).toBeLessThan(maxStretch === 0 ? 0.1 : 0.03);
+    // At rest, at a Max Stretch of nothing too: with the limit on the guard is called by a
+    // segment beyond Max Stretch by more than the solve's tolerance, and no longer walks the
+    // strand on a rounding in every step (slice 4d; it read 0.035 m/s at Update Rate 240).
+    expect(fastest).toBeLessThan(0.03);
   }, 600_000);
 
   /*
@@ -444,9 +444,9 @@ describe("rope: a pose the limit cannot meet comes to rest, with the limit givin
       rope: { gravity: 1.5, damping: 1.5, anchorSecond: 1, anchorLast: 1, segmentLength: PITCH, iterations: 8, minBendRadius: RADIUS, ...rope },
     };
   };
-  const seenOf = (frames: ReadonlyArray<Probed>): { fastest: number; stretch: number; worst: number; turns: number[] }[] =>
+  const seenOf = (frames: ReadonlyArray<Probed>): { fastest: number; stretch: number; worst: number; turns: number[]; end: number }[] =>
     FARS.map((_far, row) => {
-      const seen = { fastest: 0, stretch: 0, worst: 0, turns: [] as number[] };
+      const seen = { fastest: 0, stretch: 0, worst: 0, turns: [] as number[], end: 0 };
       for (const frame of frames) {
         const [position, velocity] = [strandOf(frame.position, row, COLS), strandOf(frame.velocity, row, COLS)];
         for (let point = 2; point < COLS - 1; point += 1) seen.fastest = Math.max(seen.fastest, Math.hypot(...pointOf(velocity, point)));
@@ -455,6 +455,7 @@ describe("rope: a pose the limit cannot meet comes to rest, with the limit givin
       }
       const last = strandOf((frames[frames.length - 1] as Probed).position, row, COLS);
       for (let j = 1; j < 8; j += 1) seen.turns.push(turnAt(last, j));
+      seen.end = component(last, COLS - 1, 0);
       return seen;
     });
 
@@ -479,15 +480,96 @@ describe("rope: a pose the limit cannot meet comes to rest, with the limit givin
       if (row < 2) expect(on.worst / TURN, at).toBeLessThan(4.5);
     }
     /*
-     * THE CLAW AT 3.1 M IS OUT OF THE ROPE'S REACH, and what the strand does there is not the
-     * limit's doing. A far pin is drawn in only when it is further than the rope with Max
-     * Stretch on top (3.18 m here), and a rope whose Stretch is nothing cannot take that
-     * 2 %: with NO limit this strand is thrown, a segment far past Max Stretch. That is the
-     * reach rule's own defect (the design's section 18.7, with its bug row's text), and
-     * this assertion is the repro of it on a device.
+     * THE CLAW AT 3.1 M IS OUT OF THE ROPE'S REACH (B276, slice 4d). This rope has no Stretch,
+     * so it reaches its own length: the pin is drawn in to 3.06 m, the far end stands 40 mm
+     * short of it, and the strand is the taut one of the row before. With NO limit it rests.
+     * With the limit it is nearly still, as that row is.
+     *
+     * WHAT IT WAS: a far pin was drawn in only beyond the rope's length with Max Stretch on
+     * top (3.18 m here), which a rope with no Stretch cannot be. On this device, with no
+     * limit, the strand was thrown at 11 m/s at Update Rate 240 and 47 at 960, a segment 13 %
+     * long; with the limit at 14 and 35.
      */
-    expect((free[3] as (typeof free)[number]).fastest).toBeGreaterThan(1);
-    expect((free[3] as (typeof free)[number]).stretch).toBeGreaterThan(0.02);
+    const [on, off] = [limited[3] as (typeof limited)[number], free[3] as (typeof free)[number]];
+    expect(off.fastest).toBeLessThanOrEqual(0.03);
+    expect(off.stretch).toBeLessThanOrEqual(0.001);
+    expect(on.fastest).toBeLessThanOrEqual(0.25);
+    expect(on.stretch).toBeLessThanOrEqual(0.001);
+    // Short of its pin by what it cannot reach: 3.1 m asked, 3.06 m and the reach's slack (48 µm) had.
+    for (const seen of [on, off]) expect(Math.abs(seen.end - (3.06 + 3.12 * ROPE_REACH_SLACK))).toBeLessThan(2e-5);
+  }, 900_000);
+
+  /*
+   * THE REACH IS WHAT THE ROPE CAN BE IN A STEP (B276), on a device: a segment of length l
+   * reaches l × (1 + min(Max Stretch, max(2⁻¹⁶, ¼·Stretch·l·m ÷ h²))). Two strands with no
+   * bend limit, their first two points held and the claw carried round to 3.1 m: one of 53
+   * segments of 0.06 m, one measured from a strip laid in segments of 0.04 and 0.08 m in
+   * turn (no Segment Length). Both have 3.12 m of rope after the held pair. Over Stretch and
+   * mass, at Update Rate 240 and 960: the strand rests, and its far end stands short of the
+   * pin by what is asked less what each segment can be.
+   *
+   * WHAT IT WAS, on the reference with the old reach (the rope's length with Max Stretch
+   * whatever its Stretch), the equal strand, m/s at 240 and 960: no Stretch 11.5 and 52;
+   * 10⁻⁷, 8.9 and 1.9; 4·10⁻⁷, 3.9 and 1.2; 1.6·10⁻⁶, 0.46 and 0.00. No step at a Stretch of
+   * nothing: a rope that barely stretches was thrown as the rope that does not.
+   */
+  const alongWgsl = "select(f32(i) * 0.06, f32(i / 2u) * 0.12 + f32(i % 2u) * 0.04, j == 1u)";
+  const along = (i: number, unequal: boolean): number => (unequal ? Math.floor(i / 2) * 0.12 + (i % 2) * 0.04 : i * 0.06);
+  const outOfReach = (rope: Readonly<Record<string, unknown>>, segmentLength: number): RopeFixture => {
+    const way = ease("t / 4.0");
+    const out = `(3.12 + (3.1 - 3.12) * ${way})`;
+    return {
+      cols: COLS,
+      rows: 2,
+      pose: { wgsl: `select(vec3f(-(${alongWgsl}), 0.0, f32(j)), vec3f(cos(${Math.PI} * (1.0 - ${way})) * ${out}, sin(${Math.PI} * (1.0 - ${way})) * ${out} * 0.6, f32(j)), i == ${COLS - 1}u && t > 0.0)`, at: () => [0, 0, 0] },
+      rope: { gravity: 1.5, damping: 1.5, anchorSecond: 1, anchorLast: 1, segmentLength, iterations: 8, ...rope },
+    };
+  };
+  /** How far short of a pin at 3.1 m the strand stands: what is asked, less what each segment after the held pair can be in a step. */
+  const shortOf = (stretch: number, mass: number, unequal: boolean, updateRate: number): number => {
+    let reach = 0;
+    for (let k = 1; k < COLS - 1; k += 1) {
+      const l = along(k + 1, unequal) - along(k, unequal);
+      reach += l * (1 + Math.min(0.02, Math.max(ROPE_REACH_SLACK, ROPE_REACH_SHARE * stretch * l * mass * updateRate * updateRate)));
+    }
+    return Math.max(0, 3.1 + along(1, unequal) - reach);
+  };
+
+  it.each([
+    ["no Stretch", 0, 1],
+    ["a Stretch of 10⁻⁷", 1e-7, 1],
+    ["a Stretch of 4·10⁻⁷", 4e-7, 1],
+    ["a Stretch of 1.6·10⁻⁶", 1.6e-6, 1],
+    ["a Stretch of 10⁻⁷ and a mass of 4", 1e-7, 4],
+    ["a Stretch of 6.4·10⁻⁶ and a mass of a quarter", 6.4e-6, 0.25],
+  ] as const)("with %s a claw 40 mm past the rope's own length is drawn in to what the rope can be in a step: at Update Rate 240 and 960 both strands rest, short of the pin by that much", async (name, stretch, mass) => {
+    for (const updateRate of [240, 960]) {
+      // The equal strand takes its Segment Length; the other is measured from the strip, and the equal one beside it then is too.
+      for (const given of [PITCH, 0]) {
+        const frames = await play(outOfReach({ updateRate, stretch, mass }, given), { frames: 60 * 12 + 1, from: 60 * 10 + 1 });
+        for (const row of given === 0 ? [1] : [0]) {
+          const unequal = row === 1;
+          let fastest = 0;
+          let stretched = 0;
+          for (const frame of frames) {
+            const [position, velocity] = [strandOf(frame.position, row, COLS), strandOf(frame.velocity, row, COLS)];
+            for (let point = 2; point < COLS - 1; point += 1) fastest = Math.max(fastest, Math.hypot(...pointOf(velocity, point)));
+            for (let k = 1; k < COLS - 1; k += 1) stretched = Math.max(stretched, Math.abs(segmentLength(position, k) / (along(k + 1, unequal) - along(k, unequal)) - 1));
+          }
+          const last = strandOf((frames[frames.length - 1] as Probed).position, row, COLS);
+          const short = 3.1 - component(last, COLS - 1, 0);
+          const expected = shortOf(stretch, mass, unequal, updateRate);
+          const at = `Update Rate ${updateRate}, segments ${unequal ? "0.04 and 0.08 m" : "0.06 m"}`;
+          note(`reach, ${name}, ${at}: fastest point in the last 2 s ${fastest.toFixed(3)} m/s; worst segment ${(stretched * 100).toFixed(2)} %; the far end ${(short * 1000).toFixed(2)} mm short of its pin (${(expected * 1000).toFixed(2)} by the rule)`);
+          // Seen red with the old reach put back in the shader.
+          expect(fastest, at).toBeLessThanOrEqual(0.03);
+          expect(stretched, at).toBeLessThanOrEqual(0.02 + 2 ** -13);
+          expect(Math.abs(short - expected), at).toBeLessThan(1e-4);
+          // The held pair is where it is told to be.
+          for (const point of [0, 1]) expect(pointOf(last, point), at).toEqual(pointOf(strandOf((frames[frames.length - 1] as Probed).incoming, row, COLS), point));
+        }
+      }
+    }
   }, 900_000);
 });
 
