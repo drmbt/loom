@@ -10,6 +10,7 @@ import { shippedClipAudio } from "../../examples/shipped-clip-audio.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { SHOTS } from "./camera.ts";
+import { boxesOverlap, nodeBox, previewAspectOf } from "../../domain/graph/node-box.ts";
 import { diagnosticClass } from "../../domain/diagnostics/classes.ts";
 import { against, DOCK_HUE, DOCK_TURN, dockTurn, FIELD_BARS, FIELD_HUE, FIELD_TURN, fieldTurn, GLIMPSE, pace, PACK_BARS, PACK_SHARE, packSize, PHRASE_BARS, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseRush, phraseSpiral, phraseSwim, rest, RUSH, SHOW_HUES, SHOW_TURNS, showHue, showStand, STAND, stride, surge, TEMPLE_HUE, TEMPLE_TURN, templeTurn } from "./director.ts";
 import { sentinelDocument } from "./document.ts";
@@ -23,6 +24,26 @@ function read(source: string, scope: Record<string, number>): number {
 }
 
 describe("the sentinel's file", () => {
+  it("lays no node of its canvas on top of another, in either tier", () => {
+    // It did: 67 pairs, written 150 across and 125 down where a node is 178 by 148 or more, so a tile's own
+    // sentence (what frames a Render, why a camera has no gizmo) was under its neighbour. The boxes are the
+    // canvas's own (the examples' layout gate measures with the same ones).
+    const registry = createNodeRegistry(allNodeDefinitions).view();
+    for (const tier of ["live", "offline"] as const) {
+      const built = sentinelDocument(KIT_FIXTURE, { tier });
+      const aspect = previewAspectOf(built.settings);
+      const placed = Object.values(built.graph.nodes).map((node) => ({ name: node.label ?? node.id, box: nodeBox(node, registry.get(node.type), aspect, built.graph) }));
+      const overlapping: string[] = [];
+      for (let a = 0; a < placed.length; a += 1) {
+        for (let b = a + 1; b < placed.length; b += 1) {
+          if (boxesOverlap((placed[a] as (typeof placed)[number]).box, (placed[b] as (typeof placed)[number]).box)) overlapping.push(`${tier}: ${placed[a]?.name} / ${placed[b]?.name}`);
+        }
+      }
+      expect(overlapping).toEqual([]);
+      expect(placed.length).toBeGreaterThan(150);
+    }
+  });
+
   it("holds no expression the engine cannot read: every one parses, function names and all", () => {
     // An expression that fails is not an error to the engine: the parameter quietly keeps its stored value.
     // A lamp's strength written with a function the grammar does not have (`pow`) shipped that way, three

@@ -134,9 +134,17 @@ export const PACK: readonly Vec3[] = [
   [-1.5, -0.85, -11],
 ];
 
+/**
+ * How far apart the canvas is laid out against the numbers written at each node below. Those were written 150
+ * across and 125 down from one node to the next, and a node on the canvas is 178 by 148 or more: 67 pairs of this
+ * file's nodes lay on top of each other, and a tile's own sentence (what frames a Render, why a camera has no
+ * gizmo) was under its neighbour. Spread, the same arrangement has every node clear of the next.
+ */
+const SPREAD = { across: 1.4, down: 1.5 } as const;
+
 /** Parameters may be slots (expressions, maps); the shared builder's signature takes values only. */
 function node(id: string, type: string, position: readonly [number, number], parameters: Record<string, StoredParameter>, extra: Partial<GraphNode> = {}): GraphNode {
-  return buildNode(id, type, position, {}, { ...extra, parameters });
+  return buildNode(id, type, [Math.round(position[0] * SPREAD.across), Math.round(position[1] * SPREAD.down)], {}, { ...extra, parameters });
 }
 
 const map = (attribute: string, fallback: number | number[], channel?: string): StoredParameter => ({
@@ -631,14 +639,16 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const robotToggles = ["toggle_perch", "toggle_follow", ...(ropes ? ["toggle_ropes"] : [])];
   const sliders = [...robotSliders, ...SCENE, ...LIGHTS];
   // Each control carries the value it ships with as its default too: what the engine's Reset puts it back to (§T1619b).
+  /** The canvas row under the sliders' rows (four to a row), where the switches, the pad and the shot stand. */
+  const underSliders = 1500 + Math.ceil(sliders.length / 4) * 250;
   const controls: GraphNode[] = [
     ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, defaultValue: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
-    node("toggle_perch", "toggle", [-3600, 3500], { channel: "perch", caption: "Perch", on: false, defaultOn: false }, { label: "toggle_perch" }),
-    node("xypad_view", "xyPad", [-3300, 3500], { channel: "view", caption: "Side / height", x: 1.1, y: 0.6, defaultX: 1.1, defaultY: 0.6, min: -2, max: 2 }, { label: "xypad_view" }),
-    node("slider_shot", "slider", [-3000, 3500], { channel: "shot", caption: `Shot (0 to ${SHOTS.length - 1})`, value: 0, defaultValue: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
-    node("toggle_cuts", "toggle", [-2700, 3500], { channel: "cuts", caption: "Auto camera (cuts by itself)", on: true, defaultOn: true }, { label: "toggle_cuts" }),
-    node("toggle_follow", "toggle", [-3600, 3750], { channel: "follow", caption: "Auto direction (follows the track)", on: true, defaultOn: true }, { label: "toggle_follow" }),
-    ...(ropes ? [node("toggle_ropes", "toggle", [-3300, 3750], { channel: "ropes", caption: "Rope legs", on: false, defaultOn: false }, { label: "toggle_ropes" })] : []),
+    node("toggle_perch", "toggle", [-3600, underSliders], { channel: "perch", caption: "Perch", on: false, defaultOn: false }, { label: "toggle_perch" }),
+    node("xypad_view", "xyPad", [-3300, underSliders], { channel: "view", caption: "Side / height", x: 1.1, y: 0.6, defaultX: 1.1, defaultY: 0.6, min: -2, max: 2 }, { label: "xypad_view" }),
+    node("slider_shot", "slider", [-3000, underSliders], { channel: "shot", caption: `Shot (0 to ${SHOTS.length - 1})`, value: 0, defaultValue: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
+    node("toggle_cuts", "toggle", [-2700, underSliders], { channel: "cuts", caption: "Auto camera (cuts by itself)", on: true, defaultOn: true }, { label: "toggle_cuts" }),
+    node("toggle_follow", "toggle", [-3600, underSliders + 250], { channel: "follow", caption: "Auto direction (follows the track)", on: true, defaultOn: true }, { label: "toggle_follow" }),
+    ...(ropes ? [node("toggle_ropes", "toggle", [-3300, underSliders + 250], { channel: "ropes", caption: "Rope legs", on: false, defaultOn: false }, { label: "toggle_ropes" })] : []),
   ];
   /**
    * THREE PANELS, not one board: the phone draws a tab for each (§T1517b), and a board taller than
@@ -737,9 +747,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const savedAll: Record<string, Record<string, number | boolean>> = Object.assign({}, ...saved);
   const banks: GraphNode[] = [
     ...["robot", "scene", "lights"].map((panel, index) =>
-      node(bankOf(panel), "presets", [-2400 + index * 300, 3750], { targets: targetsOf(saved[index] ?? {}), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf(panel), values: saved[index] ?? {} }] }) }, { label: bankOf(panel) }),
+      node(bankOf(panel), "presets", [-2400 + index * 300, 3850], { targets: targetsOf(saved[index] ?? {}), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf(panel), values: saved[index] ?? {} }] }) }, { label: bankOf(panel) }),
     ),
-    node(bankOf("all"), "presets", [-1500, 3750], { targets: targetsOf(savedAll), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf("all"), values: savedAll }] }) }, { label: bankOf("all") }),
+    node(bankOf("all"), "presets", [-1500, 3850], { targets: targetsOf(savedAll), presets: serializePresetBank({ version: 1, presets: [{ name: resetOf("all"), values: savedAll }] }) }, { label: bankOf("all") }),
   ];
 
   /**
@@ -783,7 +793,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     { name: "dock", note: "dock: pack, from abreast", values: scene(2, "fieldside", { pack: 3, swim: 1, speed: 5 }) },
     { name: "temple", note: "temple: pack among fires", values: scene(3, "fieldlow", { pack: 3, swim: 1, search: 1 }) },
   ];
-  const sceneBank = node(bankOf("scenes"), "presets", [-1200, 3750], { targets: targetsOf(SCENES[1]?.values ?? {}), presets: serializePresetBank({ version: 1, presets: SCENES.map(({ name, values }) => ({ name, values })) }) }, { label: bankOf("scenes") });
+  const sceneBank = node(bankOf("scenes"), "presets", [-1200, 3850], { targets: targetsOf(SCENES[1]?.values ?? {}), presets: serializePresetBank({ version: 1, presets: SCENES.map(({ name, values }) => ({ name, values })) }) }, { label: bankOf("scenes") });
   const sceneList = node("cuelist_scenes", "cueList", [-1200, 4000], { cues: serializeCueList({ version: 1, cues: SCENES.map(({ name, note }) => ({ name, bank: bankOf("scenes"), preset: name, note })) }), wrap: true }, { label: "cuelist_scenes" });
   const scenesPanel = node("panel_scenes", "panel", [-1200, 3500], {
     // "Presets" and not "Scenes": the panel beside it is "Scene", and on a phone's tab bar the two are one word.
@@ -817,15 +827,15 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("lag_hits", "valueLag", [-3000, 750], { lag: 0.001, releaseRatio: 250 }, { label: "lag_hits" }),
     // How busy the track is, for the camera's cuts (camera.ts, CUT_PACE): kicks and snares a second over the last
     // four, up within a second of a beat coming in and down over six after it goes, so a bar's rest does not slow the cutting.
-    node("rate_hits", "valueRate", [-3300, 450], { window: 4 }, { label: "rate_hits" }),
-    node("expression_busy", "valueExpression", [-3000, 450], { expressions: "busy = kickCount + snareCount", defaults: "kickCount = 0;\nsnareCount = 0" }, { label: "expression_busy" }),
-    node("select_busy", "valueSelect", [-2700, 450], { channels: "busy" }, { label: "select_busy" }),
-    node("lag_busy", "valueLag", [-2400, 450], { lag: 1, releaseRatio: 6 }, { label: "lag_busy" }),
+    node("rate_hits", "valueRate", [-3300, -200], { window: 4 }, { label: "rate_hits" }),
+    node("expression_busy", "valueExpression", [-3000, -200], { expressions: "busy = kickCount + snareCount", defaults: "kickCount = 0;\nsnareCount = 0" }, { label: "expression_busy" }),
+    node("select_busy", "valueSelect", [-2700, -200], { channels: "busy" }, { label: "select_busy" }),
+    node("lag_busy", "valueLag", [-2400, -200], { lag: 1, releaseRatio: 6 }, { label: "lag_busy" }),
     // THE CUTS (camera.ts, cutStatements): a request for one on every eighth, fourth or second bar line by how busy
     // the track is, and a Count that grants it unless the last cut was less than a shot's length ago. The camera
     // reads the count: it is the number of the shot.
     // (The bar alone from the track: an Expression's wires share one bag, and the track has a `level` of its own.)
-    node("select_bar", "valueSelect", [-2400, 300], { channels: "bar" }, { label: "select_bar" }),
+    node("select_bar", "valueSelect", [-2100, -200], { channels: "bar" }, { label: "select_bar" }),
     node("expression_cut", "valueExpression", [-2100, 450], { expressions: cutStatements((60 / track.bpm) * track.beatsPerBar), defaults: CUT_DEFAULTS }, { label: "expression_cut" }),
     node("select_want", "valueSelect", [-1800, 450], { channels: "want" }, { label: "select_want" }),
     node("count_cuts", "valueCount", [-1500, 450], { threshold: 0.5, holdoff: expressionSlot("op('expression_cut').chan.hold", 3.2) }, { label: "count_cuts" }),
@@ -888,7 +898,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // In the fields all of them are out, and are called up two bars before it gets there.
     node("constant_pack", "constant", [-1500, 1225], { value: expressionSlot(`max(max(${on("slider_pack")}, ${PACK.length} * ${OUT_SOON}), ${packSize(`(${FOLLOW} * (${ENERGY} > 0))`, phraseDraw(BAR, 6, PACK_BARS), PACK.length)})`, 1) }, { label: "constant_pack" }),
     // Which place it is in, under a name of its own for the camera: an Expression node reads its wires into one bag by channel name.
-    node("expression_packing", "valueExpression", [-900, 1100], { expressions: "packing = value", defaults: "value = 1" }, { label: "expression_packing" }),
+    node("expression_packing", "valueExpression", [-600, 1225], { expressions: "packing = value", defaults: "value = 1" }, { label: "expression_packing" }),
     // 0 the tunnel, 1 the fields, 2 the dock, 3 the temple: over a half the camera cuts through the open places'
     // shots, and a change of the number is a change of place (what the tests of the cut read).
     node("constant_place", "constant", [-1500, 1350], { value: expressionSlot(`${PLACE} + 2 * ${DOCKED} + 3 * ${TEMPLED}`, 0) }, { label: "constant_place" }),
@@ -906,7 +916,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("speed_stroke", "valueSpeed", [-2100, 1250], { minimum: 0, maximum: 1, limit: "loop" }, { label: "speed_stroke" }),
 
     // ── The robot: for each piece a mesh of the kit, the rig's points of that piece, and the draw (T1581b) ──
-    node("material_hull", "materialWgsl", [-1800, 150], {
+    node("material_hull", "materialWgsl", [-1800, -150], {
       model: "pbr",
       source: HULL_SURFACE_WGSL,
       // The eyes flicker with the hats and swell with the top of the track.
@@ -982,99 +992,99 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     }),
 
     // ── The tunnel: one grid bent into the bore, a window of it riding with the robot ──
-    node("grid_bore", "pointGrid", [-2400, 1200], { cols: BORE_COLUMNS, rows: BORE_ROWS, count: BORE_COLUMNS * BORE_ROWS, sizeX: 2, sizeY: 2 }, { label: "grid_bore" }),
-    node("kernel_bore", "pointKernel", [-2100, 1200], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("slider_bore"), 2.6), place: expressionSlot(OUT, 0) }, { label: "kernel_bore" }),
+    node("grid_bore", "pointGrid", [-2700, 1375], { cols: BORE_COLUMNS, rows: BORE_ROWS, count: BORE_COLUMNS * BORE_ROWS, sizeX: 2, sizeY: 2 }, { label: "grid_bore" }),
+    node("kernel_bore", "pointKernel", [-2400, 1375], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("slider_bore"), 2.6), place: expressionSlot(OUT, 0) }, { label: "kernel_bore" }),
     node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * ${LAMP_BREATH} * (1 - ${OUT})`, 14), bore: expressionSlot(on("slider_bore"), 2.6), ...chasing }, { label: "material_bore" }),
     node("geometry_bore", "geometry", [-1800, 1200], { mode: "surface", material: "material_bore", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bore" }),
 
     // ── Air: dust that the lamps and the eyes light on its way to a wall ──
     // ── THE FIELDS (field.ts): towers and the pods on them, each a strip of points a Sweep skins. Out of the
     // fields every strip is one point of no radius. ──
-    node("kernel_towers", "pointKernel", [-3600, 4200], { capacity: TOWER_CAPACITY, attributes: FIELD_ATTRIBUTES, kernel: TOWER_KERNEL, travel, place: expressionSlot(PLACE, 0) }, { label: "kernel_towers" }),
-    node("topology_towers", "pointTopology", [-3300, 4200], { connectivity: "strips", cols: FIELD.towerPoints, rows: TRUNK_TOWERS }, { label: "topology_towers" }),
+    node("kernel_towers", "pointKernel", [-3600, 4800], { capacity: TOWER_CAPACITY, attributes: FIELD_ATTRIBUTES, kernel: TOWER_KERNEL, travel, place: expressionSlot(PLACE, 0) }, { label: "kernel_towers" }),
+    node("topology_towers", "pointTopology", [-3300, 4800], { connectivity: "strips", cols: FIELD.towerPoints, rows: TRUNK_TOWERS }, { label: "topology_towers" }),
     // A tower goes straight up, so its frame leans on the world's X, not on up.
-    node("frames_towers", "pointCurveFrames", [-3000, 4200], { method: "minimiseTwist", up: [1, 0, 0] }, { label: "frames_towers" }),
-    node("sweep_towers", "pointSweep", [-2700, 4200], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_towers" }),
-    node("material_tower", "materialWgsl", [-2700, 4400], { model: "pbr", source: TOWER_SURFACE_WGSL, ...fieldLight }, { label: "material_tower" }),
-    node("geometry_towers", "geometry", [-2400, 4200], { mode: "surface", material: "material_tower", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_towers" }),
+    node("frames_towers", "pointCurveFrames", [-3000, 4800], { method: "minimiseTwist", up: [1, 0, 0] }, { label: "frames_towers" }),
+    node("sweep_towers", "pointSweep", [-2700, 4800], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_towers" }),
+    node("material_tower", "materialWgsl", [-2700, 5000], { model: "pbr", source: TOWER_SURFACE_WGSL, ...fieldLight }, { label: "material_tower" }),
+    node("geometry_towers", "geometry", [-2400, 4800], { mode: "surface", material: "material_tower", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_towers" }),
     // ── THE DOCK (dock.ts): a hall of steel round the line. Its shell is a grid the kernel stands on the hall's
     // section, ribs and gantries standing out of it as shape; bridges across the air; its work lamps and its
     // searchlights are Lights of a pointset each. Out of the dock every one of them is a point. ──
-    node("grid_hall", "pointGrid", [-3900, 6200], { cols: DOCK.cols, rows: DOCK.rows, count: HALL_CAPACITY, sizeX: 2, sizeY: 2 }, { label: "grid_hall" }),
-    node("kernel_hall", "pointKernel", [-3600, 6200], { capacity: HALL_CAPACITY, attributes: HALL_ATTRIBUTES, kernel: HALL_KERNEL, ...docked }, { label: "kernel_hall" }),
-    node("material_hall", "materialWgsl", [-3600, 6400], { model: "pbr", source: HALL_SURFACE_WGSL, lamps: expressionSlot(`3 * ${DOCK_BREATH}`, 3), pads: 2, kick: expressionSlot(KICK, 0), beat: expressionSlot(BEAT, 0), react: expressionSlot(on("slider_react"), 1), robotAt: [0, 0, -0.3], "robotAt.x": core.x, "robotAt.y": core.y, "robotAt.z": core.z }, { label: "material_hall" }),
-    node("geometry_hall", "geometry", [-3300, 6200], { mode: "surface", material: "material_hall", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_hall" }),
-    node("kernel_bridges", "pointKernel", [-3600, 6650], { capacity: BRIDGE_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: BRIDGE_KERNEL, ...docked }, { label: "kernel_bridges" }),
-    node("topology_bridges", "pointTopology", [-3300, 6650], { connectivity: "strips", cols: DOCK.bridgePoints, rows: DOCK.bridges }, { label: "topology_bridges" }),
+    node("grid_hall", "pointGrid", [-3900, 6800], { cols: DOCK.cols, rows: DOCK.rows, count: HALL_CAPACITY, sizeX: 2, sizeY: 2 }, { label: "grid_hall" }),
+    node("kernel_hall", "pointKernel", [-3600, 6800], { capacity: HALL_CAPACITY, attributes: HALL_ATTRIBUTES, kernel: HALL_KERNEL, ...docked }, { label: "kernel_hall" }),
+    node("material_hall", "materialWgsl", [-3600, 7000], { model: "pbr", source: HALL_SURFACE_WGSL, lamps: expressionSlot(`3 * ${DOCK_BREATH}`, 3), pads: 2, kick: expressionSlot(KICK, 0), beat: expressionSlot(BEAT, 0), react: expressionSlot(on("slider_react"), 1), robotAt: [0, 0, -0.3], "robotAt.x": core.x, "robotAt.y": core.y, "robotAt.z": core.z }, { label: "material_hall" }),
+    node("geometry_hall", "geometry", [-3300, 6800], { mode: "surface", material: "material_hall", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_hall" }),
+    node("kernel_bridges", "pointKernel", [-3600, 7250], { capacity: BRIDGE_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: BRIDGE_KERNEL, ...docked }, { label: "kernel_bridges" }),
+    node("topology_bridges", "pointTopology", [-3300, 7250], { connectivity: "strips", cols: DOCK.bridgePoints, rows: DOCK.bridges }, { label: "topology_bridges" }),
     // A bridge goes across, so its frame leans on up.
-    node("frames_bridges", "pointCurveFrames", [-3000, 6650], { method: "minimiseTwist", up: [0, 1, 0] }, { label: "frames_bridges" }),
-    node("sweep_bridges", "pointSweep", [-2700, 6650], { profile: "ring", sides: 4, smooth: false, radius: map("girth", 1) }, { label: "sweep_bridges" }),
-    node("material_bridge", "materialWgsl", [-2700, 6850], { model: "pbr", source: BRIDGE_SURFACE_WGSL, lamps: expressionSlot(`3 * ${DOCK_BREATH}`, 3) }, { label: "material_bridge" }),
-    node("geometry_bridges", "geometry", [-2400, 6650], { mode: "surface", material: "material_bridge", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bridges" }),
+    node("frames_bridges", "pointCurveFrames", [-3000, 7250], { method: "minimiseTwist", up: [0, 1, 0] }, { label: "frames_bridges" }),
+    node("sweep_bridges", "pointSweep", [-2700, 7250], { profile: "ring", sides: 4, smooth: false, radius: map("girth", 1) }, { label: "sweep_bridges" }),
+    node("material_bridge", "materialWgsl", [-2700, 7450], { model: "pbr", source: BRIDGE_SURFACE_WGSL, lamps: expressionSlot(`3 * ${DOCK_BREATH}`, 3) }, { label: "material_bridge" }),
+    node("geometry_bridges", "geometry", [-2400, 7250], { mode: "surface", material: "material_bridge", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bridges" }),
     // The work lamps: two to a rib, sodium, shining down and in from the second gantry.
-    node("kernel_docklamps", "pointKernel", [-3600, 7100], { capacity: DOCK_LAMPS, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: DOCK_LAMP_KERNEL, ...docked, power: expressionSlot(`${on("slider_lamp")} * 7 * ${DOCK_BREATH}`, 180), flood: expressionSlot(`${on("slider_lamp")} * 96 * ${DOCK_BREATH}`, 2500) }, { label: "kernel_docklamps" }),
-    node("light_docklamps", "light", [-3300, 7100], { kind: "spot", mode: "points", direction: map("aim", [0, -1, 0]), cone: 120, coneSoftness: 0.8, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 90 }, { label: "light_docklamps" }),
+    node("kernel_docklamps", "pointKernel", [-3600, 7700], { capacity: DOCK_LAMPS, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: DOCK_LAMP_KERNEL, ...docked, power: expressionSlot(`${on("slider_lamp")} * 7 * ${DOCK_BREATH}`, 180), flood: expressionSlot(`${on("slider_lamp")} * 96 * ${DOCK_BREATH}`, 2500) }, { label: "kernel_docklamps" }),
+    node("light_docklamps", "light", [-3300, 7700], { kind: "spot", mode: "points", direction: map("aim", [0, -1, 0]), cone: 120, coneSoftness: 0.8, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 90 }, { label: "light_docklamps" }),
     // The searchlights: a cone of lit air each, drawn as light over everything, and a Spot along it.
-    node("kernel_beams", "pointKernel", [-3600, 7400], { capacity: BEAM_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: BEAM_KERNEL, ...searching }, { label: "kernel_beams" }),
-    node("topology_beams", "pointTopology", [-3300, 7400], { connectivity: "strips", cols: DOCK.beamPoints, rows: DOCK.beams }, { label: "topology_beams" }),
-    node("frames_beams", "pointCurveFrames", [-3000, 7400], { method: "minimiseTwist", up: [0, 0, 1] }, { label: "frames_beams" }),
-    node("sweep_beams", "pointSweep", [-2700, 7400], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_beams" }),
-    node("material_beam", "materialWgsl", [-2700, 7600], { model: "pbr", source: BEAM_SURFACE_WGSL, glow: 0.5 }, { label: "material_beam" }),
-    node("geometry_beams", "geometry", [-2400, 7400], { mode: "surface", material: "material_beam", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_beams" }),
-    node("kernel_beamlights", "pointKernel", [-3600, 7850], { capacity: DOCK.beams, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: BEAM_LIGHT_KERNEL, ...searching, power: 900 }, { label: "kernel_beamlights" }),
-    node("light_beams", "light", [-3300, 7850], { kind: "spot", mode: "points", direction: map("aim", [0, 1, 0]), cone: 9, coneSoftness: 0.5, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 110 }, { label: "light_beams" }),
+    node("kernel_beams", "pointKernel", [-3600, 8000], { capacity: BEAM_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: BEAM_KERNEL, ...searching }, { label: "kernel_beams" }),
+    node("topology_beams", "pointTopology", [-3300, 8000], { connectivity: "strips", cols: DOCK.beamPoints, rows: DOCK.beams }, { label: "topology_beams" }),
+    node("frames_beams", "pointCurveFrames", [-3000, 8000], { method: "minimiseTwist", up: [0, 0, 1] }, { label: "frames_beams" }),
+    node("sweep_beams", "pointSweep", [-2700, 8000], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_beams" }),
+    node("material_beam", "materialWgsl", [-2700, 8200], { model: "pbr", source: BEAM_SURFACE_WGSL, glow: 0.5 }, { label: "material_beam" }),
+    node("geometry_beams", "geometry", [-2400, 8000], { mode: "surface", material: "material_beam", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_beams" }),
+    node("kernel_beamlights", "pointKernel", [-3600, 8450], { capacity: DOCK.beams, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: BEAM_LIGHT_KERNEL, ...searching, power: 900 }, { label: "kernel_beamlights" }),
+    node("light_beams", "light", [-3300, 8450], { kind: "spot", mode: "points", direction: map("aim", [0, 1, 0]), cone: 9, coneSoftness: 0.5, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 110 }, { label: "light_beams" }),
     // ── THE TEMPLE (temple.ts): a cave in the rock round the line, what has grown in it, and its fires. The shell
     // is a grid the kernel stands on the cave's section; each formation is a strip a Sweep makes rock of; each fire
     // a flame drawn as light and one point of a pointset's Light. Out of the temple every one of them is a point. ──
-    node("grid_cave", "pointGrid", [-3900, 8300], { cols: TEMPLE.cols, rows: TEMPLE.rows, count: CAVE_CAPACITY, sizeX: 2, sizeY: 2 }, { label: "grid_cave" }),
-    node("kernel_cave", "pointKernel", [-3600, 8300], { capacity: CAVE_CAPACITY, attributes: CAVE_ATTRIBUTES, kernel: CAVE_KERNEL, ...templed }, { label: "kernel_cave" }),
-    node("material_rock", "materialWgsl", [-3600, 8500], { model: "pbr", source: ROCK_SURFACE_WGSL, wet: 0.5 }, { label: "material_rock" }),
-    node("geometry_cave", "geometry", [-3300, 8300], { mode: "surface", material: "material_rock", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_cave" }),
-    node("kernel_formations", "pointKernel", [-3600, 8750], { capacity: FORMATION_CAPACITY, attributes: TEMPLE_STRIP_ATTRIBUTES, kernel: FORMATION_KERNEL, ...templed }, { label: "kernel_formations" }),
-    node("topology_formations", "pointTopology", [-3300, 8750], { connectivity: "strips", cols: TEMPLE.points, rows: FORMATIONS }, { label: "topology_formations" }),
+    node("grid_cave", "pointGrid", [-3900, 8900], { cols: TEMPLE.cols, rows: TEMPLE.rows, count: CAVE_CAPACITY, sizeX: 2, sizeY: 2 }, { label: "grid_cave" }),
+    node("kernel_cave", "pointKernel", [-3600, 8900], { capacity: CAVE_CAPACITY, attributes: CAVE_ATTRIBUTES, kernel: CAVE_KERNEL, ...templed }, { label: "kernel_cave" }),
+    node("material_rock", "materialWgsl", [-3600, 9100], { model: "pbr", source: ROCK_SURFACE_WGSL, wet: 0.5 }, { label: "material_rock" }),
+    node("geometry_cave", "geometry", [-3300, 8900], { mode: "surface", material: "material_rock", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_cave" }),
+    node("kernel_formations", "pointKernel", [-3600, 9350], { capacity: FORMATION_CAPACITY, attributes: TEMPLE_STRIP_ATTRIBUTES, kernel: FORMATION_KERNEL, ...templed }, { label: "kernel_formations" }),
+    node("topology_formations", "pointTopology", [-3300, 9350], { connectivity: "strips", cols: TEMPLE.points, rows: FORMATIONS }, { label: "topology_formations" }),
     // They stand and hang: up and down, so their frames lean on the world's X.
-    node("frames_formations", "pointCurveFrames", [-3000, 8750], { method: "minimiseTwist", up: [1, 0, 0] }, { label: "frames_formations" }),
-    node("sweep_formations", "pointSweep", [-2700, 8750], { profile: "ring", sides: 9, radius: map("girth", 1) }, { label: "sweep_formations" }),
-    node("geometry_formations", "geometry", [-2400, 8750], { mode: "surface", material: "material_rock", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_formations" }),
+    node("frames_formations", "pointCurveFrames", [-3000, 9350], { method: "minimiseTwist", up: [1, 0, 0] }, { label: "frames_formations" }),
+    node("sweep_formations", "pointSweep", [-2700, 9350], { profile: "ring", sides: 9, radius: map("girth", 1) }, { label: "sweep_formations" }),
+    node("geometry_formations", "geometry", [-2400, 9350], { mode: "surface", material: "material_rock", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_formations" }),
     // The fires: a tongue of flame on every stalagmite, and its light. This is the place of the drums: they flare on the kick.
-    node("kernel_flames", "pointKernel", [-3600, 9200], { capacity: FLAME_CAPACITY, attributes: TEMPLE_STRIP_ATTRIBUTES, kernel: FLAME_KERNEL, ...burning }, { label: "kernel_flames" }),
-    node("topology_flames", "pointTopology", [-3300, 9200], { connectivity: "strips", cols: TEMPLE.flamePoints, rows: FORMATIONS }, { label: "topology_flames" }),
-    node("frames_flames", "pointCurveFrames", [-3000, 9200], { method: "minimiseTwist", up: [1, 0, 0] }, { label: "frames_flames" }),
-    node("sweep_flames", "pointSweep", [-2700, 9200], { profile: "ring", sides: 7, radius: map("girth", 1) }, { label: "sweep_flames" }),
-    node("material_flame", "materialWgsl", [-2700, 9400], { model: "pbr", source: FLAME_SURFACE_WGSL, glow: 5 }, { label: "material_flame" }),
-    node("geometry_flames", "geometry", [-2400, 9200], { mode: "surface", material: "material_flame", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_flames" }),
-    node("kernel_fires", "pointKernel", [-3600, 9650], { capacity: FORMATIONS, attributes: FIRE_ATTRIBUTES, kernel: FIRE_KERNEL, ...burning, power: expressionSlot(`${on("slider_lamp")} * 9.2`, 240) }, { label: "kernel_fires" }),
+    node("kernel_flames", "pointKernel", [-3600, 9800], { capacity: FLAME_CAPACITY, attributes: TEMPLE_STRIP_ATTRIBUTES, kernel: FLAME_KERNEL, ...burning }, { label: "kernel_flames" }),
+    node("topology_flames", "pointTopology", [-3300, 9800], { connectivity: "strips", cols: TEMPLE.flamePoints, rows: FORMATIONS }, { label: "topology_flames" }),
+    node("frames_flames", "pointCurveFrames", [-3000, 9800], { method: "minimiseTwist", up: [1, 0, 0] }, { label: "frames_flames" }),
+    node("sweep_flames", "pointSweep", [-2700, 9800], { profile: "ring", sides: 7, radius: map("girth", 1) }, { label: "sweep_flames" }),
+    node("material_flame", "materialWgsl", [-2700, 10000], { model: "pbr", source: FLAME_SURFACE_WGSL, glow: 5 }, { label: "material_flame" }),
+    node("geometry_flames", "geometry", [-2400, 9800], { mode: "surface", material: "material_flame", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_flames" }),
+    node("kernel_fires", "pointKernel", [-3600, 10250], { capacity: FORMATIONS, attributes: FIRE_ATTRIBUTES, kernel: FIRE_KERNEL, ...burning, power: expressionSlot(`${on("slider_lamp")} * 9.2`, 240) }, { label: "kernel_fires" }),
     // The smoke round each fire, lit by it: the same points as the Light, each drawn as a soft ball of light (the
     // air pass knows the tunnel's lamps and the dock's floods; a fire's place is the kernel's alone).
-    node("material_fireglow", "materialUnlit", [-3000, 9850], { color: [1, 1, 1, 1] }, { label: "material_fireglow" }),
-    node("geometry_fireglow", "geometry", [-2700, 9650], { mode: "points", material: "material_fireglow", blend: "additive", soft: 1, spherical: true, scale: map("halo", 0, "w"), tint: map("halo", [0, 0, 0, 0]) }, { label: "geometry_fireglow" }),
-    node("light_fires", "light", [-3300, 9650], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_fires" }),
+    node("material_fireglow", "materialUnlit", [-3000, 10450], { color: [1, 1, 1, 1] }, { label: "material_fireglow" }),
+    node("geometry_fireglow", "geometry", [-2700, 10250], { mode: "points", material: "material_fireglow", blend: "additive", soft: 1, spherical: true, scale: map("halo", 0, "w"), tint: map("halo", [0, 0, 0, 0]) }, { label: "geometry_fireglow" }),
+    node("light_fires", "light", [-3300, 10250], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_fires" }),
     // The robots' searchlights (searchlight.ts): a cone of lit air from each one's face, drawn as light, and a Spot along it.
     node("constant_search", "constant", [-1500, 1875], { value: expressionSlot(`max(${on("slider_search")}, ${OUT} * (${phraseDraw(BAR, 9)} < 0.55))`, 0) }, { label: "constant_search" }),
     node("lag_search", "valueLag", [-1200, 1875], { lag: 0.35, releaseRatio: 1 }, { label: "lag_search" }),
-    node("kernel_search", "pointKernel", [-3600, 10000], { capacity: SEARCH_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: SEARCH_KERNEL, ...beaming }, { label: "kernel_search" }),
-    node("topology_search", "pointTopology", [-3300, 10000], { connectivity: "strips", cols: SEARCH.points, rows: SEARCH.robots }, { label: "topology_search" }),
-    node("frames_search", "pointCurveFrames", [-3000, 10000], { method: "minimiseTwist", up: [0, 1, 0] }, { label: "frames_search" }),
-    node("sweep_search", "pointSweep", [-2700, 10000], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_search" }),
-    node("material_search", "materialWgsl", [-2700, 10200], { model: "pbr", source: BEAM_SURFACE_WGSL, glow: 0.35 }, { label: "material_search" }),
-    node("geometry_search", "geometry", [-2400, 10000], { mode: "surface", material: "material_search", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_search" }),
-    node("kernel_searchlights", "pointKernel", [-3600, 10450], { capacity: SEARCH.robots, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: SEARCH_LIGHT_KERNEL, ...beaming, power: 110 }, { label: "kernel_searchlights" }),
-    node("light_search", "light", [-3300, 10450], { kind: "spot", mode: "points", direction: map("aim", [0, 0, 1]), cone: 16, coneSoftness: 0.6, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_search" }),
+    node("kernel_search", "pointKernel", [-3600, 10600], { capacity: SEARCH_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: SEARCH_KERNEL, ...beaming }, { label: "kernel_search" }),
+    node("topology_search", "pointTopology", [-3300, 10600], { connectivity: "strips", cols: SEARCH.points, rows: SEARCH.robots }, { label: "topology_search" }),
+    node("frames_search", "pointCurveFrames", [-3000, 10600], { method: "minimiseTwist", up: [0, 1, 0] }, { label: "frames_search" }),
+    node("sweep_search", "pointSweep", [-2700, 10600], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_search" }),
+    node("material_search", "materialWgsl", [-2700, 10800], { model: "pbr", source: BEAM_SURFACE_WGSL, glow: 0.35 }, { label: "material_search" }),
+    node("geometry_search", "geometry", [-2400, 10600], { mode: "surface", material: "material_search", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_search" }),
+    node("kernel_searchlights", "pointKernel", [-3600, 11050], { capacity: SEARCH.robots, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: SEARCH_LIGHT_KERNEL, ...beaming, power: 110 }, { label: "kernel_searchlights" }),
+    node("light_search", "light", [-3300, 11050], { kind: "spot", mode: "points", direction: map("aim", [0, 0, 1]), cone: 16, coneSoftness: 0.6, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_search" }),
     // Lightning: an arc between two towers and its forks (field.ts, BOLT_KERNEL), and a Light where it is.
-    node("kernel_bolts", "pointKernel", [-3600, 5100], { capacity: BOLT_CAPACITY, attributes: BOLT_ATTRIBUTES, kernel: BOLT_KERNEL, ...striking }, { label: "kernel_bolts" }),
-    node("topology_bolts", "pointTopology", [-3300, 5100], { connectivity: "strips", cols: FIELD.boltPoints, rows: FIELD.bolts }, { label: "topology_bolts" }),
-    node("frames_bolts", "pointCurveFrames", [-3000, 5100], { method: "minimiseTwist", up: [0, 1, 0] }, { label: "frames_bolts" }),
-    node("sweep_bolts", "pointSweep", [-2700, 5100], { profile: "ring", sides: 5, radius: map("girth", 1) }, { label: "sweep_bolts" }),
-    node("material_bolt", "materialWgsl", [-2700, 5300], { model: "pbr", source: BOLT_SURFACE_WGSL, glow: 90 }, { label: "material_bolt" }),
-    node("geometry_bolts", "geometry", [-2400, 5100], { mode: "surface", material: "material_bolt", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bolts" }),
+    node("kernel_bolts", "pointKernel", [-3600, 5700], { capacity: BOLT_CAPACITY, attributes: BOLT_ATTRIBUTES, kernel: BOLT_KERNEL, ...striking }, { label: "kernel_bolts" }),
+    node("topology_bolts", "pointTopology", [-3300, 5700], { connectivity: "strips", cols: FIELD.boltPoints, rows: FIELD.bolts }, { label: "topology_bolts" }),
+    node("frames_bolts", "pointCurveFrames", [-3000, 5700], { method: "minimiseTwist", up: [0, 1, 0] }, { label: "frames_bolts" }),
+    node("sweep_bolts", "pointSweep", [-2700, 5700], { profile: "ring", sides: 5, radius: map("girth", 1) }, { label: "sweep_bolts" }),
+    node("material_bolt", "materialWgsl", [-2700, 5900], { model: "pbr", source: BOLT_SURFACE_WGSL, glow: 90 }, { label: "material_bolt" }),
+    node("geometry_bolts", "geometry", [-2400, 5700], { mode: "surface", material: "material_bolt", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bolts" }),
     // The storm's own light, in the fields only: cold, from high on the right and ahead, so it crosses the avenue
     // and comes back at the lens: every robot and every tower has a lit side and a lit edge ("there was a lot more
     // of a backlit motif", the later film's supervisors). Without it a robot out here is black steel on dark air,
     // seen only where its own lights are, and from behind that is nowhere. No shadows.
-    node("light_storm", "light", [-3300, 5750], { kind: "directional", color: [0.6, 0.76, 1, 1], direction: [-0.72, -0.5, -0.48], intensity: expressionSlot(`1.3 * ${PLACE}`, 0) }, { label: "light_storm" }),
-    node("kernel_strike", "pointKernel", [-3600, 5550], { capacity: 1, attributes: STRIKE_ATTRIBUTES, kernel: STRIKE_KERNEL, ...striking, power: 120 }, { label: "kernel_strike" }),
+    node("light_storm", "light", [-3300, 6350], { kind: "directional", color: [0.6, 0.76, 1, 1], direction: [-0.72, -0.5, -0.48], intensity: expressionSlot(`1.3 * ${PLACE}`, 0) }, { label: "light_storm" }),
+    node("kernel_strike", "pointKernel", [-3600, 6150], { capacity: 1, attributes: STRIKE_ATTRIBUTES, kernel: STRIKE_KERNEL, ...striking, power: 120 }, { label: "kernel_strike" }),
     // It lights the towers round it and whatever is flying past, for as long as it lasts. No shadows: a Light in Points mode casts none.
-    node("light_strike", "light", [-3300, 5550], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 90 }, { label: "light_strike" }),
+    node("light_strike", "light", [-3300, 6150], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 90 }, { label: "light_strike" }),
     node("kernel_motes", "pointKernel", [-2100, 1600], {
       capacity: MOTE_COUNT,
       attributes: MOTE_ATTRIBUTES,
