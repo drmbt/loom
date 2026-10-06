@@ -1,4 +1,5 @@
-import { buildProjectFile, type ProjectFile } from "../domain/project/index.ts";
+import type { ProjectFile } from "../domain/project/index.ts";
+import { buildCheckedProjectFile } from "./checked-project.ts";
 import { STARTER_COMPONENT_TIMESTAMP, buildStarterComponents } from "./starter-components.ts";
 import { createComponentSystem } from "../domain/components/registry.ts";
 import { createNodeRegistry } from "../nodes/registry/registry.ts";
@@ -36,12 +37,15 @@ export function starterComponentsView(): Promise<ComponentRegistryView> {
  * starter component that cannot render fails the build the way a broken example does
  * (§V89).
  *
+ * §T1641b slice 3: through the CHECKED save, which reads the definition's own graph as well
+ * as the document that instances it (`checked-project.ts`).
+ *
  * Pure: writing is `build-examples.ts`, checking is `component-sync.test.ts`.
  */
 export async function buildStarterComponentFiles(): Promise<readonly ProjectFile[]> {
   const built = await buildStarterComponents();
   return built.map((component) =>
-    buildProjectFile({
+    buildCheckedProjectFile({
       document: component.document,
       components: [component.definition],
       now: () => STARTER_COMPONENT_TIMESTAMP,

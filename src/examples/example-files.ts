@@ -1,5 +1,6 @@
-import { buildProjectFile, type ProjectFile } from "../domain/project/index.ts";
+import type { ProjectFile } from "../domain/project/index.ts";
 import type { GraphComponentDefinition } from "../domain/types/components.ts";
+import { buildCheckedProjectFile } from "./checked-project.ts";
 import { EXAMPLE_DOCUMENTS, EXAMPLE_TIMESTAMP } from "./documents.ts";
 
 /**
@@ -34,6 +35,10 @@ export const EXAMPLE_COMPONENT_IDS: Readonly<Record<string, readonly string[]>> 
  * into a shape the real save would never produce. `now` is pinned so regenerating changes
  * nothing unless the document changed.
  *
+ * §T1641b slice 3: through the CHECKED save (`buildCheckedProjectFile`). These documents are
+ * object literals that never met the command bus, so what the bus would have refused at the
+ * write is refused here, by name, before a byte exists. Throws `DocumentRefused`.
+ *
  * Pure: writing is `build-examples.ts`, checking is `sync.test.ts`.
  */
 export function buildExampleFiles(
@@ -49,7 +54,7 @@ export function buildExampleFiles(
       }
       return definition;
     });
-    return buildProjectFile({
+    return buildCheckedProjectFile({
       document,
       now: () => EXAMPLE_TIMESTAMP,
       ...(embedded.length === 0 ? {} : { components: embedded }),

@@ -280,7 +280,7 @@ export function edge(
  * one edit away instead of a mode change. `name` maps to `.chan.value` and `name:c` to
  * `.chan.c`, which resolve identically to the old bare/suffixed driven addresses.
  */
-export function drivenSlot(channel: string, retained: number): ParameterSlot {
+export function drivenSlot(channel: string, retained: RetainedValue): ParameterSlot {
   return {
     mode: "expression",
     bindings: {
@@ -290,8 +290,26 @@ export function drivenSlot(channel: string, retained: number): ParameterSlot {
   };
 }
 
+/**
+ * What a slot keeps for the parameter it sits on, in THAT PARAMETER'S OWN TYPE (§T1641b
+ * slice 3): a number for a number, `false` for a boolean or a pulse, an option's name for a
+ * menu, the text for a string, the whole compound for a vector or a colour. These are the
+ * types an expression can drive (§V107).
+ *
+ * The parameter was `retained: number`, and a boolean driven by an expression then had no
+ * way to be written right: `false` did not compile, so its author wrote `0`, which the
+ * write gate refuses and nothing here did. It shipped (the consumer's `reset`).
+ *
+ * THE WRONG TYPE STILL COMPILES, and cannot be made not to: a slot is built before it is
+ * put under a key, and a node's parameters are a `Record<string, …>` with no type per key
+ * to check the value against. So it is refused where the key is known, at the build: the
+ * checked save names the node, the parameter and the type to keep (`parameter.retained`,
+ * `checked-project.ts`).
+ */
+export type RetainedValue = number | boolean | string | readonly number[];
+
 /** An `expression` slot (§V71): our own grammar, arithmetic over the frame's variables. */
-export function expressionSlot(source: string, retained: number): ParameterSlot {
+export function expressionSlot(source: string, retained: RetainedValue): ParameterSlot {
   return {
     mode: "expression",
     bindings: {

@@ -10,7 +10,6 @@ import { readHdr, rgbmBytes } from "./hdri.ts";
 import { walkTrack } from "../furnace/load-audio.ts";
 import { outputPixelScale } from "../../domain/types/graph.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
-import { stopsFinalRender } from "../../domain/diagnostics/classes.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 
 /**
@@ -310,6 +309,14 @@ for (const shot of shots) {
     subframes: sub,
     outputNodeId: "out",
     animate: true,
+    // A FINAL RENDER (§T1641b slice 3): it stops, by the node's name, on everything
+    // `stopsFinalRender` names, AT ANY FRAME. An error; a thing that can never take effect (an
+    // unknown function once froze a camera move without a word); a thing still waiting, such
+    // as a read of a channel not published at that frame; an expression with no finite answer
+    // at a frame, where the stored value standing in is a wrong picture that looks plausible.
+    // This was a filter over the result's diagnostics here, which held the structural plan's
+    // only: a warning that first appeared on frame 40 was read by nobody.
+    strict: true,
     meshes,
     ...(track === undefined ? {} : { audio: track.seam(fps * sub, audioStart - warm / fps) }),
     ...(hdri !== undefined && nodes["hdri"] !== undefined ? { pictures: { hdri: (size: readonly [number, number]) => rgbmBytes(hdri, size) } } : {}),
@@ -322,18 +329,11 @@ for (const shot of shots) {
       if (!stdin.write(Buffer.from(out))) await new Promise((resolve) => stdin.once("drain", resolve));
     },
   });
-  // What cannot take effect stops the render, asked by CLASS (§T1641b, `stopsFinalRender`): a
-  // guard on the one code `parameter.expression` went blind when that code was split. An
-  // expression that can never evaluate is an error now and stops inside `renderHeadless`, by
-  // the node's name (an unknown function once froze a camera move without a word); what is
-  // left to stop on here is what is still waiting, such as a read of a node not in the graph.
-  // And an expression with no finite answer at a frame (`parameter.expression.value`): the
-  // stored value standing in is DEGRADED to an editor and a wrong picture in a film frame.
+  // What is left after `strict` is what a final render may carry: a clamp, a fallback that
+  // says what stands in. Printed, with the frame each first appeared at.
   // T1436b: name the node — a component diagnostic's message names the key, not the node
   const line = (d: { code: string; message: string; nodeId?: string }): string => `${d.code}${d.nodeId === undefined ? "" : ` [${d.nodeId}]`}: ${d.message}`;
-  const errors = [...new Set(result.diagnostics.filter((d) => stopsFinalRender(d) || d.code === "parameter.expression.value").map(line))];
-  if (errors.length > 0) throw new Error(`the ${shot} graph has errors:\n${errors.join("\n")}`);
-  const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map(line))];
+  const warnings = [...new Set(result.findings.filter((found) => found.diagnostic.severity === "warning").map((found) => `${found.frame === null ? "" : `frame ${found.frame}: `}${line(found.diagnostic)}`))];
   if (warnings.length > 0) console.log(warnings.slice(0, 10).join("\n"));
   if (encoder !== undefined) {
     encoder.stdin?.end();

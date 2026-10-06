@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { serializeProjectDocument } from "../../domain/project/serialize.ts";
+import { serializeCheckedProject } from "../../examples/checked-project.ts";
 import { encodePng } from "../../runtime/export/png.ts";
 import { SHOTS, onNothingDocument, type Shot } from "./document.ts";
 import { loadOnNothingFacts } from "./load-facts.ts";
@@ -14,7 +14,8 @@ import { readHdr, rgbmBytes } from "./hdri.ts";
  *
  * Media the documents load go to public/media/on-nothing/ (gitignored build products): the GLB,
  * the song (Audio File In, timeline), the HDRI packed RGBM as a PNG (Movie File In). Each shot
- * becomes projects/on-nothing/<shot>.loom.json through the real save path.
+ * becomes projects/on-nothing/<shot>.loom.json through the real save path, CHECKED (§T1641b):
+ * a shot that holds something which can never take effect is refused by name, and not written.
  */
 const argv = process.argv.slice(2).filter((arg) => arg !== "--");
 const flag = (name: string): string | undefined => {
@@ -42,7 +43,7 @@ mkdirSync("projects/on-nothing", { recursive: true });
 for (const shot of shots) {
   const document = onNothingDocument(facts, { shot, audio, hdri });
   const path = `projects/on-nothing/${shot}.loom.json`;
-  writeFileSync(path, serializeProjectDocument(document), "utf8");
+  writeFileSync(path, serializeCheckedProject(document), "utf8");
   console.log(`wrote ${path}`);
 }
 console.log(`media in ${media}/: on-nothing.glb${audio ? ", song.wav" : ""}${hdri ? ", hdri.png" : ""}`);

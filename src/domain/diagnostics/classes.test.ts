@@ -2,7 +2,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { DIAGNOSTIC_CLASSES, diagnosticClass, leavesPlanUsable } from "./classes.ts";
+import { DIAGNOSTIC_CLASS_REASONS } from "./class-reasons.ts";
+import { DIAGNOSTIC_CLASSES, diagnosticClass, leavesPlanUsable, stopsFinalRender } from "./classes.ts";
 
 /**
  * T1641b — EVERY DIAGNOSTIC CODE THE SOURCE CAN EMIT HAS A CLASS, AND EVERY ROW NAMES ONE.
@@ -953,10 +954,22 @@ describe("every diagnostic code has a class, and every row names a code (T1641b)
   });
 
   it("says why on every row, and keeps `local` to the codes it can apply to", () => {
+    // The reasons are a file of their own (`class-reasons.ts`), kept out of the app: prose
+    // for a reader of the table. Held to the table here, in both directions.
     for (const [code, row] of Object.entries(DIAGNOSTIC_CLASSES)) {
-      expect(row.reason.trim().length, `"${code}" has no reason`).toBeGreaterThan(10);
+      expect((DIAGNOSTIC_CLASS_REASONS[code] ?? "").trim().length, `"${code}" has no reason in class-reasons.ts`).toBeGreaterThan(10);
       if (row.local === true) expect(row.class, `"${code}" is \`local\`, which is said of a \`never\` finding only`).toBe("never");
     }
+    const orphaned = Object.keys(DIAGNOSTIC_CLASS_REASONS).filter((code) => !Object.hasOwn(DIAGNOSTIC_CLASSES, code));
+    expect(orphaned, "these reasons in class-reasons.ts name a code with no row in DIAGNOSTIC_CLASSES: remove them").toEqual([]);
+  });
+
+  it("ships the classes and not the reasons: nothing under src/ but this gate imports class-reasons.ts", () => {
+    // If a surface comes to show a reason, it imports the file and this line names it.
+    const importers = [...sourceTree(true)]
+      .filter(([file, text]) => file !== "src/domain/diagnostics/classes.test.ts" && /from\s+["'][^"']*class-reasons(\.ts)?["']/.test(text))
+      .map(([file]) => file);
+    expect(importers).toEqual([]);
   });
 
   it("holds the codes of more than one class to the debt ledger: it only gets shorter", () => {
@@ -1047,5 +1060,25 @@ describe("diagnosticClass (T1641b)", () => {
     // A code nobody classed is not waved through.
     expect(leavesPlanUsable("no.such.code")).toBe(false);
     expect(leavesPlanUsable("constructor")).toBe(false);
+    // Slice 3: a payload a slot only keeps is an error the picture does not depend on.
+    expect(leavesPlanUsable("parameter.retained")).toBe(true);
+  });
+
+  it("says what a final render stops on: one question, the failed value at a frame included", () => {
+    const at = (severity: string, code: string): boolean => stopsFinalRender({ severity, code });
+    // An error; what can never take effect, at any severity; what still waits; what nobody classed.
+    expect(at("error", "compiler/input-missing")).toBe(true);
+    expect(at("warning", "compiler/component-parameter-conflict")).toBe(true);
+    expect(at("warning", "parameter.reference.channel")).toBe(true);
+    expect(at("info", "no.such.code")).toBe(true);
+    // The one degraded code a film frame cannot carry (the lead's ruling on slice 1): the
+    // stored value stood in for an expression with no finite answer at that frame.
+    expect(at("warning", "parameter.expression.value")).toBe(true);
+    // A clamp says what stands in, and a host-bound read is not the document's.
+    expect(at("warning", "parameter.expression.clamped")).toBe(false);
+    expect(at("info", "parameter.channels.unavailable")).toBe(false);
+    // The harness's remark on its own request stops a render only as the error `strict` makes it.
+    expect(at("warning", "harness.animateOff")).toBe(false);
+    expect(at("error", "harness.animateOff")).toBe(true);
   });
 });

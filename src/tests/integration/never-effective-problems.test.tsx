@@ -217,3 +217,93 @@ describe("§B264 — a file built by code that drives eyeColor.x on a colour, op
     expect((await aboutHaze(runtime)).map((entry) => entry.code)).toEqual(["parameter.unknown", "parameter.unknown", "parameter.unknown"]);
   }, 30_000);
 });
+
+/**
+ * §T1641b slice 3 — THE APP'S SAVE IS NOT THE DOOR THAT REFUSES (the lead's ruling 8).
+ *
+ * A save by code refuses a document that holds something which can never take effect
+ * (`checked-project.ts`). A person's work is written whatever it holds, because a refused
+ * save is lost work; and the save SAYS what it wrote: in its own result, which an agent
+ * reads, and in the Problems list. The document here holds one thing in effect (`pow`,
+ * which the live compile already reports) and one thing a slot only keeps (a kept static
+ * of another type, which nothing in the app said at all until a save).
+ */
+describe("slice 3 — the app saves a document that holds what can never take effect, and reports", () => {
+  const POW = expressionSlot("pow(0.5 + abstime * 0, 2)", 0.5);
+  const KEEPS_TEXT = expressionSlot("1", "full");
+
+  it("writes the file whole, says so in the save's result and in Problems, and the picture is still there", async () => {
+    const written: string[] = [];
+    const picker = globalThis as { showSaveFilePicker?: unknown };
+    // The picker path of the app's own write (`project-io.ts`): what lands in the file.
+    picker.showSaveFilePicker = () =>
+      Promise.resolve({
+        name: "lamp.loom.json",
+        createWritable: () =>
+          Promise.resolve({
+            write: (payload: unknown) => {
+              written.push(String(payload));
+              return Promise.resolve();
+            },
+            close: () => Promise.resolve(),
+          }),
+      });
+    try {
+      const session = await opened(lampFile(POW, [], { opacity: KEEPS_TEXT }));
+      const runtime = session.runtime();
+      const aboutLamp = async () => (await problems(runtime)).filter((entry) => entry.nodeId === LAMP).map((entry) => [entry.severity, entry.code]);
+      // Before the save: the compile's own error, and not a word about the kept payload.
+      expect(await aboutLamp()).toEqual([["error", "parameter.expression.syntax"]]);
+
+      let result: Awaited<ReturnType<typeof runtime.bus.execute<"project.save">>> | undefined;
+      await act(async () => {
+        result = await runtime.bus.execute("project.save", { saveAs: false }, runtime.invocation);
+      });
+      await settle();
+
+      // Not refused: the command applied and bytes reached the file.
+      expect(result?.status).toBe("applied");
+      expect(result?.status === "applied" ? result.output : undefined).toEqual({ saved: true, fileName: "lamp.loom.json" });
+      expect(written).toHaveLength(1);
+      // And they are the document, whole: nothing dropped, corrected or defaulted on the way out.
+      const saved = JSON.parse(written[0] ?? "{}") as { graph: { nodes: Record<string, { parameters: Record<string, unknown> }> } };
+      expect(saved.graph.nodes[LAMP]?.parameters["brightness"]).toEqual(POW);
+      expect(saved.graph.nodes[LAMP]?.parameters["opacity"]).toEqual(KEEPS_TEXT);
+
+      // The save's own report: both, each on the node, each with what to write instead.
+      const reported = result?.diagnostics ?? [];
+      expect(reported.map((entry) => [entry.severity, entry.code, entry.nodeId])).toEqual([
+        ["error", "parameter.expression.syntax", LAMP],
+        ["error", "parameter.retained", LAMP],
+      ]);
+      expect(reported[0]?.suggestion).toContain("(0.5 + abstime * 0) ^ 2");
+      expect(reported[1]?.message).toContain('Parameter "opacity" is in expression mode and keeps a static payload it cannot take');
+      expect(reported[1]?.suggestion).toContain("Keep a finite number as the static value");
+
+      // The Problems list holds the kept payload now, which it could not before the save.
+      expect(await aboutLamp()).toContainEqual(["error", "parameter.retained"]);
+      // And the document did not go black for any of it: the lamp's pass is in the plan.
+      await waitFor(() => {
+        expect(session.plans.length).toBeGreaterThan(0);
+      });
+      expect(session.plans.at(-1)?.some((pass) => pass.nodeId === LAMP)).toBe(true);
+    } finally {
+      delete picker.showSaveFilePicker;
+    }
+  }, 30_000);
+
+  it("says nothing when the document holds nothing of the kind", async () => {
+    const picker = globalThis as { showSaveFilePicker?: unknown };
+    picker.showSaveFilePicker = () =>
+      Promise.resolve({ name: "lamp.loom.json", createWritable: () => Promise.resolve({ write: () => Promise.resolve(), close: () => Promise.resolve() }) });
+    try {
+      const session = await opened(lampFile(expressionSlot("(0.5 + abstime * 0) ^ 2", 0.5)));
+      const runtime = session.runtime();
+      const result = await runtime.bus.execute("project.save", { saveAs: false }, runtime.invocation);
+      expect(result.status).toBe("applied");
+      expect(result.diagnostics).toEqual([]);
+    } finally {
+      delete picker.showSaveFilePicker;
+    }
+  }, 30_000);
+});

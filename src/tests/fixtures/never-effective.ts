@@ -1,6 +1,6 @@
 import { loadProject } from "../../domain/project/index.ts";
 import { serializeProjectDocument } from "../../domain/project/serialize.ts";
-import type { GraphDocument, GraphNode, ProjectSettings } from "../../domain/types/graph.ts";
+import type { GraphDocument, GraphNode, ProjectDocument, ProjectSettings } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { document, edge, graph, named, settings } from "../../examples/documents/builders.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
@@ -31,33 +31,66 @@ export function boundTo(ref: string, retained: number): StoredParameter {
 }
 
 /**
- * The saved bytes of the lamp document: `brightness` as given, any other nodes, and any
- * other parameters of the lamp.
+ * The lamp document as its build script holds it: `brightness` as given, any other nodes,
+ * and any other parameters of the lamp.
  */
+export function lampDocument(
+  brightness: StoredParameter,
+  others: readonly GraphNode[] = [],
+  also: Readonly<Record<string, StoredParameter>> = {},
+): ProjectDocument {
+  const white = named("white", "solid", [0, 0], { color: [1, 1, 1, 1] });
+  const lamp = named("lamp", "level", [300, 0], {}, { parameters: { brightness, ...also } });
+  const out = named("out", "output", [600, 0]);
+  return document(
+    "t1641b-lamp",
+    "T1641b lamp",
+    settings({
+      outputResolution: { width: 8, height: 8 },
+      workingFormat: "rgba8unorm",
+      colorPolicy: { workingSpace: "linear", displayTransform: "none" },
+      previewLongEdge: 8,
+      randomSeed: 1,
+    }),
+    graph(
+      [white, lamp, out, ...others],
+      [edge("e_white", [white.id, "out"], [lamp.id, "input"]), edge("e_lamp", [lamp.id, "out"], [out.id, "input"])],
+    ),
+  );
+}
+
+/** Its saved bytes, through the save that checks nothing: the door §B262 shipped through. */
 export function lampFile(
   brightness: StoredParameter,
   others: readonly GraphNode[] = [],
   also: Readonly<Record<string, StoredParameter>> = {},
 ): string {
-  const white = named("white", "solid", [0, 0], { color: [1, 1, 1, 1] });
-  const lamp = named("lamp", "level", [300, 0], {}, { parameters: { brightness, ...also } });
-  const out = named("out", "output", [600, 0]);
-  return serializeProjectDocument(
-    document(
-      "t1641b-lamp",
-      "T1641b lamp",
-      settings({
-        outputResolution: { width: 8, height: 8 },
-        workingFormat: "rgba8unorm",
-        colorPolicy: { workingSpace: "linear", displayTransform: "none" },
-        previewLongEdge: 8,
-        randomSeed: 1,
-      }),
-      graph(
-        [white, lamp, out, ...others],
-        [edge("e_white", [white.id, "out"], [lamp.id, "input"]), edge("e_lamp", [lamp.id, "out"], [out.id, "input"])],
-      ),
-    ),
+  return serializeProjectDocument(lampDocument(brightness, others, also));
+}
+
+/**
+ * THE CONSUMER'S RETAINED `0` (§T1641b slice 3): a boolean driven by an expression whose
+ * kept static is a number. A Circle straight into the Output, 16×8, so Aspect Correct is
+ * the picture: on, the dot is round and four pixels wide; off, it is twice that.
+ */
+export const DOT = "circle_dot";
+export const DOT_OUTPUT = "output_out";
+
+/** The dot document: `aspectcorrect` as given. */
+export function dotDocument(aspectcorrect: StoredParameter): ProjectDocument {
+  const dot = named("dot", "circle", [0, 0], { softness: 0, fillcolor: [1, 1, 1, 1], bgcolor: [0, 0, 0, 1] }, { parameters: { aspectcorrect } });
+  const out = named("out", "output", [300, 0]);
+  return document(
+    "t1641b-dot",
+    "T1641b dot",
+    settings({
+      outputResolution: { width: 16, height: 8 },
+      workingFormat: "rgba8unorm",
+      colorPolicy: { workingSpace: "linear", displayTransform: "none" },
+      previewLongEdge: 16,
+      randomSeed: 1,
+    }),
+    graph([dot, out], [edge("e_dot", [dot.id, "out"], [out.id, "input"])]),
   );
 }
 
@@ -97,26 +130,29 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   return vec4f(color.rgb * params.eyeColor + params.eyesAt, color.a);
 }`;
 
-/** The saved bytes of the haze document: the shader, and whatever is stored beside it. */
-export function hazeFile(stored: Readonly<Record<string, StoredParameter>>, source: string = HAZE_SHADER): string {
+/** The haze document as its build script holds it: the shader, and whatever is stored beside it. */
+export function hazeDocument(stored: Readonly<Record<string, StoredParameter>>, source: string = HAZE_SHADER): ProjectDocument {
   const white = named("white", "solid", [0, 0], { color: [1, 1, 1, 1] });
   const haze = named("haze", "customWgsl", [300, 0], {}, { parameters: { source, ...stored } });
   const out = named("out", "output", [600, 0]);
-  return serializeProjectDocument(
-    document(
-      "t1641b-haze",
-      "T1641b haze",
-      settings({
-        outputResolution: { width: 8, height: 8 },
-        workingFormat: "rgba8unorm",
-        colorPolicy: { workingSpace: "linear", displayTransform: "none" },
-        previewLongEdge: 8,
-        randomSeed: 1,
-      }),
-      graph(
-        [white, haze, out],
-        [edge("e_white", [white.id, "out"], [haze.id, "input"]), edge("e_haze", [haze.id, "out"], [out.id, "input"])],
-      ),
+  return document(
+    "t1641b-haze",
+    "T1641b haze",
+    settings({
+      outputResolution: { width: 8, height: 8 },
+      workingFormat: "rgba8unorm",
+      colorPolicy: { workingSpace: "linear", displayTransform: "none" },
+      previewLongEdge: 8,
+      randomSeed: 1,
+    }),
+    graph(
+      [white, haze, out],
+      [edge("e_white", [white.id, "out"], [haze.id, "input"]), edge("e_haze", [haze.id, "out"], [out.id, "input"])],
     ),
   );
+}
+
+/** Its saved bytes, through the save that checks nothing. */
+export function hazeFile(stored: Readonly<Record<string, StoredParameter>>, source: string = HAZE_SHADER): string {
+  return serializeProjectDocument(hazeDocument(stored, source));
 }

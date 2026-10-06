@@ -5,7 +5,9 @@ import type { CompiledGraph } from "../../compiler/types.ts";
 import type { BackendCapabilities, LogicalExecutionPlan } from "../../domain/types/backend.ts";
 import type { TransportSource } from "../../domain/types/frame.ts";
 import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
-import { leavesPlanUsable } from "../../domain/diagnostics/classes.ts";
+import { diagnosticClass, leavesPlanUsable, stopsFinalRender, type DiagnosticClass } from "../../domain/diagnostics/classes.ts";
+import { describeFinding, documentFindings } from "../../compiler/document-findings.ts";
+import { isParameterSlot } from "../../domain/parameters/slots.ts";
 import type { GraphDocument, GraphNode, ProjectSettings } from "../../domain/types/graph.ts";
 import { projectFps } from "../../domain/types/graph.ts";
 import type { NodeDefinition, TextureFormat } from "../../domain/types/node-definition.ts";
@@ -133,6 +135,23 @@ export interface HeadlessRenderRequest {
    * it: an expectation nothing meets is a test that stopped testing.
    */
   readonly expectedFindings?: ReadonlyArray<string>;
+  /**
+   * §T1641b slice 3: A FINAL RENDER'S RULE. The frames are about to be trusted (a film
+   * frame, a thumbnail, a measurement), so the render fails on everything
+   * `stopsFinalRender` names, wherever it was said: of the document at rest, by the
+   * structural plan, by the device, and AT ANY FRAME. That is every error; everything that
+   * can never take effect, a payload a slot only keeps included; everything still waiting
+   * (a channel not published at that frame: a final render has no "later"); an expression
+   * with no finite answer at a frame; and a code nobody classed. And it refuses to render a
+   * document that holds expression slots with `animate` off, which would be frames of
+   * stored values.
+   *
+   * Off, the default, a render stops on an error and returns the rest in `findings`: a
+   * document that reads a live publisher this process does not have (a Person Mask's
+   * `coverage`) is a legitimate thing to render and measure. A finding named in
+   * `expectedFindings` is let through either way.
+   */
+  readonly strict?: boolean;
   /**
    * T1604b: one device render pass PER DRAW (`backend.setExactPassTiming(true)`), the way
    * every frame was encoded before a run of draws shared a pass. The picture must be the
@@ -301,6 +320,16 @@ export interface HeadlessRenderResult {
    * was byte-identical to one step).
    */
   readonly diagnostics: ReadonlyArray<RuntimeDiagnostic>;
+  /**
+   * §T1641b slice 3: EVERYTHING SAID ABOUT THIS RENDER, once each, with where it was first
+   * said. `diagnostics` above is the structural plan's and the device's, as it always was;
+   * a warning only a frame shows (a channel not published at that frame, an expression with
+   * no finite answer at it) was computed on every frame and read by nobody. Here are: what
+   * `documentFindings` says of the document at rest, a kept payload included; the device's;
+   * every frame's plan and value graph; and the harness's own remark on its request
+   * (`harness.animateOff`). Deduplicated by code, node and message.
+   */
+  readonly findings: ReadonlyArray<RenderFinding>;
   /** T741: the requested probeBuffers, read after the final frame, keyed by resource id. */
   readonly buffers?: Readonly<Record<string, ArrayBuffer>>;
   /**
@@ -309,6 +338,29 @@ export interface HeadlessRenderResult {
    */
   readonly bufferFrames?: ReadonlyArray<ProbedFrame>;
 }
+
+/** §T1641b slice 3: one thing said about a render, and where it was first said. */
+export interface RenderFinding {
+  readonly diagnostic: RuntimeDiagnostic;
+  /** `diagnosticClass(diagnostic.code)`. */
+  readonly class: DiagnosticClass | "unclassified";
+  /**
+   * The first frame it appeared at; `null` when it was said before any frame was stepped:
+   * of the document at rest, by the structural plan, or of the request itself.
+   */
+  readonly frame: number | null;
+  /** About a payload a slot only keeps (`parameter.retained`): this render never read it. */
+  readonly retained: boolean;
+}
+
+/**
+ * §T1641b slice 3 — THE ANIMATE TRAP, as a finding. `renderHeadless` evaluates expression
+ * slots per frame only with `animate: true`. Without it every frame is compiled once, at
+ * the zero frame and with no channels: `time * 2` is 0 on frame 300, and a read of a
+ * channel is the slot's stored value. The pictures are plausible (twenty minutes of
+ * "walking" were once measured on a robot standing still), so the render says so.
+ */
+export const ANIMATE_OFF_CODE = "harness.animateOff";
 
 /** T1585b: what the probed buffers held after one frame, keyed by resource id. */
 export interface ProbedFrame {
@@ -839,7 +891,20 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
   const backend = createVgpuBackend({ host: request.host });
   if (request.exactPassTiming === true) backend.setExactPassTiming(true);
   const diagnostics: RuntimeDiagnostic[] = [];
-  backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+  /**
+   * §T1641b slice 3: everything said about this render, once each (code, node, message),
+   * with the first frame it was said at. `frameNow` is null until the first frame is stepped.
+   */
+  const found = new Map<string, RenderFinding>();
+  let frameNow: number | null = null;
+  const note = (diagnostic: RuntimeDiagnostic, retained = false): void => {
+    const key = `${diagnostic.code}|${diagnostic.nodeId ?? ""}|${diagnostic.message}`;
+    if (!found.has(key)) found.set(key, { diagnostic, class: diagnosticClass(diagnostic.code), frame: frameNow, retained });
+  };
+  backend.onDiagnostic((diagnostic) => {
+    diagnostics.push(diagnostic);
+    note(diagnostic);
+  });
   try {
     // §V12: compile against the capabilities the DEVICE reports, never against assumed
     // ones. A device without float32-filterable must produce a plan that says so.
@@ -927,10 +992,11 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
      */
     const described = (diagnostic: RuntimeDiagnostic): string => {
       const node = diagnostic.nodeId === undefined ? undefined : logicalGraph.nodes[diagnostic.nodeId];
-      const where =
-        diagnostic.nodeId === undefined ? "" : `"${node?.label ?? diagnostic.nodeId}"${node === undefined ? "" : ` (${node.type})`}: `;
-      const said = /[.!?]$/.test(diagnostic.message) ? diagnostic.message : `${diagnostic.message}.`;
-      return `${diagnostic.code}: ${where}${diagnostic.suggestion === undefined ? diagnostic.message : `${said} ${diagnostic.suggestion}`}`;
+      return describeFinding({
+        diagnostic,
+        node: node === undefined ? undefined : { id: node.id, name: node.label ?? node.id, type: node.type },
+        component: undefined,
+      });
     };
     const compileSegment = (state: TimelineStructureState | null): { request: CompileRequest; plan: CompiledGraph } => {
       const segmentRequest = state === null ? baseRequest : timelineStructureRequest(baseRequest, state);
@@ -943,6 +1009,81 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
     };
     const first = compileSegment(firstState);
     const plan = first.plan;
+
+    /**
+     * §T1641b slice 3 — THE DOCUMENT AT REST, before a frame is stepped. `documentFindings`
+     * is the write gate asked of everything the document stores, with this compile's own
+     * report: a script's document never met the bus, so this is where it is judged.
+     *
+     * What it adds to the compile above is what only the write gate checks. A wrong thing
+     * IN EFFECT in the document's own graph (a pulse stored armed, a payload under another
+     * mode's binding) stops the render as a compile error does. A payload a slot only KEEPS
+     * (`parameter.retained`) and a finding inside a component definition's own graph are
+     * returned and do not stop it: this render never reads the first, and reads the second
+     * only through an instance, which the compile has judged. `strict` stops on both.
+     *
+     * The node catalogue here is the bare one, so a component INSTANCE's own page is not
+     * re-read (the flattening reads it); a definition's inner nodes are.
+     */
+    const strict = request.strict === true;
+    const atRest = documentFindings({
+      graph: request.graph,
+      settings,
+      registry: registry(request.nodes),
+      ...(request.components === undefined ? {} : { components: request.components }),
+      capabilities,
+      compiled: { plan, flattened },
+    });
+    const refusedAtRest: string[] = [];
+    for (const finding of atRest) {
+      note(finding.diagnostic, finding.retained);
+      if (plan.diagnostics.includes(finding.diagnostic)) continue; // the compile's own, judged above
+      // `stops` also records a finding the caller named, which is then met.
+      const stopping = stops(finding.diagnostic);
+      if (stopping && !finding.retained && finding.component === undefined) refusedAtRest.push(describeFinding(finding));
+    }
+    if (refusedAtRest.length > 0) {
+      throw new Error(`The document holds what the write gate refuses: ${refusedAtRest.join("; ")}`);
+    }
+
+    /**
+     * §T1641b slice 3 — THE ANIMATE TRAP. Without `animate` no expression is evaluated per
+     * frame: the one structural compile above resolved each at the zero frame with no
+     * channels, and every frame of this render carries those values.
+     */
+    if (request.animate !== true) {
+      const holders: string[] = [];
+      let slots = 0;
+      for (const node of Object.values(logicalGraph.nodes)) {
+        const held = Object.values(node.parameters).filter((stored) => isParameterSlot(stored) && stored.mode === "expression").length;
+        if (held === 0) continue;
+        slots += held;
+        holders.push(node.label ?? node.id);
+      }
+      if (slots > 0) {
+        const named = holders.slice(0, 3).map((name) => `"${name}"`).join(", ");
+        const others = holders.length > 3 ? ` and ${holders.length - 3} more` : "";
+        note({
+          // An ERROR under `strict`, which is the caller saying these frames will be trusted.
+          severity: strict ? "error" : "warning",
+          code: ANIMATE_OFF_CODE,
+          message:
+            `This render holds ${slots} expression slot${slots === 1 ? "" : "s"} on ${holders.length} node${holders.length === 1 ? "" : "s"} (${named}${others}) and animate is off: ` +
+            "none is evaluated per frame. Every frame carries each one's value at the zero frame, or its stored value where it reads a channel.",
+          suggestion: "Pass animate: true.",
+        });
+      }
+    }
+
+    /** `strict`: what a final render cannot carry, unless the caller named it. */
+    const stopsStrict = (finding: RenderFinding): boolean =>
+      strict && stopsFinalRender(finding.diagnostic) && !expectedFindings.has(finding.diagnostic.code);
+    const describedAt = (finding: RenderFinding): string =>
+      `${finding.frame === null ? "before the first frame" : `frame ${finding.frame}`}: ${described(finding.diagnostic)}`;
+    const refusedBeforeFrames = [...found.values()].filter(stopsStrict);
+    if (refusedBeforeFrames.length > 0) {
+      throw new Error(`A strict render stops on what a final render cannot carry:\n${refusedBeforeFrames.map(describedAt).join("\n")}`);
+    }
     /** §T1537b: the segment the backend holds, its request and plan — moved by every crossing. */
     let installedState = firstState;
     let liveRequest = first.request;
@@ -1163,6 +1304,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                * first frame; warnings travel with the result's diagnostics, once each.
                */
               for (const diagnostic of evaluated.diagnostics) {
+                note(diagnostic);
                 const key = `${diagnostic.code}|${diagnostic.nodeId ?? ""}|${diagnostic.message}`;
                 if (stops(diagnostic)) {
                   if (!perFrameErrors.has(key)) perFrameErrors.set(key, { frameIndex: inputs.frame.frameIndex, diagnostic });
@@ -1214,6 +1356,9 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                * the first frame each one appeared on.
                */
               for (const diagnostic of next.diagnostics) {
+                // §T1641b slice 3: every one is kept, with the frame it first appeared at. A
+                // warning only a frame shows had no reader at all.
+                note(diagnostic);
                 if (!stops(diagnostic)) continue;
                 const key = `${diagnostic.code}|${diagnostic.nodeId ?? ""}|${diagnostic.message}`;
                 if (!perFrameErrors.has(key)) {
@@ -1233,6 +1378,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       // T1132: see `frameLoopBreather` — the loop must let the process answer.
       await breathe();
       steppingFrame = index;
+      frameNow = index;
       // T661: the pointer for THIS frame is set before the step that reads it, and
       // what gets recorded is the state the engine actually read — the audio seam's
       // record-what-crossed contract, pointer edition.
@@ -1305,6 +1451,12 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
     if (unmet.length > 0) {
       throw new Error(`The render was expected to report ${unmet.map((code) => `"${code}"`).join(", ")} and never did.`);
     }
+    // §T1641b slice 3: `strict` is the same question asked of every frame. What was said
+    // before the first one already stopped the render above; these appeared while it ran.
+    const refusedInFrames = [...found.values()].filter(stopsStrict);
+    if (refusedInFrames.length > 0) {
+      throw new Error(`A strict render stops on what a final render cannot carry:\n${refusedInFrames.map(describedAt).join("\n")}`);
+    }
 
     const probed: Record<string, ArrayBuffer> = {};
     for (const resourceId of request.probeBuffers ?? []) {
@@ -1330,6 +1482,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
         ...valueWarnings.values(),
         ...[...metFindings.values()].filter((met) => !plan.diagnostics.some((said) => said.code === met.code && said.nodeId === met.nodeId && said.message === met.message)),
       ],
+      findings: [...found.values()],
     };
   } finally {
     backend.dispose();

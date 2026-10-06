@@ -3,11 +3,12 @@ import { Buffer } from "node:buffer";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { diagnosticClass } from "../../domain/diagnostics/classes.ts";
+import { serializeProjectDocument } from "../../domain/project/serialize.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { expressionSlot } from "../../examples/documents/builders.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
-import { HAZE, HAZE_OUTPUT, LAMP, LAMP_OUTPUT, boundTo, hazeFile, lampFile, openedFile, openedLamp } from "../fixtures/never-effective.ts";
-import { renderHeadless } from "./render-harness.ts";
+import { DOT_OUTPUT, HAZE, HAZE_OUTPUT, LAMP, LAMP_OUTPUT, boundTo, dotDocument, hazeFile, lampFile, openedFile, openedLamp } from "../fixtures/never-effective.ts";
+import { ANIMATE_OFF_CODE, renderHeadless } from "./render-harness.ts";
 
 /**
  * §T1641b slice 1 / §B262 — A DOCUMENT WHOSE EXPRESSION CALLS A FUNCTION THE GRAMMAR DOES
@@ -256,5 +257,111 @@ describe("§B264 — a document built by code that drives eyeColor.x on a colour
     expect(driven.diagnostics.filter((d) => d.severity === "error" || d.code.startsWith("parameter."))).toEqual([]);
     expect(Buffer.compare(driven.bytes, (await renderHaze({ eyeColor: black, eyesAt: [0.5, 0, 0] })).bytes)).toBe(0);
     expect(Buffer.compare(driven.bytes, (await renderHaze({ eyeColor: black })).bytes)).not.toBe(0);
+  }, 60_000);
+});
+
+/**
+ * §T1641b slice 3 — A PAYLOAD A SLOT ONLY KEEPS. The consumer's file held one for a day: a
+ * boolean (`reset`) driven by an expression, whose kept static was the number 0. The write
+ * gate refuses that slot; nothing a document built by code met ever looked at it.
+ *
+ * It is not the value in effect, so it must not stop a render that never reads it; and the
+ * day something does read it, it is not what stands in. Both, from pixels: the dot is a
+ * Circle on a 16×8 target, and Aspect Correct, the boolean, is the picture.
+ */
+describe("slice 3 — a document built by code whose slot keeps a value of another type", () => {
+  /** An expression waiting on a node that is not in the document: the kept value is read. */
+  const WAITING = "op('slider_absent').par.value";
+
+  async function draw(aspectcorrect: StoredParameter, strict = false) {
+    const opened = openedFile(serializeProjectDocument(dotDocument(aspectcorrect)));
+    const result = await renderHeadless({
+      host: nodeGpuHost(),
+      graph: opened.graph,
+      settings: opened.settings,
+      outputNodeId: DOT_OUTPUT,
+      frames: 2,
+      animate: true,
+      ...(strict ? { strict } : {}),
+    });
+    const frame = result.frames[0];
+    if (frame === undefined) throw new Error("no frame captured");
+    return { bytes: Buffer.from(frame.bytes), findings: result.findings.map((finding) => [finding.diagnostic.code, finding.retained, finding.class, finding.frame]) };
+  }
+
+  it("renders, never reading it: the picture is the driven one, and the finding comes back as kept", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    const on = await draw(true);
+    const off = await draw(false);
+    // The boolean is the picture, or nothing below says anything.
+    expect(Buffer.compare(on.bytes, off.bytes)).not.toBe(0);
+
+    const kept = await draw(expressionSlot("1", 0));
+    expect(Buffer.compare(kept.bytes, on.bytes)).toBe(0);
+    expect(kept.findings).toEqual([["parameter.retained", true, "never", null]]);
+    // The legitimate slot: the same expression over a kept value of the parameter's own type.
+    const right = await draw(expressionSlot("1", false));
+    expect(Buffer.compare(right.bytes, on.bytes)).toBe(0);
+    expect(right.findings).toEqual([]);
+  }, 60_000);
+
+  it("the day it is read the DEFAULT stands in, not what was written: why it can never take effect", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    const on = await draw(true);
+    const off = await draw(false);
+    // Kept in the parameter's own type, what was written is what the fallback gives: off.
+    const right = await draw(expressionSlot(WAITING, false));
+    expect(Buffer.compare(right.bytes, off.bytes)).toBe(0);
+    // Kept as the number 0, which its author meant as off: the ladder refuses it and the
+    // default, ON, is the picture. Nothing said so until this finding.
+    const kept = await draw(expressionSlot(WAITING, 0));
+    expect(Buffer.compare(kept.bytes, on.bytes)).toBe(0);
+    expect(kept.findings).toEqual([
+      ["parameter.reference.node", false, "notYet", null],
+      ["parameter.retained", true, "never", null],
+    ]);
+  }, 60_000);
+
+  it("stops a strict render before its first frame, by the node's name and the type to keep", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    await expect(draw(expressionSlot("1", 0), true)).rejects.toThrow(
+      /before the first frame: parameter\.retained: "circle_dot" \(circle\): Parameter "aspectcorrect" is in expression mode and keeps a static payload it cannot take: .* Keep true or false as the static value/,
+    );
+    // And lets the right slot through.
+    expect((await draw(expressionSlot("1", false), true)).findings).toEqual([]);
+  }, 60_000);
+});
+
+/**
+ * §T1641b slice 3 — THE ANIMATE TRAP, from pixels. `renderHeadless` evaluates expression
+ * slots per frame only with `animate: true`. Without it frame 2 of a lamp that rises with
+ * the clock is the lamp at the zero frame: black, plausibly.
+ */
+describe("slice 3 — a render of expression slots with animate off is frames of the zero frame", () => {
+  /** 0 at frame 0 and 1 at frame 2, at the document's 60 frames a second. */
+  const RISES = "abstime * 30";
+
+  async function frame2(brightness: StoredParameter, animate: boolean) {
+    const opened = openedLamp(lampFile(brightness));
+    const result = await renderHeadless({ host: nodeGpuHost(), graph: opened.graph, settings: opened.settings, outputNodeId: LAMP_OUTPUT, frames: 3, ...(animate ? { animate } : {}) });
+    const frame = result.frames[0];
+    if (frame === undefined || frame.frameIndex !== 2) throw new Error("frame 2 was not captured");
+    return { bytes: Buffer.from(frame.bytes), trap: result.findings.filter((finding) => finding.diagnostic.code === ANIMATE_OFF_CODE) };
+  }
+
+  it("carries the zero frame's value on frame 2, says so, and with animate on carries the frame's own", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    const dark = await frame2(0, false);
+    const lit = await frame2(1, false);
+    expect(Buffer.compare(dark.bytes, lit.bytes)).not.toBe(0);
+
+    const still = await frame2(expressionSlot(RISES, 0.5), false);
+    expect(Buffer.compare(still.bytes, dark.bytes)).toBe(0);
+    expect(still.trap.map((finding) => [finding.diagnostic.severity, finding.class])).toEqual([["warning", "act"]]);
+    expect(still.trap[0]?.diagnostic.message).toContain('1 expression slot on 1 node ("level_lamp") and animate is off');
+
+    const moving = await frame2(expressionSlot(RISES, 0.5), true);
+    expect(Buffer.compare(moving.bytes, lit.bytes)).toBe(0);
+    expect(moving.trap).toEqual([]);
   }, 60_000);
 });

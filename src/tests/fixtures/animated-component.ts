@@ -85,8 +85,8 @@ export const driven = (channel: string, retained: number): StoredParameter => ({
   },
 });
 
-/** An expression slot with its retained static beside it (§V108). */
-export const expression = (source: string, retained: number): StoredParameter => ({
+/** An expression slot with its retained static beside it (§V108), in its parameter's own type. */
+export const expression = (source: string, retained: number | boolean): StoredParameter => ({
   mode: "expression",
   bindings: {
     expression: { kind: "expression", source },
@@ -127,7 +127,9 @@ export function animatedComponentDefinition(): GraphComponentDefinition {
               // so "after 0.25s" is written as a sign step: 0 up to the crossing, 1 after.
               // `isPulseArmed` takes any non-zero number, and the watcher is edge-triggered,
               // so this fires EXACTLY ONCE per instance and then holds.
-              resetPulse: expression(`max(0, sign(time - ${String(PULSE_CROSSES_AT_SECONDS)}))`, 0),
+              // It keeps `false`: a pulse's own type (§V124). It kept the number 0, which the
+              // write gate refuses (§T1641b slice 3 found it by reading every fixture's slots).
+              resetPulse: expression(`max(0, sign(time - ${String(PULSE_CROSSES_AT_SECONDS)}))`, false),
             },
           }),
         ].map((entry) => [entry.id, entry]),

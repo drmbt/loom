@@ -1,6 +1,7 @@
 import type { NodeId } from "../types/ids.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type {
+  ParameterBinding,
   ParameterDefinition,
   ParameterSchema,
   ParameterValue,
@@ -311,20 +312,10 @@ export function validateParameters(
 ): RuntimeDiagnostic[] {
   const diagnostics: RuntimeDiagnostic[] = [];
   for (const key of Object.keys(values).sort()) {
-    let definition = schema[key];
+    const definition = definitionOfKey(schema, key);
     if (definition === undefined) {
-      // A component key (`color.r`, §V113) validates against the derived scalar
-      // definition of its channel — it is not an unknown parameter.
-      const parsed = parseComponentKey(key);
-      const base = parsed === null ? undefined : schema[parsed.base];
-      const names = base === undefined ? null : componentNamesFor(base);
-      const index = parsed === null || names === null ? -1 : names.indexOf(parsed.component);
-      if (base !== undefined && index >= 0 && parsed !== null) {
-        definition = componentDefinition(base, parsed.component, index);
-      } else {
-        diagnostics.push(undeclaredParameter(schema, key, nodeId, { keysNote }));
-        continue;
-      }
+      diagnostics.push(undeclaredParameter(schema, key, nodeId, { keysNote }));
+      continue;
     }
     const value = values[key];
     if (value === undefined) {
@@ -338,6 +329,21 @@ export function validateParameters(
 }
 
 /**
+ * The definition a stored key is checked against: the parameter's own, or, for a component
+ * key (`color.r`, §V113), the derived scalar definition of its channel, which is not an
+ * unknown parameter. Undefined for a key the schema does not declare.
+ */
+export function definitionOfKey(schema: ParameterSchema, key: string): ParameterDefinition | undefined {
+  const own = schema[key];
+  if (own !== undefined) return own;
+  const parsed = parseComponentKey(key);
+  const base = parsed === null ? undefined : schema[parsed.base];
+  const names = base === undefined ? null : componentNamesFor(base);
+  const index = parsed === null || names === null ? -1 : names.indexOf(parsed.component);
+  return base !== undefined && index >= 0 && parsed !== null ? componentDefinition(base, parsed.component, index) : undefined;
+}
+
+/**
  * Validates one stored parameter — a bare value or a mode envelope (T202).
  *
  * A slot is checked at WRITE time in every retained mode, not just the active one
@@ -346,6 +352,7 @@ export function validateParameters(
  * here is what lets the resolver treat retained payloads as trustworthy fallbacks.
  * Whether a bind's TARGET exists is resolution's business (a sibling may arrive in the
  * same patch); whether the chain cycles is the patch gate's (`bindCycleDiagnostics`).
+ * `storedParameterFindings`, below, is the gate itself.
  */
 function storedPulseValue(
   key: string,
@@ -361,96 +368,191 @@ function storedPulseValue(
   );
 }
 
+/** The write gate's verdict on one stored parameter: its first finding, or null. */
 export function validateStoredParameter(
   key: string,
   definition: ParameterDefinition,
   stored: StoredParameter,
   nodeId?: NodeId,
 ): RuntimeDiagnostic | null {
+  return storedParameterFindings(key, definition, stored, nodeId)[0]?.diagnostic ?? null;
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ * §T1641b slice 3 — A SLOT'S ACTIVE PAYLOAD, AND THE PAYLOADS IT KEEPS
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ *
+ * A slot holds a payload for every mode it has been in and reads ONE: its mode's. The rest
+ * are kept (§V108). The static value is what stands in when an expression, a bind or a
+ * channel gives nothing, and what every reader but the mapped one uses under a map; an
+ * expression kept under Constant mode is read by nobody until the mode is switched back.
+ *
+ * So a payload the gate refuses is one of two findings. Under the slot's own mode it is the
+ * finding it always was (`parameter.type`: the default really is what renders). Under
+ * another mode it is `parameter.retained`: as the document stands nothing reads it, and the
+ * day something would (the expression's channel is not published, the mode is switched
+ * back) the fallback ladder refuses it and the DEFAULT stands in, with nothing said. It is
+ * `never` and `local` in the class table: reported as an error, and the plan it sits in
+ * stays usable, because the picture does not depend on it.
+ *
+ * The write gate refuses both. A document at rest reports both (`documentFindings`), and
+ * only the first can stop a picture.
+ */
+export interface StoredParameterFinding {
+  readonly diagnostic: RuntimeDiagnostic;
+  /** True when the finding is about a payload the slot keeps for a mode it is not in. */
+  readonly retained: boolean;
+}
+
+/** What a parameter of this type holds, as a refusal names it. */
+function expectedValue(definition: ParameterDefinition): string {
+  switch (definition.type) {
+    case "number":
+      return "a finite number";
+    case "boolean":
+      return "true or false";
+    case "pulse":
+      return "false (a pulse is never stored armed)";
+    case "enum":
+      return `one of ${definition.options.map((option) => `"${option.value}"`).join(", ")}`;
+    case "color":
+      return "a colour, [r, g, b, a]";
+    case "vector":
+      return `${definition.size} numbers`;
+    case "string":
+    case "code":
+      return "a string";
+    case "asset":
+      return "an asset id or null";
+    default:
+      return `a ${definition.type} value`;
+  }
+}
+
+/** The finding for a payload a slot keeps and its mode does not read. */
+function retainedPayload(
+  key: string,
+  definition: ParameterDefinition,
+  slotMode: string,
+  kept: string,
+  inner: RuntimeDiagnostic,
+  nodeId?: NodeId,
+): RuntimeDiagnostic {
+  const standsIn = slotMode === "map" ? "it is what every reader but the mapped one uses" : `it is what stands in when the ${slotMode} gives nothing`;
+  const remedy =
+    kept === "static"
+      ? `Keep ${expectedValue(definition)} as the static value: ${standsIn}, and as stored the default stands in for it.`
+      : `Correct the kept ${kept} payload, or store the slot without it: nothing reads it in ${slotMode} mode, and switching the mode back would bring it into effect.`;
+  return error(
+    "parameter.retained",
+    `Parameter "${key}" is in ${slotMode} mode and keeps a ${kept} payload it cannot take: ${inner.message}`,
+    nodeId,
+    inner.suggestion === undefined ? remedy : `${inner.suggestion} ${remedy}`,
+  );
+}
+
+/** What is wrong with ONE payload of a slot, stored under `mode`. Null when nothing is. */
+function payloadProblem(
+  key: string,
+  definition: ParameterDefinition,
+  mode: string,
+  binding: ParameterBinding,
+  nodeId?: NodeId,
+): RuntimeDiagnostic | null {
+  if (binding.kind !== mode) {
+    return error("parameter.slot.shape", `Parameter "${key}" stores a ${binding.kind} payload under its ${mode} binding.`, nodeId);
+  }
+  switch (binding.kind) {
+    case "static":
+      return definition.type === "pulse"
+        ? storedPulseValue(key, binding.value, nodeId)
+        : validateParameterValue(key, definition, binding.value, nodeId);
+    case "expression": {
+      const parsed = parseExpression(binding.source);
+      if (!parsed.ok) {
+        // §T1641b: with what to write instead, when the grammar can say (`pow(a, b)`: `a ^ b`).
+        return error(
+          "parameter.expression.syntax",
+          `Parameter "${key}" expression "${binding.source}" does not parse: ${parsed.reason}`,
+          nodeId,
+          parsed.suggestion,
+        );
+      }
+      // §B266: no expression can drive a parameter of this type, whatever it evaluates to.
+      // The resolver says the same of one already stored (`parameter.expression.type`).
+      if (!EXPRESSION_DRIVEN_TYPES.has(definition.type)) {
+        return error(
+          "parameter.expression.type",
+          `Parameter "${key}" expression "${binding.source}": a "${definition.type}" parameter cannot take an expression (§V107).`,
+          nodeId,
+          `Leave "${key}" in Constant mode.`,
+        );
+      }
+      return null;
+    }
+    case "bind":
+      return binding.ref.trim().length === 0 ? error("parameter.bind.empty", `Parameter "${key}" has an empty bind ref.`, nodeId) : null;
+    case "driven":
+      return binding.channel.trim().length === 0
+        ? error("parameter.driven.empty", `Parameter "${key}" has an empty channel name.`, nodeId)
+        : null;
+    case "map":
+      // T286/§V288: STORAGE is legal on any parameter — a consumer that cannot
+      // honour it fails loudly at compile. Only a malformed payload is refused here.
+      return binding.attribute.trim().length === 0
+        ? error("parameter.map.empty", `Parameter "${key}" maps an empty attribute name.`, nodeId)
+        : null;
+    default: {
+      const never: never = binding;
+      void never;
+      return null;
+    }
+  }
+}
+
+/**
+ * Every finding of the write gate about one stored parameter, each with the payload it is
+ * about, in the order the gate has always read a slot: its payloads by mode name, then a
+ * mode with no payload.
+ */
+export function storedParameterFindings(
+  key: string,
+  definition: ParameterDefinition,
+  stored: StoredParameter,
+  nodeId?: NodeId,
+): StoredParameterFinding[] {
   if (!isParameterSlot(stored)) {
     // §V124: an ARMED pulse in the document would re-fire on every open and wipe the
     // work the project was opened to continue. Refusing it here is what makes that
     // impossible structurally, rather than a rule somebody has to remember.
-    if (definition.type === "pulse") return storedPulseValue(key, stored, nodeId);
-    return validateParameterValue(key, definition, stored, nodeId);
+    const invalid =
+      definition.type === "pulse" ? storedPulseValue(key, stored, nodeId) : validateParameterValue(key, definition, stored, nodeId);
+    return invalid === null ? [] : [{ diagnostic: invalid, retained: false }];
   }
 
+  const findings: StoredParameterFinding[] = [];
   for (const mode of Object.keys(stored.bindings).sort()) {
     const binding = stored.bindings[mode as keyof typeof stored.bindings];
     if (binding === undefined) continue;
-    if (binding.kind !== mode) {
-      return error(
-        "parameter.slot.shape",
-        `Parameter "${key}" stores a ${binding.kind} payload under its ${mode} binding.`,
-        nodeId,
-      );
-    }
-    switch (binding.kind) {
-      case "static": {
-        const invalid =
-          definition.type === "pulse"
-            ? storedPulseValue(key, binding.value, nodeId)
-            : validateParameterValue(key, definition, binding.value, nodeId);
-        if (invalid !== null) return invalid;
-        break;
-      }
-      case "expression": {
-        const parsed = parseExpression(binding.source);
-        if (!parsed.ok) {
-          return error(
-            "parameter.expression.syntax",
-            `Parameter "${key}" expression "${binding.source}" does not parse: ${parsed.reason}`,
-            nodeId,
-          );
-        }
-        // §B266: no expression can drive a parameter of this type, whatever it evaluates to.
-        // The resolver says the same of one already stored (`parameter.expression.type`).
-        if (!EXPRESSION_DRIVEN_TYPES.has(definition.type)) {
-          return error(
-            "parameter.expression.type",
-            `Parameter "${key}" expression "${binding.source}": a "${definition.type}" parameter cannot take an expression (§V107).`,
-            nodeId,
-            `Leave "${key}" in Constant mode.`,
-          );
-        }
-        break;
-      }
-      case "bind": {
-        if (binding.ref.trim().length === 0) {
-          return error("parameter.bind.empty", `Parameter "${key}" has an empty bind ref.`, nodeId);
-        }
-        break;
-      }
-      case "driven": {
-        if (binding.channel.trim().length === 0) {
-          return error("parameter.driven.empty", `Parameter "${key}" has an empty channel name.`, nodeId);
-        }
-        break;
-      }
-      case "map": {
-        // T286/§V288: STORAGE is legal on any parameter — a consumer that cannot
-        // honour it fails loudly at compile. Only a malformed payload is refused here.
-        if (binding.attribute.trim().length === 0) {
-          return error("parameter.map.empty", `Parameter "${key}" maps an empty attribute name.`, nodeId);
-        }
-        break;
-      }
-      default: {
-        const never: never = binding;
-        void never;
-      }
-    }
+    const invalid = payloadProblem(key, definition, mode, binding, nodeId);
+    if (invalid === null) continue;
+    const retained = mode !== stored.mode;
+    findings.push({ diagnostic: retained ? retainedPayload(key, definition, stored.mode, mode, invalid, nodeId) : invalid, retained });
   }
 
   if (stored.bindings[stored.mode] === undefined) {
-    return error(
-      "parameter.slot.empty",
-      `Parameter "${key}" is in ${stored.mode} mode but carries no ${stored.mode} payload.`,
-      nodeId,
-      "Author the payload, or switch the mode back (§V108 keeps the old one).",
-    );
+    findings.push({
+      diagnostic: error(
+        "parameter.slot.empty",
+        `Parameter "${key}" is in ${stored.mode} mode but carries no ${stored.mode} payload.`,
+        nodeId,
+        "Author the payload, or switch the mode back (§V108 keeps the old one).",
+      ),
+      retained: false,
+    });
   }
-  return null;
+  return findings;
 }
 
 /**

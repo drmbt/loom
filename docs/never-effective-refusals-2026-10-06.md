@@ -932,6 +932,39 @@ What the finding says (B264 (2)):
 
 **Not in this slice: the rest of the write gate, at rest.** `validateParameters` checks more than keys: every retained payload of a slot (a stored static of the wrong type under a working expression, a payload under another mode's binding, an armed pulse). Those codes withdraw the plan (`parameter.type` is not `local`, because for the ACTIVE value the default really is what renders), so running them at the compile would stop a shipped document on a value that is inert. `projects/sentinel-bot/sentinel.loom.json` holds one today. They need the document check of slice 3, which reports without deciding plan usability, and a way to tell an inert retained payload from the active one.
 
+### 8.4 Slice 3 as built
+
+**A slot's payload in effect, and the payloads it keeps.** A slot reads one payload, its mode's, and keeps the rest (§V108). `storedParameterFindings` (`src/domain/parameters/validate.ts`) is the write gate's whole verdict on one stored parameter, each finding marked with whether it is about a kept payload; `validateStoredParameter` is its first finding, so the bus refuses what it always refused.
+
+- A payload the gate refuses **under the slot's own mode** keeps its code (`parameter.type`, `parameter.range`, …). The default renders instead of it, and the plan is withdrawn, as before.
+- The same payload **under another mode** is `parameter.retained`: NEVER, `local`, an error. Nothing reads it as the document stands. The day something would (the expression waits on a node that is not there, the mode is switched back) the fallback ladder refuses it and the DEFAULT stands in, with nothing said: that is measured (a boolean kept as the number 0, which its author meant as off, renders ON). The finding names the type to keep.
+- One code at the write and at rest. The bus refused such a slot as `parameter.type`; it refuses it as `parameter.retained` now, since it is the same stored thing.
+- The write gate's `parameter.expression.syntax` carries the grammar's rewrite (`pow(a, b)`: `a ^ b`), which only the resolver's finding had.
+
+**`documentFindings`** (`src/compiler/document-findings.ts`) is one list of two things: the write gate over every stored node of the document's own graph and of every component definition in the catalogue, instanced or not; and the structural compile's diagnostics (wires, required inputs, loops, the flattening, each kept node's own compile, a cue list that follows the timeline). Each finding carries its class, `retained`, the node by name, the component it sits in, and `unreached` (no sink reaches the node). It reports and decides nothing. One stored thing is one finding: where the compile's resolver already says a code for a key, the gate's twin is dropped.
+
+Not read yet, each with its slice: a bank's targets, values and recalls, a live cue list (7); a definition's own validation, an instance's override paths (8); a map on a node that maps nothing, a wire a port cannot bind (5); duplicate names and connections (10); a Value Expression's statements (6). `project.validate` is not its face on the bus yet.
+
+**The save and the load for code.** `refusedAtCodeSave` is the rule: class NEVER at any severity (a kept payload included), an unclassified code, and an ERROR on a node a sink reaches (ruling 12). Let through: NOT YET that is not an error, ELSEWHERE, DEGRADED, ADVICE, and an error on a branch no sink reaches. This differs from §4.2 in one row: ELSEWHERE (build) is not refused by class. A type this build lacks is an error, so it is refused in the picture's path and let through beside it.
+
+- `buildCheckedProjectFile` and `serializeCheckedProject` (`src/examples/checked-project.ts`) throw `DocumentRefused`, listing every refused finding as `<code>: "<node>" (<type>): <message> <what to write>`, before a byte exists. What they let through they write byte for byte as the unchecked save does.
+- `requireExample` is the load: a script or test that reads a file to render it is refused the same findings. `runExample` still never throws, and carries `findings`.
+- The app's save is not this door (ruling 8). It writes the file and returns what the write gate says is NEVER (`storedNeverFindings`) in the save's result and the Problems list. It runs no compile: the app's own is live.
+- `never-effective.test.ts` fails any module under `src/examples` or `src/projects` that calls `serializeProjectDocument` or `buildProjectFile` itself, but the door and a strict ledger of one file (`src/projects/sentinel-bot/build.ts`, another session's). §4.2 planned an eslint zone; a ledger in the gate says who is waiting.
+
+**The builder.** `expressionSlot(source, retained)` and `drivenSlot` take `number | boolean | string | readonly number[]`. `retained: number` left a boolean no right way to be written. The wrong type still compiles: a slot is built before it has a key, and a node's parameters have no type per key. It is refused at the build, by the checked save, with the node, the parameter and the type to keep.
+
+**The harness reads every frame** (`render-harness.ts`).
+
+- `findings` in the result: everything said about the render, once each by code, node and message, with the first frame it appeared at (`null` before any frame). At rest (`documentFindings`), the device's, every frame's plan and value graph. `diagnostics` is unchanged.
+- At rest, a wrong thing IN EFFECT that only the write gate checks (a pulse stored armed, a payload under another mode's binding) stops the render. A kept payload and a finding inside a definition's own graph are returned and do not stop it.
+- `strict: true` fails the render on everything `stopsFinalRender` names, at rest or at any frame. `stopsFinalRender` now includes `parameter.expression.value`: the clause both project guards wrote by hand. `src/projects/on-nothing/render.ts` passes `strict` in place of its guard.
+- The animate trap: a render of a document that holds expression slots with `animate` off returns `harness.animateOff` (ACT, a warning; an error under `strict`, before a frame is stepped), with the count and up to three nodes named.
+
+**The shipped-set gate** reads `documentFindings` of all 112 documents, and three frames of each (0, 1 and 30) through the real value graph with every node's parameters resolved at the frame: no GPU and no plan, about a third of a second. No finding of class NEVER may appear, and what still waits at a frame is a ledger held exactly (four reads of a live publisher's channel).
+
+**The reasons left the app.** `classes.ts` was 47 % reason text (33.3 KB of 71.1 KB; minified 59.9 KB with it and 27.8 KB without, gzip 10.5 KB and 5.1 KB), and nothing in the product shows a reason. They are `class-reasons.ts`, held to the table in both directions by the gate, which also fails any other importer under `src/`.
+
 ## 9. Found on the way
 
 None was fixed: this phase changes nothing under `src/`, and none is small enough to be safe without a test.
