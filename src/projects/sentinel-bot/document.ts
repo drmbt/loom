@@ -742,8 +742,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    * puts that panel back. (One control at a time is the engine's to add; the lead has the row.)
    */
   const slidersSaved = (list: readonly Slider[]): Record<string, Record<string, number | boolean>> => Object.fromEntries(list.map((slider) => [slider.name, { value: slider.value }]));
-  /** The camera as the director has it: nothing flown onto its shot (cameraPose). */
-  const untrimmed: Record<string, Record<string, number[]>> = { camera_rig: { eye: [...UNTRIMMED.eye], lookAt: [...UNTRIMMED.lookAt] } };
+  /**
+   * The camera as the director has it: nothing flown onto its shot (cameraPose). By the keys a flight writes
+   * (camera-gizmo-store.ts): Eye whole, and of Look At, whose height and distance are driven, the one free channel
+   * by its own key. (Writing Look At whole would leave a flown `lookAt.x` standing over it.)
+   */
+  const untrimmed: Record<string, Record<string, number | number[]>> = { camera_rig: { eye: [...UNTRIMMED.eye], "lookAt.x": 0 } };
   const saved: ReadonlyArray<Record<string, Record<string, number | boolean | number[]>>> = [
     { ...slidersSaved(robotSliders), toggle_perch: { on: false }, toggle_follow: { on: true }, ...(ropes ? { toggle_ropes: { on: false } } : {}) },
     { ...slidersSaved(SCENE), slider_shot: { value: 0 }, toggle_cuts: { on: true }, xypad_view: { x: 1.1, y: 0.6 }, ...untrimmed },

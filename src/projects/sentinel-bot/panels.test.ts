@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { parsePresetBank } from "../../domain/presets/bank.ts";
 import { parseCueList } from "../../domain/presets/cue-list.ts";
 import { presetSession } from "../../domain/presets/test-support.ts";
+import { alice, contextFor, patch } from "../../domain/commands/test-support.ts";
+import { STORED_READ } from "../../domain/parameters/resolve.ts";
+import { poseFromFacts, readCameraPoseFacts } from "../../editor/viewer/camera-pose.ts";
+import { cameraNode } from "../../nodes/definitions/scene.ts";
 import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import type { GraphDocument, GraphNode } from "../../domain/types/graph.ts";
 import { panelBoard } from "../../nodes/definitions/controls.ts";
@@ -99,17 +103,12 @@ describe("the sentinel's panels", () => {
     const shown = (everything?.items ?? []).flatMap((item) => (item.kind === "widget" ? [item.node.label as string] : []));
     expect([...shown].sort()).toEqual([...all, ...PANELS.map((panel) => `presets_${panel}`), "presets_all", "presets_camera"].sort());
     expect(readPresetBank(named(graph, "presets_all")).presets.map((preset) => preset.name)).toEqual(["reset_all"]);
-    // THE CAMERA'S RESET takes off what a flight in the Viewer put on the director's shot, and nothing else: the
-    // camera's own Eye back to no offset and its Look At back to straight ahead (their stored vectors; the height and
-    // distance of the aim stay the expressions they are). The Scene's reset and the reset for everything do it too.
+    // THE CAMERA'S RESET holds the camera and nothing else, by the keys a flight writes (pressed, below): its own Eye
+    // at no offset, and Look At's one free channel at nothing across. The Scene's reset and the reset for everything
+    // carry the same two.
     const untrim = readPresetBank(named(graph, "presets_camera")).presets;
     expect(untrim.map((preset) => preset.name)).toEqual(["reset_camera"]);
-    expect(Object.keys(untrim[0]?.values ?? {})).toEqual(["camera_rig"]);
-    expect(untrim[0]?.values["camera_rig"]?.["eye"]).toEqual([0, 0, 0]);
-    expect((untrim[0]?.values["camera_rig"]?.["lookAt"] as number[])[0]).toBe(0);
-    const camera = named(graph, "camera_rig").parameters;
-    expect(untrim[0]?.values["camera_rig"]?.["eye"]).toEqual(camera["eye"]);
-    expect(untrim[0]?.values["camera_rig"]?.["lookAt"]).toEqual(camera["lookAt"]);
+    expect(untrim[0]?.values).toEqual({ camera_rig: { eye: [0, 0, 0], "lookAt.x": 0 } });
     for (const bank of ["presets_scene", "presets_all"]) expect(readPresetBank(named(graph, bank)).presets[0]?.values["camera_rig"]).toEqual(untrim[0]?.values["camera_rig"]);
     expect([...controlsOf(graph, "all")].sort()).toEqual([...all].sort());
     expect(everything?.columns).toBe(18);
@@ -186,4 +185,42 @@ describe("the sentinel's panels", () => {
     await session.recall(named(session.graph(), "presets_all").id, "reset_all");
     for (const panel of PANELS) expect(reading(session.graph(), panel)).toEqual(reading(shipped, panel));
   });
+});
+
+
+/**
+ * THE CAMERA'S RESET, PRESSED AFTER A FLIGHT, through the real bus. The camera's Look At is partly driven (its height
+ * and its distance are the director's expressions; across is free), so what a reset writes there matters: the gizmo
+ * writes a partly driven vector channel by channel, by `lookAt.x`, and never by the bare key (camera-gizmo-store.ts,
+ * putVector, §B219). A reset that wrote Look At whole would leave the flown `lookAt.x` standing, or take the
+ * expressions with it. The first build of this preset did write it whole.
+ */
+describe("the sentinel's camera comes back from a flight", () => {
+  const HELD = "Stays driven: Look At y (Expression), Look At z (Expression).";
+  for (const [bank, preset] of [["presets_camera", "reset_camera"], ["presets_scene", "reset_scene"], ["presets_all", "reset_all"]] as const) {
+    it(`${preset} takes off what the flight wrote, and the director's expressions are as they were`, async () => {
+      const session = presetSession(built(), registry);
+      const camera = (): GraphNode => named(session.graph(), "camera_rig");
+      const pose = (): { eye: readonly number[]; lookAt: readonly number[]; held: string } => {
+        const facts = readCameraPoseFacts(camera(), cameraNode, STORED_READ);
+        if (facts === null) throw new Error("the camera has no pose to fly");
+        return { ...poseFromFacts(facts), held: facts.held };
+      };
+      const before = structuredClone(camera().parameters);
+      expect(pose().held).toBe(HELD);
+      // A flight, as the gizmo writes one: Eye whole (all of it is free), and of Look At only its free channel, by its own key.
+      const flown = await session.bus.execute("graph.applyPatch", patch(session.store.view.getRevision(), [{ op: "setParameters", nodeId: camera().id, parameters: { eye: [0.8, 0.3, 1.5], "lookAt.x": -0.4 } }]), contextFor(alice));
+      expect(flown.status).toBe("applied");
+      expect(pose().eye).toEqual([0.8, 0.3, 1.5]);
+      expect(pose().lookAt[0]).toBe(-0.4);
+
+      await session.recall(named(session.graph(), bank).id, preset);
+      // No trim: the camera is the director's again.
+      expect(pose().eye).toEqual([0, 0, 0]);
+      expect(pose().lookAt[0]).toBe(0);
+      // …and it can still be flown, with the same two channels the director's: the recall took no expression with it.
+      expect(pose().held).toBe(HELD);
+      for (const key of ["origin.x", "origin.y", "origin.z", "heading.x", "heading.z", "lookAt.y", "lookAt.z", "fov"]) expect([key, camera().parameters[key]]).toEqual([key, before[key]]);
+    });
+  }
 });
