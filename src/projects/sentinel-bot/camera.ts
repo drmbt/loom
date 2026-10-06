@@ -111,6 +111,9 @@ export const PACK_ORDER: readonly number[] = ["packfront", "tail", "packquarter"
  */
 export const FIELD_ORDER: readonly number[] = ["fieldfront", "fieldtail", "fieldside", "fieldchase", "fieldlow", "fieldtips", "fieldhigh", "fieldwake"].map(index);
 
+/** The two shots of the glimpse of the fields, in order (director.ts, GLIMPSE): the place from above, then the three from in front. */
+export const GLIMPSE_SHOTS: readonly [number, number] = [index("fieldhigh"), index("fieldfront")];
+
 export function shotAtTurn(turn: number, pack = false, field = false): number {
   const order = field ? FIELD_ORDER : pack ? PACK_ORDER : ROBOT_ORDER;
   return order[((turn % order.length) + order.length) % order.length] as number;
@@ -169,7 +172,10 @@ export const CAMERA_STATEMENTS = [
   `turn = want`,
   `packed = (packing > 1.5)`,
   `fielded = (place > 0.5)`,
-  `cut = fielded * ${ordered(FIELD_ORDER, turnIn(FIELD_ORDER))} + (1 - fielded) * (packed * ${ordered(PACK_ORDER, turnIn(PACK_ORDER))} + (1 - packed) * ${ordered(ROBOT_ORDER, turnIn(ROBOT_ORDER))})`,
+  // The glimpse of the fields (director.ts, GLIMPSE) is two shots of its own, whatever the turn: the place seen
+  // whole, from above, and then the three from in front.
+  `glimpsed = (glimpse > 0.5)`,
+  `cut = glimpsed * ((glimpse < 1.5) * ${GLIMPSE_SHOTS[0]} + (glimpse >= 1.5) * ${GLIMPSE_SHOTS[1]}) + (1 - glimpsed) * (fielded * ${ordered(FIELD_ORDER, turnIn(FIELD_ORDER))} + (1 - fielded) * (packed * ${ordered(PACK_ORDER, turnIn(PACK_ORDER))} + (1 - packed) * ${ordered(ROBOT_ORDER, turnIn(ROBOT_ORDER))}))`,
   `pick = (cuts > 0.5) * cut + (cuts <= 0.5) * floor(shot + 0.5)`,
   `post = (floor(value / ${POST_SPACING}) + 0.5) * ${POST_SPACING}`,
   `ahead = ${picked((shot) => shot.ahead)}`,
@@ -182,4 +188,4 @@ export const CAMERA_STATEMENTS = [
 ].join(";\n");
 
 /** What a channel reads before anything is wired or playing: a silent host cuts on the clock. */
-export const CAMERA_DEFAULTS = ["want = floor(abstime / 8)", "value = 0", "pack = 1", "packing = 1", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6", "place = 0"].join(";\n");
+export const CAMERA_DEFAULTS = ["want = floor(abstime / 8)", "value = 0", "pack = 1", "packing = 1", "shot = 0", "cuts = 0", "distance = 7.5", "viewX = 1.1", "viewY = 0.6", "place = 0", "glimpse = 0"].join(";\n");

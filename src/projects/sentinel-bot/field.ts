@@ -8,74 +8,49 @@ import { HUE_WGSL } from "./surface.ts";
  * matrix pods"; and a day later, of the first whole clip: "not seeing zion or a different environment,
  * the spires or anything visited at all". The reference is the film's own (projects/sentinel-bot/inspo):
  * a dark with no floor and no roof, cold and hazed, towers of machinery going up out of sight and down
- * out of sight, each hung with pods that glow, and the machines flying between them, apart.
+ * out of sight, each covered in pods that glow, and the machines flying between them, apart.
  *
  * How it is made: the tunnel's line goes on (the robots fly the same path), and the tunnel is not
  * there. Round the line stand TOWERS, one in every cell of a grid on the ground plan, each a strip of
- * points going up that a Sweep makes a trunk of; and on each tower PODS, each a short strip a Sweep
- * makes a spindle of. A tower keeps away from the line by an AVENUE, so nothing flies through one and
- * the camera has room. What stands in a cell is drawn from the cell's own number, so the same tower is
- * there whichever way the window of them has slid; the window rides with the robot as the tunnel's
- * rows do.
+ * points going up that a Sweep makes a trunk of. A tower keeps away from the line by an AVENUE, so
+ * nothing flies through one and the camera has room. What stands in a cell is drawn from the cell's own
+ * number, so the same tower is there whichever way the window of them has slid; the window rides with
+ * the robot as the tunnel's rows do.
  *
  * `place` is 0 in the tunnel and 1 in the fields. Out of the fields every strip is drawn in to one
  * point with no radius: nothing to draw.
  *
- * THE SECOND LOOK (the owner, 2026-10-06, of the first: "a bit lost on the bottom. maybe needs some haze or
+ * WHAT THE LOOK IS, and what was said of the looks before it (the owner, 2026-10-06). Of the first, a few
+ * dozen pods hung on each bare trunk in flat navy air: "a bit lost on the bottom. maybe needs some haze or
  * fog down there. the scene feels still a bit empty, maybe needs some stuff in the distance … the audio
  * reactivity and lights of the spires themselves are maybe a bit chunky with the whole thing lighting up.
- * look at some matrix movie references"). What the films' fields have that the first look did not (the
+ * look at some matrix movie references". Of the second, a lattice of lit dots painted on each trunk: "the
+ * pods are not really structures … too speckled … not plastic enough". What the films' fields have (the
  * 1999 film, and the 2021 one's stills): every tower is COVERED in pods, thousands, small against it; the
  * towers go on to the limit of sight; mist lies low between them and is lit cold from behind and within;
  * and there is lightning down in it. ("The future world is cold, dark and riddled with lightning", its
  * cinematographer; "back light mainly the atmos … red glow from the pods shining through", the later
  * film's supervisors.) So:
  *
- *  - trunks stand far further out than hung pods do (two windows of the same ground plan), and every
- *    trunk is covered in a lattice of small pods painted by its material, in tiers with a dark collar
- *    between, each with a lot of its own. The hung pods are the near ones: the same thing, with a shape.
+ *  - trunks stand 430 m ahead and 250 m to a side, and every one is covered in pods that its material
+ *    draws as shapes standing out of it, each in a steel cradle (TOWER_SURFACE_WGSL), in tiers with a
+ *    collar between, each with lots of its own;
  *  - nothing answers the track all at once (`fieldAnswer`): each pod lights at a level of its own, so
  *    the louder it is the more of them are lit; a kick is a ring going out from the robot through the
- *    field; a hat flares a few, different ones every beat.
- *  - lightning: an arc between two towers low down, now and then, with forks (`BOLT_KERNEL`), a Light
- *    where it is (`STRIKE_KERNEL`), and its glow in the mist (tunnel.ts, the air pass, which also lays
- *    the mist and draws the sky).
+ *    field; a hat flares a few, different ones every beat;
+ *  - lightning: up a tower's flank or across to the next one, low down, now and then, with forks
+ *    (`BOLT_KERNEL`), a Light where it is (`STRIKE_KERNEL`), and its glow in the mist (air.ts, which
+ *    also lays the mist and draws the sky).
  *
  * What it costs (measured 2026-10-06 in the app, headless Chromium on the real GPU, documents alternated in one
  * browser on a loaded machine, the header's GPU reading; a direction, not a number to quote). The first look,
  * on a quieter machine: in the tunnel, with nothing of the fields to draw, its Sweeps still ran over their points,
  * about 1 ms a frame; in the fields with the pack of three out, 11.8 to 12.4 ms against 11.3 ms for three robots
- * in the tunnel. The second look (below), against the first in the same run on a machine several sessions were
+ * in the tunnel. The second look, against the first in the same run on a machine several sessions were
  * rendering on: the fields 23 to 28 ms where the first look read 20 to 26, so about a fifth more; the tunnel's
- * readings were too scattered that run to tell the two apart (18 to 49 against 25 to 60). Owed: both again on a
- * quiet machine, against the 30 frames a second the owner has set for this piece.
- *
- * THE SECOND LOOK (the owner, 2026-10-06, of the first: "a bit lost on the bottom. maybe needs some haze or
- * fog down there. the scene feels still a bit empty, maybe needs some stuff in the distance … the audio
- * reactivity and lights of the spires themselves are maybe a bit chunky with the whole thing lighting up.
- * look at some matrix movie references"). What the films' fields have that the first look did not (the
- * 1999 film, and the 2021 one's stills): every tower is COVERED in pods, thousands, small against it; the
- * towers go on to the limit of sight; mist lies low between them and is lit cold from behind and within;
- * and there is lightning down in it. ("The future world is cold, dark and riddled with lightning", its
- * cinematographer; "back light mainly the atmos … red glow from the pods shining through", the later
- * film's supervisors.) So:
- *
- *  - trunks stand far further out than hung pods do (two windows of the same ground plan), and every
- *    trunk is covered in a lattice of small pods painted by its material, in tiers with a dark collar
- *    between, each with a lot of its own. The hung pods are the near ones: the same thing, with a shape.
- *  - nothing answers the track all at once (`fieldAnswer`): each pod lights at a level of its own, so
- *    the louder it is the more of them are lit; a kick is a ring going out from the robot through the
- *    field; a hat flares a few, different ones every beat.
- *  - lightning: an arc between two towers low down, now and then, with forks (`BOLT_KERNEL`), a Light
- *    where it is (`STRIKE_KERNEL`), and its glow in the mist (tunnel.ts, the air pass, which also lays
- *    the mist and draws the sky).
- *
- * What it costs (measured 2026-10-06 in the app, headless Chromium on the real GPU, three documents
- * alternated in one browser on a loaded machine, smallest of five header readings a visit; a direction,
- * not a number to quote). In the tunnel, with nothing of it to draw, the two Sweeps still run over
- * their 37,000 path points: about 1 ms a frame (7.4 to 7.8 ms without these nodes, 8.2 to 8.3 with).
- * In the fields with the pack of three out: 11.8 to 12.4 ms, against 11.3 ms for three robots in the
- * tunnel, so the place costs about what the wall it replaces does.
+ * readings were too scattered that run to tell the two apart (18 to 49 against 25 to 60). Owed: the look as it
+ * now is (the pods as shapes, the hung pods' two Sweeps gone) on a quiet machine, against the 30 frames a second
+ * the owner has set for this piece.
  */
 export const FIELD = {
   /** Metres from one cell of the ground plan to the next. Divides the path's period. */
@@ -85,8 +60,6 @@ export const FIELD = {
    * 430 m ahead and 250 m to either side: past where the air has closed (tunnel.ts, the air pass).
    */
   trunks: { across: 21, along: 22, behind: 4 },
-  /** The window of HUNG PODS, which only the near towers carry: further off a pod is a dot of the trunk's own lattice. */
-  hung: { across: 11, along: 12, behind: 3 },
   /** Metres either side of the line that no tower's trunk reaches into. */
   avenue: 12,
   /** A tower goes this far below the line and this far above it, metres. */
@@ -94,11 +67,6 @@ export const FIELD = {
   above: 100,
   /** Points up a tower's strip. */
   towerPoints: 18,
-  /** Pods on a tower, and the band of it they hang in, metres below and above the line. */
-  pods: 56,
-  podPoints: 5,
-  podsFrom: -26,
-  podsTo: 34,
   /** The lattice a trunk's material paints: metres from one row of pods to the next, and from one tier's collar to the next. */
   row: 1.3,
   tier: 11,
@@ -119,10 +87,7 @@ export interface FieldWindow {
   readonly behind: number;
 }
 export const TRUNK_TOWERS = FIELD.trunks.across * FIELD.trunks.along;
-export const POD_TOWERS = FIELD.hung.across * FIELD.hung.along;
 export const TOWER_CAPACITY = TRUNK_TOWERS * FIELD.towerPoints;
-export const POD_COUNT = POD_TOWERS * FIELD.pods;
-export const POD_CAPACITY = POD_COUNT * FIELD.podPoints;
 export const BOLT_CAPACITY = FIELD.bolts * FIELD.boltPoints;
 const CELLS_A_LAP = Math.round(PATH.period / FIELD.cell);
 
@@ -130,7 +95,7 @@ const CELLS_A_LAP = Math.round(PATH.period / FIELD.cell);
 export const FIELD_ATTRIBUTES = JSON.stringify([
   { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
   { name: "girth", type: "f32", default: [0] },
-  // A tower: r its own count (0 to 1), g metres above the line, b its radius, a whether it stands.
+  // A tower: r its own count (0 to 1), g metres above the line, b its radius, a how thick it is here (metres).
   // A pod: r its place in the colour range, g its height in the band (0 to 1), b how much is alive in it, a how far along it (0 to 1).
   { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 0] },
 ]);
@@ -303,7 +268,7 @@ fn strikeOf(strike: f32, travel: f32) -> Strike {
   let along = i32(floor(z / FIELD_CELL));
   let kind = strikeLot(strike, 3);
   let a = towerIn(across, along);
-  // Above the mist's top, where it can be seen: among the lowest of the hung pods.
+  // Above the mist's top, where it can be seen.
   let h = mix(-13.0, 4.0, strikeLot(strike, 4));
   var s: Strike;
   if (kind < ${f(STRIKE_KINDS.flank)}) {
@@ -345,47 +310,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   }
   q.position = towerAxis(t, h);
   q.girth = towerGirth(t, h);
-  q.tint = vec4f(t.count, h, t.radius, 1.0);
-  return q;
-}`;
-
-/** The pods' strips: `podPoints` points along each, `pods` to a tower. */
-export const POD_KERNEL = `// T1561b — the pods on the fields' towers (src/projects/sentinel-bot/field.ts).
-struct Params {
-  travel: f32, // @default 0  Distance travelled along the line, metres.
-  place: f32, // @default 0  0 the tunnel, 1 the fields.
-};
-${fieldWgsl(FIELD.hung)}
-const POD_SHAPE = array<f32, ${FIELD.podPoints}>(0.05, 0.8, 1.0, 0.72, 0.05);
-
-fn process(p: Point, ctx: PointCtx) -> Point {
-  var q = p;
-  let pod = ctx.index / ${FIELD.podPoints}u;
-  let along = f32(ctx.index % ${FIELD.podPoints}u) / ${f(FIELD.podPoints - 1)};
-  let t = towerOf(pod / ${FIELD.pods}u, ctx.params.travel);
-  if (t.stands < 0.5 || ctx.params.place < 0.5) {
-    q.position = vec3f(t.foot.x, -4000.0, t.foot.z);
-    q.girth = 0.0;
-    q.tint = vec4f(0.0);
-    return q;
-  }
-  let which = i32(pod % ${FIELD.pods}u);
-  // Its own lots, drawn from its tower's cell and its number on the tower.
-  let own = t.cell.x * 64 + which;
-  let rung = (f32(which) + fieldLot(own, t.cell.y, 11u)) / ${f(FIELD.pods)};
-  let h = mix(${f(FIELD.podsFrom)}, ${f(FIELD.podsTo)}, rung);
-  // Round the tower by the golden angle, so no two rows line up.
-  let turn = f32(which) * 2.3999632 + t.count * 6.2831853;
-  let radial = vec3f(cos(turn), 0.0, sin(turn));
-  let size = 0.75 + 0.6 * fieldLot(own, t.cell.y, 12u);
-  // It hangs out from the trunk and a little up, its foot just inside the skin.
-  let hang = normalize(radial + vec3f(0.0, 0.42, 0.0));
-  let foot = towerAxis(t, h) + radial * (towerGirth(t, h) * 0.9);
-  q.position = foot + hang * (1.5 * size * along);
-  q.girth = POD_SHAPE[ctx.index % ${FIELD.podPoints}u] * 0.5 * size;
-  // One in four is empty: a husk, all but dark.
-  let alive = mix(0.06, 1.0, step(0.25, fieldLot(own, t.cell.y, 13u)));
-  q.tint = vec4f(fieldLot(own, t.cell.y, 14u), rung, alive, along);
+  q.tint = vec4f(t.count, h, t.radius, towerGirth(t, h));
   return q;
 }`;
 
@@ -512,6 +437,14 @@ const FIELD_PARAMS_WGSL = `  glow: f32, // @default 2.4  Radiance of a pod.
   react: f32, // @default 1  How much the pods answer the track.
   robotAt: vec3f, // @default [0, 0, 0]  Where the robot is: a kick goes out through the field from there.`;
 
+/**
+ * A pod of the lattice (TOWER_SURFACE_WGSL): how many stand round a trunk for each metre of its radius; its
+ * half-widths across and up as shares of its cell, and how far it stands out, metres; how much of that is sunk
+ * into the trunk; which way round the columns count (the Sweep's winding); and how bright a pod is against
+ * the panel's glow.
+ */
+const POD = { round: 4.6, across: 0.4, up: 0.43, out: 0.5, sunk: 0.3, winds: 1, glows: 0.5 } as const;
+
 /** How far a kick's ring has gone when the kick has died away, metres, and how thick the ring is. */
 const RING = { reach: 150, width: 9 } as const;
 
@@ -536,41 +469,26 @@ fn fieldAnswer(p: Params, lot: f32, world: vec3f) -> f32 {
 `;
 
 /**
- * A POD: a wet membrane with something lit inside. All of its light is its own: brightest where the
- * lens looks straight in at the middle of it, falling to a dark skin at the edge, which is what makes
- * it read as a lit volume and not a painted bulb.
- */
-export const POD_SURFACE_WGSL = `struct Params {
-${FIELD_PARAMS_WGSL}
-};
-${FIELD_LIGHT_WGSL}
-fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
-  var o = surfaceDefaults(s);
-  let place = s.tint.r;
-  let alive = s.tint.b;
-  let along = s.tint.a;
-  let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);
-  // What is inside lies toward the foot: the far end is membrane.
-  let core = facing * facing * (0.25 + 0.75 * (1.0 - smoothstep(0.35, 0.95, along)));
-  // Each breathes on a slow count of its own.
-  let breath = 0.78 + 0.22 * sin(s.absTime * (0.5 + place * 0.9) + place * 40.0);
-  o.albedo = vec4f(0.02, 0.012, 0.012, 1.0);
-  o.roughness = 0.22;
-  o.metallic = 0.0;
-  o.emissive = hueColour(mix(p.hueFrom, p.hueTo, place)) * (p.glow * alive * (0.06 + core) * breath * fieldAnswer(p, place, s.world));
-  return o;
-}`;
-
-/**
- * A TOWER: black machinery, ribbed the long way with cable, and COVERED IN PODS. The pods are painted: a
- * lattice round the trunk and up it, every other row set half a pod over, in tiers with a dark collar
- * between. Each cell of the lattice has lots of its own (whether there is anything alive in it, its place in
- * the colour range, its own slow breath, the number it answers the track by), so a tower is thousands of
- * lights and no two towers the same. Far off, where a pod is smaller than a pixel, the lattice is drawn as
- * its own average: a tower two hundred metres away is a dim red shape, not a shimmer.
+ * A TOWER: black machinery COVERED IN PODS, and the pods are SHAPES.
  *
- * (A Light for every pod is hundreds of thousands of lights. What the pods throw on the trunk between them
- * is painted here too.)
+ * (The owner, 2026-10-06, of the pods as a lattice of lit dots painted on a trunk of stretched noise: "the pods
+ * are not really structures, visible structures at all … too speckled and too weird and not plastic enough, and
+ * the texture of the black of the spire is not convincing"; "strangely shiny"; "maybe we can come up with a
+ * clever way of having them be geometry or fake this".)
+ *
+ * The lattice is the same: rows up the trunk, a whole number of pods round it, every other row half a pod over,
+ * in tiers with a collar of bare machinery between. But each cell of it now holds an ELLIPSOID standing out of
+ * the trunk, and the material finds it with the ray from the lens: from the point of the trunk's skin the pixel
+ * is of, back toward the eye, against the ellipsoids of the cells that ray passes over (a closed form each, no
+ * marching). Where it meets one, the pixel is of the pod: its normal is the ellipsoid's, so the storm's light and
+ * the lightning make a highlight that goes round it as a wet thing's does; and its own light is by how much of
+ * the pod the ray goes through, most through the middle where what is inside lies, none at the edge. A lit
+ * volume, not a lit disc. Where the ray meets none, the pixel is of the machinery: a steel cradle round each pod,
+ * conduits up between the columns and clamps across between the rows, matte, darkest close under a pod, and red
+ * where a pod's light falls on it.
+ *
+ * What this cannot do is change a tower's outline: at the very edge of a trunk the pods do not stand out past
+ * it. And far off, where a pod is smaller than two pixels, the lattice is drawn as its own average.
  */
 export const TOWER_SURFACE_WGSL = `// @use surface-detail
 struct Params {
@@ -578,53 +496,149 @@ ${FIELD_PARAMS_WGSL}
 };
 ${LOT_WGSL}${FIELD_LIGHT_WGSL}
 // The share of a cell of the lattice that a pod's light fills, and of the cells that have anything alive in them.
-const POD_FILLS: f32 = 0.2;
+const POD_FILLS: f32 = 0.34;
 const POD_ALIVE: f32 = 0.72;
+const ROW: f32 = ${f(FIELD.row)};
+// Which way round the trunk the lattice's columns count, against the frame the material builds (the Sweep's own
+// winding: field.gpu.test.ts holds it, by which side of a pod a light from one side falls on).
+const ROUND_TURNS: f32 = ${f(POD.winds)};
+
+struct Pod {
+  hit: f32, // 1 where the ray meets it
+  along: f32, // how far along the ray, toward the eye: the visible skin of it
+  through: f32, // how much of it the ray goes through, 0 to 1 of its depth
+  normal: vec3f, // its skin's normal there, in the lattice's frame: across, up, out
+  cell: vec2i,
+  off: vec2f, // where the trunk's own point lies from its middle, in radii: 1 is its rim
+};
+
+// The cell of the lattice that holds the point (turns, rows), and that point from the cell's middle, in metres.
+fn podCell(at: vec2f, around: f32) -> vec3f {
+  let row = floor(at.y);
+  let shifted = at.x + 0.5 * (row - 2.0 * floor(row * 0.5));
+  return vec3f(floor(shifted), row, shifted - floor(shifted) - 0.5);
+}
+
+// The ray from a point of the trunk's skin toward the eye (both in the lattice's frame, metres) against the pod
+// of the cell that holds \`probe\` (turns, rows).
+fn podMet(skin: vec2f, toEye: vec3f, probe: vec2f, around: f32, wide: f32, count: f32) -> Pod {
+  var pod: Pod;
+  let cell = podCell(probe, around);
+  let column = cell.x - around * floor(cell.x / around);
+  pod.cell = vec2i(i32(column) + i32(count * 4096.0), i32(cell.y));
+  // Its own size: no two quite alike.
+  let size = 0.86 + 0.2 * fieldLot(pod.cell.x, pod.cell.y, 24u);
+  let radii = vec3f(${f(POD.across)} * wide, ${f(POD.up)} * ROW, ${f(POD.out)}) * size;
+  // Where the skin's point is from this pod's middle: the cell's middle, sunk a little into the trunk.
+  let row = cell.y;
+  let middle = vec2f(cell.x + 0.5 - 0.5 * (row - 2.0 * floor(row * 0.5)), row + 0.5);
+  let apart = vec3f((skin.x - middle.x) * wide, (skin.y - middle.y) * ROW, ${f(-(1 - 2 * POD.sunk))} * radii.z);
+  pod.off = apart.xy / radii.xy;
+  let o = apart / radii;
+  let d = toEye / radii;
+  let a = dot(d, d);
+  let b = dot(o, d);
+  let c = dot(o, o) - 1.0;
+  let disc = b * b - a * c;
+  pod.hit = 0.0;
+  if (disc > 0.0) {
+    let root = sqrt(disc);
+    let far = (-b + root) / a;
+    if (far > 0.0) {
+      pod.hit = 1.0;
+      pod.along = far;
+      let near = max((-b - root) / a, 0.0);
+      pod.through = clamp((far - near) * sqrt(a) * 0.5, 0.0, 1.0);
+      pod.normal = normalize((o + d * far) / radii);
+    }
+  }
+  return pod;
+}
 
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
   let count = s.tint.r;
   let h = s.tint.g;
   let radius = s.tint.b;
-  // Cable and ducting run up it: detail stretched tall.
-  let run = detailFbm(s.world * vec3f(1.7, 0.09, 1.7) + count * 31.0, 4, s.footprint);
-  let knot = detailFbm(s.world * vec3f(0.5, 0.42, 0.5) + count * 17.0, 3, s.footprint);
-  o.albedo = vec4f(mix(vec3f(0.012, 0.013, 0.016), vec3f(0.055, 0.058, 0.066), smoothstep(0.35, 0.75, run.value)), 1.0);
-  o.roughness = mix(0.38, 0.8, knot.value);
-  o.metallic = 0.75;
-  o.normal = detailBump(s.normal, run.gradient * vec3f(1.7, 0.09, 1.7) * 0.5 + knot.gradient * 0.2, 0.22);
-
-  // The lattice. Rows up it, a whole number of pods round it (so the seam is no seam), every other row half a pod over.
-  let rows = (h + ${f(FIELD.below)}) / ${f(FIELD.row)};
-  let row = floor(rows);
-  let around = max(floor(radius * 4.6 + 0.5), 6.0);
-  let turns = s.uv.x * around + 0.5 * (row - 2.0 * floor(row * 0.5));
-  let column = floor(turns) - around * floor(floor(turns) / around);
-  let within = vec2f(fract(turns), fract(rows)) - 0.5;
+  let girth = max(s.tint.a, 0.5);
+  // The lattice. Rows up it, a whole number of pods round it (so the seam is no seam).
+  let around = max(floor(radius * ${f(POD.round)} + 0.5), 6.0);
+  let wide = 6.2831853 * girth / around;
+  let skin = vec2f(s.uv.x * around, (h + ${f(FIELD.below)}) / ROW);
   // A tier, with a collar of bare machinery at its foot.
   let tier = fract((h + count * ${f(FIELD.tier)}) / ${f(FIELD.tier)});
-  let collar = smoothstep(0.0, 0.07, tier) * (1.0 - smoothstep(0.88, 0.95, tier));
-  // The cell's own lots.
-  let cell = i32(column) + i32(count * 4096.0);
-  let alive = step(1.0 - POD_ALIVE, fieldLot(cell, i32(row), 21u));
-  let place = fieldLot(cell, i32(row), 22u);
-  let nerve = fieldLot(cell, i32(row), 23u);
-  let size = 0.3 + 0.12 * fieldLot(cell, i32(row), 24u);
-  // The pod: a bright core and a dimmer membrane round it.
-  let off = length(within);
-  let membrane = 1.0 - smoothstep(size * 0.55, size, off);
-  let pod = membrane * (0.3 + 0.7 * (1.0 - smoothstep(0.0, size * 0.6, off)));
-  let breath = 0.78 + 0.22 * sin(s.absTime * (0.5 + nerve * 0.9) + nerve * 40.0);
-  // How many pixels a cell is: under two, the lattice is drawn as its average.
-  let seen = smoothstep(1.5, 4.0, ${f(FIELD.row)} / max(s.footprint, 1e-4));
-  let one = alive * pod * breath * fieldAnswer(p, nerve, s.world);
-  let many = POD_ALIVE * POD_FILLS * fieldAnswer(p, 0.5, s.world);
-  let lit = collar * mix(many, one, seen);
-  // Where a pod is, the skin is membrane, not cable.
-  o.albedo = vec4f(mix(o.albedo.rgb, vec3f(0.02, 0.012, 0.012), collar * membrane * alive * seen), 1.0);
-  o.roughness = mix(o.roughness, 0.24, collar * membrane * alive * seen);
-  // …and round the pods, their light is on the machinery: more in the hollows between the cables.
-  let wash = collar * (0.25 + 0.75 * knot.value) * (1.0 - 0.6 * smoothstep(0.35, 0.75, run.value)) * fieldAnswer(p, 0.5, s.world);
-  o.emissive = hueColour(mix(p.hueFrom, p.hueTo, mix(0.5, place, seen))) * (p.glow * (0.55 * lit + 0.022 * wash));
+  let collar = smoothstep(0.0, 0.06, tier) * (1.0 - smoothstep(0.9, 0.96, tier));
+  // The lattice's frame at this point: across (the way the columns count), up, and out.
+  let outward = normalize(s.normal);
+  let upward = normalize(vec3f(0.0, 1.0, 0.0) - outward * outward.y);
+  let across = cross(upward, outward) * ROUND_TURNS;
+  let eyeward = normalize(s.eye - s.world);
+  let toEye = vec3f(dot(eyeward, across), dot(eyeward, upward), max(dot(eyeward, outward), 0.04));
+  // How many pixels a cell is: under two, the lattice is drawn as its average. And toward the trunk's own edge,
+  // where the ray lies along the skin and passes over more pods than are looked for (they smeared into pears).
+  let seen = smoothstep(1.5, 4.0, min(ROW, wide) / max(s.footprint, 1e-4)) * smoothstep(0.16, 0.4, dot(eyeward, outward));
+
+  // ── The machinery, which is what this point is unless a pod is in front of it ──
+  let own = podCell(skin, around);
+  let grime = detailFbm(s.world * vec3f(1.9, 0.7, 1.9) + count * 31.0, 3, s.footprint);
+  // Conduits up between the columns and clamps across between the rows: round in section, so they take a light.
+  let pipe = abs(own.z) * 2.0;
+  let conduit = smoothstep(0.72, 0.84, pipe);
+  let rung = abs(fract(skin.y) - 0.5) * 2.0;
+  let strap = smoothstep(0.82, 0.92, rung) * (1.0 - conduit);
+  var albedo = mix(vec3f(0.011, 0.012, 0.014), vec3f(0.03, 0.032, 0.036), max(conduit, strap * 0.6)) * (0.7 + 0.6 * grime.value);
+  var rough = mix(0.86, 0.6, max(conduit, strap)) + (grime.value - 0.5) * 0.2;
+  var metal = 0.35;
+  // Their roundness, as a turn of the normal: a conduit's across the trunk, a clamp's up it.
+  let sideways = sign(own.z) * (1.0 - smoothstep(0.84, 1.0, pipe)) * conduit;
+  var normal = normalize(outward + across * (ROUND_TURNS * sideways * 0.7) + upward * (sign(fract(skin.y) - 0.5) * strap * 0.5) + grime.gradient * 0.05);
+  var glow = vec3f(0.0);
+  var podded = 0.0;
+
+  if (collar > 0.0 && seen > 0.0) {
+    // The pods the ray toward the eye passes over: this point's own cell's, and the cells' it is over half way up
+    // a pod's height and at the top of it. The one it meets nearest the eye is the one that is seen.
+    let reach = ${f(POD.out * (2 - 2 * POD.sunk) * 1.1)} / toEye.z;
+    let slide = toEye.xy / vec2f(wide, ROW);
+    var met = podMet(skin, toEye, skin, around, wide, count);
+    for (var probe = 1; probe <= 2; probe += 1) {
+      let other = podMet(skin, toEye, skin + slide * (reach * f32(probe) * 0.5), around, wide, count);
+      if (other.hit > met.hit || (other.hit == met.hit && other.along > met.along)) { met = other; }
+    }
+    // The cell's own lots.
+    let alive = step(1.0 - POD_ALIVE, fieldLot(met.cell.x, met.cell.y, 21u));
+    let place = fieldLot(met.cell.x, met.cell.y, 22u);
+    let nerve = fieldLot(met.cell.x, met.cell.y, 23u);
+    let breath = 0.8 + 0.2 * sin(s.absTime * (0.5 + nerve * 0.9) + nerve * 40.0);
+    let lit = p.glow * alive * breath * fieldAnswer(p, nerve, s.world);
+    let tone = hueColour(mix(p.hueFrom, p.hueTo, place));
+    if (met.hit > 0.5) {
+      // A pod: a wet membrane, and a light inside it that shows by how much of the pod the ray goes through.
+      podded = collar * seen;
+      let inside = met.through * met.through * met.through;
+      let skinNormal = normalize(across * (met.normal.x * ROUND_TURNS) + upward * met.normal.y + outward * met.normal.z);
+      normal = normalize(mix(normal, skinNormal, podded));
+      albedo = mix(albedo, mix(vec3f(0.035, 0.03, 0.03), vec3f(0.06, 0.012, 0.014), alive), podded);
+      rough = mix(rough, 0.17, podded);
+      metal = mix(metal, 0.0, podded);
+      glow = tone * (lit * (0.07 + 0.93 * inside)) * podded;
+    } else {
+      // The machinery by a pod: a steel cradle round its foot, dark close under it, and its light on what is near.
+      let rim = length(met.off);
+      let cradle = (1.0 - smoothstep(1.16, 1.3, rim)) * collar * seen;
+      albedo = mix(albedo, vec3f(0.05, 0.052, 0.058), cradle * 0.8);
+      rough = mix(rough, 0.42, cradle);
+      metal = mix(metal, 0.9, cradle);
+      albedo = albedo * mix(1.0, smoothstep(0.95, 1.7, rim), 0.75 * collar * seen);
+      glow = tone * (lit * 0.07 * exp(-max(rim - 1.0, 0.0) * 2.2)) * collar * seen;
+    }
+  }
+  // Far off: the lattice's own average, with what it answers the track by.
+  let many = hueColour(mix(p.hueFrom, p.hueTo, 0.5)) * (p.glow * POD_ALIVE * POD_FILLS * 0.42 * fieldAnswer(p, 0.5, s.world)) * collar;
+  o.albedo = vec4f(albedo, 1.0);
+  o.roughness = clamp(rough, 0.08, 1.0);
+  o.metallic = metal;
+  o.normal = normal;
+  o.emissive = mix(many, glow, seen) * ${f(POD.glows)};
   return o;
 }`;

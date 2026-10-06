@@ -88,7 +88,8 @@ export function phrasePause(follow: string, intensity: string, draw: string, bar
 
 /**
  * THE OTHER PLACE. The piece goes out of the tunnel into the fields (field.ts) for sixteen bars at a time,
- * every third such turn, starting with the third: on the owner's 110 bars that is bars 32 to 48 and 80 to 96.
+ * every third such turn, starting with the third: on the owner's 110 bars that is bars 32 to 48 and 80 to 96
+ * (and four bars early on: GLIMPSE, below).
  * By the bar count and nothing else. The track's loudness cannot choose it, because a place must not change
  * in the middle of a shot and nothing here can hold a decision once taken: a rule that read the loudness
  * would put the tunnel back whenever a passage dipped. Sixteen bars is eight of the camera's two-bar shots, so
@@ -97,9 +98,21 @@ export function phrasePause(follow: string, intensity: string, draw: string, bar
 export const FIELD_BARS = 16;
 export const FIELD_EVERY = 3;
 
+/**
+ * …and a GLIMPSE of them before the first turn: four bars, the last four of the opening sixteen. (The owner,
+ * 2026-10-06, of a track whose first sight of the towers was a minute in: "maybe we show the aesthetics with
+ * the spires a bit earlier, at least for a little bit".) Two of the camera's shots, and back.
+ */
+export const GLIMPSE = { from: 12, to: 16 } as const;
+
+/** Which shot of the glimpse bar `bar` is in: 0 none, 1 its first two bars, 2 its last two (camera.ts, GLIMPSE_SHOTS). */
+export function glimpseShot(follow: string, bar: string): string {
+  return `(${follow} * (${bar} >= ${GLIMPSE.from}) * (${bar} < ${GLIMPSE.to}) * (1 + (${bar} >= ${(GLIMPSE.from + GLIMPSE.to) / 2})))`;
+}
+
 /** Whether the bar `bar` is spent in the fields: 0 or 1. */
 export function fieldTurn(follow: string, bar: string): string {
-  return `(${follow} * (mod(floor(${bar} / ${FIELD_BARS}), ${FIELD_EVERY}) == ${FIELD_EVERY - 1}))`;
+  return `(${follow} * max(mod(floor(${bar} / ${FIELD_BARS}), ${FIELD_EVERY}) == ${FIELD_EVERY - 1}, (${bar} >= ${GLIMPSE.from}) * (${bar} < ${GLIMPSE.to})))`;
 }
 
 /** A pack's turn is eight bars: the others take most of two to come up from behind and as long to fall back. */
@@ -114,7 +127,7 @@ export const PACK_BARS = 8;
  * By the bar count alone, as the fields are. It also asked for a loud passage (intensity over 0.6), and a
  * number that crosses a line does it between bar lines: the pack's shots then came in a second after the cut
  * on the bar, two cuts for one. Nothing here can hold a decision taken at the head of a turn (a value node
- * that samples and holds is asked of the engine), so the call is one that cannot change inside a turn.
+ * that samples and holds is §T1651b), so the call is one that cannot change inside a turn.
  */
 export function packSize(follow: string, draw: string, most: number): string {
   return `(1 + ${follow} * ${most - 1} * (${draw} < ${PACK_SHARE}))`;
@@ -122,9 +135,23 @@ export function packSize(follow: string, draw: string, most: number): string {
 /** The share of eight-bar turns a pack is out for. */
 export const PACK_SHARE = 0.22;
 
-/** What the long view multiplies the pace by: 0.65 at the quietest of the last minute, 1.35 at the loudest. */
+/** What the long view multiplies the pace by: 0.65 at the quietest of the last minute, 1.5 at the loudest. */
 export function stride(follow: string, intensity: string): string {
-  return `(1 + ${follow} * (${intensity} - 0.5) * 0.7)`;
+  return `(1 + ${follow} * ((${intensity} - 0.5) * 0.7 + max(${intensity} - 0.5, 0) * 0.3))`;
+}
+
+/**
+ * A RUSH: for some eight-bar turns at the top of the track it lets go of the wall and goes down the tunnel (or
+ * between the towers) at well over twice its pace. (The owner, 2026-10-06: "some more energy sections where we
+ * go visibly faster through the tunnels maybe. it still feels a bit static even while the music is marching at
+ * max".) Swimming, because a walk at that speed is a scramble; and by eight bars, so it is four of the camera's
+ * shots at the least and the speed has time to come up and be seen.
+ */
+export const RUSH = { bars: 8, over: 0.75, share: 0.5, pace: 2.6 } as const;
+
+/** Whether it rushes this turn: only over three quarters of intensity, and then every other turn. */
+export function phraseRush(follow: string, intensity: string, draw: string): string {
+  return `(${follow} * (${intensity} > ${RUSH.over}) * (${draw} < ${RUSH.share}))`;
 }
 
 /**
@@ -143,3 +170,51 @@ export function phraseSpiral(follow: string, intensity: string, draw: string): s
   return `(${follow} * (${intensity} > 0.45) * (${intensity} < 0.8) * (${draw} < 0.25))`;
 }
 
+/**
+ * THE SHOW: what the piece does over a whole track, by turns of sixteen bars (the fields' own turn, FIELD_BARS).
+ *
+ * The owner, 2026-10-06, of three and a half minutes that were one state travelling forward: "the colour feels
+ * very much static all the way through for no good reason … we have a lot of space to use the energy of the song
+ * and drive certain things"; "have even a shot where all three of them in the wide space come to a halt, go into
+ * attack mode … so that we're not just only going forward, forward, forward … we have so many cool ways of
+ * operating these robots and I feel like we are not using a lot of them with a long song."
+ *
+ * So each turn has a colour of its own for the robots' lights, and the fields' turns have a set piece. Six turns
+ * and it comes round again: 96 bars. All of it by the bar count, as the place is, so it changes on a cut and
+ * never in the middle of a shot.
+ */
+export const SHOW_TURNS = 6;
+
+/**
+ * How far the robots' lights are turned round the wheel in each turn of the show, in turns of the wheel from
+ * where the panel has them (red): home; amber; the fields (cold, the fields' own turn: FIELD_TURN); magenta;
+ * violet; the fields again. Never upward past amber: no green.
+ */
+export const SHOW_HUES: readonly number[] = [0, 0.05, 0, -0.12, -0.28, 0];
+/** …and in the fields, whichever turn it is: red becomes a cold cyan, against the pods' red. */
+export const FIELD_HUE = -0.45;
+for (let turn = 0; turn < SHOW_TURNS; turn += 1) {
+  const inFields = turn % FIELD_EVERY === FIELD_EVERY - 1;
+  if (inFields && SHOW_HUES[turn] !== 0) throw new Error(`director.ts: turn ${turn} of the show is the fields', whose colour is FIELD_HUE: its entry in SHOW_HUES must be 0.`);
+}
+
+/** The turn of the wheel for bar `bar`: the fields' wherever `place` is 1 (the panel can put it there too), else the show's turn's when following. */
+export function showHue(follow: string, place: string, bar: string): string {
+  const turn = `mod(floor(${bar} / ${FIELD_BARS}), ${SHOW_TURNS})`;
+  const table = SHOW_HUES.map((hue, index) => (hue === 0 ? null : `(${turn} == ${index}) * ${hue}`)).filter((term) => term !== null).join(" + ");
+  return `(${place} * ${FIELD_HUE} + (1 - ${place}) * ${follow} * (${table}))`;
+}
+
+/**
+ * THE STAND: in each turn the piece spends in the fields, for four bars in the middle of it (bars 8 to 12 of
+ * the sixteen) the pack stops where it is, out in the open, and goes over to the attack; then it goes on.
+ * Two of the camera's shots long.
+ */
+export const STAND = { from: 8, to: 12 } as const;
+
+/** Whether bar `bar` is in a stand: 0 or 1. */
+export function fieldStand(follow: string, bar: string): string {
+  const within = `mod(${bar}, ${FIELD_BARS})`;
+  // Of a whole turn in the fields: the glimpse (GLIMPSE) is too short to stop in.
+  return `(${follow} * (mod(floor(${bar} / ${FIELD_BARS}), ${FIELD_EVERY}) == ${FIELD_EVERY - 1}) * (${within} >= ${STAND.from}) * (${within} < ${STAND.to}))`;
+}

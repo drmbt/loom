@@ -394,7 +394,7 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     const [unison, apart] = [await along(0), await along(1)];
     // What the document's own expression says each has lunged (the camera and the followers' lights ride it): the kernel's first frame is at time 0.
     const lunge = (robot: number): number => {
-      const value = evaluateExpression(swimLungeExpression("stroke", robot), { stroke: STROKE, abstime: 0 });
+      const value = evaluateExpression(swimLungeExpression("stroke", robot, "1"), { stroke: STROKE, abstime: 0 });
       if (!value.ok) throw new Error("the lunge does not evaluate");
       return value.value;
     };
@@ -402,11 +402,50 @@ describe("the sentinel's rig — every joint, across two strides", () => {
       // In unison every body has the leader's lunge; apart, its own. (The line of the tunnel is not straight: to 3 cm.)
       expect(Math.abs((apart[robot] as number) - (unison[robot] as number) - (lunge(robot) - lunge(0)))).toBeLessThan(0.03);
     }
-    // And they really are apart: at this moment of the bar the second is a third of a metre behind where unison has it.
-    expect(Math.abs(lunge(1) - lunge(0))).toBeGreaterThan(0.2);
-    // The lunge itself is a third of a metre at the most, where it was half: less of a pump.
-    expect(SWIM.lunge).toBeLessThan(0.4);
+    // And they really are apart: at this moment of the bar the second is well off where unison has it.
+    expect(Math.abs(lunge(1) - lunge(0))).toBeGreaterThan(0.1);
   }, 120_000);
+
+  it("a stroke drives and then glides, and a robot that has stopped does not pump in place", async () => {
+    // The owner, 2026-10-06: "the swim pump forward backward motion is still kind of odd in parts". It was a sine:
+    // as fast backward as forward, so at a slow pace the body all but stopped on each stroke, and stopped, it went
+    // backward. One robot on rails, through one whole stroke in sixty steps: where its body is along the tunnel.
+    const STEPS = 60;
+    const along = async (way: number): Promise<number[]> => {
+      const places: number[] = [];
+      for (let step = 0; step < STEPS; step += 1) {
+        const pose = await walk(1, { swim: 1, stroke: step / STEPS, carry: 0, variety: 0, way });
+        let z = 0;
+        for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) z += pose.socket(0, tentacle)[2] / TENTACLES;
+        places.push(z);
+      }
+      return places;
+    };
+    const going = await along(1);
+    const steps = going.map((z, step) => (going[(step + 1) % STEPS] as number) - z);
+    const [forward, back] = [Math.max(...steps), Math.min(...steps)];
+    // It gains more than a third of a metre on the stroke, and gives all of it back (the kernel's first frame is
+    // at time 0, where its effort is 0.725 of the full lunge).
+    expect(Math.max(...going) - Math.min(...going)).toBeGreaterThan(0.36);
+    expect(Math.abs(steps.reduce((sum, step) => sum + step, 0))).toBeLessThan(1e-3);
+    // The drive is quick and the glide slow: it never goes back faster than a quarter as fast as it drives (the
+    // glide is four times as long), and it is going back for at least three quarters of the stroke.
+    expect(-back).toBeLessThan(forward * 0.27);
+    expect(steps.filter((step) => step < 0).length).toBeGreaterThan(STEPS * 0.74);
+    // What the document says the body has lunged is what the body has, through the whole stroke (the camera and
+    // the followers' lights ride the expression).
+    for (let step = 0; step < STEPS; step += 7) {
+      const said = evaluateExpression(swimLungeExpression("stroke", 0, "1"), { stroke: step / STEPS, abstime: 0 });
+      if (!said.ok) throw new Error("the lunge does not evaluate");
+      expect(Math.abs((going[step] as number) - (going[0] as number) - (said.value - (evaluateExpression(swimLungeExpression("stroke", 0, "1"), { stroke: 0, abstime: 0 }) as { value: number }).value))).toBeLessThan(0.03);
+    }
+    // Stopped, it hangs where it is: the stroke moves its tentacles and not its body. Half its pace, half the lunge.
+    const stopped = await along(0);
+    expect(Math.max(...stopped) - Math.min(...stopped)).toBeLessThan(1e-3);
+    const slow = await along(0.5);
+    expect((Math.max(...slow) - Math.min(...slow)) / (Math.max(...going) - Math.min(...going))).toBeCloseTo(0.5, 2);
+    expect(SWIM.drive).toBeLessThan(0.25);
+  }, 600_000);
 
   it("crosses a chamber swimming: told to walk, in the middle of a hall every claw has let go and trails", async () => {
     // A chamber's wall stands 1.9 bore radii off the axis, further than a tentacle reaches, so the

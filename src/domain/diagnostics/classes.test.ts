@@ -177,7 +177,7 @@ const RETIRED: Readonly<Record<string, readonly string[]>> = {
   "parameter.bind": [],
   // Slice 2: merged into `parameter.unknown`, the write gate's code for the same key. The
   // consumer session owns this test; its filter on the old code moves to the class.
-  "compiler/parameter-unknown": ["src/projects/sentinel-bot/director.test.ts"],
+  "compiler/parameter-unknown": [],
 };
 
 interface CensusOptions {

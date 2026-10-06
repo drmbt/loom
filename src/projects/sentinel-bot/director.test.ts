@@ -9,7 +9,9 @@ import { TIER_B_CAPABILITIES } from "../../examples/runner.ts";
 import { shippedClipAudio } from "../../examples/shipped-clip-audio.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
-import { FIELD_BARS, FIELD_EVERY, PACK_BARS, PACK_SHARE, PHRASE_BARS, against, fieldTurn, pace, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
+import { SHOTS } from "./camera.ts";
+import { diagnosticClass } from "../../domain/diagnostics/classes.ts";
+import { FIELD_BARS, FIELD_EVERY, FIELD_HUE, GLIMPSE, PACK_BARS, PACK_SHARE, PHRASE_BARS, SHOW_HUES, SHOW_TURNS, RUSH, STAND, against, fieldStand, fieldTurn, showHue, pace, packSize, phraseAttack, phraseDraw, phraseRush, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import { sentinelDocument } from "./document.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
@@ -51,7 +53,7 @@ describe("the sentinel's file", () => {
     const built = sentinelDocument(KIT_FIXTURE);
     const compiled = compileGraph({ graph: built.graph, settings: built.settings, registry: createNodeRegistry(allNodeDefinitions).view(), capabilities: TIER_B_CAPABILITIES });
     expect(compiled.diagnostics.filter((entry) => entry.severity === "error").map((entry) => entry.message)).toEqual([]);
-    expect(compiled.diagnostics.filter((entry) => entry.code === "compiler/parameter-unknown").map((entry) => entry.message)).toEqual([]);
+    expect(compiled.diagnostics.filter((entry) => diagnosticClass(entry.code) === "never").map((entry) => `${entry.code}: ${entry.message}`)).toEqual([]);
     // It compiled the whole piece, not a stub of it.
     expect(compiled.passes.length).toBeGreaterThan(20);
   });
@@ -78,15 +80,63 @@ describe("the sentinel follows the track", () => {
     expect([0.1, 0.8, 1.2, 4].map((value) => read(pace("follow", "energy"), { follow: 0, energy: value }))).toEqual([1, 1, 1, 1]);
   });
 
-  it("goes out to the fields for sixteen bars of every forty-eight, on the bar count alone, and never opens there", () => {
+  it("goes out to the fields for sixteen bars of every forty-eight and for a glimpse early on, on the bar count alone, and never opens there", () => {
     const afield = (bar: number, follow = 1): number => read(fieldTurn("follow", "bar"), { follow, bar });
     expect([FIELD_BARS, FIELD_EVERY]).toEqual([16, 3]);
-    // The first thirty-two bars are the tunnel's; then sixteen in the fields, to the bar; then the tunnel again.
-    for (let bar = 0; bar < 96; bar += 0.25) expect([bar, afield(bar)]).toEqual([bar, bar >= 32 && bar < 48 ? 1 : bar >= 80 ? 1 : 0]);
+    // The opening is the tunnel's, twelve bars of it; then four bars' glimpse of the towers (the owner: "show the
+    // aesthetics with the spires a bit earlier"); the tunnel to bar thirty-two; sixteen in the fields, to the bar;
+    // then the tunnel again.
+    expect([GLIMPSE.from, GLIMPSE.to]).toEqual([12, 16]);
+    for (let bar = 0; bar < 96; bar += 0.25) expect([bar, afield(bar)]).toEqual([bar, (bar >= 12 && bar < 16) || (bar >= 32 && bar < 48) || bar >= 80 ? 1 : 0]);
+    // The glimpse is once: the second time round the show, bars 108 to 112 are the tunnel's.
+    expect([afield(108), afield(111)]).toEqual([0, 0]);
     // It changes on a bar that is a multiple of two, which is where the camera cuts (camera.ts, `turn`).
     expect([afield(31.999), afield(32), afield(47.999), afield(48)]).toEqual([0, 1, 1, 0]);
     // Cut the switch and it never leaves the tunnel.
     for (let bar = 0; bar < 96; bar += 1) expect(afield(bar, 0)).toBe(0);
+  });
+
+  it("turns the robots' lights to a colour of its own in each sixteen bars of the show, cold in the fields, and only on a turn's first bar", () => {
+    const hue = (bar: number, follow = 1, place = 0): number => read(showHue("follow", "place", "bar"), { follow, place, bar });
+    expect(SHOW_TURNS * FIELD_BARS).toBe(96);
+    // Each turn of the tunnel's holds its own colour from its first bar to its last. (The fields' turns read 0
+    // here: out there the place says the colour, below.)
+    for (let turn = 0; turn < SHOW_TURNS * 2; turn += 1) {
+      // (Plus nothing: a sum of nothings can be minus zero, which is zero.)
+      for (const within of [0, 7.5, 15.99]) expect([turn, hue(turn * FIELD_BARS + within) + 0]).toEqual([turn, SHOW_HUES[turn % SHOW_TURNS]]);
+    }
+    // Not one colour all the way through (the owner: "the colour feels very much static"): the tunnel alone has four.
+    expect(new Set(SHOW_HUES.filter((_, turn) => turn % FIELD_EVERY !== FIELD_EVERY - 1)).size).toBe(4);
+    // Never upward past amber: the wheel has green a third of the way up, and these lights have none.
+    for (const turned of [...SHOW_HUES, FIELD_HUE]) expect(turned > -0.55 && turned < 0.1).toBe(true);
+    // In the fields it is the fields' colour, whoever put it there: the show, or the panel with the show off.
+    expect(hue(40, 1, 1)).toBe(FIELD_HUE);
+    expect(hue(5, 0, 1)).toBe(FIELD_HUE);
+    // The show off and the tunnel: where the panel has them.
+    for (let bar = 0; bar < 96; bar += 8) expect(hue(bar, 0, 0) + 0).toBe(0);
+  });
+
+  it("stands for four bars in the middle of each turn in the fields, and nowhere else", () => {
+    const stands = (bar: number, follow = 1): number => read(fieldStand("follow", "bar"), { follow, bar });
+    expect([STAND.from, STAND.to]).toEqual([8, 12]);
+    for (let bar = 0; bar < 192; bar += 0.25) {
+      const turn = Math.floor(bar / FIELD_BARS);
+      const within = bar - turn * FIELD_BARS;
+      expect([bar, stands(bar)]).toEqual([bar, turn % FIELD_EVERY === FIELD_EVERY - 1 && within >= 8 && within < 12 ? 1 : 0]);
+    }
+    // It begins and ends on a bar the camera cuts on, and is two of its shots long.
+    expect([stands(39.999), stands(40), stands(43.999), stands(44)]).toEqual([0, 1, 1, 0]);
+    // The show off: no stand.
+    for (let bar = 0; bar < 96; bar += 1) expect(stands(bar, 0)).toBe(0);
+  });
+
+  it("rushes only at the top of the track, every other eight bars of it, and never with the show off", () => {
+    const rushes = (intensity: number, draw: number, follow = 1): number => read(phraseRush("follow", "intensity", "draw"), { follow, intensity, draw });
+    expect([RUSH.bars, RUSH.over, RUSH.share]).toEqual([8, 0.75, 0.5]);
+    expect([rushes(0.9, 0.2), rushes(0.9, 0.6), rushes(0.75, 0.2), rushes(0.76, 0.49)]).toEqual([1, 0, 0, 1]);
+    expect(rushes(1, 0, 0)).toBe(0);
+    // Visibly faster: well over twice the pace.
+    expect(RUSH.pace).toBeGreaterThan(2);
   });
 
   it("perches only when a breakdown has gone nearly silent", () => {
@@ -121,7 +171,7 @@ describe("the sentinel follows the track", () => {
     expect(read(phrasePerch("follow", "intensity", "draw"), { follow: 1, intensity: 0.3, draw: 0.6 })).toBe(0);
     expect(read(phrasePerch("follow", "intensity", "draw"), { follow: 1, intensity: 0.5, draw: 0 })).toBe(0);
     // The pace: 0.65 at the quietest of the last minute, 1 in the middle, 1.35 at the loudest.
-    expect([0, 0.5, 1].map((intensity) => read(stride("follow", "intensity"), { follow: 1, intensity }))).toEqual([0.65, 1, 1.35]);
+    expect([0, 0.5, 1].map((intensity) => read(stride("follow", "intensity"), { follow: 1, intensity }))).toEqual([0.65, 1, 1.5]);
     expect(read(stride("follow", "intensity"), { follow: 0, intensity: 1 })).toBe(1);
     // The attack: only at the very top, three phrases in ten. The corkscrew: only in the middle, a phrase in four.
     expect(read(phraseAttack("follow", "intensity", "draw"), { follow: 1, intensity: 0.9, draw: 0.2 })).toBe(1);
@@ -180,6 +230,12 @@ interface Run {
   readonly attack: number[];
   /** How many of the pack are out, per frame, eased. */
   readonly pack: number[];
+  /** Whether it is told to rush, per frame, and how much it is rushing, eased. */
+  readonly rush: number[];
+  readonly rushing: number[];
+  /** Which place it is in (1 the fields), and which shot of the early glimpse of them (0 none). */
+  readonly place: number[];
+  readonly glimpse: number[];
   /** Metres travelled by the last frame. */
   readonly distance: number;
   /** The camera, per frame: the lens the shot asks for and the one the Camera is given, degrees; and the kick. */
@@ -222,6 +278,10 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
   const perch: number[] = [];
   const attack: number[] = [];
   const pack: number[] = [];
+  const rush: number[] = [];
+  const rushing: number[] = [];
+  const place: number[] = [];
+  const glimpse: number[] = [];
   const lens: number[] = [];
   const fov: number[] = [];
   const kick: number[] = [];
@@ -255,6 +315,10 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
     perch.push(read("constant_perch:value"));
     attack.push(read("lag_attack:value"));
     pack.push(read("lag_pack:value"));
+    rush.push(read("constant_rush:value"));
+    rushing.push(read("lag_rush:value"));
+    place.push(read("constant_place:value"));
+    glimpse.push(read("constant_glimpse:value"));
     // The camera's own two expressions, read as the app reads them: against this frame's channels.
     const evaluated = (source: string): number => {
       const value = evaluateExpression(source, { abstime: index / FPS, time: index / FPS }, (name, path) => (path[0] === "chan" && path[1] !== undefined ? { ok: true, value: read(`${name}:${path[1]}`) } : { ok: false, reason: `not a channel: ${path.join(".")}` }));
@@ -272,7 +336,7 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
     last = read("speed_travel:value");
     if (index === 0) first = last;
   }
-  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, pack, distance: last - first, lens, fov, kick, aperture, apertureAtRest, pick, shotBars, hold };
+  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, pack, rush, rushing, place, glimpse, distance: last - first, lens, fov, kick, aperture, apertureAtRest, pick, shotBars, hold };
 }
 
 /** The frames of a stretch of the clip, in seconds. */
@@ -299,10 +363,18 @@ describe("the sentinel follows its own clip, through the document's value graph"
     expect(followed.intensity).toEqual(panel.intensity);
     // Every frame: the pace is the panel's own, times what the energy says, times what the long view says, less what it perches.
     const ratio = followed.rate.map((value, index) => value / panel.rate[index]!);
-    const sounding = ratio.map((value, index) => ({ ratio: value, energy: followed.energy[index]!, intensity: followed.intensity[index]!, perch: followed.perch[index]!, attack: followed.attack[index]! })).filter((frame) => frame.energy > 0);
+    const sounding = ratio.map((value, index) => ({ ratio: value, energy: followed.energy[index]!, intensity: followed.intensity[index]!, perch: followed.perch[index]!, attack: followed.attack[index]!, rush: followed.rush[index]! })).filter((frame) => frame.energy > 0);
     expect(sounding.length).toBeGreaterThan(FRAMES * 0.95);
-    // …and it goes at four tenths of that while it attacks.
-    for (const frame of sounding) expect(frame.ratio).toBeCloseTo(Math.min(1.6, Math.max(0.5, 1 + (frame.energy - 1) * 1.5)) * (1 + (frame.intensity - 0.5) * 0.7) * (1 - frame.perch) * (1 - 0.6 * frame.attack), 9);
+    // …and it goes at four tenths of that while it attacks, and at RUSH.pace times it in a rush.
+    const long = (intensity: number): number => 1 + (intensity - 0.5) * 0.7 + Math.max(intensity - 0.5, 0) * 0.3;
+    for (const frame of sounding) expect(frame.ratio).toBeCloseTo(Math.min(1.6, Math.max(0.5, 1 + (frame.energy - 1) * 1.5)) * long(frame.intensity) * (1 - frame.perch) * (1 - 0.6 * frame.attack) * (1 + (RUSH.pace - 1) * frame.rush), 9);
+    // A rush is told by its rule and nothing else: the top of the track, every other eight bars.
+    for (let index = 0; index < FRAMES; index += 1) {
+      const draw = Math.sin((Math.floor(followed.bar[index]! / RUSH.bars) + 7) * 12.9898) * 43758.5453;
+      const margin = followed.intensity[index]! - RUSH.over;
+      if (Math.abs(margin) < 1e-9) continue;
+      expect(followed.rush[index]).toBe(followed.energy[index]! > 0 && margin > 0 && draw - Math.floor(draw) < RUSH.share ? 1 : 0);
+    }
     // The breakdown, as measured on the clip: perched and standing still from three seconds into the silent
     // bars until the track is back.
     expect(during(followed.perch, SILENT.from + 3, SILENT.to).every((value) => value === 1)).toBe(true);
@@ -328,7 +400,8 @@ describe("the sentinel follows its own clip, through the document's value graph"
       // attacks. And always while more than one of the pack is out: a pack flies, it does not walk.
       const attacking = followed.intensity[index]! > 0.85 && drawOf(followed.bar[index]!, 3) < 0.3 ? 1 : 0;
       const flown = smooth(1.1, 1.6, followed.pack[index]!);
-      expect(followed.swimAsked[index]).toBeCloseTo(Math.max(flown, Math.max(smooth(1.5, 2.2, followed.lift[index]!), byPhrase) * (1 - attacking)), 9);
+      // …and in a rush, which is swum.
+      expect(followed.swimAsked[index]).toBeCloseTo(Math.max(followed.rush[index]!, flown, Math.max(smooth(1.5, 2.2, followed.lift[index]!), byPhrase) * (1 - attacking)), 9);
       // Perched: a breakdown gone nearly silent, this phrase's turn at a low intensity, or a pause in its first two bars; never for no track.
       const bar = followed.bar[index]!;
       const low = followed.intensity[index]! < 0.5 && drawOf(bar, 2) < 0.6 && sounding ? 1 : 0;
@@ -354,8 +427,11 @@ describe("the sentinel follows its own clip, through the document's value graph"
     const followed = await run(true, true);
     const kicks = followed.kick.filter((value) => value > 0.3).length;
     expect(kicks).toBeGreaterThan(50);
-    // Every frame of the clip, kick or no kick: the Camera has exactly the lens the shot asks for.
-    expect(followed.fov).toEqual(followed.lens);
+    // Every frame of the clip, kick or no kick: the Camera has the lens the shot asks for, and seven degrees more
+    // of it in a rush, eased in and out over a second and more. Nothing of the kick.
+    for (let index = 0; index < FRAMES; index += 1) expect(Math.abs(followed.fov[index]! - followed.lens[index]! - 7 * followed.rushing[index]!)).toBeLessThan(1e-9);
+    // …and frame to frame it never moves as a punch does: under a fifth of a degree, where a shot does not change.
+    for (let index = 1; index < FRAMES; index += 1) if (followed.pick[index] === followed.pick[index - 1]) expect(Math.abs(followed.fov[index]! - followed.fov[index - 1]!)).toBeLessThan(0.2);
     // The aperture: at rest except in the phrases whose draw is under 0.45, and there wider by as much as the kick is in.
     let opened = 0;
     let held = 0;
@@ -383,19 +459,29 @@ describe("the sentinel follows its own clip, through the document's value graph"
     const followed = await run(true, true);
     const cuts: number[] = [];
     for (let index = 1; index < FRAMES; index += 1) if (followed.pick[index] !== followed.pick[index - 1]) cuts.push(index);
+    // A cut is the camera's own (its count went up) or the show's: the place changed, or the glimpse of the fields
+    // went to its second shot (director.ts, GLIMPSE). The show's are on its own bars and are not the camera's pace.
+    const shows = (index: number): boolean => followed.place[index] !== followed.place[index - 1] || followed.glimpse[index] !== followed.glimpse[index - 1];
+    const own = cuts.filter((index) => !shows(index));
     // It does cut, and not on every second bar as it did: the shipped clip is sixteen bars of a sparse beat (measured:
-    // one cut, at bar 8; the old rule made seven).
-    expect(cuts.length).toBeGreaterThanOrEqual(1);
-    expect(cuts.length).toBeLessThanOrEqual(3);
+    // one cut of its own, at bar 8; the old rule made seven).
+    expect(own.length).toBeGreaterThanOrEqual(1);
+    expect(own.length).toBeLessThanOrEqual(3);
     // The opening: one shot until the eighth bar, whatever the first bars hold.
     expect(followed.bar[cuts[0] as number]).toBeGreaterThanOrEqual(8);
     expect(followed.shotBars.slice(0, cuts[0] as number).every((bars) => bars === 8)).toBe(true);
-    for (const [at, index] of cuts.entries()) {
+    for (const [at, index] of own.entries()) {
       // On a bar line: the bar count has just stepped, and to a bar the pace at that moment cuts on.
       expect(followed.bar[index]).not.toBe(followed.bar[index - 1]);
-      // Not within a shot's length of the last one: nine tenths of it, by the pace it is on.
-      if (at > 0) expect((index - (cuts[at - 1] as number)) / FPS).toBeGreaterThanOrEqual((followed.hold[index] as number) - 1 / FPS);
+      // Not within a shot's length of its last one: nine tenths of it, by the pace it is on.
+      if (at > 0) expect((index - (own[at - 1] as number)) / FPS).toBeGreaterThanOrEqual((followed.hold[index] as number) - 1 / FPS);
     }
+    // The show's cuts in this clip are the glimpse: into the fields on bar 12, to its second shot on bar 14, each
+    // on the bar line; and the two shots are the place from above and then the three from in front.
+    const shown = cuts.filter(shows);
+    expect(shown.map((index) => followed.bar[index])).toEqual([GLIMPSE.from, (GLIMPSE.from + GLIMPSE.to) / 2].filter((bar) => bar <= (followed.bar[FRAMES - 1] as number)));
+    expect(shown.map((index) => SHOTS[followed.pick[index] as number])).toEqual(["fieldhigh", "fieldfront"].slice(0, shown.length));
+    expect(shown.length).toBeGreaterThanOrEqual(1);
     // Whatever pace it is on is one of the three (the rule for which is camera.test.ts's).
     expect([...new Set(followed.shotBars)].every((bars) => bars === 8 || bars === 4 || bars === 2)).toBe(true);
   });

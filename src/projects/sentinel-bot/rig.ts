@@ -136,14 +136,28 @@ export const adriftExpression = (axis: "x" | "y", own = 0): string => `(${ADRIFT
 export const PACK_WANDER = 0.2;
 /**
  * THE SWIMMING STROKE, as the kernel and the document's expressions both have it (a follower's lights and the
- * camera ride the same lunge the body makes): `lunge` metres forward and back on each stroke at full effort,
- * each robot `apart` of a bar after the one before, and its effort swelling between `effort` × 2 − 1 and 1 on a
- * slow count (`swell` radians a second, each robot `swellApart` radians on).
+ * camera ride the same lunge the body makes). A stroke DRIVES and then GLIDES: in the first `drive` of it the
+ * body gains `lunge` metres on where it would have been (at full effort), and over the rest it gives them back,
+ * slowly. It was a sine, as far back as forward and as fast (the owner, 2026-10-06: "the swim pump forward
+ * backward motion is still kind of odd in parts"): at a slow pace the body all but stopped on every stroke, and
+ * stopped, it went backward. Now it never goes back faster than a quarter of its drive, and `way` (how fast it is
+ * going, 0 to 1 of a walking pace) scales the whole of it, so a robot that has stopped hangs where it is.
+ * Each robot strokes `apart` of a bar after the one before, and its effort swells between `effort` × 2 − 1 and 1
+ * on a slow count (`swell` radians a second, each robot `swellApart` radians on).
  */
-export const SWIM = { lunge: 0.35, apart: 0.37, effort: 0.725, swell: 0.41, swellApart: 2.3 } as const;
-/** How far along the tunnel robot `robot` of the pack has lunged on its stroke now, as an expression of the stroke's phase. */
-export function swimLungeExpression(stroke: string, robot: number): string {
-  return `(${SWIM.lunge} * (${SWIM.effort} + ${(1 - SWIM.effort).toFixed(3)} * sin(abstime * ${SWIM.swell} + ${(robot * SWIM.swellApart).toFixed(3)})) * sin(6.2831853 * (${stroke} + ${(robot * SWIM.apart).toFixed(3)} - 0.125)))`;
+export const SWIM = { lunge: 0.6, drive: 0.2, apart: 0.37, effort: 0.725, swell: 0.41, swellApart: 2.3 } as const;
+/** Where in the stroke the drive begins, so that it is at its fastest where the tentacles snap shut (an eighth of the way in). */
+const STROKE_LEADS = 0.125 - SWIM.drive / 2;
+/** The speed, metres a second, from which a swimming robot lunges in full: under it, in proportion. */
+export const SWIM_WAY = 2;
+/**
+ * How far along the tunnel robot `robot` of the pack has lunged on its stroke now, as an expression of the
+ * stroke's phase and of `way` (0 to 1: how much of its pace it has).
+ */
+export function swimLungeExpression(stroke: string, robot: number, way: string): string {
+  const phase = `fract(${stroke} + ${(robot * SWIM.apart - STROKE_LEADS).toFixed(4)})`;
+  const effort = `(${SWIM.effort} + ${(1 - SWIM.effort).toFixed(3)} * sin(abstime * ${SWIM.swell} + ${(robot * SWIM.swellApart).toFixed(3)}))`;
+  return `(${way} * ${SWIM.lunge} * ${effort} * (smoothstep(0, ${SWIM.drive}, ${phase}) * (1 - smoothstep(${SWIM.drive}, 1, ${phase})) - 0.5))`;
 }
 /**
  * How much further apart the pack flies out in the fields, as a hall's swell is reckoned: a hall is 1, and
@@ -162,7 +176,10 @@ fn swimAt(swim: f32, z: f32) -> f32 {
 // drifts back between: half a metre either side of where it would glide.
 fn robotZ(travel: f32, offset: vec3f, swim: f32, stroke: f32, effort: f32) -> f32 {
   let z = travel + offset.z;
-  return z + swimAt(swim, z) * ${SWIM.lunge} * effort * sin(6.2831853 * (stroke - 0.125));
+  // The stroke drives and then glides (rig.ts, SWIM): up fast, back slowly, about its own mean.
+  let phase = fract(stroke - ${STROKE_LEADS.toFixed(4)});
+  let gained = smoothstep(0.0, ${SWIM.drive}, phase) * (1.0 - smoothstep(${SWIM.drive}, 1.0, phase)) - 0.5;
+  return z + swimAt(swim, z) * ${SWIM.lunge} * effort * gained;
 }
 
 // EACH ROBOT SWIMS ON ITS OWN COUNT (the owner, 2026-10-06: "the pumping swimming motion of the robots is a bit
@@ -303,6 +320,7 @@ ${PLACE_PARAMS}
   follow: f32, // @default 0.4  With a Rope after this kernel: how firmly every ring of a tentacle that holds nothing is drawn toward the shape it would have had, 0 to 1. 0 is a free rope, trailing as the body drags it; near 1 it is that shape again.
   company: f32, // @default 0  Whether it has company, 0 to 1: with others beside it, it wanders a fifth as far and holds its tentacles' ends in.
   afield: f32, // @default 0  1 out in the fields (field.ts), where the pack has all the room there is; 0 in the tunnel.
+  way: f32, // @default 1  How much of its pace it has, 0 to 1: a swimming stroke's lunge is in proportion, so stopped it does not pump in place.
   pack: f32, // @default 1000  How many robots of the pack are out: 1 is the leader alone, 2 brings the second up from behind, and a part of one is one on its way. The default is all of them.
 };
 ${ROBOT_FRAME}
@@ -586,7 +604,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // Where the gait counts from: the rungs it plants on are a matter of how far it has come.
   let stroke = strokeOf(params.stroke, f32(robot), params.variety);
   let effort = effortOf(ctx.absTime, f32(robot), params.variety);
-  let bodyZ = robotZ(params.travel, offset, params.swim, stroke, effort);
+  // A robot that has slowed lunges less, and one that has stopped not at all: it hangs where it is.
+  let bodyZ = robotZ(params.travel, offset, params.swim, stroke, effort * clamp(params.way, 0.0, 1.0));
   let stride = PATH_PERIOD / round(PATH_PERIOD / max(params.stride, 0.5));
   let count = f32(robot) * 0.37 * params.variety;
   // A pack in unison plants on the same ribs; with variety each robot draws its own.
@@ -603,8 +622,9 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let winding = spiralAt(bodyZ, params);
   let wound = clamp(params.spiral * 3.0, 0.0, 1.0) * (1.0 - swimming);
   let riding = vec3f(-sin(winding), cos(winding), 0.0) * 0.32 * wound;
-  // Attacking it rears: nose up a little, to strike over what it holds.
-  let rearing = clamp(params.attack, 0.0, 1.0) * (1.0 - swimming);
+  // Attacking it rears: nose up a little, to strike over what it holds. Swimming too (the fields' stand,
+  // director.ts): then nothing holds a wall (grab is 0 in the water), the strikers strike and the rest trail.
+  let rearing = clamp(params.attack, 0.0, 1.0);
   let body = robotFrame(frameZ, offset + sway + riding, params.roll + winding - woven.x * 0.3 * afoot, params.look + vec2f(0.0, 0.14 * rearing), ctx.absTime, adrift);
   if (PICK_BODY) {
     // The robot's own point: where its body is and how it is turned (the kit's robot frame: +Z forward, +Y up).

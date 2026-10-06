@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PACK } from "./document.ts";
 import { ZERO_FRAME, frameFromClock } from "../../domain/types/frame.ts";
 import { valueExpressionNode } from "../../nodes/definitions/value-structure-nodes.ts";
-import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, CUT_DEFAULTS, CUT_PACE, FIELD_ORDER, PACK_ORDER, ROBOT_ORDER, SHOTS, SHOT_TABLE, cutStatements, shotAtTurn, type Shot } from "./camera.ts";
+import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, CUT_DEFAULTS, CUT_PACE, FIELD_ORDER, GLIMPSE_SHOTS, PACK_ORDER, ROBOT_ORDER, SHOTS, SHOT_TABLE, cutStatements, shotAtTurn, type Shot } from "./camera.ts";
 import { FIELD } from "./field.ts";
 import { CHAMBERS } from "./path.ts";
 import { FIELD_BERTH } from "./rig.ts";
@@ -184,6 +184,20 @@ describe("the sentinel camera", () => {
         expect([shot.name, tall(Math.max(...depths)) >= 0.05]).toEqual([shot.name, true]);
       }
     }
+  });
+
+  it("the early glimpse of the fields is two shots of its own, whatever the turn: the place from above, then the three from in front", () => {
+    expect(GLIMPSE_SHOTS.map((at) => SHOTS[at])).toEqual(["fieldhigh", "fieldfront"]);
+    for (let want = 0; want < 12; want += 1) {
+      for (const pack of [1, 3]) {
+        const at = (glimpse: number): number => rig({ value: 0, shot: 0, cuts: 1, want, pack, packing: pack, place: 1, glimpse }, 0)["pick"] as number;
+        expect([want, pack, SHOTS[at(1)], SHOTS[at(2)]]).toEqual([want, pack, "fieldhigh", "fieldfront"]);
+        // No glimpse: the turn's own shot, as before.
+        expect(at(0)).toBe(shotAtTurn(want, true, true));
+      }
+    }
+    // With the camera in the hand (Auto camera off) the glimpse takes nothing: the slider's shot holds.
+    expect(rig({ value: 0, shot: 3, cuts: 0, want: 5, glimpse: 1, place: 1 }, 0)["pick"]).toBe(3);
   });
 
   it("looks where the shot says: past the robot down the tunnel, at the robot, at its tail, or at the pack", () => {

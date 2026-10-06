@@ -5,7 +5,7 @@ import { kernelRegionSlice } from "../../nodes/definitions/test-support.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
-import { BOLT_ATTRIBUTES, BOLT_CAPACITY, BOLT_KERNEL, BOLT_SURFACE_WGSL, FIELD, FIELD_ATTRIBUTES, POD_CAPACITY, POD_KERNEL, POD_TOWERS, TOWER_CAPACITY, TOWER_KERNEL, TOWER_SURFACE_WGSL, TRUNK_TOWERS, strikeAt, towerAt, type FieldWindow } from "./field.ts";
+import { BOLT_ATTRIBUTES, BOLT_CAPACITY, BOLT_KERNEL, BOLT_SURFACE_WGSL, FIELD, FIELD_ATTRIBUTES, TOWER_CAPACITY, TOWER_KERNEL, TOWER_SURFACE_WGSL, TRUNK_TOWERS, strikeAt, towerAt, type FieldWindow } from "./field.ts";
 import { PATH, pathAt } from "./path.ts";
 import { BORE_ATTRIBUTES, BORE_KERNEL } from "./tunnel.ts";
 
@@ -14,7 +14,7 @@ import { BORE_ATTRIBUTES, BORE_KERNEL } from "./tunnel.ts";
  *
  * What the place owes whoever flies through it and whoever looks: a tower is where the rule says
  * (the same tower whichever way the window has slid, the lap's end included), none of it reaches
- * into the avenue the robots and the camera use, its pods hang on it, and out of the fields
+ * into the avenue the robots and the camera use, it is covered in pods that are shapes, and out of the fields
  * there is nothing of it to draw, as in the fields there is nothing of the tunnel.
  */
 
@@ -74,6 +74,49 @@ function cellOf(window: FieldWindow, slot: number, travel: number): { across: nu
   };
 }
 
+/**
+ * The towers alone, through their own chain (kernel, strips, frames, Sweep, the trunk's material), from `eye`
+ * toward `lookAt`: the frame's bytes, four to a pixel, linear. No light but the pods' own unless `sun` says
+ * which way one travels.
+ */
+async function towersSeen(options: { travel: number; eye: readonly number[]; lookAt: readonly number[]; fov: number; size: number; material: Record<string, number | number[]>; sun?: readonly number[] }): Promise<Uint8Array> {
+  if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
+  const result = await renderHeadless({
+    host: nodeGpuHost(),
+    graph: graph(
+      [
+        node("kernel_towers", "pointKernel", [0, 0], { capacity: TOWER_CAPACITY, attributes: FIELD_ATTRIBUTES, kernel: TOWER_KERNEL, travel: options.travel, place: 1 }),
+        node("topology_towers", "pointTopology", [0, 0], { connectivity: "strips", cols: FIELD.towerPoints, rows: TRUNK_TOWERS }),
+        node("frames_towers", "pointCurveFrames", [0, 0], { method: "minimiseTwist", up: [1, 0, 0] }),
+        // As the document sweeps them (document.ts, sweep_towers): the material reads the Sweep's own winding.
+        node("sweep_towers", "pointSweep", [0, 0], { profile: "ring", sides: 12, radius: mappedTo("girth", 1) as never }),
+        node("material_tower", "materialWgsl", [0, 0], { model: "pbr", source: TOWER_SURFACE_WGSL, glow: 0.4, hueFrom: 0, hueTo: 0.03, low: 0, kick: 0, hat: 0, beat: 0, react: 1, robotAt: [...options.eye], ...options.material }, { label: "material_tower" }),
+        node("geometry_towers", "geometry", [0, 0], { mode: "surface", material: "material_tower", tint: mappedTo("tint", [0, 0, 0, 0]) as never }, { label: "geometry_towers" }),
+        ...(options.sun === undefined ? [] : [node("light_sun", "light", [0, 0], { kind: "directional", color: [1, 1, 1, 1], direction: [...options.sun], intensity: 3 }, { label: "light_sun" })]),
+        node("camera_any", "camera", [0, 0], { eye: [...options.eye], lookAt: [...options.lookAt], fov: options.fov, near: 0.1, far: 520 }, { label: "camera_any" }),
+        node("render_shot", "render", [0, 0], { scenes: "geometry_towers", camera: "camera_any", lights: options.sun === undefined ? "" : "light_sun", ambientIntensity: 0, background: [0, 0, 0, 1] }, { label: "render_shot" }),
+        node("output_frame", "output", [0, 0], {}, { label: "output_frame" }),
+      ],
+      [
+        edge("towers-strips", ["kernel_towers", "out"], ["topology_towers", "points"]),
+        edge("towers-frames", ["topology_towers", "out"], ["frames_towers", "points"]),
+        edge("towers-sweep", ["frames_towers", "out"], ["sweep_towers", "points"]),
+        edge("towers-geo", ["sweep_towers", "out"], ["geometry_towers", "points"]),
+        edge("shot-out", ["render_shot", "out"], ["output_frame", "input"]),
+      ],
+    ),
+    settings: settings({ outputResolution: { width: options.size, height: options.size }, workingFormat: "rgba8unorm" }),
+    frames: 1,
+    outputNodeId: "render_shot",
+    outputPortId: "out",
+  });
+  const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (errors.length > 0) throw new Error(errors.map((diagnostic) => diagnostic.message).join("; "));
+  const frame = result.frames[0];
+  if (frame === undefined) throw new Error("no frame");
+  return frame.bytes;
+}
+
 describe("the fields (T1561b)", () => {
   it("stands every tower where the rule puts it, whichever way the window has slid and over the lap's end, and none where the rule has an avenue", async () => {
     expect((-FIELD.below + ((FIELD.below + FIELD.above) * AT_THE_LINE) / (FIELD.towerPoints - 1))).toBe(0);
@@ -122,39 +165,6 @@ describe("the fields (T1561b)", () => {
     // off the line is 10.1 m (camera.test.ts holds that).
     expect(nearest).toBeGreaterThan(FIELD.avenue - 1);
     expect(nearest).toBeLessThan(FIELD.avenue + 6);
-  }, 240_000);
-
-  it("hangs every pod on its own tower, running outward, and none on a tower that is not there", async () => {
-    const travel = 300;
-    const pods = await strips(POD_KERNEL, FIELD_ATTRIBUTES, POD_CAPACITY, { travel, place: 1 });
-    let hung = 0;
-    for (let slot = 0; slot < POD_TOWERS; slot += 1) {
-      const { across, along } = cellOf(FIELD.hung, slot, travel);
-      const tower = towerAt(across, along);
-      for (let pod = 0; pod < FIELD.pods; pod += 7) {
-        const first = (slot * FIELD.pods + pod) * FIELD.podPoints;
-        const [foot, tip] = [pods.position(first), pods.position(first + FIELD.podPoints - 1)];
-        if (!tower.stands) {
-          expect(pods.girth(first + 2)).toBe(0);
-          expect(foot[1]).toBeLessThan(-1000);
-          continue;
-        }
-        hung += 1;
-        const off = (point: readonly number[]): number => Math.hypot((point[0] as number) - tower.x, (point[2] as number) - tower.z);
-        // Its foot is at the trunk's skin (the trunk is 0.7 to 1.7 of its radius thick there and leans a metre at most), its far end further out.
-        expect(off(foot)).toBeGreaterThan(tower.radius * 0.45);
-        expect(off(foot)).toBeLessThan(tower.radius * 1.7 + 1);
-        expect(off(tip) - off(foot)).toBeGreaterThan(0.5);
-        // In the band it is meant to hang in.
-        const above = foot[1] - pathAt(tower.z)[1];
-        expect(above).toBeGreaterThan(FIELD.podsFrom - 0.01);
-        expect(above).toBeLessThan(FIELD.podsTo + 0.01);
-        // A spindle: its middle has a radius, its ends next to none.
-        expect(pods.girth(first + 2)).toBeGreaterThan(0.3);
-        expect(pods.girth(first)).toBeLessThan(0.05);
-      }
-    }
-    expect(hung).toBeGreaterThan(100);
   }, 240_000);
 
   it("draws a strike of lightning where the rule puts it, up a tower's flank or across to the next, forks and all, and nothing of it without a flash", async () => {
@@ -272,40 +282,7 @@ describe("the fields (T1561b)", () => {
     const eye = [here[0], here[1], travel];
     const lookAt = [here[0] + 60, here[1], travel + 60];
     /** The frame's bytes with only the towers in it and no light but their own. */
-    const shot = async (light: Record<string, number | number[]>): Promise<Uint8Array> => {
-      const result = await renderHeadless({
-        host: nodeGpuHost(),
-        graph: graph(
-          [
-            node("kernel_towers", "pointKernel", [0, 0], { capacity: TOWER_CAPACITY, attributes: FIELD_ATTRIBUTES, kernel: TOWER_KERNEL, travel, place: 1 }),
-            node("topology_towers", "pointTopology", [0, 0], { connectivity: "strips", cols: FIELD.towerPoints, rows: TRUNK_TOWERS }),
-            node("frames_towers", "pointCurveFrames", [0, 0], { method: "minimiseTwist", up: [1, 0, 0] }),
-            node("sweep_towers", "pointSweep", [0, 0], { profile: "ring", sides: 10, radius: mappedTo("girth", 1) as never }),
-            node("material_tower", "materialWgsl", [0, 0], { model: "pbr", source: TOWER_SURFACE_WGSL, glow: 0.4, hueFrom: 0, hueTo: 0.03, low: 0, kick: 0, hat: 0, beat: 0, react: 1, robotAt: eye, ...light }, { label: "material_tower" }),
-            node("geometry_towers", "geometry", [0, 0], { mode: "surface", material: "material_tower", tint: mappedTo("tint", [0, 0, 0, 0]) as never }, { label: "geometry_towers" }),
-            node("camera_any", "camera", [0, 0], { eye, lookAt, fov: 60, near: 0.1, far: 520 }, { label: "camera_any" }),
-            node("render_shot", "render", [0, 0], { scenes: "geometry_towers", camera: "camera_any", lights: "", ambientIntensity: 0, background: [0, 0, 0, 1] }, { label: "render_shot" }),
-            node("output_frame", "output", [0, 0], {}, { label: "output_frame" }),
-          ],
-          [
-            edge("towers-strips", ["kernel_towers", "out"], ["topology_towers", "points"]),
-            edge("towers-frames", ["topology_towers", "out"], ["frames_towers", "points"]),
-            edge("towers-sweep", ["frames_towers", "out"], ["sweep_towers", "points"]),
-            edge("towers-geo", ["sweep_towers", "out"], ["geometry_towers", "points"]),
-            edge("shot-out", ["render_shot", "out"], ["output_frame", "input"]),
-          ],
-        ),
-        settings: settings({ outputResolution: { width: 128, height: 128 }, workingFormat: "rgba8unorm" }),
-        frames: 1,
-        outputNodeId: "render_shot",
-        outputPortId: "out",
-      });
-      const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
-      if (errors.length > 0) throw new Error(errors.map((diagnostic) => diagnostic.message).join("; "));
-      const frame = result.frames[0];
-      if (frame === undefined) throw new Error("no frame");
-      return frame.bytes;
-    };
+    const shot = (light: Record<string, number | number[]>): Promise<Uint8Array> => towersSeen({ travel, eye, lookAt, fov: 60, size: 128, material: light });
     /** How much red light is in a frame, and how many of its pixels have any. */
     const red = (bytes: Uint8Array): number => bytes.reduce((sum, byte, index) => (index % 4 === 0 ? sum + byte : sum), 0);
     const lit = (bytes: Uint8Array): number => bytes.reduce((count, byte, index) => (index % 4 === 0 && byte > 0 ? count + 1 : count), 0);
@@ -349,11 +326,66 @@ describe("the fields (T1561b)", () => {
     expect(Array.from(await shot({ react: 0, low: 1, kick: 0.8, hat: 1, beat: 4 }))).toEqual(Array.from(deaf));
   }, 600_000);
 
+  it("a pod is a shape standing out of the trunk: a light from one side falls on that side of it", async () => {
+    // The owner, 2026-10-06, of pods that were lit dots painted on the trunk: "the pods are not really structures,
+    // visible structures at all … not plastic enough". A painted dot is the same on both its sides whatever lights
+    // it. A shape that stands out of the trunk is bright on the side the light is on; one sunk INTO it (which is
+    // what this looks like if the lattice's columns are counted the wrong way round the trunk) on the other.
+    const travel = 300;
+    // The nearest tower on the line's right, and a lens level with the line looking straight at its skin.
+    let tower = towerAt(1, Math.floor(travel / FIELD.cell));
+    for (let across = 0; across <= 3 && !tower.stands; across += 1) tower = towerAt(across, Math.floor(travel / FIELD.cell));
+    expect(tower.stands).toBe(true);
+    const level = pathAt(tower.z)[1] + 2;
+    const SIZE = 96;
+    const dark = { glow: 0 };
+    // Which way is the picture's left: looking along +x it is −z. Not taken on trust (a first version of this
+    // test had it the other way round): held by the trunk itself, which is a round thing whatever its pods are.
+    // From thirty metres off, where a pod is a few pixels, a light that travels from −z to +z leaves the trunk's
+    // left half the brighter.
+    const leftward = [0.5, 0, 0.87];
+    const rightward = [0.5, 0, -0.87];
+    const halves = (bytes: Uint8Array, from = 0, to = SIZE, top = 0, bottom = SIZE): [number, number] => {
+      let [left, right] = [0, 0];
+      const middle = (from + to) / 2;
+      for (let y = top; y < bottom; y += 1) for (let x = from; x < to; x += 1) {
+        const value = bytes[(y * SIZE + x) * 4 + 1] as number;
+        if (x < middle) left += value;
+        else right += value;
+      }
+      return [left, right];
+    };
+    const far = [tower.x - 30, level, tower.z];
+    const trunk = halves(await towersSeen({ travel, eye: far, lookAt: [tower.x, level, tower.z], fov: 20, size: SIZE, material: dark, sun: leftward }));
+    expect(trunk[0]).toBeGreaterThan(trunk[1] * 1.3);
+
+    // Close: 2.6 m off the skin, a frame two metres across, so a pod is half of it. Where one is: the pods' own
+    // light, with nothing else on, and the brightest of it.
+    const near = [tower.x - tower.radius * 1.7 - 2.6, level, tower.z];
+    const view = { travel, eye: near, lookAt: [tower.x, level, tower.z], fov: 42, size: SIZE };
+    const own = await towersSeen({ ...view, material: { glow: 2 } });
+    let [best, bestX, bestY] = [0, 0, 0];
+    // …away from the frame's edge, so both its sides are in the picture.
+    for (let y = 20; y < SIZE - 20; y += 1) for (let x = 20; x < SIZE - 20; x += 1) {
+      // A pod's middle: the brightest five-by-five of its own light.
+      let sum = 0;
+      for (let dy = -2; dy <= 2; dy += 1) for (let dx = -2; dx <= 2; dx += 1) sum += own[((y + dy) * SIZE + x + dx) * 4] as number;
+      if (sum > best) [best, bestX, bestY] = [sum, x, y];
+    }
+    expect(best).toBeGreaterThan(25 * 20);
+    // The same pod with its own light off and a light from the left, then from the right: sixteen pixels either
+    // side of its middle, eight above and below.
+    const sides = async (sun: readonly number[]): Promise<[number, number]> => halves(await towersSeen({ ...view, material: dark, sun }), bestX - 16, bestX + 16, bestY - 8, bestY + 8);
+    const [fromLeft, fromRight] = [await sides(leftward), await sides(rightward)];
+    expect(fromLeft[0]).toBeGreaterThan(fromLeft[1] * 1.5);
+    expect(fromRight[1]).toBeGreaterThan(fromRight[0] * 1.5);
+    // With no light and no glow there is nothing there to see: the two pictures above are of the light.
+    expect((await towersSeen({ ...view, material: dark })).some((byte, index) => index % 4 !== 3 && byte > 0)).toBe(false);
+  }, 600_000);
+
   it("is not there in the tunnel, and the tunnel is not there in the fields", async () => {
     const towers = await strips(TOWER_KERNEL, FIELD_ATTRIBUTES, TOWER_CAPACITY, { travel: 300, place: 0 });
     for (let point = 0; point < TOWER_CAPACITY; point += 5) expect(towers.girth(point)).toBe(0);
-    const pods = await strips(POD_KERNEL, FIELD_ATTRIBUTES, POD_CAPACITY, { travel: 300, place: 0 });
-    for (let point = 0; point < POD_CAPACITY; point += 31) expect(pods.girth(point)).toBe(0);
     // The wall: a ring of it is metres across in the tunnel, and in the fields every point of it is one point.
     const COLS = 33;
     const ROWS = 24;
