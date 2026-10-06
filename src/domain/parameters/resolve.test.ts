@@ -4,8 +4,11 @@ import type { ParentScope } from "../types/components.ts";
 import type { GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { NodeDefinition } from "../types/node-definition.ts";
-import { STORED_READ, resolveParameter, resolveParameterSchema, resolveParameters, srgbToLinear } from "./resolve.ts";
+import { diagnosticClass } from "../diagnostics/classes.ts";
+import { bindCycleDiagnostics } from "./bind-cycles.ts";
+import { STORED_READ, effectiveParameterSchema, resolveParameter, resolveParameterSchema, resolveParameters, srgbToLinear } from "./resolve.ts";
 import { testRead } from "./test-support.ts";
+import { EXPRESSION_DRIVEN_TYPES, validateStoredParameter } from "./validate.ts";
 
 /**
  * The promoted §V61 resolver (T168, closing B8).
@@ -305,6 +308,33 @@ describe("parameter modes (T203, §V107)", () => {
     expect([entry?.diagnostic?.severity, entry?.diagnostic?.code]).toEqual(["error", "parameter.expression.name"]);
   });
 
+  it("agrees with the write gate, type by type, on what an expression can drive (§B266)", () => {
+    // One rule, two readers: the write gate refuses an expression on a type that takes
+    // none (`EXPRESSION_DRIVEN_TYPES`), and the resolver says the same of one already
+    // stored. A type added to the union must be decided in both or this fails.
+    const every: NodeDefinition["parameters"] = {
+      number: { type: "number", label: "n", default: 0 },
+      boolean: { type: "boolean", label: "b", default: false },
+      pulse: { type: "pulse", label: "p", fires: "feedback.reset" },
+      enum: { type: "enum", label: "e", default: "a", options: [{ value: "a", label: "A" }] },
+      string: { type: "string", label: "s", default: "" },
+      vector: { type: "vector", label: "v", size: 2, default: [0, 0] },
+      color: { type: "color", label: "c", default: [0, 0, 0, 1], space: "linear" },
+      code: { type: "code", label: "k", language: "wgsl", default: "" },
+      asset: { type: "asset", label: "a", kind: "image" },
+      curve: { type: "curve", label: "u", default: [] },
+      stops: { type: "stops", label: "t", default: [], space: "linear" },
+    };
+    for (const [key, parameter] of Object.entries(every)) {
+      const stored = { mode: "expression" as const, bindings: { expression: { kind: "expression" as const, source: "0" } } };
+      const atRest = resolveParameters(nodeWith({ [key]: stored }), { ...solidLike, parameters: every }, STORED_READ).get(key)?.diagnostic?.code;
+      const atTheWrite = validateStoredParameter(key, parameter, stored)?.code;
+      const driven = EXPRESSION_DRIVEN_TYPES.has(parameter.type);
+      expect([key, atRest === "parameter.expression.type", atTheWrite === "parameter.expression.type"]).toEqual([key, !driven, !driven]);
+    }
+    expect(Object.keys(every).filter((key) => !EXPRESSION_DRIVEN_TYPES.has(every[key]!.type))).toEqual(["code", "asset", "curve", "stops"]);
+  });
+
   it("drives every type from a number: bool ≠0, enum by index, string rendered (§V107)", () => {
     const definition: NodeDefinition = {
       ...solidLike,
@@ -362,7 +392,8 @@ describe("parameter modes (T203, §V107)", () => {
     });
     const resolved = resolveParameters(node, solidLike, STORED_READ);
     expect(resolved.get("gain")?.value).toBe(2);
-    expect(resolved.get("gain")?.diagnostic?.code).toBe("parameter.bind");
+    // §T1641b slice 1b: it can never read. An error, by its own code.
+    expect([resolved.get("gain")?.diagnostic?.severity, resolved.get("gain")?.diagnostic?.code]).toEqual(["error", "parameter.bind.unreadable"]);
   });
 
   it("survives a circular bind at runtime — backstop, not the contract (§V110)", () => {
@@ -373,7 +404,87 @@ describe("parameter modes (T203, §V107)", () => {
       solidLike, STORED_READ,
     );
     expect(resolved.get("gain")?.value).toBe(4); // default; no hang, no throw
-    expect(resolved.get("gain")?.diagnostic?.code).toBe("parameter.bind");
+    expect(resolved.get("gain")?.diagnostic?.code).toBe("parameter.bind.unreadable");
+    expect(resolved.get("gain")?.diagnostic?.message).toContain("cannot bind to itself");
+  });
+
+  /**
+   * §T1641b slice 1b — EVERY WAY A BIND FAILS HAS ITS OWN CODE, as slice 1 did for an
+   * expression. `parameter.bind` was one warning for a ref that names nothing this node has
+   * (it can never read) beside a value that is past a limit at this moment (it reads at
+   * another value). Both directions: the first kind is an error, the second stays as loud
+   * as it was.
+   */
+  describe("the kind of a failed bind decides its code and its severity (T1641b slice 1b)", () => {
+    const mixed: NodeDefinition = {
+      ...solidLike,
+      parameters: {
+        gain: { type: "number", label: "Gain", default: 4, min: 0, max: 64 },
+        amount: { type: "number", label: "Amount", default: 0.5, min: 0, max: 1, range: "bounded" },
+        on: { type: "boolean", label: "On", default: false },
+        tint: { type: "color", label: "Tint", default: [0, 0, 0, 1], space: "linear" },
+      },
+    };
+    const bound = (ref: string, retained?: number) =>
+      slot("bind", { bind: { kind: "bind", ref }, ...(retained === undefined ? {} : { static: { kind: "static", value: retained } }) });
+    const said = (parameters: GraphNode["parameters"], key: string, read = STORED_READ as Parameters<typeof resolveParameters>[2]) =>
+      resolveParameters(nodeWith(parameters), mixed, read).get(key);
+    const verdict = (parameters: GraphNode["parameters"], key: string, read?: Parameters<typeof resolveParameters>[2]) => {
+      const diagnostic = said(parameters, key, read)?.diagnostic;
+      return diagnostic == null ? null : [diagnostic.severity, diagnostic.code, diagnosticClass(diagnostic.code)];
+    };
+
+    it("is an error when the bind can never read: nothing of that name, no such part, itself", () => {
+      const never = ["error", "parameter.bind.unreadable", "never"];
+      expect(verdict({ gain: bound("gian", 2) }, "gain")).toEqual(never);
+      expect(verdict({ gain: bound("tint.q", 2) }, "gain")).toEqual(never);
+      expect(verdict({ gain: bound("gain", 2) }, "gain")).toEqual(never);
+      // The stored value stands in, and the nearest declared key is named.
+      const missing = said({ gain: bound("gian", 2) }, "gain");
+      expect(missing?.value).toBe(2);
+      expect(missing?.diagnostic?.message).toContain("it names no parameter on this node (it has amount, gain, on, tint)");
+      expect(missing?.diagnostic?.suggestion).toBe('Nearest: "gain".');
+    });
+
+    it("is an error when what is bound is of another type: no value of it fits", () => {
+      const never = ["error", "parameter.bind.type", "never"];
+      // A whole colour onto a number, and a boolean onto a number.
+      expect(verdict({ gain: bound("tint", 2) }, "gain")).toEqual(never);
+      expect(verdict({ gain: bound("on", 2) }, "gain")).toEqual(never);
+      expect(said({ gain: bound("tint", 2) }, "gain")?.value).toBe(2);
+    });
+
+    it("stays a warning when the bound VALUE is past this parameter's limit: another value fits", () => {
+      // `amount` is 0…1; `gain` holds 3.
+      expect(verdict({ gain: 3, amount: bound("gain", 0.25) }, "amount")).toEqual(["warning", "parameter.bind.value", "degraded"]);
+      expect(said({ gain: 3, amount: bound("gain", 0.25) }, "amount")?.value).toBe(0.25);
+      // And the same bind reads the moment the value fits: it was never a bind to nothing.
+      expect(said({ gain: 0.75, amount: bound("gain", 0.25) }, "amount")).toMatchObject({ value: 0.75, driven: true, diagnostic: null });
+    });
+
+    it("survives a loop of binds, which the node's own check names with the loop's code (§V110)", () => {
+      const loop = { gain: bound("amount", 2), amount: bound("gain", 0.25) };
+      // The resolver's guard is a backstop ONE HOP INSIDE the loop: it stops the recursion,
+      // and a bind reads what its sibling is in effect, so the parameter at the top reads
+      // the fallback and says nothing of a loop. That is why the loop is not the resolver's
+      // to report: the compile asks the whole node, once, and that check owns the code.
+      expect(said(loop, "gain")?.value).toBe(0.25);
+      const looped = nodeWith(loop);
+      const named = bindCycleDiagnostics(looped, effectiveParameterSchema(mixed, looped.parameters));
+      expect(named.length).toBeGreaterThan(0);
+      expect(named.map((entry) => [entry.severity, entry.code, diagnosticClass(entry.code)])).toEqual(
+        named.map(() => ["error", "parameter.bindCycle", "never"]),
+      );
+    });
+
+    it("says of a parent ref what the scope it was GIVEN says, and of a missing scope that it is the caller's", () => {
+      // With the component's scope: a key the component does not publish can never read.
+      const scoped = { ...STORED_READ, parentBind: parentBindResolver(buildParentScope([{ gain: 9 }])) };
+      expect(verdict({ gain: bound("parent.gane", 2) }, "gain", scoped)).toEqual(["error", "parameter.bind.unreadable", "never"]);
+      expect(verdict({ gain: bound("parent.gain", 2) }, "gain", scoped)).toBeNull();
+      // With no scope handed over at all: nothing is known of the document. Not an error.
+      expect(verdict({ gain: bound("parent.gain", 2) }, "gain")).toEqual(["warning", "parameter.bind.unavailable", "build"]);
+    });
   });
 
   it("holds a driven parameter at its retained value until a channel attaches (T203 reserved)", () => {

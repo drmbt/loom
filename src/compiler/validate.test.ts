@@ -31,13 +31,21 @@ describe("validateGraph — definitions and parameters (T24)", () => {
     expect(result.diagnostics.some((d) => d.severity === "error" && d.nodeId === "a")).toBe(true);
   });
 
-  it("warns about a parameter the definition does not declare", () => {
-    const graph = testGraph([testNode("a", "fx.blur", { parameters: { radius: 2, ghost: 1 } })]);
+  it("says a stored key the definition does not declare is read by nothing: the write gate's own finding, at rest", () => {
+    const graph = testGraph([testNode("a", "fx.blur", { parameters: { radius: 2, ghost: 1, radus: 3 } })]);
     const result = validateGraph(flatDocument(graph), registry);
 
-    expect(
-      result.diagnostics.some((d) => d.code === CompilerDiagnosticCode.parameterUnknown),
-    ).toBe(true);
+    // §T1641b slice 2: one code for the write and for the document at rest, at error.
+    const unknown = result.diagnostics.filter((d) => d.code === "parameter.unknown");
+    expect(unknown.map((d) => [d.severity, d.nodeId])).toEqual([
+      ["error", "a"],
+      ["error", "a"],
+    ]);
+    expect(unknown[0]?.message).toBe('Node "a" stores a value under "ghost", which "fx.blur" does not declare: nothing reads it.');
+    expect(unknown[0]?.suggestion).toBe("Declared: radius. Or remove the stored value: parameter.removeUndeclared (in a patch: removeParameters).");
+    expect(unknown[1]?.suggestion).toBe('Nearest: "radius". Declared: radius. Or remove the stored value: parameter.removeUndeclared (in a patch: removeParameters).');
+    // The declared value beside them is still the one handed on.
+    expect(result.nodes.get("a")?.parameters).toEqual({ radius: 2 });
   });
 
   it("warns when the saved definition version differs from the registry's", () => {

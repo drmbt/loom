@@ -5,6 +5,19 @@ import { cx } from "@ui/cx.ts";
 import { formatDiagnosticLocation, partitionDiagnostics } from "./shader-diagnostics.ts";
 import styles from "./problems-panel.module.css";
 
+/**
+ * §T1641b slice 2: something a problem's row can DO about it, beside saying it. One verb,
+ * one command. A stored key the node does not declare has no row in the inspector to be
+ * fixed from, so the Problems row that reports it is where its remedy has to be.
+ */
+export interface ProblemAction {
+  /** The button's word: `remove`. */
+  readonly label: string;
+  /** What it does, in full, for the tooltip and the accessible name. */
+  readonly description: string;
+  readonly run: () => void;
+}
+
 export interface ProblemsPanelProps {
   /** Every diagnostic to show — shader compile messages, and later runtime ones. */
   diagnostics: readonly RuntimeDiagnostic[];
@@ -19,6 +32,8 @@ export interface ProblemsPanelProps {
    * remembered as dismissed, nothing can be silenced while still true.
    */
   onClear?: (() => void) | undefined;
+  /** §T1641b: the action a row offers, or null. Most problems have none. */
+  actionFor?: ((diagnostic: RuntimeDiagnostic) => ProblemAction | null) | undefined;
 }
 
 type Tone = "error" | "warning" | "info";
@@ -42,7 +57,7 @@ const ROW_CLASS: Record<Tone, string> = {
  * severity: a warning that scrolls in among twelve errors is a warning nobody reads, and
  * §V27 asks for them to display separately for exactly that reason.
  */
-export function ProblemsPanel({ diagnostics, onSelect, emptyHint, onClear }: ProblemsPanelProps) {
+export function ProblemsPanel({ diagnostics, onSelect, emptyHint, onClear, actionFor }: ProblemsPanelProps) {
   const { errors, warnings, info } = useMemo(
     () => partitionDiagnostics(diagnostics),
     [diagnostics],
@@ -70,9 +85,9 @@ export function ProblemsPanel({ diagnostics, onSelect, emptyHint, onClear }: Pro
           </Button>
         </div>
       )}
-      <DiagnosticGroup tone="error" label="errors" items={errors} {...(onSelect ? { onSelect } : {})} />
-      <DiagnosticGroup tone="warning" label="warnings" items={warnings} {...(onSelect ? { onSelect } : {})} />
-      <DiagnosticGroup tone="info" label="info" items={info} {...(onSelect ? { onSelect } : {})} />
+      <DiagnosticGroup tone="error" label="errors" items={errors} {...(onSelect ? { onSelect } : {})} {...(actionFor ? { actionFor } : {})} />
+      <DiagnosticGroup tone="warning" label="warnings" items={warnings} {...(onSelect ? { onSelect } : {})} {...(actionFor ? { actionFor } : {})} />
+      <DiagnosticGroup tone="info" label="info" items={info} {...(onSelect ? { onSelect } : {})} {...(actionFor ? { actionFor } : {})} />
     </div>
   );
 }
@@ -82,9 +97,10 @@ interface DiagnosticGroupProps {
   label: string;
   items: readonly RuntimeDiagnostic[];
   onSelect?: (diagnostic: RuntimeDiagnostic) => void;
+  actionFor?: (diagnostic: RuntimeDiagnostic) => ProblemAction | null;
 }
 
-function DiagnosticGroup({ tone, label, items, onSelect }: DiagnosticGroupProps) {
+function DiagnosticGroup({ tone, label, items, onSelect, actionFor }: DiagnosticGroupProps) {
   if (items.length === 0) return null;
   return (
     <section className={styles.group} aria-label={label}>
@@ -92,16 +108,23 @@ function DiagnosticGroup({ tone, label, items, onSelect }: DiagnosticGroupProps)
         <span>{label}</span>
         <span className={styles.groupCount}>{items.length}</span>
       </header>
-      {items.map((diagnostic, index) => (
-        <DiagnosticRow
-          // Diagnostics have no identity of their own; position within the group is
-          // stable for as long as the group is on screen.
-          key={`${diagnostic.code}:${index}`}
-          tone={tone}
-          diagnostic={diagnostic}
-          {...(onSelect ? { onSelect } : {})}
-        />
-      ))}
+      {items.map((diagnostic, index) => {
+        // Diagnostics have no identity of their own; position within the group is
+        // stable for as long as the group is on screen.
+        const key = `${diagnostic.code}:${index}`;
+        const row = <DiagnosticRow key={key} tone={tone} diagnostic={diagnostic} {...(onSelect ? { onSelect } : {})} />;
+        const action = actionFor?.(diagnostic) ?? null;
+        if (action === null) return row;
+        // A button beside the row, never inside it: the row is itself a button (V19).
+        return (
+          <div key={key} className={styles.entry}>
+            {row}
+            <Button className={styles.action} aria-label={action.description} title={action.description} onClick={action.run}>
+              {action.label}
+            </Button>
+          </div>
+        );
+      })}
     </section>
   );
 }

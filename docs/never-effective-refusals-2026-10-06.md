@@ -891,7 +891,46 @@ Slices 0 and 1 are built. Slice 1 follows §3.3, with these differences, each fo
 - **`stopsFinalRender` in place of `neverEffective`.** One question for every guard that stops a render: an error, a NEVER finding, a NOT YET finding, or a code nobody classed. `src/projects/on-nothing/render.ts` and three test guards ask it.
 - **A ledger of retired codes.** The gate fails any file under `src/`, tests included, that still spells `parameter.expression` as a string, except the files listed as waiting on an edit this task does not own. A guard on a code nothing emits cannot fail, and this is what tells its owner.
 - **The shipped-set gate of §7.4 is built now,** over what a structural compile says (`src/examples/never-effective.test.ts`, on `test:gates`). It reads `runExample` until `documentFindings` exists, so it does not yet see what only the write gate checks of a stored value.
-- **`parameter.bind` is not split.** It fails through another mechanism (`BindLookupResult`, and the parent scope's resolver inside a component). It is slice 1b and stays in the gate's debt ledger.
+- **`parameter.bind` was not split in slice 1.** It fails through another mechanism (`BindLookupResult`, and the parent scope's resolver inside a component), so it was slice 1b.
+
+### 8.2 Slice 1b as built
+
+`parameter.bind` is split by the kind of the failure, as §3.3 planned, with one code more:
+
+| Code | Class | What it covers |
+|---|---|---|
+| `parameter.bind.unreadable` | NEVER, `local`, error | the ref names no parameter of this node, a component the parameter does not have, the parameter itself, or (through a parent scope that was handed over) no key the component publishes |
+| `parameter.bind.type` | NEVER, `local`, error | what is bound is of another type: no value of it fits |
+| `parameter.bind.value` | DEGRADED, warning | the bound value is past this parameter's limit or options at the moment; it reads at another value |
+| `parameter.bind.unavailable` | BUILD, warning | the resolution was handed no parent scope, or no sibling schema. Not in §3.3, which sent "no parent scope" to `component.parentScope.*`: the resolver cannot tell a root node from a caller that brought no scope, and no product caller brings one, so calling it NEVER would be an error on every `parent.<key>` bind slot the inspector shows |
+
+Two things the resolver does not do, which the tests state rather than hide:
+
+- **A loop of binds is not the resolver's to report.** Its guard fires one hop inside the loop, and a bind reads what its sibling is in effect, fallback included, so the parameter at the top reads the fallback and says nothing. The whole-node check (`bindCycleDiagnostics`, at error) names the loop, as before.
+- **A `parent.<key>` bind slot is baked at flattening**, where the scope exists, and a ref that does not resolve there is `compiler/component-parameter-conflict` (a warning, NEVER and `local` in the table). That code moves with slice 8.
+
+### 8.3 Slice 2 as built
+
+**One answer to "does this node declare this stored key".** `declaresParameter`, `undeclaredKeys` and `undeclaredParameter` in `src/domain/parameters/validate.ts`. The bus refuses a write with the finding; the compile reports what a document already stores with the same finding, in place of its own loop. `compiler/parameter-unknown` is gone (and in the gate's `RETIRED` ledger); `parameter.unknown` is an error at both moments and `local`.
+
+What the finding says (B264 (2)):
+
+- a part a compound does not have: `"eyeColor" is a colour, and its parts are r, g, b, a`, with the part that was meant (`eyeColor.x` → `Write "eyeColor.r".`; x, y, z, w and r, g, b, a name the same four places);
+- an undeclared key: the nearest declared key, and every declared key with its parts (`eyeColor (.r .g .b .a), eyesAt (.x .y .z)`);
+- the node's own naming rule, when its author wrote its keys: `NodeDefinition.parameterKeysNote`, set by the reflecting nodes (Custom WGSL, Custom WGSL · Multi, Material · WGSL, the two kernels) from the one list `looksLikeColour` tests, in `params-reflection.ts`;
+- at rest, how the key leaves the document.
+
+**What is not a key of nothing**, each held by a test:
+
+- a look instance's own preset state. Fixed before the code became an error: the manifest and the flattener now read one list (`instanceOwnParameters`). Before, every compile after a recall on a look instance called `presetCurrent` undeclared;
+- a node saved against another version of its definition, newer or older. The version mismatch is the finding (`compiler/definition-version`); "remove it" would lose what a migration reads. §8's plan said newer only. An older node is only ever met in a document that skipped `loadProject`, and its old keys are the migration's input;
+- `retainedParameterKeys`, as before.
+
+**An orphaned key** (a shader edit drops a field): the edit applies, the value stays stored, the compile says so as an error. It leaves by a patch operation, `removeParameters`, which removes only keys the node does not declare, and the command `parameter.removeUndeclared` (all such keys on a node, or the ones named), offered as `remove` on the Problems row. One patch, one undo step.
+
+**B266.** The write gate refuses an expression on a parameter type no expression can drive (`parameter.expression.type`; one list, `EXPRESSION_DRIVEN_TYPES`, which the resolver's coercion is tested against). And the reflection of Custom WGSL and Material · WGSL reads the text a slot retains, as the kernels did, so a file built by code with such a slot gets the one true error and keeps its controls.
+
+**Not in this slice: the rest of the write gate, at rest.** `validateParameters` checks more than keys: every retained payload of a slot (a stored static of the wrong type under a working expression, a payload under another mode's binding, an armed pulse). Those codes withdraw the plan (`parameter.type` is not `local`, because for the ACTIVE value the default really is what renders), so running them at the compile would stop a shipped document on a value that is inert. `projects/sentinel-bot/sentinel.loom.json` holds one today. They need the document check of slice 3, which reports without deciding plan usability, and a way to tell an inert retained payload from the active one.
 
 ## 9. Found on the way
 

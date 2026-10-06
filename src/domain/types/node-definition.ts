@@ -428,6 +428,15 @@ export interface NodeDefinition {
    */
   parametersFor?(stored: Readonly<Record<string, unknown>>): ParameterSchema;
   /**
+   * §T1641b slice 2 (§B264 (2)): how this node's parameter keys come about, when its AUTHOR
+   * wrote them and the rule is not visible where they wrote. A reflecting node turns its
+   * shader's `struct Params` into controls, and a `vec3f` there is a colour (parts r, g, b)
+   * or a vector (parts x, y, z) by the field's NAME. One sentence, said beside a refusal of
+   * a stored key the node does not declare, at the write gate and at rest. Absent for a node
+   * whose keys are fixed by its type: the refusal lists them.
+   */
+  parameterKeysNote?: string;
+  /**
    * T1532b: parameters that must change TOGETHER with an edit. Absent for almost every node.
    * Grid Warp is the case that asked: its points are one parameter per point of the
    * CURRENT grid, so changing Columns must rewrite every point (the warp resampled onto the

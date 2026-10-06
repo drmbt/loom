@@ -28,7 +28,7 @@ import {
 } from "../graph/names.ts";
 import { kindOf } from "../graph/node-kinds.ts";
 import { sourceReferenceForInput } from "../graph/source-references.ts";
-import { defaultParameters, validateParameters } from "../parameters/validate.ts";
+import { defaultParameters, undeclaredKeys, validateParameters } from "../parameters/validate.ts";
 import { bindCycleDiagnostics } from "../parameters/bind-cycles.ts";
 import { effectiveParameterSchema } from "../parameters/resolve.ts";
 import { isParameterSlot, withBinding } from "../parameters/slots.ts";
@@ -430,7 +430,7 @@ function executeOperation(
       // T880: reflect from the params being provided (a customWgsl created with a shader gets
       // that shader's controls), so creating a node with a reflected value does not abort.
       const creationSchema = effectiveParameterSchema(definition, provided);
-      const invalid = validateParameters(creationSchema, provided, nodeId);
+      const invalid = validateParameters(creationSchema, provided, nodeId, definition.parameterKeysNote);
       if (invalid.length > 0) {
         run.diagnostics.push(...invalid);
         throw new PatchAbort();
@@ -721,7 +721,7 @@ function executeOperation(
           ? node.parameters
           : { ...Object.fromEntries(Object.entries(node.parameters).filter(([key]) => !removed.includes(key))), ...writes },
       );
-      const invalid = validateParameters(schema, writes, node.id);
+      const invalid = validateParameters(schema, writes, node.id, definition.parameterKeysNote);
       if (invalid.length > 0) {
         run.diagnostics.push(...invalid);
         throw new PatchAbort();
@@ -753,6 +753,38 @@ function executeOperation(
       // names it is a mitigation, not the gate — a document should never hold the cycle
       // in the first place.
       refuseReferenceCycle(node.id);
+      return;
+    }
+
+    case "removeParameters": {
+      // §T1641b slice 2: the way a key nothing reads LEAVES a document (see the op's type).
+      const node = requireNode(operation.nodeId);
+      const definition = registry.get(node.type);
+      if (definition === undefined) {
+        fail("node.unknownType", `node "${node.id}" has unknown type "${node.type}" and is a placeholder.`, {
+          nodeId: node.id,
+          // What this build cannot name it cannot call undeclared (§V10).
+          suggestion: "Install the node package that defines this type before editing it (§V10).",
+        });
+        return;
+      }
+      const undeclared = undeclaredKeys(
+        effectiveParameterSchema(definition, node.parameters),
+        node.parameters,
+        definition.retainedParameterKeys,
+      );
+      for (const key of operation.keys) {
+        if (!Object.hasOwn(node.parameters, key)) {
+          fail("parameter.remove.absent", `node "${node.id}" stores nothing under "${key}".`, { nodeId: node.id });
+        }
+        if (!undeclared.includes(key)) {
+          fail("parameter.remove.declared", `"${key}" is a parameter "${node.type}" declares, so something reads it.`, {
+            nodeId: node.id,
+            suggestion: "This removes only what nothing reads. `parameter.reset` returns a declared parameter to its default.",
+          });
+        }
+      }
+      for (const key of operation.keys) delete node.parameters[key];
       return;
     }
 

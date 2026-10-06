@@ -13,7 +13,6 @@ import { leavesPlanUsable } from "../domain/diagnostics/classes.ts";
 export const CompilerDiagnosticCode = {
   unknownNodeType: "compiler/unknown-node-type",
   definitionVersion: "compiler/definition-version",
-  parameterUnknown: "compiler/parameter-unknown",
   edgeEndpointMissing: "compiler/edge-endpoint-missing",
   portMissing: "compiler/port-missing",
   portIncompatible: "compiler/port-incompatible",

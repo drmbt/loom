@@ -156,7 +156,6 @@ const SPLITS_OWED: readonly string[] = [
   "node.scene.instanceAttribute",
   "node.scene.shape",
   "node.surface.topology",
-  "parameter.bind",
   "project.components.invalid",
   "wgsl/compile",
 ];
@@ -172,8 +171,13 @@ const SPLITS_OWED: readonly string[] = [
  */
 const RETIRED: Readonly<Record<string, readonly string[]>> = {
   // Slice 1: split by failure kind into `parameter.expression.*` and `parameter.reference.*`.
-  // The consumer session owns this script; its guard moves to the class (`diagnosticClass`).
+  // The consumer's render script asked the class instead (`fe9d2cac`): nobody is waiting.
   "parameter.expression": [],
+  // Slice 1b: split by kind into `parameter.bind.unreadable`, `.type`, `.value`, `.unavailable`.
+  "parameter.bind": [],
+  // Slice 2: merged into `parameter.unknown`, the write gate's code for the same key. The
+  // consumer session owns this test; its filter on the old code moves to the class.
+  "compiler/parameter-unknown": ["src/projects/sentinel-bot/director.test.ts"],
 };
 
 interface CensusOptions {
@@ -1020,12 +1024,15 @@ describe("diagnosticClass (T1641b)", () => {
     expect(diagnosticClass("parameter.unknown")).toBe("never");
     expect(diagnosticClass("patch.conflict")).toBe("act");
     // A code holding more than one class answers the least refusing of them until it is split.
-    expect(diagnosticClass("parameter.bind")).toBe("degraded");
+    expect(diagnosticClass("wgsl/compile")).toBe("advice");
     // And a code that was split answers for nothing: each condition has its own.
     expect(diagnosticClass("parameter.expression")).toBe("unclassified");
     expect(diagnosticClass("parameter.expression.syntax")).toBe("never");
     expect(diagnosticClass("parameter.reference.channel")).toBe("notYet");
     expect(diagnosticClass("parameter.reference.unknownType")).toBe("elsewhereBuild");
+    expect(diagnosticClass("parameter.bind")).toBe("unclassified");
+    expect(diagnosticClass("parameter.bind.unreadable")).toBe("never");
+    expect(diagnosticClass("parameter.bind.value")).toBe("degraded");
     expect(diagnosticClass("parameter.expression.clamped")).toBe("degraded");
     expect(diagnosticClass("no.such.code")).toBe("unclassified");
     // Not a row because Object.prototype has it.

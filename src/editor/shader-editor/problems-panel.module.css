@@ -74,6 +74,24 @@
   background: var(--bg-hover);
 }
 
+/* §T1641b: a row that offers an action. The row keeps its own width rules; the button sits
+   after it, outside it, because the row is itself a button. */
+.entry {
+  display: flex;
+  align-items: baseline;
+}
+
+.entry > .row {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.action {
+  flex: none;
+  margin-right: var(--space-4);
+}
+
 .rowError {
   border-left-color: var(--error);
 }

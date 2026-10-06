@@ -123,6 +123,8 @@ describe("command bus — registration surface (§V39)", () => {
       "parameter.copyValue",
       "parameter.paste",
       "parameter.pulse",
+      // T1641b: how a stored key the node does not declare leaves a document.
+      "parameter.removeUndeclared",
       "parameter.reset",
       // T1184: the other half of the pair — reset is a claim about the node TYPE,
       // revert is a claim about THIS FILE (the value the document was opened with).

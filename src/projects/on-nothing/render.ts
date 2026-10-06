@@ -327,9 +327,11 @@ for (const shot of shots) {
   // expression that can never evaluate is an error now and stops inside `renderHeadless`, by
   // the node's name (an unknown function once froze a camera move without a word); what is
   // left to stop on here is what is still waiting, such as a read of a node not in the graph.
+  // And an expression with no finite answer at a frame (`parameter.expression.value`): the
+  // stored value standing in is DEGRADED to an editor and a wrong picture in a film frame.
   // T1436b: name the node — a component diagnostic's message names the key, not the node
   const line = (d: { code: string; message: string; nodeId?: string }): string => `${d.code}${d.nodeId === undefined ? "" : ` [${d.nodeId}]`}: ${d.message}`;
-  const errors = [...new Set(result.diagnostics.filter(stopsFinalRender).map(line))];
+  const errors = [...new Set(result.diagnostics.filter((d) => stopsFinalRender(d) || d.code === "parameter.expression.value").map(line))];
   if (errors.length > 0) throw new Error(`the ${shot} graph has errors:\n${errors.join("\n")}`);
   const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map(line))];
   if (warnings.length > 0) console.log(warnings.slice(0, 10).join("\n"));

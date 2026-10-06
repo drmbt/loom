@@ -240,9 +240,44 @@ const EXPRESSION_FAILURES: Readonly<
   "reference.noGraph": { severity: "warning", code: "parameter.reference.unavailable" },
 };
 
+/**
+ * §T1641b slice 1b — WHY a bind did not read, as slice 1 did for an expression. They were
+ * all `parameter.bind` at warning: a ref that names nothing this node has beside a value
+ * that is past a limit at the moment.
+ *
+ *  - `unreadable`  the ref can never read: it names no parameter of this node, a component
+ *                  the parameter does not have, the parameter itself, or a parent key no
+ *                  component around the node publishes.
+ *  - `cycle`       the chain of binds returns to itself (§V110). The guard fires one hop
+ *                  inside the loop, and a bind reads what its sibling is IN EFFECT, fallback
+ *                  included, so this kind does not reach the parameter at the top: the loop
+ *                  is reported for the whole node by `bindCycleDiagnostics`, under this code.
+ *  - `unavailable` THIS resolution was handed no parent scope, or no sibling schema. A state
+ *                  of the caller, never of the document.
+ */
+export type BindFailureKind = "unreadable" | "cycle" | "unavailable";
+
+/**
+ * A supplied `parent.*` resolver may leave `kind` out; its refusal is then read as
+ * `unreadable`, like a hand-built node reader's (slice 1).
+ */
 export type BindLookupResult =
   | { ok: true; value: ParameterValue }
-  | { ok: false; message: string };
+  | { ok: false; kind?: BindFailureKind; message: string; suggestion?: string };
+
+/** The resolver's own lookups always say why: a failure site here cannot leave its kind out. */
+type KindedBindLookup =
+  | { ok: true; value: ParameterValue }
+  | { ok: false; kind: BindFailureKind; message: string; suggestion?: string };
+
+/** One bind failure kind, one code (see `EXPRESSION_FAILURES`). The loop keeps §V110's code. */
+const BIND_FAILURES: Readonly<
+  Record<BindFailureKind, { readonly severity: RuntimeDiagnostic["severity"]; readonly code: string }>
+> = {
+  unreadable: { severity: "error", code: "parameter.bind.unreadable" },
+  cycle: { severity: "error", code: "parameter.bindCycle" },
+  unavailable: { severity: "warning", code: "parameter.bind.unavailable" },
+};
 
 /**
  * Resolves a `parent.*` bind ref. The components track supplies one
@@ -799,31 +834,44 @@ function resolveSlot(
     case "bind": {
       const lookup = resolveBindRef(context, key, definition, binding.ref);
       if (!lookup.ok) {
+        // §T1641b slice 1b: the failure's KIND picks the code and the severity.
+        const failure = BIND_FAILURES[lookup.kind];
         return fallback(
           node,
           key,
           definition,
           slot,
           diag(
-            "warning",
-            "parameter.bind",
+            failure.severity,
+            failure.code,
             `Parameter "${key}" is bound to "${binding.ref}": ${lookup.message}`,
             node.id,
+            lookup.suggestion ??
+              (failure.severity === "error" ? "The parameter holds its stored value until the bind reads." : undefined),
           ),
         );
       }
       const checked = checkAgainstManifest(key, definition, lookup.value, node);
       if (checked.diagnostic !== null) {
+        /*
+         * §T1641b slice 1b: a value of another TYPE never fits, whatever the bound
+         * parameter holds: NEVER. One past this parameter's limit, or not among its
+         * options, fits at another value of what is bound: DEGRADED, and a warning.
+         */
+        const never = checked.diagnostic.code === "parameter.type";
         return fallback(
           node,
           key,
           definition,
           slot,
           diag(
-            "warning",
-            "parameter.bind",
+            never ? "error" : "warning",
+            never ? "parameter.bind.type" : "parameter.bind.value",
             `Parameter "${key}" is bound to "${binding.ref}", which does not fit it: ${checked.diagnostic.message}`,
             node.id,
+            never
+              ? `Bind "${key}" to a parameter of its own type, or switch it back to Constant: its stored value is in effect.`
+              : undefined,
           ),
         );
       }
@@ -1067,23 +1115,24 @@ function resolveBindRef(
   key: string,
   definition: ParameterDefinition,
   ref: string,
-): BindLookupResult {
+): KindedBindLookup {
   void definition;
   if (ref.startsWith("parent.")) {
     const resolver = context.options.parentBind;
     if (resolver === undefined) {
-      return { ok: false, message: "no parent scope is attached to this resolution (§V81)." };
+      return { ok: false, kind: "unavailable", message: "no parent scope is attached to this resolution (§V81)." };
     }
-    return resolver(ref);
+    const found = resolver(ref);
+    return found.ok ? found : { ...found, kind: found.kind ?? "unreadable" };
   }
 
   const schema = context.options.schema;
   if (schema === undefined) {
-    return { ok: false, message: "the sibling schema is unavailable in this resolution." };
+    return { ok: false, kind: "unavailable", message: "the sibling schema is unavailable in this resolution." };
   }
 
   if (Object.hasOwn(schema, ref)) {
-    if (ref === key) return { ok: false, message: "a parameter cannot bind to itself." };
+    if (ref === key) return { ok: false, kind: "unreadable", message: "a parameter cannot bind to itself." };
     const target = resolveEffective(context, ref, schema[ref] as ParameterDefinition);
     if (!target.ok) return target;
     return target;
@@ -1097,6 +1146,7 @@ function resolveBindRef(
     if (names === null || index < 0) {
       return {
         ok: false,
+        kind: "unreadable",
         message: `"${parsed.base}" has no component "${parsed.component}"${
           names === null ? "" : ` (it has ${names.join(", ")})`
         }.`,
@@ -1107,18 +1157,21 @@ function resolveBindRef(
     const tuple = target.value;
     const component = Array.isArray(tuple) ? tuple[index] : undefined;
     if (typeof component !== "number") {
-      return { ok: false, message: `"${parsed.base}" did not resolve to a numeric tuple.` };
+      return { ok: false, kind: "unreadable", message: `"${parsed.base}" did not resolve to a numeric tuple.` };
     }
     return { ok: true, value: component };
   }
 
   const known = Object.keys(schema).sort();
   const crossNode = crossNodeRemedy(context, schema, ref);
+  const near = nearestSpelling(ref, known);
   return {
     ok: false,
+    kind: "unreadable",
     message: `it names no parameter on this node${
       known.length === 0 ? "" : ` (it has ${known.join(", ")})`
     }.${crossNode === null ? "" : ` ${crossNode}`}`,
+    ...(near === null ? {} : { suggestion: `Nearest: "${near}".` }),
   };
 }
 
@@ -1175,11 +1228,13 @@ function resolveEffective(
   context: ResolveContext,
   key: string,
   definition: ParameterDefinition,
-): BindLookupResult {
+): KindedBindLookup {
   if (context.visited.has(key)) {
     return {
       ok: false,
+      kind: "cycle",
       message: `the bind chain is circular (through "${key}"); authoring should have refused it (§V110).`,
+      suggestion: "Break the loop: one of these binds must become a static value or an expression (§V110).",
     };
   }
   context.visited.add(key);

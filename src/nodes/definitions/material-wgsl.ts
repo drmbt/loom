@@ -3,10 +3,12 @@ import type { MaterialPayload, MaterialSourceSpan } from "../../domain/types/sce
 import type { ParameterSchema } from "../../domain/types/parameters.ts";
 import { SHADER_SOURCE_PARAMETER } from "../../domain/commands/apply-patch.ts";
 import { codeParametersLast } from "../../domain/parameters/code.ts";
+import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import { declaredNames, resolveSharedModules, SHARED_WGSL_MODULES } from "../shaders/shared-modules.ts";
 import { instanceFieldAccessor, SURFACE_RESERVED_NAMES } from "../shaders/scene-render.wgsl.ts";
 import { isPackedType } from "./instance-records.ts";
 import {
+  REFLECTED_PARAMETER_KEYS_NOTE,
   extractParamsStruct,
   reflectInstanceStruct,
   reflectParamsStruct,
@@ -183,9 +185,11 @@ export const materialWgslNode: NodeDefinition = {
     },
   }),
   parametersFor(stored) {
-    const raw = stored[SHADER_SOURCE_PARAMETER];
+    // §B266: the document's text, whatever mode the slot is in (see `customWgsl`).
+    const raw = storedStaticValue(stored[SHADER_SOURCE_PARAMETER] as never);
     return reflectedSchema(typeof raw === "string" ? raw : MATERIAL_WGSL_DEFAULT_SOURCE);
   },
+  parameterKeysNote: REFLECTED_PARAMETER_KEYS_NOTE,
   compile(context): CompiledNodeDescription {
     const { nodeId, parameters } = readCompileInputs(context as Parameters<typeof readCompileInputs>[0]);
     const raw = parameters[SHADER_SOURCE_PARAMETER];

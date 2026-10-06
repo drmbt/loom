@@ -42,7 +42,7 @@ import {
   regionBinding,
   type KernelStoragePlan,
 } from "./point-storage.ts";
-import { reflectedUniforms } from "./params-reflection.ts";
+import { REFLECTED_PARAMETER_KEYS_NOTE, reflectedUniforms } from "./params-reflection.ts";
 
 /**
  * The ADVANCED kernel (T322/T323): a per-point kernel that may CHANGE COUNTS — the
@@ -183,6 +183,7 @@ export const pointKernelAdvancedNode: NodeDefinition = {
       ...legacyValueParametersFor(["kernel", "group", "spawn"], stored),
     });
   },
+  parameterKeysNote: REFLECTED_PARAMETER_KEYS_NOTE,
   stateful: { reset: true, deterministicReplay: true, checkpoint: false, randomAccess: false },
   contractVersion: ADVANCED_KERNEL_CONTRACT_VERSION,
   compile(context): CompiledNodeDescription {

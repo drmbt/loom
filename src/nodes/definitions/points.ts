@@ -33,6 +33,7 @@ import { missingCompileResource, readCompileInputs } from "./compile-context.ts"
 import { codeParametersLast } from "../../domain/parameters/code.ts";
 import { readColor, readNumber } from "./parameter-readers.ts";
 import {
+  REFLECTED_PARAMETER_KEYS_NOTE,
   extractParamsStruct,
   reflectParamsStruct,
   reflectedParamCollisions,
@@ -632,6 +633,7 @@ export const pointKernelNode: NodeDefinition = {
       ...legacyValueParametersFor(["kernel", "group"], stored),
     });
   },
+  parameterKeysNote: REFLECTED_PARAMETER_KEYS_NOTE,
   stateful: { reset: true, deterministicReplay: true, checkpoint: false, randomAccess: false },
   // T1583b: the compiler wraps this node's one dispatch in a loop region and reads the
   // region's count from these two — nothing in `compile` below repeats anything.

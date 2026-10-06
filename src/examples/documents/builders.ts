@@ -28,10 +28,11 @@ import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
  * all. It reads the directory.
  *
  * Every parameter key below is taken from the node's manifest under
- * `src/nodes/definitions/`. A key that does not exist there is a compiler WARNING, not an
- * error, so the runner asserts zero diagnostics of any severity rather than zero errors:
- * a typo'd parameter renders silently wrong, which is exactly the class of mistake an
- * executable spec is for.
+ * `src/nodes/definitions/`. A key that does not exist there was a compiler WARNING, which is
+ * why the runner asserts zero diagnostics of any severity rather than zero errors: a typo'd
+ * parameter rendered silently wrong, exactly the class of mistake an executable spec is
+ * for. Since §T1641b it is an error (`parameter.unknown`) in every compile, and
+ * `never-effective.test.ts` holds it for every shipped document.
  */
 
 /** Stamped into `createdAt`/`updatedAt` so a regenerated file is byte-stable. */

@@ -33,6 +33,7 @@ import {
   describeRecursion,
   detectComponentRecursion,
   instanceDisplayNames,
+  instanceOwnParameters,
   internalParameterPath,
   isComponentInstance,
   parentBindResolver,
@@ -795,8 +796,13 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
         definition: componentDefinition,
         instance: resolved,
         // §T1557b: the document, not a moment — this walk is a pure function of it (§V529).
+        // §T1641b slice 2: the page is the published parameters, and the instance's manifest
+        // declares more beside it (a look's own preset state). The same list the manifest is
+        // built from, so the compile cannot call a key the write gate accepts undeclared.
         readPage: (instanceNode, pageSchema) =>
-          resolveNodeParameters(instanceNode, pageSchema, node.type, publishedDiagnostics, STORED_READ),
+          resolveNodeParameters(instanceNode, pageSchema, node.type, publishedDiagnostics, STORED_READ, {
+            retained: Object.keys(instanceOwnParameters(componentDefinition)),
+          }),
       });
       const page = applied.page;
       for (const diagnostic of publishedDiagnostics) {

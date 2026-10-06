@@ -127,7 +127,8 @@ const EMITTER: NodeSpec = {
     mode: "fill",
     center: [BLOB.x, BLOB.y],
     radius: [BLOB_RADIUS, BLOB_RADIUS],
-    color: [1, 1, 1, 1],
+    // §T1641b: a Circle's colour is `fillcolor`. This said `color`, a key nothing reads.
+    fillcolor: [1, 1, 1, 1],
   },
 };
 

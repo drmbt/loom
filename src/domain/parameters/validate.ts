@@ -6,9 +6,9 @@ import type {
   ParameterValue,
   StoredParameter,
 } from "../types/parameters.ts";
-import { parseExpression } from "../expressions/index.ts";
+import { nearestSpelling, parseExpression } from "../expressions/index.ts";
 import { numericRangeOf } from "./expression-range.ts";
-import { componentDefinition, componentNamesFor, isParameterSlot, parseComponentKey } from "./slots.ts";
+import { componentDefinition, componentNamesFor, isComponentKeyOf, isParameterSlot, parseComponentKey } from "./slots.ts";
 
 /**
  * Parameter validation against a node manifest's `ParameterSchema`.
@@ -173,6 +173,131 @@ function describeValue(value: ParameterValue): string {
 }
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ * §T1641b slice 2 — ONE ANSWER TO "DOES THIS NODE DECLARE THIS STORED KEY"
+ * ═══════════════════════════════════════════════════════════════════════════════════
+ *
+ * Two things asked it and gave two answers. The write gate refused an undeclared key as
+ * `parameter.unknown`, an error, with the keys it knew. The compile, the only thing a
+ * document built by code ever meets, reported the same key as `compiler/parameter-unknown`,
+ * a warning, in other words and without the keys; §B264's light stayed red for a day behind
+ * it. `declaresParameter` is the question and `undeclaredParameter` is the finding, for
+ * both: the bus refuses a write with it, and the compile reports what is already stored
+ * with it (an error the class table marks `local`, so the picture does not go black).
+ */
+
+/** Does `schema` declare `key`, as a parameter or as a part of a compound one (§V113)? */
+export function declaresParameter(schema: ParameterSchema, key: string): boolean {
+  return Object.hasOwn(schema, key) || isComponentKeyOf(schema, key);
+}
+
+/**
+ * The stored keys the schema does not declare, sorted. `retained` are a definition's
+ * `retainedParameterKeys`: variant settings kept on purpose for a later switch.
+ */
+export function undeclaredKeys(
+  schema: ParameterSchema,
+  stored: Readonly<Record<string, unknown>>,
+  retained: readonly string[] = [],
+): string[] {
+  return Object.keys(stored)
+    .sort()
+    .filter((key) => !declaresParameter(schema, key) && !retained.includes(key));
+}
+
+export interface UndeclaredParameterContext {
+  /**
+   * A document AT REST: the node that stores the key. Absent at the write gate, whose
+   * finding is a refusal of the write and names only the key.
+   */
+  readonly stored?: { readonly nodeId: NodeId; readonly type: string } | undefined;
+  /**
+   * How this node's keys come about, when its author wrote them
+   * (`NodeDefinition.parameterKeysNote`): a reflecting node's naming rule, which nothing in
+   * the shader shows (§B264 (2)).
+   */
+  readonly keysNote?: string | undefined;
+}
+
+/** How a key nothing reads leaves the document: the command, and the operation it applies. */
+const REMOVE_REMEDY = "Or remove the stored value: parameter.removeUndeclared (in a patch: removeParameters).";
+
+/** x, y, z, w and r, g, b, a name the same four places: the part that was meant is the twin. */
+const PART_FAMILIES: ReadonlyArray<readonly string[]> = [
+  ["x", "y", "z", "w"],
+  ["r", "g", "b", "a"],
+];
+
+/** A declared key as a refusal lists it: with its parts, when it has parts. */
+function listedKey(key: string, definition: ParameterDefinition): string {
+  const parts = componentNamesFor(definition);
+  return parts === null ? key : `${key} (${parts.map((part) => `.${part}`).join(" ")})`;
+}
+
+/**
+ * THE finding for a key the node does not declare, with what to write instead: the part
+ * that was meant when the key names a part its parameter does not have (`eyeColor.x` on a
+ * colour: `eyeColor.r`), the nearest declared key, every declared key with its parts, and
+ * the node's own naming rule when it has one.
+ */
+export function undeclaredParameter(
+  schema: ParameterSchema,
+  key: string,
+  nodeId?: NodeId,
+  context: UndeclaredParameterContext = {},
+): RuntimeDiagnostic {
+  const { stored, keysNote } = context;
+  const subject = stored === undefined ? `Unknown parameter "${key}"` : `Node "${stored.nodeId}" stores a value under "${key}"`;
+  const remedy: string[] = [];
+  let message: string;
+
+  const parsed = parseComponentKey(key);
+  const base = parsed !== null && Object.hasOwn(schema, parsed.base) ? schema[parsed.base] : undefined;
+  if (parsed !== null && base !== undefined) {
+    // A part of a declared parameter, which that parameter does not have.
+    const parts = componentNamesFor(base);
+    const unread = stored === undefined ? "" : ", which nothing reads";
+    if (parts === null) {
+      message = `${subject}${unread}: "${parsed.base}" is a ${base.type} parameter and has no parts.`;
+      remedy.push(`Write "${parsed.base}".`);
+    } else {
+      const kind = base.type === "color" ? "a colour" : "a vector";
+      message = `${subject}${unread}: "${parsed.base}" is ${kind}, and its parts are ${parts.join(", ")}.`;
+      const twin = PART_FAMILIES.map((family) => family.indexOf(parsed.component)).find((index) => index >= 0 && index < parts.length);
+      const meant = twin === undefined ? nearestSpelling(parsed.component, parts) : parts[twin];
+      if (meant !== null && meant !== undefined) remedy.push(`Write "${parsed.base}.${meant}".`);
+    }
+  } else {
+    const declared = Object.keys(schema).sort();
+    message = stored === undefined ? `${subject}.` : `${subject}, which "${stored.type}" does not declare: nothing reads it.`;
+    const near = nearestSpelling(key, declared);
+    if (near !== null) remedy.push(`Nearest: "${near}".`);
+    if (declared.length > 0) {
+      remedy.push(`Declared: ${declared.map((name) => listedKey(name, schema[name] as ParameterDefinition)).join(", ")}.`);
+    }
+  }
+  if (keysNote !== undefined) remedy.push(keysNote);
+  if (stored !== undefined) remedy.push(REMOVE_REMEDY);
+  return error("parameter.unknown", message, nodeId, remedy.length === 0 ? undefined : remedy.join(" "));
+}
+
+/**
+ * §V107: the parameter types an expression can drive. An expression evaluates to a NUMBER;
+ * the resolver's coercion (`coerceExpressionResult`) has a case for each of these and for no
+ * other, and the write gate refuses an expression on the rest (§B266: stored on a code
+ * parameter it left a reflecting node with no text to read its controls from).
+ */
+export const EXPRESSION_DRIVEN_TYPES: ReadonlySet<ParameterDefinition["type"]> = new Set<ParameterDefinition["type"]>([
+  "number",
+  "boolean",
+  "pulse",
+  "enum",
+  "string",
+  "vector",
+  "color",
+]);
+
+/**
  * Validates a partial or complete parameter bag against a schema.
  * Unknown keys are errors: they usually mean a stale agent patch or a renamed
  * parameter, and accepting them would let dead values accumulate in the document.
@@ -181,6 +306,8 @@ export function validateParameters(
   schema: ParameterSchema,
   values: Readonly<Record<string, StoredParameter>>,
   nodeId?: NodeId,
+  /** §T1641b: the node's own naming rule, for an undeclared key's refusal. */
+  keysNote?: string,
 ): RuntimeDiagnostic[] {
   const diagnostics: RuntimeDiagnostic[] = [];
   for (const key of Object.keys(values).sort()) {
@@ -195,15 +322,7 @@ export function validateParameters(
       if (base !== undefined && index >= 0 && parsed !== null) {
         definition = componentDefinition(base, parsed.component, index);
       } else {
-        const known = Object.keys(schema).sort().join(", ");
-        diagnostics.push(
-          error(
-            "parameter.unknown",
-            `Unknown parameter "${key}".`,
-            nodeId,
-            known.length > 0 ? `Known parameters: ${known}.` : undefined,
-          ),
-        );
+        diagnostics.push(undeclaredParameter(schema, key, nodeId, { keysNote }));
         continue;
       }
     }
@@ -282,6 +401,16 @@ export function validateStoredParameter(
             "parameter.expression.syntax",
             `Parameter "${key}" expression "${binding.source}" does not parse: ${parsed.reason}`,
             nodeId,
+          );
+        }
+        // §B266: no expression can drive a parameter of this type, whatever it evaluates to.
+        // The resolver says the same of one already stored (`parameter.expression.type`).
+        if (!EXPRESSION_DRIVEN_TYPES.has(definition.type)) {
+          return error(
+            "parameter.expression.type",
+            `Parameter "${key}" expression "${binding.source}": a "${definition.type}" parameter cannot take an expression (§V107).`,
+            nodeId,
+            `Leave "${key}" in Constant mode.`,
           );
         }
         break;

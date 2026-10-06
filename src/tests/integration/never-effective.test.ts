@@ -11,7 +11,7 @@ import { frameFromClock } from "../../domain/types/frame.ts";
 import type { GraphNode } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { expressionSlot, named } from "../../examples/documents/builders.ts";
-import { LAMP, NEVER_EFFECTIVE_REGISTRY, lampFile, openedLamp } from "../fixtures/never-effective.ts";
+import { LAMP, NEVER_EFFECTIVE_REGISTRY, boundTo, lampFile, openedLamp } from "../fixtures/never-effective.ts";
 
 /**
  * §T1641b slice 1 — THE RULE AT THE COMPILE, IN BOTH DIRECTIONS.
@@ -41,8 +41,12 @@ interface Compiled {
   readonly frame: CompiledGraph;
 }
 
-function compiled(brightness: StoredParameter, others: readonly GraphNode[] = []): Compiled {
-  const { graph, settings } = openedLamp(lampFile(brightness, others));
+function compiled(
+  brightness: StoredParameter,
+  others: readonly GraphNode[] = [],
+  also: Readonly<Record<string, StoredParameter>> = {},
+): Compiled {
+  const { graph, settings } = openedLamp(lampFile(brightness, others, also));
   const request = { graph, settings, registry: NEVER_EFFECTIVE_REGISTRY, capabilities: CAPABILITIES };
   const frame = frameFromClock({ timeSeconds: 0.5, deltaSeconds: 1 / 60, frameIndex: 30, mode: "offline", randomSeed: 1, fps: 60 });
   const channels = createValueGraphSession(NEVER_EFFECTIVE_REGISTRY).evaluate(compiledWithoutCatalogue(graph), frame, {
@@ -82,6 +86,36 @@ describe("§B262 at the compile: an expression that can never evaluate", () => {
     expect(about(structural)).toEqual([["error", "parameter.expression.name", "never"]]);
     expect(lampFinding(structural)?.suggestion).toContain(`A node is named "slider_flicker": write op('slider_flicker')`);
     expect(structural.ok).toBe(true);
+  });
+});
+
+describe("slice 1b at the compile: a bind", () => {
+  it("that names no parameter of its node is an error at the open and at every frame, and the plan is whole", () => {
+    const sound = compiled(0.5);
+    const broken = compiled(boundTo("contrst", 0.5));
+    for (const plan of [broken.structural, broken.frame]) {
+      expect(about(plan)).toEqual([["error", "parameter.bind.unreadable", "never"]]);
+      expect(lampFinding(plan)?.suggestion).toBe('Nearest: "contrast".');
+      expect(plan.ok).toBe(true);
+      expect(plan.passes.map((pass) => pass.id)).toEqual(sound.structural.passes.map((pass) => pass.id));
+      expect(brightnessOf(plan)).toBe(0.5);
+    }
+  });
+
+  it("that reads a sibling is silent, and the sibling's value is what the pass carries", () => {
+    const bound = compiled(boundTo("contrast", 0.5), [], { contrast: 1.5 });
+    expect(about(bound.structural)).toEqual([]);
+    expect(brightnessOf(bound.structural)).toBe(1.5);
+  });
+
+  it("whose value is past the parameter's limit stays degraded: the stored value stands in, and a final render goes on", () => {
+    // Opacity is 0…1 and reads Brightness, which holds 2. Another value of it would fit.
+    const past = compiled(2, [], { opacity: boundTo("brightness", 0.5) });
+    for (const plan of [past.structural, past.frame]) {
+      expect(about(plan)).toEqual([["warning", "parameter.bind.value", "degraded"]]);
+      expect(plan.ok).toBe(true);
+      expect(plan.diagnostics.filter(stopsFinalRender)).toEqual([]);
+    }
   });
 });
 

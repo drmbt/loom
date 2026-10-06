@@ -20,7 +20,7 @@ import type { KeymapEnvironment } from "@editor/keymap/index.ts";
 import { ComponentLibrary, ExampleLibrary, useDocumentDirty } from "@editor/library/index.ts";
 import type { ExampleProject } from "@editor/library/example-catalogue.ts";
 import { CommandPalette } from "@editor/palette/index.ts";
-import { ProblemsPanel } from "@editor/shader-editor/index.ts";
+import { ProblemsPanel, type ProblemAction } from "@editor/shader-editor/index.ts";
 import { Button, ErrorBoundary } from "@ui/index.ts";
 import { UnsavedChangesDialog } from "@ui/primitives/unsaved-changes-dialog.tsx";
 import { AppRuntimeContext } from "./app-context.ts";
@@ -1535,6 +1535,26 @@ export function App({
 
   const errorCount = problems.filter((diagnostic) => diagnostic.severity === "error").length;
   /**
+   * §T1641b slice 2: what a Problems row can DO. A stored key the node does not declare
+   * (`parameter.unknown`) has no row in the inspector to be removed from, because the
+   * inspector draws what the node declares. So the row that reports it removes it: every
+   * such key on that node, one patch, one undo. Offered for a node of THIS document only;
+   * one inside a component is fixed in its definition.
+   */
+  const problemAction = useCallback(
+    (diagnostic: RuntimeDiagnostic): ProblemAction | null => {
+      const nodeId = diagnostic.nodeId;
+      const node = nodeId === undefined ? undefined : compile.graph.nodes[nodeId];
+      if (diagnostic.code !== "parameter.unknown" || nodeId === undefined || node === undefined) return null;
+      return {
+        label: "remove",
+        description: `Remove what "${node.label ?? nodeId}" stores under keys it does not declare`,
+        run: () => void runtime.bus.execute("parameter.removeUndeclared", { nodeId }, runtime.invocation).then(reportRefusal),
+      };
+    },
+    [compile.graph, reportRefusal, runtime],
+  );
+  /**
    * T1299: what `get_channels` reads — the SAME bags the value history sampler above
    * pushes, root nodes and component instances alike, read on demand. Never a second
    * evaluation (§V275).
@@ -2307,7 +2327,7 @@ export function App({
           }
           problems={
             <ErrorBoundary name="Problems">
-              <ProblemsPanel diagnostics={problems} onClear={clearProblems} />
+              <ProblemsPanel diagnostics={problems} onClear={clearProblems} actionFor={problemAction} />
             </ErrorBoundary>
           }
           performance={performancePane}

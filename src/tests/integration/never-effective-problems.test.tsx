@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createMemoryStorage, installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { installFlowStubs } from "@editor/graph-canvas/testing.tsx";
@@ -11,7 +11,7 @@ import { App } from "../../app/app.tsx";
 import { createAppRuntime } from "../../app/app-runtime.ts";
 import type { AppRuntime } from "../../app/app-runtime.ts";
 import type { GpuStatus } from "../../app/gpu-status.ts";
-import { LAMP, lampFile } from "../fixtures/never-effective.ts";
+import { HAZE, LAMP, boundTo, hazeFile, lampFile } from "../fixtures/never-effective.ts";
 
 /**
  * §T1641b slice 1 / §B262 — THE SAME DOCUMENT, OPENED IN THE APP.
@@ -138,6 +138,18 @@ describe("§B262 — a file built by code with pow() in an expression, opened in
     expect(lamp?.uniforms?.["brightness"]).toBe(0.5);
   }, 30_000);
 
+  it("says the same of a bind that names no parameter of its node (slice 1b)", async () => {
+    const session = await opened(lampFile(boundTo("contrst", 0.5)));
+    const about = (await problems(session.runtime())).filter((entry) => entry.nodeId === LAMP);
+    expect(about.map((entry) => [entry.severity, entry.code])).toEqual([["error", "parameter.bind.unreadable"]]);
+    expect(about[0]?.message).toContain("it names no parameter on this node (it has blacklevel, brightness, contrast,");
+    expect(about[0]?.suggestion).toBe('Nearest: "contrast".');
+    await waitFor(() => {
+      expect(session.plans.length).toBeGreaterThan(0);
+    });
+    expect(session.plans.at(-1)?.find((pass) => pass.nodeId === LAMP)?.uniforms?.["brightness"]).toBe(0.5);
+  }, 30_000);
+
   it("leaves the same document alone when the expression is one the grammar reads", async () => {
     const session = await opened(lampFile(expressionSlot("(0.5 + abstime * 0) ^ 2", 0.5)));
     expect((await problems(session.runtime())).filter((entry) => entry.nodeId === LAMP)).toEqual([]);
@@ -146,5 +158,62 @@ describe("§B262 — a file built by code with pow() in an expression, opened in
     });
     // The expression's value: the plan is not merely tolerated, it is driven.
     expect(session.plans.at(-1)?.find((pass) => pass.nodeId === LAMP)?.uniforms?.["brightness"]).toBe(0.25);
+  }, 30_000);
+});
+
+/**
+ * §T1641b slice 2 / §B264 — a slot under a key the node does not declare, opened in the app.
+ *
+ * The compile called it `compiler/parameter-unknown`, a warning, and an undeclared key has
+ * no row in the inspector, so there was nowhere to see it but one amber line and nowhere to
+ * fix it at all. It is the write gate's own error now, with the parts a colour has; the plan
+ * still renders; and the row that reports it removes it, in a step undo takes back.
+ */
+describe("§B264 — a file built by code that drives eyeColor.x on a colour, opened in the app", () => {
+  const held = (value: number, retained: number) => expressionSlot(`${value} + abstime * 0`, retained);
+  const WRITTEN_XYZ = { eyeColor: [1, 0, 0, 1], "eyeColor.x": held(0, 1), "eyeColor.y": held(1, 0), "eyeColor.z": held(0, 0) };
+  const storedKeys = (runtime: AppRuntime): string[] => Object.keys(runtime.bus.store.getGraph().nodes[HAZE]?.parameters ?? {}).sort();
+  const aboutHaze = async (runtime: AppRuntime) => (await problems(runtime)).filter((entry) => entry.nodeId === HAZE);
+
+  it("is an error for each key, with the parts a colour has and why it is one; the plan renders; the row removes them and undo brings them back", async () => {
+    const session = await opened(hazeFile(WRITTEN_XYZ));
+    const runtime = session.runtime();
+    // Opened whole: nothing was dropped on the way in.
+    expect(storedKeys(runtime)).toEqual(["eyeColor", "eyeColor.x", "eyeColor.y", "eyeColor.z", "source"]);
+
+    const about = await aboutHaze(runtime);
+    expect(about.map((entry) => [entry.severity, entry.code])).toEqual([
+      ["error", "parameter.unknown"],
+      ["error", "parameter.unknown"],
+      ["error", "parameter.unknown"],
+    ]);
+    expect(about[0]?.message).toContain('stores a value under "eyeColor.x", which nothing reads: "eyeColor" is a colour, and its parts are r, g, b, a.');
+    expect(about[0]?.suggestion).toContain('Write "eyeColor.r".');
+    expect(about[0]?.suggestion).toContain("a vec3f or vec4f whose name contains colour, color, tint, rgb, albedo or emissi is a colour");
+
+    // `local`: the backend was handed a plan with the haze's pass in it.
+    await waitFor(() => {
+      expect(session.plans.length).toBeGreaterThan(0);
+    });
+    expect(session.plans.at(-1)?.some((pass) => pass.nodeId === HAZE)).toBe(true);
+
+    // The row's own action: every key the node does not declare, in one step.
+    const pane = within(screen.getByLabelText("Problems"));
+    const remove = pane.getAllByRole("button", { name: `Remove what "${HAZE}" stores under keys it does not declare` });
+    expect(remove).toHaveLength(3);
+    await act(async () => {
+      fireEvent.click(remove[0] as HTMLElement);
+    });
+    await settle();
+    expect(storedKeys(runtime)).toEqual(["eyeColor", "source"]);
+    expect(await aboutHaze(runtime)).toEqual([]);
+
+    // One undo step, and nothing was lost: the slots are back, and so is what is said of them.
+    await act(async () => {
+      await runtime.bus.execute("graph.undo", {}, runtime.invocation);
+    });
+    await settle();
+    expect(storedKeys(runtime)).toEqual(["eyeColor", "eyeColor.x", "eyeColor.y", "eyeColor.z", "source"]);
+    expect((await aboutHaze(runtime)).map((entry) => entry.code)).toEqual(["parameter.unknown", "parameter.unknown", "parameter.unknown"]);
   }, 30_000);
 });

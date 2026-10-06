@@ -55,6 +55,20 @@ export type GraphPatchOperation =
    */
   | { op: "reorderEdges"; nodeId: NodeRef; portId: PortId; edgeIds: EdgeId[] }
   | { op: "setParameters"; nodeId: NodeRef; parameters: Record<string, StoredParameter> }
+  /**
+   * §T1641b slice 2: delete stored keys the node's schema does NOT declare.
+   *
+   * A key nothing reads is left behind by legitimate edits to something else: a shader edit
+   * that drops a `struct Params` field leaves the value or slot stored under it. It is never
+   * dropped behind the author's back (a field renamed for one commit would lose its
+   * expression), so it stays in the document and is reported, and THIS is how it leaves:
+   * one operation, one undo step. `setParameters` cannot do it, since it only ever writes.
+   *
+   * Narrow on purpose. A key the schema declares is refused (returning a declared parameter
+   * to its default is `parameter.reset`, which keeps its retained modes), and so is a key
+   * the node does not store: a caller naming one is describing a document that is not this.
+   */
+  | { op: "removeParameters"; nodeId: NodeRef; keys: string[] }
   | { op: "setShaderSource"; nodeId: NodeRef; source: string }
   | { op: "moveNodes"; positions: Record<NodeId, { x: number; y: number }> }
   /**

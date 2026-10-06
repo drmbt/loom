@@ -333,7 +333,11 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
     // T1432b: the same pixel scale the full compile gave the node's context.
     const pixelScale = outputPixelScale(retained.request.settings);
     for (const entry of animated) {
-      const resolved = resolveNodeParameters(entry.record.node, entry.schema, entry.record.definition.type, discarded, reader);
+      // §T1641b: the retained keys ride along so that a variant's kept settings are not
+      // written up as undeclared sixty times a second only to be discarded below.
+      const resolved = resolveNodeParameters(entry.record.node, entry.schema, entry.record.definition.type, discarded, reader, {
+        retained: entry.record.definition.retainedParameterKeys,
+      });
       values.set(entry.nodeId, { parameters: scaleOutputPixels({ ...resolved.values }, entry.schema, pixelScale), parameterMaps: resolved.maps });
     }
 
