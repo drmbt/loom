@@ -57,6 +57,10 @@ const NOT_A_PLAIN_NODE_MODULE: Readonly<Record<string, { readonly reason: string
     reason: "a script, not a module: it reads `process.argv` at module scope and throws without a directory to read",
     tell: /\bprocess\s*\.\s*argv\b/,
   },
+  "src/runtime/backend/vgpu/device-calls.test-support.ts": {
+    reason: "test support for the mock host: it takes `vi` from vitest, which loads only inside a vitest worker, and only tests import it",
+    tell: /from "vitest"/,
+  },
 };
 
 function modulesUnder(directory: string): string[] {
