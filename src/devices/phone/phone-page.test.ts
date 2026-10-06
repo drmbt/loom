@@ -1908,20 +1908,112 @@ describe("B269 phone page — a board of narrow columns is never crushed or clip
   };
 
   /*
-   * 44 px is Apple's minimum for anything a finger presses (Material asks 48 dp). The floor
-   * must hold on BOTH lines that size a row — the container-unit one phones use and the
-   * viewport one for a browser without it — and must not replace the column width: a board
-   * of wide columns keeps its square cells.
+   * The floor is the owner's eye, not a guideline: 30 px rows were "crunched", 39 to 45 px
+   * "a smidge too chunky", so it is 36 until he has tried 32, 36 and 44 (§T1647b). It must
+   * hold on BOTH lines that size a row — the container-unit one phones use and the viewport
+   * one for a browser without it — and must not replace the column width: a board of wide
+   * columns keeps its square cells.
    */
-  it("a board's row is as tall as its column is wide, and never lower than a finger needs", () => {
+  it("a board's row is as tall as its column is wide, and never lower than the floor", () => {
     const page = openPage();
     page.snapshot(NARROW);
-    expect(rule(page, "body")).toContain("--row: 44px;");
+    expect(rule(page, "body")).toContain("--row: 36px;");
     const rows = [...rule(page, ".board").matchAll(/grid-auto-rows:\s*([^;]+);/g)].map((match) => match[1] ?? "");
     expect(rows).toHaveLength(2);
     for (const row of rows) expect(row).toMatch(/^max\(var\(--row\), calc\(\(100(vw|cqi) .*\/ var\(--cols\)\)\)$/);
     // The columns are the author's: ten stay ten.
     expect(part(page, ".board").style.getPropertyValue("--cols")).toBe("10");
+  });
+
+  /*
+   * A row drawn 36 px tall is lower than a finger is wide. So what a finger can HIT is more
+   * than what is drawn: half the gap all round a control answers too, which makes a hit area
+   * of the row plus the gap and leaves no dead strip between two controls — and no overlap,
+   * each taking its own half. The margin belongs to the board ITEM, so a touch there has the
+   * item as its target, and the item hands it to its control.
+   */
+  it("a control answers from half the gap round it: a tap there flips a toggle, a touch there takes a slider", async () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    expect(rule(page, "body")).toContain("--gap: 6px;");
+    expect(rule(page, ".board .w.slider::before, .board .w.toggle::before, .board .w.button::before, .board .w.xyPad::before")).toContain(
+      "inset: calc(var(--gap) / -2);",
+    );
+    // A scroll must still start from a slider's margin, and a pad's is the pad's.
+    expect(page.win.getComputedStyle(page.widget("Top")).touchAction).toBe("pan-y");
+    expect(page.win.getComputedStyle(page.widget("Chase side / height")).touchAction).toBe("none");
+
+    const toggle = page.widget("Follow the track closely");
+    toggle.dispatchEvent(new page.win.MouseEvent("click", { bubbles: true }));
+    await page.drain();
+    expect(page.posts.map((post) => post.set)).toEqual([{ handle: "h-long", values: { on: false }, phase: "commit" }]);
+
+    // The item's own margin, not its control: the same drag as from the track.
+    const foot = page.widget("Foot");
+    page.pointer("pointerdown", foot, 0, 0);
+    page.pointer("pointermove", foot, 12, 0);
+    page.pointer("pointermove", foot, 52, 0);
+    page.pointer("pointerup", foot, 52, 0);
+    await page.drain();
+    expect(page.posts.at(-1)?.set).toEqual({ handle: "h-foot", values: { value: 0.2 }, phase: "commit" });
+  });
+
+  it("a momentary button is pressed by a tap that lifts within its reach, three pixels past what is drawn, and no further", async () => {
+    const page = openPage();
+    page.snapshot(SNAPSHOT);
+    const flash = track(page, "Flash"); // drawn 0..200, as every box is here
+    page.pointer("pointerdown", flash, 100, 100);
+    page.pointer("pointerup", flash, 100, 204);
+    await page.drain();
+    expect(page.posts).toHaveLength(0);
+    page.pointer("pointerdown", flash, 100, 100, 2);
+    page.pointer("pointerup", flash, 100, 203, 2);
+    await page.drain();
+    expect(page.posts.map((post) => post.set.values)).toEqual([{ held: true }, { held: false }]);
+  });
+
+  it("a press in the margin above or below a preset button recalls THAT preset, not its neighbour", async () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    const strip = part(page, ".w.preset > .strip");
+    // Six buttons 48 px wide, side by side, drawn from y = 3 to y = 39 inside a strip that reaches from 0 to 42.
+    [...strip.children].forEach((button, index) => {
+      (button as HTMLElement).getBoundingClientRect = () => ({ left: index * 50, right: index * 50 + 48, top: 3, bottom: 39, width: 48, height: 36, x: index * 50, y: 3 }) as DOMRect;
+    });
+    const press = (clientX: number, clientY: number): boolean => strip.dispatchEvent(new page.win.MouseEvent("click", { bubbles: true, clientX, clientY }));
+    press(120, 1); // above the third
+    press(270, 41); // below the sixth
+    press(120, 60); // well below the strip: nobody's
+    await page.drain();
+    expect(page.posts.map((post) => post.set)).toEqual([
+      { handle: "h-looks", values: { recall: "reset_lights" }, phase: "commit" },
+      { handle: "h-looks", values: { recall: "hard_strobe" }, phase: "commit" },
+    ]);
+    expect(rule(page, ".board .w.preset > .strip")).toContain("inset: calc(var(--gap) / -2) 0;");
+  });
+
+  /*
+   * Two things a desktop browser's phone emulation does not show and an iPhone does; both
+   * are fixed from the documentation and wait for the owner's phone.
+   *  - 100vh is the viewport with Safari's bars away, taller than what shows while they are
+   *    there; 100dvh is what shows now. The vh line stays first, for a browser without dvh.
+   *  - Safari before 16 has no container queries. The toggle's state line used to be HIDDEN
+   *    by one where the button is low, so there it showed — two lines in a one-row button,
+   *    cut off top and bottom. Now it is hidden unless a container query shows it.
+   */
+  it("the page is as tall as what shows now, and a toggle's second line shows only where a container query makes room", () => {
+    const page = openPage();
+    page.snapshot(NARROW);
+    expect([...rule(page, "body").matchAll(/min-height:\s*([^;]+);/g)].map((match) => match[1])).toEqual(["100vh", "100dvh"]);
+    const state = part(page, ".w.toggle button.ctl .state");
+    expect(state.textContent).toBe("On");
+    expect(page.win.getComputedStyle(state).display).toBe("none");
+    const css = page.doc.querySelector("style")?.textContent ?? "";
+    expect(css).toContain("@container (min-height: 47px) { .board .w > button.ctl .state { display: block; } }");
+    expect(css).not.toMatch(/@container \(max-height/);
+    // Outside a board a button has its own 56 px: both lines, always.
+    page.snapshot(SNAPSHOT);
+    expect(page.win.getComputedStyle(part(page, ".w.toggle button.ctl .state")).display).toBe("block");
   });
 
   it("a slider's handle is whole at both ends of its track: moved back by its own share of its width", () => {

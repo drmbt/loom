@@ -128,10 +128,17 @@ body {
   --gap: 6px;
   --pager: 0px;
   --rail: 0px;
-  /* B269: the least a board's row may be — Apple's 44 pt minimum for anything a finger
-     presses (Material asks 48 dp; rows sit --gap apart, so targets are 50 px centre to centre). */
-  --row: 44px;
+  /* B269: the least a board's row may be DRAWN. Not a guideline's number: at 30 px the owner
+     called his sliders crunched, at 39 to 45 "a smidge too chunky", so it sits between, and
+     which of 32, 36 and 44 it is to be is his to try (§T1647b's trial). What a finger can
+     HIT is more than what is drawn: half of --gap all round (the reach rules below). */
+  --row: 36px;
+  /* B269: 100vh on a phone is the viewport with the browser's bars AWAY — taller than what
+     shows while they are there, so a page that fits scrolled anyway. 100dvh is what shows now
+     (MDN, "Viewport-percentage lengths": the dynamic viewport); the vh line stays for a
+     browser without it. Read from the documentation, not seen on a phone. */
   min-height: 100vh;
+  min-height: 100dvh;
   padding: calc(var(--pad) + env(safe-area-inset-top)) calc(var(--pad) + var(--rail) + env(safe-area-inset-right))
     calc(var(--bar) + var(--pager) + var(--pad) + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left));
   touch-action: manipulation;
@@ -412,11 +419,30 @@ button.ctl.on .state { color: var(--text); }
 }
 .board .w > button.ctl { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2px 6px; overflow: hidden; font-size: 14px; }
 .board .w > button.ctl .name { max-width: 100%; }
-.board .w > button.ctl .state { font-size: 11px; }
 /* A grid item is sized by the grid, so it can be its own size container: a cell too short
-   for two lines keeps the caption, and the button's On colour says its state. */
+   for two lines keeps the caption, and the button's On colour says its state.
+   B269: written as "show the state where there is room", not "hide it where there is not".
+   A browser without container queries (Safari before 16, MDN) ignores the whole block: it
+   used to show both lines in a one-row button, cut off top and bottom; now it shows the
+   caption alone. Read from the documentation, not seen on a phone. */
+.board .w > button.ctl .state { display: none; font-size: 11px; }
 .board .w.toggle, .board .w.button { container-type: size; }
-@container (max-height: 46px) { button.ctl .state { display: none; } }
+@container (min-height: 47px) { .board .w > button.ctl .state { display: block; } }
+/*
+ * B269: WHAT A FINGER CAN HIT IS NOT WHAT IS DRAWN. A row may be drawn lower than a finger
+ * is wide (--row), so a control answers from half of --gap all round it as well: its hit
+ * area is its rect plus the gap, and two controls side by side or one above the other share
+ * the gap between them exactly, neither's reaching into the other's. (REACH in the script
+ * is the same half gap.) The strip of the reach belongs to the item, not to the control
+ * inside it, so each builder hands a touch that lands there on (see reach()).
+ */
+.board .w.slider::before, .board .w.toggle::before, .board .w.button::before, .board .w.xyPad::before {
+  content: "";
+  position: absolute;
+  inset: calc(var(--gap) / -2);
+}
+.board .w.slider { touch-action: pan-y; }
+.board .w.xyPad { touch-action: none; }
 .board .label {
   display: flex;
   align-items: flex-end;
@@ -466,7 +492,10 @@ button.ctl.on .state { color: var(--text); }
  */
 .board .w.preset > .strip {
   position: absolute;
-  inset: 0;
+  /* The reach (above): the strip is the row plus half a gap above and below; a press in
+     that margin is the press of the button it is over. */
+  inset: calc(var(--gap) / -2) 0;
+  padding: calc(var(--gap) / 2) 0;
   display: grid;
   gap: 2px;
   grid-template-columns: repeat(var(--per), minmax(min-content, 1fr));
@@ -948,6 +977,16 @@ ${PHONE_PAGE_LOGIC}
     thumb.style.left = s + "%";
     thumb.style.transform = "translateX(-" + s + "%)";
   }
+  /*
+   * B269: THE REACH. On a board a control answers from half the gap round what is drawn of
+   * it (the stylesheet's ::before on the item, REACH px = half of --gap). A touch there
+   * lands on the ITEM, not on the control inside it — so the item hands on exactly those:
+   * events whose target is the item itself.
+   */
+  var REACH = 3;
+  function reach(root, type, handle) {
+    root.addEventListener(type, function (event) { if (event.target === root) handle(event); });
+  }
 
   function capture(target, event) {
     try { if (target.setPointerCapture) target.setPointerCapture(event.pointerId); } catch (x) { /* already gone */ }
@@ -993,6 +1032,7 @@ ${PHONE_PAGE_LOGIC}
       return { value: settle(raw.value, c.step, c.min, c.max) };
     };
     track.addEventListener("pointerdown", function (event) { touch(w.handle, event, track, "drag"); });
+    reach(root, "pointerdown", function (event) { touch(w.handle, event, track, "drag"); });
     return view;
   }
 
@@ -1026,6 +1066,7 @@ ${PHONE_PAGE_LOGIC}
     };
     view.shown = function (raw) { return { x: tidy(raw.x), y: tidy(raw.y) }; };
     pad.addEventListener("pointerdown", function (event) { touch(w.handle, event, pad, "drag"); });
+    reach(root, "pointerdown", function (event) { touch(w.handle, event, pad, "drag"); });
     return view;
   }
 
@@ -1045,12 +1086,14 @@ ${PHONE_PAGE_LOGIC}
       b.setAttribute("aria-pressed", on ? "true" : "false");
       state.textContent = on ? "On" : "Off";
     };
-    b.addEventListener("click", function () {
+    function flip() {
       if (stopped) return;
       var next = !(current(w.handle).on === true);
       setLocal(w.handle, { on: next });
       commit(w.handle, { on: next });
-    });
+    }
+    b.addEventListener("click", flip);
+    reach(root, "click", flip);
     return view;
   }
 
@@ -1070,6 +1113,7 @@ ${PHONE_PAGE_LOGIC}
       state.textContent = held ? "Held" : "Press";
     };
     b.addEventListener("pointerdown", function (event) { touch(w.handle, event, b, "hold"); });
+    reach(root, "pointerdown", function (event) { touch(w.handle, event, b, "hold"); });
     b.addEventListener("contextmenu", function (event) { event.preventDefault(); });
     return view;
   }
@@ -1139,9 +1183,10 @@ ${PHONE_PAGE_LOGIC}
     d.x = event.clientX;
     d.y = event.clientY;
   });
+  /* Is the pointer on this control — what is drawn of it, or its reach (B269)? */
   function inside(target, event) {
     var r = box(target);
-    return event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom;
+    return event.clientX >= r.left - REACH && event.clientX <= r.right + REACH && event.clientY >= r.top - REACH && event.clientY <= r.bottom + REACH;
   }
   function end(event, cancelled) {
     var d = drags[event.pointerId];
@@ -1213,6 +1258,10 @@ ${PHONE_PAGE_LOGIC}
       return b;
     });
     if (buttons.length === 0) strip.appendChild(el("span", "none", "No presets"));
+    // The reach: a press in the strip's margin, above or below a button, is that button's.
+    reach(strip, "click", function (event) {
+      for (var i = 0; i < buttons.length; i++) if (inside(buttons[i], event)) { buttons[i].click(); return; }
+    });
     var view = { widget: w, el: root };
     view.update = function () {
       var c = views[w.handle].widget;

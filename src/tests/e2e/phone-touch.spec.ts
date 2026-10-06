@@ -764,13 +764,23 @@ test.describe("§T1607b the phone page under a real touch — a project's Panels
  * crunched and some buttons cut off". A board's row was as tall as its column is wide, so ten
  * columns on a 375 px phone made every slider, toggle and preset button 30 px tall.
  *
- * What a phone user must be able to rely on, whatever grid an author chose: everything a
- * finger presses is at least a finger tall (FLOOR), and nothing is cut — a caption that does
- * not fit ends in an ellipsis, a strip of presets too long for its row scrolls sideways with
- * every name whole, a slider's handle stays inside its track at both ends. Asserted on real
- * boxes: the two frozen ten-column Panels, and CRAMPED, a board made of the awkward cases.
+ * What a phone user must be able to rely on, whatever grid an author chose:
+ *  - a row is never drawn lower than ROW. (36 px, between what the owner called crunched and
+ *    what he called a smidge too chunky; which of 32, 36 and 44 it is to be is his to try.)
+ *  - what a finger can HIT is more than what is drawn: a toggle, a button and a preset
+ *    answer from half the gap above and below them too, HIT px in all, and no two of them
+ *    answer for the same spot. (44 px, the usual finger size, would need rows of 38 or a
+ *    gap of 8: with rows of 36 six px apart, 42 is all there is without overlapping.)
+ *  - nothing is cut: a caption that does not fit ends in an ellipsis, a strip of presets too
+ *    long for its row scrolls sideways with every name whole, a slider's handle stays inside
+ *    its track at both ends.
+ *  - the last control of a board scrolls clear of the bars fixed at the foot of the page.
+ * Asserted on real boxes: the two frozen ten-column Panels, and CRAMPED, a board made of
+ * the awkward cases.
  */
-const FLOOR = 44;
+const ROW = 36;
+const GAP = 6;
+const HIT = ROW + GAP;
 const LOOKS = ["reset_robot", "reset_scene", "reset_lights", "reset_all", "soft_amber", "hard_strobe"] as const;
 const CRAMPED: PhonePanel = {
   title: "Cramped",
@@ -793,9 +803,13 @@ const CRAMPED: PhonePanel = {
 };
 
 test.describe("§B269 the phone page — a board of narrow columns is never crushed or clipped", () => {
-  /** What is wrong with the board showing: parts lower than a finger, content cut by its own box, preset names not whole. */
+  /**
+   * What is wrong with the board showing: parts drawn lower than a row, hit areas shorter
+   * than a row and its gap, two hit areas answering for one spot, content cut by its own
+   * box, preset names not whole, a page that pans sideways, a last control under the bars.
+   */
   const faults = (page: Page) =>
-    page.evaluate((floor) => {
+    page.evaluate(({ row, hit }) => {
       const board = document.querySelector<HTMLElement>("section.panel:not([hidden]) .board");
       if (board === null) throw new Error("no board is showing");
       const say = (part: Element): string => `<${part.tagName.toLowerCase()}.${part.className}> "${(part.textContent ?? "").trim().slice(0, 24)}"`;
@@ -803,8 +817,56 @@ test.describe("§B269 the phone page — a board of narrow columns is never crus
       const low: string[] = [];
       for (const part of board.querySelectorAll<HTMLElement>(".ctl, .press, .fader")) {
         const height = part.getBoundingClientRect().height;
-        if (showing(part) && height < floor - 0.5) low.push(`${say(part)} is ${height.toFixed(1)} px tall`);
+        if (showing(part) && height < row - 0.5) low.push(`${say(part)} is ${height.toFixed(1)} px tall`);
       }
+      // HIT AREAS, probed the way a finger meets them: up and down through the middle of each
+      // toggle, button and preset, asking the browser what a touch at that point would land
+      // on. A point is the control's when it lands inside the box that answers for it — the
+      // board item, or a preset's strip (whose margin presses the button it is over).
+      const short: string[] = [];
+      const spans: Array<{ what: string; left: number; right: number; top: number; bottom: number }> = [];
+      for (const part of board.querySelectorAll<HTMLElement>(".w.toggle > button.ctl, .w.button > button.ctl, .w.preset .press")) {
+        if (!showing(part)) continue;
+        const strip = part.closest<HTMLElement>(".strip");
+        const answers = strip ?? part.closest<HTMLElement>(".w");
+        if (answers === null) continue;
+        window.scrollTo(0, part.getBoundingClientRect().top + window.scrollY - window.innerHeight / 3);
+        const box = part.getBoundingClientRect();
+        const within = strip?.getBoundingClientRect();
+        // A preset the strip has scrolled out of sight sideways is not there to be probed.
+        if (within !== undefined && (box.left < within.left - 0.5 || box.right > within.right + 0.5)) continue;
+        const x = (box.left + box.right) / 2;
+        let top = NaN, bottom = NaN;
+        for (let y = box.top - 10; y <= box.bottom + 10; y += 0.5) {
+          const landed = document.elementFromPoint(x, y);
+          if (landed === null || !answers.contains(landed)) continue;
+          if (Number.isNaN(top)) top = y;
+          bottom = y;
+        }
+        const tall = bottom - top + 0.5;
+        if (!(tall >= hit - 1)) short.push(`${say(part)} answers over ${tall.toFixed(1)} px`);
+        // What the page DECLARES as this control's hit area (a probe cannot show two areas
+        // on one spot: a point lands on one thing). A preset: its own width, the strip's
+        // height. A toggle or a button: its item, grown by the item's ::before.
+        const item = answers.getBoundingClientRect();
+        const before = getComputedStyle(answers, "::before");
+        const grown = strip === null && before.content !== "none" ? -parseFloat(before.top) : 0;
+        spans.push({
+          what: say(part),
+          left: strip === null ? item.left - grown : box.left,
+          right: strip === null ? item.right + grown : box.right,
+          top: item.top - grown + window.scrollY,
+          bottom: item.bottom + grown + window.scrollY,
+        });
+      }
+      const shared: string[] = [];
+      spans.forEach((one, index) => {
+        for (const other of spans.slice(index + 1)) {
+          const across = Math.min(one.right, other.right) - Math.max(one.left, other.left);
+          const down = Math.min(one.bottom, other.bottom) - Math.max(one.top, other.top);
+          if (across > 0.5 && down > 0.5) shared.push(`${one.what} and ${other.what} both answer over ${across.toFixed(1)} x ${down.toFixed(1)} px`);
+        }
+      });
       // CUT: a box that hides what does not fit, holding content that reaches past it — on any
       // side (a caption that wraps upward out of a bottom-aligned heading is cut at the TOP,
       // which a scroll size does not report). The one exception is a box that ends its single
@@ -844,10 +906,16 @@ test.describe("§B269 the phone page — a board of narrow columns is never crus
       // A preset is recalled by its NAME: six buttons that all read "reset…" are six unknowns.
       const unnamed = [...board.querySelectorAll<HTMLElement>(".w.preset .press")].filter((button) => button.scrollWidth > button.clientWidth + 1).map((button) => button.textContent ?? "");
       const sideways = document.documentElement.scrollWidth - document.documentElement.clientWidth;
-      return { low, cut, unnamed, sideways };
-    }, FLOOR);
+      // THE FOOT: scrolled as far as the page goes, the lowest thing on the board is above the bars fixed below it.
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      const lowest = Math.max(...[...board.children].filter(showing).map((cell) => cell.getBoundingClientRect().bottom));
+      const bars = [...document.querySelectorAll<HTMLElement>("#tabs, #pager")].filter(showing).map((bar) => bar.getBoundingClientRect().top);
+      const under = Math.max(0, Math.round(lowest - Math.min(...bars)));
+      window.scrollTo(0, 0);
+      return { low, short, shared, cut, unnamed, sideways, under };
+    }, { row: ROW, hit: HIT });
 
-  test("at 375 px wide every part a finger presses is a finger tall, nothing is cut, and a long strip of presets scrolls to its last button", async ({ browser }) => {
+  test("at 375 px wide no row is lower than the floor, a press reaches half the gap round its control, nothing is cut or under the bars, and a long strip of presets scrolls to its last button", async ({ browser }) => {
     const stage = await openStage(
       (seq) => ({ seq, panels: [...FROZEN_PANELS, CRAMPED] }),
       () => Promise.resolve(),
@@ -866,11 +934,31 @@ test.describe("§B269 the phone page — a board of narrow columns is never crus
           const columns = Number(grid.style.getPropertyValue("--cols"));
           return (grid.getBoundingClientRect().width - (columns - 1) * 6) / columns;
         });
-        expect(column, `${name}: a column narrower than a finger`).toBeLessThan(FLOOR - 8);
+        expect(column, `${name}: a column narrower than the floor`).toBeLessThan(ROW - 4);
         found[name] = await faults(phone.page);
       }
-      const none = { low: [], cut: [], unnamed: [], sideways: 0 };
+      const none = { low: [], short: [], shared: [], cut: [], unnamed: [], sideways: 0, under: 0 };
       expect(found).toEqual({ Robot: none, Scene: none, Cramped: none });
+
+      // THE REACH, pressed: a tap two pixels ABOVE what is drawn of a toggle flips it, and one above a preset recalls it.
+      const touch = finger(phone.cdp);
+      const above = async (selector: string): Promise<Point> => {
+        const box = await center(phone.page, selector);
+        return { x: box.x, y: box.y - box.height / 2 - 2 };
+      };
+      const onToggle = await above("section.panel:not([hidden]) .w.toggle > button.ctl");
+      expect(await kindAt(phone.page, onToggle), "two pixels above a toggle is not on its button").not.toBe("button.ctl");
+      await touch.down(onToggle);
+      await touch.up();
+      await expect.poll(() => stage.writes.length).toBe(1);
+      const onPreset = await above('section.panel:not([hidden]) .w.preset [data-preset="reset_robot"]');
+      await touch.down(onPreset);
+      await touch.up();
+      await expect.poll(() => stage.writes.length).toBe(2);
+      expect(stage.writes).toEqual([
+        { handle: "toggle_long", values: { on: false }, phase: "commit" },
+        { handle: "presets_looks", values: { recall: "reset_robot" }, phase: "commit" },
+      ]);
 
       // The strip of six presets is wider than its row: it scrolls sideways, and its last button can be reached and pressed.
       const strip = phone.page.locator("section.panel:not([hidden]) .w.preset .strip");
@@ -879,17 +967,16 @@ test.describe("§B269 the phone page — a board of narrow columns is never crus
       const last = phone.page.getByRole("button", { name: "hard_strobe" });
       await expect(last).not.toBeInViewport();
       const box = (await strip.boundingBox())!;
-      const touch = finger(phone.cdp);
       await touch.down({ x: box.x + box.width - 30, y: box.y + box.height / 2 });
       await touch.travel(-(box.width - 60), 2, 8);
       await touch.up();
       await expect.poll(() => strip.evaluate((element) => Math.round(element.scrollLeft))).toBeGreaterThan(0);
       await phone.page.waitForTimeout(400);
-      expect(stage.writes, "a swipe along the strip recalls nothing").toEqual([]);
+      expect(stage.writes, "a swipe along the strip recalls nothing").toHaveLength(2);
       await expect(last).toBeInViewport();
       await last.tap();
-      await expect.poll(() => stage.writes.length).toBe(1);
-      expect(stage.writes).toEqual([{ handle: "presets_looks", values: { recall: "hard_strobe" }, phase: "commit" }]);
+      await expect.poll(() => stage.writes.length).toBe(3);
+      expect(stage.writes[2]).toEqual({ handle: "presets_looks", values: { recall: "hard_strobe" }, phase: "commit" });
       expect(phone.errors).toEqual([]);
     } finally {
       await phone.context.close();
