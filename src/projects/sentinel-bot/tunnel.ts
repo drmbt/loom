@@ -568,6 +568,46 @@ ${NEAR_LAMPS.map((index) => `  air = air + lampTone(params.station + ${(index - 
   return vec4f(mix(params.color, lit.rgb, clear) + air * params.glow, lit.a);
 }`;
 
+/**
+ * THE CROWN LAMPS AS LIGHTS: one point for every lamp station of the lap, each where its lamp hangs, for a
+ * Light in Points mode to stand a light on (§T1589b). Until that existed the piece had three Lights that
+ * followed the robot from station to station; now every lamp of the tunnel lights the tunnel, the far ones too.
+ *
+ * The lap's stations are taken as the 75 nearest the robot (37 behind it, 37 ahead and its own), not as stations
+ * 0 to 74: the wall is built round the robot wherever along the line it is, on either side of the lap's end, and
+ * so are these. `tint` is the lamp's own colour (linear) and `power` its strength, both by the rule the plates
+ * are drawn by (lampTone), so a dead lamp's plate is dark and its light is none.
+ */
+export const LAMP_COUNT = Math.round(PATH.period / LAMP_SPACING);
+export const LAMP_ATTRIBUTES = JSON.stringify([
+  { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+  { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 1] },
+  { name: "power", type: "f32", default: [0] },
+]);
+export const LAMP_KERNEL = `// T1561b — the tunnel's crown lamps, as points for a Light (src/projects/sentinel-bot/tunnel.ts).
+struct Params {
+  travel: f32, // @default 0  Distance travelled along the tunnel, metres.
+  bore: f32, // @default 2.6  The tunnel's radius, metres.
+  lamp: f32, // @default 26  A whole lamp's strength, as a Light's Intensity has it.
+  named: f32, // @default 0  1 when the three stations nearest the robot have Lights of their own (the ones that cast): those are dimmed here by as much as those are lit, so no lamp is lit twice.
+};
+${pathWgsl()}${LAMP_TONE_WGSL}
+fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  let station = floor(ctx.params.travel / LAMP) + f32(ctx.index) - ${Math.floor(LAMP_COUNT / 2)}.0;
+  let z = (station + 0.5) * LAMP;
+  let high = 1.0 + CHAMBER_SWELL * chamberAt(z);
+  // Under its plate, wherever the wall there holds it (lampHeightExpression: the same height).
+  q.position = pathAt(z) + vec3f(0.0, ctx.params.bore * high - ${LAMP_HANGS.toFixed(2)}, 0.0);
+  // The colour is written as a display colour (LAMP_TONES), as a Light's own Color is read; a point's is linear.
+  q.tint = vec4f(pow(lampTone(station), vec3f(2.2)), 1.0);
+  // How much of its own Light a named station has (document.ts, lampAt: 1 within half a spacing, 0 a spacing and a half off).
+  let near = clamp(1.5 - abs(z - ctx.params.travel) / LAMP, 0.0, 1.0);
+  // A hall's lamp is the bigger lamp, by how much higher it hangs.
+  q.power = ctx.params.lamp * high * (1.0 - clamp(ctx.params.named, 0.0, 1.0) * near);
+  return q;
+}`;
+
 /** Dust in the air: how many motes, and how long a stretch of tunnel they fill round the robot. */
 export const MOTE_COUNT = 6000;
 const MOTE_SPAN = 60;

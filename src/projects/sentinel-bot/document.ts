@@ -15,6 +15,7 @@ import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "../furnace/screen-space.ts";
 import { FIELD_BERTH, KIND, JOINT_ATTRIBUTES, PACK_WANDER, adriftAheadExpression, adriftExpression, ownCountOf, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { HULL_SURFACE_WGSL, hueExpression, lampParameter } from "./surface.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampHeightExpression, lampToneExpression } from "./tunnel.ts";
+import { LAMP_ATTRIBUTES, LAMP_COUNT, LAMP_KERNEL } from "./tunnel.ts";
 
 /**
  * T1561b — THE SENTINEL DOCUMENT: a robot walking, swimming and perching in the tunnel, played
@@ -325,6 +326,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     roll: 0,
   };
   const lamps = [-1, 0, 1].map(lampAt);
+  /** The lamps that are Lights of their own: the three nearest, and only where their shadows are drawn. */
+  const namedLamps = shadows ? lamps : [];
   /**
    * WHAT THE ROBOT THROWS ON THE TUNNEL IS WHAT ITS LIGHTS ARE DOING (the owner, 2026-10-05: the light on
    * the environment was "always … red", whatever the face was doing). The face: a third of the lenses each
@@ -754,8 +757,21 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         falloff: "inverseSquare", range: 10,
       }, { label: `light_follower${index + 1}` }),
     ),
-    // The three lamp plates nearest the robot, as lights; they breathe with the low end.
-    ...lamps.map((lamp, index) =>
+    // ── EVERY LAMP OF THE TUNNEL IS A LIGHT (§T1589b): one Light, standing on a point for each lamp station of the
+    // lap (tunnel.ts, LAMP_KERNEL). They breathe with the low end, and in the fields they are out. ──
+    node("kernel_lamps", "pointKernel", [-1800, -600], {
+      capacity: LAMP_COUNT,
+      attributes: LAMP_ATTRIBUTES,
+      kernel: LAMP_KERNEL,
+      travel,
+      bore: expressionSlot(on("slider_bore"), 2.6),
+      lamp: expressionSlot(`${on("slider_lamp")} * (0.7 + ${LOW} * 0.8) * (1 - ${PLACE})`, 26),
+      named: namedLamps.length > 0 ? 1 : 0,
+    }, { label: "kernel_lamps" }),
+    node("light_lamps", "light", [-1500, -600], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 24 }, { label: "light_lamps" }),
+    // The three nearest the robot as Lights of their own, where a lamp's shadow is wanted: a Light in Points
+    // mode casts none. Offline only (see robotCasts); the kernel above dims those three by as much.
+    ...namedLamps.map((lamp, index) =>
       node(`light_lamp${index}`, "light", [-1500, -150 + index * 150], {
         kind: "point",
         color: [0.62, 0.84, 1, 1],
@@ -778,7 +794,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // The dust is last: additive geometry is light, drawn over what it glows on (and out of the Depth output since B256).
       scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_towers", "geometry_pods", "geometry_motes"].join(" "),
       camera: "camera_rig",
-      lights: ["light_eyes", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), ...lamps.map((_, index) => `light_lamp${index}`)].join(" "),
+      lights: ["light_eyes", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), "light_lamps", ...namedLamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
       // A little cold fill and no more: an unlit stretch may be black (the owner, 2026-10-05).
       // …and in the fields more of it: there is no wall to be black against, and the towers have only this, the
@@ -905,6 +921,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]),
     edge("bore-geo", ["kernel_bore", "out"], ["geometry_bore", "points"]),
     edge("motes-geo", ["kernel_motes", "out"], ["geometry_motes", "points"]),
+    edge("lamps-light", ["kernel_lamps", "out"], ["light_lamps", "points"]),
     ...(["towers", "pods"] as const).flatMap((what) => [
       edge(`${what}-strips`, [`kernel_${what}`, "out"], [`topology_${what}`, "points"]),
       edge(`${what}-frames`, [`topology_${what}`, "out"], [`frames_${what}`, "points"]),
