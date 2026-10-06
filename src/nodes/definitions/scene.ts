@@ -2095,7 +2095,33 @@ export const renderNode: NodeDefinition = {
             ]
           : [[`shadow${slot}Matrix`, Array.from(shadowMatrices[slot] ?? [])]],
       );
-    const shadowTargetOf = (slot: number): string => `scratch:${nodeId}:shadow${casting[slot]?.index ?? slot}`;
+    /*
+     * T1623b slice 4 — THE SHADOW MAPS ARE LAYERS. Two layered targets a Render, one for its
+     * directional casting lights' maps (twice the output) and one for its point lights' 3 x 2
+     * cube atlases (one and a half times), a layer a light, where each casting light had a
+     * target of its own. A sweep draws into its light's layer (`shadowLayers` is the one
+     * answer to which).
+     *
+     * The layers of one array share ONE depth buffer: the sweeps run one after the other and
+     * each opens with a pass that clears. A Render with three casting suns holds four
+     * layers' colour and one depth where it held three of each.
+     *
+     * A LIT DRAW STILL BINDS A TEXTURE A LIGHT: `shadowMap{s}`, a `texture_2d`, which is now a
+     * VIEW OF THAT LIGHT'S ONE LAYER. So the lit text is the text it was, character for
+     * character, and a casting light is still one of the sixteen sampled textures a stage
+     * may bind. That is on purpose and measured: reading the same layer through one
+     * `texture_2d_array` binding costs the lit draw 73 to 85 % more at four and eight casting
+     * lights of the default softness on Apple's GPUs, and through a view it costs what a
+     * texture costs (docs/light-cost-investigation-2026-10-06.md, section 15). How a row
+     * reads a map without that cost is slice 5's first question.
+     */
+    const shadowSlots = shadowLayers(casting.length, pointSlots);
+    const SHADOW_KEYS = { maps: "shadowMaps", cubes: "shadowCubes" } as const;
+    const shadowTargetOf = (slot: number): string => `scratch:${nodeId}:${pointSlots.includes(slot) ? SHADOW_KEYS.cubes : SHADOW_KEYS.maps}`;
+    const shadowLayerOf = (slot: number): number => shadowSlots.layerOf[slot] ?? 0;
+    /** What a lit draw binds for its casting lights: for each, the one layer that is its map. */
+    const shadowTextures = (): Array<{ binding: string; resourceId: string; sampled: "unfiltered"; layer: number }> =>
+      casting.map((_, slot) => ({ binding: `shadowMap${slot}`, resourceId: shadowTargetOf(slot), sampled: "unfiltered" as const, layer: shadowLayerOf(slot) }));
     const castingIndices = casting.map(({ index }) => index);
     /*
      * T1623b slice 3 — WHICH LIGHT IS WHAT, for the two generators.
@@ -2158,6 +2184,8 @@ export const renderNode: NodeDefinition = {
       | { key: string; scale: number; format: "rgba16float" }
       // T1589b: the light table — the pointset Lights' records and the grid's cells.
       | LightTablePlan["scratch"][number]
+      // T1623b slice 4: the shadow maps, a layer a casting light.
+      | { kind: "layers"; key: string; layers: number; scale: number; format: "r32float"; depth: true }
     > = [];
     if (ssaa) scratch.push({ key: "ss", scale: 2, depth: true });
     /** T481: counted draw support emitted once (in the shadow phase when one exists),
@@ -2244,7 +2272,10 @@ export const renderNode: NodeDefinition = {
       readonly cube?: { readonly light: readonly number[]; readonly tile: readonly number[] };
       /** T1362b: faces after the first share the atlas the first one cleared. */
       readonly skipClear?: boolean;
+      /** T1623b slice 4: the layer of a layered `target` this sweep draws into (a casting light's map). */
+      readonly layer?: number;
     }): void => {
+      const firstOfSweep = passes.length;
       const depthShader = (shader: ReturnType<typeof shadowSurfaceWgsl>): ReturnType<typeof shadowSurfaceWgsl> =>
         options.cube === undefined ? shader : cubeShadowVariant(shader);
       const cubeUniforms = options.cube === undefined ? {} : { cubeLight: [...options.cube.light], cubeTile: [...options.cube.tile] };
@@ -2534,6 +2565,13 @@ export const renderNode: NodeDefinition = {
           if (pass !== undefined && pass.kind === "draw") passes[index] = { ...pass, skip: true };
         }
       });
+      /* T1623b slice 4: every draw of this sweep goes into its layer. Said once, here, for the
+         clear and for each geometry's draw whatever emitted it. */
+      if (options.layer === undefined) return;
+      for (let index = firstOfSweep; index < passes.length; index += 1) {
+        const pass = passes[index];
+        if (pass !== undefined && pass.kind === "draw" && pass.target === options.target) passes[index] = { ...pass, layer: options.layer };
+      }
     };
 
     /*
@@ -2573,12 +2611,15 @@ export const renderNode: NodeDefinition = {
        Zero casting lights emits nothing here and nothing below changes: §V309 holds as
        byte-identical passes and shaders. */
     const emitShadowPasses = (): void => {
+      /* T1623b slice 4: the two layered targets, each with the layers its kind's casting
+         lights need, in steps (`shadowLayerStep`). */
+      if (shadowSlots.directional > 0) scratch.push({ kind: "layers", key: SHADOW_KEYS.maps, layers: shadowLayerStep(shadowSlots.directional), scale: SHADOW_MAP_SCALE, format: "r32float", depth: true });
+      if (shadowSlots.point > 0) scratch.push({ kind: "layers", key: SHADOW_KEYS.cubes, layers: shadowLayerStep(shadowSlots.point), scale: SHADOW_CUBE_SCALE, format: "r32float", depth: true });
       casting.forEach(({ index: lightIndex, light }, slot) => {
         if (light.type === "point") {
           /* T1362b: the cube — one atlas (3×2 tiles, each face's frustum squeezed into its
              tile) cleared once, then six sweeps, one per face, each storing radial distance
              ÷ range. 1.5× the output keeps a tile near the output's own texel density. */
-          scratch.push({ key: `shadow${lightIndex}`, scale: 1.5, format: "r32float", depth: true });
           const range = Math.max(0.1, light.shadowExtent);
           (pointFaces[slot] ?? []).forEach((matrix, face) => {
             const tileX = face % 3;
@@ -2586,6 +2627,7 @@ export const renderNode: NodeDefinition = {
             emitDepthSweep({
               prefix: `shadow:${lightIndex}:face${face}`,
               target: shadowTargetOf(slot),
+              layer: shadowLayerOf(slot),
               casters: castersBySlot[slot] ?? [],
               reaches: reachOf(light, face),
               matrix,
@@ -2600,10 +2642,10 @@ export const renderNode: NodeDefinition = {
           });
           return;
         }
-        scratch.push({ key: `shadow${lightIndex}`, scale: 2, format: "r32float", depth: true });
         emitDepthSweep({
           prefix: `shadow:${lightIndex}`,
           target: shadowTargetOf(slot),
+          layer: shadowLayerOf(slot),
           casters: castersBySlot[slot] ?? [],
           matrix: shadowMatrices[slot],
           linearDepth: false,
@@ -3227,11 +3269,7 @@ export const renderNode: NodeDefinition = {
             ? {}
             : {
                 textures: [
-                  ...casting.map((_, slot) => ({
-                    binding: `shadowMap${slot}`,
-                    resourceId: shadowTargetOf(slot),
-                    sampled: "unfiltered" as const,
-                  })),
+                  ...shadowTextures(),
                   ...(environmentResource === undefined || !envLit(model)
                     ? []
                     : [
@@ -3495,11 +3533,7 @@ export const renderNode: NodeDefinition = {
                   ? []
                   : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
                 ...materialTextures,
-                ...casting.map((_, slot) => ({
-                  binding: `shadowMap${slot}`,
-                  resourceId: shadowTargetOf(slot),
-                  sampled: "unfiltered" as const,
-                })),
+                ...shadowTextures(),
                 ...(environmentResource === undefined || !envLit(model)
                   ? []
                   : [
@@ -3575,7 +3609,7 @@ export const renderNode: NodeDefinition = {
               ...(material.maps.albedo === undefined ? [] : [{ binding: "albedoMap", resourceId: material.maps.albedo, sampled: "unfiltered" as const }]),
               ...(material.maps.roughness === undefined ? [] : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
               ...materialTextures,
-              ...casting.map((_, slot) => ({ binding: `shadowMap${slot}`, resourceId: shadowTargetOf(slot), sampled: "unfiltered" as const })),
+              ...shadowTextures(),
             ],
             uniforms: Object.fromEntries(Object.entries(litPass.uniforms ?? {}).filter(([key]) => !/^(environment|projector)/.test(key))),
           });
@@ -3932,6 +3966,37 @@ const SURFACE_UV_REFERENCE = /\.\s*uv\b/;
  */
 const additiveSurface = (payload: GeometryPayload): boolean =>
   (payload.mode === "surface" || payload.instanceMesh !== undefined) && additiveLight(payload);
+
+/** T1623b slice 4: a shadow layer's size as a share of the Render's output: a directional map, a point light's cube atlas. */
+const SHADOW_MAP_SCALE = 2;
+const SHADOW_CUBE_SCALE = 1.5;
+/**
+ * T1623b slice 4 — HOW MANY LAYERS AN ARRAY IS GIVEN for `count` casting lights of its kind:
+ * 1, 2, 4, 8, then eights. The layer count is the array's structure (another count is
+ * another texture), so turning Cast Shadows on for one more light rebuilds the array only
+ * when a step is passed, and a spare layer costs its bytes and nothing else: no sweep
+ * draws into it and no block reads it. With its one depth buffer an array of a step is never
+ * more memory than the lights' own targets were (each had a depth buffer of its own): at
+ * 1920 x 1080 a directional map is 31.6 MiB and a cube atlas 17.8 MiB, so five casting suns
+ * are nine times 31.6 where they were ten times.
+ *
+ * What bounds a Render's casting lights is what bounded them: the sixteen sampled textures
+ * a stage may bind, a texture a casting light (the compiler's binding budget).
+ */
+export const shadowLayerStep = (count: number): number => (count <= 0 ? 0 : count <= 8 ? 2 ** Math.ceil(Math.log2(count)) : Math.ceil(count / 8) * 8);
+/**
+ * T1623b slice 4 — WHICH LAYER A SHADOW SLOT IS: its place among the slots of its own kind,
+ * in slot order (the directional lights' maps are one layered target, the point lights' cube
+ * atlases another). The ONE answer: a light's sweep draws into it and its block's texture is
+ * a view of it.
+ */
+export function shadowLayers(slots: number, pointSlots: Iterable<number> = []): { readonly layerOf: ReadonlyArray<number>; readonly directional: number; readonly point: number } {
+  const points = new Set(pointSlots);
+  let directional = 0;
+  let point = 0;
+  const layerOf = Array.from({ length: Math.max(0, slots) }, (_, slot) => (points.has(slot) ? point++ : directional++));
+  return { layerOf, directional, point };
+}
 
 /**
  * T1623b: a geometry the SURFACE generator draws with a lit model: a Surface or mesh

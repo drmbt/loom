@@ -575,15 +575,30 @@ describe("shadows are opt-in per light, priced in the open (T481, §V309)", () =
     expect(shadowAt).toBeGreaterThan(clearAt);
     expect(litAt).toBeGreaterThan(shadowAt);
 
-    // The map itself: r32float, depth-attached, twice the output size.
-    const map = compiled.resources.find((resource) => resource.id === "scratch:shot:shadow0");
-    expect(map).toMatchObject({ kind: "target", format: "r32float", depth: true, size: [128, 128] });
+    // The map itself: r32float, depth-attached, twice the output size. T1623b slice 4: it
+    // is a LAYER of the Render's directional shadow array, which one casting light makes an
+    // array of one layer; its sweep's passes name that layer.
+    const maps = compiled.resources.find((resource) => resource.id === "scratch:shot:shadowMaps");
+    expect(maps).toMatchObject({ kind: "layers", format: "r32float", depth: true, size: [128, 128], layers: 1 });
+    expect(compiled.resources.some((resource) => resource.id === "scratch:shot:shadow0")).toBe(false);
+    const sweep = compiled.passes.filter((pass) => String((pass as { id: string }).id).includes(":shadow:0:")) as unknown as Array<{ target: string; layer?: number }>;
+    expect(sweep.map((pass) => [pass.target, pass.layer])).toEqual([
+      ["scratch:shot:shadowMaps", 0],
+      ["scratch:shot:shadowMaps", 0],
+    ]);
 
-    // The lit draw binds the map and carries the light's matrix as a NAMED member.
+    // The lit draw binds the map as it always did, a texture of the light's own slot, and that
+    // texture is the light's LAYER of the array; the light's matrix is a NAMED member.
     const lit = drawOf(compiled);
-    expect(lit.textures?.map((texture) => texture.binding) ?? [], "lit textures").toContain("shadowMap0");
+    expect(lit.textures?.filter((texture) => texture.binding.startsWith("shadow")), "lit textures").toEqual([
+      { binding: "shadowMap0", resourceId: "scratch:shot:shadowMaps", sampled: "unfiltered", layer: 0 },
+    ]);
     expect(Array.isArray(lit.uniforms?.["shadow0Matrix"])).toBe(true);
-    expect(lit.shader).toContain("shadowMap0");
+    // Its text does not know of layers: a plain 2D texture, read with the tap kernel it had
+    // (the default softness, 2: 25 taps). An array binding costs the lit draw (slice 4, measured).
+    expect(lit.shader).toContain("var shadowMap0: texture_2d<f32>;");
+    expect(lit.shader).not.toContain("texture_2d_array");
+    expect(lit.shader).toContain("textureLoad(shadowMap0, clamp(scentre + vec2i(ox, oy), vec2i(0), slast), 0).r");
   });
 
   it("§V309: no casting light — passes and shaders byte-identical to the shadowless build", () => {
@@ -611,6 +626,12 @@ describe("shadows are opt-in per light, priced in the open (T481, §V309)", () =
       expect(ids.some((id) => id.includes(`:shadow:0:face${face}:`) && !id.endsWith(":clear"))).toBe(true);
     }
     expect(ids.filter((id) => id.includes(":shadow:0:") && id.endsWith(":clear"))).toHaveLength(1);
+    // T1623b slice 4: the atlas is a layer of the Render's cube array (one and a half times
+    // the output), and all six faces and the one clear draw into that layer.
+    expect(compiled.resources.find((resource) => resource.id === "scratch:shot:shadowCubes")).toMatchObject({ kind: "layers", format: "r32float", depth: true, size: [96, 96], layers: 1 });
+    const sweeps = compiled.passes.filter((pass) => (pass as { id: string }).id.includes(":shadow:0:")) as unknown as Array<{ target: string; layer?: number }>;
+    expect(sweeps).toHaveLength(7);
+    expect(new Set(sweeps.map((pass) => `${pass.target}@${String(pass.layer)}`))).toEqual(new Set(["scratch:shot:shadowCubes@0"]));
     // The lit draw reads the slot as a POINT slot: position + range, and six face matrices.
     const lit = compiled.passes.find((pass) => (pass as { id: string }).id.includes(":scene:")) as { uniforms?: Record<string, unknown> } | undefined;
     expect(Object.keys(lit?.uniforms ?? {}).filter((key) => key.startsWith("shadow0")).sort()).toEqual([

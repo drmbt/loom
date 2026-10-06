@@ -258,12 +258,32 @@ export interface ScratchRingRequest {
   format?: TextureFormat;
 }
 
+/**
+ * A LAYERED target (T1623b slice 4): one texture of `layers` layers. The node's draws each
+ * name the layer they render into, and a shader reads every layer through ONE binding
+ * (`texture_2d_array`), so a text can index what N targets would make it name. A Render's
+ * shadow maps: a layer a casting light.
+ */
+export interface ScratchLayersRequest {
+  kind: "layers";
+  key: string;
+  /** Layer count, >= 1. Structural: a node that adds layers rarely asks for them in steps. */
+  layers: number;
+  /** Fraction of the node's resolved size, as a target scratch takes. Default 1. */
+  scale?: number;
+  /** Omitted = the node's resolved format. */
+  format?: TextureFormat;
+  /** One depth buffer shared by the layers: each layer's first draw must clear. */
+  depth?: boolean;
+}
+
 export type ScratchRequest =
   | ScratchTargetRequest
   | ScratchBufferPairRequest
   | ScratchBufferRequest
   | ScratchExternalTextureRequest
-  | ScratchRingRequest;
+  | ScratchRingRequest
+  | ScratchLayersRequest;
 
 /**
  * WHERE one attribute of a pointset lives (T296, T1076).

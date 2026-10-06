@@ -360,6 +360,7 @@ Milliseconds at full clock; two figures are two runs, the second with some distu
 - **With non-casting lights around them the loop is the fastest form**: 32 lights of which 8 cast are 3.0 to 3.2 ms as rows, 3.3 guarded, 15.5 to 15.9 as main has them.
 - **One binding instead of N; a text that does not grow.** Pipeline creation cold: 119 to 174 ms for the loop at every count; 127 to 240 ms for the blocks up to 8 lights and 365 to 400 ms at 32. Each once.
 - **Not measured**: directional casting lights in the loop (the same resource, a simpler lookup), a mix of both kinds, softness above 1, the sweeps into layers, MSAA, and the whole of it through the backend.
+- **CORRECTED BY SLICE 4 (2026-10-06, section 15): this table holds at Shadow Softness 1 and not at the default.** The prototype gave every light Softness 1, nine reads a light, and at nine reads an array costs the lit draw 7 to 10 % more than a texture a light, which is the "one to two steps" above. A Light's default is Softness 2, 25 reads, and there the array costs 73 to 85 % more; at Softness 3, 84 %. It is the read of a `texture_2d_array` that costs, not the storage and not the synthetic maps.
 
 ### 11.4 Lists
 
@@ -512,3 +513,84 @@ Built, measured and written up in `docs/lights-from-pointset-design-2026-10-06.m
 - **A named Light's row is a whole record in a buffer of the Render's own, gathered like any set**, not four writes into the table's regions (ruled). So a Render with a lit Surface runs a gather and the grid's build every frame, whatever its table holds.
 - **The property of 11.1 holds for the Lights that do not cast** and is gated as stated: one lit string at 0, 1, 8 and 64 of any mix, and on the mock device no shader module and no pipeline for a Light added, removed, re-ordered or re-typed. Casting Lights are still blocks, each under the guard at every count beside the walk; the instances generator and a tile's preview still unroll.
 - **No whole shipped frame moved by more than 3 %**, and every shipped picture is within one step of a half float of what it was, bar three channel values at two steps that the guard alone moves (15.7 and 15.9 there).
+
+## 15. Slice 4: what reading a shadow map costs, by how the maps are stored and bound (measured)
+
+Slice 4 built 11.3's layered targets and found that the lit draw paid for them. This section is the measurement that followed. Scripts: `scratchpad/t1623b4/` of the worker's tree (`array-read.ts`, raw WebGPU; `layers-vs-maps.ts` with `make-views-tree.py` and `make-atlas-tree.py`, the engine's own lit text on scratch copies of the tree). Method throughout: a fixed reference compute pass beside every frame, the forms alternated in one process, the first repeated last; a figure is the lit draw over the reference, the mean of two takes. Metal, Apple silicon.
+
+**The forms.**
+
+| Form | Storage | What a lit draw binds |
+|---|---|---|
+| textures (main) | a texture a light | N `texture_2d` |
+| array | one array a kind, a layer a light | one `texture_2d_array`, read at a layer |
+| views | the same array | N `texture_2d`, each a view of one layer |
+| atlas | one plain texture a kind, a rectangle a light | one `texture_2d`, read inside a rectangle |
+
+**Raw WebGPU**, nothing of the engine: a 2560 x 1440 draw that makes 25 reads of each of N maps, the maps rendered into every frame. All forms draw the same bytes.
+
+| Maps | textures | array, literal layer | views | atlas, literal rectangle | atlas, rectangle from a uniform | array, layer from a uniform |
+|---|---|---|---|---|---|---|
+| 2 of 1920 x 1080 | 0.128 | 0.222 | 0.127 | 0.137 | 0.144 | 0.244 |
+| 4 | 0.245 | 0.447 | 0.245 | 0.273 | 0.283 | 0.478 |
+| 8 | 0.500 | 0.974 | 0.496 | 0.563 | 0.579 | 0.998 |
+| 2 of 3840 x 2160 | 0.183 | 0.267 | 0.188 | 0.200 | 0.204 | 0.318 |
+| 4 | 0.374 | 0.578 | 0.369 | 0.419 | 0.417 | 0.644 |
+| 8 | 0.780 | 1.165 | 0.787 | 0.930 | 0.934 | 1.243 |
+
+- **It is the READ of an array that costs, 46 to 95 % here, and not the storage**: the same array read through a 2D view a layer costs what N textures cost.
+- It does not follow the map's size (512 wide: 0.24, 0.43, 0.24) or its content (flat as a shadow map is, or not), nor how many layers are read (every block reading layer 0 costs the same). A nearest sampler in place of `textureLoad` costs the same, so it is not the bounds clamp a load is given. Ruled out too: Metal's lossless compression of render targets (main's maps given a usage that turns it off: the lit draw unchanged).
+- An atlas costs 7 to 19 % more than textures on raw, the more the larger the atlas; a rectangle read from a uniform 0 to 5 % more again. One map alone: 0.067 a texture, 0.068 an atlas, 0.112 an array.
+
+**The engine's lit text** (a PBR floor and a sheet over it, N casting lights, the default Shadow Softness, passes grouped into runs as the app draws them). Every cell is the same bytes as main but one: the atlas at Softness 3 differs in one byte of the frame.
+
+| Lit draw / reference | main | array | views | atlas, literal | atlas, uniform |
+|---|---|---|---|---|---|
+| 1 point light, 1920 wide | 0.146 | 0.149 | 0.163 | 0.146 | 0.146 |
+| 2 point | 0.267 | 0.42 | 0.283 | 0.277 | 0.294 |
+| 4 point | 0.55 | 0.95 | 0.535 | 0.561 | 0.559 |
+| 8 point, 1280 wide | 0.555 | 1.02 | 0.555 | 0.561 | 0.561 |
+| 2 suns, 1920 wide | 0.285 | 0.40 | 0.30 | 0.285 | 0.29 |
+| 4 suns | 0.544 | 0.78 | 0.548 | 0.573 | 0.584 |
+| 4 point, Softness 3 (49 reads) | 0.92 | 1.69 | 0.94 | 0.94 | |
+| 4 point, Softness 1 (9 reads) | 0.34 | 0.37 | | | |
+| 8 point, Softness 1, 1280 wide | 0.355 | 0.379 | | 0.335 | |
+| 8 point, Softness 0 (1 read), 1280 wide | 0.273 | 0.262 | | | |
+| 4 suns, Softness 1 | 0.245 | 0.27 | | | |
+
+- **In the engine the array costs nothing at one read a light, 7 to 10 % at nine, 73 to 85 % at 25 and 84 % at 49.** The rise is not linear in the reads and was not explained; whether another way of writing the taps reads an array cheaply was not tried.
+- **Views and the atlas cost what main costs**, within 5 %.
+
+| Sweeps / reference | main | layers | atlas |
+|---|---|---|---|
+| 2 point | 0.072 | 0.072 | 0.064 |
+| 4 point | 0.194 | 0.191 | 0.250 |
+| 8 point | 0.195 | 0.205 | 0.517 |
+| 2 suns | 0.074 | 0.072 | 0.049 |
+| 4 suns | 0.177 | 0.181 | 0.119 |
+
+- **An atlas's sweeps are one device render pass a kind** by the run rule as it stands. The suns' gain a third from it. The point lights' cost more, 2.6 times at eight: the scratch build squeezes a sweep into its rectangle in clip space and discards a fragment outside its own frustum, having no viewport and no scissor, so what a face's frustum does not hold is rasterised over the whole atlas. That reading was not verified; a scissor a rectangle would show it.
+- **A device pass a draw (exact pass timing) inflates every sweep** by an order of magnitude, an atlas's most (each pass loads and stores the whole target). Sweep figures taken in that mode say nothing of the app.
+
+**What an atlas holds inside the baseline's 8,192 texels a side.**
+
+| Output | Directional map (2 x) | Fit | Cube atlas (1.5 x) | Fit |
+|---|---|---|---|---|
+| 1280 x 720 | 2560 x 1440 | 15 | 1920 x 1080 | 28 |
+| 1920 x 1080 | 3840 x 2160 | 6 | 2880 x 1620 | 10 |
+| 3840 x 2160 | 7680 x 4320 | 1 | 5760 x 3240 | 2 |
+
+At 16,384 a side, 6 and 10 at 4K. A texture a light, or a layer a light, has no such wall.
+
+**Ruled (the lead, 2026-10-06).** Slice 4 lands the layered targets as STORAGE and the views as the READ: no picture, no cost and no lit text moves. Not the array: a slice whose gate is "no picture moves" does not move the lit draw by 50 to 90 %. Not the atlas: at a 4K output on the baseline it holds one casting sun and two casting point lights, its point lights' sweeps cost more without a scissor the backend does not have, and it was not byte identical in one measured case; a storage that refuses at a size wall is not the storage of a path whose point is that counts do not matter.
+
+**What this leaves slice 5.** 11.3 has a casting light's row read `maps` at a layer that is a value of the row. That read is the one that costs. Slice 5 opens by measuring two ways to have "one lit text for any number of casting lights" without it: a fixed set of 2D view bindings a kind and a `switch` on the row's slot (the text fixed by a cap); or the array, if the taps can be written so that it reads flat, since the rise with the reads has the shape of a threshold and not of a price. Both are set out in `docs/lights-from-pointset-design-2026-10-06.md`, 16.4.
+
+## 16. Slice 4 as built: the shadow maps are layers, each read through a 2D view
+
+Built, measured and written up in `docs/lights-from-pointset-design-2026-10-06.md`, section 16. Where it differs from 11.3 as designed:
+
+- **The storage is 11.3's**: two layered targets a Render, a layer a casting light, allocated in steps, one depth buffer a kind. It is a resource kind of its own (`layers`) and not a ring that does not rotate: a ring's layers are written by one copy a frame and its order is a uniform's; here a draw names its layer and the plan says which is which.
+- **The read is not 11.3's.** A lit draw binds a `texture_2d` a casting light, a view of that light's layer, as it bound a texture a light before. So the sixteen sampled textures a stage may bind still cap the casting lights, and the lit text still holds a block and a binding a casting light (§V1029's two casting debts, unchanged).
+- **The sweeps did not change**, as 11.3 said: the same draws, each naming a layer; a point light's six faces one run; the same device pass counts.
+- **Memory fell**: one depth buffer a kind where there was one a light. Five casting suns at 1920 x 1080 are 285 MiB where they were 316, eight 285 where they were 506.

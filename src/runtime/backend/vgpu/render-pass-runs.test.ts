@@ -258,15 +258,18 @@ describe("T1604b: a Render's frame is a handful of device render passes", () => 
     expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     return plan;
   };
-  /** Each run as "where it draws: how many draws", in plan order. */
+  /** Each run as "where it draws: how many draws", in plan order. A layered target is named with the run's layer (T1623b slice 4). */
   const shape = (plan: ReturnType<typeof compiledScene>): string[] =>
-    renderPassRuns(plan.passes, plan.resources).map((run) => `${run.target.replace(/^(scratch|target):render_shot:/, "")}: ${String(run.passIds.length)}`);
+    renderPassRuns(plan.passes, plan.resources).map(
+      (run) => `${run.target.replace(/^(scratch|target):render_shot:/, "")}${run.layer === undefined ? "" : `@${String(run.layer)}`}: ${String(run.passIds.length)}`,
+    );
 
   it("is one pass per shadow atlas, one for the Depth output, one for the colour and one per layer", () => {
     const plan = compiledScene();
     expect(plan.passes.filter((pass) => pass.kind === "draw")).toHaveLength(65);
     // Six faces of a cube share an atlas: a clear and 6 × 4 casters. The colour is the backdrop and four geometries.
-    expect(shape(plan)).toEqual(["shadow0: 25", "shadow1: 25", "depth: 5", "out: 5", "normal: 5"]);
+    // T1623b slice 4: each light's atlas is a layer of one array, and a layer is a run: the same two runs of 25.
+    expect(shape(plan)).toEqual(["shadowCubes@0: 25", "shadowCubes@1: 25", "depth: 5", "out: 5", "normal: 5"]);
   });
 
   it("asks the device for exactly those: 6 render passes where one per draw is 35", async () => {
@@ -292,7 +295,7 @@ describe("T1604b: a Render's frame is a handful of device render passes", () => 
     // after the opaque draws and extends their pass rather than opening one of its own.
     const plan = compiledScene({ geometry: { lid: { blend: "additive" } } });
     // The lid casts no shadow either: each atlas is a clear and 6 × 3 casters.
-    expect(shape(plan)).toEqual(["shadow0: 19", "shadow1: 19", "depth: 4", "out: 5", "normal: 4"]);
+    expect(shape(plan)).toEqual(["shadowCubes@0: 19", "shadowCubes@1: 19", "depth: 4", "out: 5", "normal: 4"]);
     const colour = renderPassRuns(plan.passes, plan.resources).find((run) => run.target === "target:render_shot:out");
     // Geometry 2 is the lid: last, after the far cube (3).
     expect(colour?.passIds.map((id) => id.replace("render_shot#render_shot:", ""))).toEqual(["backdrop", "scene:0", "scene:1", "scene:3", "scene:2"]);
@@ -303,6 +306,6 @@ describe("T1604b: a Render's frame is a handful of device render passes", () => 
     // draw by one unit in the last place on a few pixels (see `renderPassRuns`). The picture
     // must not depend on who is measuring, so such a target is left alone.
     const plan = compiledScene({ render: { antialias: "msaa" } });
-    expect(shape(plan)).toEqual(["shadow0: 25", "shadow1: 25", "depth: 5", "out: 1", "out: 1", "out: 1", "out: 1", "out: 1", "normal: 5"]);
+    expect(shape(plan)).toEqual(["shadowCubes@0: 25", "shadowCubes@1: 25", "depth: 5", "out: 1", "out: 1", "out: 1", "out: 1", "out: 1", "normal: 5"]);
   });
 });

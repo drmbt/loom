@@ -69,6 +69,7 @@ const LANE_TONE: Readonly<Record<PipelineTrackLane["kind"], string>> = {
   target: "texture",
   pingPong: "temporal",
   ring: "temporal",
+  layers: "texture",
   externalTexture: "input",
   buffer: "points",
   bufferPair: "points",

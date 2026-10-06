@@ -196,8 +196,126 @@ function createRing(
   };
 }
 
+/**
+ * A LAYERED TARGET, live (T1623b slice 4): one array texture, a render target a layer, one
+ * `2d-array` view to bind, and at most one depth buffer shared by the layers.
+ */
+export interface LayeredTargets {
+  readonly layers: number;
+  /** What a draw into layer `index` renders into: a target as vgpu's passes take one. */
+  layer(index: number): Target;
+  /** Every layer, as the `texture_2d_array` a shader binds. */
+  arrayView(): GPUTextureView;
+  /** One layer's own view: what a `layer` binding reads as `texture_2d`, and what a clear that goes round vgpu attaches (the boundary rite). */
+  layerView(index: number): GPUTextureView;
+  dispose(): void;
+}
+
+/**
+ * Allocates a layered target. The array texture and the depth buffer are raw-device (§V3's
+ * sanctioned reach-through, as the ring's history is: vgpu's `target()` owns a texture of
+ * one layer and cannot wrap one of many). Every view is created ONCE, so what a pass
+ * attaches and what a shader binds keep their identity and nothing allocates in the frame
+ * loop (§V8).
+ *
+ * A layer is handed to vgpu as a TARGET: `Frame.pass` and a draw's pipeline ask a target for
+ * its render pass descriptor, its attachment formats, its sample count and its size, and
+ * for nothing else (read off vgpu 0.5.0's `frame.js`, `draw.js` and `pipeline-store.js`), so
+ * an object that answers those is one. The descriptor is `OffscreenTarget`'s own, attachment
+ * for attachment (`target-utils.js`): load on preserve, clear otherwise, always store.
+ */
+function createLayeredTarget(
+  gpu: Gpu,
+  size: readonly [number, number],
+  format: GPUTextureFormat,
+  layers: number,
+  depth: boolean,
+  label: string,
+): LayeredTargets {
+  const count = Math.max(1, Math.floor(layers));
+  const raw = gpu.gpu;
+  // Literal usage bits with a global fallback, as the ring's: the mock host has no
+  // GPUTextureUsage global (COPY_SRC = 1, TEXTURE_BINDING = 4, RENDER_ATTACHMENT = 16).
+  const usage =
+    (globalThis as { GPUTextureUsage?: { COPY_SRC: number; TEXTURE_BINDING: number; RENDER_ATTACHMENT: number } }).GPUTextureUsage ??
+    { COPY_SRC: 1, TEXTURE_BINDING: 4, RENDER_ATTACHMENT: 16 };
+  const color = raw.createTexture({
+    size: { width: size[0], height: size[1], depthOrArrayLayers: count },
+    format,
+    usage: usage.RENDER_ATTACHMENT | usage.TEXTURE_BINDING | usage.COPY_SRC,
+    label: `${label} [layers]`,
+  });
+  const layerViews = Array.from({ length: count }, (_, index) =>
+    color.createView({ dimension: "2d", baseArrayLayer: index, arrayLayerCount: 1, label: `${label} [layer ${index}]` }),
+  );
+  // Named a 2d-array whatever the count: a texture of ONE layer would otherwise default to a 2d view.
+  const wholeView = color.createView({ dimension: "2d-array", baseArrayLayer: 0, arrayLayerCount: count, label: `${label} [array]` });
+  const depthFormat = "depth24plus" as const;
+  const depthTexture = depth
+    ? raw.createTexture({ size: { width: size[0], height: size[1] }, format: depthFormat, usage: usage.RENDER_ATTACHMENT, label: `${label} [depth]` })
+    : undefined;
+  const depthView = depthTexture?.createView({ label: `${label} [depth]` });
+  const clearValueOf = (clear: unknown): GPUColor =>
+    Array.isArray(clear) ? { r: clear[0] as number, g: clear[1] as number, b: clear[2] as number, a: clear[3] as number } : (clear as GPUColor);
+  const DEFAULT_CLEAR = [0, 0, 0, 1] as const;
+  const targets = layerViews.map(
+    (view) =>
+      ({
+        size,
+        format,
+        colors: [{ format }],
+        depth: depthTexture === undefined ? undefined : { format: depthFormat },
+        sampleCount: 1,
+        clearColor: DEFAULT_CLEAR,
+        renderPassDescriptor(options: { clear?: unknown; preserve?: boolean; clearDepth?: number } = {}): GPURenderPassDescriptor {
+          const preserve = options.preserve === true;
+          return {
+            colorAttachments: [
+              {
+                view,
+                loadOp: preserve ? "load" : "clear",
+                storeOp: "store",
+                ...(preserve ? {} : { clearValue: clearValueOf(options.clear ?? DEFAULT_CLEAR) }),
+              },
+            ],
+            ...(depthView === undefined
+              ? {}
+              : {
+                  depthStencilAttachment: {
+                    view: depthView,
+                    depthLoadOp: preserve ? "load" : "clear",
+                    depthStoreOp: "store",
+                    ...(preserve ? {} : { depthClearValue: options.clearDepth ?? 1 }),
+                  },
+                }),
+          };
+        },
+      }) as unknown as Target,
+  );
+  return {
+    layers: count,
+    layer(index) {
+      const found = targets[index];
+      if (found === undefined) throw new Error(`Layered target "${label}" has layers 0 to ${count - 1}; layer ${index} was asked for.`);
+      return found;
+    },
+    arrayView() {
+      return wholeView;
+    },
+    layerView(index) {
+      return layerViews[index] as GPUTextureView;
+    },
+    dispose() {
+      color.destroy();
+      depthTexture?.destroy();
+    },
+  };
+}
+
 export interface ResourceSet {
   readonly targets: ReadonlyMap<string, Target>;
+  /** Layered targets (T1623b), keyed by resource id. */
+  readonly layered: ReadonlyMap<string, LayeredTargets>;
   readonly pingPongs: ReadonlyMap<string, PingPongTargets>;
   /** Frame history rings (T237), keyed by resource id. */
   readonly rings: ReadonlyMap<string, RingTargets>;
@@ -245,6 +363,8 @@ export interface ResourceSet {
  */
 export interface CarryOver {
   readonly targets: ReadonlyMap<string, Target>;
+  /** T1623b: a carried layered target is the same textures. Optional: absent carries none. */
+  readonly layered?: ReadonlyMap<string, LayeredTargets>;
   /** A carried ring keeps its CONTENTS and its position, exactly as a pair does (§V62b). */
   readonly rings: ReadonlyMap<string, RingTargets>;
   readonly pingPongs: ReadonlyMap<string, PingPongTargets>;
@@ -432,6 +552,7 @@ export function buildResources(
   guard.assertOutsideFrame("plan resources");
 
   const targets = new Map<string, Target>();
+  const layered = new Map<string, LayeredTargets>();
   const pingPongs = new Map<string, PingPongTargets>();
   const rings = new Map<string, RingTargets>();
   const samplers = new Map<string, GPUSampler>();
@@ -498,6 +619,20 @@ export function buildResources(
             ...(resource.format === "rgba8unorm-srgb" ? { viewFormats: ["rgba8unorm" as const] } : {}),
             label: resource.label ?? resource.id,
           }),
+        );
+        note("resourcesCreated");
+      } else if (resource.kind === "layers") {
+        // T1623b: `layers`, the size, the format and the depth are its structure key, so a
+        // carried one is this allocation exactly.
+        const carried = carry.layered?.get(resource.id);
+        if (carried) {
+          layered.set(resource.id, carried);
+          note("resourcesReused");
+          continue;
+        }
+        layered.set(
+          resource.id,
+          createLayeredTarget(gpu, resource.size, resource.format as GPUTextureFormat, resource.layers, resource.depth === true, resource.label ?? resource.id),
         );
         note("resourcesCreated");
       } else if (resource.kind === "ring") {
@@ -646,9 +781,14 @@ export function buildResources(
     return array === true ? ring.arrayView() : ring.tapView(Math.max(1, tap ?? 1));
   };
 
-  const readTexture = (resourceId: string, tap?: number, array?: boolean, live?: boolean): unknown => {
+  const readTexture = (resourceId: string, tap?: number, array?: boolean, live?: boolean, layer?: number): unknown => {
     const slice = readRingSlice(resourceId, tap, array, live);
     if (slice !== undefined) return slice;
+    // T1623b: a layered target binds whole, as `texture_2d_array`, or ONE layer of it as
+    // `texture_2d` (`layer`). Either view is created once and never changes identity, so it
+    // is no dynamic binding. (The plan reader refuses one bound with neither, and a layer it has not.)
+    const layers = layered.get(resourceId);
+    if (layers !== undefined) return array === true ? layers.arrayView() : layer !== undefined && layer < layers.layers ? layers.layerView(layer) : undefined;
     // T94: bind the Target itself, never its .color texture. vgpu wires
     // onTexturesRecreated only for Target values, and Target.resize() destroys and
     // recreates its textures — a bound .color would keep pointing at the destroyed
@@ -713,7 +853,7 @@ export function buildResources(
       bag[binding.binding] = value;
     }
     for (const binding of textureBindings) {
-      const value = readTexture(binding.resourceId, binding.tap, binding.array, binding.live);
+      const value = readTexture(binding.resourceId, binding.tap, binding.array, binding.live, binding.layer);
       if (value === undefined) {
         diagnostics.push(
           backendDiagnostic(
@@ -820,7 +960,9 @@ export function buildResources(
     }
 
     if (pass.kind === "draw") {
-      const plainTarget = targets.get(pass.target);
+      // T1623b: a draw into a layered target renders into the layer it names.
+      const layerOf = layered.get(pass.target);
+      const plainTarget = layerOf !== undefined && pass.layer !== undefined && pass.layer < layerOf.layers ? layerOf.layer(pass.layer) : targets.get(pass.target);
       const pair = pingPongs.get(pass.target);
       if (!plainTarget && !pair) {
         diagnostics.push(
@@ -975,6 +1117,7 @@ export function buildResources(
 
   return {
     targets,
+    layered,
     rings,
     pingPongs,
     samplers,
@@ -996,7 +1139,7 @@ export function buildResources(
 
 interface SetBagContext {
   readonly gpu: Gpu;
-  readonly readTexture: (resourceId: string, tap?: number, array?: boolean, live?: boolean) => unknown;
+  readonly readTexture: (resourceId: string, tap?: number, array?: boolean, live?: boolean, layer?: number) => unknown;
   readonly samplers: ReadonlyMap<string, GPUSampler>;
   readonly externals: ExternalResources;
   readonly shared: SharedUniforms<SharedUniformValues>;
@@ -1011,7 +1154,7 @@ function buildSetBag(
   const bag: Record<string, unknown> = {};
 
   for (const binding of pass.textures ?? []) {
-    const texture = ctx.readTexture(binding.resourceId, binding.tap, binding.array, binding.live);
+    const texture = ctx.readTexture(binding.resourceId, binding.tap, binding.array, binding.live, binding.layer);
     if (texture === undefined) {
       ctx.diagnostics.push(
         backendDiagnostic(

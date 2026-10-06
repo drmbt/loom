@@ -1415,7 +1415,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
         );
       }
       for (const raw of entries) {
-        const entry = raw as { key?: unknown; scale?: unknown; format?: unknown; kind?: unknown; stride?: unknown; capacity?: unknown; sourceId?: unknown; frames?: unknown; swap?: unknown; usage?: unknown; depth?: unknown };
+        const entry = raw as { key?: unknown; scale?: unknown; format?: unknown; kind?: unknown; stride?: unknown; capacity?: unknown; sourceId?: unknown; frames?: unknown; layers?: unknown; swap?: unknown; usage?: unknown; depth?: unknown };
         const key = typeof entry.key === "string" && entry.key !== "" ? entry.key : undefined;
         // T121/T176: a bufferPair scratch entry — SoA point storage. One identity per
         // attribute; the compiler appends its swap after all consumers (§V22), and T143
@@ -1535,6 +1535,45 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
             label: `${nodeId} ring ${key}`,
           });
           scratchRingIds.push(ringId);
+          continue;
+        }
+        // T1623b: a layered target — one texture of N layers, a draw a layer. Sized like a
+        // target scratch.
+        if (entry.kind === "layers") {
+          const layers = entry.layers;
+          const layersScale =
+            entry.scale === undefined
+              ? 1
+              : typeof entry.scale === "number" && Number.isFinite(entry.scale) && entry.scale > 0
+                ? entry.scale
+                : undefined;
+          const layersFormat =
+            entry.format === undefined
+              ? (format ?? settings.workingFormat)
+              : typeof entry.format === "string" && (TEXTURE_FORMATS as readonly string[]).includes(entry.format)
+                ? (entry.format as TextureFormat)
+                : undefined;
+          if (key === undefined || seenScratch.has(key) || layersScale === undefined || layersFormat === undefined || !(Number.isInteger(layers) && (layers as number) >= 1)) {
+            diagnostics.push(
+              compilerDiagnostic(
+                "error",
+                CompilerDiagnosticCode.scratchInvalid,
+                `Node "${nodeId}" (${node.type}) declared an invalid or duplicate layers scratch entry ${JSON.stringify(raw)}.`,
+                { nodeId, suggestion: 'A layers entry is { key, kind: "layers", layers >= 1, scale?, format?, depth? }.' },
+              ),
+            );
+            continue;
+          }
+          seenScratch.add(key);
+          resources.push({
+            kind: "layers",
+            id: scratchResourceId(nodeId, key),
+            size: [Math.max(1, Math.round(baseSize[0] * layersScale)), Math.max(1, Math.round(baseSize[1] * layersScale))],
+            format: layersFormat,
+            layers: layers as number,
+            ...(entry.depth === true ? { depth: true } : {}),
+            label: `${nodeId} layers ${key}`,
+          });
           continue;
         }
         // T236: a single storage buffer — a reduction result, a lookup table. No pair,
