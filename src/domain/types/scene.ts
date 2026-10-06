@@ -403,6 +403,14 @@ export interface MaterialPayload {
      */
     readonly instance?: ReadonlyArray<{ readonly name: string; readonly wgsl: string; readonly default?: readonly number[] }>;
     /**
+     * T1658b: the textures the source names (`// @texture lens`), in the order it names them,
+     * each with the plan resource wired into the input of that place (Texture 1 is the first
+     * name). The Scene node declares one binding a name and binds the resource in every draw
+     * that runs the author's `surface()`. Absent when the source names none. The names are
+     * structural, as `code` is; the resources are what is wired.
+     */
+    readonly textures?: ReadonlyArray<{ readonly name: string; readonly resourceId: string }>;
+    /**
      * T1535b: where the author's `source` sits in `code` and in `paramsDeclaration`, each
      * counted from that text's own first character, every span naming the material node.
      * The Scene node places both texts into its draw pass and moves these spans there, so a

@@ -218,7 +218,25 @@ export interface SceneCustomSurface {
    * `default` (zero when the author declared none) — so one material compiles everywhere.
    */
   readonly instance?: ReadonlyArray<{ readonly name: string; readonly wgsl: string; readonly default?: readonly number[] }>;
+  /**
+   * T1658b: the textures the author's code reads, by the names it gave them
+   * (`// @texture lens`), in order. Each is declared `var <name>: texture_2d<f32>;` at a
+   * binding of its own (`MATERIAL_TEXTURE_BINDING` on) in front of the author's code, and a
+   * pass binds it under that name. Absent or empty, the text is the one a custom surface
+   * had, to the byte.
+   */
+  readonly textures?: ReadonlyArray<string>;
 }
+
+/**
+ * T1658b: where a Material · WGSL's own textures are bound, the first of them: clear of the
+ * lit module's bindings (0 up, growing with lights and projectors), of a mesh's (100 to 104)
+ * and of the frame block (120). `MATERIAL_TEXTURE_LIMIT` of them: a stage may sample sixteen
+ * textures on a baseline device, and a lit draw also binds shadow maps, an environment,
+ * occlusion and two a projector (`docs/material-texture-inputs-2026-10-06.md`, section 5).
+ */
+export const MATERIAL_TEXTURE_BINDING = 110;
+export const MATERIAL_TEXTURE_LIMIT = 4;
 
 /** T1581b: the accessor a bound `struct Instance` field is read through, by field name. */
 export function instanceFieldAccessor(name: string): string {
@@ -1721,6 +1739,11 @@ ${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index)))
     custom === undefined ? "" : custom.paramsDeclaration === "" ? "struct Params {\n  unused: f32,\n};" : custom.paramsDeclaration;
   const customHead = custom?.instance === undefined ? CUSTOM_SURFACE_HEAD : CUSTOM_SURFACE_HEAD_WITH_INSTANCE;
   const customDeclarations = custom === undefined ? "" : `${customHead}${customParamsDeclaration}\n\n${custom.code}\n`;
+  /* T1658b: the textures the author's code names, declared above it (in `top`, so the place
+     of the author's two texts is still read off the text in front of them). */
+  const customTextures = (custom?.textures ?? [])
+    .map((name, index) => `@group(0) @binding(${MATERIAL_TEXTURE_BINDING + index}) var ${name}: texture_2d<f32>;\n`)
+    .join("");
   /* T1581b (D9): the material's `struct Instance`, filled per fragment. A field the geometry
      bound is read from the instance's record at the slot the vertex stage passed down (one
      flat u32, so the field count is not an inter-stage budget); the rest are constants. */
@@ -1862,7 +1885,7 @@ ${modelFields}  eye: vec4f,
 ${lightField}${shadowFields}${envField}${projectors.fields}${customFields}${lightGrid ? LIGHT_GRID_FIELDS_WGSL : ""}};
 
 @group(0) @binding(0) var<uniform> params: SceneParams;
-${pointBindings}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${meshDeclarations}${lightGrid ? lightGridDeclarationsWgsl() : ""}`;
+${pointBindings}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${meshDeclarations}${lightGrid ? lightGridDeclarationsWgsl() : ""}${customTextures}`;
   const text = wgsl`${top}${customDeclarations}
 ${vertexStage}
 
@@ -3146,6 +3169,19 @@ export const SURFACE_RESERVED_NAMES: ReadonlySet<string> = new Set(
     .flatMap((features) => declaredNames(String(sceneSurfaceWgsl(features))))
     .filter((name) => name !== "surface"),
 );
+
+/**
+ * T1658b: the names the surface module declares at module scope as a binding or a constant
+ * (`params`, `positions`, `albedoMap`, `frameU`, …), read off the same two texts. A texture
+ * a Material · WGSL names becomes a module-scope `var` of that name, so it may be none of
+ * these, nor one of the numbered families a Render with more lights or projectors declares.
+ */
+const MODULE_SCOPE_NAME = /^(?:@group\([^)]*\)\s*@binding\([^)]*\)\s*)?(?:var(?:<[^>]*>)?|const|override|alias)\s+([A-Za-z_]\w*)/gm;
+const SURFACE_BOUND_NAMES: ReadonlySet<string> = new Set(
+  [ALL_SURFACE_FEATURES, ALL_INSTANCED_FEATURES].flatMap((features) => [...String(sceneSurfaceWgsl(features)).matchAll(MODULE_SCOPE_NAME)].map((match) => match[1] as string)),
+);
+const SURFACE_BOUND_FAMILIES = /^(shadowMap|projectorCookie|projectorDepth|packed)\d+$/;
+export const isSurfaceBoundName = (name: string): boolean => SURFACE_BOUND_NAMES.has(name) || SURFACE_BOUND_FAMILIES.test(name);
 
 /**
  * T1362b — a depth sweep's CUBE-FACE variant, made from the directional one's own text so

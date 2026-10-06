@@ -1639,6 +1639,8 @@ const TEXTURE_CATEGORIES: ReadonlyArray<readonly [RegExp, string]> = [
 function textureLedger(
   nodeId: string,
   passes: ReadonlyArray<DrawPassDescriptor | DispatchPassDescriptor | BufferWritePassDescriptor>,
+  /** T1658b: a Material · WGSL's textures are bound under the author's own names. */
+  materialTextureNames: ReadonlySet<string>,
 ): NonNullable<CompiledNodeDescription["diagnostics"]>[number] | undefined {
   let worst: { id: string; bindings: string[] } | undefined;
   for (const pass of passes) {
@@ -1649,7 +1651,7 @@ function textureLedger(
   if (worst === undefined) return undefined;
   const counts = new Map<string, number>();
   for (const binding of worst.bindings) {
-    const category = TEXTURE_CATEGORIES.find(([pattern]) => pattern.test(binding))?.[1] ?? binding;
+    const category = materialTextureNames.has(binding) ? "Material · WGSL textures" : (TEXTURE_CATEGORIES.find(([pattern]) => pattern.test(binding))?.[1] ?? binding);
     counts.set(category, (counts.get(category) ?? 0) + 1);
   }
   const breakdown = [...counts].map(([category, count]) => `${count} ${category}`).join(", ");
@@ -1659,7 +1661,7 @@ function textureLedger(
     message: `Node "${nodeId}": pass "${worst.id}" binds ${worst.bindings.length} sampled textures (${breakdown}), over the WebGPU baseline of ${SAMPLED_TEXTURE_BASELINE} (maxSampledTexturesPerShaderStage). A device that reports no more than the baseline refuses the pass.`,
     nodeId,
     suggestion:
-      "Each projector costs two (cookie + occlusion): turn Occlusion off on projectors nothing needs to shadow, or merge projectors that sit together into one wider throw. Each casting light costs one shadow map; Env Filter: Prefiltered costs one more than Taps.",
+      "Each projector costs two (cookie + occlusion): turn Occlusion off on projectors nothing needs to shadow, or merge projectors that sit together into one wider throw. Each casting light costs one shadow map; Env Filter: Prefiltered costs one more than Taps; a Material · WGSL costs one a texture its source names.",
   };
 }
 
@@ -2142,6 +2144,8 @@ export const renderNode: NodeDefinition = {
     const diagnostics: NonNullable<CompiledNodeDescription["diagnostics"]> = [];
     const background = readColor(parameters, "background", [0, 0, 0, 1]);
     const passes: Array<DrawPassDescriptor | DispatchPassDescriptor | BufferWritePassDescriptor> = [];
+    /* T1658b: the names a Material · WGSL's textures are bound under, for the ledger below. */
+    const materialTextureNames = new Set<string>();
     /** T478: one indirect-args scratch buffer per COUNTED geometry. */
     const scratch: Array<
       | NonNullable<ReturnType<typeof countedDrawSupport>>["scratch"]
@@ -3391,8 +3395,13 @@ export const renderNode: NodeDefinition = {
                 paramsDeclaration: material.custom.paramsDeclaration,
                 fields: material.custom.fields,
                 ...(material.custom.instance === undefined ? {} : { instance: material.custom.instance }),
+                ...(material.custom.textures === undefined ? {} : { textures: material.custom.textures.map((texture) => texture.name) }),
               },
             };
+      /* T1658b: the textures a Material · WGSL names, bound under those names in every draw
+         of this geometry that runs its `surface()`: the lit draw, the layers, the matte. */
+      const materialTextures = (material.custom?.textures ?? []).map((texture) => ({ binding: texture.name, resourceId: texture.resourceId, sampled: "unfiltered" as const }));
+      for (const texture of materialTextures) materialTextureNames.add(texture.binding);
       const surfaceMaterialOptions = {
         model: model as "unlit" | "lambert" | "phong" | "pbr",
         maps,
@@ -3471,6 +3480,7 @@ export const renderNode: NodeDefinition = {
               ],
         ...(material.maps.albedo === undefined &&
         material.maps.roughness === undefined &&
+        materialTextures.length === 0 &&
         casting.length === 0 &&
         !aoActive &&
         !projActive &&
@@ -3484,6 +3494,7 @@ export const renderNode: NodeDefinition = {
                 ...(material.maps.roughness === undefined
                   ? []
                   : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
+                ...materialTextures,
                 ...casting.map((_, slot) => ({
                   binding: `shadowMap${slot}`,
                   resourceId: shadowTargetOf(slot),
@@ -3563,6 +3574,7 @@ export const renderNode: NodeDefinition = {
             textures: [
               ...(material.maps.albedo === undefined ? [] : [{ binding: "albedoMap", resourceId: material.maps.albedo, sampled: "unfiltered" as const }]),
               ...(material.maps.roughness === undefined ? [] : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
+              ...materialTextures,
               ...casting.map((_, slot) => ({ binding: `shadowMap${slot}`, resourceId: shadowTargetOf(slot), sampled: "unfiltered" as const })),
             ],
             uniforms: Object.fromEntries(Object.entries(litPass.uniforms ?? {}).filter(([key]) => !/^(environment|projector)/.test(key))),
@@ -3575,12 +3587,13 @@ export const renderNode: NodeDefinition = {
           id: layer === "normal" ? `${nodeId}:gbuffer:${index}` : `${nodeId}:gbuffer:${layer}:${index}`,
           ...surface({ ...surfaceMaterialOptions, lightCount: 0, gbuffer: layer }),
           target,
-          ...(material.maps.albedo === undefined && material.maps.roughness === undefined
+          ...(material.maps.albedo === undefined && material.maps.roughness === undefined && materialTextures.length === 0
             ? { textures: [] }
             : {
                 textures: [
                   ...(material.maps.albedo === undefined ? [] : [{ binding: "albedoMap", resourceId: material.maps.albedo, sampled: "unfiltered" as const }]),
                   ...(material.maps.roughness === undefined ? [] : [{ binding: "roughnessMap", resourceId: material.maps.roughness, sampled: "unfiltered" as const }]),
+                  ...materialTextures,
                 ],
               }),
           uniforms: Object.fromEntries(Object.entries(litPass.uniforms ?? {}).filter(([key]) => !lighting.test(key))),
@@ -3867,7 +3880,7 @@ export const renderNode: NodeDefinition = {
       } as DrawPassDescriptor);
     }
 
-    const ledger = textureLedger(nodeId, passes);
+    const ledger = textureLedger(nodeId, passes, materialTextureNames);
     if (ledger !== undefined) diagnostics.push(ledger);
 
     if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {

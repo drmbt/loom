@@ -242,6 +242,10 @@ export function minimalGraphFor(
   const referenceInputs = new Set((definition.sourceReferences ?? []).map((spec) => spec.input));
   definition.inputs.forEach((port, index) => {
     if (referenceInputs.has(port.id)) return;
+    /* T1658b: a Material · WGSL reads a Texture input only where its source names a texture
+       (`// @texture lens`), and the default source names none: a wire into one is itself a
+       finding ("it is not read"). So the minimal graph leaves them unwired, as a fresh node is. */
+    if (definition.type === "materialWgsl" && /^texture\d$/.test(port.id)) return;
     const feedId = `feed${index}`;
     /* T1071: the stand-in has to satisfy what the port ASKS FOR, not merely its kind. A
        pointset port requiring `neighbor` is asking for an ADJACENCY, which a bare grid does

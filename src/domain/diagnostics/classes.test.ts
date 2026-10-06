@@ -94,7 +94,7 @@ const NOT_A_DIAGNOSTIC: Ledger<string> = {
   "src/devices/terminal-client.ts": { "{ type, code, client }": HELLO },
   "src/mcp/bridge-client.ts": { "{ type, code, client }": HELLO },
   "src/editor/keymap/resolve.ts": { "{ code, bindingId, message }": "a KeymapProblem, whose three codes are that type's own union" },
-  "src/nodes/definitions/material-wgsl.ts": { "{ code, params }": WGSL, "{ code, paramsDeclaration, fields, uniforms, ..., sourceMap }": WGSL },
+  "src/nodes/definitions/material-wgsl.ts": { "{ code, params }": WGSL, "{ code, paramsDeclaration, fields, uniforms, ..., ..., sourceMap }": WGSL },
   "src/nodes/shaders/scene-render.wgsl.ts": { "{ code, paramsDeclaration, fields }": WGSL, "{ ..., code }": WGSL },
   "src/runtime/backend/vgpu/vgpu-backend.ts": { "{ code, label }": "a shader module's descriptor", "{ code }": "a shader module's descriptor" },
 };
