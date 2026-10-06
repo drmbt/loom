@@ -18,7 +18,7 @@ import { CHAMBERS, PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "../furnace/screen-space.ts";
 import { FIELD_BERTH, SWIM_WAY, swimLungeExpression, KIND, JOINT_ATTRIBUTES, PACK_WANDER, adriftAheadExpression, adriftExpression, ownCountOf, jointCount, jointKernel, type Pick } from "./rig.ts";
-import { HULL_SURFACE_WGSL, hueExpression, lampParameter } from "./surface.ts";
+import { hueExpression, hullSurfaceWgsl, lampParameter } from "./surface.ts";
 import { CAVE_ATTRIBUTES, CAVE_CAPACITY, CAVE_KERNEL, FIRE_ATTRIBUTES, FIRE_KERNEL, FLAME_CAPACITY, FLAME_KERNEL, FLAME_SURFACE_WGSL, FORMATIONS, FORMATION_CAPACITY, FORMATION_KERNEL, ROCK_SURFACE_WGSL, TEMPLE, TEMPLE_STRIP_ATTRIBUTES } from "./temple.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampHeightExpression, lampToneExpression } from "./tunnel.ts";
 import { LAMP_ATTRIBUTES, LAMP_COUNT, LAMP_KERNEL } from "./tunnel.ts";
@@ -222,6 +222,10 @@ const LIGHTS: readonly Slider[] = [
   // A white beam from the front of each robot (searchlight.ts): by itself now and then out of the tunnel; up, always.
   { name: "slider_search", caption: "Searchlights", value: 0, min: 0, max: 1 },
   { name: "slider_glow", caption: "Eyes", value: 9, min: 0, max: 30 },
+  // How much of the camera's picture shows in the lenses in place of their own light (surface.ts, lensAt).
+  // Up as it ships: the picture is in the lenses the moment the camera is on (the owner, 2026-10-06: "i expected my
+  // camera feed to appear in each of the eye circles"), and with the camera off a lens has its own light anyway.
+  { name: "slider_eyefeed", caption: "Eye feed (camera)", value: 1, min: 0, max: 1 },
   { name: "slider_eyehits", caption: "Eyes on drums", value: 0.6, min: 0, max: 1 },
   { name: "slider_eyesweep", caption: "Eye sweep (beat)", value: 0.25, min: 0, max: 1 },
   { name: "slider_legs", caption: "Leg lights", value: 1, min: 0, max: 3 },
@@ -916,9 +920,15 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("speed_stroke", "valueSpeed", [-2100, 1250], { minimum: 0, maximum: 1, limit: "loop" }, { label: "speed_stroke" }),
 
     // ── The robot: for each piece a mesh of the kit, the rig's points of that piece, and the draw (T1581b) ──
+    // The picture the lenses show (surface.ts, lensAt): the camera of the machine the piece runs on, as far as the
+    // Lights panel's Eye feed is up, and it ships up. With no camera it is a clear frame (and the app says so), and
+    // a lens with a clear frame keeps its own light; render.ts gives a headless render that, or a picture.
+    node("webcam_eyes", "webcam", [-2100, -350], {}, { label: "webcam_eyes" }),
     node("material_hull", "materialWgsl", [-1800, -150], {
       model: "pbr",
-      source: HULL_SURFACE_WGSL,
+      // With where the kit's lenses are: each is a screen for the picture fed to it (Texture 1).
+      source: hullSurfaceWgsl(facts.eyes),
+      eyeFeed: expressionSlot(on("slider_eyefeed"), 1),
       // The eyes flicker with the hats and swell with the top of the track.
       eyeGlow: expressionSlot(`${on("slider_glow")} * (0.75 + ${HIGH} * 0.6) * (1 + 0.8 * ${ATTACK})`, 9),
       // One colour range for every light on it; the level moves them along it.
@@ -1339,6 +1349,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("bore-geo", ["kernel_bore", "out"], ["geometry_bore", "points"]),
     edge("motes-geo", ["kernel_motes", "out"], ["geometry_motes", "points"]),
     edge("lamps-light", ["kernel_lamps", "out"], ["light_lamps", "points"]),
+    edge("eyes-feed", ["webcam_eyes", "out"], ["material_hull", "texture1"]),
     edge("strike-light", ["kernel_strike", "out"], ["light_strike", "points"]),
     edge("grid-hall", ["grid_hall", "out"], ["kernel_hall", "in"]),
     edge("hall-geo", ["kernel_hall", "out"], ["geometry_hall", "points"]),

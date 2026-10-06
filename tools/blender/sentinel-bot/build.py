@@ -26,7 +26,7 @@ What is written:
                              joint frame: for a draw that cannot afford nine pieces.
   phalanx_<f>_<p>            claw finger f (0–3), link p (0 = knuckle), its own joint frame.
   socket.<t>                 marker: where tentacle t leaves the body.
-  eye.<i>                    marker: an eye lens (centre; extras radius).
+  eye.<i>                    marker: an eye lens (the middle of its face; extras face, its radius seen from in front).
   kit.info                   marker: counts and lengths.
 Every hinged node (mand_*, phalanx_*) carries extras: `loom_joint` (its origin in the
 parent's frame), `loom_rest` (its rest orientation there, quaternion x y z w), `loom_axis`
@@ -317,14 +317,23 @@ for ob in eye_objects:
     for v in mesh.vertices: islands[find(v.index)].append(B2G @ v.co)
     for pts in islands.values():
         c = sum(pts, Vector()) / len(pts)
-        eyes.append((max((p - c).length for p in pts), c))
-# Lenses and their bezels are separate islands at one place: keep the largest island at each place.
+        eyes.append((max((p - c).length for p in pts), c, pts))
+# An eye is a STACK of islands on one axis, the robot's forward one: a barrel that runs back into the head, a cap
+# behind it, a ring and a glass in front. The barrel is the largest of them, so the largest island that is on no
+# eye's axis yet starts an eye, and every island whose centre is within the barrel's reach of that axis is of it.
+# (It was the largest island at each place, by distance in space: a barrel is half as long as the next eye is far,
+# so one eye in nine swallowed its neighbour's barrel, and a barrel and its own glass were two lenses.)
+def reach(c, pts): return max(math.hypot(p.x - c.x, p.y - c.y) for p in pts)
 eyes.sort(key=lambda e: -e[0])
-lenses = []
-for radius, c in eyes:
-    if radius < 0.012 or any((c - other).length < max(radius, r) for r, other in lenses): continue
-    lenses.append((radius, c))
-for i, (radius, c) in enumerate(lenses): place(f"eye.{i}", None, at=c, props={"loom_radius": radius})
+stacks = []
+for radius, c, pts in eyes:
+    home = next((stack for stack in stacks if math.hypot(c.x - stack[0].x, c.y - stack[0].y) < stack[1]), None)
+    if home is not None: home[2].extend(pts)
+    elif radius >= 0.012: stacks.append((c, reach(c, pts), list(pts)))
+# What is written of an eye is its FACE, what shows of it from in front: the middle (on the axis, as far forward
+# as the eye reaches) and how far it reaches from the axis. A picture shown in the lens is as wide as that.
+lenses = [(Vector((c.x, c.y, max(p.z for p in pts))), reach(c, pts)) for c, _, pts in stacks]
+for i, (c, wide) in enumerate(lenses): place(f"eye.{i}", None, at=c, props={"loom_face": wide})
 info.update(eyes=len(lenses))
 
 for t, position in enumerate(sockets): place(f"socket.{t}", None, at=position)
@@ -341,7 +350,7 @@ if bad: raise SystemExit(f"the FBX's copies are not identical in their joint fra
 body_pts = [B2G @ v.co for ob in kit if ob.name == "body.Sentinel_1" for v in ob.data.vertices]
 print("KIT body bounds (x, y up, z forward):", [round(min(p[i] for p in body_pts), 3) for i in range(3)], [round(max(p[i] for p in body_pts), 3) for i in range(3)])
 print("KIT sockets:", [tuple(round(c, 3) for c in s) for s in sockets])
-print("KIT eyes:", [(round(r, 3), tuple(round(x, 3) for x in c)) for r, c in lenses])
+print("KIT eyes (face radius, middle):", [(round(wide, 3), tuple(round(x, 3) for x in c)) for c, wide in lenses])
 for ob in kit:
     if "loom_axis" in ob: print("KIT hinge", ob.name, "axis", [round(x, 3) for x in ob["loom_axis"]], "range°", [round(math.degrees(x), 1) for x in ob["loom_range"]], "fit", [round(x, 4) for x in ob["loom_fit"]])
 

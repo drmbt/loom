@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { renderHeadless, type RenderedFrame } from "../../tests/headless/render-harness.ts";
 import { nodeGpuHost } from "../../runtime/backend/vgpu/node-gpu-host.ts";
@@ -25,6 +25,9 @@ import { loadKit } from "./load-kit.ts";
  *     [--tier offline]              shadows and hinged claws (document.ts, tier); default live, what the app runs
  *     [--shadows on|off] [--claws hinged|rigid]   one of the tier's two decisions on its own, for measuring it
  *     [--shot 3]                    hold one of the rig's shots (camera.ts): 0 chase, 1 lead, 2 flank, 3 post, 4 circle
+ *     [--feed picture.png]          what the eyes' camera sees (document.ts, webcam_eyes), one still picture (needs ffmpeg);
+ *                                   without it the camera is off, as on a page that was given none: the lenses
+ *                                   keep their own light
  *     [--tag name]                  file name prefix
  *
  * Every animated thing runs on absTime from 0. Stills go to the gitignored renders/ tree.
@@ -73,6 +76,7 @@ mkdirSync(outDir, { recursive: true });
 
 const clip = flag("clip")?.split(",").map(Number);
 const audioPath = flag("audio");
+const feedPath = flag("feed");
 const track = audioPath === undefined ? undefined : walkTrack(audioPath, fps);
 const clipStart = Math.round((clip?.[0] ?? 0) * fps);
 const capture = clip === undefined ? Array.from({ length: count }, (_, index) => Math.round((first + index * gap) * fps)) : Array.from({ length: Math.round((clip[1] ?? 10) * fps) }, (_, index) => clipStart + index);
@@ -109,6 +113,14 @@ const result = await renderHeadless({
   // Every Mesh File In of the document reads the one kit.
   meshes: Object.fromEntries(Object.values(document.graph.nodes).filter((entry) => entry.type === "meshFileIn").map((entry) => [entry.id, glb])),
   ...(track === undefined ? {} : { audio: track.seam(fps, 0) }),
+  // The eyes' camera. A headless render has none, and what the page shows with its camera off is a clear frame (the
+  // lenses keep their own light): so that, unless a picture is given. (Left alone, the harness puts its test card there.)
+  pictures: {
+    webcam_eyes: ([wide, high]: readonly [number, number]) =>
+      feedPath === undefined
+        ? new Uint8Array(wide * high * 4)
+        : new Uint8Array(execFileSync("ffmpeg", ["-loglevel", "error", "-i", feedPath, "-vf", `scale=${wide}:${high}`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"], { maxBuffer: wide * high * 4 + 4096 })),
+  },
   ...(encoder === undefined
     ? {}
     : {

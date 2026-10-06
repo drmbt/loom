@@ -41,7 +41,7 @@ Each piece once, in the frame of the joint that carries it, right-handed, glTF a
 | `claw` | the hub's joint | the whole claw as one rigid piece, fingers at rest: for a draw that cannot afford nine pieces |
 | `phalanx_<f>_<p>` | its own joint | finger `f` (0–3), link `p` (0 = knuckle) |
 | `socket.<t>` | robot | marker: where tentacle `t` leaves the body |
-| `eye.<i>` | robot | marker: a lens centre; extras `loom_radius` |
+| `eye.<i>` | robot | marker: the middle of an eye's face (on its axis, as far forward as it reaches); extras `loom_face`, its radius as seen from in front (what a picture in the lens is as wide as) |
 | `kit.info` | – | marker: `loom_tentacles`, `loom_ring_count`, `loom_ring_pitch`, `loom_ring_start`, `loom_hub_distance`, `loom_fingers`, `loom_claw_open`, `loom_claw_closed` |
 
 Hinged nodes (`mand_*`, `phalanx_*`) carry what the bake shows about their joint as extras:

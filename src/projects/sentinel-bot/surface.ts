@@ -42,7 +42,16 @@ export function hueColour(hue: number): [number, number, number] {
  * `seed`): edges rubbed to bare metal, rust where it has stood wet, dust and soot lying on
  * what faces up. With Wear at 0 every surface is the clean one the kit names.
  */
-export const HULL_SURFACE_WGSL = `// @use surface-detail
+/**
+ * How a picture fed to the lenses is shown (see the lens branch below). `white`: the radiance of the picture's white
+ * as a share of the lens's own (Eyes): the lens is a lamp and burns out at the shipped exposure, a picture must not.
+ * `own`: how much of what shows is the picture's own colour; the rest is its brightness in the lens's colour.
+ */
+export const FEED = { white: 0.24, own: 0.5 } as const;
+
+export const hullSurfaceWgsl = (lenses: ReadonlyArray<{ readonly position: readonly [number, number, number]; readonly face: number }>): string => `// @use surface-detail
+// @use map
+// @texture feed
 struct Params {
 ${LAMP_PARAMS_WGSL}
   lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.
@@ -59,6 +68,7 @@ ${LAMP_PARAMS_WGSL}
   spread: f32, // @default 0.6  How much of the range the lights are spread over: 0 all one colour, 1 the lenses (and the length of a tentacle) cover it all.
   shift: f32, // @default 0  Moves every light along the range, 0 to 1. Drive it from a level.
   eyeGlow: f32, // @default 9  Radiance of the eye lenses.
+  eyeFeed: f32, // @default 0  How much of the picture wired to Texture 1 (a camera, a film) shows in the lenses in place of their own light: 0 none, 1 all. Where the picture is clear (a camera that is off) the lens keeps its own light.
   eyeHits: f32, // @default 0  How much the lenses answer the drums instead of burning steadily: a third of them each to kick, snare and hat.
   kick: f32, // @default 0  The kick, 0 to 1 as it decays.
   snare: f32, // @default 0  The snare.
@@ -84,6 +94,45 @@ fn lightColour(place: f32, p: Params) -> vec3f {
 }
 
 ${LAMP_SEEN_WGSL}
+// THE LENSES AS SCREENS (the owner, 2026-10-06: a camera's or a film's picture "projected onto the robots' eye
+// lenses", blended with the eye lights, "grained and glitched", with an opacity mix). Where each lens's face is
+// and how wide, in the robot's own frame, is the kit's (KitFacts.eyes; with none known, the whole face is one).
+// Every lens shows the whole picture, upright and the right way round to whoever faces the robot.
+const LENSES: u32 = ${Math.max(lenses.length, 1)}u;
+const LENS = array<vec4f, ${Math.max(lenses.length, 1)}>(${(lenses.length > 0 ? lenses : [{ position: [0, 0, 0.4], face: 0.5 }]).map((lens) => `vec4f(${lens.position.map((part) => part.toFixed(5)).join(", ")}, ${lens.face.toFixed(5)})`).join(", ")});
+
+// Which lens a point of the face is on (w: its number), where it is in what that lens shows (xy, 0 to 1 across
+// and down the picture's MIDDLE SQUARE), and how much of the picture is there (z: all of it in the lens's middle,
+// none at its rim).
+fn lensAt(local: vec3f) -> vec4f {
+  var nearest = LENS[0];
+  var which = 0u;
+  var least = 1e9;
+  for (var index = 0u; index < LENSES; index += 1u) {
+    // A lens is everything on its axis, the robot's forward one (its glass, the barrel behind it): so it is the
+    // distance ACROSS that axis that says whose a point is, and for that lens's own size (a small lens beside a
+    // large one is its own).
+    let off = (local.xy - LENS[index].xy) / LENS[index].w;
+    let far = dot(off, off);
+    if (far < least) { least = far; nearest = LENS[index]; which = index; }
+  }
+  let across = (local.xy - nearest.xy) / nearest.w;
+  // The robot looks along +z with +y up, so its LEFT is +x, which is the right of whoever faces it: the picture's
+  // left is on their left. Its top is up.
+  return vec4f(0.5 + across.x * 0.5, 0.5 - across.y * 0.5, 1.0 - smoothstep(0.8, 1.05, length(across)), f32(which));
+}
+
+// Where a place of the picture's middle square is in the picture. A picture that is not square is not squeezed
+// into the round lens: the lens shows the middle of it.
+fn feedPlace(square: vec2f) -> vec2f {
+  let size = vec2f(textureDimensions(feed));
+  return 0.5 + (square - 0.5) * vec2f(min(size.y / size.x, 1.0), min(size.x / size.y, 1.0));
+}
+
+fn feedLot(a: f32, b: f32) -> f32 {
+  return fract(sin(a * 12.9898 + b * 78.233) * 43758.5453);
+}
+
 fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   var o = surfaceDefaults(s);
   let role = s.attr.z;
@@ -96,9 +145,10 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
   if (role > 0.9) {
     // A lens: black glass over a lamp, brightest where it faces the viewer.
     let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);
-    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.
-    let lens = floor(s.local * 7.0);
-    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);
+    // Each lens has a nerve of its own, by which lens it is. (It was by a coarse cell of the robot's frame, a hand's
+    // breadth, and the great lens in the middle of the face is two hands wide: it burned in four quarters.)
+    let at = lensAt(s.local);
+    let nerve = feedLot(at.w, 3.7);
     let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);
     albedo = vec3f(0.006, 0.006, 0.006);
     rough = 0.08;
@@ -110,6 +160,29 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
     let band = pow(0.5 + 0.5 * cos(6.2831853 * (s.local.x * 0.9 - p.sweepPhase)), 3.0);
     let swept = mix(1.0, 0.2 + 2.4 * band, clamp(p.eyeSweep, 0.0, 1.0));
     o.emissive = lightColour(nerve, p) * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life * struck * swept;
+    // The picture, where one is fed and as much as Eye Feed says, and only where there IS a picture: a camera that
+    // is off is a clear frame, and the lens keeps its own light. Not clean: a line in six jumps sideways,
+    // twenty-four times a second, there are scan lines and grain.
+    let want = clamp(p.eyeFeed, 0.0, 1.0);
+    if (want > 0.0) {
+      let tick = floor(s.absTime * 24.0);
+      let line = floor(at.y * 40.0);
+      let jump = (feedLot(line, tick) - 0.5) * 0.14 * step(0.84, feedLot(line + 17.0, tick));
+      let picture = mapLinear(feed, feedPlace(vec2f(at.x + jump, at.y)), vec2u(MAP_HOLD));
+      let grain = feedLot(floor(at.x * 90.0) + floor(at.y * 90.0) * 131.0, tick);
+      // Harder than the camera gives it (its darks darker, its lights lighter): a lens is a hand wide in the frame.
+      let hard = picture.rgb * picture.rgb * (3.0 - 2.0 * picture.rgb);
+      let seen = hard * (0.7 + 0.6 * grain) * (0.82 + 0.18 * sin(at.y * 150.0));
+      let level = dot(seen, vec3f(0.2126, 0.7152, 0.0722));
+      // It is a picture to be READ (the owner, 2026-10-06: "i expected my camera feed to appear in each of the eye
+      // circles"): its white is FEED_WHITE of the lens's own radiance, so a face has its greys and does not burn
+      // out as the lamp behind the glass does; and FEED_OWN of it is the picture's own colour, the rest its
+      // brightness in the lens's colour, so a face of screens is still this robot's face, in this turn's colour.
+      // The lens's life goes on under it, by half: it still beats with its drum.
+      let lit = mix(lightColour(nerve, p) * level * 1.6, seen, ${FEED.own.toFixed(3)});
+      let shown = lit * p.eyeGlow * ${FEED.white.toFixed(3)} * (0.4 + 0.6 * facing) * mix(1.0, life * struck * swept, 0.5);
+      o.emissive = mix(o.emissive, shown, want * picture.a * at.z);
+    }
     ages = 0.0;
     mirrors = 0.0;
   } else if (role > 0.7) {
@@ -215,3 +288,5 @@ ${MIRRORED.map((index) => `  seen = seen + lampSeen(up, s.world, p.${lampParamet
   o.emissive = o.emissive + fields * p.air * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * mirrors;
   return o;
 }`;
+/** The same with no lens known: the whole face one screen. What a test of the surface alone uses. */
+export const HULL_SURFACE_WGSL = hullSurfaceWgsl([]);
