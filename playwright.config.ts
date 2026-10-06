@@ -8,8 +8,8 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * The specs that need a real WebGPU adapter, named ONCE (T1131).
  *
- * The two projects below split on this and nothing else: the headed lane MATCHES it, the
- * headless lane IGNORES it. It was written out twice, and the two copies drifted the moment
+ * The two projects below split on this and nothing else: the GPU lane MATCHES it, the
+ * default lane IGNORES it. It was written out twice, and the two copies drifted the moment
  * a spec was added to one of them — `mediapipe-matte` went into neither, so it ran in the
  * one project structurally unable to run it and failed on "no WebGPU adapter" for a whole
  * session while looking like a product bug. One regex, two readers, no way to add a spec to
@@ -51,8 +51,10 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
       /*
-       * The pixel suite needs the headed lane's GPU; running it here would only ever
-       * fail on "requestAdapter() resolved null". Everything else stays headless.
+       * The pixel suite needs the GPU lane's adapter; running it here would only ever
+       * fail on "requestAdapter() resolved null". With no `channel`, Playwright launches
+       * `chrome-headless-shell` for a headless run, and that is the browser with no
+       * adapter (T1616b, measured below).
        *
        * T1131: `mediapipe-matte` joined them. Its failure was never a bug or a flake —
        * "no WebGPU adapter — the delivered path cannot be gated" is this lane's structural
@@ -63,24 +65,48 @@ export default defineConfig({
     },
     {
       /*
-       * T1086 (§V895) — the HEADED lane, and what it buys for what it costs.
+       * T1086 (§V895) — the GPU lane: the only place in the project that can assert
+       * rendered pixels THROUGH THE APP — real canvas, real presentation blit, real
+       * compositing — a layer the Dawn suites never touch (§V628).
        *
-       * Headless Chromium on this machine exposes `navigator.gpu` but resolves NO
-       * adapter; headed resolves a real `apple`/`metal-3` one (measured 2026-09-03, see
-       * `src/tests/e2e/app.ts`). So this lane is the only place in the project that can
-       * assert rendered pixels THROUGH THE APP — real canvas, real presentation blit,
-       * real compositing — a layer the Dawn suites never touch (§V628).
+       * T1616b: IT OPENS NO WINDOW. It was `chromium-headed-gpu` and ran `headless: false`,
+       * on the belief that headless Chromium has no GPU. That was a true reading of ONE of
+       * the two headless browsers Playwright ships, generalised to both (§V895's shape
+       * again). Measured 2026-10-06, Playwright 1.62.1, Chromium 151.0.7922.34,
+       * macOS/Metal, against an http://localhost origin:
        *
-       * The cost is real and owned: `headless: false` opens an actual Chromium window,
-       * so the lane needs a display session (a logged-in mac, not a bare CI runner) and
-       * adds window-server startup to the run. CI does not run e2e at all today
-       * (`.github/workflows/ci.yml`), so like the Dawn `*.gpu.test.ts` suites this lane
-       * is a local gate: without a GPU it FAILS loudly on its premise test — it never
-       * skips itself green.
+       *   - no `channel` (the project above): `chrome-headless-shell`, the OLD headless.
+       *     `requestAdapter()` resolves null.
+       *   - `channel: "chromium"`: the full Chrome for Testing binary, the one a headed run
+       *     launches, in the NEW headless mode. `requestAdapter()` resolves
+       *     `apple`/`metal-3` with `isFallbackAdapter` false, and chrome://gpu reports
+       *     ANGLE Metal on the machine's own GPU. A canvas presenting (0.25, 0.5, 0.75, 1)
+       *     screenshots as exactly [64,128,191,255], requestAnimationFrame is unthrottled,
+       *     the page is visible and focused. macOS lists the process as background-only:
+       *     no window, no Dock icon, the front application does not change.
+       *
+       * So `channel: "chromium"` is the whole mechanism. NO GPU FLAGS, on purpose:
+       * `--use-angle=metal` and `--enable-gpu` changed nothing that was measured in this
+       * mode, and `--enable-unsafe-webgpu` adds a SwiftShader fallback adapter. Measured
+       * with the GPU taken away (`--disable-gpu`): without that flag `requestAdapter()`
+       * resolves null, with it it resolves `google`/`swiftshader`, which presents nothing
+       * to the glass and which the premise test in `presentation-pixels.spec.ts` (it fails
+       * on a NULL adapter) would let through. (The old headless shell does get the real
+       * adapter from either of the first two flags; `document-swap.spec.ts` and
+       * `component-dive-previews.spec.ts` run that way inside the project above.)
+       *
+       * A window on request: `pnpm exec playwright test --project=chromium-gpu --headed`
+       * (Playwright's own flag; it overrides `use.headless` and launches this same binary).
+       * That opens Chromium on the desktop of whoever is logged in, under their cursor, so
+       * it is for watching one spec and never for a gate run.
+       *
+       * CI does not run e2e at all today (`.github/workflows/ci.yml`), so like the Dawn
+       * `*.gpu.test.ts` suites this lane is a local gate: without a GPU it FAILS loudly on
+       * its premise test — it never skips itself green.
        */
-      name: "chromium-headed-gpu",
+      name: "chromium-gpu",
       /*
-       * T1096: the headed lane runs against ITS OWN dev server, never a shared one.
+       * T1096: this lane runs against ITS OWN dev server, never a shared one.
        * `reuseExistingServer: true` on 5173 means a developer's live tab and the suite
        * share one vite process — the suite's runs ride the developer's HMR channel and
        * the developer's half-edited working tree hot-reloads into the suite's runs,
@@ -88,7 +114,7 @@ export default defineConfig({
        * the project resolution, seek), so they get a port nobody's browser is parked
        * on and a server that is always their own.
        */
-      use: { ...devices["Desktop Chrome"], headless: false, baseURL: "http://localhost:5199" },
+      use: { ...devices["Desktop Chrome"], channel: "chromium", baseURL: "http://localhost:5199" },
       testMatch: NEEDS_A_REAL_ADAPTER,
     },
   ],
@@ -104,7 +130,7 @@ export default defineConfig({
       command: "pnpm dev --port 5199 --strictPort",
       url: "http://localhost:5199",
       // Never reuse: whatever answers on 5199 is not guaranteed to be this tree, and
-      // the headed lane's whole point is pixels from THIS working copy.
+      // the GPU lane's whole point is pixels from THIS working copy.
       reuseExistingServer: false,
     },
   ],

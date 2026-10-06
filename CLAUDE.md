@@ -61,6 +61,8 @@ pnpm exec playwright test src/tests/e2e/graph-editing.spec.ts
 
 Vitest workspace: `*.test.ts` → project `headless` (node env); `*.test.tsx` → project `browser` (jsdom, browser resolve conditions, 20 s timeout). `vitest` does not typecheck; a green suite says nothing about types.
 
+Playwright has two projects and neither opens a window (T1616b). `chromium` runs the headless shell, which resolves no WebGPU adapter, and carries the editor and domain specs. `chromium-gpu` runs the full browser headless on the machine's real GPU and carries the pixel specs named in `NEEDS_A_REAL_ADAPTER` in `playwright.config.ts`. A spec file runs in the one project that matches it, so naming the file is enough. Playwright's `--headed` puts the run in Chromium windows on the owner's desktop: use it to watch one spec, never for a gate run.
+
 Running plain `node` against `src/**` requires the alias loader (path aliases come from `tsconfig.app.json`):
 
 ```bash

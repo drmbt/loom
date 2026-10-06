@@ -60,6 +60,8 @@ pnpm build
 
 Also run `pnpm test:headless` for backend, rendering, or WGSL changes and `pnpm test:e2e` for browser interaction changes when the environment supports them. Report commands that could not be run and why.
 
+Playwright has two projects and neither opens a window (T1616b). `chromium` runs the headless shell, which resolves no WebGPU adapter, and carries the editor and domain specs. `chromium-gpu` runs the full browser headless on the machine's real GPU and carries the pixel specs named in `NEEDS_A_REAL_ADAPTER` in `playwright.config.ts`. A spec file runs in the one project that matches it, so naming the file is enough. Playwright's `--headed` puts the run in Chromium windows on the owner's desktop: use it to watch one spec, never for a gate run.
+
 ## Node names are `kind_role` (T1593b)
 
 A node's name carries its kind as a prefix: `slider_lamp`, `light_lamp`, `blur_diffuse`, `kernel_joints`. The kind is one lowercase word per node type, declared in ONE table, `NODE_KINDS` in `src/domain/graph/node-kinds.ts` (`pointKernel` is `kernel`, `movieFileIn` is `movie`); then one underscore; then the role, which holds letters, digits and underscores only. A new node is auto-named kind plus a number (`blur1`), which already conforms. Full rule, the table and the phase 2 plan: `docs/node-naming-2026-10-05.md`.
