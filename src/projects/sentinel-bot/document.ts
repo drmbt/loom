@@ -4,6 +4,7 @@ import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
 import { edge, expressionSlot, graph, node as buildNode, settings } from "../../examples/documents/builders.ts";
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
+import { serializePresetBank } from "../../domain/presets/bank.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
 import { against, pace, phraseAttack, phraseDraw, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
@@ -290,6 +291,18 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       : [{ role: "claw", shape: facts.claw, pick: { first: facts.ringCount, count: 1 } }]),
   ];
   /**
+   * WHICH LIGHTS CAST, live: ONE of the five, the body's own (its tentacles' shadows on the bore round it,
+   * lamp or no lamp). A point light's shadow is six faces of every caster, and the robot is 645,000 triangles
+   * with nothing to cull it by, so each casting light costs 1.2 to 1.6 ms of GPU here (the lead, §T1604b).
+   * Measured in the app at 1280×720 on a machine other sessions were loading, documents back to back, twice:
+   *   five casting, 4x multisampled        26 to 30 frames a second
+   *   two casting, 4x multisampled         34 to 42
+   *   two casting, not multisampled        45 to 54
+   *   ONE casting, not multisampled        52 to 58   <- live
+   *   none casting, no focus, not multisampled   55 to 60 (the same machine's ceiling that hour)
+   * The lamps' shadows (the robot on the deck under a lit lamp) and the eyes' are offline's, until the robot
+   * is fewer triangles or a shadow can cull.
+   *
    * Which geometries a light's shadow is cast by. Live, the robot's body and tentacles only, by
    * name (§T1598b: a Light's Shadow Casters; measured by the lead on this document at 0.3 ms a
    * frame for the eyes' light, against 4 to 6 ms with everything casting). Offline, everything:
@@ -331,12 +344,26 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const COLUMNS = 8;
   const row = (member: string, y: number): { member: string; rect: { x: number; y: number; w: number; h: number } } => ({ member, rect: { x: 0, y, w: COLUMNS, h: 1 } });
   const heading = (label: string, y: number): { label: string; rect: { x: number; y: number; w: number; h: number } } => ({ label, rect: { x: 0, y, w: COLUMNS, h: 1 } });
+  /**
+   * BACK TO WHAT WAS SAVED (the owner, 2026-10-06: "ways to reset controls individually or all according to
+   * what was saved … accessible on both phone and browser"). Each panel carries a bank of one preset, `saved`:
+   * every control of that panel at the value this file ships it with. One press on the desk or on the phone
+   * puts that panel back. (One control at a time is the engine's to add; the lead has the row.)
+   */
+  const slidersSaved = (list: readonly Slider[]): Record<string, Record<string, number | boolean>> => Object.fromEntries(list.map((slider) => [slider.name, { value: slider.value }]));
+  const saved: ReadonlyArray<Record<string, Record<string, number | boolean>>> = [
+    { ...slidersSaved(ROBOT), toggle_perch: { on: false }, toggle_follow: { on: true } },
+    { ...slidersSaved(SCENE), slider_shot: { value: 0 }, toggle_cuts: { on: true }, xypad_view: { x: 1.1, y: 0.6 } },
+    slidersSaved(LIGHTS),
+  ];
+  const bankOf = (panel: string): string => `presets_${panel}`;
   const panels: ReadonlyArray<{ id: string; title: string; members: readonly string[]; board: string }> = [
     {
       id: "panel_robot",
       title: "Robot",
       members: [...ROBOT.map((slider) => slider.name), "toggle_perch", "toggle_follow"],
-      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Robot", 0), ...ROBOT.map((slider, index) => row(slider.name, 1 + index)), row("toggle_perch", 1 + ROBOT.length), row("toggle_follow", 2 + ROBOT.length)] }),
+      // The Saved button sits right under the heading on every panel: the same place on each, and in a paged board it is on the first page.
+      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Robot", 0), row(bankOf("robot"), 1), ...ROBOT.map((slider, index) => row(slider.name, 2 + index)), row("toggle_perch", 2 + ROBOT.length), row("toggle_follow", 3 + ROBOT.length)] }),
     },
     {
       id: "panel_scene",
@@ -346,12 +373,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         columns: COLUMNS,
         items: [
           heading("Scene", 0),
-          ...SCENE.map((slider, index) => row(slider.name, 1 + index)),
-          heading("Camera", 1 + SCENE.length),
-          row("slider_shot", 2 + SCENE.length),
-          row("toggle_cuts", 3 + SCENE.length),
-          // Narrower than the screen on purpose: until §T1607b, the strips beside it are where a finger can scroll.
-          { member: "xypad_view", rect: { x: 2, y: 4 + SCENE.length, w: 4, h: 3 } },
+          row(bankOf("scene"), 1),
+          ...SCENE.map((slider, index) => row(slider.name, 2 + index)),
+          heading("Camera", 2 + SCENE.length),
+          row("slider_shot", 3 + SCENE.length),
+          row("toggle_cuts", 4 + SCENE.length),
+          { member: "xypad_view", rect: { x: 2, y: 5 + SCENE.length, w: 4, h: 3 } },
         ],
       }),
     },
@@ -359,9 +386,15 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       id: "panel_lights",
       title: "Lights",
       members: LIGHTS.map((slider) => slider.name),
-      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Lights", 0), ...LIGHTS.map((slider, index) => row(slider.name, 1 + index))] }),
+      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Lights", 0), row(bankOf("lights"), 1), ...LIGHTS.map((slider, index) => row(slider.name, 2 + index))] }),
     },
   ];
+  const banks: GraphNode[] = ["robot", "scene", "lights"].map((panel, index) =>
+    node(bankOf(panel), "presets", [-2400 + index * 300, 3750], {
+      targets: Object.entries(saved[index] ?? {}).flatMap(([name, values]) => Object.keys(values).map((key) => `${name}.${key}`)).join(" "),
+      presets: serializePresetBank({ version: 1, presets: [{ name: "saved", values: saved[index] ?? {} }] }),
+    }, { label: bankOf(panel) }),
+  );
 
   // Every control is on exactly one panel: one left off would be a slider nobody can reach from a phone.
   const placed = panels.flatMap((panel) => panel.members);
@@ -404,7 +437,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("constant_rate", "constant", [-2400, 1000], {
       value: expressionSlot(`${on("slider_speed")} * (1 - op('constant_perch').chan.value) * ${pace(FOLLOW, ENERGY)} * ${stride(`(${FOLLOW} * (${ENERGY} > 0))`, INTENSITY)} * (1 - 0.6 * ${ATTACK})`, 3.2),
     }, { label: "constant_rate" }),
-    node("lag_rate", "valueLag", [-2100, 1000], { lag: 0.25, releaseRatio: 1.6 }, { label: "lag_rate" }),
+    // The speed it is asked for follows the track's loudness, which ripples with every beat; a body does not.
+    // Eased over two and a half seconds both ways, the ripple is gone and a stop or a start is a glide.
+    // (Measured on the owner's track, thirty seconds of walking: with a quarter-second ease the speed changed
+    // direction 2.8 times a second and accelerated at up to 1.9 m/s².)
+    node("lag_rate", "valueLag", [-2100, 1000], { lag: 2.5, releaseRatio: 1 }, { label: "lag_rate" }),
     // Perch, eased: how perched it is, 0 to 1, for the head and the tentacles it frees.
     // How much it swims: the panel's Swim, or the track coming back in (director.ts). Eased, so
     // letting go of the wall and taking hold again each take a moment.
@@ -519,7 +556,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // A kick punches the lens in.
     node("camera_rig", "camera", [-1500, -600], { eye: [1.1, 0.6, -7.5], lookAt: [0, 0, 3.3], "eye.x": eye.x, "eye.y": eye.y, "eye.z": eye.z, "lookAt.x": aim.x, "lookAt.y": aim.y, "lookAt.z": aim.z, fov: expressionSlot(`${RIG("lens")} - ${KICK} * 2.5`, 55), near: 0.05, far: 240 }, { label: "camera_rig" }),
     // The eyes throw the tentacles' shadows down the walls (which of the scene casts them: see `robotCasts`).
-    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 16, shadows: true, shadowExtent: 16, shadowSoftness: 1, ...robotCasts }, { label: "light_eyes" }),
+    node("light_eyes", "light", [-1500, -300], { kind: "point", color: [1, 0.04, 0.04, 1], "color.r": expressionSlot(eyeTone[0], 1), "color.g": expressionSlot(eyeTone[1], 0.04), "color.b": expressionSlot(eyeTone[2], 0.04), intensity: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8), position: [0, 0, 0.9], "position.x": glow.x, "position.y": glow.y, "position.z": glow.z, falloff: "inverseSquare", range: 16, ...(shadows ? { shadows: true, shadowExtent: 16, shadowSoftness: 1 } : {}) }, { label: "light_eyes" }),
     // The light of its own tentacles, from the middle of the body. It lights the bore round the robot wherever
     // the robot is, lamp or no lamp, and throws each tentacle's shadow out along the wall to meet the claw that
     // holds it: that meeting is what says the robot is IN the tunnel. (The owner, 2026-10-05: without it "a very
@@ -546,11 +583,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         "position.z": lamp.position.z,
         falloff: "inverseSquare",
         range: 30,
-        // Every lamp in use throws the robot's shadow on the deck and the wall; offline, everything's.
-        shadows: true,
-        shadowExtent: 30,
-        shadowSoftness: 1,
-        ...robotCasts,
+        // Live, the lamp overhead throws the robot's shadow on the deck and the wall; offline, all three do, and everything's.
+        ...(shadows ? { shadows: true, shadowExtent: 30, shadowSoftness: 1, ...robotCasts } : {}),
       }, { label: `light_lamp${index}` }),
     ),
     node("render_shot", "render", [-1200, 0], {
@@ -562,7 +596,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // A little cold fill and no more: an unlit stretch may be black (the owner, 2026-10-05).
       ambientIntensity: 0.1,
       background: [0, 0, 0, 1],
-      antialias: "msaa",
+      // Live, no multisampling: 4x on this much geometry was the largest single cost of the frame (measured in the
+      // app, shadows on: 36 to 42 frames a second with it, 45 to 58 without), and the focus, the grain and the lens
+      // that follow soften an edge anyway. Offline keeps it.
+      antialias: offline ? "msaa" : "none",
       depthOutput: true,
       normalOutput: true,
     }, { label: "render_shot" }),
@@ -630,6 +667,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
 
     // ── The panel: the piece's own words ──
     ...controls,
+    ...banks,
     ...panels.map((panel, index) => node(panel.id, "panel", [-2400 + index * 300, 3500], { title: panel.title, board: panel.board, remote: true }, { label: panel.id })),
   ];
 

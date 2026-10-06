@@ -13,7 +13,7 @@ import { parseProjectDocument } from "@domain/project/serialize.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { controlNodeDefinitions, serializePanelBoard, type StoredBoardItem } from "@nodes/definitions/controls.ts";
+import { controlNodeDefinitions, parsePanelBoard, serializePanelBoard, type StoredBoardItem } from "@nodes/definitions/controls.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 
 /**
@@ -175,6 +175,19 @@ async function sentinelStage(): Promise<Stage> {
     () => Promise.resolve(),
     () => () => undefined,
   );
+}
+
+/**
+ * How many things a shipped sentinel Panel's board holds: labels and members alike. Read off the
+ * file, so the project can add a control without an engine test going red (the count was a
+ * literal, and went red the day a Saved bank joined the Scene Panel).
+ */
+function sentinelBoardCells(panelName: string): number {
+  const parsed = parseProjectDocument(readFileSync("projects/sentinel-bot/sentinel.loom.json", "utf8"));
+  if (!parsed.ok) throw new Error(`sentinel.loom.json did not load: ${parsed.reason}`);
+  const panel = Object.values(parsed.document.graph.nodes).find((node) => node.type === "panel" && node.label === panelName);
+  if (panel === undefined) throw new Error(`sentinel.loom.json has no Panel named ${panelName}`);
+  return parsePanelBoard(panel.parameters["board"]).items.length;
 }
 
 interface Phone {
@@ -680,7 +693,10 @@ test.describe("§T1607b the phone page under a real touch — sentinel-bot's Pan
       await expect(phone.page.locator("#pager")).toBeVisible();
       expect(await pageNames(phone.page)).toEqual(["All", "Scene", "Camera"]);
       expect(await chosenPage(phone.page)).toEqual(["All"]);
-      expect(await shownCells(phone.page)).toBe(12);
+      // All of the Panel's board: its two labels and every member under them.
+      const whole = sentinelBoardCells("panel_scene");
+      expect(whole).toBeGreaterThan(4);
+      expect(await shownCells(phone.page)).toBe(whole);
 
       await chip("Camera").tap();
       expect(await chosenPage(phone.page)).toEqual(["Camera"]);
@@ -715,7 +731,7 @@ test.describe("§T1607b the phone page under a real touch — sentinel-bot's Pan
       expect(await chosenPage(phone.page)).toEqual(["Camera"]);
       expect(await shownCells(phone.page)).toBe(4);
       await chip("All").tap();
-      expect(await shownCells(phone.page)).toBe(12);
+      expect(await shownCells(phone.page)).toBe(whole);
 
       expect(stage.writes).toEqual([]);
       expect(phone.errors).toEqual([]);

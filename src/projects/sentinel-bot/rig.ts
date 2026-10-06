@@ -210,8 +210,12 @@ export function jointKernel(facts: KitFacts, robots: readonly Vec3[], pick: Pick
   const tentacles = facts.sockets.length;
   const stations = stationsPerTentacle(facts);
   const { angle, rank } = wallAngles(facts);
-  // Alternate neighbours step half a cycle apart; a little extra per tentacle keeps any two from landing together.
-  const phase = rank.map((place) => (place % 2) * 0.5 + ((place * 0.37) % 1) * 0.16);
+  // A WAVE of steps round the body, not two gangs. Each tentacle steps a tenth of a cycle after another, and
+  // the next to step is three places round from the last (three and ten share no factor, so every tentacle
+  // has its own tenth): at any moment the ones in the air are spread round the body and the same number are
+  // planted. (Until 2026-10-06 alternate neighbours stepped half a cycle apart: five let go together, then
+  // the other five, which an animator read as janky, and it was.)
+  const phase = rank.map((place) => ((place * 3) % tentacles) / tentacles);
   // As Crawl rises the tentacles take to the wall opposite pairs first, so the body is always held from two sides.
   const engage = rank.map((place) => ((place * (tentacles / 2 + 1)) % tentacles + tentacles) % tentacles);
   const length = facts.hubDistance + CLAW_REACH;
@@ -225,7 +229,7 @@ struct Params {
 ${PLACE_PARAMS}
   crawl: f32, // @default 1  How many of the tentacles walk the wall: 0 none (all trail behind), 1 every one.
   stride: f32, // @default 3.2  Metres the body travels per step of a tentacle.
-  duty: f32, // @default 0.7  Share of a step the claw stays planted.
+  duty: f32, // @default 0.62  Share of a step the claw stays planted. The rest it is in the air, reaching for the next rung.
   lead: f32, // @default 0.75  Metres ahead of the body a claw plants.
   lift: f32, // @default 0.35  How far a swinging claw pulls in off the wall, as a share of the way to the axis.
   bore: f32, // @default 2.6  Radius of the wall the claws plant on, metres.
@@ -237,7 +241,7 @@ ${PLACE_PARAMS}
   gesture: f32, // @default 0  What a tentacle with no rung to hold does: 0 trails behind, 1 reaches out and feels about.
   snap: f32, // @default 0  Shuts the claws of the tentacles that hold nothing: 0 open, 1 shut. A hat on it and they clack.
   pulse: f32, // @default 100  Seconds since the last pulse left the body: it runs down every tentacle's core and fades. Drive it from a kick.
-  carry: f32, // @default 1  How much the body is carried by the tentacles that hold (it hangs toward them, smoothly) and adrift when none do. 0 is on rails.
+  carry: f32, // @default 1  How far off rails the body is: walking it weaves slowly across the tunnel's axis, swimming it is adrift. 0 is on rails.
   meter: f32, // @default 0  The cores as a level meter: lit from the body out to this share of each tentacle, 0 to 1. Drive it from a level.
   chase: f32, // @default 0  Brightness of the bands that run out along the cores.
   chasePhase: f32, // @default 0  Where those bands are: they move one band's spacing out for each whole number. Drive it from the beat.
@@ -461,22 +465,17 @@ fn swingOf(tentacle: u32, bodyZ: f32, stride: f32, count: f32, duty: f32) -> f32
   return smoothstep(0.0, 1.0, clamp((cycle - floor(cycle) - duty) / max(1.0 - duty, 1e-3), 0.0, 1.0));
 }
 
-// What carries the body: the tentacles that hold. Across the bore it hangs toward where they
-// hold (x right, y up, as a share of the bore's radius); z is how many of the ten are holding.
-fn carried(bodyZ: f32, stride: f32, count: f32, seed: u32, params: Params) -> vec3f {
-  let tunnel = pathFrame(bodyZ);
-  var toward = vec2f(0.0);
-  var holding = 0.0;
-  for (var t = 0u; t < TENTACLES; t = t + 1u) {
-    let swing = swingOf(t, bodyZ, stride, count, params.duty);
-    let hold = takesHold(t, bodyZ, params) * (1.0 - sin(swing * 3.14159265));
-    let step = floor(bodyZ / stride + STEP_PHASE[t] + count);
-    let held = mix(plant(t, step, stride, bodyZ, count, seed, params), plant(t, step + 1.0, stride, bodyZ, count, seed, params), swing) - tunnel.origin;
-    let across = vec2f(dot(held, tunnel.right), dot(held, tunnel.up));
-    toward = toward + hold * across / max(length(across), 1e-3);
-    holding = holding + hold;
-  }
-  return vec3f(toward / max(holding, 1.0), holding);
+// Walking, the body is not on the tunnel's axis: it weaves across it, slowly, as a thing does that is
+// handed along from hold to hold. A function of the distance it has come and of nothing else, with
+// wavelengths of 13 and 21 metres (each divides the path's length, so the weave closes on itself): four
+// and six seconds at a walk, and still when it stands. x right, y up, metres.
+//
+// The owner, three times (2026-10-05/06): "too bobby", "these things move smooth not jerk", "the bob
+// and sway while walking looks super jank … very nervous movement back and forth". Two earlier versions
+// read the gait (which tentacles hold, where) and each moved with every change of it, however much it
+// was averaged. This one cannot: nothing about the legs or the track is in it.
+fn weave(z: f32) -> vec2f {
+  return vec2f(0.13 * sin(6.2831853 * z / (PATH_PERIOD / 72.0) + 1.1), 0.08 * sin(6.2831853 * z / (PATH_PERIOD / 45.0)));
 }
 
 fn process(p: Point, ctx: PointCtx) -> Point {
@@ -501,17 +500,11 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let count = f32(robot) * 0.37 * params.variety;
   // A pack in unison plants on the same ribs; with variety each robot draws its own.
   let seed = 1u + u32(f32(robot) * params.variety + 0.5) * 16u;
-  // The body is not on rails. Walking, the tentacles that hold carry it: it hangs toward
-  // them and leans that way. SMOOTHLY (the owner, 2026-10-05: "too bobby in its sway … these
-  // things move smooth not jerk"): what carries it is averaged over a whole stride, four
-  // readings a quarter-stride apart, so no single step shows in the body, only where the
-  // holding has been tending. No bob and no pulls. Swimming, nothing holds it and it is adrift.
-  var hang = vec3f(0.0);
-  for (var k = 0u; k < 4u; k = k + 1u) {
-    hang = hang + carried(bodyZ - stride * 0.25 * f32(k), stride, count, seed, params) * 0.25;
-  }
-  let afoot = (1.0 - swimming) * params.carry * clamp(hang.z, 0.0, 1.0);
-  let sway = vec3f(hang.xy * 0.55, 0.0) * afoot;
+  // The body is not on rails. Walking, it weaves slowly across the axis (weave, above) and leans a
+  // little into it. Swimming, nothing holds it and it is adrift.
+  let afoot = (1.0 - swimming) * params.carry;
+  let woven = weave(bodyZ);
+  let sway = vec3f(woven, 0.0) * afoot;
   let adrift = swimming * params.carry;
   let frameZ = bodyZ + adrift * adriftZ(ctx.absTime, offset);
   // Walking a corkscrew, the body turns with the rungs it holds and rides a little toward the wall its back is to.
@@ -520,7 +513,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let riding = vec3f(-sin(winding), cos(winding), 0.0) * 0.32 * wound;
   // Attacking it rears: nose up a little, to strike over what it holds.
   let rearing = clamp(params.attack, 0.0, 1.0) * (1.0 - swimming);
-  let body = robotFrame(frameZ, offset + sway + riding, params.roll + winding - hang.x * 0.18 * afoot, params.look + vec2f(hang.x * 0.08 * afoot, 0.14 * rearing), ctx.absTime, adrift);
+  let body = robotFrame(frameZ, offset + sway + riding, params.roll + winding - woven.x * 0.3 * afoot, params.look + vec2f(0.0, 0.14 * rearing), ctx.absTime, adrift);
   if (PICK_BODY) {
     // The robot's own point: where its body is and how it is turned (the kit's robot frame: +Z forward, +Y up).
     q.position = body.origin;
@@ -573,7 +566,15 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let chord = span / far;
   let deployed = min(LENGTH, far / sinc(BOW_LIMIT));
   let half = halfTurn(min(far / deployed, 1.0));
-  let lean = leave - chord * dot(leave, chord);
+  // Which way the slack bows: ROUND THE BODY, each tentacle to the same hand, like the arms of a pinwheel.
+  // A tentacle runs from its socket out to the wall and a little ahead or behind, so its chord lies in the
+  // plane of "out" and "ahead"; "round" is at right angles to both, so the chord is never along it and the
+  // bow turns only as slowly as the rung's place round the wall does. Two rules before this one flipped:
+  // "the way the socket faces" snapped to the other side whenever the chord swung through that direction (a
+  // metre of tentacle in one frame; the no-pop test caught it walking a corkscrew, 1.29 m however fine the
+  // step), and "down, as slack hangs" whipped round for every tentacle reaching straight up.
+  let hangs = cross(body.forward, radial);
+  let lean = hangs - chord * dot(hangs, chord);
   let bow = select(toWake, normalize(lean), length(lean) > 1e-4);
   let holdLeave = chord * cos(half) + bow * sin(half);
   let holdPlane = chord * sin(half) - bow * cos(half);

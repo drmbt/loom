@@ -295,7 +295,7 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     expect(held).toBeGreaterThan(TENTACLES / 2);
   }, 120_000);
 
-  it("is carried, not on rails: walking it hangs toward the tentacles that hold, swimming it is adrift, and Carry is the difference", async () => {
+  it("is not on rails: walking it weaves slowly across the tunnel's axis, swimming it is adrift, and Carry is the difference", async () => {
     const INSTANTS = 64;
     /** The middle of the ten sockets at each instant: the body, give or take a constant. */
     const middles = async (parameters: Record<string, number>): Promise<Vec[]> => {
@@ -317,12 +317,17 @@ describe("the sentinel's rig — every joint, across two strides", () => {
       const rails = await middles({ ...parameters, carry: 0 });
       return carried.map((middle, instant) => norm(minus(middle, rails[instant] as Vec)));
     };
-    // Walking with six of the ten on the wall: it is off the rails by centimetres, never by much, and not by the same amount all the way.
+    // Walking with six of the ten on the wall: off the rails by up to some fifteen centimetres, and SLOWLY. From one
+    // instant to the next (a tenth of a metre of travel) it moves across the tunnel by under a centimetre: nothing
+    // a step, a change of hold or the track could show in. (The owner, 2026-10-06: the sway "looks super jank …
+    // very nervous movement back and forth". Two earlier versions read the gait; this one reads only the distance.)
     const walking = await off({ crawl: 0.6 });
-    // Measured: between 4 mm and 6 cm off the rails over two strides. Small on purpose: it is averaged over a stride so that no step shows.
     expect(Math.max(...walking)).toBeGreaterThan(0.04);
-    expect(Math.max(...walking)).toBeLessThan(0.45);
-    expect(Math.max(...walking) - Math.min(...walking)).toBeGreaterThan(0.03);
+    expect(Math.max(...walking)).toBeLessThan(0.2);
+    expect(Math.max(...walking.slice(1).map((value, index) => Math.abs(value - (walking[index] as number))))).toBeLessThan(0.01);
+    // …and it is the same weave whatever the legs are doing: every tentacle holding, or none told to.
+    const allHolding = await off({ crawl: 1 });
+    expect(Math.max(...walking.map((value, index) => Math.abs(value - (allHolding[index] as number))))).toBeLessThan(1e-4);
     // Swimming: adrift by up to most of a metre across and along (the fan's robots are one robot at 64 places, each with its own count).
     const swimming = await off({ swim: 1, stroke: 0.3 });
     expect(Math.max(...swimming)).toBeGreaterThan(0.3);
@@ -430,6 +435,9 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     // and 1 for one that jumps. (The bracketed two-arc solver this rig replaced read 1.0.)
     const coarse = largestMove(await walk(240));
     const fine = largestMove(await walk(480));
+    // Measured, the largest move of any ring over 2.7 cm of travel: 18.8 cm. (It was 30 cm while the slack's bow
+    // could change sides, and 25.5 cm before the tentacles stepped in a wave.)
+    expect(coarse).toBeLessThan(0.22);
     expect(coarse / fine).toBeGreaterThan(1.7);
     expect(coarse / fine).toBeLessThan(2.3);
     // The same with six of the ten on the wall, the piece's own setting: across these two strides tentacles
@@ -484,21 +492,28 @@ describe("the sentinel's rig — every joint, across two strides", () => {
       const socket = pose.socket(0, tentacle);
       const wrist = pose.at(0, tentacle, FACTS.ringCount);
       if (wrist === undefined) throw new Error("a wrist is stowed");
-      // A striker's wrist is ahead of its socket and well inside the bore; a holder's is on the wall, on its rung.
-      if (wrist[2] - socket[2] > 0.3 && offAxis(wrist) < 1.8) ahead += 1;
-      if (pose.slip(0, tentacle, FACTS.ringCount) < 0.02 && offAxis(wrist) > 2.2) held += 1;
+      // A striker's wrist is ahead of its socket and well inside the bore. A holder's claw is where the gait has it:
+      // on its rung, or in the air between two (they step in a wave, so at any instant one or two are).
+      const striking = wrist[2] - socket[2] > 0.3 && offAxis(wrist) < 1.8;
+      if (striking) ahead += 1;
+      else if (pose.slip(0, tentacle, FACTS.ringCount) < 0.02) held += 1;
       furthest = Math.max(furthest, wrist[2] - socket[2]);
     }
     // Measured: the furthest wrist 3.0 m ahead of its socket.
     expect(furthest).toBeGreaterThan(2);
     expect(ahead).toBe(TENTACLES / 2);
     expect(held).toBe(TENTACLES / 2);
-    // Without the attack every one of them is on the wall.
-    let walking = 0;
+    // Without the attack none of them is out ahead inside the bore, and most stand on the wall.
+    let striking = 0;
+    let onWall = 0;
     for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+      const socket = rest.socket(0, tentacle);
       const wrist = rest.at(0, tentacle, FACTS.ringCount);
-      if (wrist !== undefined && offAxis(wrist) > 2.2) walking += 1;
+      if (wrist === undefined) continue;
+      if (wrist[2] - socket[2] > 0.3 && offAxis(wrist) < 1.8) striking += 1;
+      if (offAxis(wrist) > 2.2) onWall += 1;
     }
-    expect(walking).toBe(TENTACLES);
+    expect(striking).toBe(0);
+    expect(onWall).toBeGreaterThanOrEqual(6);
   }, 120_000);
 });
