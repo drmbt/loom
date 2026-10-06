@@ -407,9 +407,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // The whole way to the aim: its direction is the way the frame faces, its length how far off the aim is.
     heading: [...restToAim], "heading.x": expressionSlot(toAim.x, restToAim[0]), "heading.y": expressionSlot(toAim.y, restToAim[1]), "heading.z": expressionSlot(toAim.z, restToAim[2]),
     eye: [...UNTRIMMED.eye],
-    // Straight ahead, the Heading's own length off. (Said again in full: a parameter may not read another parameter
-    // of its own node, which the engine takes for a cycle, node by node: parameter.referenceCycle.)
-    lookAt: [...UNTRIMMED.lookAt], "lookAt.z": expressionSlot(`(0 - (${toAim.x} ^ 2 + ${toAim.y} ^ 2 + ${toAim.z} ^ 2) ^ 0.5)`, UNTRIMMED.lookAt[2] as number),
+    // Straight ahead, the Heading's own length off: read off the node, not said again (§B293: a parameter may read
+    // another parameter of its own node).
+    lookAt: [...UNTRIMMED.lookAt], "lookAt.z": expressionSlot("(0 - (op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.y ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5)", UNTRIMMED.lookAt[2] as number),
   };
   // The face's light hangs a hand's breadth in front of the foremost lens (the kit's own measure): clear of
   // the hull, which casts its shadow, and not out in the air ahead where its glow read as a ball the robot chased.
