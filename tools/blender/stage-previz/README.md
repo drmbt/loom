@@ -33,7 +33,7 @@ The first command takes about 5 s. The second copies the GLB to
 | --- | --- |
 | `stage-previz.loom.json` | GENERATED: what `build.ts` writes from the committed GLB, and checked against it byte for byte (`src/projects/stage-previz/session.test.ts`). Do not save your own edits over it; save them under another name. |
 | `stage-previz-7.loom.json` | A session saved from the app: its owner's fader values, Syphon servers, presets, a cue list and nodes of their own. `upgrade.ts` keeps it up to date. |
-| `stage-previz-8.loom.json` | A session saved from the app, repackaged there into six components. `upgrade.ts` cannot reach inside components and refuses it, so it stays as it was saved. |
+| `stage-previz-8.loom.json` | A session saved from the app, repackaged there into six components. `upgrade.ts` cannot reach inside components and refuses it, so what a new export changes (the deck height the low fog sits on) is edited inside its components, in the app. |
 
 After a change to the source or a new export, regenerate the base session, and bring a saved
 one along, against the committed GLB (which is read where it is and not rewritten):
