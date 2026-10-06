@@ -680,8 +680,8 @@ body.knobs .grip {
   border-radius: 9px;
   background: color-mix(in srgb, var(--signal) 20%, transparent);
   pointer-events: none;
-  /* Above the caption's and the value's chips: in this mode the knob is what a finger aims at. */
-  z-index: 2;
+  /* UNDER the caption's and the value's chips, as the handle is (.board .w.slider > .cap):
+     drawn above them it covered the caption wherever the value sat under the text. */
 }
 body.knobs .fader.driven .grip { display: none; }
 body.knobs .ctl.pad, body.knobs .board .w.xyPad { touch-action: pan-y; }
