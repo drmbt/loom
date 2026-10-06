@@ -21,6 +21,7 @@ import { instanceRecordStorage, isPackedType, packedGroups } from "./instance-re
 import { instanceResolveWgsl, RESOLVE_ARGS_BINDING, RESOLVE_LIVE_BINDING, RESOLVE_RECORDS_BINDING, RESOLVE_SOURCE_PREFIX, resolveWorkgroups, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
 import { bindInstanceAttributes } from "./instance-attributes.ts";
 import { applyMaterialOverrides } from "./material-overrides.ts";
+import { compileLightPoints, lightMapRefusal, lightTablePlan, type LightTablePlan, type PointLightSource } from "./light-points.ts";
 import {
   GLASS_BLIT_WGSL,
   SSAA_RESOLVE_WGSL,
@@ -322,6 +323,173 @@ export const projectorNode: NodeDefinition = {
   },
 };
 
+/**
+ * T1589b: why the shadow rows of a Light in Points mode are not read. Inactive and ignored,
+ * never a refusal: flipping Mode on a casting Light must not stop the render.
+ */
+const pointsCastNothing = (values: Readonly<Record<string, unknown>>): string | null =>
+  values["mode"] === "points" ? "A shadow map belongs to one light: a Light in Single mode casts, the lights of a pointset do not." : null;
+
+/**
+ * The Light's DECLARED parameters, hoisted (T1589b) so `parametersFor` can derive the schema
+ * one placed node carries without reading the node back off itself (§T903's funnel), as
+ * `GEOMETRY_PARAMETERS` is.
+ */
+const LIGHT_PARAMETERS: ParameterSchema = {
+  kind: {
+    type: "enum",
+    label: "Type",
+    default: "directional",
+    options: [
+      { value: "directional", label: "Directional" },
+      { value: "point", label: "Point" },
+    ],
+  },
+  /*
+   * T1589b — ONE LIGHT, OR ONE AT EVERY POINT (docs/lights-from-pointset-design-2026-10-06.md).
+   * Structural: a Light in Points mode owns a pass and a buffer, and a Render culls its
+   * lights on the GPU instead of unrolling a block for it.
+   */
+  mode: {
+    type: "enum",
+    label: "Mode",
+    default: "single",
+    compileTime: true,
+    options: [
+      { value: "single", label: "Single" },
+      { value: "points", label: "Points" },
+    ],
+    description:
+      "Single is one light, at Position. Points repeats this light at every point of the Points input: N lights from ONE node, each standing at its point's position. In Map mode Color takes a vec4f attribute and Intensity and Range an f32 (or one channel of a float vector), each MULTIPLYING the value here per point, so the number stays live for the whole set; Position in Map mode takes a vec3f attribute as each light's place instead of position. A light whose intensity or mapped range is zero is off, and so is a dead point of a counted pointset. A Render culls these lights by their Range on the GPU, so give them one. With Type: Directional the set is that many suns, each travelling along Direction; a directional light reaches every pixel, so none of them is culled. A Render lights from at most 1,024 points of capacity, every slot counted.",
+  },
+  color: { type: "color", label: "Color", default: [1, 1, 1, 1], space: "display" },
+  intensity: { type: "number", label: "Intensity", default: 1, min: 0, range: "floor" },
+  direction: {
+    type: "vector",
+    size: 3,
+    label: "Direction",
+    default: [-0.4, -0.8, -0.45],
+    inactiveWhen: (values) => (values["kind"] === "point" ? "A point light shines everywhere." : null),
+  },
+  position: {
+    type: "vector",
+    size: 3,
+    label: "Position",
+    default: [1, 2, 1.5],
+    inactiveWhen: (values) =>
+      values["mode"] === "points"
+        ? "Each light stands at its point's position. In Map mode a vec3f attribute is its place instead."
+        : values["kind"] === "directional"
+          ? "A directional light is infinitely far."
+          : null,
+  },
+  falloff: {
+    type: "enum",
+    label: "Falloff",
+    default: "soft",
+    options: [
+      { value: "soft", label: "Soft 1/(1+d²)" },
+      { value: "inverseSquare", label: "Inverse Square 1/d²" },
+    ],
+    description:
+      "T1437b: how a point light dims with distance d. Soft, 1/(1+d²), is nearly flat inside a metre, so a lamp close to a subject lights its near and far side almost alike. Inverse Square, 1/d², is the physical law: a lamp at 30 cm lights a surface at 60 cm a quarter as much, which is what makes a close key read as close. Distance is held at 1 cm or more. Far from the light the two agree; inside a metre Inverse Square is brighter and much steeper.",
+    inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light does not fall off."),
+  },
+  range: {
+    type: "number",
+    label: "Range",
+    default: 0,
+    min: 0,
+    range: "floor",
+    description:
+      "T1437b: how far a point light reaches, in world units. The falloff is multiplied by (1 − (d/range)⁴)², so it reaches exactly zero at the range and is barely touched inside half of it. 0 is unlimited. In Points mode (T1589b) the Range is what a Render culls by, and it defaults to 10: a light with no Range is in every cell of the view, so every lit pixel pays for every one of them.",
+    inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light is infinitely far."),
+  },
+  shadows: {
+    type: "boolean",
+    label: "Cast Shadows",
+    default: false,
+    compileTime: true,
+    description:
+      "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible. Shadow Casters and Shadow Exclude choose which geometries those passes draw (T1598b).",
+    inactiveWhen: pointsCastNothing,
+  },
+  shadowExtent: {
+    type: "number",
+    label: "Shadow Extent",
+    default: 8,
+    min: 0.1,
+    range: "floor",
+    description:
+      "Directional: world-units half-extent of the shadow volume around its Shadow Centre (the origin by default). Point (T1362b): the shadow RANGE in world units — casters and receivers beyond it are unshadowed, and depth precision is spread over it, so keep it close to how far the light visibly reaches. Explicit on purpose: nothing knows your scene's bounds, and a guessed box would crop shadows plausibly-wrong (V426).",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
+  },
+  shadowCenter: {
+    type: "vector",
+    size: 3,
+    label: "Shadow Centre",
+    default: [0, 0, 0],
+    description:
+      "T1405b: the world point a directional light's shadow volume is framed around — Shadow Extent either side of it. Put it on the set (a set away from the origin otherwise gets no sun shadows at all), or drive it by expression to follow the camera or the subject. Moving it does not rebuild anything.",
+    inactiveWhen: (values) =>
+      pointsCastNothing(values) ?? (values["kind"] === "point" ? "A point light's shadow is centred on the light." : values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
+  },
+  shadowSoftness: {
+    type: "number",
+    label: "Shadow Softness",
+    default: 2,
+    min: 0,
+    max: 4,
+    step: 1,
+    range: "bounded",
+    compileTime: true,
+    description:
+      "T1285: PCF radius in SHADOW MAP TEXELS — (2r+1)² taps per lit fragment this light reaches, averaged, giving a penumbra 2r+1 texels wide instead of a hard staircase. Priced per tap in the MAIN pass, not a second sweep. 0 is the single-tap hard edge; turn it down if the shot cannot afford 25 loads.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has an edge to soften."),
+  },
+  shadowBias: {
+    type: "number",
+    label: "Shadow Bias",
+    default: 0,
+    min: 0,
+    range: "floor",
+    compileTime: true,
+    description:
+      "T1438b: extra distance, in world units, a surface may sit behind the shadow map before it counts as shadowed — added to the built-in bias (one shadow-map texel plus a slope term). Raise it when a lit surface speckles or stripes with its own shadow (acne): a coarse mesh whose smoothed normals say it faces the light more than its facets do, or a large Shadow Extent spreading the map thin. Too much and a thin caster's shadow detaches from its base (peter-panning). 0 is the built-in bias alone. A compile-time knob: changing it rebuilds the shader.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has a shadow to bias."),
+  },
+  shadowCasters: {
+    type: "string",
+    label: "Shadow Casters",
+    default: "",
+    description:
+      "T1598b: space-separated geometry names — the ONLY geometries that cast this light's shadow. Empty: every geometry the Render draws casts. A geometry left out is still lit by this light, still receives its shadows and still casts for other lights. A casting light draws each caster again (a point light six times), so leave out what only ever receives: a floor, a wall, a tunnel.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has casters."),
+  },
+  shadowExclude: {
+    type: "string",
+    label: "Shadow Exclude",
+    default: "",
+    description:
+      "T1598b: space-separated geometry names that do NOT cast this light's shadow — taken out of Shadow Casters, or out of everything when that is empty. The shorter list to write when one big receiver is the only thing to leave out.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has casters."),
+  },
+};
+
+/**
+ * T1589b: the schema a Light in POINTS mode carries. One row differs, and the funnel
+ * (`parametersFor`, §T880) is what hands every reader the right one: Range defaults to 10.
+ * The declared 0 is "unlimited", and a light with no range is in every cell of a Render's
+ * grid: right for one light, the wrong default for a set.
+ *
+ * Type is a VALUE in both modes (T1623b): it is a field of each row, so changing it writes a
+ * float and compiles nothing, and a pointset of directional lights is legal.
+ */
+const LIGHT_POINTS_PARAMETERS: ParameterSchema = {
+  ...LIGHT_PARAMETERS,
+  range: { ...LIGHT_PARAMETERS["range"], default: 10 } as ParameterSchema[string],
+};
+
 /** T377 — a light: directional or point, colour and intensity, all drivable. */
 export const lightNode: NodeDefinition = {
   type: "light",
@@ -329,9 +497,18 @@ export const lightNode: NodeDefinition = {
   title: "Light",
   category: "render",
   description:
-    "A light other nodes reference by NAME — a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; point lights sit at Position with distance falloff (soft or inverse-square, and an optional range). Colour, intensity and placement are all drivable.",
-  tags: ["3d", "scene", "light", "shading"],
+    "A light other nodes reference by NAME: a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; Point lights sit at Position with distance falloff (soft or inverse-square, and an optional range). Mode: POINTS repeats the light at every point of the Points input, N lights from ONE node, never N nodes: each stands at its point's position, and Color, Intensity and Range take a per-point attribute in Map mode. A Render culls such lights by their Range on the GPU, so a lamp every few metres of a long set costs what the lamps near each pixel cost; give them a Range. Colour, intensity and placement are all drivable. Only a light in Single mode casts shadows.",
+  tags: ["3d", "scene", "light", "shading", "points", "lamps"],
   inputs: [
+    {
+      // T1589b: a real WIRE, because points are GPU data (§V372). Read in Points mode only.
+      id: "points",
+      label: "Points",
+      optional: true,
+      type: { kind: "pointset", requires: [{ name: "position", type: "vec3f" }] },
+      description:
+        "Mode: Points — the pointset this light is repeated over: one light at each point's position. A Point Grid, a Point Kernel, a Resample along a curve. A counted pointset lights only its live points. Not read in Single mode.",
+    },
     // T1598b: reference-fed, as a Render's Scenes is — the two list parameters name the
     // geometries; the compiler synthesizes these edges; a wire is refused.
     { id: "shadowCasters", label: "Shadow Casters", optional: true, variadic: true, type: { kind: "scene" } },
@@ -342,125 +519,18 @@ export const lightNode: NodeDefinition = {
     { parameter: "shadowCasters", input: "shadowCasters", list: true },
     { parameter: "shadowExclude", input: "shadowExclude", list: true },
   ],
-  parameters: {
-    kind: {
-      type: "enum",
-      label: "Type",
-      default: "directional",
-      options: [
-        { value: "directional", label: "Directional" },
-        { value: "point", label: "Point" },
-      ],
-    },
-    color: { type: "color", label: "Color", default: [1, 1, 1, 1], space: "display" },
-    intensity: { type: "number", label: "Intensity", default: 1, min: 0, range: "floor" },
-    direction: {
-      type: "vector",
-      size: 3,
-      label: "Direction",
-      default: [-0.4, -0.8, -0.45],
-      inactiveWhen: (values) => (values["kind"] === "point" ? "A point light shines everywhere." : null),
-    },
-    position: {
-      type: "vector",
-      size: 3,
-      label: "Position",
-      default: [1, 2, 1.5],
-      inactiveWhen: (values) => (values["kind"] === "directional" ? "A directional light is infinitely far." : null),
-    },
-    falloff: {
-      type: "enum",
-      label: "Falloff",
-      default: "soft",
-      options: [
-        { value: "soft", label: "Soft 1/(1+d²)" },
-        { value: "inverseSquare", label: "Inverse Square 1/d²" },
-      ],
-      description:
-        "T1437b: how a point light dims with distance d. Soft, 1/(1+d²), is nearly flat inside a metre, so a lamp close to a subject lights its near and far side almost alike. Inverse Square, 1/d², is the physical law: a lamp at 30 cm lights a surface at 60 cm a quarter as much, which is what makes a close key read as close. Distance is held at 1 cm or more. Far from the light the two agree; inside a metre Inverse Square is brighter and much steeper.",
-      inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light does not fall off."),
-    },
-    range: {
-      type: "number",
-      label: "Range",
-      default: 0,
-      min: 0,
-      range: "floor",
-      description:
-        "T1437b: how far a point light reaches, in world units. The falloff is multiplied by (1 − (d/range)⁴)², so it reaches exactly zero at the range and is barely touched inside half of it. 0 is unlimited.",
-      inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light is infinitely far."),
-    },
-    shadows: {
-      type: "boolean",
-      label: "Cast Shadows",
-      default: false,
-      compileTime: true,
-      description:
-        "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible. Shadow Casters and Shadow Exclude choose which geometries those passes draw (T1598b).",
-    },
-    shadowExtent: {
-      type: "number",
-      label: "Shadow Extent",
-      default: 8,
-      min: 0.1,
-      range: "floor",
-      description:
-        "Directional: world-units half-extent of the shadow volume around its Shadow Centre (the origin by default). Point (T1362b): the shadow RANGE in world units — casters and receivers beyond it are unshadowed, and depth precision is spread over it, so keep it close to how far the light visibly reaches. Explicit on purpose: nothing knows your scene's bounds, and a guessed box would crop shadows plausibly-wrong (V426).",
-      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
-    },
-    shadowCenter: {
-      type: "vector",
-      size: 3,
-      label: "Shadow Centre",
-      default: [0, 0, 0],
-      description:
-        "T1405b: the world point a directional light's shadow volume is framed around — Shadow Extent either side of it. Put it on the set (a set away from the origin otherwise gets no sun shadows at all), or drive it by expression to follow the camera or the subject. Moving it does not rebuild anything.",
-      inactiveWhen: (values) =>
-        values["kind"] === "point" ? "A point light's shadow is centred on the light." : values["shadows"] === true ? null : "Only a casting light frames a shadow volume.",
-    },
-    shadowSoftness: {
-      type: "number",
-      label: "Shadow Softness",
-      default: 2,
-      min: 0,
-      max: 4,
-      step: 1,
-      range: "bounded",
-      compileTime: true,
-      description:
-        "T1285: PCF radius in SHADOW MAP TEXELS — (2r+1)² taps per lit fragment this light reaches, averaged, giving a penumbra 2r+1 texels wide instead of a hard staircase. Priced per tap in the MAIN pass, not a second sweep. 0 is the single-tap hard edge; turn it down if the shot cannot afford 25 loads.",
-      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has an edge to soften."),
-    },
-    shadowBias: {
-      type: "number",
-      label: "Shadow Bias",
-      default: 0,
-      min: 0,
-      range: "floor",
-      compileTime: true,
-      description:
-        "T1438b: extra distance, in world units, a surface may sit behind the shadow map before it counts as shadowed — added to the built-in bias (one shadow-map texel plus a slope term). Raise it when a lit surface speckles or stripes with its own shadow (acne): a coarse mesh whose smoothed normals say it faces the light more than its facets do, or a large Shadow Extent spreading the map thin. Too much and a thin caster's shadow detaches from its base (peter-panning). 0 is the built-in bias alone. A compile-time knob: changing it rebuilds the shader.",
-      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has a shadow to bias."),
-    },
-    shadowCasters: {
-      type: "string",
-      label: "Shadow Casters",
-      default: "",
-      description:
-        "T1598b: space-separated geometry names — the ONLY geometries that cast this light's shadow. Empty: every geometry the Render draws casts. A geometry left out is still lit by this light, still receives its shadows and still casts for other lights. A casting light draws each caster again (a point light six times), so leave out what only ever receives: a floor, a wall, a tunnel.",
-      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has casters."),
-    },
-    shadowExclude: {
-      type: "string",
-      label: "Shadow Exclude",
-      default: "",
-      description:
-        "T1598b: space-separated geometry names that do NOT cast this light's shadow — taken out of Shadow Casters, or out of everything when that is empty. The shorter list to write when one big receiver is the only thing to leave out.",
-      inactiveWhen: (values) => (values["shadows"] === true ? null : "Only a casting light has casters."),
-    },
+  parameters: LIGHT_PARAMETERS,
+  /** T1589b: a Light in Points mode has its own Range default. */
+  parametersFor(stored) {
+    return storedStaticValue(stored["mode"] as never) === "points" ? LIGHT_POINTS_PARAMETERS : LIGHT_PARAMETERS;
   },
   compile(context): CompiledNodeDescription {
-    const { parameters } = readCompileInputs(context);
+    const { nodeId, inputs, parameters, parameterMaps } = readCompileInputs(context);
+    const pointsMode = parameters["mode"] === "points";
+    /* T1589b, §V288: a map this Light cannot honour refuses by name. In Single mode that is
+       every map: one light has no points to read a per-point value from. */
+    const unhonoured = lightMapRefusal(nodeId, parameterMaps, pointsMode);
+    if (unhonoured !== undefined) return unhonoured;
     const color = readColor(parameters, "color", [1, 1, 1, 1]);
     /* T1598b: the two lists as the ids of the nodes the names resolved to. A Render matches
        them against the geometries it draws, so a light shared by two Renders casts in each
@@ -490,6 +560,9 @@ export const lightNode: NodeDefinition = {
         range: Math.max(0, readNumber(parameters, "range", 0)),
       },
     };
+    /* T1589b: one light at every point of the Points input, resolved once a frame into
+       records a Render culls (light-points.ts). */
+    if (pointsMode) return compileLightPoints({ nodeId, points: inputs["points"], parameters, parameterMaps, light: payload.light });
     return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
   },
 };
@@ -1861,13 +1934,26 @@ export const renderNode: NodeDefinition = {
     const lights: LightPayload["light"][] = [];
     /** T1598b: the light NODES, beside their payloads — a diagnostic about a light names it. */
     const lightSources: string[] = [];
+    /**
+     * T1589b: the Lights in POINTS mode. Each is many lights, rows of a table this Render
+     * culls on the GPU, and so it is NOT among `lights`, whose every entry is a block
+     * unrolled into each lit shader.
+     */
+    const pointLights: PointLightSource[] = [];
+    /** T1589b: a Light's place in the list, which every row of a set carries as its source number (the lists will test it). */
+    let lightNumber = -1;
     for (const binding of sceneOf("lights")) {
+      lightNumber += 1;
       if (binding.scene?.kind !== "light") {
         return refuse(
           "node.scene.reference",
           `lights names "${binding.source?.nodeId ?? "?"}", which publishes no light.`,
           "Lights must name light nodes.",
         );
+      }
+      if (binding.scene.points !== undefined) {
+        pointLights.push({ nodeId: binding.source?.nodeId ?? "?", points: binding.scene.points, number: lightNumber });
+        continue;
       }
       lights.push(binding.scene.light);
       lightSources.push(binding.source?.nodeId ?? "?");
@@ -1978,6 +2064,8 @@ export const renderNode: NodeDefinition = {
       | { key: string; scale: number; depth: true }
       // T1427b: the prefiltered environment's levels and atlas — HDR, no depth.
       | { key: string; scale: number; format: "rgba16float" }
+      // T1589b: the light table — the pointset Lights' records and the grid's cells.
+      | LightTablePlan["scratch"]
     > = [];
     if (ssaa) scratch.push({ key: "ss", scale: 2, depth: true });
     /** T481: counted draw support emitted once (in the shadow phase when one exists),
@@ -2433,6 +2521,32 @@ export const renderNode: NodeDefinition = {
     };
     emitShadowPasses();
 
+    /*
+     * T1589b — THE LIGHT TABLE: the lights of every Light in Points mode, gathered into one
+     * buffer and sorted into a grid over this Render's view, on the GPU, every frame
+     * (light-points.ts). Two dispatches, HERE: ahead of the backdrop, so they do not split
+     * the run of draws into the colour target (T1604b). With no such Light nothing is
+     * emitted and every pass below is what it was (§V309).
+     */
+    const plannedLights =
+      pointLights.length === 0
+        ? undefined
+        : lightTablePlan({
+            nodeId,
+            sources: pointLights,
+            resolution,
+            /* What the lit draws render into: twice the output under SSAA. */
+            surface: [resolution[0] * (ssaa ? 2 : 1), resolution[1] * (ssaa ? 2 : 1)],
+            camera,
+            viewProjection: viewProjectionMatrix,
+          });
+    if (plannedLights !== undefined && "diagnostics" in plannedLights) return { passes: [], diagnostics: plannedLights.diagnostics };
+    const lightTable: LightTablePlan | undefined = plannedLights;
+    if (lightTable !== undefined) {
+      scratch.push(lightTable.scratch);
+      passes.push(...lightTable.passes);
+    }
+
     /* T1417b: the first casting light's map again, into the Light Depth port — the same
        sweeps at the port's own size, so a reader rebuilds the layout from the light alone. */
     const lightDepthTarget = parameters["lightDepthOutput"] === true ? outputs["lightDepth"] : undefined;
@@ -2847,6 +2961,18 @@ export const renderNode: NodeDefinition = {
             nodeId,
           });
         }
+        /* T1589b: the lights of a pointset reach Surface geometry and mesh instances, which
+           draw through the surface generator. These three draw through another one and take
+           them with the row's fourth slice; until then that is SAID, not a silent dark body. */
+        if (material.model !== "unlit" && pointLights.length > 0) {
+          diagnostics.push({
+            severity: "warning",
+            code: "node.scene.lightDraw",
+            message: `Node "${nodeId}": geometry "${source}" is drawn as ${payload.mode === "instances" ? "primitive instances" : payload.mode}, which the lights of a Light in Points mode (${pointLights.map((light) => `"${light.nodeId}"`).join(", ")}) do not light yet: they light Surface geometry and mesh instances.`,
+            nodeId,
+            suggestion: "Draw it as a Surface or as mesh instances (Shape: Mesh), or light it with a Light in Single mode.",
+          });
+        }
         const model =
         material.model === "unlit"
           ? "unlit"
@@ -3075,7 +3201,7 @@ export const renderNode: NodeDefinition = {
         return;
       }
       const material = payload.material;
-      if (material.model !== "unlit" && lights.length === 0) {
+      if (material.model !== "unlit" && lights.length === 0 && pointLights.length === 0) {
         // §V369's cousin: a lit material under zero lights is the flat-ambient look
         // wearing a finished face. Render it (the floor exists for exactly this), but
         // SAY it.
@@ -3173,7 +3299,10 @@ export const renderNode: NodeDefinition = {
          moved to where the generator put the texts, sends a device error in it back to the
          material node and the author's line. Every surface variant below carries its own. */
       const surface = (options: SceneShadingOptions): Pick<DrawPassDescriptor, "shader" | "sourceMap"> => {
-        const module = sceneSurfaceModule(options);
+        /* T1589b: the draw that LIGHTS walks the light table. A G-buffer layer lights nothing,
+           and an unlit material takes no light of any kind. */
+        const walks = lightTable !== undefined && options.gbuffer === undefined && options.model !== "unlit";
+        const module = sceneSurfaceModule(walks ? { ...options, lightGrid: true } : options);
         const map = material.custom?.sourceMap;
         return { shader: module.wgsl, ...(map === undefined ? {} : { sourceMap: customSurfaceSourceMap(map, module.placed) }) };
       };
@@ -3287,7 +3416,13 @@ export const renderNode: NodeDefinition = {
         uniformBinding: "params",
         clear: false,
       };
-      passes.push(litPass);
+      /* T1589b: the lit draw binds the light table, with the grid's three rows. The layers
+         below spread `litPass` itself, so they bind neither. */
+      passes.push(
+        lightTable === undefined || model === "unlit"
+          ? litPass
+          : { ...litPass, buffers: [...(litPass.buffers ?? []), lightTable.buffer], uniforms: { ...litPass.uniforms, ...lightTable.uniforms } },
+      );
       /* T1371b/T1380b: the same surface into each G-buffer layer — same material, same
          buffers, only the uniforms that generator declares (no lights, shadows, environment
          or projectors). T1411b: an additive surface is light, not a surface a screen-space

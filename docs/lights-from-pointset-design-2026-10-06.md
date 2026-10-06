@@ -1,6 +1,14 @@
 # Lights from a pointset: a many-light path inside the Render (T1589b)
 
-**Status, 2026-10-06: a design, nothing built.** The build is gated on a review by the lead and by the consumer session (shaderloom-f1, sentinel-bot). Section 10 lists what each has to rule on.
+**Status, 2026-10-06: ruled, and slice 1 is built.** The lead ruled L1 to L12 as recommended and the consumer answered C1 to C6 (section 10). Section 13 is slice 1 as built, with its measurements.
+
+**What replaced parts of this document the same day: ONE LIGHT PATH** (`docs/light-cost-investigation-2026-10-06.md`, section 11; SPEC row T1623b; its 11.8 lists what it changes here). B260 found why a Render's cost grew faster than its light count: a straight chain of unrolled light blocks is what a compiler sinks to the end of the function. The cure is that every light in the app is a row of the table this document designs: a named Light as a set of one, a casting light as a row with a shadow slot, a projector as a row. So the table, the records, the grid and the loop below are the permanent path and not a path beside the blocks. Read with that in mind:
+
+- **Section 2.5 and ruling L5 are gone.** There is no count at which the blocks are worth keeping beside the loop. Named Lights that do not cast become rows in T1623b's third slice, casting ones in its fifth.
+- **Ruling L4 is reversed: `kind` stays a value.** It is a field of every row, so changing a Light's Type writes a float and compiles nothing, and a pointset of directional lights is legal (that many suns). Section 3.6's reasons for making it compile-time no longer hold.
+- **The record of section 3.9 is 64 bytes with its last three floats given**: kind, shadow slot (0 for none), source number (which Light a row came from, the one mechanism of the lists, section 3.4 and slice 3).
+- **No text holds a count of lights.** Every loop takes its bounds from the table.
+- **The figures of sections 2.1, 2.2, 4, 5.1 and 5.2 were taken without a clock reference.** The GPU's clock follows its recent load, so a figure in milliseconds from one run cannot be set against one from another. They stand as first taken. The two comparisons the choice of method rested on (the grid against a plain loop at 256 and 1,024 lights) are re-taken under the rule in section 5.4, and hold.
 
 The row asks for light position, colour, intensity, range and cone from point attributes; a many-light path inside the Render; include and exclude lists; shadows for a chosen few. The furnace's project-code lamp pass (T1402b) is the prototype and is switched over when this lands. The owner's standard is the one of the instancing and curve rows: model it on how TouchDesigner and Notch do it, from their documentation, and build the general shape.
 
@@ -133,6 +141,8 @@ Loom today is the TouchDesigner shape. The row asks for the Notch shape: lights 
 - **One storage binding on a lit draw.** The Render owns one buffer, its light table: the records and the cells as regions of it, bound whole and read by offset through the point kernels' accessors (`regionAccessorWgsl`, T1076). A fully attributed mesh Surface binds seven storage buffers today; eight is the baseline (§V588). Two bindings would not fit.
 
 ### 2.5 The existing Light nodes
+
+> **Reversed by B260 (2026-10-06).** The first and last points below argue that unrolled blocks are the faster shape for lights that reach every pixel. That was read off 64 blocks in the probe's small shader. In the Render's own shader the straight chain of blocks is the slow path past about twenty (B260: 18.7 ms at 64 lights where a loop takes 1.1), and above eight each block now works under a test of its own (`LIGHT_GUARD_ABOVE`). Named Lights that do not cast become rows of the table (T1623b). What stands: slice 1 leaves a Light in Single mode as it is, a Render with no pointset Light emits the text it emitted, and the loop body is the light block.
 
 - **A Light in Single mode is what it is today**: its uniforms, its unrolled block, its shadow map. A Render that lists no pointset Light emits today's passes and shader text byte for byte (§V309). The probe says why this is right and not only safe: for lights that reach every pixel, which is a Light as it is placed (Range defaults to 0, unlimited), the unrolled blocks were 1.38 ms at 64 where the loop was 1.84 ms and the grid 2.23 ms.
 - **A Light in Points mode is rows in the Render's light table**, walked from the grid.
@@ -326,6 +336,7 @@ render_shot:scene:<i>          every lit draw binds the table, once
 - Each figure is the median of 60 frames after 15, from a timestamp query pair on the pass, each frame waited for. The timer's step is 0.066 ms. Pipeline creation for the unrolled text: 3, 9 and 34 ms for 16, 64 and 256 lights.
 - "Walked per pixel" is counted on the CPU over every eighth pixel from the cells read back off the device; "in reach" is computed from the light positions.
 - What it is not: the Render's shader (no shadows, no environment, one constant material), a browser, or more than one machine.
+- **Taken without a clock reference** (B260): each way ran its frames in a block of its own, one after another, and the GPU's clock moves with its recent load. The table's columns are not comparable to the hundredth it prints. Section 5.4 re-takes the two rows a decision rested on.
 
 ### 5.2 The consumer's document (measured, one run)
 
@@ -335,6 +346,7 @@ render_shot:scene:<i>          every lit draw binds the table, once
 - The table is in section 2.1. With the five shadows on and sixteen more lights the frame was 18.68 ms of GPU against 13.70 ms.
 - Pipeline compilation is `backend.compile` of the plan, once per document, in the order the variants ran.
 - The harness also sums GPU spans by group. Spans overlap on this GPU (T1243: the frame figure is the extent, "never a sum of the spans"), and those sums were several times the extent in every variant. They are not used here.
+- **Taken without a clock reference too**, and its rise with the light count is B260: the cause was found there (the chain of sums), measured against a reference, and answered by the guard. Use that document's figures for what a Light node costs, not the table of section 2.1.
 
 ### 5.3 What the consumer should expect (computed)
 
@@ -342,6 +354,24 @@ render_shot:scene:<i>          every lit draw binds the table, once
 - Range 30 m at 12.8 m apart puts 4.7 lamps in reach of a point on the axis. The probe walked 1.05 to 1.5 lights for each one in reach at 16 to 256 lights, so a pixel walks five to seven lamps.
 - Eight more Light nodes cost this document 0.79 ms, a tenth of a millisecond for a light every pixel evaluates. Five to seven lamps a pixel should therefore be in the region of 0.5 to 0.8 ms of GPU for all 75, where sixteen of them as Light nodes are 4.0 ms and thirty-two 17.3 ms. That takes the smallest of the measured slopes, and the slope rose with the count for a reason not found, so it is an estimate. Slice 1's acceptance replaces it with a measurement.
 - The five cube shadows stay 7.0 ms. This row does not touch them.
+- Replaced by the measurement of section 13.4.
+
+### 5.4 The measurement rule, and the grid against the loop re-taken (measured)
+
+**The rule** (B260, for every figure from here on): a fixed reference compute pass is submitted beside every frame and timed by its own timestamp pair; the variants alternate in one process; a figure is given raw and as a share of the reference taken beside it; raw milliseconds are never compared across runs. "At full clock" is a share times the fastest reference median of its run.
+
+The probe of 5.1 again, the same scene and shaders, with the two ways alone: the plain loop (a), and the grid of bitmasks with its build (b). Bursts of six frames a variant, the first two dropped, round after round. Two runs, with a reference of 0.59 and of 2.82 ms.
+
+| Lights | Run | (a) loop, raw | (a) share of reference | (b) grid + build, raw | (b) share | (a) over (b) |
+|---|---|---|---|---|---|---|
+| 256 | 1 | 1.57 ms | 2.67 | 0.33 + 0.07 ms | 0.75 | 3.6 |
+| 256 | 2 | 1.70 ms | 0.595 | 0.59 + 0.13 ms | 0.244 | 2.4 |
+| 1,024 | 1 | 6.49 ms | 9.78 | 0.92 + 0.39 ms | 2.07 | 4.7 |
+| 1,024 | 2 | 6.29 ms | 2.09 | 0.79 + 0.39 ms | 0.429 | 4.9 |
+
+- **The choice stands.** The grid with its build is 2.4 to 3.6 times cheaper than the loop at 256 lights and 4.7 to 4.9 times at 1,024. Section 2.3 said 1.84 against 0.33 ms and 7.93 against 0.85 ms, which leaves the build out and reads more into the hundredths than they hold.
+- The grid's lit draw is a few steps of the timer (0.066 ms), so its share moves by a third between frames. The first run's reference was nine steps long, too short; the second is the one to quote.
+- Nothing else of 5.1 was re-taken: the unrolled column is B260's subject, and the lists and the grid without slices were ruled out by what they do, not by a figure.
 
 ## 6. Time and determinism
 
@@ -421,7 +451,7 @@ Slices 2 and 3 are independent of each other. Slice 5 needs 1 and 2.
 ## 9. Accepted limitations, as rows to file
 
 1. **SHADOW SLOTS FOR THE NEAREST LIGHTS OF A POINTSET LIGHT.** A pointset's lights do not cast; the casting few are Lights in Single mode, and the pointset's kernel dims the ones they stand in for. wanted: `shadowSlots` on a Light in Points mode, that many cube atlases given each frame on the GPU to the lights nearest a focus (the camera, or a named node), each fading as it nears the edge of the set. needs the point-light sweep and the lit lookup to read a light's place from a buffer, the reach test of T1598b to do without a CPU position, and a slot's sweeps skipped when its light is out of view. Notch budgets shadow maps by distance ("Further away lights use lower shadow map resolutions, and are cut off after a certain distance"). cost per slot as a casting point light today, 1.2 to 1.6 ms on the consumer.
-2. **NAMED POINT AND SPOT LIGHTS IN THE GRID.** A Light in Single mode is an unrolled block evaluated by every lit pixel. with a Range it could be a record and be culled (probe: 0.72 against 0.26 ms at sixteen lights of which two reach a pixel), and a casting one would take its shadow inside the loop by a switch over the slots. it changes the text of a Render that has both, and for unlimited lights the blocks are faster (1.38 against 1.84 ms at 64). decide on a document with many named Lights.
+2. **NAMED POINT AND SPOT LIGHTS IN THE GRID.** A Light in Single mode is an unrolled block evaluated by every lit pixel. with a Range it could be a record and be culled (probe: 0.72 against 0.26 ms at sixteen lights of which two reach a pixel), and a casting one would take its shadow inside the loop by a switch over the slots. it changes the text of a Render that has both, and for unlimited lights the blocks are faster (1.38 against 1.84 ms at 64). decide on a document with many named Lights. **Overtaken by B260: filed as T1623b and REQUIRED, for the Lights that do not cast; section 13.3 says what slice 1 already holds for it.**
 3. **A TWO-LEVEL MASK, AND CAPACITY PAST 1,024.** A cell's walk reads every word of its mask: 32 at 1,024 lights, where a list of the same lights was 0.52 against 0.85 ms. one summary word per cell that says which words are set makes the walk follow the lights present, and the capacity can then rise.
 4. **A CONE AGAINST A CELL.** A spot is culled by its range sphere. A narrow spot is in every cell of that sphere and leaves each pixel by its cone test. a cone-against-box test in the build would keep it out.
 5. **A PASS OUTSIDE THE RENDER READS A LIGHT'S RECORDS.** A Custom WGSL binds textures, not pointsets, so a haze or air pass cannot read the lights: the furnace's atmosphere keeps a baked copy of its fixtures and the consumer's haze takes five lamp positions as parameters. wanted with the stock air pass of T1402b: the records as an input, or a `// @use lights` module. the same answers a Material · WGSL that wants to draw from a lamp.
@@ -443,7 +473,7 @@ Slices 2 and 3 are independent of each other. Slice 5 needs 1 and 2.
 | L2 | Per-point values by Map mode, or picked up by attribute name | Map mode. `position` alone is read by name (3.3). |
 | L3 | The names: `mode` (Single, Points), `litOnly`, `litExclude`, `cone`, `coneSoftness`, `orient` | As written. Lit Only and Lit Exclude stand beside Shadow Casters and Shadow Exclude and cannot be taken for them. |
 | L4 | `kind` becomes compile-time | Yes. It is what lets Spot add a row without touching any existing text, and Points refuse Directional by structure (3.6). |
-| L5 | A Light in Single mode keeps its unrolled block, even in a Render with a grid | Yes, in this row. Row 2 of section 9 moves them, after a measurement on a document that wants it. |
+| L5 | A Light in Single mode keeps its unrolled block, even in a Render with a grid | Yes, in this row. Row 2 of section 9 moves them, after a measurement on a document that wants it. **Reversed by B260 after the ruling: T1623b moves the Lights that do not cast, straight after slice 1.** |
 | L6 | Shadow slots: a slice of this row, or their own row | Their own row, filed now. The ruled shape (named casting Lights) serves the consumer today, and slots touch the sweep and the reach test. |
 | L7 | 1,024 points and seven pointset Lights a Render as the first build's limits, each a named error | Accept. Both are structural and lifted by rows 3 and 7. |
 | L8 | Range defaults to 10 in Points mode through `parametersFor` | Yes, as O3 did for a mesh instance's Size. |
@@ -462,6 +492,8 @@ Slices 2 and 3 are independent of each other. Slice 5 needs 1 and 2.
 | C4 | Points or spots for the plates | Spots pointing along the frame's down would stop a plate lighting the crown beside it; that is slice 2 and `orient` from the path's frame. |
 | C5 | The motes are lit in their kernel today, the haze takes five lamp positions | Leave both. Lit points take the stock lamps in slice 4; the haze waits for row 5. |
 | C6 | Lit Exclude: is there a geometry the lamps should not light | None seen in the document. Say if there is one. |
+
+**Answered by the consumer, 2026-10-06** (through the lead). C1: all 75 stations, one Light. C2: no lamp casts on its live tier; offline, three named lamp Lights cast, their stations dimmed in the kernel by 1 minus near. C3: Range 24, given that the falloff is windowed to zero at the range (it is). C4: spots, a cone of about 150 degrees with a high Cone Softness and `orient` from the path's frame, so slice 2 follows slice 1 directly. C5: leave the motes and the haze. C6: nothing excluded. Sections 3.1 to 3.5 fit, and Map mode per parameter is right. Two things it added: several pointset Lights in one Render, each with its own values (tested in slice 1 with three); and for shadow slots (T1622b), design for 2 on a live tier and 4 offline, with a NAMED NODE as the focus, not the camera. For T1626b the record a pass reads must carry direction and cone as well as place, colour and intensity: slice 1's record holds place, range, colour times intensity and the falloff law, and slice 2 adds the aim and the cone as two more rows (13.2).
 
 ## 11. Sources
 
@@ -484,10 +516,115 @@ Fetched on 2026-10-06. Notch pages were read from the page source, since the man
 - Deferred was not prototyped, and the cost of an Albedo layer on the consumer's document was not measured.
 - The orthographic form of the grid, SSAA, and a Render at a non-16:9 aspect are designed, not tried.
 - On-nothing's fixture pass was not read.
-- Why unrolled lights cost more than linearly on the consumer's document.
+- Why unrolled lights cost more than linearly on the consumer's document. (Found since: B260.)
 
-**Found on the way** (not fixed: this is a document)
+**Found on the way** (not fixed then: this was a document. The first two were fixed with slice 1; the third is B260.)
 
 - `docs/shadow-casters-design-2026-10-05.md` says TouchDesigner's Light Mask is "on the material". The documentation puts it on the Geometry COMP's Render page (`lightmask`); the Phong MAT page only refers to it. The reference survey has it right ("a per-object light mask").
 - The header comment of `src/nodes/shaders/scene-render.wgsl.ts` says "a uniform array carries thousands of lights before the block limit". The lights are not an array but generated members and blocks, and 37 of them took the consumer's frame to 24 ms and its pipeline compile to 1.2 s.
 - The cost of unrolled lights on the consumer's document rises faster than their count (0.10, 0.25 and 0.54 ms a light at 8, 16 and 32 more). In the probe's small shader it did not (0.045 ms a light at 16, 0.022 at 64, 0.036 at 256). Not explained.
+
+## 13. Slice 1 as built (2026-10-06)
+
+Point lights from a pointset, culled: section 8's slice 1 with all twelve acceptance items, built as the first slice of the one light path (T1623b). Added on the way by the consumer's answers, the Sweep's second slice, B260 and the one-light-path ruling: three pointset Lights in one Render; a pointset light on a Sweep of two strips; a pointset Light beside more Lights in Single mode than B260's guard starts at; a pointset of directional lights; the record's kind and source number; loop bounds from the table.
+
+### 13.1 Where it is
+
+- `src/nodes/shaders/scene-lights.wgsl.ts`: the Light's resolve, the Render's gather and grid build, the lit draw's declarations and its walk. Its header comment is the layout's one statement.
+- `src/nodes/definitions/light-records.ts`, `light-points.ts`: the two buffers and the limits; the Light's half and the Render's half, so `scene.ts` holds a call to each.
+- `src/nodes/definitions/scene.ts`: the Light's Mode row, Points input and `parametersFor`; the Render's table block after the shadow sweeps and before the backdrop.
+- `src/nodes/shaders/scene-render.wgsl.ts`: `lightBlock` takes its three rows (and its guard) as parameters; one option, `lightGrid`, a flag; three interpolations that are empty without it. `sceneInstancesWgsl` is not touched.
+- Tests: `light-points.test.ts` (the plan, no GPU), `src/runtime/backend/vgpu/light-points.gpu.test.ts` (Dawn), over the scenes of `light-points.fixture.ts`.
+
+### 13.2 The table as built
+
+- **The record is four rows, 64 bytes.** `place` (xyz where the light stands, w its range: 0 unlimited and in every cell, below 0 off and in none). `color` (rgb colour times intensity, w the falloff law). `aim` (xyz the way the light travels, a directional light's Direction; w the cosine of a cone's outer half-angle, −1 until slice 2). `cone` (x the cosine of the inner half-angle, −1 likewise; **y the kind**, 0 directional and 1 point; **z the shadow slot**, 0 for none and written by nothing yet; **w the source number**, the Light's place in the Render's Lights counted from 0, Lights in Single mode included).
+- **A table is a header, the records row by row, then the cells.** The header is four words: rows, words a cell, where the cells start, a spare. The gather writes it every frame from its values. Behind it stands every record's `place`, then every `color`, every `aim`, every `cone`.
+  - Row by row, because the build wants only places and most of what a fragment reads is the place of a light it is out of range of. Measured (13.4's method, the two layouts alternated in one process, 1,024 lights and nothing shaded): 0.43 to 0.46 of the reference against 0.51 to 0.56 record by record, the build alone 0.26 to 0.33 against 0.46 ms; with every light in reach the two cost the same.
+  - A Light's own buffer keeps record after record: it is written once and copied once.
+  - **For the buffer-values seam** (T1623b slice 2, on main): a region of rows of this table is four byte ranges, one a row of the record, so a named Light's rows are four writes of four-float rows; or they are written whole, 64 bytes each, into a buffer laid out as a Light's own and gathered like any set. The header's fourth word is spare for a count the lit walk reads. If one write of whole records into the table is wanted instead, the layout is three functions of `scene-lights.wgsl.ts` and costs what is measured above.
+- **Two views of the one buffer.** The passes that write it see words. The lit draw only reads and sees four-word elements (`array<vec4u>`): one load a row in place of four. Measured the same way, pictures byte for byte the same: 0.58 of the reference against 0.67 at 64 lights that all reach every pixel, 0.43 against 0.52 at 1,024 with nothing shaded. The build keeps the word view because its invocations each own one cell's words, and a write of one component of an element may read and write the whole element.
+- **No text holds a count.** The lit draw, the Light's resolve, the gather and the grid build are each ONE string for three lamps, three hundred and a thousand (a plan test compares them). The walk's word count and the cells' start, and the build's row count, are read from the header; where a Light's rows go in the table and how many it has are values of the gather.
+- **In §V1029's ledger** (`src/compiler/generated-text-growth.test.ts`, four rows): flat in the attributes on the Light's edge; flat in the count of points (64 to 1,024); a literal in the Light's own resolve when a mapped attribute sits behind another (the packed accessor's byte offset, as every reader of a packed pointset has it); and in the count of pointset Lights the gather grows by a binding, a uniform row, four accessors and a copy block of 357 bytes a Light, independent statements under the refusal at seven (exception b). A gather PASS a Light, all of one text, would be flat and lift the seven (T1628b).
+- **`kind` is a value, in both modes.** A set of lamps and a set of suns compile the same shaders; the Type is one float of the resolve's values, and a driven Type stays on the values-only frame path. **A pointset of directional lights is legal**: each row travels along the Light's Direction, has no place that matters and no range, and its bit is in every cell. There is no refusal.
+- **Rows a grid cannot leave out** (a directional row, a point row with no Range) are walked from the cells like any other until T1623b's third slice gives them a region of their own.
+- **The grid's dimensions are values, not constants of the generator.** The lit draw reads `lightGrid` (tiles, slices, the orthographic flag), `lightLens` (the surface's size, Near and Far) and `lightDepth`; the build reads the same. So the reference of acceptance item 2 is the same program with other values, written by the test, and the product has no switch.
+- **A fragment's depth is `dot(lightDepth, world)`**, a row taken from the draw's own view-projection (its w row for a perspective camera, its z row scaled to view depth for an orthographic one), so the build and the fragment cannot disagree about the camera.
+- **Primitive instances, points and beams** with a lit material are not lit by these lights until the other generator's slice. A Render that has both says so by name (`node.scene.lightDraw`, a warning) instead of drawing them dark in silence.
+- **B260's guard and the walk.** Above eight Lights in Single mode each block works under a test that its light is on. A turn of the walk is a scope of its own already and takes none. A Dawn case holds nine blocks and a set in one Render. Both go when the last block does.
+- **Acceptance item 2 is six views of three hundred lamps**, not one moving camera: a perspective camera, a low rolled one, one among the lamps, an orthographic one, SSAA, and a picture twice as wide as high. Each is byte for byte the picture through one cell. The cells are read back to show that the comparison is not of a grid that kept everything.
+- **Acceptance item 10 is exact**: under 4x MSAA an edge pixel of a lit quad holds a quarter, a half or three quarters of the lit value.
+- **Acceptance item 8** (a Render with no pointset Light has the plan and text it had) holds, and ends by ruling when named Lights become rows.
+
+### 13.3 What the next slices find here
+
+- **Cone and aim** (slice 2): the `aim` and `cone` rows exist and are carried through the gather; the resolve writes a cone that holds every direction. The slice adds the Light's rows, the maps and the test in the walk.
+- **Named Lights as rows** (T1623b slice 3): a row with no range and a directional row are walked today (tested on Dawn); the kind is read from the row; the source number counts Lights in Single mode too, so a named Light's row takes the number it already has. What that slice adds is the CPU-written rows (the buffer-values seam) and the always-walked region.
+- **The lists** (one mechanism): the source number is in every row; nothing reads it yet.
+- **Shadow slots**: the slot field is in every row and is 0.
+
+### 13.4 Measured, under the rule of 5.4
+
+Apple M3 Max, Dawn on Metal, headless, 1280 × 720, on a machine other sessions were using (the reference ran between 2.7 and 4.3 ms where it is 2.7 alone). Scratch scripts, not in the repository; the reference and the harness are copies of B260's. Every figure is of the build as it lands unless it says otherwise.
+
+**A minimal scene through the engine**: a PBR floor filling the picture, N point lights over it that ALL reach every pixel (Range 30), as N Light nodes in Single mode and as one Light in Points mode over N points. Every variant twice, alternated; 40 frames after 12. GPU time of the lit draw plus the table's three dispatches.
+
+| Lights | As | Raw, two takes | Share of reference | A light, share | Lit pipeline, new text |
+|---|---|---|---|---|---|
+| 8 | Single | 0.20, 0.20 ms | 0.070, 0.065 | 0.0081 to 0.0087 | 115 ms |
+| 8 | Points | 0.26, 0.26 ms | 0.089, 0.095 | 0.011 to 0.012 | 49 ms |
+| 16 | Single, guarded | 0.39, 0.33 ms | 0.116, 0.116 | 0.0073 | 101 ms |
+| 16 | Points | 0.46, 0.46 ms | 0.167, 0.146 | 0.0091 to 0.0104 | the same text as 8 |
+| 64 | Single, guarded | 1.44, 1.57 ms | 0.488, 0.500 | 0.0076 to 0.0078 | 332 ms |
+| 64 | Points | 1.64, 1.90 ms | 0.568, 0.608 | 0.0089 to 0.0095 | the same text |
+| 64 | Points, the kind taken back to a constant in the text (scratch) | 1.38, 1.51 ms | 0.511, 0.490 | 0.0077 to 0.0080 | |
+| 256 | Points | 7.80, 9.96 ms | 2.23, 2.32 | 0.0087 to 0.0091 | the same text |
+| 1,024 | Points | 38.4, 40.2 ms | 9.46, 9.40 | 0.0092 | the same text |
+| 1,024, Range 1 | Points | 1.38, 1.31 ms | 0.457, 0.463 | | the same text |
+
+- **No cliff.** A light of the table costs the same share from 16 to 1,024. The lit text is 8.2 thousand characters at every count, against 19, 35 and 131 thousand for 8, 16 and 64 blocks.
+- **Nothing to cull is the walk's worst case, and there a row costs more than a guarded block**: a sixth to a fifth more at 64. That is what T1623b's third slice moves into the table.
+- **The kind as a value is most of that difference.** With the kind put back in the text as a constant (a patch in the scratch harness, the same picture) a row costs what a guarded block costs: 0.49 to 0.51 against 0.49 to 0.50 at 64. The ruling stands on what it buys (no recompile on a change of Type); this is its price in the walk, a tenth to a fifth. T1623b's always-walked region is where directional rows go, and once they are there the grid's walk holds none and could do without the test.
+- **Loop bounds from the table cost nothing that could be resolved**: with the cell's word count put back as a literal the share moved both ways between two takes (0.73 and 0.70 as built against 0.67 and 0.69 at 64 lights; 0.55 and 0.53 against 0.57 and 0.48 at 1,024 with nothing shaded; taken before the lit draw's element view).
+- **With a range the grid is the point**: 1,024 lights that each reach a pool of the air over the floor, none of them the floor itself, are 1.3 to 1.4 ms, the table's build included (0.26 to 0.33 ms).
+- The two ways draw the same picture: the largest difference of a channel is 4.9e-4, one step of a half float at that level.
+
+**The consumer's frame** (acceptance item 12): `sentinelDocument`, live tier, one robot, built by the consumer's own code and not edited; the lamps added to the built graph in the script. One Point Kernel of 75 points (a lamp at every station of the lap, its place from the consumer's own path and chamber functions, its tone from its own `lampTone`), one Light in Points mode, Intensity 26, Range 24, Inverse Square, Color in Map mode. Run as the app runs a frame; 120 frames after 30; each variant twice, alternated. **Run twice**: once before the record and the table took their final shape, and again on the build as it lands, because a figure of a build that no longer exists is not the acceptance. The second:
+
+| Variant | GPU, raw | Reference | GPU / reference | At full clock | Wall, GPU drained | CPU |
+|---|---|---|---|---|---|---|
+| as it ships (5 Lights) | 7.67, 7.54 ms | 3.21, 3.15 ms | 2.43, 2.42 | 6.85, 6.83 ms | 19.7, 19.8 ms | 5.88, 6.61 ms |
+| with the 75 lamps | 7.80, 8.85 ms | 2.82, 3.15 ms | 2.71, 2.77 | 7.62, 7.80 ms | 20.9, 23.2 ms | 5.92, 6.12 ms |
+| the 75 lamps, the three named lamp Lights out | 8.65, 7.93 ms | 3.15, 2.88 ms | 2.61, 2.71 | 7.37, 7.63 ms | 23.1, 21.3 ms | 6.88, 6.05 ms |
+
+- **GPU: the 75 lamps add 0.27 to 0.34 of the reference**, 0.8 to 1.0 ms at this run's fastest clock (a reference of 2.82 ms). The control's two takes agree to a hundredth. Without the three named lamp Lights the frame is 0.18 to 0.29 of the reference over the control, 0.5 to 0.8 ms.
+- **The first run** (the earlier build: a record of two rows, the kind a constant) read 0.05 to 0.22 of the reference for the same lamps, on a control whose own two takes differed by 0.17. The two runs are not a measurement of what the final shape costs; the minimal scene above is.
+- **CPU**: 0.4 to 0.8 ms more a frame in the first run (the values-only compile 0.1 to 0.3 over seven more passes, encoding 0.15 to 0.2, submitting 0.1); not resolved in the second (5.9 and 6.6 ms without the lamps, 5.9 and 6.1 with).
+- **Device calls a frame**: 14 submits and encoders become 20; 9 compute passes become 13 (the lamps' kernel and the three of the table); 21 render passes and 46 draw calls stay; 40 buffer writes become 42. The plan goes from 71 passes to 78, and stays on the values-only path.
+- **Why six submits for four dispatches.** Every dispatch is its own submit on this backend, and a dispatch that follows anything but a dispatch opens a new frame of the device's (`encodeSegmented`). The lamps' kernel has a swap pass, which the plan places after its last reader, the Light's resolve: so it stands between the resolve and the Render's gather and splits the frame once more. Counted on the mock device for the three-lamp scene: 3 submits with no kernel, 5 with the kernel alone, 9 with the table, and one more for each further pointset Light.
+- Nothing was said by the compiler: the consumer's motes are unlit, so the `node.scene.lightDraw` warning does not fire.
+
+### 13.5 Tests, and what was seen red
+
+- `light-points.test.ts`, 26 tests with no GPU; `light-points.gpu.test.ts`, 19 on Dawn.
+- **51 mutations of the product, one at a time, 49 seen red** (two of them against §V1029's gate: a lit text that differs past 128 lights, and an eighth pointset Light gathered). Not red: the depth row taken from the clip z row in place of the w row (the same wrong depth for a light and for a fragment, and a twentieth of a unit at a tile's side: no pixel of the six views moves); and a cell's box not grown at all (the six views do not hit the rounding the margin is there for). The MSAA case is not reached by any of them.
+- A Render with no pointset Light: the plans of E13, E33, E28, E69 and E79 were captured whole (passes, shader text, bindings, uniforms) before any generator was touched and compared after the first build and after the merges of the Sweep's second slice and of B260's stopgap: identical each time. Their fingerprints, taken with that first capture, are frozen in `light-points.test.ts` and hold on the tree as it lands; the whole-plan comparison was not repeated after the table took its final shape. B260's own 18 digests of the lit text at and below eight lights are green, as are the one-sheet pins of `grid-sheets.test.ts` and `point-sweep.test.ts`.
+
+### 13.6 Not checked, and found on the way
+
+**Not checked**
+
+- A browser, and a device at the baseline limits: the eight-buffer budget is asserted at the plan, not on such a device.
+- More than one machine; the figures above are one M3 Max under other sessions' load.
+- The consumer's own look with the lamps: the runs measure cost, and no picture of it was looked at.
+- A camera that moves between frames under a pointset Light, as pictures: the six views stand still, and the driven camera is held at the plan (a values-only frame).
+- Where the walk's remaining cost over a block goes once the kind is a constant: nothing was left to resolve at 64 lights, and it was not looked for at other counts.
+- Whether the element view helps on a GPU other than Apple's.
+- Glass, primitive instances, points and beams: not lit by design until their slices.
+
+**Found**
+
+- **A kernel's swap pass can stand between two draws of the colour target.** When a lit draw is the last reader of a pointset, the swap follows it and the device's render pass is split there (seen for `kernel_floor` in the test scene; it is not new with this slice, and is a cousin of T1615b's third item).
+- **Anything that is not a dispatch counts as work a dispatch would overtake** in `encodeSegmented`, a swap included, so a kernel costs one more frame of the device's (an encoder and a submit) besides its own dispatch. The comment there says an unnecessary split costs one empty command buffer. That is one for every kernel in a frame.
+- **A Light in Single mode with Points wired keeps the upstream kernel in the plan.** Nothing reads it. Flipping Mode back does not stop the kernel's dispatch.
+- **`from` is a reserved word of WGSL** and Dawn refuses it as a name; the plan tests on the mock device do not see that. Only the Dawn file did.

@@ -358,6 +358,32 @@ function scene(spec: Scene): Fixture {
   return { graph: doc, subject: "render_shot", drivers: own?.drivers ?? [] };
 }
 
+interface LampSets {
+  /** How many Lights in Points mode the Render lists, each over a kernel of its own. */
+  readonly sets?: number;
+  /** How many points each kernel holds. */
+  readonly points?: number;
+  /** How many attributes each kernel carries, `position` among them. */
+  readonly attributes?: number;
+  /** Parameters over each Light's (a map). */
+  readonly light?: Record<string, unknown>;
+  /** The Lights are items too: their own resolve passes are then not what is measured. */
+  readonly lightsAreItems?: boolean;
+}
+/** T1589b: a Render lit by Lights in POINTS mode, each one light at every point of a kernel. The subject is `render_shot`. */
+function lampSets(spec: LampSets): Fixture {
+  const sets = spec.sets ?? 1;
+  const fixture = scene({ lights: sets, light: () => ({ mode: "points", kind: "point", range: 4, ...spec.light }) });
+  const kernels = named("kernel_lamps", sets);
+  kernels.forEach((id, index) => {
+    fixture.graph.nodes[id] = mk(id, "pointKernel", { capacity: spec.points ?? 16, attributes: schema(spec.attributes ?? 1), kernel: PASS_THROUGH });
+    wire(fixture.graph, id, "out", `light_l${two(index)}`, "points");
+  });
+  return { ...fixture, drivers: [...fixture.drivers, ...kernels, ...(spec.lightsAreItems === true ? named("light_l", sets) : [])] };
+}
+/** A parameter in Map mode over an attribute. */
+const mapOf = (attribute: string, retained: unknown): unknown => ({ mode: "map", bindings: { static: { kind: "static", value: retained }, map: { kind: "map", attribute } } });
+
 /* ------------------------------------------------------------------------------------ */
 /* compile, and read the text                                                            */
 /* ------------------------------------------------------------------------------------ */
@@ -1140,6 +1166,18 @@ const LEDGER: Readonly<Record<string, Row>> = {
     counts: [1, 2, 4, 14, 15],
     build: (count) => scene({ geometries: 16, light: () => ({ kind: "directional", shadows: true, shadowExclude: named("geometry_g", count).join(" ") }) }),
   }),
+  /* T1589b: a Light in Points mode, and the Render's light table. Every light of the app becomes a row of that table (T1623b), so these rows are what the path must keep. */
+  "light.points": flat("a Light in Points mode reads the attributes it maps, by name; the others on the edge reach no text of the Light's or of the Render's.", {
+    build: (count) => lampSets({ attributes: count }),
+  }),
+  "light.points/how many points": flat(
+    "the count of LIGHTS. The Render's gather, its grid build and its lit draw take every bound from the table's header (rows, words a cell, where the cells start), and the Light's resolve from a uniform: one text each at 64, 128, 256, 960 and 1,024 lights.",
+    { build: (count) => lampSets({ points: count * 64, attributes: 3 }) },
+  ),
+  "light.points/how many points, under a map": literal(
+    "the Light's own resolve reads a mapped attribute through the packed accessor, whose byte offset is a literal computed from the point count (`packedAccessorWgsl`): the same size, a different text. The Render's three texts stay one.",
+    { build: (count) => lampSets({ points: count * 64, attributes: 3, light: { color: mapOf("a01", [1, 1, 1, 1]) } }) },
+  ),
   "geometry.points": flat("a draw binds the attributes it draws by; the Render's text names none of the others."),
   "geometry.mesh": flat("as Points."),
   "geometry.endpoint": notACount(A_NAME),
@@ -1189,6 +1227,17 @@ const LEDGER: Readonly<Record<string, Row>> = {
   "render.scenes/glass": flat("transmissive surfaces draw after the pyramid.", { passes: 1, build: (count) => scene({ geometries: count, material: ["materialGlass"] }) }),
   "render.scenes/glass on a file mesh": flat("as glass.", { passes: 1, build: (count) => scene({ geometries: count, points: "mesh", material: ["materialGlass"] }) }),
   "render.scenes/glass on primitive instances": flat("as glass.", { passes: 1, build: (count) => scene({ geometries: count, material: ["materialGlass"], geometry: () => ({ mode: "instances" }) }) }),
+  "render.lights/Lights in Points mode": {
+    law: "statements",
+    why: "T1589b: each such Light resolves its records into a buffer of its own (two Renders that list one Light resolve it once), and a shader cannot index its buffer bindings: so the Render's gather has one binding, one uniform row, four accessors and one copy block a Light. A copy block stores and returns; nothing is carried from one to the next. The lit draw and the grid build are one text whatever the Lights. The form without it is a gather PASS a Light, all of one text (§V1029 c), which would also lift the bound (T1628b).",
+    grows: { "lights:gather/main": 357 },
+    members: 1,
+    bindings: 1,
+    functions: 4,
+    passes: 1,
+    build: (count) => lampSets({ sets: count }),
+    bound: { count: 7, code: "node.scene.lightSources" },
+  },
   "render.environmentTaps": literal("the specular cone's tap count is a loop bound and a divisor.", { build: (count) => scene({ environment: true, render: { environmentTaps: count } }) }),
   "render.environmentTaps/prefiltered": flat("the prefiltered environment takes no taps.", { build: (count) => scene({ environment: true, render: { environmentFilter: "prefiltered", environmentTaps: count } }) }),
   "feedback.source": notACount("one node's name."),

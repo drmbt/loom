@@ -118,6 +118,21 @@ export interface LightPayload {
      */
     readonly range: number;
   };
+  /**
+   * T1589b — present exactly when the Light is in POINTS mode: it is not one light but one
+   * at every point of a pointset, and `light` above is then only the node's own values (what
+   * its tile shows). `records` names the buffer the Light RESOLVES once a frame: one record
+   * a slot, 64 bytes, laid out as `scene-lights.wgsl.ts` states it (where the light stands
+   * and its range, below 0 for a slot that is off; its colour times intensity and its
+   * falloff law; the way it travels; its kind). A Render copies them into its own light
+   * table and culls them by range on the GPU; it does not put such a light among the blocks
+   * its lit shaders unroll, and such a light casts no shadow. `capacity` is the pointset's:
+   * every slot counts against the Render's table, live or not.
+   */
+  readonly points?: {
+    readonly records: string;
+    readonly capacity: number;
+  };
 }
 
 /**

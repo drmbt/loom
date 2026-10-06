@@ -22,7 +22,9 @@ From `docs/td-notch-mechanisms-2026-10-05.md` (sections 5 and 7):
 
 - **TouchDesigner.** The Light COMP has `shadowcasters`: a list of Geometry COMPs, written as a pattern, default
   `*`. Which objects a light *illuminates* is a different parameter in a different place, the Light Mask on the
-  material ("the only way" to cull lights, per staff). TD does no distance culling of casters.
+  Geometry COMP's Render page (`lightmask`; "the only way" to cull lights, per staff; the Phong MAT's page only
+  refers to it: corrected with T1589b, which read https://docs.derivative.ca/Geometry_COMP). TD does no distance
+  culling of casters.
 - **Notch.** The Light node has two inputs, `Affected Nodes` and `Excluded Nodes`, and a `Casts Shadows` switch.
   The lists govern what the light touches at all; they are include and exclude at once, exclude winning.
 

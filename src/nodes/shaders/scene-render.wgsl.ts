@@ -5,6 +5,7 @@ import { declaredNames } from "./shared-modules.ts";
 import type { WgslPosition } from "../../runtime/backend/wgsl-source-map.ts";
 import { advance, endOf } from "../../runtime/backend/wgsl-source-map.ts";
 import { packedAccessorWgsl, packedBindingsWgsl, type InstanceRecordOffsets, type PackedRead } from "./instance-resolve.wgsl.ts";
+import { LIGHT_GRID_FIELDS_WGSL, lightGridDeclarationsWgsl, lightGridLoopWgsl } from "./scene-lights.wgsl.ts";
 /**
  * The scene Render shader (T377/T428): the surface mesh machinery of T301 with the
  * SHADING GENERATED per material model — the V349 fix. The legacy renderers keep their
@@ -14,11 +15,15 @@ import { packedAccessorWgsl, packedBindingsWgsl, type InstanceRecordOffsets, typ
  * grid connectivity, normals are central differences over grid neighbours, wrapped
  * axes address modularly so the seam cell closes the ring. What T377 adds: `uv` (the
  * grid coordinate — free, and what material maps sample by), `eye` (for the view
- * vector), and a LIGHT ARRAY sized to the scene's actual referenced count — structural
- * in COUNT (adding a light recompiles), pure values in CONTENT (moving one animates),
- * which is the no-artificial-cap shape without a storage buffer: a uniform array
- * carries thousands of lights before the block limit, and B33's silent storage-budget
- * cliff never enters the picture.
+ * vector), and the LIGHTS of the scene's actual referenced count — structural in COUNT
+ * (adding a light recompiles), pure values in CONTENT (moving one animates). They are not
+ * an array: each Light in Single mode is three named rows of the params block and a block
+ * of its own in the fragment stage (`lightBlock`), so the count has no cap in the block
+ * and a real one in the program: a straight chain of such blocks is what a compiler sinks
+ * to the end of the function, and past about twenty of them a fragment's cost jumps (B260,
+ * measured and derived at `LIGHT_GUARD_ABOVE` below, which puts each block under a test of
+ * its own above eight). Many lights are a Light in Points mode, rows of a table walked from
+ * a grid (T1589b, `scene-lights.wgsl.ts`).
  */
 
 export interface SceneShadingOptions {
@@ -141,6 +146,17 @@ export interface SceneShadingOptions {
    * WGSL. Absent emits the non-instanced text byte for byte (§V309).
    */
   readonly instanced?: SceneInstancedOption;
+  /**
+   * T1589b: the Render lists a Light in POINTS mode, so this draw walks the Render's light
+   * table: it finds its pixel's cell of the grid and runs the light block once for every
+   * light the cell holds and whose range holds the fragment (`scene-lights.wgsl.ts`). After
+   * the unrolled blocks, through the same block text. An unlit model and the G-buffer
+   * variants take no light and ignore it. Absent emits the text unchanged (§V309).
+   *
+   * A FLAG, and nothing else: the table's size, its layout and how many lights it holds are
+   * read from the table, so a draw that walks it has one text whatever it holds (T1623b).
+   */
+  readonly lightGrid?: boolean;
 }
 
 /**
@@ -1468,12 +1484,25 @@ ${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradianc
     ? `clamp(${roughnessBase} * ${mapLoad("roughnessMap")}.r, 0.04, 1.0)`
     : roughnessBase;
 
+  /* T1589b: ONE emitter of a light's shading. A Light in Single mode reads its three rows off
+     the params block by its index; a light of the table (`lightGridLoopWgsl`) hands the same
+     block its rows as expressions and no index, so it has no shadow slot. B260's guard is for
+     the blocks that stand one after another: a turn of the table's walk is a scope of its own
+     already, and takes none. */
   const lightGuard = lightGuardWgsl(lightCount);
-  const lightBlock = (index: number): string => `  {
-    let lightMeta = params.light${index}Meta;
-    let lightColor = params.light${index}Color;
-    let lightVector = params.light${index}Vector;
-${lightGuard.open}    var toLight: vec3f;
+  const lightBlock = (
+    index: number,
+    rows: { readonly meta: string; readonly color: string; readonly vector: string } = {
+      meta: `params.light${index}Meta`,
+      color: `params.light${index}Color`,
+      vector: `params.light${index}Vector`,
+    },
+    guard: { readonly open: string; readonly close: string } = lightGuard,
+  ): string => `  {
+    let lightMeta = ${rows.meta};
+    let lightColor = ${rows.color};
+    let lightVector = ${rows.vector};
+${guard.open}    var toLight: vec3f;
     var attenuation = 1.0;
     if (lightMeta.x < 0.5) {
       toLight = normalize(-lightVector.xyz);
@@ -1511,10 +1540,14 @@ ${
     lit += params.specular.rgb * radiance * highlight;
 `
         : "")
-}${lightGuard.close}  }
+}${guard.close}  }
 `;
 
-  const needsViewDir = lightCount > 0 || environment;
+  /* T1589b: the walk of the Render's light table, after the unrolled blocks. Lit draws only:
+     an unlit model takes no light and a G-buffer variant lights nothing. */
+  const lightGrid = options.lightGrid === true && options.model !== "unlit" && options.gbuffer === undefined;
+  const lightGridLoop = lightGrid ? perVertex(lightGridLoopWgsl((rows) => lightBlock(-1, rows, lightGuardWgsl(0)))) : "";
+  const needsViewDir = lightCount > 0 || environment || lightGrid;
   const emissiveTerm =
     custom !== undefined ? "  lit += shaded.emissive;\n" : options.mesh?.emissive === true ? "  lit += input.emissive;\n" : "";
   const aoLookup = ambientOcclusion
@@ -1535,7 +1568,7 @@ ${
   !needsViewDir
     ? ""
     : `  let viewDir = normalize(params.eye.xyz - input.world);
-${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index))).join("")}`
+${Array.from({ length: lightCount }, (_, index) => perVertex(lightBlock(index))).join("")}${lightGridLoop}`
 }${projectors.term}${perVertex(envTerm)}${emissiveTerm}  return vec4f(lit * cover, ${alphaOut});`;
   /* T1355b — the custom surface: its uniform members, its module text, and the fragment
      head that calls it. Without `custom` the head is the stock text, character for
@@ -1683,10 +1716,10 @@ ${modelFields}  eye: vec4f,
   specular: vec4f,          // rgb specular colour, w = shininess
   material: vec4f,          // x = metallic, y = roughness, zw reserved
   grid: vec4f,              // cols, rows, wrapU, wrapV
-${lightField}${shadowFields}${envField}${projectors.fields}${customFields}};
+${lightField}${shadowFields}${envField}${projectors.fields}${customFields}${lightGrid ? LIGHT_GRID_FIELDS_WGSL : ""}};
 
 @group(0) @binding(0) var<uniform> params: SceneParams;
-${pointBindings}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${meshDeclarations}`;
+${pointBindings}${mapBindings}${shadowBindings}${envDeclarations}${aoDeclarations}${projectors.bindings}${meshDeclarations}${lightGrid ? lightGridDeclarationsWgsl() : ""}`;
   const text = wgsl`${top}${customDeclarations}
 ${vertexStage}
 
@@ -2941,6 +2974,7 @@ const ALL_SURFACE_FEATURES: SceneShadingOptions = {
   projectors: [{ cookie: true, occlusion: true }],
   mesh: { uv: true, surface: true, emissive: true },
   custom: { code: "fn surface(s: SurfaceIn, p: Params) -> SurfaceOut { return surfaceDefaults(s); }", paramsDeclaration: "", fields: [] },
+  lightGrid: true,
 };
 
 /**
