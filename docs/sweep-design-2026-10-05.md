@@ -1,6 +1,6 @@
 # Sweep: a profile along a curve, as a lit surface (T1587b)
 
-**Status, 2026-10-06: slices 1, 2 and 3 are built (1 and 3 in `90fb1558`, with the worked check in `bd2b364e`; 2, sheets, as section 11.3 says). Slice 2b (a grid reading `uv`, with B255) is not.** The decisions of section 8.3 are ruled, all as recommended, with D9 moved out to its own bug row (B255). The node is `src/nodes/definitions/point-sweep.ts`, its pass `src/nodes/shaders/sweep.wgsl.ts`, its CPU reference `src/points/sweep.ts`. Sections 4, 5.2, 6.1, 7 and 9 say what was built and measured; where building it showed the design wrong, the text is corrected in place and section 11 lists the corrections. The worked check against the consumer's bore is section 11.2, and what slice 2 built and measured is section 11.3.
+**Status, 2026-10-06: slices 1, 2 and 3 are built (1 and 3 in `90fb1558`, with the worked check in `bd2b364e`; 2, sheets, as section 11.3 says; 2b, a grid's texture coordinate with B255 and Map Extend, as section 11.4 says).** The decisions of section 8.3 are ruled, all as recommended, with D9 moved out to its own bug row (B255). The node is `src/nodes/definitions/point-sweep.ts`, its pass `src/nodes/shaders/sweep.wgsl.ts`, its CPU reference `src/points/sweep.ts`. Sections 4, 5.2, 6.1, 7 and 9 say what was built and measured; where building it showed the design wrong, the text is corrected in place and section 11 lists the corrections. The worked check against the consumer's bore is section 11.2, what slice 2 built and measured is section 11.3, and slice 2b is section 11.4.
 
 It follows `docs/curve-family-design-2026-10-05.md` (T1586b, whose slices 1 to 4 and 6 to 8 are built) and reads `docs/mesh-instancing-design-2026-10-05.md` (T1581b) and `docs/geometry-cost-profile-2026-10-05.md`.
 
@@ -159,14 +159,14 @@ Three changes, each small, all in the Render's grid chunks and `points/topology.
 - Readers: the two grid vertex chunks of the Render (`surfaceMeshWgsl`, which the lit draw, the G-buffer layers and glass share, and `shadowSurfaceWgsl`, which every depth sweep shares) and Render Surface's own; the places that size a grid draw (the Render's lit, depth and glass draws in `scene.ts`, the preview tile in `compile.ts`, `render-surface.ts`), all through one `gridVertexCount`; `parseTopology`, `formatTopology`, `gridCellCounts`, `gridPointCount`; the Topology node (a Sheets parameter); and `stripsOf`, for which every row of every sheet is a strip.
 - **A kernel's `ctx.dim` describes ONE sheet**: `cols`, `rows`, `i` and `j` are the sheet's, so a kernel written for one tube runs the same on each of ten. It gains `sheet` and `sheets`. A kernel over a one-sheet edge that names neither keeps its text.
 
-**Not in slice 2 (changed 2026-10-06): a grid reading a `uv` attribute.** It was in this slice; it is now slice 2b, with B255.
+**Slice 2b (built 2026-10-06, section 11.4): a grid reading a `uv` attribute.** It was in slice 2; it moved out to be done with B255.
 
 - It changes what a grid's texture coordinate IS wherever a pointset carries a `uv`, and B255 changes the same expression (`gx ÷ cells` on a wrapped axis). Both move textures on grids that draw today and need the same list of affected documents; done together they are one change to one line of each chunk and one set of re-derived pixel claims.
-- Until then the Render shows the grid coordinate on a sweep (per sheet: 0 to 1 round and 0 to 1 along), and the sweep's `uv` reaches a material the way the tunnel's bore passes its own: a kernel copies it into the attribute the Geometry's Tint is mapped to.
-- The rule is as ruled (D2). On a wrapped axis the corner past the seam reads the first column again, whose coordinate is back at the start, so the grid continues it: `u₀ + ⌈u_last − u₀⌉`. For a coordinate that goes once round that is `u₀ + 1`; for one that goes round `N` whole times it is `u₀ + N`. The sweep only ever writes coordinates with a whole period on a wrapped axis (4.6), so the rule has nothing to guess.
+- As built it is read only where a coordinate is read: a map is wired to the material, or a Material · WGSL's source names `.uv`. Everywhere else the program is the one the grid has without a `uv`, so a sweep whose material patterns by world position pays nothing.
+- The rule is D2's, made symmetric. On a wrapped axis the corner past the seam reads the first column again, whose coordinate is back at the start, so the grid carries it on by whole turns: `u₀ + sign(d) × ⌈|d|⌉` with `d = u_last − u₀`. For a coordinate that rises that is the ruled `u₀ + ⌈u_last − u₀⌉`: once round arrives at `u₀ + 1`, `N` whole times at `u₀ + N`. For one that falls (a mirrored coordinate from a kernel) it carries down, where the first form would have run the whole map backwards across the seam cell. The sweep only ever writes coordinates with a whole period on a wrapped axis (4.6), so the rule has nothing to guess.
 - The alternative was the textbook one: repeat the seam column, so the claim is not wrapped and both ends of the seam have their own coordinate, and tell the grid that the first and last columns are one place so its normal is still smooth across it. That needs a second kind of closure in the claim, and a kernel that moves the two seam columns differently opens a crack.
 
-**The grid coordinate reaches 1 on a wrapped axis.** Today `u = gx ÷ (cols − 1)`, which on a wrapped axis ends at `cols ÷ (cols − 1)`: a texture goes round a Tube or a Torus slightly more than once (section 9). It becomes `gx ÷ cells`. This is bug row B255, with slice 2b.
+**The grid coordinate reaches 1 on a wrapped axis (B255, fixed 2026-10-06 in `3a9ea829`).** It was `u = gx ÷ (cols − 1)`, which on a wrapped axis ended at `cols ÷ (cols − 1)`: the map was squeezed into all but the last cell and the seam cell showed its last texel from side to side. It is `gx ÷ cells`. An axis that does not wrap has the value it had, to the bit.
 
 ### 3.4 What the claim does not need
 
@@ -239,13 +239,13 @@ A parameter marked ⓢ is structural. "Map" is Map mode on the Path input.
 
 ### 4.6 Texture coordinates
 
-- **Around**: the share of the way round the profile at that column, by its sides (not by their lengths: follow-up C11): once round a closed profile and 0 to 1 across an open one. Two columns in one place share it; the last column of a flat-sided closed outline is at 1, where it closes. Tiling is the material's UV scale.
+- **Around**: the share of the way round the profile at that column, by its sides (not by their lengths: follow-up C11): once round a closed profile and 0 to 1 across an open one. Two columns in one place share it; the last column of a flat-sided closed outline is at 1, where it closes. Tiling is the material's Map Extend (11.4): there is no UV scale on a material, and the first draft of this line said there was.
 - **Along**:
   - **Stretch**: `curveU`, 0 at the strip's start and 1 at its end, by distance.
   - **Metres**: `distance ÷ uvLength`, so a pattern keeps its size whatever the spacing of the rings. On a closed path the number of tiles is rounded to a whole number per strip, so the pattern meets itself at the seam; the tile is then within half a tile of the length asked for.
   - **Points**: the row number over the rows, a cap's rows included (over the rows less one on an open path, so the last row is 1). It needs no attribute.
 - Each mode reads only what it uses, from what Curve Frames publishes with Metrics on: Stretch reads `curveU`, and `curveLength` when an end is capped; Metres reads `distance`, and `curveLength` on a closed path. Without one of them the node refuses by name and says which switch to turn on. It does not fall back to Points.
-- Before slice 2 the Render shows the grid coordinate (which is Points) whatever the node writes; the `uv` attribute is there for a kernel.
+- Since slice 2b the Render hands this `uv` to the Geometry's material where it reads a coordinate (a map, or a Material · WGSL that names `s.uv`). A stock map tiles along a Metres coordinate when the material's Map Extend V is Repeat; with Hold, the default, it shows one tile and then its edge.
 
 ### 4.7 Refusals, all by name
 
@@ -404,7 +404,7 @@ As built for slices 1 and 3. On Dawn through the compiler and the backend; exact
 - `point-sweep.test.ts`: the one-strip sweep programs pinned the same way; the claims, uniforms and refusals for several strips.
 - `topology.test.ts`, `point-topology.test.ts`, `codegen.test.ts`: the third number round-trips and a claim without it formats as before; the Sheets parameter; `ctx.dim.sheet` and `sheets`, and a kernel that names neither keeps its text.
 - Every shipped grid keeps its picture by construction (its program is the text it was), which the pins hold; no shipped example was re-rendered for this slice.
-- Not here: a material reading `uv` on a sweep. That is slice 2b.
+- A material reading `uv` on a sweep is slice 2b: `grid-uv.gpu.test.ts` and `grid-uv.test.ts` (11.4).
 
 ## 8. Build plan
 
@@ -417,7 +417,7 @@ As built for slices 1 and 3. On Dawn through the compiler and the backend; exact
 | 2b | A grid's texture coordinate | the grid reads a `uv` attribute (D2); the wrapped-axis coordinate (B255) | a texture that keeps its size along a swept tube | yes, and shipped Tube and Torus grids |
 | 3 | Caps and the custom profile | the cap rows; the Profile input | closed ends; rails, gutters, any outline | no |
 
-- **Slices 1, 2 and 3 are built** (2026-10-06). Slice 2b is not: until it is, a material on a sweep sees the grid coordinate, 0 to 1 round and along each sheet, and not the sweep's `uv`.
+- **Slices 1, 2, 2b and 3 are built** (2026-10-06). 2b is three commits: B255 (`3a9ea829`), the `uv` read (`fcf60408`) and Map Extend (`bd58f7f8`); section 11.4.
 - The consumer's review asked for slice 2 sooner than this plan assumed: pipes a claw can take hold of are several tubes in one Geometry.
 - Slice 2 is the one that edited `scene-render.wgsl.ts`, `scene.ts`, `compile.ts` and `render-surface.ts` (11.3).
 - T1589b (lights from a pointset) is ruled to be built with this row. The two share a consumer and no code: a lamp on every rib is that row's, the rib is this one's.
@@ -458,7 +458,9 @@ All ruled as recommended on 2026-10-05. D9 is its own bug row, B255, and its own
 
 ## 9. Found on the way (not fixed, not in scope)
 
-- On a wrapped grid the texture coordinate ends at `cols ÷ (cols − 1)`, not at 1 (`surfaceMeshWgsl`: `gx ÷ max(cols − 1, 1)` with `gx` running to `cols`). A texture does not go exactly once round a Tube or a Torus. D9, now bug row B255.
+- ~~On a wrapped grid the texture coordinate ends at `cols ÷ (cols − 1)`, not at 1.~~ B255, fixed in `3a9ea829` (11.4).
+- **A map held at its edge is addressed `uv × (size − 1)`, truncated** (`mapLoad`, the T262 bridge's precedent). A coordinate of exactly 1 reads the last texel and nothing else does: across 0 to 1 the map's first `size − 1` texels are spread over the surface and its last column and row are one texel short of showing. Not changed: it would move every mapped picture by up to a texel. Map Extend's Repeat and Mirror address `floor(fold × size)`, all `size` texels a tile, so the oddity is Hold's alone. Row text for a follow-up, not a fix here.
+- **Under multisampling a fragment's texture coordinate leaves the surface's own range at every open edge** (found by slice 2b's first attempt at tiling, on E75). A partly covered pixel is shaded once, at its centre, which lies outside the triangle. A map's clamp absorbs it. Anything that gives a coordinate outside 0..1 a meaning of its own has to be asked for, which is why Map Extend is a parameter.
 - The bore's seam is two columns in one place with an unwrapped claim, so each takes a one-sided difference and the normal has a crease there. It is under the deck and does not show.
 - A grid Surface is lit on BOTH sides (`abs(N · L)`, T301's rule) and a mesh Surface on one, with its normal turned to face the viewer (B227). Nothing says so where a person chooses between them. The first draft of this document had the grid lit on one side; section 11.1.
 - The fragment stage stands +Z in for a normal shorter than 1e-6, and tests the length before normalising. A grid's normal is the cross product of two differences, each across two cells, so a grid whose cells are finer than about half a millimetre each way reads +Z everywhere. Read from `scene-render.wgsl.ts`, not tested. A cable a millimetre thick would meet it.
@@ -500,6 +502,10 @@ Notch, fetched 2026-10-05 (page updated 16 Sep 2026):
 | The sheeted grid changes the grid chunks for every grid (first draft of 3.3) | It is a variant only a claim of more than one sheet emits, so a one-sheet grid's program is the text it was | 3.3, 11.3 |
 | After T1604b, N Geometries into one single-sampled target are one device pass (3.5) | Not in the last target a Render draws: a swap stands between two Geometries' draws there. Ten Geometries are 11 device passes, one of ten sheets is 2 | 3.5, 9, 11.3 |
 | A grid reads the sweep's `uv` in slice 2 | Moved to slice 2b with B255: both change one expression and move textures on the same shipped grids | 3.3, 8.1 |
+| Past a wrapped seam the coordinate is `u₀ + ⌈u_last − u₀⌉` (D2) | Carried by whole turns in the direction it goes, `sign(d) × ⌈|d|⌉`: the same for a rising coordinate, and right for a falling one | 3.3, 11.4 |
+| A grid that carries a `uv` reads it | Only where a coordinate is read (a map, or a Material · WGSL naming `.uv`): elsewhere it would be a binding and a read for nothing | 3.3, 11.4 |
+| "Tiling is the material's UV scale" (4.6) | A material has no UV scale. Tiling is its Map Extend, an axis at a time | 4.6, 11.4 |
+| A stock map can repeat whatever leaves 0..1 and keep its old read inside (first build of 2b's third commit) | It moved E75: under MSAA an open edge's coordinate leaves 0..1. Tiling is a parameter of the sampling | 9, 11.4 |
 
 ### 11.2 The worked check: the consumer's bore from the stock nodes
 
@@ -611,3 +617,101 @@ Red-verified by mutation, applied and restored by edit: 24 mutants, one line eac
 - SSAA, a projector, an environment and ambient occlusion on a sheeted grid. They are options of the fragment stage and share the one vertex chunk the tests draw; none was compiled or drawn with a sheeted grid. MSAA was drawn in the measurement and not asserted.
 - The figures are wall time headless on one machine that other sessions share; the differences are many times the 0.05 ms between runs of one graph, the sweep pass's 0.016 ms is not.
 - The caps of a strip whose points are all one point, and the fragment stage's guard for cells under half a millimetre (section 9), are read from the code, not tested.
+
+### 11.4 Slice 2b as built: a grid's texture coordinate (2026-10-06, T1618b with B255)
+
+Three commits: B255 (`3a9ea829`), the `uv` read (`fcf60408`), Map Extend (`bd58f7f8`).
+
+**The list first.** Every shipped document (74 examples, 12 components, 26 project documents) was compiled through the loader and read off its plan: each Render draw's grid uniform, its bound maps, its material's source, and the pairs each Geometry is handed.
+
+| | Documents |
+|---|---|
+| A wrapped grid Surface that reads the coordinate (B255 moves the picture) | E20 Gooeyball: 64 × 64 wrapped round, albedo and roughness maps. The only one |
+| Wrapped grid Surfaces that do not read it (text moves, picture does not) | E13 Prism, E33 Obol, E63 Skin, sentinel-bot's towers and pods |
+| Open grid Surfaces that wear a stock map (text moves, value does not) | E25 Stage, E34 Lidar, E75 Resonance, E76 Verdant Lotus, on-nothing's sleep-like-a-baby and sleep-like-a-baby-2 |
+| A grid pointset carrying `uv` into a Surface | sentinel-bot's towers and pods only (from a Sweep). Their Material · WGSL does not name `s.uv` and they bind no map |
+
+- Two things first said about this list were wrong and are corrected here: "the only mapped Surface in the corpus is E20" (it is the only WRAPPED one; six documents wear a stock map on an open grid), and "nothing shipped reads a map outside 0..1" (E75 does, at its open edges under MSAA).
+- Checked by rendering, raw bytes at frames 0 and 60, before and after each commit. B255: E20 moves, 5,842 of 36,864 pixels at frame 0 (5,507 at frame 60), largest step 0.031 linear (0.037), mean 0.005; E13, E25, E28, E33, E34, E63, E75, E76, E79, both on-nothing documents and sentinel-bot are byte-identical. The `uv` read: E13, E20, E25, E28, E33, E63, E79 and sentinel-bot rendered, byte-identical (the mapped open grids carry no `uv`, so they cannot take the variant; not rendered for this commit). Map Extend: E20, E25, E34, E75, E76 and both on-nothing documents rendered, byte-identical.
+- E20 has no exact pixel claim to re-derive. Its thumbnail was regenerated and its look baseline re-measured (motion 0.01149 to 0.0116, range and f0max unchanged). Its albedo now sits on the bulge the same noise raised: the kernel displaces by `u = i ÷ cols` and the map is read there too.
+
+**B255.** One line of the lit grid chunk: an axis divides by its cells (`select(points − 1, points, wrapped)`). The wrap flags are uniforms, so there is one text and the line is in every lit grid program.
+
+**The `uv` read.** `GRID_UV_WGSL` in `scene-render.wgsl.ts`, a variant of the lit grid chunk; `SURFACE_UV_REFERENCE` in `scene.ts` decides whether a Material · WGSL reads it; the attribute is bound at a mesh's `uv` slot (a draw is a grid or a mesh). The seam rule is in 3.3. On a grid of several sheets a vertex reads its own sheet's rows.
+
+**Map Extend, and what the two references offer.**
+
+| | TouchDesigner | Notch | Here |
+|---|---|---|---|
+| Where it is said | on each map of a MAT, in its Texture Sampling Parameters | on the material: "Controls how textures used by the material are wrapped" | on the material |
+| An axis at a time | Extend U, Extend V, Extend W | Texture Wrap Mode U, Texture Wrap Mode V | Map Extend U, Map Extend V |
+| The choices | Hold, Zero, Repeat, Mirror | Repeat, Clamp, Border With Black, Mirror | Hold, Repeat, Mirror |
+| Beside it | Filter, Anisotropic Filter, which texture coordinate layer, per map | UV Scale and UV Offset, per material, and a second pair for the diffuse map | nothing yet |
+
+Sources: https://docs.derivative.ca/Phong_MAT and https://docs.derivative.ca/PBR_MAT (each map's Extend U, V and W with the four choices; neither page names a default); https://manual.notch.one/2026.1/en/docs/reference/nodes/materials/material/ (Texture Wrap Mode U and V, quoted above, and the UV Scale and Offset rows). Read 2026-10-06.
+
+- **One pair a material, not one a map.** The references disagree (TouchDesigner a map, Notch a material), so a pair per map is not the norm, and one a material is the simpler. A pair per map is a follow-up row.
+- **An axis at a time**, which both references do and the first sketch of this parameter did not. The reason is the finding below: a ribbon tiles along its length and has open edges across, so it wants Repeat along and Hold across.
+- **Mirror is in**: both have it, and it is one more fold. Zero (TouchDesigner) and Border With Black (Notch) are not: a third address rule and a colour, with no consumer.
+- **One function for a stock material and a custom one.** The two folds are the shared module `extend` (`extendRepeat`, `extendMirror`, `shared-modules.ts`). The stock text pastes it; a Material · WGSL or a Custom WGSL gets the same two with `// @use extend`.
+- **Not built, as rows:** a UV scale and offset on a material (both references have one; today the tile's size is the Sweep's Tile Length or the author's `uv`); Extend per map; Zero.
+
+**Why it is a parameter: E75.** The third commit was first built as "a map repeats whatever leaves 0..1 and is read as it was inside". It moved E75 Resonance: 571 of 36,864 pixels at frame 0, largest step 0.17 linear.
+
+| Variant of the read, E75 rendered each time | E75 |
+|---|---|
+| The repeat, behind a function | moved |
+| The same function, clamping as before | byte-identical: it is not the recompile |
+| A band of 1e-5 either side of 0..1 kept clamped | moved, the same bytes: it is not a rounding at the edge |
+| Not-a-number kept on the old path | moved: it is not that either |
+
+- E75's Render is MSAA 4x and its mapped grids have open edges in frame. A partly covered pixel is shaded once, at its centre, which lies outside the triangle: there the coordinate has left 0..1 by a real amount, on a surface whose own coordinate never does. The clamp absorbed that. A repeat puts the map's far edge there.
+- So a fragment cannot tell a coordinate that tiles from an open edge, and tiling has to be said: by the material, an axis at a time, with Hold the read it always was.
+- Kept as a fixture: one cell whose edge stops 0.45 of a pixel into a picture column, under 4x MSAA. Hold reads the edge's own texel on the partly covered pixel; Repeat reads texel 0 there. That is the price of a tiled axis on an open edge under MSAA, and the parameter's description says so.
+
+**The pins, before and after.** Each new value is what its test printed (`restamp`: run, read expected and received, replace), with the reason beside it in the file.
+
+| Gate | Pin | Before B255 | After B255 |
+|---|---|---|---|
+| `grid-sheets.test.ts` | a lit grid, the default material | 17aa8172c9cd86ab | 6e32ecb742e37480 |
+| | a Phong tube under a casting sun, every output | 084b26c7e1c920d6 | fd223a6f35a231d2 |
+| | a PBR grid under a casting point light | 3c4d939cf8e327d2 | 05abd9496c1331d9 |
+| | a tinted grid | baf033f83810f42d | 4e06f58f7127b692 |
+| | an unlit grid | 27985030733ae1ad | 98a49e35dd3384ce |
+| | a glass grid | efbe423f4bad37c6 | 16a7d3a060b02efd |
+| | a Material · WGSL on a wrapped tube | 23412397756ed469 | 6f3f36f5829aa22d |
+| | the preview tile | 1889b8f93f6f1f82 | 7c55c8dc5023cecd |
+| | Render Surface | d63733260d66381a | not moved: no coordinate |
+| `light-points.test.ts` | E13 Prism | 359501820ee04eb2 | b0ae17f85a00fa66 |
+| | E33 Obol | 3bbe8f637a87f0ca | 5a7d8127aa370b62 |
+| | E28 Sundial | ead2f43368e32c56 | 9cd4c3c06215a84f |
+| | E69 Burnish | 9277401191f84901 | 962a4048645d64ce |
+| | E79 Crucible | e81ee4bea6dbf553 | 6bd605b4e59f4207 |
+| `scene-light-guard.test.ts` | surface: lambert grid | 2717505ab16a6316 | 42e77db29fe97b61 |
+| | surface: pbr Material WGSL | 5ba3e4b2fe94caa0 | dd94c30cf125247d |
+| | surface: pbr grid | 326c14a7a3a7a8d8 | 3862a064f9cad6eb |
+| | surface: pbr grid, additive | 6eaba590ca5564d9 | 919ec18941e4d41b |
+| | surface: pbr grid, many projectors | 2c0992f1f780d0a3 | 434bfacef3d74cb1 |
+| | surface: phong grid | 33ea50e380739696 | c2608dcc7fcfca2d |
+
+- The other twelve digests of `scene-light-guard.test.ts` (mesh and instance cases) and V1029's sizes (`generated-text-growth.test.ts`) did not move, and V1029 asked for no ledger row: the `uv` variant and the two Map Extend enums are a text per feature, not a text that grows with a count.
+- All of them were run again on the tree merged with main at `b585a458` (the spots landing, `25416b6d`, included): none moves.
+- The `uv` read and Map Extend moved none of them. The second is held by five pins of its own, taken at `fcf60408` before the parameter existed, of the whole plan of each example that wears a stock map: E20 524da1380e9f7f65, E25 3ea3923714e496b7, E34 c73ed3113401e002, E75 b48273dc56455b40, E76 a05741c9165a6c6f (`grid-uv.test.ts`).
+
+**Tests.** A white unlit material wears a RULER, a map whose texel (x, y) holds (x, y): each pixel then shows the texel that was read there, and the cameras are orthographic, so the expected texel is derived from where the pixel is on the surface.
+
+| File | Tests | What |
+|---|---|---|
+| `grid-uv.gpu.test.ts` (new, Dawn) | 22 | B255: the four faces of a wrapped prism, the seam face, the unwrapped control, the other axis (4). The `uv` read: the points' own against the grid's and another name; the Albedo layer; a rising, a falling and a three-turn coordinate at the seam; the row seam; a Material · WGSL's `s.uv`; a Sweep by its length; a swept Ring's seam; two sheets (10). Map Extend: Repeat and Hold on a Sweep by its length; Mirror; an axis at a time and below 0; the Albedo layer; `// @use extend`; the open edge under MSAA with Hold and with Repeat (8) |
+| `grid-uv.test.ts` (new) | 14 | which draws bind the `uv` and that the rest are the text they were (5); Hold is the text it was, nine texts for the nine pairs, one paste of the module, the parameter's shape (4); the five mapped example pins (5) |
+
+Red-verified by mutation, applied and restored by edit: 4 for B255 (main's expression on each axis, and two wrong fixes), 14 for the `uv` read, 12 for Map Extend, one of them the rule that moved E75. Each fails a test.
+
+**Not checked.**
+
+- A mesh Surface with a stock map under Map Extend: the read is the same text, and no test draws one. No shipped mesh binds a stock map.
+- Map Extend under SSAA, and Repeat on a wrapped axis under MSAA (there is no open edge there, so no far-edge hairline is expected; not drawn).
+- A `uv` that does not make a whole number of turns round a wrapped axis: the seam cell then stretches whatever is left over. Stated, not tested.
+- The preview tile of a Geometry draws its base colour only: it shows neither a map nor the points' `uv`.
+- The references' defaults for Extend were not found on the pages read.
+
