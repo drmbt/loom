@@ -40,7 +40,11 @@ import { FROZEN_PANELS } from "./phone-touch.fixture.ts";
  * for layout changes nobody ran it for. A project's panels may now change freely.
  *
  * NOT covered, and not coverable here: iOS Safari and Android Chrome on a phone. Chromium's
- * touch emulation uses a 15 px slop; a real phone's is its platform's.
+ * touch emulation uses a 15 px slop; a real phone's is its platform's. And nothing here is a
+ * HAND: §T1607b passed every case in this file and failed in the owner's ("still pretty hard
+ * to not screw with the sliders when scrolling on mobile"), because a scripted finger flicks
+ * where it is told to. So the rule itself is now on trial (§T1647b): the page offers five
+ * Touch modes, this file holds each to its own promise, and the owner's hand picks one.
  */
 
 const DESK: InvocationContext = { actor: { kind: "human", id: "desk" }, projectId: "phone-touch", capabilities: [] };
@@ -195,10 +199,14 @@ interface Phone {
   readonly errors: string[];
 }
 
-/** The page in a phone's browser: touch, a phone's viewport. `touch: false` is the same page opened on a desktop. */
-async function openPhone(browser: Browser, url: string, viewport: { width: number; height: number }, touch = true): Promise<Phone> {
+/**
+ * The page in a phone's browser: touch, a phone's viewport. `desktop` is the same page opened
+ * on a desktop. `mode` (§T1647b trial) is chosen on the page's own Touch control, as the
+ * owner will choose it; without one the page is in the mode a phone starts in.
+ */
+async function openPhone(browser: Browser, url: string, viewport: { width: number; height: number }, options: { desktop?: boolean; mode?: string } = {}): Promise<Phone> {
   const context = await browser.newContext(
-    touch ? { viewport, deviceScaleFactor: 2, hasTouch: true, isMobile: true, ignoreHTTPSErrors: true } : { viewport, ignoreHTTPSErrors: true },
+    options.desktop === true ? { viewport, ignoreHTTPSErrors: true } : { viewport, deviceScaleFactor: 2, hasTouch: true, isMobile: true, ignoreHTTPSErrors: true },
   );
   const page = await context.newPage();
   const errors: string[] = [];
@@ -207,6 +215,10 @@ async function openPhone(browser: Browser, url: string, viewport: { width: numbe
     if (message.type() === "error") errors.push(message.text());
   });
   await page.goto(url);
+  if (options.mode !== undefined) {
+    await page.selectOption("#touchMode", options.mode);
+    await expect(page.locator("#touchMode")).toHaveValue(options.mode);
+  }
   const cdp = await context.newCDPSession(page);
   return { context, page, cdp, errors };
 }
@@ -263,40 +275,50 @@ const kindAt = (page: Page, point: Point): Promise<string> =>
   page.evaluate(({ x, y }) => {
     const hit = document.elementFromPoint(x, y);
     for (const kind of [".track", ".pad", "button.ctl", "#rail", "#pager", "#tabs"]) if (hit?.closest(kind)) return kind;
-    return hit === null ? "nothing" : hit.tagName;
+    return hit === null ? "nothing" : hit.tagName.toLowerCase();
   }, point);
 
 /**
- * A point 30% along the lowest slider that is wholly in view above the bars — where a
- * thumb reaching for the next screen would land.
+ * A point `along` (a share) of the lowest slider that is wholly in view above the bars —
+ * where a thumb reaching for the next screen would land.
  */
-const lowestSlider = (page: Page): Promise<Point | null> =>
-  page.evaluate(() => {
+const lowestSlider = (page: Page, along: number): Promise<Point | null> =>
+  page.evaluate((share) => {
     const floor = Math.min(...["#tabs", "#pager"].map((id) => document.querySelector<HTMLElement>(id)).map((bar) => (bar === null || bar.hidden ? window.innerHeight : bar.getBoundingClientRect().top)));
     let best: { x: number; y: number } | null = null;
     for (const track of document.querySelectorAll<HTMLElement>(".track")) {
       const box = track.getBoundingClientRect();
       if (box.width === 0 || box.top < 0 || box.bottom > floor) continue;
-      if (best === null || box.top > best.y) best = { x: box.left + box.width * 0.3, y: box.top + box.height / 2 };
+      if (best === null || box.top > best.y) best = { x: box.left + box.width * share, y: box.top + box.height / 2 };
     }
     return best;
-  });
+  }, along);
 
-/**
- * Flick up the page from the lowest slider in view. Returns where the finger landed.
- *
- * `hesitant` is a thumb that starts slowly and wanders sideways before it commits: six
- * small moves, 5 px across and 12 px up in all. The browser has not yet decided that is a
- * scroll, so every one of them reaches the page as a pointermove along the slider — the
- * moves a slider with no threshold of its own would follow.
- */
-async function flickFromSlider(phone: Phone, distance: number, hesitant = false): Promise<Point> {
-  const start = await lowestSlider(phone.page);
+interface Flick {
+  /**
+   * A thumb that starts slowly and wanders sideways before it commits: six small moves,
+   * 5 px across and 12 px up in all. The browser has not yet decided that is a scroll, so
+   * every one of them reaches the page as a pointermove along the slider — the moves a
+   * slider with no threshold of its own would follow.
+   */
+  readonly hesitant?: boolean;
+  /** How far along the slider it lands, as a share of the track. Default 0.3. */
+  readonly along?: number;
+  /** ms the thumb rests where it landed before it moves. */
+  readonly pause?: number;
+  /** What a touch there lands on. Default the slider's track; "body" where the board takes no touch. */
+  readonly lands?: string;
+}
+
+/** Flick up the page from the lowest slider in view. Returns where the finger landed. */
+async function flickFromSlider(phone: Phone, distance: number, how: Flick = {}): Promise<Point> {
+  const start = await lowestSlider(phone.page, how.along ?? 0.3);
   if (start === null) throw new Error("no slider is wholly in view to flick from");
-  expect(await kindAt(phone.page, start), "the flick must start ON a slider").toBe(".track");
+  expect(await kindAt(phone.page, start), "what the flick starts on").toBe(how.lands ?? ".track");
   const touch = finger(phone.cdp);
   await touch.down(start);
-  if (hesitant) await touch.travel(5, -12, 6);
+  if (how.pause !== undefined && how.pause > 0) await phone.page.waitForTimeout(how.pause);
+  if (how.hesitant === true) await touch.travel(5, -12, 6);
   // Up the page, drifting sideways the way a thumb does.
   await touch.travel(6, -distance, Math.max(4, Math.round(distance / 30)));
   await touch.up();
@@ -305,11 +327,11 @@ async function flickFromSlider(phone: Phone, distance: number, hesitant = false)
 }
 
 /** Flick up from sliders until the page is at its end, `end` px down. Every flick must move it. */
-async function flickToEnd(phone: Phone, end: number, hesitant = false): Promise<void> {
+async function flickToEnd(phone: Phone, end: number, how: Flick = {}): Promise<void> {
   for (let flick = 1; !(await atEnd(phone.page, end)); flick += 1) {
     if (flick > 12) throw new Error("twelve flicks did not reach the foot of the board");
     const before = await scrollTop(phone.page);
-    await flickFromSlider(phone, 240, hesitant);
+    await flickFromSlider(phone, 240, how);
     expect(await scrollTop(phone.page), `flick ${String(flick)} must move the page`).toBeGreaterThan(before);
   }
 }
@@ -326,112 +348,323 @@ const bringToMiddle = async (page: Page, selector: string): Promise<void> => {
   await settledScroll(page);
 };
 
+/*
+ * §T1647b TRIAL — DELETED WHEN THE OWNER HAS CHOSEN (the modes that lose; the winner's cases
+ * stay and lose their loop). The page holds five candidate rules for what a slider may take
+ * a touch from, as modes of one "Touch" setting on the phone page. §T1607b's three acceptance
+ * lines are held in every one of them, each driven the way a hand would use THAT mode:
+ *
+ *   K  knob only     a deliberate drag lands on the knob; a drag from beside it does nothing
+ *   H  hold to grab  a deliberate drag rests first (the outline arrives); one that does not, does nothing
+ *   L  a lock        in Play as before; in Scroll nothing answers and everything scrolls
+ *   G  a strip       as before, and a strip at the edge that only ever scrolls
+ *   A  as before     the rule that failed in the owner's hand, kept to compare against
+ *
+ * WHAT THIS CANNOT SHOW, in any mode: whether a real thumb, scrolling, lands on a knob, or
+ * rests 200 ms before it moves, or goes sideways enough to be taken. The fingers here are
+ * scripted: they flick where they are told to. That each mode keeps its own promise is
+ * asserted; which promise suits a hand is decided on the phone.
+ */
+interface TouchMode {
+  /** The key of the page's TOUCH_MODES, as its Touch control offers it. */
+  readonly key: string;
+  readonly letter: string;
+  /** A slider takes a touch only from its knob. */
+  readonly knob: boolean;
+  /** ms a finger must rest before a slider will take it; 0 for no wait. */
+  readonly rest: number;
+  readonly lock: boolean;
+  readonly strip: boolean;
+}
+const TOUCH_MODES: readonly TouchMode[] = [
+  { key: "knob", letter: "K", knob: true, rest: 0, lock: false, strip: false },
+  { key: "hold", letter: "H", knob: false, rest: 200, lock: false, strip: false },
+  { key: "lock", letter: "L", knob: false, rest: 0, lock: true, strip: false },
+  { key: "gutter", letter: "G", knob: false, rest: 0, lock: false, strip: true },
+  { key: "now", letter: "A", knob: false, rest: 0, lock: false, strip: false },
+];
+
+/** Is the control outlined — the page's sign that it holds the touch? */
+const outlined = (page: Page, selector: string): Promise<boolean> => page.locator(selector).evaluate((element) => element.classList.contains("held"));
+
+/**
+ * Where a DELIBERATE drag lands on a slider, given the middle of its track and its value:
+ * on the knob where the mode asks for that — 20 px off its middle, where an absolute slider
+ * would jump — and a quarter of the track from the knob otherwise.
+ */
+function landingOn(mode: TouchMode, track: Point & { width: number }, value: number): Point {
+  const knob = track.x - track.width / 2 + value * track.width;
+  return { x: mode.knob ? knob - 20 : knob - track.width / 4, y: track.y };
+}
+
+for (const mode of TOUCH_MODES) {
+  test.describe(`§T1647b the phone page under a real touch — a board three screens tall, Touch mode ${mode.letter}`, () => {
+    const VIEWPORT = { width: 390, height: 664 };
+
+    test("flicked through from top to bottom touching only sliders, the page scrolls and NOTHING is written", async ({ browser }) => {
+      const stage = await tallStage();
+      const phone = await openPhone(browser, stage.url, VIEWPORT, { mode: mode.key });
+      try {
+        await expect(phone.page.getByRole("slider", { name: sliderCaption(1) })).toBeVisible();
+        const revision = stage.graph().revision;
+        // The premise: the board is three screens tall, and there is nothing to scroll from but controls.
+        const end = await scrollEnd(phone.page);
+        expect(end).toBeGreaterThanOrEqual(2 * VIEWPORT.height);
+
+        // Every way a thumb starts a scroll, in turn: fast or hesitant, beside the knob or on
+        // it (every slider shows 0.5, so its knob is the middle), at once or after a pause
+        // long enough to count as a rest.
+        const visited = new Set<number>();
+        for (let flick = 0; flick < 30 && !(await atEnd(phone.page, end)); flick += 1) {
+          const before = await scrollTop(phone.page);
+          await flickFromSlider(phone, 260, { hesitant: flick % 2 === 0, along: flick % 4 < 2 ? 0.3 : 0.5, pause: flick % 3 === 2 ? 300 : 0 });
+          const after = await scrollTop(phone.page);
+          expect(after, `flick ${String(flick + 1)} must move the page`).toBeGreaterThan(before);
+          visited.add(after);
+        }
+        expect(await atEnd(phone.page, end), "the flicks must reach the foot of the board").toBe(true);
+        expect(visited.size).toBeGreaterThanOrEqual(3);
+        // The last slider of the board is on screen: every control was reachable.
+        await expect(phone.page.getByRole("slider", { name: sliderCaption(SLIDERS) })).toBeInViewport();
+
+        // And back up, the same way, from the top-most slider downwards.
+        const touch = finger(phone.cdp);
+        for (let flick = 0; flick < 30 && (await scrollTop(phone.page)) > 0; flick += 1) {
+          const start = await phone.page.evaluate((along) => {
+            for (const track of document.querySelectorAll<HTMLElement>(".track")) {
+              const box = track.getBoundingClientRect();
+              if (box.top >= 8) return { x: box.left + box.width * along, y: box.top + box.height / 2 };
+            }
+            return null;
+          }, flick % 2 === 0 ? 0.7 : 0.5);
+          if (start === null) throw new Error("no slider in view to flick from");
+          expect(await kindAt(phone.page, start)).toBe(".track");
+          await touch.down(start);
+          await touch.travel(-5, 260, 9);
+          await touch.up();
+          await settledScroll(phone.page);
+        }
+        expect(await scrollTop(phone.page)).toBe(0);
+
+        if (mode.strip) {
+          // G: the strip at the edge scrolls too, and is nobody's control.
+          const rail = (await phone.page.locator("#rail").boundingBox())!;
+          expect([rail.width, rail.x + rail.width], "a thumb wide, at the right edge").toEqual([56, VIEWPORT.width]);
+          const rightmost = await phone.page.evaluate(() => Math.max(...[...document.querySelectorAll(".board > *")].map((cell) => cell.getBoundingClientRect().right)));
+          expect(rightmost, "no control lies under the strip").toBeLessThanOrEqual(rail.x);
+          const onStrip = { x: rail.x + rail.width / 2, y: VIEWPORT.height / 2 };
+          expect(await kindAt(phone.page, onStrip)).toBe("#rail");
+          await touch.down(onStrip);
+          await touch.travel(0, -200, 8);
+          await touch.up();
+          expect(await settledScroll(phone.page)).toBeGreaterThanOrEqual(150);
+        }
+        if (mode.lock) {
+          // L, in Scroll: the same flick, from the same sliders.
+          await phone.page.locator("#lock").tap();
+          await expect(phone.page.locator("#lock")).toHaveAttribute("aria-pressed", "true");
+          const before = await scrollTop(phone.page);
+          await flickFromSlider(phone, 260, { hesitant: true, along: 0.5, lands: "body" });
+          expect(await scrollTop(phone.page)).toBeGreaterThan(before);
+        }
+
+        // Nothing on the wire, nothing in the document, nothing moved on the phone.
+        await phone.page.waitForTimeout(300);
+        await stage.settled();
+        expect(stage.writes).toEqual([]);
+        expect(stage.graph().revision).toBe(revision);
+        for (let index = 1; index <= SLIDERS; index += 1) expect(stage.node(sliderName(index)).parameters["value"], sliderName(index)).toBe(0.5);
+        await expect(phone.page.getByRole("slider", { name: sliderCaption(1) })).toHaveAttribute("aria-valuenow", "0.5");
+        expect(stage.refused).toEqual([]);
+        expect(phone.errors).toEqual([]);
+
+        if (mode.lock) {
+          // L: the switch is in reach wherever the page is scrolled to (it is, now) and whichever way the phone is held.
+          const lock = phone.page.locator("#lock");
+          const upright = (await lock.boundingBox())!;
+          expect([upright.x, upright.width, Math.round(upright.y + upright.height)]).toEqual([0, 60, VIEWPORT.height]);
+          await phone.page.setViewportSize({ width: VIEWPORT.height, height: VIEWPORT.width });
+          await expect(lock).toBeInViewport({ ratio: 1 });
+          const sideways = (await lock.boundingBox())!;
+          expect([sideways.x, Math.round(sideways.y + sideways.height)]).toEqual([0, VIEWPORT.width]);
+        }
+      } finally {
+        await phone.context.close();
+        stage.close();
+      }
+    });
+
+    test("a deliberate drag along a slider moves it — the first write leaves while the finger is still moving — and the value follows the finger's travel, not its position", async ({ browser }) => {
+      const stage = await tallStage();
+      const phone = await openPhone(browser, stage.url, VIEWPORT, { mode: mode.key });
+      try {
+        const selector = (index: number): string => `[role=slider][aria-label="${sliderCaption(index)}"]`;
+        await expect(phone.page.locator(selector(3))).toBeVisible();
+        const touch = finger(phone.cdp);
+
+        // WHAT THIS MODE REFUSES, first, on another slider: a drag along it that is not made the mode's way.
+        const other = await center(phone.page, selector(2));
+        if (mode.knob) {
+          // K: from beside the knob — a quarter of the track away from it...
+          await touch.down({ x: other.x - other.width / 4, y: other.y });
+          await phone.page.waitForTimeout(120);
+          await touch.travel(70, 1, 7);
+          await touch.up();
+          // ...and from four px outside what is drawn of it. The knob is drawn a finger wide.
+          const grip = (await phone.page.locator(`${selector(2)} .grip`).boundingBox())!;
+          expect(grip.width).toBe(56);
+          await touch.down({ x: grip.x - 4, y: other.y });
+          await touch.travel(-70, 1, 7);
+          await touch.up();
+        }
+        if (mode.rest > 0) {
+          // H: at once, without resting.
+          await touch.down({ x: other.x, y: other.y });
+          await touch.travel(70, 1, 7);
+          await phone.page.waitForTimeout(mode.rest + 100);
+          expect(await outlined(phone.page, selector(2)), "a finger that moved first does not grab by resting later").toBe(false);
+          await touch.travel(40, 0, 4);
+          await touch.up();
+        }
+        if (mode.lock) {
+          // L, in Scroll: any drag at all.
+          await phone.page.locator("#lock").tap();
+          await touch.down({ x: other.x, y: other.y });
+          await phone.page.waitForTimeout(300);
+          await touch.travel(70, 1, 7);
+          await touch.up();
+          await phone.page.locator("#lock").tap();
+          await expect(phone.page.locator("#lock")).toHaveAttribute("aria-pressed", "false");
+        }
+        await phone.page.waitForTimeout(300);
+        expect(stage.writes, "a drag this mode does not allow writes nothing").toEqual([]);
+        expect(await scrollTop(phone.page), "and a sideways drag scrolls nothing").toBe(0);
+
+        // THE DELIBERATE DRAG, made this mode's way. The slider shows 0.5.
+        const slider = phone.page.locator(selector(3));
+        const box = await center(phone.page, selector(3));
+        // The page's own clock: when the touch landed, and when the slider was first outlined.
+        await slider.evaluate((track) => {
+          const clock = window as unknown as { landed?: number; outlined?: number };
+          window.addEventListener("pointerdown", () => (clock.landed = performance.now()), { capture: true, once: true });
+          new MutationObserver(() => {
+            if (clock.outlined === undefined && track.classList.contains("held")) clock.outlined = performance.now();
+          }).observe(track, { attributes: true, attributeFilter: ["class"] });
+        });
+        await touch.down(landingOn(mode, box, 0.5));
+        if (mode.rest > 0) {
+          // H: the outline arrives when the finger has rested, and says the slider is held.
+          await phone.page.waitForTimeout(mode.rest / 2);
+          expect(await outlined(phone.page, selector(3)), "not yet rested").toBe(false);
+          await phone.page.waitForTimeout(mode.rest / 2 + 100);
+          expect(await outlined(phone.page, selector(3)), "rested: the outline is there").toBe(true);
+          const rested = await phone.page.evaluate(() => {
+            const clock = window as unknown as { landed: number; outlined: number };
+            return clock.outlined - clock.landed;
+          });
+          console.log(`Touch mode ${mode.letter}: the outline arrived ${rested.toFixed(0)} ms after the touch landed`);
+          // Never sooner than the rest; how much later is the machine's business (it is shared), within reason.
+          expect(rested).toBeGreaterThanOrEqual(mode.rest - 1);
+          expect(rested).toBeLessThan(mode.rest + 150);
+        } else {
+          await phone.page.waitForTimeout(120);
+        }
+        expect(stage.writes, "touch-down writes nothing, and neither does resting").toEqual([]);
+        // 16 px in two moves: the slider takes the touch at the second (past its 12 px), unmoved.
+        await touch.travel(16, 1, 2);
+        await touch.travel(48, -2, 6);
+        // Still down, still moving: the document already has it.
+        await expect.poll(() => stage.writes.length).toBeGreaterThan(0);
+        expect(stage.writes[0]).toMatchObject({ handle: stage.node(sliderName(3)).id, phase: "live" });
+        await expect.poll(() => stage.node(sliderName(3)).parameters["value"]).not.toBe(0.5);
+        await touch.travel(40, 2, 5);
+        await touch.up();
+        await expect.poll(() => stage.writes.at(-1)?.phase).toBe("commit");
+        await stage.settled();
+
+        // 104 px of travel, 88 of it after the slider took the touch, over a track `width` px long, 0..1.
+        const value = stage.node(sliderName(3)).parameters["value"] as number;
+        expect(value).toBeCloseTo(0.5 + 88 / box.width, 9);
+        await expect(slider).toHaveAttribute("aria-valuenow", String(value));
+        // It only ever rose: no write of the finger's POSITION (left of the value) came first.
+        const values = stage.writes.map((set) => set.values["value"] as number);
+        expect(values).toEqual([...values].sort((a, b) => a - b));
+        expect(values[0]).toBeGreaterThan(0.5);
+        expect(stage.writes.filter((set) => set.phase === "commit")).toHaveLength(1);
+        // The drag was the slider's alone: the page stayed, every other control stayed.
+        expect(await scrollTop(phone.page)).toBe(0);
+        expect(new Set(stage.writes.map((set) => set.handle)).size).toBe(1);
+        expect(stage.refused).toEqual([]);
+        expect(phone.errors).toEqual([]);
+      } finally {
+        await phone.context.close();
+        stage.close();
+      }
+    });
+
+    test("a toggle under a scrolling finger does not flip; a tap flips it, on release", async ({ browser }) => {
+      const stage = await tallStage();
+      const phone = await openPhone(browser, stage.url, VIEWPORT, { mode: mode.key });
+      try {
+        const toggle = phone.page.getByRole("button", { name: "Arm" });
+        await bringToMiddle(phone.page, ".w.toggle button.ctl");
+        await expect(toggle).toBeInViewport();
+        const at = await center(phone.page, ".w.toggle button.ctl");
+        expect(await kindAt(phone.page, at)).toBe("button.ctl");
+        const touch = finger(phone.cdp);
+
+        // A flick that starts ON the toggle.
+        const before = await scrollTop(phone.page);
+        await touch.down(at);
+        await touch.travel(4, -220, 8);
+        await touch.up();
+        expect(await settledScroll(phone.page)).toBeGreaterThan(before);
+        await phone.page.waitForTimeout(300);
+        expect(stage.writes).toEqual([]);
+        expect(stage.node("toggle_arm").parameters["on"]).toBe(false);
+        await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+        if (mode.lock) {
+          // L, in Scroll: not even a tap flips it.
+          await phone.page.locator("#lock").tap();
+          await bringToMiddle(phone.page, ".w.toggle button.ctl");
+          const locked = await center(phone.page, ".w.toggle button.ctl");
+          await touch.down(locked);
+          await touch.up();
+          await phone.page.waitForTimeout(300);
+          expect(stage.writes).toEqual([]);
+          await phone.page.locator("#lock").tap();
+          await expect(phone.page.locator("#lock")).toHaveAttribute("aria-pressed", "false");
+        }
+
+        // A tap: nothing while the finger is down, the flip when it lifts.
+        await bringToMiddle(phone.page, ".w.toggle button.ctl");
+        const again = await center(phone.page, ".w.toggle button.ctl");
+        await touch.down(again);
+        await phone.page.waitForTimeout(250);
+        expect(stage.writes).toEqual([]);
+        await touch.up();
+        await expect.poll(() => stage.writes.length).toBe(1);
+        await stage.settled();
+        expect(stage.writes).toEqual([{ handle: stage.node("toggle_arm").id, values: { on: true }, phase: "commit" }]);
+        expect(stage.node("toggle_arm").parameters["on"]).toBe(true);
+        await expect(toggle).toHaveAttribute("aria-pressed", "true");
+        expect(stage.refused).toEqual([]);
+        expect(phone.errors).toEqual([]);
+      } finally {
+        await phone.context.close();
+        stage.close();
+      }
+    });
+  });
+}
+
+/*
+ * What does not depend on the Touch mode, held in the one a phone starts in (K): a slider
+ * that has a touch keeps it, a momentary button, the page on a desktop, an XY pad.
+ */
 test.describe("§T1607b the phone page under a real touch — a board three screens tall", () => {
   const VIEWPORT = { width: 390, height: 664 };
-
-  test("flicked through from top to bottom touching only sliders, the page scrolls and NOTHING is written", async ({ browser }) => {
-    const stage = await tallStage();
-    const phone = await openPhone(browser, stage.url, VIEWPORT);
-    try {
-      await expect(phone.page.getByRole("slider", { name: sliderCaption(1) })).toBeVisible();
-      const revision = stage.graph().revision;
-      // The premise: the board is three screens tall, and there is nothing to scroll from but controls.
-      const end = await scrollEnd(phone.page);
-      expect(end).toBeGreaterThanOrEqual(2 * VIEWPORT.height);
-
-      const visited = new Set<number>();
-      for (let flick = 0; flick < 30 && !(await atEnd(phone.page, end)); flick += 1) {
-        const before = await scrollTop(phone.page);
-        // Every other flick starts slowly and off-line, as a real thumb often does.
-        await flickFromSlider(phone, 260, flick % 2 === 0);
-        const after = await scrollTop(phone.page);
-        expect(after, `flick ${String(flick + 1)} must move the page`).toBeGreaterThan(before);
-        visited.add(after);
-      }
-      expect(await atEnd(phone.page, end), "the flicks must reach the foot of the board").toBe(true);
-      expect(visited.size).toBeGreaterThanOrEqual(3);
-      // The last slider of the board is on screen: every control was reachable.
-      await expect(phone.page.getByRole("slider", { name: sliderCaption(SLIDERS) })).toBeInViewport();
-
-      // And back up, the same way, from the top-most slider downwards.
-      const touch = finger(phone.cdp);
-      for (let flick = 0; flick < 30 && (await scrollTop(phone.page)) > 0; flick += 1) {
-        const start = await phone.page.evaluate(() => {
-          for (const track of document.querySelectorAll<HTMLElement>(".track")) {
-            const box = track.getBoundingClientRect();
-            if (box.top >= 8) return { x: box.left + box.width * 0.7, y: box.top + box.height / 2 };
-          }
-          return null;
-        });
-        if (start === null) throw new Error("no slider in view to flick from");
-        expect(await kindAt(phone.page, start)).toBe(".track");
-        await touch.down(start);
-        await touch.travel(-5, 260, 9);
-        await touch.up();
-        await settledScroll(phone.page);
-      }
-      expect(await scrollTop(phone.page)).toBe(0);
-
-      // Nothing on the wire, nothing in the document, nothing moved on the phone.
-      await phone.page.waitForTimeout(300);
-      await stage.settled();
-      expect(stage.writes).toEqual([]);
-      expect(stage.graph().revision).toBe(revision);
-      for (let index = 1; index <= SLIDERS; index += 1) expect(stage.node(sliderName(index)).parameters["value"], sliderName(index)).toBe(0.5);
-      await expect(phone.page.getByRole("slider", { name: sliderCaption(1) })).toHaveAttribute("aria-valuenow", "0.5");
-      expect(stage.refused).toEqual([]);
-      expect(phone.errors).toEqual([]);
-    } finally {
-      await phone.context.close();
-      stage.close();
-    }
-  });
-
-  test("a deliberate drag along a slider moves it at once — the first write leaves while the finger is still moving — and the value follows the finger's travel, not its position", async ({ browser }) => {
-    const stage = await tallStage();
-    const phone = await openPhone(browser, stage.url, VIEWPORT);
-    try {
-      const caption = sliderCaption(3);
-      const slider = phone.page.getByRole("slider", { name: caption });
-      await expect(slider).toBeVisible();
-      const box = await center(phone.page, `[role=slider][aria-label="${caption}"]`);
-      // The finger lands a quarter of the way along a slider that shows 0.5: an absolute
-      // slider would jump DOWN to 0.25 on touch.
-      const touch = finger(phone.cdp);
-      await touch.down({ x: box.x - box.width / 4, y: box.y });
-      await phone.page.waitForTimeout(120);
-      expect(stage.writes, "touch-down writes nothing").toEqual([]);
-      // 16 px in two moves: the slider takes the touch at the second (past its 12 px), unmoved.
-      await touch.travel(16, 1, 2);
-      await touch.travel(48, -2, 6);
-      // Still down, still moving: the document already has it.
-      await expect.poll(() => stage.writes.length).toBeGreaterThan(0);
-      expect(stage.writes[0]).toMatchObject({ handle: stage.node(sliderName(3)).id, phase: "live" });
-      await expect.poll(() => stage.node(sliderName(3)).parameters["value"]).not.toBe(0.5);
-      await touch.travel(40, 2, 5);
-      await touch.up();
-      await expect.poll(() => stage.writes.at(-1)?.phase).toBe("commit");
-      await stage.settled();
-
-      // 104 px of travel, 88 of it after the slider took the touch, over a track `width` px long, 0..1.
-      const value = stage.node(sliderName(3)).parameters["value"] as number;
-      expect(value).toBeCloseTo(0.5 + 88 / box.width, 9);
-      await expect(slider).toHaveAttribute("aria-valuenow", String(value));
-      // It only ever rose: no write of the finger's POSITION (0.25 and up) came first.
-      const values = stage.writes.map((set) => set.values["value"] as number);
-      expect(values).toEqual([...values].sort((a, b) => a - b));
-      expect(values[0]).toBeGreaterThan(0.5);
-      expect(stage.writes.filter((set) => set.phase === "commit")).toHaveLength(1);
-      // The drag was the slider's alone: the page stayed, every other control stayed.
-      expect(await scrollTop(phone.page)).toBe(0);
-      expect(new Set(stage.writes.map((set) => set.handle)).size).toBe(1);
-      expect(stage.refused).toEqual([]);
-      expect(phone.errors).toEqual([]);
-    } finally {
-      await phone.context.close();
-      stage.close();
-    }
-  });
 
   test("a slider that has started moving keeps the touch when the finger then wanders up the page", async ({ browser }) => {
     const stage = await tallStage();
@@ -441,6 +674,7 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
       await expect(phone.page.getByRole("slider", { name: caption })).toBeVisible();
       const box = await center(phone.page, `[role=slider][aria-label="${caption}"]`);
       const touch = finger(phone.cdp);
+      // On its knob: the slider shows 0.5, so the knob is the middle of the track.
       await touch.down({ x: box.x, y: box.y });
       await touch.travel(40, 0, 5);
       // Far up the page, off the slider entirely, and on along it.
@@ -452,48 +686,6 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
       // Taken at 16 px; 64 px more along the track, whatever the finger did across it.
       expect(stage.node(sliderName(5)).parameters["value"]).toBeCloseTo(0.5 + 64 / box.width, 9);
       expect(await scrollTop(phone.page)).toBe(0);
-      expect(phone.errors).toEqual([]);
-    } finally {
-      await phone.context.close();
-      stage.close();
-    }
-  });
-
-  test("a toggle under a scrolling finger does not flip; a tap flips it, on release", async ({ browser }) => {
-    const stage = await tallStage();
-    const phone = await openPhone(browser, stage.url, VIEWPORT);
-    try {
-      const toggle = phone.page.getByRole("button", { name: "Arm" });
-      await bringToMiddle(phone.page, ".w.toggle button.ctl");
-      await expect(toggle).toBeInViewport();
-      const at = await center(phone.page, ".w.toggle button.ctl");
-      expect(await kindAt(phone.page, at)).toBe("button.ctl");
-      const touch = finger(phone.cdp);
-
-      // A flick that starts ON the toggle.
-      const before = await scrollTop(phone.page);
-      await touch.down(at);
-      await touch.travel(4, -220, 8);
-      await touch.up();
-      expect(await settledScroll(phone.page)).toBeGreaterThan(before);
-      await phone.page.waitForTimeout(300);
-      expect(stage.writes).toEqual([]);
-      expect(stage.node("toggle_arm").parameters["on"]).toBe(false);
-      await expect(toggle).toHaveAttribute("aria-pressed", "false");
-
-      // A tap: nothing while the finger is down, the flip when it lifts.
-      await bringToMiddle(phone.page, ".w.toggle button.ctl");
-      const again = await center(phone.page, ".w.toggle button.ctl");
-      await touch.down(again);
-      await phone.page.waitForTimeout(250);
-      expect(stage.writes).toEqual([]);
-      await touch.up();
-      await expect.poll(() => stage.writes.length).toBe(1);
-      await stage.settled();
-      expect(stage.writes).toEqual([{ handle: stage.node("toggle_arm").id, values: { on: true }, phase: "commit" }]);
-      expect(stage.node("toggle_arm").parameters["on"]).toBe(true);
-      await expect(toggle).toHaveAttribute("aria-pressed", "true");
-      expect(stage.refused).toEqual([]);
       expect(phone.errors).toEqual([]);
     } finally {
       await phone.context.close();
@@ -559,10 +751,10 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
     }
   });
 
-  /* The same page opened on a desktop: it is an ordinary scrolling document, and a mouse drags by the same rule. */
-  test("on a desktop a wheel over a slider scrolls the page and writes nothing; a mouse drag moves the slider by its travel", async ({ browser }) => {
+  /* The same page opened on a desktop: an ordinary scrolling document, and a mouse drags by each mode's own rule. */
+  test("on a desktop a wheel over a slider scrolls the page and writes nothing; in every Touch mode a mouse drag moves the slider by its travel", async ({ browser }) => {
     const stage = await tallStage();
-    const desk = await openPhone(browser, stage.url, { width: 900, height: 664 }, false);
+    const desk = await openPhone(browser, stage.url, { width: 900, height: 664 }, { desktop: true });
     try {
       const caption = sliderCaption(2);
       await expect(desk.page.getByRole("slider", { name: caption })).toBeVisible();
@@ -573,17 +765,27 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
       await desk.page.waitForTimeout(300);
       expect(stage.writes).toEqual([]);
 
-      const again = await center(desk.page, `[role=slider][aria-label="${sliderCaption(6)}"]`);
-      await desk.page.mouse.move(again.x - 100, again.y);
-      await desk.page.mouse.down();
-      await desk.page.waitForTimeout(100);
-      expect(stage.writes, "a click on a slider writes nothing").toEqual([]);
-      await desk.page.mouse.move(again.x - 84, again.y, { steps: 2 }); // taken at 16 px
-      await desk.page.mouse.move(again.x - 34, again.y + 30, { steps: 5 });
-      await desk.page.mouse.up();
-      await expect.poll(() => stage.writes.at(-1)?.phase).toBe("commit");
-      await stage.settled();
-      expect(stage.node(sliderName(6)).parameters["value"]).toBeCloseTo(0.5 + 50 / again.width, 9);
+      const selector = `[role=slider][aria-label="${sliderCaption(6)}"]`;
+      let value = 0.5;
+      for (const mode of TOUCH_MODES) {
+        await desk.page.selectOption("#touchMode", mode.key);
+        // Measured in this mode: a strip at the edge makes the board, and so the slider, narrower.
+        const track = await center(desk.page, selector);
+        const written = stage.writes.length;
+        const landing = landingOn(mode, track, value);
+        await desk.page.mouse.move(landing.x, landing.y);
+        await desk.page.mouse.down();
+        await desk.page.waitForTimeout(mode.rest + 100);
+        expect(stage.writes, `${mode.letter}: a press on a slider writes nothing`).toHaveLength(written);
+        await desk.page.mouse.move(landing.x + 16, landing.y, { steps: 2 }); // taken at 16 px
+        await desk.page.mouse.move(landing.x + 66, landing.y + 30, { steps: 5 });
+        await desk.page.mouse.up();
+        await expect.poll(() => stage.writes.at(-1)?.phase, mode.letter).toBe("commit");
+        await stage.settled();
+        value += 50 / track.width;
+        expect(stage.node(sliderName(6)).parameters["value"], mode.letter).toBeCloseTo(value, 9);
+        expect(stage.writes.length, `${mode.letter}: the drag was written`).toBeGreaterThan(written);
+      }
       expect(await scrollTop(desk.page)).toBe(300);
       expect(desk.errors).toEqual([]);
     } finally {
@@ -592,9 +794,10 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
     }
   });
 
+  /* A pad that takes every touch on it: Touch mode A, and every mode but K. */
   test("an XY pad still tracks a finger and never scrolls the page; the rail beside it does, and writes nothing", async ({ browser }) => {
     const stage = await tallStage();
-    const phone = await openPhone(browser, stage.url, VIEWPORT);
+    const phone = await openPhone(browser, stage.url, VIEWPORT, { mode: "now" });
     try {
       await bringToMiddle(phone.page, ".pad");
       const pad = await center(phone.page, ".pad");
@@ -645,6 +848,52 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
       stage.close();
     }
   });
+
+  /* §T1647b trial, K: the pad's puck is its knob. */
+  test("in Touch mode K an XY pad follows only from its puck: a flick from anywhere else on it scrolls the page, and there is no rail", async ({ browser }) => {
+    const stage = await tallStage();
+    const phone = await openPhone(browser, stage.url, VIEWPORT, { mode: "knob" });
+    try {
+      await bringToMiddle(phone.page, ".pad");
+      const pad = await center(phone.page, ".pad");
+      const rested = await scrollTop(phone.page);
+      await expect(phone.page.locator("#rail")).toBeHidden();
+      const touch = finger(phone.cdp);
+
+      // Beside the puck, which is in the middle: a quarter of the pad up and to the left of it.
+      const beside = { x: pad.x - pad.width / 4, y: pad.y - pad.height / 4 };
+      expect(await kindAt(phone.page, beside)).toBe(".pad");
+      await touch.down(beside);
+      await touch.travel(4, -200, 8);
+      await touch.up();
+      expect(await settledScroll(phone.page), "a flick from the pad, off its puck, scrolls the page").toBeGreaterThanOrEqual(rested + 100);
+      // ...and a drag along it from there moves nothing.
+      await bringToMiddle(phone.page, ".pad");
+      const again = await center(phone.page, ".pad");
+      await touch.down({ x: again.x - again.width / 4, y: again.y - again.height / 4 });
+      await touch.travel(80, 0, 8);
+      await touch.up();
+      await phone.page.waitForTimeout(300);
+      expect(stage.writes).toEqual([]);
+
+      // From the puck: the pad's, both ways, and the page does not move.
+      const held = await scrollTop(phone.page);
+      await touch.down(again);
+      await touch.travel(60, 60, 10);
+      await touch.up();
+      await expect.poll(() => stage.writes.at(-1)?.phase).toBe("commit");
+      await stage.settled();
+      const aim = stage.node("xypad_aim").parameters;
+      expect(aim["x"]).toBeCloseTo(0.5 + 48 / again.width, 9);
+      expect(aim["y"]).toBeCloseTo(0.5 - 48 / again.height, 9);
+      expect(await settledScroll(phone.page)).toBe(held);
+      expect(stage.refused).toEqual([]);
+      expect(phone.errors).toEqual([]);
+    } finally {
+      await phone.context.close();
+      stage.close();
+    }
+  });
 });
 
 /*
@@ -687,7 +936,7 @@ test.describe("§T1607b the phone page under a real touch — a project's Panels
         }
 
         // To its foot, however many flicks that takes (a row is at least a finger tall, §B269, so these are long boards).
-        await flickToEnd(phone, end, true);
+        await flickToEnd(phone, end, { hesitant: true });
       }
       await phone.page.waitForTimeout(300);
       expect(stage.writes).toEqual([]);
@@ -939,6 +1188,15 @@ test.describe("§B269 the phone page — a board of narrow columns is never crus
       }
       const none = { low: [], short: [], shared: [], cut: [], unnamed: [], sideways: 0, under: 0 };
       expect(found).toEqual({ Robot: none, Scene: none, Cramped: none });
+
+      // §T1647b trial: how tall a row is drawn is the owner's to choose, on the page. On this
+      // board a column is 30 px, so a row is exactly the floor he picks.
+      const row = (): Promise<number> => phone.page.locator("section.panel:not([hidden]) .w.slider").first().evaluate((element) => element.getBoundingClientRect().height);
+      expect(await row()).toBeCloseTo(ROW, 1);
+      for (const px of [44, 32, ROW]) {
+        await phone.page.selectOption("#rowsMode", String(px));
+        expect(await row(), `rows of ${String(px)} px`).toBeCloseTo(px, 1);
+      }
 
       // THE REACH, pressed: a tap two pixels ABOVE what is drawn of a toggle flips it, and one above a preset recalls it.
       const touch = finger(phone.cdp);
