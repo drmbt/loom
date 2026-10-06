@@ -5,15 +5,19 @@
 
 Every exported mesh object is named `<area>.<name>`, one Mesh File In per area in Loom:
 
-  stage.*    deck, riser, stairs, trusses, fixtures, FOH truss and towers, house floor  (lit)
-  grid.*     the upstage vertical members and LED batten housings, in front of the curtain
+  stage.*    deck, riser, stairs, the flown frame, projector hangers, house rig, house floor  (lit)
+  grid.*     the upstage light towers and LED batten housings, BEHIND the scrim
   curtain.*  the upstage drape: the projection canvas, tied back at both ends
   kabuki.*   the midstage sheer (Loom flies it out with a slider)
-  led.*      LED faces: four battens, three riser strips, the deck inserts  (Loom: unlit)
+  led.*      LED faces: four battens and three riser strips  (Loom: unlit)
+  deck.*     the deck's walking surface and its seams (Loom: its own material, the Deck tone fader)
   talent.*   two dancers and a vocalist, for scale and for shadows in the beams
+  rig.*      the three projector bodies and the DS 4' truss, each a PART (loom_part) that
+             Loom's rig kernel tilts or slides with the projector controls
 
 Markers (meshless nodes) carry what Loom needs in their extras, in glTF space (Y up):
-  proj.SR / proj.SL / proj.DS   lens position; loom_look_at, loom_throw_ratio, loom_aspect
+  proj.SR / proj.SL / proj.DS   lens position; loom_look_at, loom_throw_ratio, loom_aspect, loom_keystone_h;
+                                DS also loom_pivot, loom_lens_offset, loom_tilt_deg, loom_curtain_z
   canvas.US                     loom_canvas = [x0, x1, y0, y1, z] of the flat curtain; loom_deck_top
 Cameras: shot.<name> from layout.CAMERAS.
 """
@@ -52,15 +56,27 @@ class MB:
     """Accumulates one object's vertices and faces, with a material name and smooth flag per face."""
 
     def __init__(self):
-        self.v, self.f, self.m, self.s = [], [], [], []
+        self.v, self.f, self.m, self.s, self.uv = [], [], [], [], []
 
-    def add(self, verts, faces, mat, smooth):
+    def add(self, verts, faces, mat, smooth, uv=None):
         base = len(self.v)
         self.v.extend(tuple(p) for p in verts)
         for face in faces:
             self.f.append([base + i for i in face])
             self.m.append(mat)
             self.s.append(smooth)
+            self.uv.append(uv)
+
+    def emitter(self, corners, mat, texel):
+        """One quad whose every corner reads the same FX-feed texel (column, row): Loom's unlit
+        material samples its albedo map at the surface uv, so the quad shows exactly that texel.
+        `corners` go counter-clockwise seen from the side that faces the viewer."""
+        w, h = L.FX_SIZE
+        col, row = texel
+        # texel centres, in the uv Loom's textureLoad reads (index = floor(uv · (size − 1)));
+        # glTF v runs DOWN the image and the exporter writes v = 1 − Blender's v
+        uv = ((col + 0.5) / (w - 1), 1.0 - (row + 0.5) / (h - 1))
+        self.add(corners, [[0, 1, 2, 3]], mat, False, uv=uv)
 
     def box(self, c, size, mat, axes=(X, Vector((0, 1, 0)), Z), skip=()):
         c = Vector(c)
@@ -121,6 +137,14 @@ class MB:
         faces += [[a + k, last, a + (k + 1) % seg] for k in range(seg)]
         self.add(verts, faces, mat, True)
 
+    def prism(self, profile, x0, x1, mat):
+        """A flat-shaded solid: a CLOCKWISE (y, z) profile (y right, z up) extruded from x0 to x1."""
+        n = len(profile)
+        verts = [(x0, y, z) for y, z in profile] + [(x1, y, z) for y, z in profile]
+        faces = [list(range(n)), list(range(2 * n - 1, n - 1, -1))]
+        faces += [[n + i, n + (i + 1) % n, (i + 1) % n, i] for i in range(n)]
+        self.add(verts, faces, mat, False)
+
     def grid(self, points, nu, nv, mat):
         """A smooth quad sheet from a row-major (nu x nv) list of points."""
         faces = []
@@ -152,19 +176,28 @@ class MB:
                 self.cylinder(end + oa, end + ob, lace, mat, seg=5, caps=False)
 
 
-def to_object(name, mb, mats, coll, props=None):
+def to_object(name, mb, mats, coll, props=None, pivot=None):
+    """One object from a builder. A `pivot` becomes the object's origin (vertices stay where
+    they are in the world): a Loom PART's pivot is its node origin, identity rotation."""
     if not mb.v:
         return None
     me = bpy.data.meshes.new(name)
-    me.from_pydata([tuple(v) for v in mb.v], [], mb.f)
+    origin = Vector(pivot) if pivot is not None else Vector((0.0, 0.0, 0.0))
+    me.from_pydata([tuple(Vector(v) - origin) for v in mb.v], [], mb.f)
     names = sorted(set(mb.m))
     for n in names:
         me.materials.append(mats[n])
     me.polygons.foreach_set("material_index", [names.index(n) for n in mb.m])
     me.polygons.foreach_set("use_smooth", mb.s)
+    if any(uv is not None for uv in mb.uv):
+        layer = me.uv_layers.new(name="UVMap")
+        for poly, uv in zip(me.polygons, mb.uv):
+            for loop in range(poly.loop_start, poly.loop_start + poly.loop_total):
+                layer.data[loop].uv = uv if uv is not None else (0.0, 0.0)
     me.validate()
     me.update()
     ob = bpy.data.objects.new(name, me)
+    ob.location = origin
     coll.objects.link(ob)
     ob["loom_area"] = name.split(".", 1)[0]
     for k, val in (props or {}).items():
@@ -177,7 +210,11 @@ def to_object(name, mb, mats, coll, props=None):
 MATERIALS = {
     # name: (base rgb, metallic, roughness, emission rgb, emission strength)
     "deck_black": ((0.018, 0.018, 0.02), 0.0, 0.3, None, 0),
+    # The deck's walking surface: a satin mid-grey, so a projection on it reads. Loom scales it
+    # with the Deck tone fader (its material colour multiplies this base).
+    "deck_floor": ((0.5, 0.5, 0.52), 0.0, 0.6, None, 0),
     "deck_skirt": ((0.30, 0.30, 0.31), 0.0, 0.75, None, 0),
+    "deck_seam": ((0.075, 0.075, 0.08), 0.0, 0.6, None, 0),
     "trim": ((0.55, 0.56, 0.58), 1.0, 0.35, None, 0),
     "riser_black": ((0.02, 0.02, 0.02), 0.0, 0.55, None, 0),
     "stair_steel": ((0.025, 0.025, 0.027), 0.5, 0.5, None, 0),
@@ -188,11 +225,12 @@ MATERIALS = {
     "kabuki_white": ((0.84, 0.83, 0.81), 0.0, 0.92, None, 0),
     "house_floor": ((0.04, 0.04, 0.045), 0.0, 0.85, None, 0),
     "talent": ((0.35, 0.33, 0.31), 0.0, 0.7, None, 0),
-    # LED faces carry their colour as BASE colour and no emission: Loom draws them unlit
-    # (output = base x the LED level slider), and an emissive term would add on top of the
-    # slider, so the LEDs could never be dimmed to off.
-    "led": ((1.0, 0.96, 0.9), 0.0, 0.5, None, 0),
-    "floor_led": ((0.55, 0.55, 0.55), 0.0, 0.5, None, 0),
+    # The grated (blowthrough) decks' walking surface: the deck grey, a touch darker.
+    "grate": ((0.42, 0.42, 0.44), 0.0, 0.65, None, 0),
+    # Pixel-line pixels and strobe windows: WHITE base and no emission. Loom draws them unlit,
+    # their colour the FX feed's texel at their uv times the level slider; any other base would
+    # tint the content, and an emissive term would keep them from dimming to off.
+    "emitter": ((1.0, 1.0, 1.0), 0.0, 0.5, None, 0),
 }
 
 
@@ -300,50 +338,122 @@ def build_stage(mats, coll):
     objs.append(to_object("stage.house_floor", mb, mats, coll))
 
     # deck: black top sheet, grey skirt with panel seams, alu edge trim
+    # the walking surface and its 4' x 8' seams are their own area (`deck.*`), so Loom gives the
+    # floor its own material; the skirt, trim and skirt seams stay with the stage
+    floor = MB()
+    floor.span((-hw, d0, H - L.DECK_TOP_T), (hw, d1, H), "deck_floor")
     mb = MB()
-    mb.span((-hw, d0, H - L.DECK_TOP_T), (hw, d1, H), "deck_black")
     mb.span((-hw + 0.03, d0 + 0.03, 0.0), (hw - 0.03, d1 - 0.03, H - L.DECK_TOP_T), "deck_skirt", skip=("-z",))
     t = 0.035
     mb.span((-hw - t, d0 - t, H - 0.11), (hw + t, d0 + 0.01, H + 0.012), "trim")
     mb.span((-hw - t, d1 - 0.01, H - 0.11), (hw + t, d1 + t, H + 0.012), "trim")
     mb.span((-hw - t, d0, H - 0.11), (-hw + 0.01, d1, H + 0.012), "trim")
     mb.span((hw - 0.01, d0, H - 0.11), (hw + t, d1, H + 0.012), "trim")
-    for k in range(1, 8):
-        x = -hw + k * L.DECK_W / 8
+    # one skirt panel and one top seam per 4' x 8' deck: the stage's scale, readable on the set
+    pw, pd = L.DECK_PANEL
+    for k in range(1, L.DECK_COLS):
+        x = -hw + k * pw
         mb.span((x - 0.012, d0 + 0.015, 0.0), (x + 0.012, d0 + 0.03, H - 0.11), "deck_black")
-    for k in range(1, 5):
-        y = d0 + k * L.DECK_D / 5
+        floor.span((x - 0.008, d0 + 0.01, H - 0.001), (x + 0.008, d1 - 0.01, H + 0.002), "deck_seam", skip=("-z",))
+    for k in range(1, L.DECK_ROWS):
+        y = d0 + k * pd
         mb.span((-hw + 0.015, y - 0.012, 0.0), (-hw + 0.03, y + 0.012, H - 0.11), "deck_black")
         mb.span((hw - 0.03, y - 0.012, 0.0), (hw - 0.015, y + 0.012, H - 0.11), "deck_black")
+        floor.span((-hw + 0.01, y - 0.008, H - 0.001), (hw - 0.01, y + 0.008, H + 0.002), "deck_seam", skip=("-z",))
     objs.append(to_object("stage.deck", mb, mats, coll))
+    objs.append(to_object("deck.floor", floor, mats, coll))
 
-    # riser + side stairs + handrails
+    # the grated (blowthrough) decks: the stage's downstage 48' x 16' and the riser's top, each a
+    # fascia round a 1'6" cavity (the strobes sit in it) under a grated top. The tops are floor
+    # (`deck.*`, Loom's Deck tone), with the 4' x 8' seams and a 1' grating pitch drawn on them.
+    def grated_top(floor, x0, x1, y0, y1, z):
+        floor.span((x0, y0, z - 0.03), (x1, y1, z), "grate")
+        for k in range(1, int(round((x1 - x0) / L.FT))):
+            x = x0 + k * L.FT
+            seam = abs(((x - x0) / pw) - round((x - x0) / pw)) < 1e-6
+            floor.span((x - (0.008 if seam else 0.004), y0 + 0.01, z - 0.001), (x + (0.008 if seam else 0.004), y1 - 0.01, z + 0.002), "deck_seam", skip=("-z",))
+        for k in range(1, int(round((y1 - y0) / L.FT))):
+            y = y0 + k * L.FT
+            seam = abs(((y - y0) / pd) - round((y - y0) / pd)) < 1e-6
+            floor.span((x0 + 0.01, y - (0.008 if seam else 0.004), z - 0.001), (x1 - 0.01, y + (0.008 if seam else 0.004), z + 0.002), "deck_seam", skip=("-z",))
+
+    def fascia(mb, x0, x1, y0, y1, z0, z1):
+        t = 0.04
+        mb.span((x0, y0, z0), (x1, y0 + t, z1), "deck_black")
+        mb.span((x0, y1 - t, z0), (x1, y1, z1), "deck_black")
+        mb.span((x0, y0, z0), (x0 + t, y1, z1), "deck_black")
+        mb.span((x1 - t, y0, z0), (x1, y1, z1), "deck_black")
+
+    grates = MB()
+    frame = MB()
+    sy0, sy1 = L.DS_STRIP
+    fascia(frame, -hw, hw, sy0, sy1, H, L.GRATE_TOP - 0.03)
+    grated_top(grates, -hw, hw, sy0, sy1, L.GRATE_TOP)
+
+    # riser + a stair at each end, facing DOWNSTAGE: one deck wide, beside the riser's face,
+    # climbing upstage from its front line, from the stage grate to a landing at the riser top;
+    # a handrail on the open (offstage) side. Each stair is one sawtooth profile extruded across
+    # its width, standing on the house deck.
     mb = MB()
     ry0, ry1 = L.RISER_Y
-    top = H + L.RISER_H
-    mb.span((-L.RISER_X, ry0, H), (L.RISER_X, ry1, top), "riser_black", skip=("-z",))
-    rise = L.RISER_H / L.STAIR_STEPS
-    sy0, sy1 = L.STAIR_Y
+    top = L.RISER_TOP
+    mb.span((-L.RISER_X, ry0, H), (L.RISER_X, ry1, L.RISER_DECK), "riser_black", skip=("-z",))
+    fascia(frame, -L.RISER_X, L.RISER_X, ry0, ry1, L.RISER_DECK, top - 0.03)
+    grated_top(grates, -L.RISER_X, L.RISER_X, ry0, ry1, top)
+    rise = (top - L.GRATE_TOP) / L.STAIR_STEPS
+    going = L.STAIR_GOING
+    landing = ry0 + (L.STAIR_STEPS - 1) * going
+    profile = [(ry0, H)]
+    for k in range(1, L.STAIR_STEPS):
+        y = ry0 + (k - 1) * going
+        profile += [(y, L.GRATE_TOP + k * rise), (y + going, L.GRATE_TOP + k * rise)]
+    profile += [(landing, top), (ry1, top), (ry1, H)]
     for sgn in (-1, 1):
-        for k in range(L.STAIR_STEPS - 1):
-            outer = L.RISER_X + (L.STAIR_STEPS - 1 - k) * L.STAIR_GOING
-            xs = sorted((sgn * L.RISER_X, sgn * outer))
-            mb.span((xs[0], sy0, H), (xs[1], sy1, H + (k + 1) * rise), "stair_steel", skip=("-z",))
-        foot = L.RISER_X + (L.STAIR_STEPS - 1) * L.STAIR_GOING
-        for y in (sy0 + 0.04, sy1 - 0.04):
-            p_low = Vector((sgn * (foot - 0.1), y, H + rise))
-            p_high = Vector((sgn * (L.RISER_X - 0.05), y, top))
-            for zoff in (0.95, 0.5):
-                mb.cylinder(p_low + Vector((0, 0, zoff)), p_high + Vector((0, 0, zoff)), 0.022, "stair_steel", seg=8)
-            for p in (p_low, p_high):
-                mb.cylinder(p, p + Vector((0, 0, 0.98)), 0.025, "stair_steel", seg=8)
+        xs = sorted((sgn * L.RISER_X, sgn * (L.RISER_X + L.STAIR_W)))
+        mb.prism(profile, xs[0], xs[1], "stair_steel")
+        x = sgn * (L.RISER_X + L.STAIR_W - 0.04)
+        foot = Vector((x, ry0 + 0.12, L.GRATE_TOP + rise))
+        head = Vector((x, landing, top))
+        end = Vector((x, ry1 - 0.05, top))
+        for zoff in (0.95, 0.5):
+            lift = Vector((0, 0, zoff))
+            mb.cylinder(foot + lift, head + lift, 0.022, "stair_steel", seg=8)
+            mb.cylinder(head + lift, end + lift, 0.022, "stair_steel", seg=8)
+        for p in (foot, head, end):
+            mb.cylinder(p, p + Vector((0, 0, 0.98)), 0.025, "stair_steel", seg=8)
     objs.append(to_object("stage.riser", mb, mats, coll))
+    objs.append(to_object("stage.grate_frames", frame, mats, coll))
+    objs.append(to_object("deck.grates", grates, mats, coll))
+
+    # strobes (GLP JDC Burst 1) in the grates' cavities, and the light each throws up through its
+    # grate: a window on the grated top that shows the FX feed's bottom half at the strobe's
+    # place in plan (`strobe.*`, unlit in Loom).
+    bodies = MB()
+    windows = MB()
+    bl, bw, bh = L.STROBE_BODY
+    wl, ww = L.STROBE_WINDOW
+    for _, (x, y), floor_z, top_z in L.strobes():
+        bodies.box((x, y, floor_z + bh / 2), (bl, bw, bh), "fixture_black")
+        bodies.box((x, y, floor_z + bh + 0.004), (wl, ww, 0.008), "lens_glass")
+        z = top_z + 0.004
+        windows.emitter([(x - wl / 2, y - ww / 2, z), (x + wl / 2, y - ww / 2, z), (x + wl / 2, y + ww / 2, z), (x - wl / 2, y + ww / 2, z)],
+                        "emitter", L.fx_texel_strobe(x, y))
+    objs.append(to_object("stage.strobes", bodies, mats, coll))
+    objs.append(to_object("strobe.windows", windows, mats, coll))
 
     # the flown frame: US and DS (kabuki) trusses, side trusses, corner blocks, motors, curtain pipes
     mb = MB()
     tz, tw, tx = L.TRUSS_Z, L.TRUSS_W, L.TRUSS_X
     for y in (L.TRUSS_US_Y, L.TRUSS_DS_Y):
         mb.box_truss((-tx + tw / 2, y, tz), (tx - tw / 2, y, tz), tw, "truss_black")
+    # the side projectors' outriggers: off the downstage truss at each end, out over the deck's
+    # sides to where the projectors hang level with the open deck
+    for sgn in (-1, 1):
+        ox = sgn * L.PROJ_SIDE_LENS[0]
+        oy0, oy1 = L.OUTRIGGER_Y
+        mb.box_truss((ox, oy0 - tw / 2, tz), (ox, oy1, tz), tw, "truss_black")
+        mb.box((ox, oy1, tz + tw / 2 + 0.25), (0.42, 0.32, 0.42), "fixture_black")
+        mb.cylinder((ox, oy1, tz + tw / 2 + 0.46), (ox, oy1, 17.0), 0.012, "truss_black", seg=5, caps=False)
     for x in (-tx, tx):
         mb.box_truss((x, L.TRUSS_DS_Y + tw / 2, tz), (x, L.TRUSS_US_Y - tw / 2, tz), tw, "truss_black")
         for y in (L.TRUSS_US_Y, L.TRUSS_DS_Y):
@@ -357,22 +467,35 @@ def build_stage(mats, coll):
             mb.cylinder((x, y, z), (x, top_of, tz - tw / 2), 0.012, "truss_black", seg=5, caps=False)
     objs.append(to_object("stage.frame", mb, mats, coll))
 
-    # FOH truss on two ground-support towers, a short span in the follow-spot position
-    mb = MB()
-    fy, fz, fh = L.FOH_Y, L.FOH_Z, L.FOH_HALF
-    mb.box_truss((-fh, fy, fz), (fh, fy, fz), tw, "truss_black")
-    for x in (-fh - tw / 2 - 0.02, fh + tw / 2 + 0.02):
-        mb.box_truss((x, fy, 0.05), (x, fy, fz + tw / 2), tw, "truss_black")
-        mb.box((x, fy, fz), (tw + 0.04, tw + 0.04, tw + 0.04), "truss_black")
-        mb.box((x, fy, 0.015), (1.3, 1.3, 0.03), "truss_black")
-    objs.append(to_object("stage.foh", mb, mats, coll))
-
-    # projectors
-    mb = MB()
-    for name, lens, aim, _ in L.projectors():
-        centre, u, h = fixture(mb, lens, aim)
-        hang(mb, centre, u, h, (L.FOH_Z if name == "DS" else L.TRUSS_Z) - tw / 2)
-    objs.append(to_object("stage.projectors", mb, mats, coll))
+    # projectors: each body is a Loom PART in the `rig` area, so the tilt controls turn it.
+    # The side bodies pivot about their lens; their hang pipes stay with the static stage.
+    hangers = MB()
+    for name, lens, aim, _, _ in L.projectors():
+        if name == "DS":
+            continue
+        body = MB()
+        centre, u, h = fixture(body, lens, aim)
+        hang(hangers, centre, u, h, L.TRUSS_Z - tw / 2)
+        objs.append(to_object(f"rig.proj_{name}", body, mats, coll, {"loom_part": f"proj_{name}"}, pivot=lens))
+    objs.append(to_object("stage.projector_hangers", hangers, mats, coll))
+    # The DS body is built LEVEL (zero tilt), facing the scrim; its pivot is the clamp, and Loom
+    # tilts it about that clamp. Its 4' truss, hanger and motor chains are one more part,
+    # which Loom only slides in z.
+    body = MB()
+    lens0 = L.ds_lens(0.0)
+    fixture(body, lens0, (lens0[0], lens0[1] + 1.0, lens0[2]))
+    objs.append(to_object("rig.proj_DS", body, mats, coll, {"loom_part": "proj_DS"}, pivot=L.DS_CLAMP))
+    rig = MB()
+    cx, cy, cz = L.DS_CLAMP
+    half = L.DS_TRUSS_HALF
+    rig.box_truss((-half, cy, L.TRUSS_Z), (half, cy, L.TRUSS_Z), tw, "truss_black")
+    for x in (-half, half):
+        rig.box((x, cy, L.TRUSS_Z), (0.06, tw + 0.02, tw + 0.02), "truss_black")
+        rig.cylinder((x, cy, L.TRUSS_Z + tw / 2), (x, cy, 17.0), 0.012, "truss_black", seg=5, caps=False)
+    rig.cylinder((cx, cy, L.TRUSS_Z - tw / 2), (cx, cy, cz), 0.024, "truss_black", seg=8, caps=False)
+    rig.box((cx, cy, L.TRUSS_Z - tw / 2 - 0.03), (0.08, 0.12, 0.06), "truss_black")
+    rig.box((cx, cy, cz), (0.16, 0.1, 0.05), "truss_black")
+    objs.append(to_object("rig.ds_truss", rig, mats, coll, {"loom_part": "ds_truss"}, pivot=L.DS_CLAMP))
 
     # pedestals with floor fixtures, the IMAG camera on its tripod
     mb = MB()
@@ -391,29 +514,38 @@ def build_stage(mats, coll):
     mb.cylinder((tx_, ty_ + 0.2, 1.57), (tx_, ty_ + 0.42, 1.57), 0.07, "lens_glass", seg=14)
     objs.append(to_object("stage.house_rig", mb, mats, coll))
 
-    # upstage grid: slim vertical trusses and LED batten housings, in front of the curtain
+    # pixel lines (ACME Pixel Line IP): four rows on hung 12" box trusses behind the scrim, three on
+    # a pipe rack in front of the riser. Housings and rigging are `grid.*`; each bar's face is
+    # PIXELS_PER_BAR quads, each showing the FX feed's top half at its own place across the
+    # stage and up it (`led.*`, unlit in Loom).
     mb = MB()
-    for x in L.GRID_X:
-        mb.box_truss((x, L.GRID_Y + 0.08, H), (x, L.GRID_Y + 0.08, L.TRUSS_Z - tw / 2), 0.2, "truss_black", chord=0.016, lace=0.008)
-    for z in L.GRID_BATTEN_Z:
-        mb.span((-L.GRID_BATTEN_X, L.GRID_Y - 0.04, z - 0.045), (L.GRID_BATTEN_X, L.GRID_Y + 0.04, z + 0.045), "fixture_black")
-    objs.append(to_object("grid.structure", mb, mats, coll))
-
-    # LED faces (unlit in Loom): battens, riser strips, deck inserts
-    mb = MB()
-    for z in L.GRID_BATTEN_Z:
-        mb.span((-L.GRID_BATTEN_X + 0.05, L.GRID_Y - 0.052, z - 0.024), (L.GRID_BATTEN_X - 0.05, L.GRID_Y - 0.04, z + 0.024), "led")
-    for z in L.RISER_LED_Z:
-        mb.span((-L.RISER_X + 0.1, ry0 - 0.02, H + z - 0.022), (L.RISER_X - 0.1, ry0 - 0.002, H + z + 0.022), "led")
-    import random
-    rng = random.Random(11)
-    placed = []
-    while len(placed) < 22:
-        x, y = rng.uniform(-6.6, 6.6), rng.uniform(d0 + 0.8, 0.6)
-        if all(abs(x - px) > 1.1 or abs(y - py) > 0.6 for px, py in placed):
-            placed.append((x, y))
-            mb.span((x - 0.26, y - 0.12, H - 0.01), (x + 0.26, y + 0.12, H + 0.006), "floor_led", skip=("-z",))
-    objs.append(to_object("led.faces", mb, mats, coll))
+    pixels = MB()
+    depth, height = L.PIXEL_BAR_SECTION
+    half_row = L.PIXEL_ROW_W / 2
+    for z in L.PIXEL_TRUSS_Z:
+        zc = H + z
+        mb.box_truss((-half_row - 0.15, L.GRID_Y, zc), (half_row + 0.15, L.GRID_Y, zc), L.PIXEL_TRUSS, "truss_black", chord=0.019, lace=0.009)
+        for x in (-half_row + 0.6, 0.0, half_row - 0.6):
+            mb.cylinder((x, L.GRID_Y, zc + L.PIXEL_TRUSS / 2), (x, L.GRID_Y, 17.0), 0.008, "truss_black", seg=5, caps=False)
+    rack_top = H + max(L.PIXEL_RACK_Z) + 0.25
+    post_y = L.PIXEL_RACK_Y + depth / 2 + 0.03
+    for x in L.PIXEL_RACK_POSTS:
+        mb.span((x - 0.305, post_y - 0.305, L.GRATE_TOP), (x + 0.305, post_y + 0.305, L.GRATE_TOP + 0.012), "trim", skip=("-z",))
+        mb.cylinder((x, post_y, L.GRATE_TOP), (x, post_y, rack_top), 0.024, "trim", seg=10)
+    for z in L.PIXEL_RACK_Z:
+        mb.cylinder((-half_row - 0.1, post_y, H + z), (half_row + 0.1, post_y, H + z), 0.024, "trim", seg=10)
+    n = L.PIXELS_PER_BAR
+    for _, _, x0, x1, zc, y in L.pixel_bars():
+        mb.span((x0, y - depth / 2, zc - height / 2), (x1, y + depth / 2, zc + height / 2), "fixture_black")
+        face = y - depth / 2 - 0.002
+        lo, hi = x0 + 0.01, x1 - 0.01
+        for k in range(n):
+            a = lo + (hi - lo) * k / n
+            b = lo + (hi - lo) * (k + 1) / n
+            pixels.emitter([(a, face, zc - 0.018), (b, face, zc - 0.018), (b, face, zc + 0.018), (a, face, zc + 0.018)],
+                           "emitter", L.fx_texel_bar((a + b) / 2, zc))
+    objs.append(to_object("grid.pixel_lines", mb, mats, coll))
+    objs.append(to_object("led.pixels", pixels, mats, coll))
 
     # the drapes
     mb = MB()
@@ -432,7 +564,7 @@ def build_stage(mats, coll):
 
 
 def build_markers(coll):
-    for name, lens, aim, throw in L.projectors():
+    for name, lens, aim, throw, keystone in L.projectors():
         ob = bpy.data.objects.new(f"proj.{name}", None)
         ob.empty_display_type = "CONE"
         ob.empty_display_size = 0.5
@@ -441,13 +573,93 @@ def build_markers(coll):
         ob["loom_look_at"] = gltf(aim)
         ob["loom_throw_ratio"] = round(throw, 4)
         ob["loom_aspect"] = round(L.PROJ_ASPECT, 4)
+        ob["loom_keystone_h"] = round(keystone, 4)
+        if name == "DS":
+            # How the DS lens rides its clamp: Loom recomputes the lens from these as the
+            # truss slides and the body tilts (all glTF, metres and degrees).
+            ob["loom_pivot"] = gltf(L.DS_CLAMP)
+            ob["loom_lens_offset"] = [round(L.DS_LENS_FORWARD, 5), round(L.DS_LENS_DROP, 5)]
+            ob["loom_tilt_deg"] = round(L.ds_rest_tilt(), 4)
+            ob["loom_curtain_z"] = round(-L.CURTAIN_Y, 5)
         coll.objects.link(ob)
     x0, x1, z0, z1 = L.canvas()
     ob = bpy.data.objects.new("canvas.US", None)
     ob.location = (0.0, L.CURTAIN_Y, 0.5 * (z0 + z1))
     ob["loom_canvas"] = [x0, x1, z0, z1, -L.CURTAIN_Y]  # glTF: x range, y range, z of the plane
-    ob["loom_deck_top"] = L.DECK_H
+    ob["loom_deck_top"] = L.GRATE_TOP  # the floor the side projectors throw on: the grated stage deck
     coll.objects.link(ob)
+
+
+def write_fx_map(folder):
+    """The FX feed's pixel map, from the same layout the GLB's uvs come from: a 1920 x 1080 PNG
+    template (Loom's grid test for the feed; a reference layer in Resolume), an SVG of it with
+    every fixture labelled, and a CSV of every pixel's and strobe's texel."""
+    import colorsys
+    import numpy as np
+    w, h = L.FX_SIZE
+    img = np.zeros((h, w, 4), dtype=np.float32)
+    img[..., 3] = 1.0
+    img[: h // 2, ::64, :3] = 0.07                      # top: a line every foot across (64 px)
+    img[h // 2:, ::40, :3] = 0.07                       # bottom: a line every foot across (40 px)
+    img[h // 2 - 1: h // 2 + 1, :, :3] = 0.35           # the halves
+    rows_csv = ["id,fixture,kind,x_m,y_m,z_m,col,row"]
+    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" font-family="Helvetica" font-size="11">',
+           f'<rect width="{w}" height="{h}" fill="#000"/>',
+           f'<line x1="0" y1="{h // 2}" x2="{w}" y2="{h // 2}" stroke="#666"/>',
+           '<text x="8" y="16" fill="#aaa" font-size="14">TOP HALF: ACME Pixel Line IP x 63, front elevation (64 px/ft across; one texel row per bar row)</text>',
+           f'<text x="8" y="{h // 2 + 18}" fill="#aaa" font-size="14">BOTTOM HALF: GLP JDC Burst 1 x 38, plan, downstage at the bottom (40 px/ft across, 22.5 px/ft deep)</text>']
+    n = L.PIXELS_PER_BAR
+    for bar_id, r, x0, x1, z, y in L.pixel_bars():
+        bar_index = int(bar_id.split(".")[1])
+        rgb = colorsys.hsv_to_rgb(r / 7.0, 0.85, 1.0 if bar_index % 2 else 0.55)
+        lo, hi = x0 + 0.01, x1 - 0.01
+        for k in range(n):
+            a = lo + (hi - lo) * k / n
+            b = lo + (hi - lo) * (k + 1) / n
+            col, row = L.fx_texel_bar((a + b) / 2, z)
+            c0, _ = L.fx_texel_bar(a, z)
+            c1, _ = L.fx_texel_bar(b, z)
+            # the sample row, padded a pixel each way, in full colour; a dim margin a row past it
+            pad = L.FX_ZONE_PAD
+            first, last = k == 0, k == n - 1
+            x0z, x1z = c0 - (pad if first else 0), max(c1, c0 + 1) + (pad if last else 0)
+            img[max(row - pad - 2, 0): row + pad + 3, x0z: x1z, :3] = [v * 0.45 for v in rgb]
+            img[max(row - pad, 0): row + pad + 1, x0z: x1z, :3] = rgb
+            rows_csv.append(f"{bar_id}:{k + 1:02d},ACME Pixel Line IP,pixel,{(a + b) / 2:.4f},{y:.4f},{z:.4f},{col},{row}")
+        c0, row = L.fx_texel_bar(lo, z)
+        c1, _ = L.fx_texel_bar(hi, z)
+        hexc = "#%02x%02x%02x" % tuple(int(v * 255) for v in rgb)
+        zh = L.FX_ZONE_PAD
+        svg.append(f'<rect x="{c0 - zh}" y="{row - zh}" width="{c1 - c0 + 2 * zh}" height="{2 * zh + 1}" fill="{hexc}"/>')
+        svg.append(f'<text x="{c0 + 2}" y="{row - zh - 4}" fill="{hexc}">{bar_id}</text>')
+    bl, bw, _ = L.STROBE_BODY
+    half_w = int(bl / L.FT * 40 / 2) + L.FX_ZONE_PAD
+    half_h = int(bw / L.FT * 22.5 / 2) + L.FX_ZONE_PAD
+    for i, (sid, (x, y), _, z) in enumerate(L.strobes()):
+        if sid.startswith("S"):
+            k = int(sid[1:]) - 1
+            rgb = colorsys.hsv_to_rgb((k % 6) / 6.0, 0.8, 1.0 - 0.12 * (k // 6))
+        else:
+            rgb = (1.0, 0.92, 0.75)
+        col, row = L.fx_texel_strobe(x, y)
+        img[row - half_h: row + half_h + 1, col - half_w: col + half_w + 1, :3] = rgb
+        rows_csv.append(f"{sid},GLP JDC Burst 1,strobe,{x:.4f},{y:.4f},{z:.4f},{col},{row}")
+        hexc = "#%02x%02x%02x" % tuple(int(v * 255) for v in rgb)
+        svg.append(f'<rect x="{col - half_w}" y="{row - half_h}" width="{2 * half_w + 1}" height="{2 * half_h + 1}" fill="{hexc}"/>')
+        svg.append(f'<text x="{col - half_w}" y="{row - half_h - 3}" fill="#ddd">{sid} ({col},{row})</text>')
+    svg.append("</svg>")
+    os.makedirs(folder, exist_ok=True)
+    image = bpy.data.images.new("fx-pixel-map", w, h, alpha=True)
+    image.pixels.foreach_set(np.ascontiguousarray(img[::-1]).ravel())   # Blender rows run bottom-up
+    image.filepath_raw = os.path.join(folder, "fx-pixel-map.png")
+    image.file_format = "PNG"
+    image.save()
+    with open(os.path.join(folder, "fx-pixel-map.svg"), "w") as fh:
+        fh.write("\n".join(svg))
+    with open(os.path.join(folder, "fx-pixel-map.csv"), "w") as fh:
+        fh.write("\n".join(rows_csv) + "\n")
+    print(f"[fxmap] {folder}/fx-pixel-map.{{png,svg,csv}}: {len(rows_csv) - 1} texels "
+          f"({len(L.pixel_bars())} bars x {L.PIXELS_PER_BAR} px, {len(L.strobes())} strobes)")
 
 
 def build_cameras(coll):
@@ -526,6 +738,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--blend", default=None)
     ap.add_argument("--preview", default=None)
+    ap.add_argument("--fxmap", default=None, help="folder for fx-pixel-map.{png,svg,csv}")
     a = ap.parse_args(argv)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -536,9 +749,13 @@ def main():
     objs = build_stage(mats, coll)
     build_markers(coll)
     build_cameras(coll)
-    for name, lens, aim, throw in L.projectors():
+    for name, lens, aim, throw, keystone in L.projectors():
         print(f"[proj] {name}: lens {tuple(round(c, 2) for c in lens)} aim {tuple(round(c, 2) for c in aim)} "
-              f"throw {math.dist(lens, aim):.2f} m, ratio {throw:.3f}, image width {math.dist(lens, aim) / throw:.2f} m")
+              f"throw {math.dist(lens, aim):.2f} m, ratio {throw:.3f}, keystone H {keystone:.2f}°")
+    reach = L.DECK_W / 2 + L.PROJ_SIDE_NEAR
+    print(f"[proj] sides: crossed, keystoned square, each {reach / L.FT:.1f}' x {(L.DS_STRIP[1] - L.DS_STRIP[0]) / L.FT:.0f}' on the deck, "
+          f"far edge on the far deck edge, near edge {(L.DECK_W / 2 - L.PROJ_SIDE_NEAR) / L.FT:.1f}' in from its own; "
+          f"overlap in the middle {2 * L.PROJ_SIDE_NEAR / L.FT:.1f}'")
 
     out = os.path.abspath(a.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -547,7 +764,7 @@ def main():
         export_draco_mesh_compression_enable=False,
         export_apply=True, export_yup=True, export_extras=True,
         export_cameras=True, export_lights=False,
-        export_normals=True, export_texcoords=False, export_tangents=False,
+        export_normals=True, export_texcoords=True, export_tangents=False,
         export_animations=False, export_skins=False, export_morph=False,
         export_materials="EXPORT", export_image_format="NONE",
         use_selection=False, use_visible=False,
@@ -558,6 +775,8 @@ def main():
     if a.blend:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(a.blend))
         print(f"[blend] {a.blend}")
+    if a.fxmap:
+        write_fx_map(os.path.abspath(a.fxmap))
     if a.preview:
         preview(a.preview, objs)
 
