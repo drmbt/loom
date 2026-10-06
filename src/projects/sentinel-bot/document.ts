@@ -8,12 +8,12 @@ import { serializePresetBank } from "../../domain/presets/bank.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, SHOTS } from "./camera.ts";
 import { PACK_BARS, against, pace, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
-import { PATH, chamberExpression, pathExpression } from "./path.ts";
+import { CHAMBERS, PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "../furnace/screen-space.ts";
 import { JOINT_ATTRIBUTES, PACK_WANDER, adriftAheadExpression, adriftExpression, ownCountOf, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { HULL_SURFACE_WGSL, hueExpression, lampParameter } from "./surface.ts";
-import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampToneExpression } from "./tunnel.ts";
+import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampHeightExpression, lampToneExpression } from "./tunnel.ts";
 
 /**
  * T1561b — THE SENTINEL DOCUMENT: a robot walking, swimming and perching in the tunnel, played
@@ -111,8 +111,12 @@ export const PACK: readonly Vec3[] = [
   // reach the far wall, so a pack does not walk: while more than one is out, they all swim (constant_swim).
   // (The owner again, of 1.3 across and 0.45 up: "they could still spread out more horizontally and vertically,
   // still too tight on each other". These are as far out as a body goes inside the ribs with a hand to spare.)
-  [1.5, 0.9, -3.4],
-  [-1.5, -0.85, -6.6],
+  // And far enough back that no one's tentacles reach the next ("still not using the space and having tentacles
+  // entangle"): a tentacle is 3.5 m, a robot's nose is 0.9 m ahead of its middle, so 5.5 m from one to the next.
+  // In a hall the places across the tunnel grow with its radius (the rig's `roomy`): there they are 2.9 m out,
+  // and the one above 1.7 m up. The one below stays 0.85 m under the axis: a hall's deck is no lower.
+  [1.5, 0.9, -5.5],
+  [-1.5, -0.85, -11],
 ];
 
 /** Parameters may be slots (expressions, maps); the shared builder's signature takes values only. */
@@ -255,20 +259,27 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     const present = `clamp(op('lag_pack').chan.value - ${index + 1}, 0, 1)`;
     const out = `(${present} * ${present} * (3 - 2 * ${present}))`;
     const own = ownCountOf(offset);
+    // Its place across the tunnel grows with the room there is (rig.ts, `roomy`): sideways and upward in a
+    // hall, and only with the bore itself downward, where a hall's deck is no lower.
+    const wide = `(${on("slider_bore")} / 2.6)`;
+    const roomy = `(${wide} * (1 + ${CHAMBERS.swell} * ${chamberExpression(`(${TRAVEL} + ${offset[2]})`)}))`;
     return {
       out,
-      at: onPath(`(${offset[2]} - 0.3 - 45 * (1 - ${out}) + ${adrift} * 0.5 * sin(6.2831853 * (${STROKE} - 0.125)))`, `${offset[0]} + ${adrift} * ${adriftExpression("x", own)}`, `${offset[1]} + ${adrift} * ${adriftExpression("y", own)}`, [offset[0], offset[1], offset[2]]),
+      at: onPath(`(${offset[2]} - 0.3 - 45 * (1 - ${out}) + ${adrift} * 0.5 * sin(6.2831853 * (${STROKE} - 0.125)))`, `${offset[0]} * ${roomy} + ${adrift} * ${adriftExpression("x", own)}`, `${offset[1]} * ${offset[1] > 0 ? roomy : wide} + ${adrift} * ${adriftExpression("y", own)}`, [offset[0], offset[1], offset[2]]),
     };
   });
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
-  const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; tone: readonly [string, string, string] } => {
+  const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; high: string; tone: readonly [string, string, string] } => {
     const station = `(floor(${TRAVEL} / ${LAMP_SPACING}) + ${step})`;
     const z = `((floor(${TRAVEL} / ${LAMP_SPACING}) + ${step + 0.5}) * ${LAMP_SPACING})`;
     const at = pathExpression(z);
     const rest = (step + 0.5) * LAMP_SPACING;
     return {
-      position: { x: expressionSlot(at.x, 0), y: expressionSlot(`${at.y} + ${on("slider_bore")} - 0.35`, 2.25), z: expressionSlot(z, rest) },
+      position: { x: expressionSlot(at.x, 0), y: expressionSlot(lampHeightExpression(z, on("slider_bore")), 2.25), z: expressionSlot(z, rest) },
       near: `clamp(1.5 - abs(${z} - ${TRAVEL}) / ${LAMP_SPACING}, 0, 1)`,
+      // A hall's lamp hangs higher and is the bigger lamp for it, by the square of how much higher: the deck
+      // under it is lit as a plain bore's is.
+      high: `pow(1 + ${CHAMBERS.swell} * ${chamberExpression(z)}, 2)`,
       // The light is the colour of the plate it hangs under (tunnel.ts, LAMP_TONES).
       tone: lampToneExpression(station),
     };
@@ -628,7 +639,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         "color.r": expressionSlot(lamp.tone[0], 0.62),
         "color.g": expressionSlot(lamp.tone[1], 0.84),
         "color.b": expressionSlot(lamp.tone[2], 1),
-        intensity: expressionSlot(`${on("slider_lamp")} * ${lamp.near} * (0.7 + ${LOW} * 0.8)`, index === 1 ? 26 : 0),
+        intensity: expressionSlot(`${on("slider_lamp")} * ${lamp.near} * ${lamp.high} * (0.7 + ${LOW} * 0.8)`, index === 1 ? 26 : 0),
         position: [0, 2.25, (index - 0.5) * LAMP_SPACING],
         "position.x": lamp.position.x,
         "position.y": lamp.position.y,

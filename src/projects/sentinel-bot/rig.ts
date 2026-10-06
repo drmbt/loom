@@ -378,7 +378,8 @@ struct Trail {
   radius: f32, // how far off that axis the socket is, metres
   right: vec3f, // the body's right and up: the bundle starts on these and settles onto the tunnel's
   up: vec3f,
-  offset: vec2f, // the body's place off the tunnel's axis: the bundle is drawn back onto the axis behind it
+  offset: vec2f, // the body's place off the tunnel's axis now
+  berth: vec2f, // …and the part of it that is its standing place there (a pack's station): the tail keeps to that line
   flare: f32, // how far the ends stand apart at rest, metres
   swim: f32, // how much it is swimming, 0 to 1
   stroke: f32, // where the swimming beat is, 0 to 1
@@ -437,9 +438,12 @@ fn trailShape(t: Trail, s: f32) -> vec3f {
   // A slow sway of the whole tail, a pendulum's: nothing at the body, most at the tip.
   let sway = sideways * sin(t.time * 0.45 + t.phase * 1.3) * 0.26 * reach * reach;
   // The tail goes where the body WENT: s metres back it is where the body had wandered to half a second
-  // a metre ago. What else has the body off the axis (the tentacles that carry it) dies away behind it.
+  // a metre ago, about the line the body itself keeps (its berth: a pack's robots fly beside the axis, and
+  // drawn back onto the axis every tail of a pack pointed at the middle of the tunnel; the owner,
+  // 2026-10-06: "a weird pull towards center instead of their own reference"). What else has the body off
+  // that line (the tentacles that carry it) dies away behind it.
   let wandered = t.adrift * adriftAcross(t.time, t.own);
-  let followed = t.adrift * adriftAcross(t.time - s * 0.5, t.own) + (t.offset - wandered) * exp(-s / 1.5);
+  let followed = t.berth + t.adrift * adriftAcross(t.time - s * 0.5, t.own) + (t.offset - t.berth - wandered) * exp(-s / 1.5);
   return tunnel.origin + tunnel.right * followed.x + tunnel.up * followed.y + around * trailRadius(t, s).x + squiggle + sway;
 }
 
@@ -507,7 +511,14 @@ fn process(p: Point, ctx: PointCtx) -> Point {
     return q;
   }
   let arriving = 1.0 - present * present * (3.0 - 2.0 * present);
-  let offset = params.offset + ROBOT_OFFSET[robot] - vec3f(0.0, 0.0, 45.0 * arriving);
+  // A robot's place off the leader's is given for the plain bore. Where the tunnel is wider (a hall, or the
+  // panel's Tunnel turned up) the pack takes the room: its places across the tunnel grow with the radius there.
+  // Not downward in a hall: a hall's walls and crown stand further off but its deck does not sink, and a
+  // robot sent 1.9 times as far under the axis flew through the floor.
+  let berth = ROBOT_OFFSET[robot];
+  let wide = params.bore / 2.6;
+  let roomy = wide * (1.0 + CHAMBER_SWELL * chamberAt(params.travel + berth.z));
+  let offset = params.offset + vec3f(berth.x * roomy, berth.y * select(wide, roomy, berth.y > 0.0), berth.z - 45.0 * arriving);
   let swimming = swimAt(params.swim, params.travel + offset.z);
   // Where the gait counts from: the rungs it plants on are a matter of how far it has come.
   let bodyZ = robotZ(params.travel, offset, params.swim, params.stroke);
@@ -629,10 +640,11 @@ fn process(p: Point, ctx: PointCtx) -> Point {
     trail.right = body.right;
     trail.up = body.up;
     trail.offset = vec2f(dot(off, axis.right), dot(off, axis.up));
+    trail.berth = offset.xy;
     // Swimming flings the ends wide at the top of the beat and draws them in after it (trailRadius).
     // In company the ends are held in and the stroke flings them less wide: they would lie across the next robot.
-    trail.flare = (0.18 + 0.7 * params.flare) * mix(1.0, 0.5, clamp(params.company, 0.0, 1.0));
-    trail.swim = swimming * mix(1.0, 0.45, clamp(params.company, 0.0, 1.0));
+    trail.flare = (0.18 + 0.7 * params.flare) * mix(1.0, 0.3, clamp(params.company, 0.0, 1.0));
+    trail.swim = swimming * mix(1.0, 0.25, clamp(params.company, 0.0, 1.0));
     trail.stroke = params.stroke;
     trail.adrift = adrift;
     trail.own = ownCount(offset);

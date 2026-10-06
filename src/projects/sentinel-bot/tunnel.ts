@@ -1,6 +1,6 @@
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import { CAMERA_PARAMS, VIEW } from "../furnace/screen-space.ts";
-import { PATH, chamberAt, chamberExpression, chamberWgsl, pathWgsl } from "./path.ts";
+import { CHAMBERS, PATH, chamberAt, chamberExpression, chamberWgsl, pathExpression, pathWgsl } from "./path.ts";
 
 /**
  * T1561b — THE TUNNEL: a bore the robots climb, as geometry inside the Render.
@@ -265,6 +265,23 @@ fn surface(s: SurfaceIn, p: Params) -> SurfaceOut {
 }`;
 
 /** How many lamp stations either side of the robot's own a mirror on it can show, and the air can glow round: five lamps, 64 m of tunnel. */
+/**
+ * How bright a lamp's beam of lit air is against the same lamp as a bare point. Set by eye in a hall, where
+ * the lens is often inside a beam: at 2.5 the whole frame went to milk, at 1 the cone shows and the walls
+ * keep their dark.
+ */
+export const BEAM_GAIN = 1;
+/** A lamp's light hangs this far under its plate, metres: a point light in the wall's own surface lights nothing. */
+export const LAMP_HANGS = 0.35;
+/**
+ * How high the lamp at `z` along the tunnel hangs, as an expression: under its plate, wherever the wall there
+ * holds it. A hall's crown is higher (path.ts, CHAMBERS); left at the plain bore's height the light, its lit air
+ * and its picture in the steel all hung metres under the plate in a hall (the owner, 2026-10-06: "this random
+ * sphere that is visible with like a gap").
+ */
+export function lampHeightExpression(z: string, bore: string): string {
+  return `${pathExpression(z).y} + ${bore} * (1 + ${CHAMBERS.swell} * ${chamberExpression(z)}) - ${LAMP_HANGS}`;
+}
 export const LAMPS_MIRRORED = 2;
 /** The lamps a pass is handed: the station the robot is under and `LAMPS_MIRRORED` either side. */
 const NEAR_LAMPS = Array.from({ length: LAMPS_MIRRORED * 2 + 1 }, (_, index) => index);
@@ -317,11 +334,12 @@ fn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft:
  *
  *   haze   the far wall goes into a cold murk that is never quite black, so what stands in
  *          front of it has an outline;
- *   glow   the air itself is lit round every lamp and round the robot's face: what each pixel's
- *          ray picks up on its way to the wall from a point light in even air, which has a
- *          closed form (the integral of 1/d² along a line is an arctangent), so it costs two
- *          arctangents a light and no marching. No shadows in it: a halo and a cone of lit air,
- *          not shafts between the ribs.
+ *   glow   the air itself is lit under every lamp and round the robot's face: what each pixel's
+ *          ray picks up on its way to the wall, in even air. Both have a closed form, so there
+ *          is no marching. The face is a point (the integral of 1/d² along a line is an
+ *          arctangent): a halo. A lamp is a plate that shines down (the cube of the cosine off
+ *          straight down, which integrates without an arctangent): a cone hanging from the
+ *          plate, and nothing above it. No shadows in either: not shafts between the ribs.
  *
  * (The owner, 2026-10-05: "volumetric light or an approximation could be neat"; "we still
  * missing some haze or something. it looks too clean".) Until a stock haze exists (§T1402b)
@@ -347,6 +365,9 @@ ${LAMP_PARAMS_WGSL}
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
 ${VIEW}
 ${chamberWgsl()}${LAMP_TONE_WGSL}
+// A lamp's light hangs this far under its plate (document.ts, lampAt); its lit air starts at the plate.
+const LAMP_HANGS: f32 = ${LAMP_HANGS.toFixed(2)};
+const BEAM_GAIN: f32 = ${BEAM_GAIN.toFixed(2)};
 // How much of a point light at \`light\` the air along a ray throws back, per unit of the light and of the air's
 // own share: the integral of 1/d² from the lens out to \`reach\` metres, dimmed by the air it then crosses.
 fn airlight(origin: vec3f, ray: vec3f, reach: f32, light: vec3f) -> f32 {
@@ -356,6 +377,48 @@ fn airlight(origin: vec3f, ray: vec3f, reach: f32, light: vec3f) -> f32 {
   let c = sqrt(max(dot(q, q) - b * b, 0.03));
   let nearest = clamp(-b, 0.0, reach);
   return (atan((reach + b) / c) - atan(b / c)) / c * exp(-nearest * params.density);
+}
+
+// The same for a LAMP, which is not a point: it is a plate in the crown that shines down, most straight down
+// and nothing above its own height (the cube of the cosine off straight down). So its lit air is a cone
+// hanging from the plate, not a ball round a point under it. That integral is closed too, and has no
+// arctangent in it: with s the distance along the ray from its nearest point to the plate, c that nearest
+// distance, and the depth under the plate there under + sink * s, it is the integral of
+// (under + sink * s)³ / (s² + c²)^(5/2), taken over the part of the ray that is below the plate.
+// A hall's lamp is the bigger lamp, by the square of how much higher it hangs (document.ts, lampAt).
+fn hallLamp(z: f32) -> f32 {
+  let high = 1.0 + CHAMBER_SWELL * chamberAt(z);
+  return high * high;
+}
+
+fn beamUpTo(s: f32, c2: f32, under: f32, sink: f32) -> f32 {
+  let r2 = s * s + c2;
+  let r3 = r2 * sqrt(r2);
+  let j0 = s / (3.0 * c2 * r3) + 2.0 * s / (3.0 * c2 * c2 * sqrt(r2));
+  let j1 = -1.0 / (3.0 * r3);
+  let j2 = s * s * s / (3.0 * c2 * r3);
+  let j3 = -(3.0 * s * s + 2.0 * c2) / (3.0 * r3);
+  return under * under * under * j0 + 3.0 * under * under * sink * j1 + 3.0 * under * sink * sink * j2 + sink * sink * sink * j3;
+}
+
+fn beamlight(origin: vec3f, ray: vec3f, reach: f32, plate: vec3f) -> f32 {
+  let q = origin - plate;
+  let b = dot(ray, q);
+  let c2 = max(dot(q, q) - b * b, 0.03);
+  let sink = -ray.y;
+  let under = b * ray.y - q.y;
+  var s0 = b;
+  var s1 = reach + b;
+  if (sink > 1e-4) {
+    s0 = max(s0, -under / sink);
+  } else if (sink < -1e-4) {
+    s1 = min(s1, -under / sink);
+  } else if (under <= 0.0) {
+    return 0.0;
+  }
+  if (s1 <= s0) { return 0.0; }
+  let nearest = clamp(-b, s0 - b, s1 - b);
+  return max(beamUpTo(s1, c2, under, sink) - beamUpTo(s0, c2, under, sink), 0.0) * BEAM_GAIN * exp(-nearest * params.density);
 }
 
 @fragment
@@ -368,7 +431,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let reach = select(z / max(dot(ray, view.forward), 1e-4), params.far, z < 0.0);
   let clear = exp(-reach * params.density);
   var air = params.eyeColor * params.eyes * airlight(params.eye, ray, reach, params.eyesAt);
-${NEAR_LAMPS.map((index) => `  air = air + lampTone(params.station + ${(index - LAMPS_MIRRORED).toFixed(1)}) * params.lamp * airlight(params.eye, ray, reach, params.${lampParameter(index)});`).join("\n")}
+${NEAR_LAMPS.map((index) => `  air = air + lampTone(params.station + ${(index - LAMPS_MIRRORED).toFixed(1)}) * params.lamp * hallLamp(params.${lampParameter(index)}.z) * beamlight(params.eye, ray, reach, params.${lampParameter(index)} + vec3f(0.0, LAMP_HANGS, 0.0));`).join("\n")}
   return vec4f(mix(params.color, lit.rgb, clear) + air * params.glow, lit.a);
 }`;
 
@@ -426,7 +489,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // The lamp it is nearest, and the robot's eyes: inverse square, as the lights themselves fall off.
   let station = floor(z / LAMP);
   let lampAt = pathFrame((station + 0.5) * LAMP);
-  let toLamp = lampAt.origin + lampAt.up * (ctx.params.bore - 0.35) - q.position;
+  // Under the plate, wherever the wall there holds it: a hall's crown is higher (CHAMBERS).
+  let toLamp = lampAt.origin + lampAt.up * (ctx.params.bore * (1.0 + CHAMBER_SWELL * chamberAt((station + 0.5) * LAMP)) - ${LAMP_HANGS.toFixed(2)}) - q.position;
   let eyesAt = pathAt(ctx.params.travel + 0.9);
   let toEyes = eyesAt - q.position;
   let lit = lampTone(station) * ctx.params.lamp / (1.0 + dot(toLamp, toLamp)) + ctx.params.eyeColor * ctx.params.eyes / (0.3 + dot(toEyes, toEyes));

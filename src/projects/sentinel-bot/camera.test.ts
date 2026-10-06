@@ -129,9 +129,9 @@ describe("the sentinel camera", () => {
         expect(Math.hypot(ahead - shot.aim, out["right"] as number, out["up"] as number)).toBeLessThan(4.5);
         expect(shot.ride).toBe(1);
       } else if (shot.subject === "pack") {
-        // At the middle of the echelon, which is three metres behind the leader.
+        // At the middle of the echelon, which is some five metres behind the leader.
         expect(shot.aim).toBeLessThan(-1);
-        expect(shot.aim).toBeGreaterThan(-5);
+        expect(shot.aim).toBeGreaterThan(-8);
       } else if (ahead < -1) {
         // Behind the robot and not a tail shot: it looks past it, down the tunnel.
         expect(shot.aim).toBeGreaterThan(3);

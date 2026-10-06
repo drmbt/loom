@@ -38,7 +38,7 @@ interface Shot {
 }
 
 export const SHOT_TABLE: readonly Shot[] = [
-  { name: "chase", what: "behind, looking down the tunnel past the robot; the panel's distance and pad trim it. Behind the WHOLE pack: it stands back 3.1 m for each one more that is out", ahead: "(0 - distance - (pack - 1) * 3.1)", right: "viewX", up: "viewY", lens: 55, aim: 3.3, ride: 0, subject: "robot" },
+  { name: "chase", what: "behind, looking down the tunnel past the robot; the panel's distance and pad trim it. Behind the WHOLE pack: it stands back 5.5 m for each one more that is out", ahead: "(0 - distance - (pack - 1) * 5.5)", right: "viewX", up: "viewY", lens: 55, aim: 3.3, ride: 0, subject: "robot" },
   { name: "lead", what: "ahead, looking back into the eyes", ahead: "5.5", right: "(0 - 0.9)", up: "0.35", lens: 48, aim: 0.3, ride: 0, subject: "robot" },
   { name: "flank", what: "beside it, close and wide: the tentacles pass the lens", ahead: "0.4", right: "2", up: "0.15", lens: 68, aim: 0.3, ride: 0, subject: "robot" },
   { name: "post", what: "planted low on the deck at a station ahead; the robot comes, passes and goes", ahead: "(post - value)", right: "1.6", up: "(0 - 1.3)", lens: 40, aim: 0.3, ride: 0, subject: "robot" },
@@ -55,12 +55,13 @@ export const SHOT_TABLE: readonly Shot[] = [
   { name: "tips", what: "a long lens from well behind: the ends large, the body small beyond them", ahead: "(0 - 6.8)", right: "0.8 * sin(abstime * 0.13)", up: "0.45", lens: 26, aim: -2.6, ride: 1, subject: "tail" },
   { name: "tailround", what: "slowly round the bundle, an arm's length off it", ahead: "(0 - 2.1 + 0.7 * sin(abstime * 0.19))", right: "1.15 * cos(abstime * 0.33)", up: "1.15 * sin(abstime * 0.33)", lens: 48, aim: -2, ride: 1, subject: "tail" },
   // ── The pack: placed for the formation it flies in (document.ts, PACK: an echelon, the second up and out to the
-  // leader's right three metres back, the third down and out to its left six back), so that all of them are in the
-  // frame and a body's width apart. The test projects the three through each of these ──
-  { name: "packfront", what: "a long lens from well ahead, off to the left: three faces, stepped back across the frame", ahead: "10", right: "(0 - 0.85 + 0.12 * sin(abstime * 0.17))", up: "0.45", lens: 30, aim: -3, ride: 0.4, subject: "pack" },
-  { name: "packquarter", what: "ahead and above, wide: the three coming at the lens, one high, one low", ahead: "3.4", right: "0.2", up: "1.7", lens: 78, aim: -3, ride: 0.4, subject: "pack" },
-  { name: "packrear", what: "a long lens from well behind and high: three tails, and the tunnel they are going into", ahead: "(0 - 17)", right: "0.2", up: "1", lens: 30, aim: -3, ride: 0.3, subject: "pack" },
-  { name: "packunder", what: "from low on the right just ahead of them, wide, looking back and up as they come over (the place a search over the bore found that holds them furthest apart: 1.7 m)", ahead: "1", right: "1.4", up: "(0 - 1.5)", lens: 80, aim: -3, ride: 0.3, subject: "pack" },
+  // leader's right 5.5 m back, the third down and out to its left 11 back), so that all of them are in the frame
+  // and more than a body's width apart. Each place was found by a search over the bore with the test's own
+  // arithmetic, for the largest robots that stay apart; the test projects the three through each ──
+  { name: "packfront", what: "a long lens from ahead, high on the left: three faces, stepped back down the tunnel", ahead: "6", right: "(0 - 0.9 + 0.1 * sin(abstime * 0.17))", up: "1.6", lens: 24, aim: -4, ride: 0.4, subject: "pack" },
+  { name: "packquarter", what: "close ahead and above on the left: the leader under the lens, the others strung out behind", ahead: "2", right: "(0 - 1.2)", up: "1.6", lens: 60, aim: -4, ride: 0.4, subject: "pack" },
+  { name: "packrear", what: "a long lens from well behind, clear of the last one's tail (it ends 15 m behind the leader): three tails stepped up the tunnel", ahead: "(0 - 19.5)", right: "0.5", up: "0.4", lens: 32, aim: -5.5, ride: 0.3, subject: "pack" },
+  { name: "packunder", what: "from low on the right just ahead of them, looking back and up as they come over", ahead: "1", right: "1.5", up: "(0 - 1.3)", lens: 70, aim: -4, ride: 0.3, subject: "pack" },
 ];
 
 export const SHOTS: readonly string[] = SHOT_TABLE.map((shot) => shot.name);

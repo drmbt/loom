@@ -3,11 +3,12 @@ import { pointStorageId } from "../../nodes/definitions/point-storage.ts";
 import { kernelRegionSlice } from "../../nodes/definitions/test-support.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "../../tests/headless/render-harness.ts";
+import { evaluateExpression } from "../../domain/expressions/evaluate.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 import { CHAMBERS, chamberAt, pathAt } from "./path.ts";
 import { JOINT_ATTRIBUTES, jointCount, jointKernel, spinePick } from "./rig.ts";
-import { BORE_ATTRIBUTES, BORE_KERNEL } from "./tunnel.ts";
+import { BORE_ATTRIBUTES, BORE_KERNEL, LAMP_HANGS, lampHeightExpression } from "./tunnel.ts";
 
 /**
  * T1561b — the sentinel's rig, read off the JOINT BUFFER on a real GPU.
@@ -51,9 +52,11 @@ interface Walk {
   charge(instant: number, tentacle: number, station: number): number;
 }
 
-async function walk(instants: number, parameters: Record<string, number | number[]> = {}): Promise<Walk> {
+async function walk(count: number, parameters: Record<string, number | number[]> = {}, places?: ReadonlyArray<readonly [number, number, number]>): Promise<Walk> {
+  // Handed places, it is a pack standing in them, not one robot's successive instants.
+  const instants = places?.length ?? count;
   const step = SPAN / instants;
-  const robots = Array.from({ length: instants }, (_, index) => [0, 0, index * step] as const);
+  const robots = places ?? Array.from({ length: instants }, (_, index) => [0, 0, index * step] as const);
   // No wave: it is a deliberate departure from the arc, measured on its own below.
   const joints = node("kernel_joints", "pointKernel", [0, 0], { capacity: PER_ROBOT * instants, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(FACTS, robots, SPINE), variety: 0, wave: 0, ...parameters });
   const result = await renderHeadless({
@@ -78,10 +81,10 @@ async function walk(instants: number, parameters: Record<string, number | number
   if (errors.length > 0) throw new Error(errors.map((diagnostic) => diagnostic.message).join("; "));
   const packed = (result.buffers ?? {})[pointStorageId("kernel_joints")];
   if (packed === undefined) throw new Error("probe buffers missing");
-  const count = PER_ROBOT * instants;
+  const points = PER_ROBOT * instants;
   const read = (attribute: string): { floats: Float32Array; stride: number } => {
     const floats = kernelRegionSlice(joints as never, packed, attribute).floats;
-    return { floats, stride: floats.length / count };
+    return { floats, stride: floats.length / points };
   };
   const position = read("position");
   const kind = read("kind");
@@ -104,6 +107,31 @@ async function walk(instants: number, parameters: Record<string, number | number
     slip: (instant, tentacle, station) => slip.floats[slot(instant, tentacle, station) * slip.stride] as number,
     charge: (instant, tentacle, station) => charge.floats[slot(instant, tentacle, station) * charge.stride] as number,
   };
+}
+
+/**
+ * Where a point is across the tunnel: right and up of the centreline, on the tunnel's own frame at the place
+ * along it the point is abreast of. (The tunnel turns by tens of degrees: world x is not "right" in a bend.)
+ */
+function acrossTunnel(point: Vec): [number, number] {
+  const tangentAt = (z: number): Vec => {
+    const [ahead, behind] = [pathAt(z + 0.01), pathAt(z - 0.01)];
+    const along = minus(ahead, behind);
+    const length = norm(along);
+    return [along[0] / length, along[1] / length, along[2] / length];
+  };
+  let z = point[2];
+  // Abreast: the centreline's own tangent there has no part in what is left over.
+  for (let pass = 0; pass < 8; pass += 1) {
+    const [off, tangent] = [minus(point, pathAt(z)), tangentAt(z)];
+    z += (off[0] * tangent[0] + off[1] * tangent[1] + off[2] * tangent[2]) / tangent[2];
+  }
+  const [off, forward] = [minus(point, pathAt(z)), tangentAt(z)];
+  // The rig's own frame (path.ts, pathFrame): right is level, up is what is left.
+  const level = Math.hypot(forward[2], forward[0]);
+  const right: Vec = [forward[2] / level, 0, -forward[0] / level];
+  const up: Vec = [forward[1] * right[2] - forward[2] * right[1], forward[2] * right[0] - forward[0] * right[2], forward[0] * right[1] - forward[1] * right[0]];
+  return [off[0] * right[0] + off[1] * right[1] + off[2] * right[2], off[0] * up[0] + off[1] * up[1] + off[2] * up[2]];
 }
 
 /** The largest move any deployed ring makes between successive instants, with the body's own step taken out. */
@@ -235,6 +263,12 @@ describe("the sentinel's rig — every joint, across two strides", () => {
       const first = row * COLS * stride;
       const radius = Math.hypot((floats[first] as number) - mean[0], (floats[first + 1] as number) - mean[1], (floats[first + 2] as number) - mean[2]);
       expect(Math.abs(radius - (2.6 * (1 + CHAMBERS.swell * chamberAt(mean[2])) + 0.05))).toBeLessThan(2e-4);
+      // A lamp here hangs under THIS wall's crown, hall or bore, by what the document's own expression says:
+      // its light, its lit air and its picture in the steel are all placed by it. (At the plain bore's height
+      // in a hall they hung 2.3 m under the plate: a ball of lit air with a gap over it.)
+      const lamp = evaluateExpression(lampHeightExpression("z", "bore"), { z: mean[2], bore: 2.6 });
+      if (!lamp.ok) throw new Error("the lamp's height does not evaluate");
+      expect(Math.abs(lamp.value - (mean[1] + radius - 0.05 - LAMP_HANGS))).toBeLessThan(3e-4);
       swollen = Math.max(swollen, chamberAt(mean[2]));
     }
     // The window really did cross into a hall, so the line above was not read on plain bore alone.
@@ -271,6 +305,62 @@ describe("the sentinel's rig — every joint, across two strides", () => {
     // The beat is the difference: cut `stroke` and the two poses are one. Open, the claws stand at least a metre further off the axis.
     // Measured: 1.45 m off the axis open, 0.59 m drawn in.
     expect(open.spread - shut.spread).toBeGreaterThan(0.5);
+  }, 120_000);
+
+  it("flies in a pack: each robot keeps its own place, takes a hall's room but not its floor, and trails its tail behind ITSELF", async () => {
+    // The owner, 2026-10-06, of a pack whose tails were drawn back onto the tunnel's axis: "their tentacles
+    // are in a weird pull towards center instead of their own reference". Three robots, one up and out to the
+    // right and behind, one down and out to the left further behind; drawn in (Company 1, the bottom of the
+    // stroke), on rails so nothing wanders.
+    const BERTHS = [[1.5, 0.9, -5.5], [-1.5, -0.85, -11]] as const;
+    /** Where each follower stands off the leader, across the tunnel: at their sockets, and at their claws. */
+    const apart = async (travel: number): Promise<Array<{ sockets: [number, number]; claws: [number, number] }>> => {
+      const pack = await walk(3, { swim: 1, stroke: 0.55, carry: 0, company: 1, travel }, [[0, 0, 0], ...BERTHS]);
+      const mean = (robot: number, station: number): [number, number] => {
+        const sum: [number, number] = [0, 0];
+        for (let tentacle = 0; tentacle < TENTACLES; tentacle += 1) {
+          const joint = pack.at(robot, tentacle, station);
+          if (joint === undefined) throw new Error("a swimming tentacle is stowed");
+          const off = acrossTunnel(joint);
+          sum[0] += off[0] / TENTACLES;
+          sum[1] += off[1] / TENTACLES;
+        }
+        return sum;
+      };
+      const [leaderSockets, leaderClaws] = [mean(0, 0), mean(0, FACTS.ringCount)];
+      return BERTHS.map((_, index) => {
+        const [sockets, claws] = [mean(index + 1, 0), mean(index + 1, FACTS.ringCount)];
+        return { sockets: [sockets[0] - leaderSockets[0], sockets[1] - leaderSockets[1]], claws: [claws[0] - leaderClaws[0], claws[1] - leaderClaws[1]] };
+      });
+    };
+    // Plain bore: the place asked. In unison (Variety 0) the tails are the same shape, so what stands between
+    // two of them at the claws is the berth again; drawn onto the axis it was a tenth of it (0.18 m, 0.11 m).
+    const bore = await apart(0);
+    for (const [index, berth] of BERTHS.entries()) {
+      expect(chamberAt(berth[2])).toBe(0);
+      for (const axis of [0, 1] as const) {
+        expect(Math.abs((bore[index]?.sockets[axis] as number) - berth[axis])).toBeLessThan(0.06);
+        expect(Math.abs((bore[index]?.claws[axis] as number) - berth[axis])).toBeLessThan(0.06);
+      }
+    }
+    // In a hall the wall stands 1.9 bore radii off: the places across the tunnel grow by as much, and the one
+    // above rises by as much, tails and all. The one below does not sink: a hall's deck is where the bore's is
+    // (0.74 of 2.6 m under the axis), and at 1.9 times its depth it flew through the floor (the owner,
+    // 2026-10-06: "so far on the floor that it actually clips through").
+    const middle = CHAMBERS.spacing / 2;
+    const hall = await apart(middle);
+    for (const [index, berth] of BERTHS.entries()) {
+      // Each stands where the hall is as wide as it is abreast of it: the last of them is still on its flare.
+      const roomy = 1 + CHAMBERS.swell * chamberAt(middle + berth[2]);
+      expect(roomy).toBeGreaterThan(1.1);
+      const asked = [berth[0] * roomy, berth[1] * (berth[1] > 0 ? roomy : 1)];
+      for (const axis of [0, 1] as const) {
+        expect(Math.abs((hall[index]?.sockets[axis] as number) - (asked[axis] as number))).toBeLessThan(0.06);
+        expect(Math.abs((hall[index]?.claws[axis] as number) - (asked[axis] as number))).toBeLessThan(0.06);
+      }
+    }
+    // The leader is on the axis, so the lower one's middle is this far over the deck: a metre, not a hand.
+    expect((hall[1]?.sockets[1] as number) + 2.6 * 0.74).toBeGreaterThan(0.9);
   }, 120_000);
 
   it("crosses a chamber swimming: told to walk, in the middle of a hall every claw has let go and trails", async () => {
