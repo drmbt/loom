@@ -183,8 +183,15 @@ describe("a Geometry drawing a mesh at every point (T1581b)", () => {
       expect(draws.map((pass) => pass.id).sort()).toEqual(["shot0:gbuffer:0", "shot0:scene:0", "shot0:shadow:0:0"]);
       for (const draw of draws) {
         // The shape's packed buffer, the records, the index list — and nothing per attribute.
-        expect([draw.id, draw.buffers?.map((buffer) => buffer.binding)]).toEqual([draw.id, ["packed0", "packed1", "meshIndices"]]);
-        expect([draw.id, draw.buffers?.map((buffer) => buffer.resourceId)]).toEqual([draw.id, ["scratch:file:meshPoints", "scratch:geo:instanceRecords", "scratch:file:meshIndices"]]);
+        // The LIT draw reads one buffer more, and it is the Render's, not the geometry's: the
+        // light table every lit surface draw walks (T1623b slice 3). The Normal layer and the
+        // light's sweep shade by no light and bind the producers' three.
+        const lit = draw.id === "shot0:scene:0";
+        expect([draw.id, draw.buffers?.map((buffer) => buffer.binding)]).toEqual([draw.id, ["packed0", "packed1", "meshIndices", ...(lit ? ["lightTable"] : [])]]);
+        expect([draw.id, draw.buffers?.map((buffer) => buffer.resourceId)]).toEqual([
+          draw.id,
+          ["scratch:file:meshPoints", "scratch:geo:instanceRecords", "scratch:file:meshIndices", ...(lit ? ["scratch:shot0:lightTable"] : [])],
+        ]);
         // The mesh's 12 triangles, once per counted instance.
         expect([draw.id, draw.instances, draw.vertexCount]).toEqual([draw.id, counts[which], 36]);
         // The object matrix is already in the records: the draw is handed no model matrix.
@@ -303,7 +310,8 @@ describe("custom instance attributes on a mesh-instancing Geometry (T1581b)", ()
     const draws = passesOf(compiled).filter((pass): pass is DrawPassDescriptor => pass.kind === "draw" && /^shot0:(scene|gbuffer|shadow:0):0$/.test(pass.id));
     for (const draw of draws) {
       // Still a buffer per producer (§V588): the fields are regions of the records the draw already binds.
-      expect([draw.id, draw.buffers?.map((buffer) => buffer.binding)]).toEqual([draw.id, ["packed0", "packed1", "meshIndices"]]);
+      // (The lit draw's fourth buffer is the Render's light table, T1623b slice 3: none of it is a field's.)
+      expect([draw.id, draw.buffers?.map((buffer) => buffer.binding)]).toEqual([draw.id, ["packed0", "packed1", "meshIndices", ...(draw.id === "shot0:scene:0" ? ["lightTable"] : [])]]);
     }
     // A depth sweep shades nothing and reads no field.
     expect(String(draws.find((pass) => pass.id === "shot0:shadow:0:0")?.shader)).not.toContain("instanceField_");
