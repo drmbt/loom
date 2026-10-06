@@ -6839,6 +6839,19 @@
           "range": 12,
           "shadowCasters": "geometry_ring geometry_claw",
           "shadowExtent": 12,
+          "shadowOn": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": true
+              }
+            },
+            "mode": "expression"
+          },
           "shadowSoftness": 1.5,
           "shadows": true
         },

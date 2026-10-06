@@ -1204,6 +1204,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       position: [0, 0, -0.3], "position.x": core.x, "position.y": core.y, "position.z": core.z,
       falloff: "inverseSquare", range: 12, shadows: true, shadowExtent: 12, shadowSoftness: 1.5,
       shadowCasters: hingedClaws ? "geometry_ring geometry_hub" : "geometry_ring geometry_claw",
+      // THE SHADOW IS THE TUNNEL'S (§T1688b: Shadow On, a value). It is what puts the robot IN the bore, and out of
+      // the bore nothing is in its twelve metres to take it: the fields have no wall, the dock's and the temple's
+      // stand twenty and thirty metres off. There its six sweeps of every ring and claw were the largest single
+      // cost of the frame for nothing (the lead's measurement, §T1666b: 2.8 to 3.0 ms of 10.5 to 12.4 with the pack
+      // out). So it is on in the tunnel and out in a place, and no sweep draws a caster while it is out.
+      shadowOn: expressionSlot(`(1 - ${OUT})`, true),
     }, { label: "light_body" }),
     // Each follower of the pack throws its own light too, or it is a row of dots in the dark and not a robot in a
     // tunnel: one light at its middle, the legs' colour, as bright as it is out (and where it is: coming up from behind).
