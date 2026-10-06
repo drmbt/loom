@@ -1,4 +1,5 @@
 import { HAZE_WGSL } from "./air.ts";
+import { SEARCH, SEARCH_CAPACITY, SEARCH_KERNEL, SEARCH_LIGHT_KERNEL, searchParameters } from "./searchlight.ts";
 import { GLITCH_WGSL } from "./glitch.ts";
 import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
@@ -207,6 +208,8 @@ const LIGHTS: readonly Slider[] = [
   { name: "slider_hueturn", caption: "Colour turn", value: 0, min: -0.5, max: 0.5 },
   { name: "slider_spread", caption: "Colour spread", value: 0.6, min: 0, max: 1 },
   { name: "slider_hueshift", caption: "Colour follows level", value: 0.4, min: 0, max: 1 },
+  // A white beam from the front of each robot (searchlight.ts): by itself now and then out of the tunnel; up, always.
+  { name: "slider_search", caption: "Searchlights", value: 0, min: 0, max: 1 },
   { name: "slider_glow", caption: "Eyes", value: 9, min: 0, max: 30 },
   { name: "slider_eyehits", caption: "Eyes on drums", value: 0.6, min: 0, max: 1 },
   { name: "slider_eyesweep", caption: "Eye sweep (beat)", value: 0.25, min: 0, max: 1 },
@@ -348,6 +351,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const glow = onPath(`(${face.toFixed(3)} + ${lunge})`, wander.x, wander.y, [0, 0, face]);
   // The middle of the body, between the sockets: where the light of its own tentacles is.
   const core = onPath(`(-0.3 + ${lunge})`, wander.x, wander.y, [0, 0, -0.3]);
+  /** How far a searchlight's far end is swung off straight ahead, metres: each robot's on slow counts of its own. */
+  const searchSway = (robot: number, axis: "x" | "y"): string => (axis === "x" ? `5 * sin(abstime * 0.6 + ${(robot * 2.1).toFixed(2)})` : `2.5 * sin(abstime * 0.43 + ${(robot * 1.3).toFixed(2)})`);
   /**
    * Where each follower of the pack is, and how far out (0 to 1), as expressions: what the rig does with `pack` for
    * the robot of that index (its place off the leader's, 45 m further back while it is on its way, wandering on its own count).
@@ -361,11 +366,43 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // Out in the fields there is all the room there is, below as well as above (rig.ts, FIELD_BERTH).
     const wide = `(${on("slider_bore")} / 2.6)`;
     const roomy = `(${wide} * (1 + ${CHAMBERS.swell} * max(${chamberExpression(`(${TRAVEL} + ${offset[2]})`)}, ${FIELD_BERTH} * ${OUT})))`;
+    // Where its middle is: metres along from the leader's, and across and up from the line.
+    const along = `(${offset[2]} - 0.3 - 45 * (1 - ${out}) + ${adrift} * ${swimLungeExpression(STROKE, index + 1, WAY)})`;
+    const across = `${offset[0]} * ${roomy} + ${adrift} * ${adriftExpression("x", own)}`;
+    const up = `${offset[1]} * ${offset[1] > 0 ? roomy : `max(${wide}, ${roomy} * ${PLACE})`} + ${adrift} * ${adriftExpression("y", own)}`;
     return {
       out,
-      at: onPath(`(${offset[2]} - 0.3 - 45 * (1 - ${out}) + ${adrift} * ${swimLungeExpression(STROKE, index + 1, WAY)})`, `${offset[0]} * ${roomy} + ${adrift} * ${adriftExpression("x", own)}`, `${offset[1]} * ${offset[1] > 0 ? roomy : `max(${wide}, ${roomy} * ${PLACE})`} + ${adrift} * ${adriftExpression("y", own)}`, [offset[0], offset[1], offset[2]]),
+      at: onPath(along, across, up, [offset[0], offset[1], offset[2]]),
+      // …and its face, and a point it looks toward (its searchlight's two ends: searchlight.ts).
+      face: onPath(`(${along} + ${(face + 0.3).toFixed(3)})`, across, up, [offset[0], offset[1], offset[2] + face]),
+      toward: onPath(`(${along} + 30)`, `${across} + ${searchSway(index + 1, "x")}`, `${up} + ${searchSway(index + 1, "y")}`, [offset[0], offset[1], offset[2] + 30]),
     };
   });
+  /**
+   * THE SEARCHLIGHTS (searchlight.ts): each robot's, from its face toward a point thirty metres on that swings
+   * about. Out of the tunnel they come on for some four-bar phrases (a little more than half) and go off for the
+   * rest, eased, so they are an event and not a fixture; the panel's Searchlights holds them on anywhere.
+   */
+  const SEARCHING = "op('lag_search').chan.value";
+  const searchEnds = [
+    { face: glow, toward: onPath(`(${face.toFixed(3)} + 30 + ${lunge})`, `${wander.x} + ${searchSway(0, "x")}`, `${wander.y} + ${searchSway(0, "y")}`, [0, 0, face + 30]), level: SEARCHING },
+    ...followers.map((follower) => ({ face: follower.face, toward: follower.toward, level: `(${SEARCHING} * ${follower.out})` })),
+  ];
+  const beaming: Record<string, StoredParameter> = Object.fromEntries(
+    Array.from({ length: SEARCH.robots }, (_, robot) => {
+      const names = searchParameters(robot);
+      const ends = searchEnds[robot];
+      // A robot the pack does not have (a render of one): no beam.
+      if (ends === undefined) return [[names.level, 0] as const];
+      return [
+        [names.face, [0, 0, 0]] as const,
+        ...(["x", "y", "z"] as const).map((axis) => [`${names.face}.${axis}`, ends.face[axis]] as const),
+        [names.toward, [0, 0, 30]] as const,
+        ...(["x", "y", "z"] as const).map((axis) => [`${names.toward}.${axis}`, ends.toward[axis]] as const),
+        [names.level, expressionSlot(ends.level, 0)] as const,
+      ];
+    }).flat(),
+  );
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
   const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; high: string; tone: readonly [string, string, string] } => {
     const station = `(floor(${TRAVEL} / ${LAMP_SPACING}) + ${step})`;
@@ -926,6 +963,17 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("geometry_flames", "geometry", [-2400, 9200], { mode: "surface", material: "material_flame", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_flames" }),
     node("kernel_fires", "pointKernel", [-3600, 9650], { capacity: FORMATIONS, attributes: FIRE_ATTRIBUTES, kernel: FIRE_KERNEL, ...burning, power: expressionSlot(`${on("slider_lamp")} * 9.2`, 240) }, { label: "kernel_fires" }),
     node("light_fires", "light", [-3300, 9650], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_fires" }),
+    // The robots' searchlights (searchlight.ts): a cone of lit air from each one's face, drawn as light, and a Spot along it.
+    node("constant_search", "constant", [-1500, 1875], { value: expressionSlot(`max(${on("slider_search")}, ${OUT} * (${phraseDraw(BAR, 9)} < 0.55))`, 0) }, { label: "constant_search" }),
+    node("lag_search", "valueLag", [-1200, 1875], { lag: 0.35, releaseRatio: 1 }, { label: "lag_search" }),
+    node("kernel_search", "pointKernel", [-3600, 10000], { capacity: SEARCH_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: SEARCH_KERNEL, ...beaming }, { label: "kernel_search" }),
+    node("topology_search", "pointTopology", [-3300, 10000], { connectivity: "strips", cols: SEARCH.points, rows: SEARCH.robots }, { label: "topology_search" }),
+    node("frames_search", "pointCurveFrames", [-3000, 10000], { method: "minimiseTwist", up: [0, 1, 0] }, { label: "frames_search" }),
+    node("sweep_search", "pointSweep", [-2700, 10000], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_search" }),
+    node("material_search", "materialWgsl", [-2700, 10200], { model: "pbr", source: BEAM_SURFACE_WGSL, glow: 0.35 }, { label: "material_search" }),
+    node("geometry_search", "geometry", [-2400, 10000], { mode: "surface", material: "material_search", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_search" }),
+    node("kernel_searchlights", "pointKernel", [-3600, 10450], { capacity: SEARCH.robots, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: SEARCH_LIGHT_KERNEL, ...beaming, power: 110 }, { label: "kernel_searchlights" }),
+    node("light_search", "light", [-3300, 10450], { kind: "spot", mode: "points", direction: map("aim", [0, 0, 1]), cone: 16, coneSoftness: 0.6, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_search" }),
     // Lightning: an arc between two towers and its forks (field.ts, BOLT_KERNEL), and a Light where it is.
     node("kernel_bolts", "pointKernel", [-3600, 5100], { capacity: BOLT_CAPACITY, attributes: BOLT_ATTRIBUTES, kernel: BOLT_KERNEL, ...striking }, { label: "kernel_bolts" }),
     node("topology_bolts", "pointTopology", [-3300, 5100], { connectivity: "strips", cols: FIELD.boltPoints, rows: FIELD.bolts }, { label: "topology_bolts" }),
@@ -1023,9 +1071,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ),
     node("render_shot", "render", [-1200, 0], {
       // The dust is last: additive geometry is light, drawn over what it glows on (and out of the Depth output since B256).
-      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_towers", "geometry_bolts", "geometry_hall", "geometry_bridges", "geometry_cave", "geometry_formations", "geometry_beams", "geometry_flames", "geometry_motes"].join(" "),
+      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_towers", "geometry_bolts", "geometry_hall", "geometry_bridges", "geometry_cave", "geometry_formations", "geometry_beams", "geometry_flames", "geometry_search", "geometry_motes"].join(" "),
       camera: "camera_rig",
-      lights: ["light_eyes", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), "light_lamps", "light_strike", "light_storm", "light_docklamps", "light_beams", "light_fires", ...namedLamps.map((_, index) => `light_lamp${index}`)].join(" "),
+      lights: ["light_eyes", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), "light_lamps", "light_strike", "light_storm", "light_docklamps", "light_beams", "light_fires", "light_search", ...namedLamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
       // A little cold fill and no more: an unlit stretch may be black (the owner, 2026-10-05).
       // …and in the fields more of it: there is no wall to be black against, and the towers have only this, the
@@ -1193,7 +1241,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("grid-cave", ["grid_cave", "out"], ["kernel_cave", "in"]),
     edge("cave-geo", ["kernel_cave", "out"], ["geometry_cave", "points"]),
     edge("fires-light", ["kernel_fires", "out"], ["light_fires", "points"]),
-    ...(["towers", "bolts", "bridges", "beams", "formations", "flames"] as const).flatMap((what) => [
+    edge("search-ease", ["constant_search", "out"], ["lag_search", "in"]),
+    edge("search-light", ["kernel_searchlights", "out"], ["light_search", "points"]),
+    ...(["towers", "bolts", "bridges", "beams", "formations", "flames", "search"] as const).flatMap((what) => [
       edge(`${what}-strips`, [`kernel_${what}`, "out"], [`topology_${what}`, "points"]),
       edge(`${what}-frames`, [`topology_${what}`, "out"], [`frames_${what}`, "points"]),
       edge(`${what}-sweep`, [`frames_${what}`, "out"], [`sweep_${what}`, "points"]),

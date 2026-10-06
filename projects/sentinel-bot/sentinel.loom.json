@@ -1163,7 +1163,7 @@
       },
       "panel_all-slider_chase": {
         "id": "panel_all-slider_chase",
-        "order": 42,
+        "order": 43,
         "source": {
           "nodeId": "slider_chase",
           "portId": "out"
@@ -1211,7 +1211,7 @@
       },
       "panel_all-slider_eyehits": {
         "id": "panel_all-slider_eyehits",
-        "order": 38,
+        "order": 39,
         "source": {
           "nodeId": "slider_eyehits",
           "portId": "out"
@@ -1223,7 +1223,7 @@
       },
       "panel_all-slider_eyesweep": {
         "id": "panel_all-slider_eyesweep",
-        "order": 39,
+        "order": 40,
         "source": {
           "nodeId": "slider_eyesweep",
           "portId": "out"
@@ -1307,7 +1307,7 @@
       },
       "panel_all-slider_glow": {
         "id": "panel_all-slider_glow",
-        "order": 37,
+        "order": 38,
         "source": {
           "nodeId": "slider_glow",
           "portId": "out"
@@ -1415,7 +1415,7 @@
       },
       "panel_all-slider_legs": {
         "id": "panel_all-slider_legs",
-        "order": 40,
+        "order": 41,
         "source": {
           "nodeId": "slider_legs",
           "portId": "out"
@@ -1427,7 +1427,7 @@
       },
       "panel_all-slider_meter": {
         "id": "panel_all-slider_meter",
-        "order": 41,
+        "order": 42,
         "source": {
           "nodeId": "slider_meter",
           "portId": "out"
@@ -1497,6 +1497,18 @@
           "portId": "controls"
         }
       },
+      "panel_all-slider_search": {
+        "id": "panel_all-slider_search",
+        "order": 37,
+        "source": {
+          "nodeId": "slider_search",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_all",
+          "portId": "controls"
+        }
+      },
       "panel_all-slider_shot": {
         "id": "panel_all-slider_shot",
         "order": 29,
@@ -1511,7 +1523,7 @@
       },
       "panel_all-slider_spark": {
         "id": "panel_all-slider_spark",
-        "order": 43,
+        "order": 44,
         "source": {
           "nodeId": "slider_spark",
           "portId": "out"
@@ -1667,7 +1679,7 @@
       },
       "panel_lights-slider_chase": {
         "id": "panel_lights-slider_chase",
-        "order": 10,
+        "order": 11,
         "source": {
           "nodeId": "slider_chase",
           "portId": "out"
@@ -1679,7 +1691,7 @@
       },
       "panel_lights-slider_eyehits": {
         "id": "panel_lights-slider_eyehits",
-        "order": 6,
+        "order": 7,
         "source": {
           "nodeId": "slider_eyehits",
           "portId": "out"
@@ -1691,7 +1703,7 @@
       },
       "panel_lights-slider_eyesweep": {
         "id": "panel_lights-slider_eyesweep",
-        "order": 7,
+        "order": 8,
         "source": {
           "nodeId": "slider_eyesweep",
           "portId": "out"
@@ -1703,7 +1715,7 @@
       },
       "panel_lights-slider_glow": {
         "id": "panel_lights-slider_glow",
-        "order": 5,
+        "order": 6,
         "source": {
           "nodeId": "slider_glow",
           "portId": "out"
@@ -1763,7 +1775,7 @@
       },
       "panel_lights-slider_legs": {
         "id": "panel_lights-slider_legs",
-        "order": 8,
+        "order": 9,
         "source": {
           "nodeId": "slider_legs",
           "portId": "out"
@@ -1775,7 +1787,7 @@
       },
       "panel_lights-slider_meter": {
         "id": "panel_lights-slider_meter",
-        "order": 9,
+        "order": 10,
         "source": {
           "nodeId": "slider_meter",
           "portId": "out"
@@ -1785,9 +1797,21 @@
           "portId": "controls"
         }
       },
+      "panel_lights-slider_search": {
+        "id": "panel_lights-slider_search",
+        "order": 5,
+        "source": {
+          "nodeId": "slider_search",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "panel_lights",
+          "portId": "controls"
+        }
+      },
       "panel_lights-slider_spark": {
         "id": "panel_lights-slider_spark",
-        "order": 11,
+        "order": 12,
         "source": {
           "nodeId": "slider_spark",
           "portId": "out"
@@ -2301,6 +2325,72 @@
         "target": {
           "nodeId": "lag_rush",
           "portId": "in"
+        }
+      },
+      "search-ease": {
+        "id": "search-ease",
+        "source": {
+          "nodeId": "constant_search",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "lag_search",
+          "portId": "in"
+        }
+      },
+      "search-frames": {
+        "id": "search-frames",
+        "source": {
+          "nodeId": "topology_search",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "frames_search",
+          "portId": "points"
+        }
+      },
+      "search-geo": {
+        "id": "search-geo",
+        "source": {
+          "nodeId": "sweep_search",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geometry_search",
+          "portId": "points"
+        }
+      },
+      "search-light": {
+        "id": "search-light",
+        "source": {
+          "nodeId": "kernel_searchlights",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "light_search",
+          "portId": "points"
+        }
+      },
+      "search-strips": {
+        "id": "search-strips",
+        "source": {
+          "nodeId": "kernel_search",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "topology_search",
+          "portId": "points"
+        }
+      },
+      "search-sweep": {
+        "id": "search-sweep",
+        "source": {
+          "nodeId": "frames_search",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "sweep_search",
+          "portId": "points"
         }
       },
       "shot-reflect": {
@@ -2857,6 +2947,31 @@
         },
         "type": "constant"
       },
+      "constant_search": {
+        "definitionVersion": 1,
+        "id": "constant_search",
+        "label": "constant_search",
+        "parameters": {
+          "value": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(op('slider_search').chan.search, max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))) * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 9) * 12.9898) * 43758.5453) < 0.55))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -1500,
+          "y": 1875
+        },
+        "type": "constant"
+      },
       "constant_spiral": {
         "definitionVersion": 1,
         "id": "constant_spiral",
@@ -3233,6 +3348,24 @@
         "position": {
           "x": -1950,
           "y": 300
+        },
+        "type": "pointCurveFrames"
+      },
+      "frames_search": {
+        "definitionVersion": 1,
+        "id": "frames_search",
+        "label": "frames_search",
+        "parameters": {
+          "method": "minimiseTwist",
+          "up": [
+            0,
+            1,
+            0
+          ]
+        },
+        "position": {
+          "x": -3000,
+          "y": 10000
         },
         "type": "pointCurveFrames"
       },
@@ -3660,6 +3793,39 @@
         "position": {
           "x": -1800,
           "y": 150
+        },
+        "type": "geometry"
+      },
+      "geometry_search": {
+        "definitionVersion": 1,
+        "id": "geometry_search",
+        "label": "geometry_search",
+        "parameters": {
+          "blend": "additive",
+          "material": "material_search",
+          "mode": "surface",
+          "tint": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            },
+            "mode": "map"
+          }
+        },
+        "position": {
+          "x": -2400,
+          "y": 10000
         },
         "type": "geometry"
       },
@@ -5313,6 +5479,643 @@
         },
         "type": "pointKernel"
       },
+      "kernel_search": {
+        "definitionVersion": 1,
+        "id": "kernel_search",
+        "label": "kernel_search",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"girth\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,0]}]",
+          "capacity": 24,
+          "face0": [
+            0,
+            0,
+            0
+          ],
+          "face0.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "face0.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "face0.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.6395103454589843
+              }
+            },
+            "mode": "expression"
+          },
+          "face1": [
+            0,
+            0,
+            0
+          ],
+          "face1.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.5
+              }
+            },
+            "mode": "expression"
+          },
+          "face1.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.9
+              }
+            },
+            "mode": "expression"
+          },
+          "face1.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -4.8604896545410154
+              }
+            },
+            "mode": "expression"
+          },
+          "face2": [
+            0,
+            0,
+            0
+          ],
+          "face2.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -1.5
+              }
+            },
+            "mode": "expression"
+          },
+          "face2.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.85
+              }
+            },
+            "mode": "expression"
+          },
+          "face2.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -10.360489654541016
+              }
+            },
+            "mode": "expression"
+          },
+          "kernel": "// T1561b — the robots' searchlights, as cones of lit air (src/projects/sentinel-bot/searchlight.ts).\nstruct Params {\n  face0: vec3f, // @default [0, 0, 0]  Where robot 0's face is.\n  toward0: vec3f, // @default [0, 0, 30]  A point it looks toward.\n  level0: f32, // @default 0  How bright its beam is, 0 to 1.\n  face1: vec3f, // @default [0, 0, -5.5]  Where robot 1's face is.\n  toward1: vec3f, // @default [0, 0, 24.5]  A point it looks toward.\n  level1: f32, // @default 0  How bright its beam is, 0 to 1.\n  face2: vec3f, // @default [0, 0, -11]  Where robot 2's face is.\n  toward2: vec3f, // @default [0, 0, 19]  A point it looks toward.\n  level2: f32, // @default 0  How bright its beam is, 0 to 1.\n};\nstruct Search {\n  foot: vec3f,\n  along: vec3f,\n  level: f32,\n};\nfn searchOf(robot: u32, p: Params) -> Search {\n  var s: Search;\n  if (robot == 0u) { s.foot = p.face0; s.along = p.toward0 - p.face0; s.level = p.level0; }\n  if (robot == 1u) { s.foot = p.face1; s.along = p.toward1 - p.face1; s.level = p.level1; }\n  if (robot == 2u) { s.foot = p.face2; s.along = p.toward2 - p.face2; s.level = p.level2; }\n  s.along = normalize(s.along + vec3f(0.0, 0.0, 1e-5));\n  return s;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let beam = searchOf(ctx.index / 8u, ctx.params);\n  let along = f32(ctx.index % 8u) / 7.00000;\n  if (beam.level < 0.01) {\n    q.position = vec3f(beam.foot.x, -4000.0, beam.foot.z);\n    q.girth = 0.0;\n    q.tint = vec4f(0.0);\n    return q;\n  }\n  q.position = beam.foot + beam.along * (along * 34.00000);\n  // A lens at the face, opening to two and a half metres across at the far end.\n  q.girth = 0.1 + 1.15 * along;\n  q.tint = vec4f(beam.level, 0.0, 0.0, along);\n  return q;\n}",
+          "level0": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('lag_search').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "level1": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('lag_search').chan.value * (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "level2": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('lag_search').chan.value * (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "toward0": [
+            0,
+            0,
+            30
+          ],
+          "toward0.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)) + 5 * sin(abstime * 0.6 + 0.00)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "toward0.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)) + 2.5 * sin(abstime * 0.43 + 0.00)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "toward0.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 30.639510345458984
+              }
+            },
+            "mode": "expression"
+          },
+          "toward1": [
+            0,
+            0,
+            30
+          ],
+          "toward1.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000)) + 5 * sin(abstime * 0.6 + 2.10)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.5
+              }
+            },
+            "mode": "expression"
+          },
+          "toward1.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000)) + 2.5 * sin(abstime * 0.43 + 1.30)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.9
+              }
+            },
+            "mode": "expression"
+          },
+          "toward1.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 24.5
+              }
+            },
+            "mode": "expression"
+          },
+          "toward2": [
+            0,
+            0,
+            30
+          ],
+          "toward2.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650)) + 5 * sin(abstime * 0.6 + 4.20)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -1.5
+              }
+            },
+            "mode": "expression"
+          },
+          "toward2.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500)) + 2.5 * sin(abstime * 0.43 + 2.60)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.85
+              }
+            },
+            "mode": "expression"
+          },
+          "toward2.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 19
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -3600,
+          "y": 10000
+        },
+        "type": "pointKernel"
+      },
+      "kernel_searchlights": {
+        "definitionVersion": 1,
+        "id": "kernel_searchlights",
+        "label": "kernel_searchlights",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,1]},{\"name\":\"power\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"aim\",\"type\":\"vec3f\",\"default\":[0,-1,0]}]",
+          "capacity": 3,
+          "face0": [
+            0,
+            0,
+            0
+          ],
+          "face0.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "face0.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "face0.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + (0.640 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.6395103454589843
+              }
+            },
+            "mode": "expression"
+          },
+          "face1": [
+            0,
+            0,
+            0
+          ],
+          "face1.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.5
+              }
+            },
+            "mode": "expression"
+          },
+          "face1.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.9
+              }
+            },
+            "mode": "expression"
+          },
+          "face1.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 0.940))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -4.8604896545410154
+              }
+            },
+            "mode": "expression"
+          },
+          "face2": [
+            0,
+            0,
+            0
+          ],
+          "face2.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -1.5
+              }
+            },
+            "mode": "expression"
+          },
+          "face2.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.85
+              }
+            },
+            "mode": "expression"
+          },
+          "face2.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 0.940))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -10.360489654541016
+              }
+            },
+            "mode": "expression"
+          },
+          "kernel": "// T1561b — the robots' searchlights, as lights (src/projects/sentinel-bot/searchlight.ts).\nstruct Params {\n  face0: vec3f, // @default [0, 0, 0]  Where robot 0's face is.\n  toward0: vec3f, // @default [0, 0, 30]  A point it looks toward.\n  level0: f32, // @default 0  How bright its beam is, 0 to 1.\n  face1: vec3f, // @default [0, 0, -5.5]  Where robot 1's face is.\n  toward1: vec3f, // @default [0, 0, 24.5]  A point it looks toward.\n  level1: f32, // @default 0  How bright its beam is, 0 to 1.\n  face2: vec3f, // @default [0, 0, -11]  Where robot 2's face is.\n  toward2: vec3f, // @default [0, 0, 19]  A point it looks toward.\n  level2: f32, // @default 0  How bright its beam is, 0 to 1.\n  power: f32, // @default 110  A searchlight's intensity at full.\n};\nstruct Search {\n  foot: vec3f,\n  along: vec3f,\n  level: f32,\n};\nfn searchOf(robot: u32, p: Params) -> Search {\n  var s: Search;\n  if (robot == 0u) { s.foot = p.face0; s.along = p.toward0 - p.face0; s.level = p.level0; }\n  if (robot == 1u) { s.foot = p.face1; s.along = p.toward1 - p.face1; s.level = p.level1; }\n  if (robot == 2u) { s.foot = p.face2; s.along = p.toward2 - p.face2; s.level = p.level2; }\n  s.along = normalize(s.along + vec3f(0.0, 0.0, 1e-5));\n  return s;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let beam = searchOf(ctx.index, ctx.params);\n  q.position = beam.foot;\n  q.tint = vec4f(0.82, 0.9, 1.0, 1.0);\n  q.power = ctx.params.power * beam.level;\n  q.aim = beam.along;\n  return q;\n}",
+          "level0": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('lag_search').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "level1": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('lag_search').chan.value * (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "level2": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('lag_search').chan.value * (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "power": 110,
+          "toward0": [
+            0,
+            0,
+            30
+          ],
+          "toward0.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)) + 5 * sin(abstime * 0.6 + 0.00)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "toward0.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)) + 2.5 * sin(abstime * 0.43 + 0.00)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "toward0.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + (0.640 + 30 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 30.639510345458984
+              }
+            },
+            "mode": "expression"
+          },
+          "toward1": [
+            0,
+            0,
+            30
+          ],
+          "toward1.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000)) + 5 * sin(abstime * 0.6 + 2.10)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.5
+              }
+            },
+            "mode": "expression"
+          },
+          "toward1.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000)) + 2.5 * sin(abstime * 0.43 + 1.30)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.9
+              }
+            },
+            "mode": "expression"
+          },
+          "toward1.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + ((-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))) + 30))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 24.5
+              }
+            },
+            "mode": "expression"
+          },
+          "toward2": [
+            0,
+            0,
+            30
+          ],
+          "toward2.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650)) + 5 * sin(abstime * 0.6 + 4.20)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -1.5
+              }
+            },
+            "mode": "expression"
+          },
+          "toward2.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500)) + 2.5 * sin(abstime * 0.43 + 2.60)"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.85
+              }
+            },
+            "mode": "expression"
+          },
+          "toward2.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + ((-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))) + 30))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 19
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -3600,
+          "y": 10450
+        },
+        "type": "pointKernel"
+      },
       "kernel_strike": {
         "definitionVersion": 1,
         "id": "kernel_strike",
@@ -5601,6 +6404,20 @@
         "position": {
           "x": -1200,
           "y": 1625
+        },
+        "type": "valueLag"
+      },
+      "lag_search": {
+        "definitionVersion": 1,
+        "id": "lag_search",
+        "label": "lag_search",
+        "parameters": {
+          "lag": 0.35,
+          "releaseRatio": 1
+        },
+        "position": {
+          "x": -1200,
+          "y": 1875
         },
         "type": "valueLag"
       },
@@ -6383,6 +7200,72 @@
         "position": {
           "x": -1500,
           "y": -900
+        },
+        "type": "light"
+      },
+      "light_search": {
+        "definitionVersion": 1,
+        "id": "light_search",
+        "label": "light_search",
+        "parameters": {
+          "color": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  1,
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            "mode": "map"
+          },
+          "cone": 16,
+          "coneSoftness": 0.6,
+          "direction": {
+            "bindings": {
+              "map": {
+                "attribute": "aim",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  0,
+                  0,
+                  1
+                ]
+              }
+            },
+            "mode": "map"
+          },
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "map": {
+                "attribute": "power",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "map"
+          },
+          "kind": "spot",
+          "mode": "points",
+          "range": 60
+        },
+        "position": {
+          "x": -3300,
+          "y": 10450
         },
         "type": "light"
       },
@@ -7233,6 +8116,21 @@
         },
         "type": "materialWgsl"
       },
+      "material_search": {
+        "definitionVersion": 1,
+        "id": "material_search",
+        "label": "material_search",
+        "parameters": {
+          "glow": 0.35,
+          "model": "pbr",
+          "source": "struct Params {\n  glow: f32, // @default 0.5  Radiance of the lit air at the lamp.\n};\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let through = abs(dot(normalize(s.eye - s.world), s.normal));\n  let along = s.tint.a;\n  o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);\n  o.roughness = 1.0;\n  o.metallic = 0.0;\n  o.emissive = vec3f(0.78, 0.88, 1.0) * (p.glow * s.tint.r * through * through * (1.0 - along) * (1.0 - along) / (0.35 + 6.0 * along));\n  return o;\n}"
+        },
+        "position": {
+          "x": -2700,
+          "y": 10200
+        },
+        "type": "materialWgsl"
+      },
       "material_tower": {
         "definitionVersion": 1,
         "id": "material_tower",
@@ -7466,7 +8364,7 @@
         "id": "panel_all",
         "label": "panel_all",
         "parameters": {
-          "board": "{\n  \"columns\": 18,\n  \"items\": [\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":0,\"w\":17,\"h\":1}},\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_robot\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_reach\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spiral\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_attack\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pack\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_weight\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_drag\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_follow\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":19,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_ropes\",\"rect\":{\"x\":0,\"y\":20,\"w\":8,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":9,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":9,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":9,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":9,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":9,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":9,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":9,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":9,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":9,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":9,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":9,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":9,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":9,\"y\":13,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":9,\"y\":14,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":9,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":9,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":10,\"y\":17,\"w\":6,\"h\":6}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":9,\"y\":23,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":9,\"y\":24,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":9,\"y\":25,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":9,\"y\":26,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":9,\"y\":27,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":9,\"y\":28,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":9,\"y\":29,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":9,\"y\":30,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":9,\"y\":31,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":9,\"y\":32,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":9,\"y\":33,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":9,\"y\":34,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":9,\"y\":35,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":9,\"y\":36,\"w\":8,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 18,\n  \"items\": [\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":0,\"w\":17,\"h\":1}},\n    {\"label\":\"Robot\",\"rect\":{\"x\":0,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_robot\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_speed\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_crawl\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_swim\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_stride\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_reach\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_flare\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_wave\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grip\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_gesture\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spiral\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_attack\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pack\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_weight\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_drag\",\"rect\":{\"x\":0,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_follow\",\"rect\":{\"x\":0,\"y\":17,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_perch\",\"rect\":{\"x\":0,\"y\":18,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_follow\",\"rect\":{\"x\":0,\"y\":19,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_ropes\",\"rect\":{\"x\":0,\"y\":20,\"w\":8,\"h\":1}},\n    {\"label\":\"Scene\",\"rect\":{\"x\":9,\"y\":1,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_scene\",\"rect\":{\"x\":9,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_bore\",\"rect\":{\"x\":9,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_lamp\",\"rect\":{\"x\":9,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_distance\",\"rect\":{\"x\":9,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_react\",\"rect\":{\"x\":9,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":9,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_focus\",\"rect\":{\"x\":9,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_pump\",\"rect\":{\"x\":9,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_grain\",\"rect\":{\"x\":9,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_fields\",\"rect\":{\"x\":9,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_mist\",\"rect\":{\"x\":9,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glitch\",\"rect\":{\"x\":9,\"y\":13,\"w\":8,\"h\":1}},\n    {\"label\":\"Camera\",\"rect\":{\"x\":9,\"y\":14,\"w\":9,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":9,\"y\":15,\"w\":8,\"h\":1}},\n    {\"member\":\"toggle_cuts\",\"rect\":{\"x\":9,\"y\":16,\"w\":8,\"h\":1}},\n    {\"member\":\"xypad_view\",\"rect\":{\"x\":10,\"y\":17,\"w\":6,\"h\":6}},\n    {\"label\":\"Lights\",\"rect\":{\"x\":9,\"y\":23,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":9,\"y\":24,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":9,\"y\":25,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":9,\"y\":26,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":9,\"y\":27,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":9,\"y\":28,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":9,\"y\":29,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_search\",\"rect\":{\"x\":9,\"y\":30,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":9,\"y\":31,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":9,\"y\":32,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":9,\"y\":33,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":9,\"y\":34,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":9,\"y\":35,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":9,\"y\":36,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":9,\"y\":37,\"w\":8,\"h\":1}}\n  ]\n}",
           "remote": false,
           "title": "All"
         },
@@ -7481,7 +8379,7 @@
         "id": "panel_lights",
         "label": "panel_lights",
         "parameters": {
-          "board": "{\n  \"columns\": 9,\n  \"items\": [\n    {\"label\":\"Lights\",\"rect\":{\"x\":0,\"y\":0,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 9,\n  \"items\": [\n    {\"label\":\"Lights\",\"rect\":{\"x\":0,\"y\":0,\"w\":9,\"h\":1}},\n    {\"member\":\"presets_lights\",\"rect\":{\"x\":0,\"y\":1,\"w\":8,\"h\":1}},\n    {\"member\":\"presets_all\",\"rect\":{\"x\":0,\"y\":2,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_huefrom\",\"rect\":{\"x\":0,\"y\":3,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueto\",\"rect\":{\"x\":0,\"y\":4,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueturn\",\"rect\":{\"x\":0,\"y\":5,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spread\",\"rect\":{\"x\":0,\"y\":6,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_hueshift\",\"rect\":{\"x\":0,\"y\":7,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_search\",\"rect\":{\"x\":0,\"y\":8,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_glow\",\"rect\":{\"x\":0,\"y\":9,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyehits\",\"rect\":{\"x\":0,\"y\":10,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_eyesweep\",\"rect\":{\"x\":0,\"y\":11,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_legs\",\"rect\":{\"x\":0,\"y\":12,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_meter\",\"rect\":{\"x\":0,\"y\":13,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_chase\",\"rect\":{\"x\":0,\"y\":14,\"w\":8,\"h\":1}},\n    {\"member\":\"slider_spark\",\"rect\":{\"x\":0,\"y\":15,\"w\":8,\"h\":1}}\n  ]\n}",
           "remote": true,
           "title": "Lights"
         },
@@ -7526,8 +8424,8 @@
         "id": "presets_all",
         "label": "presets_all",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_all\",\n      \"values\": {\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_crawl\": {\n          \"value\": 0.6\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"slider_stride\": {\n          \"value\": 5\n        },\n        \"slider_reach\": {\n          \"value\": 1.3\n        },\n        \"slider_flare\": {\n          \"value\": 0.25\n        },\n        \"slider_wave\": {\n          \"value\": 0.05\n        },\n        \"slider_grip\": {\n          \"value\": 1\n        },\n        \"slider_gesture\": {\n          \"value\": 0.6\n        },\n        \"slider_spiral\": {\n          \"value\": 0\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_weight\": {\n          \"value\": 0\n        },\n        \"slider_drag\": {\n          \"value\": 1.5\n        },\n        \"slider_follow\": {\n          \"value\": 0.4\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"toggle_follow\": {\n          \"on\": true\n        },\n        \"toggle_ropes\": {\n          \"on\": false\n        },\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        },\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "slider_speed.value slider_crawl.value slider_swim.value slider_stride.value slider_reach.value slider_flare.value slider_wave.value slider_grip.value slider_gesture.value slider_spiral.value slider_attack.value slider_pack.value slider_weight.value slider_drag.value slider_follow.value toggle_perch.on toggle_follow.on toggle_ropes.on slider_bore.value slider_lamp.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_glow.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_all\",\n      \"values\": {\n        \"slider_speed\": {\n          \"value\": 3.2\n        },\n        \"slider_crawl\": {\n          \"value\": 0.6\n        },\n        \"slider_swim\": {\n          \"value\": 0\n        },\n        \"slider_stride\": {\n          \"value\": 5\n        },\n        \"slider_reach\": {\n          \"value\": 1.3\n        },\n        \"slider_flare\": {\n          \"value\": 0.25\n        },\n        \"slider_wave\": {\n          \"value\": 0.05\n        },\n        \"slider_grip\": {\n          \"value\": 1\n        },\n        \"slider_gesture\": {\n          \"value\": 0.6\n        },\n        \"slider_spiral\": {\n          \"value\": 0\n        },\n        \"slider_attack\": {\n          \"value\": 0\n        },\n        \"slider_pack\": {\n          \"value\": 1\n        },\n        \"slider_weight\": {\n          \"value\": 0\n        },\n        \"slider_drag\": {\n          \"value\": 1.5\n        },\n        \"slider_follow\": {\n          \"value\": 0.4\n        },\n        \"toggle_perch\": {\n          \"on\": false\n        },\n        \"toggle_follow\": {\n          \"on\": true\n        },\n        \"toggle_ropes\": {\n          \"on\": false\n        },\n        \"slider_bore\": {\n          \"value\": 2.6\n        },\n        \"slider_lamp\": {\n          \"value\": 26\n        },\n        \"slider_distance\": {\n          \"value\": 7.5\n        },\n        \"slider_react\": {\n          \"value\": 1\n        },\n        \"slider_haze\": {\n          \"value\": 0.04\n        },\n        \"slider_focus\": {\n          \"value\": 0.5\n        },\n        \"slider_pump\": {\n          \"value\": 0.6\n        },\n        \"slider_grain\": {\n          \"value\": 0.06\n        },\n        \"slider_fields\": {\n          \"value\": 0\n        },\n        \"slider_mist\": {\n          \"value\": 1\n        },\n        \"slider_glitch\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 0\n        },\n        \"toggle_cuts\": {\n          \"on\": true\n        },\n        \"xypad_view\": {\n          \"x\": 1.1,\n          \"y\": 0.6\n        },\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_search\": {\n          \"value\": 0\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "slider_speed.value slider_crawl.value slider_swim.value slider_stride.value slider_reach.value slider_flare.value slider_wave.value slider_grip.value slider_gesture.value slider_spiral.value slider_attack.value slider_pack.value slider_weight.value slider_drag.value slider_follow.value toggle_perch.on toggle_follow.on toggle_ropes.on slider_bore.value slider_lamp.value slider_distance.value slider_react.value slider_haze.value slider_focus.value slider_pump.value slider_grain.value slider_fields.value slider_mist.value slider_glitch.value slider_shot.value toggle_cuts.on xypad_view.x xypad_view.y slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_search.value slider_glow.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
         },
         "position": {
           "x": -1500,
@@ -7540,8 +8438,8 @@
         "id": "presets_lights",
         "label": "presets_lights",
         "parameters": {
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_lights\",\n      \"values\": {\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
-          "targets": "slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_glow.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"reset_lights\",\n      \"values\": {\n        \"slider_huefrom\": {\n          \"value\": 0\n        },\n        \"slider_hueto\": {\n          \"value\": 0.07\n        },\n        \"slider_hueturn\": {\n          \"value\": 0\n        },\n        \"slider_spread\": {\n          \"value\": 0.6\n        },\n        \"slider_hueshift\": {\n          \"value\": 0.4\n        },\n        \"slider_search\": {\n          \"value\": 0\n        },\n        \"slider_glow\": {\n          \"value\": 9\n        },\n        \"slider_eyehits\": {\n          \"value\": 0.6\n        },\n        \"slider_eyesweep\": {\n          \"value\": 0.25\n        },\n        \"slider_legs\": {\n          \"value\": 1\n        },\n        \"slider_meter\": {\n          \"value\": 0.7\n        },\n        \"slider_chase\": {\n          \"value\": 0.3\n        },\n        \"slider_spark\": {\n          \"value\": 0.6\n        }\n      }\n    }\n  ]\n}\n",
+          "targets": "slider_huefrom.value slider_hueto.value slider_hueturn.value slider_spread.value slider_hueshift.value slider_search.value slider_glow.value slider_eyehits.value slider_eyesweep.value slider_legs.value slider_meter.value slider_chase.value slider_spark.value"
         },
         "position": {
           "x": -1800,
@@ -7623,9 +8521,9 @@
           ],
           "camera": "camera_rig",
           "depthOutput": true,
-          "lights": "light_eyes light_body light_follower1 light_follower2 light_lamps light_strike light_storm light_docklamps light_beams light_fires",
+          "lights": "light_eyes light_body light_follower1 light_follower2 light_lamps light_strike light_storm light_docklamps light_beams light_fires light_search",
           "normalOutput": true,
-          "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore geometry_towers geometry_bolts geometry_hall geometry_bridges geometry_cave geometry_formations geometry_beams geometry_flames geometry_motes"
+          "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore geometry_towers geometry_bolts geometry_hall geometry_bridges geometry_cave geometry_formations geometry_beams geometry_flames geometry_search geometry_motes"
         },
         "position": {
           "x": -1200,
@@ -7851,7 +8749,7 @@
           "value": 0.3
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 3750
         },
         "type": "slider"
@@ -7927,7 +8825,7 @@
           "value": 0.6
         },
         "position": {
-          "x": -3600,
+          "x": -3300,
           "y": 3500
         },
         "type": "slider"
@@ -7946,7 +8844,7 @@
           "value": 0.25
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 3500
         },
         "type": "slider"
@@ -8079,8 +8977,8 @@
           "value": 9
         },
         "position": {
-          "x": -2700,
-          "y": 3250
+          "x": -3600,
+          "y": 3500
         },
         "type": "slider"
       },
@@ -8250,7 +9148,7 @@
           "value": 1
         },
         "position": {
-          "x": -3000,
+          "x": -2700,
           "y": 3500
         },
         "type": "slider"
@@ -8269,8 +9167,8 @@
           "value": 0.7
         },
         "position": {
-          "x": -2700,
-          "y": 3500
+          "x": -3600,
+          "y": 3750
         },
         "type": "slider"
       },
@@ -8369,6 +9267,25 @@
         },
         "type": "slider"
       },
+      "slider_search": {
+        "definitionVersion": 2,
+        "id": "slider_search",
+        "label": "slider_search",
+        "parameters": {
+          "caption": "Searchlights",
+          "channel": "search",
+          "defaultValue": 0,
+          "max": 1,
+          "min": 0,
+          "step": 0,
+          "value": 0
+        },
+        "position": {
+          "x": -2700,
+          "y": 3250
+        },
+        "type": "slider"
+      },
       "slider_shot": {
         "definitionVersion": 2,
         "id": "slider_shot",
@@ -8402,7 +9319,7 @@
           "value": 0.6
         },
         "position": {
-          "x": -3300,
+          "x": -3000,
           "y": 3750
         },
         "type": "slider"
@@ -8721,6 +9638,33 @@
         },
         "type": "pointSweep"
       },
+      "sweep_search": {
+        "definitionVersion": 1,
+        "id": "sweep_search",
+        "label": "sweep_search",
+        "parameters": {
+          "profile": "ring",
+          "radius": {
+            "bindings": {
+              "map": {
+                "attribute": "girth",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "map"
+          },
+          "sides": 12
+        },
+        "position": {
+          "x": -2700,
+          "y": 10000
+        },
+        "type": "pointSweep"
+      },
       "sweep_towers": {
         "definitionVersion": 1,
         "id": "sweep_towers",
@@ -8899,6 +9843,21 @@
         "position": {
           "x": -2250,
           "y": 300
+        },
+        "type": "pointTopology"
+      },
+      "topology_search": {
+        "definitionVersion": 1,
+        "id": "topology_search",
+        "label": "topology_search",
+        "parameters": {
+          "cols": 8,
+          "connectivity": "strips",
+          "rows": 3
+        },
+        "position": {
+          "x": -3300,
+          "y": 10000
         },
         "type": "pointTopology"
       },

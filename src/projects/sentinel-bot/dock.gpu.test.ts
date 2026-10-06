@@ -1,10 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { mappedTo } from "../../nodes/definitions/curve-test-support.ts";
-import { pointStorageId } from "../../nodes/definitions/point-storage.ts";
-import { kernelRegionSlice } from "../../nodes/definitions/test-support.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
+import { kernelPoints, type KernelPoints } from "./kernel-points.ts";
 import { BEAM_CAPACITY, BEAM_KERNEL, BEAM_LIGHT_KERNEL, BRIDGE_CAPACITY, BRIDGE_KERNEL, DOCK, DOCK_LAMPS, DOCK_LAMP_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK_STRIP_ATTRIBUTES, HALL_ATTRIBUTES, HALL_CAPACITY, HALL_KERNEL, HALL_SURFACE_WGSL, bridgeAt, hallShell } from "./dock.ts";
 import { pathAt } from "./path.ts";
 
@@ -22,51 +21,6 @@ beforeAll(async () => {
   dawnError = (await probeDawn()).error;
 }, 60_000);
 
-type Vec = [number, number, number];
-
-interface Read {
-  position(point: number): Vec;
-  /** A named attribute of a point, as its components. */
-  of(name: string, point: number): number[];
-}
-
-/** One kernel's points, with these parameters; over a grid when `grid` says its size. */
-async function points(kernel: string, attributes: string, capacity: number, parameters: Record<string, number>, names: readonly string[], grid?: { cols: number; rows: number }): Promise<Read> {
-  if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
-  const read = node("kernel_read", "pointKernel", [0, 0], { capacity, attributes, kernel, ...parameters });
-  const result = await renderHeadless({
-    host: nodeGpuHost(),
-    graph: graph(
-      [
-        ...(grid === undefined ? [] : [node("grid_read", "pointGrid", [0, 0], { cols: grid.cols, rows: grid.rows, count: grid.cols * grid.rows, sizeX: 2, sizeY: 2 })]),
-        read,
-        node("material_dot", "materialUnlit", [0, 0], {}, { label: "material_dot" }),
-        node("geometry_read", "geometry", [0, 0], { mode: "points", material: "material_dot" }, { label: "geometry_read" }),
-        node("camera_any", "camera", [0, 0], {}, { label: "camera_any" }),
-        node("render_shot", "render", [0, 0], { scenes: "geometry_read", camera: "camera_any", lights: "" }, { label: "render_shot" }),
-        node("output_frame", "output", [0, 0], {}, { label: "output_frame" }),
-      ],
-      [...(grid === undefined ? [] : [edge("grid-read", ["grid_read", "out"], ["kernel_read", "in"])]), edge("read-geo", ["kernel_read", "out"], ["geometry_read", "points"]), edge("shot-out", ["render_shot", "out"], ["output_frame", "input"])],
-    ),
-    settings: settings({ outputResolution: { width: 64, height: 64 } }),
-    frames: 1,
-    outputNodeId: "output_frame",
-    probeBuffers: [pointStorageId("kernel_read")],
-  });
-  const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
-  if (errors.length > 0) throw new Error(errors.map((diagnostic) => diagnostic.message).join("; "));
-  const packed = (result.buffers ?? {})[pointStorageId("kernel_read")];
-  if (packed === undefined) throw new Error("probe buffers missing");
-  const slices = new Map(["position", ...names].map((name) => [name, kernelRegionSlice(read as never, packed, name).floats]));
-  const of = (name: string, point: number): number[] => {
-    const floats = slices.get(name);
-    if (floats === undefined) throw new Error(`attribute ${name} was not read`);
-    const stride = floats.length / capacity;
-    return Array.from(floats.slice(point * stride, point * stride + stride));
-  };
-  return { position: (point) => of("position", point).slice(0, 3) as Vec, of };
-}
-
 const TRAVEL = 300;
 /** The grid's point at column `i` of row `j`. */
 const at = (i: number, j: number): number => j * DOCK.cols + i;
@@ -75,7 +29,7 @@ const rowZ = (j: number, travel: number): number => (Math.floor(travel / DOCK.ro
 
 describe("the dock (T1561b)", () => {
   it("stands its hall round the line where the rule says, ribs and gantries standing out of the shell, and holds still while its window rides along", async () => {
-    const hall = await points(HALL_KERNEL, HALL_ATTRIBUTES, HALL_CAPACITY, { travel: TRAVEL, place: 1 }, ["tint"], { cols: DOCK.cols, rows: DOCK.rows });
+    const hall = await kernelPoints(HALL_KERNEL, HALL_ATTRIBUTES, HALL_CAPACITY, { travel: TRAVEL, place: 1 }, ["tint"], { cols: DOCK.cols, rows: DOCK.rows });
     const kinds = [0, 0, 0, 0];
     let nearest = Infinity;
     for (let j = 0; j < DOCK.rows; j += 7) {
@@ -107,15 +61,15 @@ describe("the dock (T1561b)", () => {
     // Nothing of the hall within thirty metres of the line at the heights anything flies at.
     expect(nearest).toBeGreaterThan(30);
     // The window rides, the hall does not: a row further on with the robot a row further back is the same steel.
-    const slid = await points(HALL_KERNEL, HALL_ATTRIBUTES, HALL_CAPACITY, { travel: TRAVEL + DOCK.row * 5, place: 1 }, ["tint"], { cols: DOCK.cols, rows: DOCK.rows });
+    const slid = await kernelPoints(HALL_KERNEL, HALL_ATTRIBUTES, HALL_CAPACITY, { travel: TRAVEL + DOCK.row * 5, place: 1 }, ["tint"], { cols: DOCK.cols, rows: DOCK.rows });
     for (const [i, j] of [[0, 40], [37, 90], [101, 200], [150, 12]] as const) expect(slid.position(at(i, j))).toEqual(hall.position(at(i, j + 5)));
     // Out of the dock: every point of it is one point, far under everything.
-    const away = await points(HALL_KERNEL, HALL_ATTRIBUTES, HALL_CAPACITY, { travel: TRAVEL, place: 0 }, ["tint"], { cols: DOCK.cols, rows: DOCK.rows });
+    const away = await kernelPoints(HALL_KERNEL, HALL_ATTRIBUTES, HALL_CAPACITY, { travel: TRAVEL, place: 0 }, ["tint"], { cols: DOCK.cols, rows: DOCK.rows });
     for (let point = 0; point < HALL_CAPACITY; point += 997) expect(away.position(point)).toEqual([0, -4000, 0]);
   }, 240_000);
 
   it("throws its bridges across at every third rib, wall to wall, each at its own height and all of them over what flies", async () => {
-    const bridges = await points(BRIDGE_KERNEL, DOCK_STRIP_ATTRIBUTES, BRIDGE_CAPACITY, { travel: TRAVEL, place: 1 }, ["girth"]);
+    const bridges = await kernelPoints(BRIDGE_KERNEL, DOCK_STRIP_ATTRIBUTES, BRIDGE_CAPACITY, { travel: TRAVEL, place: 1 }, ["girth"]);
     const heights = new Set<number>();
     for (let bridge = 0; bridge < DOCK.bridges; bridge += 1) {
       const rib = (Math.floor(TRAVEL / (DOCK.rib * DOCK.bridgeEvery)) - 2 + bridge) * DOCK.bridgeEvery;
@@ -137,12 +91,12 @@ describe("the dock (T1561b)", () => {
     }
     // Each at its own height.
     expect(heights.size).toBeGreaterThan(DOCK.bridges / 2);
-    const away = await points(BRIDGE_KERNEL, DOCK_STRIP_ATTRIBUTES, BRIDGE_CAPACITY, { travel: TRAVEL, place: 0 }, ["girth"]);
+    const away = await kernelPoints(BRIDGE_KERNEL, DOCK_STRIP_ATTRIBUTES, BRIDGE_CAPACITY, { travel: TRAVEL, place: 0 }, ["girth"]);
     for (let point = 0; point < BRIDGE_CAPACITY; point += 1) expect(away.of("girth", point)).toEqual([0]);
   }, 240_000);
 
   it("hangs three lamps at every rib: a flood in the crown shining straight down, and one under each wall's second gantry turned to the wall; some dead; none out of the dock", async () => {
-    const lamps = await points(DOCK_LAMP_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK_LAMPS, { travel: TRAVEL, place: 1, power: 180, flood: 2500 }, ["power", "aim", "tint"]);
+    const lamps = await kernelPoints(DOCK_LAMP_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK_LAMPS, { travel: TRAVEL, place: 1, power: 180, flood: 2500 }, ["power", "aim", "tint"]);
     let [dead, lit] = [0, 0];
     for (let lamp = 0; lamp < DOCK_LAMPS; lamp += 1) {
       const rib = Math.floor(TRAVEL / DOCK.rib) + Math.floor(lamp / 3) - DOCK.lampRibsBehind;
@@ -178,14 +132,14 @@ describe("the dock (T1561b)", () => {
     // One in five is dead, by its own lot: some are, most are not.
     expect(dead).toBeGreaterThan(3);
     expect(lit).toBeGreaterThan(DOCK_LAMPS * 0.6);
-    const away = await points(DOCK_LAMP_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK_LAMPS, { travel: TRAVEL, place: 0, power: 180, flood: 2500 }, ["power"]);
+    const away = await kernelPoints(DOCK_LAMP_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK_LAMPS, { travel: TRAVEL, place: 0, power: 180, flood: 2500 }, ["power"]);
     for (let lamp = 0; lamp < DOCK_LAMPS; lamp += 1) expect(away.of("power", lamp)).toEqual([0]);
   }, 240_000);
 
   it("a searchlight's cone and its Spot are one beam: from the deck, upward, the same way, and they go about", async () => {
-    const beamsAt = async (sweep: number, level = 1): Promise<{ cones: Read; spots: Read }> => ({
-      cones: await points(BEAM_KERNEL, DOCK_STRIP_ATTRIBUTES, BEAM_CAPACITY, { travel: TRAVEL, place: 1, sweep, level }, ["girth"]),
-      spots: await points(BEAM_LIGHT_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK.beams, { travel: TRAVEL, place: 1, sweep, level, power: 900 }, ["power", "aim"]),
+    const beamsAt = async (sweep: number, level = 1): Promise<{ cones: KernelPoints; spots: KernelPoints }> => ({
+      cones: await kernelPoints(BEAM_KERNEL, DOCK_STRIP_ATTRIBUTES, BEAM_CAPACITY, { travel: TRAVEL, place: 1, sweep, level }, ["girth"]),
+      spots: await kernelPoints(BEAM_LIGHT_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK.beams, { travel: TRAVEL, place: 1, sweep, level, power: 900 }, ["power", "aim"]),
     });
     const [here, later] = [await beamsAt(0.3), await beamsAt(1.1)];
     for (let beam = 0; beam < DOCK.beams; beam += 1) {

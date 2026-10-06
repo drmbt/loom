@@ -48,9 +48,13 @@ import { HUE_WGSL } from "./surface.ts";
  * about 1 ms a frame; in the fields with the pack of three out, 11.8 to 12.4 ms against 11.3 ms for three robots
  * in the tunnel. The second look, against the first in the same run on a machine several sessions were
  * rendering on: the fields 23 to 28 ms where the first look read 20 to 26, so about a fifth more; the tunnel's
- * readings were too scattered that run to tell the two apart (18 to 49 against 25 to 60). Owed: the look as it
- * now is (the pods as shapes, the hung pods' two Sweeps gone) on a quiet machine, against the 30 frames a second
- * the owner has set for this piece.
+ * readings were too scattered that run to tell the two apart (18 to 49 against 25 to 60). The look as it now is
+ * (the pods as shapes, the hung pods' two Sweeps gone), with the dock and the temple also in the file, same
+ * method, a machine with other work on it but steadier (two visits each): the tunnel 12.0 to 13.2 ms where the
+ * file without the dock and the temple read 11.3 to 11.8, so all the other places' kernels standing idle cost
+ * about a millisecond; the fields 13.3 to 15.8; the dock 14.4 to 15.8; the temple 13.7 to 15.0. Every place
+ * showed 33 to 39 frames a second in the header on that machine, against the 30 the owner has set for this piece.
+ * Owed still: the same on a machine doing nothing else.
  */
 export const FIELD = {
   /** Metres from one cell of the ground plan to the next. Divides the path's period. */

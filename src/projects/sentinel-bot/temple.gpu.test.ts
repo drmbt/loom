@@ -1,10 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { mappedTo } from "../../nodes/definitions/curve-test-support.ts";
-import { pointStorageId } from "../../nodes/definitions/point-storage.ts";
-import { kernelRegionSlice } from "../../nodes/definitions/test-support.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
+import { kernelPoints, type KernelPoints } from "./kernel-points.ts";
 import { PATH, pathAt } from "./path.ts";
 import { CAVE_ATTRIBUTES, CAVE_CAPACITY, CAVE_KERNEL, FIRE_ATTRIBUTES, FIRE_KERNEL, FLAME_CAPACITY, FLAME_KERNEL, FORMATION, FORMATIONS, FORMATION_CAPACITY, FORMATION_KERNEL, ROCK_SURFACE_WGSL, TEMPLE, TEMPLE_STRIP_ATTRIBUTES } from "./temple.ts";
 
@@ -23,50 +22,6 @@ beforeAll(async () => {
   dawnError = (await probeDawn()).error;
 }, 60_000);
 
-type Vec = [number, number, number];
-
-interface Read {
-  position(point: number): Vec;
-  of(name: string, point: number): number[];
-}
-
-/** One kernel's points, with these parameters; over a grid when `grid` says its size. */
-async function points(kernel: string, attributes: string, capacity: number, parameters: Record<string, number>, names: readonly string[], grid?: { cols: number; rows: number }): Promise<Read> {
-  if (dawnError !== undefined) throw new Error(`Dawn unavailable: ${dawnError}`);
-  const read = node("kernel_read", "pointKernel", [0, 0], { capacity, attributes, kernel, ...parameters });
-  const result = await renderHeadless({
-    host: nodeGpuHost(),
-    graph: graph(
-      [
-        ...(grid === undefined ? [] : [node("grid_read", "pointGrid", [0, 0], { cols: grid.cols, rows: grid.rows, count: grid.cols * grid.rows, sizeX: 2, sizeY: 2 })]),
-        read,
-        node("material_dot", "materialUnlit", [0, 0], {}, { label: "material_dot" }),
-        node("geometry_read", "geometry", [0, 0], { mode: "points", material: "material_dot" }, { label: "geometry_read" }),
-        node("camera_any", "camera", [0, 0], {}, { label: "camera_any" }),
-        node("render_shot", "render", [0, 0], { scenes: "geometry_read", camera: "camera_any", lights: "" }, { label: "render_shot" }),
-        node("output_frame", "output", [0, 0], {}, { label: "output_frame" }),
-      ],
-      [...(grid === undefined ? [] : [edge("grid-read", ["grid_read", "out"], ["kernel_read", "in"])]), edge("read-geo", ["kernel_read", "out"], ["geometry_read", "points"]), edge("shot-out", ["render_shot", "out"], ["output_frame", "input"])],
-    ),
-    settings: settings({ outputResolution: { width: 64, height: 64 } }),
-    frames: 1,
-    outputNodeId: "output_frame",
-    probeBuffers: [pointStorageId("kernel_read")],
-  });
-  const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
-  if (errors.length > 0) throw new Error(errors.map((diagnostic) => diagnostic.message).join("; "));
-  const packed = (result.buffers ?? {})[pointStorageId("kernel_read")];
-  if (packed === undefined) throw new Error("probe buffers missing");
-  const slices = new Map(["position", ...names].map((name) => [name, kernelRegionSlice(read as never, packed, name).floats]));
-  const of = (name: string, point: number): number[] => {
-    const floats = slices.get(name);
-    if (floats === undefined) throw new Error(`attribute ${name} was not read`);
-    const stride = floats.length / capacity;
-    return Array.from(floats.slice(point * stride, point * stride + stride));
-  };
-  return { position: (point) => of("position", point).slice(0, 3) as Vec, of };
-}
-
 const TRAVEL = 300;
 const GRID = { cols: TEMPLE.cols, rows: TEMPLE.rows };
 const at = (i: number, j: number): number => j * TEMPLE.cols + i;
@@ -74,7 +29,7 @@ const rowZ = (j: number, travel: number): number => (Math.floor(travel / TEMPLE.
 
 describe("the temple (T1561b)", () => {
   it("stands its cave round the line clear of what flies, a floor under it and a roof over it, still while its window rides and the same cave next time round", async () => {
-    const cave = await points(CAVE_KERNEL, CAVE_ATTRIBUTES, CAVE_CAPACITY, { travel: TRAVEL, place: 1 }, ["tint"], GRID);
+    const cave = await kernelPoints(CAVE_KERNEL, CAVE_ATTRIBUTES, CAVE_CAPACITY, { travel: TRAVEL, place: 1 }, ["tint"], GRID);
     let [nearest, lowestRoof, highestFloor, floors] = [Infinity, Infinity, -Infinity, 0];
     const radii = new Set<number>();
     for (let j = 0; j < TEMPLE.rows; j += 5) {
@@ -109,21 +64,21 @@ describe("the temple (T1561b)", () => {
     // A cave, not a pipe: its radius is many different radii.
     expect(radii.size).toBeGreaterThan(12);
     // The window rides, the cave does not.
-    const slid = await points(CAVE_KERNEL, CAVE_ATTRIBUTES, CAVE_CAPACITY, { travel: TRAVEL + TEMPLE.row * 5, place: 1 }, ["tint"], GRID);
+    const slid = await kernelPoints(CAVE_KERNEL, CAVE_ATTRIBUTES, CAVE_CAPACITY, { travel: TRAVEL + TEMPLE.row * 5, place: 1 }, ["tint"], GRID);
     for (const [i, j] of [[0, 40], [37, 90], [101, 200], [150, 12]] as const) expect(slid.position(at(i, j))).toEqual(cave.position(at(i, j + 5)));
     // The lap's end is no seam: a lap on, the same rock (the line and the noise both come round), to a float's rounding at a kilometre.
-    const lapped = await points(CAVE_KERNEL, CAVE_ATTRIBUTES, CAVE_CAPACITY, { travel: TRAVEL + PATH.period, place: 1 }, ["tint"], GRID);
+    const lapped = await kernelPoints(CAVE_KERNEL, CAVE_ATTRIBUTES, CAVE_CAPACITY, { travel: TRAVEL + PATH.period, place: 1 }, ["tint"], GRID);
     for (const [i, j] of [[3, 40], [37, 90], [101, 200], [150, 12], [80, 250]] as const) {
       const [here, there] = [cave.position(at(i, j)), lapped.position(at(i, j))];
       expect([Math.abs(there[0] - here[0]) < 5e-3, Math.abs(there[1] - here[1]) < 5e-3, Math.abs(there[2] - here[2] - PATH.period) < 5e-3]).toEqual([true, true, true]);
     }
     // Out of the temple: one point, far under everything.
-    const away = await points(CAVE_KERNEL, CAVE_ATTRIBUTES, CAVE_CAPACITY, { travel: TRAVEL, place: 0 }, ["tint"], GRID);
+    const away = await kernelPoints(CAVE_KERNEL, CAVE_ATTRIBUTES, CAVE_CAPACITY, { travel: TRAVEL, place: 0 }, ["tint"], GRID);
     for (let point = 0; point < CAVE_CAPACITY; point += 997) expect(away.position(point)).toEqual([0, -4000, 0]);
   }, 240_000);
 
   it("grows its formations from the roof down and the floor up, each thinning to its point, columns with a waist, and none in the avenue", async () => {
-    const grown = await points(FORMATION_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FORMATION_CAPACITY, { travel: TRAVEL, place: 1 }, ["girth", "tint"]);
+    const grown = await kernelPoints(FORMATION_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FORMATION_CAPACITY, { travel: TRAVEL, place: 1 }, ["girth", "tint"]);
     const kinds = [0, 0, 0, 0];
     let nearest = Infinity;
     for (let slot = 0; slot < FORMATIONS; slot += 1) {
@@ -173,15 +128,15 @@ describe("the temple (T1561b)", () => {
     // All three grow here, and the cells in the avenue and out past the walls hold none.
     for (const kind of [FORMATION.stalactite, FORMATION.stalagmite, FORMATION.column]) expect(kinds[kind]).toBeGreaterThan(8);
     expect(kinds[FORMATION.none]).toBeGreaterThan(FORMATIONS * 0.2);
-    const away = await points(FORMATION_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FORMATION_CAPACITY, { travel: TRAVEL, place: 0 }, ["girth", "tint"]);
+    const away = await kernelPoints(FORMATION_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FORMATION_CAPACITY, { travel: TRAVEL, place: 0 }, ["girth", "tint"]);
     for (let point = 0; point < FORMATION_CAPACITY; point += 7) expect(away.of("girth", point)).toEqual([0]);
   }, 240_000);
 
   it("a fire sits on a stalagmite's tip, its flame and its light in one place; it burns higher with the low end and flares on the kick; and Listen at 0 it does neither", async () => {
     const track = { kick: 0, low: 0, react: 1 };
-    const grown = await points(FORMATION_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FORMATION_CAPACITY, { travel: TRAVEL, place: 1 }, ["girth", "tint"]);
-    const flames = await points(FLAME_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FLAME_CAPACITY, { travel: TRAVEL, place: 1, ...track }, ["girth", "tint"]);
-    const firesAt = (heard: Record<string, number>, place = 1): Promise<Read> => points(FIRE_KERNEL, FIRE_ATTRIBUTES, FORMATIONS, { travel: TRAVEL, place, power: 240, ...track, ...heard }, ["power", "tint"]);
+    const grown = await kernelPoints(FORMATION_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FORMATION_CAPACITY, { travel: TRAVEL, place: 1 }, ["girth", "tint"]);
+    const flames = await kernelPoints(FLAME_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FLAME_CAPACITY, { travel: TRAVEL, place: 1, ...track }, ["girth", "tint"]);
+    const firesAt = (heard: Record<string, number>, place = 1): Promise<KernelPoints> => kernelPoints(FIRE_KERNEL, FIRE_ATTRIBUTES, FORMATIONS, { travel: TRAVEL, place, power: 240, ...track, ...heard }, ["power", "tint"]);
     const [rest, kicked, low, deaf] = [await firesAt({}), await firesAt({ kick: 1 }), await firesAt({ low: 1 }), await firesAt({ kick: 1, low: 1, react: 0 })];
     let [burning, dark] = [0, 0];
     for (let slot = 0; slot < FORMATIONS; slot += 1) {
