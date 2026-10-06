@@ -6,6 +6,12 @@
   animation: fade var(--dur-fast) var(--ease-out);
 }
 
+/* B273: an entry and no exit, so closed is gone at once (`popover.module.css` has the reason). */
+.overlay[data-state="closed"],
+.content[data-state="closed"] {
+  animation: none;
+}
+
 .content {
   position: fixed;
   top: 50%;

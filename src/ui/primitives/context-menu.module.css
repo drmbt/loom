@@ -11,6 +11,11 @@
   animation: menu-in var(--dur-instant) var(--ease-out);
 }
 
+/* B273: an entry and no exit, so closed is gone at once (`popover.module.css` has the reason). */
+.content[data-state="closed"] {
+  animation: none;
+}
+
 .item {
   display: flex;
   align-items: center;

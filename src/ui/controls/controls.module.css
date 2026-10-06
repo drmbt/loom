@@ -248,7 +248,7 @@
 
 /* The position marker stays lit — a driven field's fill is the thing that is moving. */
 .number[data-driven="true"] .numberFill {
-  border-right-color: var(--signal);
+  --number-mark: var(--signal);
 }
 
 /*
@@ -292,20 +292,28 @@
 
   The accent derives from the live/active amber token, never a literal (§V17).
 */
+/*
+ * The field's size, always: how much of it is drawn is `ShareFill`'s (T1653b). The 2px
+ * marker was the right border of a box as wide as the value; a border is geometry, so it
+ * is now a second background, 2px at the end of what is drawn (`minimum="2px"` at the
+ * call keeps it there when the value is at the bottom of its range, as the border did).
+ */
 .numberFill {
   position: absolute;
-  inset: 0 auto 0 0;
-  box-sizing: border-box;
-  background: var(--bg-active);
-  border-right: 2px solid var(--signal);
+  inset: 0;
+  background-color: var(--bg-active);
+  background-image: linear-gradient(var(--number-mark, var(--signal)), var(--number-mark, var(--signal)));
+  background-size: 2px 100%;
+  background-position: right center;
+  background-repeat: no-repeat;
   pointer-events: none;
 }
 
 /* No ground under an unavailable field, so no filled region either — only the marker,
    dimmed, because "where in its range this sits" is still true and still worth reading. */
 .number[data-disabled="true"] .numberFill {
-  background: none;
-  border-right-color: var(--line-hot);
+  background-color: transparent;
+  --number-mark: var(--line-hot);
 }
 
 .numberInput {

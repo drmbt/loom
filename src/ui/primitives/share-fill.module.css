@@ -1,0 +1,19 @@
+/*
+ * T1653b — A SHARE OF A FIXED BOX. See `share-fill.tsx` for the rule and what was measured.
+ *
+ * The element that carries this class is positioned and sized by ITS OWNER (the track it
+ * fills), and that box never changes. `ShareFill` writes the two paddings; the background
+ * the owner gives it is drawn in the content box, and nowhere else.
+ *
+ * `border-radius: 0.01px` is not a shape: it moves no pixel. A square box with an opaque
+ * background is one whose painted rect Chromium records as KNOWN OPAQUE, and that rect
+ * changing is by itself a reason for the full compositor update. A box with any radius is
+ * never recorded so. This is the one place the number lives; an owner that wants a visible
+ * radius rounds its TRACK and clips with it.
+ */
+.share {
+  box-sizing: border-box;
+  background-clip: content-box;
+  background-origin: content-box;
+  border-radius: 0.01px;
+}

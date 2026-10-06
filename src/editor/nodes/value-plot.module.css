@@ -262,17 +262,22 @@
   box-shadow: inset 0 0 0 1px var(--divider);
 }
 
+/*
+ * The track's size, always: where the bar begins and ends is `ShareFill`'s (T1653b). Its
+ * ends INSIDE the track are square since then (they were 2 px round on a 4 px bar: a
+ * round end is a box that moves, and a box that moves cost a full compositor update on
+ * every change of every bar). The track's own rounded ends still clip it.
+ */
 .barFill {
   position: absolute;
-  inset-block: 0;
-  background: var(--signal);
-  border-radius: var(--radius-sm);
+  inset: 0;
+  background-color: var(--signal);
 }
 
 /* The value left the range the bar is drawn against — a broken declaration, or a node
    past its own bound. It must not look like a bar legitimately at full scale. */
 .barTrack[data-clipped="true"] .barFill {
-  background: var(--warn);
+  background-color: var(--warn);
 }
 
 /*

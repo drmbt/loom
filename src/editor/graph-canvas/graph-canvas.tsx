@@ -119,8 +119,19 @@ const NODE_TYPES: NodeTypes = {
 };
 const EDGE_TYPES: EdgeTypes = { [SIGNAL_EDGE_TYPE]: SignalEdge as EdgeTypes[string] };
 const DEFAULT_EDGE_OPTIONS = { type: SIGNAL_EDGE_TYPE } as const;
-/** §I.ui: middle-drag pans, alt-drag pans, left-drag rubber-band selects, scroll zooms. */
-const PAN_MOUSE_BUTTONS = [1] as const;
+/**
+ * §I.ui: middle-drag pans, alt-drag pans, left-drag rubber-band selects, scroll zooms.
+ *
+ * ONE array for the life of the module (T1653b). React Flow's zoom pane keys an effect on
+ * this prop's IDENTITY, and that effect re-binds its non-passive `wheel` listener on the
+ * canvas root. A new array per render (it was `[...PAN_MOUSE_BUTTONS]` in the JSX) re-bound
+ * it on every render of this component — every value written, every selection — and for a
+ * blocking wheel listener that changed Chromium re-derives the hit-test data of everything
+ * under it: its paint invalidator visited every object of every node and every layer was
+ * repainted, 0.1 ms a node, with no DOM change at all (measured: 900 objects visited for
+ * one write on a 54-node document, 15 in a frame without one).
+ */
+const PAN_MOUSE_BUTTONS: number[] = [1];
 /**
  * Alt-drag is `panActivationKeyCode`, and with a trackpad it is the ONLY pan gesture.
  * React Flow gives every node wrapper its `nopan` class and its node-drag filter ignores
@@ -1246,7 +1257,7 @@ export function GraphCanvas({
           // Deletion is a keymap binding, not a hidden built-in: §V52 wants every
           // hotkey to be data pointing at a bus command (T76/T77 own that table).
           deleteKeyCode={null}
-          panOnDrag={[...PAN_MOUSE_BUTTONS]}
+          panOnDrag={PAN_MOUSE_BUTTONS}
           panActivationKeyCode={PAN_KEY}
           selectionOnDrag
           selectionMode={SelectionMode.Partial}

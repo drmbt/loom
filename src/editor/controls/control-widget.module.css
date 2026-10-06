@@ -48,10 +48,11 @@
 .panel .track {
   height: var(--control-h-lg);
 }
+/* The track's size, always: how much of it is drawn is `ShareFill`'s (T1653b). */
 .fill {
   position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--signal);
+  inset: 0;
+  background-color: var(--signal);
   opacity: 0.85;
 }
 /*

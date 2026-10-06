@@ -23,6 +23,7 @@ import {
 } from "@domain/presets/index.ts";
 import { LAYER_NODE_TYPE, layerPicture, surfaceNameOf, type BoardRect } from "@nodes/definitions/controls.ts";
 import { refusalMessage, type CommandAnswer } from "@editor/inspector/command-refusal.ts";
+import { ShareFill } from "@ui/primitives/share-fill.tsx";
 import { boardFit, boardValueEm, cueListBoardLayout, cueListShowsCues, layerBoardLayout, presetStripGrid, type BoardCells } from "./board-fit.ts";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { layerOpacityFader, setLayerOn } from "./layer-controls.ts";
@@ -212,7 +213,7 @@ function PresetStrip({ node, rect, cells, bus, invocation, view, name }: BoardMe
             >
               <span className={styles.name}>{preset.name}</span>
               {fading ? (
-                <span className={styles.fade} style={{ width: `${(fade.progress * 100).toFixed(1)}%` }} data-morph-progress={fade.progress.toFixed(2)} aria-hidden="true" />
+                <ShareFill className={styles.fade} end={fade.progress} data-morph-progress={fade.progress.toFixed(2)} />
               ) : null}
             </button>
           );
