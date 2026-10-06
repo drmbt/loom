@@ -2733,7 +2733,7 @@
           },
           "heading": [
             -1.1,
-            0,
+            -0.6,
             10.8
           ],
           "heading.x": {
@@ -2745,6 +2745,19 @@
               "static": {
                 "kind": "static",
                 "value": -1.1
+              }
+            },
+            "mode": "expression"
+          },
+          "heading.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (op('expression_camera').chan.aim < 1) * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))) - ((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + op('expression_camera').chan.up + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)) + 0.015 * sin(abstime * 1.7 + 1)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.6
               }
             },
             "mode": "expression"
@@ -10440,7 +10453,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').chan.aimX"
               },
               "static": {
                 "kind": "static",
@@ -10453,7 +10466,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.lookAt.y"
+                "source": "op('camera_rig').chan.aimY"
               },
               "static": {
                 "kind": "static",
@@ -10466,7 +10479,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').chan.aimZ"
               },
               "static": {
                 "kind": "static",
@@ -10497,7 +10510,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').chan.eyeX"
               },
               "static": {
                 "kind": "static",
@@ -10510,7 +10523,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.eye.y"
+                "source": "op('camera_rig').chan.eyeY"
               },
               "static": {
                 "kind": "static",
@@ -10523,7 +10536,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').chan.eyeZ"
               },
               "static": {
                 "kind": "static",
@@ -10537,7 +10550,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(((op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) * (op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) + op('expression_camera').chan.right * op('expression_camera').chan.right + op('expression_camera').chan.up * op('expression_camera').chan.up) ^ 0.5 * (((op('camera_rig').par.lookAt.x - op('camera_rig').par.eye.x) ^ 2 + (op('camera_rig').par.lookAt.y - op('camera_rig').par.eye.y) ^ 2 + (op('camera_rig').par.lookAt.z - op('camera_rig').par.eye.z) ^ 2) ^ 0.5 / max((op('camera_rig').par.lookAt.y ^ 2 + op('camera_rig').par.lookAt.z ^ 2) ^ 0.5, 0.01)), 0.6)"
+                "source": "max(((op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) * (op('expression_camera').chan.ahead - min(op('expression_camera').chan.aim, 0.4)) + op('expression_camera').chan.right * op('expression_camera').chan.right + op('expression_camera').chan.up * op('expression_camera').chan.up) ^ 0.5 * (op('camera_rig').chan.distance / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.y ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.01)), 0.6)"
               },
               "static": {
                 "kind": "static",
@@ -10616,7 +10629,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').chan.aimX"
               },
               "static": {
                 "kind": "static",
@@ -10629,7 +10642,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.lookAt.y"
+                "source": "op('camera_rig').chan.aimY"
               },
               "static": {
                 "kind": "static",
@@ -10642,7 +10655,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').chan.aimZ"
               },
               "static": {
                 "kind": "static",
@@ -10757,7 +10770,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').chan.eyeX"
               },
               "static": {
                 "kind": "static",
@@ -10770,7 +10783,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.eye.y"
+                "source": "op('camera_rig').chan.eyeY"
               },
               "static": {
                 "kind": "static",
@@ -10783,7 +10796,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').chan.eyeZ"
               },
               "static": {
                 "kind": "static",
@@ -11278,7 +11291,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').chan.aimX"
               },
               "static": {
                 "kind": "static",
@@ -11291,7 +11304,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.lookAt.y"
+                "source": "op('camera_rig').chan.aimY"
               },
               "static": {
                 "kind": "static",
@@ -11304,7 +11317,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').chan.aimZ"
               },
               "static": {
                 "kind": "static",
@@ -11322,7 +11335,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').chan.eyeX"
               },
               "static": {
                 "kind": "static",
@@ -11335,7 +11348,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.eye.y"
+                "source": "op('camera_rig').chan.eyeY"
               },
               "static": {
                 "kind": "static",
@@ -11348,7 +11361,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').chan.eyeZ"
               },
               "static": {
                 "kind": "static",
@@ -11400,7 +11413,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').chan.aimX"
               },
               "static": {
                 "kind": "static",
@@ -11413,7 +11426,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.lookAt.y"
+                "source": "op('camera_rig').chan.aimY"
               },
               "static": {
                 "kind": "static",
@@ -11426,7 +11439,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.lookAt.z"
+                "source": "op('camera_rig').chan.aimZ"
               },
               "static": {
                 "kind": "static",
@@ -11444,7 +11457,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').chan.eyeX"
               },
               "static": {
                 "kind": "static",
@@ -11457,7 +11470,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.y + op('camera_rig').par.eye.y"
+                "source": "op('camera_rig').chan.eyeY"
               },
               "static": {
                 "kind": "static",
@@ -11470,7 +11483,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('camera_rig').par.origin.z - (0 - op('camera_rig').par.heading.x / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.x + (0 - op('camera_rig').par.heading.z / max((op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5, 0.000001)) * op('camera_rig').par.eye.z"
+                "source": "op('camera_rig').chan.eyeZ"
               },
               "static": {
                 "kind": "static",

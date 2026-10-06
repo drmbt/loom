@@ -315,38 +315,15 @@ const WAY = `clamp(op('lag_rate').chan.value / ${SWIM_WAY}, 0, 1)`;
 
 /** The camera's far plane, metres: past the furthest tower of the fields (field.ts: 430 m ahead, 250 m to a side). */
 /**
- * A Camera's Eye or Look At IN THE WORLD, as three expressions that read the camera node's own parameters.
- *
- * A camera's Eye and Look At are offsets in the frame its Origin and Heading make (§T1656b), and the engine composes
- * them where it builds the camera's payload: a Render gets world positions and knows nothing of the frame. A TEXTURE
- * PASS takes no camera, so what it reads off the node (`op('camera').par.eye`) is the offset. This says the engine's
- * composition again (src/domain/geometry/camera.ts, `cameraFrame` and `inCameraFrame`: the frame turns about the
- * vertical, its forward is its -z), and camera.test.ts holds the two together. One case is not the engine's: a
- * Heading with no level part leaves the engine's axes the world's; here the point's x and z are dropped. (A camera
- * looking straight down its own frame. Asked of the engine as a row: a camera's composed pose as channels.)
- */
-export function cameraWorldExpression(camera: string, point: "eye" | "lookAt"): Record<"x" | "y" | "z", string> {
-  const par = (key: string): string => `op('${camera}').par.${key}`;
-  const span = `max((${par("heading.x")} ^ 2 + ${par("heading.z")} ^ 2) ^ 0.5, 0.000001)`;
-  // The frame's back (its +z) is against the heading; its right is up × back.
-  const back = { x: `(0 - ${par("heading.x")} / ${span})`, z: `(0 - ${par("heading.z")} / ${span})` };
-  return {
-    x: `${par("origin.x")} + ${back.z} * ${par(`${point}.x`)} + ${back.x} * ${par(`${point}.z`)}`,
-    y: `${par("origin.y")} + ${par(`${point}.y`)}`,
-    z: `${par("origin.z")} - ${back.x} * ${par(`${point}.x`)} + ${back.z} * ${par(`${point}.z`)}`,
-  };
-}
-
-/**
  * How much farther from its aim a flown camera is than the directed one, as an expression reading the camera node:
- * the length from its Eye to its Look At over the length to its Look At from no trim (Eye 0 0 0, Look At's x 0).
- * Exactly 1 with no trim. The focus is drawn out or in by it, so what was sharp in the shot is sharp from where the
- * camera has been flown to.
+ * the distance from where the camera is to what it looks at (the camera's own composed pose, §T1674b) over the
+ * length of its Heading, which in this file is the whole way from the directed eye to the directed aim (cameraPose).
+ * 1 with no trim. The focus is drawn out or in by it, so what was sharp in the shot is sharp from where the camera
+ * has been flown to.
  */
 export function flownReachExpression(camera: string): string {
-  const par = (key: string): string => `op('${camera}').par.${key}`;
-  const between = (["x", "y", "z"] as const).map((axis) => `(${par(`lookAt.${axis}`)} - ${par(`eye.${axis}`)}) ^ 2`).join(" + ");
-  return `((${between}) ^ 0.5 / max((${par("lookAt.y")} ^ 2 + ${par("lookAt.z")} ^ 2) ^ 0.5, 0.01))`;
+  const heading = (["x", "y", "z"] as const).map((axis) => `op('${camera}').par.heading.${axis} ^ 2`).join(" + ");
+  return `(op('${camera}').chan.distance / max((${heading}) ^ 0.5, 0.01))`;
 }
 
 const FAR = 520;
@@ -424,8 +401,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const UNTRIMMED = { eye: [0, 0, 0], lookAt: [0, restToAim[1], -Math.hypot(restToAim[0], restToAim[2])] };
   const cameraPose: Record<string, StoredParameter> = {
     origin: [...CAMERA_REST.eye], "origin.x": expressionSlot(eye.x, CAMERA_REST.eye[0]), "origin.y": expressionSlot(eye.y, CAMERA_REST.eye[1]), "origin.z": expressionSlot(eye.z, CAMERA_REST.eye[2]),
-    // Only its level part is read: the way the camera faces on the ground.
-    heading: [restToAim[0], 0, restToAim[2]], "heading.x": expressionSlot(toAim.x, restToAim[0]), "heading.z": expressionSlot(toAim.z, restToAim[2]),
+    // The whole way to the aim. Only its level part turns the frame (the way the camera faces on the ground); its
+    // length is how far the directed aim is, which the focus reads (flownReachExpression).
+    heading: [...restToAim], "heading.x": expressionSlot(toAim.x, restToAim[0]), "heading.y": expressionSlot(toAim.y, restToAim[1]), "heading.z": expressionSlot(toAim.z, restToAim[2]),
     eye: [...UNTRIMMED.eye],
     lookAt: [...UNTRIMMED.lookAt], "lookAt.y": expressionSlot(toAim.y, UNTRIMMED.lookAt[1] as number), "lookAt.z": expressionSlot(`(0 - (${toAim.x} ^ 2 + ${toAim.z} ^ 2) ^ 0.5)`, UNTRIMMED.lookAt[2] as number),
   };
@@ -494,13 +472,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   };
   /**
    * What every screen-space pass needs of the camera to turn a pixel back into a ray: read off the camera node
-   * itself, IN THE WORLD (cameraWorldExpression), so a flown trim is in the air and the focus as it is in the picture.
+   * itself, WHERE IT IS (its composed pose, by name: §T1674b), so a flown trim is in the air and the focus as it is
+   * in the picture. Not its Eye and Look At parameters: those are the offsets in its frame (cameraPose), and read
+   * for a place they put the haze out.
    */
-  const [seenFrom, seenToward] = [cameraWorldExpression("camera_rig", "eye"), cameraWorldExpression("camera_rig", "lookAt")];
   const lens: Record<string, StoredParameter> = {
     eye: [...CAMERA_REST.eye],
     aim: [...CAMERA_REST.aim],
-    ...Object.fromEntries((["x", "y", "z"] as const).flatMap((axis, index) => [[`eye.${axis}`, expressionSlot(seenFrom[axis], CAMERA_REST.eye[index] as number)], [`aim.${axis}`, expressionSlot(seenToward[axis], CAMERA_REST.aim[index] as number)]])),
+    ...Object.fromEntries((["x", "y", "z"] as const).flatMap((axis, index) => [[`eye.${axis}`, expressionSlot(`op('camera_rig').chan.eye${axis.toUpperCase()}`, CAMERA_REST.eye[index] as number)], [`aim.${axis}`, expressionSlot(`op('camera_rig').chan.aim${axis.toUpperCase()}`, CAMERA_REST.aim[index] as number)]])),
     fov: expressionSlot("op('camera_rig').par.fov", 55),
     far: FAR,
     roll: 0,
