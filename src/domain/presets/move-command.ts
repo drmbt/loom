@@ -164,6 +164,7 @@ export function registerPresetMoveCommand(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_MOVE_INTO_COMPONENT_COMMAND,
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput }).strict(),
     description:
       "Move a Presets bank that targets one component instance INTO that component: its presets become the component's own (for every instance, travelling with it), and the instance becomes the bank its cues and Panels name (§T1505b).",

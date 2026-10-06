@@ -80,6 +80,7 @@ export function registerLayoutCommands(bus: LoomBus): LayoutCommandHolder {
 
   bus.registerCommand({
     name: OPEN_LAYOUTS_COMMAND,
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Open the layout menu — save, name, update or restore a window layout.",
     handler: (_input, context) => {
@@ -102,6 +103,7 @@ export function registerLayoutCommands(bus: LoomBus): LayoutCommandHolder {
 
   bus.registerCommand({
     name: RESET_LAYOUT_COMMAND,
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Reset the window layout to the built-in default arrangement.",
     handler: (_input, context) => {
@@ -123,6 +125,7 @@ export function registerLayoutCommands(bus: LoomBus): LayoutCommandHolder {
 
   bus.registerCommand({
     name: SHOW_PROBLEMS_COMMAND,
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Show the problems pane — bring its tab to the front, restoring it if closed.",
     handler: (_input, context) => {

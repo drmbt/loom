@@ -53,6 +53,7 @@ const rejection = (
 export function registerNodeOutputCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: "node.setChannelMask",
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput, channelMask: channelMaskSchema.nullable(), internalNodeId: idInput.optional() }).strict(),
     description: "Choose processed image channels; disabled channels preserve the first texture input.",
     handler: (input, context) => {
@@ -92,6 +93,7 @@ export function registerNodeOutputCommands(bus: LoomBus): void {
   });
   bus.registerCommand({
     name: "node.setResolution",
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput, resolution: nodeResolutionOverrideSchema.nullable() }).strict(),
     description: "Set or clear a node's output resolution override (§V50).",
     handler: (input, context) => {
@@ -135,6 +137,7 @@ export function registerNodeOutputCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: "node.setFormat",
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput, format: nodeFormatOverrideSchema.nullable() }).strict(),
     description: "Set or clear a node's output pixel format override (§V51).",
     handler: (input, context) =>

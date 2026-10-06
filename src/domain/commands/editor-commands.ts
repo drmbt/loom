@@ -368,6 +368,7 @@ function registerToggle(
 ): void {
   bus.registerCommand({
     name,
+    inSession: "definition",
     description: `${label} on the target nodes.`,
     inputSchema: nodeSelectionSchema,
     handler: (input, context) => {
@@ -463,6 +464,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.removeNodes",
+    inSession: "definition",
     inputSchema: nodeSelectionSchema,
     description: "Delete nodes and their incident edges (§V40).",
     handler: (input, context) => {
@@ -477,6 +479,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.copySelection",
+    inSession: "definition",
     inputSchema: nodeSelectionSchema,
     description: "Copy the selected nodes and the edges between them.",
     handler: (input, context) => {
@@ -508,6 +511,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.cutSelection",
+    inSession: "definition",
     inputSchema: nodeSelectionSchema,
     description: "Copy the selection to the clipboard, then delete it.",
     handler: (input, context) => {
@@ -533,6 +537,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.paste",
+    inSession: "definition",
     inputSchema: pasteSchema,
     description: "Paste the clipboard as new nodes with new ids (§V35).",
     handler: async (input, context) => {
@@ -608,6 +613,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "graph.duplicateSelection",
+    inSession: "definition",
     inputSchema: duplicateSchema,
     description: "Copy the selected nodes in place, offset, keeping the edges between them.",
     handler: (input, context) => {
@@ -623,6 +629,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
 
   bus.registerCommand({
     name: "node.rename",
+    inSession: "definition",
     inputSchema: renameSchema,
     description:
       "Rename a node, or clear the name back to its definition title (§V29). A name carries its node's kind (kind_role): one given without it gets the kind in front, unless exact is true.",
@@ -680,6 +687,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
    */
   bus.registerCommand({
     name: "node.setValuePlotMode",
+    inSession: "definition",
     inputSchema: valuePlotModeSchema,
     description: "Draw a value node's body as a bar or as a curve (null: follow the default).",
     handler: (input, context) =>
@@ -721,6 +729,7 @@ export function registerEditorCommands(bus: LoomBus, options: EditorCommandOptio
    */
   bus.registerCommand({
     name: "node.bringToFront",
+    inSession: "definition",
     inputSchema: nodeSelectionSchema,
     description: "Raise the target nodes above every other node in the graph.",
     handler: (input, context) => {

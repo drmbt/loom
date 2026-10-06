@@ -36,7 +36,7 @@ import type { GraphPatch, GraphPatchOperation } from "@domain/types/patch.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { NodeView } from "@editor/nodes/node-view.tsx";
 import { AnnotationNode } from "@editor/nodes/annotation-node.tsx";
-import { registerRenameSessionCommand } from "@editor/nodes/rename-session.ts";
+import { registerRenameSessionCommand, renameCanvasHolderFor } from "@editor/nodes/rename-session.ts";
 import { createKindLabelRegistry } from "@editor/nodes/kind-label.ts";
 import { SignalEdge } from "@editor/edges/signal-edge.tsx";
 import {
@@ -1049,6 +1049,15 @@ export function GraphCanvas({
    * argument, it does not own a second rename (§V29, §V61).
    */
   const renameSession = useMemo(() => registerRenameSessionCommand(bus), [bus]);
+  // §T1695b: the command asks THIS canvas whether it shows the node, whichever graph that is.
+  useEffect(() => {
+    const holder = renameCanvasHolderFor(bus);
+    const canvas = { holds: (nodeId: NodeId) => bus.store.getGraph().nodes[nodeId] !== undefined };
+    holder.current = canvas;
+    return () => {
+      if (holder.current === canvas) holder.current = null;
+    };
+  }, [bus]);
   const beginRename = useCallback(
     (nodeId: NodeId) => {
       void bus.execute("ui.beginRename", { nodeIds: [nodeId] }, invocation);

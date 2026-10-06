@@ -72,6 +72,7 @@ export function registerHelpCommand(bus: LoomBus): HelpHolder {
 
   bus.registerCommand({
     name: OPEN_HELP_COMMAND,
+    inSession: "app",
     inputSchema: z.object({ section: z.enum(HELP_SECTIONS as unknown as [HelpSection, ...HelpSection[]]).optional(), nodeType: z.string().optional() }).strict(),
     description: "Open help — shortcuts, node reference, expression reference, agent setup.",
     handler: (input, context) => {

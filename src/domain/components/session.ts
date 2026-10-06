@@ -6,6 +6,7 @@ import type { IdFactory } from "../graph/ids.ts";
 import type { GraphStore, GraphStoreState } from "../graph/store.ts";
 import { actorKeyOf, createGraphStore } from "../graph/store.ts";
 import type { LoomBus } from "../commands/bus.ts";
+import type { InstancePath } from "./addressing.ts";
 import { createDomainBus } from "../commands/index.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { pruneComponentDefinition } from "./definition.ts";
@@ -69,6 +70,16 @@ import type { ComponentRegistry } from "./registry.ts";
  * definition inside that step, which pairs before/after with it through `onDefinitionStep`
  * the same way. Undo and redo of that step move no graph entity; the revision bump is the
  * commit this listener reads, and the recorded side is put back like any other.
+ *
+ * ## The session's bus has a parent (§T1695b)
+ *
+ * This bus holds the commands that edit a graph, pointed at the definition. Everything else
+ * a person can do while standing inside a component (reset a feedback loop, play, save,
+ * open help) is the project's, and the session's bus answers it through `parent`, by what
+ * each command declared (`InSession`, `commands/bus.ts`). A command about a running
+ * instance reaches the instance named by `instancePath`: the one the editor dived through.
+ * Without a parent the bus is what it was before, an island, which is what a build script
+ * with no project wants.
  */
 
 export interface ComponentSession {
@@ -105,6 +116,20 @@ export interface ComponentSessionOptions {
    * writes it: it is another store, with its own undo history.
    */
   root?: () => GraphDocument;
+  /** §T1695b: the project's bus, which this session's bus inherits the app's and the instance's commands from. */
+  parent?: LoomBus;
+  /**
+   * §T1695b: the instance the editor is viewing this definition through (the editor's path,
+   * innermost last), read at each call. Absent, or returning undefined: no instance is in
+   * view, and a command about a running instance refuses by name.
+   */
+  instancePath?: () => InstancePath | undefined;
+  /**
+   * §T1695b: the composition root's own commands that edit a GRAPH (`"definition"`), which
+   * therefore belong on every document bus and not on the project's alone. Called once, with
+   * this session's bus.
+   */
+  registerDocumentCommands?: (bus: LoomBus) => void;
 }
 
 export const COMPONENT_SESSION_STALE_CODE = "component.session.stale";
@@ -121,7 +146,19 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
     initialGraph: definition.graph,
     ...(options.ids === undefined ? {} : { ids: options.ids }),
   });
-  const { bus } = createDomainBus({ store, registry: options.nodes });
+  const { bus } = createDomainBus({
+    store,
+    registry: options.nodes,
+    ...(options.parent === undefined
+      ? {}
+      : {
+          parent: options.parent,
+          scope: {
+            subject: () => `component "${options.components.get(options.componentId, options.version)?.name ?? definition.name}"`,
+            instancePath: () => options.instancePath?.(),
+          },
+        }),
+  });
 
   // T1545b: the definition around each undo step (see "Undo restores the definition too").
   const steps = new Map<string, DefinitionStep>();
@@ -147,6 +184,7 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
     },
     ...(options.root === undefined ? {} : { rootGraph: options.root }),
   });
+  options.registerDocumentCommands?.(bus);
 
   // The definition graph this session and the catalogue last agreed on. Identity is the
   // test: every writer registers a new graph object, and nothing else replaces it.

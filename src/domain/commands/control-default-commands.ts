@@ -219,6 +219,7 @@ export function registerControlDefaultCommands(bus: LoomBus): void {
   if (bus.hasCommand(CONTROL_RESET_COMMAND)) return;
   bus.registerCommand({
     name: CONTROL_RESET_COMMAND,
+    inSession: "definition",
     inputSchema: controlDefaultInputSchema,
     description:
       "Send Sliders, Toggles and XY Pads back to their defaults: the controls named (a Panel's id names the controls on it), or every one. One patch, one undo step (§T1619b).",
@@ -227,6 +228,7 @@ export function registerControlDefaultCommands(bus: LoomBus): void {
   });
   bus.registerCommand({
     name: CONTROL_SET_DEFAULT_COMMAND,
+    inSession: "definition",
     inputSchema: controlDefaultInputSchema,
     description:
       "Make the current value of Sliders, Toggles and XY Pads their default, the value Reset returns to: the controls named (a Panel's id names the controls on it), or every one. One patch, one undo step (§T1619b).",
@@ -235,6 +237,7 @@ export function registerControlDefaultCommands(bus: LoomBus): void {
   });
   bus.registerCommand({
     name: CONTROL_RESET_ALL_COMMAND,
+    inSession: "definition",
     inputSchema: NO_INPUT,
     description: "Send every Slider, Toggle and XY Pad in the document back to its default. One patch, one undo step (§T1619b).",
     handler: (_input, context) => run("reset", { all: true }, context),
@@ -242,6 +245,7 @@ export function registerControlDefaultCommands(bus: LoomBus): void {
   });
   bus.registerCommand({
     name: CONTROL_SET_ALL_DEFAULTS_COMMAND,
+    inSession: "definition",
     inputSchema: NO_INPUT,
     description: "Make the current value of every Slider, Toggle and XY Pad in the document its default. One patch, one undo step (§T1619b).",
     handler: (_input, context) => run("setDefault", { all: true }, context),

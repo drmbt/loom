@@ -8,7 +8,7 @@ import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { CommandContext, CommandOutcome, LoomBus } from "../commands/bus.ts";
 import { applyGraphPatch } from "../commands/apply-patch.ts";
 import { z } from "zod";
-import { finiteInput, idInput } from "../commands/input-schema.ts";
+import { finiteInput, idInput, nodeIdInput } from "../commands/input-schema.ts";
 import { nodeByName } from "../graph/names.ts";
 import { effectiveParameterSchema, resolveParameters, resolveStored } from "../parameters/resolve.ts";
 import { parameterReadOptions, type ParameterReadContext } from "../parameters/node-references.ts";
@@ -46,6 +46,7 @@ import {
 import { bankMorphRecords } from "./morph-index.ts";
 import {
   PAGE_TARGET,
+  isPresetsNode,
   PRESET_CURRENT_KEY,
   PRESET_MORPHS_KEY,
   PRESET_STATE_KEYS,
@@ -60,6 +61,8 @@ import {
   type PresetCatalogue,
 } from "./bank-view.ts";
 import { isComponentNodeType } from "../components/component-type.ts";
+import { enteredThrough } from "../components/addressing.ts";
+import { readComponentInstance } from "../components/instance.ts";
 import { presetHolds } from "../../nodes/definitions/controls.ts";
 import { CUE_BACK_COMMAND, CUE_GO_COMMAND } from "./cue-list.ts";
 
@@ -192,7 +195,9 @@ export const morphSpecSchema = z
 
 export const presetRecallInputSchema = z
   .object({
-    nodeId: idInput,
+    // §T1695b: a node ADDRESS, so a recall handed up from a component session reaches the
+    // instance in view (`nodeIdInput`, `input-schema.ts`).
+    nodeId: nodeIdInput,
     /** Omitted: the preset named in the bank's Select. */
     name: z.string().min(1).optional(),
     /** How THIS recall is carried out, over the preset's and the bank's own morph. */
@@ -322,8 +327,28 @@ export function requireBank(
     // T1505b: a flattened id (`outer/city`) is inside an instance. v1 stores and recalls a
     // look's presets on an instance in the ROOT graph only — nothing at the root writes a
     // nested instance's page.
-    const head = nodeId.includes("/") ? graph.nodes[nodeId.slice(0, nodeId.indexOf("/"))] : undefined;
-    if (head !== undefined && isComponentNodeType(head.type)) {
+    const entered = enteredThrough(nodeId);
+    const head = entered === undefined ? undefined : graph.nodes[entered.instance];
+    if (entered !== undefined && head !== undefined && isComponentNodeType(head.type)) {
+      // §T1695b: an INNER bank (one that writes the component's own nodes) named from a
+      // running instance, which is what an expression on its Recall pulse does. Its values
+      // are the component's, one set for every instance, so there is nothing of THIS
+      // instance for it to write: refused, and the sentence says so. The same button
+      // pressed inside the component edits the component, on purpose.
+      const state = readComponentInstance(head);
+      const inner = state === null ? undefined : catalogue?.components.get(state.componentId, state.version)?.graph.nodes[entered.rest];
+      if (inner !== undefined && isPresetsNode(inner) && !isPageBank(inner)) {
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "error",
+            "preset.bank.inner",
+            `Bank "${bankName(inner)}" inside component instance "${bankName(head)}" writes the component's own nodes. Those values are the component's, the same for every instance, so a recall fired from a running instance is refused. Nothing was changed.`,
+            head.id,
+            `Recall it inside the component, where it edits the component for every instance; or target ${PAGE_TARGET} to make it the component's page bank, which is recalled per instance.`,
+          ),
+        };
+      }
       return {
         ok: false,
         diagnostic: diagnostic(
@@ -376,12 +401,12 @@ export function requireBank(
  */
 function pageBankPulse(graph: GraphDocument, nodeId: unknown, catalogue: PresetCatalogue | undefined): { instanceId: NodeId; flatId: string } | null {
   if (typeof nodeId !== "string" || graph.nodes[nodeId] !== undefined) return null;
-  const parts = nodeId.split("/");
-  if (parts.length !== 2) return null;
-  const [instanceId, bankId] = parts as [NodeId, string];
-  const lookup = bankOf(graph.nodes[instanceId], catalogue?.components);
-  if (!lookup.ok || lookup.view.kind !== "instance" || lookup.view.bank.id !== bankId) return null;
-  return { instanceId, flatId: nodeId };
+  // One level only: the rest of the id is the bank's own, with no instance inside it.
+  const entered = enteredThrough(nodeId);
+  if (entered === undefined || enteredThrough(entered.rest) !== undefined) return null;
+  const lookup = bankOf(graph.nodes[entered.instance], catalogue?.components);
+  if (!lookup.ok || lookup.view.kind !== "instance" || lookup.view.bank.id !== entered.rest) return null;
+  return { instanceId: entered.instance, flatId: nodeId };
 }
 
 /**
@@ -1134,6 +1159,7 @@ export function registerPresetCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_STORE_COMMAND,
+    inSession: "definition",
     inputSchema: presetStoreInputSchema,
     description:
       "Store a bank's targets, as their whole stored slots, under a preset name (§T1496b). On a component instance whose component holds a preset bank, the preset is written into the component, for every instance (§T1505b).",
@@ -1207,6 +1233,12 @@ export function registerPresetCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_RECALL_COMMAND,
+    // §T1695b: an inner bank's recall writes the definition; a page bank's page is an
+    // instance's, so inside the component it is recalled on the instance in view.
+    inSession: {
+      definition: true,
+      handsUp: "A recall aimed at the component's page bank goes to the instance the editor is viewing: the page it writes is that instance's.",
+    },
     inputSchema: presetRecallInputSchema,
     description:
       "Recall a bank's preset: every target it holds written back as one patch, one undo step (§T1496b); with a morph, the end state commits at once and the screen fades to it (§T1497b). A preset's recalls (other banks' presets) and its layer on/off ride in the same patch (§T1499b).",
@@ -1220,7 +1252,14 @@ export function registerPresetCommands(bus: LoomBus): void {
       const { view, bank } = found;
       const node = view.holder;
       const inside = inDefinitionRefusal(view, catalogue, "Recall");
-      if (inside !== null) return recallRefusal(revision, [inside]);
+      if (inside !== null) {
+        // §T1695b: the editor got here through an instance, and that instance's page is what
+        // a page bank recalls. The root command takes it from there, as it does for a pulse
+        // an expression fired (`pageBankPulse`). With no instance in view the refusal stands.
+        const viewed = context.session?.instancePath();
+        if (context.session !== undefined && viewed !== undefined && viewed.length > 0) return context.session.handUp();
+        return recallRefusal(revision, [inside]);
+      }
       // Select, Morph and Curve are the bank's — for an instance, its component's page bank's;
       // for a pulse from inside, that bank as THIS instance flattened it (its published Select).
       const flat = pulse === null ? undefined : bus.flattenedGraph();

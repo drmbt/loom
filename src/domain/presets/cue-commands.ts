@@ -8,6 +8,8 @@ import { applyGraphPatch } from "../commands/apply-patch.ts";
 import { z } from "zod";
 import { idInput } from "../commands/input-schema.ts";
 import { nodeByName } from "../graph/names.ts";
+import { enteredThrough } from "../components/addressing.ts";
+import { isComponentNodeType } from "../components/component-type.ts";
 import { resolveParameters } from "../parameters/resolve.ts";
 import { parsePresetBank, type MorphCurve, type MorphSpec, type Preset } from "./bank.ts";
 import { bankLookupRefusal, bankSettings, planPresetRecall, presetCatalogueOf, presetMorph } from "./commands.ts";
@@ -270,7 +272,28 @@ function requireListNode(context: CommandContext, nodeId: unknown, keyed: boolea
       return { ok: false, diagnostic: diagnostic("error", "cue.list.missing", "No cue list was named.") };
     }
     const node = context.graph.nodes[nodeId];
-    if (node === undefined) return { ok: false, diagnostic: diagnostic("error", "cue.list.missing", `No node "${nodeId}".`) };
+    if (node === undefined) {
+      // §T1695b: a list INSIDE a component, named from a running instance, which is what an
+      // expression on its GO or BACK pulse does. Its cues and its place in them are stored in
+      // the component, one for every instance, so there is nothing of this instance to step:
+      // refused, saying so. The same button pressed inside the component steps the
+      // component's list, on purpose.
+      const entered = enteredThrough(nodeId);
+      const head = entered === undefined ? undefined : context.graph.nodes[entered.instance];
+      if (head !== undefined && isComponentNodeType(head.type)) {
+        return {
+          ok: false,
+          diagnostic: diagnostic(
+            "error",
+            "cue.list.inInstance",
+            `"${nodeId}" is inside component instance "${nameOf(head)}". A cue list there keeps its cues and its place in them in the component, the same for every instance, so stepping it from a running instance is refused. Nothing was changed.`,
+            head.id,
+            "Press GO or BACK inside the component, where it steps the component's list for every instance.",
+          ),
+        };
+      }
+      return { ok: false, diagnostic: diagnostic("error", "cue.list.missing", `No node "${nodeId}".`) };
+    }
     if (node.type !== CUE_LIST_NODE_TYPE) {
       return {
         ok: false,
@@ -594,6 +617,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_GO_COMMAND,
+    inSession: "definition",
     inputSchema: cueStepInputSchema,
     description:
       "GO: fire a cue list's standby cue — its preset recalled and the list advanced as one patch, one undo step (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
@@ -603,6 +627,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_BACK_COMMAND,
+    inSession: "definition",
     inputSchema: cueStepInputSchema,
     description:
       "BACK: fire the cue before a cue list's current one, with that cue's own morph (§T1500b). Without a nodeId, the one cue list whose Keys switch is on.",
@@ -612,6 +637,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_FIRE_COMMAND,
+    inSession: "definition",
     inputSchema: cueNamedInputSchema,
     description: "Fire a named cue of a cue list directly; the standby becomes the cue after it (§T1500b).",
     handler: (input, context) => {
@@ -623,6 +649,7 @@ export function registerCueCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CUE_SET_STANDBY_COMMAND,
+    inSession: "definition",
     inputSchema: cueNamedInputSchema,
     description: "Move a cue list's standby — the cue GO fires next — without firing anything (§T1500b).",
     handler: (input, context) => {

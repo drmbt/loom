@@ -71,6 +71,7 @@ export function registerSettingsCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: SET_SETTINGS_COMMAND,
+    inSession: "app",
     description: "Change project settings: resolution, format, frame rate, seed, limits.",
     inputSchema: z.object({ settings: projectSettingsSchema.partial(), label: z.string().optional() }).strict(),
     handler: (input, context) => {

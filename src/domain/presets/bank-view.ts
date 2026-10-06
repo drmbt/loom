@@ -3,7 +3,7 @@ import type { GraphNode } from "../types/graph.ts";
 import type { ParameterDefinition } from "../types/parameters.ts";
 import type { ComponentRegistry } from "../components/registry.ts";
 import type { ComponentHost } from "../components/commands.ts";
-import { commandHolder, type CommandHolder } from "../commands/command-holder.ts";
+import { sharedForDocument, type CommandHolder } from "../commands/command-holder.ts";
 import { parseComponentNodeType } from "../components/component-type.ts";
 import { PRESETS_NODE_TYPE, parsePresetTargets } from "./bank.ts";
 import { EMPTY_MORPH_RECORDS_JSON, parseMorphRecords, renameRecordsNode, type MorphRecord } from "./morph.ts";
@@ -100,9 +100,13 @@ export interface PresetCatalogue {
   readonly host: ComponentHost | null;
 }
 
-/** The per-bus holder (`command-holder.ts`, §T719), so a re-executed module keeps it. */
+/**
+ * The per-bus holder (`command-holder.ts`, §T719), so a re-executed module keeps it.
+ * §T1695b: per DOCUMENT, not per app: `host` is the component THIS bus edits, so a session's
+ * holder is its own and never the root's.
+ */
 export function presetCatalogueHolderFor(bus: object): CommandHolder<PresetCatalogue> {
-  return commandHolder<PresetCatalogue>(bus, "presets.catalogue");
+  return sharedForDocument<CommandHolder<PresetCatalogue>>(bus, "presets.catalogue", () => ({ current: null }));
 }
 
 /**

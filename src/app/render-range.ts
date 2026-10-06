@@ -384,6 +384,7 @@ export function registerRenderRangeCommand(bus: LoomBus): RenderRangeHolder {
 
   bus.registerCommand({
     name: "export.renderRange",
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Render the timeline's in/out range to a video file.",
     handler: async (_input, context) => {

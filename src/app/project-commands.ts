@@ -114,6 +114,7 @@ export function registerProjectCommands(bus: LoomBus): ProjectHolder {
   if (!bus.hasCommand(SAVE_PROJECT_COMMAND)) {
     bus.registerCommand({
       name: SAVE_PROJECT_COMMAND,
+      inSession: "app",
       inputSchema: z.object({ saveAs: z.boolean().optional() }).strict(),
       description: "Save the project to a .loom.json file.",
       handler: async (input, context) => {
@@ -140,6 +141,7 @@ export function registerProjectCommands(bus: LoomBus): ProjectHolder {
   if (!bus.hasCommand(OPEN_PROJECT_COMMAND)) {
     bus.registerCommand({
       name: OPEN_PROJECT_COMMAND,
+      inSession: "app",
       inputSchema: z.object({ text: z.string().optional(), fileName: z.string().optional() }).strict(),
       description: "Open a .loom.json project, replacing the one that is open.",
       handler: async (input, context) => {
@@ -168,6 +170,7 @@ export function registerProjectCommands(bus: LoomBus): ProjectHolder {
   if (!bus.hasCommand(NEW_PROJECT_COMMAND)) {
     bus.registerCommand({
       name: NEW_PROJECT_COMMAND,
+      inSession: "app",
       inputSchema: NO_INPUT,
       description: "Start an empty project, replacing the one that is open.",
       handler: async (_input, context) => {

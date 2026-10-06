@@ -74,6 +74,7 @@ export interface ValidationReport {
 export function registerValidateCommand(bus: LoomBus): void {
   bus.registerCommand({
     name: "project.validate",
+    inSession: "definition",
     inputSchema: NO_INPUT,
     description: "Validate the graph without compiling it: definitions, wiring and cycles.",
     handler: (_input, context) => {

@@ -558,6 +558,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.pulse",
+    inSession: "definition",
     inputSchema: parameterRefSchema,
     description:
       "Fire a momentary pulse parameter. Audited, never undoable, never serialized (§V124).",
@@ -683,6 +684,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.copy",
+    inSession: "definition",
     inputSchema: parameterRefSchema,
     description:
       "Copy a parameter WHOLE — value, reference and binding — so paste can choose.",
@@ -695,6 +697,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.copyValue",
+    inSession: "definition",
     inputSchema: parameterRefSchema,
     description: "Copy a parameter's effective value as text (T246).",
     handler: copyHandler("value", (payload) => payload.valueText),
@@ -703,6 +706,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.copyReference",
+    inSession: "definition",
     inputSchema: parameterRefSchema,
     description: "Copy a reference that pastes into an expression (T246, §V148).",
     // Null mirror = refuse. Unlike `parameter.copy`, this command's ENTIRE purpose is the
@@ -713,6 +717,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "channel.copy",
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput, channel: z.string().min(1), value: z.number().optional() }).strict(),
     description:
       "Copy a value node's channel — its reference, its name and its reading — so paste can choose (T1393b).",
@@ -747,6 +752,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.paste",
+    inSession: "definition",
     inputSchema: parameterRefSchema.extend({ text: z.string().optional(), as: z.enum(["value", "reference", "binding", "name"]).optional() }).strict(),
     description:
       "Paste the copied value, reference or binding onto this parameter (T246).",
@@ -997,6 +1003,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.reset",
+    inSession: "definition",
     inputSchema: parameterRefSchema,
     description: "Restore the manifest default and the Constant mode (T246, §V149).",
     handler: (input, context) => {
@@ -1087,6 +1094,7 @@ export function registerParameterCommands(
    */
   bus.registerCommand({
     name: "parameter.removeUndeclared",
+    inSession: "definition",
     inputSchema: removeUndeclaredSchema,
     description: "Remove the values a node stores under keys it does not declare, which nothing reads (T1641b).",
     handler: (input, context) => {
@@ -1190,6 +1198,7 @@ export function registerParameterCommands(
    */
   bus.registerCommand({
     name: "parameter.revert",
+    inSession: "definition",
     inputSchema: parameterRefSchema,
     description: "Restore the value this document was opened with (T1184).",
     handler: (input, context) => {
@@ -1264,6 +1273,7 @@ export function registerParameterCommands(
 
   bus.registerCommand({
     name: "parameter.setMode",
+    inSession: "definition",
     inputSchema: parameterRefSchema.extend({ mode: parameterModeSchema }).strict(),
     description: "Switch a parameter's active mode, keeping every other payload (§V108).",
     handler: (input, context) => {

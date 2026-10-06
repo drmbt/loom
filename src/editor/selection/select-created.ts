@@ -4,7 +4,7 @@ import { commandHolder } from "@domain/commands/command-holder.ts";
 import type { CommandStatus, InvocationContext } from "@domain/types/commands.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { z } from "zod";
-import { nodeIdsInput } from "@domain/commands/input-schema.ts";
+import { canvasNodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * "A node the USER just added becomes the selection" — as one command and one rule.
@@ -77,7 +77,8 @@ export function registerSelectNodesCommand(bus: LoomBus): SelectNodesHolder {
   if (!bus.hasCommand(SELECT_NODES_COMMAND)) {
     bus.registerCommand({
       name: SELECT_NODES_COMMAND,
-      inputSchema: z.object({ nodeIds: nodeIdsInput }).strict(),
+      inSession: "app",
+      inputSchema: z.object({ nodeIds: canvasNodeIdsInput }).strict(),
       description: "Replace the canvas selection with the named nodes.",
       handler: (input, context) => {
         if (holder.current === null) {

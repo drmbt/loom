@@ -97,6 +97,7 @@ export function registerFullscreenCommand(bus: LoomBus): FullscreenHolder {
 
   bus.registerCommand({
     name: "view.toggleFullscreen",
+    inSession: "app",
     inputSchema: z.object({ fullscreen: z.boolean().optional(), target: z.enum(["viewer", "app"]).optional() }).strict(),
     description: "Fill the screen with the viewer's output, or leave fullscreen.",
     handler: async (input, context) => {

@@ -49,6 +49,7 @@ export function registerPipelineCommand(bus: LoomBus): PipelineHolder {
 
   bus.registerCommand({
     name: SHOW_PIPELINE_COMMAND,
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Show the pipeline — the passes, resources and decisions of the installed plan.",
     handler: (_input, context) => {

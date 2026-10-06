@@ -709,6 +709,7 @@ describe("graph.applyPatch — structural validation of untrusted input (§V66)"
   it("turns a throwing handler into an audited rejection", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
       handler: () => {
         throw new TypeError("boom");

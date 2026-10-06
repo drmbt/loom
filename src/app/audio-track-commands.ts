@@ -75,6 +75,7 @@ export function registerAudioTrackCommands(bus: LoomBus): AudioTrackHolder {
 
   bus.registerCommand({
     name: "audio.toggleTrackRecording",
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Start or stop recording the session's audio features to a track.",
     handler: (_input, context) => {
@@ -111,6 +112,7 @@ export function registerAudioTrackCommands(bus: LoomBus): AudioTrackHolder {
 
   bus.registerCommand({
     name: "audio.saveTrack",
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Write the recorded audio feature track to a file.",
     handler: async (_input, context) => {

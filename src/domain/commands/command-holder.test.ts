@@ -191,7 +191,7 @@ describe("§T719 — a re-executed command module keeps its surface", () => {
 
     const usesSharedStore = sources
       .filter(({ file }) => file !== "src/domain/commands/command-holder.ts")
-      .filter(({ text }) => /\b(commandHolder|sharedForBus)</.test(text))
+      .filter(({ text }) => /\b(commandHolder|sharedForBus|sharedForDocument)</.test(text))
       .map(({ file }) => file)
       .sort();
     const covered = [...new Set(MODULES.map((entry) => entry.path))].sort();

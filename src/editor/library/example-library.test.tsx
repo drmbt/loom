@@ -60,6 +60,7 @@ function busWithOpen(): { bus: LoomBus; opened: Array<{ text?: string; fileName?
   const opened: Array<{ text?: string; fileName?: string }> = [];
   harness.bus.registerCommand({
     name: "project.open",
+    inSession: "app",
     inputSchema: z.object({ text: z.string().optional(), fileName: z.string().optional() }).strict(),
     description: "Test double for the composition root's open (T43).",
     handler: (input, commandContext) => {
@@ -382,6 +383,7 @@ describe("ExampleLibrary (T189, §V93)", () => {
     const harness = createComponentHarness("e", graphOf([]));
     harness.bus.registerCommand({
       name: "project.open",
+      inSession: "app",
       inputSchema: z.object({ text: z.string().optional(), fileName: z.string().optional() }).strict(),
       description: "Test double that refuses (T43).",
       handler: (_input, commandContext) => ({

@@ -43,6 +43,7 @@ describe("command bus — registration surface (§V39)", () => {
   it("accepts a command registered by another module and routes it", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
       handler: (input, context) => {
         const applied = context.apply({
@@ -157,6 +158,7 @@ describe("command bus — registration surface (§V39)", () => {
     expect(() =>
       harness.bus.registerCommand({
         name: "graph.applyPatch",
+        inSession: "definition",
         inputSchema: ANY_INPUT("a duplicate registration, refused before it could run"),
         handler: () => {
           throw new Error("unreachable");
@@ -205,6 +207,7 @@ describe("command bus — capability gating (§V38)", () => {
   beforeEach(() => {
     harness.bus.registerCommand({
       name: "test.exportSomething",
+      inSession: "app",
       inputSchema: NO_INPUT,
       requiredCapabilities: ["export"],
       handler: () => ({ status: "applied", output: { ok: true } }),
@@ -243,6 +246,7 @@ describe("command bus — capability gating (§V38)", () => {
     const fresh = createHarness({ grants });
     fresh.bus.registerCommand({
       name: "test.exportSomething",
+      inSession: "app",
       inputSchema: NO_INPUT,
       requiredCapabilities: ["export"],
       handler: () => ({ status: "applied", output: { ok: true } }),
@@ -273,6 +277,7 @@ describe("command bus — capability gating (§V38)", () => {
     const fresh = createHarness();
     fresh.bus.registerCommand({
       name: "test.exportSomething",
+      inSession: "app",
       inputSchema: NO_INPUT,
       requiredCapabilities: ["recording"],
       handler: () => ({ status: "applied", output: { ok: true } }),
@@ -287,6 +292,7 @@ describe("command bus — dryRun reaches every command (§V36)", () => {
   it("makes ctx.apply a no-op for a third-party command", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
       handler: (input, context) => {
         const applied = context.apply({
@@ -377,6 +383,7 @@ describe("command bus — input schemas (§T1556b)", () => {
     let ran = 0;
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: renameSchema,
       handler: () => {
         ran += 1;
@@ -401,6 +408,7 @@ describe("command bus — input schemas (§T1556b)", () => {
   it("refuses an unknown key: a typo is reported, not dropped", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: renameSchema,
       handler: () => ({ status: "applied", output: { ok: true } }),
       rejectionOutput: () => ({ ok: false }),
@@ -414,6 +422,7 @@ describe("command bus — input schemas (§T1556b)", () => {
     let seen: unknown = null;
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: renameSchema,
       handler: (input) => {
         seen = input;
@@ -428,6 +437,7 @@ describe("command bus — input schemas (§T1556b)", () => {
   it("a dry run is refused the same way and records nothing (§V36)", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: renameSchema,
       handler: () => ({ status: "applied", output: { ok: true } }),
       rejectionOutput: () => ({ ok: false }),
@@ -441,6 +451,7 @@ describe("command bus — input schemas (§T1556b)", () => {
   it("with no rejectionOutput it throws the same sentences — after the audit entry exists (the capability path's rule)", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: renameSchema,
       handler: () => ({ status: "applied", output: { ok: true } }),
     });
@@ -456,6 +467,7 @@ describe("command bus — input schemas (§T1556b)", () => {
     let seen: unknown = null;
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: ANY_INPUT("a test of the escape"),
       handler: (input) => {
         seen = input;

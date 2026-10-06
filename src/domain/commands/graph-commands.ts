@@ -81,6 +81,7 @@ export interface RevertTransactionOutput {
 export function registerGraphCommands(bus: LoomBus): void {
   bus.registerCommand({
     name: "graph.applyPatch",
+    inSession: "definition",
     description: "Atomically apply a list of graph operations (§V32).",
     // §T1556b: the patch schema is the document's structural boundary (§V66) and is looser
     // than `GraphPatch` on purpose in two places — a connect's `$` ref narrows at runtime
@@ -100,6 +101,7 @@ export function registerGraphCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: "graph.undo",
+    inSession: "definition",
     description: "Undo this actor's most recent undo group.",
     inputSchema: NO_INPUT,
     handler: (_input, context) => {
@@ -147,6 +149,7 @@ export function registerGraphCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: "graph.redo",
+    inSession: "definition",
     description: "Redo this actor's most recently undone group.",
     inputSchema: NO_INPUT,
     handler: (_input, context) => {
@@ -208,6 +211,7 @@ export function registerGraphCommands(bus: LoomBus): void {
    */
   bus.registerCommand({
     name: "graph.revertTransaction",
+    inSession: "definition",
     description: "Undo every undo group belonging to one transaction, newest first (§V34).",
     inputSchema: z.object({ transactionId: z.string().min(1) }).strict(),
     handler: (input, context) => {

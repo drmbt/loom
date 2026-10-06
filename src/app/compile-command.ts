@@ -132,6 +132,7 @@ export function registerCompileCommand(bus: LoomBus): CompileHolder {
   if (!bus.hasCommand("project.compile")) {
     bus.registerCommand({
       name: "project.compile",
+      inSession: "app",
       inputSchema: NO_INPUT,
       description: "Compile the graph to an execution plan and report its diagnostics.",
       handler: (_input, context) => {

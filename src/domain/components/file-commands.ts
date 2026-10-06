@@ -227,6 +227,7 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
 
   bus.registerCommand({
     name: "component.import",
+    inSession: "definition",
     inputSchema: componentImportInputSchema,
     description: "Import a component file: reuse it if it is already installed, otherwise install it (renamed if its name is taken), and place it.",
     handler: async (input, context): Promise<CommandOutcome<ComponentImportOutput>> => {
@@ -366,8 +367,13 @@ export function registerComponentFileCommands(bus: LoomBus, options: ComponentFi
     rejectionOutput: (_input, diagnostics) => ({ ...IMPORT_REFUSED, diagnostics }),
   });
 
+  // §T1695b: `app`. It reads the catalogue, the PROJECT's settings and a file writer, none of
+  // which is the graph in hand, so a session inherits the project's and registers none: its
+  // own copy had no writer and stamped a session store's default settings.
+  if (bus.hasCommand("component.export")) return;
   bus.registerCommand({
     name: "component.export",
+    inSession: "app",
     inputSchema: componentExportInputSchema,
     description: "Export a component, and every component it nests, to a .loom.json file.",
     handler: async (input, context): Promise<CommandOutcome<ComponentExportOutput>> => {

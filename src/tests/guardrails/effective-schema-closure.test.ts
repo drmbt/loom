@@ -141,6 +141,12 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "command's input schema. A pulse's template is manifest data; there is no instance.",
     reads: ["definition.parameters"],
   },
+  "src/tests/integration/session-commands.test.tsx": {
+    reason:
+      "§T1695b: finds every PULSE a node TYPE declares, to ask whether a component session can " +
+      "run the command it fires. Which command a pulse names is manifest data; there is no instance.",
+    reads: ["definition.parameters"],
+  },
   "src/nodes/definitions/custom-wgsl.test.ts": {
     reason:
       `${TYPE_ONLY_UNIT_TEST} ${HOOK_UNDER_TEST} SIX hook calls now, not two — each drives ` +

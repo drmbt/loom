@@ -1,8 +1,8 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { NodeId } from "@domain/types/ids.ts";
-import { sharedForBus } from "@domain/commands/command-holder.ts";
+import { commandHolder, sharedForBus, type CommandHolder } from "@domain/commands/command-holder.ts";
 import { z } from "zod";
-import { nodeIdsInput } from "@domain/commands/input-schema.ts";
+import { canvasNodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `ui.beginRename` — the ONE way the inline name editor opens (T415, B60, §V307, §V342).
@@ -107,16 +107,36 @@ export function renameSessionStoreFor(bus: LoomBus): RenameSessionStore {
 }
 
 /**
+ * §T1695b — what the mounted canvas tells this command: which nodes it is showing.
+ *
+ * The command takes a node AS THE CANVAS SHOWS IT (`canvasNodeIdsInput`), and the canvas may
+ * be showing a component's inside while the command runs on the project's bus: every
+ * session inherits it (`"app"`). It used to ask the bus's own document whether the node
+ * exists, which is the project's, so the rename key refused every node inside a component
+ * (`rename.unknownNode`, §T1195's M1). The canvas answers now; with none mounted (a
+ * headless bus) the document does, as before.
+ */
+export interface RenameCanvas {
+  readonly holds: (nodeId: NodeId) => boolean;
+}
+
+export function renameCanvasHolderFor(bus: LoomBus): CommandHolder<RenameCanvas> {
+  return commandHolder<RenameCanvas>(bus, `${BEGIN_RENAME_COMMAND}#canvas`);
+}
+
+/**
  * Idempotent, like every other editor-side registration: the bus has no unregister, and
  * React mounts more than once (StrictMode, remounts, tests).
  */
 export function registerRenameSessionCommand(bus: LoomBus): RenameSessionStore {
   const store = renameSessionStoreFor(bus);
+  const canvas = renameCanvasHolderFor(bus);
   if (bus.hasCommand(BEGIN_RENAME_COMMAND)) return store;
 
   bus.registerCommand({
     name: BEGIN_RENAME_COMMAND,
-    inputSchema: z.object({ nodeIds: nodeIdsInput }).strict(),
+    inSession: "app",
+    inputSchema: z.object({ nodeIds: canvasNodeIdsInput }).strict(),
     description: "Edit a node's name in place, on its title (§V29, T415).",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -137,7 +157,8 @@ export function registerRenameSessionCommand(bus: LoomBus): RenameSessionStore {
       }
       // Named, not silent: renaming a node that is not in the document would otherwise
       // open an editor on nothing at all (§V288).
-      if (context.store.getGraph().nodes[nodeId] === undefined) {
+      const known = canvas.current === null ? context.store.getGraph().nodes[nodeId] !== undefined : canvas.current.holds(nodeId);
+      if (!known) {
         return {
           status: "rejected" as const,
           revision,

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { z } from "zod";
+import { RESET_FEEDBACK_INPUT } from "./runtime-commands.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { componentNodeType } from "@domain/components/component-type.ts";
 import { readComponentInstance } from "@domain/components/instance.ts";
@@ -493,7 +493,8 @@ describe("a Reset pulse inside a component clears ITS instance's history (VNB6)"
     const cleared: string[][] = [];
     runtime.bus.registerCommand({
       name: "runtime.resetFeedback",
-      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
+      inSession: "instance",
+      inputSchema: RESET_FEEDBACK_INPUT,
       description: "Test double for the feedback reset a pulse fires.",
       handler: (input) => {
         cleared.push([...(input.nodeIds ?? [])]);

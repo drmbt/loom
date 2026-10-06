@@ -3,7 +3,7 @@ import { commandHolder } from "@domain/commands/command-holder.ts";
 import { FLY_AXES, isFlyAxis } from "@editor/viewer/orbit-gestures.ts";
 import type { FlyAxis } from "@editor/viewer/orbit-gestures.ts";
 import { z } from "zod";
-import { NO_INPUT, nodeIdsInput } from "@domain/commands/input-schema.ts";
+import { NO_INPUT, canvasNodeIdsInput } from "@domain/commands/input-schema.ts";
 
 /**
  * `node.openViewer` — point the viewer at a node's output (T440, §V354).
@@ -128,7 +128,9 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
 
   bus.registerCommand({
     name: "node.openViewer",
-    inputSchema: z.object({ nodeIds: nodeIdsInput }).strict(),
+    // T1697b: `app` for now. It takes the id its door sends; whether it is an `instance` command is that task's look.
+    inSession: "app",
+    inputSchema: z.object({ nodeIds: canvasNodeIdsInput }).strict(),
     description: "Show a node's output in the viewer.",
     handler: (input, context) => {
       const revision = context.store.getRevision();
@@ -209,6 +211,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
   });
   bus.registerCommand({
     name: "viewer.cameraHome",
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Return the viewer's inspection camera to its baked framing. While the viewer is locked to a camera, leave the lock instead: nothing is edited.",
     handler: (_input, context) => {
@@ -224,6 +227,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
   });
   bus.registerCommand({
     name: "viewer.frameContent",
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Frame the viewer's inspection camera on the content's measured bounds.",
     handler: async (_input, context) => {
@@ -256,6 +260,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
   });
   bus.registerCommand({
     name: "viewer.fly",
+    inSession: "app",
     inputSchema: z.object({ direction: z.string() }).strict(),
     description: "Move the viewer's inspection camera one step in a direction.",
     handler: (input, context) => {
@@ -296,6 +301,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
    */
   bus.registerCommand({
     name: "viewer.editMapping",
+    inSession: "app",
     inputSchema: z.object({ on: z.boolean().optional() }).strict(),
     description: "Turn the viewer's Edit mapping mode on or off (Corner Pin / Grid Warp handles over the picture).",
     handler: (input, context) => {
@@ -330,6 +336,7 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
    */
   bus.registerCommand({
     name: "viewer.flyCamera",
+    inSession: "app",
     inputSchema: z.object({ on: z.boolean().optional() }).strict(),
     description:
       "Lock the viewer to the camera its picture is drawn through: its drag, wheel and fly keys then move that camera (undoable edits). Omit `on` to toggle.",

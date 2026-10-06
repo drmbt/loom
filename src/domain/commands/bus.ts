@@ -24,10 +24,13 @@ import { createCapabilityGrantStore, type CapabilityGrantStore } from "./grants.
 import {
   inputRefusal,
   isAnyInput,
+  rewriteNodeAddresses,
+  stringLeavesOf,
   type AnyInput,
   type CommandInputSchema,
   type InputKeysCovered,
 } from "./input-schema.ts";
+import { fromInstance, toInstance, type InstancePath } from "../components/addressing.ts";
 import { createGraphStore } from "../graph/store.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
@@ -92,6 +95,67 @@ export interface AppliedInfo {
   changed: boolean;
   revision: Revision;
   undoGroupId: string | undefined;
+}
+
+/**
+ * §T1695b — WHAT A COMMAND MEANS INSIDE A COMPONENT SESSION. Every registration says, and
+ * that is a fact about the command, whichever bus it is registered on.
+ *
+ * A component's inside is edited through a bus of its own (`openComponentSession`), over the
+ * definition's graph. That bus has a PARENT, the project's bus, and what it does with a
+ * command it was asked for is this declaration:
+ *
+ *  - `"definition"`: the command edits the graph in hand. The session runs its OWN
+ *    registration, on its own store and undo, and never the parent's: a graph edit that
+ *    fell through would patch the project with the ids of a component's inside (§B286).
+ *    A session that holds no copy does not offer the command.
+ *  - `"instance"`: the command acts on state of a running instance, which lives in the
+ *    project's plan under flattened ids. The session holds no copy. It rewrites every node
+ *    address of the input (`nodeIdInput`, derived from the schema) onto the instance the
+ *    editor is viewing, executes on the parent, and maps the result's node ids back. With
+ *    no instance in view it refuses by name.
+ *  - `"app"`: the command names no node of a document (the transport, a file, a panel, the
+ *    canvas camera). The session holds no copy and executes on the parent, input unchanged.
+ *  - `{ definition: true, handsUp }`: a `definition` command whose handler may hand one
+ *    call up through `context.session.handUp()`, for a call whose meaning depends on what
+ *    it is aimed at. `handsUp` says when, in words (a page bank's recall belongs to an
+ *    instance, an inner bank's to the definition).
+ *
+ * `docs/component-session-commands-design-2026-10-06.md` has the census behind the list and
+ * why a declared refusal is not on it.
+ */
+export type InSession = "definition" | "instance" | "app" | { readonly definition: true; readonly handsUp: string };
+
+export type InSessionKind = "definition" | "instance" | "app";
+
+export function inSessionKind(declared: InSession): InSessionKind {
+  return typeof declared === "string" ? declared : "definition";
+}
+
+/** What whoever opens a session bus knows, and the bus cannot: what it edits, and through which instance. */
+export interface SessionScope {
+  /** What is being edited, as a person would name it (`component "Bloom"`). For a refusal's sentence. */
+  readonly subject: () => string;
+  /**
+   * The instance the editor is viewing the definition through, as the EDITOR's path
+   * (`addressing.ts`), read at each call: one session outlives a move between two instances
+   * of its component. Undefined when no instance is in view (a build script, a library
+   * editor): an `instance` command then refuses by name.
+   */
+  readonly instancePath: () => InstancePath | undefined;
+}
+
+/** `CommandContext.session`: what a handler on a session bus can ask of where it runs. */
+export interface CommandSession {
+  readonly instancePath: () => InstancePath | undefined;
+  /**
+   * Runs THIS call on the parent bus, as an inherited command would run: the input's node
+   * addresses rewritten onto the instance in view when its schema declares any, unchanged
+   * when it declares none. For a registration that declared `handsUp`. The outcome is the
+   * parent's, with its diagnostics' node ids mapped back; when the parent applied a step
+   * to the project, one `info` line says the step is the project's to undo.
+   */
+  readonly handUp: <TOutput>() => Promise<CommandOutcome<TOutput>>;
 }
 
 export interface CommandContext {
@@ -220,6 +284,8 @@ export interface CommandContext {
   /** Actor-local history, used by the undo/redo commands (§V41). */
   undoLast: () => HistoryOutcome;
   redoLast: () => HistoryOutcome;
+  /** §T1695b: where this bus sits, when it is a component session's; undefined on the project's bus. */
+  readonly session: CommandSession | undefined;
 }
 
 export interface CommandOutcome<TOutput> {
@@ -246,6 +312,11 @@ export interface CommandRegistration<TName extends CommandName> {
    * for an input the bus genuinely cannot describe.
    */
   inputSchema: CommandInputSchema<TName> | AnyInput;
+  /**
+   * §T1695b — what this command means inside a component session (`InSession`). REQUIRED,
+   * on the same ground as `inputSchema`: a command cannot be registered without saying.
+   */
+  inSession: InSession;
   handler: CommandHandler<TName>;
   /** Capability classes that must be granted before this command runs (§V38). */
   requiredCapabilities?: readonly CapabilityClass[];
@@ -285,9 +356,23 @@ export interface QueryRegistration<TName extends QueryName> {
 }
 
 export class UnknownCommandError extends Error {
-  constructor(name: string) {
-    super(`No command registered as "${name}".`);
+  constructor(name: string, why?: string) {
+    super(why ?? `No command registered as "${name}".`);
     this.name = "UnknownCommandError";
+  }
+}
+
+/**
+ * §T1695b: a call the bus refused before any handler ran, for a command with no
+ * `rejectionOutput` to answer with (the rule `InvalidCommandInputError` follows for input).
+ */
+export class CommandRefusedError extends Error {
+  readonly diagnostics: readonly RuntimeDiagnostic[];
+
+  constructor(diagnostics: readonly RuntimeDiagnostic[]) {
+    super(diagnostics.map((diagnostic) => diagnostic.message).join(" "));
+    this.name = "CommandRefusedError";
+    this.diagnostics = diagnostics;
   }
 }
 
@@ -333,6 +418,7 @@ export class CapabilityDeniedError extends Error {
 interface StoredCommand {
   name: string;
   inputSchema: CommandInputSchema<CommandName> | AnyInput;
+  inSession: InSession;
   handler: (input: unknown, context: CommandContext) => unknown;
   requiredCapabilities: readonly CapabilityClass[];
   description: string | undefined;
@@ -362,8 +448,34 @@ export interface LoomBus extends AppCommandBus {
     registration: Omit<CommandRegistration<TName>, "inputSchema"> & { readonly inputSchema: S } & InputKeysCovered<TName, S>,
   ) => void;
   registerQuery: <TName extends QueryName>(registration: QueryRegistration<TName>) => void;
+  /**
+   * Whether `execute(name)` has a command to run: one registered here, or (§T1695b) one a
+   * session bus inherits from its parent. A `definition` command the session holds no copy
+   * of is NOT inherited, so this is false for it.
+   */
   hasCommand: (name: string) => boolean;
+  /** §T1695b: whether the command is registered on THIS bus, not inherited. */
+  ownsCommand: (name: string) => boolean;
+  /** §T1695b: what a command declared (`InSession`): here, or on the bus this one inherits from. */
+  inSessionOf: (name: string) => InSession | undefined;
+  /**
+   * §T1695b — the bus's own refusal of a call, before any handler: audited, and answered
+   * through the command's `rejectionOutput` (or thrown, as `CommandRefusedError`, when it
+   * has none). A session bus refuses an `instance` command through its parent with this
+   * when no instance is in view.
+   */
+  refuse: <TName extends CommandName>(
+    name: TName,
+    input: unknown,
+    diagnostics: RuntimeDiagnostic[],
+    context: InvocationContext,
+  ) => Promise<CommandResult<TName>>;
+  /** §T1695b: the bus this one inherits from; undefined on the project's bus. */
+  readonly parent: LoomBus | undefined;
+  /** §T1695b: the project's bus, which is this one when it has no parent. App state is kept there (`sharedForBus`). */
+  readonly root: LoomBus;
   hasQuery: (name: string) => boolean;
+  /** Every command `hasCommand` answers true for, sorted. */
   listCommands: () => readonly string[];
   /**
    * §T1556b — the input schema a command registered (`ANY_INPUT` included), or undefined for
@@ -440,7 +552,19 @@ export interface CommandBusOptions {
   registry?: NodeRegistryView;
   /** Bus-owned grant store (T90, §V38). Created empty when not supplied. */
   grants?: CapabilityGrantStore;
+  /**
+   * §T1695b: the bus this one inherits from, which makes this one a session bus: a command
+   * it does not hold is answered through the parent, by the command's own `inSession`.
+   */
+  parent?: LoomBus | undefined;
+  /** §T1695b: what the session edits and through which instance. Only read with a `parent`. */
+  scope?: SessionScope | undefined;
 }
+
+/** The code of the refusal a session issues for an `instance` command with no instance in view. */
+export const SESSION_NO_INSTANCE_CODE = "session.noInstance";
+/** The code of the note on a handed-up call that applied a step to the project. */
+export const SESSION_PROJECT_STEP_CODE = "session.projectStep";
 
 function assertContext(context: InvocationContext, name: string): void {
   // §V30: no anonymous mutation — an actor is not optional, and neither is its id.
@@ -476,6 +600,85 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
   const grants = options.grants ?? createCapabilityGrantStore();
   const commands = new Map<string, StoredCommand>();
   const queries = new Map<string, StoredQuery>();
+  const parent = options.parent;
+  const scope = options.scope;
+
+  /** §T1695b: is `name` a command this bus answers through its parent? Never a `definition` one. */
+  const inherits = (name: string): boolean => {
+    if (parent === undefined || commands.has(name) || !parent.hasCommand(name)) return false;
+    const declared = parent.inSessionOf(name);
+    return declared !== undefined && inSessionKind(declared) !== "definition";
+  };
+
+  /** A diagnostic's node id, as the definition in hand names it when it is a node of the instance in view. */
+  const mappedBack = (diagnostics: readonly RuntimeDiagnostic[], path: InstancePath | undefined): RuntimeDiagnostic[] =>
+    diagnostics.map((diagnostic) => {
+      if (path === undefined || diagnostic.nodeId === undefined) return diagnostic;
+      const inner = fromInstance(path, diagnostic.nodeId);
+      return inner === undefined ? diagnostic : { ...diagnostic, nodeId: inner };
+    });
+
+  /**
+   * §T1695b: one call on the parent, addressed at the instance in view when `addressed` (an
+   * `instance` command always is; a hand-up is when its schema declares a node address).
+   */
+  async function onParent<TName extends CommandName>(
+    name: TName,
+    input: unknown,
+    context: InvocationContext,
+    addressed: boolean,
+  ): Promise<CommandResult<TName>> {
+    if (parent === undefined) throw new UnknownCommandError(name);
+    if (!addressed) return parent.execute(name, input as CommandInput<TName>, context);
+    const path = scope?.instancePath();
+    if (path === undefined || path.length === 0) {
+      return parent.refuse(
+        name,
+        input,
+        [
+          {
+            severity: "error",
+            code: SESSION_NO_INSTANCE_CODE,
+            message: `"${name}" acts on a running instance of ${scope?.subject() ?? "this component"}, and this editor is not open through one.`,
+            suggestion: "Open the component from one of its instances in the project, then try again.",
+          },
+        ],
+        context,
+      );
+    }
+    const schema = parent.inputSchemaOf(name);
+    const rewritten =
+      schema === undefined || isAnyInput(schema) ? input : rewriteNodeAddresses(schema, input, (nodeId) => toInstance(path, nodeId));
+    const result = await parent.execute(name, rewritten as CommandInput<TName>, context);
+    return { ...result, diagnostics: mappedBack(result.diagnostics, path) };
+  }
+
+  /** Does `name`'s schema, as the parent holds it, declare a node address? */
+  const declaresAddresses = (name: string): boolean => {
+    const schema = parent?.inputSchemaOf(name);
+    return schema !== undefined && !isAnyInput(schema) && stringLeavesOf(schema).some((leaf) => leaf.kind === "node");
+  };
+
+  /** The bus's own refusal, answered as the registration can answer it (see `LoomBus.refuse`). */
+  function refusal<TName extends CommandName>(
+    registration: StoredCommand,
+    input: unknown,
+    diagnostics: RuntimeDiagnostic[],
+    context: InvocationContext,
+    thrown: () => Error,
+  ): CommandResult<TName> {
+    const revision = store.view.getRevision();
+    if (context.dryRun !== true) {
+      store.internals.recordAudit({ revision, actor: context.actor, command: registration.name, status: "rejected" });
+    }
+    if (registration.rejectionOutput === undefined) throw thrown();
+    return {
+      status: "rejected",
+      revision,
+      diagnostics,
+      output: registration.rejectionOutput(input, diagnostics, revision) as CommandOutput<TName>,
+    };
+  }
   /** T593: null until a composition root attaches one. Null means "no app", not "empty". */
   let readChannels: (() => ChannelResolver | undefined) | null = null;
   /** T615: likewise — null is "no app", and a handler falls back to the document. */
@@ -529,9 +732,37 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
         // The type already requires it; this is for a caller that cast its way past.
         throw new Error(`Command "${registration.name}" is registered without an inputSchema (§T1556b).`);
       }
+      if (registration.inSession === undefined || registration.inSession === null) {
+        // Likewise required by the type.
+        throw new Error(`Command "${registration.name}" is registered without saying what it means inside a component session (inSession, §T1695b).`);
+      }
+      if (registration.inSession === "instance" && registration.rejectionOutput === undefined) {
+        // A session refuses it when no instance is in view, and a pulse relays that sentence:
+        // a refusal that can only be thrown would reach the user as "command failed".
+        throw new Error(`Command "${registration.name}" is declared "instance" and has no rejectionOutput to answer a session's refusal with (§T1695b).`);
+      }
+      if (registration.inSession === "instance") {
+        // Its addresses are rewritten from its schema, so the schema has to say which strings
+        // they are. An undeclared one would reach the project as the definition's bare id:
+        // the wrong node, or none, and nothing said.
+        const leaves = isAnyInput(registration.inputSchema) ? [] : stringLeavesOf(registration.inputSchema);
+        const undeclared = leaves.filter((leaf) => leaf.kind === "unmarked").map((leaf) => leaf.path);
+        if (undeclared.length > 0 || !leaves.some((leaf) => leaf.kind === "node")) {
+          throw new Error(
+            `Command "${registration.name}" is declared "instance", so every string of its input is a node address (nodeIdInput, nodeIdsInput) or a canvas id, and at least one is an address${undeclared.length > 0 ? `; undeclared: ${undeclared.join(", ")}` : ""} (§T1695b).`,
+          );
+        }
+      }
+      if (inherits(registration.name)) {
+        // The double registration §T969(b) and §T1195 grew, refused where it would start.
+        throw new Error(
+          `Command "${registration.name}" is inherited from the parent bus (declared "${String(parent?.inSessionOf(registration.name))}"); a session bus does not register its own (§T1695b).`,
+        );
+      }
       commands.set(registration.name, {
         name: registration.name,
         inputSchema: registration.inputSchema as StoredCommand["inputSchema"],
+        inSession: registration.inSession,
         handler: registration.handler as StoredCommand["handler"],
         requiredCapabilities: registration.requiredCapabilities ?? [],
         description: registration.description,
@@ -551,10 +782,31 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
       });
     },
 
-    hasCommand: (name: string) => commands.has(name),
+    hasCommand: (name: string) => commands.has(name) || inherits(name),
+    ownsCommand: (name: string) => commands.has(name),
+    inSessionOf: (name: string) => commands.get(name)?.inSession ?? parent?.inSessionOf(name),
     hasQuery: (name: string) => queries.has(name),
-    listCommands: () => [...commands.keys()].sort(),
-    inputSchemaOf: (name: string) => commands.get(name)?.inputSchema,
+    listCommands: () => [...new Set([...commands.keys(), ...(parent?.listCommands().filter(inherits) ?? [])])].sort(),
+    inputSchemaOf: (name: string) => commands.get(name)?.inputSchema ?? (inherits(name) ? parent?.inputSchemaOf(name) : undefined),
+    parent,
+    get root(): LoomBus {
+      return parent?.root ?? bus;
+    },
+
+    async refuse<TName extends CommandName>(
+      name: TName,
+      input: unknown,
+      diagnostics: RuntimeDiagnostic[],
+      context: InvocationContext,
+    ): Promise<CommandResult<TName>> {
+      assertContext(context, name);
+      const registration = commands.get(name);
+      if (registration === undefined) {
+        if (parent !== undefined && inherits(name)) return parent.refuse(name, input, diagnostics, context);
+        throw new UnknownCommandError(name);
+      }
+      return refusal<TName>(registration, input, diagnostics, context, () => new CommandRefusedError(diagnostics));
+    },
     listQueries: () => [...queries.keys()].sort(),
 
     async query<TName extends QueryName>(
@@ -586,7 +838,20 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
     ): Promise<CommandResult<TName>> {
       assertContext(context, name);
       const registration = commands.get(name);
-      if (registration === undefined) throw new UnknownCommandError(name);
+      if (registration === undefined) {
+        // §T1695b: a session bus answers what it does not hold through its parent, by the
+        // command's own declaration.
+        const declared = parent?.hasCommand(name) === true ? parent.inSessionOf(name) : undefined;
+        if (declared === undefined) throw new UnknownCommandError(name);
+        const kind = inSessionKind(declared);
+        if (kind === "definition") {
+          throw new UnknownCommandError(
+            name,
+            `"${name}" edits a graph, and this editor of ${scope?.subject() ?? "a component"} holds no copy of it (§T1695b: a definition command is registered on every document bus).`,
+          );
+        }
+        return onParent(name, input, context, kind === "instance");
+      }
 
       const dryRun = context.dryRun === true;
 
@@ -597,17 +862,7 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
         const parsed = registration.inputSchema.safeParse(input);
         if (!parsed.success) {
           const diagnostics = inputRefusal(name, parsed.error.issues);
-          const revision = store.view.getRevision();
-          if (!dryRun) {
-            store.internals.recordAudit({ revision, actor: context.actor, command: name, status: "rejected" });
-          }
-          if (registration.rejectionOutput === undefined) throw new InvalidCommandInputError(diagnostics);
-          return {
-            status: "rejected",
-            revision,
-            diagnostics,
-            output: registration.rejectionOutput(input, diagnostics, revision) as CommandOutput<TName>,
-          };
+          return refusal<TName>(registration, input, diagnostics, context, () => new InvalidCommandInputError(diagnostics));
         }
       }
 
@@ -694,6 +949,31 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
         },
         undoLast: () => store.internals.undo(context.actor, name),
         redoLast: () => store.internals.redo(context.actor, name),
+        session:
+          parent === undefined
+            ? undefined
+            : {
+                instancePath: () => scope?.instancePath(),
+                handUp: async <TOutput>(): Promise<CommandOutcome<TOutput>> => {
+                  if (typeof registration.inSession === "string") {
+                    // A graph edit that left its graph without saying so is §B286 again.
+                    throw new Error(`Command "${name}" handed a call up without declaring handsUp (§T1695b).`);
+                  }
+                  const result = await onParent(name, input, context, declaresAddresses(name));
+                  const note: RuntimeDiagnostic[] =
+                    result.status === "applied" && result.undoGroupId !== undefined
+                      ? [
+                          {
+                            severity: "info",
+                            code: SESSION_PROJECT_STEP_CODE,
+                            message: `"${name}" changed the project, not ${scope?.subject() ?? "the component"}: undo it from the project.`,
+                          },
+                        ]
+                      : [];
+                  // The session's own revision stands: nothing in the graph in hand moved.
+                  return { status: result.status, output: result.output as TOutput, diagnostics: [...result.diagnostics, ...note] };
+                },
+              },
       };
 
       let outcome: CommandOutcome<CommandOutput<TName>>;

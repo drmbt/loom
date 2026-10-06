@@ -64,6 +64,7 @@ export function registerSelectionCommands(bus: LoomBus): SelectionHolder {
   if (!bus.hasCommand("graph.selectAll")) {
     bus.registerCommand({
       name: "graph.selectAll",
+      inSession: "app",
       inputSchema: NO_INPUT,
       description: "Select every node in the graph.",
       handler: (_input, context) => {
