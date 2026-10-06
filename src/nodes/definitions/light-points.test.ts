@@ -461,6 +461,123 @@ describe("T1589b: a driven light and a moving camera are writes, never a rebuild
 });
 
 /* ------------------------------------------------------------------------------------ */
+/* Slice 2: a spot is a kind of row                                                      */
+/* ------------------------------------------------------------------------------------ */
+
+describe("T1589b slice 2: a spot is a kind of row, and its cone and its aim are values", () => {
+  const texts = (plan: { readonly passes: ReadonlyArray<unknown> }): string[] => passesOf(plan).map((entry) => String(entry.shader));
+  const resolveOf = (options: LampsScene): Record<string, number[]> => pass(compiled(options), "light_lamps:lights:resolve").uniforms as Record<string, number[]>;
+
+  it("compiles a set of spots, of lamps and of suns to the same shaders: Type, Cone, Cone Softness, Direction and Orient are floats of the Light's own pass", () => {
+    const lamps = compiled({ light: { kind: "point" } });
+    const spots = compiled({ light: { kind: "spot", cone: 90, coneSoftness: 0.1, direction: [0, -1, 0], orient: [0, 0.6, 0, 0.8] } });
+    expect(texts(spots)).toEqual(texts(lamps));
+    expect(texts(compiled({ light: { kind: "directional" } }))).toEqual(texts(lamps));
+    const values = pass(spots, "light_lamps:lights:resolve").uniforms as Record<string, number[]>;
+    // z of `shape` is the Type: 0 directional, 1 point, 2 spot.
+    expect([resolveOf({ light: { kind: "directional" } })["shape"]?.[2], resolveOf({ light: { kind: "point" } })["shape"]?.[2], values["shape"]?.[2]]).toEqual([0, 1, 2]);
+    expect(values["cone"]).toEqual([90, 0.1, 0, 0]);
+    expect(values["aim"]).toEqual([0, -1, 0, 0]);
+    expect(values["orient"]).toEqual([0, 0.6, 0, 0.8]);
+    // What a Light that says nothing about them is handed: the declared defaults.
+    const defaults = resolveOf({});
+    expect([defaults["cone"], defaults["orient"]]).toEqual([[60, 0.4, 0, 0], [0, 0, 0, 1]]);
+  });
+
+  it("keeps a frame of driven Type, Cone, Cone Softness, Direction and Orient on the values-only path, and builds no shader text for it", () => {
+    const graph = lampsScene({
+      light: {
+        kind: expressionSlot("2", 1),
+        cone: expressionSlot("60 + 30 * sin(abstime)", 60),
+        coneSoftness: expressionSlot("0.5 + 0.4 * sin(abstime * 2)", 0.4),
+        "direction.x": expressionSlot("sin(abstime)", 0),
+        "orient.y": expressionSlot("sin(abstime * 0.5)", 0),
+      },
+    });
+    const channels = graphChannelResolver(compiledWithoutCatalogue(graph), registry);
+    const request = { graph, settings: SETTINGS, registry, capabilities: TIER_B_CAPABILITIES, resolution: { channels } };
+    forgetGeneratedText();
+    const prepared = prepareFrameCompiler(request);
+    expect(prepared.base.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
+    expect(prepared.uniformOnly, prepared.reason ?? "").toBe(true);
+    const uniformsOf = (plan: { readonly passes: ReadonlyArray<unknown> }) => pass(plan, "light_lamps:lights:resolve").uniforms as Record<string, number[]>;
+    const first = uniformsOf(prepared.base);
+    const resolution = { frame: frameAt(30), channels };
+    const before = generatedTextCounts();
+    const spliced = prepared.compileFrame(resolution);
+    const after = generatedTextCounts();
+    expect(spliced, prepared.reason ?? "").not.toBeNull();
+    if (spliced === null) return;
+    expect([after.generated - before.generated, after.built - before.built]).toEqual([0, 0]);
+    for (const key of ["cone", "aim", "orient"]) expect([key, uniformsOf(spliced)[key]]).not.toEqual([key, first[key]]);
+    forgetGeneratedText();
+    expect(spliced.passes).toEqual(compileGraph({ ...request, resolution }).passes);
+  });
+
+  it("maps Direction, Orient and Cone in Points mode, each to its own shape of attribute, and Cone Softness to none", () => {
+    const [soft] = errorsOf({ light: { coneSoftness: mapped("gain", 0.4) } });
+    expect(soft?.code).toBe("node.parameter.map");
+    expect(soft?.message).toContain("coneSoftness is in map mode");
+    expect(soft?.message).toContain('"color", "intensity", "position", "range", "direction", "orient", "cone"');
+    // A direction is a whole vec3f, a turn a whole vec4f, a cone one number.
+    expect(errorsOf({ light: { direction: mapped("color", [0, -1, 0]) } })[0]?.message).toContain("needs a vec3f attribute");
+    expect(errorsOf({ light: { orient: mapped("place", [0, 0, 0, 1]) } })[0]?.message).toContain("needs a vec4f attribute");
+    expect(errorsOf({ light: { cone: mapped("pair", 60) } })[0]?.message).toContain("needs a channel (x/y)");
+    // The legitimate cases: every one of the three, and each is a different program.
+    const base = texts(compiled({ light: { kind: "spot" } })).join("\u0001");
+    const moved = (
+      [
+        ["Direction", { direction: mapped("place", [0, -1, 0]) }],
+        ["Orient", { orient: mapped("color", [0, 0, 0, 1]) }],
+        ["Cone", { cone: mapped("gain", 60) }],
+        ["Cone on one channel", { cone: mapped("pair", 60, "y") }],
+      ] as const
+    ).filter(([, light]) => texts(compiled({ light: { kind: "spot", ...light } })).join("\u0001") !== base);
+    expect(moved.map(([label]) => label)).toEqual(["Direction", "Orient", "Cone", "Cone on one channel"]);
+    // And the lit draw's text is none of theirs: a map is the Light's own pass's business.
+    expect(String(pass(compiled({ light: { kind: "spot", cone: mapped("gain", 60) } }), "render_shot:scene:0").shader)).toBe(String(pass(compiled(), "render_shot:scene:0").shader));
+  });
+
+  it("says, by the node's name, that a Spot in Single mode shines as a Point light, and compiles it as exactly that", () => {
+    const single = (light: Record<string, unknown>): LampsScene => ({ unwired: true, light: { mode: "single", position: [0, 2, 0], ...light } });
+    const spot = compile(lampsScene(single({ kind: "spot", cone: 30 })));
+    const said = spot.diagnostics.filter((entry) => entry.code === "node.scene.lightSpot");
+    expect(said).toHaveLength(1);
+    expect([said[0]?.severity, said[0]?.nodeId]).toEqual(["warning", "light_lamps"]);
+    expect(said[0]?.message).toContain('Node "light_lamps": Type is Spot');
+    expect(said[0]?.message).toContain("shines as a Point light");
+    expect(spot.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
+    // It is not a refusal and decides nothing: the plan is the Point light's plan, value for value.
+    const point = compile(lampsScene(single({ kind: "point", cone: 30 })));
+    expect(planFingerprint(spot)).toBe(planFingerprint(point));
+    expect(passesOf(spot).some((entry) => String(entry.shader).includes("light0Meta"))).toBe(true);
+    // A Point light in Single mode says nothing, and neither does a Spot in Points mode: it is a spot.
+    expect(point.diagnostics.filter((entry) => entry.code === "node.scene.lightSpot")).toEqual([]);
+    expect(compiled({ light: { kind: "spot" } }).diagnostics.filter((entry) => entry.code === "node.scene.lightSpot")).toEqual([]);
+    // Type stays a value there too: a document that drives it compiles frames by values.
+    const driven = prepareFrameCompiler({ graph: lampsScene(single({ kind: expressionSlot("2", 2) })), settings: SETTINGS, registry, capabilities: TIER_B_CAPABILITIES });
+    expect(driven.uniformOnly, driven.reason ?? "").toBe(true);
+    expect(structuralParameterKeys(lightNode, { mode: "single" }).has("kind")).toBe(false);
+  });
+
+  it("marks the rows a Light does not read: a cone on anything but a Spot, a Spot's cone in Single mode, Orient outside Points mode", () => {
+    const schema = effectiveParameterSchema(lightNode, {});
+    const inactive = (key: string, values: Record<string, unknown>): string | null => (schema[key] as { inactiveWhen?: (values: Record<string, unknown>) => string | null }).inactiveWhen?.(values) ?? null;
+    for (const key of ["cone", "coneSoftness"]) {
+      expect([key, inactive(key, { kind: "spot", mode: "points" })]).toEqual([key, null]);
+      expect(inactive(key, { kind: "point", mode: "points" })).toContain("Only a Spot");
+      expect(inactive(key, { kind: "spot", mode: "single" })).toContain("shines as a Point light");
+    }
+    expect(inactive("orient", { kind: "spot", mode: "points" })).toBeNull();
+    expect(inactive("orient", { kind: "directional", mode: "points" })).toBeNull();
+    expect(inactive("orient", { kind: "spot", mode: "single" })).toContain("Mode: Points");
+    // A spot stands at a place: it has a Falloff and a Range, as a point light has, and a Direction, as a sun has.
+    for (const key of ["falloff", "range", "direction"]) expect([key, inactive(key, { kind: "spot", mode: "points" })]).toEqual([key, null]);
+    expect(inactive("direction", { kind: "point", mode: "points" })).toContain("shines everywhere");
+  });
+});
+
+/* ------------------------------------------------------------------------------------ */
 /* Nothing else moved                                                                    */
 /* ------------------------------------------------------------------------------------ */
 

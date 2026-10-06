@@ -159,6 +159,75 @@ export function lampsScene(options: LampsScene = {}): GraphDocument {
   return { revision: 1, nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])), edges: Object.fromEntries(edges.map((entry) => [entry.id, entry])), groups: {} } as never;
 }
 
+/* ------------------------------------------------------------------------------------ */
+/* T1589b slice 2: spots                                                                 */
+/* ------------------------------------------------------------------------------------ */
+
+/** What a spots kernel may write besides `position`. */
+export const SPOT_ATTRIBUTES = [
+  { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+  { name: "color", type: "vec4f", qualifier: "color", default: [1, 1, 1, 1] },
+  { name: "way", type: "vec3f", default: [0, -1, 0] },
+  { name: "turn", type: "vec4f", qualifier: "quaternion", default: [0, 0, 0, 1] },
+  { name: "swing", type: "vec4f", qualifier: "quaternion", default: [0, 0, 0, 1] },
+  { name: "spread", type: "vec2f", default: [1, 1] },
+];
+
+/** A quarter turn about +Y, right-handed and active: it carries +X to −Z. */
+export const QUARTER_TURN_Y = [0, Math.SQRT1_2, 0, Math.SQRT1_2] as const;
+
+/**
+ * The three lamps of `THREE_LAMPS`, where they stand and in their colours, each with a way
+ * of its own to shine (`way`): the first along +x and down, the second along −z and down,
+ * the third straight down. `turn` is a quarter turn about +Y for every one; `swing` is a turn
+ * of each lamp's own about +Y: none for the first, a quarter turn for the second, a quarter
+ * turn the other way for the third. `spread` is (2, 1) for the outer two and (2, 0) for the
+ * middle one: a factor on a Cone, and one that shuts the middle lamp's.
+ */
+export const THREE_SPOTS = `fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  q.position = vec3f((f32(ctx.index) - 1.0) * 4.0 + 0.0625, ${LAMP_HEIGHT}.0, 0.0625);
+  q.color = vec4f(f32(ctx.index == 0u), f32(ctx.index == 1u), f32(ctx.index == 2u), 1.0);
+  q.way = vec3f(f32(ctx.index == 0u), -1.0, -f32(ctx.index == 1u));
+  q.turn = vec4f(0.0, ${Math.SQRT1_2}, 0.0, ${Math.SQRT1_2});
+  q.swing = vec4f(0.0, ${Math.SQRT1_2} * select(-1.0, 1.0, ctx.index == 1u) * f32(ctx.index != 0u), 0.0, select(${Math.SQRT1_2}, 1.0, ctx.index == 0u));
+  q.spread = vec2f(2.0, f32(ctx.index != 1u));
+  return q;
+}`;
+/** The spots' kernel and its attributes, as `lampsScene` takes them. */
+export const SPOTS: Pick<LampsScene, "kernel" | "kernelParameters"> = { kernel: THREE_SPOTS, kernelParameters: { attributes: JSON.stringify(SPOT_ATTRIBUTES) } };
+
+/** A camera square on to the wall that stands across the back of the floor (z = −6, x −8 to 8, y 0 to 8): eight pixels a unit at 128. */
+export const FRONT_CAMERA: Parameters = { eye: [0, 4, 10], lookAt: [0, 4, -6], ortho: true, orthoHeight: 16, near: 0.1, far: 40 };
+/** Where the wall stands. */
+export const WALL_Z = -6;
+
+/**
+ * What a spot's cone leaves of its light, by the Light's own Cone and Cone Softness rows:
+ * nothing at half the Cone off its axis, all of it inside `(1 − softness)` of that, and a
+ * smoothstep ON THE COSINE between the two.
+ */
+export function spotShare(coneDegrees: number, softness: number, cosine: number): number {
+  const half = (coneDegrees * Math.PI) / 360;
+  const outer = Math.cos(half);
+  const inner = Math.cos(half * (1 - softness));
+  const along = Math.min(1, Math.max(0, (cosine - outer) / Math.max(inner - outer, 1e-6)));
+  return along * along * (3 - 2 * along);
+}
+
+/**
+ * What a light gives a point of a flat surface, by the Render's own arithmetic, from the
+ * vector from the point to the light and the surface's unit normal: albedo × intensity × the
+ * inverse-square falloff × the range window × the two-sided lambert of a grid Surface.
+ * `lampOnFloor` is this for a floor.
+ */
+export function lampOnPlane(toLight: readonly [number, number, number], normal: readonly [number, number, number], intensity: number, range: number): number {
+  const distance = Math.hypot(...toLight);
+  const window = range > 0 ? Math.max(0, 1 - (distance / range) ** 4) ** 2 : 1;
+  const lambert = Math.abs(toLight[0] * normal[0] + toLight[1] * normal[1] + toLight[2] * normal[2]) / distance;
+  return (FLOOR_ALBEDO * intensity * window * lambert) / (distance * distance);
+}
+
 /**
  * What one lamp of the Light gives the floor, by the Render's own arithmetic: albedo × colour
  * × intensity × the inverse-square falloff at its distance × the range window

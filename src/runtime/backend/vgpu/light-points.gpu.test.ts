@@ -5,22 +5,28 @@ import { cameraPayloadMatrix, transformPoint } from "../../../domain/geometry/ca
 import type { ProjectSettings } from "../../../domain/types/graph.ts";
 import {
   FLOOR_ALBEDO,
+  FRONT_CAMERA,
   LAMP_HEIGHT,
   LAMP_INTENSITY,
   LAMP_RANGE,
+  QUARTER_TURN_Y,
   SCATTERED_LAMPS,
+  SPOTS,
   THREE_LAMPS_AT,
   TOP_CAMERA,
+  WALL_Z,
   lampOnFloor,
+  lampOnPlane,
   lampsScene,
   mapped,
+  spotShare,
   type LampsScene,
 } from "../../../nodes/definitions/light-points.fixture.ts";
 import { lightGridDimensions, lightTableStorage } from "../../../nodes/definitions/light-records.ts";
 import { CASTERS_GLB } from "../../../nodes/definitions/shadow-casters.fixture.ts";
 import { lightTableRowAt } from "../../../nodes/shaders/scene-lights.wgsl.ts";
 import { LIGHT_GUARD_ABOVE } from "../../../nodes/shaders/scene-render.wgsl.ts";
-import { TOLERANCE_CROSS_GPU_HDR, pixelAt } from "../../../tests/headless/pixel-compare.ts";
+import { TOLERANCE_CROSS_GPU_HDR, decodeComponents, pixelAt } from "../../../tests/headless/pixel-compare.ts";
 import { renderHeadless, type HarnessControl, type RenderedFrame } from "../../../tests/headless/render-harness.ts";
 import { nodeGpuHost, probeDawn } from "./node-gpu-host.ts";
 
@@ -615,6 +621,11 @@ describe("every surface draw takes the lamps (T1589b)", () => {
   }, 240_000);
 
   it("keeps the lamps' light antialiased under MSAA: an edge pixel holds a share of the lit value, by coverage", async () => {
+    // What this holds is the reason the lights are walked in the lit draw and not added to a
+    // resolved picture afterwards: the lamps' light is IN the multisampled colour, so an edge
+    // is antialiased in it. Seen red by a Render whose lit draws leave the walk out under MSAA
+    // (the inside pixel goes dark); nothing in the walk itself knows the sample count.
+    //
     // A slab 4.18 units square at y = 1 over nothing, lit from above by one lamp. Seen from
     // above at eight pixels a unit its edge at x = 2.09 crosses the pixel whose centre is at
     // 2.0625: the centre is covered, so the pixel is shaded, and one of its four samples is not.
@@ -673,4 +684,300 @@ describe("every surface draw takes the lamps (T1589b)", () => {
     // The numbers `lampOnFloor` is made of, said once more where the assertions lean on them.
     expect([FLOOR_ALBEDO, LAMP_HEIGHT, LAMP_INTENSITY, LAMP_RANGE]).toEqual([0.8, 2, 2, 3]);
   });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* Slice 2: a cone, and a way to shine                                                   */
+/* ------------------------------------------------------------------------------------ */
+
+/** The middle lamp of the three: it is the green one. */
+const MIDDLE = THREE_LAMPS_AT[1];
+const GREEN = 1;
+/** The cosine off a spot's axis of the floor point `aside` from the foot of a lamp that shines straight down. */
+const offAxis = (aside: number): number => LAMP_HEIGHT / Math.hypot(LAMP_HEIGHT, aside);
+
+describe("a spot is a row with a cone: it shines along its direction and nowhere else (T1589b slice 2)", () => {
+  const DOWN = { direction: [0, -1, 0], color: mapped("color", [1, 1, 1, 1]) };
+  const green = (frame: RenderedFrame, aside: number): number => under(frame, MIDDLE, ROW + aside)[GREEN] ?? Number.NaN;
+
+  it("straight down: the point light's value on the axis and inside the inner angle, a share of it in the fade, and exactly nothing outside the cone", async () => {
+    // Cone 60 with Cone Softness 0.4: whole inside 18 degrees off the axis, nothing from 30.
+    const cone = { ...DOWN, kind: "spot", cone: 60, coneSoftness: 0.4 };
+    const spot = (await render({ ...SPOTS, light: cone })).last;
+    const point = (await render({ ...SPOTS, light: { ...DOWN, kind: "point" } })).last;
+    // On the axis, and half a unit aside (14 degrees off it): the point light's value, to the bit.
+    for (const aside of [0, 0.5]) {
+      expect([aside, green(spot, aside)]).toEqual([aside, green(point, aside)]);
+      expectLit(green(spot, aside), lampOnFloor(LAMP_INTENSITY, LAMP_RANGE, LAMP_HEIGHT, aside));
+    }
+    // 0.875 aside is 23.6 degrees off: in the fade, where the cone leaves 0.633 of the light.
+    const fade = spotShare(60, 0.4, offAxis(0.875));
+    expect(fade).toBeCloseTo(0.6329, 4);
+    expectLit(green(spot, 0.875), lampOnFloor(LAMP_INTENSITY, LAMP_RANGE, LAMP_HEIGHT, 0.875) * fade);
+    // 1.5 aside is 36.9 degrees off: outside the cone, well inside the range. Exactly nothing,
+    // where the point light still gives a fifth of what it gives under itself.
+    expect(under(spot, MIDDLE, ROW + 1.5)).toEqual([0, 0, 0]);
+    expectLit(green(point, 1.5), lampOnFloor(LAMP_INTENSITY, LAMP_RANGE, LAMP_HEIGHT, 1.5));
+
+    // And "nothing" is what the Render gives with no light at all: under an ambient the
+    // pixel outside the cone is the pixel of the same Render with the Light out of its Lights.
+    const ambient = { ambientIntensity: 0.25 };
+    const lit = (await render({ ...SPOTS, light: cone, render: ambient })).last;
+    const unlit = (await render({ ...SPOTS, lights: "", render: ambient })).last;
+    expect(under(lit, MIDDLE, ROW + 1.5)).toEqual(under(unlit, MIDDLE, ROW + 1.5));
+    expectLit(under(unlit, MIDDLE, ROW + 1.5)[GREEN], FLOOR_ALBEDO * 0.25);
+    expect(green(lit, 0)).toBeGreaterThan(green(unlit, 0) + 0.2);
+  }, 240_000);
+
+  it("a Cone Softness of 0 is a hard edge, a Cone of 359 or more is every direction, and a Cone in Map mode multiplies", async () => {
+    const point = (await render({ ...SPOTS, light: { ...DOWN, kind: "point" } })).last;
+    // No fade: the two cosines of the cone are one. 29.4 degrees off is whole, 32.0 is nothing.
+    const hard = (await render({ ...SPOTS, light: { ...DOWN, kind: "spot", cone: 60, coneSoftness: 0 } })).last;
+    expect(green(hard, 1.125)).toBe(green(point, 1.125));
+    expect(green(hard, 1.125)).toBeGreaterThan(0.1);
+    expect(under(hard, MIDDLE, ROW + 1.25)).toEqual([0, 0, 0]);
+
+    // A spot that shines every way is the point light, the whole picture of it: even with a
+    // Cone Softness of 1, which would otherwise fade it from its axis out.
+    for (const cone of [359, 360]) {
+      const every = (await render({ ...SPOTS, light: { ...DOWN, kind: "spot", cone, coneSoftness: 1 } })).last;
+      expect([cone, differingBytes(every.bytes, point.bytes)]).toEqual([cone, 0]);
+    }
+    // 358 is still a cone: it has a fade, and the point light's picture is not its picture.
+    const nearly = (await render({ ...SPOTS, light: { ...DOWN, kind: "spot", cone: 358, coneSoftness: 1 } })).last;
+    expect(differingBytes(nearly.bytes, point.bytes)).toBeGreaterThan(0);
+
+    // Cone 30 times an attribute of 2 is Cone 60 with no map.
+    const plain = (await render({ ...SPOTS, light: { ...DOWN, kind: "spot", cone: 60 } })).last;
+    const doubled = (await render({ ...SPOTS, light: { ...DOWN, kind: "spot", cone: mapped("spread", 30, "x") } })).last;
+    expect(differingBytes(doubled.bytes, plain.bytes)).toBe(0);
+    expect(differingBytes(plain.bytes, point.bytes)).toBeGreaterThan(0);
+
+    // A mapped cone of nothing is a spot that is OFF: dark, and in no cell, so no pixel walks it.
+    const table = lightTableStorage("render_shot", 3, lightGridDimensions([SIZE, SIZE]));
+    const shut = await render({ ...SPOTS, light: { ...DOWN, kind: "spot", cone: mapped("spread", 60, "y") } }, { probeBuffers: [table.resourceId] });
+    expect(under(shut.last, MIDDLE, ROW)).toEqual([0, 0, 0]);
+    expectLit(under(shut.last, THREE_LAMPS_AT[0], ROW)[0], lampOnFloor());
+    const floats = new Float32Array(shut.buffers[table.resourceId] ?? new ArrayBuffer(0));
+    const row = (name: "place" | "aim" | "cone", slot: number): number[] => Array.from(floats.slice(lightTableRowAt(name, 3) + slot * 4, lightTableRowAt(name, 3) + slot * 4 + 4));
+    // The range of each row: the Light's, and for the shut one the mark of a row that is off.
+    expect([0, 1, 2].map((slot) => row("place", slot)[3])).toEqual([LAMP_RANGE, -1, LAMP_RANGE]);
+    // And what a spot's row holds: the way it shines and the cosine of half its Cone; the
+    // cosine of the inner angle, and its kind.
+    expect(row("aim", 0).slice(0, 3)).toEqual([0, -1, 0]);
+    expect(row("aim", 0)[3]).toBeCloseTo(Math.cos(Math.PI / 6), 6);
+    expect(row("cone", 0)[0]).toBeCloseTo(Math.cos((Math.PI / 6) * 0.6), 6);
+    expect(row("cone", 0).slice(1)).toEqual([2, 0, 0]);
+  }, 240_000);
+
+  it("a spot with no way to shine is off, and Type is a value: the point lights' programs draw the spots after one float is written", async () => {
+    const table = lightTableStorage("render_shot", 3, lightGridDimensions([SIZE, SIZE]));
+    const aimless = await render({ ...SPOTS, light: { ...DOWN, kind: "spot", direction: [0, 0, 0] } }, { probeBuffers: [table.resourceId] });
+    const floats = new Float32Array(aimless.buffers[table.resourceId] ?? new ArrayBuffer(0));
+    expect([0, 1, 2].map((slot) => floats[lightTableRowAt("place", 3) + slot * 4 + 3])).toEqual([-1, -1, -1]);
+    expect(aimless.last.bytes.every((byte, index) => index % 8 >= 6 || byte === 0)).toBe(true);
+    // A point light has no way to shine and needs none.
+    const point = await render({ ...SPOTS, light: { ...DOWN, kind: "point", direction: [0, 0, 0] } });
+    expectLit(under(point.last, MIDDLE, ROW)[GREEN], lampOnFloor());
+
+    const spot = (await render({ ...SPOTS, light: { ...DOWN, kind: "spot" } })).last;
+    const switched = await render(
+      { ...SPOTS, light: { ...DOWN, kind: "point" } },
+      {
+        beforeFrames: (control) => {
+          const resolve = (control.plan.passes as ReadonlyArray<{ id: string; uniforms?: Record<string, unknown> }>).find((pass) => bare(pass.id) === "light_lamps:lights:resolve");
+          if (resolve === undefined) throw new Error("the plan has no resolve pass");
+          const shape = resolve.uniforms?.["shape"] as number[];
+          expect(shape[2]).toBe(1);
+          control.updateUniforms(resolve.id, { shape: [shape[0] as number, shape[1] as number, 2, 0] });
+        },
+      },
+    );
+    expect(differingBytes(switched.last.bytes, spot.bytes)).toBe(0);
+    // The two pictures it was between are different pictures.
+    expect(under(spot, MIDDLE, ROW + 1.5)).toEqual([0, 0, 0]);
+  }, 240_000);
+});
+
+describe("which way a spot shines: Direction, turned by Orient, each from the node or from the point (T1589b slice 2)", () => {
+  // Cone 40 with Cone Softness 0.25: whole inside 15 degrees off the axis, nothing from 20.
+  const OBLIQUE = { kind: "spot", cone: 40, coneSoftness: 0.25, range: 6, color: mapped("color", [1, 1, 1, 1]) };
+  /** A lamp two units up that shines down at 45 degrees meets the floor two units along. */
+  const REACH = LAMP_HEIGHT;
+  const ON_AXIS = lampOnFloor(LAMP_INTENSITY, 6, LAMP_HEIGHT, REACH);
+
+  /** The brightest pixel of one channel of a frame. */
+  const brightest = (frame: RenderedFrame, channel: number): [number, number] => {
+    const values = decodeComponents(frame.bytes, frame.format);
+    let best = -1;
+    let at = 0;
+    for (let pixel = 0; pixel < frame.width * frame.height; pixel += 1) {
+      const value = values[pixel * 4 + channel] ?? 0;
+      if (value > best) {
+        best = value;
+        at = pixel;
+      }
+    }
+    return [at % frame.width, Math.floor(at / frame.width)];
+  };
+
+  it("Orient in Map mode turns each lamp's Direction: a quarter turn about the vertical carries its light a quarter turn round its foot, and cutting the map carries it back", async () => {
+    // Direction (1, −1, 0): along +x and down. The points' `turn` is a quarter turn about +Y,
+    // which carries +X to −Z.
+    const light = { ...OBLIQUE, direction: [1, -1, 0] };
+    const plain = (await render({ ...SPOTS, light })).last;
+    const turned = (await render({ ...SPOTS, light: { ...light, orient: mapped("turn", [0, 0, 0, 1]) } })).last;
+    expect(ON_AXIS).toBeCloseTo(0.1278, 4);
+
+    // Where the axis meets the floor: the point light's value there. Where the other axis
+    // meets it: exactly nothing. And straight under the lamp, 45 degrees off either: nothing.
+    expectLit(under(plain, MIDDLE + REACH, ROW)[GREEN], ON_AXIS);
+    expect(under(plain, MIDDLE, ROW - REACH)).toEqual([0, 0, 0]);
+    expectLit(under(turned, MIDDLE, ROW - REACH)[GREEN], ON_AXIS);
+    expect(under(turned, MIDDLE + REACH, ROW)).toEqual([0, 0, 0]);
+    for (const frame of [plain, turned]) expect(under(frame, MIDDLE, ROW)[GREEN]).toBe(0);
+
+    // THE BRIGHTEST PIXEL. It is not where the axis meets the floor: the inverse square
+    // pulls it toward the lamp, to the near side of the cone. It is on the line from the
+    // lamp's foot to that place, and the turn carries it a quarter turn round the foot.
+    const [foot, row] = pixelOf(TOP_CAMERA, [MIDDLE, 0, ROW]);
+    const [far] = pixelOf(TOP_CAMERA, [MIDDLE + REACH, 0, ROW]);
+    const [px, py] = brightest(plain, GREEN);
+    expect(py).toBe(row);
+    expect(px).toBeGreaterThan(Math.min(foot, far));
+    expect(px).toBeLessThan(Math.max(foot, far));
+    // How far from the foot it is, in the floor's own units, whichever way the camera lays x across the picture.
+    const along = (REACH * (px - foot)) / (far - foot);
+    expect(brightest(turned, GREEN)).toEqual(pixelOf(TOP_CAMERA, [MIDDLE, 0, ROW - along]));
+    // With the map cut the turned Light is the plain one again: that IS `plain`.
+
+    // The same turn as a VALUE on the node turns every light of the set alike: the picture
+    // the attribute gave, byte for byte.
+    const byValue = (await render({ ...SPOTS, light: { ...light, orient: [...QUARTER_TURN_Y] } })).last;
+    expect(differingBytes(byValue.bytes, turned.bytes)).toBe(0);
+    expect(differingBytes(plain.bytes, turned.bytes)).toBeGreaterThan(0);
+    // PER POINT. `swing` is a turn of each lamp's own: none for the red one, the quarter turn
+    // for the green one, a quarter turn the other way (+X to +Z) for the blue one. Each
+    // lamp's light is where its own turn carries it, and nowhere another's would have.
+    const swung = (await render({ ...SPOTS, light: { ...light, orient: mapped("swing", [0, 0, 0, 1]) } })).last;
+    expectLit(under(swung, THREE_LAMPS_AT[0] + REACH, ROW)[0], ON_AXIS);
+    expectLit(under(swung, MIDDLE, ROW - REACH)[GREEN], ON_AXIS);
+    expectLit(under(swung, THREE_LAMPS_AT[2], ROW + REACH)[2], ON_AXIS);
+    expect(under(swung, THREE_LAMPS_AT[0], ROW - REACH)).toEqual([0, 0, 0]);
+    expect(under(swung, MIDDLE, ROW + REACH)).toEqual([0, 0, 0]);
+    expect(under(swung, THREE_LAMPS_AT[2] + REACH, ROW)).toEqual([0, 0, 0]);
+
+    // A quaternion is a turn whatever its length: twice as long, the same quarter turn.
+    const long = (await render({ ...SPOTS, light: { ...light, orient: QUARTER_TURN_Y.map((part) => part * 2) } })).last;
+    expectLit(under(long, MIDDLE, ROW - REACH)[GREEN], ON_AXIS);
+    expect(under(long, MIDDLE + REACH, ROW)).toEqual([0, 0, 0]);
+  }, 240_000);
+
+  it("Direction in Map mode gives each lamp a way of its own, in place of the Light's, and Orient turns that too", async () => {
+    // `way`: the red lamp along +x and down, the green one along −z and down, the blue one straight down.
+    const own = (await render({ ...SPOTS, light: { ...OBLIQUE, direction: mapped("way", [0, -1, 0]) } })).last;
+    expectLit(under(own, THREE_LAMPS_AT[0] + REACH, ROW)[0], ON_AXIS);
+    expectLit(under(own, MIDDLE, ROW - REACH)[GREEN], ON_AXIS);
+    expectLit(under(own, THREE_LAMPS_AT[2], ROW)[2], lampOnFloor(LAMP_INTENSITY, 6));
+    // Each of the three is dark where another's way would have taken it.
+    expect(under(own, THREE_LAMPS_AT[0], ROW)).toEqual([0, 0, 0]);
+    expect(under(own, MIDDLE + REACH, ROW)).toEqual([0, 0, 0]);
+    expect(under(own, THREE_LAMPS_AT[2], ROW - REACH)).toEqual([0, 0, 0]);
+
+    // The edge cut: with Direction back to the value, every lamp shines the Light's own way, straight down.
+    const one = (await render({ ...SPOTS, light: { ...OBLIQUE, direction: [0, -1, 0] } })).last;
+    THREE_LAMPS_AT.forEach((x, lamp) => expectLit(under(one, x, ROW)[lamp], lampOnFloor(LAMP_INTENSITY, 6)));
+    expect(under(one, THREE_LAMPS_AT[0] + REACH, ROW)).toEqual([0, 0, 0]);
+    expect(under(one, MIDDLE, ROW - REACH)).toEqual([0, 0, 0]);
+
+    // Both in Map mode: the red lamp's way, +x and down, turned a quarter turn about +Y, is −z and down.
+    const both = (await render({ ...SPOTS, light: { ...OBLIQUE, direction: mapped("way", [0, -1, 0]), orient: mapped("turn", [0, 0, 0, 1]) } })).last;
+    expectLit(under(both, THREE_LAMPS_AT[0], ROW - REACH)[0], ON_AXIS);
+    // And the green lamp's, −z and down, is −x and down: it lands where the red lamp's own way had taken the red one.
+    const landed = under(both, THREE_LAMPS_AT[0] + REACH, ROW);
+    expect(landed[0]).toBe(0);
+    expectLit(landed[GREEN], ON_AXIS);
+  }, 240_000);
+
+  it("the consumer's lamps: along a climbing path each shines along its own frame's down, from the orient of Curve Frames, and does not light the crown beside it", async () => {
+    // Three lamps half a unit in front of the wall, on a path that climbs at 45 degrees
+    // along it. The path's frame at every lamp: its tangent (1, 1, 0)/√2, its normal the
+    // perpendicular nearest to up, (−1, 1, 0)/√2. So "down" for a lamp is (1, −1, 0)/√2:
+    // ahead and below, not below. Cone 150 with a soft edge, as the consumer lights its tunnel.
+    // The path is straight, so the three frames are one frame: that each point's own turn is
+    // read is the case of `swing` above. This one is the chain, Curve Frames into a Light.
+    const DEPTH = 0.5;
+    const FRAME_DOWN = [Math.SQRT1_2, -Math.SQRT1_2, 0] as const;
+    const WORLD_DOWN = [0, -1, 0] as const;
+    const LAMPS: ReadonlyArray<readonly [number, number]> = [
+      [-3.9375, 2.0625],
+      [-1.9375, 4.0625],
+      [0.0625, 6.0625],
+    ];
+    const path = `fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  let along = f32(ctx.index) * 2.0;
+  q.position = vec3f(along - 3.9375, along + 2.0625, ${WALL_Z + DEPTH});
+  q.color = vec4f(f32(ctx.index == 0u), f32(ctx.index == 1u), f32(ctx.index == 2u), 1.0);
+  return q;
+}`;
+    const attributes = JSON.stringify([
+      { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
+      { name: "color", type: "vec4f", qualifier: "color", default: [1, 1, 1, 1] },
+    ]);
+    const RANGE = 24;
+    const lamps = (light: Record<string, unknown>): LampsScene => ({
+      unwired: true,
+      scenes: "geometry_wall",
+      camera: FRONT_CAMERA,
+      light: { direction: [...WORLD_DOWN], cone: 150, coneSoftness: 0.8, range: RANGE, color: mapped("color", [1, 1, 1, 1]), ...light },
+      nodes: [
+        { id: "kernel_path", type: "pointKernel", parameters: { capacity: 3, attributes, kernel: path } },
+        { id: "topology_path", type: "pointTopology", parameters: { connectivity: "strips", cols: 3, rows: 1 } },
+        { id: "frames_path", type: "pointCurveFrames", parameters: {} },
+      ],
+      edges: [
+        ["kernel_path", "topology_path", "points"],
+        ["topology_path", "frames_path", "points"],
+        ["frames_path", "light_lamps", "points"],
+      ],
+    });
+    const onWall = (frame: RenderedFrame, x: number, y: number): number[] => {
+      const [px, py] = pixelOf(FRONT_CAMERA, [x, y, WALL_Z]);
+      return pixelAt(frame, px, py).slice(0, 3);
+    };
+    /** What lamp `index` gives the wall at a place, shining along `axis` inside the consumer's cone. */
+    const spotOnWall = (index: number, x: number, y: number, axis: readonly [number, number, number]): number => {
+      const lamp = LAMPS[index] as readonly [number, number];
+      const out = [x - lamp[0], y - lamp[1], -DEPTH] as const;
+      const cosine = (out[0] * axis[0] + out[1] * axis[1] + out[2] * axis[2]) / Math.hypot(...out);
+      return lampOnPlane([-out[0], -out[1], -out[2]], [0, 0, 1], LAMP_INTENSITY, RANGE) * spotShare(150, 0.8, cosine);
+    };
+    const [mx, my] = LAMPS[1] as readonly [number, number];
+
+    const framed = (await render(lamps({ kind: "spot", orient: mapped("orient", [0, 0, 0, 1]) }))).last;
+    // Along its own down, one unit ahead and one below: nearly all of the middle lamp's light,
+    // and the fade of its two neighbours', each in its own colour.
+    const below = onWall(framed, mx + 1, my - 1);
+    expect(spotOnWall(1, mx + 1, my - 1, FRAME_DOWN)).toBeCloseTo(0.2363, 4);
+    [0, 1, 2].forEach((lamp) => expectLit(below[lamp], spotOnWall(lamp, mx + 1, my - 1, FRAME_DOWN)));
+    // THE CROWN BESIDE IT: one unit on along the path, level with the lamp in the path's own
+    // frame. A quarter turn off every lamp's axis, outside the cone: exactly nothing, of any of the three.
+    expect(onWall(framed, mx + 1, my + 1)).toEqual([0, 0, 0]);
+    // As bare lamps the same three light that crown as brightly as the wall below them.
+    const bareLamps = (await render(lamps({ kind: "point" }))).last;
+    expectLit(onWall(bareLamps, mx + 1, my + 1)[GREEN], lampOnPlane([-1, -1, DEPTH], [0, 0, 1], LAMP_INTENSITY, RANGE));
+    expect(onWall(bareLamps, mx + 1, my + 1)[GREEN]).toBeGreaterThan(0.2);
+
+    // THE EDGE CUT. With Orient's map cut the lamps shine straight down the world instead.
+    // Level with the lamp and ahead of it is lit along the frame's down and dark along the world's;
+    // behind and below it is the other way round.
+    const world = (await render(lamps({ kind: "spot" }))).last;
+    expectLit(onWall(framed, mx + 1.5, my)[GREEN], spotOnWall(1, mx + 1.5, my, FRAME_DOWN));
+    expect(onWall(framed, mx + 1.5, my)[GREEN]).toBeGreaterThan(0.1);
+    expect(onWall(world, mx + 1.5, my)[GREEN]).toBe(0);
+    expect(onWall(framed, mx - 1.25, my - 1.25)[GREEN]).toBe(0);
+    expectLit(onWall(world, mx - 1.25, my - 1.25)[GREEN], spotOnWall(1, mx - 1.25, my - 1.25, WORLD_DOWN));
+    expect(onWall(world, mx - 1.25, my - 1.25)[GREEN]).toBeGreaterThan(0.05);
+  }, 240_000);
 });

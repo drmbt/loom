@@ -17,7 +17,7 @@ import type { PointAttributeType } from "../../points/attributes.ts";
 import type { NodeCompileInputs } from "./compile-context.ts";
 import { packedGroups } from "./instance-records.ts";
 import { MAX_LIGHT_SLOTS, MAX_POINT_LIGHTS, lightGridDimensions, lightRecordStorage, lightTableStorage } from "./light-records.ts";
-import { readNumber } from "./parameter-readers.ts";
+import { readNumber, readVector } from "./parameter-readers.ts";
 import { resolveColorMap, resolveScalarMap } from "./points.ts";
 
 /**
@@ -31,7 +31,10 @@ import { resolveColorMap, resolveScalarMap } from "./points.ts";
  */
 
 /** The parameters of a Light that take a per-point attribute in Map mode, in Points mode. */
-export const LIGHT_POINT_MAPS = ["color", "intensity", "position", "range"] as const;
+export const LIGHT_POINT_MAPS = ["color", "intensity", "position", "range", "direction", "orient", "cone"] as const;
+
+/** A Light's Type as its rows carry it (`scene-lights.wgsl.ts`, the record's kind). */
+export const lightKindNumber = (kind: unknown): number => (kind === "spot" ? 2 : kind === "point" ? 1 : 0);
 
 const refusal = (nodeId: string, code: string, message: string, suggestion: string): CompiledNodeDescription => ({
   passes: [],
@@ -78,6 +81,32 @@ export function lightMapRefusal(
 }
 
 /**
+ * T1589b slice 2 — A SPOT IN SINGLE MODE HAS NO CONE YET, AND SAYS SO.
+ *
+ * A spot is a kind of ROW of a Render's light table. A Light in Single mode is not a row
+ * yet: it is a block of the lit shader, and that block takes no cone (it goes when named
+ * Lights become rows, T1623b slice 3, and this warning goes with it). Until then such a
+ * Light shines as a point light from its Position.
+ *
+ * A WARNING, never a refusal. Type is a value: the plan and every text are a point light's
+ * whichever of the two it says, so nothing here is decided by it. It is in the compile's
+ * diagnostics, which the Problems pane and the headless server both read, by the node's
+ * name. The compile runs on every revision, so an authored Type: Spot is said from the edit
+ * that makes it; a Type DRIVEN to Spot between revisions is not, because a values-only frame
+ * keeps no node's diagnostics (`frame-compile.ts`).
+ */
+export function lightSpotUnbuilt(nodeId: string): RuntimeDiagnostic {
+  return {
+    severity: "warning",
+    code: "node.scene.lightSpot",
+    message: `Node "${nodeId}": Type is Spot, and a Light in Mode: Single has no cone yet. It shines as a Point light from Position, in every direction: Cone, Cone Softness and Direction are not read.`,
+    nodeId,
+    suggestion:
+      "Set Mode to Points and wire a pointset to Points (one point is one spot), or set Type to Point. A Light in Single mode takes its cone when named Lights become rows of the Render's light table.",
+  };
+}
+
+/**
  * The Light in POINTS mode: one light at every point of the Points input.
  *
  * `light` is the node's own values as the Single path reads them (colour in linear space,
@@ -119,6 +148,13 @@ export function compileLightPoints(request: {
   if ("refusal" in intensity) return intensity.refusal;
   const range = resolveScalarMap(nodeId, parameterMaps["range"], pointset, "points", "range");
   if ("refusal" in range) return range.refusal;
+  /* The way each light travels: a vec3f in place of Direction, a quaternion in place of Orient. */
+  const direction = resolveColorMap(nodeId, parameterMaps["direction"], pointset, "points", "direction", "vec3f");
+  if ("refusal" in direction) return direction.refusal;
+  const orient = resolveColorMap(nodeId, parameterMaps["orient"], pointset, "points", "orient");
+  if ("refusal" in orient) return orient.refusal;
+  const cone = resolveScalarMap(nodeId, parameterMaps["cone"], pointset, "points", "cone");
+  if ("refusal" in cone) return cone.refusal;
 
   const records = lightRecordStorage(nodeId, pointset.capacity);
   const sources = packedGroups();
@@ -131,6 +167,10 @@ export function compileLightPoints(request: {
   const colorRead = color.map === undefined ? undefined : sources.read(color.map, "vec4f");
   const intensityRead = intensity.map === undefined ? undefined : scalar(intensity.map);
   const rangeRead = range.map === undefined ? undefined : scalar(range.map);
+  const directionRead = direction.map === undefined ? undefined : sources.read(direction.map, "vec3f");
+  const orientRead = orient.map === undefined ? undefined : sources.read(orient.map, "vec4f");
+  const coneRead = cone.map === undefined ? undefined : scalar(cone.map);
+  const turn = readVector(parameters as never, "orient", [0, 0, 0, 1]);
   const pass: DispatchPassDescriptor = {
     kind: "dispatch",
     id: `${nodeId}:lights:resolve`,
@@ -140,6 +180,9 @@ export function compileLightPoints(request: {
       ...(colorRead === undefined ? {} : { color: colorRead }),
       ...(intensityRead === undefined ? {} : { intensity: intensityRead }),
       ...(rangeRead === undefined ? {} : { range: rangeRead }),
+      ...(directionRead === undefined ? {} : { direction: directionRead }),
+      ...(orientRead === undefined ? {} : { orient: orientRead }),
+      ...(coneRead === undefined ? {} : { cone: coneRead }),
       ...(pointset.count === undefined ? {} : { counted: true }),
     }),
     entryPoint: "main",
@@ -151,9 +194,11 @@ export function compileLightPoints(request: {
     ],
     uniforms: {
       color: [light.color[0], light.color[1], light.color[2], light.intensity],
-      /* The Type is a value of the row (T1623b): a set of suns and a set of lamps are one text. */
-      shape: [Math.max(0, readNumber(parameters, "range", 0)), light.falloff === "inverseSquare" ? 1 : 0, light.type === "point" ? 1 : 0, 0],
+      /* The Type is a value of the row (T1623b): a set of suns, of lamps and of spots are one text. */
+      shape: [Math.max(0, readNumber(parameters, "range", 0)), light.falloff === "inverseSquare" ? 1 : 0, lightKindNumber(parameters["kind"]), 0],
       aim: [light.direction[0], light.direction[1], light.direction[2], 0],
+      orient: [turn[0] ?? 0, turn[1] ?? 0, turn[2] ?? 0, turn[3] ?? 1],
+      cone: [readNumber(parameters, "cone", 60), readNumber(parameters, "coneSoftness", 0.4), 0, 0],
       count: pointset.capacity,
     },
     uniformBinding: "params",

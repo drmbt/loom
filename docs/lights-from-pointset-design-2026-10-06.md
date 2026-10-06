@@ -1,6 +1,6 @@
 # Lights from a pointset: a many-light path inside the Render (T1589b)
 
-**Status, 2026-10-06: ruled, and slice 1 is built.** The lead ruled L1 to L12 as recommended and the consumer answered C1 to C6 (section 10). Section 13 is slice 1 as built, with its measurements.
+**Status, 2026-10-06: ruled, and slices 1 and 2 are built.** The lead ruled L1 to L12 as recommended and the consumer answered C1 to C6 (section 10). Section 13 is slice 1 as built (point lights from a pointset, culled), section 14 slice 2 (cone and aim), each with its measurements.
 
 **What replaced parts of this document the same day: ONE LIGHT PATH** (`docs/light-cost-investigation-2026-10-06.md`, section 11; SPEC row T1623b; its 11.8 lists what it changes here). B260 found why a Render's cost grew faster than its light count: a straight chain of unrolled light blocks is what a compiler sinks to the end of the function. The cure is that every light in the app is a row of the table this document designs: a named Light as a set of one, a casting light as a row with a shadow slot, a projector as a row. So the table, the records, the grid and the loop below are the permanent path and not a path beside the blocks. Read with that in mind:
 
@@ -628,3 +628,87 @@ Apple M3 Max, Dawn on Metal, headless, 1280 × 720, on a machine other sessions 
 - **Anything that is not a dispatch counts as work a dispatch would overtake** in `encodeSegmented`, a swap included, so a kernel costs one more frame of the device's (an encoder and a submit) besides its own dispatch. The comment there says an unnecessary split costs one empty command buffer. That is one for every kernel in a frame.
 - **A Light in Single mode with Points wired keeps the upstream kernel in the plan.** Nothing reads it. Flipping Mode back does not stop the kernel's dispatch.
 - **`from` is a reserved word of WGSL** and Dawn refuses it as a name; the plan tests on the mock device do not see that. Only the Dawn file did.
+
+## 14. Slice 2 as built (2026-10-06): cone and aim
+
+Type: Spot for the rows of a pointset Light, as section 8's slice 2 states it and as the one light path wants it: a spot is a kind of ROW. A Light in Single mode is not a row yet (T1623b slice 3), so there a Spot shines as a Point light and says so.
+
+### 14.1 What a Light gained
+
+| Key | Label | Type, range | Default | In Map mode |
+|---|---|---|---|---|
+| `kind` | Type | enum, `spot` appended; a value | `directional` | — |
+| `cone` | Cone | number, 1 to 360, degrees | 60 | an f32, or one channel, multiplies it |
+| `coneSoftness` | Cone Softness | number, 0 to 1 | 0.4 | not mappable |
+| `orient` | Orient | vec4, a unit quaternion | 0, 0, 0, 1 | a vec4f attribute in its place |
+| `direction` | Direction | as it was | as it was | a vec3f attribute, world space, in its place |
+
+- **The aim of a row** is `R(orient) · direction`, written as a unit vector: the Light's Direction or the mapped vec3f, turned by the Light's Orient or the mapped quaternion. A quaternion is taken as a turn whatever its length.
+- **The cone of a row** is two cosines: of half the Cone, where the light reaches zero, and of `(1 − Cone Softness)` of that, inside which it is whole; between them a smoothstep on the cosine, written out because `smoothstep` with equal edges (a Cone Softness of 0) has no defined value.
+- **A row with no cone** (a point light, a directional one, a Cone of 359 degrees or more) holds −2 and −1 for the two: no direction's cosine is under −2, so its share is exactly 1.
+- **Off, and in no cell**: a spot or a sun whose direction comes out at nothing, and a spot whose mapped Cone comes out at nothing, beside what switched a row off in slice 1.
+- **The record's kind** is 0 directional, 1 point, 2 spot. Type, Cone, Cone Softness, Direction and Orient are all floats of the Light's own resolve pass: a set of lamps, of spots and of suns compile the same shaders, and a document that drives any of them stays on the values-only frame path.
+- **Culling is by the range sphere.** The build does not know a cone (T1625b).
+
+### 14.2 The walk has one shape
+
+The cone of EVERY row is tested, whatever its kind. A first form tested only the rows that are spots (a second branch on the kind beside the one for a directional row). Set beside each other (13.4's method, alternated in one process, the same pictures):
+
+| 64 lights, all in reach | Spots only | Every row |
+|---|---|---|
+| point rows | 0.67, 0.69 | 0.68, 0.65 |
+| spots, Cone 30 | 0.44, 0.43 | 0.29, 0.27 |
+| spots, Cone 150 | 0.82, 0.80 | 0.68, 0.68 |
+
+Shares of the reference, two takes. The second branch is what cost. Slice 1's own walk, which has no cone test and reads the aim row inside its branch on the kind, costs 0.52 and 0.52 of the reference with 1,024 lights and nothing shaded where this one costs 0.40 and 0.41: reading the row for every light came out cheaper than reading it under a branch. Why was not looked for.
+
+### 14.3 Where it departs from the brief, for the lead to rule
+
+- **Orient is read as a VALUE too**, not in Map mode only. The brief (and section 3.2) had it Map mode only, as a Geometry's is. There a value has nothing to turn, so a Geometry REFUSES an authored one; a Light has a Direction, so a refusal would be decided by a value, and ignoring it would drop an authored number in silence. Reading it costs one uniform: as a value it turns the direction of every light of the set, in Map mode each point brings its own. If Map mode only is wanted, it is one line and an `inactiveWhen`.
+- **A Spot in Single mode: a warning, `node.scene.lightSpot`, by the node's name.** The Light shines as a Point light from Position; its plan is the Point light's plan value for value (the test compares the two fingerprints). It is in the compile's diagnostics, which the Problems pane's `compile` source and the headless server both read. The compile runs on every revision, so an authored Type: Spot is said from the edit that makes it and stops with the edit that ends it.
+  - **What that does not cover**: a Type DRIVEN to Spot between revisions. A values-only frame recompiles the node and drops its diagnostics (`frame-compile.ts`: "per-frame resolution diagnostics are dropped"), as it drops every node's. No carrier exists for a problem a compiled node raises on one frame and not the next; the value graph's own source is the only per-frame one. Building one is a seam in `compileFrame` and in the app's frame loop, not in a Light. It goes with this warning when named Lights become rows.
+- **The text of a Render that lists a pointset Light moved**: its walk now tests a cone. It is still one string at every count and every Type. A Render with no pointset Light has the text it had (the five fingerprints, B260's digests). Nothing shipped lists a pointset Light.
+- **A point row costs more than in slice 1 where every light is shaded, and less where none is** (14.4).
+
+### 14.4 Measured, under the rule of 5.4
+
+The minimal scene of 13.4 (a PBR floor, N lights 1.5 above it, Range 30 so that every light's range holds every pixel), the lights one Light in Points mode. Spots shine straight down. Every variant twice, alternated; 40 frames after 12; on a machine other sessions were loading (the reference ran at 4.1 to 6.3 ms). Lit draw plus the table's three dispatches, as a share of the reference.
+
+| Lights | What | Share of reference, two takes | Against point rows |
+|---|---|---|---|
+| 64 | Lights in Single mode, guarded blocks | 0.50, 0.51 | |
+| 64 | point rows | 0.66, 0.70 | 1 |
+| 64 | point rows, the walk without a cone test (slice 1's, a scratch patch) | 0.61, 0.64 | 0.91 to 0.92 |
+| 64 | spots, Cone 30 | 0.27, 0.30 | 0.41 to 0.42 |
+| 64 | spots, Cone 150 | 0.66, 0.68 | 0.97 to 0.99 |
+| 64 | spots, Cone 360 (the point lights' picture) | 0.70, 0.68 | 0.97 to 1.06 |
+| 256 | point rows | 2.67, 2.71 | 1 |
+| 256 | point rows, the walk without a cone test | 2.43, 2.38 | 0.88 to 0.91 |
+| 256 | spots, Cone 30 | 1.10, 1.10 | 0.41 |
+| 1,024, Range 1 | point rows, nothing shaded | 0.40, 0.41 | 1 |
+| 1,024, Range 1 | the walk without a cone test | 0.52, 0.52 | 1.26 to 1.28 |
+
+- **A narrow spot costs two fifths of a point light of the same range.** It is walked by every pixel its range sphere holds and leaves at its cone, before its colour is read and before the lobe. A Cone 30 spot 1.5 above a floor lights a disc 0.8 across: about one row in sixty is shaded at a pixel (computed), so nearly all of that two fifths is the walk. A cone-against-cell test in the build (T1625b) is what would take it away.
+- **A wide spot costs what a point light costs.**
+- **The cone test costs a point row a tenth where every light is shaded** (0.05 to 0.06 of the reference at 64 lights, 0.24 to 0.34 at 256), and the walk is a fifth cheaper than slice 1's where none is.
+
+The consumer's frame was not run again: its lamps as spots are the consumer's to place.
+
+### 14.5 Tests, and what was seen red
+
+- `light-points.test.ts`, 31 tests with no GPU; `light-points.gpu.test.ts`, 25 on Dawn.
+- The acceptance of section 8's slice 2, on Dawn: a spot straight down reads the point light's value to the bit on its axis and inside its inner angle, the stated share of it in the fade, and exactly nothing outside the cone, which under an ambient is the pixel of the Render with no light; a Cone Softness of 0 is a hard edge; a Cone of 359 or 360 is the point lights' whole picture; a mapped Cone multiplies. Orient in Map mode carries each lamp's light a quarter turn round its foot, each lamp by its own turn, and the same turn as a value gives the same picture byte for byte. Direction in Map mode gives each lamp a way of its own. The point lights' programs draw the spots' picture after one float is written.
+- **The brightest pixel is not where a slanted spot's axis meets the floor**: the inverse square pulls it toward the lamp. The test asserts the value where the axis meets the floor, and that the brightest pixel lies between the lamp's foot and that place and is carried a quarter turn round the foot by the turn.
+- **The consumer's case**: three lamps on a path climbing at 45 degrees along a wall, Direction (0, −1, 0), Orient mapped from the `orient` of Curve Frames, Cone 150, Cone Softness 0.8. Along each lamp's own down the wall reads the three lamps' analytic values; the crown beside a lamp (on along the path, level with it in the path's frame) reads exactly nothing, where the same lamps as point lights light it as brightly as the wall below; with the map cut the light falls straight down the world instead.
+- **75 mutations of the product, one at a time, 72 seen red.** Not red: the two of 13.5, and the walk shading a fragment its cone leaves nothing for (nothing times a finite lobe is nothing: the early exit is a cost, and a clock is not a gate).
+- **Acceptance item 10 of slice 1 is now reached by a mutation**: a Render whose lit draws leave the walk out under MSAA.
+- §V1029's gate asked for no new row: none of the new parameters is a count.
+
+### 14.6 Not checked
+
+- The inspector: the three new rows, and the reasons the rows not read give.
+- The Problems pane showing the warning in the app; it is asserted in the compile's diagnostics.
+- A Light's tile in Points mode (it shows the stock scene under the node's values, T1630b).
+- Curve Frames on a path that bends, into a Light: the test's path is straight, so its three frames are one. That each point's own turn is read is held by a kernel's attribute.
+- A spot under a counted pointset, a spot on a mesh Surface, a spot beside guarded blocks: each is slice 1's case with one more value, and none was run as a spot.
+- A browser, a second GPU.

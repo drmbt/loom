@@ -21,7 +21,7 @@ import { instanceRecordStorage, isPackedType, packedGroups } from "./instance-re
 import { instanceResolveWgsl, RESOLVE_ARGS_BINDING, RESOLVE_LIVE_BINDING, RESOLVE_RECORDS_BINDING, RESOLVE_SOURCE_PREFIX, resolveWorkgroups, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
 import { bindInstanceAttributes } from "./instance-attributes.ts";
 import { applyMaterialOverrides } from "./material-overrides.ts";
-import { compileLightPoints, lightMapRefusal, lightTablePlan, type LightTablePlan, type PointLightSource } from "./light-points.ts";
+import { compileLightPoints, lightMapRefusal, lightSpotUnbuilt, lightTablePlan, type LightTablePlan, type PointLightSource } from "./light-points.ts";
 import {
   GLASS_BLIT_WGSL,
   SSAA_RESOLVE_WGSL,
@@ -331,6 +331,17 @@ const pointsCastNothing = (values: Readonly<Record<string, unknown>>): string | 
   values["mode"] === "points" ? "A shadow map belongs to one light: a Light in Single mode casts, the lights of a pointset do not." : null;
 
 /**
+ * T1589b slice 2: a spot in SINGLE mode has no cone yet. A named Light takes one when it
+ * becomes a row of the Render's light table (T1623b slice 3); until then it shines as a
+ * point light, its two cone rows say so, and the Light says so by name (`lightSpotUnbuilt`).
+ */
+const SINGLE_SPOT = "A Spot is a light of a pointset for now (Mode: Points): in Mode: Single this light shines as a Point light, in every direction.";
+/** A point light and a spot stand at a place: they have a Position, a Falloff and a Range. */
+const lightIsPlaced = (values: Readonly<Record<string, unknown>>): boolean => values["kind"] === "point" || values["kind"] === "spot";
+const spotInactive = (values: Readonly<Record<string, unknown>>): string | null =>
+  values["kind"] !== "spot" ? "Only a Spot has a cone." : values["mode"] === "points" ? null : SINGLE_SPOT;
+
+/**
  * The Light's DECLARED parameters, hoisted (T1589b) so `parametersFor` can derive the schema
  * one placed node carries without reading the node back off itself (§T903's funnel), as
  * `GEOMETRY_PARAMETERS` is.
@@ -343,7 +354,10 @@ const LIGHT_PARAMETERS: ParameterSchema = {
     options: [
       { value: "directional", label: "Directional" },
       { value: "point", label: "Point" },
+      { value: "spot", label: "Spot" },
     ],
+    description:
+      "Directional travels along Direction from infinitely far. Point sits at Position and shines every way. Spot (T1589b) sits there and shines along Direction inside its Cone. A VALUE: changing it rebuilds nothing. A Spot is a light of a pointset for now: in Mode: Single it shines as a Point light and the Light says so, until named Lights become rows of the Render's light table (T1623b).",
   },
   /*
    * T1589b — ONE LIGHT, OR ONE AT EVERY POINT (docs/lights-from-pointset-design-2026-10-06.md).
@@ -360,7 +374,7 @@ const LIGHT_PARAMETERS: ParameterSchema = {
       { value: "points", label: "Points" },
     ],
     description:
-      "Single is one light, at Position. Points repeats this light at every point of the Points input: N lights from ONE node, each standing at its point's position. In Map mode Color takes a vec4f attribute and Intensity and Range an f32 (or one channel of a float vector), each MULTIPLYING the value here per point, so the number stays live for the whole set; Position in Map mode takes a vec3f attribute as each light's place instead of position. A light whose intensity or mapped range is zero is off, and so is a dead point of a counted pointset. A Render culls these lights by their Range on the GPU, so give them one. With Type: Directional the set is that many suns, each travelling along Direction; a directional light reaches every pixel, so none of them is culled. A Render lights from at most 1,024 points of capacity, every slot counted.",
+      "Single is one light, at Position. Points repeats this light at every point of the Points input: N lights from ONE node, each standing at its point's position. In Map mode Color takes a vec4f attribute and Intensity, Range and Cone an f32 (or one channel of a float vector), each MULTIPLYING the value here per point, so the number stays live for the whole set; Position, Direction and Orient in Map mode take an attribute IN PLACE of the value (a vec3f place, a vec3f way to travel, a vec4f quaternion). A light whose intensity, mapped range or mapped cone is zero is off, and so is a dead point of a counted pointset. A Render culls these lights by their Range on the GPU, so give them one. With Type: Directional the set is that many suns, each travelling along its direction; a directional light reaches every pixel, so none of them is culled. A Render lights from at most 1,024 points of capacity, every slot counted.",
   },
   color: { type: "color", label: "Color", default: [1, 1, 1, 1], space: "display" },
   intensity: { type: "number", label: "Intensity", default: 1, min: 0, range: "floor" },
@@ -369,7 +383,51 @@ const LIGHT_PARAMETERS: ParameterSchema = {
     size: 3,
     label: "Direction",
     default: [-0.4, -0.8, -0.45],
+    description:
+      "The way the light travels: a Directional light's direction, a Spot's axis. Any length. In Points mode in Map mode a vec3f attribute, in world space, is each light's direction in place of this one.",
     inactiveWhen: (values) => (values["kind"] === "point" ? "A point light shines everywhere." : null),
+  },
+  /*
+   * T1589b slice 2 — WHICH WAY EACH LIGHT OF A SET SHINES. `aim = R(orient) · direction`, the
+   * Geometry's Orient (T723): a unit quaternion, right-handed and active. As a value it turns
+   * Direction for the whole set; in Map mode each point brings its own, which is what lets a
+   * lamp along a path shine along the path's own frame.
+   */
+  orient: {
+    type: "vector",
+    size: 4,
+    label: "Orient",
+    default: [0, 0, 0, 1],
+    description:
+      "Mode: Points. A unit quaternion (x, y, z, w) that TURNS Direction, right-handed and active as a Geometry's Orient: (0, 0, sin45, cos45) is a quarter turn about +Z and carries +X to +Y. As a value it turns the direction of every light of the set; in Map mode a vec4f attribute turns it per point. With Direction (0, −1, 0) and the orient of Curve Frames, each lamp along a path shines along its own frame's down.",
+    inactiveWhen: (values) =>
+      values["mode"] !== "points"
+        ? "One light has one Direction: Orient turns it per point, in Mode: Points."
+        : values["kind"] === "point"
+          ? "A point light shines everywhere."
+          : null,
+  },
+  cone: {
+    type: "number",
+    label: "Cone",
+    default: 60,
+    min: 1,
+    max: 360,
+    range: "bounded",
+    description:
+      "T1589b: a Spot's cone, in degrees: the FULL angle at which its light reaches zero. 359 or more is every direction, so a set can mix spots and bare lamps by one attribute. In Map mode an f32 (or one channel of a float vector) multiplies it per point. A Render culls a spot by its Range, not by its cone: a narrow spot is still walked by every pixel in its range (T1625b).",
+    inactiveWhen: (values) => spotInactive(values),
+  },
+  coneSoftness: {
+    type: "number",
+    label: "Cone Softness",
+    default: 0.4,
+    min: 0,
+    max: 1,
+    range: "bounded",
+    description:
+      "T1589b: the share of the cone's half-angle over which a Spot fades. The light is whole inside (1 − softness) × Cone ÷ 2 and falls smoothly to zero at Cone ÷ 2. 0 is a hard edge; 1 fades from the axis out.",
+    inactiveWhen: (values) => spotInactive(values),
   },
   position: {
     type: "vector",
@@ -393,7 +451,7 @@ const LIGHT_PARAMETERS: ParameterSchema = {
     ],
     description:
       "T1437b: how a point light dims with distance d. Soft, 1/(1+d²), is nearly flat inside a metre, so a lamp close to a subject lights its near and far side almost alike. Inverse Square, 1/d², is the physical law: a lamp at 30 cm lights a surface at 60 cm a quarter as much, which is what makes a close key read as close. Distance is held at 1 cm or more. Far from the light the two agree; inside a metre Inverse Square is brighter and much steeper.",
-    inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light does not fall off."),
+    inactiveWhen: (values) => (lightIsPlaced(values) ? null : "A directional light does not fall off."),
   },
   range: {
     type: "number",
@@ -403,7 +461,7 @@ const LIGHT_PARAMETERS: ParameterSchema = {
     range: "floor",
     description:
       "T1437b: how far a point light reaches, in world units. The falloff is multiplied by (1 − (d/range)⁴)², so it reaches exactly zero at the range and is barely touched inside half of it. 0 is unlimited. In Points mode (T1589b) the Range is what a Render culls by, and it defaults to 10: a light with no Range is in every cell of the view, so every lit pixel pays for every one of them.",
-    inactiveWhen: (values) => (values["kind"] === "point" ? null : "A directional light is infinitely far."),
+    inactiveWhen: (values) => (lightIsPlaced(values) ? null : "A directional light is infinitely far."),
   },
   shadows: {
     type: "boolean",
@@ -432,7 +490,7 @@ const LIGHT_PARAMETERS: ParameterSchema = {
     description:
       "T1405b: the world point a directional light's shadow volume is framed around — Shadow Extent either side of it. Put it on the set (a set away from the origin otherwise gets no sun shadows at all), or drive it by expression to follow the camera or the subject. Moving it does not rebuild anything.",
     inactiveWhen: (values) =>
-      pointsCastNothing(values) ?? (values["kind"] === "point" ? "A point light's shadow is centred on the light." : values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
+      pointsCastNothing(values) ?? (lightIsPlaced(values) ? "A point light's shadow is centred on the light." : values["shadows"] === true ? null : "Only a casting light frames a shadow volume."),
   },
   shadowSoftness: {
     type: "number",
@@ -497,7 +555,7 @@ export const lightNode: NodeDefinition = {
   title: "Light",
   category: "render",
   description:
-    "A light other nodes reference by NAME: a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; Point lights sit at Position with distance falloff (soft or inverse-square, and an optional range). Mode: POINTS repeats the light at every point of the Points input, N lights from ONE node, never N nodes: each stands at its point's position, and Color, Intensity and Range take a per-point attribute in Map mode. A Render culls such lights by their Range on the GPU, so a lamp every few metres of a long set costs what the lamps near each pixel cost; give them a Range. Colour, intensity and placement are all drivable. Only a light in Single mode casts shadows.",
+    "A light other nodes reference by NAME: a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; Point lights sit at Position with distance falloff (soft or inverse-square, and an optional range); Spot lights sit there and shine along Direction inside Cone. Mode: POINTS repeats the light at every point of the Points input, N lights from ONE node, never N nodes: each stands at its point's position, and Color, Intensity, Range, Direction, Orient and Cone take a per-point attribute in Map mode. A Render culls such lights by their Range on the GPU, so a lamp every few metres of a long set costs what the lamps near each pixel cost; give them a Range. A Spot is a light of Points mode for now: in Single mode it shines as a Point light and says so. Colour, intensity and placement are all drivable. Only a light in Single mode casts shadows.",
   tags: ["3d", "scene", "light", "shading", "points", "lamps"],
   inputs: [
     {
@@ -544,7 +602,8 @@ export const lightNode: NodeDefinition = {
     const payload: LightPayload = {
       kind: "light",
       light: {
-        type: parameters["kind"] === "point" ? "point" : "directional",
+        /* A spot stands at a place, as a point light does. */
+        type: parameters["kind"] === "point" || parameters["kind"] === "spot" ? "point" : "directional",
         color: [color[0] ?? 1, color[1] ?? 1, color[2] ?? 1],
         intensity: readNumber(parameters, "intensity", 1),
         direction: vec3(parameters, "direction", [-0.4, -0.8, -0.45]),
@@ -563,7 +622,11 @@ export const lightNode: NodeDefinition = {
     /* T1589b: one light at every point of the Points input, resolved once a frame into
        records a Render culls (light-points.ts). */
     if (pointsMode) return compileLightPoints({ nodeId, points: inputs["points"], parameters, parameterMaps, light: payload.light });
-    return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
+    const single = { passes: [], scene: { out: payload } } as CompiledNodeDescription;
+    /* T1589b slice 2: a spot in Single mode shines as a point light, and SAYS so. A warning
+       and never a refusal: Type is a value, the plan is a point light's whatever it says,
+       and a value does not decide what compiles. Goes with T1623b slice 3. */
+    return parameters["kind"] === "spot" ? { ...single, diagnostics: [lightSpotUnbuilt(nodeId)] } : single;
   },
 };
 
