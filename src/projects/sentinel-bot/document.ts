@@ -486,7 +486,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
     node("toggle_perch", "toggle", [-3600, 3500], { channel: "perch", caption: "Perch", on: false }, { label: "toggle_perch" }),
     node("xypad_view", "xyPad", [-3300, 3500], { channel: "view", caption: "Chase side / height", x: 1.1, y: 0.6, min: -2, max: 2 }, { label: "xypad_view" }),
-    node("slider_shot", "slider", [-3000, 3500], { channel: "shot", caption: `Shot (${SHOTS.join(", ")})`, value: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
+    node("slider_shot", "slider", [-3000, 3500], { channel: "shot", caption: `Shot (0 to ${SHOTS.length - 1})`, value: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
     node("toggle_cuts", "toggle", [-2700, 3500], { channel: "cuts", caption: "Cut on the bars", on: true }, { label: "toggle_cuts" }),
     node("toggle_follow", "toggle", [-3600, 3750], { channel: "follow", caption: "Follow the track", on: true }, { label: "toggle_follow" }),
     ...(ropes ? [node("toggle_ropes", "toggle", [-3300, 3750], { channel: "ropes", caption: "Rope legs", on: false }, { label: "toggle_ropes" })] : []),
@@ -499,14 +499,16 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    */
   // Each is published to the phone (Phone: on). That opens nothing by itself: a phone reaches them only through
   // the helper's phone door, armed by its own flag and opened from the paired tab.
-  // Ten columns: a row of a board is as tall as a column is wide, so more columns is a lower slider. (They
+  // Nine columns: a row of a board is as tall as a column is wide, so more columns is a lower slider. They
   // were eight; the owner, 2026-10-06: "the sliders for the controls could be a tiny bit less high on both app
-  // pane and on mobile. just a smidge too chunky". Ten is a fifth lower.)
-  const COLUMNS = 10;
-  // A control takes eight of the ten: the right fifth of every panel is bare board, so on a phone there is
+  // pane and on mobile. just a smidge too chunky". I made them ten without looking at a phone, and at 375 px a
+  // row was 30 px: "on the phone the sliders are now crunched and some buttons cut off … we may have went
+  // overboard". Nine is a ninth lower than eight, 34 px on that phone, looked at there before it shipped.
+  const COLUMNS = 9;
+  // A control takes eight of the nine: the last column of every panel is bare board, so on a phone there is
   // somewhere to put a thumb and scroll that is not a slider. (The owner, 2026-10-06, after the phone's own
   // scrolling had landed: "still pretty hard to not screw with the sliders when scrolling on mobile".)
-  const row = (member: string, y: number): { member: string; rect: { x: number; y: number; w: number; h: number } } => ({ member, rect: { x: 0, y, w: COLUMNS - 2, h: 1 } });
+  const row = (member: string, y: number): { member: string; rect: { x: number; y: number; w: number; h: number } } => ({ member, rect: { x: 0, y, w: COLUMNS - 1, h: 1 } });
   const heading = (label: string, y: number): { label: string; rect: { x: number; y: number; w: number; h: number } } => ({ label, rect: { x: 0, y, w: COLUMNS, h: 1 } });
   /**
    * BACK TO WHAT WAS SAVED (the owner, 2026-10-06: "ways to reset controls individually or all according to
@@ -540,7 +542,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       heading("Camera", 2 + SCENE.length),
       row("slider_shot", 3 + SCENE.length),
       row("toggle_cuts", 4 + SCENE.length),
-      { member: "xypad_view", rect: { x: 2, y: 5 + SCENE.length, w: 4, h: 4 } },
+      { member: "xypad_view", rect: { x: 1, y: 5 + SCENE.length, w: 6, h: 6 } },
     ],
     lights: [heading("Lights", 0), row(bankOf("lights"), 1), ...LIGHTS.map((slider, index) => row(slider.name, 2 + index))],
   };
@@ -579,7 +581,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     members: panels.flatMap((panel) => panel.members),
     board: serializePanelBoard({
       columns: COLUMNS * 2,
-      items: [{ member: bankOf("all"), rect: { x: 0, y: 0, w: COLUMNS * 2 - 2, h: 1 } }, ...shifted(boards.robot, 0, 1), ...shifted(boards.scene, COLUMNS, 1), ...shifted(boards.lights, COLUMNS, 1 + rowsOf(boards.scene))] as never,
+      items: [{ member: bankOf("all"), rect: { x: 0, y: 0, w: COLUMNS * 2 - 1, h: 1 } }, ...shifted(boards.robot, 0, 1), ...shifted(boards.scene, COLUMNS, 1), ...shifted(boards.lights, COLUMNS, 1 + rowsOf(boards.scene))] as never,
     }),
   };
   const targetsOf = (values: Record<string, Record<string, number | boolean>>): string => Object.entries(values).flatMap(([name, held]) => Object.keys(held).map((key) => `${name}.${key}`)).join(" ");

@@ -87,8 +87,8 @@ describe("the sentinel's panels", () => {
       expect(readPresetBank(named(graph, `presets_${panel}`)).presets.map((preset) => preset.name)).toEqual([`reset_${panel}`]);
       // The phone shows it only if the Phone switch is on.
       expect(storedStaticValue(named(graph, `panel_${panel}`).parameters["remote"])).toBe(true);
-      // On a phone there is somewhere to scroll that is not a control: nothing reaches into the last two columns of the board's ten.
-      expect(board?.columns).toBe(10);
+      // On a phone there is somewhere to scroll that is not a control: nothing reaches into the last column of the board's nine.
+      expect(board?.columns).toBe(9);
       for (const item of board?.items ?? []) if (item.kind === "widget") expect([panel, item.node.label, item.rect.x + item.rect.w <= 8]).toEqual([panel, item.node.label, true]);
     }
     // ALL: every control and every bank again, on one board for the desk, in two columns, and not on the phone.
@@ -97,8 +97,8 @@ describe("the sentinel's panels", () => {
     expect([...shown].sort()).toEqual([...all, ...PANELS.map((panel) => `presets_${panel}`), "presets_all"].sort());
     expect(readPresetBank(named(graph, "presets_all")).presets.map((preset) => preset.name)).toEqual(["reset_all"]);
     expect([...controlsOf(graph, "all")].sort()).toEqual([...all].sort());
-    expect(everything?.columns).toBe(20);
-    const columnsUsed = new Set((everything?.items ?? []).map((item) => (item.rect.x < 10 ? "left" : "right")));
+    expect(everything?.columns).toBe(18);
+    const columnsUsed = new Set((everything?.items ?? []).map((item) => (item.rect.x < 9 ? "left" : "right")));
     expect([...columnsUsed].sort()).toEqual(["left", "right"]);
     // No two of its controls on top of each other.
     const cells = new Set<string>();
