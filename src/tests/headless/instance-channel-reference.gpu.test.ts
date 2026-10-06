@@ -100,7 +100,7 @@ function document(red: StoredParameter): GraphDocument {
   };
 }
 
-async function render(red: StoredParameter, level = 0.75) {
+async function rendered(red: StoredParameter, level = 0.75, expectedFindings: readonly string[] = []) {
   const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
   system.components.register(analysis(level));
   const result = await renderHeadless({
@@ -110,17 +110,22 @@ async function render(red: StoredParameter, level = 0.75) {
     frames: 2,
     animate: true,
     components: system.components.view(),
+    expectedFindings,
   });
   const frame = result.frames[0];
   if (frame === undefined) throw new Error("no frame captured");
-  return Buffer.from(frame.bytes);
+  return { bytes: Buffer.from(frame.bytes), diagnostics: result.diagnostics };
 }
 
+const render = async (red: StoredParameter, level = 0.75): Promise<Buffer> => (await rendered(red, level)).bytes;
+
 /*
- * PIXELS ONLY. The harness reports the STRUCTURAL compile's diagnostics, which has no
- * channels (an info-tier "no channel resolver", never the read), and drops the per-frame
- * plan's warnings — so the refusal's wording is asserted where the compiler hands it back,
- * `src/tests/integration/instance-channel-reference.test.ts`.
+ * PIXELS, and the one refusal that is an error. The harness reports the STRUCTURAL
+ * compile's diagnostics, which has no channels (an info-tier "no channel resolver", never
+ * the read), and drops the per-frame plan's warnings — so a refusal's wording is asserted
+ * where the compiler hands it back, `src/tests/integration/instance-channel-reference.test.ts`.
+ * §T1641b: a per-frame ERROR is not dropped. The ambiguous read stops the render, and the
+ * case below names it to render through.
  */
 describe("§T1485b — an expression outside a component reads the instance's channels", () => {
   it("drives the parameter with the instance's published value, and follows it when it changes", async () => {
@@ -147,7 +152,15 @@ describe("§T1485b — an expression outside a component reads the instance's ch
 
   it("refuses a channel two outputs publish — the frame shows the retained value, not either output's", async () => {
     if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
-    const shared = await render(expressionSlot("op('analysis1').chan.shared", RETAINED));
-    expect(Buffer.compare(shared, await render(RETAINED))).toBe(0);
+    const read = expressionSlot("op('analysis1').chan.shared", RETAINED);
+    // §T1641b: a read no reader can settle never takes effect, so it is an error, and an
+    // error stops a headless render, by the frame, the node and what to do about it.
+    await expect(rendered(read)).rejects.toThrow(/frame 0: parameter\.reference\.ambiguous: "fx" \(\w+\): .*rename the channel on one of them/s);
+    // A fallback's own test names the finding it renders through, and gets it back.
+    const shared = await rendered(read, 0.75, ["parameter.reference.ambiguous"]);
+    expect(shared.diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.nodeId])).toEqual([
+      ["parameter.reference.ambiguous", "fx"],
+    ]);
+    expect(Buffer.compare(shared.bytes, await render(RETAINED))).toBe(0);
   }, 60_000);
 });

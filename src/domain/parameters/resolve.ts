@@ -13,7 +13,10 @@ import type {
 } from "../types/parameters.ts";
 import {
   evaluateExpression,
+  nearestSpelling,
   scopeFromFrame,
+  type ExpressionFailure,
+  type ExpressionFailureKind,
   type ExpressionScope,
   type NodeReferenceReader,
 } from "../expressions/index.ts";
@@ -193,12 +196,49 @@ export const NO_MORPHS: ParameterMorphs = {
 };
 
 /**
- * T897/T901: the marker a chan read's no-resolver failure carries, matched above the
- * expression fallback to give that state the INFO tier the old driven mode gave it. Lives
- * here (the leaf both sides import) so the two spellings cannot drift and no import cycle
- * forms — `node-references.ts` already imports this module.
+ * T897/T901: what a chan read's no-resolver failure SAYS. Its INFO tier (the one the old
+ * driven mode gave that state) comes from the failure's kind since §T1641b, not from a
+ * search for this text. Lives here (the leaf both sides import) so the reader's wording and
+ * the driven mode's cannot drift — `node-references.ts` already imports this module.
  */
 export const CHANNEL_RESOLVER_MISSING = "this context has no channel resolver";
+
+/** §V152's code: the whole-document check's (`reference-cycles.ts`) and the resolver's own. */
+export const REFERENCE_CYCLE_CODE = "parameter.referenceCycle";
+
+/** §V338's code: this caller has no channel resolver. Said of the caller, never of the document. */
+export const CHANNELS_UNAVAILABLE_CODE = "parameter.channels.unavailable";
+
+/**
+ * §T1641b — ONE FAILURE KIND, ONE CODE, and through the code one class
+ * (`src/domain/diagnostics/classes.ts`).
+ *
+ * All of these were `parameter.expression` at WARNING: a function the grammar does not have
+ * (§B262) beside a channel that is not published yet. So a guard could only stop on every
+ * one of them or on none, and a render script that stopped on none shipped three lamps at
+ * their stored values. The kinds that can NEVER read as written are errors (`syntax`,
+ * `name`, an `unreadable` or `ambiguous` reference, a `cycle`); the retained value still
+ * stands in (§V108), and the table marks all but the loop `local`, so the plan stays whole
+ * (a loop withdrew the plan before this, through the whole-document check, and still
+ * does). The kinds that read once something else arrives, or at another frame, stay
+ * warnings; the caller with no channel resolver stays the INFO it was (§V338).
+ */
+const EXPRESSION_FAILURES: Readonly<
+  Record<ExpressionFailureKind, { readonly severity: RuntimeDiagnostic["severity"]; readonly code: string }>
+> = {
+  syntax: { severity: "error", code: "parameter.expression.syntax" },
+  name: { severity: "error", code: "parameter.expression.name" },
+  value: { severity: "warning", code: "parameter.expression.value" },
+  "reference.unreadable": { severity: "error", code: "parameter.reference.unreadable" },
+  "reference.ambiguous": { severity: "error", code: "parameter.reference.ambiguous" },
+  "reference.cycle": { severity: "error", code: REFERENCE_CYCLE_CODE },
+  "reference.node": { severity: "warning", code: "parameter.reference.node" },
+  "reference.channel": { severity: "warning", code: "parameter.reference.channel" },
+  "reference.upstream": { severity: "warning", code: "parameter.reference.upstream" },
+  "reference.unknownType": { severity: "warning", code: "parameter.reference.unknownType" },
+  "reference.noResolver": { severity: "info", code: CHANNELS_UNAVAILABLE_CODE },
+  "reference.noGraph": { severity: "warning", code: "parameter.reference.unavailable" },
+};
 
 export type BindLookupResult =
   | { ok: true; value: ParameterValue }
@@ -562,6 +602,50 @@ function fallback(
   };
 }
 
+/**
+ * §T1641b — what to do about a bare name nothing supplies: whether a clock, a parameter of
+ * this node, a node or a published channel is spelled like it, and the form that reads each.
+ * A refusal that lists nine clocks does not help the author who meant a node.
+ */
+function unknownNameRemedy(context: ResolveContext, name: string | undefined): string {
+  const forms = "An expression reads the clocks and other nodes: op('name').par.key, op('name').chan.channel.";
+  if (name === undefined) return forms;
+  const hints: string[] = [];
+  const clock = nearestSpelling(name, Object.keys(ZERO_FRAME_SCOPE).sort());
+  if (clock !== null) hints.push(`Nearest clock: ${clock}.`);
+  const schema = context.options.schema;
+  if (schema !== undefined && Object.hasOwn(schema, name)) {
+    hints.push(`"${name}" is a parameter of this node: read it in Bind mode.`);
+  }
+  const like = context.options.nodes?.spelledLike?.(name);
+  for (const node of (like?.nodes ?? []).slice(0, 3)) {
+    hints.push(`A node is named "${node}": write op('${node}').par.<parameter> or op('${node}').chan.<channel>.`);
+  }
+  for (const publisher of (like?.publishers ?? []).slice(0, 3)) {
+    hints.push(`"${publisher}" publishes a channel "${name}": write op('${publisher}').chan.${name}.`);
+  }
+  if (hints.length > 0) return hints.join(" ");
+  // Only a reader that looked may say nothing is spelled like it.
+  return like === undefined ? forms : `No node, channel or parameter of this node is spelled "${name}". ${forms}`;
+}
+
+/** What a failed expression's diagnostic suggests. A NEVER kind always says something. */
+function expressionRemedy(context: ResolveContext, failure: ExpressionFailure): string | undefined {
+  switch (failure.kind) {
+    case "reference.noResolver":
+      return "Channels are published by the running app; a headless caller has none, so the retained value is in effect.";
+    case "name":
+      return unknownNameRemedy(context, failure.subject);
+    case "reference.cycle":
+      return "Break the loop: one of these expressions must stop reading the other (§V152).";
+    default:
+      if (failure.suggestion !== undefined) return failure.suggestion;
+      return EXPRESSION_FAILURES[failure.kind].severity === "error"
+        ? "The parameter holds its stored value until the expression reads."
+        : undefined;
+  }
+}
+
 /** Per-resolution state: the visited set is the runtime bind-cycle backstop (§V110). */
 /** One mapped parameter, as data (T286/§V287): the consumer's compile reads this. */
 export interface ParameterMapBinding {
@@ -644,41 +728,43 @@ function resolveSlot(
       );
       if (!evaluated.ok) {
         /**
+         * §T1641b: the failure's KIND picks the code and the severity (`EXPRESSION_FAILURES`).
+         *
          * T897: a chan read failing ONLY because this context has no channel resolver is
          * the state the old driven mode called normal — a structural compile, a headless
          * validate — and reported at INFO (§V338). The expression that carries the read
          * inherits that tier, or the driven→expression migration would turn every clean
          * example compile into a wall of warnings the driven form never produced.
          */
-        const resolverless = evaluated.reason.includes(CHANNEL_RESOLVER_MISSING);
+        const failure = EXPRESSION_FAILURES[evaluated.kind];
         return fallback(
           node,
           key,
           definition,
           slot,
           diag(
-            resolverless ? "info" : "warning",
-            resolverless ? "parameter.channels.unavailable" : "parameter.expression",
+            failure.severity,
+            failure.code,
             `Parameter "${key}" expression "${binding.source}" failed: ${evaluated.reason}`,
             node.id,
-            resolverless
-              ? "Channels are published by the running app; a headless caller has none, so the retained value is in effect."
-              : undefined,
+            expressionRemedy(context, evaluated),
           ),
         );
       }
       const coerced = coerceExpressionResult(definition, evaluated.value);
       if (!coerced.ok) {
+        // §T1641b: NEVER. No expression can drive a parameter of this type (§V107).
         return fallback(
           node,
           key,
           definition,
           slot,
           diag(
-            "warning",
-            "parameter.expression",
+            "error",
+            "parameter.expression.type",
             `Parameter "${key}" expression "${binding.source}": ${coerced.message}.`,
             node.id,
+            `Switch "${key}" back to Constant: its stored value is in effect.`,
           ),
         );
       }
@@ -1048,7 +1134,8 @@ function resolveBindRef(
  * So a ref SHAPED like a node reference names the exact replacement, in the caller's own
  * text. This beats a document on reach: it arrives at the moment of the mistake, to every
  * agent (MCP, WebMCP, the next one) and to the human reading the same string in the
- * inspector's mode panel, which renders `diagnostic.message` and nothing else.
+ * inspector's mode panel, which rendered `diagnostic.message` and nothing else when this was
+ * written (it shows the suggestion beside it since §T1641b).
  *
  * WHICH namespace is PROBED, never guessed. `par` and `chan` are both real (T316, T901)
  * and neither is right for every node: `constant1.value` is a parameter AND a published

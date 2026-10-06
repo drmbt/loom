@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { DIAGNOSTIC_CLASSES, diagnosticClass } from "./classes.ts";
+import { DIAGNOSTIC_CLASSES, diagnosticClass, leavesPlanUsable } from "./classes.ts";
 
 /**
  * T1641b — EVERY DIAGNOSTIC CODE THE SOURCE CAN EMIT HAS A CLASS, AND EVERY ROW NAMES ONE.
@@ -157,10 +157,24 @@ const SPLITS_OWED: readonly string[] = [
   "node.scene.shape",
   "node.surface.topology",
   "parameter.bind",
-  "parameter.expression",
   "project.components.invalid",
   "wgsl/compile",
 ];
+
+/**
+ * RETIRED (T1641b): a code that was split, and the files that still NAME it.
+ *
+ * Nothing emits a retired code: it has no row, and the census fails a code with no row. That
+ * is half of it. A guard that READS one (`d.code === "parameter.expression"`, expecting
+ * none) goes blind the day the code is split, and stays green. So no file under `src/`, tests
+ * included, may spell a retired code as a string, except the files listed here, which are
+ * waiting on an edit this task does not own. A line goes when its file stops naming the code.
+ */
+const RETIRED: Readonly<Record<string, readonly string[]>> = {
+  // Slice 1: split by failure kind into `parameter.expression.*` and `parameter.reference.*`.
+  // The consumer session owns this script; its guard moves to the class (`diagnosticClass`).
+  "parameter.expression": ["src/projects/sentinel-bot/render.ts"],
+};
 
 interface CensusOptions {
   /** `["@domain/", "src/domain/"]` pairs, longest prefix first. */
@@ -860,13 +874,13 @@ export function all(flag: boolean, key: "one" | "two", picked: { code: string })
   });
 });
 
-function sourceTree(): Map<string, string> {
+function sourceTree(withTests = false): Map<string, string> {
   const sources = new Map<string, string>();
   const walk = (directory: string): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (/\.tsx?$/.test(entry.name) && !/\.(test|spec)\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts")) {
+      else if (/\.tsx?$/.test(entry.name) && (withTests || !/\.(test|spec)\.tsx?$/.test(entry.name)) && !entry.name.endsWith(".d.ts")) {
         sources.set(relative(ROOT, path).split("\\").join("/"), readFileSync(path, "utf8"));
       }
     }
@@ -976,14 +990,55 @@ describe("every diagnostic code has a class, and every row names a code (T1641b)
   });
 });
 
+describe("a code that was split is gone from every reader too (T1641b)", () => {
+  it("lets no file spell a retired code but the ones the ledger waits for", () => {
+    const everything = sourceTree(true);
+    const self = "src/domain/diagnostics/classes.test.ts";
+    const problems: string[] = [];
+    for (const [code, waiting] of Object.entries(RETIRED)) {
+      if (Object.hasOwn(DIAGNOSTIC_CLASSES, code)) problems.push(`"${code}" is in RETIRED and still has a row in DIAGNOSTIC_CLASSES.`);
+      // As a string, in either quote. A comment may still tell the code's history in backticks.
+      const spelled = new RegExp(`["']${code.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}["']`);
+      const naming = [...everything].filter(([file, text]) => file !== self && spelled.test(text)).map(([file]) => file);
+      for (const file of naming) {
+        if (waiting.includes(file)) continue;
+        problems.push(
+          `${file} spells "${code}", a code nothing emits since it was split. A filter on it matches nothing and can no longer fail.\n` +
+            "    Read the codes it became, or the class: diagnosticClass(d.code) from src/domain/diagnostics/classes.ts.",
+        );
+      }
+      for (const file of waiting) {
+        if (!naming.includes(file)) problems.push(`${file} no longer spells "${code}". Remove it from RETIRED in ${self}.`);
+      }
+    }
+    expect(problems, `\n${problems.join("\n\n")}\n`).toEqual([]);
+  });
+});
+
 describe("diagnosticClass (T1641b)", () => {
   it("answers a row's class, and `unclassified` for anything with no row", () => {
     expect(diagnosticClass("parameter.unknown")).toBe("never");
     expect(diagnosticClass("patch.conflict")).toBe("act");
     // A code holding more than one class answers the least refusing of them until it is split.
-    expect(diagnosticClass("parameter.expression")).toBe("degraded");
+    expect(diagnosticClass("parameter.bind")).toBe("degraded");
+    // And a code that was split answers for nothing: each condition has its own.
+    expect(diagnosticClass("parameter.expression")).toBe("unclassified");
+    expect(diagnosticClass("parameter.expression.syntax")).toBe("never");
+    expect(diagnosticClass("parameter.reference.channel")).toBe("notYet");
+    expect(diagnosticClass("parameter.reference.unknownType")).toBe("elsewhereBuild");
+    expect(diagnosticClass("parameter.expression.clamped")).toBe("degraded");
     expect(diagnosticClass("no.such.code")).toBe("unclassified");
     // Not a row because Object.prototype has it.
     expect(diagnosticClass("constructor")).toBe("unclassified");
+  });
+
+  it("says which errors leave the plan usable: the rows marked local, and no other code", () => {
+    expect(leavesPlanUsable("parameter.expression.syntax")).toBe(true);
+    // An error before the rule stays one that withdraws the plan.
+    expect(leavesPlanUsable("parameter.referenceCycle")).toBe(false);
+    expect(leavesPlanUsable("compiler/unknown-node-type")).toBe(false);
+    // A code nobody classed is not waved through.
+    expect(leavesPlanUsable("no.such.code")).toBe(false);
+    expect(leavesPlanUsable("constructor")).toBe(false);
   });
 });

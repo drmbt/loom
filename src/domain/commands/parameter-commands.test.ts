@@ -510,7 +510,8 @@ describe("copy → paste → the value is the source's (§V148)", () => {
     // The reader is the seam (§V61): resolving WITHOUT one still reports, because a
     // caller that cannot see the graph must not invent a number.
     const unreadable = resolveParameterSchema(node, menuNode.parameters, STORED_READ);
-    expect(unreadable.get("amount")?.diagnostic?.code).toBe("parameter.expression");
+    // §T1641b: its own code. Nothing is wrong with the reference; this READ has no graph.
+    expect(unreadable.get("amount")?.diagnostic?.code).toBe("parameter.reference.unavailable");
 
     // With it, the round trip closes: the pasted reference is worth what it points at.
     const resolved = resolveParameterSchema(node, menuNode.parameters, testRead({ graph, registry: { get: () => menuNode } }));

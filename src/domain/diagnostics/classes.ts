@@ -36,13 +36,16 @@
  * nothing that was not refused before. The gate holds the list of them by name: it can only
  * get shorter, and a new code may not join it.
  *
- * ## Nothing reads this yet (T1641b)
+ * ## Who reads it (T1641b)
  *
- * This slice is the table and its gate. The bus, the save path, the compiler and the
- * headless harness start asking `diagnosticClass` in the slices that follow; no severity,
- * code or emitter changed with it. `local` is recorded for them: a `never` finding that is
- * inert on its own, so the rest of the plan stays usable while it is reported as an error.
- * The rows that carry it are the `never` codes that are not errors today.
+ * Slice 0 was the table and its gate. Slice 1 gave it its first product reader: the
+ * compiler's `hasError` asks `leavesPlanUsable`, so a `never` finding marked `local` is
+ * reported as an ERROR while the plan it sits in stays usable. `local` means the stored
+ * thing is inert on its own: its stated fallback is in effect and the rest of the document
+ * is whole. A document that rendered yesterday with a warning must not open black because
+ * the report got louder. Every code that was a warning before the rule and is `never` under
+ * it is `local`; a code that was an error before stays as it was. The bus, the save path and
+ * the headless harness's document check are the slices that follow.
  */
 
 export type DiagnosticClass = "never" | "notYet" | "elsewhereBuild" | "elsewhereHost" | "degraded" | "advice" | "act" | "build";
@@ -481,9 +484,11 @@ export const DIAGNOSTIC_CLASSES: Readonly<Record<string, DiagnosticClassRow>> = 
   "parameter.driven.clamped": { class: "degraded", reason: "the channel overshot a declared limit: the limit is in effect" },
   "parameter.driven.empty": { class: "never", reason: "a driven slot naming no channel" },
   "parameter.enum": { class: "never", reason: "an option the parameter does not have" },
-  "parameter.expression": { class: "degraded", splits: { task: "T1641b", holds: ["never", "notYet", "elsewhereBuild", "degraded"] }, reason: "every way an expression fails to evaluate" },
   "parameter.expression.clamped": { class: "degraded", reason: "the expression overshot a declared limit: the limit is in effect" },
-  "parameter.expression.syntax": { class: "never", reason: "an expression that does not parse" },
+  "parameter.expression.name": { class: "never", local: true, reason: "a bare name that is not a clock: nothing supplies it" },
+  "parameter.expression.syntax": { class: "never", local: true, reason: "an expression that does not parse: a token, a function the grammar lacks, an argument count" },
+  "parameter.expression.type": { class: "never", local: true, reason: "an expression on a parameter type that takes none" },
+  "parameter.expression.value": { class: "degraded", reason: "arithmetic with no finite answer at this frame: the stored value stands in" },
   "parameter.map.empty": { class: "never", reason: "a map naming no attribute" },
   "parameter.mode.payload": { class: "act", reason: "a parameter command's input" },
   "parameter.mode.retired": { class: "act", reason: "a parameter command's input" },
@@ -502,8 +507,15 @@ export const DIAGNOSTIC_CLASSES: Readonly<Record<string, DiagnosticClassRow>> = 
   "parameter.pulse.type": { class: "act", reason: "a parameter command's input" },
   "parameter.pulse.unregistered": { class: "act", reason: "a parameter command's input" },
   "parameter.range": { class: "never", reason: "a value past a declared limit is replaced by the default" },
+  "parameter.reference.ambiguous": { class: "never", local: true, reason: "an instance publishes that channel on more than one output" },
+  "parameter.reference.channel": { class: "notYet", reason: "the target publishes no such channel right now" },
+  "parameter.reference.node": { class: "notYet", reason: "no node has that name yet" },
   "parameter.reference.self": { class: "act", reason: "a parameter command's input" },
+  "parameter.reference.unavailable": { class: "elsewhereHost", reason: "this read has no graph to resolve op() in" },
+  "parameter.reference.unknownType": { class: "elsewhereBuild", reason: "the target's type is not one this build has" },
   "parameter.reference.unnamed": { class: "act", reason: "a parameter command's input" },
+  "parameter.reference.unreadable": { class: "never", local: true, reason: "a path no reader accepts, a parameter the target does not declare, or a value that is not a number" },
+  "parameter.reference.upstream": { class: "notYet", reason: "the parameter read carries a finding of its own, and clears with it" },
   "parameter.referenceCycle": { class: "never", reason: "an op() chain that returns to itself" },
   "parameter.reset.cleared": { class: "act", reason: "a parameter command's input" },
   "parameter.revert.created": { class: "act", reason: "a parameter command's input" },
@@ -681,4 +693,25 @@ export const DIAGNOSTIC_CLASSES: Readonly<Record<string, DiagnosticClassRow>> = 
  */
 export function diagnosticClass(code: string): DiagnosticClass | "unclassified" {
   return Object.hasOwn(DIAGNOSTIC_CLASSES, code) ? (DIAGNOSTIC_CLASSES[code] as DiagnosticClassRow).class : "unclassified";
+}
+
+/**
+ * Does an ERROR of this code leave the rest of the plan usable? True for the rows marked
+ * `local`. A code with no row answers false: an error nobody classed withdraws the plan, as
+ * every error did before the table.
+ */
+export function leavesPlanUsable(code: string): boolean {
+  return Object.hasOwn(DIAGNOSTIC_CLASSES, code) && (DIAGNOSTIC_CLASSES[code] as DiagnosticClassRow).local === true;
+}
+
+/**
+ * What a FINAL render stops on, as one question for every guard that asks it: an error; a
+ * finding that can never take effect; one that is still waiting, because a final render has
+ * no "later"; and a code with no row, which nobody has judged. A guard that named codes
+ * instead went blind the day a code was split (`parameter.expression`, slice 1).
+ */
+export function stopsFinalRender(diagnostic: { readonly severity: string; readonly code: string }): boolean {
+  if (diagnostic.severity === "error") return true;
+  const found = diagnosticClass(diagnostic.code);
+  return found === "never" || found === "notYet" || found === "unclassified";
 }

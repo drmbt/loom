@@ -142,8 +142,9 @@ describe("validateGraph — per-component expressions (§B231)", () => {
       expression: { kind: "expression" as const, source },
     },
   });
+  // §T1641b: each way an expression fails has its own code, under these two stems.
   const expressionDiagnostics = (result: ReturnType<typeof validateGraph>) =>
-    result.diagnostics.filter((d) => d.code === "parameter.expression");
+    result.diagnostics.filter((d) => d.code.startsWith("parameter.expression.") || d.code.startsWith("parameter.reference."));
 
   it("reports an unknown function on a reflected kernel component, naming node, key and function", () => {
     const graph = testGraph([
@@ -157,6 +158,9 @@ describe("validateGraph — per-component expressions (§B231)", () => {
     expect(reported?.nodeId).toBe("k");
     expect(reported?.message).toContain('"place.x"');
     expect(reported?.message).toContain('unknown function "saturate"');
+    // §T1641b: it can never evaluate, so it is an error, and it says what to write instead.
+    expect([reported?.severity, reported?.code]).toEqual(["error", "parameter.expression.syntax"]);
+    expect(reported?.suggestion).toBe("Write clamp(abstime, 0, 1).");
     // What the kernel is handed: the retained x, the bare key's y and z.
     expect(result.nodes.get("k")?.parameters["place"]).toEqual([0.25, 2, 3]);
   });
@@ -170,6 +174,8 @@ describe("validateGraph — per-component expressions (§B231)", () => {
     expect(reported?.nodeId).toBe("cam");
     expect(reported?.message).toContain('"lookAt.y"');
     expect(reported?.message).toContain("mod(): the period is zero");
+    // §T1641b: arithmetic that fails for THESE inputs may read at another frame: a warning.
+    expect([reported?.severity, reported?.code]).toEqual(["warning", "parameter.expression.value"]);
   });
 
   it("stays silent on a valid component expression, whose value is the one handed on", () => {

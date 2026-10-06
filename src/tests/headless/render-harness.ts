@@ -5,6 +5,7 @@ import type { CompiledGraph } from "../../compiler/types.ts";
 import type { BackendCapabilities, LogicalExecutionPlan } from "../../domain/types/backend.ts";
 import type { TransportSource } from "../../domain/types/frame.ts";
 import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
+import { leavesPlanUsable } from "../../domain/diagnostics/classes.ts";
 import type { GraphDocument, GraphNode, ProjectSettings } from "../../domain/types/graph.ts";
 import { projectFps } from "../../domain/types/graph.ts";
 import type { NodeDefinition, TextureFormat } from "../../domain/types/node-definition.ts";
@@ -121,6 +122,17 @@ export interface HeadlessRenderRequest {
    * it does not use, and every existing caller keeps its exact behaviour.
    */
   readonly animate?: boolean;
+  /**
+   * §T1641b: the `local` findings this render EXPECTS, by code.
+   *
+   * A stored thing that can never take effect is an ERROR, and an error stops a headless
+   * render, so a script that reads no diagnostics still does not trust the file (§B262). A
+   * fallback's own test renders a broken document on purpose: it names the finding, and gets
+   * it back in `diagnostics` beside the frames. Only a finding that leaves the plan usable
+   * can be named (`leavesPlanUsable`), and a named finding the render never produces fails
+   * it: an expectation nothing meets is a test that stopped testing.
+   */
+  readonly expectedFindings?: ReadonlyArray<string>;
   /**
    * T1604b: one device render pass PER DRAW (`backend.setExactPassTiming(true)`), the way
    * every frame was encoded before a run of draws shared a pass. The picture must be the
@@ -890,12 +902,42 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       structure === null
         ? null
         : structure.at({ timeSeconds: (request.startFrame ?? 0) / fps, fps: fps / subframeCount, subframes: subframeCount });
+    /** §T1641b: the findings the caller named, and the ones the render then met. */
+    const expectedFindings = new Set(request.expectedFindings ?? []);
+    for (const code of expectedFindings) {
+      if (!leavesPlanUsable(code)) {
+        throw new Error(
+          `expectedFindings names "${code}", which is not local: only a finding that leaves the plan usable can be rendered through.`,
+        );
+      }
+    }
+    /** Each named finding the render met, once: a frame's plan repeats the structural one's. */
+    const metFindings = new Map<string, RuntimeDiagnostic>();
+    /** An error stops the render, unless it is a finding the caller named. */
+    const stops = (diagnostic: RuntimeDiagnostic): boolean => {
+      if (diagnostic.severity !== "error") return false;
+      if (!expectedFindings.has(diagnostic.code)) return true;
+      const key = `${diagnostic.code}|${diagnostic.nodeId ?? ""}|${diagnostic.message}`;
+      if (!metFindings.has(key)) metFindings.set(key, diagnostic);
+      return false;
+    };
+    /**
+     * §T1641b: an error as the script that stops on it prints it. The code, the node BY
+     * NAME (a parameter's message names its key, not its node), and what to write instead.
+     */
+    const described = (diagnostic: RuntimeDiagnostic): string => {
+      const node = diagnostic.nodeId === undefined ? undefined : logicalGraph.nodes[diagnostic.nodeId];
+      const where =
+        diagnostic.nodeId === undefined ? "" : `"${node?.label ?? diagnostic.nodeId}"${node === undefined ? "" : ` (${node.type})`}: `;
+      const said = /[.!?]$/.test(diagnostic.message) ? diagnostic.message : `${diagnostic.message}.`;
+      return `${diagnostic.code}: ${where}${diagnostic.suggestion === undefined ? diagnostic.message : `${said} ${diagnostic.suggestion}`}`;
+    };
     const compileSegment = (state: TimelineStructureState | null): { request: CompileRequest; plan: CompiledGraph } => {
       const segmentRequest = state === null ? baseRequest : timelineStructureRequest(baseRequest, state);
       const segmentPlan = compileGraph(segmentRequest);
-      const errors = segmentPlan.diagnostics.filter((d) => d.severity === "error");
+      const errors = segmentPlan.diagnostics.filter(stops);
       if (errors.length > 0) {
-        throw new Error(`Parity graph failed to compile: ${errors.map((d) => d.message).join("; ")}`);
+        throw new Error(`Parity graph failed to compile: ${errors.map(described).join("; ")}`);
       }
       return { request: segmentRequest, plan: segmentPlan };
     };
@@ -1122,7 +1164,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                */
               for (const diagnostic of evaluated.diagnostics) {
                 const key = `${diagnostic.code}|${diagnostic.nodeId ?? ""}|${diagnostic.message}`;
-                if (diagnostic.severity === "error") {
+                if (stops(diagnostic)) {
                   if (!perFrameErrors.has(key)) perFrameErrors.set(key, { frameIndex: inputs.frame.frameIndex, diagnostic });
                 } else if (!valueWarnings.has(key)) {
                   valueWarnings.set(key, diagnostic);
@@ -1172,7 +1214,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                * the first frame each one appeared on.
                */
               for (const diagnostic of next.diagnostics) {
-                if (diagnostic.severity !== "error") continue;
+                if (!stops(diagnostic)) continue;
                 const key = `${diagnostic.code}|${diagnostic.nodeId ?? ""}|${diagnostic.message}`;
                 if (!perFrameErrors.has(key)) {
                   perFrameErrors.set(key, { frameIndex: inputs.frame.frameIndex, diagnostic });
@@ -1254,10 +1296,14 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
     // naming the frame it first appeared on. Green frames over a broken per-frame plan
     // are exactly what this harness existed to prevent.
     if (perFrameErrors.size > 0) {
-      const lines = [...perFrameErrors.values()].map(
-        (entry) => `frame ${entry.frameIndex}: ${entry.diagnostic.code}: ${entry.diagnostic.message}`,
-      );
+      const lines = [...perFrameErrors.values()].map((entry) => `frame ${entry.frameIndex}: ${described(entry.diagnostic)}`);
       throw new Error(`Per-frame compile produced errors (the value graph's included):\n${lines.join("\n")}`);
+    }
+    // §T1641b: every finding the caller named has to have appeared.
+    const metCodes = new Set([...metFindings.values()].map((diagnostic) => diagnostic.code));
+    const unmet = [...expectedFindings].filter((code) => !metCodes.has(code));
+    if (unmet.length > 0) {
+      throw new Error(`The render was expected to report ${unmet.map((code) => `"${code}"`).join(", ")} and never did.`);
     }
 
     const probed: Record<string, ArrayBuffer> = {};
@@ -1276,7 +1322,14 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       // Compiler diagnostics FIRST: they are about the plan the render ran, and the
       // errors among them already threw above — what travels here is the warnings,
       // which are exactly what a byte-identical-but-wrong render hides (T630).
-      diagnostics: [...plan.diagnostics, ...diagnostics, ...valueWarnings.values()],
+      // §T1641b: and the findings the caller named. The structural plan carries the ones it
+      // could see; one only a frame's channels show (an ambiguous instance read) is added.
+      diagnostics: [
+        ...plan.diagnostics,
+        ...diagnostics,
+        ...valueWarnings.values(),
+        ...[...metFindings.values()].filter((met) => !plan.diagnostics.some((said) => said.code === met.code && said.nodeId === met.nodeId && said.message === met.message)),
+      ],
     };
   } finally {
     backend.dispose();

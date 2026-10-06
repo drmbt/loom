@@ -877,6 +877,22 @@ Each lands alone. The order is the one I recommend: 0, 1, 2 and 3 close B262 and
 | 9 | **Publishers declare their channels.** Person Mask, Matte, Depth, MIDI In, OSC In, the inference nodes say what they can publish; a `.chan` read of a node that publishes none, or never that name, is NEVER | the unverifiable list in `channel-integrity.test.ts` shrinks; a wrong declaration refuses a working document |
 | 10 | **What only the bus forbids, at rest; and loops at the connect.** Duplicate names and duplicate connections in `documentFindings`; `connect` refuses a wire that closes a same-frame loop; `valueGraph.cycle` at the write (T1600b) | a gesture that worked (wire the loop, then add the Feedback) is refused with the reason |
 
+### 8.1 Slice 1 as built, where it differs from the plan above
+
+Slices 0 and 1 are built. Slice 1 follows §3.3, with these differences, each found while building it:
+
+- **A loop keeps its own code.** A reference that closes a cycle is `parameter.referenceCycle`, the code the whole-document check already had, at error and not `local` (it was an error before the rule). The resolver's guard fires one hop inside the loop, so the kind is passed up the chain; otherwise the parameter its author is looking at would say `upstream`.
+- **"No channel resolver" passes up a chain too.** A read of a parameter that reads a channel is waiting on the same caller. While the tier came from a search of the message text this held by accident of quoting. Without it, 159 reads in the shipped examples became warnings at every structural compile (E55's haze reads the reactor's knobs). The re-run of §5's scan found it.
+- **One code more than §3.3 lists:** `parameter.reference.unavailable` (ELSEWHERE, host), for a read with no graph to resolve `op()` in (`STORED_READ`). It was `parameter.expression` like the rest.
+- **`parameter.reference.noChannel` is not emitted yet.** It needs slice 9. Until then such a read is `parameter.reference.channel`, as §3.3 says.
+- **A scope name that holds no finite number is `value`, not `name`.** The evaluator said "unknown name" for both.
+- **The messages keep their reasons and gain a suggestion.** The reason texts are unchanged, so every surface that shows a reason alone still names the grammar's functions. What to write instead is the diagnostic's `suggestion`: the rewrite in the author's own operands, the nearest spelling, the declared keys, or what in the graph is spelled like an unknown name. The mode panel now shows the suggestion beside the message.
+- **The harness part of slice 3 that slice 1 could not do without.** `renderHeadless` takes `expectedFindings`: a fallback's own test names the `local` finding it renders through. A name that is not `local`, or that the render never produces, fails the render. It prints an error by the node's name, with its code and suggestion.
+- **`stopsFinalRender` in place of `neverEffective`.** One question for every guard that stops a render: an error, a NEVER finding, a NOT YET finding, or a code nobody classed. `src/projects/on-nothing/render.ts` and three test guards ask it.
+- **A ledger of retired codes.** The gate fails any file under `src/`, tests included, that still spells `parameter.expression` as a string, except the files listed as waiting on an edit this task does not own. A guard on a code nothing emits cannot fail, and this is what tells its owner.
+- **The shipped-set gate of §7.4 is built now,** over what a structural compile says (`src/examples/never-effective.test.ts`, on `test:gates`). It reads `runExample` until `documentFindings` exists, so it does not yet see what only the write gate checks of a stored value.
+- **`parameter.bind` is not split.** It fails through another mechanism (`BindLookupResult`, and the parent scope's resolver inside a component). It is slice 1b and stays in the gate's debt ledger.
+
 ## 9. Found on the way
 
 None was fixed: this phase changes nothing under `src/`, and none is small enough to be safe without a test.

@@ -301,7 +301,8 @@ describe("parameter modes (T203, §V107)", () => {
     const entry = resolved.get("gain");
     expect(entry?.value).toBe(12);
     expect(entry?.mode).toBe("expression"); // the active mode still shows, value or not
-    expect(entry?.diagnostic?.code).toBe("parameter.expression");
+    // §T1641b: a bare name nothing supplies can never evaluate. An error, by its own code.
+    expect([entry?.diagnostic?.severity, entry?.diagnostic?.code]).toEqual(["error", "parameter.expression.name"]);
   });
 
   it("drives every type from a number: bool ≠0, enum by index, string rendered (§V107)", () => {
