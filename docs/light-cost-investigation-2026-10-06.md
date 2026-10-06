@@ -306,7 +306,127 @@ B251: GPU time flipping between about 6 and 39 ms with two cube-shadow atlases, 
 
 ## 11. The cure: one light path
 
-The design, with its casting-lights prototype, follows in the next commit of this document.
+**Status: a design for review. Nothing in this section is built.** The stopgap of section 8 is a branch in a block that should not exist. The owner's standard for the cure is a fix of the whole and not a shader trick: so the cure is that a light is data, in one place, read one way.
+
+### 11.1 The property
+
+**The lit shader's text is the same for any number of lights of any kind.** Adding a Light, removing one, switching one on or off, turning Cast Shadows on, changing a Light's Type or re-ordering the list creates no shader module and no pipeline. It is a write to a buffer and, for a casting light, the use of one more layer of a texture that exists.
+
+It can be gated as it is stated (11.7).
+
+### 11.2 Every light is a row
+
+- **One table per Render**: the light table T1589b's first slice builds (records, a grid of cells, one storage binding on a lit draw, one loop in the lit shader). A point of a pointset Light is a row. **A named Light is a set of one row.** A Projector is a row (11.5).
+- **The lit text holds no light.** No `light{i}` uniform member, no block per light, no `shadowMap{i}` binding. The lit pass's own uniform block is the camera, the material and the surface, and its size no longer depends on the Render's lists.
+- **The record.** T1589b's 64 bytes are `place` (xyz, range), `color` (rgb × intensity, falloff law), `aim` (xyz, cosine of the outer half-angle) and `cone` (cosine of the inner, three floats free). The free three carry what a named light needs: its **kind**, its **shadow slot** (0 for none), and its **source number** (which Light it came from, for Lit Only and Lit Exclude). Still 64 bytes.
+- **Always-walked rows.** A directional light, and a point light with no Range, reach every pixel: a grid cannot leave them out. They are the first G rows of the table and are walked by a plain loop whose count is a value. Rows with a Range go through the grid, named or not.
+- **A count the compiler cannot know.** Both loops take their bounds from the table, never from the text. Measured on the floor at 64 lights: a loop with its count in the text 1.11 ms, with its count read from a uniform 1.25 ms, main's blocks 18.7 ms; pipeline creation cold 36 ms at 16, 32 and 64 lights against 86, 189 and 462 ms. A count in the text is also a text per count, which the property forbids, and it invites the compiler to unroll: at 32 lights a loop with a literal count once read 1.84 ms in a disturbed run and was not followed up.
+- **Where a named Light's row comes from.** A pointset Light's rows are written on the GPU by its resolve pass. A named Light's values are known on the CPU, as its uniforms are today. They must reach the table without a shader of their own whose text counts lights. **This needs one new seam in the backend: values for a region of a buffer**, carried by the plan and written by `queue.writeBuffer` at compile and on every values-only frame, as a uniform block's values are. The uniform animator pushes them as it pushes uniforms. Without that seam a named row needs a dispatch that copies from a uniform array, and that array's length is in a text again.
+- **What stays a compile-time fact**: the table's capacity (T1589b's 1,024, refused by name beyond it) now counts named Lights too.
+
+### 11.3 Casting lights
+
+Today a casting light is a block with its own texture binding, because a shader cannot index its bindings. The form that can be indexed:
+
+- **Two layered targets per Render, each one binding.** `texture_2d_array<f32>`, `r32float`, read with `textureLoad(maps, texel, layer, 0)`.
+  - One for directional maps, a layer a light, at today's size (2 × the output).
+  - One for point lights, a layer a light, each layer the 3 × 2 atlas of cube faces it is today (1.5 × the output, radial distance ÷ range).
+- **No cube array, no depth texture, no comparison sampler.** The lookup stays what it is: a texel load and a compare written out, with the tap kernel the PCF gate pins. That is deliberate. `textureSampleCompare` may not be called in a loop whose trip count differs between pixels (it takes a derivative); `textureSampleCompareLevel` may, but it needs a depth format, a comparison sampler and hardware filtering in place of the exact kernel. `textureLoad` has no such rule and is what the Render uses for every texture it reads.
+- **The baseline tier.** `texture_2d_array` and a layer index in `textureLoad` are WebGPU core; a device's floor is 256 layers. Two sampled textures replace N of the sixteen a lit draw may bind, which is today's hard cap on casting lights and goes.
+- **The backend already has the resource.** A `ring` (T237, T321) is a texture with `depthOrArrayLayers`, a view per layer to render into and one `2d-array` view to bind. A layered shadow target is a ring that does not rotate, with a depth attachment shared by its layers (the sweeps run one after the other and each clears depth first).
+- **The row carries its slot; the slot has a row of its own.** A second region of the table, one entry a slot: for a point light its place and range and the six face matrices its sweep drew with (400 bytes, as its uniforms are today); for a directional light its matrix (64 bytes); and the slot's softness class and extra bias. The lookup reads `shadowRows[slot]`. The six named matrices and the `switch` over them become one indexed read.
+- **Shadow Softness is a class, not a loop bound.** Measured in the prototype below: with the tap count read from the row and used as the loops' bounds the lookup costs 1.7 times as much (the compiler can no longer unroll nine taps). With the row choosing between loops of constant bounds it costs nothing. So the text holds one kernel per softness value, 0 to 4, and the row picks. Shipped documents use 0, 1, 2 and 3, and one Render mixes two.
+- **Shadow Bias** is a literal in the text today and becomes a float of the slot's row.
+- **The sweeps do not change.** A depth sweep's shader holds no light. Its target becomes a layer. Caster lists and reach culling (T1598b) decide which draws a sweep has and which are skipped, exactly as now.
+- **Render-pass runs (T1604b).** A run is consecutive draws of one node into one target; the target's identity gains its layer. A point light's six faces go into one layer's tiles and stay one run. Device passes: the same count as today.
+- **Sizes.** Every directional map of a Render is one size today and every point atlas another, so a layer per light loses nothing. If a light is ever given a resolution of its own, it is a rectangle inside its layer and the slot's row carries it; the lookup already clamps its taps to a tile.
+- **Allocation.** The arrays have as many layers as the Render has casting lights of that kind. Turning Cast Shadows on allocates a layer: a resource is rebuilt, no text changes. Grown in steps (1, 2, 4, 8) it is rebuilt rarely.
+- **The shadow matte layer** (T1414b) reads slots 0 to 2 of the same arrays. Its text is fixed already.
+
+**The prototype, measured.** `scratchpad/b260/casting-array.ts`. The lit text is the engine's own (`sceneSurfaceWgsl`, PBR grid surface, point lights, cube atlases, nine taps); its uniform block is filled at the offsets its struct declares; the array form is derived from that text by rewriting where the rows and the maps come from, so both forms read the same bytes. Their pictures agree to a half float's step at every count (identical at one light). Raw WebGPU, one floor, 2560 × 1440 so that the figures clear the timer's step (a quarter of each is the 1280 × 720 figure), no MSAA, reference beside every frame. The shadow maps hold synthetic distances: no sweep is drawn, since the sweeps are the same draws in both forms.
+
+| Lights / casting | Blocks, a binding a light (main) | Blocks, each guarded | One loop, one array | Loop, taps as loop bounds | Loop, taps as a class | Lit text, characters: blocks / loop |
+|---|---|---|---|---|---|---|
+| 1 / 1 | 0.197, 0.197 | 0.197 | 0.197, 0.262 | 0.328 | 0.262 | 7,719 / 7,671 |
+| 2 / 2 | 0.328, 0.393 | 0.328 | 0.448, 0.459 | 0.655 | 0.459 | 11,847 / 7,671 |
+| 4 / 4 | 0.704, 0.721 | 0.721 | 0.786, 0.852 | 1.311 | 0.852 | 20,103 / 7,671 |
+| 8 / 8 | 1.507, 1.573 | 1.442 | 1.573, 1.638 | 2.687 | 1.704 | 36,618 / 7,671 |
+| 32 / 4 | 13.31 | 2.75 | 2.56 | 2.88 | | 74,863 / 7,672 |
+| 32 / 8 | 15.47, 15.93 | 3.34 | 3.02, 3.19 | 3.80 | 3.18 | 83,574 / 7,672 |
+
+Milliseconds at full clock; two figures are two runs, the second with some disturbance. The timer's step is 0.066 ms.
+
+- **Casting lights as rows cost what they cost as blocks**, within one timer step at 1, 4 and 8, and one to two steps more at 2 (a pair repeated three times: 0.39 against 0.46 each time). About a twentieth more at eight.
+- **With non-casting lights around them the loop is the fastest form**: 32 lights of which 8 cast are 3.0 to 3.2 ms as rows, 3.3 guarded, 15.5 to 15.9 as main has them.
+- **One binding instead of N; a text that does not grow.** Pipeline creation cold: 119 to 174 ms for the loop at every count; 127 to 240 ms for the blocks up to 8 lights and 365 to 400 ms at 32. Each once.
+- **Not measured**: directional casting lights in the loop (the same resource, a simpler lookup), a mix of both kinds, softness above 1, the sweeps into layers, MSAA, and the whole of it through the backend.
+
+### 11.4 Lists
+
+Lit Only and Lit Exclude (T1589b slice 3) were designed with two mechanisms: for a Single light, a generator option that leaves its block out of a draw; for a pointset Light, a source number in the record and a mask on the draw. With every light a row there is one: the record's source number against the draw's mask, a uniform of the draw, tested first in the loop. Editing a list stops being a recompile.
+
+### 11.5 Projectors
+
+A Projector is a light with a picture, and it adds into the same sum. Its block is as unrolled as a light's (one a projector, with its own cookie and depth bindings), and twelve shipped Renders list projectors, seven of them five.
+
+- **A projector is a row**: its matrix, its place and brightness, its tint and falloff switch, its throw distance (112 bytes today), a cookie layer and an occlusion layer. It is walked by the same loop, with its frustum test first, as today.
+- **Occlusion.** A projector's depth sweep already renders into a scratch target at 2 × the output, the size of a directional shadow map. It becomes a layer of that array. The lookup is the directional one with a divide by `w`, which a kind in the slot's row selects.
+- **The cookie is the hard part, and the answer is a copy.** A cookie is any texture of any size wired to the node. It cannot be a layer of an array without being drawn into one. So the Render owns a cookie array of one size and each projector's cookie is copied into its layer when it changes: one small pass a live cookie a frame, none for a still one. The size is one constant of the Render (the largest cookie's, capped), stated on the row.
+- **The alternative** is a bounded exception: projectors keep a binding each, up to a stated number, and the text grows with them. It breaks the property for a count the documents already use (five). Not recommended.
+- **Not measured.** The cookie copy, and a projector walked in the loop.
+
+### 11.6 What still changes the text, and why that is right
+
+- **The material**: its model, a Material · WGSL's code, which maps are bound.
+- **The surface**: grid, file mesh and its rows, mesh instances, primitive instances, points, beams; additive; which G-buffer layer.
+- **The Render's features**: an environment and whether it is prefiltered; ambient occlusion.
+
+Each of these is a different computation per fragment, chosen by a person editing structure, and each is one of a small fixed set. None of them is a count of things in a document. That is the line: **text may depend on which features exist, never on how many of something there are.**
+
+Two smaller questions sit on that line and need a ruling:
+
+| | Question | Recommendation |
+|---|---|---|
+| D1 | Does a Render with no casting light carry the shadow lookup and bind the two arrays (one layer each, unused)? | Yes. Otherwise the first Cast Shadows recompiles every lit shader, which the property forbids. The cost is two of sixteen texture bindings and one untaken branch a row. |
+| D2 | Are all five softness kernels always in the text, or only the classes in use? | All five. Shadow Softness then stops being compile-time: it is a value of the slot's row. The prototype saw no cost in choosing between two. |
+| D3 | The same for projectors: is the projector lookup always in the text? | Yes, by D1's reasoning, with a cookie array of one layer when there is none. |
+| D4 | A named row's values: the new buffer-values seam (11.2), or a copy dispatch | The seam. A copy dispatch puts a count back in a text. |
+
+### 11.7 What it does to every shipped Render, and how it lands
+
+- **Every lit text changes**: 63 Renders, of which 44 list a light, 27 have a casting light (six at most, four point lights at most) and 12 a projector. With D1 a Render of no lights changes too.
+- **Pictures.** The sum is taken in another order, so the last bit can move on Metal. Measured for the stopgap, which is the smaller change: byte-identical at one light on the floor; 1 pixel of 696,320 by 1 of 255 at 13 lights on a real shot. The loop's picture had the guard's hash at 64 lights on the floor.
+- **Exact claims.** The Dawn tests assert exact values from one or two lights (`scene-render.gpu.test.ts`: a byte from `0.8 × (0.12 + 1)`). They are expected to hold and must be run, not assumed: every `*.gpu.test.ts` that renders a Render, and every example's claims test.
+- **`FRAME_ZERO_DIGESTS`** hashes Point Kernel passes only. A Light's resolve pass and the Render's gather and grid passes are not kernel nodes. It does not move.
+- **The stopgap's digests** (`TEXT_AT_AND_BELOW_THE_THRESHOLD`) are a promise that ends with the blocks. They are deleted with `LIGHT_GUARD_ABOVE`, in the slice that removes the last block.
+- **The gates the design makes possible.**
+  - **Text.** For every feature case of both generators, the lit module for 0, 1, 8 and 64 lights, for any mix of kinds, casting or not, and for 0 and 12 projectors is one string. And no lit module contains a numbered `light`, `shadow` or `projector` name.
+  - **Device calls.** On the mock host, with the counter of `device-calls.test-support.ts`: adding a Light, removing one, turning Cast Shadows on, changing Type and re-ordering the list each create no shader module and no render pipeline.
+  - **Values.** The stopgap's 32-light test carries over as it is: the picture is the formula's sum.
+  - **Culling is invisible** is T1589b's own test and now covers named Lights.
+
+**Slices, each landing green.**
+
+1. **T1589b slice 1 as designed**: pointset lights in the table, the grid, the loop in the surface generator. Named Lights are still blocks, with the stopgap. A Render with no pointset Light keeps its text.
+2. **The buffer-values seam** in the backend, with its own tests, used by nothing yet.
+3. **Named Lights that do not cast are rows.** Always-walked rows and ranged rows; `kind` a field. Their blocks go. Casting Lights are still blocks, and the stopgap stays for them. This is the slice that changes every shipped Render's text for the first time: pictures compared across all of them, exact claims re-run, the text gate arrives for non-casting counts.
+4. **Layered shadow targets.** The sweeps draw into layers; the remaining casting blocks read `maps` at a literal layer. No picture moves: byte identity on every casting example is the gate.
+5. **Casting Lights are rows.** The lookup moves into the loop, softness and bias become values (D2). The last block goes, and with it `LIGHT_GUARD_ABOVE`, its gate's cause half and its digests. The text gate covers every kind; the device-call gate arrives.
+6. **Projectors are rows**, with the cookie array.
+7. **The other generator** (primitive instances, points, beams), which T1589b has as its slice 4: the loop is one exported string in both.
+
+Slices 3 and 4 are independent. Each of 3, 5, 6 and 7 moves lit text, and each is one landing with one comparison of every shipped Render's picture.
+
+### 11.8 What it changes in T1589b
+
+- **Section 2.5 goes.** "A Light in Single mode is what it is today: its uniforms, its unrolled block" was held up by one measurement: the blocks 1.38 ms against the loop 1.84 ms at 64 lights that reach every pixel. That was a probe whose blocks hold fewer values live than the Render's, below its own cliff, without a reference. On the Render's text the blocks are 18.7 ms at 64 lights and a loop is 1.1 to 1.25. There is no count at which the blocks are worth keeping beside the loop.
+- **L5 is reversed** (a Single light keeps its block in a Render with a grid). **Row 2 of its section 9, which is T1623b, stops being a follow-up to decide on a document**: it is slices 3 and 5 here, for every named Light and not only those with a Range.
+- **L4, `kind` compile-time, is no longer needed for the shader.** Its two reasons were that a spot could not add a uniform row without changing every Render's text, and that Points mode could not refuse Directional by a value. With `kind` a field of a row the first is gone: a spot is two fields every row has. What is right for the property is that **`kind` stays a value**, as it is today, so changing a Light's Type recompiles nothing. The refusal is then the open half: either a pointset of directional lights is simply legal (N suns from N points, which is what the row would mean), or `kind` is made compile-time for that refusal alone. Recommended: legal, with no refusal. It needs the lead's ruling, since L4 was ruled the other way.
+- **Section 3.5 keeps its model and changes its mechanism.** A casting light is still a Light the author places. It is a row with a slot instead of a block with a binding. Its follow-up, shadow slots given on the GPU to the nearest lights of a pointset (section 9, row 1), comes much nearer: the lookup already reads its slot from a row.
+- **Section 3.9**: the table gains the always-walked region, the slot rows and the CPU-written rows; `node.scene.lightCapacity` counts named Lights.
+- **Slice 1's acceptance 8** ("a Render with no pointset Light has the plan it had") is true of slice 1 and ends, by ruling, at slice 3 here.
+- **Slice 3 (the lists)** has one mechanism instead of two (11.4). **Slice 4** is slice 7 here.
+- **Its cost model** (section 5) holds in shape. Its figures were taken without a reference and are in the list of section 2.
 
 ## 12. The scripts
 
