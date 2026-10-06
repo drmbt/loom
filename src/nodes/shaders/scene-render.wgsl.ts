@@ -1055,8 +1055,15 @@ ${sheets ? GRID_SHEET_WGSL.cell("select(rows - 1u, rows, wrapV)") : ""}  let gx 
   out.position = params.viewProjection * vec4f(world, 1.0);
   out.normal = (params.modelNormal * vec4f(localNormal, 0.0)).xyz;
   out.world = world;${carriesLocal ? "\n  out.local = local;\n  out.localNormal = localNormal;" : ""}
-  /* The grid coordinate IS the uv — free, and what material maps sample by. */
-  out.uv = vec2f(f32(gx) / max(params.grid.x - 1.0, 1.0), f32(gy) / max(params.grid.y - 1.0, 1.0));
+  /* The grid coordinate IS the uv — free, and what material maps sample by. B255: an axis
+     runs over its CELLS. A wrapped axis has as many cells as points (the last is the seam
+     cell), so the coordinate is 1 at the seam vertex and a texture goes once round. It was
+     the points less one on every axis, which on a wrapped one ran to cols ÷ (cols − 1):
+     the seam cell read past the map's edge and showed its last texel all the way across. */
+  out.uv = vec2f(
+    f32(gx) / max(select(params.grid.x - 1.0, params.grid.x, wrapU), 1.0),
+    f32(gy) / max(select(params.grid.y - 1.0, params.grid.y, wrapV), 1.0),
+  );
   /* Same modular indexing as the position read, so the seam vertex wears column 0's tint. */
   out.tint = ${pointColor
     ? `pointColors[${rowOf("select(gy, gy % rows, wrapV)")} * cols + select(gx, gx % cols, wrapU)]`

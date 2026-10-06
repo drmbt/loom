@@ -258,6 +258,13 @@ describe("B260: no lit fragment function chains more sources than the threshold"
  * If a digest moves because the lit text was changed ON PURPOSE, the change moves the text of
  * shipped Renders: that is a decision, and it is made by replacing the digest in the same
  * commit that says so.
+ *
+ * §B255 (2026-10-06) made that decision for the six GRID surface cases, marked below: the
+ * grid chunk's texture coordinate line changed (an axis divides by its cells, so a wrapped
+ * one reaches 1 at its seam and a map goes once round). The mesh and instance cases carry
+ * no grid chunk and did not move. Before: lambert grid 2717505ab16a6316, pbr Material WGSL
+ * 5ba3e4b2fe94caa0, pbr grid 326c14a7a3a7a8d8, pbr grid additive 6eaba590ca5564d9, pbr grid
+ * many projectors 2c0992f1f780d0a3, phong grid 33ea50e380739696.
  */
 const TEXT_AT_AND_BELOW_THE_THRESHOLD: Readonly<Record<string, string>> = {
   "instances: every feature": "9469ec94d83d006b",
@@ -269,15 +276,15 @@ const TEXT_AT_AND_BELOW_THE_THRESHOLD: Readonly<Record<string, string>> = {
   "instances: phong boxes": "a6e35e45230851ad",
   "surface: every feature": "ebfc4f2f17792cf3",
   "surface: every feature, instanced": "08ac687490aa4d09",
-  "surface: lambert grid": "2717505ab16a6316",
-  "surface: pbr Material WGSL": "5ba3e4b2fe94caa0",
+  "surface: lambert grid": "42e77db29fe97b61", // §B255
+  "surface: pbr Material WGSL": "dd94c30cf125247d", // §B255
   "surface: pbr file mesh with surface rows": "381f3a037e9c200e",
-  "surface: pbr grid": "326c14a7a3a7a8d8",
-  "surface: pbr grid, additive": "6eaba590ca5564d9",
-  "surface: pbr grid, many projectors": "2c0992f1f780d0a3",
+  "surface: pbr grid": "3862a064f9cad6eb", // §B255
+  "surface: pbr grid, additive": "919ec18941e4d41b", // §B255
+  "surface: pbr grid, many projectors": "434bfacef3d74cb1", // §B255
   "surface: pbr mesh instances": "17dac438da6a102a",
   "surface: phong Material WGSL on a mesh": "2d6c6b1825c09ebc",
-  "surface: phong grid": "33ea50e380739696",
+  "surface: phong grid": "c2608dcc7fcfca2d", // §B255
 };
 
 describe("B260: at and below the threshold the lit text is main's, byte for byte", () => {

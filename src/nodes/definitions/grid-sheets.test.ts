@@ -16,6 +16,14 @@ import { planFingerprint } from "./test-support.ts";
  * from main BEFORE the variant existed (692f5024). A change to one of them is a change to
  * what every grid Surface computes: make it on purpose, never to get this green.
  *
+ * RE-STAMPED ON PURPOSE BY §B255 (2026-10-06): eight of the nine, marked below. The lit grid
+ * chunk's texture coordinate line changed (an axis divides by its cells:
+ * `select(points − 1, points, wrapped)` where it was `points − 1`), and that line is in every
+ * program that carries the chunk, wrapped or not. On an axis that does not wrap the value is
+ * the one it was, to the bit; on one that does, a map goes once round (`grid-uv.gpu.test.ts`).
+ * Render Surface has no coordinate and keeps its stamp. Each new value is what the test
+ * printed on the tree with the fix, not typed.
+ *
  * What the sheets draw is asserted on Dawn in `point-sweep-sheets.gpu.test.ts`.
  */
 
@@ -122,12 +130,17 @@ const coloured: Pick<Scene, "points" | "edges" | "last"> = {
   last: "topology_colour",
 };
 
-/** The one-sheet scenes whose programs are pinned: between them, every variant of the two grid chunks. */
+/**
+ * The one-sheet scenes whose programs are pinned: between them, every variant of the two grid chunks.
+ * §B255 moved all seven (the coordinate line of the lit chunk): before, in this order,
+ * 17aa8172c9cd86ab, 084b26c7e1c920d6, 3c4d939cf8e327d2, baf033f83810f42d, 27985030733ae1ad,
+ * efbe423f4bad37c6, 23412397756ed469.
+ */
 const ONE_SHEET: ReadonlyArray<readonly [name: string, fingerprint: string, scene: Scene]> = [
-  ["a lit grid, the default material", "17aa8172c9cd86ab", { ...grid({ cols: 8, rows: 6, count: 48 }) }],
+  ["a lit grid, the default material", "6e32ecb742e37480", { ...grid({ cols: 8, rows: 6, count: 48 }) }],
   [
     "a Phong tube under a casting sun, with every output and occlusion on",
-    "084b26c7e1c920d6",
+    "fd223a6f35a231d2",
     {
       ...tube({ cols: 12, rows: 5, count: 60 }),
       material: curveNode("material_skin", "materialPhong", {}),
@@ -138,15 +151,15 @@ const ONE_SHEET: ReadonlyArray<readonly [name: string, fingerprint: string, scen
   ],
   [
     "a PBR grid under a casting point light: the cube faces",
-    "3c4d939cf8e327d2",
+    "05abd9496c1331d9",
     { ...grid({ cols: 8, rows: 6, count: 48 }), material: curveNode("material_skin", "materialPbr", {}), light: { kind: "point", position: [0, 2, 2], shadows: true, shadowExtent: 8 } },
   ],
-  ["a tinted grid: its colour attribute mapped to Tint", "baf033f83810f42d", { ...coloured, geometry: { tint: mappedTo("color", [1, 1, 1, 1]) } }],
-  ["an unlit grid", "27985030733ae1ad", { ...grid({ cols: 8, rows: 6, count: 48 }), material: curveNode("material_skin", "materialUnlit", {}) }],
-  ["a glass grid", "efbe423f4bad37c6", { ...grid({ cols: 8, rows: 6, count: 48 }), material: curveNode("material_skin", "materialGlass", {}) }],
+  ["a tinted grid: its colour attribute mapped to Tint", "4e06f58f7127b692", { ...coloured, geometry: { tint: mappedTo("color", [1, 1, 1, 1]) } }],
+  ["an unlit grid", "98a49e35dd3384ce", { ...grid({ cols: 8, rows: 6, count: 48 }), material: curveNode("material_skin", "materialUnlit", {}) }],
+  ["a glass grid", "16a7d3a060b02efd", { ...grid({ cols: 8, rows: 6, count: 48 }), material: curveNode("material_skin", "materialGlass", {}) }],
   [
     "a Material · WGSL on a wrapped tube, with the Normal output",
-    "23412397756ed469",
+    "6f3f36f5829aa22d",
     {
       ...tube({ cols: 12, rows: 5, count: 60 }),
       material: curveNode("material_skin", "materialWgsl", { model: "pbr", source: PLAIN_SURFACE }),
@@ -168,12 +181,14 @@ describe("a grid of one sheet keeps its programs, to the byte (T1587b slice 2)",
   it("the preview tile of a grid Geometry", () => {
     const draws = drawsOf(tilePasses(grid({ cols: 8, rows: 6, count: 48 })));
     expect(draws).toHaveLength(1);
-    expect(planFingerprint({ passes: draws })).toBe("1889b8f93f6f1f82");
+    // §B255: the tile draws the lit chunk, so its coordinate line moved with it (was 1889b8f93f6f1f82).
+    expect(planFingerprint({ passes: draws })).toBe("7c55c8dc5023cecd");
   });
 
   it("Render Surface", () => {
     const draws = surfacePasses(grid({ cols: 8, rows: 6, count: 48 }));
     expect(draws).toHaveLength(1);
+    // Not moved by §B255: this renderer has no texture coordinate.
     expect(planFingerprint({ passes: draws })).toBe("d63733260d66381a");
   });
 });

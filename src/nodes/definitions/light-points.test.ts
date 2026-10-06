@@ -590,13 +590,20 @@ describe("T1589b slice 2: a spot is a kind of row, and its cone and its aim are 
  * moves, by any hand. That is this slice's promise (§V309: absent, the text is unchanged),
  * and it is also a tripwire for everything else in the lit path: a change that is meant to
  * move one re-takes it on purpose, and says so.
+ *
+ * RE-TAKEN ON PURPOSE BY §B255 (2026-10-06), all five: each of these examples draws a grid
+ * Surface, and the lit grid chunk's texture coordinate line changed (an axis divides by its
+ * cells, so a wrapped one reaches 1 at its seam). The text moved; none of the five binds a
+ * map or reads the coordinate, and E13, E28, E33 and E79 render the bytes they rendered
+ * (frames 0 and 60, compared before and after). Before: E13 359501820ee04eb2, E33
+ * 3bbe8f637a87f0ca, E28 ead2f43368e32c56, E69 9277401191f84901, E79 e81ee4bea6dbf553.
  */
 const UNTOUCHED: ReadonlyArray<readonly [example: string, fingerprint: string]> = [
-  ["E13-Prism", "359501820ee04eb2"],
-  ["E33-Obol", "3bbe8f637a87f0ca"],
-  ["E28-Sundial", "ead2f43368e32c56"],
-  ["E69-Burnish", "9277401191f84901"],
-  ["E79-Crucible", "e81ee4bea6dbf553"],
+  ["E13-Prism", "b0ae17f85a00fa66"],
+  ["E33-Obol", "5a7d8127aa370b62"],
+  ["E28-Sundial", "9cd4c3c06215a84f"],
+  ["E69-Burnish", "962a4048645d64ce"],
+  ["E79-Crucible", "6bd605b4e59f4207"],
 ];
 
 function examplePlan(name: string) {
