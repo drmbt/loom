@@ -21,8 +21,9 @@ import { forgetGeneratedText, generatedTextCounts } from "../../runtime/backend/
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
 import { LAMP_ATTRIBUTES, SCATTERED_LAMPS, lampsScene, mapped, type LampsScene } from "./light-points.fixture.ts";
-import { LIGHT_GRID_SLICES, MAX_LIGHT_SLOTS, MAX_POINT_LIGHTS, lightGridDimensions, lightTableStorage } from "./light-records.ts";
-import { lightTableRowAt } from "../shaders/scene-lights.wgsl.ts";
+import { LIGHT_GRID_SLICES, MAX_LIGHT_SLOTS, NAMED_LIGHT_STEP, lightGridDimensions, lightTableStorage } from "./light-records.ts";
+import { LIGHT_TABLE_HEADER_WORDS, lightTableRowAt } from "../shaders/scene-lights.wgsl.ts";
+import { sceneSurfaceWgsl } from "../shaders/scene-render.wgsl.ts";
 import { lightNode } from "./scene.ts";
 import { CASTERS_GLB } from "./shadow-casters.fixture.ts";
 import { planFingerprint } from "./test-support.ts";
@@ -34,8 +35,11 @@ import { planFingerprint } from "./test-support.ts";
  * lights on the GPU instead of unrolling a block of shader for each. What the pictures look
  * like is `light-points.gpu.test.ts`'s claim, on Dawn, over the same scenes
  * (`light-points.fixture.ts`). Here: what is refused and how it is said, what a lit draw
- * binds, what the device is asked for, that a frame of driven values builds no text, and
- * that a Render with no such Light is the Render it was.
+ * binds, what the device is asked for, and that a frame of driven values builds no text.
+ *
+ * T1623b slice 3 moved the Render's half: its table is there whatever it lists, a Light in
+ * Single mode that does not cast is a row of it too (`light-rows.test.ts`), and each set is
+ * gathered by a pass of its own.
  */
 
 const registry = createNodeRegistry(allNodeDefinitions).view();
@@ -56,7 +60,15 @@ const compiled = (options: LampsScene = {}) => {
   expect(plan.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
   return plan;
 };
-type AnyPass = { readonly id: string; readonly kind: string; readonly shader?: string; readonly buffers?: ReadonlyArray<{ readonly binding: string }>; readonly uniforms?: Readonly<Record<string, unknown>> };
+type AnyPass = {
+  readonly id: string;
+  readonly kind: string;
+  readonly shader?: string;
+  readonly buffers?: ReadonlyArray<{ readonly binding: string }>;
+  readonly uniforms?: Readonly<Record<string, unknown>>;
+  /** A `write` pass's rows (the buffer-values seam). */
+  readonly values?: { readonly rows: number[]; readonly count: number };
+};
 const passesOf = (plan: { readonly passes: ReadonlyArray<unknown> }): ReadonlyArray<AnyPass> => plan.passes as unknown as ReadonlyArray<AnyPass>;
 /** A pass's id as its node wrote it: the plan puts the node's id and a `#` in front. */
 const bare = (id: string): string => id.slice(id.indexOf("#") + 1);
@@ -67,38 +79,46 @@ const pass = (plan: { readonly passes: ReadonlyArray<unknown> }, id: string): An
 };
 
 describe("T1589b: a Light in Points mode is rows of the Render's table, not a block of its shaders", () => {
-  it("resolves in the Light, gathers and sorts in the Render, ahead of everything that draws the colour", () => {
+  it("resolves in the Light; writes, gathers and sorts in the Render, ahead of everything that draws the colour", () => {
     const ids = passesOf(compiled()).map((entry) => bare(entry.id));
     const at = (id: string): number => ids.indexOf(id);
-    // The kernel that makes the points, then the Light's own pass, then the Render's two.
+    // The kernel that makes the points, then the Light's own pass, then the Render's: its
+    // table's values, a gather a set (its named rows' first, T1623b), and the grid.
     expect(at("light_lamps:lights:resolve")).toBeGreaterThan(ids.findIndex((id) => id.startsWith("kernel_lamps")));
-    expect(at("render_shot:lights:gather")).toBeGreaterThan(at("light_lamps:lights:resolve"));
-    expect(at("render_shot:lights:grid")).toBe(at("render_shot:lights:gather") + 1);
+    expect(ids.filter((id) => id.includes(":lights:"))).toEqual([
+      "light_lamps:lights:resolve",
+      "render_shot:lights:header",
+      "render_shot:lights:named",
+      "render_shot:lights:gather:0",
+      "render_shot:lights:gather:1",
+      "render_shot:lights:grid",
+    ]);
     expect(at("render_shot:backdrop")).toBeGreaterThan(at("render_shot:lights:grid"));
-    expect(ids.filter((id) => id.includes(":lights:"))).toEqual(["light_lamps:lights:resolve", "render_shot:lights:gather", "render_shot:lights:grid"]);
   });
 
-  it("gives the lit draw one buffer and no block, and holds no count in any text: three lamps, three hundred and a thousand are the same shaders", () => {
-    // The same kernel and the same maps at three capacities: one word a cell, ten, and thirty-two.
-    const plans = [3, 300, 1000].map((count) => compiled({ count, kernel: SCATTERED_LAMPS }));
+  it("gives the lit draw one buffer and no block, and holds no count in any text: three lamps, three hundred and nine hundred are the same shaders", () => {
+    // The same kernel and the same maps at three capacities: two words a cell, eleven, and thirty.
+    const plans = [3, 300, 900].map((count) => compiled({ count, kernel: SCATTERED_LAMPS }));
     const [few, many, most] = plans.map((plan) => pass(plan, "render_shot:scene:0"));
     for (const lit of [few, many, most]) {
       expect(lit?.buffers?.map((buffer) => buffer.binding)).toEqual(["positions", "lightTable"]);
-      // Not one unrolled block: a Light in Single mode would have put `light0Meta` here.
+      // Not one unrolled block: a casting Light would have put `light0Meta` here.
       expect(String(lit?.shader)).not.toContain("light0Meta");
     }
-    // ONE string each, not one a count (T1623b's property, for the rows there are so far):
-    // the lit draw, the Light's resolve, the Render's gather and the grid's build.
-    for (const id of ["render_shot:scene:0", "light_lamps:lights:resolve", "render_shot:lights:gather", "render_shot:lights:grid"]) {
+    // ONE string each, not one a count (T1623b's property): the lit draw, the Light's
+    // resolve, the Render's gathers and the grid's build.
+    for (const id of ["render_shot:scene:0", "light_lamps:lights:resolve", "render_shot:lights:gather:0", "render_shot:lights:gather:1", "render_shot:lights:grid"]) {
       const texts = plans.map((plan) => String(pass(plan, id).shader));
       expect([id, texts[1] === texts[0], texts[2] === texts[0]]).toEqual([id, true, true]);
     }
-    // What a count moves is values: the table's header, as the gather is handed it.
-    const header = (plan: (typeof plans)[number]): unknown[] => ["count", "words", "cells"].map((key) => pass(plan, "render_shot:lights:gather").uniforms?.[key]);
+    // What a count moves is values: the table's header, which the CPU writes. Its room is
+    // the named Lights' step and every slot of the set; its rows are the set's.
+    const header = (plan: (typeof plans)[number]): unknown => pass(plan, "render_shot:lights:header").values?.rows;
+    const room = (count: number): number => NAMED_LIGHT_STEP + count;
     expect(plans.map(header)).toEqual([
-      [3, 1, 4 + 3 * 16],
-      [300, 10, 4 + 300 * 16],
-      [1000, 32, 4 + 1000 * 16],
+      [room(3), 2, LIGHT_TABLE_HEADER_WORDS + room(3) * 16, 0, 3, 0, 0, 0],
+      [room(300), 11, LIGHT_TABLE_HEADER_WORDS + room(300) * 16, 0, 300, 0, 0, 0],
+      [room(900), 30, LIGHT_TABLE_HEADER_WORDS + room(900) * 16, 0, 900, 0, 0, 0],
     ]);
   });
 
@@ -113,7 +133,7 @@ describe("T1589b: a Light in Points mode is rows of the Render's table, not a bl
       // The header and every region of rows start on an element too.
       expect([table.cellsAt % 4, lightTableRowAt("cone", slots) % 4]).toEqual([0, 0]);
     }
-    expect((4 + 33 * 16 + 9 * 2) % 4).not.toBe(0);
+    expect((LIGHT_TABLE_HEADER_WORDS + 33 * 16 + 9 * 2) % 4).not.toBe(0);
   });
 
   it("keeps Type a value in Points mode too: a set of suns and a set of lamps are the same shaders, and a driven Type is a write", () => {
@@ -132,7 +152,7 @@ describe("T1589b: a Light in Points mode is rows of the Render's table, not a bl
     expect(driven.uniformOnly).toBe(true);
   });
 
-  it("stamps every row of a set with its Light's place in the Render's Lights, the Lights in Single mode counted", () => {
+  it("stamps every row with its Light's place in the Render's Lights, a set's rows by its gather and a named Light's by its record", () => {
     const plan = compiled({
       nodes: [
         { id: "light_key", type: "light", parameters: { kind: "point", position: [0, 3, 0] } },
@@ -141,15 +161,25 @@ describe("T1589b: a Light in Points mode is rows of the Render's table, not a bl
       edges: [["kernel_lamps", "light_more", "points"]],
       lights: "light_lamps light_key light_more",
     });
-    const gather = pass(plan, "render_shot:lights:gather");
-    // x: the row its records start at. y: how many. z: which Light of the list.
-    expect(gather.uniforms?.["source0"]).toEqual([0, 3, 0, 0]);
-    expect(gather.uniforms?.["source1"]).toEqual([3, 3, 2, 0]);
+    // x: the row its records start at. y: how many. z: added to each row's source number.
+    // The key has no Range: it is the one row that reaches every pixel, ahead of the two sets.
+    const source = (index: number): unknown => pass(plan, `render_shot:lights:gather:${index}`).uniforms?.["source"];
+    expect([source(0), source(1), source(2)]).toEqual([
+      [0, 1, 0, 0],
+      [1, 3, 0, 0],
+      [4, 3, 2, 0],
+    ]);
+    // The named row carries its own Light's number, the last float of its record.
+    const named = pass(plan, "render_shot:lights:named").values;
+    expect([named?.count, named?.rows.length, named?.rows[15]]).toEqual([1, 16, 1]);
   });
 
   it("runs the lit generator's own light block for a light of the table: one falloff, one lobe", () => {
-    const single = String(pass(compiled({ light: { mode: "single" } }), "render_shot:scene:0").shader);
+    // A block as the generator unrolls one where there is no table (a tile's preview does).
+    const unrolled = String(sceneSurfaceWgsl({ model: "lambert", lightCount: 1 }));
     const points = String(pass(compiled(), "render_shot:scene:0").shader);
+    expect(unrolled).toContain("light0Meta");
+    expect(points).not.toContain("light0Meta");
     // The block, from its falloff to its closing brace, with its indentation taken off.
     const blockOf = (text: string): string => {
       const from = text.indexOf("var toLight: vec3f;");
@@ -157,7 +187,7 @@ describe("T1589b: a Light in Points mode is rows of the Render's table, not a bl
       expect([from > 0, to > from]).toEqual([true, true]);
       return text.slice(from, to).split("\n").map((line) => line.trim()).join("\n");
     };
-    expect(blockOf(points)).toBe(blockOf(single));
+    expect(blockOf(points)).toBe(blockOf(unrolled));
   });
 
   it("makes the grid about 144 tiles as near square as the picture, by 24 slices", () => {
@@ -173,15 +203,23 @@ describe("T1589b: a Light in Points mode is rows of the Render's table, not a bl
     expect((pass(compiled(), "render_shot:scene:0").uniforms?.["lightLens"] as number[]).slice(0, 2)).toEqual([128, 128]);
   });
 
-  it("leaves a Light in Single mode what it was, beside one in Points mode: its block, and the loop after it", () => {
+  it("keeps a CASTING Light in Single mode a block beside the table's walk, under B260's guard at every count", () => {
     const plan = compiled({
-      nodes: [{ id: "light_key", type: "light", parameters: { kind: "point", position: [0, 3, 0] } }],
-      lights: "light_key light_lamps",
+      nodes: [
+        { id: "light_fill", type: "light", parameters: { kind: "point", position: [2, 3, 0] } },
+        { id: "light_key", type: "light", parameters: { kind: "point", position: [0, 3, 0], shadows: true } },
+      ],
+      lights: "light_fill light_key light_lamps",
     });
     const lit = pass(plan, "render_shot:scene:0");
+    // One block, the casting Light's, wherever it stands in the list; the fill is a row.
     expect(String(lit.shader)).toContain("light0Meta");
     expect(String(lit.shader)).not.toContain("light1Meta");
+    expect(Object.keys(lit.uniforms ?? {}).filter((key) => /^light\d/.test(key)).sort()).toEqual(["light0Color", "light0Meta", "light0Vector"]);
+    expect((lit.uniforms?.["light0Vector"] as number[]).slice(0, 3)).toEqual([0, 3, 0]);
     expect(lit.buffers?.map((buffer) => buffer.binding)).toEqual(["positions", "lightTable"]);
+    // One block is far under the count B260's guard started at, and it is guarded all the same.
+    expect(String(lit.shader)).toContain("if (lightMeta.y != 0.0) {");
   });
 });
 
@@ -233,36 +271,39 @@ describe("T1589b: what a Light in Points mode refuses, by name (§V288)", () => 
 });
 
 describe("T1589b: the Render's limits are numbers known at compile, and going past one is said by name", () => {
-  it(`lights from ${MAX_LIGHT_SLOTS} points of capacity and refuses one more, naming each Light and what it holds`, () => {
-    compiled({ count: MAX_LIGHT_SLOTS, kernel: SCATTERED_LAMPS });
-    const [error] = errorsOf({ count: MAX_LIGHT_SLOTS + 1, kernel: SCATTERED_LAMPS });
+  it(`holds ${MAX_LIGHT_SLOTS} rows, a step of ${NAMED_LIGHT_STEP} of them kept for the named Lights, and refuses one more, naming each Light and what it holds`, () => {
+    const room = MAX_LIGHT_SLOTS - NAMED_LIGHT_STEP;
+    compiled({ count: room, kernel: SCATTERED_LAMPS });
+    const [error] = errorsOf({ count: room + 1, kernel: SCATTERED_LAMPS });
     expect(error?.code).toBe("node.scene.lightCapacity");
-    expect(error?.message).toContain("1025 points of capacity");
-    expect(error?.message).toContain('"light_lamps" 1025');
+    expect(error?.message).toContain(`its light table would hold ${MAX_LIGHT_SLOTS + 1} rows, and it holds at most ${MAX_LIGHT_SLOTS}`);
+    expect(error?.message).toContain(`${NAMED_LIGHT_STEP} kept for its 0 Lights in Single mode that do not cast`);
+    expect(error?.message).toContain(`"light_lamps" ${room + 1}`);
     expect(error?.nodeId).toBe("render_shot");
     // Two Lights are counted together: every slot of every one.
     const second = { id: "light_more", type: "light", parameters: { mode: "points", kind: "point" } };
-    const two: LampsScene = { count: 600, kernel: SCATTERED_LAMPS, nodes: [second], edges: [["kernel_lamps", "light_more", "points"]], lights: "light_lamps light_more" };
-    expect(errorsOf(two)[0]?.message).toContain('"light_lamps" 600, "light_more" 600');
-    compiled({ ...two, count: 512 });
+    const two: LampsScene = { count: 500, kernel: SCATTERED_LAMPS, nodes: [second], edges: [["kernel_lamps", "light_more", "points"]], lights: "light_lamps light_more" };
+    expect(errorsOf(two)[0]?.message).toContain('"light_lamps" 500, "light_more" 500');
+    compiled({ ...two, count: room / 2 });
   });
 
-  it(`gathers ${MAX_POINT_LIGHTS} Lights in Points mode and refuses an eighth`, () => {
-    const lights = (count: number): LampsScene => {
-      const names = Array.from({ length: count - 1 }, (_, index) => `light_set${index}`);
-      return {
-        nodes: names.map((id) => ({ id, type: "light", parameters: { mode: "points", kind: "point" } })),
-        edges: names.map((id) => ["kernel_lamps", id, "points"] as const),
-        lights: ["light_lamps", ...names].join(" "),
-      };
-    };
-    const seven = compiled(lights(MAX_POINT_LIGHTS));
-    // One table and seven record buffers: the eight storage buffers a stage is guaranteed.
-    expect(pass(seven, "render_shot:lights:gather").buffers).toHaveLength(8);
-    const [error] = errorsOf(lights(MAX_POINT_LIGHTS + 1));
-    expect(error?.code).toBe("node.scene.lightSources");
-    expect(error?.message).toContain("8 Lights in Points mode");
-    expect(error?.message).toContain('"light_set6"');
+  it("gathers as many Lights in Points mode as the Render lists: a pass a set, all of ONE text (T1628b)", () => {
+    // Twelve, where the gather that bound every set at once stopped at seven.
+    const names = Array.from({ length: 11 }, (_, index) => `light_set${index}`);
+    const plan = compiled({
+      nodes: names.map((id) => ({ id, type: "light", parameters: { mode: "points", kind: "point" } })),
+      edges: names.map((id) => ["kernel_lamps", id, "points"] as const),
+      lights: ["light_lamps", ...names].join(" "),
+    });
+    const gathers = passesOf(plan).filter((entry) => bare(entry.id).startsWith("render_shot:lights:gather:"));
+    // The named rows' set, then the twelve.
+    expect(gathers.map((entry) => bare(entry.id))).toEqual(Array.from({ length: 13 }, (_, index) => `render_shot:lights:gather:${index}`));
+    expect(new Set(gathers.map((entry) => String(entry.shader))).size).toBe(1);
+    // Each binds the table and its own set, whatever the Render lists: two storage buffers.
+    for (const gather of gathers) expect(gather.buffers?.map((buffer) => buffer.binding)).toEqual(["lightTable", "lightSet"]);
+    // Where a set's rows go and which Light they are of are values: twelve sets of three.
+    expect(gathers.slice(1).map((entry) => (entry.uniforms?.["source"] as number[]).slice(0, 3))).toEqual(Array.from({ length: 12 }, (_, index) => [index * 3, 3, index]));
+    expect(plan.diagnostics.filter((entry) => entry.severity !== "info")).toEqual([]);
   });
 
   it("fits a fully attributed mesh Surface in the baseline's eight storage buffers, table included", () => {
@@ -351,20 +392,23 @@ async function deviceCalls(options: LampsScene): Promise<{ computePasses: number
 }
 
 describe("T1589b: what the lights cost the device in passes", () => {
-  it("is three compute passes, and not one render pass more: the colour target is still one run", async () => {
+  it("is the Light's resolve and its set's gather, and not one render pass more: the colour target is still one run", async () => {
     // The same floor under one Light in Single mode: the lamps' kernel is then read by nothing and is not in the plan.
     const single = await deviceCalls({ light: { mode: "single" }, unwired: true });
     const points = await deviceCalls({});
     const kernel = passesOf(compiled()).filter((entry) => entry.kind === "dispatch" && bare(entry.id).startsWith("kernel_lamps")).length;
     expect(kernel).toBeGreaterThan(0);
-    // Every dispatch of the plan is a compute pass of the frame, and the Light and the Render add three.
+    // Every dispatch of the plan is a compute pass of the frame. A Render with a lit Surface
+    // gathers its named rows and builds its grid whatever it lists (T1623b): the same two
+    // under either Light. The Light in Points mode adds its resolve and its set's gather.
     expect(points.computePasses).toBe(points.dispatches);
-    expect(points.dispatches).toBe(single.dispatches + kernel + 3);
+    expect(single.computePasses).toBe(single.dispatches);
+    expect(points.dispatches).toBe(single.dispatches + kernel + 2);
     expect(points.renderPasses).toBe(single.renderPasses);
 
     // And in the plan: the device's render passes are the runs they were under a Light in
     // Single mode, draw for draw. The backdrop's run still reaches the first lit draw: none
-    // of the three dispatches stands between them (T1604b).
+    // of the table's passes stands between them (T1604b).
     const runs = (options: LampsScene): string[][] => renderPassRuns(compiled(options).passes).map((run) => run.passIds.map(bare));
     const two = "geometry_floor geometry_wall";
     expect(runs({ scenes: two })).toEqual(runs({ scenes: two, light: { mode: "single" }, unwired: true }));
@@ -412,11 +456,12 @@ describe("T1589b: a driven light and a moving camera are writes, never a rebuild
       );
       expect([frameIndex, ran, after.built - before.built]).toEqual([frameIndex, {}, 0]);
       // They were asked, though, and answered from memory: the Light's pass, the Render's two
-      // and the lit draw are each a remembered generator, and the frame re-emitted all four.
+      // gathers (its named rows' and the set's), its grid and the lit draw are each a
+      // remembered generator, and the frame re-emitted all five.
       const reused = Object.fromEntries(
         ["lightResolveWgsl", "lightGatherWgsl", "lightGridWgsl", "sceneSurfaceModule"].map((name) => [name, (after.byGenerator[name]?.reused ?? 0) - (before.byGenerator[name]?.reused ?? 0)]),
       );
-      expect([frameIndex, reused]).toEqual([frameIndex, { lightResolveWgsl: 1, lightGatherWgsl: 1, lightGridWgsl: 1, sceneSurfaceModule: 1 }]);
+      expect([frameIndex, reused]).toEqual([frameIndex, { lightResolveWgsl: 1, lightGatherWgsl: 2, lightGridWgsl: 1, sceneSurfaceModule: 1 }]);
       // The values moved: the Light's into its resolve pass, the camera's into the grid's build.
       expect(uniformsOf(spliced, "light_lamps:lights:resolve")["color"]).not.toEqual(first.resolve["color"]);
       expect(uniformsOf(spliced, "light_lamps:lights:resolve")["shape"]).not.toEqual(first.resolve["shape"]);
@@ -538,35 +583,41 @@ describe("T1589b slice 2: a spot is a kind of row, and its cone and its aim are 
     expect(String(pass(compiled({ light: { kind: "spot", cone: mapped("gain", 60) } }), "render_shot:scene:0").shader)).toBe(String(pass(compiled(), "render_shot:scene:0").shader));
   });
 
-  it("says, by the node's name, that a Spot in Single mode shines as a Point light, and compiles it as exactly that", () => {
-    const single = (light: Record<string, unknown>): LampsScene => ({ unwired: true, light: { mode: "single", position: [0, 2, 0], ...light } });
+  it("says, by the node's name, that a CASTING Spot in Single mode shines as a Point light, and compiles it as exactly that", () => {
+    const single = (light: Record<string, unknown>): LampsScene => ({ unwired: true, light: { mode: "single", position: [0, 2, 0], shadows: true, ...light } });
     const spot = compile(lampsScene(single({ kind: "spot", cone: 30 })));
     const said = spot.diagnostics.filter((entry) => entry.code === "node.scene.lightSpot");
     expect(said).toHaveLength(1);
     expect([said[0]?.severity, said[0]?.nodeId]).toEqual(["warning", "light_lamps"]);
-    expect(said[0]?.message).toContain('Node "light_lamps": Type is Spot');
+    expect(said[0]?.message).toContain('Node "light_lamps": Type is Spot and Cast Shadows is on');
     expect(said[0]?.message).toContain("shines as a Point light");
     expect(spot.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
-    // It is not a refusal and decides nothing: the plan is the Point light's plan, value for value.
+    // It is not a refusal and decides nothing: the plan is the casting Point light's plan, value for value.
     const point = compile(lampsScene(single({ kind: "point", cone: 30 })));
     expect(planFingerprint(spot)).toBe(planFingerprint(point));
     expect(passesOf(spot).some((entry) => String(entry.shader).includes("light0Meta"))).toBe(true);
-    // A Point light in Single mode says nothing, and neither does a Spot in Points mode: it is a spot.
+    // A casting Point light says nothing; neither does a Spot in Points mode, nor a Spot in
+    // Single mode that does not cast: each of those two is a row with its cone (T1623b).
     expect(point.diagnostics.filter((entry) => entry.code === "node.scene.lightSpot")).toEqual([]);
     expect(compiled({ light: { kind: "spot" } }).diagnostics.filter((entry) => entry.code === "node.scene.lightSpot")).toEqual([]);
+    expect(compiled(single({ kind: "spot", cone: 30, shadows: false })).diagnostics.filter((entry) => entry.code === "node.scene.lightSpot")).toEqual([]);
     // Type stays a value there too: a document that drives it compiles frames by values.
     const driven = prepareFrameCompiler({ graph: lampsScene(single({ kind: expressionSlot("2", 2) })), settings: SETTINGS, registry, capabilities: TIER_B_CAPABILITIES });
     expect(driven.uniformOnly, driven.reason ?? "").toBe(true);
     expect(structuralParameterKeys(lightNode, { mode: "single" }).has("kind")).toBe(false);
   });
 
-  it("marks the rows a Light does not read: a cone on anything but a Spot, a Spot's cone in Single mode, Orient outside Points mode", () => {
+  it("marks the rows a Light does not read: a cone on anything but a Spot, a casting Spot's cone, Orient outside Points mode", () => {
     const schema = effectiveParameterSchema(lightNode, {});
     const inactive = (key: string, values: Record<string, unknown>): string | null => (schema[key] as { inactiveWhen?: (values: Record<string, unknown>) => string | null }).inactiveWhen?.(values) ?? null;
     for (const key of ["cone", "coneSoftness"]) {
       expect([key, inactive(key, { kind: "spot", mode: "points" })]).toEqual([key, null]);
       expect(inactive(key, { kind: "point", mode: "points" })).toContain("Only a Spot");
-      expect(inactive(key, { kind: "spot", mode: "single" })).toContain("shines as a Point light");
+      // A Spot in Single mode has its cone (T1623b slice 3), unless it casts.
+      expect([key, inactive(key, { kind: "spot", mode: "single" })]).toEqual([key, null]);
+      expect(inactive(key, { kind: "spot", mode: "single", shadows: true })).toContain("shines as a Point light");
+      // The shadow rows of a Light in Points mode are not read, so a stored `shadows` there shuts no cone.
+      expect([key, inactive(key, { kind: "spot", mode: "points", shadows: true })]).toEqual([key, null]);
     }
     expect(inactive("orient", { kind: "spot", mode: "points" })).toBeNull();
     expect(inactive("orient", { kind: "directional", mode: "points" })).toBeNull();
@@ -584,26 +635,34 @@ describe("T1589b slice 2: a spot is a kind of row, and its cone and its aim are 
 /**
  * The plans of five shipped examples that light a Render with Lights in Single mode, as
  * `planFingerprint` reads them: every pass's id, shader text, bindings and uniform values.
- * Taken on main at `7cc69950`, BEFORE this slice touched a generator, and equal after it.
  *
- * A fingerprint here moves when the Render's program for a scene with no pointset Light
- * moves, by any hand. That is this slice's promise (§V309: absent, the text is unchanged),
- * and it is also a tripwire for everything else in the lit path: a change that is meant to
- * move one re-takes it on purpose, and says so.
+ * A fingerprint here moves when the Render's program for such a scene moves, by any hand. It
+ * is a tripwire for the whole lit path: a change that is meant to move one re-takes it on
+ * purpose, and says so here.
  *
  * RE-TAKEN ON PURPOSE BY §B255 (2026-10-06), all five: each of these examples draws a grid
  * Surface, and the lit grid chunk's texture coordinate line changed (an axis divides by its
- * cells, so a wrapped one reaches 1 at its seam). The text moved; none of the five binds a
- * map or reads the coordinate, and E13, E28, E33 and E79 render the bytes they rendered
- * (frames 0 and 60, compared before and after). Before: E13 359501820ee04eb2, E33
+ * cells, so a wrapped one reaches 1 at its seam). Before: E13 359501820ee04eb2, E33
  * 3bbe8f637a87f0ca, E28 ead2f43368e32c56, E69 9277401191f84901, E79 e81ee4bea6dbf553.
+ *
+ * RE-TAKEN ON PURPOSE BY T1623b SLICE 3 (2026-10-06), all five. A Render that draws a lit
+ * Surface has a light table now, lights or none: its Lights in Single mode that do not cast
+ * are rows of it, and its casting Lights' blocks stand under B260's guard at every count. So
+ * four of the five gain the table's four passes, and their lit Surface draws the walk's text.
+ * E13 gains nothing: its one Light lights nothing (its Surfaces are unlit and glass), so it
+ * has no table. What moved there is the unlit wall's text, which no longer declares the
+ * three uniform rows of a Light it never read. Each one's picture was compared before and
+ * after (frames 0 and 60, the Render's own target): E13 the same bytes; the other four
+ * differ in 61 to 118 channel values of 3.7 to 5.3 million, each by one step of a half
+ * float. Before: E13 b0ae17f85a00fa66, E33 5a7d8127aa370b62, E28 9cd4c3c06215a84f, E69
+ * 962a4048645d64ce, E79 6bd605b4e59f4207.
  */
-const UNTOUCHED: ReadonlyArray<readonly [example: string, fingerprint: string]> = [
-  ["E13-Prism", "b0ae17f85a00fa66"],
-  ["E33-Obol", "5a7d8127aa370b62"],
-  ["E28-Sundial", "9cd4c3c06215a84f"],
-  ["E69-Burnish", "962a4048645d64ce"],
-  ["E79-Crucible", "6bd605b4e59f4207"],
+const PINNED: ReadonlyArray<readonly [example: string, fingerprint: string, casting: number, table: boolean]> = [
+  ["E13-Prism", "f6cab593f8e8d50a", 0, false],
+  ["E33-Obol", "9aefeca06bc7bde5", 1, true],
+  ["E28-Sundial", "393eb505a3d99752", 1, true],
+  ["E69-Burnish", "923972675c8cd9d1", 1, true],
+  ["E79-Crucible", "921e038a3a933358", 2, true],
 ];
 
 function examplePlan(name: string) {
@@ -618,16 +677,21 @@ function examplePlan(name: string) {
   return compileGraph({ graph: loaded.document.graph, settings: loaded.document.settings, registry: system.nodes, capabilities: TIER_B_CAPABILITIES, components, flattened, resolution: { channels } });
 }
 
-describe("T1589b: a Render with no Light in Points mode is the Render it was (§V309)", () => {
-  for (const [name, fingerprint] of UNTOUCHED) {
-    it(`${name}: every pass, its shader text, its bindings and its uniforms are what they were before this slice`, () => {
+describe("T1589b, T1623b: the plans of five shipped Renders with Lights in Single mode, pinned", () => {
+  for (const [name, fingerprint, casting, table] of PINNED) {
+    it(`${name}: every pass, its shader text, its bindings and its uniforms are what they were when its pin was last taken`, () => {
       const plan = examplePlan(name);
       expect(plan.diagnostics.filter((entry) => entry.severity === "error")).toEqual([]);
-      // The example does light a Render from Light nodes: the claim is about a path that runs.
-      expect(passesOf(plan).some((entry) => /:scene:\d+$/.test(entry.id) && String(entry.shader).includes("light0Meta"))).toBe(true);
+      // The Surface generator unrolls a block for a casting Light and for no other: the
+      // uniform rows `light<i>Meta` of the lit Surface draws count the casting Lights.
+      const surfaces = passesOf(plan).filter((entry) => /:scene:\d+$/.test(entry.id) && String(entry.shader).includes("lightTable"));
+      const blocks = (entry: AnyPass): number => Object.keys(entry.uniforms ?? {}).filter((key) => /^light\d+Meta$/.test(key)).length;
+      expect([name, surfaces.length > 0, [...new Set(surfaces.map(blocks))]]).toEqual([name, table, table ? [casting] : []]);
+      // The table's own passes: its header, its named rows, their gather, the grid.
+      expect(passesOf(plan).filter((entry) => entry.id.includes(":lights:")).map((entry) => bare(entry.id).replace(/^[^:]+/, "render"))).toEqual(
+        table ? ["render:lights:header", "render:lights:named", "render:lights:gather:0", "render:lights:grid"] : [],
+      );
       expect(planFingerprint(plan)).toBe(fingerprint);
-      // And nothing of the table is in it.
-      expect(passesOf(plan).filter((entry) => entry.id.includes(":lights:") || String(entry.shader ?? "").includes("lightTable"))).toEqual([]);
     });
   }
 

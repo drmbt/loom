@@ -1172,11 +1172,11 @@ const LEDGER: Readonly<Record<string, Row>> = {
   }),
   "light.points/how many points": flat(
     "the count of LIGHTS. The Render's gather, its grid build and its lit draw take every bound from the table's header (rows, words a cell, where the cells start), and the Light's resolve from a uniform: one text each at 64, 128, 256, 960 and 1,024 lights.",
-    { build: (count) => lampSets({ points: count * 64, attributes: 3 }) },
+    { build: (count) => lampSets({ points: count * 32, attributes: 3 }) },
   ),
   "light.points/how many points, under a map": literal(
     "the Light's own resolve reads a mapped attribute through the packed accessor, whose byte offset is a literal computed from the point count (`packedAccessorWgsl`): the same size, a different text. The Render's three texts stay one.",
-    { build: (count) => lampSets({ points: count * 64, attributes: 3, light: { color: mapOf("a01", [1, 1, 1, 1]) } }) },
+    { build: (count) => lampSets({ points: count * 32, attributes: 3, light: { color: mapOf("a01", [1, 1, 1, 1]) } }) },
   ),
   "geometry.points": flat("a draw binds the attributes it draws by; the Render's text names none of the others."),
   "geometry.mesh": flat("as Points."),
@@ -1227,17 +1227,14 @@ const LEDGER: Readonly<Record<string, Row>> = {
   "render.scenes/glass": flat("transmissive surfaces draw after the pyramid.", { passes: 1, build: (count) => scene({ geometries: count, material: ["materialGlass"] }) }),
   "render.scenes/glass on a file mesh": flat("as glass.", { passes: 1, build: (count) => scene({ geometries: count, points: "mesh", material: ["materialGlass"] }) }),
   "render.scenes/glass on primitive instances": flat("as glass.", { passes: 1, build: (count) => scene({ geometries: count, material: ["materialGlass"], geometry: () => ({ mode: "instances" }) }) }),
-  "render.lights/Lights in Points mode": {
-    law: "statements",
-    why: "T1589b: each such Light resolves its records into a buffer of its own (two Renders that list one Light resolve it once), and a shader cannot index its buffer bindings: so the Render's gather has one binding, one uniform row, four accessors and one copy block a Light. A copy block stores and returns; nothing is carried from one to the next. The lit draw and the grid build are one text whatever the Lights. The form without it is a gather PASS a Light, all of one text (§V1029 c), which would also lift the bound (T1628b).",
-    grows: { "lights:gather/main": 357 },
-    members: 1,
-    bindings: 1,
-    functions: 4,
-    passes: 1,
-    build: (count) => lampSets({ sets: count }),
-    bound: { count: 7, code: "node.scene.lightSources" },
-  },
+  "render.lights": flat(
+    "T1623b slice 3: a Light in Single mode that does not cast is one ROW of the Render's light table, written as values (the buffer-values seam) and walked by loops whose bounds are read from the table's header. The lit text, the gather's and the grid build's are each one string at every count and every mix of kinds; a Light more is a write. Was §B260's chain: one block of 1,885 bytes a Light, each adding into `lit`.",
+    { build: (count) => scene({ lights: count }) },
+  ),
+  "render.lights/Lights in Points mode": flat(
+    "T1589b, T1628b: each such Light resolves its records into a buffer of its own (two Renders that list one Light resolve it once), and the Render gathers each set by a PASS of its own, all of one text (§V1029 c): the set is a binding and where its rows go is a value. So a Light is two passes, its resolve and its gather, and no text. The lit draw and the grid build are one text whatever the Lights. Was one gather that bound every set: a binding, a uniform row, four accessors and a copy block of 357 bytes a Light, refused past seven.",
+    { passes: 2, build: (count) => lampSets({ sets: count }) },
+  ),
   "render.environmentTaps": literal("the specular cone's tap count is a loop bound and a divisor.", { build: (count) => scene({ environment: true, render: { environmentTaps: count } }) }),
   "render.environmentTaps/prefiltered": flat("the prefiltered environment takes no taps.", { build: (count) => scene({ environment: true, render: { environmentFilter: "prefiltered", environmentTaps: count } }) }),
   "feedback.source": notACount("one node's name."),
@@ -1255,20 +1252,26 @@ const LEDGER: Readonly<Record<string, Row>> = {
 const lightBlocks = (more: Partial<Debt>): Debt => ({
   law: "chain",
   task: "T1623b",
-  why: "one block of text per Light, each adding into the one `lit` of the fragment function: §B260 itself. Above eight lights a block's work sits under a test of its own light (the stopgap), and it still adds into `lit`.",
+  why: "one block of text per Light, each adding into the one `lit` of the fragment function: §B260 itself. A block's work sits under a test of its own light (the stopgap: above eight lights in a text with no light table, at every count beside the table's walk), and it still adds into `lit`.",
   carries: ["lit"],
   largest: "unbounded",
   ...more,
 });
 
 const NOT_YET_DATA: Readonly<Record<string, Debt>> = {
-  /* R1 of the audit: the surface generator. 1,885 bytes for the second light; the sixteenth wears its guard (36) and a longer index. */
-  "render.lights": lightBlocks({ grows: { "scene:#/fs": [1885, 1924] }, members: 3, build: (count) => scene({ lights: count }) }),
-  /* R2: the instances generator's own copy of the block. */
+  /* R1 of the audit, the surface generator's block for a Light that does not cast (1,885 bytes
+     for the second light), is PAID: T1623b slice 3 made it a row, and `render.lights` is in
+     LEDGER, flat. What is left of R1 is the two casting rows below. */
+  /* R2: the instances generator's own copy of the block. 1,823 bytes for the second light; the sixteenth wears its guard (36) and a longer index. */
   "render.lights/primitive instances": lightBlocks({ grows: { "scene:#/fs": [1823, 1862] }, members: 3, build: (count) => scene({ lights: count, geometry: () => ({ mode: "instances" }) }) }),
-  /* R4: a casting light's lookup sits inside its block, with a shadow map and a sweep of its own. */
+  /* R4: a casting light's lookup sits inside its block, with a shadow map and a sweep of its own.
+     T1623b slice 3: beside the light table's walk every block wears its guard from the first
+     (36 bytes), so the second light adds what the sixteenth did less its longer index: the
+     smaller of the two numbers rose from 3,860 (3,835 for a point light) and the larger did
+     not move. The guard is what keeps the chain from forming (§B260); the text per light is
+     the debt, and it goes with slices 4 and 5. */
   "render.lights/casting": lightBlocks({
-    grows: { "scene:#/fs": [3860, 3902] },
+    grows: { "scene:#/fs": [3896, 3902] },
     members: 4,
     bindings: 1,
     passes: 2,
@@ -1276,7 +1279,7 @@ const NOT_YET_DATA: Readonly<Record<string, Debt>> = {
     largest: { count: 16, code: "compiler/binding-budget" },
   }),
   "render.lights/casting point lights": lightBlocks({
-    grows: { "scene:#/fs": [3835, 3885] },
+    grows: { "scene:#/fs": [3871, 3885] },
     members: 10,
     bindings: 1,
     passes: 7,
@@ -1593,23 +1596,35 @@ describe("§V1029: what one more item adds is read for what it carries", () => {
 });
 
 describe("§V1029: the positive control, before anything is trusted green (§V968)", () => {
-  it("classes today's Render as a chain through `lit`, at 1,885 bytes for the second light", () => {
-    const found = find((count) => scene({ lights: count }), FIVE);
+  /* The Surface generator's blocks for Lights that do not cast were the control here until
+     T1623b slice 3 made them rows. The instances generator still unrolls one a Light. */
+  const instancesUnder: Build = (count) => scene({ lights: count, geometry: () => ({ mode: "instances" }) });
+
+  it("classes a Render of primitive instances as a chain through `lit`, at 1,823 bytes for the second light", () => {
+    const found = find(instancesUnder, FIVE);
     expect(found.refused).toEqual([]);
     expect(found.observed.law).toBe("chain");
     expect(found.observed.carries).toEqual(["lit"]);
-    expect(found.observed.grows).toEqual({ "scene:#/fs": [1885, 1924] });
+    expect(found.observed.grows).toEqual({ "scene:#/fs": [1823, 1862] });
     expect(found.observed.members).toBe(3);
   });
 
   it("classes the guarded blocks above eight lights as a chain too: the stopgap ends the run, not the text per light", () => {
-    const build: Build = (count) => scene({ lights: count });
-    const lit = (count: number): string => measure(build(count)).texts.get("scene:#") ?? "";
+    const lit = (count: number): string => measure(instancesUnder(count)).texts.get("scene:#") ?? "";
     expect(lit(2)).not.toContain("if (lightMeta.y != 0.0)");
     expect(lit(16)).toContain("if (lightMeta.y != 0.0)");
-    const found = find(build, [15, 16]);
+    const found = find(instancesUnder, [15, 16]);
     expect(found.observed.law).toBe("chain");
     expect(found.observed.carries).toEqual(["lit"]);
+  });
+
+  it("classes the Lights of a lit Surface as flat: rows of the Render's table, no pass and no byte a Light (T1623b)", () => {
+    const build: Build = (count) => scene({ lights: count });
+    const found = find(build, FIVE);
+    expect(found.refused).toEqual([]);
+    expect(found.observed).toEqual({ law: "flat", passes: 0, members: 0, bindings: 0, functions: 0, grows: {}, carries: [] });
+    /* And the text is the walk's, not an empty function: it reads the table. */
+    expect(measure(build(16)).texts.get("scene:#") ?? "").toContain("lightTable");
   });
 
   it("classes a list whose items share one text as flat, with a pass per item", () => {
@@ -1691,7 +1706,8 @@ describe("§V1029: every count a document can raise keeps the law its row states
  * function of (axes, ledger, debts), so each way the ledger can lie is handed to it here.
  */
 describe("§V1029: the gate fails when the ledger lies", () => {
-  const lights = NOT_YET_DATA["render.lights"] as Debt;
+  /* A chain that is still owed, handed to the audit under the `render.lights` axis: the instances generator's blocks. */
+  const lights = NOT_YET_DATA["render.lights/primitive instances"] as Debt;
   const switchRow = LEDGER["switch.inputs"] as Row;
 
   it("an axis with no row", () => {
@@ -1703,12 +1719,12 @@ describe("§V1029: the gate fails when the ledger lies", () => {
   });
 
   it("a chain's length that is not the one measured", () => {
-    const problems = audit(only("render.lights"), {}, { "render.lights": { ...lights, grows: { "scene:#/fs": [1885, 1925] } } }).problems.join("\n");
-    expect(problems).toContain('render.lights measures { law: "chain", members: 3, grows: { "scene:#/fs": [1885, 1924] }, carries: ["lit"] }');
+    const problems = audit(only("render.lights"), {}, { "render.lights": { ...lights, grows: { "scene:#/fs": [1823, 1863] } } }).problems.join("\n");
+    expect(problems).toContain('render.lights measures { law: "chain", members: 3, grows: { "scene:#/fs": [1823, 1862] }, carries: ["lit"] }');
   });
 
   it("a chain written down as flat", () => {
-    const problems = audit(only("render.lights"), { "render.lights": flat("a lie", { build: (count) => scene({ lights: count }) }) }, {}).problems.join("\n");
+    const problems = audit(only("render.lights"), { "render.lights": flat("a lie", { build: lights.build as Build }) }, {}).problems.join("\n");
     expect(problems).toContain("THE TEXT OF ONE ITEM NOW CARRIES lit ACROSS ITEMS");
   });
 

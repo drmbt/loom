@@ -1,9 +1,9 @@
 import type { GraphDocument } from "../../domain/types/graph.ts";
 
 /**
- * T1589b — the scenes the pointset-light tests share (no GPU here; `light-points.test.ts`
- * reads their plans and `light-points.gpu.test.ts` their pictures, so the two cannot be
- * talking about different scenes).
+ * T1589b — the scenes the light-table tests share (no GPU here; `light-points.test.ts` and
+ * `light-rows.test.ts` read their plans, `light-points.gpu.test.ts` and
+ * `light-rows.gpu.test.ts` their pictures, so they cannot be talking about different scenes).
  *
  * A floor on y = 0, sixteen units square, in the default material (lambert, albedo 0.8),
  * seen by a camera straight above it; and LAMPS, a Light in Points mode over a small Point
@@ -157,6 +157,20 @@ export function lampsScene(options: LampsScene = {}): GraphDocument {
     ...(options.edges ?? []).map(([from, to, port]) => edge(from, to, port)),
   ];
   return { revision: 1, nodes: Object.fromEntries(nodes.map((entry) => [entry.id, entry])), edges: Object.fromEntries(edges.map((entry) => [entry.id, entry])), groups: {} } as never;
+}
+
+/**
+ * T1623b slice 3: the floor under these Lights in SINGLE mode, listed in this order, and no
+ * pointset Light (the lamps' Light is left unwired and unlisted unless `extra` says otherwise).
+ * The Lights are `light_n0`, `light_n1`, … in the order given.
+ */
+export function namedLights(lights: ReadonlyArray<Parameters>, extra: LampsScene = {}): LampsScene {
+  return {
+    unwired: true,
+    ...extra,
+    nodes: [...lights.map((parameters, index) => ({ id: `light_n${index}`, type: "light", parameters })), ...(extra.nodes ?? [])],
+    lights: extra.lights ?? lights.map((_, index) => `light_n${index}`).join(" "),
+  };
 }
 
 /* ------------------------------------------------------------------------------------ */

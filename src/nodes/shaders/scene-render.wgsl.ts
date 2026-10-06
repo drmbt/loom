@@ -5,7 +5,7 @@ import { SHARED_WGSL_MODULES, declaredNames } from "./shared-modules.ts";
 import type { WgslPosition } from "../../runtime/backend/wgsl-source-map.ts";
 import { advance, endOf } from "../../runtime/backend/wgsl-source-map.ts";
 import { packedAccessorWgsl, packedBindingsWgsl, type InstanceRecordOffsets, type PackedRead } from "./instance-resolve.wgsl.ts";
-import { LIGHT_GRID_FIELDS_WGSL, lightGridDeclarationsWgsl, lightGridLoopWgsl } from "./scene-lights.wgsl.ts";
+import { LIGHT_GRID_FIELDS_WGSL, lightGridDeclarationsWgsl, lightTableWalkWgsl } from "./scene-lights.wgsl.ts";
 /**
  * The scene Render shader (T377/T428): the surface mesh machinery of T301 with the
  * SHADING GENERATED per material model — the V349 fix. The legacy renderers keep their
@@ -162,14 +162,19 @@ export interface SceneShadingOptions {
    */
   readonly instanced?: SceneInstancedOption;
   /**
-   * T1589b: the Render lists a Light in POINTS mode, so this draw walks the Render's light
-   * table: it finds its pixel's cell of the grid and runs the light block once for every
-   * light the cell holds and whose range holds the fragment (`scene-lights.wgsl.ts`). After
-   * the unrolled blocks, through the same block text. An unlit model and the G-buffer
-   * variants take no light and ignore it. Absent emits the text unchanged (§V309).
+   * T1589b, T1623b: this draw walks its Render's LIGHT TABLE (`scene-lights.wgsl.ts`): the
+   * rows that reach every pixel, then the rows its pixel's cell of the grid holds and whose
+   * range holds the fragment, the light block once for each. After the unrolled blocks,
+   * through the same block text. A Render's every lit Surface draw has it, whatever the
+   * Render lists (the table then holds its Lights in Single mode that do not cast and the
+   * lights of its Lights in Points mode), and `lightCount` is then its CASTING Lights alone,
+   * each block under B260's guard at every count. An unlit model and the G-buffer variants
+   * take no light and ignore it. Absent emits the text with no table (§V309): a tile's
+   * preview, and what the gates of B260 pin.
    *
-   * A FLAG, and nothing else: the table's size, its layout and how many lights it holds are
-   * read from the table, so a draw that walks it has one text whatever it holds (T1623b).
+   * A FLAG, and nothing else: the table's size, its layout, how many lights it holds and of
+   * what kind are read from the table, so a draw that walks it has one text whatever it
+   * holds (T1623b).
    */
   readonly lightGrid?: boolean;
 }
@@ -587,14 +592,21 @@ export const POINT_FALLOFF_WGSL = `      attenuation = select(1.0 / (1.0 + dista
  * projectors cost what 24 projectors cost one by one, guarded or not. The gate
  * (`scene-light-guard.test.ts`) counts a projector written without its tests as a light.
  *
- * A stopgap with a named end: it goes when named Lights are rows walked by a loop (T1623b).
- * Measured and derived in `docs/light-cost-investigation-2026-10-06.md`.
+ * A stopgap with a named end, and T1623b's third slice took the first part of it: a
+ * Render's lit Surface draw walks the light table now, its Lights that do not cast are rows,
+ * and the blocks left in it (the casting Lights') are each guarded at EVERY count, whatever
+ * this number is. What the threshold still decides is the texts with NO table: the instances
+ * generator's (primitive instances, points and beams unroll a block for every Light in
+ * Single mode until slice 7), a tile's preview (two stock lights) and the shadow matte. It
+ * goes with the last of those blocks. Measured and derived in
+ * `docs/light-cost-investigation-2026-10-06.md`.
  */
 export const LIGHT_GUARD_ABOVE = 8;
 
 /**
  * B260 — the two lines round a light block's work, after its three uniform reads and
- * before its closing brace; both empty at or below `LIGHT_GUARD_ABOVE`.
+ * before its closing brace; both empty at or below `LIGHT_GUARD_ABOVE` in a text with no
+ * light table (beside the table's walk every block has them: `buildSceneSurfaceModule`).
  *
  * The test is `lightMeta.y != 0.0`: the Light's Intensity. A light of intensity 0 adds
  * `0 × lobe` without it, which is zero wherever the lobe is finite, so the sum is the same
@@ -603,8 +615,8 @@ export const LIGHT_GUARD_ABOVE = 8;
  * guarded one adds nothing. A light that is on runs the same code either way, NaN included,
  * and a NaN intensity is "not zero", so it still shows.
  */
-export const lightGuardWgsl = (lightCount: number): { readonly open: string; readonly close: string } =>
-  lightCount > LIGHT_GUARD_ABOVE ? { open: "    if (lightMeta.y != 0.0) {\n", close: "    }\n" } : { open: "", close: "" };
+export const lightGuardWgsl = (lightCount: number): { readonly open: string; readonly close: string } => (lightCount > LIGHT_GUARD_ABOVE ? LIGHT_GUARD : { open: "", close: "" });
+const LIGHT_GUARD = { open: "    if (lightMeta.y != 0.0) {\n", close: "    }\n" } as const;
 
 /**
  * T1437b — the `light{i}Meta` row every lit draw writes, in ONE place (the render's two
@@ -1605,12 +1617,22 @@ ${prefiltered ? IRRADIANCE_PREFILTERED_WGSL : IRRADIANCE_WGSL}  lit += irradianc
     ? `clamp(${roughnessBase} * ${mapLoad("roughnessMap")}.r, 0.04, 1.0)`
     : roughnessBase;
 
-  /* T1589b: ONE emitter of a light's shading. A Light in Single mode reads its three rows off
-     the params block by its index; a light of the table (`lightGridLoopWgsl`) hands the same
-     block its rows as expressions and no index, so it has no shadow slot. B260's guard is for
-     the blocks that stand one after another: a turn of the table's walk is a scope of its own
-     already, and takes none. */
-  const lightGuard = lightGuardWgsl(lightCount);
+  /* T1589b: the walk of a Render's light table stands after the unrolled blocks. Lit draws
+     only: an unlit model takes no light and a G-buffer variant lights nothing. */
+  const lightGrid = options.lightGrid === true && options.model !== "unlit" && options.gbuffer === undefined;
+  /* ONE emitter of a light's shading. A block reads its three rows off the params block by
+     its index; a row of the table (`lightTableWalkWgsl`) hands the same block its rows as
+     expressions and no index, so it has no shadow slot.
+
+     B260's guard is for the blocks that stand one after another. T1623b: in a draw that walks
+     the table the blocks are the casting Lights alone, and each works under its guard at
+     EVERY count: what follows them is the walk's loops, which add into the same `lit`, and a
+     block that ends at a merge leaves no chain for any of them to join. A text with no table
+     (a tile's preview with its two stock lights, the shadow matte) keeps the threshold. A
+     row of the walk stands in a loop's turn or under a test of the loop's bound, a merge
+     either way, and takes no guard (`scene-light-guard.test.ts` counts it: one source in a
+     straight line, at every count). */
+  const lightGuard = lightGrid ? LIGHT_GUARD : lightGuardWgsl(lightCount);
   const lightBlock = (
     index: number,
     rows: { readonly meta: string; readonly color: string; readonly vector: string } = {
@@ -1664,10 +1686,7 @@ ${
 }${guard.close}  }
 `;
 
-  /* T1589b: the walk of the Render's light table, after the unrolled blocks. Lit draws only:
-     an unlit model takes no light and a G-buffer variant lights nothing. */
-  const lightGrid = options.lightGrid === true && options.model !== "unlit" && options.gbuffer === undefined;
-  const lightGridLoop = lightGrid ? perVertex(lightGridLoopWgsl((rows) => lightBlock(-1, rows, lightGuardWgsl(0)))) : "";
+  const lightGridLoop = lightGrid ? perVertex(lightTableWalkWgsl((rows) => lightBlock(-1, rows, lightGuardWgsl(0)))) : "";
   const needsViewDir = lightCount > 0 || environment || lightGrid;
   const emissiveTerm =
     custom !== undefined ? "  lit += shaded.emissive;\n" : options.mesh?.emissive === true ? "  lit += input.emissive;\n" : "";

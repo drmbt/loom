@@ -213,13 +213,25 @@ describe("§T1618b: Map Extend picks how a map is read past its edge, and Hold i
  * multisamples a Render whose mapped grids have open edges in frame, and an automatic repeat
  * outside 0 to 1 moved 571 of its pixels (a partly covered pixel reads its coordinate at
  * the pixel centre, outside the triangle). The same plan is the same bytes.
+ *
+ * RE-TAKEN ON PURPOSE BY T1623b SLICE 3 (2026-10-06), all five, and not for a map: a Render
+ * that draws a lit Surface has a light table now, its Lights in Single mode that do not cast
+ * are rows of it, and its casting Lights' blocks stand under B260's guard. So E20, E34 and
+ * E75 gain the table's four passes and their lit Surface draws the walk's text. The Surfaces
+ * of E25 and E76 are unlit: their text no longer declares the uniform rows of the Lights
+ * that do not cast, which it never read. HOW A MAP IS READ did not move in any of them: the
+ * lines that read it are the lines they were (`grid-uv.gpu.test.ts`, on Dawn, is unchanged
+ * and green), and each Render's picture was compared before and after at frames 0 and 60:
+ * E25 and E76 the same bytes, the others within one step of a half float in at most 117
+ * channel values of 3.7 million. Before: E20 524da1380e9f7f65, E25 3ea3923714e496b7, E34
+ * c73ed3113401e002, E75 b48273dc56455b40, E76 a05741c9165a6c6f.
  */
 const MAPPED: ReadonlyArray<readonly [example: string, fingerprint: string]> = [
-  ["E20-Gooeyball", "524da1380e9f7f65"],
-  ["E25-Stage", "3ea3923714e496b7"],
-  ["E34-Lidar", "c73ed3113401e002"],
-  ["E75-Resonance", "b48273dc56455b40"],
-  ["E76-Verdant-Lotus", "a05741c9165a6c6f"],
+  ["E20-Gooeyball", "1fbe0a8bf6618eb3"],
+  ["E25-Stage", "85b151e8582f5a44"],
+  ["E34-Lidar", "14199392299ab466"],
+  ["E75-Resonance", "20539dddac39162c"],
+  ["E76-Verdant-Lotus", "cb73eea6156d7eb0"],
 ];
 
 const registry = createNodeRegistry(allNodeDefinitions).view();

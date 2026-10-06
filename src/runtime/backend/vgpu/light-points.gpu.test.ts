@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CompiledGraph } from "../../../compiler/index.ts";
 import { cameraPayloadMatrix, transformPoint } from "../../../domain/geometry/camera.ts";
 import type { ProjectSettings } from "../../../domain/types/graph.ts";
+import { expressionSlot } from "../../../examples/documents/builders.ts";
 import {
   FLOOR_ALBEDO,
   FRONT_CAMERA,
@@ -22,10 +23,9 @@ import {
   spotShare,
   type LampsScene,
 } from "../../../nodes/definitions/light-points.fixture.ts";
-import { lightGridDimensions, lightTableStorage } from "../../../nodes/definitions/light-records.ts";
+import { NAMED_LIGHT_STEP, lightGridDimensions, lightTableStorage, namedLightCapacity } from "../../../nodes/definitions/light-records.ts";
 import { CASTERS_GLB } from "../../../nodes/definitions/shadow-casters.fixture.ts";
-import { lightTableRowAt } from "../../../nodes/shaders/scene-lights.wgsl.ts";
-import { LIGHT_GUARD_ABOVE } from "../../../nodes/shaders/scene-render.wgsl.ts";
+import { LIGHT_TABLE_HEADER_WORDS, lightTableRowAt } from "../../../nodes/shaders/scene-lights.wgsl.ts";
 import { TOLERANCE_CROSS_GPU_HDR, decodeComponents, pixelAt } from "../../../tests/headless/pixel-compare.ts";
 import { renderHeadless, type HarnessControl, type RenderedFrame } from "../../../tests/headless/render-harness.ts";
 import { nodeGpuHost, probeDawn } from "./node-gpu-host.ts";
@@ -57,6 +57,8 @@ const settingsFor = (width: number, height: number): ProjectSettings => ({
 interface Run {
   readonly frames?: number;
   readonly capture?: ReadonlyArray<number>;
+  /** The app's frame path: the value graph, a compile a frame, and the animator's writes. */
+  readonly animate?: boolean;
   readonly size?: readonly [number, number];
   readonly beforeFrames?: (control: HarnessControl) => void;
   readonly probeBuffers?: ReadonlyArray<string>;
@@ -82,6 +84,7 @@ async function render(options: LampsScene = {}, run: Run = {}): Promise<Rendered
     outputNodeId: "render_shot",
     outputPortId: "out",
     ...(run.capture === undefined ? {} : { capture: run.capture }),
+    ...(run.animate === true ? { animate: true } : {}),
     ...(run.beforeFrames === undefined ? {} : { beforeFrames: run.beforeFrames }),
     ...(run.probeBuffers === undefined ? {} : { probeBuffers: run.probeBuffers }),
     ...(run.meshes === undefined ? {} : { meshes: run.meshes }),
@@ -126,6 +129,14 @@ const differingBytes = (a: Uint8Array, b: Uint8Array): number => {
 };
 /** A pass's id as its node wrote it. */
 const bare = (id: string): string => id.slice(id.indexOf("#") + 1);
+/**
+ * The Render's table for a scene of `points` slots of pointset Lights and `named` Lights in
+ * Single mode that do not cast (T1623b): its room is the named Lights' step and every slot.
+ */
+const tableFor = (points: number, named = 0, size: readonly [number, number] = [SIZE, SIZE]) => {
+  const rows = namedLightCapacity(named) + points;
+  return { ...lightTableStorage("render_shot", rows, lightGridDimensions(size)), rows };
+};
 
 const ROW = 0.0625;
 
@@ -205,7 +216,7 @@ describe("lights from a pointset, on Dawn (T1589b, §V147)", () => {
     const position = JSON.stringify([{ name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] }]);
     const points = { mode: "points", kind: "point", falloff: "inverseSquare" };
     const ROWS = 3 + 3 + 2;
-    const table = lightTableStorage("render_shot", ROWS, lightGridDimensions([SIZE, SIZE]));
+    const table = tableFor(ROWS);
     const three = await render(
       {
         light: { color: [1, 0, 0, 1] },
@@ -247,13 +258,16 @@ describe("lights from a pointset, on Dawn (T1589b, §V147)", () => {
     }
 
     // The table itself, read back off the device. Its header is where every loop over it
-    // takes its bounds: the rows it holds, the words a cell has, where the cells start.
+    // takes its bounds: the rows it has room for (the named Lights' step and the eight), the
+    // words a cell has, where the cells start, how many rows reach every pixel (none: every
+    // one has a Range), how many are live, and where the two runs of always-walked rows end.
     const words = new Uint32Array(three.buffers[table.resourceId] ?? new ArrayBuffer(0));
-    expect(Array.from(words.slice(0, 4))).toEqual([ROWS, 1, table.cellsAt, 0]);
+    expect(table.rows).toBe(NAMED_LIGHT_STEP + ROWS);
+    expect(Array.from(words.slice(0, LIGHT_TABLE_HEADER_WORDS))).toEqual([table.rows, 2, table.cellsAt, 0, ROWS, 0, 0, 0]);
     // And every row says what it is and which Light of the Render's Lights it came from:
     // no cone, a point light, no shadow slot, and the Light's place in the list.
     const floats = new Float32Array(words.buffer);
-    const cones = lightTableRowAt("cone", ROWS);
+    const cones = lightTableRowAt("cone", table.rows);
     const coneOf = (row: number): number[] => Array.from(floats.slice(cones + row * 4, cones + row * 4 + 4));
     expect(Array.from({ length: ROWS }, (_, row) => coneOf(row))).toEqual([0, 0, 0, 1, 1, 1, 2, 2].map((light) => [-1, 1, 0, light]));
   }, 240_000);
@@ -284,7 +298,7 @@ describe("lights from a pointset, on Dawn (T1589b, §V147)", () => {
     // Three suns, red, green and blue, straight down. Every pixel of the floor is their sum,
     // wherever their points stand and whatever the Light's Range says: a quarter each, white.
     const INTENSITY = 0.25;
-    const suns = (kind: string, direction: number[]): LampsScene => ({ light: { kind, direction, intensity: INTENSITY, color: mapped("color", [1, 1, 1, 1]) } });
+    const suns = (kind: unknown, direction: number[]): LampsScene => ({ light: { kind, direction, intensity: INTENSITY, color: mapped("color", [1, 1, 1, 1]) } });
     const down = await render(suns("directional", [0, -1, 0]));
     const flat = FLOOR_ALBEDO * INTENSITY;
     for (const [x, z] of [[THREE_LAMPS_AT[0], ROW], [ROW, 7.0625], [-7.9375, -7.9375]] as const) under(down.last, x, z).forEach((value) => expectLit(value, flat));
@@ -295,28 +309,25 @@ describe("lights from a pointset, on Dawn (T1589b, §V147)", () => {
     // As point lights the same set is three pools, and the far end of the floor is dark.
     const lamps = await render(suns("point", [0, -1, 0]));
     expect(under(lamps.last, ROW, 7.0625)).toEqual([0, 0, 0]);
-    // TYPE IS A VALUE: the programs compiled for the point lights, with one float of the
-    // Light's own values written, draw the suns' picture byte for byte. Nothing was built.
-    const switched = await render(suns("point", [0, -1, 0]), {
-      beforeFrames: (control) => {
-        const resolve = (control.plan.passes as ReadonlyArray<{ id: string; uniforms?: Record<string, unknown> }>).find((pass) => bare(pass.id) === "light_lamps:lights:resolve");
-        if (resolve === undefined) throw new Error("the plan has no resolve pass");
-        const shape = resolve.uniforms?.["shape"] as number[];
-        expect(shape[2]).toBe(1);
-        control.updateUniforms(resolve.id, { shape: [shape[0] as number, shape[1] as number, 0, 0] });
-      },
-    });
-    expect(differingBytes(switched.last.bytes, down.last.bytes)).toBe(0);
+    // TYPE IS A VALUE: a Type that is driven from Point to Directional draws the point
+    // lights' picture and then the suns', byte for byte, with the programs compiled once. It
+    // goes the way the app's frames go (a compile a frame, and the animator's writes, which
+    // refuse anything that is not a value): the Light writes its kind into its rows, and the
+    // Render moves the set among the rows that reach every pixel (T1623b), since a row found
+    // through a cell is taken for a placed light.
+    const driven = await render(suns(expressionSlot("1 - floor(abstime * 60 + 0.5)", 1), [0, -1, 0]), { frames: 2, capture: [0, 1], animate: true });
+    expect(differingBytes((driven.frames[0] as RenderedFrame).bytes, lamps.last.bytes)).toBe(0);
+    expect(differingBytes((driven.frames[1] as RenderedFrame).bytes, down.last.bytes)).toBe(0);
   }, 240_000);
 
-  it("walks the table beside more Lights in Single mode than B260's guard starts at: every block's light and every lamp's, each where it stands", async () => {
+  it("walks nine Lights in Single mode and a set's lamps as rows of one table: every named light and every lamp, each where it stands", async () => {
     // Nine Lights in Single mode in a row along x, five units down the floor from the lamps'
     // row: white, each a little brighter than the last, each with a range short of its
     // neighbour's foot (1.5 away, range 1.2 from a metre up) and far short of the lamps' row.
-    // Above eight, each of their blocks works under a test that the light is on (B260); the
-    // walk of the table takes no such test, and stands after them in the same function.
+    // Before T1623b's third slice each was a block of the lit shader, and nine of them stood
+    // under B260's guard. Now they are nine rows ahead of the set's three, found through the
+    // same cells.
     const NAMED = 9;
-    expect(NAMED).toBeGreaterThan(LIGHT_GUARD_ABOVE);
     const BACK = 5.0625;
     const at = (index: number): number => (index - 4) * 1.5 + ROW;
     const gain = (index: number): number => 1 + index * 0.25;
@@ -327,9 +338,9 @@ describe("lights from a pointset, on Dawn (T1589b, §V147)", () => {
       lights: `${names.join(" ")} light_lamps`,
     });
     const lit = (both.plan.passes as ReadonlyArray<{ id: string; shader?: string }>).find((pass) => bare(pass.id) === "render_shot:scene:0");
-    // The scene is the one the sentence is about: guarded blocks, and the walk.
-    expect(String(lit?.shader)).toContain("if (lightMeta.y != 0.0)");
+    // The scene is the one the sentence is about: the walk, and not one block.
     expect(String(lit?.shader)).toContain("lightTable");
+    expect(String(lit?.shader)).not.toMatch(/light\d+Meta/);
     // Under each Light in Single mode: that light alone, white, by the same arithmetic.
     names.forEach((_, index) => {
       const pixel = under(both.last, at(index), BACK);
@@ -500,7 +511,7 @@ describe("the grid is invisible: a culled frame is the frame every light is walk
     it(`${view.name}: through the grid and through one cell, byte for byte`, async () => {
       const size = view.size ?? ([SIZE, SIZE] as const);
       const scene: LampsScene = { ...MANY, ...view.scene };
-      const table = lightTableStorage("render_shot", LAMPS, lightGridDimensions(size));
+      const table = tableFor(LAMPS, 0, size);
       const culled = await render(scene, { size, probeBuffers: [table.resourceId] });
       const walked = await render(scene, { size, beforeFrames: oneCell(3), probeBuffers: [table.resourceId] });
       expect(differingBytes(culled.last.bytes, walked.last.bytes)).toBe(0);
@@ -754,12 +765,12 @@ describe("a spot is a row with a cone: it shines along its direction and nowhere
     expect(differingBytes(plain.bytes, point.bytes)).toBeGreaterThan(0);
 
     // A mapped cone of nothing is a spot that is OFF: dark, and in no cell, so no pixel walks it.
-    const table = lightTableStorage("render_shot", 3, lightGridDimensions([SIZE, SIZE]));
+    const table = tableFor(3);
     const shut = await render({ ...SPOTS, light: { ...DOWN, kind: "spot", cone: mapped("spread", 60, "y") } }, { probeBuffers: [table.resourceId] });
     expect(under(shut.last, MIDDLE, ROW)).toEqual([0, 0, 0]);
     expectLit(under(shut.last, THREE_LAMPS_AT[0], ROW)[0], lampOnFloor());
     const floats = new Float32Array(shut.buffers[table.resourceId] ?? new ArrayBuffer(0));
-    const row = (name: "place" | "aim" | "cone", slot: number): number[] => Array.from(floats.slice(lightTableRowAt(name, 3) + slot * 4, lightTableRowAt(name, 3) + slot * 4 + 4));
+    const row = (name: "place" | "aim" | "cone", slot: number): number[] => Array.from(floats.slice(lightTableRowAt(name, table.rows) + slot * 4, lightTableRowAt(name, table.rows) + slot * 4 + 4));
     // The range of each row: the Light's, and for the shut one the mark of a row that is off.
     expect([0, 1, 2].map((slot) => row("place", slot)[3])).toEqual([LAMP_RANGE, -1, LAMP_RANGE]);
     // And what a spot's row holds: the way it shines and the cosine of half its Cone; the
@@ -771,10 +782,10 @@ describe("a spot is a row with a cone: it shines along its direction and nowhere
   }, 240_000);
 
   it("a spot with no way to shine is off, and Type is a value: the point lights' programs draw the spots after one float is written", async () => {
-    const table = lightTableStorage("render_shot", 3, lightGridDimensions([SIZE, SIZE]));
+    const table = tableFor(3);
     const aimless = await render({ ...SPOTS, light: { ...DOWN, kind: "spot", direction: [0, 0, 0] } }, { probeBuffers: [table.resourceId] });
     const floats = new Float32Array(aimless.buffers[table.resourceId] ?? new ArrayBuffer(0));
-    expect([0, 1, 2].map((slot) => floats[lightTableRowAt("place", 3) + slot * 4 + 3])).toEqual([-1, -1, -1]);
+    expect([0, 1, 2].map((slot) => floats[lightTableRowAt("place", table.rows) + slot * 4 + 3])).toEqual([-1, -1, -1]);
     expect(aimless.last.bytes.every((byte, index) => index % 8 >= 6 || byte === 0)).toBe(true);
     // A point light has no way to shine and needs none.
     const point = await render({ ...SPOTS, light: { ...DOWN, kind: "point", direction: [0, 0, 0] } });

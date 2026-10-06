@@ -135,12 +135,22 @@ const coloured: Pick<Scene, "points" | "edges" | "last"> = {
  * §B255 moved all seven (the coordinate line of the lit chunk): before, in this order,
  * 17aa8172c9cd86ab, 084b26c7e1c920d6, 3c4d939cf8e327d2, baf033f83810f42d, 27985030733ae1ad,
  * efbe423f4bad37c6, 23412397756ed469.
+ *
+ * T1623b SLICE 3 (2026-10-06) moved six of the seven, on purpose. A Render that draws a lit
+ * Surface has a light table now, lights or none, and its lit Surface draws walk it: the lit
+ * grid, the tinted grid and the Material · WGSL tube carry the walk's text in place of their
+ * one Light's block, and bind the table. The two under a casting Light keep that Light's
+ * block, now under B260's guard at every count, beside the walk. The unlit grid no longer
+ * declares the three uniform rows of a Light it never read. The glass grid did not move, nor
+ * the tile's preview below (a tile keeps its two stock lights). Before, in the order of the
+ * list: 6e32ecb742e37480, fd223a6f35a231d2, 05abd9496c1331d9, 4e06f58f7127b692,
+ * 98a49e35dd3384ce, (glass, unmoved), 6f3f36f5829aa22d.
  */
 const ONE_SHEET: ReadonlyArray<readonly [name: string, fingerprint: string, scene: Scene]> = [
-  ["a lit grid, the default material", "6e32ecb742e37480", { ...grid({ cols: 8, rows: 6, count: 48 }) }],
+  ["a lit grid, the default material", "93ef4dea7465605b", { ...grid({ cols: 8, rows: 6, count: 48 }) }],
   [
     "a Phong tube under a casting sun, with every output and occlusion on",
-    "fd223a6f35a231d2",
+    "206b805987fd408d",
     {
       ...tube({ cols: 12, rows: 5, count: 60 }),
       material: curveNode("material_skin", "materialPhong", {}),
@@ -151,15 +161,15 @@ const ONE_SHEET: ReadonlyArray<readonly [name: string, fingerprint: string, scen
   ],
   [
     "a PBR grid under a casting point light: the cube faces",
-    "05abd9496c1331d9",
+    "b3dfb353a6719635",
     { ...grid({ cols: 8, rows: 6, count: 48 }), material: curveNode("material_skin", "materialPbr", {}), light: { kind: "point", position: [0, 2, 2], shadows: true, shadowExtent: 8 } },
   ],
-  ["a tinted grid: its colour attribute mapped to Tint", "4e06f58f7127b692", { ...coloured, geometry: { tint: mappedTo("color", [1, 1, 1, 1]) } }],
-  ["an unlit grid", "98a49e35dd3384ce", { ...grid({ cols: 8, rows: 6, count: 48 }), material: curveNode("material_skin", "materialUnlit", {}) }],
+  ["a tinted grid: its colour attribute mapped to Tint", "fe5008ac9de4e051", { ...coloured, geometry: { tint: mappedTo("color", [1, 1, 1, 1]) } }],
+  ["an unlit grid", "d32e2508beefa8cb", { ...grid({ cols: 8, rows: 6, count: 48 }), material: curveNode("material_skin", "materialUnlit", {}) }],
   ["a glass grid", "16a7d3a060b02efd", { ...grid({ cols: 8, rows: 6, count: 48 }), material: curveNode("material_skin", "materialGlass", {}) }],
   [
     "a Material · WGSL on a wrapped tube, with the Normal output",
-    "6f3f36f5829aa22d",
+    "ae56159f3186a595",
     {
       ...tube({ cols: 12, rows: 5, count: 60 }),
       material: curveNode("material_skin", "materialWgsl", { model: "pbr", source: PLAIN_SURFACE }),

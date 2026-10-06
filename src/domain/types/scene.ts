@@ -117,6 +117,13 @@ export interface LightPayload {
      * unlimited (no window).
      */
     readonly range: number;
+    /**
+     * T1623b: present when the Light's Type is SPOT: `cone` is the full angle at which its
+     * light reaches zero, in degrees, `softness` the share of the half-angle over which it
+     * fades. `type` is then "point": a spot stands at a place. A row of a Render's light
+     * table takes the cone; a casting Light, still a block of the lit shader, does not yet.
+     */
+    readonly spot?: { readonly cone: number; readonly softness: number };
   };
   /**
    * T1589b — present exactly when the Light is in POINTS mode: it is not one light but one
@@ -127,11 +134,15 @@ export interface LightPayload {
    * falloff law; the way it travels; its kind). A Render copies them into its own light
    * table and culls them by range on the GPU; it does not put such a light among the blocks
    * its lit shaders unroll, and such a light casts no shadow. `capacity` is the pointset's:
-   * every slot counts against the Render's table, live or not.
+   * every slot counts against the Render's table, live or not. `always` (T1623b) says that
+   * the set's lights reach every pixel as its values stand (Type: Directional, or a Range of
+   * 0 that no attribute scales): a Render walks such rows with a plain loop and keeps them
+   * out of its grid. A value, like the Type and the Range it is read from.
    */
   readonly points?: {
     readonly records: string;
     readonly capacity: number;
+    readonly always: boolean;
   };
 }
 

@@ -2,7 +2,7 @@ import type { CompiledNodeDescription, NodeDefinition, ScratchRequest } from "..
 import type { ParameterSchema } from "../../domain/types/parameters.ts";
 import { storedStaticValue } from "../../domain/parameters/slots.ts";
 import { instanceShapeIndex, parseInstanceShape } from "./render-instances.ts";
-import type { BufferBindingDescriptor, DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
+import type { BufferBindingDescriptor, BufferWritePassDescriptor, DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
 import { relocated, type WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
 import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
 import type { CameraPayload, GeometryPayload, LightPayload, MapExtend, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
@@ -21,7 +21,7 @@ import { instanceRecordStorage, isPackedType, packedGroups } from "./instance-re
 import { instanceResolveWgsl, RESOLVE_ARGS_BINDING, RESOLVE_LIVE_BINDING, RESOLVE_RECORDS_BINDING, RESOLVE_SOURCE_PREFIX, resolveWorkgroups, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
 import { bindInstanceAttributes } from "./instance-attributes.ts";
 import { applyMaterialOverrides } from "./material-overrides.ts";
-import { compileLightPoints, lightMapRefusal, lightSpotUnbuilt, lightTablePlan, type LightTablePlan, type PointLightSource } from "./light-points.ts";
+import { compileLightPoints, lightMapRefusal, lightSpotDraw, lightSpotUnbuilt, lightTablePlan, type LightTablePlan, type NamedLight, type PointLightSource } from "./light-points.ts";
 import {
   GLASS_BLIT_WGSL,
   SSAA_RESOLVE_WGSL,
@@ -331,15 +331,15 @@ const pointsCastNothing = (values: Readonly<Record<string, unknown>>): string | 
   values["mode"] === "points" ? "A shadow map belongs to one light: a Light in Single mode casts, the lights of a pointset do not." : null;
 
 /**
- * T1589b slice 2: a spot in SINGLE mode has no cone yet. A named Light takes one when it
- * becomes a row of the Render's light table (T1623b slice 3); until then it shines as a
- * point light, its two cone rows say so, and the Light says so by name (`lightSpotUnbuilt`).
+ * T1623b slice 3: a spot is a kind of ROW of a Render's light table, and a CASTING Light in
+ * Single mode is not a row yet (slices 4 and 5): it shines as a point light, its two cone
+ * rows say so, and the Light says so by name (`lightSpotUnbuilt`).
  */
-const SINGLE_SPOT = "A Spot is a light of a pointset for now (Mode: Points): in Mode: Single this light shines as a Point light, in every direction.";
+const CASTING_SPOT = "A casting Light has no cone yet: with Cast Shadows on this light shines as a Point light, in every direction.";
 /** A point light and a spot stand at a place: they have a Position, a Falloff and a Range. */
 const lightIsPlaced = (values: Readonly<Record<string, unknown>>): boolean => values["kind"] === "point" || values["kind"] === "spot";
 const spotInactive = (values: Readonly<Record<string, unknown>>): string | null =>
-  values["kind"] !== "spot" ? "Only a Spot has a cone." : values["mode"] === "points" ? null : SINGLE_SPOT;
+  values["kind"] !== "spot" ? "Only a Spot has a cone." : values["mode"] !== "points" && values["shadows"] === true ? CASTING_SPOT : null;
 
 /**
  * The Light's DECLARED parameters, hoisted (T1589b) so `parametersFor` can derive the schema
@@ -357,7 +357,7 @@ const LIGHT_PARAMETERS: ParameterSchema = {
       { value: "spot", label: "Spot" },
     ],
     description:
-      "Directional travels along Direction from infinitely far. Point sits at Position and shines every way. Spot (T1589b) sits there and shines along Direction inside its Cone. A VALUE: changing it rebuilds nothing. A Spot is a light of a pointset for now: in Mode: Single it shines as a Point light and the Light says so, until named Lights become rows of the Render's light table (T1623b).",
+      "Directional travels along Direction from infinitely far. Point sits at Position and shines every way. Spot (T1589b) sits there and shines along Direction inside its Cone. A VALUE: changing it rebuilds nothing. A Spot that casts shadows has no cone yet: it shines as a Point light and the Light says so, until casting Lights become rows of the Render's light table (T1623b).",
   },
   /*
    * T1589b — ONE LIGHT, OR ONE AT EVERY POINT (docs/lights-from-pointset-design-2026-10-06.md).
@@ -374,7 +374,7 @@ const LIGHT_PARAMETERS: ParameterSchema = {
       { value: "points", label: "Points" },
     ],
     description:
-      "Single is one light, at Position. Points repeats this light at every point of the Points input: N lights from ONE node, each standing at its point's position. In Map mode Color takes a vec4f attribute and Intensity, Range and Cone an f32 (or one channel of a float vector), each MULTIPLYING the value here per point, so the number stays live for the whole set; Position, Direction and Orient in Map mode take an attribute IN PLACE of the value (a vec3f place, a vec3f way to travel, a vec4f quaternion). A light whose intensity, mapped range or mapped cone is zero is off, and so is a dead point of a counted pointset. A Render culls these lights by their Range on the GPU, so give them one. With Type: Directional the set is that many suns, each travelling along its direction; a directional light reaches every pixel, so none of them is culled. A Render lights from at most 1,024 points of capacity, every slot counted.",
+      "Single is one light, at Position. Points repeats this light at every point of the Points input: N lights from ONE node, each standing at its point's position. In Map mode Color takes a vec4f attribute and Intensity, Range and Cone an f32 (or one channel of a float vector), each MULTIPLYING the value here per point, so the number stays live for the whole set; Position, Direction and Orient in Map mode take an attribute IN PLACE of the value (a vec3f place, a vec3f way to travel, a vec4f quaternion). A light whose intensity, mapped range or mapped cone is zero is off, and so is a dead point of a counted pointset. A Render culls these lights by their Range on the GPU, so give them one. With Type: Directional the set is that many suns, each travelling along its direction; a directional light reaches every pixel, so none of them is culled. A Render's light table holds at most 1,024 rows, every slot of the set counted (see Points).",
   },
   color: { type: "color", label: "Color", default: [1, 1, 1, 1], space: "display" },
   intensity: { type: "number", label: "Intensity", default: 1, min: 0, range: "floor" },
@@ -460,7 +460,7 @@ const LIGHT_PARAMETERS: ParameterSchema = {
     min: 0,
     range: "floor",
     description:
-      "T1437b: how far a point light reaches, in world units. The falloff is multiplied by (1 − (d/range)⁴)², so it reaches exactly zero at the range and is barely touched inside half of it. 0 is unlimited. In Points mode (T1589b) the Range is what a Render culls by, and it defaults to 10: a light with no Range is in every cell of the view, so every lit pixel pays for every one of them.",
+      "T1437b: how far a point light reaches, in world units. The falloff is multiplied by (1 − (d/range)⁴)², so it reaches exactly zero at the range and is barely touched inside half of it. 0 is unlimited. The Range is what a Render culls a light by (T1589b, T1623b): a light with one is shaded only by the pixels it reaches, and a light with none by every lit pixel. In Points mode it defaults to 10, so that a set of lamps does not cost every pixel every lamp.",
     inactiveWhen: (values) => (lightIsPlaced(values) ? null : "A directional light is infinitely far."),
   },
   shadows: {
@@ -555,7 +555,7 @@ export const lightNode: NodeDefinition = {
   title: "Light",
   category: "render",
   description:
-    "A light other nodes reference by NAME: a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; Point lights sit at Position with distance falloff (soft or inverse-square, and an optional range); Spot lights sit there and shine along Direction inside Cone. Mode: POINTS repeats the light at every point of the Points input, N lights from ONE node, never N nodes: each stands at its point's position, and Color, Intensity, Range, Direction, Orient and Cone take a per-point attribute in Map mode. A Render culls such lights by their Range on the GPU, so a lamp every few metres of a long set costs what the lamps near each pixel cost; give them a Range. A Spot is a light of Points mode for now: in Single mode it shines as a Point light and says so. Colour, intensity and placement are all drivable. Only a light in Single mode casts shadows.",
+    "A light other nodes reference by NAME: a Render lists any number in its lights parameter (list order is light order). Directional lights travel along Direction; Point lights sit at Position with distance falloff (soft or inverse-square, and an optional range); Spot lights sit there and shine along Direction inside Cone. Mode: POINTS repeats the light at every point of the Points input, N lights from ONE node, never N nodes: each stands at its point's position, and Color, Intensity, Range, Direction, Orient and Cone take a per-point attribute in Map mode. A Render culls such lights by their Range on the GPU, so a lamp every few metres of a long set costs what the lamps near each pixel cost; give them a Range. A Spot that casts shadows has no cone yet: it shines as a Point light and says so. Colour, intensity and placement are all drivable. Only a light in Single mode casts shadows.",
   tags: ["3d", "scene", "light", "shading", "points", "lamps"],
   inputs: [
     {
@@ -565,7 +565,7 @@ export const lightNode: NodeDefinition = {
       optional: true,
       type: { kind: "pointset", requires: [{ name: "position", type: "vec3f" }] },
       description:
-        "Mode: Points — the pointset this light is repeated over: one light at each point's position. A Point Grid, a Point Kernel, a Resample along a curve. A counted pointset lights only its live points. Not read in Single mode.",
+        "Mode: Points — the pointset this light is repeated over: one light at each point's position. A Point Grid, a Point Kernel, a Resample along a curve. A counted pointset lights only its live points. Not read in Single mode. A Render's light table holds at most 1,024 rows: every point of capacity of its Lights in Points mode, lit or not, and a step of 32 for its Lights in Single mode that do not cast.",
     },
     // T1598b: reference-fed, as a Render's Scenes is — the two list parameters name the
     // geometries; the compiler synthesizes these edges; a wire is refused.
@@ -617,16 +617,20 @@ export const lightNode: NodeDefinition = {
         ...(excluded.length === 0 ? {} : { shadowExclude: excluded }),
         falloff: parameters["falloff"] === "inverseSquare" ? "inverseSquare" : "soft",
         range: Math.max(0, readNumber(parameters, "range", 0)),
+        /* T1623b: a spot's cone, for the row this Light is in a Render's table. */
+        ...(parameters["kind"] === "spot" ? { spot: { cone: readNumber(parameters, "cone", 60), softness: readNumber(parameters, "coneSoftness", 0.4) } } : {}),
       },
     };
     /* T1589b: one light at every point of the Points input, resolved once a frame into
        records a Render culls (light-points.ts). */
     if (pointsMode) return compileLightPoints({ nodeId, points: inputs["points"], parameters, parameterMaps, light: payload.light });
     const single = { passes: [], scene: { out: payload } } as CompiledNodeDescription;
-    /* T1589b slice 2: a spot in Single mode shines as a point light, and SAYS so. A warning
-       and never a refusal: Type is a value, the plan is a point light's whatever it says,
-       and a value does not decide what compiles. Goes with T1623b slice 3. */
-    return parameters["kind"] === "spot" ? { ...single, diagnostics: [lightSpotUnbuilt(nodeId)] } : single;
+    /* T1623b slice 3: a Light in Single mode that does not cast is a row of each Render's
+       light table, and a spot is a kind of row. A CASTING one is still a block of the lit
+       shader, which takes no cone: it shines as a point light and SAYS so. A warning and
+       never a refusal: Type is a value, and a value does not decide what compiles. Goes with
+       the last block (T1623b slice 5). */
+    return parameters["kind"] === "spot" && payload.light.shadows ? { ...single, diagnostics: [lightSpotUnbuilt(nodeId)] } : single;
   },
 };
 
@@ -1634,7 +1638,7 @@ const TEXTURE_CATEGORIES: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 function textureLedger(
   nodeId: string,
-  passes: ReadonlyArray<DrawPassDescriptor | DispatchPassDescriptor>,
+  passes: ReadonlyArray<DrawPassDescriptor | DispatchPassDescriptor | BufferWritePassDescriptor>,
 ): NonNullable<CompiledNodeDescription["diagnostics"]>[number] | undefined {
   let worst: { id: string; bindings: string[] } | undefined;
   for (const pass of passes) {
@@ -2006,6 +2010,8 @@ export const renderNode: NodeDefinition = {
     const pointLights: PointLightSource[] = [];
     /** T1589b: a Light's place in the list, which every row of a set carries as its source number (the lists will test it). */
     let lightNumber = -1;
+    /** T1623b: that place for each of `lights`, by its index there. */
+    const lightNumbers: number[] = [];
     for (const binding of sceneOf("lights")) {
       lightNumber += 1;
       if (binding.scene?.kind !== "light") {
@@ -2021,6 +2027,7 @@ export const renderNode: NodeDefinition = {
       }
       lights.push(binding.scene.light);
       lightSources.push(binding.source?.nodeId ?? "?");
+      lightNumbers.push(lightNumber);
     }
 
     // T704: PROJECTORS, in LIST order — referenced exactly as lights are.
@@ -2088,6 +2095,23 @@ export const renderNode: NodeDefinition = {
       );
     const shadowTargetOf = (slot: number): string => `scratch:${nodeId}:shadow${casting[slot]?.index ?? slot}`;
     const castingIndices = casting.map(({ index }) => index);
+    /*
+     * T1623b slice 3 — WHICH LIGHT IS WHAT, for the two generators.
+     *
+     * The SURFACE generator unrolls a block for a CASTING Light and for no other: block i is
+     * casting slot i. A Light in Single mode that does not cast is a ROW of this Render's
+     * light table (`named`), walked by the lit draw with the lights of every pointset.
+     *
+     * The INSTANCES generator (primitive instances, points, beams) has no table yet (slice 7):
+     * it still unrolls a block for EVERY Light in Single mode, casting or not, and reads their
+     * uniforms. So a named Light that does not cast is in this Render twice, as a row and as
+     * three uniform rows of each such draw, from the same payload.
+     */
+    const blockLights = casting.map(({ light }) => light);
+    const blockShadows = casting.map((_, slot) => slot);
+    const named: NamedLight[] = lights.flatMap((light, index) => (light.shadows ? [] : [{ nodeId: lightSources[index] ?? "?", light, number: lightNumbers[index] ?? index }]));
+    /** The spots among them, by name: what a draw with no cone says (`lightSpotDraw`). */
+    const namedSpots = named.filter((entry) => entry.light.spot !== undefined).map((entry) => entry.nodeId);
     /* T1285: the PCF radius per casting slot, in the same slot order `shadowMatrices`
        uses. Clamped to the parameter's own range here rather than in the shader, because
        an expression can drive it past the slider and a generated loop is not a place to
@@ -2117,7 +2141,7 @@ export const renderNode: NodeDefinition = {
 
     const diagnostics: NonNullable<CompiledNodeDescription["diagnostics"]> = [];
     const background = readColor(parameters, "background", [0, 0, 0, 1]);
-    const passes: Array<DrawPassDescriptor | DispatchPassDescriptor> = [];
+    const passes: Array<DrawPassDescriptor | DispatchPassDescriptor | BufferWritePassDescriptor> = [];
     /** T478: one indirect-args scratch buffer per COUNTED geometry. */
     const scratch: Array<
       | NonNullable<ReturnType<typeof countedDrawSupport>>["scratch"]
@@ -2129,7 +2153,7 @@ export const renderNode: NodeDefinition = {
       // T1427b: the prefiltered environment's levels and atlas — HDR, no depth.
       | { key: string; scale: number; format: "rgba16float" }
       // T1589b: the light table — the pointset Lights' records and the grid's cells.
-      | LightTablePlan["scratch"]
+      | LightTablePlan["scratch"][number]
     > = [];
     if (ssaa) scratch.push({ key: "ss", scale: 2, depth: true });
     /** T481: counted draw support emitted once (in the shadow phase when one exists),
@@ -2586,17 +2610,22 @@ export const renderNode: NodeDefinition = {
     emitShadowPasses();
 
     /*
-     * T1589b — THE LIGHT TABLE: the lights of every Light in Points mode, gathered into one
-     * buffer and sorted into a grid over this Render's view, on the GPU, every frame
-     * (light-points.ts). Two dispatches, HERE: ahead of the backdrop, so they do not split
-     * the run of draws into the colour target (T1604b). With no such Light nothing is
-     * emitted and every pass below is what it was (§V309).
+     * T1589b, T1623b — THE LIGHT TABLE: this Render's named Lights that do not cast and the
+     * lights of every Light in Points mode, as rows of one buffer; the rows with a range
+     * sorted into a grid over this Render's view, on the GPU, every frame (light-points.ts).
+     * Its passes stand HERE: ahead of the backdrop, so they do not split the run of draws
+     * into the colour target (T1604b).
+     *
+     * EVERY Render that draws a lit Surface has one, lights or none: a lit Surface's text
+     * walks the table whatever it holds, so the first Light added to a Render is a write and
+     * compiles nothing. A Render with no such draw has none.
      */
-    const plannedLights =
-      pointLights.length === 0
-        ? undefined
-        : lightTablePlan({
+    const walksTable = geometries.some(({ payload }) => litSurfaceDraw(payload));
+    const plannedLights = !walksTable
+      ? undefined
+      : lightTablePlan({
             nodeId,
+            named,
             sources: pointLights,
             resolution,
             /* What the lit draws render into: twice the output under SSAA. */
@@ -2607,8 +2636,9 @@ export const renderNode: NodeDefinition = {
     if (plannedLights !== undefined && "diagnostics" in plannedLights) return { passes: [], diagnostics: plannedLights.diagnostics };
     const lightTable: LightTablePlan | undefined = plannedLights;
     if (lightTable !== undefined) {
-      scratch.push(lightTable.scratch);
+      scratch.push(...lightTable.scratch);
       passes.push(...lightTable.passes);
+      diagnostics.push(...lightTable.warnings);
     }
 
     /* T1417b: the first casting light's map again, into the Light Depth port — the same
@@ -3037,6 +3067,11 @@ export const renderNode: NodeDefinition = {
             suggestion: "Draw it as a Surface or as mesh instances (Shape: Mesh), or light it with a Light in Single mode.",
           });
         }
+        /* T1623b slice 3: this generator still reads every Light in Single mode as a block,
+           and a block takes no cone (slice 7). A spot that does not cast has its cone on
+           every Surface of this Render and none here, which is SAID. A casting one has none
+           anywhere, and its Light says that. */
+        if (material.model !== "unlit" && namedSpots.length > 0) diagnostics.push(lightSpotDraw(nodeId, source, payload.mode, namedSpots));
         const model =
         material.model === "unlit"
           ? "unlit"
@@ -3392,7 +3427,8 @@ export const renderNode: NodeDefinition = {
         ...(additive ? { blend: "additive" as const, depthWrite: false } : {}),
         ...surface({
           model,
-          lightCount: lights.length,
+          /* T1623b: the casting Lights, each a block; the others are rows of the table. */
+          lightCount: blockLights.length,
           ...(additive ? { additive: true } : {}),
           maps,
           ...mapExtendOption,
@@ -3400,7 +3436,7 @@ export const renderNode: NodeDefinition = {
           ...(tinted ? { pointColor: true } : {}),
           ...sheetsOption,
           ...gridUvOption,
-          ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, shadowBias, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
+          ...(blockShadows.length === 0 ? {} : { shadows: blockShadows, shadowSoftness, shadowBias, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
           ...(environmentResource === undefined ? {} : { environment: true, environmentTaps, ...(environmentPrefiltered ? { environmentPrefiltered: true } : {}) }),
           ...(aoActive ? { ambientOcclusion: true } : {}),
           ...(projActive ? { projectors: projectorOptions } : {}),
@@ -3481,7 +3517,7 @@ export const renderNode: NodeDefinition = {
               )),
           grid: topology.kind === "grid" ? [topology.cols, topology.rows, topology.wrapU ? 1 : 0, topology.wrapV ? 1 : 0] : [0, 0, 0, 0],
           ...Object.fromEntries(
-            lights.flatMap((light, lightIndex) => [
+            blockLights.flatMap((light, lightIndex) => [
               [`light${lightIndex}Meta`, lightMetaUniform(light)],
               [`light${lightIndex}Color`, [...light.color, 0]],
               [`light${lightIndex}Vector`, [...(light.type === "point" ? light.position : light.direction), 0]],
@@ -3519,9 +3555,9 @@ export const renderNode: NodeDefinition = {
             id: `${nodeId}:gbuffer:shadow:${index}`,
             ...surface({
               ...surfaceMaterialOptions,
-              lightCount: lights.length,
+              lightCount: blockLights.length,
               gbuffer: "shadow",
-              ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
+              ...(blockShadows.length === 0 ? {} : { shadows: blockShadows, shadowSoftness, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
             }),
             target,
             textures: [
@@ -3883,6 +3919,14 @@ const SURFACE_UV_REFERENCE = /\.\s*uv\b/;
  */
 const additiveSurface = (payload: GeometryPayload): boolean =>
   (payload.mode === "surface" || payload.instanceMesh !== undefined) && additiveLight(payload);
+
+/**
+ * T1623b: a geometry the SURFACE generator draws with a lit model: a Surface or mesh
+ * instances, in a material that takes light. Glass has its own phase and generators, which
+ * take none. Such a draw walks the Render's light table, so a Render with one has a table.
+ */
+const litSurfaceDraw = (payload: GeometryPayload): boolean =>
+  (payload.mode === "surface" || payload.instanceMesh !== undefined) && payload.material.model !== "glass" && payload.material.model !== "unlit";
 
 /**
  * B256 — geometry of ANY mode drawn with Blend: Additive: light laid over the picture, not

@@ -90,6 +90,19 @@ const sceneDraws = (compiled: { passes: ReadonlyArray<unknown> }) =>
     (pass) => (pass as { kind: string }).kind === "draw" && String((pass as { id: string }).id).includes(":scene:"),
   ) as DrawPassDescriptor[];
 const drawOf = (compiled: { passes: ReadonlyArray<unknown> }) => sceneDraws(compiled)[0] as DrawPassDescriptor;
+/**
+ * T1623b: a Render's Lights in Single mode that do not cast are ROWS of its light table,
+ * written as values: sixteen floats a Light, in the order the lit draw sums them (its place,
+ * its range; colour times intensity, the falloff law; the way it travels, its cone; its
+ * kind, a shadow slot, and its place in the Render's list).
+ */
+const lightRows = (compiled: { passes: ReadonlyArray<unknown> }): number[][] => {
+  const written = compiled.passes.find((pass) => (pass as { kind: string }).kind === "write" && String((pass as { id: string }).id).endsWith(":lights:named")) as
+    | { values: { rows: number[]; count: number } }
+    | undefined;
+  if (written === undefined) throw new Error("the plan writes no light rows");
+  return Array.from({ length: written.values.count }, (_, row) => written.values.rows.slice(row * 16, row * 16 + 16));
+};
 
 describe("the scene pipeline compiles by NAME (T377, T447)", () => {
   it("resolves camera, light and geometry references into one lit draw", () => {
@@ -101,11 +114,18 @@ describe("the scene pipeline compiles by NAME (T377, T447)", () => {
     expect(draw).toBeDefined();
     // The geometry's pair, by reference chain: grid → geometry → (named) → render.
     expect(draw.buffers?.[0]?.resourceId).toBe(pointStorageId("grid"));
-    // The camera reached the uniforms as a composed matrix, the light as array values.
+    // The camera reached the uniforms as a composed matrix.
     expect(Array.isArray(draw.uniforms?.["viewProjection"])).toBe(true);
-    expect(Array.isArray(draw.uniforms?.["light0Color"])).toBe(true);
-    // The generated shader is per-light-count: one light, one loop bound.
-    expect(draw.shader).toContain("light0Meta");
+    // The light reached the Render as one ROW of its light table (T1623b): the default
+    // Light, a white directional one of intensity 1, the first of the list.
+    const rows = lightRows(compiled);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.slice(4, 7)).toEqual([1, 1, 1]);
+    expect(rows[0]?.slice(13)).toEqual([0, 0, 0]);
+    // The lit draw binds that table and walks it: its text holds no block for the light and no count of lights.
+    expect(draw.buffers?.map((buffer) => buffer.binding)).toContain("lightTable");
+    expect(draw.shader).toContain("lightTable");
+    expect(draw.shader).not.toContain("light0Meta");
   });
 
   it("draw order and light order are LIST order, not name order (§V131)", () => {
@@ -129,8 +149,13 @@ describe("the scene pipeline compiles by NAME (T377, T447)", () => {
       pointStorageId("grid"),
       pointStorageId("gridb"),
     ]);
-    // moon before sun in the flat light array: moon's intensity 0.2 leads.
-    expect((draws[0]?.uniforms?.["light0Meta"] as number[])[1]).toBe(0.2);
+    // moon before sun among the light rows: moon's intensity 0.2 leads (a row's colour is
+    // colour times intensity, as a float), and each row carries its place in the LIST.
+    const rows = lightRows(compiled);
+    expect(rows.map((row) => [row[4], row[15]])).toEqual([
+      [Math.fround(0.2), 0],
+      [1, 1],
+    ]);
     // The backdrop clears; every geometry draw composes over it (T444).
     expect(draws[0]?.clear).toBe(false);
     expect(draws[1]?.clear).toBe(false);

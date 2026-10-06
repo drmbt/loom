@@ -266,7 +266,7 @@ Two more name lists on the Light, in the idiom of Shadow Casters and Shadow Excl
 | `node.parameter.map` | Light | a map this node does not honour, or in Single mode; an absent or mistyped attribute |
 | `node.scene.reference` | Light | a list names a node that is not a geometry |
 | `node.scene.lightCapacity` | Render | its pointset Lights hold more than 1,024 points of capacity together; names each Light and its capacity |
-| `node.scene.lightSources` | Render | more than seven pointset Lights (3.9) |
+| `node.scene.lightSources` | Render | more than seven pointset Lights (3.9). Gone with T1623b slice 3: a gather pass a set (15.1) |
 | `node.scene.litGeometry` (warning) | Render | a Light's lists leave none of this Render's geometries |
 | the binding budget (`compiler/bindings.ts`) | compiler | a lit draw that would bind a ninth storage buffer |
 
@@ -318,7 +318,7 @@ render_shot:scene:<i>          every lit draw binds the table, once
   The memory column is computed. On the CPU the path is three dispatches more a frame. By the geometry profile's figures (about 0.03 ms of encoding a pass, and a values-only compile of 2.3 ms over this document's 58 passes) that is 0.1 to 0.2 ms, computed.
 - **Limits, and what happens past them.**
   - More than 1,024 points of capacity in one Render: a compile error naming the Lights (`node.scene.lightCapacity`).
-  - More than seven pointset Lights in one Render: a compile error (`node.scene.lightSources`).
+  - More than seven pointset Lights in one Render: a compile error (`node.scene.lightSources`). Lifted by T1623b slice 3 (15.1).
   - A cell cannot overflow.
   - A light without a Range is in every cell. That is slow, not wrong, and the Range row says it.
   - Nothing is decided on the GPU that the CPU would have to report.
@@ -712,3 +712,263 @@ The consumer's frame was not run again: its lamps as spots are the consumer's to
 - Curve Frames on a path that bends, into a Light: the test's path is straight, so its three frames are one. That each point's own turn is read is held by a kernel's attribute.
 - A spot under a counted pointset, a spot on a mesh Surface, a spot beside guarded blocks: each is slice 1's case with one more value, and none was run as a spot.
 - A browser, a second GPU.
+
+## 15. T1623b slice 3 as built (2026-10-06): a Light in Single mode that does not cast is a row
+
+The third slice of the one light path (`docs/light-cost-investigation-2026-10-06.md`, section 11). Before it a Render unrolled a block of its lit shader for every Light in Single mode. Now such a Light is one row of the Render's light table, written as values, and the lit text of a Surface is one string whatever the Render lists. Casting Lights are still blocks (slices 4 and 5); primitive instances, points and beams still read every Light in Single mode as a block (slice 7); a tile's preview keeps its two stock lights (ruled).
+
+### 15.1 What a Render emits now
+
+Every Render that draws a lit Surface has a table, lights or none. A Render whose Surfaces are all unlit or glass has none.
+
+```
+render_shot:lights:header     write: the table's eight header words, as values
+render_shot:lights:named      write: the named Lights' records, 64 bytes each, into scratch:<render>:lightNamed
+render_shot:lights:gather:0   dispatch: the named records into the table
+render_shot:lights:gather:<i> dispatch: the i-th Light in Points mode's records into the table
+render_shot:lights:grid       dispatch: one invocation a cell, over the rows with a range
+```
+
+- **The header is written by the CPU**, through the buffer-values seam, where slice 1's gather wrote it from its uniforms. Its eight words: the rows a region holds, the words a cell, where the cells start, how many rows reach every pixel; how many rows are live, where the rows of any kind end, where the point rows end, one spare.
+- **The named rows are whole records in a buffer of the Render's own**, laid out as a Light's records are and gathered like any set. Its room grows in steps of 32 rows (`NAMED_LIGHT_STEP`), so that a Light added, removed, re-ordered or re-typed inside a step is a write: the plan's structure is the same structure (`isUniformOnlyChange`), and on the mock device it creates no shader module and no pipeline.
+- **The gather is one text for every set** (T1628b): a pass a set, each binding the table and its own records, with the row its records go to, how many, and what to add to each row's source number as three values. The limit of seven Lights in Points mode is gone, and `node.scene.lightSources` with it. What bounds a Render now is the table's 1,024 rows: every slot of every pointset Light and the named Lights' steps (`node.scene.lightCapacity`). **A pointset Light may therefore hold 992 points where it held 1,024** beside up to 32 named Lights.
+- **The order of the rows is a value of the frame**:
+
+  | Run | Rows | Walked by |
+  |---|---|---|
+  | rows of any kind that reach every pixel | a pointset's rows with no Range; named spots with a cone and no Range | one loop, kind and cone tested, one row a turn |
+  | point rows | named point lights with no Range (and named spots whose Cone is every direction) | a loop written for them, two rows a turn |
+  | suns | named directional lights | a loop written for them, two rows a turn |
+  | the rest | named Lights with a Range, named Lights that are off, then the pointset Lights with a Range | the grid's cells; an off row is in none |
+
+  Within a run the named rows stand in the Render's list order: the order is a filter of the list, never a sort.
+- **A casting Light's block stands under B260's guard at every count** where the draw walks the table. `LIGHT_GUARD_ABOVE` stays 8 and is now the rule for the texts with no table: the instances generator's, a tile's preview, the shadow matte.
+
+### 15.2 The always-walked rows: what was tried, measured
+
+The brief's form was one plain loop over the rows that reach every pixel. It cost three fifths more than the blocks it replaces, so the stop condition of the slice applied; the form built is the one that met it.
+
+Method: the lit draw alone (`setExactPassTiming`) of a PBR floor that fills 7680 x 4320 (the timestamps of this device step by 65.5 microseconds, so the draw has to be that large for a tenth to show), a fixed reference compute pass beside every frame, main's tree and this one loaded in ONE process and alternated, two takes, the first variant repeated last, 50 frames after 12, the machine quiet (reference 2.75 ms). Figures are the lit draw as a share of the reference, summed over the frames. The lights are a mix as shipped: one sun; a sun and a point light; from four up two suns and the rest point lights with no Range. Each row form was a text patch on the lit module, so the pictures of all forms were compared and are the same picture, equal to main's to one step of a half float.
+
+| Lights | Blocks (main) | One loop, kind and cone tested | A loop a kind, one row a turn, an off test | As built |
+|---|---|---|---|---|
+| 1 | 0.340, 0.334, 0.332 | 0.474, 0.474 | 0.394, 0.379 | 0.373, 0.380 |
+| 2 | 0.525, 0.512 | 0.784, 0.768 | 0.603, 0.589 | 0.595, 0.585 |
+| 4 | 0.860, 0.848 | 1.397, 1.366 | 0.998, 0.997 | 0.918, 0.910 |
+| 8 | 1.622, 1.616 | 2.641, 2.611 | 1.905, 1.887 | 1.679, 1.660 |
+| 9 (blocks guarded) | 1.897, 1.880 | 2.940, 2.969 | 2.114, 2.134 | 1.847, 1.858 |
+| 16 | 3.499, 3.466, 3.459 | | | 3.227, 3.177 |
+| 32 | 7.845, 7.672 | | | 6.472, 6.514 |
+| 64 | 17.63, 17.57 | | | 13.28, 12.93 |
+
+As built against blocks: +12 % at 1, +14 % at 2, +7 % at 4, +3 % at 8, −2 % at 9, −8 % at 16, −16 % at 32, −25 % at 64. The two middle columns are from a run of their own, in which blocks read 0.333 and 0.327 at 1, 0.504 and 0.506 at 2, 0.839 and 0.864 at 4, 1.624 and 1.608 at 8, 1.882 and 1.914 at 9.
+
+What was tried, each alternated with main's blocks in one process:
+
+| Form | Against blocks |
+|---|---|
+| the three reads' addresses hoisted by hand | no gain: the compiler does it |
+| no cone test at all (wrong for a spot) | 0.30 to 0.25 of the reference at eight point lights: the cone's normalise and smoothstep is the largest single part |
+| a branch on the kind round the aim read and the cone (one loop, pay by kind) | +43 to +50 %: the compiler flattens the branch, and a third row read costs what it saves |
+| a loop a kind, one row a turn, no off test | +18 to +20 % at 1, +8 to +16 % at 4, +2 % at 8 |
+| a loop a kind, two rows a turn, no off test | +0 to +4 % at 1, equal at 4 and 8, −7 % at 9 |
+| three and four rows a turn | the same as two |
+| the first eight rows at literal row numbers, no loop | +5 % at 1, +2 % at 2, −4 % at 4 and 8; 31 KB of text against 22 |
+
+- **What a row paid over a block is the kind test, the cone and the off test.** They go where the CPU can sort the rows: a named Light's kind and whether it is off are values the Render has.
+- **Why two rows a turn costs less than one was not found.** The work a row is the same. It was measured twice, on a loaded machine and on a quiet one.
+- **What is left at one and two lights is in the two loops themselves**: with the any-kind loop and the ranged half patched out of the text the draw costs 0.364 of the reference against 0.373 with them, and 0.335 for one block.
+- **B260's rule holds by counting.** The gate counts a row of the table as a source: every place in the text that shades a row. In a draw that walks the table the longest run of sources in one straight line is 1, at 0 to 32 casting blocks, in each of the eleven Surface cases with and without casting Lights (132 texts). A turn's second row stands under a test of the loop's bound, which is a merge.
+
+### 15.3 The rows with a range: the kind test went, and a named Light whose Range covers the picture costs more than its block did
+
+The slice 2 ruling was to measure the grid's walk with and without the kind test once the always-walked rows were apart, and keep the cheaper. A directional light has no range, so the Render stands every one among the always-walked rows; a row found through a cell is a point light or a spot.
+
+| Lights with a Range, all in reach of every pixel | With the kind test | Without (kept) |
+|---|---|---|
+| 64 | 2.41, 2.43, 2.91 | 2.25, 2.19, 2.54 |
+| 256 | 9.77, 9.59, 9.31 | 9.13, 8.70, 8.70 |
+
+Shares of the reference, three takes, 2560 x 1440, the same pictures. Without it the walk is 7 to 13 % cheaper.
+
+- **What it costs in robustness**: a directional row written past the always-walked ones would be shaded as a light at its place. The Render orders its rows from the Lights' own values on every compile, whole or values-only, so no path of the app writes one there. A test that poked a Type into a Light's resolve pass alone, behind the Render's back, drew the wrong picture and was rewritten to drive the Type the way the app's frames do.
+- **A named Light with a Range that reaches the whole picture costs more than its block did**, between two fifths and a half more with the kind test and 7 to 13 % under that without (measured, lit draw only, 3840 x 2160, the pictures byte for byte main's):
+
+  | Named Lights, Range 30 over a floor of 16 | Blocks (main, guarded) | Rows through the grid (with the kind test) |
+  |---|---|---|
+  | 16 | 0.94, 0.98, 1.02 | 1.45, 1.48 |
+  | 64 | 4.30, 4.05 | 6.22, 5.70 |
+
+  A row found through a cell reads four rows of its record and tests a cone it mostly does not have. Where the light does NOT reach, the row costs a place read and a compare, and its block cost the whole lobe: that is the trade a Range makes. One shipped document has named Lights with a Range (the consumer's three lamps). Splitting a cell's rows by kind as the always-walked rows are (two passes over a cell's words, each with a turn written for its kind) is the same cure and was not built here.
+
+### 15.4 What a row holds, and why it is the numbers the block read
+
+A named Light's record is computed on the CPU (`namedLightRecord`) as a Light in Points mode resolves a point's on the GPU. Two of its numbers are written the way the block they replace read them, because a shipped picture showed the difference:
+
+- **A directional row's aim is the Light's Direction as authored, at any length.** Its reader normalises it (the light block does). Normalising it on the CPU, in doubles, moved the direction by the last bit of a float from what the shader's own `normalize` gives, and a glossy lobe (the GGX denominator is a difference of near-equal numbers) showed that in E77 as 201 channel values moved by one step of a half float and one by two. With the direction as authored E77 differs from main in 74 values, each by one step: exactly what B260's guard on its one casting Light moves by itself (measured: main against main with every block guarded, 73 values). A spot's aim is a unit vector: its cone is measured against it.
+- **A row's colour is colour times intensity as ONE FLOAT PRODUCT of the two floats** (`Math.fround`), which is what the shader computed from its two uniform rows, and not the product of two doubles rounded once.
+
+### 15.5 What is said
+
+| Code | Class | By | When |
+|---|---|---|---|
+| `node.scene.lightEverywhere` (new) | advice | the Render | more than 32 of its rows reach every pixel (directional lights, lights with no Range), as authored; a pointset counts every point of its capacity. One such row costs every lit pixel one light: 0.21 of the reference on the 8K floor, 0.036 ms a row for a Surface that fills 1920 x 1080 on this machine, 1.1 ms at 32 (computed from the 16 and 64 rows of 15.2). |
+| `node.scene.lightSpot` | degraded | the Light | Type: Spot with Cast Shadows on, in Single mode: a casting Light is still a block and a block takes no cone. |
+| `node.scene.lightSpot` | degraded | the Render | a draw of primitive instances, points or beams under a Spot in Single mode that does not cast: that generator still reads every Light as a block (slice 7), so the spot has its cone on the Render's Surfaces and none on that draw. Said for each such draw, by the geometry's name and the spot's. |
+| `node.scene.lightSources` | | | gone, with the limit it refused. |
+| `node.scene.lightCapacity` | never | the Render | the table's 1,024 rows: now counts the named Lights' steps. |
+
+A value driven across any of these between revisions is not said: a values-only frame keeps no node's diagnostics (T1646b).
+
+### 15.6 Where it departs from the brief and the rulings, for the lead
+
+- **The always-walked rows are three runs and two loops take two rows a turn**, where the brief had one plain loop: 15.2. Two of the header's spare words say where the runs end.
+- **A directional row's aim is not a unit vector when the CPU wrote it**: 15.4.
+- **The named rows' room is a step of 32, counted against the table's 1,024 rows**: a pointset Light may hold 992 points where it held 1,024.
+- **A Render with a lit Surface runs two dispatches a frame for its table whatever it holds** (the named rows' gather and the grid's build): a dispatch has no skip by value, and both pipelines must exist before the first Light is added. Row text for a skip went to the lead (T1642b).
+- **Every lit Surface draw binds one more storage buffer, the table**, where only a Render with a pointset Light's did. A fully attributed file mesh is then at the eight a stage is guaranteed.
+- **The text of an unlit Surface moved too**: it no longer declares the three uniform rows of each Light it never read (E13's wall).
+- **A tile's preview and a Render's lit draw are no longer one string** (ruled: previews keep their two stock lights). The gate that held them equal (T1292) now holds each to the generator call it must equal and one light's shading to the same characters in both.
+- **The grid's walk lost its kind test** (ruled: keep the cheaper): 15.3.
+
+### 15.7 Shipped frames, whole (measured)
+
+Each document through its tree's own `renderHeadless` (the value graph, a compile a frame, the animator), main's tree and this one loaded in one process and run in turn (main, mine, main, mine, main, mine, main), 120 frames a run after 12, every frame read back. The frame's GPU time is the extent from its first timed pass's start to its last one's end, read off the backend's own timestamp writes; the figure is the sum of the extents over the sum of the references. The machine was shared (reference 2.9 to 3.5 ms where it is 2.75 quiet), so each run's least contended tenth is given beside it.
+
+| Document | Named, casting | Before (four runs) | After (three runs) | Median | Least contended tenth |
+|---|---|---|---|---|---|
+| E20 Gooeyball | 2, 0 | 0.533, 0.394, 0.412, 0.393 | 0.503, 0.394, 0.392 | −4.5 % | −3.2 % |
+| E63 Skin | 2, 0 | 0.458, 0.468, 0.495, 0.485 | 0.460, 0.472, 0.476 | −2.7 % | −4.4 % |
+| E76 Verdant Lotus | 2, 1 (no lit Surface) | 5.78, 5.81, 6.61, 6.29 | 5.84, 5.79, 6.33 | −7.2 % | −0.3 % |
+| E79 Crucible | 5, 2 | 1.099, 0.955, 0.989, 0.966 | 0.999, 1.015, 1.063 | +2.6 % | +2.5 % |
+| on-nothing quad | 1, 0 and 0, 1 | 3.972, 4.016, 3.939, 3.970 | 4.079, 4.114, 4.072 | +2.7 % | +2.4 % |
+| on-nothing mcu2 | 9, 0 | 13.10, 13.24, 13.54, 13.15 | 13.35, 13.51, 13.10 | +0.8 % | +1.6 % |
+| the consumer (sentinel), as it stands at main `fd871e17` | 3 with a Range and a sun, 1, and two sets | 3.197, 3.240, 3.199, 3.183 | 3.162, 3.179, 3.162 | −1.1 % | −2.7 % |
+| E13 Prism | 1, 0 (no lit Surface) | 1.586, 1.562, 1.586 | 1.540, 1.593 | +0.5 % | +1.3 % |
+
+- **No frame moved by more than 3 %.** The two that moved the same way in every run are quad (one point light over file meshes under MSAA: the frame is its lit draw, and one light is where a row costs a tenth more than its block) and E79.
+- E20's frame is nineteen timestamp steps long: a step is 5 % of it, and only the sum over a run sees under one.
+- Raw medians of a run, as the reference moved between 2.9 and 4.5 ms: E20 1.2 to 1.8 ms a frame, E63 1.4 to 2.0, E76 16.7 to 21.6, E79 2.4 to 2.6, quad 11.9 to 13.0, mcu2 36 to 45, the consumer 9.1 to 9.4.
+- The consumer's document moved twice on main while this slice was built. Its row is the last version, timed on a quiet machine (reference 2.82 to 3.0 ms; 9.1 to 9.4 ms a frame raw). The version before it (three named Lights with a Range, one casting, one set) read 2.975, 2.841, 2.768, 2.980 before and 2.842, 2.781, 3.013 after.
+
+### 15.8 The first compile, cold (measured)
+
+A lit text that walks the table is longer than a text with one block and shorter than one with nine, and it is the same text at every count. Metal's cache on disk was defeated by adding one live float, new for every run, to each lit text; the machine was loaded (load average 14), so these are to be read as sizes, not as fine figures.
+
+The floor's lit pipeline alone, three processes, the first variant of each not read:
+
+| Lights | Blocks (main): characters, ms | The walk: characters, ms |
+|---|---|---|
+| 1 | 5,994: 73, 75, 74 | 21,798: 148, 130, 127 at any count |
+| 2 | 7,945: 85, 71, 147 | |
+| 4 | 11,847: 198, 114, 168 | |
+| 8 | 19,651: 217, 105, 211 | |
+| 9 | 21,926: 250, 164, 214 | |
+| 16 | 35,871: 204, 179, 308 | |
+| 64 | 131,535: 645, 591, 771 | |
+
+A whole document's first compile (every shader module and pipeline the device was asked for, one frame rendered, main and this tree in turn three times):
+
+| Document | Before: pipelines, their ms, first build to last | After |
+|---|---|---|
+| E20 (one lit text: 6,965 characters to 17,726) | 10: 351, 247, 297 ms; 390, 282, 332 | 12: 352, 328, 368 ms; 404, 388, 411 |
+| E79 (one lit text: 21,933 to 30,005) | 38: 423, 284, 341 ms; 676, 427, 493 | 40: 458, 373, 425 ms; 668, 534, 601 |
+| the consumer (seven lit texts: 251,194 to 286,679) | 70: 2,919, 3,301, 2,935 ms; 3,361, 3,967, 3,410 | 72: 4,006, 3,155, 3,189 ms; 4,566, 3,734, 3,657 |
+
+- **A Render with one or two Lights compiles about 55 to 80 ms longer the first time**, once, and never again for a Light added. Ruled an accepted trade.
+- The two pipelines more are the named rows' gather and, where the Render had no table, the grid's build.
+
+### 15.9 Every shipped Render's picture, before and after (measured)
+
+Each of the 62 Renders of the shipped examples and projects (the starter component's is drawn through E47), its own target read back at frames 0 and 60 through each tree's own `renderHeadless`, main at `90156c33` against this tree, raw bytes. A step is one step of a half float's own bits.
+
+| Document | Render | Named, casting, sets | Passes | Frame 0 | Frame 60 |
+|---|---|---|---|---|---|
+| E13-Prism | render_shot | 1, 0, 0 | 47 to 47 | same bytes | same bytes |
+| E20-Gooeyball | render_shot | 2, 0, 0 | 14 to 18 | 32 of 3.7 M, 1 step | 34 of 3.7 M, 1 step |
+| E25-Stage | render_shota | 1, 0, 0 | 14 to 14 | same bytes | same bytes |
+| E25-Stage | render_shotb | 1, 0, 0 | 14 to 14 | same bytes | same bytes |
+| E27-Relief | render_shot | 0, 0, 0 | 32 to 32 | same bytes | same bytes |
+| E28-Sundial | render_shot | 0, 1, 0 | 22 to 26 | 115 of 5.3 M, 1 step | 108 of 5.3 M, 1 step |
+| E30-Nave | render_shot | 0, 0, 0 | 14 to 14 | same bytes | same bytes |
+| E33-Obol | render_shot | 2, 1, 0 | 41 to 45 | 103 of 3.7 M, 1 step | 118 of 3.7 M, 1 step |
+| E34-Lidar | render_shot | 1, 1, 0 | 62 to 66 | 105 of 3.7 M, 1 step | 117 of 3.7 M, 1 step |
+| E36-Facade | render_shot | 1, 0, 0 | 27 to 31 | same bytes | 1 of 3.7 M, 1 step |
+| E37-Sirocco | render_shot | 0, 0, 0 | 18 to 18 | same bytes | same bytes |
+| E41-Cinder | render_shot | 0, 0, 0 | 31 to 31 | same bytes | same bytes |
+| E42-Current | render_shot | 1, 0, 0 | 20 to 20 | same bytes | same bytes |
+| E45-Pulse | render_shotA | 0, 0, 0 | 33 to 33 | same bytes | same bytes |
+| E45-Pulse | render_shotB | 0, 0, 0 | 33 to 33 | same bytes | same bytes |
+| E47-Hologram | render_shot | 0, 0, 0 | 45 to 45 | same bytes | same bytes |
+| E48-Marionette | render_shot | 0, 0, 0 | 13 to 13 | same bytes | same bytes |
+| E54-Quorum | render_nodes | 0, 0, 0 | 34 to 34 | same bytes | same bytes |
+| E54-Quorum | render_webs | 0, 0, 0 | 34 to 34 | same bytes | same bytes |
+| E63-Skin | render_shot | 2, 0, 0 | 18 to 22 | 38 of 3.7 M, 1 step | 37 of 3.7 M, 1 step |
+| E69-Burnish | render_shot | 0, 1, 0 | 28 to 32 | 61 of 3.7 M, 1 step | 70 of 3.7 M, 1 step |
+| E75-Resonance | render_lightshot | 0, 0, 0 | 145 to 149 | same bytes | same bytes |
+| E75-Resonance | render_shot | 2, 2, 0 | 145 to 149 | 7 of 3.7 M, 1 step | 4 of 3.7 M, 1 step |
+| E76-Verdant-Lotus | render_lightshot | 0, 0, 0 | 129 to 129 | same bytes | same bytes |
+| E76-Verdant-Lotus | render_shot | 2, 1, 0 | 129 to 129 | same bytes | same bytes |
+| E77-Ember-Monoliths | render_lightshot | 0, 0, 0 | 225 to 229 | same bytes | same bytes |
+| E77-Ember-Monoliths | render_shot | 2, 1, 0 | 225 to 229 | 74 of 3.7 M, 1 step | 73 of 3.7 M, 1 step |
+| E78-Aether-Orrery | render_lightshot | 0, 0, 0 | 241 to 245 | same bytes | same bytes |
+| E78-Aether-Orrery | render_shot | 2, 1, 0 | 241 to 245 | 14 of 3.7 M, 1 step | 10 of 3.7 M, 1 step |
+| E79-Crucible | render_shot | 5, 2, 0 | 122 to 126 | 86 of 3.7 M, 1 step | 84 of 3.7 M, 1 step |
+| furnace/furnace | render_shot | 2, 5, 0 | 125 to 129 | 418 of 8.3 M, 2 steps | 408 of 8.3 M, 1 step |
+| furnace/furnace | render_sunshot | 0, 0, 0 | 125 to 129 | same bytes | same bytes |
+| on-nothing/cards | render_type | 0, 0, 0 | 12 to 16 | same bytes | same bytes |
+| on-nothing/crt | render_shot | 6, 2, 0 | 93 to 97 | 76 of 6.3 M, 1 step | 76 of 6.3 M, 1 step |
+| on-nothing/cyc-wide | render_shot | 1, 6, 0 | 65 to 69 | 319 of 6.3 M, 1 step | 378 of 6.3 M, 1 step |
+| on-nothing/cyc | render_shot | 0, 6, 0 | 54 to 58 | 341 of 6.3 M, 1 step | 312 of 6.3 M, 1 step |
+| on-nothing/halo | render_shot | 4, 0, 0 | 57 to 61 | 11 of 6.3 M, 1 step | 10 of 6.3 M, 1 step |
+| on-nothing/hands | render_shot | 2, 0, 0 | 54 to 58 | 255 of 6.3 M, 1 step | 276 of 6.3 M, 1 step |
+| on-nothing/incar | render_paneshot | 0, 0, 0 | 246 to 254 | same bytes | same bytes |
+| on-nothing/incar | render_shot | 7, 2, 0 | 246 to 254 | 29 of 6.3 M, 1 step | 23 of 6.3 M, 1 step |
+| on-nothing/lights | render_shot | 2, 1, 0 | 66 to 70 | 260 of 6.3 M, 1 step | 285 of 6.3 M, 1 step |
+| on-nothing/mcu | render_shot | 5, 0, 0 | 36 to 40 | 64 of 6.3 M, 1 step | 66 of 6.3 M, 1 step |
+| on-nothing/mcu2 | render_shot | 9, 0, 0 | 108 to 112 | 15 of 6.3 M, 1 step | 31 of 6.3 M, 1 step |
+| on-nothing/mirror | render_shot | 0, 1, 0 | 43 to 47 | 373 of 6.3 M, 1 step | 329 of 6.3 M, 1 step |
+| on-nothing/pendant | render_shot | 3, 0, 0 | 43 to 47 | 163 of 6.3 M, 1 step | 146 of 6.3 M, 1 step |
+| on-nothing/prism | render_shot | 2, 0, 0 | 63 to 71 | same bytes | 99 of 6.3 M, 1 step |
+| on-nothing/prism | render_wallshot | 0, 1, 0 | 63 to 71 | 529 of 25.1 M, 1 step | 446 of 25.1 M, 1 step |
+| on-nothing/quad | render_backview | 0, 1, 0 | 50 to 58 | same bytes | same bytes |
+| on-nothing/quad | render_shot | 1, 0, 0 | 50 to 58 | 1 of 6.3 M, 1 step | 1 of 6.3 M, 1 step |
+| on-nothing/ring | render_shot | 3, 0, 0 | 33 to 37 | 4 of 6.3 M, 1 step | 8 of 6.3 M, 1 step |
+| on-nothing/sleep-like-a-baby-2 | render_stage | 1, 1, 0 | 44 to 48 | 2 of 8.3 M, 1 level of 255 | 2 of 8.3 M, 1 level of 255 |
+| on-nothing/sleep-like-a-baby | render_stage | 1, 0, 0 | 22 to 26 | same bytes | same bytes |
+| on-nothing/sneaker | render_shot | 8, 1, 0 | 112 to 116 | 28 of 6.3 M, 1 step | 30 of 6.3 M, 1 step |
+| on-nothing/split | render_carshot | 2, 0, 0 | 92 to 100 | 261 of 6.3 M, 1 step | 224 of 6.3 M, 2 steps |
+| on-nothing/split | render_floorshot | 0, 1, 0 | 92 to 100 | 319 of 6.3 M, 1 step | 250 of 6.3 M, 1 step |
+| on-nothing/tableau | render_shot | 5, 2, 0 | 213 to 217 | 30 of 6.3 M, 1 step | 51 of 6.3 M, 1 step |
+| on-nothing/title | render_glassshot | 0, 0, 0 | 200 to 204 | same bytes | same bytes |
+| on-nothing/title | render_shot | 9, 4, 0 | 200 to 204 | 9 of 6.3 M, 1 step | 14 of 6.3 M, 1 step |
+| on-nothing/wheel | render_shot | 1, 1, 0 | 151 to 155 | 110 of 6.3 M, 1 step | 107 of 6.3 M, 1 step |
+| on-nothing/wide | render_shot | 5, 2, 0 | 213 to 217 | 61 of 6.3 M, 1 step | 54 of 6.3 M, 1 step |
+| on-nothing/zoom | render_shot | 5, 2, 0 | 213 to 217 | 46 of 6.3 M, 1 step | 49 of 6.3 M, 2 steps |
+| sentinel-bot/sentinel | render_shot | 4, 1, 2 | 126 to 130 | 94 of 3.7 M, 1 step | 125 of 3.7 M, 1 step |
+
+- **25 Renders are the same bytes at both frames**: the Renders that list no Light, those whose Surfaces take none (unlit, glass) or that draw primitive instances alone (which read their Lights as they did), and two that are lit and did not move by a stored bit: quad's back view (one casting Light) and sleep-like-a-baby (an 8-bit target).
+- **37 moved, 34 of them by one step at most.** A Render moves where its lit Surface's text moved: the walk sums in the table's order, and a casting Light's block stands under a guard.
+- **Three hold ONE channel value that moved by two steps**: on-nothing zoom (frame 60) and the car shot of split (frame 60), where main's own tree with every light block guarded and nothing else changed moves the same pixel by the same two steps; and the furnace (frame 0), where the guard alone also moves one value by two steps, at another pixel. In all three it is B260's guard, which this slice puts on every casting block: a block under a test is compiled with another order of operations, and a glossy lobe's denominator is a difference of near-equal numbers.
+- **The consumer's Render**: 94 and 125 channel values of 3.7 million, each by one step; in its last version on main (`fd871e17`) 99 and 119, each by one step. Its finished frame, behind its own finishing chain, differs in 28 and 38 values, by up to five steps at frame 0 and two at frame 60: the chain enlarges a last-bit move in its darkest pixels (the largest is 2.4e-4).
+
+### 15.10 Tests, and what was seen red
+
+- **New**: `light-rows.test.ts` (16 tests, no GPU) and `light-rows.gpu.test.ts` (10 on Dawn), over the fixture's floor under Lights in Single mode (`namedLights`).
+- **The property, as stated in 11.1**: the lit module is ONE string at 0, 1, 8 and 64 Lights that do not cast, of every mix of kinds, beside a pointset Light or not; the whole plan's structure is the same inside a step of the named rows; and on the mock device a Light added, removed, re-ordered or re-typed, and every one taken out, creates no shader module and no pipeline, while the table's header is written with the new count.
+- **On Dawn**: a named point light, a sun and a spot each by the Render's own arithmetic, through its own walk, with the header read back off the device; a named Light with a Range through the grid, exactly nothing beyond it, the picture through one cell the same bytes, and a sun beside it taken once; two Lights swapped in the list the same bytes, three the list's picture whatever their nodes are called, and backwards within one step of a half float; a driven Intensity as it moves and a Type driven through sun, point and spot, each frame the bytes of that Type stored; forty Lights (two steps) with and without a Range, the second word of a cell's mask read back; nine Lights in Points mode in one Render; a Render with no light, the ambient alone; a casting sun's block and a named row in one sum; a Surface and a primitive instance under one named Light, each by its own distance, and under a named Spot, where the instance has no cone.
+- **Moved to the new plan**: `light-points.test.ts` (31) and `light-points.gpu.test.ts` (25): the pass ids, the header, the table's room, the limits. The test that switched a Type by writing one float into the Light's resolve pass behind the Render's back now drives the Type as the app's frames do.
+- **Claims re-derived, not loosened**: `scene-pipeline.test.ts` (a light reaches the Render as a row; list order is the order of the rows of one run), `e20-gooeyball.test.ts` (two rows, the fill ahead of the key), `scene-preview.test.ts` (T1292: each of the tile's and the Render's text equals the generator call it must, and one light's shading is the same characters in both), `camera-wiring.gpu.test.ts` (a camera edit writes two passes: the lit draw and the grid's build).
+- **B260's gate counts rows**: 15.2. Its eighteen digests did not move; what they pin is now the text with no light table.
+- **§V1029's ledger**: `render.lights` left `NOT_YET_DATA` and is flat, with no pass, no member and no byte a Light. `render.lights/Lights in Points mode` is flat with two passes a Light, where it was 357 bytes of the gather's text a Light and refused past seven. The two casting debts stay, their smaller number up by the guard's 36 bytes (3,860 to 3,896; 3,835 to 3,871) and their larger unmoved. The positive control is the instances generator's blocks now.
+- **49 mutations of the product, one at a time, 48 seen red.** Not red: the shadow matte's text unrolling a block for every Light (its uniform rows are then unused and its picture is the same: a cost in bytes that no picture shows).
+- **Pins re-taken, each with its reason beside it**: the five example fingerprints of `light-points.test.ts`, six of the seven one-sheet programs of `grid-sheets.test.ts`, the five whole plans of `grid-uv.test.ts`.
+
+### 15.11 Not checked, and found on the way
+
+- **E13's one Light lights nothing.** Its Surfaces are unlit and glass and its other draws unlit beams and points: a Light listed by a Render that no draw can be lit by. Stored and inert.
+- **The furnace Render is not the same picture run to run** on main: two renders of main's own tree differ in its sparks by up to 493 steps of a half float at frame 30 (and by none in other pairs of runs). The comparison of 15.9 happened to fall on agreeing runs.
+- **A named Light with a Range that covers the picture costs more as a row than as a block**: 15.3.
+- The inspector's rows (the Cone of a Spot in Single mode is live now; the reason a casting spot's is not); the Problems pane showing the two warnings; a browser; a second GPU.
+- A named spot beside a pointset Light with no Range, both in the any-kind run: each kind is held alone, the two together were not rendered.
+- The driven cases of the two warnings (T1646b).

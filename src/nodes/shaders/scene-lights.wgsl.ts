@@ -4,26 +4,31 @@ import { regionAccessorWgsl, regionStoreWgsl } from "../../points/packing.ts";
 import { packedAccessorWgsl, packedBindingsWgsl, type PackedRead } from "./instance-resolve.wgsl.ts";
 
 /**
- * T1589b — LIGHTS FROM A POINTSET, the shader half
- * (docs/lights-from-pointset-design-2026-10-06.md, sections 2.4, 3.9 and 13).
+ * T1589b, T1623b — A RENDER'S LIGHT TABLE, the shader half
+ * (docs/lights-from-pointset-design-2026-10-06.md, sections 2.4, 3.9, 13, 14 and 15).
  *
- * A Light in Points mode is one light at every point of a pointset. Such lights are not
- * unrolled into the lit shader, a block each: they are ROWS OF DATA in a table the Render
- * owns, and the Render culls them on the GPU:
+ * The lights a Render shades by are not unrolled into its lit shader, a block each: they are
+ * ROWS OF DATA in a table the Render owns. A Light in Points mode is one row at every point
+ * of a pointset; a Light in Single mode that does not cast is one row (T1623b slice 3). The
+ * rows with a range are culled on the GPU:
  *
- *   light:lights:resolve     one invocation a point: the Light's values and its mapped
- *                            attributes become one RECORD a slot (this file, first)
- *   render:lights:gather     the Render copies the records of every pointset Light it lists
- *                            into ONE table, its own, so a lit draw binds one buffer
- *   render:lights:grid       one invocation a CELL of a grid over the view (tiles on screen
- *                            by slices in depth): it walks the table and keeps, as one bit
- *                            each, the lights whose range touches its box
- *   render:scene:<i>         the lit fragment finds its cell and walks the set bits
+ *   light:lights:resolve       one invocation a point: a Light in Points mode's values and
+ *                              its mapped attributes become one RECORD a slot (this file, first)
+ *   render:lights:header       the table's header, written as values (the buffer-values seam)
+ *   render:lights:named        the Render's named Lights, a record each, written as values
+ *                              into a buffer of the Render's own
+ *   render:lights:gather:<i>   one pass a SET (the named rows, then each pointset Light's):
+ *                              its records copied into ONE table, so a lit draw binds one buffer
+ *   render:lights:grid         one invocation a CELL of a grid over the view (tiles on screen
+ *                              by slices in depth): it walks the rows with a range and keeps,
+ *                              as one bit each, the lights whose range touches its box
+ *   render:scene:<i>           the lit fragment walks the rows that reach every pixel, then
+ *                              finds its cell and walks the set bits
  *
  * This table is where every light of the app is going (T1623b, the cure for B260,
- * docs/light-cost-investigation-2026-10-06.md section 11): a named Light as a set of one
- * row, a casting light as a row with a shadow slot, a projector as a row. So nothing here
- * is a side path, and three rules hold from the first slice:
+ * docs/light-cost-investigation-2026-10-06.md section 11): a casting light as a row with a
+ * shadow slot (slices 4 and 5), a projector as a row (slice 6). So nothing here is a side
+ * path, and three rules hold from the first slice:
  *
  * ## No text here holds a count of lights
  *
@@ -40,10 +45,12 @@ import { packedAccessorWgsl, packedBindingsWgsl, type PackedRead } from "./insta
  *                  pointset, a light with no intensity, a mapped range that came out at
  *                  nothing.
  *   color  vec4f   rgb: colour times intensity, linear. w: the falloff law (1 inverse square).
- *   aim    vec4f   xyz: the way the light travels, a unit vector: a directional light's
- *                  Direction, a spot's axis. w: the cosine of a spot's OUTER half-angle,
- *                  where its light reaches zero; −2 for a row with no cone (a cosine no
- *                  direction is under).
+ *   aim    vec4f   xyz: the way the light travels: a directional light's Direction, a spot's
+ *                  axis. A SPOT's is a unit vector (its cone is measured against it). A
+ *                  directional row's may be of any length: its reader normalises it, and a
+ *                  named Light's is written as authored (`namedLightRecord` says why).
+ *                  w: the cosine of a spot's OUTER half-angle, where its light reaches zero;
+ *                  −2 for a row with no cone (a cosine no direction is under).
  *   cone   vec4f   x: the cosine of the cone's INNER half-angle, inside which the light is
  *                  whole; −1 for a row with no cone.
  *                  y: the KIND: 0 directional, 1 point, 2 spot. A VALUE, never text:
@@ -55,12 +62,15 @@ import { packedAccessorWgsl, packedBindingsWgsl, type PackedRead } from "./insta
  *
  * ## The table: a header, the records row by row, the cells
  *
- *   words 0..3     the HEADER: [0] rows of the table, [1] words a cell (one bit a row),
- *                  [2] where the cells start, as a word index, [3] spare, zero. Written by
- *                  the gather every frame from its uniform values; read by the grid build
- *                  and by every lit fragment. This is where the loops get their bounds.
+ *   words 0..7     the HEADER (`LIGHT_TABLE_HEADER`): [0] the rows a region holds (the
+ *                  table's capacity), [1] words a cell (one bit a row), [2] where the cells
+ *                  start, as a word index, [3] how many rows reach every pixel: the first
+ *                  ones; [4] how many rows are live this frame, [5] where the always-walked
+ *                  rows of any kind end, [6] where the point rows after them end, [7] spare.
+ *                  Written by the CPU every frame as values; read by the gather, the grid
+ *                  build and every lit fragment. This is where the loops get their bounds.
  *   then           every record's `place`, then every `color`, every `aim`, every `cone`:
- *                  four words a row, `rows` of each
+ *                  four words a row, a region of the table's capacity each
  *   then           the cells: `words` words each, cell after cell
  *
  * The table keeps each ROW of the records together, and a Light's own buffer keeps each
@@ -74,11 +84,9 @@ import { packedAccessorWgsl, packedBindingsWgsl, type PackedRead } from "./insta
  * reach of every pixel the two cost the same. Where a row's region starts follows from the
  * header's row count, so it is in no text.
  *
- * For the rows a CPU will write (named Lights, T1623b, through the buffer-values seam): a
- * region of rows here is four byte ranges, one a row of the record, so it is four writes of
- * four-float rows; or the rows are written whole, 64 bytes each, into a buffer laid out as a
- * Light's own is and gathered like any set. The header's fourth word is spare for a count
- * the lit walk reads; the gather writes zero there today.
+ * The rows a CPU writes (the named Lights, through the buffer-values seam) are written
+ * WHOLE, 64 bytes each, into a buffer laid out as a Light's own is, and gathered like any
+ * set: the table's own layout is then one writer's concern, the gather's.
  *
  * Two views of the one buffer. The passes that WRITE it see words (`array<u32>`): the build's
  * invocations each own one cell's words, and a write of one component of a four-word element
@@ -112,10 +120,11 @@ import { packedAccessorWgsl, packedBindingsWgsl, type PackedRead } from "./insta
  *
  * ## Rows a grid cannot leave out
  *
- * A directional light, and a point light with no Range, reach every pixel. Their range is 0
- * and the build sets their bit in every cell. T1623b's third slice gives such rows a region
- * of their own, walked by a plain loop whose count is a value; until then they are walked
- * from the cells like any other, which is right and merely slower when there are many.
+ * A directional light, and a point or spot light with no Range, reach every pixel. They are
+ * the FIRST rows of the table (`always` of them), no cell holds them, and the lit draw walks
+ * them with loops of their own (`lightTableWalkWgsl`). Which rows those are is a VALUE of the
+ * frame (a Type, a Range), so the Render orders its rows every frame and says where each run
+ * ends in the header: a Light that gains a Range moves in the table and compiles nothing.
  */
 
 /** A record's four rows, in order: 16 bytes each, 64 a record. */
@@ -124,11 +133,35 @@ type RecordRow = (typeof RECORD_ROWS)[number];
 /** Bytes a record. */
 export const LIGHT_RECORD_BYTES = RECORD_ROWS.length * 16;
 /** Words of the table's header, in front of its records. */
-export const LIGHT_TABLE_HEADER_WORDS = 4;
+export const LIGHT_TABLE_HEADER_WORDS = 8;
 
-/** The binding names the three passes and the lit draw use. */
+/**
+ * The header's words, in order: what `lightTableHeader` writes and every reader indexes.
+ * `regionRows` is the table's CAPACITY in rows (a region of each record row is that long);
+ * `rows` is how many are live this frame, `always` how many of those, the first ones, reach
+ * every pixel. The last three words are spare.
+ */
+export const LIGHT_TABLE_HEADER = { regionRows: 0, words: 1, cells: 2, always: 3, rows: 4, general: 5, points: 6 } as const;
+/** The header as the eight whole numbers a `write` pass carries. */
+export function lightTableHeader(values: {
+  readonly regionRows: number;
+  readonly words: number;
+  readonly cells: number;
+  readonly always: number;
+  readonly rows: number;
+  readonly general: number;
+  readonly points: number;
+}): number[] {
+  return [values.regionRows, values.words, values.cells, values.always, values.rows, values.general, values.points, 0];
+}
+/** Rows a turn of a loop of the lit walk that is written for one kind: see `lightTableWalkWgsl`. */
+export const LIGHT_ROWS_A_TURN = 2;
+
+/** The binding names the passes and the lit draw use. */
 export const LIGHT_RECORDS_BINDING = "lightRecords";
 export const LIGHT_TABLE_BINDING = "lightTable";
+/** The one set of records a gather pass copies from. */
+export const LIGHT_SET_BINDING = "lightSet";
 export const LIGHT_SOURCE_PREFIX = "lightSource";
 export const LIGHT_LIVE_BINDING = "liveCount";
 /** The lit draw's binding number for the table: clear of the mesh rows (100–104), the frame block (120) and the instance buffers (130…). */
@@ -168,6 +201,7 @@ function tableElementReadWgsl(name: string, row: RecordRow): string {
   const region = RECORD_ROWS.indexOf(row);
   const header = LIGHT_TABLE_HEADER_WORDS / 4;
   const at = region === 0 ? `${header}u + slot` : `${header}u + ${LIGHT_TABLE_BINDING}[0].x * ${region}u + slot`;
+  /* `[0].x` is the header's first word: the rows a region holds. */
   return `fn ${name}(slot: u32) -> vec4f {
   return bitcast<vec4f>(${LIGHT_TABLE_BINDING}[${at}]);
 }`;
@@ -316,73 +350,50 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 /* 2. the Render's gather                                                                */
 /* ------------------------------------------------------------------------------------ */
 
-export interface LightGatherOptions {
-  /** How many pointset Lights the Render lists: one record buffer each, bound as `lightSource0..`. */
-  readonly sources: number;
-}
-
-/** The uniform row that says where a source's records go: `source0`, `source1`, … */
-export const lightGatherSourceUniform = (index: number): string => `source${index}`;
-
 /**
- * Every pointset Light's records, copied one after the other into the Render's table, each
- * row stamped with the number of the Light it came from; and the table's HEADER, from which
- * the grid build and every lit fragment read their loop bounds. A lit draw may bind ONE more
- * buffer (a fully attributed mesh Surface is at seven of the eight a stage is guaranteed,
- * §V588), so the table is what it binds, whatever the Lights are.
+ * ONE SET of records copied into the Render's table: a pointset Light's, or the Render's own
+ * named Lights'. A lit draw may bind ONE more buffer (a fully attributed mesh Surface is at
+ * seven of the eight a stage is guaranteed, §V588), so the table is what it binds, whatever
+ * the Lights are.
  *
- * Its text follows how many Lights are gathered (a binding each). Where each Light's rows
- * go, how many it has, the size of the table and of a cell are all values.
+ * ONE TEXT for every set of every Render (T1628b): a pass a set, each binding the table and
+ * its own records. So a Render gathers as many sets as it lists, and the only limit left is
+ * the table's rows. Where a set's rows go in the table and how many it has are VALUES: a set
+ * moves in the table from one frame to the next when what it holds starts or stops reaching
+ * every pixel (see "Rows a grid cannot leave out").
+ *
+ * THE SOURCE NUMBER of a row is the set's own (`source.z`) added to the record's: a pointset
+ * Light's records carry 0 and take their Light's number here; a Render's named rows carry
+ * each its own Light's number, and their set adds 0.
  */
 export const lightGatherWgsl = generatedOnce("lightGatherWgsl", buildLightGatherWgsl);
-function buildLightGatherWgsl(options: LightGatherOptions): EmittedWgsl {
-  const indices = Array.from({ length: options.sources }, (_, index) => index);
+function buildLightGatherWgsl(): EmittedWgsl {
   const accessors = [
-    ...indices.flatMap((index) => RECORD_ROWS.map((row) => regionAccessorWgsl(`source${titled(row)}${index}`, `${LIGHT_SOURCE_PREFIX}${index}`, rowOf(row)))),
-    /* This pass writes the header, so it takes the row count from its own values, not from the table. */
-    ...RECORD_ROWS.map((row) => tableStoreWgsl(`store${titled(row)}`, row, "params.count")),
+    ...RECORD_ROWS.map((row) => regionAccessorWgsl(`set${titled(row)}`, LIGHT_SET_BINDING, rowOf(row))),
+    ...RECORD_ROWS.map((row) => tableStoreWgsl(`store${titled(row)}`, row, `${LIGHT_TABLE_BINDING}[${LIGHT_TABLE_HEADER.regionRows}]`)),
   ].join("\n\n");
-  const copies = indices
-    .map((index) => {
-      const source = `params.${lightGatherSourceUniform(index)}`;
-      return `  {
-    let first = u32(${source}.x);
-    if (slot >= first && slot < first + u32(${source}.y)) {
-      let own = slot - first;
-      storePlace(slot, sourcePlace${index}(own));
-      storeColor(slot, sourceColor${index}(own));
-      storeAim(slot, sourceAim${index}(own));
-      storeCone(slot, vec4f(sourceCone${index}(own).xyz, ${source}.z));
-      return;
-    }
-  }`;
-    })
-    .join("\n");
   return wgsl`struct LightGatherParams {
-${indices.map((index) => `  ${lightGatherSourceUniform(index)}: vec4f,          // x: the table row its records start at. y: how many. z: its Light's number in the Render's Lights\n`).join("")}  count: u32,               // rows of the table
-  words: u32,               // words a cell: one bit a row
-  cells: u32,               // where the cells start, as a word index
+  source: vec4f,            // x: the table row its records go to. y: how many of them. z: added to each row's source number
 };
 
 @group(0) @binding(0) var<uniform> params: LightGatherParams;
 @group(0) @binding(1) var<storage, read_write> ${LIGHT_TABLE_BINDING}: array<u32>;
-${indices.map((index) => `@group(0) @binding(${2 + index}) var<storage, read> ${LIGHT_SOURCE_PREFIX}${index}: array<u32>;\n`).join("")}
+@group(0) @binding(2) var<storage, read> ${LIGHT_SET_BINDING}: array<u32>;
+
 ${accessors}
 
 @compute @workgroup_size(${LIGHT_WORKGROUP})
 fn main(@builtin(global_invocation_id) gid: vec3u) {
   let slot = gid.x;
-  /* The header, once a frame: what every later reader of the table takes its bounds from. */
-  if (slot == 0u) {
-    ${LIGHT_TABLE_BINDING}[0] = params.count;
-    ${LIGHT_TABLE_BINDING}[1] = params.words;
-    ${LIGHT_TABLE_BINDING}[2] = params.cells;
-    ${LIGHT_TABLE_BINDING}[3] = 0u;
-  }
-  if (slot >= params.count) {
+  if (slot >= u32(params.source.y)) {
     return;
   }
-${copies}
+  let row = u32(params.source.x) + slot;
+  storePlace(row, setPlace(slot));
+  storeColor(row, setColor(slot));
+  storeAim(row, setAim(slot));
+  let cone = setCone(slot);
+  storeCone(row, vec4f(cone.xyz, cone.w + params.source.z));
 }`;
 }
 
@@ -466,21 +477,26 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let w1 = select(z1, 1.0, orthographic);
   let low = vec3f(min(x0 * w0, x0 * w1), min(y0 * w0, y0 * w1), z0);
   let high = vec3f(max(x1 * w0, x1 * w1), max(y1 * w0, y1 * w1), z1);
-  /* Every bound is read from the table: this text holds no count of lights. */
-  let rows = ${LIGHT_TABLE_BINDING}[0];
-  let words = ${LIGHT_TABLE_BINDING}[1];
-  let cells = ${LIGHT_TABLE_BINDING}[2];
+  /* Every bound is read from the table: this text holds no count of lights. The rows that
+     reach every pixel are the first ones, and no cell holds them: the lit draw walks them
+     with a loop of their own. */
+  let words = ${LIGHT_TABLE_BINDING}[${LIGHT_TABLE_HEADER.words}];
+  let cells = ${LIGHT_TABLE_BINDING}[${LIGHT_TABLE_HEADER.cells}];
+  let always = ${LIGHT_TABLE_BINDING}[${LIGHT_TABLE_HEADER.always}];
+  let rows = ${LIGHT_TABLE_BINDING}[${LIGHT_TABLE_HEADER.rows}];
   for (var word = 0u; word < words; word++) {
     var bits = 0u;
     let first = word * 32u;
     let last = min(first + 32u, rows);
-    for (var slot = first; slot < last; slot++) {
+    for (var slot = max(first, always); slot < last; slot++) {
       let place = lightPlaceAt(slot);
       /* Off: in no cell. */
       if (place.w < 0.0) {
         continue;
       }
-      /* Unlimited (a point light with no Range, a directional light): in every cell. */
+      /* A row with no range past the always-walked ones is in every cell: none should be
+         there (the Render puts them first), and one that is still lights, as the placed
+         light the walk takes every row of a cell for. */
       if (place.w > 0.0) {
         let world = vec4f(place.xyz, 1.0);
         let clip = params.viewProjection * world;
@@ -519,12 +535,16 @@ ${LIGHT_SLICE_WGSL}`;
 }
 
 /**
- * The walk, in the fragment stage: this pixel's cell, then one turn of `block` for every
- * light whose bit is set and whose range holds the fragment.
+ * THE WALK, in the fragment stage: `block` once for every row of the table that lights this
+ * fragment. ONE string, whatever the table holds: every bound is read from its header.
+ *
+ *  - THE ROWS THAT REACH EVERY PIXEL, the first `always` rows, in three runs (below).
+ *  - THE ROWS WITH A RANGE: the set bits of this pixel's cell, each left at once when its
+ *    range does not hold the fragment. Skipped whole when the table has none.
  *
  * `block` is the lit generator's OWN light block, handed the three rows it reads as
- * expressions: there is one emitter of a light's shading, and a Light in Single mode and a
- * row of the table differ only in where their rows come from. A row's colour already
+ * expressions: there is one emitter of a light's shading, and a block of a casting Light
+ * and a row of the table differ only in where their rows come from. A row's colour already
  * carries its intensity, so the block's intensity slot is free and carries what a spot's
  * cone leaves of the light: its `lightMeta` is (kind, share, law, range), the share 1 for a
  * row with no cone. Its vector is where it stands, or for a directional row the way it
@@ -536,60 +556,145 @@ ${LIGHT_SLICE_WGSL}`;
  * cone leaves nothing for is left before the row's colour is read. A spot is in every cell
  * its RANGE sphere touches: the build does not know its cone (T1625b).
  *
- * ONE SHAPE: the cone of EVERY row is tested, whatever its kind. A row with no cone holds
- * two cosines that leave all of its light (`LIGHT_NO_CONE`: no direction's cosine is under
- * −2), so its share is exactly 1 and its picture the one it had. The walk that tested only
- * the rows that are spots was measured beside this one (alternated in one process, a
- * reference pass beside every frame, the same pictures): a point row costs the same either
- * way (0.67 and 0.69 of the reference against 0.68 and 0.65, at 64 lights that all reach
- * every pixel), and a spot of Cone 30 costs 0.27 to 0.29 here against 0.43 to 0.44 there.
- * A second branch on the kind is what cost.
+ * ## The rows with a range are placed lights: their kind is not asked
  *
- * The walk's bounds are read from the table's header: how many words a cell has, and where
- * the cells start. One turn is one light, so there is no chain of sums across lights for a
- * compiler to sink (B260).
+ * A directional light has no range, so the Render stands every one of them among the
+ * always-walked rows, by the Light's own values, every frame it compiles. A row found
+ * through a cell is therefore a point light or a spot: its vector is its place, and the
+ * turn does not test its kind. Measured 2026-10-06 beside the turn that did (the same
+ * method as below, lights with a Range that all reach every pixel, three takes, the same
+ * pictures): 2.25, 2.19 and 2.54 of the reference against 2.41, 2.43 and 2.91 at 64 lights,
+ * and 9.13, 8.70 and 8.70 against 9.77, 9.59 and 9.31 at 256. A directional row written
+ * past the always-walked ones by some other hand would be shaded as a light at its place:
+ * nothing in the app writes one there.
  *
- * The range test comes first, so a light the cell holds and this fragment does not see
- * costs a load and a dot. It can skip nothing that would have shown: at its range the
- * block's own window is zero.
+ * ## Every row's cone is tested, where rows of more than one kind are walked
+ *
+ * The rows found through the grid, and the first run of the always-walked rows (a pointset's
+ * rows that reach every pixel, a named spot with a cone and no Range), are walked by ONE
+ * shape of turn whether the row has a cone or not: it is tested, and a row with no cone holds two
+ * cosines that leave all of its light (`LIGHT_NO_CONE`: no direction's cosine is under −2),
+ * so its share is exactly 1 and its picture the one it had. The walk that tested only the
+ * rows that are spots was measured beside this one (T1589b slice 2; alternated in one
+ * process, a reference pass beside every frame, the same pictures): a point row costs the
+ * same either way (0.67 and 0.69 of the reference against 0.68 and 0.65, at 64 lights that
+ * all reach every pixel), and a spot of Cone 30 costs 0.27 to 0.29 here against 0.43 to 0.44
+ * there. A second branch on the kind is what cost.
+ *
+ * ## The named point lights and the named suns: a loop each, TWO ROWS A TURN
+ *
+ * MEASURED, NOT REASONED (2026-10-06; Apple GPU under Metal through Dawn; the lit draw alone
+ * of a PBR floor filling 7680 x 4320, a fixed reference pass beside every frame, every form
+ * alternated with main's unrolled blocks in one process, two takes, the pictures the same to
+ * one half-float step). A Render's named Lights were unrolled blocks before T1623b, and
+ * nearly every shipped Render has one to nine of them with no Range, so a row there has to
+ * cost what a block cost. Over blocks, at 1, 2, 4, 8 and 9 lights (one or two suns, the rest
+ * point lights with no Range):
+ *
+ *   one loop for every row, kind and cone tested (the shape above)   +42 +50 +62 +62 +56 %
+ *   the same with the three reads' addresses hoisted by hand         no gain
+ *   the same with a branch on the kind around the aim and the cone   +43 to +50 % (the
+ *                                                                    compiler flattens it)
+ *   a loop a kind, one row a turn, an off test                       +16 +15 +17 +17 +13 %
+ *   a loop a kind, one row a turn, no off test                       +18 to +20 % at 1,
+ *                                                                    +8 to +16 % at 4, +2 % at 8
+ *   a loop a kind, TWO rows a turn, no off test                      +0 to +4 % at 1, equal
+ *                                                                    at 4 and 8, −7 % at 9
+ *   three and four rows a turn                                       the same as two
+ *   the first eight rows at literal row numbers, no loop             +5 +2 −4 −4 %; 31 KB of
+ *                                                                    text against 22
+ *
+ * So the kind test, the cone and the off test are what a row paid over a block, and they go
+ * where the CPU can sort the rows: a named Light's kind and whether it is off are values the
+ * Render has, so it orders its named rows by kind and leaves the off ones out of these runs.
+ * A point row reads its place and its colour; a sun its aim and its colour.
+ *
+ * WHY TWO ROWS A TURN COSTS LESS THAN ONE IS NOT KNOWN. The work a row is the same, and it
+ * was measured twice. Do not "simplify" the loops to one row a turn without measuring the
+ * same way. The second row of a turn stands under a test of the loop's bound, so each turn
+ * holds one light's sums in the open and one under a test: B260's chain (more than eight
+ * lights' sums in one straight line) cannot form at any count.
+ *
+ * As built, with the any-kind loop ahead of the two and the header's second row read: +12
+ * +14 +7 +3 −2 % at 1, 2, 4, 8 and 9, and −8, −16 and −25 % at 16, 32 and 64 against blocks
+ * each under B260's guard. What is left at 1 and 2 is in the two loops themselves (the
+ * any-kind loop and the ranged half taken out of the text: 0.364 of the reference against
+ * 0.373, and 0.335 for one block).
+ *
+ * THE ORDER OF THE SUMS is the table's: rows of any kind, point lights, suns, then the cell's
+ * bits by row number; within each the Render's list order. It differs from the order the
+ * blocks summed in (the list's), so a picture may move by the last bit of a half float where
+ * three or more lights meet.
  */
-export function lightGridLoopWgsl(block: (rows: { readonly meta: string; readonly color: string; readonly vector: string }) => string): string {
-  const turn = block({ meta: "vec4f(lightCone.y, lightShare, lightTone.w, lightPlace.w)", color: "lightTone", vector: "lightAt" })
-    .split("\n")
-    .map((line) => (line === "" ? line : `      ${line}`))
-    .join("\n");
+export function lightTableWalkWgsl(block: (rows: { readonly meta: string; readonly color: string; readonly vector: string }) => string): string {
+  const indented = (text: string, indent: string): string =>
+    text
+      .split("\n")
+      .map((line) => (line === "" ? line : `${indent}${line}`))
+      .join("\n");
+  /* A row of ANY kind, shaded, at an indent: the block comes with two spaces of its own. */
+  const ofAnyKind = block({ meta: "vec4f(lightCone.y, lightShare, lightTone.w, lightPlace.w)", color: "lightTone", vector: "lightAt" });
+  /* A row found through a cell is a PLACED light (see "The rows with a range"): its kind is not asked. */
+  const placed = block({ meta: "vec4f(1.0, lightShare, lightTone.w, lightPlace.w)", color: "lightTone", vector: "lightPlace" });
+  const row = (slot: string, ranged: boolean, indent: string): string => {
+    const lines = [
+      `let lightPlace = lightRecordPlace(${slot});`,
+      ...(ranged
+        ? []
+        : [
+            "/* A slot that is off: a dead point of a counted set. */",
+            "if (lightPlace.w < 0.0) {",
+            "  continue;",
+            "}",
+          ]),
+      "let lightReach = lightPlace.xyz - input.world;",
+      ...(ranged ? ["if (lightPlace.w > 0.0 && dot(lightReach, lightReach) >= lightPlace.w * lightPlace.w) {", "  continue;", "}"] : []),
+      `let lightCone = lightRecordCone(${slot});`,
+      `let lightAim = lightRecordAim(${slot});`,
+      ...(ranged ? [] : ["var lightAt = lightPlace;", "if (lightCone.y < 0.5) {", "  lightAt = lightAim;", "}"]),
+      "let lightOff = dot(-lightReach / max(length(lightReach), 1.0e-6), lightAim.xyz);",
+      "let lightFade = clamp((lightOff - lightAim.w) / max(lightCone.x - lightAim.w, 1.0e-6), 0.0, 1.0);",
+      "let lightShare = lightFade * lightFade * (3.0 - 2.0 * lightFade);",
+      "if (lightShare <= 0.0) {",
+      "  continue;",
+      "}",
+      `let lightTone = lightRecordColor(${slot});`,
+    ];
+    return `${lines.map((line) => `${indent}${line}`).join("\n")}\n${indented(ranged ? placed : ofAnyKind, indent.slice(2))}`;
+  };
+  /* The rows of ONE kind, from `first` up to `last`, `LIGHT_ROWS_A_TURN` of them a turn. */
+  const ofOneKind = (first: string, last: string, reads: readonly string[], rows: { readonly meta: string; readonly color: string; readonly vector: string }): string => {
+    const body = indented(block(rows), "      ");
+    const turn = (at: number): string => {
+      const lines = [`let lightRow = lightBase${at === 0 ? "" : ` + ${at}u`};`, ...reads].map((line) => `        ${line}`).join("\n");
+      return `${at === 0 ? "      {" : `      if (lightBase + ${at}u < ${last}) {`}\n${lines}\n${body}      }\n`;
+    };
+    return `    for (var lightBase = ${first}; lightBase < ${last}; lightBase += ${LIGHT_ROWS_A_TURN}u) {\n${Array.from({ length: LIGHT_ROWS_A_TURN }, (_, at) => turn(at)).join("")}    }\n`;
+  };
   return `  {
-    let lightTile = min(vec2u(input.position.xy * params.lightGrid.xy / params.lightLens.xy), vec2u(params.lightGrid.xy) - vec2u(1u));
-    let lightSlice = lightSliceOf(dot(params.lightDepth, vec4f(input.world, 1.0)), params.lightLens.zw, params.lightGrid.z, params.lightGrid.w > 0.5);
-    /* The header: x rows, y words a cell, z where the cells start (a word index). */
+    /* The header: x the rows a region holds, y the words of a cell, z where the cells start (a word index), w the rows that reach every pixel. */
     let lightHeader = ${LIGHT_TABLE_BINDING}[0];
-    let lightWords = lightHeader.y;
-    let lightCell = lightHeader.z + (lightTile.x + u32(params.lightGrid.x) * (lightTile.y + u32(params.lightGrid.y) * lightSlice)) * lightWords;
-    for (var lightWord = 0u; lightWord < lightWords; lightWord++) {
-      let lightWordAt = lightCell + lightWord;
-      var lightBits = ${LIGHT_TABLE_BINDING}[lightWordAt >> 2u][lightWordAt & 3u];
-      while (lightBits != 0u) {
-        let lightSlot = lightWord * 32u + countTrailingZeros(lightBits);
-        lightBits &= lightBits - 1u;
-        let lightPlace = lightRecordPlace(lightSlot);
-        let lightReach = lightPlace.xyz - input.world;
-        if (lightPlace.w > 0.0 && dot(lightReach, lightReach) >= lightPlace.w * lightPlace.w) {
-          continue;
-        }
-        let lightCone = lightRecordCone(lightSlot);
-        let lightAim = lightRecordAim(lightSlot);
-        var lightAt = lightPlace;
-        if (lightCone.y < 0.5) {
-          lightAt = lightAim;
-        }
-        let lightOff = dot(-lightReach / max(length(lightReach), 1.0e-6), lightAim.xyz);
-        let lightFade = clamp((lightOff - lightAim.w) / max(lightCone.x - lightAim.w, 1.0e-6), 0.0, 1.0);
-        let lightShare = lightFade * lightFade * (3.0 - 2.0 * lightFade);
-        if (lightShare <= 0.0) {
-          continue;
-        }
-        let lightTone = lightRecordColor(lightSlot);
-${turn}      }
+    /* And: x the rows that are live, y where the always-walked rows of any kind end, z where the point rows after them end. */
+    let lightParts = ${LIGHT_TABLE_BINDING}[1];
+    /* Rows of any kind that reach every pixel: a pointset's, a spot with no Range. */
+    for (var lightRow = 0u; lightRow < lightParts.y; lightRow++) {
+${row("lightRow", false, "      ")}    }
+    /* The point lights with no Range. */
+${ofOneKind("lightParts.y", "lightParts.z", ["let lightPlace = lightRecordPlace(lightRow);", "let lightTone = lightRecordColor(lightRow);"], { meta: "vec4f(1.0, 1.0, lightTone.w, 0.0)", color: "lightTone", vector: "lightPlace" })}    /* The directional lights. */
+${ofOneKind("lightParts.z", "lightHeader.w", ["let lightAim = lightRecordAim(lightRow);", "let lightTone = lightRecordColor(lightRow);"], { meta: "vec4f(0.0, 1.0, 0.0, 0.0)", color: "lightTone", vector: "lightAim" })}    /* The rows with a range, when the table has any. */
+    if (lightParts.x > lightHeader.w) {
+      let lightTile = min(vec2u(input.position.xy * params.lightGrid.xy / params.lightLens.xy), vec2u(params.lightGrid.xy) - vec2u(1u));
+      let lightSlice = lightSliceOf(dot(params.lightDepth, vec4f(input.world, 1.0)), params.lightLens.zw, params.lightGrid.z, params.lightGrid.w > 0.5);
+      let lightWords = lightHeader.y;
+      let lightCell = lightHeader.z + (lightTile.x + u32(params.lightGrid.x) * (lightTile.y + u32(params.lightGrid.y) * lightSlice)) * lightWords;
+      for (var lightWord = 0u; lightWord < lightWords; lightWord++) {
+        let lightWordAt = lightCell + lightWord;
+        var lightBits = ${LIGHT_TABLE_BINDING}[lightWordAt >> 2u][lightWordAt & 3u];
+        while (lightBits != 0u) {
+          let lightSlot = lightWord * 32u + countTrailingZeros(lightBits);
+          lightBits &= lightBits - 1u;
+${row("lightSlot", true, "          ")}        }
+      }
     }
   }
 `;

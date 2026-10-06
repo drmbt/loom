@@ -503,3 +503,12 @@ The fixture node is `compiler/buffer-write.fixture.ts` (a Table Probe: a scratch
 - `src/runtime/backend/vgpu/vgpu-backend.ts`: two imports; `applyUniforms` hands a pass with no block to the region path, and the region functions follow it (`regionsToWrite`, `regionPass`, `pendingRegions`, `applyRegionValues`, `writeBufferRegions`); one line in the boundary clear after the plain buffers are zeroed; `encodeSegmented`'s `deferred` rule leaves `write` out; one call after `uploadExternalBuffers`; `updateUniforms` accepts a region's pass id; `write` added to three lists of pass kinds that bind nothing.
 - `src/compiler/compile.ts`: `write` in `NODE_EMITTABLE_PASS_KINDS` and in one list of kinds with no textures. `src/app/animate-parameters.ts`: five lines in `blocksOf`. `src/editor/inspect/pipeline-model.ts`, `pipeline-panel.tsx`, `pipeline-track.tsx`: one case and two map entries, which the type checker asked for.
 - Everything else is in the new file `src/runtime/backend/buffer-write.ts`.
+
+## 14. Slice 3 as built: a named Light that does not cast is a row
+
+Built, measured and written up in `docs/lights-from-pointset-design-2026-10-06.md`, section 15. Where it differs from 11.2 as designed:
+
+- **The always-walked rows are three runs, not one loop**: rows of any kind, the named point lights with no Range, the named suns, the last two in loops written for their kind that take two rows a turn. One plain loop cost three fifths more than the blocks it replaced at one to nine lights; this form costs 12 and 14 % more at one and two, 7 and 3 % more at four and eight, and less from nine up (15.2 there, with everything that was tried).
+- **A named Light's row is a whole record in a buffer of the Render's own, gathered like any set**, not four writes into the table's regions (ruled). So a Render with a lit Surface runs a gather and the grid's build every frame, whatever its table holds.
+- **The property of 11.1 holds for the Lights that do not cast** and is gated as stated: one lit string at 0, 1, 8 and 64 of any mix, and on the mock device no shader module and no pipeline for a Light added, removed, re-ordered or re-typed. Casting Lights are still blocks, each under the guard at every count beside the walk; the instances generator and a tile's preview still unroll.
+- **No whole shipped frame moved by more than 3 %**, and every shipped picture is within one step of a half float of what it was, bar three channel values at two steps that the guard alone moves (15.7 and 15.9 there).

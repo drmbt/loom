@@ -570,10 +570,15 @@ describe("every geometry mode previews (T1020)", () => {
  * This gate is the AGREEMENT itself, and it is exact because the GEOMETRY preview draws
  * with the Render's OWN generators (`sceneSurfaceWgsl` / `sceneInstancesWgsl`, which have
  * carried a pbr branch since T1284) — so the mapping line was the entire disagreement on
- * this path, and with it gone the two passes compile to the SAME WGSL, byte for byte.
+ * this path, and with it gone the two passes compiled to the SAME WGSL, byte for byte.
  * Comparing two GENERATED strings would prove nothing if both came from one call; these
  * come from two independent compiles of two different sinks in one graph, so a mapping
  * that sends one of them to `phong` fails here.
+ *
+ * T1623b slice 3: the two are still the one generator at the one material, and are no longer
+ * one string: a Render's lit draw walks its light table and a tile unrolls its two stock
+ * lights (the previews follow in a later slice). The gate names each text by the generator
+ * call it must equal, and holds one light's shading to the same characters in both.
  *
  * The MATERIAL tile (the torus) cannot be byte-compared this way — it is its own
  * generator with its own geometry — so its claim is pixels, in
@@ -588,9 +593,9 @@ describe("a pbr material's preview and its render agree (T1292)", () => {
         node("skin", "materialPbr", { color: [0.8, 0.6, 0.3, 1], metallic: 1, roughness: 0.4 }, "skin1"),
         node("geo", "geometry", { mode: "surface", material: "skin1" }, "geo1"),
         node("cam", "camera", { eye: [0, 0, 4], lookAt: [0, 0, 0] }, "cam1"),
-        // TWO lights, because the preview rig has two: the generated light blocks are
-        // structural, so a render under one light emits a different (correct) shader and
-        // the comparison would be about the light COUNT rather than about the model.
+        // TWO lights, as the preview rig has two. When this was written a Render unrolled
+        // a block a light, so its text depended on the count; since T1623b slice 3 its
+        // Lights are rows of a table and its text is the same under any number of them.
         node("key", "light", { kind: "directional", direction: [0, 0, -1] }, "key1"),
         node("fill", "light", { kind: "directional", direction: [1, -0.4, 0] }, "fill1"),
         node("shot", "render", { scenes: "geo1", camera: "cam1", lights: "key1 fill1" }, "shot1"),
@@ -602,7 +607,7 @@ describe("a pbr material's preview and its render agree (T1292)", () => {
       },
     );
 
-  it("the geometry tile and the Render draw the SAME shader — not a look-alike", () => {
+  it("the geometry tile and the Render draw the SAME generator's shader, the same material and the same light block — not a look-alike", () => {
     const compiled = compileGraph({
       graph: pbrScene(),
       settings: SETTINGS,
@@ -618,9 +623,29 @@ describe("a pbr material's preview and its render agree (T1292)", () => {
     ) as DrawPassDescriptor | undefined;
     const render = compiled.passes.find((pass) => pass.id.endsWith("shot:scene:0"));
     expect([tile === undefined, render === undefined]).toEqual([false, false]);
-    // The bound the row asked for, and it is ZERO: same generator, same options, same
-    // text. Before this task the tile's was `sceneSurfaceWgsl({ model: "phong" })`.
-    expect(tile?.shader).toBe(render?.shader);
+    // The bound the row asked for, and it is ZERO: same generator, same material options.
+    // Before this task the tile's was `sceneSurfaceWgsl({ model: "phong" })`.
+    //
+    // T1623b slice 3 moved WHERE THE LIGHTS COME FROM in one of the two, and nothing else. A
+    // Render's Lights that do not cast are rows of its light table, which its lit draw
+    // walks; a tile keeps its two stock lights as two unrolled blocks until the previews
+    // follow. So the two texts are no longer one string, and what is exact is this:
+    //  - each is the Render's generator at the same material, the tile with two blocks and
+    //    no table, the Render with the table and no block;
+    expect(tile?.shader).toBe(String(sceneSurfaceWgsl({ model: "pbr", lightCount: 2 })));
+    expect(render?.shader).toBe(String(sceneSurfaceWgsl({ model: "pbr", lightCount: 0, lightGrid: true })));
+    //  - and the SHADING of one light is the same characters in both: a block's, from its
+    //    falloff to its last sum, and a row's of the walk, its indentation taken off.
+    const shadingOf = (text: string | undefined): string => {
+      const from = (text ?? "").indexOf("var toLight: vec3f;");
+      const until = "lit += albedo.rgb * radiance * lambert * (vec3f(1.0) - fresnel) * (1.0 - params.material.x);";
+      const to = (text ?? "").indexOf(until, from);
+      expect([from > 0, to > from]).toEqual([true, true]);
+      return (text ?? "").slice(from, to + until.length).split("\n").map((line) => line.trim()).join("\n");
+    };
+    expect(shadingOf(render?.shader)).toBe(shadingOf(tile?.shader));
+    expect(render?.shader).toContain("lightTable");
+    expect(tile?.shader).not.toContain("lightTable");
     // And it is the GGX text that is shared, not an empty agreement between two phongs:
     // `distribution` appears only in `ggxSpecularWgsl`.
     expect(tile?.shader?.includes("let distribution = alpha2 /")).toBe(true);

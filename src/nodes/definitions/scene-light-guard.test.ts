@@ -32,11 +32,27 @@ import {
  *
  * The other half is what the stopgap promised: at and below the threshold the text is what
  * main emitted before it, byte for byte.
+ *
+ * WHAT IT COUNTS SINCE T1623b SLICE 3. A Render's lit Surface draw walks its light table and
+ * unrolls a block for a CASTING Light alone, so the scan has two more things to see:
+ *
+ *  - A ROW of the table is a source like a Light's block: every place in the text that
+ *    shades a row counts as one (the turn of the rows of any kind, each row of a turn of the
+ *    point lights' and of the suns' loops, the turn of a cell's bits).
+ *  - The texts scanned include the Surface generator's WITH the table, at 0 to 32 casting
+ *    blocks. There every block is under its guard at every count, and no two sources stand
+ *    in one straight line at all: the longest run the gate sees is 1.
+ *
+ * The threshold `LIGHT_GUARD_ABOVE` is what it was, and is now the rule for the texts that
+ * have NO table: the instances generator's (every Light in Single mode is still a block
+ * there, until slice 7), a tile's preview (two stock lights) and the shadow matte.
  */
 
 const ADDS_INTO_LIT = /^\s*lit\s*(\+=|=\s*lit\s*\+)/;
 /** A source's block reads its own numbered uniform row first: `params.light3Meta`, `params.projector0Matrix`. */
 const OPENS_A_SOURCE = /^\s*let\s+\w+\s*=\s*params\.(light|projector)(\d+)(Meta|Matrix)\b/;
+/** A row of the light table is handed to the same block as three expressions: its `lightMeta` is built, not read off `params`. */
+const OPENS_A_ROW = /^\s*let\s+lightMeta\s*=\s*vec4f\(/;
 
 interface Scope {
   /** A branch on a runtime value: what it adds into `lit` is merged, not chained, with what follows. */
@@ -76,11 +92,13 @@ function longestStraightRun(module: string): number {
     return found;
   };
   let longest = 0;
-  for (const line of body.split("\n")) {
+  for (const [lineIndex, line] of body.split("\n").entries()) {
     /* Statements first, against the scope the line starts in; then the line's braces in order. */
     const at = scopes[scopes.length - 1];
     const source = OPENS_A_SOURCE.exec(line);
     if (source !== null && at !== undefined) at.source = `${source[1]}${source[2]}`;
+    /* Each place in the text that shades a row of the table is a source of its own. */
+    if (OPENS_A_ROW.test(line) && at !== undefined) at.source = `row@${lineIndex}`;
     if (/^\s*var\s+lit\b/.test(line) && at !== undefined) at.ownLit = true;
     /* The sum is the `lit` the function itself declares; a nested scope's own `lit` is another variable. */
     if (ADDS_INTO_LIT.test(line) && scopes.findLastIndex((scope) => scope.ownLit) === 0) {
@@ -191,10 +209,22 @@ const INSTANCES_CASES: Readonly<Record<string, InstancesCase>> = {
 
 const surfaceText = (options: SurfaceCase, lightCount: number, withShadows: boolean): string =>
   String(sceneSurfaceWgsl({ ...options, lightCount, ...(withShadows ? casting(lightCount) : {}) }));
+/** T1623b: the same module as a Render's lit draw emits it, walking the light table after `lightCount` blocks. */
+const tableText = (options: SurfaceCase, lightCount: number, withShadows: boolean): string =>
+  String(sceneSurfaceWgsl({ ...options, lightCount, lightGrid: true, ...(withShadows ? casting(lightCount) : {}) }));
 const instancesText = (options: InstancesCase, lightCount: number, withShadows: boolean): string =>
   String(sceneInstancesWgsl({ ...options, lightCount, ...(withShadows ? casting(lightCount) : {}) }));
 
-/** Every lit module the TWO generators emit for a light count: each case, with and without casting lights. */
+/** T1623b: every lit module the Surface generator emits for a Render's lit draw: the table's walk after `lightCount` blocks. */
+function tableModules(lightCount: number): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  for (const shadows of [false, true]) {
+    for (const [name, options] of Object.entries(SURFACE_CASES)) out.push([`surface with the table: ${name}${shadows ? ", casting" : ""}`, tableText(options, lightCount, shadows)]);
+  }
+  return out;
+}
+
+/** Every lit module the TWO generators emit with NO table for a light count: each case, with and without casting lights. */
 function litModules(lightCount: number): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   for (const shadows of [false, true]) {
@@ -225,7 +255,37 @@ describe("B260: no lit fragment function chains more sources than the threshold"
     expect(longestStraightRun(module(`${block(0, false)}${block(1, false)}${projector(0, true)}${projector(1, true)}`))).toBe(2);
   });
 
-  it("holds for every lit module of both generators at 9, 32 and 64 lights, and either side of the threshold", () => {
+  it("counts a row of the light table as a source: a loop's turn is a merge, a row under a test of the loop's bound is one, rows in the open chain", () => {
+    const row = (slot: string): string => `      {\n        let lightMeta = vec4f(1.0, 1.0, tone${slot}.w, 0.0);\n        lit += a;\n        lit += b;\n      }\n`;
+    const module = (walk: string): string => `@fragment\nfn fs() -> vec4f {\n  var lit = vec3f(0.0);\n  {\n${walk}  }\n  lit += env;\n  return vec4f(lit, 1.0);\n}`;
+    /* The walk's shape: two rows a turn, the second under a test of the bound. One source in the open at a time. */
+    const twoATurn = `    for (var lightBase = from; lightBase < to; lightBase += 2u) {\n${row("0")}      if (lightBase + 1u < to) {\n${row("1")}      }\n    }\n`;
+    expect(longestStraightRun(module(twoATurn))).toBe(1);
+    /* Two loops one after the other do not chain either: each closes on a merge. */
+    expect(longestStraightRun(module(`${twoATurn}${twoATurn}`))).toBe(1);
+    /* The same two rows with the test taken off the second are two sources in one straight line of a turn. */
+    expect(longestStraightRun(module(`    for (var lightBase = from; lightBase < to; lightBase += 2u) {\n${row("0")}${row("1")}    }\n`))).toBe(2);
+    /* And rows unrolled in the open, nine of them at literal row numbers, are the chain B260 measured. */
+    expect(longestStraightRun(module(Array.from({ length: 9 }, (_, index) => row(String(index))).join("")))).toBe(9);
+    /* A test the compiler can fold is no test. */
+    expect(longestStraightRun(module(`    for (var lightBase = from; lightBase < to; lightBase += 2u) {\n${row("0")}      if (true) {\n${row("1")}      }\n    }\n`))).toBe(2);
+  });
+
+  it("holds for every lit module that walks the light table, at 0 to 32 casting blocks: no two sources in one straight line", () => {
+    const seen = new Map<string, number>();
+    for (const lightCount of [0, 1, 2, LIGHT_GUARD_ABOVE, LIGHT_GUARD_ABOVE + 1, 4 * LIGHT_GUARD_ABOVE]) {
+      for (const [name, text] of tableModules(lightCount)) {
+        /* The module is the one the claim is about: it walks the table, and it shades rows the scan can see. */
+        expect([name, lightCount, text.includes("lightTable"), (text.match(/let lightMeta = vec4f\(/g) ?? []).length]).toEqual([name, lightCount, true, 6]);
+        seen.set(`${name}, ${lightCount} blocks`, longestStraightRun(text));
+      }
+    }
+    /* Every block is guarded at every count beside the walk, every row of a turn after the first is under a test, and a projector under its two. */
+    expect([...seen].filter(([, run]) => run !== 1)).toEqual([]);
+    expect(seen.size).toBe(6 * 2 * Object.keys(SURFACE_CASES).length);
+  });
+
+  it("holds for every lit module with no table, of both generators, at 9, 32 and 64 lights, and either side of the threshold", () => {
     const counts = [1, LIGHT_GUARD_ABOVE, LIGHT_GUARD_ABOVE + 1, 4 * LIGHT_GUARD_ABOVE, 8 * LIGHT_GUARD_ABOVE];
     expect(MANY_PROJECTORS.length).toBeGreaterThan(LIGHT_GUARD_ABOVE);
     const over: string[] = [];
@@ -252,8 +312,16 @@ describe("B260: no lit fragment function chains more sources than the threshold"
 
 /**
  * The text main emitted on 2026-10-06 (7cc69950), before the guard, for each case at 0, 1, 2,
- * 5 and 8 lights, with and without casting lights: one SHA-256 over the ten texts. A Render
- * with 8 lights or fewer must compile the shader it always compiled.
+ * 5 and 8 lights, with and without casting lights: one SHA-256 over the ten texts.
+ *
+ * WHAT THESE PIN SINCE T1623b SLICE 3 (2026-10-06): the lit text of a module with NO light
+ * table. When they were taken that was every Render's lit text at 8 lights or fewer. A
+ * Render's lit Surface draw now walks its table and is another text (pinned by
+ * `light-points.test.ts`'s fingerprints and held to one string by `light-rows.test.ts`). The
+ * texts with no table that ship are the instances generator's (primitive instances, points
+ * and beams still unroll a block for every Light in Single mode, until slice 7), a tile's
+ * preview with its two stock lights, and the shadow matte. Slice 3 moved none of the
+ * eighteen: a text with no table is byte for byte what it was.
  *
  * If a digest moves because the lit text was changed ON PURPOSE, the change moves the text of
  * shipped Renders: that is a decision, and it is made by replacing the digest in the same
@@ -287,14 +355,16 @@ const TEXT_AT_AND_BELOW_THE_THRESHOLD: Readonly<Record<string, string>> = {
   "surface: phong grid": "c2608dcc7fcfca2d", // §B255
 };
 
-describe("B260: at and below the threshold the lit text is main's, byte for byte", () => {
+describe("B260: with no light table, at and below the threshold the lit text is main's, byte for byte", () => {
   const COUNTS = [0, 1, 2, 5, 8];
   const digest = (texts: string[]): string => createHash("sha256").update(texts.join("\u0000")).digest("hex").slice(0, 16);
 
-  it("emits no guard at 8 lights or fewer, in either generator", () => {
+  it("emits no guard at 8 lights or fewer, in either generator, and guards every block at every count where the draw walks the table", () => {
     expect(COUNTS.every((count) => count <= LIGHT_GUARD_ABOVE)).toBe(true);
     for (const lightCount of COUNTS) {
       for (const [name, text] of litModules(lightCount)) expect([name, lightCount, text.includes("lightMeta.y != 0.0")]).toEqual([name, lightCount, false]);
+      /* T1623b: beside the table's walk the blocks are the casting Lights', each under its guard from the first. */
+      for (const [name, text] of tableModules(lightCount)) expect([name, lightCount, (text.match(/if \(lightMeta\.y != 0\.0\) \{/g) ?? []).length]).toEqual([name, lightCount, lightCount]);
     }
   });
 
