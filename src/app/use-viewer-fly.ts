@@ -6,7 +6,18 @@ import { flyDeltaFor, flyStepFor, isFlyAxis } from "@editor/viewer/orbit-gesture
 import type { FlyAxis } from "@editor/viewer/orbit-gestures.ts";
 import type { PreviewOrbitStore } from "@editor/viewer/index.ts";
 import { DEFAULT_PREVIEW_ORBIT, orbitFrame, orbitPose } from "@runtime/previews/index.ts";
-import type { OrbitCameraBasis } from "@runtime/previews/index.ts";
+import type { OrbitCameraBasis, OrbitPose } from "@runtime/previews/index.ts";
+
+/**
+ * §T970: where the camera this store moves IS, whichever kind of store it is. A store that
+ * knows its own pose (the document-writing gizmo: the camera's stored Eye and Look At, or
+ * the flight in progress) answers; the inspection store is a stock framing moved by deltas,
+ * and its pose is derived from the compiler's basis. Null means there is nothing to fly.
+ */
+function poseOf(orbits: PreviewOrbitStore, nodeId: NodeId, basis: OrbitCameraBasis | null): OrbitPose | null {
+  if (orbits.pose !== undefined) return orbits.pose(nodeId);
+  return basis === null ? null : orbitPose(basis, orbits.get(nodeId) ?? DEFAULT_PREVIEW_ORBIT);
+}
 
 /**
  * §T1311b(b) — THE VIEWER FLIES.
@@ -47,9 +58,16 @@ import type { OrbitCameraBasis } from "@runtime/previews/index.ts";
  * (§V527, gated by `no-document-store.test.ts`). From there it is read by whoever draws:
  * `orbitUniforms` for a scene rig, `use-view-camera.ts`'s eye/target/fov for a `customWgsl`
  * shader that declared the §T1311b(a) contract. Neither touches the authored pass. And a
- * store that does not implement `fly` — `createCameraGizmoStore`, whose writes go to a
- * document camera node (§T1314b) — gets no flight at all rather than a silently destructive
- * one.
+ * store that does not implement `fly` gets no flight at all.
+ *
+ * ## §T970 — and the same keys fly a DOCUMENT camera, when the viewer is locked to one
+ *
+ * The pane hands this hook whichever store its gestures go to. Locked to a camera, that is
+ * `createCameraGizmoStore`, whose `fly` writes Eye and Look At through the bus. Nothing
+ * here knows the difference except two things it does for any store that asks: the axes
+ * come from the store's own `pose` when it has one, and the END of a flight (the last key
+ * up, a blur, one discrete step) is told to the store through `release`, which is where the
+ * gizmo closes its undo step. One flight, one step back.
  */
 
 /** What the pane spreads onto the element that holds keyboard focus. */
@@ -78,6 +96,7 @@ export function useViewerFly(options: {
    * `synthesis.orbit` (a scene rig) or `viewCamera` (a shader that opted in). Null means
    * this output declares no camera, and the whole gesture is inert: §V986's rule, one
    * layer up — an unmeasurable framing reads as absent rather than as a unit-sphere guess.
+   * Not read for a store that answers its own `pose` (§T970).
    */
   readonly basis: OrbitCameraBasis | null;
 }): ViewerFlyHandlers {
@@ -118,6 +137,8 @@ export function useViewerFly(options: {
   const lastAt = useRef<number | null>(null);
   /** Shift, sampled on the key events — the throttle, not a seventh direction. */
   const boosted = useRef(false);
+  /** §T970: a flight is under way, from its first key down until `stop`. */
+  const airborne = useRef(false);
 
   const stop = useCallback(() => {
     if (frame.current !== null) cancelAnimationFrame(frame.current);
@@ -125,6 +146,12 @@ export function useViewerFly(options: {
     lastAt.current = null;
     held.current.clear();
     setFlying(false);
+    // §T970: the flight is over. A store that writes a document closes its undo step here.
+    // `airborne`, not "a key is held": the last key-up empties `held` BEFORE it calls this.
+    const flew = airborne.current;
+    airborne.current = false;
+    const { orbits, nodeId } = live.current;
+    if (flew && nodeId !== null) orbits?.release?.(nodeId);
   }, []);
 
   const tick = useCallback((at: number): void => {
@@ -133,11 +160,11 @@ export function useViewerFly(options: {
     const previous = lastAt.current;
     lastAt.current = at;
     if (held.current.size === 0) return;
-    if (orbits?.fly !== undefined && nodeId !== null && basis !== null && previous !== null) {
+    const pose = orbits?.fly === undefined || nodeId === null ? null : poseOf(orbits, nodeId, basis);
+    if (orbits?.fly !== undefined && nodeId !== null && pose !== null && previous !== null) {
       // The camera's axes come from where it ACTUALLY IS, not from the stock basis: after
       // a drag, W must go where the picture points, and after a flight it must keep going
       // from the new position rather than re-resolving against the author's framing.
-      const pose = orbitPose(basis, orbits.get(nodeId) ?? DEFAULT_PREVIEW_ORBIT);
       const seconds = Math.min(MAX_FRAME_SECONDS, (at - previous) / 1000);
       const delta = flyDeltaFor(held.current.values(), seconds, orbitFrame(pose), {
         boost: boosted.current,
@@ -156,7 +183,7 @@ export function useViewerFly(options: {
   const onKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLElement>) => {
       const { orbits, nodeId, basis } = live.current;
-      if (orbits?.fly === undefined || nodeId === null || basis === null) return;
+      if (orbits?.fly === undefined || nodeId === null || poseOf(orbits, nodeId, basis) === null) return;
       // The output picker lives inside this pane and its type-ahead is its own; so is any
       // text field that ever lands here (§V53's rule, applied at the gesture).
       const tag = (event.target as { tagName?: unknown } | null)?.tagName;
@@ -184,6 +211,7 @@ export function useViewerFly(options: {
       // both gestures, so `h` still returns from either (§T656, §T380).
       orbits.setMode(nodeId, "adjustable");
       held.current.set(stroke.key, direction);
+      airborne.current = true;
       setFlying(true);
       start();
     },
@@ -216,12 +244,15 @@ export function useViewerFly(options: {
 
   const step = useCallback((direction: FlyAxis): boolean => {
     const { orbits, nodeId, basis } = live.current;
-    if (orbits?.fly === undefined || nodeId === null || basis === null) return false;
+    if (orbits?.fly === undefined || nodeId === null) return false;
     orbits.setMode(nodeId, "adjustable");
-    const pose = orbitPose(basis, orbits.get(nodeId) ?? DEFAULT_PREVIEW_ORBIT);
+    const pose = poseOf(orbits, nodeId, basis);
+    if (pose === null) return false;
     const delta = flyStepFor(direction, orbitFrame(pose));
     if (delta === null) return false;
     orbits.fly(nodeId, delta);
+    // One discrete step is a whole flight: a document-writing store closes its undo step.
+    orbits.release?.(nodeId);
     return true;
   }, []);
 

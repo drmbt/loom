@@ -179,3 +179,74 @@ describe("camera gizmo store (T692)", () => {
     expect(writes).toEqual([]);
   });
 });
+
+/**
+ * §T970 — THE CAMERA FLIES, AND THE FLIGHT IS AN EDIT.
+ *
+ * The owner, twice: "i'm still missing a way to actually change the position of the camera
+ * in the camera node via flying around in that preview instead of manually having to deal
+ * with it". The viewer's W A S D E Q land here when it is locked to a camera.
+ */
+describe("camera gizmo store flies (T970)", () => {
+  it("translates Eye and Look At together, by the step times the distance between them", () => {
+    const { store, writes } = harness({ eye: [0, 0, 3], lookAt: [0, 0, 0] });
+    store.setMode(NODE, "adjustable");
+    // One third of the Eye to Look At distance, straight ahead (the camera looks down -z).
+    store.fly!(NODE, [0, 0, -1 / 3]);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.phase).toBe("live");
+    expect(vec(writes[0]!, "eye")).toEqual([0, 0, 2]);
+    expect(vec(writes[0]!, "lookAt")).toEqual([0, 0, -1]);
+    // The distance is kept, so the pace is kept: the next equal step moves equally far.
+    store.fly!(NODE, [0, 0, -1 / 3]);
+    expect(vec(writes[1]!, "eye")).toEqual([0, 0, 1]);
+    expect(vec(writes[1]!, "lookAt")).toEqual([0, 0, -2]);
+  });
+
+  it("one flight is one undo step: live writes, then a single closing write when the keys come up", () => {
+    const { store, writes } = harness();
+    store.setMode(NODE, "adjustable");
+    store.fly!(NODE, [0.1, 0, 0]);
+    store.fly!(NODE, [0.1, 0, 0]);
+    store.fly!(NODE, [0.1, 0, 0]);
+    store.release!(NODE);
+    expect(writes.map((write) => write.phase)).toEqual(["live", "live", "live", "commit"]);
+    // The closing write is where the flight ended, not where a frame happened to be.
+    expect(vec(writes[3]!, "eye")).toEqual(vec(writes[2]!, "eye"));
+    // A release with nothing flown writes nothing: no empty undo entry.
+    store.release!(NODE);
+    expect(writes).toHaveLength(4);
+  });
+
+  it("⚑ never writes a channel another mode decides, and never the bare key over it (§B219)", () => {
+    // The legitimate case a refusal would swallow: five free channels still fly.
+    const { store, writes } = harness({
+      eye: [0, 0, 3],
+      lookAt: [0, 0, 0],
+      eyeMask: [false, true, true],
+      lookAtMask: [true, true, true],
+    });
+    store.setMode(NODE, "adjustable");
+    store.fly!(NODE, [1, 1, 0]);
+    const entries = writes[0]!.entries;
+    expect(Object.keys(entries).sort()).toEqual(["eye.y", "eye.z", "lookAt"]);
+    expect(entries["eye.y"]).toBe(3);
+    expect(vec(writes[0]!, "lookAt")).toEqual([3, 3, 0]);
+  });
+
+  it("answers where the camera is: the flight in progress, else the document", () => {
+    const { store, setPose } = harness({ eye: [0, 0, 3], lookAt: [0, 0, 0] });
+    expect(store.pose!(NODE)).toEqual({ eye: [0, 0, 3], lookAt: [0, 0, 0] });
+    store.setMode(NODE, "adjustable");
+    store.fly!(NODE, [0, 0, -1 / 3]);
+    // Mid-flight the document lags by a frame (the editor coalesces); the axes the next
+    // step runs along must come from where the pilot IS (§V657).
+    setPose({ eye: [9, 9, 9], lookAt: [0, 0, 0] });
+    expect(store.pose!(NODE)).toEqual({ eye: [0, 0, 2], lookAt: [0, 0, -1] });
+    store.release!(NODE);
+    // Between gestures it is the document again, so an undo is not flown over.
+    expect(store.pose!(NODE)).toEqual({ eye: [9, 9, 9], lookAt: [0, 0, 0] });
+    setPose(null);
+    expect(store.pose!(NODE)).toBeNull();
+  });
+});

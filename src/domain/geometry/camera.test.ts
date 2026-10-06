@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cameraPayloadMatrix, identity, lookAt, multiply, perspective, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix, transformPoint, viewProjection } from "./camera.ts";
+import { cameraFrame, cameraPayloadMatrix, identity, inCameraFrame, lookAt, multiply, perspective, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix, transformPoint, viewProjection } from "./camera.ts";
 
 /**
  * §V198: the composition order is PUBLISHED (clip = projection × view × world,
@@ -286,5 +286,42 @@ describe("what one face of a point light's cube can reach (T1598b)", () => {
     }
     // The test is only worth its name if it leaves a good share out: 30,000 pairs, most unreachable.
     expect(left).toBeGreaterThan(15000);
+  });
+});
+
+/**
+ * §T1656b — the camera's parent frame, as arithmetic. What a Render draws through it is
+ * held in `nodes/definitions/camera-frame.test.ts`; this is the frame itself.
+ */
+describe("a camera's parent frame (T1656b)", () => {
+  it("⚑ the untouched frame returns the point ITSELF: a camera saved before the frame existed moves by nothing", () => {
+    const point = [4, 2, 7] as const;
+    expect(inCameraFrame(cameraFrame([0, 0, 0], [0, 0, 0]), point)).toBe(point);
+    // A heading down −z is the way the frame already faces, and is as untouched.
+    expect(inCameraFrame(cameraFrame([0, 0, 0], [0, 0, -3]), point)).toBe(point);
+  });
+
+  it("Origin translates, and a point's height is never turned", () => {
+    expect(inCameraFrame(cameraFrame([10, 2, -4], [0, 0, 0]), [1, 0.5, 3])).toEqual([11, 2.5, -1]);
+  });
+
+  it("the frame's forward is its −z, and its right is the subject's right", () => {
+    const facingX = cameraFrame([0, 0, 0], [5, 0, 0]);
+    // Three behind something facing +x is at −x; one to its right is at +z.
+    const behind = inCameraFrame(facingX, [0, 0, 3]);
+    const beside = inCameraFrame(facingX, [1, 0, 0]);
+    expect([behind[0], behind[1], Math.abs(behind[2])]).toEqual([-3, 0, 0]);
+    expect([Math.abs(beside[0]), beside[1], beside[2]]).toEqual([0, 0, 1]);
+    // A turn keeps lengths: the frame is rigid whatever the heading's own length.
+    const diagonal = inCameraFrame(cameraFrame([0, 0, 0], [3, 7, 4]), [1, 2, 2]);
+    expect(Math.hypot(diagonal[0], diagonal[2])).toBeCloseTo(Math.hypot(1, 2), 12);
+    expect(diagonal[1]).toBe(2);
+  });
+
+  it("a heading with no horizontal part is no heading: zero, straight up, or too small to have a direction", () => {
+    const point = [1, 2, 3] as const;
+    for (const heading of [[0, 0, 0], [0, 9, 0], [1e-9, 0, -1e-9]] as const) {
+      expect(inCameraFrame(cameraFrame([0, 0, 0], heading), point)).toBe(point);
+    }
   });
 });

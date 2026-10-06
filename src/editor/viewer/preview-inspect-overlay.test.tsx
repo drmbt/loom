@@ -78,12 +78,12 @@ const idleRuntime: NodeRuntimeSource = {
  * own `setNodes` action is what adopts a node into `nodeLookup` with its absolute
  * position, which is the fact this layer positions from.
  */
-function FlowState({ nodes }: { nodes: Node[] }) {
+function FlowState({ nodes, zoom = VIEWPORT.zoom }: { nodes: Node[]; zoom?: number }) {
   const api = useStoreApi();
   useEffect(() => {
     api.getState().setNodes(nodes);
-    api.setState({ transform: [VIEWPORT.x, VIEWPORT.y, VIEWPORT.zoom] });
-  }, [api, nodes]);
+    api.setState({ transform: [VIEWPORT.x, VIEWPORT.y, zoom] });
+  }, [api, nodes, zoom]);
   return null;
 }
 
@@ -96,10 +96,14 @@ interface MountOptions {
   withSlot?: boolean;
   /** T1655b: why this node's tile has no camera, when the pane has a reason to give. */
   note?: string | null;
+  /** §T970: the canvas zoom, for the toggle's minimum size. */
+  zoom?: number;
+  /** §T970: what the pane adds to the toggle's hover text. */
+  hint?: string;
 }
 
 function mount(options: MountOptions = {}) {
-  const { orbitable = true, measured = true, withSlot = false, note = null } = options;
+  const { orbitable = true, measured = true, withSlot = false, note = null, zoom, hint = "" } = options;
   const orbits = createPreviewOrbitStore();
   const bounds = createPreviewSlotBounds();
   const inspect = (nodeId: NodeId): PreviewOrbitStore | null =>
@@ -108,7 +112,7 @@ function mount(options: MountOptions = {}) {
 
   render(
     <ReactFlowProvider>
-      <FlowState nodes={nodes} />
+      <FlowState nodes={nodes} {...(zoom === undefined ? {} : { zoom })} />
       {withSlot ? (
         <div data-testid="slot-host">
           <NodePreviewSlot
@@ -120,7 +124,12 @@ function mount(options: MountOptions = {}) {
           />
         </div>
       ) : null}
-      <PreviewInspectOverlays bounds={bounds} inspect={inspect} note={(nodeId) => (nodeId === NODE ? note : null)} />
+      <PreviewInspectOverlays
+        bounds={bounds}
+        inspect={inspect}
+        note={(nodeId) => (nodeId === NODE ? note : null)}
+        hint={(nodeId) => (nodeId === NODE ? hint : "")}
+      />
     </ReactFlowProvider>,
   );
 
@@ -300,5 +309,42 @@ describe("T1655b — a tile whose corner is under a node in front carries no chr
     expect(screen.getByTestId(`preview-camera-note-${NODE}`)).toBeTruthy();
     act(() => bounds.setCornerCovered(new Set([NODE])));
     expect(screen.queryByTestId(`preview-camera-note-${NODE}`)).toBeNull();
+  });
+});
+
+/**
+ * §T970 — THE TOGGLE NEVER SHRINKS BELOW 12 px, and says what a partly driven pose holds.
+ *
+ * Measured on the walk (§T1655b): at 35 % zoom the toggle was 5.6 px. It scales with the
+ * canvas because it is chrome on a node, and a control nobody can see is how this one was
+ * lost twice (T664, T675).
+ */
+describe("T970 — the tile's camera toggle at small zoom", () => {
+  it("scales with the canvas down to 12 px, and holds 12 px below that", () => {
+    // 16 px at 100 %. At 2× it is 32 px (asserted above); at 75 % it is exactly 12.
+    mount({ zoom: 0.75 });
+    expect(screen.getByTestId(`preview-inspect-${NODE}`).style.getPropertyValue("--chrome-zoom")).toBe("0.75");
+    cleanup();
+    // At 35 % it would be 5.6 px. It is 12: the scale it is DRAWN at stops at 0.75…
+    mount({ zoom: 0.35 });
+    const small = screen.getByTestId(`preview-inspect-${NODE}`);
+    expect(small.style.getPropertyValue("--chrome-zoom")).toBe("0.75");
+    // …while its CORNER still follows the tile: right = (100 + 4 + 170) × 0.35 + 40.
+    expect(Number.parseFloat(small.style.left)).toBeCloseTo(135.9, 6);
+  });
+
+  it("the sentence a camera-less tile carries is not floored: it would be wider than its tile", () => {
+    mount({ orbitable: false, note: "Framed by camera_rig.", zoom: 0.35 });
+    expect(screen.getByTestId(`preview-camera-note-${NODE}`).style.getPropertyValue("--chrome-zoom")).toBe("0.35");
+  });
+
+  it("the toggle's hover text ends with what the pane has to add, and adds nothing when there is nothing", () => {
+    mount({ hint: "Stays driven: Eye x (Expression)." });
+    expect(screen.getByTestId(`preview-inspect-${NODE}`).title).toBe(
+      "Adjust camera (or alt on tile): drag orbits, shift pans. Stays driven: Eye x (Expression).",
+    );
+    cleanup();
+    mount();
+    expect(screen.getByTestId(`preview-inspect-${NODE}`).title).toBe("Adjust camera (or alt on tile): drag orbits, shift pans");
   });
 });

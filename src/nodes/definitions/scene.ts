@@ -8,7 +8,7 @@ import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
 import type { CameraPayload, GeometryPayload, LightPayload, MapExtend, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
-import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix } from "../../domain/geometry/camera.ts";
+import { cameraFrame, cameraPayloadMatrix, directionalShadowMatrix, inCameraFrame, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix } from "../../domain/geometry/camera.ts";
 import { identityMatrix, normalMatrix, objectMatrix } from "../../domain/geometry/transform.ts";
 import { gridPointCount, gridSheets, gridVertexCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
@@ -101,13 +101,29 @@ export const cameraNode: NodeDefinition = {
   title: "Camera",
   category: "render",
   description:
-    "A camera other nodes reference by NAME: Render, Render Surface and Render Instances all name it in their camera parameter, so one camera frames them together. Every parameter is drivable — an orbiting camera is a uniform write, never a rebuild. Its preview shows WHAT THE RENDERER SEES: with exactly one renderer naming this camera, the preview is that renderer's own picture; with none, a stock reference scene showing framing alone; with several, the stock scene again, because there is no single answer and picking one would be a viewpoint nobody chose.",
+    "A camera other nodes reference by NAME: Render, Render Surface and Render Instances all name it in their camera parameter, so one camera frames them together. Every parameter is drivable — an orbiting camera is a uniform write, never a rebuild. To follow something that moves, drive Origin and Heading with it and leave Eye and Look At as the offset: the view can then be flown by hand and still follows. Its preview shows WHAT THE RENDERER SEES: with exactly one renderer naming this camera, the preview is that renderer's own picture; with none, a stock reference scene showing framing alone; with several, the stock scene again, because there is no single answer and picking one would be a viewpoint nobody chose.",
   tags: ["3d", "scene", "camera", "view"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: { kind: "camera" } }],
   parameters: {
     eye: { type: "vector", size: 3, label: "Eye", default: [0, 0.5, 3] },
     lookAt: { type: "vector", size: 3, label: "Look At", default: [0, 0, 0] },
+    origin: {
+      type: "vector",
+      size: 3,
+      label: "Origin",
+      default: [0, 0, 0],
+      description:
+        "Where Eye and Look At are measured from. Drive it with the position of what the camera follows, and Eye and Look At become offsets from that subject: a view flown by hand in the viewer or on this tile is then an offset that travels with it. At 0, 0, 0 Eye and Look At are world positions.",
+    },
+    heading: {
+      type: "vector",
+      size: 3,
+      label: "Heading",
+      default: [0, 0, 0],
+      description:
+        "The direction the subject faces, as a vector. Eye and Look At turn with it about the vertical axis, so an offset behind the subject stays behind it: the frame's forward is its −z, the way the default camera looks. Only the horizontal part is read, so the camera rises with the subject and never tilts with it. At 0, 0, 0 nothing turns and only Origin's position is inherited.",
+    },
     fov: { type: "number", label: "FOV", default: 55, min: 1, max: 179, range: "bounded", unit: "degrees" },
     near: { type: "number", label: "Near", default: 0.1, min: 0.001, range: "floor" },
     far: { type: "number", label: "Far", default: 100, min: 0.01, range: "floor" },
@@ -134,12 +150,18 @@ export const cameraNode: NodeDefinition = {
   },
   compile(context): CompiledNodeDescription {
     const { parameters, timeProbe } = readCompileInputs(context);
-    const pose = (values: Readonly<Record<string, unknown>>): CameraPose => ({
-      eye: vec3(values, "eye", [0, 0.5, 3]),
-      lookAt: vec3(values, "lookAt", [0, 0, 0]),
-      fovDeg: readNumber(values as never, "fov", 55),
-      roll: readNumber(values as never, "roll", 0),
-    });
+    // §T1656b: Eye and Look At are offsets in the frame Origin and Heading make. The payload
+    // carries WORLD positions, composed here and nowhere else, so no consumer of a camera
+    // (a Render, the tile, Camera Blur's motion) knows the frame exists.
+    const pose = (values: Readonly<Record<string, unknown>>): CameraPose => {
+      const frame = cameraFrame(vec3(values, "origin", [0, 0, 0]), vec3(values, "heading", [0, 0, 0]));
+      return {
+        eye: inCameraFrame(frame, vec3(values, "eye", [0, 0.5, 3])),
+        lookAt: inCameraFrame(frame, vec3(values, "lookAt", [0, 0, 0])),
+        fovDeg: readNumber(values as never, "fov", 55),
+        roll: readNumber(values as never, "roll", 0),
+      };
+    };
     // T1421b: the path's derivative, both sides, for a motion blur (Camera Blur) — published
     // only when the camera MOVES there, so a still camera's payload is the same with or
     // without a frame (the values-only frame path never re-runs a camera that animates nothing).
@@ -152,8 +174,8 @@ export const cameraNode: NodeDefinition = {
         : { dt: CAMERA_MOTION_SECONDS, frameSeconds: timeProbe.frameSeconds, before: pose(before), after: pose(after) };
     const payload: CameraPayload = {
       kind: "camera",
-      eye: vec3(parameters, "eye", [0, 0.5, 3]),
-      lookAt: vec3(parameters, "lookAt", [0, 0, 0]),
+      eye: now.eye,
+      lookAt: now.lookAt,
       fovDeg: readNumber(parameters, "fov", 55),
       near: readNumber(parameters, "near", 0.1),
       far: readNumber(parameters, "far", 100),

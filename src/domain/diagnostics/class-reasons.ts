@@ -639,6 +639,7 @@ export const DIAGNOSTIC_CLASS_REASONS: Readonly<Record<string, string>> = {
   "view.noFullscreenSurface": "an editor command with nothing to act on",
   "view.nothingToFrame": "an editor command with nothing to act on",
   "viewer.flyDirection": "an editor command with nothing to act on",
+  "viewer.noCameraToFly": "an editor command with nothing to act on",
   "viewer.noNode": "an editor command with nothing to act on",
   "viewer.noOrbit": "an editor command with nothing to act on",
   "viewer.noOutput": "an editor command with nothing to act on",

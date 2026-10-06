@@ -8,6 +8,9 @@ import { KeymapProvider } from "@editor/keymap/keymap-provider.tsx";
 import { createKeymapStore } from "@editor/keymap/store.ts";
 import { DEFAULT_BINDINGS } from "@editor/keymap/defaults.ts";
 import { createPreviewOrbitStore } from "@editor/viewer/preview-orbit-store.ts";
+import type { PreviewOrbitStore } from "@editor/viewer/preview-orbit-store.ts";
+import { createCameraGizmoStore } from "@editor/viewer/camera-gizmo-store.ts";
+import type { ParameterValue } from "@domain/types/parameters.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ResolvedOutput } from "@compiler/types.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
@@ -315,5 +318,121 @@ describe("holding a fly key moves the camera the shader renders from", () => {
       orbits.setMode(NODE, "home");
     });
     expect(eye(updates)).toEqual([...HOME_EYE]);
+  });
+});
+
+/**
+ * §T970 — THE SAME KEYS FLY A DOCUMENT CAMERA, when the viewer is locked to one.
+ *
+ * The pane hands the hook whichever store its gestures go to. Locked, that is the camera
+ * gizmo store, whose flight is an EDIT. Two things the hook owes any such store, and both
+ * were wrong or absent while only the inspection store flew: the axes come from where that
+ * camera is (it has no stock basis), and the END of a flight is told to the store, which is
+ * where one flight becomes one undo step.
+ */
+describe("T970 — holding a fly key flies a document camera through its gizmo store", () => {
+  interface Write {
+    readonly entries: Readonly<Record<string, ParameterValue>>;
+    readonly phase: "live" | "commit";
+  }
+
+  function GizmoPane({ store }: { store: PreviewOrbitStore }) {
+    // No basis: a document camera is not a stock framing. Its pose is the store's own.
+    const fly = useViewerFly({ orbits: store, nodeId: NODE, basis: null });
+    return (
+      <div {...{ [KEYMAP_CONTEXT_ATTRIBUTE]: "viewer" }} data-testid="viewer-pane" tabIndex={-1} onKeyDown={fly.onKeyDown} onKeyUp={fly.onKeyUp} onBlur={fly.onBlur}>
+        <input aria-label="name" />
+      </div>
+    );
+  }
+
+  function locked() {
+    const { bus } = createHarness();
+    const writes: Write[] = [];
+    const store = createCameraGizmoStore({
+      editor: { setStored: (_nodeId, entries, phase) => writes.push({ entries, phase }) },
+      // Three in front of the origin, looking at it: forward is −z, and the radius is 3.
+      readPose: () => ({ eye: [0, 0, 3], lookAt: [0, 0, 0] }),
+    });
+    store.setMode(NODE, "adjustable");
+    const keymapStore = createKeymapStore({ defaults: DEFAULT_BINDINGS, storage: null, platform: "other" });
+    render(
+      <KeymapProvider bus={bus} store={keymapStore} invocationContext={contextFor(alice)}>
+        <GizmoPane store={store} />
+      </KeymapProvider>,
+    );
+    return { writes, store, pane: screen.getByTestId("viewer-pane") };
+  }
+
+  const z = (write: Write | undefined, key: string): number => (write?.entries[key] as readonly number[])[2]!;
+
+  it("⚑ W carries Eye and Look At forward together, by time × cruise × the distance between them", () => {
+    const frames = manualFrames();
+    const { writes, pane } = locked();
+    fireEvent.keyDown(pane, { key: "w" });
+    frames.step(16); // the first frame only starts the clock
+    frames.step(100);
+    // 0.1 s × 1.1 radii a second × a radius of 3 = 0.33, down the view axis.
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.phase).toBe("live");
+    expect(z(writes[0], "eye")).toBeCloseTo(3 - 0.33, 6);
+    expect(z(writes[0], "lookAt")).toBeCloseTo(-0.33, 6);
+    frames.step(100);
+    // It keeps going from where it IS: the second step starts at the first's end.
+    expect(z(writes[1], "eye")).toBeCloseTo(3 - 0.66, 6);
+  });
+
+  it("⚑ ONE FLIGHT IS ONE UNDO STEP: the last key coming up closes it, and the next flight opens another", () => {
+    /*
+     * The first build of this never told the store a flight had ended: the last key-up
+     * empties the held set BEFORE it stops the loop, and the stop asked "is anything held?"
+     * to decide whether there had been a flight. In the app two flights were one undo step.
+     */
+    const frames = manualFrames();
+    const { writes, pane } = locked();
+    fireEvent.keyDown(pane, { key: "w" });
+    frames.step(16);
+    frames.step(100);
+    fireEvent.keyUp(pane, { key: "w" });
+    expect(writes.map((write) => write.phase)).toEqual(["live", "commit"]);
+    // The closing write is where the flight ended.
+    expect(z(writes[1], "eye")).toBe(z(writes[0], "eye"));
+
+    fireEvent.keyDown(pane, { key: "d" });
+    frames.step(16);
+    frames.step(100);
+    fireEvent.keyUp(pane, { key: "d" });
+    expect(writes.map((write) => write.phase)).toEqual(["live", "commit", "live", "commit"]);
+  });
+
+  it("two keys held are ONE flight: it ends when the last of them comes up, not the first", () => {
+    const frames = manualFrames();
+    const { writes, pane } = locked();
+    fireEvent.keyDown(pane, { key: "w" });
+    fireEvent.keyDown(pane, { key: "d" });
+    frames.step(16);
+    frames.step(100);
+    fireEvent.keyUp(pane, { key: "w" });
+    expect(writes.filter((write) => write.phase === "commit")).toHaveLength(0);
+    frames.step(100);
+    fireEvent.keyUp(pane, { key: "d" });
+    expect(writes.filter((write) => write.phase === "commit")).toHaveLength(1);
+  });
+
+  it("a blur ends the flight and closes its step, and a key in a text field never starts one", () => {
+    const frames = manualFrames();
+    const { writes, pane } = locked();
+    fireEvent.keyDown(screen.getByLabelText("name"), { key: "w" });
+    frames.step(16);
+    frames.step(100);
+    expect(writes).toEqual([]);
+
+    fireEvent.keyDown(pane, { key: "w" });
+    frames.step(16);
+    frames.step(100);
+    fireEvent.blur(pane);
+    expect(writes.map((write) => write.phase)).toEqual(["live", "commit"]);
+    frames.step(100);
+    expect(writes).toHaveLength(2);
   });
 });

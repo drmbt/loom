@@ -96,7 +96,31 @@ export interface PreviewInspectOverlaysProps {
    * that reads as breakage is the same bug as a hidden control.
    */
   note?: ((nodeId: NodeId) => string | null) | undefined;
+  /**
+   * §T970: more to say on a tile that HAS its camera, added to the toggle's hover text: the
+   * channels of a partly driven pose that its gestures leave alone. Empty for nothing.
+   */
+  hint?: ((nodeId: NodeId) => string) | undefined;
 }
+
+/**
+ * §T970 — THE TOGGLE DOES NOT SHRINK BELOW 12 px.
+ *
+ * It scales with the canvas because it is chrome on a node (T892). Measured on the walk
+ * (§T1655b): at 35 % zoom it was 5.6 px, opaque, on top, and not findable, which is how
+ * this control was lost twice before (T664, T675). Alt+drag needs no chrome, but a control
+ * nobody can see teaches nobody that. So below the zoom where 16 px would fall under 12,
+ * it holds 12: the kind label's rule (T1597b), and written the way that one is, on the
+ * ELEMENT. An inherited custom property on an ancestor of the nodes restyles every node on
+ * every zoom step (measured there at twelve times the cost).
+ *
+ * The sentence a camera-less tile carries is NOT floored: a line of text that did not
+ * shrink would be wider than its tile below about 60 %, and would cover the picture it is
+ * a caption for.
+ */
+const TOGGLE_PX = 16;
+const TOGGLE_MIN_PX = 12;
+const TOGGLE_MIN_SCALE = TOGGLE_MIN_PX / TOGGLE_PX;
 
 /** One tile's chrome: the screen point its bottom-right corner sits on, and what goes there. */
 interface Placement {
@@ -109,6 +133,8 @@ interface Placement {
   /** The tile's width in the node's own pixels: the note wraps inside it. */
   width: number;
   zoom: number;
+  /** §T970: what the toggle's hover text adds (the held channels of a partly driven pose). */
+  hint: string;
 }
 
 const EMPTY_PLACEMENTS: readonly Placement[] = [];
@@ -122,6 +148,7 @@ function samePlacements(a: readonly Placement[], b: readonly Placement[]): boole
       left.nodeId === right.nodeId &&
       left.source === right.source &&
       left.note === right.note &&
+      left.hint === right.hint &&
       left.width === right.width &&
       left.x === right.x &&
       left.y === right.y &&
@@ -130,7 +157,7 @@ function samePlacements(a: readonly Placement[], b: readonly Placement[]): boole
   });
 }
 
-export function PreviewInspectOverlays({ bounds, inspect, note }: PreviewInspectOverlaysProps) {
+export function PreviewInspectOverlays({ bounds, inspect, note, hint }: PreviewInspectOverlaysProps) {
   // The slot rects live outside React (they are written by a ResizeObserver), so the map
   // identity is the subscription: a slot mounting, resizing or unmounting re-renders this
   // layer and nothing else.
@@ -164,6 +191,7 @@ export function PreviewInspectOverlays({ bounds, inspect, note }: PreviewInspect
             nodeId: id,
             source,
             note: said,
+            hint: source === null ? "" : (hint?.(id) ?? ""),
             x: rect.x + rect.width,
             y: rect.y + rect.height,
             width: box.width,
@@ -172,7 +200,7 @@ export function PreviewInspectOverlays({ bounds, inspect, note }: PreviewInspect
         }
         return placements;
       },
-    [bounds, boxes, inspect, note],
+    [bounds, boxes, hint, inspect, note],
   );
 
   /*
@@ -224,6 +252,7 @@ export function PreviewInspectOverlays({ bounds, inspect, note }: PreviewInspect
             x={placement.x}
             y={placement.y}
             zoom={placement.zoom}
+            hint={placement.hint}
           />
         ),
       )}
@@ -244,7 +273,8 @@ function PreviewInspectToggle({
   x,
   y,
   zoom,
-}: Pick<Placement, "nodeId" | "x" | "y" | "zoom"> & { source: PreviewOrbitStore }) {
+  hint,
+}: Pick<Placement, "nodeId" | "x" | "y" | "zoom" | "hint"> & { source: PreviewOrbitStore }) {
   const read = useCallback(() => source.mode(nodeId), [source, nodeId]);
   const mode = useSyncExternalStore(
     useCallback((listener: () => void) => source.subscribe(nodeId, listener), [source, nodeId]),
@@ -261,15 +291,16 @@ function PreviewInspectToggle({
       // Labels, not prose (§V90/§V91). The MODIFIER is named because it is the path that
       // needs no chrome at all, and a user who never presses this button should still be
       // able to learn it from the one place they will hover.
-      title={
+      title={`${
         adjustable
           ? "Adjusting — press, or h over the tile, to return home"
           : "Adjust camera (or alt on tile): drag orbits, shift pans"
-      }
+      }${hint === "" ? "" : `. ${hint}`}`}
       aria-pressed={adjustable}
       // The corner of the tile, in pane coordinates, plus the zoom the button scales by —
       // the CSS turns those into "bottom-right of the picture, inset by a hair".
-      style={{ ...cssVars({ "--chrome-zoom": zoom }), left: `${String(x)}px`, top: `${String(y)}px` }}
+      // §T970: never under 12 px, written on this element (see `TOGGLE_MIN_SCALE`).
+      style={{ ...cssVars({ "--chrome-zoom": Math.max(zoom, TOGGLE_MIN_SCALE) }), left: `${String(x)}px`, top: `${String(y)}px` }}
       onClick={() => {
         source.setMode(nodeId, adjustable ? "home" : "adjustable");
       }}

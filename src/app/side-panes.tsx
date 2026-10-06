@@ -13,9 +13,9 @@ import { flattenedNodeId, presentsPicture } from "@compiler/index.ts";
 import type { CompiledGraph } from "@compiler/index.ts";
 import type { UnknownParameter } from "@domain/project/index.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import { authoredGraph, type GraphDocument } from "@domain/types/graph.ts";
+import type { GraphDocument } from "@domain/types/graph.ts";
 import { previewCameraAbsenceSentence } from "@compiler/preview-orbit.ts";
-import { POSE_MOVED_FROM_ITS_TILE, cameraPoseDrivenSentence } from "@editor/viewer/camera-pose.ts";
+import { POSE_MOVED_FROM_ITS_TILE } from "@editor/viewer/camera-pose.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import type { InstanceChannelSources } from "@domain/parameters/node-references.ts";
@@ -53,7 +53,14 @@ import { useViewCameraOverride } from "./use-view-camera.ts";
 import { useViewerMapping, VIEWER_MAPPING_HINT, VIEWER_MAPPING_HINT_ON } from "./use-viewer-mapping.ts";
 import type { LiveReads } from "./perform-mapping.ts";
 import { useViewerFly } from "./use-viewer-fly.ts";
-import { VIEWER_NO_CAMERA_MESSAGE } from "./viewer-commands.ts";
+import {
+  flyCameraHint,
+  flyCameraLabel,
+  flyingCameraSentence,
+  useViewerCameraLock,
+  type ViewerCameraLock,
+} from "./use-viewer-camera-lock.ts";
+import { NO_CAMERA_TO_FLY, VIEWER_NO_CAMERA_MESSAGE } from "./viewer-commands.ts";
 import type { GraphActions, PortDragOrigin } from "./graph-pane.tsx";
 import type { GpuStatus } from "./gpu-status.ts";
 import styles from "./panes.module.css";
@@ -691,13 +698,23 @@ export function ViewerPane({
    */
   const outputsRef = useRef(choices);
   outputsRef.current = choices;
+  const graphNow = useRef(graph);
+  graphNow.current = graph;
   /** §T1536b: filled from `useViewerMapping` below, which needs the presentation's key. */
   const editMappingRef = useRef<(on: boolean | undefined) => boolean>(() => false);
   useEffect(() => {
     const holder = registerViewerCommands(bus);
     const handlers = {
       show: (nodeId: string): string | null => {
-        const match = outputsRef.current.find((output) => output.nodeId === nodeId);
+        /* §T1659b(2): the node's PICTURE, which is the port its tile shows, and only then any
+           row at all. The rows are sorted by key, so a Render with Depth Output on answered
+           `v` with `depth` (it sorts before `out`): seen on the owner's `render_shot`. */
+        const pictureOf = (id: string): (typeof outputsRef.current)[number] | undefined => {
+          const type = graphNow.current.nodes[id as NodeId]?.type;
+          const port = type === undefined ? undefined : previewablePort(registry.get(type)?.outputs ?? []);
+          return port === undefined ? undefined : outputsRef.current.find((output) => output.nodeId === id && output.portId === port.id);
+        };
+        const match = pictureOf(nodeId) ?? outputsRef.current.find((output) => output.nodeId === nodeId);
         if (match === undefined) return null;
         setPinnedKey(outputKey(match));
         return match.portId;
@@ -706,6 +723,12 @@ export function ViewerPane({
          shortcut editor — while the orbit store itself still holds no bus (§V527). */
       cameraHome: (): boolean => {
         const state = orbitStateRef.current;
+        // §T970: locked to a camera, `h` LEAVES and writes nothing. Home must never be an
+        // edit; the way back from a flown pose is undo.
+        if (state.lock.armed) {
+          state.lock.set(false);
+          return true;
+        }
         if (!state.orbitable || state.orbits === undefined || state.nodeId === null) return false;
         state.orbits.setMode(state.nodeId, "home");
         return true;
@@ -728,6 +751,13 @@ export function ViewerPane({
          comes through here — it is a gesture on the focused pane — but both land in the
          same store through the same arithmetic, so the two cannot drift. */
       fly: (direction: FlyAxis) => orbitStateRef.current.fly(direction),
+      /* §T970: `c`, the bar's button and an agent all arm the one lock. The answer names
+         the camera, or says why there is none to fly. */
+      flyCamera: (on: boolean | undefined) => {
+        const { lock: current } = orbitStateRef.current;
+        if (current.target === null) return { flying: false, camera: null, refusal: current.refusal ?? NO_CAMERA_TO_FLY };
+        return { flying: current.set(on), camera: current.target, refusal: null };
+      },
       /* §T1536b (viewer slice): `m`, the bar's toggle and an agent all set the one mode. */
       editMapping: (on: boolean | undefined) => editMappingRef.current(on),
     };
@@ -738,7 +768,7 @@ export function ViewerPane({
     // `setPinnedKey` stamps the CURRENT document on the pin (T726), so the handler has to
     // be rebuilt when that changes — `bus` alone would leave `v` writing the closed
     // project's identity onto a pin made in the new one.
-  }, [bus, setPinnedKey]);
+  }, [bus, registry, setPinnedKey]);
 
   /*
    * §B220 — TWO PRESENTATION PATHS, and which one runs is decided by the row itself.
@@ -1020,7 +1050,18 @@ export function ViewerPane({
     if (camera === undefined) return null;
     return { eye: camera.eye, lookAt: camera.lookAt, fovY: camera.fovY, aspect: camera.aspect };
   }, [selected]);
-  const fly = useViewerFly({ orbits, nodeId: orbitNodeId, basis: orbitable ? flyBasis : null });
+  /*
+   * §T970 — THE LOCK. When the picture is drawn through a camera whose pose can be moved,
+   * the viewer can be locked to it, and then every gesture below (drag, shift-drag, the
+   * wheel, the fly keys) goes to that camera's document-writing store and not to the
+   * inspection one. `gesture*` is that one decision, made once, so no handler can route a
+   * drag to one store and its wheel to the other.
+   */
+  const lock = useViewerCameraLock({ bus, invocation, registry, graph, selected });
+  const gestureStore = lock.armed ? lock.store : orbits;
+  const gestureNodeId = lock.armed ? lock.target : orbitNodeId;
+  const gestureLive = lock.armed || orbitable;
+  const fly = useViewerFly({ orbits: gestureStore, nodeId: gestureNodeId, basis: !lock.armed && orbitable ? flyBasis : null });
   /*
    * T1655b — WHY THIS 3D PICTURE HAS NO CAMERA HERE, as the tile says it (one fact, one
    * sentence: the compiler's reason on the row). A picture drawn through a node's own Eye
@@ -1029,16 +1070,18 @@ export function ViewerPane({
   const cameraNote = useMemo((): string | null => {
     const control = selected?.previewCamera;
     if (orbitable || selected === null || selected === undefined || control === undefined || control.kind === "orbit") return null;
+    // §T970: locked, the one thing to say is that the picture's gestures are edits.
+    if (lock.armed) return flyingCameraSentence(lock.name, lock.held);
     if (control.kind === "none") {
-      return previewCameraAbsenceSentence(control.reason, (id) => graph.nodes[id]?.label ?? id);
+      const framed = previewCameraAbsenceSentence(control.reason, (id) => graph.nodes[id]?.label ?? id);
+      // A Render whose camera cannot be flown says whose it is AND why not.
+      return lock.refusal === null ? framed : `${framed} ${lock.refusal}`;
     }
-    const node = graph.nodes[selected.nodeId as NodeId];
-    const driven =
-      node === undefined
-        ? null
-        : cameraPoseDrivenSentence(node, registry.get(node.type), { ...bus.readScope(), graph: authoredGraph(graph), registry });
-    return driven ?? POSE_MOVED_FROM_ITS_TILE;
-  }, [bus, graph, orbitable, registry, selected]);
+    // Its own pose: flown from the button beside this line, so there is nothing to add,
+    // unless the pose is driven, or the node is not in the document this pane edits.
+    if (lock.target !== null) return null;
+    return lock.refusal ?? POSE_MOVED_FROM_ITS_TILE;
+  }, [graph, lock.armed, lock.held, lock.name, lock.refusal, lock.target, orbitable, selected]);
   /** T379: measure the selected preview's positions — the frame-content readback. */
   const measureBounds = useCallback(async (): Promise<
     { lookAt: readonly [number, number, number]; radius: number } | undefined
@@ -1086,22 +1129,26 @@ export function ViewerPane({
     orbitable: boolean;
     frameContent?: () => Promise<{ lookAt: readonly [number, number, number]; radius: number } | undefined>;
     fly: (direction: FlyAxis) => boolean;
-  }>({ orbits, nodeId: orbitNodeId, orbitable, frameContent: measureBounds, fly: fly.step });
+    lock: ViewerCameraLock;
+  }>({ orbits, nodeId: orbitNodeId, orbitable, frameContent: measureBounds, fly: fly.step, lock });
   orbitStateRef.current = {
     orbits,
     nodeId: orbitNodeId,
     orbitable,
     frameContent: measureBounds,
     fly: fly.step,
+    lock,
   };
   const orbitDrag = useRef<{ pointerId: number; x: number; y: number; pan: boolean } | null>(null);
   const onOrbitDown = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
-      if (!orbitable || orbits === undefined || orbitNodeId === null || event.button !== 0) return;
+      if (!gestureLive || gestureStore === undefined || gestureNodeId === null || event.button !== 0) return;
       // The first drag is the way in: the viewer's surface has no competing gesture, so
       // there is nothing for a modifier to disambiguate (the tile's alt stays a tile
-      // concern). Entering latches; the keymap's home returns (T380).
-      orbits.setMode(orbitNodeId, "adjustable");
+      // concern). Entering latches; the keymap's home returns (T380). §T970: a camera the
+      // viewer is LOCKED to is armed already, by its button and by nothing else: a drag is
+      // never the way into a mode whose every move is an edit.
+      gestureStore.setMode(gestureNodeId, "adjustable");
       orbitDrag.current = {
         pointerId: event.pointerId,
         x: event.clientX,
@@ -1110,30 +1157,30 @@ export function ViewerPane({
       };
       event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [orbitable, orbits, orbitNodeId],
+    [gestureLive, gestureStore, gestureNodeId],
   );
   const onOrbitMove = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
       const active = orbitDrag.current;
-      if (active === null || active.pointerId !== event.pointerId || orbits === undefined || orbitNodeId === null) return;
+      if (active === null || active.pointerId !== event.pointerId || gestureStore === undefined || gestureNodeId === null) return;
       const width = event.currentTarget.getBoundingClientRect().width;
       const scale = ORBIT_REFERENCE_WIDTH / Math.max(width, 1);
-      orbits.apply(
-        orbitNodeId,
+      gestureStore.apply(
+        gestureNodeId,
         orbitDeltaFor(event.clientX - active.x, event.clientY - active.y, { pan: active.pan, scale }),
       );
       active.x = event.clientX;
       active.y = event.clientY;
     },
-    [orbits, orbitNodeId],
+    [gestureStore, gestureNodeId],
   );
   const onOrbitUp = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
       if (orbitDrag.current?.pointerId !== event.pointerId) return;
       orbitDrag.current = null;
-      orbits?.release?.(orbitNodeId as NodeId);
+      if (gestureNodeId !== null) gestureStore?.release?.(gestureNodeId);
     },
-    [orbits, orbitNodeId],
+    [gestureStore, gestureNodeId],
   );
   /* The wheel dollies — non-passive, so the page never scrolls under a zoom. Attached
      only while an orbitable output is selected (§V461: the mode has to turn off). */
@@ -1144,15 +1191,15 @@ export function ViewerPane({
   const synthesized = synthesisRow !== null;
   useEffect(() => {
     const element = synthesized ? synthesisCanvasRef.current : orbitElement.current;
-    if (element === null || !orbitable || orbits === undefined || orbitNodeId === null) return;
+    if (element === null || !gestureLive || gestureStore === undefined || gestureNodeId === null) return;
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
-      orbits.setMode(orbitNodeId, "adjustable");
-      orbits.zoom(orbitNodeId, zoomFactorFor(event.deltaY, event.deltaMode));
+      gestureStore.setMode(gestureNodeId, "adjustable");
+      gestureStore.zoom(gestureNodeId, zoomFactorFor(event.deltaY, event.deltaMode));
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);
-  }, [orbitable, orbits, orbitNodeId, canvasKey, synthesized]);
+  }, [gestureLive, gestureStore, gestureNodeId, canvasKey, synthesized]);
 
   const onCanvasPointer = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -1402,6 +1449,11 @@ export function ViewerPane({
             </Button>
           </Tooltip>
         ) : null}
+        {/* §T970: a picture drawn through a camera that can be moved gets the button that
+            flies THAT camera, by name. It stands where the inspection button would: a
+            picture has one camera or the other, never both. */}
+        {lock.target !== null ? <ViewerFlyCameraButton lock={lock} /> : null}
+        {lock.target !== null ? null : (
         <ViewerCameraButton
           orbits={orbits}
           nodeId={orbitNodeId}
@@ -1418,6 +1470,7 @@ export function ViewerPane({
           said={cameraNote}
           flying={fly.flying}
         />
+        )}
         {/* §T1536b (viewer slice): beside the camera toggle — the other mode the picture's
             own gestures switch into. The label carries the key and the way out (§V90). */}
         <Tooltip label={mapping.editing ? VIEWER_MAPPING_HINT_ON : VIEWER_MAPPING_HINT}>
@@ -1507,7 +1560,7 @@ export function ViewerPane({
               onPointerDown={onOrbitDown}
               onPointerUp={onOrbitUp}
               onPointerCancel={onOrbitUp}
-              style={orbitable ? { cursor: "grab", touchAction: "none" } : undefined}
+              style={gestureLive ? { cursor: "grab", touchAction: "none" } : undefined}
             />
           )}
           <canvas
@@ -1535,7 +1588,7 @@ export function ViewerPane({
             }}
             onPointerCancel={onOrbitUp}
             onKeyDown={onCanvasKeyDown}
-            style={orbitable ? { cursor: "grab", touchAction: "none" } : undefined}
+            style={gestureLive ? { cursor: "grab", touchAction: "none" } : undefined}
           />
           {/*
            * §T1311b(c) — THE CORNER GIZMO. A sibling of the canvas inside `.picture`, for
@@ -1599,6 +1652,31 @@ export function ViewerPane({
         )}
       </dl>
     </div>
+  );
+}
+
+/**
+ * §T970 — THE BUTTON THAT FLIES A DOCUMENT CAMERA, NAMED FOR IT.
+ *
+ * Its face is the name of the node its gestures will write ("Fly camera_rig"), because that
+ * node is often not the one the viewer is showing: a Render's picture is flown through its
+ * camera. Lit while the viewer is locked; the same toggle as `c` (`viewer.flyCamera`).
+ */
+function ViewerFlyCameraButton({ lock }: { lock: ViewerCameraLock }) {
+  return (
+    <Tooltip label={flyCameraHint(lock.name, lock.armed, lock.held)}>
+      <Button
+        className={styles.flyCamera}
+        aria-pressed={lock.armed}
+        data-testid="viewer-fly-camera"
+        data-fly-camera={lock.target ?? undefined}
+        onClick={() => {
+          lock.set(undefined);
+        }}
+      >
+        {flyCameraLabel(lock.name)}
+      </Button>
+    </Tooltip>
   );
 }
 

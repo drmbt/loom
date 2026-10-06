@@ -20,9 +20,10 @@ did not follow the write, and the viewer's orbit was attached to a hidden canvas
 are fixed and gated. After it, every 3D row carries one of three answers from the compiler
 (`ResolvedOutput.previewCamera`): `orbit`, `pose` (camera, projector, Render Surface and
 Render Instances with no camera named), or `none` with a reason ("Framed by camera_rig." on
-a Render). What still does not exist: the gizmo has no fly, the viewer cannot move a camera
-at all (it says "drag on its tile in the graph"), there is no free view of a Render's scene,
-no command that sets a pose in one step, and a fully driven camera can only be refused.
+a Render). When this note was written the gizmo had no fly, the viewer could not move a
+camera at all (it said "drag on its tile in the graph"), and a fully driven camera could
+only be refused: slice 1 built those three (section 8). What still does not exist: a free
+view of a Render's scene, and a command that sets a pose in one step.
 
 ## 2. How the reference tools do it
 
@@ -115,7 +116,7 @@ and the camera would stop following. Three options:
 | Parameter | Type, units | Default | Meaning |
 |---|---|---|---|
 | Origin | vector, scene units (the owner's metres) | 0, 0, 0 | Where the frame is. World Eye = Origin + frame · Eye; the same for Look At. |
-| Heading | vector, a direction | 0, 0, 0 | The frame's forward axis, Y up. Zero means axes stay the world's, so only position is inherited (Notch's "world position from the parent only"). |
+| Heading | vector, a direction | 0, 0, 0 | The way the frame faces: its forward, which is its −z. AS BUILT, only the horizontal part is read, so the frame turns about the vertical and never tilts. Zero (or straight up or down) means axes stay the world's, so only position is inherited (Notch's "world position from the parent only"). |
 
   Both are ordinary drivable vectors, so the frame can be anything an expression can read: a
   channel triple, another node's Translate (`op('geometry_hull').par.translate.x`), a value
@@ -151,6 +152,9 @@ and the node's output is never an inspection" survives all three.
 
 ## 6. Slices, each landable alone
 
+(Built on 2026-10-06 as "slice 1": items 2 and 3 below, with the tile toggle's minimum
+size. Items 1 and 4 are the next slice. Section 8 says what was ruled in the building.)
+
 1. **`camera.setPose`**: the command, its refusal on a driven channel, the agent tool.
    Accepted when one call is one undo step, a refused call changes nothing and names the
    channel, and a Render through that camera changes on Dawn by the exact matrix.
@@ -184,7 +188,6 @@ Left out, as row text for the lead to number:
 - Tile chrome whose corner is under a node in front is hidden (§T1655b); on a document
   that overlaps its nodes, such as the owner's, a Render's sentence is then not shown at
   all. Move it to a corner that is not covered, or decide that overlap is the document's.
-- `v` on a Render with Depth Output on shows `depth`: the viewer takes the first row by key.
 - Fly a projector from the viewer (it has the tile gizmo since §T1655b).
 - A FOV gesture in the free view, and with it FOV travelling in the commit.
 
@@ -205,3 +208,68 @@ Each is a choice between named options; the first is my recommendation.
    `No` (then only Lock is built).
 6. **At small zoom the camera button on a tile is about 5 px (alt+drag still works). Keep
    it?** `Minimum` (never smaller than about 12 px, like the node's name) / `Scale` (as now).
+
+## 8. Slice 1 as built (2026-10-06), and what was ruled in the building
+
+Built on the recommendations above, before the owner answered the six questions. Each rule
+here is one edit to turn.
+
+**The lock.** A viewer whose picture is drawn through a movable pose shows a button named
+for the node it will write: "Fly camera_rig". It, or `c` (`viewer.flyCamera`, a keymap row
+in the viewer context), arms it. Armed, the picture's drag, shift-drag, wheel and fly keys
+go to a document-writing camera store and not to the inspection one. A drag never arms it,
+and unarmed nothing in the viewer edits anything. `h` leaves and writes nothing. Another
+subject in the viewer, or a pose that stops being movable, leaves too.
+
+**How a held key becomes undo steps: ONE FLIGHT IS ONE STEP.** A flight runs from the first
+fly key going down until the last one comes up, the pane loses focus, or (from the palette
+or an agent) one discrete step is taken. However many keys were held on the way, and however
+long, that is one undo. A drag is one; a run of wheel clicks that pauses for 400 ms is one.
+There is no timer inside a flight: a long flight is one long step, because a pilot who flew
+somewhere and wants to go back wants to go back to where they took off.
+
+**Pace.** W A S D E Q move Eye and Look At together at 1.1 times the distance between them
+a second (shift is four times that), the scale-free pace the inspection flight has. A
+flight keeps that distance, so it keeps its pace; the wheel changes the distance, and is
+the throttle. On the owner's rig, an offset of five metres cruises at 5.5 m/s.
+
+**Origin and Heading.** As section 4, with three things settled:
+
+- *Heading is read for its horizontal part only.* The frame turns about the vertical and
+  never tilts. A camera following a subject up a ramp rises with it and keeps its horizon;
+  and the gizmo's orbit, truck and flight are the same turn-about-the-vertical in the frame
+  as in the world, so the gizmo needed no change at all. A frame that also pitches is a
+  question for the owner if a shot wants it (it is a different parameter: an up vector).
+- *The frame's forward is its −z*, the way a camera looks. The default camera (Eye 0, 0.5,
+  3, Look At the origin) under a subject's position and heading sits three behind and half
+  above it, looking where it goes: a chase camera with nothing typed.
+- *No version bump and no migrate.* The Camera stays at definition version 1, as Geometry
+  did for its transform (§T1588b): absent parameters resolve to their defaults and the
+  defaults are the identity, float for float. A bump would mark every document with a
+  camera as changed on load and force a regen of the 23 shipped examples that hold one, to
+  move no stored value. Proved instead: 49 documents and 53 cameras pinned before the
+  change, at three frames, identical after.
+
+**A driven pose, three cases.** Eye and Look At all driven: no button, no gizmo, and
+"Driven by expressions (Eye, Look At)."; on a Render framed by it, "Framed by camera_rig.
+Driven by expressions (Eye, Look At).". Some channels driven: it flies on the rest, and
+says "Stays driven: Eye x (Expression)." on the tile toggle's hover, the viewer button's,
+and the readout while flying. The rig on Origin and Heading: everything a flight writes is
+free, and it flies.
+
+**The tile's toggle** holds 12 px below the zoom where it would be smaller (75 %). The
+sentence a camera-less tile carries is not floored: it would be wider than its tile.
+
+Not built here, as row text:
+
+- **Fly a driven rig by displacing it.** A camera whose Eye and Look At are all driven and
+  whose Origin is free could still be flown by writing ORIGIN: a translation added to the
+  rig (Blender's parent lock, "the root parent is transformed rather than the camera"). It
+  would make the owner's file flyable as it stands, for translation only (no orbit: Origin
+  cannot turn the rig about its own target). Left out because it is a second write target
+  with a smaller gesture set, and the sentence would have to explain which.
+- **A frame that pitches and banks** (an Up or a full orientation beside Heading).
+- **The editor queues a gesture's writes one behind another**, so on a loaded machine the
+  document trails a flight for a moment after the key comes up (seen in the GPU lane with
+  six specs in parallel). True of every drag through `ParameterEditor`; unmeasured.
+- **The viewer's bar squeezes its Display picker** when the fly button's name is long.

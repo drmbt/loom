@@ -110,6 +110,17 @@ const TD_GRAPH_BINDINGS: readonly KeyBinding[] = [
     command: "viewer.frameContent",
     label: "Frame content — fit measured bounds",
   },
+  {
+    // §T970 — the lock: the viewer's gestures move the camera its picture is drawn through.
+    // A row, so it rebinds and shows in the shortcut editor; the bar's button names the camera.
+    id: "viewer.flyCamera",
+    keys: "c",
+    context: "viewer",
+    command: "viewer.flyCamera",
+    label: "Fly camera — move the camera this picture is drawn through",
+    description:
+      "Locks the viewer to the camera that frames its picture: drag orbits it, shift-drag trucks, the wheel dollies, and the fly keys fly it. Every move is an edit and undo steps back. Press again, or Home, to leave.",
+  },
   /*
    * §T1311b(b) — FLY, and it is HERE rather than in the viewer component for §V52's
    * reason: which key means "forward" is DATA. A `if (event.key === "w")` in the pane

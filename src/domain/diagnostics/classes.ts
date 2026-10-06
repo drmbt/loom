@@ -690,6 +690,7 @@ export const DIAGNOSTIC_CLASSES: Readonly<Record<string, DiagnosticClassRow>> = 
   "view.noFullscreenSurface": { class: "act" },
   "view.nothingToFrame": { class: "act" },
   "viewer.flyDirection": { class: "act" },
+  "viewer.noCameraToFly": { class: "act" },
   "viewer.noNode": { class: "act" },
   "viewer.noOrbit": { class: "act" },
   "viewer.noOutput": { class: "act" },

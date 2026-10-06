@@ -4,7 +4,6 @@ import type { NodeDefinition } from "@domain/types/node-definition.ts";
 import { parameterReadOptions, type ParameterReadContext } from "@domain/parameters/node-references.ts";
 import type { CameraPose } from "./camera-gizmo-store.ts";
 import { MODE_LABELS } from "@ui/controls/parameter-slot.ts";
-import { describeLabelDrag, type LabelDragChannel } from "@ui/controls/label-drag.ts";
 
 /**
  * T1314b / §B219 — WHAT THE CAMERA GIZMO IS ALLOWED TO MOVE, read from the RESOLVED
@@ -39,9 +38,11 @@ import { describeLabelDrag, type LabelDragChannel } from "@ui/controls/label-dra
  * ## The rule, which is one control over and already written
  *
  * `label-drag.ts` solved this for the inspector's vector label: `movableMask` refuses to
- * write a driven channel's displayed value back, and `describeLabelDrag` says which channel
- * is held and by what. This module is that answer applied to the tile's gesture, so the two
- * surfaces refuse identically and say the same sentence. Refusal is ABSENT rather than
+ * write a driven channel's displayed value back, and says which channel is held and by
+ * what. This module is that answer applied to the tile's gesture, so the two surfaces refuse
+ * identically. (§T970: the SENTENCE is this module's own. It used to be the label's, "Drag
+ * the name to move y and z together", which is about a gesture nobody makes on a tile, and
+ * nothing read it.) Refusal is ABSENT rather than
  * disabled (§T1049) and total refusal comes only when EVERY channel is driven — there is
  * then nothing to fly. A partly driven camera still flies, on the channels that are free.
  */
@@ -92,9 +93,6 @@ const vectorChannels = (
     return { name, value, drivenBy };
   });
 };
-
-const asChannels = (channels: readonly CameraChannel[]): readonly LabelDragChannel[] =>
-  channels.map((channel) => ({ name: channel.name, drivenBy: channel.drivenBy }));
 
 const poseChannels = (
   node: GraphNode,
@@ -170,10 +168,27 @@ export function readCameraPoseFacts(
     ["Eye", eye],
     ["Look At", lookAt],
   ] as const) {
-    if (channels.every((channel) => channel.drivenBy === null)) continue;
-    heldParts.push(`${label}: ${describeLabelDrag(asChannels(channels))}`);
+    for (const channel of channels) {
+      if (channel.drivenBy !== null) heldParts.push(`${label} ${channel.name} (${channel.drivenBy})`);
+    }
   }
-  return { eye, lookAt, held: heldParts.join(" ") };
+  return { eye, lookAt, held: heldParts.length === 0 ? "" : `Stays driven: ${heldParts.join(", ")}.` };
+}
+
+/**
+ * §T970 — what a pose tile or the viewer's lock has to SAY about this node's pose: the
+ * sentence that stands in for the control when nothing is free (`driven`), and, when the
+ * control is there, the channels its gestures will leave alone (`held`, empty for none).
+ * A partly driven camera flew on its free channels and told nobody which were held.
+ */
+export function cameraPoseSaid(
+  node: GraphNode,
+  definition: NodeDefinition | undefined,
+  scope: ParameterReadContext,
+): { readonly driven: string | null; readonly held: string } {
+  const driven = cameraPoseDrivenSentence(node, definition, scope);
+  if (driven !== null) return { driven, held: "" };
+  return { driven: null, held: readCameraPoseFacts(node, definition, parameterReadOptions(scope))?.held ?? "" };
 }
 
 /** The numbers, for the orbit maths. */

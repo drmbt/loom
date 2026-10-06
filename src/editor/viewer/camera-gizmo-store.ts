@@ -24,8 +24,8 @@ import type { PreviewInspectMode, PreviewOrbitStore } from "./preview-orbit-stor
  * It wears the `PreviewOrbitStore` interface so `NodePreviewSlot` and the header toggle
  * work unchanged — same alt-entry, same radians-per-pixel, same wheel, same `h` to
  * leave. The verbs map onto the T706 representation: drag orbits `eye` around `lookAt`,
- * shift-drag trucks both together, the wheel dollies the distance. `roll` is deliberately
- * not a gesture (its parameter description says why). `get()` always answers undefined:
+ * shift-drag trucks both together, the wheel dollies the distance, and (§T970) a flight
+ * translates both. `roll` is deliberately not a gesture (its parameter description says why). `get()` always answers undefined:
  * there is no view override to publish, because the deltas live in the document.
  *
  * ## Undo (§V15) and liveness (§V5)
@@ -269,6 +269,35 @@ export function createCameraGizmoStore(options: {
       // The wheel has no pointerup; the transaction closes itself after a short idle.
       if (s.wheelTimer !== undefined) clearTimeout(s.wheelTimer);
       s.wheelTimer = setTimeout(() => commit(nodeId), WHEEL_COMMIT_MS);
+    },
+    /**
+     * §T970 — FLY: the whole rig translates, Eye and Look At together, along a step the
+     * caller resolved against this camera's own axes (`pose` below). `delta` is in units
+     * of the distance from Eye to Look At, the same scale-free unit the inspection store's
+     * flight uses for its stock radius: a camera that frames a table and one that frames a
+     * hall cross their own picture at the same pace, and the wheel, which changes that
+     * distance, is the throttle a pilot already has.
+     *
+     * A document edit like every other verb here: live writes inside one transaction, and
+     * `release` (the last fly key coming up) closes it, so one flight is one undo step.
+     */
+    fly(nodeId, delta) {
+      if ((modes.get(nodeId) ?? "home") !== "adjustable") return;
+      if (!delta.every((value) => Number.isFinite(value))) return;
+      const s = session(nodeId);
+      if (s === null) return;
+      const r = Math.max(length(sub(s.eye, s.lookAt)), MIN_DISTANCE);
+      const move = scale(delta, r);
+      s.eye = holdMasked(add(s.eye, move), s.startEye, s.eyeMask);
+      s.lookAt = holdMasked(add(s.lookAt, move), s.startLookAt, s.lookAtMask);
+      write(nodeId, s, "live");
+    },
+    /** Where the camera is: the gesture in flight if there is one, else the document. */
+    pose(nodeId) {
+      const s = sessions.get(nodeId);
+      if (s !== undefined) return { eye: s.eye, lookAt: s.lookAt };
+      const stored = options.readPose(nodeId);
+      return stored === null ? null : { eye: stored.eye, lookAt: stored.lookAt };
     },
     reset(nodeId) {
       commit(nodeId);

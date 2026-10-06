@@ -8,7 +8,7 @@ import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { ParameterSlot } from "@domain/types/parameters.ts";
 import { listExamples } from "../../examples/catalogue.ts";
 import { exampleRegistry } from "../../examples/runner.ts";
-import { cameraPoseAt, cameraPoseDrivenSentence, movableChannels, poseFromFacts, readCameraPoseFacts } from "./camera-pose.ts";
+import { cameraPoseAt, cameraPoseDrivenSentence, cameraPoseSaid, movableChannels, poseFromFacts, readCameraPoseFacts } from "./camera-pose.ts";
 import { createDomainBus } from "@domain/commands/index.ts";
 import { STORED_READ } from "@domain/parameters/resolve.ts";
 import { createGraphStore } from "@domain/graph/store.ts";
@@ -246,5 +246,74 @@ describe("T1655b — a fully driven pose has a sentence, and a pose with a free 
     // And a plain camera says nothing either.
     const plain = cameraWith({ eye: [0, 0.5, 3], lookAt: [0, 0, 0] });
     expect(cameraPoseDrivenSentence(plain.camera, definition, plain.scope)).toBeNull();
+  });
+});
+
+/**
+ * §T970 / §T1656b — WITH THE RIG ON ORIGIN AND HEADING, THE POSE IS FLYABLE.
+ *
+ * The acceptance case is the owner's shape: a camera whose pose follows a subject by
+ * expressions. On Eye and Look At that is a pose nothing can fly (the sentence above). On
+ * Origin and Heading it leaves Eye and Look At as plain offsets, which is what the gizmo
+ * and the viewer's lock write.
+ */
+describe("T970 — a rig on Origin and Heading leaves Eye and Look At to be flown", () => {
+  const expression = (source: string, retained: number): ParameterSlot => ({
+    mode: "expression",
+    bindings: { static: { kind: "static", value: retained }, expression: { kind: "expression", source } },
+  });
+  const cameraWith = (parameters: GraphNode["parameters"]): { camera: GraphNode; scope: Parameters<typeof cameraPoseAt>[2] } => {
+    const camera: GraphNode = {
+      id: "cam" as GraphNode["id"],
+      type: "camera",
+      label: "camera_rig",
+      definitionVersion: definition?.version ?? 1,
+      position: { x: 0, y: 0 },
+      parameters,
+    };
+    const graph: GraphDocument = { revision: 1, nodes: { cam: camera }, edges: {}, groups: {} };
+    const { bus } = createDomainBus({ store: createGraphStore({ initialGraph: graph }), registry: nodes });
+    return { camera, scope: { ...bus.readScope(), graph: authoredGraph(graph) } };
+  };
+
+  it("all six channels of Origin and Heading driven, Eye and Look At constant: every channel the gesture writes is free", () => {
+    const { camera, scope } = cameraWith({
+      eye: [0, 1, 2],
+      lookAt: [0, 0, 0],
+      "origin.x": expression("4 * cos(abstime)", 4),
+      "origin.y": expression("0", 0),
+      "origin.z": expression("4 * sin(abstime)", 0),
+      "heading.x": expression("0 - sin(abstime)", 0),
+      "heading.y": expression("0", 0),
+      "heading.z": expression("cos(abstime)", 1),
+    });
+    const pose = cameraPoseAt(camera, definition, scope);
+    // The OFFSET, in the frame: what is stored, and what a gesture accumulates from. Not
+    // the world pose, which moves every frame and would be written back as numbers.
+    expect(pose?.eye).toEqual([0, 1, 2]);
+    expect(pose?.lookAt).toEqual([0, 0, 0]);
+    expect(pose?.eyeMask).toEqual([true, true, true]);
+    expect(pose?.lookAtMask).toEqual([true, true, true]);
+    expect(cameraPoseSaid(camera, definition, scope)).toEqual({ driven: null, held: "" });
+  });
+
+  it("⚑ a partly driven pose says which channels stay with their driver, by name and mode", () => {
+    // It flew on its free channels and told nobody which were held: the sentence was
+    // computed and read by nothing, and was the inspector label's ("Drag the name to…").
+    const { camera, scope } = cameraWith({ eye: [0, 0.5, 3], "eye.x": expression("sin(abstime)", 0), "lookAt.z": expression("0", 0) });
+    expect(cameraPoseSaid(camera, definition, scope)).toEqual({
+      driven: null,
+      held: "Stays driven: Eye x (Expression), Look At z (Expression).",
+    });
+    // And a pose with nothing free has the other sentence, and nothing held to list.
+    const all = cameraWith({
+      "eye.x": expression("0", 0),
+      "eye.y": expression("0", 0),
+      "eye.z": expression("3", 3),
+      "lookAt.x": expression("0", 0),
+      "lookAt.y": expression("0", 0),
+      "lookAt.z": expression("0", 0),
+    });
+    expect(cameraPoseSaid(all.camera, definition, all.scope)).toEqual({ driven: "Driven by expressions (Eye, Look At).", held: "" });
   });
 });

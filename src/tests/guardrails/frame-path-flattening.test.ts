@@ -102,6 +102,11 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
     why: "Canvas gesture handling — an edge drop and its before/after edge count. A gesture is a pointer event, not a frame, and it addresses the nodes the USER can see, which are the authored ones. T1652b, two more, each on demand and never per frame: the camera pose a viewport gesture starts from, and the node an agent's `render_preview` names. Both used to read the pane's `graph` prop, which no longer moves for a values-only revision; the store's document is the one that holds the value just written.",
   },
   {
+    file: "app/use-viewer-camera-lock.ts",
+    reads: 1,
+    why: "§T970: NOT per frame — the pose a viewer gesture on a locked camera STARTS from (a drag, a wheel burst, a flight), read once per gesture and then accumulated locally (§V657). The same read `graph-pane.tsx` makes for the tile's gizmo, for the same reason: the pane's `graph` prop does not move for a values-only revision, and a flight is a run of exactly those. It addresses an AUTHORED camera node, the one the user's edit is written to.",
+  },
+  {
     file: "app/revision-watch.ts",
     reads: 4,
     why: "T1652b: NOT per frame — once per REVISION (the store's own notification), to classify it as values-only or structural, and three times to take the document the next revision is compared with (at creation, when the first listener attaches, and when `structure()` is asked while nothing listens). It compares AUTHORED documents because a revision is an authored edit; what a frame path reads is still `runtime.flattened.current()`.",

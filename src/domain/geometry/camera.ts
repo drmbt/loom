@@ -199,6 +199,69 @@ export function cameraBasis(
   return { forward, right, up: cross(right, forward) };
 }
 
+/**
+ * §T1656b — A CAMERA'S PARENT FRAME: where its Eye and Look At are measured FROM.
+ *
+ * The owner's camera follows a robot travelling 3 to 8 m a second, by six expressions on Eye
+ * and Look At. A view flown by hand could only be kept by replacing those expressions with
+ * numbers, and the camera would stop following (§T970). The reference tools all answer the
+ * same way: the thing that moves is a PARENT, and the camera's own transform is an offset
+ * in it (TouchDesigner's Parent Transform Source, Notch's parent node, Blender's parenting;
+ * `docs/camera-fly-design-2026-10-06.md` has the sentences).
+ *
+ * Here the parent is two vectors on the camera, both ordinary drivable parameters:
+ *
+ *  - ORIGIN: where the frame is. World Eye = Origin + frame · Eye; the same for Look At.
+ *  - HEADING: which way the frame faces. ONLY ITS HORIZONTAL PART IS READ: the frame turns
+ *    about the world's up axis and never tilts. A camera that follows a subject up a ramp
+ *    rises with it (Origin) and does not pitch with it, so the horizon of a flown view stays
+ *    where the pilot left it, and the gizmo's orbit, truck and fly mean the same thing in the
+ *    frame as in the world (a turn about the axis all three already use).
+ *
+ * The frame's FORWARD is its local −z, the way a camera looks: the default camera (Eye
+ * 0, 0.5, 3, Look At the origin) under a subject's position and heading sits three behind
+ * and half above it, looking where it goes. No heading (zero, or straight up or down) is no
+ * turn: only the position is inherited.
+ */
+export interface CameraFrame {
+  readonly origin: readonly [number, number, number];
+  /** The frame's +x, in the world. Horizontal and unit. */
+  readonly right: readonly [number, number, number];
+  /** The frame's +z, in the world: the opposite of its heading. Horizontal and unit. */
+  readonly back: readonly [number, number, number];
+}
+
+export function cameraFrame(
+  origin: readonly [number, number, number],
+  heading: readonly [number, number, number],
+): CameraFrame {
+  const span = Math.hypot(heading[0], heading[2]);
+  if (!(span > 1e-6)) return { origin, right: [1, 0, 0], back: [0, 0, 1] };
+  const back = [-heading[0] / span, 0, -heading[2] / span] as const;
+  // right = up × back, with up the world's y.
+  return { origin, right: [back[2], 0, -back[0]], back };
+}
+
+/**
+ * A point of the frame, in the world.
+ *
+ * ⚑ THE UNTOUCHED FRAME RETURNS THE POINT ITSELF, float for float: every camera saved
+ * before Origin and Heading existed has neither, and what it draws must not move by a bit.
+ * `x * 1 + z * 0 + 0` is exact for finite numbers and still not the same claim.
+ */
+export function inCameraFrame(
+  frame: CameraFrame,
+  point: readonly [number, number, number],
+): readonly [number, number, number] {
+  const { origin, right, back } = frame;
+  if (origin[0] === 0 && origin[1] === 0 && origin[2] === 0 && right[0] === 1 && back[2] === 1) return point;
+  return [
+    origin[0] + right[0] * point[0] + back[0] * point[2],
+    origin[1] + point[1],
+    origin[2] + right[2] * point[0] + back[2] * point[2],
+  ];
+}
+
 /** The optics a venue spec lists (T704). All of it is geometry — no light math here. */
 export interface ProjectorLens {
   /** Throw distance ÷ image width — the number printed on the lens. */
