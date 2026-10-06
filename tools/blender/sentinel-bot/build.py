@@ -21,6 +21,7 @@ What is written:
   mand_<k>_<level>           front arm k, link `level` (0 = shoulder), robot frame at the
                              reference pose, origin at its joint, `loom_parent` its carrier.
   ring                       one tentacle ring, joint frame.
+  ring_low                   the same ring at a quarter of its triangles (--ring-low-ratio): what casts its shadow.
   hub                        the claw's cone, joint frame.
   claw                       the whole claw as one rigid piece, fingers at rest, in the hub's
                              joint frame: for a draw that cannot afford nine pieces.
@@ -45,6 +46,7 @@ def flag(name, default=None):
     return argv[argv.index(f"--{name}") + 1] if f"--{name}" in argv else default
 FBX, OUT, PREVIEW = flag("fbx"), flag("out"), flag("preview")
 MAND_RATIO, BODY_RATIO, SAMPLES = float(flag("mandible-ratio", 0.35)), float(flag("body-ratio", 1.0)), int(flag("samples", 40))
+RING_LOW_RATIO = float(flag("ring-low-ratio", 0.25))
 if FBX is None or OUT is None:
     raise SystemExit("usage: build.py -- --fbx <sentinel.fbx> --out <sentinel.glb> [--preview dir]")
 
@@ -259,6 +261,12 @@ for t, arm in enumerate(armatures):
         worst["phalanx"] = max(worst["phalanx"], max((a - b).length for a, b in zip(in_frame(piece, bone_frame(bone)), reference[key])))
 
 place("ring", meshes["ring"])
+# THE RING AS A SHADOW CASTER (loom §T1689b): the same ring in the same joint frame, at RING_LOW_RATIO of its
+# triangles. A ring is drawn at every station of every tentacle, and six of the nine passes it is drawn in are one
+# light's shadow sweeps (the lead's measurement, §T1666b): a shadow shows an outline, not a bevel.
+ring_low = place("ring_low", meshes["ring"].copy())
+ring_low.data.name = "ring_low"
+ring_low.modifiers.new("decimate", "DECIMATE").ratio = RING_LOW_RATIO
 hub_object = place("hub", meshes["hub"])
 finger_count = len(fingers[a0.name])
 claw_range = [0.0, 0.0]
@@ -370,7 +378,7 @@ if PREVIEW is not None:
     for name, offset, target, only in shots:
         for ob in kit:
             if ob.type != "MESH": continue
-            family = "ring" if ob.name == "ring" else "claw" if ob.name == "hub" or ob.name.startswith("phalanx") else "merged" if ob.name == "claw" else "robot"
+            family = "ring" if ob.name == "ring" else "ring_low" if ob.name == "ring_low" else "claw" if ob.name == "hub" or ob.name.startswith("phalanx") else "merged" if ob.name == "claw" else "robot"
             ob.hide_render = (family != only) if only is not None else (family != "robot")
         camera.location = Vector(target) + Vector(offset)
         camera.rotation_euler = (Vector(target) - camera.location).to_track_quat("-Z", "Y").to_euler()
