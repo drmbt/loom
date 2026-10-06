@@ -4,6 +4,8 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import { authoredGraph, type GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
+import { kindOf } from "@domain/graph/node-kinds.ts";
+import { kindLabelParts } from "@editor/nodes/kind-label.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { createCameraGizmoStore } from "@editor/viewer/camera-gizmo-store.ts";
 import { cameraPoseAt, cameraPoseSaid } from "@editor/viewer/camera-pose.ts";
@@ -51,6 +53,12 @@ export interface ViewerCameraLock {
   readonly target: NodeId | null;
   /** That node's name, for the button and its sentences. Empty when there is no target. */
   readonly name: string;
+  /**
+   * The name where its kind ends (`camera` + `_rig`), as a node's own label splits it, so
+   * a button with no room gives up the KIND and keeps the role, which is what tells two
+   * cameras apart. `rest` is the whole name when it does not carry its kind.
+   */
+  readonly nameParts: { readonly kind: string; readonly rest: string };
   /** A picture drawn through a pose nothing here can move: why. Null otherwise. */
   readonly refusal: string | null;
   /** The channels of a partly driven pose the flight will leave alone. Empty for none. */
@@ -124,6 +132,12 @@ export function useViewerCameraLock(options: {
     return said.driven === null ? { target: candidate, refusal: null, held: said.held } : { target: null, refusal: said.driven, held: "" };
   }, [bus, candidate, graph, registry]);
   const name = target === null ? "" : (graph.nodes[target]?.label ?? target);
+  const nameParts = useMemo(() => {
+    const definition = target === null ? undefined : registry.get(graph.nodes[target]?.type ?? "");
+    if (definition === undefined) return { kind: "", rest: name };
+    const parts = kindLabelParts(name, kindOf(definition));
+    return parts.joined ? { kind: parts.kind, rest: parts.rest } : { kind: "", rest: name };
+  }, [graph, name, registry, target]);
 
   const subscribe = useCallback(
     (listener: () => void) => (target === null ? () => {} : store.subscribe(target, listener)),
@@ -149,5 +163,5 @@ export function useViewerCameraLock(options: {
     [store, target],
   );
 
-  return { target, name, refusal, held, store, armed, set };
+  return { target, name, nameParts, refusal, held, store, armed, set };
 }

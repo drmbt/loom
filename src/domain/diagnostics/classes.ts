@@ -521,6 +521,7 @@ export const DIAGNOSTIC_CLASSES: Readonly<Record<string, DiagnosticClassRow>> = 
   "parameter.reference.ambiguous": { class: "never", local: true },
   "parameter.reference.channel": { class: "notYet" },
   "parameter.reference.node": { class: "notYet" },
+  "parameter.reference.notComposed": { class: "advice" },
   "parameter.reference.self": { class: "act" },
   "parameter.reference.unavailable": { class: "elsewhereHost" },
   "parameter.reference.unknownType": { class: "elsewhereBuild" },

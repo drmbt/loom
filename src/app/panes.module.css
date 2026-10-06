@@ -396,14 +396,69 @@
   color: var(--text-dim);
 }
 
-/* §T970: "Fly camera_rig". A name can be long and the bar is not: it gives up its tail. */
+/*
+ * §T970 (slice 1e) — THE VIEWER'S BAR HOLDS A NAMED BUTTON, AND NOTHING IN IT IS SQUEEZED
+ * UNREADABLE FOR IT.
+ *
+ * "Fly camera_rig" arrived in a row whose two pickers shared every pixel of shortage
+ * equally (`.select`: `1 1 auto`, `min-width: 0`). Measured at the default window (a 308 px
+ * pane): the Display picker was 25 px, showing no letter of "RGBA", the Output picker read
+ * "render_s", and the button's own text was clipped at BOTH ends ("era_overhea").
+ *
+ * The rule, in the order things give way:
+ *  1. the Output picker shrinks, as it always did for a long name (its tail goes), down to
+ *     a width that still shows which node it is;
+ *  2. then the bar WRAPS: the button and what follows it take a second row, whole;
+ *  3. and only if a row of its own is still too narrow does the button truncate, giving
+ *     up its KIND before its role ("Fly cam…_rig").
+ * The Display picker is two four-letter words and never shrinks at all.
+ *
+ * On `.viewerBar`, not `.bar`: the top bar and the component bar wear `.bar` too.
+ */
+.viewerBar {
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+}
+
+/* A small basis, so the row is broken by what CANNOT shrink and not by a long name's
+   natural width; it grows back into whatever the row has left. */
+.outputSelect {
+  flex: 1 1 12ch;
+  min-width: 12ch;
+}
+
+.displaySelect {
+  flex: 0 0 auto;
+}
+
 .flyCamera {
+  display: inline-flex;
+  /* One label in three runs: the button's own gap between children would space them apart. */
+  gap: 0;
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 24ch;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.flyVerb {
+  flex: none;
+  white-space: pre;
+}
+
+/* Gives way first, and entirely before the role loses a letter. */
+.flyKind {
+  flex: 0 1000 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.flyRole {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* T1655b: the viewer's camera button where there is no camera. Inert, and still hoverable

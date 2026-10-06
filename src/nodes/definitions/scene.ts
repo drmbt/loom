@@ -1,6 +1,6 @@
 import type { CompiledNodeDescription, NodeDefinition, ScratchRequest } from "../../domain/types/node-definition.ts";
-import type { ParameterSchema } from "../../domain/types/parameters.ts";
-import { storedStaticValue } from "../../domain/parameters/slots.ts";
+import type { ParameterSchema, StoredParameter } from "../../domain/types/parameters.ts";
+import { isParameterSlot, storedStaticValue } from "../../domain/parameters/slots.ts";
 import { instanceShapeIndex, parseInstanceShape } from "./render-instances.ts";
 import type { BufferBindingDescriptor, BufferWritePassDescriptor, DispatchPassDescriptor, DrawPassDescriptor } from "../../runtime/backend/plan.ts";
 import { relocated, type WgslSourceMap } from "../../runtime/backend/wgsl-source-map.ts";
@@ -8,7 +8,7 @@ import type { CameraMotion, CameraPose } from "../../domain/types/scene.ts";
 import type { CameraPayload, GeometryPayload, LightPayload, MapExtend, MaterialPayload, ProjectorPayload, ScenePairRef, ScenePayload } from "../../domain/types/scene.ts";
 import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
-import { cameraFrame, cameraPayloadMatrix, directionalShadowMatrix, inCameraFrame, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix } from "../../domain/geometry/camera.ts";
+import { cameraBasis, cameraFrame, cameraPayloadMatrix, directionalShadowMatrix, inCameraFrame, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix } from "../../domain/geometry/camera.ts";
 import { identityMatrix, normalMatrix, objectMatrix } from "../../domain/geometry/transform.ts";
 import { gridPointCount, gridSheets, gridVertexCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
@@ -94,6 +94,91 @@ export const CAMERA_MOTION_SECONDS = 1 / 1000;
 const samePose = (a: CameraPose, b: CameraPose): boolean =>
   a.fovDeg === b.fovDeg && a.roll === b.roll && a.eye.every((v, i) => v === b.eye[i]) && a.lookAt.every((v, i) => v === b.lookAt[i]);
 
+/**
+ * §T1656b: Eye and Look At are offsets in the frame Origin and Heading make. THE ONE
+ * COMPOSITION: the payload carries these world positions (so no consumer of a camera knows
+ * the frame exists) and §T1674b's channels are these same numbers, read by an expression.
+ */
+function composedCameraPose(values: Readonly<Record<string, unknown>>): CameraPose {
+  const frame = cameraFrame(vec3(values, "origin", [0, 0, 0]), vec3(values, "heading", [0, 0, 0]));
+  return {
+    eye: inCameraFrame(frame, vec3(values, "eye", [0, 0.5, 3])),
+    lookAt: inCameraFrame(frame, vec3(values, "lookAt", [0, 0, 0])),
+    fovDeg: readNumber(values as never, "fov", 55),
+    roll: readNumber(values as never, "roll", 0),
+  };
+}
+
+const AXES = ["X", "Y", "Z"] as const;
+
+/** §T1674b: is this camera's Origin or Heading anything but the default, as STORED? */
+function cameraHasFrame(stored: Readonly<Record<string, StoredParameter>>): boolean {
+  const moved = (value: StoredParameter | undefined): boolean => {
+    if (value === undefined) return false;
+    // A slot in any mode but static is driven: an expression is a frame, whatever it is worth now.
+    if (isParameterSlot(value) && value.mode !== "static") return true;
+    const held = storedStaticValue(value);
+    if (typeof held === "number") return held !== 0;
+    return Array.isArray(held) && held.some((component) => component !== 0);
+  };
+  return ["origin", "heading"].some((key) => moved(stored[key]) || ["x", "y", "z"].some((axis) => moved(stored[`${key}.${axis}`])));
+}
+
+/**
+ * §T1674b — THE CAMERA'S POSE IN THE WORLD, AS CHANNELS: what a pass that turns a pixel back
+ * into a ray reads (lit air, a focus by distance, a reflection). The payload's own numbers,
+ * from the payload's own function, and the basis the Render's view is built on
+ * (`cameraBasis`: the guarded up, Roll included).
+ */
+const cameraChannels: NonNullable<NodeDefinition["parameterChannels"]> = {
+  names: {
+    eyeX: "Where the camera is, in the world: x",
+    eyeY: "Where the camera is, in the world: y",
+    eyeZ: "Where the camera is, in the world: z",
+    aimX: "The point it looks at, in the world: x",
+    aimY: "The point it looks at, in the world: y",
+    aimZ: "The point it looks at, in the world: z",
+    forwardX: "The way it looks, a unit vector: x",
+    forwardY: "The way it looks, a unit vector: y",
+    forwardZ: "The way it looks, a unit vector: z",
+    rightX: "The picture's right, Roll included: x",
+    rightY: "The picture's right, Roll included: y",
+    rightZ: "The picture's right, Roll included: z",
+    upX: "The picture's up, Roll included: x",
+    upY: "The picture's up, Roll included: y",
+    upZ: "The picture's up, Roll included: z",
+    distance: "From the camera to the point it looks at",
+    fov: "The field of view, in degrees",
+  },
+  reads: ["eye", "lookAt", "origin", "heading", "fov", "roll"],
+  evaluate(values) {
+    const pose = composedCameraPose(values);
+    const basis = cameraBasis(pose.eye, pose.lookAt, pose.roll);
+    const channels: Record<string, number> = {
+      distance: Math.hypot(pose.lookAt[0] - pose.eye[0], pose.lookAt[1] - pose.eye[1], pose.lookAt[2] - pose.eye[2]),
+      fov: pose.fovDeg,
+    };
+    AXES.forEach((axis, index) => {
+      channels[`eye${axis}`] = pose.eye[index] as number;
+      channels[`aim${axis}`] = pose.lookAt[index] as number;
+      channels[`forward${axis}`] = basis.forward[index] as number;
+      channels[`right${axis}`] = basis.right[index] as number;
+      channels[`up${axis}`] = basis.up[index] as number;
+    });
+    return channels;
+  },
+  insteadOf(parameter, component, stored) {
+    if (parameter !== "eye" && parameter !== "lookAt") return null;
+    if (!cameraHasFrame(stored)) return null;
+    const axis = component === "y" ? "Y" : component === "z" ? "Z" : "X";
+    return {
+      channel: `${parameter === "eye" ? "eye" : "aim"}${axis}`,
+      gives: "the offset in the frame its Origin and Heading make",
+      wants: parameter === "eye" ? "where the camera is in the world" : "the point it looks at in the world",
+    };
+  },
+};
+
 /** T377 — the camera as a THING: shareable, drivable, referenced by name. */
 export const cameraNode: NodeDefinition = {
   type: "camera",
@@ -101,10 +186,11 @@ export const cameraNode: NodeDefinition = {
   title: "Camera",
   category: "render",
   description:
-    "A camera other nodes reference by NAME: Render, Render Surface and Render Instances all name it in their camera parameter, so one camera frames them together. Every parameter is drivable — an orbiting camera is a uniform write, never a rebuild. To follow something that moves, drive Origin and Heading with it and leave Eye and Look At as the offset: the view can then be flown by hand and still follows. Its preview shows WHAT THE RENDERER SEES: with exactly one renderer naming this camera, the preview is that renderer's own picture; with none, a stock reference scene showing framing alone; with several, the stock scene again, because there is no single answer and picking one would be a viewpoint nobody chose.",
+    "A camera other nodes reference by NAME: Render, Render Surface and Render Instances all name it in their camera parameter, so one camera frames them together. Every parameter is drivable — an orbiting camera is a uniform write, never a rebuild. To follow something that moves, drive Origin and Heading with it and leave Eye and Look At as the offset: the view can then be flown by hand and still follows. An expression on another node reads where the camera IS in the world as op('camera_name').chan.eyeX (eye, aim, forward, right, up as X Y Z, and distance and fov): with Origin or Heading set, par.eye and par.lookAt are the offset. Its preview shows WHAT THE RENDERER SEES: with exactly one renderer naming this camera, the preview is that renderer's own picture; with none, a stock reference scene showing framing alone; with several, the stock scene again, because there is no single answer and picking one would be a viewpoint nobody chose.",
   tags: ["3d", "scene", "camera", "view"],
   inputs: [],
   outputs: [{ id: "out", label: "Out", type: { kind: "camera" } }],
+  parameterChannels: cameraChannels,
   parameters: {
     eye: { type: "vector", size: 3, label: "Eye", default: [0, 0.5, 3] },
     lookAt: { type: "vector", size: 3, label: "Look At", default: [0, 0, 0] },
@@ -150,18 +236,9 @@ export const cameraNode: NodeDefinition = {
   },
   compile(context): CompiledNodeDescription {
     const { parameters, timeProbe } = readCompileInputs(context);
-    // §T1656b: Eye and Look At are offsets in the frame Origin and Heading make. The payload
-    // carries WORLD positions, composed here and nowhere else, so no consumer of a camera
-    // (a Render, the tile, Camera Blur's motion) knows the frame exists.
-    const pose = (values: Readonly<Record<string, unknown>>): CameraPose => {
-      const frame = cameraFrame(vec3(values, "origin", [0, 0, 0]), vec3(values, "heading", [0, 0, 0]));
-      return {
-        eye: inCameraFrame(frame, vec3(values, "eye", [0, 0.5, 3])),
-        lookAt: inCameraFrame(frame, vec3(values, "lookAt", [0, 0, 0])),
-        fovDeg: readNumber(values as never, "fov", 55),
-        roll: readNumber(values as never, "roll", 0),
-      };
-    };
+    // §T1656b: the payload carries WORLD positions (`composedCameraPose`), so no consumer of
+    // a camera (a Render, the tile, Camera Blur's motion) knows the frame exists.
+    const pose = composedCameraPose;
     // T1421b: the path's derivative, both sides, for a motion blur (Camera Blur) — published
     // only when the camera MOVES there, so a still camera's payload is the same with or
     // without a frame (the values-only frame path never re-runs a camera that animates nothing).

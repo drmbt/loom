@@ -121,11 +121,11 @@ type Vec3 = readonly [number, number, number];
  * here with six specs in parallel: a pose read at once was a frame the flight had already
  * left). Two equal reads are the pose the gesture ended on.
  */
-async function storedPose(page: Page, nodeId: string): Promise<{ eye: Vec3; lookAt: Vec3 }> {
+async function storedPose(page: Page, nodeId: string, eyeLabel = "Eye"): Promise<{ eye: Vec3; lookAt: Vec3 }> {
   await selectNode(page, nodeId);
   const field = async (label: string): Promise<number> => Number(await page.locator(`input[aria-label="${label}"]`).inputValue());
   const read = async (): Promise<{ eye: Vec3; lookAt: Vec3 }> => ({
-    eye: [await field("Eye x"), await field("Eye y"), await field("Eye z")],
+    eye: [await field(`${eyeLabel} x`), await field(`${eyeLabel} y`), await field(`${eyeLabel} z`)],
     lookAt: [await field("Look At x"), await field("Look At y"), await field("Look At z")],
   });
   let previous = await read();
@@ -141,12 +141,16 @@ async function storedPose(page: Page, nodeId: string): Promise<{ eye: Vec3; look
 const minus = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const size = (a: Vec3): number => Math.hypot(a[0], a[1], a[2]);
 
-/** Points the viewer at a node (`v`, the keymap's own row) and waits for its picture to settle. */
-async function view(page: Page, nodeId: string): Promise<Locator> {
+/**
+ * Points the viewer at a node (`v`, the keymap's own row) and waits for its picture to settle.
+ * `stock`: a node with no target of its own (a projector, a camera nothing renders through)
+ * is shown as its stock scene, on the viewer's second canvas.
+ */
+async function view(page: Page, nodeId: string, stock = false): Promise<Locator> {
   await page.getByTestId(`node-name-${nodeId}`).click();
   await page.keyboard.press("v");
   await expect(page.getByTestId("viewer-output-select")).toHaveValue(`${nodeId}:out`);
-  const canvas = page.getByTestId("viewer-canvas");
+  const canvas = page.getByTestId(stock ? "viewer-synthesis-canvas" : "viewer-canvas");
   await expect(canvas).toBeVisible();
   await expect
     .poll(async () => {
@@ -431,4 +435,180 @@ test("at 35 % zoom the tile's camera toggle is still 12 px and on top, and a par
   expect(box.x + box.width).toBeLessThanOrEqual(tile.x + tile.width + 0.5);
   expect(box.y + box.height).toBeLessThanOrEqual(tile.y + tile.height + 0.5);
   expect(box.x).toBeGreaterThanOrEqual(tile.x - 0.5);
+});
+
+/**
+ * Slice 1e — THE OTHER THREE KINDS THAT GET THE BUTTON BY CONSTRUCTION. The compiler says a
+ * projector, and a Render Surface or Render Instances with no camera named, are drawn
+ * through their own Eye and Look At (`pose`), so the viewer offers each the lock without a
+ * line of code naming them. "By construction" was a reading; this is each of them flown.
+ */
+async function flies(page: Page, options: { subject: string; button: string; eyeLabel?: string; stock?: boolean }): Promise<void> {
+  const start = await storedPose(page, options.subject, options.eyeLabel);
+  const canvas = await view(page, options.subject, options.stock === true);
+  const button = page.getByTestId("viewer-fly-camera");
+  await expect(button).toHaveText(options.button);
+  const before = await canvas.screenshot();
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.down("w");
+  await page.waitForTimeout(500);
+  await page.keyboard.up("w");
+  await expect.poll(async () => changed(page, before, await canvas.screenshot()), { message: `${options.subject}: the picture did not move with the flight` }).toBeGreaterThan(MOVED);
+  const flown = await storedPose(page, options.subject, options.eyeLabel);
+  const moved = minus(flown.eye, start.eye);
+  // Forward, along its own view axis, Look At with it.
+  const axis = minus(start.lookAt, start.eye);
+  const along = (moved[0] * axis[0] + moved[1] * axis[1] + moved[2] * axis[2]) / size(axis);
+  expect(along, `${options.subject}: W did not carry it forward`).toBeGreaterThan(0.2);
+  expect(Math.abs(size(moved) - along), `${options.subject}: the flight left its view axis`).toBeLessThan(1e-3);
+  expect(size(minus(minus(flown.lookAt, start.lookAt), moved))).toBeLessThan(1e-4);
+  await undo(page);
+  expect(await storedPose(page, options.subject, options.eyeLabel)).toEqual(start);
+}
+
+test("a projector is flown from the viewer: its stock scene moves with its stored aim", async ({ page }) => {
+  await open(page, "projector", [named("wall", "projector", at(0, 0), { eye: [2, 2, 3], lookAt: [0, 0, 0] })], []);
+  await flies(page, { subject: "projector_wall", button: "Fly projector_wall", stock: true });
+});
+
+test("a Render Surface with no camera named is flown by its own Eye and Look At", async ({ page }) => {
+  await open(
+    page,
+    "surface",
+    [
+      named("source", "pointGrid", at(0, 0), { cols: 8, rows: 8 }),
+      named("sheet", "pointTopology", at(1, 0), { connectivity: "grid", cols: 8, rows: 8 }),
+      named("cloth", "renderSurface", at(2, 0), { eye: [0.6, 0.4, 3], lookAt: [0, 0, 0] }),
+    ],
+    [
+      ["grid_source", "topology_sheet", "points"],
+      ["topology_sheet", "surface_cloth", "points"],
+    ],
+  );
+  await flies(page, { subject: "surface_cloth", button: "Fly surface_cloth", eyeLabel: "Camera Eye" });
+});
+
+test("a Render Instances with no camera named is flown by its own Eye and Look At", async ({ page }) => {
+  await open(
+    page,
+    "instances",
+    [
+      named("source", "pointGrid", at(0, 0), { cols: 8, rows: 8 }),
+      named("crowd", "renderInstances", at(1, 0), { eye: [0.6, 0.4, 3], lookAt: [0, 0, 0], scale: 0.08 }),
+    ],
+    [["grid_source", "instances_crowd", "points"]],
+  );
+  await flies(page, { subject: "instances_crowd", button: "Fly instances_crowd", eyeLabel: "Camera Eye" });
+});
+
+test("a Render Surface that NAMES a camera offers that camera, and its own Eye stays where it was", async ({ page }) => {
+  // A named camera replaces the inline pose (`camera-reference.ts`), so writing the inline one
+  // would move nothing: the button must name the camera that frames the picture.
+  await open(
+    page,
+    "named",
+    [
+      named("source", "pointGrid", at(0, 0), { cols: 8, rows: 8 }),
+      named("sheet", "pointTopology", at(1, 0), { connectivity: "grid", cols: 8, rows: 8 }),
+      named("main", "camera", at(0, 1), { eye: [0.6, 0.4, 3], lookAt: [0, 0, 0] }),
+      named("cloth", "renderSurface", at(2, 0), { eye: [0, 0, 5], lookAt: [0, 0, 0] }),
+    ],
+    [
+      ["grid_source", "topology_sheet", "points"],
+      ["topology_sheet", "surface_cloth", "points"],
+      ["camera_main", "surface_cloth", "camera"],
+    ],
+  );
+  const inline = await storedPose(page, "surface_cloth", "Camera Eye");
+  const start = await storedPose(page, "camera_main");
+  await view(page, "surface_cloth");
+  const button = page.getByTestId("viewer-fly-camera");
+  await expect(button).toHaveText("Fly camera_main");
+  await button.click();
+  await page.keyboard.down("w");
+  await page.waitForTimeout(400);
+  await page.keyboard.up("w");
+  expect(size(minus((await storedPose(page, "camera_main")).eye, start.eye))).toBeGreaterThan(0.2);
+  expect(await storedPose(page, "surface_cloth", "Camera Eye")).toEqual(inline);
+});
+
+test("locked: the wheel dollies the camera toward what it looks at, and shift flies faster", async ({ page }) => {
+  const { nodes, wires } = shot(named("shot", "camera", at(0, 1), { eye: [0, 0.5, 3], lookAt: [0, 0, 0] }));
+  await open(page, "wheel", nodes, wires);
+  const start = await storedPose(page, "camera_shot");
+  const canvas = await view(page, "render_shot");
+  const button = page.getByTestId("viewer-fly-camera");
+  const box = await canvas.boundingBox();
+  if (box === null) throw new Error("the viewer's picture has no box");
+
+  // Unlocked, the wheel over the picture edits nothing.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -240);
+  await page.waitForTimeout(600);
+  expect(await storedPose(page, "camera_shot"), "the wheel moved a camera the viewer was not locked to").toEqual(start);
+
+  await button.click();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -240);
+  await page.mouse.wheel(0, -240);
+  // The wheel has no button-up: its undo step closes itself after a short idle.
+  await page.waitForTimeout(700);
+  const dollied = await storedPose(page, "camera_shot");
+  // Closer to Look At, along the same line, and Look At itself unmoved: a dolly, not a flight.
+  expect(dollied.lookAt).toEqual(start.lookAt);
+  expect(size(dollied.eye)).toBeLessThan(size(start.eye) - 0.2);
+  expect(dollied.eye[1] / dollied.eye[2]).toBeCloseTo(start.eye[1] / start.eye[2], 4);
+  // One burst of the wheel is one undo step.
+  await undo(page);
+  expect(await storedPose(page, "camera_shot")).toEqual(start);
+
+  // SHIFT IS THE THROTTLE. The same hold, with and without it, from the same pose.
+  const fly = async (shift: boolean): Promise<number> => {
+    await canvas.focus();
+    if (shift) await page.keyboard.down("Shift");
+    await page.keyboard.down("w");
+    await page.waitForTimeout(500);
+    await page.keyboard.up("w");
+    if (shift) await page.keyboard.up("Shift");
+    const flown = await storedPose(page, "camera_shot");
+    await undo(page);
+    expect(await storedPose(page, "camera_shot")).toEqual(start);
+    return size(minus(flown.eye, start.eye));
+  };
+  const cruise = await fly(false);
+  const boosted = await fly(true);
+  expect(cruise).toBeGreaterThan(0.2);
+  // Four times the pace by rule (FLY_BOOST). Two holds of a real clock are not equal to the
+  // millisecond, so the claim is the one a pilot would notice: clearly more than double.
+  expect(boosted / cruise, `cruise ${String(cruise)}, with shift ${String(boosted)}`).toBeGreaterThan(2.2);
+});
+
+test("at the default window the bar keeps its pickers whole beside a named button, which is not clipped", async ({ page }) => {
+  /*
+   * Slice 1e. At a 308 px viewer the named button arrived in a row whose two pickers shared
+   * every pixel of shortage: the Display picker was 25 px wide and showed no letter of
+   * "RGBA", and the button's own text was cut at both ends. The Display picker now never
+   * shrinks, and the button takes a second row before anything in the first is squeezed.
+   */
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const { nodes, wires } = shot(named("overhead_follow", "camera", at(0, 1), { eye: [0, 0.5, 3], lookAt: [0, 0, 0] }));
+  await open(page, "bar", nodes, wires);
+  const display = page.locator("#viewer-alpha-display");
+  const widthOf = async (locator: Locator): Promise<number> => (await locator.boundingBox())?.width ?? 0;
+
+  // A pointset in the viewer: the one-letter inspection button. What the Display picker measures there is its whole self.
+  await view(page, "grid_source", true);
+  const whole = await widthOf(display);
+  expect(whole).toBeGreaterThan(40);
+
+  await view(page, "render_shot");
+  const button = page.getByTestId("viewer-fly-camera");
+  await expect(button).toHaveText("Fly camera_overhead_follow");
+  expect(await widthOf(display), "the named button changed the width of the Display picker").toBe(whole);
+  // The button shows all of its name: nothing of it is scrolled out of its own box.
+  const clipped = await button.evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect(clipped).toBeLessThanOrEqual(1);
+  // And the Output picker still shows which node it is (it used to read "render_s").
+  expect(await widthOf(page.locator("#viewer-output"))).toBeGreaterThan(110);
 });

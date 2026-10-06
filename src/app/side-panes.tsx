@@ -52,6 +52,7 @@ import { useNativeOutput } from "./use-native-output.ts";
 import { useViewCameraOverride } from "./use-view-camera.ts";
 import { useViewerMapping, VIEWER_MAPPING_HINT, VIEWER_MAPPING_HINT_ON } from "./use-viewer-mapping.ts";
 import type { LiveReads } from "./perform-mapping.ts";
+import { cx } from "@ui/cx.ts";
 import { useViewerFly } from "./use-viewer-fly.ts";
 import {
   flyCameraHint,
@@ -751,7 +752,7 @@ export function ViewerPane({
          comes through here — it is a gesture on the focused pane — but both land in the
          same store through the same arithmetic, so the two cannot drift. */
       fly: (direction: FlyAxis) => orbitStateRef.current.fly(direction),
-      /* §T970: `c`, the bar's button and an agent all arm the one lock. The answer names
+      /* §T970: `c`, the bar's button and the palette all arm the one lock. The answer names
          the camera, or says why there is none to fly. */
       flyCamera: (on: boolean | undefined) => {
         const { lock: current } = orbitStateRef.current;
@@ -1403,14 +1404,14 @@ export function ViewerPane({
       onBlur={fly.onBlur}
       data-viewer-flying={fly.flying ? "true" : undefined}
     >
-      <div className={styles.bar}>
+      <div className={cx(styles.bar, styles.viewerBar)}>
         <label className={styles.barLabel} htmlFor="viewer-output">
           output
         </label>
         <select
           id="viewer-output"
           data-testid="viewer-output-select"
-          className={styles.select}
+          className={cx(styles.select, styles.outputSelect)}
           value={requested !== null ? outputKey(requested) : selected === null ? "" : outputKey(selected)}
           onChange={(event) => setPinnedKey(event.target.value === "" ? null : event.target.value)}
           disabled={choices.length === 0}
@@ -1429,7 +1430,7 @@ export function ViewerPane({
           ))}
         </select>
         <label className={styles.barLabel} htmlFor="viewer-alpha-display">display</label>
-        <select id="viewer-alpha-display" className={styles.select} value={alphaDisplay}
+        <select id="viewer-alpha-display" className={cx(styles.select, styles.displaySelect)} value={alphaDisplay}
           title="RGBA: alpha over checkerboard; RGB: raw colour"
           onChange={(event) => setAlphaDisplay(event.target.value === "rgb" ? "rgb" : "rgba")}>
           <option value="rgba">RGBA</option>
@@ -1663,10 +1664,16 @@ export function ViewerPane({
  * camera. Lit while the viewer is locked; the same toggle as `c` (`viewer.flyCamera`).
  */
 function ViewerFlyCameraButton({ lock }: { lock: ViewerCameraLock }) {
+  const label = flyCameraLabel(lock.name);
+  /* Three runs of one label, so that with no room it is the KIND that goes ("Fly cam…_rig")
+     and the role that stays: two cameras differ by their role, and a tail-clipped
+     "Fly camera_ov…" names neither. The words are `flyCameraLabel`'s, cut where the name is. */
+  const verb = label.slice(0, label.length - lock.name.length);
   return (
     <Tooltip label={flyCameraHint(lock.name, lock.armed, lock.held)}>
       <Button
         className={styles.flyCamera}
+        aria-label={label}
         aria-pressed={lock.armed}
         data-testid="viewer-fly-camera"
         data-fly-camera={lock.target ?? undefined}
@@ -1674,7 +1681,9 @@ function ViewerFlyCameraButton({ lock }: { lock: ViewerCameraLock }) {
           lock.set(undefined);
         }}
       >
-        {flyCameraLabel(lock.name)}
+        <span className={styles.flyVerb}>{verb}</span>
+        {lock.nameParts.kind === "" ? null : <span className={styles.flyKind}>{lock.nameParts.kind}</span>}
+        <span className={styles.flyRole}>{lock.nameParts.rest}</span>
       </Button>
     </Tooltip>
   );

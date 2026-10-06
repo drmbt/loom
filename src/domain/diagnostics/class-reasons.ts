@@ -470,6 +470,7 @@ export const DIAGNOSTIC_CLASS_REASONS: Readonly<Record<string, string>> = {
   "parameter.reference.ambiguous": "an instance publishes that channel on more than one output",
   "parameter.reference.channel": "the target publishes no such channel right now",
   "parameter.reference.node": "no node has that name yet",
+  "parameter.reference.notComposed": "the read gives the stored offset, and the app names the channel that gives the composed value",
   "parameter.reference.self": "a parameter command's input",
   "parameter.reference.unavailable": "this read has no graph to resolve op() in",
   "parameter.reference.unknownType": "the target's type is not one this build has",

@@ -696,6 +696,11 @@ export interface NodeDefinition {
    */
   measuredChannel?: boolean;
   /**
+   * §T1674b: channels that are a FUNCTION OF THIS NODE'S OWN PARAMETERS, read as
+   * `op('name').chan.<channel>`. See `ParameterChannels`.
+   */
+  parameterChannels?: ParameterChannels;
+  /**
    * The full value-graph hook (T273/T274, §V179): evaluated per frame, CPU-side,
    * BEFORE the render, in topological order over value edges. Returns the node's
    * channel bag — named numbers (`{ x, y }` for a Mouse, `{ value }` for a scalar) —
@@ -747,6 +752,52 @@ export interface NodeDefinition {
   plotPeriodFollowsInputs?: boolean;
   compile(context: NodeCompileContext): CompiledNodeDescription;
   migrate?(oldVersion: number, data: unknown): MigrationResult;
+}
+
+/**
+ * §T1674b — WHAT A NODE'S PARAMETERS COMPOSE TO, READABLE BY NAME.
+ *
+ * A Camera's Eye and Look At are offsets in the frame its Origin and Heading make (§T1656b).
+ * The camera's payload carries the composed pose, so a Render never knows the frame exists;
+ * an EXPRESSION reading `op('camera').par.eye` is a consumer that is not of the payload, and
+ * it read the offset, silently (sentinel-bot's lit air went out within the hour). The pose is
+ * said once, by the definition, and read here as channels:
+ * `op('camera_rig').chan.eyeX`.
+ *
+ * WHY NOT A VALUE HOOK. `valueEvaluate` would make the camera a member of the value graph:
+ * its tile would become a plot (`publishesValueChannels`), it would never be reported dead
+ * (`isValueSourceDefinition`), its parameters would resolve a second time every frame
+ * whether or not anything reads the pose, and the read would need a channel resolver, which
+ * a structural compile and a panel do not have. This is none of those. It is a pure function
+ * of the node's RESOLVED parameters, so it is read exactly where and when a parameter is: by
+ * the one reader (`node-references.ts`), off the same per-frame resolve of the target a
+ * `.par` read uses, in every context a `.par` read works in, and it costs nothing unread.
+ * It is TouchDesigner's `op('cam1').worldTransform`: a member of the object, computed from
+ * its transform. It is not its Object CHOP: there is no wire. A Constant whose Value is the
+ * read is the wire.
+ *
+ * A definition declares this OR a value hook, never both (`parameter-channels.test.ts`).
+ */
+export interface ParameterChannels {
+  /** Every channel, in the order a menu offers them, and what each one is. */
+  readonly names: Readonly<Record<string, string>>;
+  /**
+   * The parameters the channels are composed from. A read of a channel fails with the
+   * failure of any of these (§V108's fallback must not read as a healthy number).
+   */
+  readonly reads: readonly string[];
+  /** The channels, from the node's resolved values. Pure: no clock, no state. */
+  readonly evaluate: (values: Readonly<Record<string, ParameterValue>>) => ValueChannels;
+  /**
+   * The finding for a reader of any file: is `par.<parameter>[.<component>]` of a node
+   * storing THESE parameters something other than what its name says, and which channel
+   * says it? null when the parameter is what it says (a camera with no frame).
+   */
+  readonly insteadOf?: (
+    parameter: string,
+    component: string | undefined,
+    stored: Readonly<Record<string, StoredParameter>>,
+  ) => { readonly channel: string; readonly gives: string; readonly wants: string } | null;
 }
 
 /**

@@ -273,3 +273,193 @@ Not built here, as row text:
   document trails a flight for a moment after the key comes up (seen in the GPU lane with
   six specs in parallel). True of every drag through `ParameterEditor`; unmeasured.
 - **The viewer's bar squeezes its Display picker** when the fly button's name is long.
+
+## 9. A frame that pitches (§T1671b), designed and then built
+
+**Why now.** The owner's `camera_rig` is a table of 25 directed shots whose eye and aim are
+expressions. Moved onto section 8's frame it is Origin = the directed eye, Heading = aim
+minus eye, Eye 0, 0, 0. But that frame only turns about the vertical, so the aim's height and
+distance have to stay in Look At as expressions: two of the six channels a flight writes are
+driven. E and Q then tilt the view instead of raising it, and W does not carry the aim.
+With a frame that also pitches, the aim is straight down the frame's own forward, Look At is
+0, 0, minus the distance as plain numbers, and all six channels are free.
+
+**What the reference tools do** (from section 2's reading; "read" as there).
+
+- TouchDesigner parents a camera to a COMP's WHOLE transform: "If a COMP is wired to another
+  COMP through its top connector, then that COMP is its transform parent" (`3D_Parenting`,
+  read). Aiming is separate: Look At, with an Up Vector that "should not be parallel to the
+  look at direction" (`Camera_COMP`, read). The pole is the user's to avoid.
+- Notch: a camera inherits "the transformation values of parent nodes", and can take the
+  position only ("rotation and scale will be ignored"); a Target Node input turns it "to
+  always direct the z axis towards the input" (`nodes/cameras/`, read). That Notch's parent
+  has a rotation order is the lead's statement; I did not read the page that says so.
+
+Both give the full orientation and both keep "position only" as the other choice. Neither
+states a rule for the pole; this one does.
+
+**The choice: Frame, on the Camera. Level (the default) or Aimed.**
+
+| Frame | What Heading does | For |
+|---|---|---|
+| Level | Section 8's: only its horizontal part is read. The frame turns about the vertical and never tilts. | A chase camera: it follows where the subject goes and keeps its own horizon and height offset. |
+| Aimed | Read whole. The frame's forward (its −z) IS Heading; its up is the world's up made perpendicular to that. | A directed shot: Heading is where the camera looks, and Look At 0, 0, −d is "d along the shot". |
+
+Level is the default, so no saved camera moves and the node stays at version 1 (the pins
+again: 49 documents, identical). An enum and not a second vector, because the two readings
+of ONE Heading are the whole difference, and a document says which it means.
+
+**The pole, stated.** A Heading within about 2.6° of straight up or down (|y| over 0.999 of
+its length) has no "world up made perpendicular". The frame then takes world +z as its up
+reference: exactly the rule the camera's own view already has for a view that steep
+(`guardedRolledUp`), so the frame's axes and the picture's axes agree there too. A Heading
+of no length is no heading in either mode. Nothing is NaN, and nothing is remembered from
+the frame before: the rule is a function of this frame's Heading alone.
+
+**Bank: not in this slice, and the reason is the picture.** An Up vector beside Heading
+would tilt the FRAME, so offsets to the side would bank with the subject. It would not bank
+the PICTURE: the payload a Render reads is a world Eye, a world Look At and Roll, and the
+horizon is built from the world's up. A parameter called Up that leaves the horizon level is
+a control that looks dead (§V880's family). Doing it honestly means the frame's up becomes
+the view's up reference, which is a change to the camera payload and every consumer of it
+(the Render, the tile, the projector's shared guard, Camera Blur's basis). Until then Roll
+banks the picture and is drivable. Row text below.
+
+**The gestures in an Aimed frame.** One rule: THE GESTURES KEEP THEIR WORLD MEANING, and what
+they write is still the offset in the frame.
+
+- *Orbit* is a turntable about the WORLD's vertical through Look At, as on every other tile:
+  a sideways drag carries the eye round the aim at the height it had, and the up-down clamp
+  is against the world's poles. About the frame's own up it would be a tilted circle (the
+  eye rising on one side of a diving shot and sinking on the other), and the clamp would let
+  the view pass through the world's vertical, where the picture flips.
+- *Truck* (shift-drag) slides Eye and Look At along the picture's right and up.
+- *W A S D* run along the view and the picture's right. *E and Q* rise and fall along THE
+  PICTURE'S UP, which is what they mean in the inspection flight and everywhere else here:
+  the camera's own up, perpendicular to where it looks. For a directed shot looking down
+  its frame's forward that is the frame's up; it is the world's up only for a level view.
+- *The wheel* dollies along the view.
+
+So the store is told one more thing about a pose: which way the world's up points in the
+pose's own coordinates (0, 1, 0 for every Level frame and every node with no frame, where
+nothing changes). It is read with the pose at the start of a gesture (§V657), so on a rig
+whose Heading is turning the axis is the one the gesture began with.
+
+**Costs.** One enum on the Camera's definition; the frame's composition gains its up axis;
+the gizmo's orbit and truck gain a second form about a given axis (the form about y is left
+exactly as it was). Values only: an Aimed rig animates as a uniform write.
+
+**Left out, as row text.**
+
+- **A frame that banks: an Up beside Heading, read when Aimed, and the view's up reference
+  with it** (the payload carries an up; the Render, the tile, the projector guard and Camera
+  Blur read it), so a banked frame banks the picture. Until then, Roll.
+- **A gesture on a rig whose Heading turns while it is dragged** uses the world-up axis the
+  gesture started with; re-reading the frame per pointer event would be exact.
+
+## 10. The composed pose, read by an expression (§T1674b)
+
+**The hole.** Section 4 said every consumer of the payload gets world values and none
+changes. An expression reading `op('camera_rig').par.eye` is a consumer that is not of the
+payload: it gets the parameter, which since section 8 is the offset. A texture pass takes no
+camera, so a pass that turns a pixel back into a view ray (lit air, a focus by distance, a
+reflection) reads the node that way. The first consumer to put its rig on Origin and Heading
+lost its haze within the hour, with nothing said, and worked through it by saying the
+engine's composition a second time in its own expressions. Section 9's Aimed frame would
+have broken that second saying for any camera that opts in. This landed before it.
+
+**What the reference tools give.**
+
+- TouchDesigner, two ways. A member of the object: `worldTransform`, "The current world
+  transform of the Object" (`ObjectCOMP_Class`, read), computed from the parameters and
+  the parent chain, read in any expression. And an operator: "The Object CHOP compares two
+  objects and outputs channels containing their raw or relative positions and orientations",
+  with Measurements of Position, Rotation, Bearing and Distance (`Object_CHOP`, read): a
+  node, so it has a wire.
+- Notch: the Extractor modifier "extracts a single numerical value from another node", and
+  "for some nodes, there are properties available specifically for the Extractor" (the
+  search listing of `nodes/modifiers/extractor`; the page's body would not load, so which
+  values a Camera offers is NOT read). A node with a wire, like the Object CHOP.
+
+Both tools read the world pose from the engine. Neither asks the author to compose it.
+
+**The ruling: the address is a channel, the vehicle is the reader.**
+
+`op('camera_rig').chan.eyeX`. The camera publishes: `eyeX/Y/Z`, `aimX/Y/Z`,
+`forwardX/Y/Z`, `rightX/Y/Z`, `upX/Y/Z` (the picture's own basis, the guarded up, Roll
+included: `cameraBasis`, what the Render's view is built on), `distance` (eye to aim) and
+`fov`. Eye and aim come from the one function the payload is built by
+(`composedCameraPose` in `scene.ts`), so there is one composition.
+
+Channels by the value graph were the starting position, and I checked that vehicle first. A
+node enters the value graph by declaring `valueEvaluate`. For a Camera that would:
+
+- turn its tile into a plot (`publishesValueChannels` decides plot or picture);
+- stop an unused camera being reported dead (`isValueSourceDefinition`);
+- resolve the camera's parameters a second time every frame, read or not (the consumer's
+  rig is a table of 25 shots in expressions);
+- make the read need a channel resolver, which a structural compile, a panel and a build
+  script do not have. They would get the retained number, and "no channel resolver" as an
+  info.
+
+So the channels are declared on the definition (`parameterChannels`: the names, the
+parameters they are composed from, one pure function of the resolved values) and read by the
+ONE reader of `op()`, as the `.par` read is: off the same per-frame resolve of the target,
+through the same cycle guard, in every context a parameter can be read in. Measured by
+reading: a frame that reads seventeen channels of one camera resolves that camera once (the
+reader's memo, T1172). Unread, it costs nothing. This is TouchDesigner's member, not its
+Object CHOP: there is no wire out of the camera. A Constant whose Value is the read is the
+wire, and then it is a value node like any other (a Lag can follow it).
+
+**A camera inside a component.** Its siblings inside read it by name, as they read its
+parameters. From outside, `op('<instance>').chan.<c>` reaches only what the component
+exposes on a value output (T1485b), so a component that wants its camera's pose read outside
+publishes it through a Constant on an Out. Not built further, and no test drives the inside
+read.
+
+**A texture pass that takes a Camera input** (the peer's second form: eye, forward, right,
+up and fov arrive as uniforms without an expression each). Not needed once the channels
+exist: seventeen expressions do the job and the numbers are the same. It is a convenience
+with a real cost (a camera port on Custom WGSL and its multi form, reserved names in the
+user's `struct Params`, the view-camera contract beside it), so it is its own row and
+waits for a second consumer. Row text below.
+
+**The finding.** A warning, `parameter.reference.notComposed`, class `advice` (the read
+takes effect exactly as stored), on the READER, once per read:
+
+> "wgsl_haze".eye.x reads op('camera_rig').par.eye.x, which is the offset in the frame its
+> Origin and Heading make, not where the camera is in the world.
+> Read op('camera_rig').chan.eyeX for where the camera is in the world.
+
+The camera's definition decides (`insteadOf`), from what the node STORES: Origin or Heading
+with a stored value that is not zero, or driven at all. A camera with no frame says nothing.
+Across the shipped set: 112 documents, 46 findings, all 46 on the consumer's file (its second
+saying of the composition), none anywhere else. The camera reading its own Eye is not asked.
+
+One thing it cannot tell: a read that MEANS the offset (the consumer's "how far has the
+flight pulled the camera from the directed shot" divides two offset lengths). It is told the
+same thing and stays told. Row text below.
+
+**Distances.** Read, then held where it matters:
+
+- A frame is rigid, in both modes: the distance between the stored Eye and Look At IS the
+  world distance. So the fly pace (1.1 times that distance a second) and the orbit's reach
+  are right as they are. `camera-channels.test.ts` holds `distance` against the stored
+  offsets at three moments of a moving rig.
+- Camera Blur has no focus: it reads the payload's composed poses (and their motion) and a
+  depth texture. Held on Dawn since slice 1e.
+- The CRT Tube's Distance and Focus Offset are its own lens, not a Camera node.
+- The consumer's focus scaled by hand is `chan.distance` now.
+
+**Left out, as row text.**
+
+- **A texture pass takes a Camera input**: Custom WGSL (and its multi form) gains a camera
+  port; wired, the pass's uniforms carry the eye, the basis and the field of view from the
+  payload. Waits for a second consumer: the channels do this job.
+- **A read that means the offset** has no spelling the finding can tell from a mistake, so
+  it is warned for as long as it stands. If a second document needs one: a third namespace
+  beside `par` and `chan` for "as stored", or the finding learns to pass an expression that
+  reads no world value of the same camera.
+- **The channels in the lists that enumerate value bags**: the agent tool `get_channels`
+  and the inspector's channel pickers read the value graph's bags, so a camera's channels
+  are not in them. Completion in an expression field does offer them.

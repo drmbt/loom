@@ -323,7 +323,10 @@ export function registerViewerCommands(bus: LoomBus): ViewerHolder {
 
   /*
    * §T970 — THE LOCK, as a command, so `c` is a keymap row (rebindable, in the shortcut
-   * editor) and the palette and an agent reach the same toggle as the bar's button.
+   * editor) and the palette reaches the same toggle as the bar's button. NOT an agent tool,
+   * and it should not become one: the lock only routes a person's gestures, and an agent
+   * that wants a camera somewhere writes its Eye and Look At (`set_parameters`). No
+   * `viewer.*` command is on the agent surface (`src/agent/tools` dispatches none).
    */
   bus.registerCommand({
     name: "viewer.flyCamera",

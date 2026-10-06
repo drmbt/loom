@@ -117,7 +117,9 @@ const TD_GRAPH_BINDINGS: readonly KeyBinding[] = [
     keys: "c",
     context: "viewer",
     command: "viewer.flyCamera",
-    label: "Fly camera — move the camera this picture is drawn through",
+    // "Lock to camera", not "Fly camera": the shortcut list sorts by label, and that put
+    // this row in the middle of Fly back / Fly down / Fly forward as if it were a seventh way.
+    label: "Lock to camera — fly the camera this picture is drawn through",
     description:
       "Locks the viewer to the camera that frames its picture: drag orbits it, shift-drag trucks, the wheel dollies, and the fly keys fly it. Every move is an edit and undo steps back. Press again, or Home, to leave.",
   },

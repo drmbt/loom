@@ -16,6 +16,7 @@ import { NO_MORPHS } from "../domain/presets/morph-index.ts";
 import type { ParameterReadOptions, ResolveParametersOptions } from "../domain/parameters/resolve.ts";
 import { bindCycleDiagnostics } from "../domain/parameters/bind-cycles.ts";
 import { referenceCycleDiagnostics } from "../domain/graph/reference-cycles.ts";
+import { composedParameterReadDiagnostics } from "../domain/graph/composed-parameter-reads.ts";
 import { undeclaredKeys, undeclaredParameter } from "../domain/parameters/validate.ts";
 import type { ResolvedParameters } from "../domain/parameters/resolve.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
@@ -227,6 +228,8 @@ export function validateGraph(
    * `resolveNodeParameters`. Reported once for the graph, before any resolution runs.
    */
   diagnostics.push(...referenceCycleDiagnostics(graph));
+  // §T1674b: a read of a parameter that is not what its name says (a framed camera's Eye).
+  diagnostics.push(...composedParameterReadDiagnostics(graph, (node) => registry.get(node.type)?.parameterChannels));
 
   /**
    * T316/§V148 — the cross-node read path, supplied HERE rather than by each caller.
