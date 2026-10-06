@@ -12,7 +12,8 @@ import { serializeCueList } from "../../domain/presets/cue-list.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, CUT_DEFAULTS, SHOTS, cutStatements } from "./camera.ts";
 import { BEAM_CAPACITY, BEAM_KERNEL, BEAM_LIGHT_KERNEL, BEAM_SURFACE_WGSL, BRIDGE_CAPACITY, BRIDGE_KERNEL, BRIDGE_SURFACE_WGSL, DOCK, DOCK_LAMPS, DOCK_LAMP_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK_STRIP_ATTRIBUTES, HALL_ATTRIBUTES, HALL_CAPACITY, HALL_KERNEL, HALL_SURFACE_WGSL } from "./dock.ts";
 import { BOLT_ATTRIBUTES, BOLT_CAPACITY, BOLT_KERNEL, BOLT_SURFACE_WGSL, FIELD, FIELD_ATTRIBUTES, STRIKE_ATTRIBUTES, STRIKE_KERNEL, TOWER_CAPACITY, TOWER_KERNEL, TOWER_SURFACE_WGSL, TRUNK_TOWERS } from "./field.ts";
-import { against, dockTurn, fieldTurn, glimpseShot, pace, PACK_BARS, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseRush, phraseSpiral, phraseSwim, rest, RUSH, showHue, showStand, stride, surge, templeTurn } from "./director.ts";
+import { against, dockTurn, FIELD_BARS, fieldTurn, glimpseShot, pace, PACK_BARS, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseRush, phraseSpiral, phraseSwim, rest, RUSH, SHOW_TURNS, showHue, showStand, stride, surge, templeTurn } from "./director.ts";
+import { DEFAULT_PROJECT_FPS, SEEK_FRAME_LIMIT } from "../../domain/types/graph.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { CHAMBERS, PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
@@ -1480,6 +1481,13 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     settings: settings({
       outputResolution: { width: options.width ?? 1280, height: options.height ?? 720 },
       randomSeed: 23,
+      // THE FILE IS AS LONG AS THE SHOW: one round of it (director.ts: SHOW_TURNS turns of FIELD_BARS bars of the
+      // track), which is where it loops, how far it scrubs and how much of it a render writes (§T433). Or as much
+      // of a round as the transport holds: it replays to any frame it seeks and refuses past SEEK_FRAME_LIMIT,
+      // which at 60 frames a second is a little short of a round (the last turn, the temple, is cut some bars
+      // early). Left at the default, 600 frames, the loop brought the bar count back to nothing every ten seconds:
+      // with the loop on, as a file opens, the show never left the tunnel (the lead's measurement, §T1666b).
+      frameRange: { start: 0, end: Math.min(SEEK_FRAME_LIMIT, Math.ceil(track.beatOffset * DEFAULT_PROJECT_FPS + (SHOW_TURNS * FIELD_BARS * track.beatsPerBar * 60 * DEFAULT_PROJECT_FPS) / track.bpm) - 1) },
       // The door's estimate counts a full-size target for every node (limits.ts: coarse on purpose), and of this
       // file's 160 most are value nodes, controls and point kernels that have none. At 720p that reads 1.2 GB
       // against the default 1 GB, and the file opened with a warning about memory it does not use.

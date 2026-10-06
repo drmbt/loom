@@ -11549,6 +11549,10 @@
   "projectId": "project-sentinel-bot",
   "schemaVersion": 5,
   "settings": {
+    "frameRange": {
+      "end": 10000,
+      "start": 0
+    },
     "limits": {
       "maxBufferBytes": 268435456,
       "maxDispatch": 65535,
