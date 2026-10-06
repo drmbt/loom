@@ -15,7 +15,7 @@ The underlying choice: in Loom, **widget nodes are the source of truth for contr
 | **Base COMP** | Base COMP | No | The generic container: organise a network, give it custom parameters, scope its names. What "collapse to folder" makes |
 | **Container COMP** | Container COMP | Yes | A COMP with a UI: its panel shows its own custom parameters and arranges the panels of its child COMPs |
 
-Today's Panel node becomes a Container COMP whose children are controls. A Base COMP can be turned into a Container COMP (and back) without touching its network: the panel is an attribute, not a different thing.
+Today's Panel node becomes a Container COMP whose children are controls. Existing Panel and widget nodes keep loading and working; a "make this desk the COMP's panel" action converts one, so no file has to migrate on day one. A Base COMP can be turned into a Container COMP (and back) without touching its network: the panel is an attribute, not a different thing.
 
 ## 3. The panel and panel inheritance (TD's Container behaviour)
 
@@ -34,7 +34,7 @@ Today's Panel `board` (a column grid of rects) is the "align: none, grid" case o
 
 **Presentation is per parameter, separate from its type.** A number shows as a horizontal or vertical fader, a knob or a field; a toggle as a toggle, a momentary button or a radio set; a menu as radio buttons; a colour as a picker; text as a field. Selecting several controls and changing their presentation is one edit. This covers VN19's list of missing widgets without a new node type per widget.
 
-**Styling travels with the COMP.** A Container can carry a stylesheet scoped to its panel. Optional script widgets are a later stage, in a sandbox ([README](README.md), risks).
+**Styling travels with the COMP.** A Container can carry a stylesheet scoped to its panel (no `url()` to remote hosts). Optional script widgets for custom controls are a later stage: they run in a sandboxed iframe that talks to the bus through a narrow message API and never touches the document directly ([README](README.md), risks).
 
 **Panel values.** As in TD, a panel publishes what the pointer is doing on it (u, v, select, inside, rollover) as channels, so a background can be made interactive without a script.
 
@@ -65,5 +65,6 @@ T____|.|**CONTAINER LAYOUT.** TD Layout page: align none/horizontal/vertical/gri
 T____|.|**PER-PARAMETER PRESENTATION.** Presentation separate from type (fader h/v, knob, field; toggle/momentary/radio; menu as radio; colour picker; text field), group-editable; scoped stylesheet per Container.|VN19,T____
 T____|.|**PANEL VALUES + VIEWER ACTIVE.** Panels publish u/v/select/inside/rollover as channels; a panel can host an interactive viewport of a node, mapping gestures onto camera parameters by bind.|T____
 T____|.|**COMMON PAGE: PARENT + GLOBAL SHORTCUTS.** Every COMP: parent shortcut (`parent.Rig`), global shortcut (`op.Desk`, unique, duplicates refused by name), clone fields, tags.|V127,T____
+T____|.|**RFE: SANDBOXED SCRIPT WIDGETS.** Custom control widgets as scripts carried by a Container, run in a sandboxed iframe, talking to the bus through a narrow message API (read/write the panel's own parameters only), never the document. Needs the maintainer's trust ruling first (README, risks).|V71,T____
 T____|.|**PUBLISH PANELS BY PATH.** Any COMP's panel or a subset of its controls published to a project desk and/or the phone/web remote, from any depth. Replaces root-only `remoteLayouts`/`vetPhoneSet`.|T____
 ```
