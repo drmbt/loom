@@ -74,12 +74,18 @@ export const TEMPLE_STRIP_ATTRIBUTES = JSON.stringify([
   // A flame: r how bright it burns, g its own count, a how far up it (0 to 1).
   { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 0] },
 ]);
-/** A fire's point, for a Light in Points mode. */
+/**
+ * A fire's point, for a Light in Points mode; and for the lit smoke round it, which is the same point drawn as
+ * a soft ball of light (`halo`: its colour as it burns now, and in w its radius, metres).
+ */
 export const FIRE_ATTRIBUTES = JSON.stringify([
   { name: "position", type: "vec3f", semantic: "position", default: [0, 0, 0] },
   { name: "tint", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 1] },
   { name: "power", type: "f32", default: [0] },
+  { name: "halo", type: "vec4f", semantic: "color", qualifier: "color", default: [0, 0, 0, 0] },
 ]);
+/** The lit smoke round a fire: its radius, metres, and how bright it is against the fire's own colour. */
+export const HALO = { radius: 3.2, glow: 0.05 } as const;
 
 /** Which a formation is: none, a stalactite, a stalagmite, a column. */
 export const FORMATION = { none: 0, stalactite: 1, stalagmite: 2, column: 3 } as const;
@@ -334,7 +340,10 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let fire = fireOf(ctx.index, ctx.params.travel);
   q.position = fire.seat + vec3f(0.0, ${f(TEMPLE.flameTall * 0.4)}, 0.0);
   q.tint = vec4f(1.0, 0.5 + 0.1 * fire.count, 0.14 + 0.06 * fire.count, 1.0);
-  q.power = ctx.params.power * fire.lit * step(0.5, ctx.params.place) * fireBurns(fire.count, ctx.absTime, ctx.params.kick, ctx.params.low, ctx.params.react);
+  let burns = fire.lit * step(0.5, ctx.params.place) * fireBurns(fire.count, ctx.absTime, ctx.params.kick, ctx.params.low, ctx.params.react);
+  q.power = ctx.params.power * burns;
+  // The smoke round it, lit by it: a ball of its own light, brighter and a little larger as it flares.
+  q.halo = vec4f(q.tint.rgb * (${f(HALO.glow)} * burns), ${f(HALO.radius)} * (0.8 + 0.2 * burns) * step(0.001, burns));
   return q;
 }`;
 

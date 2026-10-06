@@ -1044,6 +1044,10 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("material_flame", "materialWgsl", [-2700, 9400], { model: "pbr", source: FLAME_SURFACE_WGSL, glow: 5 }, { label: "material_flame" }),
     node("geometry_flames", "geometry", [-2400, 9200], { mode: "surface", material: "material_flame", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_flames" }),
     node("kernel_fires", "pointKernel", [-3600, 9650], { capacity: FORMATIONS, attributes: FIRE_ATTRIBUTES, kernel: FIRE_KERNEL, ...burning, power: expressionSlot(`${on("slider_lamp")} * 9.2`, 240) }, { label: "kernel_fires" }),
+    // The smoke round each fire, lit by it: the same points as the Light, each drawn as a soft ball of light (the
+    // air pass knows the tunnel's lamps and the dock's floods; a fire's place is the kernel's alone).
+    node("material_fireglow", "materialUnlit", [-3000, 9850], { color: [1, 1, 1, 1] }, { label: "material_fireglow" }),
+    node("geometry_fireglow", "geometry", [-2700, 9650], { mode: "points", material: "material_fireglow", blend: "additive", soft: 1, spherical: true, scale: map("halo", 0, "w"), tint: map("halo", [0, 0, 0, 0]) }, { label: "geometry_fireglow" }),
     node("light_fires", "light", [-3300, 9650], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_fires" }),
     // The robots' searchlights (searchlight.ts): a cone of lit air from each one's face, drawn as light, and a Spot along it.
     node("constant_search", "constant", [-1500, 1875], { value: expressionSlot(`max(${on("slider_search")}, ${OUT} * (${phraseDraw(BAR, 9)} < 0.55))`, 0) }, { label: "constant_search" }),
@@ -1155,7 +1159,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ),
     node("render_shot", "render", [-1200, 0], {
       // The dust is last: additive geometry is light, drawn over what it glows on (and out of the Depth output since B256).
-      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_towers", "geometry_bolts", "geometry_hall", "geometry_bridges", "geometry_cave", "geometry_formations", "geometry_beams", "geometry_flames", "geometry_search", "geometry_motes"].join(" "),
+      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_towers", "geometry_bolts", "geometry_hall", "geometry_bridges", "geometry_cave", "geometry_formations", "geometry_beams", "geometry_flames", "geometry_fireglow", "geometry_search", "geometry_motes"].join(" "),
       camera: "camera_rig",
       lights: ["light_eyes", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), "light_lamps", "light_strike", "light_storm", "light_docklamps", "light_beams", "light_fires", "light_search", ...namedLamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
@@ -1333,6 +1337,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("grid-cave", ["grid_cave", "out"], ["kernel_cave", "in"]),
     edge("cave-geo", ["kernel_cave", "out"], ["geometry_cave", "points"]),
     edge("fires-light", ["kernel_fires", "out"], ["light_fires", "points"]),
+    edge("fires-glow", ["kernel_fires", "out"], ["geometry_fireglow", "points"]),
     edge("search-ease", ["constant_search", "out"], ["lag_search", "in"]),
     edge("search-light", ["kernel_searchlights", "out"], ["light_search", "points"]),
     ...(["towers", "bolts", "bridges", "beams", "formations", "flames", "search"] as const).flatMap((what) => [

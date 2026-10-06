@@ -5,7 +5,7 @@ import { renderHeadless } from "../../tests/headless/render-harness.ts";
 import { edge, graph, node, settings } from "../../examples/documents/builders.ts";
 import { kernelPoints, type KernelPoints } from "./kernel-points.ts";
 import { PATH, pathAt } from "./path.ts";
-import { CAVE_ATTRIBUTES, CAVE_CAPACITY, CAVE_KERNEL, FIRE_ATTRIBUTES, FIRE_KERNEL, FLAME_CAPACITY, FLAME_KERNEL, FORMATION, FORMATIONS, FORMATION_CAPACITY, FORMATION_KERNEL, ROCK_SURFACE_WGSL, TEMPLE, TEMPLE_STRIP_ATTRIBUTES } from "./temple.ts";
+import { CAVE_ATTRIBUTES, CAVE_CAPACITY, CAVE_KERNEL, FIRE_ATTRIBUTES, FIRE_KERNEL, FLAME_CAPACITY, FLAME_KERNEL, FORMATION, FORMATIONS, FORMATION_CAPACITY, FORMATION_KERNEL, HALO, ROCK_SURFACE_WGSL, TEMPLE, TEMPLE_STRIP_ATTRIBUTES } from "./temple.ts";
 
 /**
  * T1561b — THE TEMPLE, read off the points its kernels write, on a real GPU.
@@ -136,7 +136,7 @@ describe("the temple (T1561b)", () => {
     const track = { kick: 0, low: 0, react: 1 };
     const grown = await kernelPoints(FORMATION_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FORMATION_CAPACITY, { travel: TRAVEL, place: 1 }, ["girth", "tint"]);
     const flames = await kernelPoints(FLAME_KERNEL, TEMPLE_STRIP_ATTRIBUTES, FLAME_CAPACITY, { travel: TRAVEL, place: 1, ...track }, ["girth", "tint"]);
-    const firesAt = (heard: Record<string, number>, place = 1): Promise<KernelPoints> => kernelPoints(FIRE_KERNEL, FIRE_ATTRIBUTES, FORMATIONS, { travel: TRAVEL, place, power: 240, ...track, ...heard }, ["power", "tint"]);
+    const firesAt = (heard: Record<string, number>, place = 1): Promise<KernelPoints> => kernelPoints(FIRE_KERNEL, FIRE_ATTRIBUTES, FORMATIONS, { travel: TRAVEL, place, power: 240, ...track, ...heard }, ["power", "tint", "halo"]);
     const [rest, kicked, low, deaf] = [await firesAt({}), await firesAt({ kick: 1 }), await firesAt({ low: 1 }), await firesAt({ kick: 1, low: 1, react: 0 })];
     let [burning, dark] = [0, 0];
     for (let slot = 0; slot < FORMATIONS; slot += 1) {
@@ -144,13 +144,13 @@ describe("the temple (T1561b)", () => {
       const power = rest.of("power", slot)[0] as number;
       const flameGirth = flames.of("girth", slot * TEMPLE.flamePoints + 1)[0] as number;
       if (kind !== FORMATION.stalagmite) {
-        // No fire on anything else, and none where nothing stands.
-        expect([slot, power, flameGirth]).toEqual([slot, 0, 0]);
+        // No fire on anything else, and none where nothing stands: no flame, no light, no lit smoke.
+        expect([slot, power, flameGirth, rest.of("halo", slot)]).toEqual([slot, 0, 0, [0, 0, 0, 0]]);
         continue;
       }
       if (power === 0) {
         dark += 1;
-        expect(flameGirth).toBe(0);
+        expect([flameGirth, rest.of("halo", slot)]).toEqual([0, [0, 0, 0, 0]]);
         continue;
       }
       burning += 1;
@@ -165,6 +165,14 @@ describe("the temple (T1561b)", () => {
       // Firelight: more red in it than blue, by far.
       const tint = rest.of("tint", slot);
       expect(tint[0] as number).toBeGreaterThan((tint[2] as number) * 4);
+      // The smoke round it is lit by it: a ball of the fire's own colour, a twentieth as bright, a few metres across,
+      // and it flares with the fire (brighter by the kick's 2.6, and larger).
+      const burns = power / 240;
+      const [halo, flared] = [rest.of("halo", slot), kicked.of("halo", slot)];
+      for (const channel of [0, 1, 2]) expect(halo[channel]).toBeCloseTo((tint[channel] as number) * HALO.glow * burns, 5);
+      expect(halo[3]).toBeCloseTo(HALO.radius * (0.8 + 0.2 * burns), 4);
+      expect((flared[0] as number) / (halo[0] as number)).toBeCloseTo(2.6, 3);
+      expect(flared[3] as number).toBeGreaterThan(halo[3] as number);
       // The kick: 1 + 1.6 of what it is at rest, to the float (the same frame, so the same flicker). The low end: 1.5.
       expect((kicked.of("power", slot)[0] as number) / power).toBeCloseTo(2.6, 4);
       expect((low.of("power", slot)[0] as number) / power).toBeCloseTo(1.5, 4);
