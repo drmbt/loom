@@ -97,6 +97,12 @@ export const JOINT_ATTRIBUTES = JSON.stringify([
   { name: "kind", type: "f32", default: [-1] },
   // Metres between the claw's mouth and where the gait wants it; zero while its rung is in reach.
   { name: "slip", type: "f32", default: [0] },
+  // How firmly a tentacle's end is held to where this kernel puts it, 0 to 1: what a Rope after it reads as the
+  // weight of its last anchor (a claw on its rung is 1; a tentacle that holds nothing is drawn after its shape, loosely).
+  { name: "hold", type: "f32", default: [0] },
+  // …and how firmly EVERY point of the tentacle is held to where this kernel puts it: 1 while it holds the wall
+  // (the arc from socket to rung is the rig's, slack wound in and all), 0 when it holds nothing and is all rope.
+  { name: "pin", type: "f32", default: [0] },
 ]);
 
 /** The knobs that say where the robot is. */
@@ -214,8 +220,20 @@ function wallAngles(facts: KitFacts): { angle: number[]; rank: number[] } {
  * when it can read a second pointset (§T1582b) the robots become points and this a lookup,
  * and the kernels of the several picks one kernel whose points the others read.
  */
-export function jointKernel(facts: KitFacts, robots: readonly Vec3[], pick: Pick): string {
+/**
+ * `rope`: the points are the strips a Rope simulates (document.ts, `rope_legs`), not joints drawn as they are.
+ * Then a robot of the pack that is not out keeps its place 45 m behind and is only not DRAWN (a rope that was
+ * nowhere would have to be thrown there when the robot comes up), and the last ring of each tentacle is marked
+ * as the wrist the claw is drawn on (KIND.hub), since ring and wrist are one point of the strand.
+ */
+export interface JointKernelOptions {
+  readonly rope?: boolean;
+}
+
+export function jointKernel(facts: KitFacts, robots: readonly Vec3[], pick: Pick, options: JointKernelOptions = {}): string {
   if (robots.length === 0) throw new Error("jointKernel: a rig needs at least one robot.");
+  const rope = options.rope === true;
+  if (rope && (pick === "body" || pick.first !== 0 || pick.count !== facts.ringCount)) throw new Error("jointKernel: a Rope's strands are a tentacle's rings, all of them and nothing else.");
   const tentacles = facts.sockets.length;
   const stations = stationsPerTentacle(facts);
   const { angle, rank } = wallAngles(facts);
@@ -259,6 +277,7 @@ ${PLACE_PARAMS}
   spiral: f32, // @default 0  It walks a corkscrew round the bore: turns per 16 m of tunnel. 0 walks straight.
   spiralTurn: f32, // @default 0  How far round it has got, in turns. Drive it from an integrator of Spiral x speed, so the rungs it holds stay put.
   attack: f32, // @default 0  The attack: every other tentacle lets go of the wall, coils by the face and strikes forward, again and again; the rest hold. 0 to 1.
+  follow: f32, // @default 0.4  With a Rope after this kernel: how firmly every ring of a tentacle that holds nothing is drawn toward the shape it would have had, 0 to 1. 0 is a free rope, trailing as the body drags it; near 1 it is that shape again.
   company: f32, // @default 0  Whether it has company, 0 to 1: with others beside it, it wanders a fifth as far and holds its tentacles' ends in.
   afield: f32, // @default 0  1 out in the fields (field.ts), where the pack has all the room there is; 0 in the tunnel.
   pack: f32, // @default 1000  How many robots of the pack are out: 1 is the leader alone, 2 brings the second up from behind, and a part of one is one on its way. The default is all of them.
@@ -267,6 +286,9 @@ ${ROBOT_FRAME}
 const ROBOTS: u32 = ${robots.length}u;
 // Which of a robot's points this kernel writes (rig.ts, Pick).
 const PICK_BODY: bool = ${pick === "body"};
+const ROPE: bool = ${rope};
+// How far into taking the wall a tentacle is the rig's own again, every ring held (0 to 1 of its hold).
+const HANDED_BACK: f32 = 0.05;
 const PICK_FIRST: u32 = ${pick === "body" ? 0 : pick.first}u;
 const PICK_COUNT: u32 = ${pick === "body" ? 1 : pick.count}u;
 const ROBOT_POINTS: u32 = ${jointCount(facts, pick)}u;
@@ -511,7 +533,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   // How far out of the pack's back this robot is: 0 not there (nothing of it is drawn), 1 in its place. On its
   // way it comes up the tunnel from 45 m behind, out of the haze, and goes back the same way: it never pops.
   let present = clamp(params.pack - f32(robot), 0.0, 1.0);
-  if (present <= 0.0) {
+  if (present <= 0.0 && !ROPE) {
     q.position = vec3f(0.0);
     q.kind = -1.0;
     return q;
@@ -620,16 +642,25 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let blended = mix(loosePlane, holdPlane, grab);
   let plane = normalize(blended - out * dot(blended, out));
   let bend = Bend(mix(loose.neck, holdBend, grab), mix(loose.arm, holdBend, grab));
-  let run = mix(LENGTH, deployed, grab);
+  // (Feeding a Rope, it winds nothing in until the rope has been handed back to these points: see pin, below.)
+  let run = mix(LENGTH, deployed, select(grab, smoothstep(HANDED_BACK, 1.0, grab), ROPE));
 
   // ── This joint's place along it ──
   let ring = station < RINGS;
   // Metres from the socket along what is deployed; under zero the joint is still stowed in the body.
   let d = select(HUB_DISTANCE, RING_START + f32(station) * RING_PITCH, ring) - (LENGTH - run);
+  // What a Rope after this holds the tentacle by. Every point of it, as firmly as it holds the wall: a tentacle
+  // on a rung is the rig's arc, wound in to the length it needs. (A rope held at both ends with a metre of slack
+  // and nothing to keep it from bending folds flat on itself: measured, 179 degrees between rings in every frame
+  // of a walk. The Rope's bend limit and winch are what will let a holding tentacle be rope as well, §T1585b.)
+  q.pin = grab;
   if (d < 0.0) {
     q.position = root;
     q.kind = -1.0;
     q.slip = 0.0;
+    // Wound in: parked on the socket, held there whatever the rest of the tentacle is doing. (Half held, a ring
+    // that should be inside the body was pulled out of it by the rope and the strand tore: 30 per cent long.)
+    q.pin = 1.0;
     return q;
   }
   let here = along(bend, d);
@@ -692,6 +723,26 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let planted = grab * (1.0 - aloft);
   let ripple = d * 3.0 - ctx.absTime * params.waveRate + f32(tentacle) * 1.7;
   at = at + (normal * cos(ripple) + binormal * sin(ripple)) * (params.wave * sin(3.14159265 * d / run) * (1.0 - 0.6 * planted));
+  if (ROPE) {
+    // A tentacle that holds nothing is DRAWN toward the shape this kernel gives it, every ring of it, as firmly
+    // as Follow says; and one taking or leaving the wall, more and more firmly up to held. Drawn toward, never
+    // held on (a weight under 1 is a pull): the rope keeps its own lengths, gets where the shape is going late,
+    // and swings on past it. (Two other ways were measured first, legs.gpu.test.ts: a free rope towed at a
+    // steady speed streams out dead straight and a swing put in at its neck has died before it is half way
+    // down; and one pulled by its end alone kinks at the end, 60 to 90 degrees between rings.)
+    // Not its last rings: the shape it follows is a few centimetres shorter than the tentacle is (the trail keeps
+    // its length only roughly), and a rope drawn to every point of a shorter curve has to buckle somewhere. With
+    // its end free the spare length runs out past the shape's end instead. (Measured: 56 degrees between two
+    // rings near the claw with the end drawn too.)
+    let drawn = clamp(params.follow, 0.0, 1.0) * (1.0 - smoothstep(f32(RINGS) - 16.0, f32(RINGS) - 4.0, f32(station)));
+    // …and it is the rig's own again as soon as it starts to take the wall, before it has wound any slack in:
+    // a ring being wound past its neighbours while only half held kinks at the socket (167 degrees, measured).
+    // (Exactly 1 once it is handed back: a weight a rounding short of 1 is a stiff pull and not a hold.)
+    q.pin = select(mix(drawn, 1.0, smoothstep(0.0, HANDED_BACK, grab)), 1.0, grab >= HANDED_BACK);
+    // A striker is the rig's as well, for as long as it strikes: a blow is thrown, not trailed. (Left to follow
+    // loosely the strikers hung aft through the whole attack and it did not read as one.)
+    q.pin = max(q.pin, smoothstep(0.0, 0.2, striking));
+  }
   // The kit's joint frame and the curve family's: +Z the tangent, +Y the normal, +X = normal × tangent.
   let frame = quatFromFrame(-binormal, normal, tangent);
   // ── What runs along the cores ──
@@ -713,10 +764,16 @@ fn process(p: Point, ctx: PointCtx) -> Point {
   let mouth = along(bend, run);
   q.slip = grab * distance(root + out * mouth.x + plane * mouth.y, walking);
 
+  // What a Rope holds the strand's END by: a claw on its rung, and a striker's for as long as it strikes.
+  q.hold = max(grab, striking);
   if (ring) {
     q.position = at;
     q.orient = frame;
     q.kind = ${KIND.ring}.0;
+    if (ROPE) {
+      // The last ring is the wrist as well; and a robot that is not out is simulated where it waits, and not drawn.
+      q.kind = select(-1.0, select(${KIND.ring}.0, ${KIND.hub}.0, station + 1u == RINGS), present > 0.0);
+    }
     q.matte = 1.0;
     return q;
   }

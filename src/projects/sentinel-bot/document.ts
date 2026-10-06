@@ -12,7 +12,7 @@ import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { CHAMBERS, PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "../furnace/screen-space.ts";
-import { FIELD_BERTH, JOINT_ATTRIBUTES, PACK_WANDER, adriftAheadExpression, adriftExpression, ownCountOf, jointCount, jointKernel, type Pick } from "./rig.ts";
+import { FIELD_BERTH, KIND, JOINT_ATTRIBUTES, PACK_WANDER, adriftAheadExpression, adriftExpression, ownCountOf, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { HULL_SURFACE_WGSL, hueExpression, lampParameter } from "./surface.ts";
 import { BORE_ATTRIBUTES, BORE_COLUMNS, BORE_KERNEL, BORE_ROWS, BORE_SURFACE_WGSL, HAZE_WGSL, LAMPS_MIRRORED, LAMP_SPACING, MOTE_ATTRIBUTES, MOTE_COUNT, MOTE_KERNEL, lampHeightExpression, lampToneExpression } from "./tunnel.ts";
 
@@ -90,6 +90,13 @@ export interface SentinelDocumentOptions {
    */
   readonly shadows?: boolean;
   readonly hingedClaws?: boolean;
+  /**
+   * Whether the tentacles are ROPES (§T1585b): each a strand a Rope simulates, held at its socket, by the way it
+   * leaves the socket, and by its claw, with the rings and the claw drawn along what the Rope makes of it. Off,
+   * they are the arcs the rig writes, drawn as written. Default: on, unless the claws are hinged (the hinged
+   * claw's phalanges are placed by the rig's arithmetic, which does not know where a rope has gone).
+   */
+  readonly ropes?: boolean;
 }
 
 /**
@@ -154,6 +161,14 @@ const ROBOT: readonly Slider[] = [
   { name: "slider_attack", caption: "Attack", value: 0, min: 0, max: 1 },
   // How many of the pack are out, at least: 1 is the leader alone. Follow the Track brings the others up when it is loud.
   { name: "slider_pack", caption: "Pack", value: 1, min: 1, max: PACK.length },
+];
+// The legs as ropes (rope_legs), in a document built with them: how much they weigh (metres a second squared: 9.8
+// is a rope in air on Earth and 0 one adrift), how fast their swing dies (water is about 2), how firmly one that
+// holds nothing is drawn after the shape the rig would have given it, and how far it swings its neck.
+const ROPE_LEGS: readonly Slider[] = [
+  { name: "slider_weight", caption: "Leg weight", value: 0, min: 0, max: 9.8 },
+  { name: "slider_drag", caption: "Leg drag", value: 1.5, min: 0, max: 6 },
+  { name: "slider_follow", caption: "Leg follow", value: 0.4, min: 0, max: 1 },
 ];
 const SCENE: readonly Slider[] = [
   { name: "slider_bore", caption: "Tunnel", value: 2.6, min: 2.2, max: 3.4 },
@@ -224,6 +239,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const offline = options.tier === "offline";
   const shadows = options.shadows ?? offline;
   const hingedClaws = options.hingedClaws ?? offline;
+  const ropes = options.ropes ?? !hingedClaws;
+  if (ropes && hingedClaws) throw new Error("sentinelDocument: hinged claws are placed by the rig's own arithmetic and cannot ride a Rope; build with ropes: false.");
   const track = options.track ?? SHIPPED_TRACK;
   // Perched, it eases to a stop (below) and its head scans the tunnel on two slow counts, so the sweep never repeats on the bar.
   const PERCHED = "op('lag_perched').chan.value";
@@ -349,14 +366,22 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    * more than a literal count. Measured by the lead on these documents, shadows on: the
    * hinged robot 18.5 ms with a Group on all eleven draws, 11.1 ms with none.
    */
-  const pieces: ReadonlyArray<{ readonly role: string; readonly shape: MeshSelectionFacts; readonly pick: Pick; readonly stows?: boolean }> = [
+  /**
+   * `rides`: with ropes, where a piece's points come from instead of a kernel of its own. The rings' kernel
+   * writes the STRANDS (a tentacle's rings in order, the last of them the wrist), a Rope simulates them and
+   * Curve Frames gives each point the frame a ring is drawn in: `strand` is that chain's own piece and `wrist`
+   * a piece drawn on the chain's last points (its Group picks them by kind).
+   */
+  const pieces: ReadonlyArray<{ readonly role: string; readonly shape: MeshSelectionFacts; readonly pick: Pick; readonly stows?: boolean; readonly rides?: "strand" | "wrist" }> = [
     { role: "hull", shape: facts.robot, pick: "body" },
-    { role: "ring", shape: facts.ring, pick: { first: 0, count: facts.ringCount }, stows: true },
+    { role: "ring", shape: facts.ring, pick: { first: 0, count: facts.ringCount }, stows: true, ...(ropes ? { rides: "strand" as const } : {}) },
     // The claw: live, one rigid piece on the wrist; offline, its cone and eight phalanges, each hinged (see `tier`).
     ...(hingedClaws
       ? [{ role: "hub", shape: facts.hub, pick: { first: facts.ringCount, count: 1 } }, ...facts.phalanxMeshes.map((shape, which) => ({ role: `phalanx${which}`, shape, pick: { first: facts.ringCount + 1 + which, count: 1 } }))]
-      : [{ role: "claw", shape: facts.claw, pick: { first: facts.ringCount, count: 1 } }]),
+      : [{ role: "claw", shape: facts.claw, pick: { first: facts.ringCount, count: 1 }, ...(ropes ? { rides: "wrist" as const } : {}) }]),
   ];
+  /** The node a piece's draw takes its points from. */
+  const pointsOf = (piece: (typeof pieces)[number]): string => (piece.rides === undefined ? `kernel_${piece.role}` : "frames_legs");
   /**
    * WHICH LIGHTS CAST, live: ONE of the five, the body's own (its tentacles' shadows on the bore round it,
    * lamp or no lamp). A point light's shadow is six faces of every caster, and the robot is 645,000 triangles
@@ -380,7 +405,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const pieceNodes = (rig: Record<string, StoredParameter>): GraphNode[] =>
     pieces.flatMap((piece, index) => [
       node(`mesh_${piece.role}`, "meshFileIn", [-2700, index * 150], { file: facts.glbUrl, select: piece.shape.select, vertices: piece.shape.vertices, triangles: piece.shape.triangles, parts: piece.shape.parts }, { label: `mesh_${piece.role}` }),
-      node(`kernel_${piece.role}`, "pointKernel", [-2400, index * 150], { capacity: jointCount(facts, piece.pick) * robots.length, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(facts, robots, piece.pick), ...rig }, { label: `kernel_${piece.role}` }),
+      // A piece drawn on the strands' wrists has no points of its own.
+      ...(piece.rides === "wrist" ? [] : [node(`kernel_${piece.role}`, "pointKernel", [-2400, index * 150], { capacity: jointCount(facts, piece.pick) * robots.length, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(facts, robots, piece.pick, { rope: piece.rides === "strand" }), ...rig }, { label: `kernel_${piece.role}` })]),
       node(`geometry_${piece.role}`, "geometry", [-1800, index * 150], {
         mode: "instances",
         shape: "mesh",
@@ -389,11 +415,61 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         // Not drawn: a ring still stowed in the body, and every piece of a robot of the pack that is not out. With one
         // robot built there is nothing of the second kind, and only the rings need the Group (a Group that rejects
         // nothing costs an indirect draw a pass for nothing).
-        ...(piece.stows === true || robots.length > 1 ? { group: "p.kind > -0.5" } : {}),
+        // On a rope the last ring of a tentacle is its wrist as well: the claw is drawn there and nowhere else.
+        ...(piece.rides === "wrist" ? { group: `abs(p.kind - ${KIND.hub}.0) < 0.5` } : piece.stows === true || robots.length > 1 ? { group: "p.kind > -0.5" } : {}),
       }, { label: `geometry_${piece.role}` }),
     ]);
+  /**
+   * THE LEGS AS ROPES (the owner, three times: "very stiff and not floppy ropey", "not squiddly draggy enough",
+   * and a friend who animates, "leg movement can use more work and looks jank still"). The rig still says
+   * where a tentacle leaves the body, where its claw is and how firmly it holds; what the length between
+   * does is now a rope's: it lags what drags it, swings on, and settles.
+   *
+   *   Anchor First, Anchor Second   the socket and the next ring out: the tentacle leaves the way the socket faces.
+   *   Anchor Last                   the claw, by the strand's own weight (`hold`): 1 on a rung, 0 when it holds nothing.
+   *   Pin Attribute                 every ring (`pin`): 1 on a tentacle that holds the wall, Follow on one that does not.
+   *   Update Rate 240, at least 2 steps a frame   what the Rope's own measurements ask for a claw thrown at 8 m/s.
+   *   Teleport 100 m, Carry         the lap's end moves every strand whole, shape and speed kept.
+   *
+   * The panel's Rope Legs turns it ON: until then the Rope holds every strand on the rig's own points (Reset).
+   * It ships off, because what it does is motion and nobody has watched it yet: the measurements say a swimming
+   * tentacle is clean (8 degrees between rings at the sharpest, 7 to 17 cm behind its shape) and a walking one that
+   * holds nothing is too (31 degrees), and that a tentacle kinks at the socket for the few frames in which it is
+   * handed back to the rig as it takes the wall (59 degrees).
+   * So today the rope is the tentacles that hold NOTHING: trailing, swimming, feeling about. Each ring of one is
+   * drawn toward the shape the rig gives it (the rig's Follow, by the Rope's Pin Attribute), its last rings free.
+   * One on a rung is the rig's own arc and waits for the Rope's bend limit and winch (§T1585b): held at both
+   * ends with its slack out and nothing to stop it bending, a strand folds flat on itself (legs.gpu.test.ts).
+   */
+  const legNodes: GraphNode[] = ropes
+    ? [
+        node("topology_legs", "pointTopology", [-2250, 300], { connectivity: "strips", cols: facts.ringCount, rows: facts.sockets.length * robots.length }, { label: "topology_legs" }),
+        node("rope_legs", "pointRope", [-2100, 300], {
+          updateRate: 240,
+          minSteps: 2,
+          maxSteps: 8,
+          iterations: 8,
+          gravity: expressionSlot(on("slider_weight"), 0),
+          damping: expressionSlot(on("slider_drag"), 1.5),
+          segmentLength: facts.ringPitch,
+          anchorFirst: 1,
+          anchorSecond: 1,
+          anchorLast: map("hold", 0),
+          pinAttribute: "pin",
+          anchorMode: "hard",
+          teleportDistance: 100,
+          teleportMode: "carry",
+          reset: expressionSlot(`1 - ${on("toggle_ropes")}`, 0),
+        }, { label: "rope_legs" }),
+        // Each ring's frame from the strand as it now lies, started from the socket's own (the rig's `orient` there).
+        node("frames_legs", "pointCurveFrames", [-1950, 300], { method: "minimiseTwist", seed: "orient", seedOrient: "orient" }, { label: "frames_legs" }),
+      ]
+    : [];
 
-  const sliders = [...ROBOT, ...SCENE, ...LIGHTS];
+  // The Robot panel: with rope legs, their four controls and the switch that turns the rope off.
+  const robotSliders = ropes ? [...ROBOT, ...ROPE_LEGS] : ROBOT;
+  const robotToggles = ["toggle_perch", "toggle_follow", ...(ropes ? ["toggle_ropes"] : [])];
+  const sliders = [...robotSliders, ...SCENE, ...LIGHTS];
   const controls: GraphNode[] = [
     ...sliders.map((slider, index) => node(slider.name, "slider", [-3600 + (index % 4) * 300, 1500 + Math.floor(index / 4) * 250], { channel: slider.name.slice(slider.name.indexOf("_") + 1), caption: slider.caption, value: slider.value, min: slider.min, max: slider.max, step: 0 }, { label: slider.name })),
     node("toggle_perch", "toggle", [-3600, 3500], { channel: "perch", caption: "Perch", on: false }, { label: "toggle_perch" }),
@@ -401,6 +477,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("slider_shot", "slider", [-3000, 3500], { channel: "shot", caption: `Shot (${SHOTS.join(", ")})`, value: 0, min: 0, max: SHOTS.length - 1, step: 1 }, { label: "slider_shot" }),
     node("toggle_cuts", "toggle", [-2700, 3500], { channel: "cuts", caption: "Cut on the bars", on: true }, { label: "toggle_cuts" }),
     node("toggle_follow", "toggle", [-3600, 3750], { channel: "follow", caption: "Follow the track", on: true }, { label: "toggle_follow" }),
+    ...(ropes ? [node("toggle_ropes", "toggle", [-3300, 3750], { channel: "ropes", caption: "Rope legs", on: false }, { label: "toggle_ropes" })] : []),
   ];
   /**
    * THREE PANELS, not one board: the phone draws a tab for each (§T1517b), and a board taller than
@@ -421,7 +498,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    */
   const slidersSaved = (list: readonly Slider[]): Record<string, Record<string, number | boolean>> => Object.fromEntries(list.map((slider) => [slider.name, { value: slider.value }]));
   const saved: ReadonlyArray<Record<string, Record<string, number | boolean>>> = [
-    { ...slidersSaved(ROBOT), toggle_perch: { on: false }, toggle_follow: { on: true } },
+    { ...slidersSaved(robotSliders), toggle_perch: { on: false }, toggle_follow: { on: true }, ...(ropes ? { toggle_ropes: { on: false } } : {}) },
     { ...slidersSaved(SCENE), slider_shot: { value: 0 }, toggle_cuts: { on: true }, xypad_view: { x: 1.1, y: 0.6 } },
     slidersSaved(LIGHTS),
   ];
@@ -430,9 +507,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     {
       id: "panel_robot",
       title: "Robot",
-      members: [...ROBOT.map((slider) => slider.name), "toggle_perch", "toggle_follow"],
+      members: [...robotSliders.map((slider) => slider.name), ...robotToggles],
       // The Saved button sits right under the heading on every panel: the same place on each, and in a paged board it is on the first page.
-      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Robot", 0), row(bankOf("robot"), 1), ...ROBOT.map((slider, index) => row(slider.name, 2 + index)), row("toggle_perch", 2 + ROBOT.length), row("toggle_follow", 3 + ROBOT.length)] }),
+      board: serializePanelBoard({ columns: COLUMNS, items: [heading("Robot", 0), row(bankOf("robot"), 1), ...robotSliders.map((slider, index) => row(slider.name, 2 + index)), ...robotToggles.map((toggle, index) => row(toggle, 2 + robotSliders.length + index))] }),
     },
     {
       id: "panel_scene",
@@ -578,6 +655,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       coreGlow: expressionSlot(`0.07 * min(${on("slider_legs")}, 1)`, 0.07),
     }, { label: "material_hull" }),
 
+    ...legNodes,
     ...pieceNodes({
       travel,
       ...look,
@@ -594,6 +672,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       attack: expressionSlot(ATTACK, 0),
       pack: expressionSlot("op('lag_pack').chan.value", 1),
       company: expressionSlot("clamp(op('lag_pack').chan.value - 1, 0, 1)", 0),
+      ...(ropes ? { follow: expressionSlot(on("slider_follow"), 0.4) } : {}),
       afield: expressionSlot(PLACE, 0),
       spiral: expressionSlot(SPIRAL, 0),
       spiralTurn: expressionSlot("op('speed_winding').chan.value - 0.5", 0),
@@ -818,8 +897,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("swim-named", ["lag_swim", "out"], ["expression_swimming", "in"]),
     ...pieces.flatMap((piece) => [
       edge(`${piece.role}-shape`, [`mesh_${piece.role}`, "out"], [`geometry_${piece.role}`, "mesh"]),
-      edge(`${piece.role}-points`, [`kernel_${piece.role}`, "out"], [`geometry_${piece.role}`, "points"]),
+      edge(`${piece.role}-points`, [pointsOf(piece), "out"], [`geometry_${piece.role}`, "points"]),
     ]),
+    ...(ropes
+      ? [edge("legs-strands", ["kernel_ring", "out"], ["topology_legs", "points"]), edge("legs-rope", ["topology_legs", "out"], ["rope_legs", "in"]), edge("legs-frames", ["rope_legs", "out"], ["frames_legs", "points"])]
+      : []),
     edge("grid-bore", ["grid_bore", "out"], ["kernel_bore", "in"]),
     edge("bore-geo", ["kernel_bore", "out"], ["geometry_bore", "points"]),
     edge("motes-geo", ["kernel_motes", "out"], ["geometry_motes", "points"]),
