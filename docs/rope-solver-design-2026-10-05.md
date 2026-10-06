@@ -1,6 +1,6 @@
 # A rope solver node: strands that hang, lag and whip (T1585b)
 
-**Status, 2026-10-05: design only. Nothing here is built, and nothing here was measured on a device.**
+**Status, 2026-10-06: slice 1 (the strand and its time) is built and measured on a device. Sections 1 to 13 are the design as ruled on 2026-10-05; section 14 is what slice 1 built, measured and changed; section 15 is what the first consumer's review added (a bend limit above all) and is not built.** Where a sentence in sections 1 to 13 is no longer true, it says so and points at 14 or 15.
 
 The row asks for a Rope node over a strips pointset, in Notch's vocabulary, with anchors that pin to the incoming animated position, collision, and cloth as a later sibling. The owner's standard for it (2026-10-05): consider how TouchDesigner and Notch do this, and build the good and right thing, not a brittle, unscalable or slow shortcut. The first consumer is sentinel-bot (T1561b), whose tentacles the owner called "very stiff and not floppy ropey", then "flight mode still looks too stiff", and whose motion must not "glitch around and teleport".
 
@@ -281,6 +281,7 @@ For one strand, one update step of length `h`. `x` and `v` are the stored positi
 - **The tolerance is the solver's, not a parameter**: 1/8192 of a segment, 7 µm on the consumer's 60 mm.
 - **The tension** in segment `i` is `−λᵢ ÷ h²`, in newtons for masses in kilograms. It is the solve's own by-product.
 - **Step 6 is Notch's Max Stretch.** It runs after the velocity is taken, so it moves points and adds no speed. Inside the step limit it moves nothing: in the model, 0 of 207,360 segments on the consumer's motion at 16 substeps. A segment whose later point is pinned is left as it is; what bounds that one is the reach rule of 4.6.
+- **As built** (14.1): the drag is `v ÷ (1 + damping·h)`; the exit is tested after each Newton step, not before; and steps 1, 4 and 5 are two loops along the strand.
 
 ### 2.6 The step limit
 
@@ -350,7 +351,7 @@ h < √(m·l ÷ T)        with T the tension;  for a strand of N links carried a
 
 | Key | Label | Type | Default | Meaning |
 |---|---|---|---|---|
-| `segmentLength` | Segment Length | number, Map f32 | 0 | Metres between a point and the next. 0 measures each segment of the incoming strip when the rope is seeded. Mapped, it is read every frame at a segment's first point, so a strand can pay out |
+| `segmentLength` | Segment Length | number, Map f32 | 0 | Metres between a point and the next. 0 measures each segment of the incoming strip when the rope is seeded. Mapped, it is read at a segment's first point when the rope is seeded. (It was to be read every frame "so a strand can pay out"; 15.7 measured that and withdrew it: a winch is Length Out) |
 | `restLengthScale` | Rest Length Scale | number, Map f32 | 1 | Multiplies every rest length. Notch's, "for making a rope which shrinks or expands" |
 | `stretch` | Stretch | number | 0 | Compliance: the fraction a segment lengthens per newton of tension. 0 is a rope that does not stretch |
 | `stretchDamping` | Stretch Damping | number | 0 | Notch's Spring Dampening. Inactive while Stretch is 0 |
@@ -400,6 +401,8 @@ Stretch and Bend Stiffness are each written in the form whose zero is a rope: a 
 |---|---|---|---|---|
 | `tensionOutput` ⓢ | Tension | boolean | off | Publish `tension` |
 
+**Added after the consumer's review**, each with its table in section 15: Bend Limit and Min Bend Radius (15.2); Length Out (15.7).
+
 ### 3.3 Attributes
 
 **Read from `in`:**
@@ -423,7 +426,7 @@ After the seeding frame the incoming position of a point is read only while that
 - An incoming `velocity` or `tension` of the same type is replaced by this node's; of another type the node refuses by name (Gather's rule).
 - Every other attribute passes by reference (§V197), `live` and `orient` among them.
 
-**State, private to the node** (one packed pair): `position`, `velocity`, the target each point had last frame, and each segment's measured length. 52 bytes a point.
+**State, private to the node** (one packed pair): `position`, `velocity`, the target each point had last frame, and each segment's measured length. 52 bytes a point. As built it is a pair for what a step carries and two plain buffers for the rest, 128 bytes a point (14.1, 14.2).
 
 ### 3.4 What it refuses, by name (§V288)
 
@@ -478,6 +481,7 @@ Both are that formula. They differ in how the weight `a` becomes a stiffness, `k
 - **Hard is continuous from free to pinned.** That is what makes a slow hand-over land: the claw is on its rung before the weight reaches 1, and the last frame of the ramp changes nothing.
 - **Soft never pins.** It is Notch's Soft Constant with the weight as its softness, and Soft Weightmap when the weight is an attribute. Its use here: a claw that reaches toward a wandering target without being snapped to it.
 - Anchor Damping is a damping ratio: `c = 2·ratio·√(k·m)`.
+- **Changed after slice 1** (15.4): the mass in `k` is the mass the anchor carries, the strand's, and not the point's own. With the point's own, a strand hangs metres below a half-weighted anchor. And a weight between 0 and 1 under Hard is stated as what the consumer's reach needs: a blend toward the target.
 
 ### 4.4 The weight, per frame and per strand
 
@@ -530,12 +534,15 @@ A rope has inertia, so an anchor that jumps 40 m in a frame is an anchor that mo
 - **Carry is a translation.** A teleport that also turns the body leaves the strand in its old attitude for a moment. Carrying the rotation needs the root's frame as an input (R9).
 - **Off by default.** A threshold in metres is a guess about the scene's scale, and a default that silently carries a fast gesture would be a rope that sometimes does not whip.
 - A timeline seek needs neither: it resets (6.4). A timeline lap is not a seek, and an anchor that jumps at the lap because its animation loops is a teleport like any other.
+- **As built** (14.1, item 4): Carry reckons the target's own travel out of the jump, from the speed it had last frame, so a socket that wraps while it moves keeps moving. The 960 m lap is a test, exact through the wrap (14.5).
+- **Reset as a teleport seeds the incoming points as they are**, like every seed: the node builds no pose, so it has no hand to flip (15.3).
 
 ### 4.8 Reset
 
 - **`reset`**, a boolean, holds the rope on its incoming points at rest for as long as it is on. A pulse on it is "reset now", for a shot cut the document knows about. It is Feedback's parameter by name and meaning, and the Spring SOP's.
 - A reset also re-measures the rest lengths when Segment Length is 0.
 - The app's "reset feedback" command and a seek clear the state, and the next frame seeds (6.2).
+- **What Reset holds the rope on is the incoming points, slot for slot.** The node builds no pose of its own at any seed, so there is no reference axis for a strand's chord to swing through and no side for its slack to change (15.3).
 
 ## 5. Collision
 
@@ -580,6 +587,8 @@ fn collisionDistance(position: vec3f, p: Params) -> f32 { … }
 - This is Notch's procedural collision: the same distance function that builds a surface collides with it.
 - It runs inside the walk, four evaluations per point per round. The function should be cheap.
 
+**The sources act together.** One node takes any of them at once, in a fixed order, and the distance function is last and so exact where two disagree (15.6). The consumer needs two: its bore as a function and its body as a capsule.
+
 ### 5.3 What the consumer's bore needs
 
 The bore is a tube round a curve: a point is inside while its distance to the centreline is under the radius there. The tunnel also has a flat deck 0.74 of a radius below the axis, ribs that stand in 12 cm, and halls where the radius nearly doubles.
@@ -614,7 +623,7 @@ Named follow-ups, with their cost (R3).
 
 ### 6.1 State
 
-One packed pair, read half and write half, as a kernel's (§V22): `position`, `velocity`, last frame's target, the measured segment length. The node is stateful, so it is never skipped (§V155).
+One packed pair, read half and write half, as a kernel's (§V22): `position`, `velocity`, last frame's target, the measured segment length. The node is stateful, so it is never skipped (§V155). As built, the pair holds what a step carries (`position`, `velocity`, `tension`) and a buffer of its own holds what is written once a frame or once at seeding (14.1, item 3).
 
 ### 6.2 The first frame
 
@@ -622,6 +631,7 @@ On the run that finds its storage fresh (`firstRun`, T510: a load, a seek, a str
 
 - `position` is the incoming point, `velocity` is zero, last frame's target is the incoming point, and each segment's length is measured.
 - `firstRun` is 1 on run 0 of the seeding frame only (T1583b), so the seeding run takes the place of that frame's first step and the rest of its steps are ordinary. On the live clock the frame after a reset has a delta of zero, and they do nothing.
+- **The seed has no hand.** A fresh state, Reset and Teleport with Reset are one function, and it copies the incoming points. The node builds no arc and no hang, so it makes no choice of side that a chord's direction could flip (15.3, with its test).
 - **The incoming strip is the pose a rope starts in.** A straight line starts as a straight line and falls. A consumer that wants a settled first frame hands in a settled pose. Running the solver ahead before the first frame is shown (the Spring SOP's Preroll Time) is follow-up R5; it needs the seeding frame to run extra steps of the node's own length.
 
 ### 6.3 Time
@@ -648,7 +658,7 @@ h     = Simulation Speed × delta ÷ steps
 - **"If a frame is dropped, more steps will be added"** is the second row, with nothing kept from one frame to the next.
 - **When Max clamps, the step grows and no time is lost.** The rope stays with the timeline and the track; it is less accurate for that frame, and the guard bounds what that costs. The other choice, a fixed step with an accumulator that carries the remainder over, leaves the rope behind the frame by a remainder that varies, which is the defect §V735 names. Max is also what stops the loop Notch's manual warns of, where slow frames ask for more steps.
 - **Frame Rate Mode has no parameter here.** Notch's Free mode is Min equal to Max; its Fixed mode is the rule above.
-- **The count is the node's to derive**, not an expression the author types. That is the first of the two engine changes (7.3).
+- **The count is the node's to derive**, not an expression the author types. That is the first of the two engine changes (7.3). As built, the backend derives it for each frame it renders, from that frame's delta (14.1, item 1).
 
 ### 6.4 A seek
 
@@ -715,7 +725,7 @@ None and fixed. No random draw; no atomics; one thread per strand, each writing 
 4. Forward elimination along the strand, writing two floats a segment to scratch; back substitution from the tip, writing positions and the multiplier. Collide. Repeat to the tolerance.
 5. Velocity, guard, collide, store.
 
-- **Three to five loops over the strand** a step, each as light as Resample's length walk or lighter than Curve Frames'.
+- **Three to five loops over the strand** a step, each as light as Resample's length walk or lighter than Curve Frames'. (As built: two, and each about 1.6 times the weight of Curve Frames' walk; 14.1, 14.3.)
 - **Bindings**, of the baseline's eight (§V588): the pair's read half, its write half (read and write), scratch, the incoming producer's buffer (one more per extra producer a Map reaches), the colliders. Four as a rule, five with colliders.
 - **A fingerprint pins the program's text** once slice 1's measurement has fixed the order of its floating-point operations, as the curve family pins its short walk.
 
@@ -733,7 +743,8 @@ steps: { substeps: { rate: "updateRate", min: "minSteps", max: "maxSteps" }, ite
 
 2. **A node may emit a dispatch that is not stepped.** `applyKernelSteps` refuses a node that declares `steps` and emits anything but one dispatch ("kernel steps repeat exactly one"). The Rope with colliders emits two: the contacts pass, once, and the step. The rule becomes "exactly one dispatch that reads and writes the node's own pair", which `steppedPair` already finds per pass; the others run once, before the region, in plan order (§V168).
 
-- `domain/types/node-definition.ts` is the frozen contract, so this lands with the full suite, once.
+- `domain/types/node-definition.ts` is the frozen contract, so this lands with every test that reaches the declaration, by name (ruled with D3: no full-suite run).
+- **As built** (14.1, item 1): the declaration and both changes in `substeps.ts` are as written here, and the count itself is derived at the backend from the rate the region carries, because the compiler does not see every frame a host renders.
 - Point Kernel is not touched and its generated WGSL does not change (§V309).
 
 Nothing else: a second pointset input, Map mode on a point node, `firstRun`, the per-run uniform blocks and reflected `struct Params` all exist.
@@ -756,11 +767,11 @@ One correction to the assessment while here: red/black does not converge faster 
 | 100,000 | 11.4 MiB |
 | 1,000,000 | 114 MiB |
 
-Derived. Contacts add 8 bytes a point when colliders are wired.
+Derived. Contacts add 8 bytes a point when colliders are wired. As built: 128 bytes a point (14.2).
 
 ### 7.6 Cost
 
-**All derived; none measured.** Two measured figures bound a step:
+**All derived; none measured. Slice 1 has since measured them: 14.3 has the table beside this one's ranges.** Two measured figures bound a step:
 
 - **Per point, memory-bound**: a kernel run costs 0.050 ms at 100,000 points and 0.65 to 0.69 ms at 1,000,000 (measured, T1583b, four attributes; it settles the assessment's two estimates, 0.076 and 0.24 ms at 100,000, below the lower one). The rope touches about twice the bytes.
 - **Per strand, depth-bound**: a walk's cost follows the strand's length. Curve Frames' two walks cost 0.03 ms for 1,563 × 64, 0.21 for 400 × 250, 1.21 for 98 × 1,024 and 1.26 for 976 × 1,024; a length walk alone is under 0.1 ms for 1,024 (measured, T1586b). The rope's step is three to five loops between those two weights: about 0.5 to 1.0 µs per point of strand length.
@@ -832,10 +843,12 @@ kernel_strands (pointKernel, 55 points × 10 tentacles × robots: 54 rings and t
        updateRate 480 to 960, maxSteps 16, iterations 4
        gravity 1 to 3, damping 1.5                           water, not air
        segmentLength 0 (measured from the seed pose), maxStretch 0.02
+       bendLimit on, minBendRadius 0.15, iterations 8          rings 0.06 m apart must not turn more than 0.4 rad (15.2)
        anchorFirst 1, anchorSecond 1, anchorLast = map(hold), anchorMode Hard, anchorStrength 1.5
+       lengthOut = map(out)                                  the winch (15.7)
        teleportDistance 100, teleport Carry                  the 960 m lap
        thickness 0.05, friction 0.3
-       collision = the bore's distance function (slice 5); or colliders ◀─ the centreline strip, Inside (slice 3)
+       collision = the bore's distance function with its deck (slice 5), AND colliders ◀─ the body's capsule (slice 3), together (15.6)
   ─▶ frames_tentacles (pointCurveFrames: Minimise Twist, seed Orient Attribute)
   ─▶ geometry_ring (Instances, Shape Mesh, orient = map(orient))
      resample_tip (count 1, at the end) ─▶ geometry_claw
@@ -859,8 +872,8 @@ kernel_strands (pointKernel, 55 points × 10 tentacles × robots: 54 rings and t
 **What the consumer decides:**
 
 - **The swimming stroke** (`strokeOpen`) flung the tips open on the beat. On a rope that is a force: `force` mapped to an attribute the kernel writes, outward from the body's axis on the stroke. The tips then arrive late by themselves.
-- **Feeling about** (`gesture`): a claw drawn softly toward a wandering target. That is Anchor Mode Soft, and one node has one mode, so the tentacles that feel about would be a second Rope, or the gesture goes.
-- **Stowing slack in the body**: the rope and the bore hold slack now. If the look still wants it, `segmentLength` mapped, zero on the stowed segments.
+- **Feeling about** (`gesture`): a claw drawn softly toward a wandering target. That was Anchor Mode Soft and a second Rope. After the review it is the one node under Hard with `hold` at 0.3 to 0.5: a fractional Hard weight is that blend (15.4).
+- **Stowing slack in the body**: the rope and the bore hold slack now. Reeling in and paying out is Length Out, mapped per strand (15.7); a mapped Segment Length driven to zero does not hold.
 
 **What serves the owner's words:**
 
@@ -954,6 +967,8 @@ On Dawn through the compiler and the backend, red-verified, with the wire-cut ca
 
 **Reported, not asserted**: the measurements of 7.6.
 
+**As built, and added since.** 14.5 lists slice 1's tests file by file, and 14.4 says which are exact on the device (all that this section claimed exact; no fallback was needed). Added by the review: the bend limit's tests (15.2), a fractional weight's rest and its following of a moving target (15.4), every seed in every direction (15.3, built), the 960 m lap by itself (14.5, built), the winch (15.7), and a fast pin in slice 2's measurement (15.5). Slice 1 has one anchor, so this section's tests of a second pin, of weights per strand and of the reach rule are slice 2's.
+
 ## 11. Build plan
 
 ### 11.1 Slices
@@ -971,6 +986,8 @@ Each is shippable and each is a prefix of the whole: the names, the attributes, 
 
 - Slices 3 and 4 depend only on 1. Slice 5 depends on 3 for the contact step.
 - **For the consumer the order is 1, 2, then 5 by way of 3.** After slice 2 its tentacles are ropes with no walls, which works under water with low gravity and is wrong the moment one hangs.
+- **Changed after the consumer's review** (15.1): the order is 1, 2, 4 with the bend limit, 5, 3. Slice 5 no longer depends on slice 3, and slice 6 is not planned. Slice 4 gains Bend Limit and Min Bend Radius; slice 2 gains Length Out.
+- **Slice 1 as built is narrower than its row**, by the coordinator's brief: no Force, Wind, Segment Length or Stretch Damping, and Reset and Teleport moved up from slice 2 (14).
 
 ### 11.2 Accepted limitations, as follow-up rows
 
@@ -993,6 +1010,8 @@ Each is shippable and each is a prefix of the whole: the names, the attributes, 
 | R15 | Branches | a tree is still a direct solve (Deul et al.); a strip is not a tree |
 | R16 | Lengths and stiffness in a material's units, per metre | so a rope resampled to twice the points is the same rope. Every per-segment parameter here changes meaning with the pitch, as Notch's do |
 | R17 | The gap to an out-of-reach target, published | the consumer's `slip` |
+| R18 | Short strands solved in function-local arrays | slice 1 measured many short strands at 1.5 µs a point a step, three times a plain kernel, because the working values are a storage buffer read and written per point per loop (14.3). A program for strands of up to 64 points that keeps them in locals is the thing to measure |
+| R19 | A plan-level refusal when a stepped dispatch's uniform block uses one of the backend's names for something else | the backend writes `iterations`, `substep`, `seed` and the rest by name; the Rope lost its Newton cap to that until a test found it (14.1, item 7). Today one definition test guards one node |
 
 ### 11.3 Decisions to rule
 
@@ -1013,6 +1032,7 @@ Each with the recommendation.
 - **D13. Gravity and forces.** Recommended: Gravity a number toward −Y as Notch's, and Force a vec3 with Map mode for everything else. Alternative: one vec3.
 - **D14. Closed strips** refused in v1 (R7), and a grid's rows taken as separate strands.
 - **D15. Pre-roll** as a follow-up (R5), with the incoming strip as the starting pose.
+- **D1 to D15 were ruled as recommended on 2026-10-05**, D3 without a full-suite run. **D16 to D23**, from the consumer's review and from slice 1, are in 15.8.
 
 ### 11.4 What this design has not verified
 
@@ -1021,6 +1041,7 @@ Each with the recommendation.
 - **Bend, collision and friction** are not in the model. Their order in the step and their guarantees are design; their constants (one sweep of bend a step, two collider candidates a point) are first guesses to be checked against the reference in their slices.
 - **The loop region under a node that is not a Point Kernel.** Read from `substeps.ts`, `plan.ts` and the backend, where nothing names the kernel; not run.
 - **Single precision past what Appendix A ran**: one motion, at 54, 1,000 and 1,024 links.
+- **Since verified by slice 1** (14.3, 14.4): the costs; exactness on the device, which held everywhere it was claimed; and the loop region under a node that is not a Point Kernel. Still not verified: everything in 15.9.
 - **The look.** That a rope with these defaults reads as the consumer's squid is the consumer's to judge on slice 2. The model says it lags, keeps its length and does not pop; it does not say it is beautiful.
 
 ## 12. Found on the way
@@ -1033,6 +1054,7 @@ Not fixed; not in scope.
 - **Curve Frames has no end seed** (R8).
 - **Notch's Collision Thickness is self-collision's**, by its own description. The row lists it as if it were the rope's radius against colliders.
 - **A patent search for long-range attachments returns US 9,070,220 B2** (NVIDIA). Noted for R2; nothing here uses them.
+- **The backend writes a stepped dispatch's run numbers into any uniform member that has one of their names** (`deltaSeconds`, `substep`, `substeps`, `iteration`, `iterations`, `firstRun`, `seed`, and the frame's `timeSeconds`, `frameIndex`, `pointer`, `absTimeSeconds`, `absFrameIndex`). A node that uses one of those names for a value of its own reads the backend's, in silence. Found in slice 1 (14.1, item 7); R19.
 - **Point Kernel's Substeps description offers `clamp(ceil(delta * 240), 1, 16)`** as the rate form. `ceil` and `round` agree on every delta the clocks produce at a rate that divides evenly; at 144 fps both give 2. No change needed.
 
 ## 13. Sources
@@ -1082,6 +1104,11 @@ Method, from their abstracts and records:
 - Kim, Chentanez, Müller-Fischer, "Long Range Attachments: A Method to Simulate Inextensible Clothing in Computer Games", SCA 2012, pp. 305–310. The patent: https://patents.google.com/patent/US9070220
 - Bailey, Lowe, "MILCH SHAKE: An efficient method for constraint dynamics applied to alkanes", Journal of Computational Chemistry 30, 2009, pp. 2485–2493. https://dare.uva.nl/id/70ba7de5-7da0-4ff2-9ab7-cf885694e868
 
+For the bend limit (15.2), from their abstracts and records, read 2026-10-06:
+
+- Han, Harada, "Real-time Hair Simulation with Efficient Hair Style Preservation", VRIPHYS 2012, doi 10.2312/PE/vriphys/vriphys12/045-051. https://diglib.eg.org/handle/10.2312/PE.vriphys.vriphys12.045-051 (local and global shape constraints as positional goals, relaxed before the edge-length constraints; TressFX)
+- Han and Harada 2013, Müller, Kim and Chentanez 2012, and Deul et al. 2018, all above: the tridiagonal solve is for length only; Follow The Leader is one positional pass with a velocity correction; the direct solver for stiff rods puts bend and twist in the system with stretch.
+
 Method, cited from memory and not re-read:
 
 - Baraff, Witkin, "Large Steps in Cloth Simulation", SIGGRAPH 1998.
@@ -1089,6 +1116,306 @@ Method, cited from memory and not re-read:
 - Kugelstadt, Schömer, "Position and Orientation Based Cosserat Rods", SCA 2016.
 - AMD TressFX (a thread group per batch of strands).
 - WebGPU's default limits (256 invocations in a compute workgroup).
+
+## 14. Slice 1 as built (2026-10-06)
+
+The strand and its time: `pointRope` ("Rope", kind `rope`), strips in and strips out, `position` and `velocity` as state, stepped by the kernel-steps region at a rate. Everything in this section was run on Dawn (Metal, this machine) unless it says model.
+
+**Files.** `src/points/rope.ts` (the CPU reference, single precision, the oracle), `src/nodes/shaders/rope.wgsl.ts` (the same step in WGSL, operation for operation), `src/nodes/definitions/point-rope.ts`, and the engine changes in `src/compiler/substeps.ts`, `src/compiler/frame-compile.ts`, `src/runtime/backend/plan.ts`, `src/runtime/backend/vgpu/vgpu-backend.ts`, `src/app/animate-parameters.ts` and `src/domain/types/node-definition.ts`.
+
+**Parameters in slice 1:** Update Rate, Min and Max Update Steps, Iterations, Simulation Speed, Gravity, Damping, Mass, Rest Length Scale, Stretch, Max Stretch, Anchor First, Reset, Teleport Distance, Teleport (Carry or Reset), and the Tension switch. Force, Wind, Segment Length and Stretch Damping are in section 3.2 and not in this slice. Any parameter in Map mode is refused by name.
+
+### 14.1 Where the build differs from sections 2 to 7
+
+Each is a change to what was ruled, with its reason. None changes the method (D1).
+
+1. **The step count is derived by the backend, not by the compiler** (7.3 said the compiler's per-frame push evaluates it).
+   - The structural compile has no frame. The app's per-frame compile runs only for a document in which something animates. The headless harness and the MCP server each compile on their own schedule. A count the compiler owned would be right in one of those hosts.
+   - So the region carries the rate and its two clamps as values (`KernelStepsDescriptor.rate`), and the backend computes `clamp(round(delta × rate), min, max)` for each frame it renders, from that frame's own delta (`rateSubsteps`, the one place the rule is written). The compiler states the count of the frame it was compiled at with the same function.
+   - Measured: with the backend's derivation taken out, a Rope in a document where nothing animates runs one step a frame at every frame rate; three of the four whole-stack tests go red and only the animated one stays green (`src/tests/headless/rope-steps.gpu.test.ts`).
+   - This touched `vgpu-backend.ts`: a map of rates per region, three more names accepted on a region's value push, and five lines in `render()` before the step counts are resolved.
+2. **The step is two loops along the strand, not three to five** (7.2).
+   - The first version made four (predict, eliminate, substitute, finish) and measured three to four times Curve Frames' two walks at every strand length. That was D11's stop condition.
+   - Now the prediction is folded into the forward elimination and the stored position, velocity and tension into the back substitution. A step that converges in one Newton step and breaks no stretch limit is two loops. Each further Newton step is two more. The Max Stretch guard is a third loop only on a step that left a segment beyond it.
+3. **Rest lengths and the anchor's history are not in the stepped pair** (3.3 and 6.1 said one packed pair).
+   - The region swaps the pair between runs, so every run must write every word of it. Values written once a frame, or once at seeding, would be copied by every run.
+   - They live in a buffer of their own, two vec4f a point: the target the point's anchor had when the last frame ended with the measured length of the segment after it, and how fast that target was moving.
+4. **Carry is dead reckoning, not "move by the jump"** (4.7).
+   - On the frame of a wrap the target goes from 959.875 m to 0. That difference is the jump of −960 m and the eighth of a metre the socket travels in any frame. Moved by the whole difference, the strand lands in the right place with the socket standing still in it for one frame: every point reads 0 m/s on that frame.
+   - The node keeps the target's speed from the last frame. On a teleport it takes the target to have come from `target − speed × frame`, moves the strand by the rest, and tows on. What is lost is the anchor's acceleration over that one frame.
+   - The lap test is exact through the wrap (14.4).
+5. **Drag is `v ÷ (1 + damping·h)`**, the implicit form, where 2.5 wrote `e^(−damping·h)`. It is as stable, agrees to second order, and a division rounds the same on the device and in the reference where an exponential does not. Wind is not in this slice.
+6. **Convergence is checked after each solve, without a square root.** 2.5 tested before each Newton step. The built step always takes one Newton step and then reads `(|d|² − l²) ÷ 2l` for each segment as it stores it, which is the distance from its length to first order. It stops when every segment is within `l ÷ 8192 + 10⁻⁷ m`.
+7. **A naming hazard in the uniform block, found by a test.** The backend writes a stepped dispatch's own `iterations` (runs per substep, 1 here) into any uniform member of that name. The block first called its Newton cap `iterations`, so the device took one Newton step whatever the parameter said, and the swaying strand stood at one and a half tolerances. The member is `solves`. A definition test now holds that the block declares none of the backend's names except the four it wants (`deltaSeconds`, `substep`, `substeps`, `firstRun`).
+8. **Past a Max Stretch of 1 only the long side limits.** `1 − Max Stretch` is clamped at zero; a negative shortest length squared read every segment as too short and ran the guard's loop on every step.
+
+**What slice 1 does not do, on purpose:**
+
+- One anchor, the strand's first point. A weight between 0 and 1 is the pull of 4.2 with Anchor Strength fixed at 2 Hz and a damping ratio of 1; 15.4 says what that showed.
+- `live` is not read. A padding segment is an ordinary segment of no length whose points keep their mass. The weld of 2.5 is slice 2's.
+- ε (2.5) is not there: with one anchor the system is positive definite.
+
+**The one existing test that changed:** the list of step declarers in `src/compiler/kernel-steps.test.ts` is now `["pointKernel", "pointRope"]`, and its count checks apply to count declarations only. Every other kernel-steps test is byte for byte what T1583b left.
+
+### 14.2 Memory as built
+
+| | Bytes a point |
+|---|---|
+| The stepped pair: `position` and `velocity`, two halves | 64 (68 with Tension), on 256-byte region bases |
+| Kept: anchor target, rest length, anchor speed | 32 |
+| Scratch: working position, inverse mass, two coefficients, the multiplier | 32 |
+| Total | 128 |
+
+Section 7.5 derived 120. A million points are 122 MiB.
+
+### 14.3 The measurement (D11)
+
+Dawn on Metal, Node, 100 frames a run, best of 7 runs. "Wall" is CPU and GPU together with the queue drained, less the same graph without the node. The GPU timer's quantum on this device is 0.066 ms. The strands start level and swing down from sockets that sway, so a step is real work. The machine was shared with other sessions; the small layouts moved by a factor of two between runs.
+
+| Strands × points | Curve Frames, two walks | Rope, a step, at 16 steps a frame | at 4 | at 1 | Design's range for a step (7.6) |
+|---|---|---|---|---|---|
+| 1 × 55 | 0.03 | 0.03 to 0.05 | 0.04 to 0.10 | 0.07 to 0.18 | |
+| 10 × 55 | 0.04 | 0.07 to 0.14 | 0.09 to 0.22 | 0.13 to 0.53 | 0.02 to 0.07 |
+| 1,818 × 55 | 0.05 | 0.11 to 0.12 | 0.15 to 0.23 | 0.32 to 0.45 | 0.05 to 0.1 |
+| 400 × 250 | 0.22 | 0.38 to 0.40 | 0.75 to 0.91 | 1.50 to 1.93 | 0.13 to 0.25 |
+| 98 × 1,024 | 0.90 | 1.41 to 1.43 | 4.7 | 5.8 to 5.9 | 0.5 to 1.0 |
+| 18,181 × 55 | 0.46 | 1.43 to 1.50 | 1.5 to 1.7 | 4.0 to 4.5 | 1.0 to 1.3 |
+
+All in milliseconds, wall.
+
+- **A step's cost follows how many loops it makes.** With the solve held to one Newton step, a step costs 0.38 ms at 400 × 250 and 1.44 ms at 98 × 1,024 inside the step limit (two loops), and 0.63 to 0.66 ms and 1.82 to 1.85 ms outside it, where the guard's loop runs as well (three). With Iterations at 4 and the fixture far past the limit, as it is at one step a frame, every step runs all four Newton steps: 1.9 ms and 5.8 ms. Inside the limit (16 steps here) one Newton step converges and Iterations costs nothing.
+- **Per point of strand length a loop costs about 0.7 µs** (1.43 ms over two loops of 1,024). Curve Frames' walk costs 0.45 µs. So a calm step is 1.6 times Curve Frames' two walks on long strands.
+- **D11's question, one 55-point strand's step against Curve Frames' walk:** 0.03 to 0.05 ms against 0.03 ms, with both GPU spans at the timer's quantum. Not several times. D1 stands.
+- **Many short strands are bound by throughput, not depth.** A million points as 18,181 strands of 55 cost 1.4 to 1.5 ms a step, where a plain per-point kernel over the same points costs 0.44 ms and Curve Frames 0.46 ms. That is 1.5 µs a point a step. The scratch is a storage buffer read and written per point per loop; a version that keeps a short strand's working values in function-local arrays is the follow-up to measure (R18).
+- **A dispatch costs the CPU about 0.02 ms** (a stepped Point Kernel of the same points, 16 steps against 1: 0.019 to 0.023 ms each, at every layout up to 100,000 points). Sixteen dispatches are 0.3 to 0.4 ms of CPU a frame in this host. 7.6 had no figure.
+- **The consumer's layout** (10 × 55): 0.35 ms a frame at 4 steps and 1.2 ms at 16, wall, in Node, on the quieter of the two runs; 0.9 ms and 2.2 ms on the other. The design's range was 0.1 to 0.3 and 0.3 to 1.1.
+- **The design's ranges were low for long strands** by a factor of 1.5 to 3 for a calm step, and a step that runs all four Newton steps costs four times a calm one on top of that.
+
+### 14.4 What the device changed
+
+- **Bit-exactness survived the device's square root and division everywhere the design claimed it.** No test needed the fallback written beside it. Exact, with `toBe` or `toEqual` on the words read back: the hanging strand's sag (0) and tension ((16 − k) × 8 N) at 1, 4 and 8 steps, also against the reference word for word; the released fall (0.0634765625 m at 1 m/s after 64 steps); the fall from Reset; the tow (position and velocity of every point on every frame); the step counts read off a fall; one tick of two frames against two ticks of one, and four sub-frames against one frame, byte for byte; the three frame modes; the seek; the frame of no length and Simulation Speed 0; Reset; Teleport with Reset; the 960 m lap; every seed in every direction (14.5).
+- **Held to a derived bound, because the closed form is not a float:** the compliance (the solver's exit tolerance a segment); length under a swaying anchor (the exit tolerance plus the stored position's spacing); the thrown anchor under the guard (Max Stretch plus the spacing at 100 m); Carry against a twin that never jumped (the spacing at 64 m).
+- **Device against reference in general motion:** a strand swinging for 640 steps differs from `rope.ts` by 1.04 × 10⁻⁵ m at most on a one-metre strand. WGSL does not specify the last place of a square root or a division, and a device may fuse a multiply and an add. The tests assert 10⁻⁴ there and say why.
+- **The uniform collision** (14.1, item 7) is the one thing the device found that the reference could not.
+- **The cost** (14.3): the four-loop step was three to four times Curve Frames, and the two-loop step is the fix.
+
+### 14.5 Tests as built
+
+| File | Tests | What it holds |
+|---|---|---|
+| `src/points/rope.test.ts` | 29 | the reference against closed forms: seeding, the hanging fixed point and its tension, Mass, a compliance, free fall, momentum, the interpolated target, a part weight's rest, weight 0, the guard and that it adds no speed, the hold, Reset, Teleport Reset, Carry through a wrap, every seed in every direction |
+| `src/nodes/definitions/point-rope.gpu.test.ts` | 24 | the same claims on Dawn through the compiler and the backend, and the device against the reference |
+| `src/nodes/definitions/point-rope.test.ts` | 16 | the edge, the bindings, the uniform block, every refusal sentence |
+| `src/compiler/kernel-steps.test.ts` | 38 (17 new) | the rate rule row by row of 6.3's table, the Rope's region, the per-frame path, the plan reader, one dispatch that steps beside one that does not |
+| `src/tests/headless/rope-steps.gpu.test.ts` | 4 | the count through the frame driver and the offline transport at 64 fps, 32 fps and in sub-frames |
+| `src/tests/headless/harness-probe-frames.gpu.test.ts` | 3 | the harness's per-frame buffer probe |
+| `src/app/animate-parameters.test.ts` | 9 (1 new) | a driven rate reaches the region as a pushed value |
+
+- Each device test names what it was seen red against. 14 mutations of the shader, the reference and the backend, 7 of the compiler, the plan reader and the animator, and 1 of the harness were applied by edit, seen red, and removed by edit.
+- **The 960 m lap is a test by itself** (the consumer's item 7): Teleport Distance 100, Carry, 54 segments, a socket at 8 m/s; the pitch is 2⁻⁴ m and the socket moves 2⁻³ m a frame so that every position before, at and after the wrap is a float. Every point is one pitch behind the last and at 8 m/s on all 39 frames, to the bit. The control with Teleport off is dragged at more than 1,000 m/s.
+- **The harness has a per-frame buffer probe** (item 8): `probeFrames` on `renderHeadless` reads `probeBuffers` after each named frame into `bufferFrames`. It refuses a frame the render never steps, and a probe with no buffer named.
+
+### 14.6 A fast pin, on the reference (model, single precision)
+
+Slice 2's measurement includes a pin at weight 1 moving at the consumer's speeds (15.5). The far-end pin does not exist yet, so this is the first point of a 54-segment strand of 60 mm, swept at 2 Hz, 60 frames a second, Max Stretch out of the way:
+
+| Peak speed, peak acceleration | 1 step a frame | 2 | 4 | 8 | 16 |
+|---|---|---|---|---|---|
+| 4 m/s, 50 m/s² | 39% | 0.017% | 0.012% | 0.013% | 0.012% |
+| 8 m/s, 101 m/s² | 285% | 21% | 0.013% | 0.012% | 0.012% |
+
+The worst segment, as a share of its length. The default Update Rate of 240 (four steps at 60 frames a second) holds the attack. 2.6's formula gives 4.7 ms and 3.3 ms for these, which is four steps and six; the reference holds with two and four. The formula is conservative, because the peak acceleration lasts an instant.
+
+## 15. After the consumer's review (2026-10-06)
+
+The first consumer (sentinel-bot, T1561b) read the design against its rig and its tests. This section is what changes. Nothing in it is built except where it says so. Figures are model (float64, Appendix A's strand, the scripts kept in the session's scratch) unless they say measured.
+
+### 15.1 The order of the slices
+
+**1, 2, 4 with the bend limit, 5, then 3.** A height field (6) is not planned.
+
+- Slice 4 comes before the walls because rings that pass through each other are wrong in every shot, and a tentacle through a wall only where it hangs.
+- Slice 5 (the distance function, for the bore and its deck) comes before slice 3 (the colliders pointset, for the body's capsule). Slice 5 no longer depends on slice 3: the contact step is built with the first of them.
+
+### 15.2 The bend limit
+
+**The requirement.** The consumer's rings are rigid, 0.06 m apart, with a shell radius of 0.049 m. Neighbours intersect past a turn of about 0.4 rad (23°) at a joint, and its rig test holds a bend radius of at least 0.15 m. Bend Stiffness (3.2) is a spring: it resists a bend and bounds nothing. What is wanted is a limit.
+
+**The parameter: Min Bend Radius, in metres**, with a switch.
+
+| Key | Label | Type | Default | Meaning |
+|---|---|---|---|---|
+| `bendLimit` ⓢ | Bend Limit | boolean | off | The rope does not bend tighter than Min Bend Radius |
+| `minBendRadius` | Min Bend Radius | number, metres | 0.15 | The radius of the tightest curve the rope makes. A joint between two segments of mean length `l` may turn at most `2·asin(l ÷ 2R)` |
+
+- A radius and not an angle, because a radius is a property of the rope and an angle is a property of how finely it is cut. Resampled to twice the points, the same radius is half the angle at each joint.
+- The consumer's 0.4 rad at a 0.06 m pitch is a radius of 0.151 m. A radius of 0.15 m on its 54 links of 59.3 mm is 0.3977 rad (22.79°).
+- The switch is structural and the radius is a value (§V453): with the limit on, the step is a different program (below).
+
+**As a constraint.** The turn at joint `j` is fixed by the chord across it: with the two segments at their lengths `a` and `b`, `|p[j+1] − p[j−1]|² = a² + b² + 2ab·cos(turn)`. So "no joint turns more than this" is a one-sided distance constraint between second neighbours, `|p[j+1] − p[j−1]| ≥ chord(j)`. It is the same kind of row as a stretch constraint, with a gradient on two points.
+
+**A guard after the solve, like Max Stretch, does not work, and the reason is the consumer's own test.** That test is a rope at rest. In the model: 54 links, 3.2 m, both ends pinned 0.5 m apart, gravity 9.81, Damping 0.5, 60 frames a second, 4 steps a frame, Iterations 4.
+
+| How the limit is held | Largest turn at rest | On the way there | Worst segment | Comes to rest |
+|---|---|---|---|---|
+| Not at all | 50.5°, 2.22 × the limit | 112° | 0.004% | yes |
+| Positions only after the velocity, turning the rest of the strand rigidly | 57° | 179° | 1,400% | no: 210 m/s |
+| Positions only after the velocity, moving each joint's later point | 22.8° at one instant | 180° | 82% | no: 42 m/s |
+| A Gauss–Seidel sweep of the limit before each Newton step | 25.1°, 1.10 × | 33° | 0.011% | yes |
+| The same, Iterations 8 | 24.1°, 1.06 × | 31° | 0.007% | yes |
+| **In the solve**: the limit's active rows solved with the stretch rows | 22.80°, 1.001 × | 23.15° | 0.007% | yes |
+
+- **Without a limit the hanging rope turns 50.5° at its lowest joint.** So the test cannot pass without one, and with one it is not vacuous.
+- **A positions-only guard fails at rest.** Gravity pulls the bottom of the loop tighter in every step. A guard that moves points without telling the velocity leaves the rope still falling into the limit: each step's velocity is the solve's, which contains the fall, and the correction grows until the strand tears. Max Stretch escapes this only because inside the step limit the solve already holds the length and the guard moves nothing. A limit that acts on a rope at rest has to be in what the velocity is taken from.
+- **A sweep is relaxation again.** It carries a correction one joint a pass, and a run of joints at the limit is exactly a run. This is the hair literature's usual form: TressFX's local shape constraints are positional goals relaxed before the length constraints (Han and Harada 2012), and Follow The Leader is a single positional pass with a velocity correction (Müller et al. 2012).
+- **In the solve it holds to the row's own compliance.** This is the direct solvers' form (Deul et al. 2018, for stiff rods), on the scalar system this node already solves.
+
+**How it enters the stretch solve.** Order the rows along the strand as they occur: `s₀, b₁, s₁, b₂, s₂, …`, with `sₖ` the stretch row of segment `k` and `bⱼ` the limit's row at joint `j`. Each row shares a point with at most four rows either side. The system is symmetric, positive definite and banded, half-width 4, and the model's banded elimination without pivoting solves it with nothing outside the band (checked on every solve it made). It is still one forward walk and one back along the strand.
+
+- **The limit is one-sided.** A row is in the system while its chord is short of its limit, or while it was pushing its two points apart earlier in the same step. A row that ends up pulling is left out of the next Newton step.
+- **The exit test gains the turn**: a step stops when every segment is within `l ÷ 8192` and every joint within 2⁻¹⁰ of its limit.
+- **The limit's rows carry a compliance of 2⁻¹⁰** of their diagonal. It keeps the system solvable when the limit cannot be met, and it decides who gives: length and pins hold, and the bend gives. At rest that is the 0.1% in the table.
+- With the switch off the step is the tridiagonal one of slice 1, unchanged.
+
+**Under motion** (model: the far pin 0.9 m out and swept at 2 Hz, so the limit can be met throughout):
+
+| | 1 m/s, 4 steps | 4 m/s, 4 steps | 4 m/s, 16 steps | 8 m/s, 16 steps |
+|---|---|---|---|---|
+| No limit | 119° | 180° | 180° | 180° |
+| Sweep, Iterations 4 | 1.39 × | 2.13 × | 1.51 × | 2.44 × |
+| In the solve, Iterations 4 | 1.07 ×; 1% of frames over by 5% | 1.38 ×; 18% | 1.13 ×; 1% | 1.59 ×; 20% |
+| In the solve, Iterations 8 | 1.003 ×; none | 1.054 ×; none | 1.008 ×; none | 1.065 ×; none |
+
+The worst turn over four seconds, as a multiple of the limit, and the share of frames more than 5% over it.
+
+- **Iterations is the ceiling that matters here.** At 8 the limit holds within 7% at the attack's 8 m/s (16 steps a frame), within 1% at the stride's 4 m/s at 16 steps and within 6% at 4 steps. The solve takes 2.2 to 3.8 Newton steps a step doing it, and the worst segment stays within 0.13%.
+- **With Bend Limit on, Iterations defaults to 8**, and the description says a rope that still creases under fast motion wants a higher Update Rate, as one that stretches does.
+- **There is no positions-only bend guard.** The model tried one behind the solve, set 5% past the limit, moving each joint's later point: it stretched a segment by 22% during the first swing. The bound is what the solve reaches.
+- **At rest the active rows switch on and off between steps.** In the model the positions repeat from frame to frame (0.00 µm at 4 steps a frame; 19 µm at 16) while the published velocity of the points at the limit reads up to 6 mm/s. If that shows, slice 4 keeps a row in the system from one step to the next while it is pushing.
+
+**With pins.** A rope pinned by position at both ends can open its loop wider than its pins are apart, as the model's 3.2 m between pins 0.5 m apart does. It cannot meet the radius when it is too short to turn back on itself at that radius, or when a pin is pulled to where only a crease reaches. Then the limit's compliance lets it give, and the stretch rows and the pins hold. 4.6's reach rule is unchanged. A strand held at its first two points (Anchor Second) leaves along that direction, and the limit at the second point keeps the third from folding back over the socket.
+
+**With colliders.** Colliders keep the last word in a step (5.1). A push can tighten a joint by as much as the push; the next step's solve takes it back, as it does for a segment's length. So at the end of a step: no point is inside a collider; a joint beside a contact may be past its limit by that step's push. A collider whose corner is tighter than the rope's radius wins, and the rope creases round it. That is stated in the description.
+
+**With Bend Stiffness.** The spring is the soft part under the limit and is unchanged: 3.2's constraint, which is zero on a straight run and linear in the points, in one sweep before the solve. A distance spring between second neighbours would not do for it: its force vanishes as the strand straightens.
+
+**What it costs** (derived; nothing here is measured). Two rows a point in place of one, each with four coefficients in place of one: about three times the scratch a point (16 floats in place of 8) and several times the arithmetic. Slice 1 measured that a step's cost follows its loops and its Newton steps more than its arithmetic (14.3), so a step with the limit on is estimated at 1.5 to 3 times a plain Newton step, times the 2 to 4 Newton steps it takes while the limit is active under motion. For the consumer's 10 × 55 that is 0.2 to 0.5 ms a step where slice 1 measured 0.07 to 0.14. **Slice 4 measures before its program is pinned**, as slice 1 did, and reports if a 55-point step with the limit costs more than three times one without.
+
+**Its tests.**
+
+- The consumer's: 54 links, 3.2 m, both ends pinned 0.5 m apart, Min Bend Radius 0.15 m, Iterations 8, settled. The largest turn at any joint is at most the limit times (1 + 2⁻¹⁰) plus the exit tolerance. The control is the switch off: 50.5° in the model, more than twice the limit.
+- The same strand with the far pin swept at 1 m/s and at 4 m/s, read at every frame through the harness's per-frame probe (14.5): the largest turn, against the bound slice 4's measurement fixes. The model's 1.003 × and 1.054 × are what to expect.
+- Length is kept while the limit acts: every segment within tolerance at rest.
+- A straight strand with the limit on is the bytes of one with it off, at rest and in free fall: a limit that is not reached changes nothing.
+- On the reference first, in closed form: three points, the middle one pushed until the chord is short. The joint ends on its limit and the two segments on their lengths.
+
+### 15.3 The seed has no hand
+
+**The finding** (measured on the consumer's rig). A held arc built in closed form bowed its slack toward a direction projected at right angles to the chord. When the chord swung through that direction the bow changed sides: 1.29 m of tentacle in one step, however fine the step. A straight walk never met it.
+
+**For the rope.** While it runs, inertia holds the side it is on, and the solve makes no such choice. A pose the node BUILT when seeding would make it.
+
+- **The node builds no pose.** A fresh state (a load, a seek, a structural edit), Reset, and Teleport with Reset are one function, and it copies the incoming points slot for slot, at rest. Pre-roll (R5), when it exists, runs the solver from that same seed.
+- **So the node holds no reference axis and there is no tie-break**, because there is no choice to break. The side a slack strand bows to at its seed is whatever the incoming strip gave it. An incoming strip built by an Arc carries the Arc's own stated hand (the Curve node's Bow); the consumer's kernel carries the rig's.
+- **Where a choice could enter later, and the rule for it.** A strand seeded SHORTER than its rest lengths between two pins (Rest Length Scale above 1, or the winch of 15.7 paying out against a far pin) has slack and no shape for it. The node still builds nothing: it seeds the incoming points, and the solve pays the slack out under the forces present. Gravity bows it downward, continuously in the chord's direction, through a hairpin of no width where the chord is vertical. With no force across the chord (no gravity, or a chord exactly along it, and the strand exactly straight) nothing moves it sideways and it stays straight and short until something does. That is a rope with nowhere to go, and it is not a flip. Slice 2 tests that case when it builds the second pin.
+
+**Built, in slice 1:** on the reference and on Dawn, a slack arc turned so that its chord sweeps a whole turn (in three families: the bow in the plane of the sweep and through gravity's axis; across the sweep; along gravity), seeded by a fresh state, by Reset and by Teleport with Reset. The device test lays 128 strands, one a direction, four of them exactly on an axis, with dyadic coordinates. Each seed is the incoming arc to the bit, and between neighbouring directions no point moves further than the sweep itself moves it. Seen red against a seed that bows its slack across a projected axis.
+
+### 15.4 A weight between 0 and 1, under Hard
+
+**The requirement.** One node holds a claw that is handed over on a ramp to 1 and a claw that reaches toward a wandering target at a weight of 0.3 to 0.5. So a fractional Hard weight has to be a blend toward the target, or Anchor Mode has to be mappable per strand.
+
+**It is a blend, and Anchor Mode stays one parameter.** Under Hard a weight `a` is a spring to the target of stiffness `k = M·(2π·strength)²·a ÷ (1 − a)` with Anchor Damping's ratio (4.3). At 0.5 that is exactly Soft at weight 1; at 0.3 it is Soft at 0.43. The point follows a wandering target with a lag of about `1 ÷ (2π·strength·√g)` seconds and is not snapped to it; as the weight nears 1 the lag goes to nothing and at 1 the point is the target. One mode covers the hand-over and the reach.
+
+**What slice 1 showed: the stiffness has to be scaled by the mass the anchor carries, not by the point's own.** 4.3 wrote `k = m·…` with `m` the point's mass. The reference with that formula, a strand of 17 points hung from an anchor at weight 0.5 and Anchor Strength 2 Hz, comes to rest 0.861 m below its target, in closed form `N·g ÷ ((2π·strength)²·g(a))` and to the solver's tolerance at 1, 4 and 8 steps (a test in `rope.test.ts`). The consumer's 55 points at 9.81 would hang 3.4 m low at 0.5 and 8.0 m at 0.3. That is a blend toward a point far below the target.
+
+- **Change to 4.3: `M` is the strand's whole mass for First, Second and Last**, and the point's own for a weight from `pinAttribute`, where every point is held and carries only itself.
+- Then the rest offset under the strand's full weight is `g ÷ ((2π·strength)²·g(a))`, whatever the strand's length: 62 mm at 0.5 and 145 mm at 0.3 at 2 Hz; 16 mm and 36 mm at 4 Hz. Anchor Strength then means what its unit says: the frequency of the strand on its anchor.
+- The pull stays one formula and stays unconditionally stable; only `κ` and `δ` are larger.
+
+**Stated in the description, and tested in slice 2:**
+
+- The rest offset in closed form, at weights 0.3 and 0.5, at three step counts.
+- A target moved on a sine: the point follows with the gain and the lag of the second-order filter the pull is, to the solver's tolerance on a strand of one point, where it is exact.
+- The ramp of 4.5 unchanged: the largest move in a frame halves when the frame does.
+- The wire-cut case: with the weight's map cut, every strand takes the parameter.
+
+### 15.5 Slice 2's measurement
+
+- **A fast pin at weight 1.** The claw's target crosses about 4 m/s in every stride and about 8 m/s in an attack. Slice 2 measures a far-end pin swept at both, on Dawn, and reports the worst segment at 2, 4, 8 and 16 steps a frame beside 14.6's figures for the first point.
+- **The hold weight is one mapped weight** on a strand's last point, `anchorLast = map(hold)`.
+- **Anchor Second at weight 1, one pitch along the way the socket faces, is the direction the strand leaves in.** Confirmed by the consumer. With the first two points pinned, the first segment has both ends held and is skipped (2.5), and the bend limit of 15.2 acts from the third point.
+
+### 15.6 Two collision sources at once
+
+The consumer needs the bore as a distance function, with its deck, AND the robot's body as one capsule (about 1.7 m long, 0.45 m in radius) from a colliders pointset. No strand against strand in v1.
+
+**One node takes every source together.** A collide (5.1) applies each wired source in a fixed order, and the last is the one that is exact when two disagree:
+
+1. the `colliders` pointset: spheres, capsule chains, a tube;
+2. the height field;
+3. the floor;
+4. the distance function.
+
+- **The distance function is last because it is the world.** A point squeezed between the body and the wall ends on the wall's side of the wall and may be inside the body by what is left. The other order would put a tentacle outside the tunnel.
+- Each source pushes along its own normal until the point is its Thickness outside. One round of all four is one collide; the stretch loop runs a collide per Newton step and one more at the end (2.5).
+- **Bindings.** Slice 1's step binds five storage buffers. The colliders add their position and the contacts buffer, and a `radius` from another producer one more: eight, which is the baseline's limit (§V588). The distance function adds none. A mapped parameter whose attribute lives in yet another producer's buffer is then one too many and is refused by name, with the fix (gather the attribute onto the strands upstream).
+- **The contacts pass** for one capsule is trivial, and is the same pass as for 1,024.
+- Friction is one number for every source in v1.
+
+### 15.7 A winch
+
+The consumer wants to reel a tentacle in and pay it out at about 1 m/s. Section 3.2 offered that as Segment Length in Map mode, "read every frame at a segment's first point, so a strand can pay out". **Measured before it is promised, that form does not hold, and the description must not offer it.**
+
+Model: 54 segments of 60 mm hanging from a socket, reeled in 2 m, held, paid out 2 m; the lengths changed in every step.
+
+| How the strand is wound | Feed | Steps a frame | A still strand: worst segment long by | A swinging strand |
+|---|---|---|---|---|
+| The first segments' lengths go to nothing, one after another | 1 m/s | 4 | 0.006 mm | 16 mm, a quarter of a pitch |
+| | 1 m/s | 16 | 0.000 mm | 1.1 mm |
+| | 4 m/s | 4 | 0.03 mm, and the strand is thrown 1.4 m | 73 mm |
+| | 4 m/s | 16 | 0.005 mm, thrown 0.7 m | 12 mm |
+| Wound-in points parked on the socket; the first live segment kept between a quarter and one and a quarter pitches | 1 m/s | 4 | 0.006 mm | 0.006 mm |
+| | 4 m/s | 4 | 0.006 mm | 0.007 mm |
+| | 4 m/s | 16 | 0.002 mm | 0.007 mm |
+
+- **A segment wound to nothing has no step limit to stay inside.** 2.6's limit is `h < √(m·l ÷ T)`, and it goes to zero with `l`. At 6 mm of segment under this strand's 530 N it is 3.4 ms; at 0.6 mm, 1.1 ms; and no step count is small enough for the last of it. On the slice-1 reference in single precision the same winch leaves a still strand's segment 6 mm long at 16 steps a frame.
+- **Lengths changed once a frame are worse still**: a segment's length then steps by 17 mm in the frame's first step and nothing in the rest, which is the 60 Hz jolt the anchor's target is interpolated to avoid (4.1). Measured on the reference: tension peaks of 60,000 N on a strand that weighs 530 N.
+
+**The design: a length, per strand.**
+
+| Key | Label | Type | Default | Meaning |
+|---|---|---|---|---|
+| `lengthOut` | Length Out | number, metres, Map f32 | 0 | How much of each strand is out of its first anchor. 0 is all of it. Mapped, it is read at each strand's first point |
+
+- **Wound-in points are parked on the first anchor**: pinned to its target, out of the solve, with `live` 0 on the edge so that nothing draws them and Curve Frames skips them.
+- **The first live segment's rest length stays between a quarter and one and a quarter of its own measured length.** When winding in takes it to a quarter, its later point is parked and the next segment becomes the first live one, a quarter longer. When paying out takes it to one and a quarter, a parked point is released a quarter of a pitch along the way to the next point, at that point's velocity. Either way the strand's length is continuous and no live point moves.
+- **The length is interpolated across a frame's steps**, like the target, from a value kept from the last frame.
+- **Momentum.** Each live point moves at the feed's speed along the strand; that is the momentum a winch gives. A parked point's momentum leaves with it, as into a drum, and a released point enters at the feed's speed. A swinging strand wound in swings faster, as a shortened pendulum does. A feed that starts or stops in one step is an impulse on the whole strand; ease it.
+- **The step limit**: the shortest live segment is a quarter of a pitch, so 2.6's limit halves while a strand is being wound. How many more Newton steps that costs is not known: the model's own exit test miscounts on segments of no length, so it reports none here.
+- A parked point that is released comes out along the strand as it is, so the node still builds no pose (15.3).
+- **Segment Length in Map mode stays**, for strands whose segments differ, and is read when seeded and on Reset. It is no longer read every frame. A value of 0 there is still a weld (2.5).
+
+It belongs with the anchors and is the last part of slice 2, after the second pin, and is measured on Dawn there before its description is written.
+
+### 15.8 Decisions to rule
+
+- **D16. The bend limit is a constraint in the solve**, as one-sided rows between second neighbours in a banded system with the stretch rows, and there is no positions-only bend guard. Alternative: the Gauss–Seidel sweep, which is cheaper and leaves the consumer's rest test 6 to 10% over its limit.
+- **D17. Its parameter is Min Bend Radius in metres behind a structural switch**, with Iterations defaulting to 8 while it is on. Alternative: a largest turn in degrees, which reads directly as the rings' geometry and changes meaning with the pitch.
+- **D18. Slices in the order 1, 2, 4, 5, 3**, slice 5 no longer depending on slice 3, and no slice 6.
+- **D19. An anchor's stiffness is scaled by the strand's mass** for First, Second and Last, and by the point's own for `pinAttribute`. Alternative: leave 4.3 as written and document that Anchor Strength has to be raised with the strand's length.
+- **D20. Anchor Mode stays one parameter for the node**; a fractional Hard weight is the consumer's reach. Alternative: Anchor Mode in Map mode per strand.
+- **D21. The winch is Length Out, with parked points**, and Segment Length is read at seeding only. Alternative: keep Segment Length read every frame, clamped to a quarter of the measured length, and leave winding to Rest Length Scale, which shortens every segment alike and would close the consumer's rings up.
+- **D22. Collision sources act together in the order colliders, field, floor, distance function**, the last exact.
+- **D23. The count at the backend** (14.1, item 1), already built: ruled after the fact, because slice 1's whole-stack test cannot pass without it.
+
+### 15.9 What this round has not verified
+
+- **The bend limit on a device, and its cost.** The banded solve is model, in double precision. Its conditioning in single precision on 1,024 points is not known.
+- **The winch on a device**, and with a far pin.
+- **The second pin**, ε, the reach rule and the weld: slice 2.
+- **A strand seeded short between two pins** (15.3): stated, not run.
+- **Whether the active rows' switching at rest shows.** 26 µm in the model.
 
 ## Appendix A. The model
 
@@ -1103,3 +1430,4 @@ A CPU model of one strand, written for this design in plain JavaScript and kept 
 - **Energy**: kinetic plus gravitational, summed over the free points.
 - **Single precision**: every stored value and every scalar result rounded with `Math.fround`.
 - **What it does not hold**: collision, bend, friction and the GPU. Those sections are design, and their numbers are derived.
+- **Added on 2026-10-06 for section 15**, in the same scratch: the bend limit four ways on the consumer's hanging loop, with the far pin still and swept (the banded solve checks on every solve that no coefficient falls outside its band); the winch two ways. Bend is therefore in the model now; collision and friction are not.

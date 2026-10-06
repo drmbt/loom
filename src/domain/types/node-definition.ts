@@ -80,10 +80,30 @@ export interface TemporalDefinition {
  * Not `temporal.substeps`, though both end as a loop region. That key says "iterate the
  * feedback LOOP this node closes" — a cycle of several nodes, found on the graph, with the
  * pair's swap inside it. This says "iterate this node's own pass", and it divides time.
+ *
+ * T1585b — two more shapes, for a solver node:
+ *
+ *  - `substeps` may be a RATE (`KernelStepRateDeclaration`) in place of a count: three
+ *    parameter keys, and the count is `clamp(round(delta × rate), min, max)` of whichever
+ *    frame is being rendered. Notch's Update Frame Rate with Min and Max Update Steps.
+ *  - `iterations` may be left out, which is one run per substep. A solver that repeats
+ *    inside its own shader has no use for a second dispatch count.
  */
 export interface KernelStepsDeclaration {
-  readonly substeps: string;
-  readonly iterations: string;
+  readonly substeps: string | KernelStepRateDeclaration;
+  readonly iterations?: string;
+}
+
+/**
+ * T1585b — the parameter keys a rate-driven step count is read from. All three are
+ * per-frame VALUES, for the reason the counts are (§V358).
+ */
+export interface KernelStepRateDeclaration {
+  /** Solver steps per second of the piece. */
+  readonly rate: string;
+  /** Fewest and most substeps one displayed frame may run. */
+  readonly min: string;
+  readonly max: string;
 }
 
 export interface CapabilityRequirement {

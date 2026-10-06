@@ -171,6 +171,40 @@ describe("a driven substeps parameter animates like a uniform (T425)", () => {
       { passId: "state#loop:begin", values: { count: 12, iterations: 4 } },
     ]);
   });
+
+  /*
+   * T1585b: a region whose count follows the frame carries the RATE and its two clamps, and
+   * the backend turns them into every frame's own count. So a driven Update Rate has to
+   * arrive as those three numbers — the count beside it is only what one frame asked for —
+   * and a clamp that moves while the count stands still is still a push: Max Update Steps
+   * going from 16 to 2 changes nothing on a frame of four steps and everything on the next
+   * long one.
+   */
+  it("pushes a rate region's rate and clamps beside its count, and when a clamp alone moves", () => {
+    const ratePlan = (count: number, perSecond: number, max: number): CompiledGraph => {
+      const base = loopPlan(count);
+      return {
+        ...base,
+        passes: base.passes.map((pass) =>
+          pass.kind === "loop" && pass.edge === "begin"
+            ? { ...pass, steps: { pair: "state", iterations: 1, prepare: 16, rate: { perSecond, min: 1, max } } }
+            : pass,
+        ),
+      } as unknown as CompiledGraph;
+    };
+    const { backend, writes } = recordingBackend();
+    const animator = createUniformAnimator();
+    const base = ratePlan(4, 240, 16);
+
+    expect(animator.push(backend, base, ratePlan(4, 240, 16))).toBe(0);
+    expect(animator.push(backend, base, ratePlan(8, 480, 16))).toBe(1);
+    expect(animator.push(backend, base, ratePlan(8, 480, 12))).toBe(1);
+    expect(animator.push(backend, base, ratePlan(8, 480, 12))).toBe(0);
+    expect(writes).toEqual([
+      { passId: "state#loop:begin", values: { count: 8, iterations: 1, rate: 480, minSteps: 1, maxSteps: 16 } },
+      { passId: "state#loop:begin", values: { count: 8, iterations: 1, rate: 480, minSteps: 1, maxSteps: 12 } },
+    ]);
+  });
 });
 
 

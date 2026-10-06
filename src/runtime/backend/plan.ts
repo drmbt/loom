@@ -355,6 +355,51 @@ export interface KernelStepsDescriptor {
    * that many when the plan is installed. At least `count`.
    */
   readonly prepare: number;
+  /**
+   * VALUE, T1585b: present when the SUBSTEP count follows the frame it renders rather than
+   * a parameter — Notch's Update Frame Rate with its Min and Max Update Steps. The backend
+   * derives each render's count from that render's own `deltaSeconds` (`rateSubsteps`), so
+   * a frame that covers two project frames runs twice the steps at the same step size,
+   * and every host that renders a frame gets it without evaluating anything itself.
+   * `count` on the marker is then what the frame the plan was compiled at asks for.
+   */
+  readonly rate?: KernelStepRate;
+}
+
+/** T1585b: the three numbers a rate-driven kernel region's substep count comes from. */
+export interface KernelStepRate {
+  /** Solver steps per second of the piece. */
+  readonly perSecond: number;
+  /** Fewest and most substeps one displayed frame may run. */
+  readonly min: number;
+  readonly max: number;
+}
+
+/**
+ * T1585b — the SUBSTEPS one frame runs under a rate: `clamp(round(delta × rate), min, max)`.
+ *
+ * The one place that rule is written. The compiler states the count of the frame it compiled
+ * at with it, and the backend the count of the frame it is rendering, so the two cannot
+ * disagree about rounding or the clamps. `round`, not `ceil`: a live delta is a whole number
+ * of project frames (`k ÷ fps`), and `(1 ÷ 60) × 240` must be 4 whichever side of 4 its
+ * last bit lands on. Min wins over a Max below it, and both stay inside what a region may
+ * run; a delta that is not a number runs the minimum.
+ */
+export function rateSubsteps(deltaSeconds: number, rate: KernelStepRate): number {
+  const { min, max } = rateStepBounds(rate);
+  const asked = deltaSeconds * rate.perSecond;
+  return Math.min(max, Math.max(min, Number.isFinite(asked) ? Math.round(asked) : min));
+}
+
+/**
+ * T1585b: the fewest and the most substeps a rate can ever ask for — its Min and Max as
+ * whole numbers a region may run. `max` is what uniform blocks are prepared for (§V8).
+ */
+export function rateStepBounds(rate: KernelStepRate): { readonly min: number; readonly max: number } {
+  const whole = (raw: number, floor: number): number =>
+    Math.min(MAX_KERNEL_SUBSTEPS, Math.max(floor, Number.isFinite(raw) ? Math.round(raw) : floor));
+  const min = whole(rate.min, 1);
+  return { min, max: whole(rate.max, min) };
 }
 
 /**
@@ -782,7 +827,16 @@ function readKernelSteps(value: unknown, count: number): KernelStepsDescriptor |
   if (!Number.isInteger(prepare) || (prepare as number) < count || (prepare as number) > MAX_KERNEL_STEPS) {
     return undefined;
   }
-  return { pair, iterations: iterations as number, prepare: prepare as number };
+  // T1585b: a rate is three finite numbers or it is not there. A region whose rate did not
+  // read would run its declared count every frame, whatever the frame's length: a plausible
+  // simulation at the wrong step, so it is refused rather than dropped.
+  const rawRate = value["rate"];
+  if (rawRate === undefined) return { pair, iterations: iterations as number, prepare: prepare as number };
+  if (!isRecord(rawRate)) return undefined;
+  const { perSecond, min, max } = rawRate;
+  const finite = (entry: unknown): entry is number => typeof entry === "number" && Number.isFinite(entry);
+  if (!finite(perSecond) || perSecond < 0 || !finite(min) || !finite(max)) return undefined;
+  return { pair, iterations: iterations as number, prepare: prepare as number, rate: { perSecond, min, max } };
 }
 
 function readBufferBindings(value: unknown): ReadonlyArray<BufferBindingDescriptor> | undefined {

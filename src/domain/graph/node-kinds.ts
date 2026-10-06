@@ -300,6 +300,7 @@ export const NODE_KINDS: Readonly<Record<string, string>> = {
   pointCurveFrames: "frames",
   pointResample: "resample",
   pointSweep: "sweep",
+  pointRope: "rope",
   pointGather: "gather",
   pointProximity: "proximity",
   pointRange: "range",

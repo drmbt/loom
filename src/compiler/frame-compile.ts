@@ -1,6 +1,6 @@
 import type { NodeId } from "../domain/types/ids.ts";
 import type { GraphNode } from "../domain/types/graph.ts";
-import type { NodeDefinition, CompiledNodeDescription } from "../domain/types/node-definition.ts";
+import type { NodeDefinition, CompiledNodeDescription, KernelStepsDeclaration } from "../domain/types/node-definition.ts";
 import type { ScenePayload } from "../domain/types/scene.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
@@ -12,7 +12,7 @@ import { readPass, samePassStructure } from "../runtime/backend/plan.ts";
 import { compileGraphRetaining, descriptionStructureKey, normalizePass } from "./compile.ts";
 import type { CompileGraphResult, RetainedCompile, RetainedNodeCompile } from "./compile.ts";
 import { isParameterPolicy } from "./resolution.ts";
-import { kernelStepCounts, substepCount } from "./substeps.ts";
+import { kernelStepsFor, substepCount } from "./substeps.ts";
 import { flatteningReadsOf, resolveNodeParameters } from "./validate.ts";
 import { scaleOutputPixels } from "./pixel-scale.ts";
 import { timeProbeFor } from "./time-probe.ts";
@@ -292,13 +292,13 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
   for (const pass of base.passes) basePasses.set(pass.id, pass);
   /** Loop-begin markers, with the parameter whose value sets their count. */
   const loopCounts = new Map<string, { nodeId: NodeId; key: string }>();
-  /** T1583b: kernel regions, whose count is two parameters' product. */
-  const kernelSteps = new Map<string, { nodeId: NodeId; substeps: string; iterations: string }>();
+  /** T1583b: kernel regions, whose count is two parameters' product (T1585b: or a rate's). */
+  const kernelSteps = new Map<string, { nodeId: NodeId; declared: KernelStepsDeclaration }>();
   for (const pass of base.passes) {
     if (pass.kind !== "loop" || pass.edge !== "begin" || pass.nodeId === undefined) continue;
     const definition = retained.nodes.get(pass.nodeId)?.definition;
     if (pass.steps !== undefined) {
-      if (definition?.steps !== undefined) kernelSteps.set(pass.id, { nodeId: pass.nodeId, ...definition.steps });
+      if (definition?.steps !== undefined) kernelSteps.set(pass.id, { nodeId: pass.nodeId, declared: definition.steps });
       continue;
     }
     const key = definition?.temporal?.substeps;
@@ -400,13 +400,27 @@ function frameCompilerOver(request: CompileRequest, result: CompileGraphResult):
       if (pass.kind !== "loop" || pass.edge !== "begin") return pass;
       const stepped = kernelSteps.get(pass.id);
       if (stepped !== undefined && pass.steps !== undefined) {
-        const node = values.get(stepped.nodeId);
+        /* T1585b: a RATE's count is this frame's own whether or not any parameter of the
+           node animates, so it is re-derived from the node's base values when none does —
+           which keeps this path saying what a full compile at this frame says. A count
+           declaration with nothing animating has nothing that can have moved. */
+        const node =
+          values.get(stepped.nodeId) ??
+          (typeof stepped.declared.substeps === "string" ? undefined : retained.nodes.get(stepped.nodeId)?.context);
         if (node === undefined) return pass;
         // The same function the full compile's region came from, so the two cannot disagree.
-        const { count, iterations } = kernelStepCounts(node.parameters[stepped.substeps], node.parameters[stepped.iterations]);
-        return count === pass.count && iterations === pass.steps.iterations
+        // The backend derives a rate's count again, for the frame it renders.
+        const { count, iterations, rate } = kernelStepsFor(stepped.declared, node.parameters, resolution.frame?.deltaSeconds ?? 0);
+        const sameRate =
+          rate === undefined
+            ? pass.steps.rate === undefined
+            : pass.steps.rate !== undefined &&
+              rate.perSecond === pass.steps.rate.perSecond &&
+              rate.min === pass.steps.rate.min &&
+              rate.max === pass.steps.rate.max;
+        return count === pass.count && iterations === pass.steps.iterations && sameRate
           ? pass
-          : { ...pass, count, steps: { ...pass.steps, iterations } };
+          : { ...pass, count, steps: { ...pass.steps, iterations, ...(rate === undefined ? {} : { rate }) } };
       }
       const loop = loopCounts.get(pass.id);
       const owner = loop === undefined ? undefined : values.get(loop.nodeId);

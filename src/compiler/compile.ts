@@ -2464,6 +2464,8 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
           resource["kind"] === "bufferPair" && typeof resource["id"] === "string" ? [resource["id"]] : [],
         ),
       ),
+      // T1585b: a rate-driven count is stated for the frame this compile was asked at.
+      deltaSeconds: request.resolution?.frame?.deltaSeconds ?? 0,
       // A slot in any mode but static can read the frame; a morph fades a plain value.
       moves: (nodeId, key) => {
         const stored = validated.nodes.get(nodeId)?.node.parameters[key];

@@ -1,8 +1,10 @@
 import type { NodeId } from "../domain/types/ids.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
+import type { KernelStepsDeclaration } from "../domain/types/node-definition.ts";
 import type { CompileEdge, ResolvedOutput } from "./types.ts";
 import type { ResolvedNode } from "./validate.ts";
-import { MAX_KERNEL_STEPS, MAX_KERNEL_SUBSTEPS, MAX_SUBSTEPS } from "../runtime/backend/plan.ts";
+import { MAX_KERNEL_STEPS, MAX_KERNEL_SUBSTEPS, MAX_SUBSTEPS, rateStepBounds, rateSubsteps } from "../runtime/backend/plan.ts";
+import type { KernelStepRate } from "../runtime/backend/plan.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
 import { swapPassId } from "./resources.ts";
 
@@ -362,6 +364,21 @@ export function applySubstepLoops(
  *
  * Neither refusal depends on the count, so the region's existence never changes when a
  * count does (§V358).
+ *
+ * ## A count that follows the frame, and a pass that does not step (T1585b)
+ *
+ * A solver node (the Rope) declares its substeps as a RATE: the count is
+ * `clamp(round(delta × rate), min, max)` of the frame being rendered, which only the
+ * backend knows for certain — the structural compile has no frame, and half the hosts
+ * that render one never run a per-frame compile. So the compiler does not own that count.
+ * It puts the three numbers on the region (`KernelStepsDescriptor.rate`), states the count
+ * of the frame it was compiled at with the same function the backend uses
+ * (`rateSubsteps`), and the backend re-derives it for each frame it renders.
+ *
+ * Such a node may also emit a dispatch that is NOT stepped beside the one that is: a search
+ * done once per frame for what every step then tests (the rope's nearest colliders). The
+ * stepped one is the dispatch that reads and writes a buffer pair of its own; exactly one
+ * of a node's dispatches may, and the others stay where the node put them and run once.
  */
 
 /** What a kernel's two step parameters resolve to. */
@@ -372,6 +389,8 @@ export interface KernelStepCounts {
   readonly count: number;
   /** The iterations ASKED for, present only when the dispatch ceiling lowered them. */
   readonly askedIterations?: number;
+  /** T1585b: the rate `substeps` was derived from, when the node declares one. */
+  readonly rate?: KernelStepRate;
 }
 
 /**
@@ -400,10 +419,42 @@ export function kernelStepCounts(rawSubsteps: unknown, rawIterations: unknown): 
   };
 }
 
+/**
+ * T1585b — the counts a node's DECLARATION asks for, at a frame of `deltaSeconds`.
+ *
+ * The one reading of `KernelStepsDeclaration` for both paths that need it (the full
+ * compile's region and the per-frame splice), so a declaration's two shapes cannot come to
+ * be read two ways. A count declaration ignores the frame; a rate declaration is the rule
+ * in `rateSubsteps`, and hands back the three numbers it used for the region to carry.
+ */
+export function kernelStepsFor(
+  declared: KernelStepsDeclaration,
+  parameters: Readonly<Record<string, unknown>>,
+  deltaSeconds: number,
+): KernelStepCounts {
+  const rawIterations = declared.iterations === undefined ? 1 : parameters[declared.iterations];
+  if (typeof declared.substeps === "string") return kernelStepCounts(parameters[declared.substeps], rawIterations);
+  const finite = (key: string, fallback: number): number => {
+    const raw = parameters[key];
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : fallback;
+  };
+  const rate: KernelStepRate = {
+    perSecond: Math.max(0, finite(declared.substeps.rate, 0)),
+    min: finite(declared.substeps.min, 1),
+    max: finite(declared.substeps.max, 1),
+  };
+  return { ...kernelStepCounts(rateSubsteps(deltaSeconds, rate), rawIterations), rate };
+}
+
 export interface KernelStepsInput {
   readonly nodes: ReadonlyMap<NodeId, ResolvedNode>;
   /** Every `bufferPair` resource id in the plan. */
   readonly pairs: ReadonlySet<string>;
+  /**
+   * T1585b: the step of the frame this compile was asked at; 0 when it was asked at none
+   * (the structural compile). Only a rate declaration reads it.
+   */
+  readonly deltaSeconds?: number;
   /**
    * Can this stored parameter change between frames — an expression, a bind, a preset
    * morph? Such a count arrives inside the frame, so its slots are prepared to the
@@ -423,16 +474,22 @@ export function applyKernelSteps(
   input: KernelStepsInput,
   diagnostics: RuntimeDiagnostic[],
 ): ReadonlyArray<RawPass> {
+  /* Per declaring node: how many dispatches it emitted, and how many of them STEP — read
+     and write a buffer pair of their own. T1585b: exactly one may; the rest run once. */
   const dispatchesOf = new Map<NodeId, number>();
+  const steppingOf = new Map<NodeId, number>();
   for (const pass of passes) {
     if (pass["kind"] !== "dispatch" || typeof pass["nodeId"] !== "string") continue;
     const nodeId = pass["nodeId"] as NodeId;
     if (input.nodes.get(nodeId)?.definition.steps === undefined) continue;
     dispatchesOf.set(nodeId, (dispatchesOf.get(nodeId) ?? 0) + 1);
+    if (steppedPair(pass, input.pairs) !== undefined) steppingOf.set(nodeId, (steppingOf.get(nodeId) ?? 0) + 1);
   }
   if (dispatchesOf.size === 0) return passes;
 
   const out: RawPass[] = [];
+  /** A node with several dispatches and none that steps is told once, not once per pass. */
+  const told = new Set<NodeId>();
   /** The feedback loop region the walk is inside, if any. */
   let enclosing: RawPass | undefined;
   for (const pass of passes) {
@@ -446,35 +503,59 @@ export function applyKernelSteps(
       continue;
     }
 
-    const counts = kernelStepCounts(resolved.parameters[declared.substeps], resolved.parameters[declared.iterations]);
+    const counts = kernelStepsFor(declared, resolved.parameters, input.deltaSeconds ?? 0);
+    const words = stepWords(declared, counts);
+    /* What the node can ask for at all. A count declaration asks for what it resolved to; a
+       rate asks for its Max on a long enough frame, whatever this compile's frame was. */
+    const most = counts.rate === undefined ? counts.count : rateStepBounds(counts.rate).max * counts.iterations;
     const refuse = (why: string, suggestion: string): void => {
       out.push(pass);
       // At one step nothing was asked for and nothing is lost.
-      if (counts.count <= 1) return;
+      if (most <= 1) return;
       diagnostics.push(
         compilerDiagnostic(
           "warning",
           CompilerDiagnosticCode.substepsRefused,
-          `Node "${nodeId}" asked for ${counts.count} steps per frame ("${declared.substeps}" ${counts.substeps} × "${declared.iterations}" ${counts.iterations}), but ${why} It runs one step per frame.`,
+          `Node "${nodeId}" asked for ${words.asked}, but ${why} It runs one step per frame.`,
           { nodeId, suggestion },
         ),
       );
     };
-    const backToOne = `set "${declared.substeps}" and "${declared.iterations}" back to 1`;
 
     const emitted = dispatchesOf.get(nodeId) ?? 0;
-    if (emitted !== 1) {
-      refuse(
-        `it emitted ${emitted} dispatch passes, and kernel steps repeat exactly one.`,
-        `This is a fault in the node's definition; ${backToOne}.`,
-      );
+    const stepping = steppingOf.get(nodeId) ?? 0;
+    const pair = steppedPair(pass, input.pairs);
+    if (stepping > 1) {
+      // Two dispatches over one node's state cannot both be the step: neither is wrapped.
+      if (pair === undefined) out.push(pass);
+      else
+        refuse(
+          `it emitted ${stepping} dispatch passes, and kernel steps repeat exactly one.`,
+          `This is a fault in the node's definition; ${words.backToOne}.`,
+        );
       continue;
     }
-    const pair = steppedPair(pass, input.pairs);
     if (pair === undefined) {
+      if (stepping === 1) {
+        // T1585b: the node's other dispatch — it steps nothing, and runs once where it stands.
+        out.push(pass);
+        continue;
+      }
+      if (emitted === 1) {
+        refuse(
+          "every attribute in its schema is read from the incoming point set, so each pass would start from the same values and write the same result.",
+          `Declare an attribute the incoming point set does not provide, so the kernel has state of its own to carry from step to step, or ${words.backToOne}.`,
+        );
+        continue;
+      }
+      if (told.has(nodeId)) {
+        out.push(pass);
+        continue;
+      }
+      told.add(nodeId);
       refuse(
-        "every attribute in its schema is read from the incoming point set, so each pass would start from the same values and write the same result.",
-        `Declare an attribute the incoming point set does not provide, so the kernel has state of its own to carry from step to step, or ${backToOne}.`,
+        `none of its ${emitted} dispatch passes reads and writes a buffer pair of its own, so there is no state to carry from step to step.`,
+        `This is a fault in the node's definition; ${words.backToOne}.`,
       );
       continue;
     }
@@ -482,26 +563,26 @@ export function applyKernelSteps(
       const owner = typeof enclosing["nodeId"] === "string" ? `"${enclosing["nodeId"] as string}"` : "another node";
       refuse(
         `it sits inside the feedback loop that ${owner} iterates, and one loop region cannot run inside another.`,
-        `Iterate one of the two: this kernel's steps, or that loop's Substeps. Or ${backToOne}.`,
+        `Iterate one of the two: this kernel's steps, or that loop's Substeps. Or ${words.backToOne}.`,
       );
       continue;
     }
 
-    if (counts.askedIterations !== undefined) {
+    if (counts.askedIterations !== undefined && declared.iterations !== undefined) {
       diagnostics.push(
         compilerDiagnostic(
           "warning",
           CompilerDiagnosticCode.substepsRefused,
-          `Node "${nodeId}" asked for "${declared.substeps}" ${counts.substeps} × "${declared.iterations}" ${counts.askedIterations} = ${counts.substeps * counts.askedIterations} steps per frame, above the ceiling of ${MAX_KERNEL_STEPS}; it runs ${counts.iterations} iterations per substep.`,
+          `Node "${nodeId}" asked for ${words.substeps} ${counts.substeps} × "${declared.iterations}" ${counts.askedIterations} = ${counts.substeps * counts.askedIterations} steps per frame, above the ceiling of ${MAX_KERNEL_STEPS}; it runs ${counts.iterations} iterations per substep.`,
           {
             nodeId,
-            suggestion: `Lower "${declared.iterations}" to ${counts.iterations}, or lower "${declared.substeps}".`,
+            suggestion: `Lower "${declared.iterations}" to ${counts.iterations}, or lower ${words.substeps}.`,
           },
         ),
       );
     }
-    const substepCeiling = input.moves(nodeId, declared.substeps) ? MAX_KERNEL_SUBSTEPS : counts.substeps;
-    const iterationCeiling = input.moves(nodeId, declared.iterations) ? MAX_KERNEL_STEPS : counts.iterations;
+    const iterationCeiling =
+      declared.iterations !== undefined && input.moves(nodeId, declared.iterations) ? MAX_KERNEL_STEPS : counts.iterations;
     out.push(
       {
         kind: "loop",
@@ -513,7 +594,8 @@ export function applyKernelSteps(
         steps: {
           pair,
           iterations: counts.iterations,
-          prepare: Math.min(MAX_KERNEL_STEPS, substepCeiling * iterationCeiling),
+          prepare: Math.min(MAX_KERNEL_STEPS, substepCeilingOf(nodeId, declared, counts, input.moves) * iterationCeiling),
+          ...(counts.rate === undefined ? {} : { rate: counts.rate }),
         },
       },
       pass,
@@ -521,6 +603,53 @@ export function applyKernelSteps(
     );
   }
   return out;
+}
+
+/**
+ * The most substeps a region has to have uniform blocks ready for (§V8).
+ *
+ * A count that cannot move is prepared for as it stands. A rate's count moves with every
+ * frame by design, so it is prepared to its Max — or to the ceiling when Min or Max can
+ * themselves move, since Min wins over a Max below it.
+ */
+function substepCeilingOf(
+  nodeId: NodeId,
+  declared: KernelStepsDeclaration,
+  counts: KernelStepCounts,
+  moves: KernelStepsInput["moves"],
+): number {
+  if (typeof declared.substeps === "string") return moves(nodeId, declared.substeps) ? MAX_KERNEL_SUBSTEPS : counts.substeps;
+  if (counts.rate === undefined || moves(nodeId, declared.substeps.min) || moves(nodeId, declared.substeps.max)) {
+    return MAX_KERNEL_SUBSTEPS;
+  }
+  return rateStepBounds(counts.rate).max;
+}
+
+/**
+ * How a declaration is named in a sentence about its counts. A count declaration with both
+ * keys reads exactly as it has since T1583b; the shapes T1585b added name what they have.
+ */
+function stepWords(
+  declared: KernelStepsDeclaration,
+  counts: KernelStepCounts,
+): { readonly asked: string; readonly substeps: string; readonly backToOne: string } {
+  const iterations = declared.iterations === undefined ? "" : ` × "${declared.iterations}" ${counts.iterations}`;
+  if (typeof declared.substeps === "string") {
+    return {
+      asked: `${counts.count} steps per frame ("${declared.substeps}" ${counts.substeps}${iterations})`,
+      substeps: `"${declared.substeps}"`,
+      backToOne:
+        declared.iterations === undefined
+          ? `set "${declared.substeps}" back to 1`
+          : `set "${declared.substeps}" and "${declared.iterations}" back to 1`,
+    };
+  }
+  const most = counts.rate === undefined ? counts.substeps : rateStepBounds(counts.rate).max;
+  return {
+    asked: `up to ${most * counts.iterations} steps per frame ("${declared.substeps.rate}" ${counts.rate?.perSecond ?? 0} a second, at most "${declared.substeps.max}" ${most}${iterations})`,
+    substeps: `"${declared.substeps.max}"`,
+    backToOne: `set "${declared.substeps.max}" to 1`,
+  };
 }
 
 /**

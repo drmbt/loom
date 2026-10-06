@@ -66,6 +66,7 @@ import { pointCurveNode } from "./point-curve.ts";
 import { pointCurveFramesNode } from "./point-curve-frames.ts";
 import { pointResampleNode } from "./point-resample.ts";
 import { pointSweepNode } from "./point-sweep.ts";
+import { pointRopeNode } from "./point-rope.ts";
 import { laserPathNode } from "./laser-path.ts";
 import { laserOutNode } from "./laser-out.ts";
 import { pointKernelAdvancedNode } from "./point-kernel-advanced.ts";
@@ -115,6 +116,7 @@ export { pointCurveNode, authoredCurve, curveAttributes } from "./point-curve.ts
 export { pointCurveFramesNode, curveFramesAttributes } from "./point-curve-frames.ts";
 export { pointResampleNode, resampleAttributes } from "./point-resample.ts";
 export { pointSweepNode, sweepAttributes } from "./point-sweep.ts";
+export { pointRopeNode, ropeAttributes, ROPE_KEPT_KEY, ROPE_SOLVE_KEY } from "./point-rope.ts";
 export { laserPathNode } from "./laser-path.ts";
 export { laserOutNode, LASER_OUT_TYPE } from "./laser-out.ts";
 export { pointKernelAdvancedNode, liveCountBufferId } from "./point-kernel-advanced.ts";
@@ -340,6 +342,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   pointResampleNode,
   // T1587b: a profile swept along a strip into a grid the Render lights.
   pointSweepNode,
+  // T1585b: strips simulated as ropes that keep their length.
+  pointRopeNode,
   laserPathNode,
   laserOutNode,
   pointKernelAdvancedNode,

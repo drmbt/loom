@@ -306,6 +306,13 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // profile point of its own, so no vertex depends on another and there is no order to
   // keep. Every output word is written by exactly one invocation. No clock, no RNG, no state.
   pointSweep: "pure",
+  // T1585b. PURE in this record's sense: a simulation with STATE, like the kernels above,
+  // and a function of the frames it has been given and nothing else. One thread per strand
+  // walks its strand in order and writes only its own points; no RNG, no atomics, and the
+  // only clock it reads is the frame's own step, which also sets how many solver steps the
+  // frame runs (`rateSubsteps`). A take seeks to its in point, which clears the state and
+  // replays (§V170), so two takes of one project are the same bytes.
+  pointRope: "pure",
   // T947. PURE, and the frame clock is the reason that needs saying: the scan-window
   // cursor reads the SHARED FRAME TIME (timeSeconds/deltaSeconds through the T172
   // uniform merge), which is timeline state, not a wall clock — the same frame inputs

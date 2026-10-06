@@ -66,11 +66,15 @@ function blocksOf(plan: CompiledGraph): Map<string, UniformValues> {
     // T425: a loop-begin's count is its one animatable value — surfaced as a block so
     // a driven substeps parameter diffs and pushes exactly like a uniform (§V5).
     // T1583b: a kernel region has a second one, how many of those runs are one substep.
+    // T1585b: and a rate-driven one three more — the rate and its two clamps, which the
+    // backend turns into each frame's own count.
     if (pass.kind === "loop") {
       if (pass.edge === "begin") {
+        const rate = pass.steps?.rate;
         blocks.set(pass.id, {
           count: pass.count ?? 1,
           ...(pass.steps === undefined ? {} : { iterations: pass.steps.iterations }),
+          ...(rate === undefined ? {} : { rate: rate.perSecond, minSteps: rate.min, maxSteps: rate.max }),
         });
       }
       continue;

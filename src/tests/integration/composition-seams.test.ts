@@ -128,6 +128,15 @@ const NOT_CONSTRUCTED: ReadonlyArray<{ name: string; reason: string }> = [
       "which drive the reader with and without a base on purpose.",
   },
   {
+    name: "createRopeState",
+    reason:
+      "T1585b: `src/points/rope.ts` is the Rope's CPU REFERENCE — the same step as the shader, " +
+      "operation for operation, in single precision — and this allocates the plain arrays it " +
+      "steps. No product path runs a rope on the CPU: the node's state is three GPU buffers the " +
+      "compiler allocates. Its callers are the oracle's own closed-form tests (rope.test.ts) and " +
+      "the Dawn tests that hold the device to it word for word (point-rope.gpu.test.ts).",
+  },
+  {
     name: "createComponentRegistry",
     reason:
       "Composed by `createComponentSystem` in the same module, which the composition root does construct. The registry and its component-aware node view are two halves of one seam.",

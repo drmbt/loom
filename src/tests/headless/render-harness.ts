@@ -149,6 +149,18 @@ export interface HeadlessRenderRequest {
    */
   readonly probeBuffers?: ReadonlyArray<string>;
   /**
+   * T1585b: read `probeBuffers` at THESE frame indices as well, each right after its own
+   * frame is stepped (between frames, §V48's window) and before `betweenFrames` runs for it.
+   *
+   * A claim about how a simulation MOVES — nothing jumps from one frame to the next, a
+   * strand never stretches on the way — is about every frame, and the probe above sees only
+   * the last. The one way to ask it of an earlier frame was to render the whole sequence
+   * again one frame shorter, which is a different run. Each index must be a frame this
+   * render steps, and there must be buffers to read: a probe that could come back empty in
+   * silence would be a gate that cannot fail.
+   */
+  readonly probeFrames?: ReadonlyArray<number>;
+  /**
    * T661: FEED the pointer — the audio seam's shape, pointer edition, and the fifth
    * reader-that-cannot-see in this file's history (T630, T633, T650, T655): the source
    * below existed since T69 and nothing ever fed it, so E12-Fluid — whose every force
@@ -279,6 +291,17 @@ export interface HeadlessRenderResult {
   readonly diagnostics: ReadonlyArray<RuntimeDiagnostic>;
   /** T741: the requested probeBuffers, read after the final frame, keyed by resource id. */
   readonly buffers?: Readonly<Record<string, ArrayBuffer>>;
+  /**
+   * T1585b: the requested probeBuffers as each of `probeFrames` left them, in the order the
+   * frames were stepped. Present exactly when `probeFrames` was given.
+   */
+  readonly bufferFrames?: ReadonlyArray<ProbedFrame>;
+}
+
+/** T1585b: what the probed buffers held after one frame, keyed by resource id. */
+export interface ProbedFrame {
+  readonly frameIndex: number;
+  readonly buffers: Readonly<Record<string, ArrayBuffer>>;
 }
 
 function registry(extra?: Iterable<NodeDefinition>) {
@@ -783,6 +806,19 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
   const settings = request.settings ?? paritySettings();
   const frameCount = request.frames ?? 1;
   const capture = [...(request.capture ?? [frameCount - 1])].sort((a, b) => a - b);
+  // T1585b: a per-frame probe that could come back empty in silence is refused before a
+  // device is opened — no buffers named, or a frame this render never steps.
+  const probeAt = new Set(request.probeFrames ?? []);
+  if (request.probeFrames !== undefined) {
+    if ((request.probeBuffers ?? []).length === 0) {
+      throw new Error("probeFrames names frames to read buffers at, and probeBuffers names no buffer to read.");
+    }
+    const outside = request.probeFrames.filter((index) => !Number.isInteger(index) || index < 0 || index >= frameCount);
+    if (outside.length > 0) {
+      throw new Error(`probeFrames asks for frame ${outside.join(", ")}, and this render steps frames 0 to ${frameCount - 1}.`);
+    }
+  }
+  const probedFrames: ProbedFrame[] = [];
   const outputNodeId = request.outputNodeId ?? OUTPUT_NODE_ID;
   // T933: the DOCUMENT's rate when the request does not override it. A bare `?? 60`
   // here rendered a 30 fps document at 60 and called the result a parity baseline.
@@ -1205,6 +1241,12 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
         if (request.onCapture === undefined) captured.push(frame);
         else await request.onCapture(frame);
       }
+      if (probeAt.has(index)) {
+        // T1585b: the same read the final probe makes, of the state this frame left.
+        const buffers: Record<string, ArrayBuffer> = {};
+        for (const resourceId of request.probeBuffers ?? []) buffers[resourceId] = await backend.readBuffer(resourceId);
+        probedFrames.push({ frameIndex: index, buffers });
+      }
       request.betweenFrames?.(control, index);
     }
 
@@ -1230,6 +1272,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
       readbacks: backend.status.readbacks,
       outputResourceId,
       ...(request.probeBuffers === undefined ? {} : { buffers: probed }),
+      ...(request.probeFrames === undefined ? {} : { bufferFrames: probedFrames }),
       // Compiler diagnostics FIRST: they are about the plan the render ran, and the
       // errors among them already threw above — what travels here is the warnings,
       // which are exactly what a byte-identical-but-wrong render hides (T630).

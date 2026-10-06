@@ -55,10 +55,12 @@ import {
   resourceStructureKey,
   planSkippedDraws,
   planUniformValues,
+  rateSubsteps,
   readExecutionPlan,
   renderPassRuns,
   runSpanName,
   type DrawPassDescriptor,
+  type KernelStepRate,
   type PassDescriptor,
   type RenderPassRun,
   type BufferBindingDescriptor,
@@ -181,6 +183,12 @@ interface Program {
   readonly loopCounts: Map<string, number>;
   /** T1583b: a kernel region's live iterations per substep, by loopId, beside its count. */
   readonly loopIterations: Map<string, number>;
+  /**
+   * T1585b: the live rate of a kernel region whose substeps follow the frame, by loopId.
+   * `render()` turns it into that frame's count (`rateSubsteps`) before anything is
+   * written or encoded; a region with no entry runs the count it was given.
+   */
+  readonly loopRates: Map<string, KernelStepRate>;
   /**
    * T1598b: the draw passes NOT encoded this frame (`DrawPassDescriptor.skip`), by pass id.
    * Seeded from the plan and moved by `updateUniforms`, like a loop's count.
@@ -2664,6 +2672,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             setLoopCount(program, pass.loopId, pass.count ?? 1);
             // T1583b: a kernel region's other two values move with its count.
             if (pass.steps !== undefined) program.loopIterations.set(pass.loopId, pass.steps.iterations);
+            // T1585b: and a rate-driven one's rate.
+            if (pass.steps?.rate !== undefined) program.loopRates.set(pass.loopId, pass.steps.rate);
           }
         }
         program.stepped = steppedDispatches(read.passes);
@@ -2812,6 +2822,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             pass.kind === "loop" && pass.steps !== undefined ? [[pass.loopId, pass.steps.iterations] as const] : [],
           ),
         ),
+        loopRates: new Map(
+          read.passes.flatMap((pass) =>
+            pass.kind === "loop" && pass.steps?.rate !== undefined ? [[pass.loopId, pass.steps.rate] as const] : [],
+          ),
+        ),
         skipped: planSkippedDraws(read.passes),
         runs: new Map(renderPassRuns(read.passes, read.resources).flatMap((run) => run.passIds.map((passId, at) => [passId, { run, at }] as const))),
         stepped: steppedDispatches(read.passes),
@@ -2906,6 +2921,18 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // written so the blocks below and the encoder's runs come from one answer.
       active.stepRuns.clear();
       const stepsOf = new Map<string, DispatchStep>();
+      /* T1585b: a region whose substeps follow the frame gets THIS frame's count here — the
+         one place every host's frame passes through, with the frame's own step in hand. A
+         tick that covers two project frames then runs twice the steps at the same step
+         size (Notch's Update Frame Rate), and a host that never runs a per-frame compile
+         still steps correctly. The count is set the way a pushed one is, so the encoder,
+         the uniform blocks below and the timer all read the same number. */
+      for (const stepping of active.stepped.values()) {
+        const rate = active.loopRates.get(stepping.loopId);
+        if (rate === undefined) continue;
+        const iterations = Math.max(1, Math.round(active.loopIterations.get(stepping.loopId) ?? 1));
+        setLoopCount(active, stepping.loopId, rateSubsteps(frameInputs.frame.deltaSeconds, rate) * iterations);
+      }
       for (const [passId, stepping] of active.stepped) {
         const { substeps, iterations, total } = resolveStepRuns(active, passId, stepping);
         active.stepRuns.set(passId, { total, done: 0 });
@@ -3222,6 +3249,19 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         const iterations = update.values["iterations"];
         if (loopBegin.steps !== undefined && typeof iterations === "number" && Number.isFinite(iterations)) {
           program.loopIterations.set(loopBegin.loopId, iterations);
+        }
+        // T1585b: a rate-driven region's rate and clamps — three more values of the region.
+        // Only a region compiled WITH a rate takes them: whether a count follows the frame
+        // is the node's declaration, never a value.
+        const live = program.loopRates.get(loopBegin.loopId);
+        if (live !== undefined) {
+          const finite = (raw: unknown, fallback: number): number =>
+            typeof raw === "number" && Number.isFinite(raw) ? raw : fallback;
+          program.loopRates.set(loopBegin.loopId, {
+            perSecond: Math.max(0, finite(update.values["rate"], live.perSecond)),
+            min: finite(update.values["minSteps"], live.min),
+            max: finite(update.values["maxSteps"], live.max),
+          });
         }
         return;
       }
