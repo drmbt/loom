@@ -411,7 +411,7 @@ describe("save selection as a component, from the canvas (§V307)", () => {
 });
 
 /**
- * VN1 — "Save selection as component…" on the CANVAS menu. A right-click on the background
+ * VN1 — "Save as component…" on the CANVAS menu. A right-click on the background
  * with nodes selected offered "Import component…" and nothing about making one; the gesture
  * lived only on the node menu and `Shift+C`. Each test takes the REAL row out of the real
  * canvas schema and resolves it the way the menu host does on open.

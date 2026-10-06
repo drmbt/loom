@@ -87,6 +87,31 @@ describe("decoded source extent is separate from media output extent", () => {
     } finally { f.backend.dispose(); }
   });
 
+  it("VNB13: a bottom-first frame sent as BYTES is written rows reversed; a top-first one as it came", async () => {
+    const f = await setup();
+    try {
+      const compiled = await f.backend.compile(plan());
+      // 64 × 64 rgba8: every byte of a row holds that row's number, so the order is readable.
+      const rows = 64;
+      const bytesPerRow = 64 * 4;
+      const bottomFirst = new Uint8Array(rows * bytesPerRow);
+      for (let row = 0; row < rows; row += 1) bottomFirst.fill(row, row * bytesPerRow, (row + 1) * bytesPerRow);
+      const write = vi.spyOn(f.device.queue, "writeTexture");
+      const rowOf = (call: number, row: number): number => (write.mock.calls[call]?.[1] as Uint8Array)[row * bytesPerRow] as number;
+
+      f.set({ frameId: 1, bytes: bottomFirst, flipY: true });
+      f.backend.render(compiled, input);
+      // The texture's first row is the frame's LAST: the picture's top.
+      expect([rowOf(0, 0), rowOf(0, 1), rowOf(0, rows - 1)]).toEqual([rows - 1, rows - 2, 0]);
+      // The source's own buffer is not written into.
+      expect(bottomFirst[0]).toBe(0);
+
+      f.set({ frameId: 2, bytes: bottomFirst });
+      f.backend.render(compiled, input);
+      expect([rowOf(1, 0), rowOf(1, rows - 1)]).toEqual([0, rows - 1]);
+    } finally { f.backend.dispose(); }
+  });
+
   it("copies the full 5184×2880 video instead of cropping to a smaller output, and reuses it", async () => {
     const f = await setup();
     try {

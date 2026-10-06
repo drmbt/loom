@@ -338,18 +338,6 @@ export interface ProjectorLens {
 }
 
 /**
- * T704 — the projector's viewProjection: what the venue's lens sheet says, as a matrix.
- *
- * fovX comes from the throw ratio (tan(fovX/2) = 0.5/throw); fovY from the native
- * aspect. Near/far derive from the throw DISTANCE (|eye − lookAt|) so the frustum
- * brackets the surface being hit without another parameter to explain: near at 2% of
- * the distance, far at 8×. Lens shift is a true off-axis offset (the image moves, the
- * body does not re-aim) — implemented on the projection's z-column so it survives the
- * perspective divide as a constant NDC offset. Keystone is the trapezoid a tilted
- * screen produces: a shear INTO THE W ROW, so one side of the image genuinely scales
- * against the other rather than merely sliding.
- */
-/**
  * The projector frustum's near and far planes, from the throw distance (|eye − lookAt|):
  * near at 2% of it, far at 8×. One function, because the lit read linearises the depth
  * map with the same two numbers the matrix was built from (VNB11).
@@ -369,6 +357,18 @@ export function projectorDepthRange(pose: {
   return { near: Math.max(0.01, distance * 0.02), far: distance * 8 };
 }
 
+/**
+ * T704 — the projector's viewProjection: what the venue's lens sheet says, as a matrix.
+ *
+ * fovX comes from the throw ratio (tan(fovX/2) = 0.5/throw); fovY from the native
+ * aspect. Near/far derive from the throw DISTANCE (|eye − lookAt|) so the frustum
+ * brackets the surface being hit without another parameter to explain: near at 2% of
+ * the distance, far at 8×. Lens shift is a true off-axis offset (the image moves, the
+ * body does not re-aim) — implemented on the projection's z-column so it survives the
+ * perspective divide as a constant NDC offset. Keystone is the trapezoid a tilted
+ * screen produces: a shear INTO THE W ROW, so one side of the image genuinely scales
+ * against the other rather than merely sliding.
+ */
 export function projectorMatrix(
   pose: {
     readonly eye: readonly [number, number, number];

@@ -360,7 +360,24 @@ interface PresentationState {
   lastPresentTime: number | undefined;
 }
 
+/**
+ * VNB13 — an image's bytes with its rows in the opposite order: a bottom-first frame as the
+ * top-first one a texture is written from. `scratch` is reused when it is the right size, so
+ * a source that sends bottom-first bytes every frame allocates once.
+ */
+export function rowsReversed(bytes: Uint8Array, bytesPerRow: number, rows: number, scratch?: Uint8Array): Uint8Array {
+  const length = bytesPerRow * rows;
+  const out = scratch !== undefined && scratch.byteLength === length ? scratch : new Uint8Array(length);
+  for (let row = 0; row < rows; row += 1) {
+    const from = (rows - 1 - row) * bytesPerRow;
+    out.set(bytes.subarray(from, from + bytesPerRow), row * bytesPerRow);
+  }
+  return out;
+}
+
 export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend {
+  /** VNB13: the buffer `rowsReversed` writes into, kept between frames. */
+  let flipScratch: Uint8Array | undefined;
   const host = options.host ?? browserGpuHost();
   const recover = options.recoverFromDeviceLoss ?? true;
   const maxRebuildAttempts = options.maxRebuildAttempts ?? 3;
@@ -2094,9 +2111,14 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       try {
         if (mediaFrame.bytes !== undefined) {
           const bytesPerRow = entry.size[0] * bytesPerPixelFor(entry.format as Parameters<typeof bytesPerPixelFor>[0]);
+          // VNB13: `flipY` is the frame's, whichever payload carries it. The image path flips
+          // on the copy; bytes are written rows reversed, from a buffer kept between frames.
+          const bytes = mediaFrame.flipY === true
+            ? (flipScratch = rowsReversed(mediaFrame.bytes, bytesPerRow, entry.size[1], flipScratch))
+            : mediaFrame.bytes;
           queue.writeTexture(
             { texture: entry.texture.gpu },
-            mediaFrame.bytes as BufferSource,
+            bytes as BufferSource,
             { bytesPerRow, rowsPerImage: entry.size[1] },
             { width: entry.size[0], height: entry.size[1] },
           );

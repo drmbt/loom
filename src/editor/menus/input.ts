@@ -101,7 +101,7 @@ const cursorPosition: InputBuilder = (_item, target) =>
 
 /**
  * VN1: the canvas selection, for a row on a surface with no node under the cursor. The
- * refusal is what greys "Save selection as component…" when nothing is selected.
+ * refusal is what greys "Save as component…" when nothing is selected.
  */
 const selectionNodeIds: InputBuilder = (_item, _target, context) =>
   context.selection.length === 0

@@ -128,14 +128,15 @@ export function canvasMenu(registry: NodeRegistryView): MenuSchema {
        * eleven-item cap, and the cap's own instruction is to open a submenu rather than
        * raise it, so the two verbs share one row — the shape the node menu already uses.
        *
-       * "Save selection as component…" acts on the SELECTION (there is no node under a
+       * ONE COMMAND, ONE LABEL: the row reads "Save as component…" as the node menu's and
+       * the keymap's do (`ui.createComponent`). Here it acts on the SELECTION (there is no node under a
        * background click); with nothing selected its builder refuses by name, so the row
        * greys with the reason. Import still lands at the click's graph point (§V78).
        */
       {
         label: "Component",
         submenu: [
-          { command: "ui.createComponent", label: "Save selection as component…" },
+          { command: "ui.createComponent", label: "Save as component…" },
           { command: "component.import", label: "Import component…" },
         ],
       },
