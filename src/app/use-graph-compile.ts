@@ -1174,8 +1174,10 @@ export function useGraphCompile(
    * `classifyRevision` says a revision moved values only; the watch asks this before it
    * tells anyone else. What a render used to do for such a revision — a structural compile
    * of the whole document, to learn the new uniform values of a handful of passes — is
-   * `rebaseOnValues` here: the written nodes and what reads them, re-run under the
-   * per-frame compile's verifier, spliced over the plan before. Then the same things the
+   * `rebaseOnValues` here: the written nodes and what reads them through a wire or a
+   * reference, re-run under the per-frame compile's verifier, spliced over the plan before
+   * (what reads them through an EXPRESSION is resolved at every frame anyway, and is left
+   * to the frame: it arrives with the next one, as it always did). Then the same things the
    * structural memo leaves behind move to the revision: the retained base the next frame
    * splices over, the document the next revision is classified against, the view
    * `project.compile` answers with, and — through `values` — the uniforms on the device and

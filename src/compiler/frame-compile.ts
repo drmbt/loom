@@ -478,29 +478,46 @@ function frameCompilerOver(
 }
 
 /**
- * T1652b — who reads a node's VALUES, per retained compile: the nodes whose resolved
- * parameters can move when one of its stored values does. Built once per structural
- * compile, on the first value written after it, and carried from each rebase to the next
- * (a values-only revision changes no reference and no wire).
+ * T1652b — who reads a node's VALUES, per retained compile, kept apart by HOW they read:
+ *
+ *  - `links`: a wire that carries a value or a payload, and a source named by a reference
+ *    parameter (a Render's lights, a Feedback's source). What flows is baked into the
+ *    reader when it compiles, and the per-frame compile re-bakes it only in a frame where
+ *    the producer itself re-ran. So when a stored value moves, these readers move with it.
+ *  - `expressions`: `op('a')` in an expression, a driven channel. A parameter that reads
+ *    this way is resolved by the per-frame compile at EVERY frame (`animatedRootKeys`), from
+ *    the document in hand and that frame's channels. Its value in a frameless plan is never
+ *    what is drawn.
+ *
+ * Built once per structural compile, on the first value written after it, and carried from
+ * each rebase to the next (a values-only revision changes no reference and no wire).
  */
-const VALUE_READERS = new WeakMap<RetainedCompile, ReadonlyMap<NodeId, ReadonlyArray<NodeId>>>();
+interface ValueReaders {
+  readonly links: ReadonlyMap<NodeId, ReadonlyArray<NodeId>>;
+  readonly expressions: ReadonlyMap<NodeId, ReadonlyArray<NodeId>>;
+}
+
+const VALUE_READERS = new WeakMap<RetainedCompile, ValueReaders>();
 
 /** Port kinds that carry a GPU resource: what flows is pixels or points, never a parameter's value. */
 const RESOURCE_PORT_KINDS: ReadonlySet<string> = new Set(["texture2d", "pointset", "buffer"]);
 
-function valueReadersOf(retained: RetainedCompile, registry: CompileRequest["registry"]): ReadonlyMap<NodeId, ReadonlyArray<NodeId>> {
+function valueReadersOf(retained: RetainedCompile, registry: CompileRequest["registry"]): ValueReaders {
   const known = VALUE_READERS.get(retained);
   if (known !== undefined) return known;
-  const readers = new Map<NodeId, NodeId[]>();
-  const add = (source: NodeId, reader: NodeId): void => {
-    const list = readers.get(source);
-    if (list === undefined) readers.set(source, [reader]);
+  const links = new Map<NodeId, NodeId[]>();
+  const expressions = new Map<NodeId, NodeId[]>();
+  const add = (table: Map<NodeId, NodeId[]>, source: NodeId, reader: NodeId): void => {
+    const list = table.get(source);
+    if (list === undefined) table.set(source, [reader]);
     else if (!list.includes(reader)) list.push(reader);
   };
-  // A parameter that reads another node: `op('a')` in an expression, a driven channel, a
-  // source named by a reference parameter (§V154, the one traversal).
+  // §V154, the one traversal: an expression's `op('a')` and a driven channel are READS AT A
+  // FRAME; every other kind is a source named by a reference parameter.
   for (const [reader, dependencies] of parameterDependencies(retained.graph)) {
-    for (const dependency of dependencies) add(dependency.to, reader);
+    for (const dependency of dependencies) {
+      add(dependency.kind === "reference" || dependency.kind === "driven" ? expressions : links, dependency.to, reader);
+    }
   }
   // A wire that carries a VALUE: a value channel into the next value stage, a scene payload
   // into its consumer. A texture or a pointset wire carries a resource, and what its
@@ -509,8 +526,9 @@ function valueReadersOf(retained: RetainedCompile, registry: CompileRequest["reg
     const source = retained.graph.nodes[edge.source.nodeId];
     const port = source === undefined ? undefined : registry.get(source.type)?.outputs.find((candidate) => candidate.id === edge.source.portId);
     if (port !== undefined && RESOURCE_PORT_KINDS.has(port.type.kind)) continue;
-    add(edge.source.nodeId, edge.target.nodeId);
+    add(links, edge.source.nodeId, edge.target.nodeId);
   }
+  const readers: ValueReaders = { links, expressions };
   VALUE_READERS.set(retained, readers);
   return readers;
 }
@@ -548,12 +566,37 @@ function sameFlattened(a: object | undefined, b: object | undefined): boolean {
  * every pass re-keyed (10.8 ms of a 57 ms task, measured). The plan that came back
  * differed from the one before it in the uniform values of a handful of passes.
  *
- * This re-resolves the nodes whose values can have moved — the written ones and, through
- * `valueReadersOf`, everything that reads them — and re-runs `definition.compile` for
- * those, through the per-frame compile's own re-run and UNDER ITS VERIFIER (§V936): same
- * scratch and pointset declarations, same pass ids in the same order, the same structure
- * per pass. Then it is the base plan with those passes spliced, and the base's retained
- * records with those nodes' moved, so the frames after it splice over this revision.
+ * This re-resolves the written nodes and what reads them through a LINK (a payload wire, a
+ * reference parameter: `valueReadersOf`), and re-runs `definition.compile` for those,
+ * through the per-frame compile's own re-run and UNDER ITS VERIFIER (§V936): same scratch
+ * and pointset declarations, same pass ids in the same order, the same structure per pass.
+ * Then it is the base plan with those passes spliced, and the base's retained records with
+ * those nodes' moved, so the frames after it splice over this revision.
+ *
+ * ## What reads through an EXPRESSION is the frame's, not this function's
+ *
+ * A parameter with an expression is resolved by the per-frame compile at every frame, from
+ * the retained document (which this function moves to the revision) and that frame's
+ * channels; its uniform in a frameless plan is overwritten before anything is drawn. So a
+ * value read through `op('slider').chan.x`, and everything downstream of that read, costs
+ * a write NOTHING here and arrives with the next frame — which is when it arrived before,
+ * because the frameless value this function used to push for it was a frame-zero value the
+ * frame then replaced. Re-running that closure per write did, per write, what the frame
+ * loop does per frame, and marked every pass in it dirty twice (measured on a 200-node
+ * document: a control read by one expression whose channel most of the document reads,
+ * 44 nodes re-resolved and 82 of 201 passes re-written for each value).
+ *
+ * The plan this returns is therefore NOT the full compile's pass for pass: it is the full
+ * compile's wherever no expression is involved, and the FRAME compiled over it is the frame
+ * compiled over the full compile's (`values-lane.test.ts` holds both).
+ *
+ * The one thing an expression reader is still asked, one hop out: the nodes that read a
+ * WRITTEN node directly are resolved frameless and compared with what they SAID (a slider
+ * dragged past the range of the opacity that reads it must raise its clamp warning). What
+ * a node two or more reads away says is NOT asked on a value write: a finding that depends
+ * on a value carried by a channel is a matter of the frame it is carried at, and the
+ * frameless one in the Problems list stays as of the last structural revision until
+ * §T1646b gives compiled nodes a per-frame problem carrier.
  *
  * Returns the reason, as a sentence, whenever it cannot PROVE the result is the full
  * compile's. The caller then compiles in full, which is what every revision did before
@@ -606,14 +649,20 @@ export function rebaseOnValues(previous: CompileGraphResult, request: CompileReq
   }
 
   const readers = valueReadersOf(retained, request.registry);
-  const affected = new Set<NodeId>(moved);
+  // Re-run: the written nodes and what reads them through links, as far as links go.
+  const linked = new Set<NodeId>(moved);
   const queue = [...moved];
   for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
-    for (const reader of readers.get(next) ?? []) {
-      if (affected.has(reader)) continue;
-      affected.add(reader);
+    for (const reader of readers.links.get(next) ?? []) {
+      if (linked.has(reader)) continue;
+      linked.add(reader);
       queue.push(reader);
     }
+  }
+  // Asked what they say, and no more: the expressions that read a written node itself.
+  const affected = new Set<NodeId>(linked);
+  for (const id of moved) {
+    for (const reader of readers.expressions.get(id) ?? []) affected.add(reader);
   }
 
   const nodes: Record<NodeId, GraphNode> = { ...retained.graph.nodes };
@@ -628,7 +677,7 @@ export function rebaseOnValues(previous: CompileGraphResult, request: CompileReq
   }
   const staged: RetainedCompile = { ...retained, request, graph, nodes: records, morphs, instances };
 
-  const rerun = new Set<NodeId>([...affected].filter((id) => records.has(id)));
+  const rerun = new Set<NodeId>([...linked].filter((id) => records.has(id)));
   const compiler = frameCompilerOver(request, { compiled: base, retained: staged }, rerun);
   if (!compiler.uniformOnly) return compiler.reason ?? "A node that reads the value animates a structural parameter.";
   const capture: RerunCapture = { contexts: new Map(), scene: null, said: new Map() };
@@ -643,8 +692,9 @@ export function rebaseOnValues(previous: CompileGraphResult, request: CompileReq
     if (pass.kind === "loop" && pass !== base.passes[index]) return `The count of loop "${pass.id}" follows the value.`;
   }
 
-  // A node that reads the value and compiles nothing (a control, a lag) still resolves, and
-  // may say something: the same call `validateGraph` makes for it.
+  // A node that is asked and was not re-run — one that compiles nothing (a control, a lag),
+  // or an expression that reads a written node — still resolves, and may say something: the
+  // same call `validateGraph` makes for it.
   const reader = parameterReadOptions({
     graph,
     registry: request.registry,

@@ -48,6 +48,12 @@ export interface ValuesRevision {
 /** The compile's answer to a values-only revision: null when it followed, else why not. */
 export type ValuesLane = (revision: ValuesRevision) => string | null;
 
+/**
+ * Counts SINCE THE DOCUMENT WAS OPENED, and that reset is deliberate: a watch belongs to one
+ * store, a store to one runtime, and opening a document builds a new runtime
+ * (`AppRuntime.documentIdentity`). So the Performance panel's line is read after a drag,
+ * not during it, and never carries another document's writes.
+ */
 export interface RevisionStats {
   /** Values-only revisions that reached the values listeners. */
   readonly values: number;

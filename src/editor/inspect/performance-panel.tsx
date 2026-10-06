@@ -103,6 +103,10 @@ export interface ValueWriteStats {
  * instance was written) the whole document is compiled for it, and that is the difference
  * between a control that follows the finger and one that drags. Absent while no write has
  * been escalated: a line saying "all on the lane" on every document is noise (§V91).
+ *
+ * It is a count SINCE THE DOCUMENT WAS OPENED, with the reason of the last one, and it
+ * stays: a performer looks after the drag, not during it. Opening another document starts
+ * it again (the source belongs to the document's runtime).
  */
 function ValueWritesNote({ source, read }: { source: SnapshotSource; read: () => ValueWriteStats }) {
   const text = useStoreSelector(source.subscribe, source.snapshot, () => {

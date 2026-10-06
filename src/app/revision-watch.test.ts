@@ -107,6 +107,20 @@ describe("T1652b: the revision watch", () => {
     other();
   });
 
+  it("counts since ITS document was opened: the count stays after the writes, and another document starts at nothing", async () => {
+    const first = await stage();
+    first.watch.setLane(() => "The backend could not take the values.");
+    await first.value(0.6);
+    await first.value(0.7);
+    // Read after the fact, with nothing happening: it is a count, not a state of the moment.
+    expect(first.watch.stats()).toEqual({ values: 0, escalated: 2, lastEscalation: "The backend could not take the values." });
+    // Another document is another runtime, another store, another watch.
+    const second = await stage();
+    expect(second.watch).not.toBe(first.watch);
+    expect(second.watch.stats()).toEqual({ values: 0, escalated: 0, lastEscalation: null });
+    expect(first.watch.stats().escalated).toBe(2);
+  });
+
   it("calls a settings edit structure, though no node moved", async () => {
     const { bus, heard } = await stage();
     const result = await bus.execute("project.setSettings", { settings: { previewFps: 12 }, label: "fps" }, actor);

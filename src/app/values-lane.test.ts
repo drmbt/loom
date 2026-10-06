@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { compileGraphRetaining, flattenComponents, rebaseOnValues } from "@compiler/index.ts";
+import { compileGraphRetaining, flattenComponents, prepareFrameCompiler, rebaseOnValues } from "@compiler/index.ts";
 import type { CompileGraphResult, CompileRequest, FlattenedGraph } from "@compiler/index.ts";
 import { createValueGraphSession } from "@domain/channels/value-graph.ts";
 import { graphChannelResolver } from "@domain/channels/graph-channels.ts";
@@ -12,7 +12,8 @@ import { isParameterSlot } from "@domain/parameters/slots.ts";
 import type { ChannelResolver } from "@domain/parameters/resolve.ts";
 import { NO_MORPHS } from "@domain/presets/morph-index.ts";
 import { loadProject } from "@domain/project/index.ts";
-import { ZERO_FRAME } from "@domain/types/frame.ts";
+import { frameFromClock, ZERO_FRAME } from "@domain/types/frame.ts";
+import type { EvaluationFrame } from "@domain/types/frame.ts";
 import type { GraphDocument, GraphNode, ProjectSettings } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
@@ -25,12 +26,22 @@ import { generatedTextCounts } from "@runtime/backend/wgsl.ts";
 import { classifyRevision } from "./classify-revision.ts";
 
 /**
- * T1652b — THE VALUES LANE IS THE FULL COMPILE AT THAT REVISION, OR IT REFUSES.
+ * T1652b — WHAT IS DRAWN FROM THE LANE'S PLAN IS WHAT IS DRAWN FROM THE FULL COMPILE'S, OR
+ * THE LANE REFUSES.
  *
  * The app sends a values-only revision (`classifyRevision`) through `rebaseOnValues`
- * instead of `compileGraphRetaining`. The claim is not that the lane is fast. It is that
- * whatever it returns is, pass for pass and diagnostic for diagnostic, what the full
- * compile of that revision returns, and that it builds no shader text on the way.
+ * instead of `compileGraphRetaining`. The claim is not that the lane is fast. It is:
+ *
+ *  1. THE FRAME. The per-frame compile over the lane's result returns, pass for pass, what
+ *     it returns over the full compile of that revision, at frame zero and at a later
+ *     frame. That is the plan a frame is drawn from, and it is the whole claim for anything
+ *     read through an expression: such a parameter is resolved at every frame, so the lane
+ *     leaves it to the frame (`rebaseOnValues`, "what reads through an EXPRESSION").
+ *  2. THE REST, BYTE FOR BYTE. Every pass the frame does NOT rewrite is, in the lane's own
+ *     plan, the full compile's pass: where no expression is involved the lane is the full
+ *     compile.
+ *  3. It builds no shader text on the way, and what the written node SAYS is the full
+ *     compile's.
  *
  * Derived, not listed: EVERY stored value the classifier calls movable, on every node of
  * each document, is moved in turn, each revision built on the one before it (so a rebase
@@ -158,6 +169,24 @@ function withStored(graph: GraphDocument, nodeId: NodeId, key: string, stored: u
   };
 }
 
+/** Frame zero and a later one: a plan is drawn at a frame, and the claim is about what is drawn. */
+const FRAMES: readonly EvaluationFrame[] = [
+  ZERO_FRAME,
+  frameFromClock({ timeSeconds: 1.25, deltaSeconds: 1 / 60, frameIndex: 75, mode: "offline", randomSeed: 0, fps: 60 }),
+];
+
+/** The per-frame compile over one result, at each of `FRAMES` (null where it compiles in full instead). */
+function framesOver(request: CompileRequest, result: CompileGraphResult) {
+  const compiler = prepareFrameCompiler(request, result);
+  return {
+    uniformOnly: compiler.uniformOnly,
+    plans: FRAMES.map((frame) => (compiler.uniformOnly ? compiler.compileFrame({ ...(request.resolution ?? {}), frame }) : null)),
+  };
+}
+
+/** What a compile says about one node. */
+const saidAbout = (result: CompileGraphResult, nodeId: NodeId) => result.compiled.diagnostics.filter((entry) => entry.nodeId === nodeId);
+
 const DOCUMENTS: ReadonlyArray<{ readonly name: string; readonly open: () => Opened | Promise<Opened> }> = [
   { name: "E13", open: () => openExample("E13-Prism.loom.json") },
   { name: "E79", open: () => openExample("E79-Crucible.loom.json") },
@@ -165,7 +194,7 @@ const DOCUMENTS: ReadonlyArray<{ readonly name: string; readonly open: () => Ope
   { name: "a 200-node chain", open: () => openChain(200) },
 ];
 
-describe("T1652b: a value through the lane is the full compile of that revision", () => {
+describe("T1652b: the frame drawn from the lane's plan is the frame drawn from the full compile's", () => {
   for (const document of DOCUMENTS) {
     it(`${document.name}: every movable stored value, each on top of the last`, async () => {
       const opened = await document.open();
@@ -177,6 +206,8 @@ describe("T1652b: a value through the lane is the full compile of that revision"
       let taken = 0;
       let moved = 0;
       let broke = 0;
+      /** Passes a frame rewrites, summed over the walk: where claim 1 is the only claim. */
+      let frameOwned = 0;
       const refused = new Map<string, number>();
       const refusedByClassifier = new Map<string, number>();
       for (const nodeId of Object.keys(graph.nodes).sort() as NodeId[]) {
@@ -212,9 +243,24 @@ describe("T1652b: a value through the lane is the full compile of that revision"
             // No shader text is built: no generator runs, no template is assembled.
             expect({ generated: after.generated - before.generated, built: after.built - before.built }, where).toEqual({ generated: 0, built: 0 });
             expect(rebased.compiled.signature, where).toBe(full.compiled.signature);
-            expect(rebased.compiled.passes, where).toEqual(full.compiled.passes);
-            expect(rebased.compiled.diagnostics, where).toEqual(full.compiled.diagnostics);
             expect(rebased.compiled.resources, where).toEqual(full.compiled.resources);
+            expect(saidAbout(rebased, nodeId), where).toEqual(saidAbout(full, nodeId));
+            const drawn = framesOver(request, rebased);
+            const wanted = framesOver(request, full);
+            expect(drawn.uniformOnly, where).toBe(wanted.uniformOnly);
+            for (let at = 0; at < FRAMES.length; at += 1) {
+              // 1. The frame drawn from the lane's plan is the frame drawn from the full compile's.
+              expect(drawn.plans[at]?.passes, `${where} at frame ${String(FRAMES[at]?.frameIndex)}`).toEqual(wanted.plans[at]?.passes);
+            }
+            // 2. What no frame rewrites is the full compile's, in the lane's own plan.
+            const framed = wanted.plans[1];
+            for (let index = 0; index < full.compiled.passes.length; index += 1) {
+              if (framed !== null && framed !== undefined && framed.passes[index] !== full.compiled.passes[index]) {
+                frameOwned += 1;
+                continue;
+              }
+              expect(rebased.compiled.passes[index], `${where} pass ${String(index)}`).toEqual(full.compiled.passes[index]);
+            }
             if (JSON.stringify(rebased.compiled.passes) !== JSON.stringify(held.compiled.passes)) moved += 1;
             taken += 1;
             held = rebased;
@@ -222,14 +268,17 @@ describe("T1652b: a value through the lane is the full compile of that revision"
           graph = next;
         }
       }
-      const summary = `lane ${String(taken)} (passes moved in ${String(moved)}), broke the plan ${String(broke)}, lane refused ${JSON.stringify([...refused])}, classifier refused ${JSON.stringify([...refusedByClassifier])}`;
+      const summary = `lane ${String(taken)} (passes moved in ${String(moved)}, frame-owned passes met ${String(frameOwned)}), broke the plan ${String(broke)}, lane refused ${JSON.stringify([...refused])}, classifier refused ${JSON.stringify([...refusedByClassifier])}`;
       // Not vacuous: the lane was taken, and what it returned was a DIFFERENT plan from the one before it.
       expect(taken, summary).toBeGreaterThan(0);
       expect(moved, summary).toBeGreaterThan(0);
+      // A payload's consumer (a Render under a light) is the lane's to re-run: a written light
+      // whose Render was not known to read it would be refused, and compiled in full, every time.
+      expect([...refused.keys()].filter((rule) => rule.includes("re-ran through a scene payload")), summary).toEqual([]);
     });
   }
 
-  it("a control read by an expression in another node: the reader's uniform moves, and nothing else is compiled", async () => {
+  it("a control read through its channel by twenty expressions: the lane re-runs none of them, and the next frame carries the value to all twenty", async () => {
     const opened = await openChain(200);
     const { requestFor } = harness(opened);
     const slider = Object.values(opened.graph.nodes).find((node) => node.label === "slider_gain") as GraphNode;
@@ -240,13 +289,20 @@ describe("T1652b: a value through the lane is the full compile of that revision"
     const request = requestFor(next);
     const rebased = rebaseOnValues(base, request, [slider.id]);
     if (typeof rebased === "string") throw new Error(rebased);
+    // The lane wrote no pass: the readers have expressions, and an expression is the frame's.
+    const byLane = rebased.compiled.passes.filter((pass, index) => pass !== base.compiled.passes[index]);
+    expect(byLane.length).toBe(0);
+    // The frame over the lane's result: exactly the twenty levels that read the slider, each at 0.875.
+    const frame = prepareFrameCompiler(request, rebased).compileFrame({ ...(request.resolution ?? {}), frame: FRAMES[1] as EvaluationFrame });
+    if (frame === null) throw new Error("the frame did not compile over the lane's plan");
+    const byFrame = frame.passes.filter((pass, index) => pass !== base.compiled.passes[index]);
+    expect(byFrame.length).toBe(20);
+    expect(new Set(byFrame.map((pass) => (pass as { nodeId?: string }).nodeId)).size).toBe(20);
+    for (const pass of byFrame) expect(JSON.stringify((pass as { uniforms?: unknown }).uniforms)).toContain("0.875");
+    // And it is the frame the full compile of that revision gives.
     const full = compileGraphRetaining(request);
-    expect(rebased.compiled.passes).toEqual(full.compiled.passes);
-    // The twenty levels that read the slider are the only passes that are new objects.
-    const changed = rebased.compiled.passes.filter((pass, index) => pass !== base.compiled.passes[index]);
-    expect(changed.length).toBe(20);
-    expect(new Set(changed.map((pass) => (pass as { nodeId?: string }).nodeId)).size).toBe(20);
-    // And the base they were spliced over is this revision's: the frames after it read 0.875.
+    expect(frame.passes).toEqual(prepareFrameCompiler(request, full).compileFrame({ ...(request.resolution ?? {}), frame: FRAMES[1] as EvaluationFrame })?.passes);
+    // The base the frames splice over is this revision's: they read the document that holds 0.875.
     expect(rebased.retained?.request).toBe(request);
     expect(rebased.retained?.graph.nodes[slider.id]).toBe(next.nodes[slider.id]);
   });

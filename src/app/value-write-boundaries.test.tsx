@@ -49,7 +49,9 @@ import { revisionWatchFor } from "./revision-watch.ts";
  *   - `useDocumentDirty` snapshotting the revision again: App counts one per write;
  *   - the canvas deriving its lines from the store's document again: the geometry counts
  *     one per write;
- *   - `ControlWidget` without its `memo`: the other control's widget renders per write.
+ *   - `ControlWidget` without its `memo`: the other control's widget renders per write;
+ *   - `rebaseOnValues` following expression reads again: the lane writes the readers behind
+ *     a channel itself, each a second time in the frame.
  */
 
 const counts = vi.hoisted(() => ({
@@ -191,6 +193,7 @@ function recordingBackend() {
   /** While set, an install does not land until `release` is called: a structural build on its way. */
   let held: Promise<void> | null = null;
   let release: () => void = () => undefined;
+  let onFrame: (() => void) | null = null;
   const backend = {
     status: {
       initialized: true, disposed: false, halted: false, deviceGeneration: 1,
@@ -208,7 +211,10 @@ function recordingBackend() {
     readOutput: () => Promise.reject(new Error("no GPU")),
     onDiagnostic: () => () => {},
     dispose() {},
-    loop: () => ({ stop() {} }),
+    loop: (callback: () => void) => {
+      onFrame = callback;
+      return { stop() {} };
+    },
     updateUniforms(update: UniformWrite) {
       uniforms.push({ passId: update.passId, values: { ...update.values } });
     },
@@ -228,6 +234,11 @@ function recordingBackend() {
     uniforms,
     plans,
     structuralInstalls: () => installs,
+    /** One frame of the app's own loop: the value graph, the per-frame compile, the push, the render. */
+    frame: () => {
+      if (onFrame === null) throw new Error("the app registered no frame loop");
+      onFrame();
+    },
     holdInstalls: () => {
       held = new Promise<void>((resolve) => {
         release = resolve;
@@ -257,12 +268,43 @@ async function settle(): Promise<void> {
   });
 }
 
+const expression = (source: string) => ({ mode: "expression", bindings: { expression: { kind: "expression", source }, static: { kind: "static", value: 1 } } });
+
+/** What the three kinds of reader in `speedChain` read, in the order they repeat. */
+const SPEED_READS = ["op('constant_rate').chan.value", "op('lag_rate').chan.value", "op('speed_travel').chan.value"] as const;
+
+/**
+ * The shape that made one control slow on the owner's document (T1652b, `slider_speed`): a
+ * Slider read by ONE expression (a Constant), whose channel a Lag takes by wire, whose
+ * channel a speed integrator takes by wire — and `readers` nodes between the blur and the
+ * output that each read one of the three channels through an expression of their own.
+ */
+function speedChain(readers: number): unknown[] {
+  const operations: unknown[] = [
+    { op: "addNode", ref: "$speed", type: "slider", position: { x: 0, y: 700 }, label: "slider_speed", parameters: { caption: "Speed", channel: "speed", value: 2, min: 0, max: 9, step: 0, defaultValue: 2 } },
+    { op: "addNode", ref: "$rate", type: "constant", position: { x: 300, y: 700 }, label: "constant_rate", parameters: { value: expression("op('slider_speed').chan.speed * 0.25") } },
+    { op: "addNode", ref: "$lag", type: "valueLag", position: { x: 600, y: 700 }, label: "lag_rate" },
+    { op: "addNode", ref: "$travel", type: "valueSpeed", position: { x: 900, y: 700 }, label: "speed_travel" },
+    { op: "connect", source: { nodeId: "$rate", portId: "out" }, target: { nodeId: "$lag", portId: "in" } },
+    { op: "connect", source: { nodeId: "$lag", portId: "out" }, target: { nodeId: "$travel", portId: "in" } },
+  ];
+  let previous = "$blur";
+  for (let index = 0; index < readers; index += 1) {
+    const ref = `$reader${String(index)}`;
+    operations.push({ op: "addNode", ref, type: "level", position: { x: 900 + index * 300, y: 0 }, label: `level_r${String(index)}`, parameters: { brightness: expression(SPEED_READS[index % 3] as string), contrast: 1, opacity: 1 } });
+    operations.push({ op: "connect", source: { nodeId: previous, portId: "out" }, target: { nodeId: ref, portId: "input" } });
+    previous = ref;
+  }
+  operations.push({ op: "connect", source: { nodeId: previous, portId: "out" }, target: { nodeId: "$out", portId: "input" } });
+  return operations;
+}
+
 /**
  * solid → level → blur → output. A Slider (0 to 2) and a Toggle on a published Panel; the
  * Level's brightness reads the Slider through an expression — the owner's shape: a control
  * is its own node, read by an expression in another.
  */
-async function stage() {
+async function stage(options: { readonly speedChain?: number } = {}) {
   const fixture = recordingBackend();
   const actor = { kind: "human" as const, id: "tester", label: "Tester" };
   // Built on a scratch runtime and then OPENED, so the document under test starts clean:
@@ -293,7 +335,9 @@ async function stage() {
     },
     { op: "connect", source: { nodeId: "$solid", portId: "out" }, target: { nodeId: "$level", portId: "input" } },
     { op: "connect", source: { nodeId: "$level", portId: "out" }, target: { nodeId: "$blur", portId: "input" } },
-    { op: "connect", source: { nodeId: "$blur", portId: "out" }, target: { nodeId: "$out", portId: "input" } },
+    ...(options.speedChain === undefined
+      ? [{ op: "connect", source: { nodeId: "$blur", portId: "out" }, target: { nodeId: "$out", portId: "input" } }]
+      : speedChain(options.speedChain)),
     { op: "connect", source: { nodeId: "$slider", portId: "out" }, target: { nodeId: "$panel", portId: "controls" } },
     { op: "connect", source: { nodeId: "$toggle", portId: "out" }, target: { nodeId: "$panel", portId: "controls" } },
   ] as GraphPatchOperation[] }, scratch.invocation);
@@ -389,15 +433,67 @@ describe("T1652b — a value-only write, through the composed app", () => {
     expect(surfaces, `the moved control's widget rendered ${String(moved.widgets[slider])} times for ${String(WRITES)} writes`).toBe(3);
     expect(moved.widgets[toggle] ?? 0, "another control's widget rendered for this one's value").toBe(0);
 
-    // And the value reaches the device: the node that READS the control gets the last number written.
+    // And the value reaches the device BY THE FRAME: the node that reads the control has an
+    // expression, and an expression is resolved at every frame. The lane wrote nothing for it…
+    expect(fixture.uniforms.length - uniformsBefore, "the lane pushed a uniform for a node the frame resolves").toBe(0);
+    // …and the next frame carries the last number written, once, to that node's pass and no other.
+    await act(async () => {
+      fixture.frame();
+    });
     const last = 0.55 + WRITES * 0.05;
     const reached = fixture.uniforms.slice(uniformsBefore).filter((write) => write.passId.startsWith(level));
-    expect(reached.length).toBe(WRITES);
+    expect(reached.length).toBe(1);
     // Both readers: the one through the control's channel and the one through its parameter.
-    expect(Object.values(reached[reached.length - 1]?.values ?? {}).filter((value) => value === last)).toHaveLength(2);
-    // …and only that node's pass was written: a value is not a reason to restate the plan.
+    expect(Object.values(reached[0]?.values ?? {}).filter((value) => value === last)).toHaveLength(2);
     expect(new Set(fixture.uniforms.slice(uniformsBefore).map((write) => write.passId)).size).toBe(1);
 
+    runtime.dispose();
+  }, 60_000);
+
+  it("a control whose value travels by CHANNEL (a constant, a lag, an integrator, twelve readers): the lane re-runs nothing, and each reader is written once, by the frame", async () => {
+    const READERS = 12;
+    const { runtime, fixture, id, watch } = await stage({ speedChain: READERS });
+    const speed = id("$speed");
+    const readers = Array.from({ length: READERS }, (_unused, index) => id(`$reader${String(index)}`));
+    const passOf = (write: UniformWrite): number => readers.findIndex((reader) => write.passId.startsWith(reader));
+    // A frame has been drawn, so every reader holds a frame's value and a later write is a change against it.
+    await act(async () => {
+      fixture.frame();
+    });
+    await patch(runtime, [{ op: "setParameters", nodeId: speed, parameters: { value: 2.2 } }]);
+    await act(async () => {
+      fixture.frame();
+    });
+
+    const before = snapshot();
+    const escalatedBefore = watch.stats().escalated;
+    const uniformsBefore = fixture.uniforms.length;
+    await patch(runtime, [{ op: "setParameters", nodeId: speed, parameters: { value: 4 } }]);
+    const moved = since(before);
+    expect(moved).toMatchObject({ app: 0, structuralCompiles: 0, valuesPasses: 1 });
+    expect(watch.stats().escalated - escalatedBefore, `the write left the lane: ${watch.stats().lastEscalation ?? ""}`).toBe(0);
+    // THE BOUNDARY: every reader has an expression, so every reader is the frame's. The lane
+    // re-ran none of them — it wrote no uniform at all. (It used to re-run the whole closure
+    // behind the channel and push each pass with a FRAME-ZERO value.)
+    expect(fixture.uniforms.length - uniformsBefore, "the lane wrote uniforms for nodes the frame resolves").toBe(0);
+
+    // The frame after the write carries it.
+    await act(async () => {
+      fixture.frame();
+    });
+    const written = fixture.uniforms.slice(uniformsBefore);
+    const perReader = readers.map((_reader, index) => written.filter((write) => passOf(write) === index));
+    for (let index = 0; index < READERS; index += 1) {
+      // Dirtied ONCE between the write and the end of its frame: the uniform write is the cook gate's dirty mark (§V159).
+      expect(perReader[index]?.length ?? 0, `reader ${String(index)} (${SPEED_READS[index % 3] as string}) was written ${String(perReader[index]?.length)} times`).toBeLessThanOrEqual(1);
+    }
+    // Who reads the Constant's channel reads the new value in THAT frame: 4 × 0.25, exactly.
+    for (let index = 0; index < READERS; index += 3) {
+      expect(perReader[index]?.length, `reader ${String(index)} of the constant's channel was not written by the frame`).toBe(1);
+      expect(Object.values(perReader[index]?.[0]?.values ?? {})).toContain(1);
+    }
+    // Nothing but the readers was written: a value is not a reason to restate the plan.
+    expect(written.every((write) => passOf(write) !== -1), written.filter((write) => passOf(write) === -1).map((write) => write.passId).join(", ")).toBe(true);
     runtime.dispose();
   }, 60_000);
 
