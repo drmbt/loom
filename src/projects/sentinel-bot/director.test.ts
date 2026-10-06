@@ -11,7 +11,7 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { SHOTS } from "./camera.ts";
 import { diagnosticClass } from "../../domain/diagnostics/classes.ts";
-import { FIELD_BARS, FIELD_EVERY, FIELD_HUE, GLIMPSE, PACK_BARS, PACK_SHARE, PHRASE_BARS, SHOW_HUES, SHOW_TURNS, RUSH, STAND, against, fieldStand, fieldTurn, showHue, pace, packSize, phraseAttack, phraseDraw, phraseRush, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
+import { DOCK_HUE, DOCK_TURN, FIELD_BARS, FIELD_EVERY, FIELD_HUE, GLIMPSE, PACK_BARS, PACK_SHARE, PHRASE_BARS, SHOW_HUES, SHOW_TURNS, RUSH, STAND, against, dockTurn, fieldStand, fieldTurn, showHue, pace, packSize, phraseAttack, phraseDraw, phraseRush, phrasePause, phrasePerch, phraseSpiral, phraseSwim, rest, stride, surge } from "./director.ts";
 import { sentinelDocument } from "./document.ts";
 import { KIT_FIXTURE } from "./kit.fixture.ts";
 
@@ -96,8 +96,22 @@ describe("the sentinel follows the track", () => {
     for (let bar = 0; bar < 96; bar += 1) expect(afield(bar, 0)).toBe(0);
   });
 
+  it("goes to the dock for the sixteen bars after its first turn in the fields, and is never in two places", () => {
+    const docked = (bar: number, follow = 1): number => read(dockTurn("follow", "bar"), { follow, bar });
+    const afield = (bar: number): number => read(fieldTurn("follow", "bar"), { follow: 1, bar });
+    expect(DOCK_TURN).toBe(3);
+    // Bars 48 to 64, to the bar, and again a show later (144 to 160); nowhere else.
+    for (let bar = 0; bar < 192; bar += 0.25) expect([bar, docked(bar)]).toEqual([bar, (bar >= 48 && bar < 64) || (bar >= 144 && bar < 160) ? 1 : 0]);
+    // It follows the fields without a bar of tunnel between: the place changes on the turn's own line, where the camera cuts.
+    expect([afield(47.999), docked(47.999), afield(48), docked(48)]).toEqual([1, 0, 0, 1]);
+    // Never the fields and the dock at once.
+    for (let bar = 0; bar < 192; bar += 0.5) expect(afield(bar) + docked(bar)).toBeLessThanOrEqual(1);
+    // Cut the switch and it never goes.
+    for (let bar = 0; bar < 96; bar += 1) expect(docked(bar, 0)).toBe(0);
+  });
+
   it("turns the robots' lights to a colour of its own in each sixteen bars of the show, cold in the fields, and only on a turn's first bar", () => {
-    const hue = (bar: number, follow = 1, place = 0): number => read(showHue("follow", "place", "bar"), { follow, place, bar });
+    const hue = (bar: number, follow = 1, place = 0): number => read(showHue("follow", "place", "dock", "bar"), { follow, place, dock: 0, bar });
     expect(SHOW_TURNS * FIELD_BARS).toBe(96);
     // Each turn of the tunnel's holds its own colour from its first bar to its last. (The fields' turns read 0
     // here: out there the place says the colour, below.)
@@ -105,10 +119,14 @@ describe("the sentinel follows the track", () => {
       // (Plus nothing: a sum of nothings can be minus zero, which is zero.)
       for (const within of [0, 7.5, 15.99]) expect([turn, hue(turn * FIELD_BARS + within) + 0]).toEqual([turn, SHOW_HUES[turn % SHOW_TURNS]]);
     }
-    // Not one colour all the way through (the owner: "the colour feels very much static"): the tunnel alone has four.
-    expect(new Set(SHOW_HUES.filter((_, turn) => turn % FIELD_EVERY !== FIELD_EVERY - 1)).size).toBe(4);
+    // Not one colour all the way through (the owner: "the colour feels very much static"): the tunnel alone has
+    // three, and the fields and the dock one each of their own.
+    expect(new Set(SHOW_HUES.filter((_, turn) => turn % FIELD_EVERY !== FIELD_EVERY - 1 && turn !== DOCK_TURN)).size).toBe(3);
+    expect(new Set([...SHOW_HUES, FIELD_HUE, DOCK_HUE]).size).toBe(5);
     // Never upward past amber: the wheel has green a third of the way up, and these lights have none.
-    for (const turned of [...SHOW_HUES, FIELD_HUE]) expect(turned > -0.55 && turned < 0.1).toBe(true);
+    for (const turned of [...SHOW_HUES, FIELD_HUE, DOCK_HUE]) expect(turned > -0.55 && turned < 0.1).toBe(true);
+    // In the dock it is the dock's colour, whoever put it there.
+    expect(read(showHue("follow", "place", "dock", "bar"), { follow: 0, place: 0, dock: 1, bar: 5 })).toBe(DOCK_HUE);
     // In the fields it is the fields' colour, whoever put it there: the show, or the panel with the show off.
     expect(hue(40, 1, 1)).toBe(FIELD_HUE);
     expect(hue(5, 0, 1)).toBe(FIELD_HUE);

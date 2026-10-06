@@ -148,9 +148,7 @@ describe("no shipped document holds something that can never take effect (T1641b
  */
 const ROOT = resolve(import.meta.dirname, "../..");
 const THE_DOOR = "src/examples/checked-project.ts";
-const UNCHECKED_WRITERS: Readonly<Record<string, string>> = {
-  "src/projects/sentinel-bot/build.ts": "the consumer session owns this build; its one line moves to serializeCheckedProject with the patch sent to it",
-};
+const UNCHECKED_WRITERS: Readonly<Record<string, string>> = {};
 
 describe("every document a script builds is saved through the checked save (T1641b)", () => {
   const unchecked = /\b(serializeProjectDocument|buildProjectFile)\s*\(/;

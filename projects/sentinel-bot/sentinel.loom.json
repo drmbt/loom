@@ -14,6 +14,61 @@
           "portId": "in"
         }
       },
+      "beams-frames": {
+        "id": "beams-frames",
+        "source": {
+          "nodeId": "topology_beams",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "frames_beams",
+          "portId": "points"
+        }
+      },
+      "beams-geo": {
+        "id": "beams-geo",
+        "source": {
+          "nodeId": "sweep_beams",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geometry_beams",
+          "portId": "points"
+        }
+      },
+      "beams-light": {
+        "id": "beams-light",
+        "source": {
+          "nodeId": "kernel_beamlights",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "light_beams",
+          "portId": "points"
+        }
+      },
+      "beams-strips": {
+        "id": "beams-strips",
+        "source": {
+          "nodeId": "kernel_beams",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "topology_beams",
+          "portId": "points"
+        }
+      },
+      "beams-sweep": {
+        "id": "beams-sweep",
+        "source": {
+          "nodeId": "frames_beams",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "sweep_beams",
+          "portId": "points"
+        }
+      },
       "bloom-down1": {
         "id": "bloom-down1",
         "source": {
@@ -202,6 +257,50 @@
         },
         "target": {
           "nodeId": "geometry_bore",
+          "portId": "points"
+        }
+      },
+      "bridges-frames": {
+        "id": "bridges-frames",
+        "source": {
+          "nodeId": "topology_bridges",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "frames_bridges",
+          "portId": "points"
+        }
+      },
+      "bridges-geo": {
+        "id": "bridges-geo",
+        "source": {
+          "nodeId": "sweep_bridges",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geometry_bridges",
+          "portId": "points"
+        }
+      },
+      "bridges-strips": {
+        "id": "bridges-strips",
+        "source": {
+          "nodeId": "kernel_bridges",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "topology_bridges",
+          "portId": "points"
+        }
+      },
+      "bridges-sweep": {
+        "id": "bridges-sweep",
+        "source": {
+          "nodeId": "frames_bridges",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "sweep_bridges",
           "portId": "points"
         }
       },
@@ -508,6 +607,17 @@
           "portId": "more"
         }
       },
+      "docklamps-light": {
+        "id": "docklamps-light",
+        "source": {
+          "nodeId": "kernel_docklamps",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "light_docklamps",
+          "portId": "points"
+        }
+      },
       "ease-travel": {
         "id": "ease-travel",
         "source": {
@@ -594,6 +704,28 @@
         "target": {
           "nodeId": "kernel_bore",
           "portId": "in"
+        }
+      },
+      "grid-hall": {
+        "id": "grid-hall",
+        "source": {
+          "nodeId": "grid_hall",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "kernel_hall",
+          "portId": "in"
+        }
+      },
+      "hall-geo": {
+        "id": "hall-geo",
+        "source": {
+          "nodeId": "kernel_hall",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geometry_hall",
+          "portId": "points"
         }
       },
       "haze-focus": {
@@ -2392,7 +2524,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * -0.45 + (1 - max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) * (op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * ((mod(floor(op('audiofile_track').chan.bar / 16), 6) == 1) * 0.05 + (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3) * -0.12 + (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 4) * -0.28)) + op('slider_hueturn').chan.hueturn"
+                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * -0.45 + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * -0.12 + (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * (op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * ((mod(floor(op('audiofile_track').chan.bar / 16), 6) == 1) * 0.05 + (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 4) * -0.28)) + op('slider_hueturn').chan.hueturn"
               },
               "static": {
                 "kind": "static",
@@ -2442,7 +2574,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(max(op('slider_pack').chan.pack, 3 * max(max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor((op('audiofile_track').chan.bar + 2) / 16), 3) == 2, ((op('audiofile_track').chan.bar + 2) >= 12) * ((op('audiofile_track').chan.bar + 2) < 16)))))), (1 + (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0)) * 2 * (fract(sin((floor(op('audiofile_track').chan.bar / 8) + 6) * 12.9898) * 43758.5453) < 0.22)))"
+                "source": "max(max(op('slider_pack').chan.pack, 3 * max(max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor((op('audiofile_track').chan.bar + 2) / 16), 3) == 2, ((op('audiofile_track').chan.bar + 2) >= 12) * ((op('audiofile_track').chan.bar + 2) < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor((op('audiofile_track').chan.bar + 2) / 16), 6) == 3)))))), (1 + (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0)) * 2 * (fract(sin((floor(op('audiofile_track').chan.bar / 8) + 6) * 12.9898) * 43758.5453) < 0.22)))"
               },
               "static": {
                 "kind": "static",
@@ -2492,7 +2624,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 2 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -2832,6 +2964,24 @@
         },
         "type": "filmGrade"
       },
+      "frames_beams": {
+        "definitionVersion": 1,
+        "id": "frames_beams",
+        "label": "frames_beams",
+        "parameters": {
+          "method": "minimiseTwist",
+          "up": [
+            0,
+            0,
+            1
+          ]
+        },
+        "position": {
+          "x": -3000,
+          "y": 7400
+        },
+        "type": "pointCurveFrames"
+      },
       "frames_bolts": {
         "definitionVersion": 1,
         "id": "frames_bolts",
@@ -2847,6 +2997,24 @@
         "position": {
           "x": -3000,
           "y": 5100
+        },
+        "type": "pointCurveFrames"
+      },
+      "frames_bridges": {
+        "definitionVersion": 1,
+        "id": "frames_bridges",
+        "label": "frames_bridges",
+        "parameters": {
+          "method": "minimiseTwist",
+          "up": [
+            0,
+            1,
+            0
+          ]
+        },
+        "position": {
+          "x": -3000,
+          "y": 6650
         },
         "type": "pointCurveFrames"
       },
@@ -2882,6 +3050,39 @@
           "y": 4200
         },
         "type": "pointCurveFrames"
+      },
+      "geometry_beams": {
+        "definitionVersion": 1,
+        "id": "geometry_beams",
+        "label": "geometry_beams",
+        "parameters": {
+          "blend": "additive",
+          "material": "material_beam",
+          "mode": "surface",
+          "tint": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            },
+            "mode": "map"
+          }
+        },
+        "position": {
+          "x": -2400,
+          "y": 7400
+        },
+        "type": "geometry"
       },
       "geometry_bolts": {
         "definitionVersion": 1,
@@ -2947,6 +3148,38 @@
         },
         "type": "geometry"
       },
+      "geometry_bridges": {
+        "definitionVersion": 1,
+        "id": "geometry_bridges",
+        "label": "geometry_bridges",
+        "parameters": {
+          "material": "material_bridge",
+          "mode": "surface",
+          "tint": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            },
+            "mode": "map"
+          }
+        },
+        "position": {
+          "x": -2400,
+          "y": 6650
+        },
+        "type": "geometry"
+      },
       "geometry_claw": {
         "definitionVersion": 1,
         "id": "geometry_claw",
@@ -2978,6 +3211,38 @@
         "position": {
           "x": -1800,
           "y": 300
+        },
+        "type": "geometry"
+      },
+      "geometry_hall": {
+        "definitionVersion": 1,
+        "id": "geometry_hall",
+        "label": "geometry_hall",
+        "parameters": {
+          "material": "material_hall",
+          "mode": "surface",
+          "tint": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  0,
+                  0,
+                  0,
+                  0
+                ]
+              }
+            },
+            "mode": "map"
+          }
+        },
+        "position": {
+          "x": -3300,
+          "y": 6200
         },
         "type": "geometry"
       },
@@ -3147,6 +3412,158 @@
         },
         "type": "pointGrid"
       },
+      "grid_hall": {
+        "definitionVersion": 1,
+        "id": "grid_hall",
+        "label": "grid_hall",
+        "parameters": {
+          "cols": 192,
+          "count": 55296,
+          "rows": 288,
+          "sizeX": 2,
+          "sizeY": 2
+        },
+        "position": {
+          "x": -3900,
+          "y": 6200
+        },
+        "type": "pointGrid"
+      },
+      "kernel_beamlights": {
+        "definitionVersion": 1,
+        "id": "kernel_beamlights",
+        "label": "kernel_beamlights",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,1]},{\"name\":\"power\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"aim\",\"type\":\"vec3f\",\"default\":[0,-1,0]}]",
+          "capacity": 4,
+          "kernel": "// T1561b — the dock's searchlights, as lights (src/projects/sentinel-bot/dock.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the line, metres.\n  place: f32, // @default 0  1 in the dock.\n  sweep: f32, // @default 0  How far through their sweeps the searchlights are: across the hall and back once for every two. Drive it from a clock.\n  level: f32, // @default 1  How bright they are, 0 to 1.\n  power: f32, // @default 900  A searchlight's intensity.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst DOCK_RADIUS: f32 = 40.00000;\nconst DOCK_LIFT: f32 = 6.00000;\nconst DOCK_DECK: f32 = 14.00000;\nconst DOCK_RIB: f32 = 24.00000;\nconst DOCK_LAP: i32 = 40;\nconst DOCK_TIERS = array<f32, 3>(-6.00000, 5.00000, 16.00000);\n\n// A number 0 to 1 for a thing of the dock numbered (a, b) (dock.ts, dockLot: the same line).\nfn dockLot(a: i32, b: i32) -> f32 {\n  let n = (u32(a + 4096) * 73856093u) ^ (u32(b + 4096) * 19349663u);\n  let m = (n ^ (n >> 15u)) * 2246822519u;\n  return f32((m ^ (m >> 13u)) >> 8u) / 16777216.0;\n}\n\n// A rib's number within the lap, so the lap's end changes nothing.\nfn dockLap(rib: i32) -> i32 {\n  return rib - DOCK_LAP * i32(floor(f32(rib) / f32(DOCK_LAP)));\n}\n\n// How far from the vault's centre the bare shell is in a direction: the vault, or the deck where that is nearer.\nfn hallShell(theta: f32) -> f32 {\n  let down = -sin(theta);\n  if (down > 1e-6) { return min(DOCK_RADIUS, (DOCK_DECK + DOCK_LIFT) / down); }\n  return DOCK_RADIUS;\n}\n\n// The middle of the vault abreast of z: over the line.\nfn hallCentre(z: f32) -> vec3f {\n  return pathAt(z) + vec3f(0.0, DOCK_LIFT, 0.0);\n}\n\nstruct Beam {\n  foot: vec3f,\n  toward: vec3f,\n};\n\nfn beamOf(beam: u32, travel: f32, sweep: f32) -> Beam {\n  // They stand at marks 96 m apart along the hall, two to a mark, one by each wall.\n  let mark = floor(travel / 96.0) + f32(beam / 2u);\n  let side = select(-1.0, 1.0, beam % 2u == 1u);\n  let z = (mark + 0.35) * 96.0;\n  var b: Beam;\n  b.foot = pathAt(z) + vec3f(side * 30.0, -DOCK_DECK + 0.6, 0.0);\n  let own = f32(beam) * 1.7;\n  // Across the hall toward the far wall and back; along it; and never down.\n  let across = -side * (0.15 + 0.55 * (0.5 + 0.5 * sin(sweep * 6.2831853 * 0.5 + own)));\n  let along = 0.7 * sin(sweep * 6.2831853 * 0.25 + own * 2.3);\n  b.toward = normalize(vec3f(across, 0.75, along));\n  return b;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let beam = beamOf(ctx.index, ctx.params.travel, ctx.params.sweep);\n  q.position = beam.foot;\n  q.tint = vec4f(0.78, 0.88, 1.0, 1.0);\n  q.power = ctx.params.power * ctx.params.level * step(0.5, ctx.params.place);\n  q.aim = beam.toward;\n  return q;\n}",
+          "level": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * (0.55 + 0.45 * (op('lag_levels').chan.high * op('slider_react').chan.react))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "place": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "power": 900,
+          "sweep": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "abstime * 0.28"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "travel": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('speed_travel').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -3600,
+          "y": 7850
+        },
+        "type": "pointKernel"
+      },
+      "kernel_beams": {
+        "definitionVersion": 1,
+        "id": "kernel_beams",
+        "label": "kernel_beams",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"girth\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,0]}]",
+          "capacity": 32,
+          "kernel": "// T1561b — the dock's searchlights, as cones of lit air (src/projects/sentinel-bot/dock.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the line, metres.\n  place: f32, // @default 0  1 in the dock.\n  sweep: f32, // @default 0  How far through their sweeps the searchlights are: across the hall and back once for every two. Drive it from a clock.\n  level: f32, // @default 1  How bright they are, 0 to 1.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst DOCK_RADIUS: f32 = 40.00000;\nconst DOCK_LIFT: f32 = 6.00000;\nconst DOCK_DECK: f32 = 14.00000;\nconst DOCK_RIB: f32 = 24.00000;\nconst DOCK_LAP: i32 = 40;\nconst DOCK_TIERS = array<f32, 3>(-6.00000, 5.00000, 16.00000);\n\n// A number 0 to 1 for a thing of the dock numbered (a, b) (dock.ts, dockLot: the same line).\nfn dockLot(a: i32, b: i32) -> f32 {\n  let n = (u32(a + 4096) * 73856093u) ^ (u32(b + 4096) * 19349663u);\n  let m = (n ^ (n >> 15u)) * 2246822519u;\n  return f32((m ^ (m >> 13u)) >> 8u) / 16777216.0;\n}\n\n// A rib's number within the lap, so the lap's end changes nothing.\nfn dockLap(rib: i32) -> i32 {\n  return rib - DOCK_LAP * i32(floor(f32(rib) / f32(DOCK_LAP)));\n}\n\n// How far from the vault's centre the bare shell is in a direction: the vault, or the deck where that is nearer.\nfn hallShell(theta: f32) -> f32 {\n  let down = -sin(theta);\n  if (down > 1e-6) { return min(DOCK_RADIUS, (DOCK_DECK + DOCK_LIFT) / down); }\n  return DOCK_RADIUS;\n}\n\n// The middle of the vault abreast of z: over the line.\nfn hallCentre(z: f32) -> vec3f {\n  return pathAt(z) + vec3f(0.0, DOCK_LIFT, 0.0);\n}\n\nstruct Beam {\n  foot: vec3f,\n  toward: vec3f,\n};\n\nfn beamOf(beam: u32, travel: f32, sweep: f32) -> Beam {\n  // They stand at marks 96 m apart along the hall, two to a mark, one by each wall.\n  let mark = floor(travel / 96.0) + f32(beam / 2u);\n  let side = select(-1.0, 1.0, beam % 2u == 1u);\n  let z = (mark + 0.35) * 96.0;\n  var b: Beam;\n  b.foot = pathAt(z) + vec3f(side * 30.0, -DOCK_DECK + 0.6, 0.0);\n  let own = f32(beam) * 1.7;\n  // Across the hall toward the far wall and back; along it; and never down.\n  let across = -side * (0.15 + 0.55 * (0.5 + 0.5 * sin(sweep * 6.2831853 * 0.5 + own)));\n  let along = 0.7 * sin(sweep * 6.2831853 * 0.25 + own * 2.3);\n  b.toward = normalize(vec3f(across, 0.75, along));\n  return b;\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let beam = beamOf(ctx.index / 8u, ctx.params.travel, ctx.params.sweep);\n  let along = f32(ctx.index % 8u) / 7.00000;\n  if (ctx.params.place < 0.5 || ctx.params.level < 0.01) {\n    q.position = vec3f(beam.foot.x, -4000.0, beam.foot.z);\n    q.girth = 0.0;\n    q.tint = vec4f(0.0);\n    return q;\n  }\n  q.position = beam.foot + beam.toward * (along * 70.00000);\n  // A lamp's glass at the foot, and a cone that opens as it goes.\n  q.girth = 0.35 + 4.2 * along;\n  q.tint = vec4f(ctx.params.level, 0.0, 0.0, along);\n  return q;\n}",
+          "level": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * (0.55 + 0.45 * (op('lag_levels').chan.high * op('slider_react').chan.react))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "place": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "sweep": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "abstime * 0.28"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "travel": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('speed_travel').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -3600,
+          "y": 7400
+        },
+        "type": "pointKernel"
+      },
       "kernel_bolts": {
         "definitionVersion": 1,
         "id": "kernel_bolts",
@@ -3158,7 +3575,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * (fract(floor(op('audiofile_track').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
+                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * (fract(floor(op('audiofile_track').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
               },
               "static": {
                 "kind": "static",
@@ -3172,7 +3589,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",
@@ -3239,7 +3656,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))))"
               },
               "static": {
                 "kind": "static",
@@ -3268,6 +3685,155 @@
         },
         "type": "pointKernel"
       },
+      "kernel_bridges": {
+        "definitionVersion": 1,
+        "id": "kernel_bridges",
+        "label": "kernel_bridges",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"girth\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,0]}]",
+          "capacity": 112,
+          "kernel": "// T1561b — the dock's bridges (src/projects/sentinel-bot/dock.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the line, metres.\n  place: f32, // @default 0  1 in the dock.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst DOCK_RADIUS: f32 = 40.00000;\nconst DOCK_LIFT: f32 = 6.00000;\nconst DOCK_DECK: f32 = 14.00000;\nconst DOCK_RIB: f32 = 24.00000;\nconst DOCK_LAP: i32 = 40;\nconst DOCK_TIERS = array<f32, 3>(-6.00000, 5.00000, 16.00000);\n\n// A number 0 to 1 for a thing of the dock numbered (a, b) (dock.ts, dockLot: the same line).\nfn dockLot(a: i32, b: i32) -> f32 {\n  let n = (u32(a + 4096) * 73856093u) ^ (u32(b + 4096) * 19349663u);\n  let m = (n ^ (n >> 15u)) * 2246822519u;\n  return f32((m ^ (m >> 13u)) >> 8u) / 16777216.0;\n}\n\n// A rib's number within the lap, so the lap's end changes nothing.\nfn dockLap(rib: i32) -> i32 {\n  return rib - DOCK_LAP * i32(floor(f32(rib) / f32(DOCK_LAP)));\n}\n\n// How far from the vault's centre the bare shell is in a direction: the vault, or the deck where that is nearer.\nfn hallShell(theta: f32) -> f32 {\n  let down = -sin(theta);\n  if (down > 1e-6) { return min(DOCK_RADIUS, (DOCK_DECK + DOCK_LIFT) / down); }\n  return DOCK_RADIUS;\n}\n\n// The middle of the vault abreast of z: over the line.\nfn hallCentre(z: f32) -> vec3f {\n  return pathAt(z) + vec3f(0.0, DOCK_LIFT, 0.0);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let bridge = i32(ctx.index / 14u);\n  let across = f32(ctx.index % 14u) / 13.00000;\n  // The ribs that have one, from two behind the robot on.\n  let first = i32(floor(ctx.params.travel / (DOCK_RIB * 3.00000))) - 2;\n  let rib = (first + bridge) * 3;\n  let z = (f32(rib) + 0.5) * DOCK_RIB;\n  let high = mix(11.00000, 24.00000, dockLot(dockLap(rib), 3));\n  if (ctx.params.place < 0.5) {\n    q.position = vec3f(0.0, -4000.0, z);\n    q.girth = 0.0;\n    q.tint = vec4f(0.0);\n    return q;\n  }\n  // Wall to wall at that height: the vault is narrower the higher.\n  let up = high - DOCK_LIFT;\n  let half = sqrt(max(DOCK_RADIUS * DOCK_RADIUS - up * up, 1.0)) - 0.5;\n  q.position = pathAt(z) + vec3f(mix(-half, half, across), high, 0.0);\n  q.girth = 0.75;\n  q.tint = vec4f(dockLot(dockLap(rib), 4), across, z, 1.0);\n  return q;\n}",
+          "place": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "travel": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('speed_travel').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -3600,
+          "y": 6650
+        },
+        "type": "pointKernel"
+      },
+      "kernel_docklamps": {
+        "definitionVersion": 1,
+        "id": "kernel_docklamps",
+        "label": "kernel_docklamps",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,1]},{\"name\":\"power\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"aim\",\"type\":\"vec3f\",\"default\":[0,-1,0]}]",
+          "capacity": 66,
+          "flood": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_lamp').chan.lamp * 96 * (0.75 + 0.5 * (op('lag_levels').chan.low * op('slider_react').chan.react))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 2500
+              }
+            },
+            "mode": "expression"
+          },
+          "kernel": "// T1561b — the dock's work lamps (src/projects/sentinel-bot/dock.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the line, metres.\n  place: f32, // @default 0  1 in the dock.\n  power: f32, // @default 70  A gantry lamp's intensity.\n  flood: f32, // @default 2500  A crown flood's intensity.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst DOCK_RADIUS: f32 = 40.00000;\nconst DOCK_LIFT: f32 = 6.00000;\nconst DOCK_DECK: f32 = 14.00000;\nconst DOCK_RIB: f32 = 24.00000;\nconst DOCK_LAP: i32 = 40;\nconst DOCK_TIERS = array<f32, 3>(-6.00000, 5.00000, 16.00000);\n\n// A number 0 to 1 for a thing of the dock numbered (a, b) (dock.ts, dockLot: the same line).\nfn dockLot(a: i32, b: i32) -> f32 {\n  let n = (u32(a + 4096) * 73856093u) ^ (u32(b + 4096) * 19349663u);\n  let m = (n ^ (n >> 15u)) * 2246822519u;\n  return f32((m ^ (m >> 13u)) >> 8u) / 16777216.0;\n}\n\n// A rib's number within the lap, so the lap's end changes nothing.\nfn dockLap(rib: i32) -> i32 {\n  return rib - DOCK_LAP * i32(floor(f32(rib) / f32(DOCK_LAP)));\n}\n\n// How far from the vault's centre the bare shell is in a direction: the vault, or the deck where that is nearer.\nfn hallShell(theta: f32) -> f32 {\n  let down = -sin(theta);\n  if (down > 1e-6) { return min(DOCK_RADIUS, (DOCK_DECK + DOCK_LIFT) / down); }\n  return DOCK_RADIUS;\n}\n\n// The middle of the vault abreast of z: over the line.\nfn hallCentre(z: f32) -> vec3f {\n  return pathAt(z) + vec3f(0.0, DOCK_LIFT, 0.0);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let which = ctx.index % 3u;\n  let rib = i32(floor(ctx.params.travel / DOCK_RIB)) + i32(ctx.index / 3u) - 5;\n  let z = (f32(rib) + 0.5) * DOCK_RIB;\n  let alive = step(0.2, dockLot(dockLap(rib), 9 + i32(which))) * step(0.5, ctx.params.place);\n  let own = dockLot(dockLap(rib), 7 + i32(which));\n  if (which == 2u) {\n    // The crown's flood: just under the rib, on the middle line.\n    q.position = hallCentre(z) + vec3f(0.0, DOCK_RADIUS - 3.20000, 0.0);\n    q.tint = vec4f(0.82, 0.9, 1.0, 1.0);\n    q.power = ctx.params.flood * alive;\n    q.aim = vec3f(0.0, -1.0, 0.0);\n    return q;\n  }\n  let side = select(-1.0, 1.0, which == 1u);\n  let high = DOCK_TIERS[1] - 1.2;\n  let up = high - DOCK_LIFT;\n  let half = sqrt(max(DOCK_RADIUS * DOCK_RADIUS - up * up, 1.0)) - 3.40000;\n  q.position = pathAt(z) + vec3f(side * half, high, 0.0);\n  // Sodium, each a little its own.\n  q.tint = vec4f(1.0, 0.58 + 0.1 * own, 0.24 + 0.08 * own, 1.0);\n  q.power = ctx.params.power * alive;\n  // Down the wall under it.\n  q.aim = normalize(vec3f(side * 0.5, -1.0, 0.0));\n  return q;\n}",
+          "place": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "power": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_lamp').chan.lamp * 7 * (0.75 + 0.5 * (op('lag_levels').chan.low * op('slider_react').chan.react))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 180
+              }
+            },
+            "mode": "expression"
+          },
+          "travel": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('speed_travel').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -3600,
+          "y": 7100
+        },
+        "type": "pointKernel"
+      },
+      "kernel_hall": {
+        "definitionVersion": 1,
+        "id": "kernel_hall",
+        "label": "kernel_hall",
+        "parameters": {
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[0,0,0,0]}]",
+          "capacity": 55296,
+          "kernel": "// T1561b — the dock's hall (src/projects/sentinel-bot/dock.ts).\nstruct Params {\n  travel: f32, // @default 0  Distance travelled along the line, metres.\n  place: f32, // @default 0  1 in the dock; 0 anywhere else, where every point of it is drawn in to one.\n};\n// T1561b — the tunnel's centreline (generated by src/projects/sentinel-bot/path.ts).\nconst PATH_PERIOD: f32 = 960.0;\n\nfn pathAt(z: f32) -> vec3f {\n  return vec3f(14.0 * sin(0.0327249235 * z + 0.4) + 5.0 * sin(0.085084801 * z + 1.9), 6.0 * sin(0.0261799388 * z + 2.2) + 2.5 * sin(0.0719948316 * z + 0.7), z);\n}\n\nfn pathTangent(z: f32) -> vec3f {\n  return normalize(vec3f(0.458148929 * cos(0.0327249235 * z + 0.4) + 0.425424005 * cos(0.085084801 * z + 1.9), 0.157079633 * cos(0.0261799388 * z + 2.2) + 0.179987079 * cos(0.0719948316 * z + 0.7), 1.0));\n}\n\nstruct Frame {\n  origin: vec3f,\n  right: vec3f,\n  up: vec3f,\n  forward: vec3f,\n};\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\n\nfn pathFrame(z: f32) -> Frame {\n  var frame: Frame;\n  frame.origin = pathAt(z);\n  frame.forward = pathTangent(z);\n  frame.right = normalize(cross(vec3f(0.0, 1.0, 0.0), frame.forward));\n  frame.up = cross(frame.forward, frame.right);\n  return frame;\n}\n\nconst DOCK_RADIUS: f32 = 40.00000;\nconst DOCK_LIFT: f32 = 6.00000;\nconst DOCK_DECK: f32 = 14.00000;\nconst DOCK_RIB: f32 = 24.00000;\nconst DOCK_LAP: i32 = 40;\nconst DOCK_TIERS = array<f32, 3>(-6.00000, 5.00000, 16.00000);\n\n// A number 0 to 1 for a thing of the dock numbered (a, b) (dock.ts, dockLot: the same line).\nfn dockLot(a: i32, b: i32) -> f32 {\n  let n = (u32(a + 4096) * 73856093u) ^ (u32(b + 4096) * 19349663u);\n  let m = (n ^ (n >> 15u)) * 2246822519u;\n  return f32((m ^ (m >> 13u)) >> 8u) / 16777216.0;\n}\n\n// A rib's number within the lap, so the lap's end changes nothing.\nfn dockLap(rib: i32) -> i32 {\n  return rib - DOCK_LAP * i32(floor(f32(rib) / f32(DOCK_LAP)));\n}\n\n// How far from the vault's centre the bare shell is in a direction: the vault, or the deck where that is nearer.\nfn hallShell(theta: f32) -> f32 {\n  let down = -sin(theta);\n  if (down > 1e-6) { return min(DOCK_RADIUS, (DOCK_DECK + DOCK_LIFT) / down); }\n  return DOCK_RADIUS;\n}\n\n// The middle of the vault abreast of z: over the line.\nfn hallCentre(z: f32) -> vec3f {\n  return pathAt(z) + vec3f(0.0, DOCK_LIFT, 0.0);\n}\n\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  if (ctx.params.place < 0.5) {\n    q.position = vec3f(0.0, -4000.0, 0.0);\n    q.tint = vec4f(0.0);\n    return q;\n  }\n  // Rows stand at whole multiples of the row spacing, so the hall holds still while the window slides along it.\n  let z = (floor(ctx.params.travel / 2.00000) + f32(ctx.dim.j) - 72.00000) * 2.00000;\n  let around = f32(ctx.dim.i) / f32(ctx.dim.cols - 1u);\n  // From straight down, round by the right wall, over the vault, and down the left.\n  let theta = (around - 0.25) * 6.2831853;\n  var radius = hallShell(theta);\n  var what = 0.0;\n  let onDeck = step(radius, DOCK_RADIUS - 0.01);\n  let high = radius * sin(theta) + DOCK_LIFT;\n  if (onDeck > 0.5) {\n    what = 3.0;\n  } else {\n    // Tiers: a ledge along each wall, the gantry's deck. Not over the crown, where there is no wall to hang one on.\n    for (var tier = 0; tier < 3; tier += 1) {\n      let off = abs(high - DOCK_TIERS[tier]);\n      if (off < 0.90000 && abs(cos(theta)) > 0.45) {\n        radius = radius - 2.80000;\n        what = 2.0;\n      }\n    }\n    // Ribs: an arch that stands in from the shell, wall and vault, at every bay.\n    let bay = floor(z / DOCK_RIB);\n    let alongBay = abs(z - (bay + 0.5) * DOCK_RIB);\n    if (alongBay < 0.75000 && what < 1.5) {\n      radius = radius - 2.20000;\n      what = 1.0;\n    }\n  }\n  q.position = hallCentre(z) + vec3f(cos(theta), sin(theta), 0.0) * radius;\n  q.tint = vec4f(what, radius * sin(theta) + DOCK_LIFT, around, z);\n  return q;\n}",
+          "place": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "travel": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('speed_travel').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          }
+        },
+        "position": {
+          "x": -3600,
+          "y": 6200
+        },
+        "type": "pointKernel"
+      },
       "kernel_hull": {
         "definitionVersion": 1,
         "id": "kernel_hull",
@@ -3277,7 +3843,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))))"
               },
               "static": {
                 "kind": "static",
@@ -3663,7 +4229,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))))"
+                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))))"
               },
               "static": {
                 "kind": "static",
@@ -3776,7 +4342,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))))"
+                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))))"
               },
               "static": {
                 "kind": "static",
@@ -3814,7 +4380,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))))"
               },
               "static": {
                 "kind": "static",
@@ -4186,7 +4752,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * (fract(floor(op('audiofile_track').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
+                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * (fract(floor(op('audiofile_track').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
               },
               "static": {
                 "kind": "static",
@@ -4200,7 +4766,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",
@@ -4255,7 +4821,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",
@@ -4529,6 +5095,72 @@
         },
         "type": "lens"
       },
+      "light_beams": {
+        "definitionVersion": 1,
+        "id": "light_beams",
+        "label": "light_beams",
+        "parameters": {
+          "color": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  1,
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            "mode": "map"
+          },
+          "cone": 9,
+          "coneSoftness": 0.5,
+          "direction": {
+            "bindings": {
+              "map": {
+                "attribute": "aim",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  0,
+                  1,
+                  0
+                ]
+              }
+            },
+            "mode": "map"
+          },
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "map": {
+                "attribute": "power",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "map"
+          },
+          "kind": "spot",
+          "mode": "points",
+          "range": 110
+        },
+        "position": {
+          "x": -3300,
+          "y": 7850
+        },
+        "type": "light"
+      },
       "light_body": {
         "definitionVersion": 1,
         "id": "light_body",
@@ -4647,6 +5279,72 @@
         "position": {
           "x": -1500,
           "y": -450
+        },
+        "type": "light"
+      },
+      "light_docklamps": {
+        "definitionVersion": 1,
+        "id": "light_docklamps",
+        "label": "light_docklamps",
+        "parameters": {
+          "color": {
+            "bindings": {
+              "map": {
+                "attribute": "tint",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  1,
+                  1,
+                  1,
+                  1
+                ]
+              }
+            },
+            "mode": "map"
+          },
+          "cone": 120,
+          "coneSoftness": 0.8,
+          "direction": {
+            "bindings": {
+              "map": {
+                "attribute": "aim",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": [
+                  0,
+                  -1,
+                  0
+                ]
+              }
+            },
+            "mode": "map"
+          },
+          "falloff": "inverseSquare",
+          "intensity": {
+            "bindings": {
+              "map": {
+                "attribute": "power",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "map"
+          },
+          "kind": "spot",
+          "mode": "points",
+          "range": 90
+        },
+        "position": {
+          "x": -3300,
+          "y": 7100
         },
         "type": "light"
       },
@@ -4841,7 +5539,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000))"
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000))"
               },
               "static": {
                 "kind": "static",
@@ -4854,7 +5552,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000))"
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000))"
               },
               "static": {
                 "kind": "static",
@@ -4958,7 +5656,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650))"
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650))"
               },
               "static": {
                 "kind": "static",
@@ -4971,7 +5669,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))))) * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500))"
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))))))) * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500))"
               },
               "static": {
                 "kind": "static",
@@ -5075,7 +5773,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.3 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "1.3 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",
@@ -5139,6 +5837,21 @@
         },
         "type": "light"
       },
+      "material_beam": {
+        "definitionVersion": 1,
+        "id": "material_beam",
+        "label": "material_beam",
+        "parameters": {
+          "glow": 0.5,
+          "model": "pbr",
+          "source": "struct Params {\n  glow: f32, // @default 0.5  Radiance of the lit air at the lamp.\n};\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let through = abs(dot(normalize(s.eye - s.world), s.normal));\n  let along = s.tint.a;\n  o.albedo = vec4f(0.0, 0.0, 0.0, 1.0);\n  o.roughness = 1.0;\n  o.metallic = 0.0;\n  o.emissive = vec3f(0.78, 0.88, 1.0) * (p.glow * s.tint.r * through * through * (1.0 - along) * (1.0 - along) / (0.35 + 6.0 * along));\n  return o;\n}"
+        },
+        "position": {
+          "x": -2700,
+          "y": 7600
+        },
+        "type": "materialWgsl"
+      },
       "material_bolt": {
         "definitionVersion": 1,
         "id": "material_bolt",
@@ -5176,7 +5889,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * 0.55 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))))"
+                "source": "op('slider_lamp').chan.lamp * 0.55 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))))"
               },
               "static": {
                 "kind": "static",
@@ -5194,6 +5907,144 @@
         },
         "type": "materialWgsl"
       },
+      "material_bridge": {
+        "definitionVersion": 1,
+        "id": "material_bridge",
+        "label": "material_bridge",
+        "parameters": {
+          "lamps": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "3 * (0.75 + 0.5 * (op('lag_levels').chan.low * op('slider_react').chan.react))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 3
+              }
+            },
+            "mode": "expression"
+          },
+          "model": "pbr",
+          "source": "// @use surface-detail\nstruct Params {\n  lamps: f32, // @default 3  Radiance of its lamps.\n};\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let across = s.tint.g;\n  let fine = detailFbm(s.world * 2.0, 3, s.footprint);\n  o.albedo = vec4f(vec3f(0.024, 0.025, 0.028) * (0.6 + 0.8 * fine.value), 1.0);\n  o.roughness = 0.6;\n  o.metallic = 0.85;\n  // Lamps under it, one every twelfth of the way across.\n  let lamp = smoothstep(0.5, 0.9, -s.normal.y) * (1.0 - smoothstep(0.08, 0.16, abs(fract(across * 12.0) - 0.5)));\n  o.emissive = vec3f(1.0, 0.6, 0.26) * (p.lamps * lamp);\n  return o;\n}"
+        },
+        "position": {
+          "x": -2700,
+          "y": 6850
+        },
+        "type": "materialWgsl"
+      },
+      "material_hall": {
+        "definitionVersion": 1,
+        "id": "material_hall",
+        "label": "material_hall",
+        "parameters": {
+          "beat": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "floor(op('audiofile_track').chan.beat)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "kick": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('lag_hits').chan.kickCount * op('slider_react').chan.react)"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "lamps": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "3 * (0.75 + 0.5 * (op('lag_levels').chan.low * op('slider_react').chan.react))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 3
+              }
+            },
+            "mode": "expression"
+          },
+          "model": "pbr",
+          "pads": 2,
+          "react": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_react').chan.react"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "robotAt": [
+            0,
+            0,
+            -0.3
+          ],
+          "robotAt.x": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "robotAt.y": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "robotAt.z": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(op('speed_travel').chan.value + (-0.3 + ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": -0.3
+              }
+            },
+            "mode": "expression"
+          },
+          "source": "// @use surface-detail\nstruct Params {\n  lamps: f32, // @default 3  Radiance of a gantry's lamps.\n  pads: f32, // @default 2  Radiance of the deck's landing lights.\n  kick: f32, // @default 0  The kick, 0 to 1 as it decays.\n  beat: f32, // @default 0  The beat's count: a whole number.\n  react: f32, // @default 1  How much the hall's lights answer the track.\n  robotAt: vec3f, // @default [0, 0, 0]  Where the robot is: a kick goes out along the hall from there.\n};\n\nfn hallLot(a: f32, b: f32) -> f32 {\n  let n = (u32(i32(a) + 4096) * 73856093u) ^ (u32(i32(b) + 4096) * 19349663u);\n  let m = (n ^ (n >> 15u)) * 2246822519u;\n  return f32((m ^ (m >> 13u)) >> 8u) / 16777216.0;\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let what = s.tint.r;\n  let high = s.tint.g;\n  let around = s.tint.b;\n  let z = s.tint.a;\n  let grime = detailFbm(s.world * vec3f(0.35, 0.5, 0.35), 4, s.footprint);\n  let fine = detailFbm(s.world * 2.4, 3, s.footprint);\n  // A kick is a ring going out along the hall from the robot.\n  let gone = length(s.world - p.robotAt);\n  let ring = exp(-pow((gone - (1.0 - p.kick) * 180.0) / 12.0, 2.0)) * smoothstep(0.03, 0.2, p.kick) * p.react;\n  // Painted steel, worn: it must take a lamp's light as paint does. (As bare dark metal the whole hall was a\n  // black room with rows of lamps in it: a metal shows a light only where it mirrors it.)\n  var albedo = vec3f(0.12, 0.125, 0.12);\n  var rough = 0.7;\n  var metal = 0.25;\n  var glow = vec3f(0.0);\n  let sodium = vec3f(1.0, 0.6, 0.26);\n  if (what > 2.5) {\n    // The deck: dark, wet in pools, lanes painted down it, and the pads' lights.\n    let across = s.world.x;\n    // (Pools: a few, with soft edges. At half the deck they read as a pattern painted on it.)\n    let wet = smoothstep(0.6, 0.72, grime.value);\n    albedo = vec3f(0.07, 0.072, 0.075) * (0.7 + 0.6 * fine.value);\n    rough = mix(0.75, 0.1, wet);\n    metal = 0.1;\n    albedo = albedo * mix(1.0, 0.45, wet);\n    let lane = (1.0 - smoothstep(0.1, 0.16, abs(across - floor(across / 14.0 + 0.5) * 14.0))) * step(0.35, fine.value);\n    albedo = mix(albedo, vec3f(0.5, 0.4, 0.06), lane * 0.85);\n    // A pad every 96 m: a ring of cold lights, and they step round on the beat.\n    let padZ = (floor(z / 96.0) + 0.5) * 96.0;\n    let off = vec2f(across - floor(across / 28.0 + 0.5) * 28.0, z - padZ);\n    let rim = abs(length(off) - 7.0);\n    let turn = atan2(off.y, off.x) / 6.2831853 * 16.0;\n    let lamp = (1.0 - smoothstep(0.12, 0.3, rim)) * (1.0 - smoothstep(0.18, 0.3, abs(fract(turn) - 0.5)));\n    let stepping = 0.35 + 0.65 * step(0.75, fract((floor(turn) + p.beat) / 4.0) + 0.01);\n    glow = vec3f(0.5, 0.8, 1.0) * (p.pads * lamp * stepping);\n  } else if (what > 1.5) {\n    // A gantry: its deck is grating, its edge carries the lamps, its underside is lit by them.\n    let facing = s.normal.y;\n    albedo = vec3f(0.09, 0.09, 0.085) * (0.6 + 0.8 * fine.value);\n    rough = 0.7;\n    metal = 0.4;\n    let edge = 1.0 - smoothstep(0.25, 0.6, abs(facing));\n    let every = fract(z / 3.0) - 0.5;\n    let lamp = edge * (1.0 - smoothstep(0.05, 0.11, abs(every)));\n    let alive = step(0.12, hallLot(floor(z / 3.0), floor(high)));\n    glow = sodium * (p.lamps * lamp * alive * (1.0 + 2.5 * ring));\n    // Under it: the lamps' light on the steel.\n    glow = glow + sodium * (p.lamps * 0.05 * smoothstep(0.3, 0.9, -facing) * (1.0 + 2.5 * ring));\n  } else if (what > 0.5) {\n    // A rib: heavy, dark, a little polished where things have passed. In the crown it carries the flood: a lit\n    // glass a few metres across the middle line.\n    albedo = vec3f(0.07, 0.072, 0.078) * (0.7 + 0.6 * fine.value);\n    rough = mix(0.5, 0.8, grime.value);\n    metal = 0.5;\n    let crown = 1.0 - smoothstep(0.012, 0.02, abs(around - 0.5));\n    glow = vec3f(0.82, 0.9, 1.0) * (p.lamps * 2.0 * crown);\n  } else {\n    // Plates: 4 m by 3 m, each a little its own, a seam round each.\n    let panel = vec2f(floor(z / 4.0), floor(around * 80.0));\n    let own = hallLot(panel.x, panel.y);\n    let seam = max(1.0 - smoothstep(0.0, 0.07, abs(fract(z / 4.0) - 0.5) * 2.0 - 0.9), 1.0 - smoothstep(0.0, 0.06, abs(fract(around * 80.0) - 0.5) * 2.0 - 0.9));\n    // Grey-green paint, some plates ochre primer.\n    albedo = mix(vec3f(0.1, 0.115, 0.11), mix(vec3f(0.17, 0.18, 0.17), vec3f(0.22, 0.17, 0.09), step(0.8, own)), own) * (0.55 + 0.7 * grime.value);\n    rough = mix(0.5, 0.85, grime.value) + (own - 0.5) * 0.2;\n    albedo = albedo * (1.0 - 0.6 * seam);\n    // Rust runs down from the seams.\n    let run = detailFbm(vec3f(s.world.x * 3.0, s.world.y * 0.25, s.world.z * 3.0), 3, s.footprint).value;\n    let rust = smoothstep(0.55, 0.75, run) * smoothstep(0.4, 0.7, grime.value);\n    albedo = mix(albedo, vec3f(0.11, 0.04, 0.015), rust * 0.7);\n    rough = mix(rough, 0.92, rust);\n    metal = mix(metal, 0.05, rust);\n    // Here and there a lit window: a room behind the wall.\n    let pane = abs(vec2f(fract(z / 4.0), fract(around * 80.0)) - 0.5);\n    // (On the walls: not in the vault overhead.)\n    let window = step(0.93, own) * (1.0 - smoothstep(0.2, 0.24, pane.x)) * (1.0 - smoothstep(0.12, 0.16, pane.y)) * (1.0 - smoothstep(18.0, 24.0, high));\n    glow = sodium * (p.lamps * 0.12 * window);\n    albedo = mix(albedo, vec3f(0.0), window);\n  }\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.06, 1.0);\n  o.metallic = metal;\n  o.normal = detailBump(s.normal, fine.gradient * 2.4, 0.02);\n  o.emissive = glow;\n  return o;\n}"
+        },
+        "position": {
+          "x": -3600,
+          "y": 6400
+        },
+        "type": "materialWgsl"
+      },
       "material_hull": {
         "definitionVersion": 1,
         "id": "material_hull",
@@ -5203,11 +6054,56 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.1 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "1.1 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.8 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
                 "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "airColor": [
+            0.27,
+            0.61,
+            1,
+            1
+          ],
+          "airColor.b": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "1 - 0.72 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "airColor.g": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.61 - 0.06 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.61
+              }
+            },
+            "mode": "expression"
+          },
+          "airColor.r": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "0.27 + 0.63 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0.27
               }
             },
             "mode": "expression"
@@ -5515,7 +6411,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * 0.23 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))))"
+                "source": "op('slider_lamp').chan.lamp * 0.23 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))))"
               },
               "static": {
                 "kind": "static",
@@ -5535,7 +6431,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(clamp(abs(fract(-0.012499999999999999 + 0.333333) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)"
+                "source": "((clamp(abs(fract(-0.012499999999999999 + 0.333333) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) + 0.3 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -5548,7 +6444,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(clamp(abs(fract(-0.012499999999999999 + 0.666667) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)"
+                "source": "((clamp(abs(fract(-0.012499999999999999 + 0.666667) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) + 0.62 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -5561,7 +6457,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(clamp(abs(fract(-0.012499999999999999 + 0.000000) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)"
+                "source": "((clamp(abs(fract(-0.012499999999999999 + 0.000000) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -5609,7 +6505,7 @@
             },
             "mode": "expression"
           },
-          "source": "// @use surface-detail\nstruct Params {\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.\n  pool: f32, // @default 0.05  Radiance of the lit liner round a plate, as a share of the plate's.\n  deck: f32, // @default 0.2  How much of all that the wet deck throws back up.\n  air: f32, // @default 0  Radiance of the fields as the steel shows them (the lit mist below, the pods all round): none in the tunnel.\n  podColor: vec3f, // @default [1, 0.04, 0.04]  The pods' light, which the steel shows too out there.\n  gloss: f32, // @default 0.42  Roughness of the shell where nothing has worn or soiled it.\n  steel: f32, // @default 0.3  How much of what it faces the shell throws back: 0.04 is enamel, 0.6 bare steel.\n  wear: f32, // @default 0.8  How old it is: rubbed edges, rust, dust. 0 is as the kit left the works.\n  hueFrom: f32, // @default 0  The lights' colour range starts at this hue, 0 to 1 round the wheel (0 red).\n  hueTo: f32, // @default 0.03  …and ends at this one.\n  spread: f32, // @default 0.6  How much of the range the lights are spread over: 0 all one colour, 1 the lenses (and the length of a tentacle) cover it all.\n  shift: f32, // @default 0  Moves every light along the range, 0 to 1. Drive it from a level.\n  eyeGlow: f32, // @default 9  Radiance of the eye lenses.\n  eyeHits: f32, // @default 0  How much the lenses answer the drums instead of burning steadily: a third of them each to kick, snare and hat.\n  kick: f32, // @default 0  The kick, 0 to 1 as it decays.\n  snare: f32, // @default 0  The snare.\n  hat: f32, // @default 0  The hat.\n  eyeSweep: f32, // @default 0  How much a band of light crossing the face takes over from the steady glow.\n  sweepPhase: f32, // @default 0  Where that band is: it crosses once for each whole number. Drive it from the beat.\n  coreGlow: f32, // @default 0.07  Radiance of a tentacle's light segments at rest: low, so the segmenting shows and no more.\n  pulseGlow: f32, // @default 1.6  Radiance of a segment fully charged.\n};\n\n// What each drawn piece brings of its own: the rig's point attributes of the same names (rig.ts).\nstruct Instance {\n  charge: f32, // @default 0  How lit this piece's light segment is by what runs along the tentacle: 0 at rest, 1 fully.\n  seed: f32, // @default 0  Which piece it is, 0 to 1: its wear is its own.\n  along: f32, // @default 0  How far along its tentacle it is, 0 at the body to 1 at the claw: its place in the colour range.\n  matte: f32, // @default 0  1 on a tentacle's rings: the dark segments between its lights.\n};\n\nfn hueColour(hue: f32) -> vec3f {\n  let wheel = clamp(abs(fract(vec3f(hue) + vec3f(0.000000, 0.666667, 0.333333)) * 6.0 - 3.0) - 1.0, vec3f(0.0), vec3f(1.0));\n  return wheel * 0.96 + 0.04;\n}\n\n// The colour of the light at a place (0 to 1) in the range.\nfn lightColour(place: f32, p: Params) -> vec3f {\n  return hueColour(mix(p.hueFrom, p.hueTo, clamp(place * p.spread + p.shift, 0.0, 1.0)));\n}\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n\n// What a ray going up (d.y > 0) from `here` sees of the lamp of `station` hanging at `lampAt`, in the level\n// plane it hangs in. `pool` is the lit liner round the plate as a share of the plate's radiance; `soft`\n// widens the plate's edge, metres (a rough mirror).\nfn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft: f32) -> vec3f {\n  let lamp = lampAt - here;\n  // The tunnel climbs and falls: a lamp below this height is round a bend of it.\n  if (lamp.y < 0.3) { return vec3f(0.0); }\n  let hit = d * (lamp.y / d.y);\n  let across = hit.x - lamp.x;\n  let along = hit.z - lamp.z;\n  let plate = (1.0 - smoothstep(0.2, 0.26 + soft, abs(across))) * (1.0 - smoothstep(0.3, 0.36 + soft, abs(along)));\n  let lit = exp(-(across * across + along * along) / 3.0) * pool;\n  // Air between: a far lamp is a dim one.\n  return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let role = s.attr.z;\n  var albedo = vec3f(p.steel * 0.92, p.steel * 0.96, p.steel * 1.05);\n  var rough = p.gloss;\n  var metal = 1.0;\n  // Whether it ages, and whether it is a mirror to the lamps.\n  var ages = 1.0;\n  var mirrors = 1.0;\n  if (role > 0.9) {\n    // A lens: black glass over a lamp, brightest where it faces the viewer.\n    let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);\n    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.\n    let lens = floor(s.local * 7.0);\n    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);\n    let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);\n    albedo = vec3f(0.006, 0.006, 0.006);\n    rough = 0.08;\n    metal = 0.0;\n    // The drums: a third of the lenses each to kick, snare and hat. With Eye Hits up a lens sits low and flashes on its own drum.\n    let drum = select(select(p.hat, p.snare, nerve < 0.667), p.kick, nerve < 0.333);\n    let struck = mix(1.0, 0.25 + 2.6 * drum, clamp(p.eyeHits, 0.0, 1.0));\n    // A band of light crossing the face from one side to the other, once for each whole number of the phase.\n    let band = pow(0.5 + 0.5 * cos(6.2831853 * (s.local.x * 0.9 - p.sweepPhase)), 3.0);\n    let swept = mix(1.0, 0.2 + 2.4 * band, clamp(p.eyeSweep, 0.0, 1.0));\n    o.emissive = lightColour(nerve, p) * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life * struck * swept;\n    ages = 0.0;\n    mirrors = 0.0;\n  } else if (role > 0.7) {\n    // The spine between the rings is the tentacle's light: a segment of it shows between every two\n    // rings, so a tentacle is lit, dark, lit, dark all the way down (the owner, 2026-10-05: that\n    // segmenting is the look). Lit from inside by what runs along the tentacle, over a low glow at\n    // rest. Not a mirror: as one, every segment found a lamp whatever the tentacle was doing.\n    albedo = vec3f(0.022, 0.02, 0.02);\n    rough = 0.72;\n    metal = 0.2;\n    o.emissive = lightColour(s.instance.along, p) * (p.coreGlow + p.pulseGlow * s.instance.charge);\n    ages = 0.3;\n    mirrors = 0.0;\n  } else if (role > 0.5) {\n    // Red lead paint.\n    albedo = vec3f(0.11, 0.012, 0.009);\n    rough = 0.5;\n    metal = 0.25;\n  } else if (role > 0.3) {\n    // Brass, long tarnished.\n    albedo = vec3f(0.3, 0.2, 0.08);\n    rough = 0.45;\n  } else if (role > 0.1) {\n    // Bright steel that has not been bright for years.\n    albedo = vec3f(0.34, 0.345, 0.36);\n    rough = 0.36;\n  }\n\n  // A tentacle's rings are the DARK segments between its lights, and must stay dark from every\n  // angle (the owner: \"the not lit up segments were taking on too much light color so they did\n  // not appear as a segment\"). As polished steel they mirrored the light beside them; they are\n  // matt black instead, and show no lamp.\n  if (role <= 0.1 && s.instance.matte > 0.5) {\n    albedo = vec3f(0.012, 0.012, 0.013);\n    rough = 0.88;\n    metal = 0.0;\n    ages = 0.25;\n    mirrors = 0.0;\n  }\n\n  // ── Age ──\n  let wear = p.wear * ages;\n  var pitted = s.normal;\n  if (wear > 0.0) {\n    let skin = s.local + vec3f(17.0, 31.0, 7.0) * s.instance.seed;\n    let blotch = detailFbm(skin * 2.6, 4, s.footprint).value;\n    let wet = detailFbm(skin * 1.4 + vec3f(41.0, 13.0, 29.0), 3, s.footprint).value;\n    let grain = detailFbm(skin * 48.0, 3, s.footprint);\n    // Scores and scratches: long thin marks the way things have dragged along it, each a hair wide.\n    let score = detailFbm(vec3f(skin.x * 55.0, skin.y * 55.0, skin.z * 2.5) + vec3f(9.0), 3, s.footprint).value;\n    let scratched = wear * smoothstep(0.7, 0.76, score);\n    // Edges and raised detail, rubbed through to the metal.\n    let rubbed = clamp(wear * detailEdgeWear(s.curvature, 18.0, grain.value) + scratched * 0.85, 0.0, 1.0);\n    albedo = mix(albedo, vec3f(0.55, 0.53, 0.5), rubbed * 0.8);\n    rough = mix(rough, 0.3, rubbed * 0.7);\n    metal = mix(metal, 1.0, rubbed);\n    // Rust where it has stood wet, pitted.\n    let rust = wear * smoothstep(0.46, 0.7, wet) * (0.4 + 0.6 * grain.value) * (1.0 - rubbed);\n    albedo = mix(albedo, vec3f(0.17, 0.062, 0.022), rust);\n    rough = mix(rough, 0.9, rust);\n    metal = mix(metal, 0.0, rust);\n    // Soot and oil baked on, in patches: darker and duller, still metal underneath.\n    let soot = wear * smoothstep(0.38, 0.62, blotch) * (1.0 - rubbed);\n    albedo = albedo * (1.0 - 0.6 * soot);\n    rough = mix(rough, 0.78, soot * 0.7);\n    // Dust lying on what faces up.\n    let dust = wear * smoothstep(0.5, 0.75, 1.0 - blotch) * max(s.normal.y, 0.0) * (1.0 - rubbed);\n    albedo = mix(albedo, vec3f(0.05, 0.045, 0.038), dust * 0.8);\n    rough = mix(rough, 0.96, dust * 0.8);\n    metal = mix(metal, 0.0, dust * 0.8);\n    // And no patch of it quite as smooth as the next; pitted all over.\n    rough = rough + wear * (grain.value - 0.5) * 0.3;\n    pitted = detailBump(s.normal, grain.gradient * 48.0, 0.0035 * wear);\n  }\n  o.normal = pitted;\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.05, 1.0);\n  o.metallic = metal;\n\n  // A mirror shows what is along its mirror direction: the lamps overhead, and their smear in the wet deck\n  // below (tunnel.ts). Metal only, and hardly at all once it is rough.\n  let view = normalize(s.world - s.eye);\n  let mirror = reflect(view, s.normal);\n  let soft = o.roughness * 0.6;\n  // Looking down, it is the deck's own mirror image of the same lamps, dimmer.\n  let up = vec3f(mirror.x, max(abs(mirror.y), 0.02), mirror.z);\n  var seen = vec3f(0.0);\n  seen = seen + lampSeen(up, s.world, p.lamp0, p.station + -2.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp1, p.station + -1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp2, p.station + 0.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp3, p.station + 1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp4, p.station + 2.0, p.pool, soft);\n  seen = seen * select(p.deck, 1.0, mirror.y > 0.0);\n  // Schlick: at a grazing angle any metal is a full mirror.\n  let graze = pow(1.0 - max(dot(-view, s.normal), 0.0), 5.0);\n  let polish = (1.0 - o.roughness) * (1.0 - o.roughness);\n  o.emissive = o.emissive + seen * p.lamps * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * polish * mirrors;\n  // Out in the fields there is no lamp to show and the steel is not black for that. What is round it out there\n  // (field.ts, air.ts): mist below, lit cold, so what faces down shows it bright and what faces up shows the dark\n  // overhead; and towers all round at its own height, red with pods, which polished steel shows as red glints.\n  // So a robot has an underside, a top and edges, from any side, and is not a hole in the picture when the lens\n  // is behind it and its own lights face away. (Rough steel shows the mist too, only without an image.)\n  let below = smoothstep(0.35, -0.55, mirror.y);\n  let towers = (1.0 - smoothstep(0.25, 0.7, abs(mirror.y))) * smoothstep(0.5, 0.68, detailFbm(mirror * 7.0, 2, 0.0).value);\n  let fields = vec3f(0.27, 0.61, 1.0) * (0.1 + 1.5 * below) * (0.3 + 0.7 * polish) + p.podColor * (2.2 * towers * polish);\n  o.emissive = o.emissive + fields * p.air * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * mirrors;\n  return o;\n}",
+          "source": "// @use surface-detail\nstruct Params {\n  lamp0: vec3f, // @default [0, 2.25, -19.2]  Where the lamp -2 stations on from the robot's own hangs.\n  lamp1: vec3f, // @default [0, 2.25, -6.4]  Where the lamp -1 stations on from the robot's own hangs.\n  lamp2: vec3f, // @default [0, 2.25, 6.4]  Where the lamp 0 stations on from the robot's own hangs.\n  lamp3: vec3f, // @default [0, 2.25, 19.2]  Where the lamp 1 stations on from the robot's own hangs.\n  lamp4: vec3f, // @default [0, 2.25, 32.0]  Where the lamp 2 stations on from the robot's own hangs.\n  station: f32, // @default 37  The station the robot is under: which lamp is which tone.\n  lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.\n  pool: f32, // @default 0.05  Radiance of the lit liner round a plate, as a share of the plate's.\n  deck: f32, // @default 0.2  How much of all that the wet deck throws back up.\n  air: f32, // @default 0  Radiance of an open place as the steel shows it (what lies below it, lit; and the lights all round): none in the tunnel.\n  airColor: vec3f, // @default [0.27, 0.61, 1]  What lies below it out there: the fields' mist, cold; the dock's deck under its lamps, warm.\n  podColor: vec3f, // @default [1, 0.04, 0.04]  The lights all round it out there: the fields' pods, the dock's lamps.\n  gloss: f32, // @default 0.42  Roughness of the shell where nothing has worn or soiled it.\n  steel: f32, // @default 0.3  How much of what it faces the shell throws back: 0.04 is enamel, 0.6 bare steel.\n  wear: f32, // @default 0.8  How old it is: rubbed edges, rust, dust. 0 is as the kit left the works.\n  hueFrom: f32, // @default 0  The lights' colour range starts at this hue, 0 to 1 round the wheel (0 red).\n  hueTo: f32, // @default 0.03  …and ends at this one.\n  spread: f32, // @default 0.6  How much of the range the lights are spread over: 0 all one colour, 1 the lenses (and the length of a tentacle) cover it all.\n  shift: f32, // @default 0  Moves every light along the range, 0 to 1. Drive it from a level.\n  eyeGlow: f32, // @default 9  Radiance of the eye lenses.\n  eyeHits: f32, // @default 0  How much the lenses answer the drums instead of burning steadily: a third of them each to kick, snare and hat.\n  kick: f32, // @default 0  The kick, 0 to 1 as it decays.\n  snare: f32, // @default 0  The snare.\n  hat: f32, // @default 0  The hat.\n  eyeSweep: f32, // @default 0  How much a band of light crossing the face takes over from the steady glow.\n  sweepPhase: f32, // @default 0  Where that band is: it crosses once for each whole number. Drive it from the beat.\n  coreGlow: f32, // @default 0.07  Radiance of a tentacle's light segments at rest: low, so the segmenting shows and no more.\n  pulseGlow: f32, // @default 1.6  Radiance of a segment fully charged.\n};\n\n// What each drawn piece brings of its own: the rig's point attributes of the same names (rig.ts).\nstruct Instance {\n  charge: f32, // @default 0  How lit this piece's light segment is by what runs along the tentacle: 0 at rest, 1 fully.\n  seed: f32, // @default 0  Which piece it is, 0 to 1: its wear is its own.\n  along: f32, // @default 0  How far along its tentacle it is, 0 at the body to 1 at the claw: its place in the colour range.\n  matte: f32, // @default 0  1 on a tentacle's rings: the dark segments between its lights.\n};\n\nfn hueColour(hue: f32) -> vec3f {\n  let wheel = clamp(abs(fract(vec3f(hue) + vec3f(0.000000, 0.666667, 0.333333)) * 6.0 - 3.0) - 1.0, vec3f(0.0), vec3f(1.0));\n  return wheel * 0.96 + 0.04;\n}\n\n// The colour of the light at a place (0 to 1) in the range.\nfn lightColour(place: f32, p: Params) -> vec3f {\n  return hueColour(mix(p.hueFrom, p.hueTo, clamp(place * p.spread + p.shift, 0.0, 1.0)));\n}\n\n// Chambers (src/projects/sentinel-bot/path.ts, CHAMBERS): 0 in the bore, 1 across a hall's middle.\nconst CHAMBER_SWELL: f32 = 0.9;\nfn chamberAt(z: f32) -> f32 {\n  let along = z - 96.0 * floor(z / 96.0);\n  return 1.0 - smoothstep(6.0, 13.0, abs(along - 48.0));\n}\nconst LAMP: f32 = 12.80000;\nconst LAMP_GAIN = array<f32, 15>(1.00, 0.20, 1.00, 1.00, 0.06, 0.40, 1.00, 1.00, 0.20, 0.06, 0.40, 1.00, 1.00, 0.20, 0.40);\n// The light of the lamp at a station (tunnel.ts, LAMP_TONES and LAMP_GAINS): cold in the bore, sodium in a hall,\n// every fifteenth an alarm; and of every run of fifteen, some are dead and some failing.\nfn lampTone(station: f32) -> vec3f {\n  let turn = station - 15.0 * floor(station / 15.0);\n  if (abs(turn - 7.0) < 0.5) { return vec3f(1.0000, 0.1000, 0.0600); }\n  let gain = LAMP_GAIN[u32(clamp(turn + 0.5, 0.0, 14.5))];\n  return mix(vec3f(0.6200, 0.8400, 1.0000), vec3f(1.0000, 0.6200, 0.2800), step(0.5, chamberAt((station + 0.5) * LAMP))) * gain;\n}\n\n// What a ray going up (d.y > 0) from `here` sees of the lamp of `station` hanging at `lampAt`, in the level\n// plane it hangs in. `pool` is the lit liner round the plate as a share of the plate's radiance; `soft`\n// widens the plate's edge, metres (a rough mirror).\nfn lampSeen(d: vec3f, here: vec3f, lampAt: vec3f, station: f32, pool: f32, soft: f32) -> vec3f {\n  let lamp = lampAt - here;\n  // The tunnel climbs and falls: a lamp below this height is round a bend of it.\n  if (lamp.y < 0.3) { return vec3f(0.0); }\n  let hit = d * (lamp.y / d.y);\n  let across = hit.x - lamp.x;\n  let along = hit.z - lamp.z;\n  let plate = (1.0 - smoothstep(0.2, 0.26 + soft, abs(across))) * (1.0 - smoothstep(0.3, 0.36 + soft, abs(along)));\n  let lit = exp(-(across * across + along * along) / 3.0) * pool;\n  // Air between: a far lamp is a dim one.\n  return lampTone(station) * (plate + lit) * exp(-length(hit) * 0.035);\n}\n\nfn surface(s: SurfaceIn, p: Params) -> SurfaceOut {\n  var o = surfaceDefaults(s);\n  let role = s.attr.z;\n  var albedo = vec3f(p.steel * 0.92, p.steel * 0.96, p.steel * 1.05);\n  var rough = p.gloss;\n  var metal = 1.0;\n  // Whether it ages, and whether it is a mirror to the lamps.\n  var ages = 1.0;\n  var mirrors = 1.0;\n  if (role > 0.9) {\n    // A lens: black glass over a lamp, brightest where it faces the viewer.\n    let facing = max(dot(normalize(s.eye - s.world), s.normal), 0.0);\n    // Each lens has a nerve of its own: the eyes are a hand's breadth apart in the robot's frame, so a coarse cell of it names one.\n    let lens = floor(s.local * 7.0);\n    let nerve = fract(sin(dot(lens, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);\n    let life = 0.8 + 0.2 * sin(s.absTime * (1.5 + nerve * 4.0) + nerve * 40.0);\n    albedo = vec3f(0.006, 0.006, 0.006);\n    rough = 0.08;\n    metal = 0.0;\n    // The drums: a third of the lenses each to kick, snare and hat. With Eye Hits up a lens sits low and flashes on its own drum.\n    let drum = select(select(p.hat, p.snare, nerve < 0.667), p.kick, nerve < 0.333);\n    let struck = mix(1.0, 0.25 + 2.6 * drum, clamp(p.eyeHits, 0.0, 1.0));\n    // A band of light crossing the face from one side to the other, once for each whole number of the phase.\n    let band = pow(0.5 + 0.5 * cos(6.2831853 * (s.local.x * 0.9 - p.sweepPhase)), 3.0);\n    let swept = mix(1.0, 0.2 + 2.4 * band, clamp(p.eyeSweep, 0.0, 1.0));\n    o.emissive = lightColour(nerve, p) * p.eyeGlow * (0.35 + 0.65 * facing * facing) * life * struck * swept;\n    ages = 0.0;\n    mirrors = 0.0;\n  } else if (role > 0.7) {\n    // The spine between the rings is the tentacle's light: a segment of it shows between every two\n    // rings, so a tentacle is lit, dark, lit, dark all the way down (the owner, 2026-10-05: that\n    // segmenting is the look). Lit from inside by what runs along the tentacle, over a low glow at\n    // rest. Not a mirror: as one, every segment found a lamp whatever the tentacle was doing.\n    albedo = vec3f(0.022, 0.02, 0.02);\n    rough = 0.72;\n    metal = 0.2;\n    o.emissive = lightColour(s.instance.along, p) * (p.coreGlow + p.pulseGlow * s.instance.charge);\n    ages = 0.3;\n    mirrors = 0.0;\n  } else if (role > 0.5) {\n    // Red lead paint.\n    albedo = vec3f(0.11, 0.012, 0.009);\n    rough = 0.5;\n    metal = 0.25;\n  } else if (role > 0.3) {\n    // Brass, long tarnished.\n    albedo = vec3f(0.3, 0.2, 0.08);\n    rough = 0.45;\n  } else if (role > 0.1) {\n    // Bright steel that has not been bright for years.\n    albedo = vec3f(0.34, 0.345, 0.36);\n    rough = 0.36;\n  }\n\n  // A tentacle's rings are the DARK segments between its lights, and must stay dark from every\n  // angle (the owner: \"the not lit up segments were taking on too much light color so they did\n  // not appear as a segment\"). As polished steel they mirrored the light beside them; they are\n  // matt black instead, and show no lamp.\n  if (role <= 0.1 && s.instance.matte > 0.5) {\n    albedo = vec3f(0.012, 0.012, 0.013);\n    rough = 0.88;\n    metal = 0.0;\n    ages = 0.25;\n    mirrors = 0.0;\n  }\n\n  // ── Age ──\n  let wear = p.wear * ages;\n  var pitted = s.normal;\n  if (wear > 0.0) {\n    let skin = s.local + vec3f(17.0, 31.0, 7.0) * s.instance.seed;\n    let blotch = detailFbm(skin * 2.6, 4, s.footprint).value;\n    let wet = detailFbm(skin * 1.4 + vec3f(41.0, 13.0, 29.0), 3, s.footprint).value;\n    let grain = detailFbm(skin * 48.0, 3, s.footprint);\n    // Scores and scratches: long thin marks the way things have dragged along it, each a hair wide.\n    let score = detailFbm(vec3f(skin.x * 55.0, skin.y * 55.0, skin.z * 2.5) + vec3f(9.0), 3, s.footprint).value;\n    let scratched = wear * smoothstep(0.7, 0.76, score);\n    // Edges and raised detail, rubbed through to the metal.\n    let rubbed = clamp(wear * detailEdgeWear(s.curvature, 18.0, grain.value) + scratched * 0.85, 0.0, 1.0);\n    albedo = mix(albedo, vec3f(0.55, 0.53, 0.5), rubbed * 0.8);\n    rough = mix(rough, 0.3, rubbed * 0.7);\n    metal = mix(metal, 1.0, rubbed);\n    // Rust where it has stood wet, pitted.\n    let rust = wear * smoothstep(0.46, 0.7, wet) * (0.4 + 0.6 * grain.value) * (1.0 - rubbed);\n    albedo = mix(albedo, vec3f(0.17, 0.062, 0.022), rust);\n    rough = mix(rough, 0.9, rust);\n    metal = mix(metal, 0.0, rust);\n    // Soot and oil baked on, in patches: darker and duller, still metal underneath.\n    let soot = wear * smoothstep(0.38, 0.62, blotch) * (1.0 - rubbed);\n    albedo = albedo * (1.0 - 0.6 * soot);\n    rough = mix(rough, 0.78, soot * 0.7);\n    // Dust lying on what faces up.\n    let dust = wear * smoothstep(0.5, 0.75, 1.0 - blotch) * max(s.normal.y, 0.0) * (1.0 - rubbed);\n    albedo = mix(albedo, vec3f(0.05, 0.045, 0.038), dust * 0.8);\n    rough = mix(rough, 0.96, dust * 0.8);\n    metal = mix(metal, 0.0, dust * 0.8);\n    // And no patch of it quite as smooth as the next; pitted all over.\n    rough = rough + wear * (grain.value - 0.5) * 0.3;\n    pitted = detailBump(s.normal, grain.gradient * 48.0, 0.0035 * wear);\n  }\n  o.normal = pitted;\n  o.albedo = vec4f(albedo, 1.0);\n  o.roughness = clamp(rough, 0.05, 1.0);\n  o.metallic = metal;\n\n  // A mirror shows what is along its mirror direction: the lamps overhead, and their smear in the wet deck\n  // below (tunnel.ts). Metal only, and hardly at all once it is rough.\n  let view = normalize(s.world - s.eye);\n  let mirror = reflect(view, s.normal);\n  let soft = o.roughness * 0.6;\n  // Looking down, it is the deck's own mirror image of the same lamps, dimmer.\n  let up = vec3f(mirror.x, max(abs(mirror.y), 0.02), mirror.z);\n  var seen = vec3f(0.0);\n  seen = seen + lampSeen(up, s.world, p.lamp0, p.station + -2.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp1, p.station + -1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp2, p.station + 0.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp3, p.station + 1.0, p.pool, soft);\n  seen = seen + lampSeen(up, s.world, p.lamp4, p.station + 2.0, p.pool, soft);\n  seen = seen * select(p.deck, 1.0, mirror.y > 0.0);\n  // Schlick: at a grazing angle any metal is a full mirror.\n  let graze = pow(1.0 - max(dot(-view, s.normal), 0.0), 5.0);\n  let polish = (1.0 - o.roughness) * (1.0 - o.roughness);\n  o.emissive = o.emissive + seen * p.lamps * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * polish * mirrors;\n  // Out of the tunnel there is no crown lamp to show and the steel is not black for that. What is round it in\n  // the fields (field.ts, air.ts): mist below, lit cold, so what faces down shows it bright and what faces up\n  // shows the dark overhead; and towers all round at its own height, red with pods, which polished steel shows\n  // as red glints. In the dock (dock.ts) the same two things are the lit deck below and the gantries' lamps.\n  // So a robot has an underside, a top and edges, from any side, and is not a hole in the picture when the lens\n  // is behind it and its own lights face away. (Rough steel shows the mist too, only without an image.)\n  let below = smoothstep(0.35, -0.55, mirror.y);\n  let towers = (1.0 - smoothstep(0.25, 0.7, abs(mirror.y))) * smoothstep(0.5, 0.68, detailFbm(mirror * 7.0, 2, 0.0).value);\n  let fields = p.airColor * (0.1 + 1.5 * below) * (0.3 + 0.7 * polish) + p.podColor * (2.2 * towers * polish);\n  o.emissive = o.emissive + fields * p.air * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * mirrors;\n  return o;\n}",
           "spread": {
             "bindings": {
               "expression": {
@@ -6046,7 +6942,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.1 + 0.25 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "0.1 + 0.25 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.1 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -6064,9 +6960,9 @@
           ],
           "camera": "camera_rig",
           "depthOutput": true,
-          "lights": "light_eyes light_body light_follower1 light_follower2 light_lamps light_strike light_storm",
+          "lights": "light_eyes light_body light_follower1 light_follower2 light_lamps light_strike light_storm light_docklamps light_beams",
           "normalOutput": true,
-          "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore geometry_towers geometry_bolts geometry_motes"
+          "scenes": "geometry_hull geometry_ring geometry_claw geometry_bore geometry_towers geometry_bolts geometry_hall geometry_bridges geometry_beams geometry_motes"
         },
         "position": {
           "x": -1200,
@@ -6397,10 +7293,10 @@
         "id": "slider_fields",
         "label": "slider_fields",
         "parameters": {
-          "caption": "Fields",
+          "caption": "Place (1 fields, 2 dock)",
           "channel": "fields",
           "defaultValue": 0,
-          "max": 1,
+          "max": 2,
           "min": 0,
           "step": 0,
           "value": 0
@@ -7007,6 +7903,33 @@
         },
         "type": "valueSpeed"
       },
+      "sweep_beams": {
+        "definitionVersion": 1,
+        "id": "sweep_beams",
+        "label": "sweep_beams",
+        "parameters": {
+          "profile": "ring",
+          "radius": {
+            "bindings": {
+              "map": {
+                "attribute": "girth",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "map"
+          },
+          "sides": 12
+        },
+        "position": {
+          "x": -2700,
+          "y": 7400
+        },
+        "type": "pointSweep"
+      },
       "sweep_bolts": {
         "definitionVersion": 1,
         "id": "sweep_bolts",
@@ -7031,6 +7954,34 @@
         "position": {
           "x": -2700,
           "y": 5100
+        },
+        "type": "pointSweep"
+      },
+      "sweep_bridges": {
+        "definitionVersion": 1,
+        "id": "sweep_bridges",
+        "label": "sweep_bridges",
+        "parameters": {
+          "profile": "ring",
+          "radius": {
+            "bindings": {
+              "map": {
+                "attribute": "girth",
+                "kind": "map"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "map"
+          },
+          "sides": 4,
+          "smooth": false
+        },
+        "position": {
+          "x": -2700,
+          "y": 6650
         },
         "type": "pointSweep"
       },
@@ -7125,6 +8076,21 @@
         },
         "type": "toggle"
       },
+      "topology_beams": {
+        "definitionVersion": 1,
+        "id": "topology_beams",
+        "label": "topology_beams",
+        "parameters": {
+          "cols": 8,
+          "connectivity": "strips",
+          "rows": 4
+        },
+        "position": {
+          "x": -3300,
+          "y": 7400
+        },
+        "type": "pointTopology"
+      },
       "topology_bolts": {
         "definitionVersion": 1,
         "id": "topology_bolts",
@@ -7137,6 +8103,21 @@
         "position": {
           "x": -3300,
           "y": 5100
+        },
+        "type": "pointTopology"
+      },
+      "topology_bridges": {
+        "definitionVersion": 1,
+        "id": "topology_bridges",
+        "label": "topology_bridges",
+        "parameters": {
+          "cols": 14,
+          "connectivity": "strips",
+          "rows": 8
+        },
+        "position": {
+          "x": -3300,
+          "y": 6650
         },
         "type": "pointTopology"
       },
@@ -7538,7 +8519,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.044 + 0.25 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "0.044 + 0.25 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.02 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -7551,7 +8532,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.04 + 0.14 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "0.04 + 0.14 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.1 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -7564,7 +8545,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.016 + 0.062 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "0.016 + 0.062 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.2 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -7577,7 +8558,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_haze').chan.haze * (1 - 0.86 * max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))))"
+                "source": "op('slider_haze').chan.haze * (1 - 0.86 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) - 0.72 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))))"
               },
               "static": {
                 "kind": "static",
@@ -7737,7 +8718,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * (fract(floor(op('audiofile_track').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
+                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * (fract(floor(op('audiofile_track').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
               },
               "static": {
                 "kind": "static",
@@ -7776,7 +8757,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))))"
+                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))))"
               },
               "static": {
                 "kind": "static",
@@ -7997,7 +8978,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_fields').chan.fields > 0.5, ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 3) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",

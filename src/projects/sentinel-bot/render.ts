@@ -4,7 +4,6 @@ import { renderHeadless, type RenderedFrame } from "../../tests/headless/render-
 import { nodeGpuHost } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { encodePng } from "../../runtime/export/png.ts";
 import { toRgba8At } from "../../runtime/export/image.ts";
-import { stopsFinalRender } from "../../domain/diagnostics/classes.ts";
 import { walkTrack } from "../furnace/load-audio.ts";
 import { PACK, sentinelDocument, type SentinelTrack } from "./document.ts";
 import { loadKit } from "./load-kit.ts";
@@ -105,6 +104,8 @@ const result = await renderHeadless({
   outputNodeId: "output_frame",
   // The value graph and the expressions (travel, camera, lights) only run when asked.
   animate: true,
+  // A final render: stops on everything `stopsFinalRender` names, at rest and AT ANY FRAME.
+  strict: true,
   // Every Mesh File In of the document reads the one kit.
   meshes: Object.fromEntries(Object.values(document.graph.nodes).filter((entry) => entry.type === "meshFileIn").map((entry) => [entry.id, glb])),
   ...(track === undefined ? {} : { audio: track.seam(fps, 0) }),
@@ -118,16 +119,8 @@ const result = await renderHeadless({
         },
       }),
 });
-// An ERROR is a broken graph: stop loud, before reading a picture of a robot parked on its rest pose.
-// So is anything in the document that can never take effect (§T1641b: `stopsFinalRender` is an error, or a
-// finding of the class never, not yet or unclassified). Two of those once shipped from this file as warnings:
-// three lamps sat at their stored strength behind a function the grammar does not have, and a colour's parts
-// written x, y, z went nowhere for a day.
-// …and an expression whose value fails at a frame (a division by zero): the editor falls back to the stored
-// value and says so, which is right for an editor and a wrong picture that looks plausible in a film frame.
-const errors = [...new Set(result.diagnostics.filter((d) => stopsFinalRender(d) || d.code === "parameter.expression.value").map((d) => `${d.code}: ${d.message}`))];
-if (errors.length > 0) throw new Error(`the sentinel graph has errors:\n${errors.join("\n")}`);
-const warnings = [...new Set(result.diagnostics.filter((d) => d.severity === "warning").map((d) => `warning ${d.code}: ${d.message}`))];
+// What `strict` let through is what a final render may carry (a clamp, a fallback that says what stands in).
+const warnings = [...new Set(result.findings.filter((found) => found.diagnostic.severity === "warning").map((found) => `warning ${found.frame === null ? "" : `frame ${found.frame}: `}${found.diagnostic.code}: ${found.diagnostic.message}`))];
 if (warnings.length > 0) console.log(warnings.slice(0, 12).join("\n"));
 
 if (encoder !== undefined) {

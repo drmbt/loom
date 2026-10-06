@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { serializeProjectDocument } from "../../domain/project/serialize.ts";
+import { serializeCheckedProject } from "../../examples/checked-project.ts";
 import { PACK, sentinelDocument, type SentinelTrack } from "./document.ts";
 import { loadKit } from "./load-kit.ts";
 
@@ -34,5 +34,5 @@ const track: SentinelTrack | undefined = file === undefined ? undefined : { file
 const url = "media/sentinel-bot/sentinel.glb";
 const { facts } = loadKit(`public/${url}`, url);
 mkdirSync(dirname(out), { recursive: true });
-writeFileSync(out, serializeProjectDocument(sentinelDocument(facts, { robots: PACK.slice(0, count), ...(track === undefined ? {} : { track }) })), "utf8");
+writeFileSync(out, serializeCheckedProject(sentinelDocument(facts, { robots: PACK.slice(0, count), ...(track === undefined ? {} : { track }) })), "utf8");
 console.log(`wrote ${out} (${count} robot${count === 1 ? "" : "s"}${track === undefined ? "" : `, to ${track.file} at ${track.bpm} bpm`}); kit at public/${url}: ${facts.robot.vertices} body vertices, ${facts.sockets.length} tentacles of ${facts.ringCount} rings`);

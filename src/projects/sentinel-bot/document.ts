@@ -7,8 +7,9 @@ import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from 
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { serializePresetBank } from "../../domain/presets/bank.ts";
 import { CAMERA_DEFAULTS, CAMERA_STATEMENTS, CUT_DEFAULTS, SHOTS, cutStatements } from "./camera.ts";
+import { BEAM_CAPACITY, BEAM_KERNEL, BEAM_LIGHT_KERNEL, BEAM_SURFACE_WGSL, BRIDGE_CAPACITY, BRIDGE_KERNEL, BRIDGE_SURFACE_WGSL, DOCK, DOCK_LAMPS, DOCK_LAMP_KERNEL, DOCK_LIGHT_ATTRIBUTES, DOCK_STRIP_ATTRIBUTES, HALL_ATTRIBUTES, HALL_CAPACITY, HALL_KERNEL, HALL_SURFACE_WGSL } from "./dock.ts";
 import { BOLT_ATTRIBUTES, BOLT_CAPACITY, BOLT_KERNEL, BOLT_SURFACE_WGSL, FIELD, FIELD_ATTRIBUTES, STRIKE_ATTRIBUTES, STRIKE_KERNEL, TOWER_CAPACITY, TOWER_KERNEL, TOWER_SURFACE_WGSL, TRUNK_TOWERS } from "./field.ts";
-import { against, fieldStand, fieldTurn, glimpseShot, pace, PACK_BARS, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseRush, phraseSpiral, phraseSwim, rest, RUSH, showHue, stride, surge } from "./director.ts";
+import { against, dockTurn, fieldStand, fieldTurn, glimpseShot, pace, PACK_BARS, packSize, phraseAttack, phraseDraw, phrasePause, phrasePerch, phraseRush, phraseSpiral, phraseSwim, rest, RUSH, showHue, stride, surge } from "./director.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { CHAMBERS, PATH, chamberExpression, pathExpression } from "./path.ts";
 import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
@@ -184,8 +185,9 @@ const SCENE: readonly Slider[] = [
   // How far a kick opens the lens, in the phrases that it does (nearly half): 0 never.
   { name: "slider_pump", caption: "Focus on the kick", value: 0.6, min: 0, max: 2 },
   { name: "slider_grain", caption: "Grain", value: 0.06, min: 0, max: 0.2 },
-  // The other place (field.ts): over a half, the tunnel is gone and the line runs through the fields.
-  { name: "slider_fields", caption: "Fields", value: 0, min: 0, max: 1 },
+  // The other places (field.ts, dock.ts): the tunnel is gone and the line runs through one of them.
+  // (Its name is from when the fields were the only other place: 1 the fields, 2 the dock; 0 as the show says.)
+  { name: "slider_fields", caption: "Place (1 fields, 2 dock)", value: 0, min: 0, max: 2 },
   // …and how much mist lies low in them (air.ts).
   { name: "slider_mist", caption: "Mist", value: 1, min: 0, max: 2.5 },
 ];
@@ -249,16 +251,21 @@ const BEAT = "floor(op('audiofile_track').chan.beat)";
 const ATTACK = "op('lag_attack').chan.value";
 const SPIRAL = "op('lag_spiral').chan.value";
 const FOLLOW = on("toggle_follow");
-// Which place it is in: 0 the tunnel, 1 the fields (field.ts). The panel's Fields puts it there; following the
-// track, the bar count does (director.ts, fieldTurn).
+// WHICH PLACE IT IS IN. The tunnel, unless one of these is 1: PLACE the fields (field.ts), DOCK the dock (dock.ts).
+// The panel's Place puts it in one by hand (1 the fields, 2 the dock); at 0, following the track, the bar count
+// does (director.ts, fieldTurn and dockTurn). OUT is "not the tunnel": 1 in either.
 // The show runs only while a track is being heard: its slow memory of the loudness (`lag_usual`) is not empty.
 // Not the loudness now, which is nothing in a silent bar of a track that is playing; and the bar count runs on
 // the timeline whether anything plays or not, so without this a host with no track went out to the fields.
 const SHOWING = `(${FOLLOW} * (op('lag_usual').chan.level > 0.001))`;
-const placeAt = (bar: string): string => `max(${on("slider_fields")} > 0.5, ${fieldTurn(SHOWING, bar)})`;
-const PLACE = placeAt(BAR);
-// …and whether it will be two bars from now: the pack is called up before the cut, so all of them are there when the walls go.
-const PLACE_SOON = `max(${PLACE}, ${placeAt(`(${BAR} + 2)`)})`;
+const BY_HAND = `floor(${on("slider_fields")} + 0.5)`;
+const fieldsAt = (bar: string): string => `max(${BY_HAND} == 1, (${BY_HAND} == 0) * ${fieldTurn(SHOWING, bar)})`;
+const dockAt = (bar: string): string => `max(${BY_HAND} == 2, (${BY_HAND} == 0) * ${dockTurn(SHOWING, bar)})`;
+const PLACE = fieldsAt(BAR);
+const DOCKED = dockAt(BAR);
+const OUT = `max(${PLACE}, ${DOCKED})`;
+// …and whether it will be out two bars from now: the pack is called up before the cut, so all of them are there when the walls go.
+const OUT_SOON = `max(${OUT}, max(${fieldsAt(`(${BAR} + 2)`)}, ${dockAt(`(${BAR} + 2)`)}))`;
 /**
  * LIGHTNING in the fields (field.ts): which strike (the beat's count: a new place every beat) and how bright now.
  * A strike is a snare, freshly hit (the eighth power: on a busy track the snare's lane is seldom at rest, and a
@@ -276,9 +283,6 @@ const STAND = fieldStand(SHOWING, BAR);
 const SWIM = "op('lag_swim').chan.value";
 // How much of its pace it has, 0 to 1 (rig.ts, SWIM_WAY): what a swimming stroke's lunge is in proportion to.
 const WAY = `clamp(op('lag_rate').chan.value / ${SWIM_WAY}, 0, 1)`;
-
-/** An expression on a SWITCH: what it retains is a boolean, as the parameter is (the builders' expressionSlot retains a number). */
-const expressionSwitch = (source: string, retained: boolean): StoredParameter => ({ mode: "expression", bindings: { static: { kind: "static", value: retained }, expression: { kind: "expression", source } } });
 
 /** The camera's far plane, metres: past the furthest tower of the fields (field.ts: 430 m ahead, 250 m to a side). */
 const FAR = 520;
@@ -349,7 +353,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // hall, and only with the bore itself downward, where a hall's deck is no lower.
     // Out in the fields there is all the room there is, below as well as above (rig.ts, FIELD_BERTH).
     const wide = `(${on("slider_bore")} / 2.6)`;
-    const roomy = `(${wide} * (1 + ${CHAMBERS.swell} * max(${chamberExpression(`(${TRAVEL} + ${offset[2]})`)}, ${FIELD_BERTH} * ${PLACE})))`;
+    const roomy = `(${wide} * (1 + ${CHAMBERS.swell} * max(${chamberExpression(`(${TRAVEL} + ${offset[2]})`)}, ${FIELD_BERTH} * ${OUT})))`;
     return {
       out,
       at: onPath(`(${offset[2]} - 0.3 - 45 * (1 - ${out}) + ${adrift} * ${swimLungeExpression(STROKE, index + 1, WAY)})`, `${offset[0]} * ${roomy} + ${adrift} * ${adriftExpression("x", own)}`, `${offset[1]} * ${offset[1] > 0 ? roomy : `max(${wide}, ${roomy} * ${PLACE})`} + ${adrift} * ${adriftExpression("y", own)}`, [offset[0], offset[1], offset[2]]),
@@ -424,6 +428,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   };
   /** The pods' light as a colour, for the mist they stand in. */
   const podTone = hueExpression(`${(POD_HUES[0] + POD_HUES[1]) / 2}`);
+  /** The dock's kernels: where the robot is, and whether this is the dock. */
+  const docked: Record<string, StoredParameter> = { travel, place: expressionSlot(DOCKED, 0) };
+  /** …and its searchlights': they go about on the clock, brighter with the top of the track. */
+  const searching: Record<string, StoredParameter> = { ...docked, sweep: expressionSlot("abstime * 0.28", 0), level: expressionSlot(`${DOCKED} * (0.55 + 0.45 * ${HIGH})`, 0) };
+  /** The dock's lamps breathe with the low end, as the tunnel's do. */
+  const DOCK_BREATH = `(0.75 + 0.5 * ${LOW})`;
   /** The lightning's kernels: where the robot is, which strike, how bright. */
   const striking: Record<string, StoredParameter> = { travel, place: expressionSlot(PLACE, 0), strike: expressionSlot(STRIKE, 0), flash: expressionSlot(FLASH, 0) };
   const swimming: Record<string, StoredParameter> = { swim: expressionSlot(SWIM, 0), stroke: expressionSlot(STROKE, 0), way: expressionSlot(WAY, 1) };
@@ -533,7 +543,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
           anchorMode: "hard",
           teleportDistance: 100,
           teleportMode: "carry",
-          reset: expressionSwitch(`1 - ${on("toggle_ropes")}`, false),
+          reset: expressionSlot(`1 - ${on("toggle_ropes")}`, false),
         }, { label: "rope_legs" }),
         // Each ring's frame from the strand as it now lies, started from the socket's own (the rig's `orient` there).
         node("frames_legs", "pointCurveFrames", [-1950, 300], { method: "minimiseTwist", seed: "orient", seedOrient: "orient" }, { label: "frames_legs" }),
@@ -739,7 +749,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // bars (director.ts, showHue: in the fields 0.45 of a turn down, red to a cold cyan against the pods' red),
     // and the panel's own turn on top of it. Eased over a second or so, so a change of turn is a quick run down
     // the wheel on the cut and not a jump.
-    node("constant_hue", "constant", [-1500, 1500], { value: expressionSlot(`${showHue(SHOWING, PLACE, BAR)} + ${on("slider_hueturn")}`, 0) }, { label: "constant_hue" }),
+    node("constant_hue", "constant", [-1500, 1500], { value: expressionSlot(`${showHue(SHOWING, PLACE, DOCKED, BAR)} + ${on("slider_hueturn")}`, 0) }, { label: "constant_hue" }),
     node("lag_hue", "valueLag", [-1200, 1500], { lag: 0.5, releaseRatio: 1 }, { label: "lag_hue" }),
     // The long view: the passage's loudness ranked against the last minute's, eased.
     node("normalize_intensity", "valueNormalize", [-2100, 850], { window: 60 }, { label: "normalize_intensity" }),
@@ -747,10 +757,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("constant_perch", "constant", [-2400, 1125], { value: expressionSlot(`max(${on("toggle_perch")}, max(${rest(FOLLOW, ENERGY)}, max(max(${phrasePerch(FOLLOW, INTENSITY, phraseDraw(BAR, 2))}, ${phrasePause(FOLLOW, INTENSITY, phraseDraw(BAR, 5), BAR)}), ${STAND}) * (${ENERGY} > 0)))`, 0) }, { label: "constant_perch" }),
     // The pack: how many are out. A follower takes eight seconds to come up or fall back, so the number is eased.
     // In the fields all of them are out, and are called up two bars before it gets there.
-    node("constant_pack", "constant", [-1500, 1225], { value: expressionSlot(`max(max(${on("slider_pack")}, ${PACK.length} * ${PLACE_SOON}), ${packSize(`(${FOLLOW} * (${ENERGY} > 0))`, phraseDraw(BAR, 6, PACK_BARS), PACK.length)})`, 1) }, { label: "constant_pack" }),
+    node("constant_pack", "constant", [-1500, 1225], { value: expressionSlot(`max(max(${on("slider_pack")}, ${PACK.length} * ${OUT_SOON}), ${packSize(`(${FOLLOW} * (${ENERGY} > 0))`, phraseDraw(BAR, 6, PACK_BARS), PACK.length)})`, 1) }, { label: "constant_pack" }),
     // Which place it is in, under a name of its own for the camera: an Expression node reads its wires into one bag by channel name.
     node("expression_packing", "valueExpression", [-900, 1100], { expressions: "packing = value", defaults: "value = 1" }, { label: "expression_packing" }),
-    node("constant_place", "constant", [-1500, 1350], { value: expressionSlot(PLACE, 0) }, { label: "constant_place" }),
+    // 0 the tunnel, 1 the fields, 2 the dock: over a half the camera cuts through the open places' shots, and a
+    // change of the number is a change of place (what the tests of the cut read).
+    node("constant_place", "constant", [-1500, 1350], { value: expressionSlot(`${PLACE} + 2 * ${DOCKED}`, 0) }, { label: "constant_place" }),
     node("expression_placed", "valueExpression", [-900, 1350], { expressions: "place = value", defaults: "value = 0" }, { label: "expression_placed" }),
     // …and which shot of the early glimpse of the fields it is, if any (director.ts, glimpseShot).
     node("constant_glimpse", "constant", [-1500, 1750], { value: expressionSlot(glimpseShot(SHOWING, BAR), 0) }, { label: "constant_glimpse" }),
@@ -786,12 +798,18 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       // They breathe as the lights do.
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
-      lamps: expressionSlot(`${on("slider_lamp")} * 0.23 * ${LAMP_BREATH} * (1 - ${PLACE})`, 6),
-      air: expressionSlot(`1.1 * ${PLACE}`, 0),
+      lamps: expressionSlot(`${on("slider_lamp")} * 0.23 * ${LAMP_BREATH} * (1 - ${OUT})`, 6),
+      air: expressionSlot(`1.1 * ${PLACE} + 0.8 * ${DOCKED}`, 0),
+      // What lies below it out there, and the lights all round it: the fields' cold mist and red pods, the dock's
+      // lit deck and sodium lamps.
+      airColor: [0.27, 0.61, 1, 1],
+      "airColor.r": expressionSlot(`0.27 + 0.63 * ${DOCKED}`, 0.27),
+      "airColor.g": expressionSlot(`0.61 - 0.06 * ${DOCKED}`, 0.61),
+      "airColor.b": expressionSlot(`1 - 0.72 * ${DOCKED}`, 1),
       podColor: [1, 0.04, 0.04, 1],
-      "podColor.r": expressionSlot(podTone[0], 1),
-      "podColor.g": expressionSlot(podTone[1], 0.04),
-      "podColor.b": expressionSlot(podTone[2], 0.04),
+      "podColor.r": expressionSlot(`(${podTone[0]}) * (1 - ${DOCKED}) + ${DOCKED}`, 1),
+      "podColor.g": expressionSlot(`(${podTone[1]}) * (1 - ${DOCKED}) + 0.62 * ${DOCKED}`, 0.04),
+      "podColor.b": expressionSlot(`(${podTone[2]}) * (1 - ${DOCKED}) + 0.3 * ${DOCKED}`, 0.04),
       // How bright a kick's pulse is as it runs down the cores (the rig says where it is).
       pulseGlow: expressionSlot(`1.6 * ${on("slider_legs")}`, 1.6),
       // At rest the segments glow low; Leg Lights at 0 puts them out.
@@ -816,7 +834,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       pack: expressionSlot("op('lag_pack').chan.value", 1),
       company: expressionSlot("clamp(op('lag_pack').chan.value - 1, 0, 1)", 0),
       ...(ropes ? { follow: expressionSlot(on("slider_follow"), 0.4) } : {}),
-      afield: expressionSlot(PLACE, 0),
+      afield: expressionSlot(OUT, 0),
       spiral: expressionSlot(SPIRAL, 0),
       spiralTurn: expressionSlot("op('speed_winding').chan.value - 0.5", 0),
       meter: expressionSlot(`${on("slider_meter")} * ${LOW}`, 0),
@@ -835,8 +853,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
 
     // ── The tunnel: one grid bent into the bore, a window of it riding with the robot ──
     node("grid_bore", "pointGrid", [-2400, 1200], { cols: BORE_COLUMNS, rows: BORE_ROWS, count: BORE_COLUMNS * BORE_ROWS, sizeX: 2, sizeY: 2 }, { label: "grid_bore" }),
-    node("kernel_bore", "pointKernel", [-2100, 1200], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("slider_bore"), 2.6), place: expressionSlot(PLACE, 0) }, { label: "kernel_bore" }),
-    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * ${LAMP_BREATH} * (1 - ${PLACE})`, 14), bore: expressionSlot(on("slider_bore"), 2.6) }, { label: "material_bore" }),
+    node("kernel_bore", "pointKernel", [-2100, 1200], { capacity: BORE_COLUMNS * BORE_ROWS, attributes: BORE_ATTRIBUTES, kernel: BORE_KERNEL, travel, bore: expressionSlot(on("slider_bore"), 2.6), place: expressionSlot(OUT, 0) }, { label: "kernel_bore" }),
+    node("material_bore", "materialWgsl", [-2100, 1400], { model: "pbr", source: BORE_SURFACE_WGSL, lamp: expressionSlot(`${on("slider_lamp")} * 0.55 * ${LAMP_BREATH} * (1 - ${OUT})`, 14), bore: expressionSlot(on("slider_bore"), 2.6) }, { label: "material_bore" }),
     node("geometry_bore", "geometry", [-1800, 1200], { mode: "surface", material: "material_bore", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bore" }),
 
     // ── Air: dust that the lamps and the eyes light on its way to a wall ──
@@ -849,6 +867,32 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("sweep_towers", "pointSweep", [-2700, 4200], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_towers" }),
     node("material_tower", "materialWgsl", [-2700, 4400], { model: "pbr", source: TOWER_SURFACE_WGSL, ...fieldLight }, { label: "material_tower" }),
     node("geometry_towers", "geometry", [-2400, 4200], { mode: "surface", material: "material_tower", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_towers" }),
+    // ── THE DOCK (dock.ts): a hall of steel round the line. Its shell is a grid the kernel stands on the hall's
+    // section, ribs and gantries standing out of it as shape; bridges across the air; its work lamps and its
+    // searchlights are Lights of a pointset each. Out of the dock every one of them is a point. ──
+    node("grid_hall", "pointGrid", [-3900, 6200], { cols: DOCK.cols, rows: DOCK.rows, count: HALL_CAPACITY, sizeX: 2, sizeY: 2 }, { label: "grid_hall" }),
+    node("kernel_hall", "pointKernel", [-3600, 6200], { capacity: HALL_CAPACITY, attributes: HALL_ATTRIBUTES, kernel: HALL_KERNEL, ...docked }, { label: "kernel_hall" }),
+    node("material_hall", "materialWgsl", [-3600, 6400], { model: "pbr", source: HALL_SURFACE_WGSL, lamps: expressionSlot(`3 * ${DOCK_BREATH}`, 3), pads: 2, kick: expressionSlot(KICK, 0), beat: expressionSlot(BEAT, 0), react: expressionSlot(on("slider_react"), 1), robotAt: [0, 0, -0.3], "robotAt.x": core.x, "robotAt.y": core.y, "robotAt.z": core.z }, { label: "material_hall" }),
+    node("geometry_hall", "geometry", [-3300, 6200], { mode: "surface", material: "material_hall", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_hall" }),
+    node("kernel_bridges", "pointKernel", [-3600, 6650], { capacity: BRIDGE_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: BRIDGE_KERNEL, ...docked }, { label: "kernel_bridges" }),
+    node("topology_bridges", "pointTopology", [-3300, 6650], { connectivity: "strips", cols: DOCK.bridgePoints, rows: DOCK.bridges }, { label: "topology_bridges" }),
+    // A bridge goes across, so its frame leans on up.
+    node("frames_bridges", "pointCurveFrames", [-3000, 6650], { method: "minimiseTwist", up: [0, 1, 0] }, { label: "frames_bridges" }),
+    node("sweep_bridges", "pointSweep", [-2700, 6650], { profile: "ring", sides: 4, smooth: false, radius: map("girth", 1) }, { label: "sweep_bridges" }),
+    node("material_bridge", "materialWgsl", [-2700, 6850], { model: "pbr", source: BRIDGE_SURFACE_WGSL, lamps: expressionSlot(`3 * ${DOCK_BREATH}`, 3) }, { label: "material_bridge" }),
+    node("geometry_bridges", "geometry", [-2400, 6650], { mode: "surface", material: "material_bridge", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_bridges" }),
+    // The work lamps: two to a rib, sodium, shining down and in from the second gantry.
+    node("kernel_docklamps", "pointKernel", [-3600, 7100], { capacity: DOCK_LAMPS, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: DOCK_LAMP_KERNEL, ...docked, power: expressionSlot(`${on("slider_lamp")} * 7 * ${DOCK_BREATH}`, 180), flood: expressionSlot(`${on("slider_lamp")} * 96 * ${DOCK_BREATH}`, 2500) }, { label: "kernel_docklamps" }),
+    node("light_docklamps", "light", [-3300, 7100], { kind: "spot", mode: "points", direction: map("aim", [0, -1, 0]), cone: 120, coneSoftness: 0.8, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 90 }, { label: "light_docklamps" }),
+    // The searchlights: a cone of lit air each, drawn as light over everything, and a Spot along it.
+    node("kernel_beams", "pointKernel", [-3600, 7400], { capacity: BEAM_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: BEAM_KERNEL, ...searching }, { label: "kernel_beams" }),
+    node("topology_beams", "pointTopology", [-3300, 7400], { connectivity: "strips", cols: DOCK.beamPoints, rows: DOCK.beams }, { label: "topology_beams" }),
+    node("frames_beams", "pointCurveFrames", [-3000, 7400], { method: "minimiseTwist", up: [0, 0, 1] }, { label: "frames_beams" }),
+    node("sweep_beams", "pointSweep", [-2700, 7400], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_beams" }),
+    node("material_beam", "materialWgsl", [-2700, 7600], { model: "pbr", source: BEAM_SURFACE_WGSL, glow: 0.5 }, { label: "material_beam" }),
+    node("geometry_beams", "geometry", [-2400, 7400], { mode: "surface", material: "material_beam", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_beams" }),
+    node("kernel_beamlights", "pointKernel", [-3600, 7850], { capacity: DOCK.beams, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: BEAM_LIGHT_KERNEL, ...searching, power: 900 }, { label: "kernel_beamlights" }),
+    node("light_beams", "light", [-3300, 7850], { kind: "spot", mode: "points", direction: map("aim", [0, 1, 0]), cone: 9, coneSoftness: 0.5, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 110 }, { label: "light_beams" }),
     // Lightning: an arc between two towers and its forks (field.ts, BOLT_KERNEL), and a Light where it is.
     node("kernel_bolts", "pointKernel", [-3600, 5100], { capacity: BOLT_CAPACITY, attributes: BOLT_ATTRIBUTES, kernel: BOLT_KERNEL, ...striking }, { label: "kernel_bolts" }),
     node("topology_bolts", "pointTopology", [-3300, 5100], { connectivity: "strips", cols: FIELD.boltPoints, rows: FIELD.bolts }, { label: "topology_bolts" }),
@@ -870,7 +914,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       kernel: MOTE_KERNEL,
       travel,
       bore: expressionSlot(on("slider_bore"), 2.6),
-      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${PLACE})`, 26),
+      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${OUT})`, 26),
       eyes: expressionSlot(`${on("slider_glow")} * 0.9 * (0.75 + ${HIGH} * 0.6) * ${faceLevel}`, 8),
       eyeColor: [1, 0.04, 0.04, 1],
       "eyeColor.r": expressionSlot(eyeTone[0], 1),
@@ -917,7 +961,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       kernel: LAMP_KERNEL,
       travel,
       bore: expressionSlot(on("slider_bore"), 2.6),
-      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${PLACE})`, 26),
+      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${OUT})`, 26),
       named: namedLamps.length > 0 ? 1 : 0,
     }, { label: "kernel_lamps" }),
     // Spots, shining down: a lamp is a plate in the crown, and a plate lights what is under it and not the crown
@@ -933,7 +977,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         "color.g": expressionSlot(lamp.tone[1], 0.84),
         "color.b": expressionSlot(lamp.tone[2], 1),
         // No tunnel, no lamps: in the fields they are out.
-        intensity: expressionSlot(`${on("slider_lamp")} * ${lamp.near} * ${lamp.high} * ${LAMP_BREATH} * (1 - ${PLACE})`, index === 1 ? 26 : 0),
+        intensity: expressionSlot(`${on("slider_lamp")} * ${lamp.near} * ${lamp.high} * ${LAMP_BREATH} * (1 - ${OUT})`, index === 1 ? 26 : 0),
         position: [0, 2.25, (index - 0.5) * LAMP_SPACING],
         "position.x": lamp.position.x,
         "position.y": lamp.position.y,
@@ -946,14 +990,14 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     ),
     node("render_shot", "render", [-1200, 0], {
       // The dust is last: additive geometry is light, drawn over what it glows on (and out of the Depth output since B256).
-      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_towers", "geometry_bolts", "geometry_motes"].join(" "),
+      scenes: [...pieces.map((piece) => `geometry_${piece.role}`), "geometry_bore", "geometry_towers", "geometry_bolts", "geometry_hall", "geometry_bridges", "geometry_beams", "geometry_motes"].join(" "),
       camera: "camera_rig",
-      lights: ["light_eyes", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), "light_lamps", "light_strike", "light_storm", ...namedLamps.map((_, index) => `light_lamp${index}`)].join(" "),
+      lights: ["light_eyes", "light_body", ...followers.map((_, index) => `light_follower${index + 1}`), "light_lamps", "light_strike", "light_storm", "light_docklamps", "light_beams", ...namedLamps.map((_, index) => `light_lamp${index}`)].join(" "),
       ambientColor: [0.3, 0.62, 0.66, 1],
       // A little cold fill and no more: an unlit stretch may be black (the owner, 2026-10-05).
       // …and in the fields more of it: there is no wall to be black against, and the towers have only this, the
       // robots' own lights and their pods'.
-      ambientIntensity: expressionSlot(`0.1 + 0.25 * ${PLACE}`, 0.1),
+      ambientIntensity: expressionSlot(`0.1 + 0.25 * ${PLACE} + 0.1 * ${DOCKED}`, 0.1),
       background: [0, 0, 0, 1],
       // Live, no multisampling: 4x on this much geometry was the largest single cost of the frame (measured in the
       // app, shadows on: 36 to 42 frames a second with it, 45 to 58 without), and the focus, the grain and the lens
@@ -985,17 +1029,19 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       ...lens,
       // The fields are a far bigger dark: the air itself is thin there, so a tower four hundred metres off is still
       // a shape, and colder. What closes the view in the fields is the mist that lies low (air.ts).
-      density: expressionSlot(`${on("slider_haze")} * (1 - 0.86 * ${PLACE})`, 0.04),
+      // The dock is a hall eighty metres across: its far wall is a shape in warm haze, and its far end is gone.
+      density: expressionSlot(`${on("slider_haze")} * (1 - 0.86 * ${PLACE} - 0.72 * ${DOCKED})`, 0.04),
       color: [0.016, 0.04, 0.044, 1],
       // …and far lighter than the towers, which are black: a tower is a shape against the air, as in the film.
-      "color.r": expressionSlot(`0.016 + 0.062 * ${PLACE}`, 0.016),
-      "color.g": expressionSlot(`0.04 + 0.14 * ${PLACE}`, 0.04),
-      "color.b": expressionSlot(`0.044 + 0.25 * ${PLACE}`, 0.044),
+      // …and in the dock it is sodium: the lamps' own colour, hung in the air.
+      "color.r": expressionSlot(`0.016 + 0.062 * ${PLACE} + 0.2 * ${DOCKED}`, 0.016),
+      "color.g": expressionSlot(`0.04 + 0.14 * ${PLACE} + 0.1 * ${DOCKED}`, 0.04),
+      "color.b": expressionSlot(`0.044 + 0.25 * ${PLACE} + 0.02 * ${DOCKED}`, 0.044),
       // More air, more of it lit.
       glow: expressionSlot(`${on("slider_haze")} * 0.05`, 0.002),
       ...Object.fromEntries(mirrored.flatMap((lamp, index) => (["x", "y", "z"] as const).map((axis) => [`${lampParameter(index)}.${axis}`, lamp.position[axis]]))),
       station: expressionSlot(`floor(${TRAVEL} / ${LAMP_SPACING})`, 37),
-      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${PLACE})`, 26),
+      lamp: expressionSlot(`${on("slider_lamp")} * ${LAMP_BREATH} * (1 - ${OUT})`, 26),
       eyesAt: [0, 0, 0.9],
       "eyesAt.x": glow.x,
       "eyesAt.y": glow.y,
@@ -1102,7 +1148,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("motes-geo", ["kernel_motes", "out"], ["geometry_motes", "points"]),
     edge("lamps-light", ["kernel_lamps", "out"], ["light_lamps", "points"]),
     edge("strike-light", ["kernel_strike", "out"], ["light_strike", "points"]),
-    ...(["towers", "bolts"] as const).flatMap((what) => [
+    edge("grid-hall", ["grid_hall", "out"], ["kernel_hall", "in"]),
+    edge("hall-geo", ["kernel_hall", "out"], ["geometry_hall", "points"]),
+    edge("docklamps-light", ["kernel_docklamps", "out"], ["light_docklamps", "points"]),
+    edge("beams-light", ["kernel_beamlights", "out"], ["light_beams", "points"]),
+    ...(["towers", "bolts", "bridges", "beams"] as const).flatMap((what) => [
       edge(`${what}-strips`, [`kernel_${what}`, "out"], [`topology_${what}`, "points"]),
       edge(`${what}-frames`, [`topology_${what}`, "out"], [`frames_${what}`, "points"]),
       edge(`${what}-sweep`, [`frames_${what}`, "out"], [`sweep_${what}`, "points"]),

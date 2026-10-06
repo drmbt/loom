@@ -48,8 +48,9 @@ ${LAMP_PARAMS_WGSL}
   lamps: f32, // @default 6  Radiance of a lamp plate, as the steel reflects it.
   pool: f32, // @default 0.05  Radiance of the lit liner round a plate, as a share of the plate's.
   deck: f32, // @default 0.2  How much of all that the wet deck throws back up.
-  air: f32, // @default 0  Radiance of the fields as the steel shows them (the lit mist below, the pods all round): none in the tunnel.
-  podColor: vec3f, // @default [1, 0.04, 0.04]  The pods' light, which the steel shows too out there.
+  air: f32, // @default 0  Radiance of an open place as the steel shows it (what lies below it, lit; and the lights all round): none in the tunnel.
+  airColor: vec3f, // @default [0.27, 0.61, 1]  What lies below it out there: the fields' mist, cold; the dock's deck under its lamps, warm.
+  podColor: vec3f, // @default [1, 0.04, 0.04]  The lights all round it out there: the fields' pods, the dock's lamps.
   gloss: f32, // @default 0.42  Roughness of the shell where nothing has worn or soiled it.
   steel: f32, // @default 0.3  How much of what it faces the shell throws back: 0.04 is enamel, 0.6 bare steel.
   wear: f32, // @default 0.8  How old it is: rubbed edges, rust, dust. 0 is as the kit left the works.
@@ -202,14 +203,15 @@ ${MIRRORED.map((index) => `  seen = seen + lampSeen(up, s.world, p.${lampParamet
   let graze = pow(1.0 - max(dot(-view, s.normal), 0.0), 5.0);
   let polish = (1.0 - o.roughness) * (1.0 - o.roughness);
   o.emissive = o.emissive + seen * p.lamps * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * polish * mirrors;
-  // Out in the fields there is no lamp to show and the steel is not black for that. What is round it out there
-  // (field.ts, air.ts): mist below, lit cold, so what faces down shows it bright and what faces up shows the dark
-  // overhead; and towers all round at its own height, red with pods, which polished steel shows as red glints.
+  // Out of the tunnel there is no crown lamp to show and the steel is not black for that. What is round it in
+  // the fields (field.ts, air.ts): mist below, lit cold, so what faces down shows it bright and what faces up
+  // shows the dark overhead; and towers all round at its own height, red with pods, which polished steel shows
+  // as red glints. In the dock (dock.ts) the same two things are the lit deck below and the gantries' lamps.
   // So a robot has an underside, a top and edges, from any side, and is not a hole in the picture when the lens
   // is behind it and its own lights face away. (Rough steel shows the mist too, only without an image.)
   let below = smoothstep(0.35, -0.55, mirror.y);
   let towers = (1.0 - smoothstep(0.25, 0.7, abs(mirror.y))) * smoothstep(0.5, 0.68, detailFbm(mirror * 7.0, 2, 0.0).value);
-  let fields = vec3f(0.27, 0.61, 1.0) * (0.1 + 1.5 * below) * (0.3 + 0.7 * polish) + p.podColor * (2.2 * towers * polish);
+  let fields = p.airColor * (0.1 + 1.5 * below) * (0.3 + 0.7 * polish) + p.podColor * (2.2 * towers * polish);
   o.emissive = o.emissive + fields * p.air * mix(o.albedo.rgb, vec3f(1.0), graze) * o.metallic * mirrors;
   return o;
 }`;
