@@ -27,6 +27,15 @@ export default defineConfig({
    * of them and such a spec cannot load at all.
    */
   tsconfig: "./tsconfig.app.json",
+  /*
+   * ONLY `*.spec.ts` is a Playwright file. The default pattern also takes `*.test.ts`,
+   * and `perf/prune-traces.test.ts` is a VITEST file that lives under this directory
+   * (T1277). Loading it throws "Vitest failed to access its internal state", and one file
+   * that fails to load stops the whole run before a test starts: a bare `pnpm test:e2e`,
+   * and `--project=chromium`, ran nothing and exited 1. A spec named by file never loaded
+   * it, which is how it went unseen (found under T1616b, listing the lanes).
+   */
+  testMatch: /\.spec\.ts$/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
