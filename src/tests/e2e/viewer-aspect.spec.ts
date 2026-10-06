@@ -17,7 +17,7 @@ import { APP_VIEWPORT, addNode, connect, fitAll, moveNode, openApp } from "./app
  *
  * ## Why this lane, and why the canvas rather than a style
  *
- * `chromium-headed-gpu` is the only project with a real WebGPU adapter (§V895), and this
+ * `chromium-gpu` is the only project with a real WebGPU adapter (§V895), and this
  * assertion is about LAYOUT under a live presentation: the canvas has to be the picture the
  * compositor draws, sized by the same `ResizeObserver`/`fitInsideRegion` path the product
  * runs, with a backend actually blitting into it. So the numbers here come from

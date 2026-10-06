@@ -27,7 +27,7 @@ import { addNode, openApp } from "./app.ts";
  * where the cost is, rather than at any of the code paths that might call them — a fix
  * that moved the reallocation somewhere else would still fail this.
  *
- * ## Why the headed lane
+ * ## Why the GPU lane
  *
  * There is nothing to hold without a surface, and a surface needs a real adapter: the
  * headless lane resolves none (`app.ts`), so this claim would pass there by never having a

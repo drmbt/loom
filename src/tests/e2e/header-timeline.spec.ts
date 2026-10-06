@@ -18,8 +18,8 @@ import { APP_VIEWPORT } from "./app.ts";
  *
  * This spec's headless lane has no WebGPU adapter (see `app.ts`, §V895), so no frame is
  * ever rendered: the playhead does not move, and nothing about SEEKING, looping or
- * rendering the range out is observable here. Those need a device — which the headed
- * `chromium-headed-gpu` lane now has (T1086). What is observable in this lane — and what
+ * rendering the range out is observable here. Those need a device — which the
+ * `chromium-gpu` lane now has (T1086; headless since T1616b). What is observable in this lane — and what
  * the owner's constraint is actually about — is where the strip is and how tall the bar is.
  */
 
