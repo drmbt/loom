@@ -1,5 +1,5 @@
 import { HAZE_WGSL } from "./air.ts";
-import { SEARCH, SEARCH_CAPACITY, SEARCH_KERNEL, SEARCH_LIGHT_KERNEL, searchParameters } from "./searchlight.ts";
+import { SEARCH, SEARCH_KERNEL, SEARCH_LIGHT_ATTRIBUTES, SEARCH_LIGHT_KERNEL, SEARCH_STRIP_ATTRIBUTES, searchLevel } from "./searchlight.ts";
 import { GLITCH_WGSL } from "./glitch.ts";
 import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/graph.ts";
 import type { StoredParameter } from "../../domain/types/parameters.ts";
@@ -369,8 +369,6 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const glow = onPath(`(${face.toFixed(3)} + ${lunge})`, wander.x, wander.y, [0, 0, face]);
   // The middle of the body, between the sockets: where the light of its own tentacles is.
   const core = onPath(`(-0.3 + ${lunge})`, wander.x, wander.y, [0, 0, -0.3]);
-  /** How far a searchlight's far end is swung off straight ahead, metres: each robot's on slow counts of its own. */
-  const searchSway = (robot: number, axis: "x" | "y"): string => (axis === "x" ? `5 * sin(abstime * 0.6 + ${(robot * 2.1).toFixed(2)})` : `2.5 * sin(abstime * 0.43 + ${(robot * 1.3).toFixed(2)})`);
   /**
    * Where each follower of the pack is, and how far out (0 to 1), as expressions: what the rig does with `pack` for
    * the robot of that index (its place off the leader's, 45 m further back while it is on its way, wandering on its own count).
@@ -391,35 +389,23 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     return {
       out,
       at: onPath(along, across, up, [offset[0], offset[1], offset[2]]),
-      // …and its face, and a point it looks toward (its searchlight's two ends: searchlight.ts).
-      face: onPath(`(${along} + ${(face + 0.3).toFixed(3)})`, across, up, [offset[0], offset[1], offset[2] + face]),
-      toward: onPath(`(${along} + 30)`, `${across} + ${searchSway(index + 1, "x")}`, `${up} + ${searchSway(index + 1, "y")}`, [offset[0], offset[1], offset[2] + 30]),
     };
   });
   /**
-   * THE SEARCHLIGHTS (searchlight.ts): each robot's, from its face toward a point thirty metres on that swings
-   * about. Out of the tunnel they come on for some four-bar phrases (a little more than half) and go off for the
-   * rest, eased, so they are an event and not a fixture; the panel's Searchlights holds them on anywhere.
+   * THE SEARCHLIGHTS (searchlight.ts): each robot's, from its face the way it faces. Out of the tunnel they come on
+   * for some four-bar phrases (a little more than half) and go off for the rest, eased, so they are an event and
+   * not a fixture; the panel's Searchlights holds them on anywhere. WHERE a beam is and which way it goes is not
+   * said here: its kernels read the rig's own points (the hull's, and the rig's points along the nose), so a beam
+   * is at the face and turns with it. Only how bright each robot's is.
    */
   const SEARCHING = "op('lag_search').chan.value";
-  const searchEnds = [
-    { face: glow, toward: onPath(`(${face.toFixed(3)} + 30 + ${lunge})`, `${wander.x} + ${searchSway(0, "x")}`, `${wander.y} + ${searchSway(0, "y")}`, [0, 0, face + 30]), level: SEARCHING },
-    ...followers.map((follower) => ({ face: follower.face, toward: follower.toward, level: `(${SEARCHING} * ${follower.out})` })),
-  ];
   const beaming: Record<string, StoredParameter> = Object.fromEntries(
     Array.from({ length: SEARCH.robots }, (_, robot) => {
-      const names = searchParameters(robot);
-      const ends = searchEnds[robot];
+      const follower = robot === 0 ? undefined : followers[robot - 1];
       // A robot the pack does not have (a render of one): no beam.
-      if (ends === undefined) return [[names.level, 0] as const];
-      return [
-        [names.face, [0, 0, 0]] as const,
-        ...(["x", "y", "z"] as const).map((axis) => [`${names.face}.${axis}`, ends.face[axis]] as const),
-        [names.toward, [0, 0, 30]] as const,
-        ...(["x", "y", "z"] as const).map((axis) => [`${names.toward}.${axis}`, ends.toward[axis]] as const),
-        [names.level, expressionSlot(ends.level, 0)] as const,
-      ];
-    }).flat(),
+      if (robot > 0 && follower === undefined) return [searchLevel(robot), 0] as const;
+      return [searchLevel(robot), expressionSlot(follower === undefined ? SEARCHING : `(${SEARCHING} * ${follower.out})`, 0)] as const;
+    }),
   );
   /** The lamp station `step` stations from the one the robot is under: where it hangs, and how much of it is lit (1 within half a spacing, 0 a spacing and a half away, so the three in use trade places unseen). */
   const lampAt = (step: number): { position: Record<"x" | "y" | "z", StoredParameter>; near: string; high: string; tone: readonly [string, string, string] } => {
@@ -574,8 +560,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
    * really working for the robot on the environment".
    */
   const robotCasts: Record<string, StoredParameter> = shadows ? {} : { shadowCasters: `geometry_hull geometry_ring ${hingedClaws ? "geometry_hub" : "geometry_claw"}` };
-  const pieceNodes = (rig: Record<string, StoredParameter>): GraphNode[] =>
-    pieces.flatMap((piece, index) => [
+  const pieceNodes = (rig: Record<string, StoredParameter>): GraphNode[] => [
+    // The line each robot's searchlight shines along (searchlight.ts): the rig's points out along its nose, from its
+    // face on. Of the rig, with the pieces: the same kernel and the same knobs the hull is placed by.
+    node("kernel_searchline", "pointKernel", [-3900, 10600], { capacity: SEARCH.points * robots.length, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(facts, robots, { axis: [face, face + SEARCH.length], count: SEARCH.points }), ...rig }, { label: "kernel_searchline" }),
+    ...pieces.flatMap((piece, index) => [
       node(`mesh_${piece.role}`, "meshFileIn", [-2700, index * 150], { file: facts.glbUrl, select: piece.shape.select, vertices: piece.shape.vertices, triangles: piece.shape.triangles, parts: piece.shape.parts }, { label: `mesh_${piece.role}` }),
       // A piece drawn on the strands' wrists has no points of its own.
       ...(piece.rides === "wrist" ? [] : [node(`kernel_${piece.role}`, "pointKernel", [-2400, index * 150], { capacity: jointCount(facts, piece.pick) * robots.length, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(facts, robots, piece.pick, { rope: piece.rides === "strand" }), ...rig }, { label: `kernel_${piece.role}` })]),
@@ -590,7 +579,8 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
         // On a rope the last ring of a tentacle is its wrist as well: the claw is drawn there and nowhere else.
         ...(piece.rides === "wrist" ? { group: `abs(p.kind - ${KIND.hub}.0) < 0.5` } : piece.stows === true || robots.length > 1 ? { group: "p.kind > -0.5" } : {}),
       }, { label: `geometry_${piece.role}` }),
-    ]);
+    ]),
+  ];
   /**
    * THE LEGS AS ROPES (the owner, three times: "very stiff and not floppy ropey", "not squiddly draggy enough",
    * and a friend who animates, "leg movement can use more work and looks jank still"). The rig still says
@@ -1069,16 +1059,17 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     node("material_fireglow", "materialUnlit", [-3000, 10450], { color: [1, 1, 1, 1] }, { label: "material_fireglow" }),
     node("geometry_fireglow", "geometry", [-2700, 10250], { mode: "points", material: "material_fireglow", blend: "additive", soft: 1, spherical: true, scale: map("halo", 0, "w"), tint: map("halo", [0, 0, 0, 0]) }, { label: "geometry_fireglow" }),
     node("light_fires", "light", [-3300, 10250], { kind: "point", mode: "points", color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_fires" }),
-    // The robots' searchlights (searchlight.ts): a cone of lit air from each one's face, drawn as light, and a Spot along it.
+    // The robots' searchlights (searchlight.ts): a cone of lit air from each one's face, drawn as light, and a Spot along
+    // it. Both read the rig's points (the edges search-body and search-line): where the face is and which way it looks.
     node("constant_search", "constant", [-1500, 1875], { value: expressionSlot(`max(${on("slider_search")}, ${OUT} * (${phraseDraw(BAR, 9)} < 0.55))`, 0) }, { label: "constant_search" }),
     node("lag_search", "valueLag", [-1200, 1875], { lag: 0.35, releaseRatio: 1 }, { label: "lag_search" }),
-    node("kernel_search", "pointKernel", [-3600, 10600], { capacity: SEARCH_CAPACITY, attributes: DOCK_STRIP_ATTRIBUTES, kernel: SEARCH_KERNEL, ...beaming }, { label: "kernel_search" }),
-    node("topology_search", "pointTopology", [-3300, 10600], { connectivity: "strips", cols: SEARCH.points, rows: SEARCH.robots }, { label: "topology_search" }),
+    node("kernel_search", "pointKernel", [-3600, 10600], { capacity: SEARCH.points * robots.length, attributes: SEARCH_STRIP_ATTRIBUTES, kernel: SEARCH_KERNEL, ...beaming }, { label: "kernel_search" }),
+    node("topology_search", "pointTopology", [-3300, 10600], { connectivity: "strips", cols: SEARCH.points, rows: robots.length }, { label: "topology_search" }),
     node("frames_search", "pointCurveFrames", [-3000, 10600], { method: "minimiseTwist", up: [0, 1, 0] }, { label: "frames_search" }),
     node("sweep_search", "pointSweep", [-2700, 10600], { profile: "ring", sides: 12, radius: map("girth", 1) }, { label: "sweep_search" }),
     node("material_search", "materialWgsl", [-2700, 10800], { model: "pbr", source: BEAM_SURFACE_WGSL, glow: 0.35 }, { label: "material_search" }),
     node("geometry_search", "geometry", [-2400, 10600], { mode: "surface", material: "material_search", blend: "additive", tint: map("tint", [0, 0, 0, 0]) }, { label: "geometry_search" }),
-    node("kernel_searchlights", "pointKernel", [-3600, 11050], { capacity: SEARCH.robots, attributes: DOCK_LIGHT_ATTRIBUTES, kernel: SEARCH_LIGHT_KERNEL, ...beaming, power: 110 }, { label: "kernel_searchlights" }),
+    node("kernel_searchlights", "pointKernel", [-3600, 11050], { capacity: robots.length, attributes: SEARCH_LIGHT_ATTRIBUTES, kernel: SEARCH_LIGHT_KERNEL, ...beaming, face, power: 110 }, { label: "kernel_searchlights" }),
     node("light_search", "light", [-3300, 11050], { kind: "spot", mode: "points", direction: map("aim", [0, 0, 1]), cone: 16, coneSoftness: 0.6, color: map("tint", [1, 1, 1, 1]), intensity: map("power", 1), falloff: "inverseSquare", range: 60 }, { label: "light_search" }),
     // Lightning: an arc between two towers and its forks (field.ts, BOLT_KERNEL), and a Light where it is.
     node("kernel_bolts", "pointKernel", [-3600, 5700], { capacity: BOLT_CAPACITY, attributes: BOLT_ATTRIBUTES, kernel: BOLT_KERNEL, ...striking }, { label: "kernel_bolts" }),
@@ -1360,6 +1351,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("fires-light", ["kernel_fires", "out"], ["light_fires", "points"]),
     edge("fires-glow", ["kernel_fires", "out"], ["geometry_fireglow", "points"]),
     edge("search-ease", ["constant_search", "out"], ["lag_search", "in"]),
+    // A searchlight is the rig's: its Spot reads the hull's points, its cone the rig's points along the nose.
+    edge("search-body", ["kernel_hull", "out"], ["kernel_searchlights", "in"]),
+    edge("search-line", ["kernel_searchline", "out"], ["kernel_search", "in"]),
     edge("search-light", ["kernel_searchlights", "out"], ["light_search", "points"]),
     ...(["towers", "bolts", "bridges", "beams", "formations", "flames", "search"] as const).flatMap((what) => [
       edge(`${what}-strips`, [`kernel_${what}`, "out"], [`topology_${what}`, "points"]),
