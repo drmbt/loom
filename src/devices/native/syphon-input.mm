@@ -216,10 +216,16 @@ napi_value acquire(napi_env env, napi_callback_info info) {
       job->source = [session->client newFrameImage];
       if (!job->source || job->source.pixelFormat != MTLPixelFormatBGRA8Unorm)
         throw std::runtime_error("Syphon input requires a BGRA8Unorm source texture");
+      // A Syphon surface is packed 8-bit BGRA by contract: SyphonMetalClient wraps every
+      // one as BGRA8Unorm whatever its fourcc says. Current Syphon stamps 'BGRA'; the older
+      // OpenGL servers still embedded in shipping apps (Resolume Arena, measured: fourcc 0,
+      // 4 bytes/element, no planes, 7680-byte rows at 1920x1080) leave it unset, and TD reads
+      // them. So unset is accepted; any OTHER fourcc, element size or a planar surface is not.
       IOSurfaceRef sourceSurface = job->source.iosurface;
-      if (!sourceSurface || IOSurfaceGetPixelFormat(sourceSurface) != (uint32_t)0x42475241 ||
+      const uint32_t fourcc = sourceSurface ? IOSurfaceGetPixelFormat(sourceSurface) : 0;
+      if (!sourceSurface || (fourcc != (uint32_t)0x42475241 && fourcc != 0) ||
           IOSurfaceGetBytesPerElement(sourceSurface) != 4 || IOSurfaceGetPlaneCount(sourceSurface) != 0)
-        throw std::runtime_error("Syphon source IOSurface is not tested packed BGRA8");
+        throw std::runtime_error("Syphon source IOSurface is not packed BGRA8");
       job->width = job->source.width; job->height = job->source.height;
       if (!job->width || !job->height) throw std::runtime_error("Syphon source dimensions are empty");
       job->state = state; job->session = session;
