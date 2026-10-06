@@ -478,6 +478,55 @@ describe("the grid in PointCtx (T472)", () => {
     expect(module.wgsl).toContain("PointDim(8u, 8u, index % 8u, index / 8u));");
   });
 
+  /**
+   * T1587b slice 2 — a grid of several SHEETS. `cols`, `rows`, `i` and `j` are ONE sheet's,
+   * so a kernel written for one tube runs the same on each of ten, and two members say
+   * which sheet and how many.
+   */
+  const SHEET_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
+  var q = p;
+  q.position = vec3f(f32(ctx.dim.i), f32(ctx.dim.j), f32(ctx.dim.sheet) / f32(ctx.dim.sheets));
+  return q;
+}`;
+
+  it("over several sheets, j is the row in the slot's OWN sheet, and sheet says which", () => {
+    const module = kernelModule({ ...request, kernel: SHEET_KERNEL, dim: { cols: 12, rows: 54, sheets: 10 } });
+    if (!module.ok) throw new Error(module.errors.join("; "));
+    expect(module.wgsl).toContain("  sheet: u32,\n  sheets: u32,\n};");
+    // 648 is a sheet's slots: 12 × 54.
+    expect(module.wgsl).toContain("PointDim(12u, 54u, index % 12u, (index / 12u) % 54u, index / 648u, 10u));");
+  });
+
+  it("a kernel that names no sheet still gets its own sheet's row on a grid of several", () => {
+    // The kernel the consumer already has: it reads i, j, cols and rows and knows nothing of sheets.
+    const module = kernelModule({ ...request, kernel: DIM_KERNEL, dim: { cols: 12, rows: 54, sheets: 10 } });
+    if (!module.ok) throw new Error(module.errors.join("; "));
+    expect(module.wgsl).toContain("PointDim(12u, 54u, index % 12u, (index / 12u) % 54u, index / 648u, 10u));");
+  });
+
+  it("over ONE sheet a kernel that names the sheet is told it is sheet 0 of 1", () => {
+    for (const dim of [{ cols: 12, rows: 54 }, { cols: 12, rows: 54, sheets: 1 }]) {
+      const module = kernelModule({ ...request, kernel: SHEET_KERNEL, dim });
+      if (!module.ok) throw new Error(module.errors.join("; "));
+      expect(module.wgsl).toContain("PointDim(12u, 54u, index % 12u, (index / 12u) % 54u, index / 648u, 1u));");
+    }
+  });
+
+  it("over one sheet a kernel that names NO sheet keeps the text it always had, to the byte", () => {
+    const before = kernelModule({ ...request, kernel: DIM_KERNEL, dim: { cols: 64, rows: 48 } });
+    const explicit = kernelModule({ ...request, kernel: DIM_KERNEL, dim: { cols: 64, rows: 48, sheets: 1 } });
+    if (!before.ok || !explicit.ok) throw new Error("expected both to generate");
+    expect(explicit.wgsl).toBe(before.wgsl);
+    expect(before.wgsl).not.toContain("sheet");
+    expect(before.wgsl).toContain("PointDim(64u, 48u, index % 64u, index / 64u));");
+  });
+
+  it("a GROUP predicate that names the sheet brings the members in on its own", () => {
+    const module = kernelModule({ ...request, group: "ctx.dim.sheet == 1u", dim: { cols: 8, rows: 8, sheets: 3 } });
+    if (!module.ok) throw new Error(module.errors.join("; "));
+    expect(module.wgsl).toContain("PointDim(8u, 8u, index % 8u, (index / 8u) % 8u, index / 64u, 3u));");
+  });
+
   it("REFUSES by name when the point set publishes no grid, rather than handing over zeros", () => {
     const module = kernelModule({ ...request, kernel: DIM_KERNEL });
     expect(module.ok).toBe(false);

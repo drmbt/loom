@@ -25,7 +25,7 @@ import {
   kernelStorage,
   packedPointStorage,
 } from "./point-storage.ts";
-import { parseTopology, stripsOf } from "../../points/topology.ts";
+import { kernelDimOf, parseTopology } from "../../points/topology.ts";
 import { drawArgsWgsl } from "../../points/lifecycle.ts";
 import { DEFAULT_POINT_KERNEL, SPRITE_RENDER_WGSL, TEXTURE_TO_ATTRIBUTE_WGSL, pointRayWgsl, spriteRenderWgsl } from "../shaders/points.wgsl.ts";
 import { RGBA_TEXTURE } from "./common-ports.ts";
@@ -731,9 +731,9 @@ export const pointKernelNode: NodeDefinition = {
        non-grid (or absent) topology supplies nothing, and codegen refuses by name only if
        the kernel asks (§V288/§V309: costing nothing when unused is the whole point).
        T1586b: STRIPS are the same index (slot = j × cols + i), so a kernel over curves gets
-       the same four numbers — `i` its station, `j` its strip — through `stripsOf`, the one
-       answer to "what strips does this edge carry" (a grid's rows are strips too). */
-    const incomingStrips = stripsOf(parseTopology(incoming?.topology));
+       the same four numbers — `i` its station, `j` its strip. T1587b: a grid of several
+       sheets gives ONE sheet's columns and rows, and how many sheets (`kernelDimOf`). */
+    const incomingDim = kernelDimOf(parseTopology(incoming?.topology));
     const fieldTexture = inputs["field"];
 
     /* T1076: this node's own packed pair, and the addressing table codegen needs. Every
@@ -768,7 +768,7 @@ export const pointKernelNode: NodeDefinition = {
       storage: plan.storage,
       kernel: `${shared.prelude}${kernelBodyOf(kernelSource)}`,
       ...(groupSource.trim() === "" ? {} : { group: groupSource }),
-      ...(incomingStrips === undefined ? {} : { dim: { cols: incomingStrips.cols, rows: incomingStrips.rows } }),
+      ...(incomingDim === undefined ? {} : { dim: incomingDim.sheets > 1 ? incomingDim : { cols: incomingDim.cols, rows: incomingDim.rows } }),
       ...(fieldTexture === undefined ? {} : { field: true }),
       ...(params.fields.length === 0 ? {} : { params }),
     });

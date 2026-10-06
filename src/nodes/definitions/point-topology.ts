@@ -70,7 +70,7 @@ export const pointTopologyNode: NodeDefinition = {
       ],
       compileTime: true,
       description:
-        "Points: no connectivity. Grid: a Columns × Rows sheet a Surface can skin. Strips (T1586b): Rows separate curves of Columns points each, in slot order — what the curve nodes (Curve Frames, Resample) and a kernel's ctx.dim read; a Surface refuses it, because neighbouring curves are not joined.",
+        "Points: no connectivity. Grid: a Columns × Rows sheet a Surface can skin, or Sheets of them one after another. Strips (T1586b): Rows separate curves of Columns points each, in slot order — what the curve nodes (Curve Frames, Resample) and a kernel's ctx.dim read; a Surface refuses it, because neighbouring curves are not joined.",
     },
     cols: {
       type: "number",
@@ -116,6 +116,19 @@ export const pointTopologyNode: NodeDefinition = {
             ? "Strips are not joined to each other, so there is no V seam to close."
             : null,
     },
+    sheets: {
+      type: "number",
+      label: "Sheets",
+      default: 1,
+      min: 1,
+      max: MAX_POINTS,
+      range: "bounded",
+      step: 1,
+      compileTime: true,
+      inactiveWhen: (values) => (values["connectivity"] === "grid" || values["connectivity"] === undefined ? null : "Only a Grid is cut into sheets; Rows already says how many strips."),
+      description:
+        "Grid: how many separate Columns × Rows sheets the points hold, one after another — slot (sheet × Rows + row) × Columns + column. A Surface draws them all in one draw and joins none to the next: ten tubes, ten ribbons. Rows and both wraps are one sheet's. A kernel's ctx.dim reads one sheet's columns and rows, with ctx.dim.sheet and ctx.dim.sheets beside them.",
+    },
   },
   compile(context): CompiledNodeDescription {
     const { nodeId, inputs, parameters } = readCompileInputs(context);
@@ -141,12 +154,14 @@ export const pointTopologyNode: NodeDefinition = {
     const cols = Math.max(1, Math.round(readNumber(parameters, "cols", 64)));
     const rows = Math.max(1, Math.round(readNumber(parameters, "rows", 64)));
     const wrapU = readFlag(parameters, "wrapU", false) === 1;
+    // T1587b: one sheet is written without the number, so a claim that shipped is the string it was.
+    const sheets = Math.max(1, Math.round(readNumber(parameters, "sheets", 1)));
     const topology: PointTopology =
       parameters["connectivity"] === "points"
         ? { kind: "points" }
         : parameters["connectivity"] === "strips"
           ? { kind: "strips", cols, rows, closed: wrapU }
-          : { kind: "grid", cols, rows, wrapU, wrapV: readFlag(parameters, "wrapV", false) === 1 };
+          : { kind: "grid", cols, rows, wrapU, wrapV: readFlag(parameters, "wrapV", false) === 1, ...(sheets > 1 ? { sheets } : {}) };
 
     const addressed =
       topology.kind === "grid" ? gridPointCount(topology) : topology.kind === "strips" ? stripsPointCount(topology) : 0;

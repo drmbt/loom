@@ -29,6 +29,13 @@ export interface SceneShadingOptions {
   /** T478: a vec4f attribute multiplies the base colour per point (the mapped tint). */
   readonly pointColor?: boolean;
   /**
+   * T1587b: the grid this draws is SEVERAL SHEETS (`grid:{cols}x{rows}x{sheets}`): a sheet's
+   * rows follow the one before it in the buffer and no cell joins two. The vertex chunk then
+   * reads the sheet off the vertex index. Absent (one sheet), the text is the one a grid
+   * always had, to the byte — see `GRID_SHEET_WGSL`.
+   */
+  readonly sheets?: boolean;
+  /**
    * T481: the LIGHT INDICES that cast, in casting order. Slot s of this list owns
    * `shadow{s}Matrix` (a named mat4 member, V380) and the `shadowMap{s}` texture at
    * binding 5+s. Empty or absent emits byte-identical text (§V309).
@@ -895,7 +902,43 @@ const LOCAL_VARYINGS = `  @location(6) local: vec3f,
   @location(7) localNormal: vec3f,
 `;
 
-function surfaceMeshWgsl(pointColor: boolean, carriesLocal = false): EmittedWgsl {
+/**
+ * T1587b — A GRID OF SEVERAL SHEETS, as the two grid chunks (the lit one below and the depth
+ * one, `shadowSurfaceWgsl`) read it. Ten tubes swept from ten strips are ONE pointset and
+ * ONE draw of `sheets × cells × 6` vertices: a vertex's cell says which sheet it is in, and
+ * since no cell joins two sheets there is no join to draw, degenerate or otherwise.
+ *
+ * ⚑ A BRANCH IN THE ONE EMITTER, AND ONLY FOR A CLAIM OF MORE THAN ONE SHEET. With `sheets`
+ * false each chunk emits the text it always did, to the byte. That is on purpose: two
+ * shader programs can round one expression differently (a fused multiply-add is the
+ * compiler's choice), so the way to keep every grid that shipped on its picture is to keep
+ * its program. `grid-sheets.test.ts` pins the one-sheet programs by their text.
+ *
+ * The sheet is a module-scope private, set once at the top of the vertex stage, so
+ * `gridPosition` keeps its two arguments and every call of it (the vertex, its four
+ * neighbours for the normal) stays the line it was.
+ */
+const GRID_SHEET_WGSL = {
+  /** Declared before `gridPosition`. */
+  declaration: `/* T1587b: the sheet this vertex is in. A sheet's rows follow the one before it in the
+   buffer, and no cell joins two sheets. */
+var<private> gridSheet: u32;
+
+`,
+  /** A row's first slot: the sheets before this one hold `rows` rows each. */
+  row: (row: string): string => `(gridSheet * rows + ${row})`,
+  /** In the vertex stage, after `cellsU` and `quad`: which sheet, and which cell of it. */
+  cell: (cellsV: string): string => `  /* T1587b: a sheet is cellsU × cellsV cells, and the draw is every sheet's. */
+  let sheetCells = cellsU * ${cellsV};
+  gridSheet = quad / sheetCells;
+  let cell = quad % sheetCells;
+`,
+} as const;
+
+function surfaceMeshWgsl(pointColor: boolean, carriesLocal = false, sheets = false): EmittedWgsl {
+  /* One sheet: the cell IS the quad, and a row's first slot is `row × cols`. */
+  const cell = sheets ? "cell" : "quad";
+  const rowOf = (row: string): string => (sheets ? GRID_SHEET_WGSL.row(row) : row);
   return wgsl`struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) normal: vec3f,
@@ -912,12 +955,12 @@ fn cellCorner(v: u32) -> vec2u {
   return corners[v];
 }
 
-fn gridPosition(gx: u32, gy: u32) -> vec3f {
+${sheets ? GRID_SHEET_WGSL.declaration : ""}fn gridPosition(gx: u32, gy: u32) -> vec3f {
   let cols = u32(params.grid.x);
   let rows = u32(params.grid.y);
   let px = select(gx, gx % cols, params.grid.z > 0.5);
   let py = select(gy, gy % rows, params.grid.w > 0.5);
-  return positions[py * cols + px];
+  return positions[${rowOf("py")} * cols + px];
 }
 
 fn nextIndex(i: u32, extent: u32, wrapped: bool) -> u32 {
@@ -936,8 +979,8 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let cellsU = select(cols - 1u, cols, wrapU);
   let quad = vertex / 6u;
   let corner = cellCorner(vertex % 6u);
-  let gx = (quad % cellsU) + corner.x;
-  let gy = (quad / cellsU) + corner.y;
+${sheets ? GRID_SHEET_WGSL.cell("select(rows - 1u, rows, wrapV)") : ""}  let gx = (${cell} % cellsU) + corner.x;
+  let gy = (${cell} / cellsU) + corner.y;
 
   let local = gridPosition(gx, gy);
   let du = gridPosition(nextIndex(gx, cols, wrapU), gy) -
@@ -957,7 +1000,7 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   out.uv = vec2f(f32(gx) / max(params.grid.x - 1.0, 1.0), f32(gy) / max(params.grid.y - 1.0, 1.0));
   /* Same modular indexing as the position read, so the seam vertex wears column 0's tint. */
   out.tint = ${pointColor
-    ? "pointColors[select(gy, gy % rows, wrapV) * cols + select(gx, gx % cols, wrapU)]"
+    ? `pointColors[${rowOf("select(gy, gy % rows, wrapV)")} * cols + select(gx, gx % cols, wrapU)]`
     : "vec4f(1.0)"};
   return out;
 }`;
@@ -1584,7 +1627,7 @@ ${shadowFactor(index)}    matte.${"xyz"[channel]} = 1.0 - shadow;
     options.mesh === undefined ? "" : instanced === undefined ? meshBindingsWgsl(options.mesh) : `${instancedStorageWgsl(instanced)}${instanceAccessors}${FACE_VIEWER_WGSL}`;
   const vertexStage =
     options.mesh === undefined
-      ? surfaceMeshWgsl(pointColor, custom !== undefined)
+      ? surfaceMeshWgsl(pointColor, custom !== undefined, options.sheets === true)
       : instanced === undefined
         ? meshVertexWgsl(pointColor, options.mesh, custom !== undefined)
         : meshInstancedVertexWgsl(instanced, custom !== undefined);
@@ -2163,12 +2206,17 @@ export interface DepthPassOptions {
    * not a depth at all. The read side does the matching divide (`pc.xyz / pc.w`).
    */
   readonly perspective?: boolean;
+  /** T1587b: the grid is several sheets (the surface chunk's `sheets`). Grid sweeps only. */
+  readonly sheets?: boolean;
 }
 
 /** The surface mesh from the light's view — grid arithmetic identical to the lit draw. */
 export const shadowSurfaceWgsl = generatedOnce("shadowSurfaceWgsl", buildShadowSurfaceWgsl);
 function buildShadowSurfaceWgsl(options: DepthPassOptions = {}): EmittedWgsl {
   const linear = options.linearDepth === true;
+  /* T1587b: several sheets, by the lit chunk's own pieces (`GRID_SHEET_WGSL`). */
+  const sheets = options.sheets === true;
+  const cell = sheets ? "cell" : "quad";
   const depthExpr = linear
     ? `dot(params.depthRow, vec4f(world, 1.0)) / max(params.depthRange.x, 1e-6)`
     : `clip.z`;
@@ -2194,12 +2242,12 @@ fn cellCorner(v: u32) -> vec2u {
   return corners[v];
 }
 
-fn gridPosition(gx: u32, gy: u32) -> vec3f {
+${sheets ? GRID_SHEET_WGSL.declaration : ""}fn gridPosition(gx: u32, gy: u32) -> vec3f {
   let cols = u32(params.grid.x);
   let rows = u32(params.grid.y);
   let px = select(gx, gx % cols, params.grid.z > 0.5);
   let py = select(gy, gy % rows, params.grid.w > 0.5);
-  return positions[py * cols + px];
+  return positions[${sheets ? GRID_SHEET_WGSL.row("py") : "py"} * cols + px];
 }
 
 struct VertexOut {
@@ -2214,8 +2262,8 @@ fn vs(@builtin(vertex_index) vertex: u32) -> VertexOut {
   let cellsU = select(cols - 1u, cols, wrapU);
   let quad = vertex / 6u;
   let corner = cellCorner(vertex % 6u);
-  let gx = (quad % cellsU) + corner.x;
-  let gy = (quad / cellsU) + corner.y;
+${sheets ? GRID_SHEET_WGSL.cell("select(u32(params.grid.y) - 1u, u32(params.grid.y), params.grid.w > 0.5)") : ""}  let gx = (${cell} % cellsU) + corner.x;
+  let gy = (${cell} / cellsU) + corner.y;
   let world = (params.model * vec4f(gridPosition(gx, gy), 1.0)).xyz;
   let clip = params.lightViewProjection * vec4f(world, 1.0);
   var out: VertexOut;
@@ -2618,6 +2666,8 @@ fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
 export interface GlassShaderOptions {
   /** An equirect environment is wired on the render — the reflection samples it. */
   readonly environment?: boolean;
+  /** T1587b: the grid is several sheets (the surface chunk's `sheets`). Grid glass only. */
+  readonly sheets?: boolean;
 }
 
 /** Manual bilinear per level + a level mix: textureLoad trilinear, exact at lod 0. */
@@ -2755,7 +2805,7 @@ function buildGlassSurfaceWgsl(options: GlassShaderOptions = {}): EmittedWgsl {
 
 @group(0) @binding(0) var<uniform> params: SceneParams;
 @group(0) @binding(1) var<storage, read> positions: array<vec3f>;
-${glassBindingsWgsl(options)}${surfaceMeshWgsl(false)}
+${glassBindingsWgsl(options)}${surfaceMeshWgsl(false, false, options.sheets === true)}
 
 ${glassPyramidWgsl()}
 ${glassFragmentWgsl(options)}`;

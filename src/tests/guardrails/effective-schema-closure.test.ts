@@ -398,6 +398,10 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
     reason: `${TYPE_ONLY_UNIT_TEST} T1587b's one read is each parameter's own \`inactiveWhen\`: which profile Sides and Smooth apply to.`,
     reads: ["pointSweepNode.parameters"],
   },
+  "src/nodes/definitions/point-topology.test.ts": {
+    reason: `${TYPE_ONLY_UNIT_TEST} T1587b's one read is Sheets' own \`inactiveWhen\`: only a Grid is cut into sheets.`,
+    reads: ["pointTopologyNode.parameters"],
+  },
   "src/nodes/definitions/slit-scan.test.ts": { reason: TYPE_ONLY_UNIT_TEST, reads: ["slitScanNode.parameters"] },
   "src/nodes/definitions/solid.test.ts": {
     reason: TYPE_ONLY_UNIT_TEST,

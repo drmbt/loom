@@ -68,7 +68,7 @@ import {
 // T532: the geometry preview draws through the scene Render's OWN shader builders, so
 // the preview and the render cannot drift about what a geometry looks like.
 import { lightMetaUniform, sceneInstancesWgsl, sceneSurfaceWgsl } from "../nodes/shaders/scene-render.wgsl.ts";
-import { gridCellCounts, gridPointCount, parseTopology } from "../points/topology.ts";
+import { gridPointCount, gridSheets, gridVertexCount, parseTopology } from "../points/topology.ts";
 import {
   CAMERA_PREVIEW_VERTEX_COUNT,
   SCENE_PREVIEW_BALL_VERTEX_COUNT,
@@ -2177,12 +2177,12 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
           const untransformed = { model: identityMatrix(), modelNormal: identityMatrix() };
           if (parsed !== null && parsed.kind === "grid" && gridPointCount(parsed) <= payload.capacity) {
             const topology = parsed;
-            const cells = gridCellCounts(topology);
             synthPasses.push({
               ...passBase,
               clear: false,
-              shader: sceneSurfaceWgsl({ model: geometryModel, lightCount: 2 }),
-              vertexCount: cells.cellsU * cells.cellsV * 6,
+              // T1587b: a grid of several sheets is one draw of every sheet's cells, as in the Render.
+              shader: sceneSurfaceWgsl({ model: geometryModel, lightCount: 2, ...(gridSheets(topology) > 1 ? { sheets: true } : {}) }),
+              vertexCount: gridVertexCount(topology),
               buffers: geometryBuffers,
               uniforms: {
                 ...geometryUniforms,

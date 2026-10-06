@@ -117,3 +117,38 @@ describe("pointTopology — the connectivity claim (T302)", () => {
     expect(result.diagnostics?.[0]?.code).toBe("node.points.edge");
   });
 });
+
+/** T1587b slice 2 — the Sheets parameter: several `Columns × Rows` sheets in one grid claim. */
+describe("pointTopology — sheets (T1587b)", () => {
+  const PAIRS = fixturePairs("gen", [{ name: "position", type: "vec3f" }], 4096);
+  const claim = (parameters: Record<string, unknown>, capacity = 4096) =>
+    pointTopologyNode.compile(compileContext({ nodeId: "topo", inputs: ["points"], pointsets: { points: { pairs: PAIRS, capacity, topology: "points" } }, parameters: parameters as never }));
+
+  it("claims Sheets sheets of Columns × Rows, with the wraps after the count", () => {
+    expect(claim({ connectivity: "grid", cols: 12, rows: 54, sheets: 6 }).pointsets?.["out"]?.topology).toBe("grid:12x54x6");
+    expect(claim({ connectivity: "grid", cols: 12, rows: 54, sheets: 6, wrapU: true }).pointsets?.["out"]?.topology).toBe("grid:12x54x6:wrapU");
+  });
+
+  it("one sheet is the claim a grid always made", () => {
+    expect(claim({ connectivity: "grid", cols: 64, rows: 64, wrapU: true }).pointsets?.["out"]?.topology).toBe("grid:64x64:wrapU");
+    expect(claim({ connectivity: "grid", cols: 64, rows: 64, sheets: 1 }).pointsets?.["out"]?.topology).toBe("grid:64x64");
+  });
+
+  it("refuses sheets the capacity cannot hold, at the point of authorship", () => {
+    // 12 × 54 × 7 = 4,536 points over an edge of 4,096.
+    const result = claim({ connectivity: "grid", cols: 12, rows: 54, sheets: 7 });
+    expect(result.pointsets).toBeUndefined();
+    expect(result.diagnostics?.[0]?.message).toBe('Node "topo": topology "grid:12x54x7" addresses 4536 points but the edge carries 4096.');
+    expect(claim({ connectivity: "grid", cols: 12, rows: 54, sheets: 6 }).diagnostics ?? []).toEqual([]);
+  });
+
+  it("only a Grid is cut into sheets: strips and points do not read the number", () => {
+    expect(claim({ connectivity: "strips", cols: 12, rows: 54, sheets: 6 }).pointsets?.["out"]?.topology).toBe("strips:12x54");
+    expect(claim({ connectivity: "points", sheets: 6 }).pointsets?.["out"]?.topology).toBe("points");
+    const inactive = (values: Record<string, unknown>): string | null =>
+      (pointTopologyNode.parameters["sheets"] as { inactiveWhen?: (values: Record<string, unknown>) => string | null }).inactiveWhen?.(values) ?? null;
+    expect(inactive({ connectivity: "grid" })).toBeNull();
+    expect(inactive({ connectivity: "strips" })).toBe("Only a Grid is cut into sheets; Rows already says how many strips.");
+    expect(inactive({ connectivity: "points" })).toBe("Only a Grid is cut into sheets; Rows already says how many strips.");
+  });
+});

@@ -10,7 +10,7 @@ import { resolveGroupPredicate } from "./points.ts";
 import { DEFAULT_MATERIAL } from "../../domain/types/scene.ts";
 import { cameraPayloadMatrix, directionalShadowMatrix, lookAt, pointShadowFaceMatrices, pointShadowFaceReaches, projectorMatrix } from "../../domain/geometry/camera.ts";
 import { identityMatrix, normalMatrix, objectMatrix } from "../../domain/geometry/transform.ts";
-import { gridCellCounts, gridPointCount, parseTopology } from "../../points/topology.ts";
+import { gridPointCount, gridSheets, gridVertexCount, parseTopology } from "../../points/topology.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
 import { DANGLING_CAMERA_SUGGESTION, danglingCameraRefusal } from "./camera-reference.ts";
@@ -2318,16 +2318,16 @@ export const renderNode: NodeDefinition = {
         }
         if (topology === null || topology.kind !== "grid") return; // lit loop refuses
         if (gridPointCount(topology) > payload.capacity) return;
-        const { cellsU, cellsV } = gridCellCounts(topology);
         passes.push({
           kind: "draw",
           id: `${nodeId}:${options.prefix}:${geometryIndex}`,
           nodeId,
-          shader: depthShader(shadowSurfaceWgsl(depthOptions)),
+          /* T1587b: a grid of several sheets is still this ONE draw, of every sheet's cells. */
+          shader: depthShader(shadowSurfaceWgsl(gridSheets(topology) > 1 ? { ...depthOptions, sheets: true } : depthOptions)),
           target: options.target,
           topology: "triangle-list",
           instances: 1,
-          vertexCount: cellsU * cellsV * 6,
+          vertexCount: gridVertexCount(topology),
           buffers: [attributeBinding("positions", position)],
           uniforms: {
             lightViewProjection: Array.from(options.matrix ?? []),
@@ -3086,8 +3086,11 @@ export const renderNode: NodeDefinition = {
           nodeId,
         });
       }
-      const vertexCount =
-        topology.kind === "mesh" ? topology.triangles * 3 : gridCellCounts(topology).cellsU * gridCellCounts(topology).cellsV * 6;
+      const vertexCount = topology.kind === "mesh" ? topology.triangles * 3 : gridVertexCount(topology);
+      /* T1587b: a grid of several sheets (ten tubes swept from ten strips) is still ONE draw
+         in every pass that draws it, so it adds no pass to any run (T1604b). The generator
+         reads the sheet off the vertex index, in a variant only such a grid emits. */
+      const sheetsOption = topology.kind === "grid" && gridSheets(topology) > 1 ? { sheets: true } : {};
       const meshAttribute = (name: string, type: string): ScenePairRef | undefined => {
         const pair = shapePairs[name];
         return pair !== undefined && pair.type === type ? pair : undefined;
@@ -3157,6 +3160,7 @@ export const renderNode: NodeDefinition = {
         maps,
         ...instancedOption,
         ...(tinted ? { pointColor: true } : {}),
+        ...sheetsOption,
         ...(meshTopology === undefined
           ? {}
           : { mesh: { uv: meshUv !== undefined, surface: meshSurfacePair !== undefined, emissive: meshEmissive !== undefined } }),
@@ -3185,6 +3189,7 @@ export const renderNode: NodeDefinition = {
           maps,
           ...instancedOption,
           ...(tinted ? { pointColor: true } : {}),
+          ...sheetsOption,
           ...(castingIndices.length === 0 ? {} : { shadows: castingIndices, shadowSoftness, shadowBias, ...(pointSlots.length === 0 ? {} : { pointShadows: pointSlots }) }),
           ...(environmentResource === undefined ? {} : { environment: true, environmentTaps, ...(environmentPrefiltered ? { environmentPrefiltered: true } : {}) }),
           ...(aoActive ? { ambientOcclusion: true } : {}),
@@ -3550,16 +3555,16 @@ export const renderNode: NodeDefinition = {
           });
           continue;
         }
-        const { cellsU, cellsV } = gridCellCounts(topology);
         passes.push({
           kind: "draw",
           id: `${nodeId}:glass:${index}`,
           nodeId,
-          shader: glassSurfaceWgsl(glassShaderOptions),
+          // T1587b: several sheets, as the lit grid draws them.
+          shader: glassSurfaceWgsl(gridSheets(topology) > 1 ? { ...glassShaderOptions, sheets: true } : glassShaderOptions),
           target,
           topology: "triangle-list",
           instances: 1,
-          vertexCount: cellsU * cellsV * 6,
+          vertexCount: gridVertexCount(topology),
           buffers: [attributeBinding("positions", position)],
           textures: glassTextures,
           uniforms: {

@@ -178,9 +178,10 @@ export interface KernelModuleRequest {
    * and a second copy is the bug (§V349, B85). Absent for a `points` topology or an
    * unwired processor port, and a kernel that then names `ctx.dim` is REFUSED by name
    * rather than handed zeros (§V288). T1586b: a STRIPS claim supplies the same pair —
-   * `cols` slots per strip, `rows` strips — because it is the same index.
+   * `cols` slots per strip, `rows` strips — because it is the same index. T1587b: a grid of
+   * several SHEETS supplies ONE sheet's pair and how many there are (`kernelDimOf`).
    */
-  readonly dim?: { readonly cols: number; readonly rows: number };
+  readonly dim?: { readonly cols: number; readonly rows: number; readonly sheets?: number };
   /**
    * T477: a texture FIELD is wired to the kernel node. When the kernel calls
    * `fieldAt(position)`, the module declares the texture binding and the helper; a
@@ -416,6 +417,8 @@ const NEIGHBOR_REFERENCE = /\bpointAt\s*\(/;
  * to refuse. The kernel author writes the division; `ctx.dim` supplies the numbers.
  */
 const DIM_REFERENCE = /\.\s*dim\b/;
+/** T1587b: a kernel that names which sheet it is in, or how many there are. */
+const DIM_SHEET_REFERENCE = /\.\s*dim\s*\.\s*sheets?\b/;
 
 /**
  * T489 (B97, §V309, §V437): the ABSOLUTE CLOCK — `ctx.absTime` and `ctx.absFrame`, the
@@ -1122,6 +1125,12 @@ ${touched.map((attribute) => `  n.${attribute.name} = ${loadName(attribute.name)
      appended last — a member that moved would move every kernel that already reads the
      one before it. `cols`/`rows` are the EDGE's (T296/T302); `i`/`j` are this slot's
      cell, computed once here so no kernel repeats the modulo. */
+  /* T1587b: a grid of several SHEETS. `cols`, `rows`, `i` and `j` are ONE sheet's, so `j`
+     is the row within the slot's own sheet, and two members say which sheet and how many.
+     The members exist only where the edge has more than one sheet or the kernel names
+     them: a kernel over one sheet that names neither keeps the text it always had. */
+  const dimSheets = dim?.sheets ?? 1;
+  const sheeted = usesDim && dim !== undefined && (dimSheets > 1 || DIM_SHEET_REFERENCE.test(kernelCode) || DIM_SHEET_REFERENCE.test(groupCode));
   const dimStruct =
     usesDim && dim !== undefined
       ? `struct PointDim {
@@ -1131,7 +1140,15 @@ ${touched.map((attribute) => `  n.${attribute.name} = ${loadName(attribute.name)
   rows: u32,
   /* This slot's cell: index % cols, index / cols. */
   i: u32,
-  j: u32,
+  j: u32,${
+    sheeted
+      ? `
+  /* T1587b: the sheet this slot is in, and how many the grid has. cols, rows, i and j
+     above are ONE sheet's: j is (index / cols) % rows. */
+  sheet: u32,
+  sheets: u32,`
+      : ""
+  }
 };
 
 `
@@ -1139,7 +1156,9 @@ ${touched.map((attribute) => `  n.${attribute.name} = ${loadName(attribute.name)
   const ctxDim = usesDim && dim !== undefined ? "\n  /* T472: the grid this kernel runs over (T296/T302). */\n  dim: PointDim," : "";
   const dimArgument =
     usesDim && dim !== undefined
-      ? `, PointDim(${dim.cols}u, ${dim.rows}u, index % ${dim.cols}u, index / ${dim.cols}u)`
+      ? sheeted
+        ? `, PointDim(${dim.cols}u, ${dim.rows}u, index % ${dim.cols}u, (index / ${dim.cols}u) % ${dim.rows}u, index / ${dim.cols * dim.rows}u, ${dimSheets}u)`
+        : `, PointDim(${dim.cols}u, ${dim.rows}u, index % ${dim.cols}u, index / ${dim.cols}u)`
       : "";
 
   /* T479: one f32 per slot the kernel actually named, appended last for the same reason
