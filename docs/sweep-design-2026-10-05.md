@@ -1,6 +1,6 @@
 # Sweep: a profile along a curve, as a lit surface (T1587b)
 
-**Status, 2026-10-06: slices 1 and 3 are built (`90fb1558`, with the worked check in `bd2b364e`); slice 2 (sheets, in the Render) is not.** The decisions of section 8.3 are ruled, all as recommended, with D9 moved out to its own bug row (B255). The node is `src/nodes/definitions/point-sweep.ts`, its pass `src/nodes/shaders/sweep.wgsl.ts`, its CPU reference `src/points/sweep.ts`. Sections 4, 5.2, 6.1, 7 and 9 say what was built and measured; where building it showed the design wrong, the text is corrected in place and section 11 lists the corrections. The worked check against the consumer's bore is section 11.2.
+**Status, 2026-10-06: slices 1, 2 and 3 are built (1 and 3 in `90fb1558`, with the worked check in `bd2b364e`; 2, sheets, as section 11.3 says). Slice 2b (a grid reading `uv`, with B255) is not.** The decisions of section 8.3 are ruled, all as recommended, with D9 moved out to its own bug row (B255). The node is `src/nodes/definitions/point-sweep.ts`, its pass `src/nodes/shaders/sweep.wgsl.ts`, its CPU reference `src/points/sweep.ts`. Sections 4, 5.2, 6.1, 7 and 9 say what was built and measured; where building it showed the design wrong, the text is corrected in place and section 11 lists the corrections. The worked check against the consumer's bore is section 11.2, and what slice 2 built and measured is section 11.3.
 
 It follows `docs/curve-family-design-2026-10-05.md` (T1586b, whose slices 1 to 4 and 6 to 8 are built) and reads `docs/mesh-instancing-design-2026-10-05.md` (T1581b) and `docs/geometry-cost-profile-2026-10-05.md`.
 
@@ -15,7 +15,7 @@ Read for this: the two designs above, the reference survey (`docs/td-notch-mecha
 - **One Geometry for many tubes.** A Geometry costs about 0.3 ms of device time however small it is: seven draws with one point light casting, fifteen in the consumer's document (section 2.3: forty tubes as forty Geometries take 12.6 ms, as one 0.7 ms). (Those figures are from before T1604b, which made a node's consecutive draws into one target one device pass; section 3.5 says what is left of the argument.) So the sweep of several strips is one pointset and one draw. A grid claim holds one sheet, so the claim gains a third number: `grid:{cols}x{rows}x{sheets}`. That is a change of a few lines in each of the Render's three grid vertex chunks.
 - **The sweep reads the curve family's attributes and adds none to it.** It takes `orient` from Curve Frames, so twist, roll and the closing of a loop are that node's and a sweep and the instances beside it agree. It takes `distance` and `curveU` for the texture coordinate along its length. Padding sweeps to rings of no length and triangles of no area.
 - **Hard edges and caps are repeated columns and rows.** A corner that should be sharp is two columns in one place; a cap is the end ring repeated and then drawn in to its centre. The grid's normal rule then gives each face its own normal. No index list.
-- **Two slices matter.** Slice 1 is the node for one strip, which draws through today's Render untouched: the tunnel's bore. Slice 2 is the sheet in the claim and the Render, which is cables and the tentacle's skin, and waits for the shadow work in `scene.ts`.
+- **Two slices matter.** Slice 1 is the node for one strip, which draws through today's Render untouched: the tunnel's bore. Slice 2 is the sheet in the claim and the Render, which is cables and the tentacle's skin (built 2026-10-06, section 11.3).
 
 ## 1. How TouchDesigner and Notch do it
 
@@ -146,7 +146,7 @@ What B gives up is named as follow-ups (8.2): caps of outlines that are not star
 
 ### 3.3 The grid claim, extended
 
-Three changes, each small, all in the Render's grid chunks and `points/topology.ts`. They are slice 2.
+Three changes, each small, all in the Render's grid chunks and `points/topology.ts`. The first, sheets, is slice 2 and is built (11.3); the other two are slice 2b.
 
 **Sheets.** `grid:{cols}x{rows}x{sheets}`, with the wrap flags after it as now. A claim without the third number is one sheet, so no shipped claim changes.
 
@@ -179,7 +179,7 @@ Three changes, each small, all in the Render's grid chunks and `points/topology.
 Re-read after T1604b (one device pass per run of a node's draws) and T1598b (shadow caster lists, reach).
 
 - **Runs (T1604b).** A sheeted geometry is still one draw in each pass that draws it, with more vertices. It adds no plan pass and moves none, so every run is the run it was (`renderPassRuns`).
-- **What is left of "one Geometry for many tubes".** Section 2.3's 0.31 ms per added Geometry was mostly per device pass, and N Geometries into one single-sampled target are now ONE device pass of N draws. What N Geometries still cost over one is N draws' encoding and uniforms in every pass, and a device pass each on a multisampled target, where the rule keeps one pass per draw. Measured for the consumer's shape in section 11.3.
+- **What is left of "one Geometry for many tubes".** Section 2.3's 0.31 ms per added Geometry was mostly per device pass, and N Geometries into one single-sampled target were expected to be ONE device pass of N draws. Measured, they are not in the last target a Render draws: each Geometry's pointset is swapped after its last reader, between two Geometries' draws, and a swap ends a run (11.3). So N Geometries still cost a device pass each there, N draws' encoding and uniforms in every pass, and N chains before them. Measured for the consumer's shape in section 11.3: ten Geometries are 1.56 ms a frame more than one of ten sheets.
 - **The reason that does not depend on cost.** Several strips arrive in ONE pointset: ten strands from a rope node, a pipe run from one kernel. A Geometry draws a pointset, so without sheets there is nothing to wire: the strips could not be split into ten Geometries without ten nodes that each select one.
 - **Shadow caster lists (T1598b).** A list names a Geometry. A sheeted sweep is one Geometry, so it is named, kept or excluded whole, as any other. Nothing changes.
 - **Reach.** A bound exists only where it is known without reading the GPU, and a sweep's points are placed on the GPU: it publishes none and is always drawn, which is the safe direction. Unchanged.
@@ -249,13 +249,12 @@ A parameter marked ⓢ is structural. "Map" is Map mode on the Path input.
 
 ### 4.7 Refusals, all by name
 
-- The Path edge claims no strips; or carries a GPU live count; or its strip has one point.
+- The Path edge claims no strips; or carries a GPU live count; or its strips have one point each.
 - The path carries no `orient`, or one that is not a vec4f: "put a Curve Frames before the Sweep".
 - A path attribute with no type on the edge: the sweep owns every attribute of its output and cannot copy what it cannot size.
 - `uvAlong` needs an attribute the path does not carry.
 - Profile is Custom and nothing is wired, the edge claims no strips, or the strip has fewer than two points.
-- The sweep would hold more than 1,000,000 vertices: the count, and which of Sides and the path's points to lower.
-- Several strips before slice 2: a grid claim holds one sheet until the Render reads the third number.
+- The sweep would hold more than 1,000,000 vertices, every strip's counted: the count, and which of Sides and the path's points to lower.
 - A parameter in Map mode other than `radius`; a `radius` map that is not an f32 or one channel of a float vector; a `radius` map that names the Profile input (a Map reads the path, §V306).
 - More upstream buffers than a stage binds (§V588).
 
@@ -290,7 +289,7 @@ Caps on a closed path are not a refusal: a loop has no ends, so there is nothing
 
 Flat sides, a mapped radius and the coordinate along make no difference the measurement resolves (runs of one graph differ by 0.05 ms). The derived figure this replaces was "under 0.1 ms and 0.2 to 0.4 ms": it held.
 
-- **A long sweep is cheap and a many-Geometry sweep is not.** That is the reason for sheets.
+- **A long sweep is cheap and a many-Geometry sweep is not.** That is the reason for sheets. Ten strips of 54 points and 12 sides (6,480 vertices) are 0.016 ms, and one strip of them is 0.019: at this size the cost is the pass, not the vertices (11.3).
 - A million vertices is the pointset ceiling: 256 sides by 3,906 rings, or 16 sides by 62,500.
 - The Curve Frames before a sweep costs more than the sweep: 0.6 to 0.8 ms for one strip of 1,024 points with all its attributes (measured in the curve design, section 4.5).
 
@@ -357,7 +356,7 @@ kernel (two sections a tentacle: a length, a bend, the socket's frame) ─▶ to
 - The radius tapers by an attribute on the sections: the Arc Chain blends a float toward the next section's.
 - Slack stowed at the socket is padding: `live` is 0 there and the rings of the sweep coincide.
 - Forty tentacles of 55 rings and 16 sides are 35,200 vertices: the measured case. One Geometry at 0.67 ms, not forty at 12.65.
-- **It needs slice 2**, and slice 3 for the cap.
+- It needed slice 2, and slice 3 for the cap. Both are built.
 
 ### 6.4 What falls out
 
@@ -397,13 +396,15 @@ As built for slices 1 and 3. On Dawn through the compiler and the backend; exact
 
 **The worked check** (`point-sweep-bore.gpu.test.ts`, 4 tests): section 11.2.
 
-**For slice 2, not built**
+**Slice 2, as built** (section 11.3 has the counts)
 
-- Two strips, one draw: the pixels between two parallel tubes are the background's, exactly. Without sheets the grid joins one tube's end to the next one's start and a band crosses the gap. Red before the slice.
-- `parseTopology` and `formatTopology` round-trip the third number; a claim without it parses as one sheet and formats as before, so no shipped document's bytes change.
-- Every shipped example that draws a grid Surface reads back the pixels it read before.
-- A kernel's `ctx.dim.sheet` on a sweep of three strips.
-- A Material · WGSL that writes `uv` as colour: a pixel at a known place reads a known coordinate, and across a wrapped seam the coordinate runs on and does not run back.
+- `point-sweep-sheets.gpu.test.ts`, on Dawn: N straight strips with a Ring are N Tube generators, their vertices to the bit and their lit, Normal and Depth pictures byte for byte with a shadow cast and received; a sweep of N strips is N sweeps of one, word for word and byte for byte, caps and padding included; the pixels between two parallel tubes are the background's in every output; taking one strip away changes that strip's pixels and no others; closed strips (two tori, wrapped both ways); a Tint mapped to a path attribute colours each sheet by its own strip; glass; bent strips against the CPU reference; `ctx.dim` a sheet at a time and the deck clamp on two sheets; a grid of sheets from a Topology node, in the Render and in Render Surface; a grid of sheets as the path.
+- `scene-preview.gpu.test.ts`: the preview tile draws two sheets as it draws each alone, and nothing joins them.
+- `grid-sheets.test.ts`: the one-sheet programs of the Render, the tile and Render Surface, pinned by their text as recorded before the variant existed; every draw of a sheeted grid is `sheets × cells × 6` vertices in the passes a one-sheet grid has; the device passes.
+- `point-sweep.test.ts`: the one-strip sweep programs pinned the same way; the claims, uniforms and refusals for several strips.
+- `topology.test.ts`, `point-topology.test.ts`, `codegen.test.ts`: the third number round-trips and a claim without it formats as before; the Sheets parameter; `ctx.dim.sheet` and `sheets`, and a kernel that names neither keeps its text.
+- Every shipped grid keeps its picture by construction (its program is the text it was), which the pins hold; no shipped example was re-rendered for this slice.
+- Not here: a material reading `uv` on a sweep. That is slice 2b.
 
 ## 8. Build plan
 
@@ -416,9 +417,9 @@ As built for slices 1 and 3. On Dawn through the compiler and the backend; exact
 | 2b | A grid's texture coordinate | the grid reads a `uv` attribute (D2); the wrapped-axis coordinate (B255) | a texture that keeps its size along a swept tube | yes, and shipped Tube and Torus grids |
 | 3 | Caps and the custom profile | the cap rows; the Profile input | closed ends; rails, gutters, any outline | no |
 
-- **Slices 1 and 3 are built** (2026-10-06). Slice 2 is not: until it is, a path of several strips is refused by name, pointing at this row.
+- **Slices 1, 2 and 3 are built** (2026-10-06). Slice 2b is not: until it is, a material on a sweep sees the grid coordinate, 0 to 1 round and along each sheet, and not the sweep's `uv`.
 - The consumer's review asked for slice 2 sooner than this plan assumed: pipes a claw can take hold of are several tubes in one Geometry.
-- Slice 2 is the one that edits `scene-render.wgsl.ts`, `scene.ts` and `render-surface.ts`. It can be built by whoever holds those files, from section 3.3.
+- Slice 2 is the one that edited `scene-render.wgsl.ts`, `scene.ts`, `compile.ts` and `render-surface.ts` (11.3).
 - T1589b (lights from a pointset) is ruled to be built with this row. The two share a consumer and no code: a lamp on every rib is that row's, the rib is this one's.
 
 ### 8.2 Accepted limitations, as follow-up rows
@@ -464,6 +465,8 @@ All ruled as recommended on 2026-10-05. D9 is its own bug row, B255, and its own
 - A frame measured from points far from the origin carries their rounding as an angle. At 1,000 m a float holds 0.06 mm; across a 0.15 m chord that is 0.0004 rad, and a 5 m ring makes it up to 2 mm at the wall (measured between the tunnel's first part and its repeat: 0.8 mm). The bore's kernel has a closed form for its tangent and does not have this.
 - The Topology node's Columns and Rows stopped at 4,096 each. Fixed in T1586b's slice 6.
 - Resample's Range cannot cross the seam of a closed strip (C10).
+- **A swap between two Geometries' draws ends the run (found in slice 2, T1604b's ground).** A pointset's buffer swap is placed after its last reader. In the last target a Render draws, that reader is the Geometry's own draw, so with N Geometries the plan reads draw, swap, draw, swap: N device passes where the rule expects one. Ten swept Geometries under one casting point light are 11 device render passes, the shadow cube one run of 61 draws and the lit target ten runs of one; with the Normal and Depth outputs on it is the Normal layer, drawn last, that is cut into ten (14 passes). Moving the swaps after the node's last draw would make them 2 and 5. Not changed here.
+- A strip all of whose points are one point (a stowed strand, `live` 0) has rings of no length, so its tube draws nothing, but with Caps on its two caps are still two discs of the radius at that point. Read from the pass, not tested. A consumer that stows strands maps the radius to 0 there, or leaves Caps off.
 
 ## 10. Sources
 
@@ -494,6 +497,9 @@ Notch, fetched 2026-10-05 (page updated 16 Sep 2026):
 | The tunnel's centre line is typed into a Curve, and the camera rides the same node | The table holds 64 points and the line needs about 900. The control points are wired from the formula | 6.1, C12 |
 | Resample by Distance, its Range stepped in rows, keeps the wall still | Only if the period is a whole number of rows. Rows at the curve's own points are, by construction | 6.1 |
 | The sweep pass costs "under 0.1 ms, 0.2 to 0.4 ms for a million" (derived) | Measured: 0.02 to 0.06 ms and 0.22 to 0.46 ms, by what the path carries | 5.2 |
+| The sheeted grid changes the grid chunks for every grid (first draft of 3.3) | It is a variant only a claim of more than one sheet emits, so a one-sheet grid's program is the text it was | 3.3, 11.3 |
+| After T1604b, N Geometries into one single-sampled target are one device pass (3.5) | Not in the last target a Render draws: a swap stands between two Geometries' draws there. Ten Geometries are 11 device passes, one of ten sheets is 2 | 3.5, 9, 11.3 |
+| A grid reads the sweep's `uv` in slice 2 | Moved to slice 2b with B255: both change one expression and move textures on the same shipped grids | 3.3, 8.1 |
 
 ### 11.2 The worked check: the consumer's bore from the stock nodes
 
@@ -531,3 +537,77 @@ A Custom outline of the bore's 256 columns (the seam's two in one place) and a R
 
 - The first two are what a float holds near 1,000 m (0.06 to 0.12 mm), seen through the frame for the wall.
 - So the answer to "does Resample by Distance give the repeated part the same rows": yes when its Range starts a period further on, to a quarter of a millimetre; no when the Range is stepped in rows from a fixed start, unless Distance divides the period.
+
+### 11.3 Slice 2 as built: several strips, a sheet each (2026-10-06)
+
+**The claim.** `grid:{cols}x{rows}x{sheets}`, the wrap flags after it. `cols`, `rows`, both wraps and the caps are ONE sheet's; slot = `(sheet × rows + row) × cols + col`; one sheet is written without the third number, so every claim that shipped is the string it was. A Sweep over a path of four strips of five points with a Ring of twelve claims `grid:12x5x4:wrapU`, and `grid:12x9x4:wrapU` with both caps.
+
+**One emitter, two programs.** Each generator takes a `sheets` flag and has one branch for it; a claim of one sheet goes through the same function and gets the text it always had.
+
+- `src/points/topology.ts`: `gridSheets`; `gridPointCount` counts every sheet; `gridCellCounts` is one sheet's; **`gridVertexCount` is the one size of a grid draw** (`cells × 6 × sheets`), read by the Render's lit, G-buffer, depth and glass draws, the preview tile and Render Surface; `stripsOf` gives a grid `rows × sheets` strips; `kernelDimOf` is what `ctx.dim` reads.
+- The Sweep (`point-sweep.ts`, `sweep.wgsl.ts`): N strips make N sheets. A thread's sheet is `slot ÷ (cols × rows)`, its row the remainder, and its path point is its own strip's (`point + sheet × pathPoints`). So caps are per sheet and padding is per strip with no code of their own. The variant has one more uniform, `sheets`.
+- The Render (`scene-render.wgsl.ts`): the two grid chunks, `surfaceMeshWgsl` (the lit draw, the G-buffer layers, glass, Material · WGSL) and `shadowSurfaceWgsl` (a directional shadow, the six faces of a point light, the Depth output). The variant declares a module-scope private `gridSheet`, sets it at the top of the vertex stage (`quad ÷ a sheet's cells`, the cell being the remainder), and `gridPosition` and the Tint read add `gridSheet × rows` to the row. `gridPosition` keeps its two arguments, so the five calls that make a vertex and its normal are the lines they were, and a normal's neighbours are clamped or wrapped inside the sheet.
+- `scene.ts`, the preview tile in `compile.ts` and `render-surface.ts` pass the flag when the claim has more than one sheet and take the vertex count from `gridVertexCount`. Nothing else in the Render changed: no pass is added or moved, the bindings are the same, and a caster list names a sheeted Geometry as it names any other.
+- The Topology node has a **Sheets** parameter (Grid only). A kernel's `ctx.dim` gains `sheet` and `sheets`; `cols`, `rows`, `i` and `j` are one sheet's. The two members exist where the edge has more than one sheet or the kernel names them.
+
+**The draw.** One vertex-pulled draw in every pass that draws the Geometry, `sheets × cells × 6` vertices, no index buffer, no join triangles. The instanced alternative was not built (ruled).
+
+**Does the variant round as the one-sheet program does?** In every case tested, yes: no bit and no byte moved.
+
+- Three coaxial strips with radii 0.25, 0.5 and 0.75 against three Tube generators: 240 vertices equal to the bit; lit, Normal and Depth equal byte for byte, with a directional shadow cast on a floor and received.
+- Three parallel strips 1.2 m apart (a number a float does not hold) against three sweeps of one strip: position, normal and uv equal word for word, both caps included; the three outputs byte for byte.
+- Two closed strips (tori, wrapped both ways) against two sweeps of one: the same, with shadows; and in Render Surface.
+- The one-sheet programs are pinned by fingerprints recorded from main before the variant existed: nine of the Render, the tile and Render Surface, eight of the Sweep.
+
+**Measured: the consumer's shape.** Ten strips of 54 points, 12 sides: 6,480 vertices, 38,160 drawn in each pass. Apple M3 Max, Dawn on Metal, headless, 512 × 512; best of 9 runs of 200 frames, the two graphs alternated three times; wall time of a frame in ms. The chain is kernel, Topology, Curve Frames, Sweep, Geometry.
+
+| | 1 Geometry of 10 sheets | 10 Geometries, a chain each | Difference |
+|---|---|---|---|
+| One casting point light | 0.291 | 1.849 | 1.557 |
+| Two casting point lights, Normal and Depth outputs on | 0.422 | 2.342 | 1.920 |
+| One casting point light, MSAA 4x | 0.344 | 1.972 | 1.628 |
+
+The draw side alone, the same tubes written by one kernel pass a pointset (no Curve Frames, no Sweep):
+
+| | 1 Geometry of 10 sheets | 10 Geometries | Difference |
+|---|---|---|---|
+| One casting point light | 0.203 | 0.816 | 0.613 |
+| Two casting point lights, Normal and Depth outputs on | 0.341 | 1.243 | 0.903 |
+| One casting point light, MSAA 4x | 0.262 | 0.867 | 0.605 |
+
+What each frame is made of. Both draw the same vertices: 267,132 with one light, 572,430 with two and the outputs.
+
+| | Plan passes | Dispatches | The Render's draws | Device render passes |
+|---|---|---|---|---|
+| 1 Geometry of 10 sheets, one point light | 20 | 5 | 9 | 2 |
+| 10 Geometries, one point light | 173 | 50 | 72 | 11 |
+| 1 Geometry of 10 sheets, two lights and the outputs | 31 | 5 | 20 | 5 |
+| 10 Geometries, two lights and the outputs | 256 | 50 | 155 | 14 |
+| 1 Geometry of 10 sheets, MSAA 4x | 20 | 5 | 9 | 3 |
+| 10 Geometries, MSAA 4x | 173 | 50 | 72 | 12 |
+
+- **The sweep pass** for the ten strips is 0.016 ms (the chain without it 0.225, with it 0.240); for one strip of 648 vertices it is 0.019. Both are the cost of a pass, at the edge of what the measurement resolves.
+- **One more Geometry is 0.07 ms** with one casting point light (seven draws, a device pass, and its pointset's one kernel pass and swap), and 0.10 ms with fifteen draws. Section 2.3's 0.31 ms was measured before T1604b, in another document and as device time, so the two are not one measurement.
+- **One more strand as its own chain is another 0.10 ms**: a Curve Frames and a Sweep of its own. Sheets save both: 1.56 ms a frame for ten strands with one light, 1.92 ms in the consumer's shape of lights and outputs.
+- **The device passes.** A sheeted Geometry adds none: 2, 5 and 3 are what one grid Geometry has. Ten Geometries have nine more in each case, all in the last target the Render draws, each ended by a pointset's swap (section 9). The shadow cube is one run of 61 draws, as T1604b means it to be. On the multisampled target the rule already keeps a pass per draw, and the nine are the same nine.
+
+**Tests, with counts.**
+
+| File | Tests | What |
+|---|---|---|
+| `point-sweep-sheets.gpu.test.ts` (new, Dawn) | 21 | the acceptance above; a casting point light; background between sheets; one strip taken away; caps per sheet; padding; a Tint per strand; glass; bent strips against the reference; `ctx.dim` and the deck clamp; the Topology node's sheets in the Render and in Render Surface; a grid of sheets as the path |
+| `scene-preview.gpu.test.ts` (Dawn) | 1 added, 9 in the file | the preview tile |
+| `grid-sheets.test.ts` (new) | 17 | nine one-sheet pins; every draw's size, pass ids and bindings; the refusal that counts every sheet; the device passes |
+| `point-sweep.test.ts` | 38 in the file | eight one-strip pins; claims, uniforms, pass id and refusals for several strips |
+| `topology.test.ts`, `point-topology.test.ts`, `codegen.test.ts` | 105 in the three | the claim's grammar and helpers; the Sheets parameter; `ctx.dim.sheet` and `sheets` |
+
+Red-verified by mutation, applied and restored by edit: 24 mutants, one line each (the sheet dropped from the lit position, the depth position, the Tint read and Render Surface; the cell not folded into its sheet; a sheet's cells counted without `wrapV` in each of the three chunks; the sweep reading strip 0 for every sheet, not folding its row, writing one sheet; the variant left off the lit draw, the material options, the depth sweep, glass and the tile; `gridVertexCount`, `stripsOf` and `kernelDimOf` forgetting the sheets; `ctx.dim.j` and `.sheet`; the Topology node dropping Sheets; the kernel handed one sheet; the sweep's capacity one sheet's). Each fails at least one Dawn test. Four of them passed every Dawn test at first (a sheet's cells under `wrapV` in the lit chunk and in the depth chunk; `stripsOf`; the tile), and the tori, the grid-as-path and the tile tests were written for them. The Render Surface test of the tori was written with its own mutant.
+
+**Not checked.**
+
+- No shipped example was re-rendered: none claims more than one sheet, and a one-sheet grid's program is pinned to the text it was.
+- The instanced alternative (one instance a sheet) was not built or measured, as ruled.
+- A material does not see the sweep's `uv` until slice 2b; the grid coordinate it sees restarts in every sheet.
+- SSAA, a projector, an environment and ambient occlusion on a sheeted grid. They are options of the fragment stage and share the one vertex chunk the tests draw; none was compiled or drawn with a sheeted grid. MSAA was drawn in the measurement and not asserted.
+- The figures are wall time headless on one machine that other sessions share; the differences are many times the 0.05 ms between runs of one graph, the sweep pass's 0.016 ms is not.
+- The caps of a strip whose points are all one point, and the fragment stage's guard for cells under half a millimetre (section 9), are read from the code, not tested.
