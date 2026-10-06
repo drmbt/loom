@@ -262,7 +262,7 @@ export const pulseDocument = document(
           tint: { mode: "map", bindings: { static: { kind: "static", value: [1, 1, 1, 1] }, map: { kind: "map", attribute: "tint" } } },
         },
       }),
-      node("raysB", "geometry", [-1400, 620], {
+      node("raysB", "geometry", [-1400, 604], {
         mode: "beam", endpoint: "hitPosition", scale: 0.008, taper: 0.15, material: "material_sparkB",
       }, {
         label: "geometry_raysB",

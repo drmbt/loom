@@ -649,7 +649,7 @@ export const prismDocument = document(
       // more nodes. The split is not cosmetic: a single shaft wants a parallel-sided
       // ribbon, and 61 beams leaving the same face within 0.03 of each other fuse into
       // an opaque wedge at any taper above about zero (T680).
-      node("shaft", "geometry", [-1240, -96], {
+      node("shaft", "geometry", [-1240, -112], {
         /* T917: SOFT + ADDITIVE — the beams are light now, not ribbons of paint. The soft
            profile falls off across the width; additive lets the ghost, interior and shaft
            sum where they cross instead of z-fighting. */
@@ -671,7 +671,7 @@ export const prismDocument = document(
       } }),
       // T941b — the IN-GLASS fan: interior wedge segments (role 0.5), width-mapped
       // like the exit fan, pinched at the shared entry point by the taper.
-      node("core", "geometry", [-920, 104], {
+      node("core", "geometry", [-920, 88], {
         mode: "beam", endpoint: "tip", scale: 4, taper: 0.05, soft: 1, blend: "additive", material: "material_flare",
         group: "p.role > 0.25 && p.role < 0.75", tint: [1, 1, 1, 1],
       }, { label: "geometry_core", parameters: {

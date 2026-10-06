@@ -56,7 +56,7 @@ export const stageDocument = document(
 
       // ---- scene B: the stage ----------------------------------------------------
       node("screenGrid", "pointGrid", [-580, 56], { cols: 48, rows: 27, count: 1296, sizeX: 3.2, sizeY: 1.8 }, { label: "grid_screen" }),
-      node("screen", "geometry", [-280, 56], { mode: "surface", material: "material_screen" }, { label: "geometry_screen" }),
+      node("screen", "geometry", [-280, 40], { mode: "surface", material: "material_screen" }, { label: "geometry_screen" }),
       node("floorPts", "pointGrid", [-620, 256], { cols: 12, rows: 12, count: 144, sizeX: 4, sizeY: 3 }, { label: "grid_floor" }),
       node("floorKernel", "pointKernel", [-410, 256], {
         capacity: 144,

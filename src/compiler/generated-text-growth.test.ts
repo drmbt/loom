@@ -1180,6 +1180,7 @@ const LEDGER: Readonly<Record<string, Row>> = {
   ),
   "geometry.points": flat("a draw binds the attributes it draws by; the Render's text names none of the others."),
   "geometry.mesh": flat("as Points."),
+  "geometry.shadowMesh": flat("as Points: a shadow sweep binds the position and the normal of the mesh it draws, whatever else that mesh carries (T1689b)."),
   "geometry.endpoint": notACount(A_NAME),
   "geometry.group": {
     law: "statements",

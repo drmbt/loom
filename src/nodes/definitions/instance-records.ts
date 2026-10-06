@@ -29,6 +29,8 @@ import type { InstanceRecordOffsets, PackedRead } from "../shaders/instance-reso
 export const INSTANCE_RECORDS_KEY = "instanceRecords";
 /** The scratch key of a geometry's indirect arguments: (vertexCount, visible instances, 0, 0). */
 export const INSTANCE_ARGS_KEY = "instanceArgs";
+/** T1689b: the indirect arguments of the draws of a geometry's SHADOW MESH: its vertex count, the same instances. */
+export const INSTANCE_SHADOW_ARGS_KEY = "instanceShadowArgs";
 
 const ROW = (name: string): PointAttributeSchema => ({ name, type: "vec4f", default: [0, 0, 0, 0] });
 
@@ -39,6 +41,8 @@ export interface InstanceRecordOptions {
   readonly compact?: boolean;
   /** The material's `struct Instance` fields this geometry bound, each a region of its own type. */
   readonly fields?: ReadonlyArray<{ readonly name: string; readonly type: PointAttributeType }>;
+  /** T1689b: the geometry has a shadow mesh: when it compacts, that mesh's draws need arguments of their own. */
+  readonly shadowMesh?: boolean;
 }
 
 /** The region a bound instance field is stored under. Prefixed: a field may be called `tint`. */
@@ -67,6 +71,11 @@ export interface InstanceRecordStorage {
     readonly resourceId: string;
     readonly scratch: { readonly kind: "buffer"; readonly key: string; readonly stride: number; readonly capacity: number; readonly usage: "indirect" };
   };
+  /** T1689b, when compacting AND the geometry has a shadow mesh: that mesh's own indirect arguments, written by the same pass. */
+  readonly shadowArgs?: {
+    readonly resourceId: string;
+    readonly scratch: { readonly kind: "buffer"; readonly key: string; readonly stride: number; readonly capacity: number; readonly usage: "indirect" };
+  };
 }
 
 export function instanceRecordStorage(
@@ -83,6 +92,9 @@ export function instanceRecordStorage(
     scratch: { kind: "buffer", key: INSTANCE_RECORDS_KEY, stride: 4, capacity: layout.bytes / 4 },
     ...(options.compact === true
       ? { args: { resourceId: scratchResourceId(nodeId, INSTANCE_ARGS_KEY), scratch: { kind: "buffer" as const, key: INSTANCE_ARGS_KEY, stride: 4, capacity: 4, usage: "indirect" as const } } }
+      : {}),
+    ...(options.compact === true && options.shadowMesh === true
+      ? { shadowArgs: { resourceId: scratchResourceId(nodeId, INSTANCE_SHADOW_ARGS_KEY), scratch: { kind: "buffer" as const, key: INSTANCE_SHADOW_ARGS_KEY, stride: 4, capacity: 4, usage: "indirect" as const } } }
       : {}),
     offsets: {
       m0: offset("m0"),

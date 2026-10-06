@@ -458,6 +458,8 @@ export const DIAGNOSTIC_CLASSES: Readonly<Record<string, DiagnosticClassRow>> = 
   "node.scene.override": { class: "never" },
   "node.scene.reference": { class: "never" },
   "node.scene.shadowCasters": { class: "advice" },
+  "node.scene.shadowMesh": { class: "notYet" },
+  "node.scene.shadowMeshFit": { class: "advice" },
   "node.scene.shadowOnly": { class: "never" },
   "node.scene.shape": { class: "elsewhereHost", splits: { task: "T1641b", holds: ["notYet", "elsewhereHost"] } },
   "node.scene.textureBudget": { class: "elsewhereHost" },

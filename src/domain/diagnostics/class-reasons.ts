@@ -407,6 +407,8 @@ export const DIAGNOSTIC_CLASS_REASONS: Readonly<Record<string, string>> = {
   "node.scene.override": "a material override that does not read, or names nothing the material has",
   "node.scene.reference": "a name that resolves to a node of the wrong kind",
   "node.scene.shadowCasters": "a light that casts nothing in this Render may cast in another",
+  "node.scene.shadowMesh": "a pointset on Shadow Mesh that carries no triangles, or no position and normal, yet",
+  "node.scene.shadowMeshFit": "a shadow mesh that stands apart from its shape casts from there, as stored",
   "node.scene.shadowOnly": "Shadow Only on a geometry that casts no shadow",
   "node.scene.shape": "no mesh on Shape Mesh yet, or storage past the baseline",
   "node.scene.textureBudget": "past the device baseline of sampled textures",

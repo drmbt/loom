@@ -94,7 +94,7 @@ fn process(p: Point, ctx: PointCtx) -> Point {
 }
 `,
       }, { label: "kernel_platelay" }),
-      node("plate", "geometry", [-900, 40], { mode: "surface", material: "material_plate" }, { label: "geometry_plate" }),
+      node("plate", "geometry", [-900, 24], { mode: "surface", material: "material_plate" }, { label: "geometry_plate" }),
 
       /* THE FOUR SPHERES, one geometry each because a material belongs to a geometry and
          the whole point of the file is that the four materials differ. */

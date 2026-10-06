@@ -124,6 +124,12 @@ export interface InstanceResolveOptions {
   readonly counted?: boolean;
   /** Needs `visible` when it has a `group` or is `counted`: that is what compacting means. */
   readonly record: InstanceRecordOffsets;
+  /**
+   * T1689b: the geometry has a SHADOW MESH and compacts: the pass writes a second set of
+   * indirect arguments, the same count with the shadow mesh's vertices
+   * (`params.shadowVertexCount`), into `shadowDrawArgs`, bound after the sources.
+   */
+  readonly shadowArgs?: boolean;
 }
 
 /** F1: does a resolve with these options leave instances out, and so compact and count? */
@@ -134,6 +140,8 @@ export function resolveCompacts(options: Pick<InstanceResolveOptions, "group" | 
 /** The record buffer's binding name in the resolve pass, and the prefix of its sources. */
 export const RESOLVE_RECORDS_BINDING = "records";
 export const RESOLVE_SOURCE_PREFIX = "source";
+/** T1689b: the shadow mesh's indirect arguments, when the pass writes them. */
+export const RESOLVE_SHADOW_ARGS_BINDING = "shadowDrawArgs";
 /** F1: the indirect arguments the pass writes, and a counted pointset's live count. */
 export const RESOLVE_ARGS_BINDING = "drawArgs";
 export const RESOLVE_LIVE_BINDING = "liveCount";
@@ -150,6 +158,8 @@ export function resolveWorkgroups(compact: boolean, capacity: number): readonly 
 export const instanceResolveWgsl = generatedOnce("instanceResolveWgsl", buildInstanceResolveWgsl);
 function buildInstanceResolveWgsl(options: InstanceResolveOptions): EmittedWgsl {
   const visible = resolveCompacts(options) ? options.record.visible : undefined;
+  /* T1689b: a second set of arguments only where there are arguments at all. */
+  const shadowArgs = options.shadowArgs === true && visible !== undefined;
   /* A Group or a live count with nowhere to list what it accepts would be dropped in silence. */
   if (resolveCompacts(options) && visible === undefined) {
     throw new Error("instanceResolveWgsl: a compacting resolve (group or counted) needs record.visible.");
@@ -270,7 +280,15 @@ fn main(@builtin(local_invocation_index) lane: u32) {
     ${RESOLVE_ARGS_BINDING}[0] = params.vertexCount;
     ${RESOLVE_ARGS_BINDING}[1] = at;
     ${RESOLVE_ARGS_BINDING}[2] = 0u;
-    ${RESOLVE_ARGS_BINDING}[3] = 0u;
+    ${RESOLVE_ARGS_BINDING}[3] = 0u;${
+      shadowArgs
+        ? `
+    ${RESOLVE_SHADOW_ARGS_BINDING}[0] = params.shadowVertexCount;
+    ${RESOLVE_SHADOW_ARGS_BINDING}[1] = at;
+    ${RESOLVE_SHADOW_ARGS_BINDING}[2] = 0u;
+    ${RESOLVE_SHADOW_ARGS_BINDING}[3] = 0u;`
+        : ""
+    }
   }
 }`;
   return wgsl`struct ResolveParams {
@@ -281,11 +299,11 @@ fn main(@builtin(local_invocation_index) lane: u32) {
   scale: vec4f,             // x: Size's own value, multiplied into every instance
   count: u32,               // slots to resolve
   vertexCount: u32,         // the shape's vertices: the first of the indirect arguments
-};
+${shadowArgs ? "  shadowVertexCount: u32,   // the shadow mesh's vertices: the first of ITS indirect arguments\n" : ""}};
 
 @group(0) @binding(0) var<uniform> params: ResolveParams;
 @group(0) @binding(1) var<storage, read_write> ${RESOLVE_RECORDS_BINDING}: array<u32>;
-${visible === undefined ? "" : `@group(0) @binding(2) var<storage, read_write> ${RESOLVE_ARGS_BINDING}: array<u32>;\n`}${options.counted === true ? `@group(0) @binding(3) var<storage, read> ${RESOLVE_LIVE_BINDING}: array<u32>;\n` : ""}${packedBindingsWgsl(RESOLVE_SOURCE_PREFIX, options.groups, 4)}
+${visible === undefined ? "" : `@group(0) @binding(2) var<storage, read_write> ${RESOLVE_ARGS_BINDING}: array<u32>;\n`}${options.counted === true ? `@group(0) @binding(3) var<storage, read> ${RESOLVE_LIVE_BINDING}: array<u32>;\n` : ""}${packedBindingsWgsl(RESOLVE_SOURCE_PREFIX, options.groups, 4)}${shadowArgs ? `@group(0) @binding(${4 + options.groups}) var<storage, read_write> ${RESOLVE_SHADOW_ARGS_BINDING}: array<u32>;\n` : ""}
 ${accessors}
 ${groupDeclarations}${turn}
 /* One row of Object · Instance: the object's row against the instance's three axes and its place. */

@@ -210,6 +210,20 @@ export interface GeometryPayload {
      * record through `records.visible`. Absent: every slot is drawn, `capacity` of them.
      */
     readonly drawArgs?: string;
+    /**
+     * T1689b: the SHADOW MESH, when the Geometry has one: what every sweep that asks what
+     * stands between a source of light and a surface draws in the shape's place (a light's
+     * shadow map, the Light Depth output, a projector's occlusion map). The same records
+     * place it, so it is authored in the shape's own frame. `drawArgs` is its own indirect
+     * arguments (its vertex count, the same instance count), present exactly when the
+     * shape's are. Nothing the camera sees reads it.
+     */
+    readonly shadow?: {
+      readonly pairs: Readonly<Record<string, ScenePairRef>>;
+      readonly triangles: number;
+      readonly indexBuffer: string;
+      readonly drawArgs?: string;
+    };
     readonly records: {
       readonly buffer: string;
       readonly m0: number;
