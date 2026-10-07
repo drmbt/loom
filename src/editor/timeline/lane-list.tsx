@@ -1,4 +1,6 @@
 import { useState } from "react";
+import type { DragEvent } from "react";
+import { carriesParameter, readParameterDrag, type ParameterDragPayload } from "@ui/controls/parameter-drag-context.ts";
 import type { AutomationLane } from "@domain/automation/model.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { LANE_PALETTE } from "./timeline-edits.ts";
@@ -25,6 +27,41 @@ export interface LaneListProps {
   readonly onSolo: (laneId: string | null) => void;
   readonly onMove: (nodeId: NodeId, laneId: string, index: number) => void;
   readonly onDelete: (nodeId: NodeId, laneId: string) => void;
+  /**
+   * VN63 — a parameter dropped on the list. On a lane: `laneId` names it, and only the
+   * reference is written. Anywhere else: a new lane, on `nodeId` (a group's header) or on
+   * the current node (null).
+   */
+  readonly onDropParameter?: (source: ParameterDragPayload, nodeId: NodeId | null, laneId: string | null) => void;
+}
+
+/** Drop handlers for one place on the list; `over` marks it while a parameter is above it. */
+function dropZone(
+  onDropParameter: LaneListProps["onDropParameter"],
+  nodeId: NodeId | null,
+  laneId: string | null,
+  setOver: (zone: string | null) => void,
+  zone: string,
+) {
+  if (onDropParameter === undefined) return {};
+  return {
+    onDragOver: (event: DragEvent<HTMLElement>): void => {
+      if (!carriesParameter(event.dataTransfer)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "link";
+      setOver(zone);
+    },
+    onDragLeave: (): void => setOver(null),
+    onDrop: (event: DragEvent<HTMLElement>): void => {
+      setOver(null);
+      const source = readParameterDrag(event.dataTransfer);
+      if (source === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onDropParameter(source, nodeId, laneId);
+    },
+  };
 }
 
 const nextColour = (colour: string): string => {
@@ -36,9 +73,11 @@ export function LaneList(props: LaneListProps) {
   const { nodes, current } = props;
   const [renaming, setRenaming] = useState<{ lane: string; text: string; error: string | null } | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const drop = (nodeId: NodeId | null, laneId: string | null, zone: string) => dropZone(props.onDropParameter, nodeId, laneId, setOver, zone);
 
   return (
-    <div className={styles.lanes}>
+    <div className={styles.lanes} data-drop-over={over === "list" ? "" : undefined} data-lane-drop="list" {...drop(null, null, "list")}>
       <div className={styles.lanesHeader}>
         <span className={styles.currentName} data-current-node={current?.id ?? ""}>
           {current === null ? "no automation node" : (current.name ?? current.id)}
@@ -55,7 +94,7 @@ export function LaneList(props: LaneListProps) {
         </button>
       </div>
       {nodes.map((node) => (
-        <div key={node.id} className={styles.group} data-automation-node={node.id}>
+        <div key={node.id} className={styles.group} data-automation-node={node.id} data-drop-over={over === node.id ? "" : undefined} {...drop(node.id, null, node.id)}>
           <button
             type="button"
             className={styles.groupName}
@@ -69,7 +108,14 @@ export function LaneList(props: LaneListProps) {
             node.document?.lanes.map((lane, index) => {
               const references = props.references.get(lane.name) ?? 0;
               return (
-                <div key={lane.id} className={styles.lane} data-lane={lane.id} data-muted={lane.mute ? "" : undefined}>
+                <div
+                  key={lane.id}
+                  className={styles.lane}
+                  data-lane={lane.id}
+                  data-muted={lane.mute ? "" : undefined}
+                  data-drop-over={over === `${node.id} ${lane.id}` ? "" : undefined}
+                  {...drop(node.id, lane.id, `${node.id} ${lane.id}`)}
+                >
                   <button
                     type="button"
                     className={styles.swatch}

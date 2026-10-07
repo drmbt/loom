@@ -230,3 +230,10 @@
   padding: var(--space-2);
   color: var(--text-dim);
 }
+/* VN63: where a dragged parameter would land on the lane list. */
+.lanes[data-drop-over],
+.group[data-drop-over],
+.lane[data-drop-over] {
+  outline: 1px dashed var(--signal);
+  outline-offset: -1px;
+}

@@ -17,6 +17,9 @@ import { createParameterEditor, type ParameterEditor } from "@editor/inspector/p
 import { isTextEntryTarget } from "@editor/keymap/context.ts";
 import { useKeymapPane } from "@editor/keymap/pane.ts";
 import { LaneList } from "./lane-list.tsx";
+import type { NodeRegistryView } from "@nodes/registry/registry.ts";
+import type { ParameterDragPayload } from "@ui/controls/parameter-drag-context.ts";
+import { laneDropOperations } from "../parameter-drag/lane-drop.ts";
 import { RULER_HEIGHT, frameAtX, paintTimeline, type DrawLane } from "./timeline-draw.ts";
 import {
   addLane,
@@ -94,6 +97,8 @@ export interface TimelinePaneProps {
   readonly onSeek?: ((frameIndex: number) => void) | undefined;
   /** Injected in tests; the pane builds its own over `bus` otherwise. */
   readonly editor?: ParameterEditor;
+  /** VN63: reads a dropped parameter's definition (its min/max). Absent = the lane list takes no drops. */
+  readonly registry?: NodeRegistryView;
 }
 
 type Drag =
@@ -270,6 +275,22 @@ export function TimelinePane(props: TimelinePaneProps) {
     },
     [applyOperations, graph],
   );
+
+  /** VN63: a parameter dropped on the lane list, as ONE patch: the lane (or none) and the reference. */
+  const onDropParameter = async (source: ParameterDragPayload, nodeId: NodeId | null, laneId: string | null): Promise<void> => {
+    const registry = props.registry;
+    if (registry === undefined) return;
+    const target = laneId !== null && nodeId !== null
+      ? { kind: "existing" as const, automationNodeId: nodeId, laneId }
+      : { kind: "new" as const, automationNodeId: nodeId ?? current?.id ?? null, atTicks: snapTicks(playheadOrZero(), "frames", rate) };
+    const plan = laneDropOperations(graph, registry, source, target);
+    if (!plan.ok) return setNotice(plan.notice);
+    const result = await applyOperations(plan.operations, laneId === null ? "Automate parameter" : "Reference lane");
+    if (result.output.status !== "applied") return setNotice(result.diagnostics[0]?.message ?? "The drop was refused.");
+    setNotice(null);
+    const created = result.output.createdIds["$automation"];
+    setLastTouched(created ?? target.automationNodeId);
+  };
 
   const editLane = (nodeId: NodeId, edit: (document: AutomationDocument) => AutomationDocument): void => {
     const node = nodes.find((each) => each.id === nodeId);
@@ -566,6 +587,7 @@ export function TimelinePane(props: TimelinePaneProps) {
         onSolo={setSolo}
         onMove={(nodeId, laneId, index) => editLane(nodeId, (document_) => moveLane(document_, laneId, index))}
         onDelete={(nodeId, laneId) => editLane(nodeId, (document_) => deleteLane(document_, laneId))}
+        {...(props.registry === undefined ? {} : { onDropParameter: (source: ParameterDragPayload, nodeId: NodeId | null, laneId: string | null) => void onDropParameter(source, nodeId, laneId) })}
       />
       <div className={styles.editor}>
         <div className={styles.toolbar}>
