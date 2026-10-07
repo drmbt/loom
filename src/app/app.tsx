@@ -1,5 +1,7 @@
 import { createRenderCanvasCapture } from "./render-canvas-capture.ts";
 import { ControlsPane } from "@editor/controls/controls-pane.tsx";
+import { TimelinePane } from "@editor/timeline/timeline-pane.tsx";
+import { timelineShows } from "@editor/timeline/timeline-model.ts";
 import { ContextMenuHost } from "@editor/menus/index.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { scopeFromFrame } from "@domain/expressions/index.ts";
@@ -2372,6 +2374,16 @@ export function App({
           performance={performancePane}
           agent={agentPane}
           terminal={terminalPane}
+          timeline={
+            <ErrorBoundary name="Timeline">
+              {/* VN62: lanes of every automation node; writes through the bus, seeks through transport.seek. */}
+              <LiveGraph store={runtime.bus.store} registry={runtime.registry} shows={timelineShows}>{(liveGraph) => (
+                <TimelinePane graph={liveGraph} bus={runtime.bus} invocation={runtime.invocation} selection={selection}
+                  latestFrame={frameLoop.latestFrame} fps={projectFps(runtime.settings)} range={frameRange}
+                  playing={frameLoop.playing} onSeek={onSeek} />
+              )}</LiveGraph>
+            </ErrorBoundary>
+          }
           controls={
             <ErrorBoundary name="Controls">
               {/* T1619b: the control menu (Reset, Set as default) is mounted HERE for the Controls
