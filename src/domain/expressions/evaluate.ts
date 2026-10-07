@@ -1040,7 +1040,7 @@ function evaluateNode(
       // VN36: the flattener rewrites every one inside a component to an `op()` read of the
       // instance it names, so one that gets here is outside any. A number here would be one
       // that looks like an answer.
-      fail("reference.unreadable", `parent() reads a published parameter of the component a node is in, and this expression is not inside one`, {
+      return fail("reference.unreadable", `parent() reads a published parameter of the component a node is in, and this expression is not inside one`, {
         suggestion: "Use parent() in a node inside a component, or read the parameter with op('<name>').par.<key>.",
       });
     case "call": {

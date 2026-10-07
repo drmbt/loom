@@ -1096,7 +1096,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
     const [width, height] = previewTargetSize();
     return width / height;
   };
-  const { kept, pruned } = pruneToActiveSinks(validated.nodes, validated.edges, sinkResolution.sinks);
+  const { kept, pruned } = pruneToActiveSinks(validated.nodes, validated.edges, sinkResolution.sinks, instancePages);
   diagnostics.push(...validateRequiredInputs(validated.nodes, validated.edges, kept));
 
   // 3. temporal split, cycle rejection, ordering (T25, §V4)

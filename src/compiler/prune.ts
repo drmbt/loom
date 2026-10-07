@@ -2,6 +2,7 @@ import type { NodeId } from "../domain/types/ids.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
 import { computeLiveness, isValueSourceDefinition, type LivenessNode } from "../domain/graph/liveness.ts";
+import { NO_PAGES, type InstancePages } from "../domain/parameters/node-references.ts";
 import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
 import type { ActiveSink, CompileEdge } from "./types.ts";
 import type { ResolvedNode } from "./validate.ts";
@@ -176,6 +177,8 @@ export function pruneToActiveSinks(
   nodes: ReadonlyMap<NodeId, ResolvedNode>,
   edges: ReadonlyArray<CompileEdge>,
   sinks: ReadonlyArray<ActiveSink>,
+  /** VN36: the dissolved instances' pages, which `op('<instance>').par` (and `parent()`) reads. */
+  pages: InstancePages = NO_PAGES,
 ): PruneResult {
   const producers = new Map<NodeId, NodeId[]>();
   for (const edge of edges) {
@@ -210,6 +213,12 @@ export function pruneToActiveSinks(
       isValueSource: isValueSourceDefinition(resolved.definition),
       isSink: false, // seeds come from the resolved ACTIVE sinks below, not the manifest
     });
+  }
+  // VN36: a page is read like a node (`op('<instance>').par.<key>`, what `parent()` becomes),
+  // so what ITS knobs read is read too. Never a candidate itself: it has no GPU work.
+  for (const page of pages.values()) {
+    if (livenessNodes.has(page.node.id)) continue;
+    livenessNodes.set(page.node.id, { name: page.node.label, parameters: page.node.parameters, isValueSource: true, isSink: false });
   }
   const { dead } = computeLiveness(livenessNodes, producers, [...kept].sort());
   return { kept, pruned: dead };

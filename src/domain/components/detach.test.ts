@@ -725,3 +725,52 @@ describe("T1545b — an in-session detach names the root and catalogue paths it 
     ]);
   });
 });
+
+/**
+ * VN36 — a `parent()` read in an expression inside the definition. The copies land at the
+ * instance's own level, where `parent()` means the component AROUND the instance, so detach
+ * rewrites each read by the rule it applies to `parent.<key>` binds.
+ */
+describe("VN36 — detach rewrites parent() reads for where the copies land", () => {
+  const expression = (source: string, retained: number) => slot("expression", { kind: "expression", source }, retained);
+  function reader(): GraphComponentDefinition {
+    const base = look();
+    return {
+      ...base,
+      componentId: "reader",
+      name: "Reader",
+      graph: graphOf([
+        node("blurA", "test.blur", {}, { label: "blurA", position: { x: 0, y: 0 }, parameters: { radius: expression("parent().par.soft * 2", 1) } }),
+        node("deep", "test.blur", {}, { label: "deep", position: { x: 100, y: 0 }, parameters: { radius: expression("parent(2).par.gain + 1", 3) } }),
+        node("green", "test.blur", {}, { label: "green", position: { x: 200, y: 0 }, parameters: { radius: expression("parent().par.tint.g", 2) } }),
+      ]),
+      parameters: base.parameters.map((each) => ({ ...each, targets: [] })),
+    };
+  }
+  const radiusOf = (detached: Detached, id: string) => detached.copies[id]?.parameters["radius"];
+
+  it("a page VALUE is written as a number; parent(2) loses one hop; a component reads its channel", async () => {
+    const detached = await detach({ ...instanceOf("reader", { ...PAGE }) }, [reader()]);
+    expect(radiusOf(detached, "blurA")).toEqual(expression("(6) * 2", 1));
+    expect(radiusOf(detached, "deep")).toEqual(expression("parent().par.gain + 1", 3));
+    expect(radiusOf(detached, "green")).toEqual(expression("(0.2)", 2));
+  });
+
+  it("an ANIMATED page key inlines the instance's own expression, written at this very level", async () => {
+    const detached = await detach(instanceOf("reader", { ...PAGE, soft: expression("time", 4) }), [reader()]);
+    expect(radiusOf(detached, "blurA")).toEqual(expression("(time) * 2", 1));
+  });
+
+  it("a page key bound to parent.<key> re-aims at that source as a parent() read", async () => {
+    const detached = await detach(instanceOf("reader", { ...PAGE, soft: bindSlot("parent.level", 7) }), [reader()]);
+    expect(radiusOf(detached, "blurA")).toEqual(expression("parent().par.level * 2", 1));
+  });
+
+  it("a read the copies cannot make is said, and the copy holds its static", async () => {
+    const missing = reader();
+    missing.graph.nodes["blurA"] = { ...missing.graph.nodes["blurA"]!, parameters: { radius: expression("parent().par.nothing", 1) } };
+    const detached = await detach(instanceOf("reader", { ...PAGE }), [missing]);
+    expect(radiusOf(detached, "blurA")).toBe(1);
+    expect(detached.messages.map((each) => each.message).join("\n")).toContain("parent().par.nothing");
+  });
+});

@@ -51,6 +51,8 @@ import type { ActiveSink } from "./types.ts";
 import { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "../domain/components/internal-resolutions.ts";
 import type { NameScope } from "../domain/components/addressing.ts";
 import { resolvePathReferences } from "./path-references.ts";
+import { resolveParentReferences, type EnclosingInstance } from "./parent-references.ts";
+import { parentReadsOf } from "../domain/expressions/index.ts";
 import { applyInstance } from "../domain/components/apply-instance.ts";
 import { isDefaultChannelMask } from "../domain/types/graph.ts";
 export { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "../domain/components/internal-resolutions.ts";
@@ -337,9 +339,9 @@ interface LevelResult {
  * needs it. (It is read in exactly one place: the `parent.<key>` driver loop in
  * `effectiveParameters`. With no drivers, nothing reads it.)
  *
- * ## The three things that make the walk NOT the identity
+ * ## The four things that make the walk NOT the identity
  *
- * All three are checked, and any of them sends the document down the full walk:
+ * All four are checked, and any of them sends the document down the full walk:
  *
  *  1. a COMPONENT INSTANCE — the whole point of the walk;
  *  2. `state.parentBindings` on a node — at the root there is no parent scope, so
@@ -349,6 +351,8 @@ interface LevelResult {
  *     reading a value that no longer exists with nothing said;
  *  3. a `bind`-mode slot whose ref starts `parent.` — the same case through §V107's
  *     slot, where the walk warns and falls back to §V108's retained static.
+ *  4. a `parent()` read in an expression (VN36) — the same case again, through the grammar,
+ *     and the same answer: `compiler/parent-reference-no-parent` and the retained static.
  *
  * §V83's recursion detector is skipped with them, and provably: it walks the document's
  * component references, and a document with no instance has none.
@@ -367,6 +371,14 @@ function flatteningIsIdentity(graph: GraphDocument): boolean {
       if (!isParameterSlot(stored) || stored.mode !== "bind") continue;
       const binding = stored.bindings.bind;
       if (binding?.kind === "bind" && binding.ref.startsWith("parent.")) return false;
+    }
+    // VN36 — 4. a `parent()` read in an active expression: at the root it has no parent, and
+    // the walk is what says so.
+    for (const key of Object.keys(node.parameters ?? {})) {
+      const stored = node.parameters?.[key];
+      if (!isParameterSlot(stored) || stored.mode !== "expression") continue;
+      const binding = stored.bindings.expression;
+      if (binding?.kind === "expression" && parentReadsOf(binding.source).length > 0) return false;
     }
   }
   return true;
@@ -711,6 +723,11 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     const levelGraph = withUniqueNames(input.graph);
     if (!scopes.has(input.prefix)) scopes.set(input.prefix, { parent: undefined, label: undefined, names: new Map() });
     const scope = buildParentScope(input.chain);
+    /** VN36: the instances around this level, outermost first, as a `parent()` read sees them. */
+    const parents: EnclosingInstance[] = input.path.map((instanceId) => ({
+      label: instanceNodes.get(instanceId)?.label,
+      schema: pageSchemas.get(instanceId),
+    }));
     const grouped = overridesByNode(input.overrides);
     const origins = originsByNode(input.origins);
     /** Raw instance id -> the boundary of the subgraph it expanded into. */
@@ -742,7 +759,13 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       // T1524b: the root parameters this node's values came from — the published fan-out
       // (§V80) and, beside it, every `parent.<key>` read `effectiveParameters` resolves.
       const publishedFrom: Record<string, PublishedOrigin> = { ...origins.get(nodeId) };
-      const parameters = effectiveParameters(node, schema, grouped.get(nodeId) ?? {}, scope, flatId, input.scopeOrigins, publishedFrom);
+      // VN36: and every `parent()` read becomes an `op()` read of the instance it names, here,
+      // before an instance's page is carried inward (T1017). See `parent-references.ts`.
+      const parameters = resolveParentReferences(
+        effectiveParameters(node, schema, grouped.get(nodeId) ?? {}, scope, flatId, input.scopeOrigins, publishedFrom),
+        parents,
+        (diagnostic) => report(diagnostic, flatId),
+      );
       const resolved: GraphNode = { ...node, id: flatId, parameters };
 
       if (instance !== null) {
