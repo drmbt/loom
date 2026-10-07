@@ -378,17 +378,33 @@
 }
 
 /*
-  VNB15 (owner's ruling, 2026-10-07) — AN INSTANCE'S LABEL IS NOT CLIPPED AT ITS NODE'S EDGE.
-  This reverses the clip described above, for component instances only. An instance's kind
-  is its component's whole name: on the reported stage previz, fitted at 14 %, stagecamera1,
-  stagefeeds1 and stageset1 all read `sta`. So an instance's label runs past its node's right
-  edge, uncapped and unfaded, and reads the component's whole name. It may cross the gutter
-  to a neighbour; components are few on a canvas and their name is the most telling word on
-  it. The rule under the header and the zoom written on the label are unchanged.
+  VNB15 (owner's ruling, 2026-10-07, option (b)) — AN INSTANCE'S LABEL REACHES PAST ITS
+  NODE'S EDGE, AS FAR AS THE NEXT NODE IN ITS ROW. This reverses the clip described above,
+  for component instances only. An instance's kind is its component's whole name: on the
+  reported stage previz, fitted at 14 %, stagecamera1, stagefeeds1 and stageset1 all read
+  `sta`. Unclipped (option (a)), E79's audioanalysis1 ran over the next row's labels.
+
+  So the clip's right edge moves out by `--instance-reach`, the gap to the nearest node to
+  the right in the label's row, in GRAPH px: written on this element from the layout by
+  `kind-label.ts` (`instanceReach`), never on an ancestor and never per zoom step. With no
+  node to its right (no `data-reach`) the label runs on uncapped. Cut at a neighbour it is
+  cut hard, without the fade: the fade is an eighth of the box, which here is not the
+  node's width. The label takes the pointer, so its hover gives the whole name (`title`);
+  a press on it is still a press on its node. The rule under the header and the zoom
+  written on the label are unchanged.
 */
 .kindLabelClip[data-instance] {
   overflow: visible;
   mask-image: none;
+}
+
+.kindLabelClip[data-instance][data-reach] {
+  right: calc(-1 * var(--instance-reach, 0px));
+  overflow: hidden;
+}
+
+.kindLabelClip[data-instance] .kindLabel {
+  pointer-events: auto;
 }
 
 .kindLabel {

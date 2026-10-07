@@ -171,17 +171,18 @@ const measure = (page: Page): Promise<LabelGeometry> =>
         };
       });
     /*
-     * VNB15 — by the owner's ruling of 2026-10-07, a COMPONENT INSTANCE's label is not
-     * clipped at its node's edge: its kind is its component's whole name, which the clip cut
-     * to `sta` on the stage previz. So the width and neighbour claims below are made of
-     * every OTHER node, and an instance's label is held to its whole name instead
-     * (`component-name-labels.spec.ts`). Every plain node is still measured as before.
+     * VNB15 — by the owner's ruling of 2026-10-07 (option (b)), a COMPONENT INSTANCE's label
+     * is not clipped at its node's edge: its kind is its component's whole name, which the
+     * clip cut to `sta` on the stage previz. It runs on as far as the next node in its row.
+     * So an instance is exempt from ONE claim, staying inside its own width; it is held to
+     * every other one below like any node: on no other node, no picture, no other label.
+     * `component-name-labels.spec.ts` holds that it reads whole where its row has room.
      */
     const plain = drawn.filter((each) => !each.instance);
     let overlappingPairs = 0;
-    for (let a = 0; a < plain.length; a += 1) {
-      for (let b = a + 1; b < plain.length; b += 1) {
-        if (overlap(plain[a]!, plain[b]!)) overlappingPairs += 1;
+    for (let a = 0; a < drawn.length; a += 1) {
+      for (let b = a + 1; b < drawn.length; b += 1) {
+        if (overlap(drawn[a]!, drawn[b]!)) overlappingPairs += 1;
       }
     }
     const heights = drawn.map((each) => each.height);
@@ -195,8 +196,8 @@ const measure = (page: Page): Promise<LabelGeometry> =>
       furthestBelowHeaderLine: Math.max(0, ...drawn.map((each) => each.belowHeaderLine)),
       furthestAboveOwnNode: Math.max(0, ...drawn.map((each) => each.aboveNode)),
       overlappingPairs,
-      onAnotherNode: plain.filter((each) => each.onAnotherNode).map((each) => each.id),
-      inASlot: plain.filter((each) => each.inASlot).map((each) => each.id),
+      onAnotherNode: drawn.filter((each) => each.onAnotherNode).map((each) => each.id),
+      inASlot: drawn.filter((each) => each.inASlot).map((each) => each.id),
       firstWords: [...new Set(drawn.map((each) => each.word))].sort(),
     };
   });
