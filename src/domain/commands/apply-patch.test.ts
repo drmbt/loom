@@ -1078,6 +1078,22 @@ describe("graph.applyPatch — op() reference cycles refused at write time (T331
   });
 });
 
+describe("graph.applyPatch — a name may not hold the path separator (VN35)", () => {
+  it("refuses '/' in an explicit label at both exact doors, and names the valid form", async () => {
+    const added = await apply([{ op: "addNode", ref: "$a", type: "test.solid", position: { x: 0, y: 0 }, label: "rig/solid" }]);
+    expect(added.status).toBe("rejected");
+    expect(added.diagnostics[0]).toMatchObject({ code: "node.label.separator", suggestion: '"rig_solid" is a name.' });
+    expect(nodeCount()).toBe(0);
+
+    const created = await apply([addSolid("$a")]);
+    const nodeId = created.output.createdIds["$a"] as string;
+    const renamed = await apply([{ op: "setNodeLabel", nodeId, label: "solid/one" }]);
+    expect(renamed.status).toBe("rejected");
+    expect(renamed.diagnostics[0]?.code).toBe("node.label.separator");
+    expect(graph().nodes[nodeId]?.label).toBe("solid1");
+  });
+});
+
 describe("graph.applyPatch — names as identifiers (T221/T222, §V128/§V129)", () => {
   it("auto-names created nodes uniquely, in patch order", async () => {
     const result = await apply([addSolid("$a"), addSolid("$b", 100)]);

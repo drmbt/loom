@@ -6,7 +6,7 @@ import type { EdgeId, GroupId, NodeId, PortId } from "../types/ids.ts";
 import { isDefaultChannelMask, MIN_NODE_SIZE } from "../types/graph.ts";
 import { supportsChannelMask } from "../graph/channel-mask.ts";
 import { COMPONENT_OVERRIDES_STATE_KEY, internalParameterPath, isComponentInstance, readComponentInstance } from "../components/instance.ts";
-import { enteredThrough } from "../components/addressing.ts";
+import { enteredThrough, isNodePath } from "../components/addressing.ts";
 import { INTERNAL_CHANNEL_MASKS_KEY, internalChannelMasks } from "../components/internal-channel-masks.ts";
 import type { GraphDocument, GraphEdge, GraphNode } from "../types/graph.ts";
 import type { StoredParameter } from "../types/parameters.ts";
@@ -27,7 +27,7 @@ import {
   rewriteNodeNameReferences,
   uniqueNodeName,
 } from "../graph/names.ts";
-import { kindOf } from "../graph/node-kinds.ts";
+import { kindOf, roleFromText } from "../graph/node-kinds.ts";
 import { sourceReferenceForInput } from "../graph/source-references.ts";
 import { defaultParameters, undeclaredKeys, validateParameters } from "../parameters/validate.ts";
 import { bindCycleDiagnostics } from "../parameters/bind-cycles.ts";
@@ -358,6 +358,20 @@ function executeOperation(
     throw new PatchAbort();
   };
 
+  /*
+   * VN35: `/` separates the names of a path (`projector_left/projector_beam`), so a name may
+   * not hold one: `op('a/b')` would mean two things. Refused, not converted, at the doors that
+   * store a label exactly (§V324): a caller carrying a name has references written against it.
+   * The suggestion is TD's `tdu.validName` of the label, which is `roleFromText`.
+   */
+  const refuseSeparator = (label: string, nodeId: NodeId): void => {
+    const valid = roleFromText(label);
+    fail("node.label.separator", `the name "${label}" holds "/", which separates the names in a path.`, {
+      nodeId,
+      ...(valid === "" ? {} : { suggestion: `"${valid}" is a name.` }),
+    });
+  };
+
   const resolveNodeId = (ref: NodeRef): NodeId => {
     if (isTempId(ref)) {
       const resolved = run.createdIds[ref];
@@ -445,6 +459,10 @@ function executeOperation(
       const requested = operation.label?.trim();
       if (operation.label !== undefined && (requested === undefined || requested.length === 0)) {
         fail("node.emptyLabel", `an explicit label may not be empty.`, { nodeId });
+        return;
+      }
+      if (requested !== undefined && isNodePath(requested)) {
+        refuseSeparator(requested, nodeId);
         return;
       }
       if (requested !== undefined && nodeNames(draft).has(requested)) {
@@ -966,6 +984,10 @@ function executeOperation(
           nodeId: node.id,
           suggestion: "Pass null to clear the label and fall back to the definition title.",
         });
+      }
+      if (isNodePath(label)) {
+        refuseSeparator(label, node.id);
+        return;
       }
       if (label.length > 120) {
         fail("node.label.tooLong", `label is ${label.length} characters; the limit is 120.`, {

@@ -49,6 +49,8 @@ import { CompilerDiagnosticCode, compilerDiagnostic } from "./diagnostics.ts";
 import { resolveNodeParameters } from "./validate.ts";
 import type { ActiveSink } from "./types.ts";
 import { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "../domain/components/internal-resolutions.ts";
+import type { NameScope } from "../domain/components/addressing.ts";
+import { resolvePathReferences } from "./path-references.ts";
 import { applyInstance } from "../domain/components/apply-instance.ts";
 import { isDefaultChannelMask } from "../domain/types/graph.ts";
 export { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "../domain/components/internal-resolutions.ts";
@@ -554,13 +556,29 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       // the rename works on a copy, never the definition.
       graph = structuredClone(level) as GraphDocument;
       for (const rename of renames) {
-        rewriteNodeNameReferences(graph, rename.oldName, rename.newName);
+        rewriteNodeNameReferences(graph, rename.oldName, rename.newName, { paths: false });
         const node = graph.nodes[rename.nodeId];
         if (node !== undefined) graph.nodes[rename.nodeId] = { ...node, label: rename.newName };
       }
     }
     for (const label of levelLabels) usedNames.add(label);
     return graph;
+  };
+
+  /*
+   * VN35: every graph of the flattening as names see it, keyed by its prefix (the root is
+   * `""`), with the names AS WRITTEN — read off the level's own graph, before
+   * `withUniqueNames` renumbers them. `path-references.ts` resolves paths against these.
+   */
+  const scopes = new Map<string, NameScope & { readonly names: Map<string, { node: NodeId } | { scope: string }> }>();
+  const scopeOf = new Map<NodeId, string>();
+  const authoredOf = new Map<NodeId, string>();
+  const nameNode = (prefix: string, authored: string | undefined, flatId: NodeId): void => {
+    scopeOf.set(flatId, prefix);
+    if (authored === undefined) return;
+    authoredOf.set(flatId, authored);
+    const names = scopes.get(prefix)?.names;
+    if (names !== undefined && !names.has(authored)) names.set(authored, { node: flatId });
   };
 
   const recordSource = (flatId: NodeId, path: ComponentPath, node: GraphNode, leaf: string): void => {
@@ -687,6 +705,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
 
   const flattenLevel = (input: LevelInput): LevelResult => {
     const levelGraph = withUniqueNames(input.graph);
+    if (!scopes.has(input.prefix)) scopes.set(input.prefix, { parent: undefined, label: undefined, names: new Map() });
     const scope = buildParentScope(input.chain);
     const grouped = overridesByNode(input.overrides);
     const origins = originsByNode(input.origins);
@@ -704,6 +723,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       const node = levelGraph.nodes[nodeId];
       if (node === undefined) continue;
       const flatId = flattenedNodeId(input.prefix, nodeId);
+      const authored = input.graph.nodes[nodeId]?.label;
       const instance = readComponentInstance(node);
       const componentDefinition =
         instance === null ? undefined : request.components.get(instance.componentId, instance.version);
@@ -728,6 +748,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
 
       if (instance === null) {
         addNode(resolved, flatId);
+        nameNode(input.prefix, authored, flatId);
         recordSource(flatId, input.path, node, node.label ?? nodeId);
         // T1497b: the published values this node carries, and where each came from.
         if (Object.keys(publishedFrom).length > 0) publishedOrigins.set(flatId, publishedFrom);
@@ -747,6 +768,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
           flatId,
         );
         addNode(resolved, flatId);
+        nameNode(input.prefix, authored, flatId);
         recordSource(flatId, input.path, node, node.label ?? nodeId);
         continue;
       }
@@ -768,6 +790,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
          * bypass mutes, exactly as it does on a plain node.
          */
         addNode(resolved, flatId);
+        nameNode(input.prefix, authored, flatId);
         recordSource(flatId, input.path, node, node.label ?? nodeId);
         continue;
       }
@@ -812,6 +835,10 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
 
       for (const path of applied.missing.channelMasks) diagnostics.push({ severity: "error", code: "component.channelMaskTargetMissing", nodeId: flatId,
         message: `Component channel mask override names missing internal node "${path}".` });
+      // VN35: the instance is a graph of names; its own name, as written, is how a path enters it.
+      scopes.set(flatId, { parent: input.prefix, label: authored, names: new Map() });
+      const enclosing = scopes.get(input.prefix)?.names;
+      if (authored !== undefined && enclosing !== undefined && !enclosing.has(authored)) enclosing.set(authored, { scope: flatId });
       const child = flattenLevel({
         graph: applied.graph,
         definition: componentDefinition,
@@ -1007,6 +1034,9 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     if (preserved !== undefined) edges[`${boundary.id}:preserved`] = { id: `${boundary.id}:preserved`, source: preserved.source,
       target: { nodeId: boundary.id, portId: "preserved" } };
   }
+
+  // VN35: paths name nodes the walk above has now placed; resolve them before anything reads a name.
+  diagnostics.push(...resolvePathReferences({ nodes, edges, scopes, scopeOf, authoredOf }));
 
   const graph = flat({
     revision: request.graph.revision,

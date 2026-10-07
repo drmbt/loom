@@ -258,3 +258,36 @@ describe("T1172 — the name index reflects a graph mutated between reads", () =
     expect(nodeByName(graph, "gain9")).toBe("a");
   });
 });
+
+describe("a rename and a path (VN35, §V128)", () => {
+  const expression = (source: string) => ({ mode: "expression", bindings: { expression: { kind: "expression", source } } });
+  const sourceOf = (graph: GraphDocument, id: string): string =>
+    (graph.nodes[id]?.parameters["value"] as { bindings: { expression: { source: string } } }).bindings.expression.source;
+
+  it("moves the FIRST name of a path written in the renamed node's graph, and only that", () => {
+    const graph = graphWith({
+      rig: { label: "rig_a" },
+      render: {
+        type: "render",
+        label: "render_stage",
+        parameters: { projectors: "rig_a/projector_beam rig_ab/projector_beam rig_b/rig_a", camera: "../rig_a" },
+      },
+      reader: { label: "constant_reader", parameters: { value: expression("op('rig_a/projector_beam').par.x + op('rig_a').par.y") as never } },
+    });
+    expect(countNodeNameReferences(graph, "rig_a")).toBe(2);
+    rewriteNodeNameReferences(graph, "rig_a", "rig_left");
+    // The head moved; a name further down, a longer name sharing the prefix, and a path
+    // that climbs out (it names a node of ANOTHER graph) did not.
+    expect(graph.nodes["render"]?.parameters["projectors"]).toBe("rig_left/projector_beam rig_ab/projector_beam rig_b/rig_a");
+    expect(graph.nodes["render"]?.parameters["camera"]).toBe("../rig_a");
+    expect(sourceOf(graph, "reader")).toBe("op('rig_left/projector_beam').par.x + op('rig_left').par.y");
+  });
+
+  it("leaves paths alone when asked to (B41's uniquing renames a copy, not what the author wrote)", () => {
+    const graph = graphWith({
+      render: { type: "render", label: "render_stage", parameters: { projectors: "rig_a/projector_beam rig_a" } },
+    });
+    rewriteNodeNameReferences(graph, "rig_a", "rig_a1", { paths: false });
+    expect(graph.nodes["render"]?.parameters["projectors"]).toBe("rig_a/projector_beam rig_a1");
+  });
+});
