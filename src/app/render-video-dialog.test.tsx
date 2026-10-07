@@ -85,6 +85,20 @@ it("edits take-local settings without mutating the project and starts a supporte
   expect(onRender).toHaveBeenCalledOnce();
 });
 
+it("VN71: offers a pre-roll, 0 by default, and an out point past the old 10 000-frame limit", () => {
+  const setRenderSettings = vi.fn();
+  render(<RenderVideoDialog open onOpenChange={vi.fn()} settings={SETTINGS} session={session({ setRenderSettings })} onRender={vi.fn()} />);
+  const preRoll = screen.getByRole("spinbutton", { name: "render pre-roll frames" });
+  expect((preRoll as HTMLInputElement).value).toBe("0");
+  fireEvent.change(preRoll, { target: { value: "30" } });
+  fireEvent.keyDown(preRoll, { key: "Enter" });
+  expect(setRenderSettings).toHaveBeenLastCalledWith({ preRollFrames: 30 });
+  const rangeOut = screen.getByRole("spinbutton", { name: "render range out" });
+  fireEvent.change(rangeOut, { target: { value: "215999" } });
+  fireEvent.keyDown(rangeOut, { key: "Enter" });
+  expect(setRenderSettings).toHaveBeenLastCalledWith({ range: { start: 0, end: 215_999 } });
+});
+
 it("shows a settled cancellation state while cleanup finishes", () => {
   render(
     <RenderVideoDialog

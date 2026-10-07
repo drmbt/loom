@@ -239,4 +239,17 @@ describe("T467 — only a RENDER zeroes the absolute clock", () => {
     expect(fresh.absFrameIndex).toBe(0);
     expect(fresh.absTimeSeconds).toBe(0);
   });
+  it("VN71: resetAbsolute(at) starts the count AT a take's entry, and counts on from there", () => {
+    const clock = liveClock({ fps: 60 });
+    for (let index = 0; index < 10; index += 1) clock.next();
+    // A take entering at frame 90 (an in point of 120, less a 30-frame pre-roll).
+    clock.resetAbsolute(90);
+    clock.reset();
+    clock.wrapTo?.(90);
+    const entry = clock.next();
+    expect(entry.frameIndex).toBe(90);
+    expect(entry.absFrameIndex).toBe(90);
+    expect(entry.absTimeSeconds).toBe(1.5);
+    expect(clock.next().absFrameIndex).toBe(91);
+  });
 });

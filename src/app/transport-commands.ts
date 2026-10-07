@@ -1,6 +1,7 @@
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
-import { SEEK_FRAME_LIMIT } from "@domain/types/graph.ts";
+import { projectFps } from "@domain/types/graph.ts";
+import { frameRangeLimit, rangeLimitSentence } from "@domain/transport/range-limit.ts";
 import { commandHolder } from "@domain/commands/command-holder.ts";
 import { z } from "zod";
 import { NO_INPUT } from "@domain/commands/input-schema.ts";
@@ -26,16 +27,19 @@ declare module "@domain/types/commands.ts" {
     /** Render exactly `frames` (default 1) frames synchronously — across a timed structural cue, once its plan is installed (§T1544b). Reports the last frame index. */
     "transport.stepFrame": { input: { frames?: number }; output: { frameIndex: number } };
     /**
-     * Jump to a frame (T265, §V170).
+     * Jump to a frame (T265, VN71/T1687b, §V170 as amended).
      *
-     * Implemented as a REPLAY: the transport is reset, temporal history is cleared, and
-     * the graph is stepped forward to the requested frame. That is the only honest way to
-     * seek a graph with feedback, a Cache or a point simulation — their state is not a
-     * function of frame index, so jumping the counter and leaving the state alone would
-     * show a picture belonging to a different history and look like a working scrub.
+     * A seek RENDERS THE TARGET FRAME AND NOTHING ELSE, at any distance, and leaves temporal
+     * state as it is — TouchDesigner's behaviour, by the owner's ruling (2026-10-07). It used
+     * to replay from frame zero over cleared history, so a feedback graph showed its true state
+     * at the target; that cost O(target) frames per seek and was why the range was capped at
+     * 10 000 frames. Feedback depends on the previous frame: a graph with feedback, a Cache or
+     * a point simulation that is sought carries on from what it holds, and 10 000 frames of
+     * feedback are what PLAYING 10 000 frames gives. `runtime.resetFeedback` starts it over.
      *
-     * The cost is linear in the target frame, and bounded: past `SEEK_FRAME_LIMIT` the
-     * command reports rather than freezing the tab for a typo.
+     * A timeline that switches structure (§T1544b) still installs the target's plan before the
+     * frame renders. A frame past the range cap (one day at the project rate) is refused, so a
+     * typo reports rather than becoming a frame nobody meant.
      */
     "transport.seek": { input: { frameIndex: number }; output: { frameIndex: number } };
     /**
@@ -46,23 +50,12 @@ declare module "@domain/types/commands.ts" {
      * the project. The RANGE it cycles is document state (`ProjectSettings.frameRange`),
      * because "how long is this piece" is exactly the kind of thing a `.loom.json` is for.
      *
-     * Looping goes back to the in point through the same replay `transport.seek` runs
-     * (§V170): a graph with feedback has no state at the in point just because it passed
-     * through it once, so wrapping the counter would show the second lap a picture from
-     * the first lap's history.
+     * A lap wraps the clock to the in point and nothing else (T464): playback across the out
+     * point is continuous, so a feedback survives the wrap. It is not a seek.
      */
     "transport.toggleLoop": { input: Record<string, never>; output: { looping: boolean } };
   }
 }
-
-/**
- * How far a seek will replay before it refuses (§V170).
- *
- * Defined in the domain beside `FrameRange` (T454): the same number bounds the timeline's
- * out point, and a project whose out point a seek would refuse is one that cannot loop and
- * cannot render. Re-exported here because this is where the rule is enforced.
- */
-export { SEEK_FRAME_LIMIT } from "@domain/types/graph.ts";
 
 export interface TransportHandlers {
   isPlaying(): boolean;
@@ -78,14 +71,21 @@ export interface TransportHandlers {
    */
   stepOnce(): FrameInputs | null;
   /**
-   * Replays from frame 0 to `frameIndex`, clearing temporal state first (§V170).
+   * Jumps to `frameIndex` and renders it, leaving temporal state as it is (VN71, §V170 as
+   * amended). Returns the frame it landed on.
    *
-   * §T1544b: with a timeline that switches structure, each replayed frame is rendered in its
-   * own segment's plan; a frame whose plan is not installed waits for it, and the rest of
-   * the replay (and any step queued behind it) completes asynchronously, after the command
-   * has returned the frame it lands on. `stepFrame` steps the same way.
+   * §T1544b: with a timeline that switches structure, the target frame renders in its own
+   * segment's plan; when that plan is not installed the frame waits for it, and lands
+   * asynchronously, after the command has returned the frame it will land on.
    */
   seek(frameIndex: number): number;
+  /**
+   * VN71 — clear ALL temporal state: the GPU's feedback pairs, rings and point buffers, and
+   * the CPU's value-graph stages. A seek no longer does this, so the callers that start
+   * fresh say so: a document load, and a take (a fresh performance, T467). Pair it with a
+   * seek: the next frame rendered is the first frame of the new history.
+   */
+  resetState(): void;
   /**
    * §T1537b: resolves once the plan timeline frame `frameIndex` compiles in is the installed
    * one — a structural cue reached on that frame has switched — so a take awaits it before
@@ -95,8 +95,12 @@ export interface TransportHandlers {
   /**
    * T467: zero the ABSOLUTE clock — the render path's verb, never a live control's.
    * A take is a fresh performance; abstime inside a render counts from the take.
+   *
+   * VN71: `at` is the count the next frame carries (default 0). A take that starts at frame
+   * `entry` (its in point, less its pre-roll) passes `entry`, so its in point carries the
+   * in point's count however long the pre-roll, and the take's bytes do not depend on it.
    */
-  resetAbsoluteClock(): void;
+  resetAbsoluteClock(at?: number): void;
   /** T433 — is playback cycling the document's frame range? */
   isLooping(): boolean;
   /** Flips looping. Returns the resulting state. */
@@ -217,7 +221,8 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
       name: "transport.seek",
       inSession: "app",
       inputSchema: z.object({ frameIndex: z.number() }).strict(),
-      description: "Jump to a frame by replaying from the start (§V170).",
+      description:
+        "Jump to a frame and render it. Temporal state (feedback, Cache, simulations) carries on from what it holds; runtime.resetFeedback clears it.",
       handler: (input, context) => {
         const revision = context.store.getRevision();
         if (holder.current === null) {
@@ -243,7 +248,8 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
             output: { frameIndex: -1 },
           };
         }
-        if (target > SEEK_FRAME_LIMIT) {
+        const fps = projectFps(context.store.getSettings());
+        if (target > frameRangeLimit(fps)) {
           return {
             status: "rejected",
             revision,
@@ -251,9 +257,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
               {
                 severity: "warning" as const,
                 code: "transport.seekLimit",
-                message: `Seeking to frame ${target} would replay ${target} frames; the limit is ${SEEK_FRAME_LIMIT}.`,
-                suggestion:
-                  "A graph with feedback has no state at a frame it has not reached, so a seek replays rather than jumping.",
+                message: rangeLimitSentence(target, fps),
               },
             ],
             output: { frameIndex: -1 },

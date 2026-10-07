@@ -5,6 +5,7 @@ import type { FrameRange } from "@domain/types/graph.ts";
 import { frameRangeLength, projectFps } from "@domain/types/graph.ts";
 import { Tooltip } from "@ui/primitives/tooltip.tsx";
 import { cx } from "@ui/cx.ts";
+import { frameRangeLimit, rangeLimitSentence } from "@domain/transport/range-limit.ts";
 import { clamp01, frameAtFraction, fractionOfRange } from "./scrubber-math.ts";
 import styles from "./timeline-scrubber.module.css";
 
@@ -29,14 +30,14 @@ import styles from "./timeline-scrubber.module.css";
  *
  * ## Why the scrub commits on RELEASE (§V170)
  *
- * A seek REPLAYS from frame zero — that is not this component's choice, it is the only
- * honest answer for a graph with feedback, a Cache or a point simulation, whose state is
- * not a function of frame index. Replaying is O(frames), so issuing a seek per pointer
- * sample would replay the whole graph a few hundred times across one drag and lock the
- * tab solid. The playhead therefore follows the pointer live — that is the feedback the
- * gesture needs — and exactly one seek is issued, on release. The tooltip says so, in the
- * same words the frame field uses, because a scrub that silently re-runs a simulation is
- * precisely the thing §V170 forbids leaving unsaid.
+ * The rule was cost: a seek REPLAYED from frame zero, O(frames), so a seek per pointer
+ * sample would have replayed the graph a few hundred times across one drag. VN71 (the
+ * owner's ruling, 2026-10-07; §V170 as amended) made a seek a JUMP — one frame, and
+ * temporal state carries on — so the cost is gone and the rule stands for the other half
+ * of its reason: every seek renders a frame, and a feedback graph takes each one as its
+ * next frame. A drag that sought on every sample would feed it a few hundred frames of the
+ * scrub's path. The playhead follows the pointer live, and exactly one seek is issued, on
+ * release; the tooltip says what a seek does to feedback.
  *
  * ## §V16
  *
@@ -121,6 +122,8 @@ export function TimelineScrubber({
   const playingRef = useRef(playing);
   playingRef.current = playing;
   const rate = projectFps(fps === undefined ? {} : { fps });
+  /** VN71: the range-cap sentence for an out point that was clamped, null otherwise. */
+  const [outNote, setOutNote] = useState<string | null>(null);
   const rateRef = useRef(rate);
   rateRef.current = rate;
   const durationMs = (Math.max(frameRangeLength(range) - 1, 1) / rate) * 1000;
@@ -249,7 +252,7 @@ export function TimelineScrubber({
         }
       />
 
-      <Tooltip label="Drag to scrub — a seek replays from the start">
+      <Tooltip label="Drag to scrub — feedback carries on from where it is">
         <div
           ref={trackRef}
           className={cx(styles.track, seekable && styles.trackLive)}
@@ -292,9 +295,15 @@ export function TimelineScrubber({
           onChangeRange === undefined
             ? undefined
             : (next) => {
-                if (next > range.start) onChangeRange({ start: range.start, end: next });
+                // VN71: past the range cap (one day at the project rate) the out point lands
+                // ON the cap, and the field says why until the next commit.
+                const limit = frameRangeLimit(rate);
+                setOutNote(next > limit ? rangeLimitSentence(next, rate) : null);
+                const end = Math.min(next, limit);
+                if (end > range.start) onChangeRange({ start: range.start, end });
               }
         }
+        note={outNote}
       />
     </div>
   );
@@ -312,10 +321,13 @@ function RangeEnd({
   label,
   value,
   onCommit,
+  note = null,
 }: {
   readonly label: string;
   readonly value: number;
   readonly onCommit?: ((next: number) => void) | undefined;
+  /** VN71: why the last commit landed somewhere other than where it was typed. */
+  readonly note?: string | null;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
 
@@ -334,6 +346,7 @@ function RangeEnd({
       aria-label={label}
       inputMode="numeric"
       readOnly={onCommit === undefined}
+      {...(note === null ? {} : { title: note, "aria-description": note })}
       value={draft ?? String(value)}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}

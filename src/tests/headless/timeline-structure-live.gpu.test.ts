@@ -404,7 +404,7 @@ describe("§T1544b — paused seeks and steps cross structure exactly", () => {
       .filter((entry) => JSON.stringify(layersOf(entry.plan)) !== JSON.stringify(expectedOn(entry.frame)))
       .map((entry) => entry.frame);
 
-  it("E82 paused at 50: a seek to the crossing (60) shows the new structure ON frame 60; a step queued behind a seek lands on 90 in its own; every replayed frame in its own", async () => {
+  it("E82 paused at 50: a seek to the crossing (60) shows the new structure ON frame 60; a step queued behind a seek lands on 90 in its own; every frame in its own", async () => {
     const rig = await mount();
     try {
       await act(async () => {
@@ -415,30 +415,31 @@ describe("§T1544b — paused seeks and steps cross structure exactly", () => {
         expect(rig.transport().stepFrame(51)).toBe(50);
         await gap();
       });
-      // A scrub to the crossing frame: the replay's frames 0..59 in the first structure, 60 in the next.
+      // A scrub to the crossing frame. VN71 (the owner's ruling, 2026-10-07; §V170 as amended):
+      // a seek JUMPS — it renders frame 60 alone, in its own structure, the plan installed first.
       const fromSeek = rig.renders.length;
       await act(async () => {
         expect(rig.transport().seek(60)).toBe(60);
       });
       await waitFor(() => expect(rig.renders.slice(fromSeek).map((entry) => entry.frame).at(-1)).toBe(60), { timeout: 10_000 });
-      expect(rig.renders.slice(fromSeek).map((entry) => entry.frame)).toEqual(Array.from({ length: 61 }, (_, index) => index));
+      expect(rig.renders.slice(fromSeek).map((entry) => entry.frame)).toEqual([60]);
       expect(layersOf(rig.renders.at(-1)?.plan)).toEqual(expectedOn(60));
       expect(wrongSince(rig, fromSeek)).toEqual([]);
 
-      // A seek to 88 and, at once, a step of two: the step waits for the replay, then 89, 90.
+      // A seek to 88 and, at once, a step of two: the step waits for the seek, then 89, 90 (the crossing).
       const fromStep = rig.renders.length;
       await act(async () => {
         expect(rig.transport().seek(88)).toBe(88);
         expect(rig.transport().stepFrame(2)).toBe(90);
       });
       await waitFor(() => expect(rig.renders.slice(fromStep).map((entry) => entry.frame).at(-1)).toBe(90), { timeout: 10_000 });
-      expect(rig.renders.slice(fromStep).map((entry) => entry.frame)).toEqual(Array.from({ length: 91 }, (_, index) => index));
+      expect(rig.renders.slice(fromStep).map((entry) => entry.frame)).toEqual([88, 89, 90]);
       expect(layersOf(rig.renders.at(-1)?.plan)).toEqual(expectedOn(90));
       expect(wrongSince(rig, fromStep)).toEqual([]);
       expect(rig.transport().isPlaying()).toBe(false);
 
-      // MEASURED: a seek to 170 replays 171 frames across all three crossings — four installs
-      // (frame 0's segment first, then one per crossing) — against the same replay's own steps.
+      // A seek to 170, past the last crossing: one frame, and ONE install — 170's segment. It
+      // used to replay 0..170 and install four (frame 0's segment, then one per crossing).
       const fromLong = rig.renders.length;
       const compilesBefore = rig.compiles.length;
       const started = performance.now();
@@ -448,20 +449,21 @@ describe("§T1544b — paused seeks and steps cross structure exactly", () => {
       await waitFor(() => expect(rig.renders.slice(fromLong).map((entry) => entry.frame).at(-1)).toBe(170), { timeout: 20_000 });
       const long = rig.renders.slice(fromLong);
       expect(wrongSince(rig, fromLong)).toEqual([]);
-      expect(rig.compiles.length - compilesBefore).toBe(4);
+      expect(long.map((entry) => entry.frame)).toEqual([170]);
+      expect(rig.compiles.length - compilesBefore).toBe(1);
       if (process.env["LOOM_MEASURE"] === "1") {
         const gaps = long.slice(1).map((entry, index) => entry.at - (long[index] as (typeof long)[number]).at);
         const waits = [(long[0]?.at ?? started) - started, ...gaps.filter((ms) => ms > 1).sort((a, b) => b - a).slice(0, 3)];
         const steps = gaps.filter((ms) => ms <= 1);
         console.info(
-          `§T1544b seek →170 across 3 crossings (Dawn, E82 160×90, jsdom React): ${((long.at(-1)?.at ?? started) - started).toFixed(1)} ms in all, ` +
-            `4 installs; the 4 waits (frame 0's first) ${waits.map((ms) => ms.toFixed(1)).join(", ")} ms; ` +
+          `§T1544b seek →170 past 3 crossings (Dawn, E82 160×90, jsdom React): ${((long.at(-1)?.at ?? started) - started).toFixed(1)} ms in all, ` +
+            `1 install; the wait ${waits.map((ms) => ms.toFixed(1)).join(", ")} ms; ` +
             `the other ${String(steps.length)} steps ${(steps.reduce((sum, ms) => sum + ms, 0) / Math.max(1, steps.length)).toFixed(2)} ms each`,
         );
       }
 
-      // Play pressed while a replay is still installing is OWED: the scheduler does not run
-      // beside the replay, and starts once it has landed.
+      // Play pressed while a seek is still installing its frame's plan is OWED: the scheduler
+      // does not run beside it, and starts once the frame has landed.
       await act(async () => {
         rig.transport().seek(10);
         rig.transport().togglePlay();
@@ -479,12 +481,15 @@ describe("§T1544b — paused seeks and steps cross structure exactly", () => {
   }, 240_000);
 
   /**
-   * TEMPORAL STATE ACROSS THE CROSSING. A feedback loop records the output; a Layer the
-   * timeline turns on at 1.0 s (frame 60) adds green into it, so from frame 60 on every frame
-   * carries the history of the frames before it in BOTH structures. A seek to 70 from 70
-   * replays 0..59 without the Layer and 60..70 with it — byte-identical to the play-through.
+   * A SEEK ACROSS THE CROSSING, IN A FEEDBACK LOOP. A feedback loop records the output; a Layer
+   * the timeline turns on at 1.0 s (frame 60) adds green into it. The play-through 0..70 runs
+   * every frame in its own structure. Then a seek: VN71 (the owner's ruling, 2026-10-07; §V170
+   * as amended) — a seek JUMPS, renders its one target frame and leaves the feedback as it is,
+   * so it is no longer byte-identical to the play-through (the take is: `seek-jump.gpu.test.ts`).
+   * What it still owes is §T1544b: the target's plan installed BEFORE its one frame — a seek to
+   * 59 from the Layer's side renders 59 without the Layer, and back to 70 with it.
    */
-  it("a feedback loop across the crossing: seek(70) from the far side is byte-identical to playing 0..70", async () => {
+  it("a seek across the crossing renders its one target frame on the target's structure, in a feedback loop", async () => {
     const node = (id: string, type: string, parameters: Record<string, unknown>, ui?: Record<string, unknown>) =>
       ({ id, type, label: id, definitionVersion: 1, position: { x: 0, y: 0 }, parameters, ...(ui === undefined ? {} : { ui }) }) as GraphDocument["nodes"][string];
     const edge = (id: string, source: string, target: string, port: string) => ({
@@ -537,23 +542,28 @@ describe("§T1544b — paused seeks and steps cross structure exactly", () => {
       expect(played.filter((entry) => layerOn(entry.plan) !== entry.frame >= 60).map((entry) => entry.frame)).toEqual([]);
       const before = await rig.read("out");
 
-      // THE SEEK, from the far side of the crossing: frame 0's plan must be installed first.
+      // THE SEEK to 59, from the Layer's side of the crossing: 59's plan (no Layer) must be
+      // installed before its one frame renders, or it renders with the Layer.
+      const fromBack = rig.renders.length;
+      await act(async () => {
+        expect(rig.transport().seek(59)).toBe(59);
+      });
+      await waitFor(() => expect(rig.renders.slice(fromBack).map((entry) => entry.frame).at(-1)).toBe(59), { timeout: 10_000 });
+      const back = rig.renders.slice(fromBack);
+      expect(back.map((entry) => entry.frame)).toEqual([59]);
+      expect(back.map((entry) => layerOn(entry.plan))).toEqual([false]);
+
+      // And forward again, across it: 70 alone, with the Layer.
       const fromSeek = rig.renders.length;
       await act(async () => {
         expect(rig.transport().seek(70)).toBe(70);
       });
       await waitFor(() => expect(rig.renders.slice(fromSeek).map((entry) => entry.frame).at(-1)).toBe(70), { timeout: 10_000 });
-      const replayed = rig.renders.slice(fromSeek);
-      expect(replayed.map((entry) => entry.frame)).toEqual(Array.from({ length: 71 }, (_, index) => index));
-      expect(replayed.filter((entry) => layerOn(entry.plan) !== entry.frame >= 60).map((entry) => entry.frame)).toEqual([]);
-      const seekBytes = await rig.read("out");
-      expect(Buffer.compare(seekBytes, before)).toBe(0);
-
-      // Not vacuous: a seek to 59 (the last frame without the Layer) is a different picture.
-      await act(async () => {
-        rig.transport().seek(59);
-      });
-      await waitFor(() => expect(rig.renders.at(-1)?.frame).toBe(59), { timeout: 10_000 });
+      const jumped = rig.renders.slice(fromSeek);
+      expect(jumped.map((entry) => entry.frame)).toEqual([70]);
+      expect(jumped.map((entry) => layerOn(entry.plan))).toEqual([true]);
+      // And it is NOT the play-through's frame 70: the feedback carried the history this seek
+      // came from (59's, over the play-through's), not 0..69's. A take is where 70 is 70.
       expect(Buffer.compare(await rig.read("out"), before)).not.toBe(0);
       expect(rig.diagnostics()).toEqual([]);
       expect(rig.reported).toEqual([]);

@@ -201,7 +201,7 @@ describe("the loop cycles the document's range (T433, T464)", () => {
     expect(seen.temporalResets).toBe(0);
   });
 
-  it("still CLEARS on a seek — §V181 governs the JUMP, not the lap", async () => {
+  it("a seek JUMPS: it renders the target alone and clears nothing (VN71, §V170 as amended)", async () => {
     const { bus, seen, tick, cpuResets, ready } = mountLoop(settingsWithRange(0, 100));
     await ready();
     await act(async () => {
@@ -209,13 +209,23 @@ describe("the loop cycles the document's range (T433, T464)", () => {
     });
     seen.rendered.length = 0;
     await act(async () => {
-      await bus.execute("transport.seek", { frameIndex: 2 }, contextFor(alice));
+      await bus.execute("transport.seek", { frameIndex: 80 }, contextFor(alice));
     });
-    // The user jumped, so the replayed frames must not inherit a trajectory from the
-    // history just abandoned: history cleared, CPU stages cleared, frames re-run from zero.
+    // TouchDesigner's rule, the owner's ruling: feedback depends on the previous frame, so a
+    // seek carries on from what the graph holds. It used to clear history and replay 0..80.
+    expect(seen.rendered).toEqual([80]);
+    expect(seen.temporalResets).toBe(0);
+    expect(cpuResets()).toBe(0);
+  });
+
+  it("resetState clears both halves — GPU history and CPU stages — for the callers that owe a fresh start", async () => {
+    const { bus, seen, cpuResets, ready } = mountLoop(settingsWithRange(0, 100));
+    await ready();
+    await act(async () => {
+      transportHolderFor(bus).current?.resetState();
+    });
     expect(seen.temporalResets).toBe(1);
     expect(cpuResets()).toBe(1);
-    expect(seen.rendered).toEqual([0, 1, 2]);
   });
 
   it("runs past the out point once looping is off — that is LIVE mode (T455)", async () => {

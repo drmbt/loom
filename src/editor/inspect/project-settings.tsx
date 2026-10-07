@@ -2,7 +2,6 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 import type { ProjectSettings } from "@domain/types/graph.ts";
 import {
   DEFAULT_PROJECT_FPS,
-  SEEK_FRAME_LIMIT,
   projectFps,
   projectRange,
 } from "@domain/types/graph.ts";
@@ -20,6 +19,7 @@ import {
   DialogRoot,
   DialogTitle,
 } from "@ui/primitives/dialog.tsx";
+import { frameRangeLimit } from "@domain/transport/range-limit.ts";
 import styles from "./project-settings.module.css";
 import { DesktopPermissionsPanel } from "./desktop-permissions.tsx";
 
@@ -92,8 +92,9 @@ const FPS_SPEC: NumericSpec = { min: 1, max: 240, step: 1, precision: 0 };
  *
  * The bounds are not decoration. `min` keeps the out point after the in point, so the
  * field cannot produce the inverted range the schema would then refuse with an error the
- * user did not ask for; `max` is `SEEK_FRAME_LIMIT`, because a range whose out point a
- * seek will not replay is a range that cannot loop and cannot render (§V170).
+ * user did not ask for; `max` is `frameRangeLimit(fps)`, one day at the project rate (VN71):
+ * a sanity cap so a mistyped `1e9` lands on a number someone could mean. A seek renders one
+ * frame at any distance, so the range is no longer bounded by what a seek would replay.
  */
 const rangeSpec = (max: number, min = 0): NumericSpec => ({ min, max, step: 1, precision: 0 });
 /**
@@ -304,7 +305,7 @@ export function ProjectSettingsDialog({
               <NumberField
                 label="range out"
                 value={shown("rangeEnd", range.end)}
-                spec={rangeSpec(SEEK_FRAME_LIMIT, range.start + 1)}
+                spec={rangeSpec(frameRangeLimit(projectFps(settings)), range.start + 1)}
                 onChange={commitOnly("rangeEnd", (next) =>
                   onChange(
                     { frameRange: { start: range.start, end: next } },

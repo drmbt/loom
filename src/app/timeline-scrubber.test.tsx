@@ -358,6 +358,31 @@ describe("the range's ends are ONE value with three meanings (T433)", () => {
     expect(onChangeRange).not.toHaveBeenCalled();
   });
 
+  it("VN71: takes an out point past 10 000, and lands one past a day on the cap, saying why", () => {
+    const onChangeRange = vi.fn();
+    mount(
+      <TimelineScrubber
+        latestFrame={() => frameAt(0)}
+        range={{ start: 0, end: 599 }}
+        onSeek={vi.fn()}
+        onChangeRange={onChangeRange}
+        fps={60}
+      />,
+    );
+    const out = screen.getByLabelText("Out point");
+    // An hour at 60 fps: the old limit refused everything past 10 000.
+    fireEvent.change(out, { target: { value: "215999" } });
+    fireEvent.keyDown(out, { key: "Enter" });
+    expect(onChangeRange).toHaveBeenLastCalledWith({ start: 0, end: 215_999 });
+    expect(out.getAttribute("title")).toBeNull();
+    fireEvent.change(out, { target: { value: "1000000000" } });
+    fireEvent.keyDown(out, { key: "Enter" });
+    expect(onChangeRange).toHaveBeenLastCalledWith({ start: 0, end: 5_183_999 });
+    expect(out.getAttribute("title")).toBe(
+      "Frame 1000000000 is past the timeline limit 5183999: one day at 60 fps is the longest range a project holds.",
+    );
+  });
+
   it("abandons an edit on Escape without writing the document", () => {
     const onChangeRange = vi.fn();
     mount(
