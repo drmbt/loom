@@ -72,6 +72,7 @@ export function composedParameterReadDiagnostics(
           case "call":
             for (const arg of ast.args) walk(arg);
             return;
+          case "parentRef":
           case "number":
           case "variable":
             return;

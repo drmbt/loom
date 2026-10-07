@@ -125,6 +125,9 @@ export function opReferences(source: string): OpReference[] | null {
         case "call":
           for (const arg of ast.args) walk(arg);
           return;
+        // VN36: a `parent()` read is lexical scope, never an edge (§V81). The flattener
+        // rewrites it to an `op()` read, which this walk then sees on the flat graph.
+        case "parentRef":
         case "number":
         case "variable":
           return;
