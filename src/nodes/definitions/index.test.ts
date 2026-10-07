@@ -27,6 +27,8 @@ describe("the code-parameter census (T492)", () => {
       )
       .sort();
     expect(census).toEqual([
+      // VN61: automation lanes, structured data the timeline edits.
+      "automation.lanes:json",
       // T1500b: the cue list, hand-editable structured data like the bank.
       "cueList.cues:json",
       "customWgsl.source:wgsl",
@@ -225,6 +227,8 @@ describe("core catalogue (T70, T40)", () => {
       "presets",
       // T1500b: the cue list — GO / BACK through an ordered list of preset recalls.
       "cueList",
+      // VN61: keyframed lanes over the playhead, each published as a channel.
+      "automation",
       // T414: sound as channels — the value family's third input source after Mouse
       // and the trio. Deliberately named for what it IS, not a TD analog.
       "audioIn",
@@ -450,6 +454,7 @@ describe("T438 (§V316) — the channel publishers are DECLARED, not a category"
         "audioFileIn",
         "audioIn",
         "audioPattern",
+        "automation",
         "channelIn",
         "componentInValue", // T822: the value boundary forwards a channel bag, so it publishes
         "componentOutValue",

@@ -48,6 +48,7 @@ import { valueStructureNodeDefinitions } from "./value-structure-nodes.ts";
 import { controlNodeDefinitions } from "./controls.ts";
 import { presetsNode } from "./presets.ts";
 import { cueListNode } from "./cue-list.ts";
+import { automationNode } from "./automation.ts";
 export { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
 export { cameraNode, geometryNode, lightNode, renderNode, sceneNodeDefinitions } from "./scene.ts";
 import { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
@@ -124,6 +125,7 @@ export { slitScanNode } from "./slit-scan.ts";
 export { midiInNode } from "./midi.ts";
 export { presetsNode } from "./presets.ts";
 export { cueListNode } from "./cue-list.ts";
+export { automationNode, AUTOMATION_NODE_TYPE } from "./automation.ts";
 export { oscInNode, oscOutNode } from "./osc.ts";
 export {
   annotateNode,
@@ -314,6 +316,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   presetsNode,
   // T1500b: the cue list — GO / BACK through an ordered list of preset recalls.
   cueListNode,
+  // VN61: keyframed lanes over the playhead, each published as a channel.
+  automationNode,
   audioInNode,
   audioFileInNode,
   audioPatternNode,
