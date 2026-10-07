@@ -58,7 +58,7 @@ import styles from "./panel-board.module.css";
  * a drop the no-overlap rule refuses writes nothing.
  *
  * T1518b — every item is drawn at the type size its rect has room for, and says only what
- * fits (`board-fit.ts`): the value goes before the caption is cut, never both. The same
+ * fits (`board-fit.ts`): since VNB9 the caption is cut before the value goes, never both. The same
  * rule at the tab's fixed cells and at the canvas body's scaled ones.
  *
  * T1501b — a board also holds a Presets bank (a strip of preset buttons), a Layer (its

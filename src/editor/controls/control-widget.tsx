@@ -31,9 +31,10 @@ import styles from "./control-widget.module.css";
  * at whatever size the board says — the Controls tab's fixed cells or the Panel node's
  * scaled-down body.
  *
- * T1518b — and says only what the rect has room for (`showValue`, decided by `board-fit.ts`):
- * with no room for both, the VALUE goes and the caption stays whole — a slider or pad shows
- * its caption alone, a toggle its caption and a small switch (no On/Off), a button no count.
+ * T1518b — and says only what the rect has room for (`showValue`, decided by `board-fit.ts`).
+ * VNB9: with no room for both, the CAPTION gives way (ellipsised) and the value stays; a
+ * toggle may trade its On/Off for a small switch, which still shows the state. The hover
+ * holds the whole caption and the value.
  *
  * T1619b — every widget MARKS ITS DEFAULT, where Reset sends it: a slider two notches on its
  * track at the default, an XY pad a ring there, each dim while the value is at it and bright
@@ -172,12 +173,12 @@ function markShare(mark: ReturnType<typeof defaultMark>, min: number, max: numbe
   return Math.min(1, Math.max(0, (mark.at - min) / (max - min)));
 }
 
-/** Caption left, value right, on one row — the value never takes a row of its own. `null`: no room for it (T1518b). */
+/** Caption left, value right, on one row — the value never takes a row of its own. `null`: not shown (`showValue`). */
 function Head({ caption, value }: { caption: string; value: string | null }) {
   return (
     <div className={styles.head}>
       <span className={styles.caption} title={caption}>{caption}</span>
-      {value === null ? null : <span className={styles.readout}>{value}</span>}
+      {value === null ? null : <span className={styles.readout} data-readout>{value}</span>}
     </div>
   );
 }
@@ -208,7 +209,8 @@ function Slider({ nodeId, parameters, values, live, write, caption, className, s
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={value}
-        title={driven ? `${caption} is driven — its value comes from an expression` : mark === null ? caption : `${caption} · default ${format(mark.at as number)}`}
+        // VNB9: the hover gives the whole caption AND the value, whatever the cell cut.
+        title={driven ? `${caption} is driven — its value comes from an expression` : mark === null ? `${caption} · ${format(value)}` : `${caption} · ${format(value)} · default ${format(mark.at as number)}`}
       >
         <ShareFill className={styles.fill} end={share} />
         {tick === null ? null : (
@@ -323,7 +325,7 @@ function XYPad({ nodeId, parameters, values, live, write, caption, className, si
   return (
     <div className={className} data-control="xy" data-control-node={nodeId}>
       {board ? null : head}
-      <div {...drag} className={`${styles.pad} ${driven ? styles.driven : ""}`} aria-label={caption} role="group">
+      <div {...drag} className={`${styles.pad} ${driven ? styles.driven : ""}`} aria-label={caption} role="group" title={`${caption} · ${format(x)}, ${format(y)}`}>
         {board ? <div className={styles.overlay}>{head}</div> : null}
         {homeX === null || homeY === null ? null : (
           <div className={`${styles.home} ${away ? styles.away : ""}`} style={{ left: `${homeX * 100}%`, bottom: `${homeY * 100}%` }} data-default-mark={away ? "away" : "at"} aria-hidden="true" />
