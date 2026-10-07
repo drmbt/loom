@@ -2,6 +2,8 @@ import { createRenderCanvasCapture } from "./render-canvas-capture.ts";
 import { ControlsPane } from "@editor/controls/controls-pane.tsx";
 import { TimelinePane } from "@editor/timeline/timeline-pane.tsx";
 import { timelineShows } from "@editor/timeline/timeline-model.ts";
+import { createParameterDragService } from "@editor/parameter-drag/parameter-drag-service.ts";
+import { ParameterDragContext } from "@ui/controls/parameter-drag-context.ts";
 import { ContextMenuHost } from "@editor/menus/index.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { scopeFromFrame } from "@domain/expressions/index.ts";
@@ -372,6 +374,12 @@ export function App({
     if (result.diagnostics.length === 0) return;
     setRejection(result.diagnostics);
   }, []);
+
+  // VN63: a parameter's name drags a reference; a drop on another parameter pastes it.
+  const parameterDrag = useMemo(
+    () => createParameterDragService({ bus: runtime.bus, invocation: runtime.invocation, onRefused: setRejection }),
+    [runtime],
+  );
 
   const onKeyDispatch = useCallback(
     (dispatch: KeymapDispatch) => {
@@ -2116,6 +2124,7 @@ export function App({
             ■ LASER E-STOP
           </button>
         ) : null}
+        <ParameterDragContext.Provider value={parameterDrag}>
         <AppShell
           {...(storage === undefined ? {} : { storage })}
           {...(openPaneWindow === undefined ? {} : { openPaneWindow })}
@@ -2380,7 +2389,7 @@ export function App({
               <LiveGraph store={runtime.bus.store} registry={runtime.registry} shows={timelineShows}>{(liveGraph) => (
                 <TimelinePane graph={liveGraph} bus={runtime.bus} invocation={runtime.invocation} selection={selection}
                   latestFrame={frameLoop.latestFrame} fps={projectFps(runtime.settings)} range={frameRange}
-                  playing={frameLoop.playing} onSeek={onSeek} />
+                  playing={frameLoop.playing} onSeek={onSeek} registry={runtime.registry} />
               )}</LiveGraph>
             </ErrorBoundary>
           }
@@ -2399,6 +2408,7 @@ export function App({
             </ErrorBoundary>
           }
         />
+        </ParameterDragContext.Provider>
         {/* T359/§V307: opened by `ui.openSettings`, never by a flag set from here. The
             host owns the open state; the top bar, `mod+,` and the palette all execute the
             one command. */}
