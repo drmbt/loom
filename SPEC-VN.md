@@ -14,6 +14,25 @@ work never mints numbers in `SPEC.md`, which the upstream main session owns.
 
 Source of the first batch: a hands-on session on 2026-10-03 (hosted build + local clone).
 
+## Lanes
+
+Live parallel work. The main session maintains this table (rules: `CLAUDE.local.md`, "Orchestrator
+rules"). A lane edits only the paths it owns plus the hotspots granted to it. **Merge** is the
+intended landing order: a number is a position in the queue, `a > b` means stacked on b.
+Owned paths below were taken from each branch's diff against `upstream/main` on 2026-10-06.
+
+lane|row|branch · worktree|base|owns|hotspots granted|merge|state
+mesh-writeback|VN33|`pr/drmbt-mesh-writeback-2026-10-06` · `../loom-mesh-writeback`|upstream/main (1 behind)|`src/app/use-mesh-sources*`, `src/domain/commands/apply-patch.ts`, `src/editor/agent/describe-operation.ts`, `src/tests/headless/mesh-in-component.gpu.test.ts`|`src/domain/types/patch.ts`, `schemas.ts`, `diagnostics/classes.ts` + `class-reasons.ts`|1|PR laubsauger/loom#4 open
+path-names|VN35|`pr/drmbt-path-names-2026-10-06` · `../loom-path-names`|`7882d0c3` (VN33)|`src/compiler/{flatten,diagnostics,path-references,source-reference-edges}.ts`, `src/domain/components/addressing*`, `src/domain/graph/names*`, `docs/path-names-2026-10-06.md`, `src/tests/headless/projector-paths.gpu.test.ts`|inherits VN33's|2 > 1|committed `a5c77599`, no PR
+parent-expr|VN36|`pr/drmbt-parent-expr-2026-10-06` · `../loom-parent-expr`|`a5c77599` (VN35)|expression grammar (`src/domain/expressions/**`), plus VN35's files only where listed in the brief|inherits VN35's|3 > 2|in progress, no commits yet; design note `docs/parent-expressions-2026-10-06.md` uncommitted in the worktree (moved there 2026-10-06 from the removed `.claude/worktrees/parent-expr-vn36-8b659f`)
+comp-model|VN20|`pr/drmbt-comp-model-2026-10-06` · `../loom-comp-model`|old (5 behind)|`docs/comp-model-2026-10-06/**`|none|independent|PR laubsauger/loom#3 open (docs only)
+ffgl|VN21|`feature/ffgl-native` · `../loom-ffgl`|old (1 behind, carries 1078 commits of history)|`experiments/ffgl-native/**`|none|not queued|parked; scope unclear
+
+Seam held: the flat-id / addressing seam (VN33 → VN35 → VN36). No other lane may touch
+`src/domain/components/addressing.ts`, `src/compiler/flatten.ts`, `src/domain/types/**` or the
+diagnostic class tables until #4 merges and the stack is rebased. Working sessions: 1 of 3
+(VN36). Up to two parallel lanes can open now, provided they stay off that seam.
+
 ## Tasks
 
 id|status|task|cites
