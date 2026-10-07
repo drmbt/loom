@@ -21,7 +21,7 @@ import {
   type PanelBoardItem,
   type StoredBoard,
 } from "@nodes/definitions/controls.ts";
-import { boardBaseFontPx, boardFit, boardValueEm, controlCaption, type BoardCells, type BoardFit } from "./board-fit.ts";
+import { boardBaseFontPx, boardFit, boardValueEm, controlCaption, formatControlValue, isDrivenParameter, type BoardCells, type BoardFit } from "./board-fit.ts";
 import { BoardMember } from "./board-members.tsx";
 import { ControlTargets } from "./control-targets.tsx";
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
@@ -454,6 +454,14 @@ export function PanelBoardEditor({ graph, panelId, board, write, bus, invocation
           ) : chosen.kind === "widget" ? (
             <>
               <h3 className={styles.inspectTitle}>{boardItemName(chosen, catalogue)}</h3>
+              {/* VN74: a widget's caption is renamed here, and its whole caption and value are read here. */}
+              {CONTROL_WIDGET_TYPES.has(chosen.node.type) ? (
+                <CaptionInspector
+                  key={chosen.node.id}
+                  node={graph.nodes[chosen.node.id] ?? chosen.node}
+                  onCaption={(caption) => apply([{ op: "setParameters", nodeId: chosen.node.id, parameters: { caption } }], "Rename control")}
+                />
+              ) : null}
               {/* T1501b: a bank, a layer or a cue list publishes no channel, so it drives nothing to list. */}
               {CONTROL_WIDGET_TYPES.has(chosen.node.type) ? (
                 <>
@@ -506,6 +514,67 @@ function SetAsDefault({ graph, nodeId, bus, invocation }: Pick<BoardPlay, "bus" 
     >
       Set as default
     </button>
+  );
+}
+
+/**
+ * VN74 — what a selected widget prints, as its readout does: a slider's number, a pad's pair,
+ * a toggle's On/Off, a button's presses; "driven" where an expression or binding holds it.
+ */
+function controlValueText(type: string, parameters: Readonly<Record<string, unknown>>): string {
+  const read = (key: string, fallback: number): string => {
+    const value = parameters[key];
+    if (isDrivenParameter(value)) return "driven";
+    return formatControlValue(typeof value === "number" && Number.isFinite(value) ? value : fallback);
+  };
+  switch (type) {
+    case "slider":
+      return read("value", typeof parameters["min"] === "number" ? parameters["min"] : 0);
+    case "xyPad":
+      return `${read("x", 0.5)}, ${read("y", 0.5)}`;
+    case "toggle":
+      return isDrivenParameter(parameters["on"]) ? "driven" : parameters["on"] === true ? "On" : "Off";
+    case "button":
+      return `×${String(typeof parameters["presses"] === "number" ? parameters["presses"] : 0)}`;
+    default:
+      return "";
+  }
+}
+
+/**
+ * VN74 — a widget's CAPTION, renamed from the board's editor: written to the node's
+ * `caption` parameter on Enter or when the field is left, one patch and one undo step, and
+ * only when it changed. Under it, the whole caption and the value, which a small cell may cut
+ * (VNB9) — the place to read both in full.
+ */
+function CaptionInspector({ node, onCaption }: { readonly node: GraphDocument["nodes"][string]; readonly onCaption: (caption: string) => void }) {
+  const parameters = node.parameters as Record<string, unknown>;
+  const stored = typeof parameters["caption"] === "string" ? parameters["caption"] : "";
+  const [draft, setDraft] = useState(stored);
+  const write = (): void => {
+    if (draft !== stored) onCaption(draft);
+  };
+  return (
+    <>
+      <label className={styles.field}>
+        Caption
+        <input
+          type="text"
+          value={draft}
+          className={styles.text}
+          aria-label="Caption"
+          placeholder={controlCaption(parameters)}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={write}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") write();
+          }}
+        />
+      </label>
+      <p className={styles.inspectMeta} data-board-inspect-reading>
+        <span data-board-inspect-caption>{controlCaption(parameters)}</span> · <span data-board-inspect-value>{controlValueText(node.type, parameters)}</span>
+      </p>
+    </>
   );
 }
 
