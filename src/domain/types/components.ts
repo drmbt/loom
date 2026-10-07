@@ -20,6 +20,8 @@ export interface ExposedPort {
   /** The internal node and port it maps to. */
   nodeId: NodeId;
   portId: PortId;
+  /** Whole variadic input, deliberately exposed. Absent keeps a single extracted slot. */
+  variadic?: true;
 }
 
 /**

@@ -364,7 +364,9 @@ export const graphPatchOperationSchema = z.discriminatedUnion("op", [
       edgeIds: z.array(z.string().min(1)),
     })
     .strict(),
-  z.object({ op: z.literal("setParameters"), nodeId: refString, parameters: patchParameters }).strict(),
+  z.object({ op: z.literal("setParameters"), nodeId: refString, parameters: patchParameters,
+    internalNodeId: z.string().regex(/^[^/]+(?:\/[^/]+)*$/).optional(),
+  }).strict(),
   z.object({ op: z.literal("removeParameters"), nodeId: refString, keys: z.array(z.string().min(1)).min(1) }).strict(),
   z.object({ op: z.literal("setShaderSource"), nodeId: refString, source: z.string() }).strict(),
   z.object({ op: z.literal("moveNodes"), positions: z.record(patchPoint) }).strict(),

@@ -54,7 +54,8 @@ export type GraphPatchOperation =
    * order nobody asked for.
    */
   | { op: "reorderEdges"; nodeId: NodeRef; portId: PortId; edgeIds: EdgeId[] }
-  | { op: "setParameters"; nodeId: NodeRef; parameters: Record<string, StoredParameter> }
+  /** internalNodeId addresses an existing descendant of a component instance; its overrides are plain values. */
+  | { op: "setParameters"; nodeId: NodeRef; parameters: Record<string, StoredParameter>; internalNodeId?: NodeId }
   /**
    * §T1641b slice 2: delete stored keys the node's schema does NOT declare.
    *

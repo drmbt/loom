@@ -4,6 +4,8 @@ import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { GlbDecodeError, type MeshFrame } from "@domain/mesh/glb.ts";
 import { storedStaticValue } from "@domain/parameters/slots.ts";
+import { enteredThrough } from "@domain/components/addressing.ts";
+import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { meshSourceIdsFor, prepareMesh, type PreparedMesh } from "@/points/mesh.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { AppRuntime } from "./app-runtime.ts";
@@ -20,9 +22,9 @@ import type { AppRuntime } from "./app-runtime.ts";
  * the file's size; the sources are already registered by then and the upload lands on the
  * first frame of the new plan.
  *
- * A file that will not decode, a selection that matches nothing, or a mesh node inside a
- * component (whose facts live on a node this document does not hold) registers nothing
- * and says why here; the node keeps publishing its degenerate stand-in and draws nothing.
+ * A file that will not decode or a selection that matches nothing registers nothing and
+ * says why. An internal mesh's measured facts belong to its owning instance's overrides,
+ * never the shared definition; already measured internal meshes feed their flat sources.
  *
  * HONEST LIMIT: the decode runs on the main thread. A 100 MB export takes on the order of
  * a second, once per file and selection; moving it to a worker is the follow-up if a
@@ -130,18 +132,28 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
      * write changes `sized`, which re-runs this effect) and answers false: registering
      * now would offer the stand-in's one-vertex buffer a whole file's bytes.
      */
-    const sizedFor = (nodeId: NodeId, facts: PreparedMesh["facts"]): boolean => {
+    const sizedFor = async (nodeId: NodeId, facts: PreparedMesh["facts"]): Promise<boolean> => {
       const bus = runtimeRef.current.bus;
-      const stored = bus.store.getGraph().nodes[nodeId];
+      const stored = runtimeRef.current.flattened.current().graph.nodes[nodeId];
       if (stored === undefined) {
         found.push({
-          severity: "warning",
-          code: "mesh.component",
-          message: `Mesh "${nodeId}" sits inside a component; its Vertices/Triangles must be set on the component's own node (${facts.vertices} / ${facts.triangles}).`,
+          severity: "error",
+          code: "node.missing",
+          message: `Mesh "${nodeId}" no longer exists in the flattened document.`,
           nodeId,
         });
         return false;
       }
+      const writeFacts = async (parameters: Extract<GraphPatchOperation, { op: "setParameters" }>["parameters"]): Promise<void> => {
+        const address = enteredThrough(nodeId);
+        const operation: GraphPatchOperation = { op: "setParameters", nodeId: address?.instance ?? nodeId, parameters,
+          ...(address === undefined ? {} : { internalNodeId: address.rest }),
+        };
+        const result = await bus.execute("graph.applyPatch", {
+          baseRevision: bus.store.getRevision(), label: "Measure mesh", operations: [operation],
+        }, runtimeRef.current.invocation);
+        if (result.status !== "applied") found.push(...result.diagnostics);
+      };
       const parameters = stored.parameters;
       // An unskinned node may never have stored Joints at all: absent reads as the empty table.
       const joints = typeof parameters["joints"] === "string" ? parameters["joints"] : "";
@@ -163,23 +175,11 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
            document saved before it existed, or a mesh inside a component, still feeds.
            It is written beside the facts, and on its own when it is all that is missing. */
         if (parameters["bounds"] !== facts.bounds) {
-          void bus.execute(
-            "graph.applyPatch",
-            { baseRevision: bus.store.getRevision(), label: "Measure mesh", operations: [{ op: "setParameters", nodeId, parameters: { bounds: facts.bounds } }] },
-            runtimeRef.current.invocation,
-          );
+          await writeFacts({ bounds: facts.bounds });
         }
         return true;
       }
-      void bus.execute(
-        "graph.applyPatch",
-        {
-          baseRevision: bus.store.getRevision(),
-          label: "Measure mesh",
-          operations: [{ op: "setParameters", nodeId, parameters: { vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints, clips: facts.clips, clipFrames: facts.clipFrames, frameOrigin: facts.frameOrigin, bounds: facts.bounds } }],
-        },
-        runtimeRef.current.invocation,
-      );
+      await writeFacts({ ...facts });
       return false;
     };
 
@@ -213,7 +213,8 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
         for (const warning of prepared.mesh.warnings) {
           found.push({ severity: "info", code: "mesh.note", message: `Mesh "${request.nodeId}": ${warning}`, nodeId: request.nodeId });
         }
-        if (!sizedFor(request.nodeId, prepared.facts)) continue;
+        if (!await sizedFor(request.nodeId, prepared.facts)) continue;
+        if (cancelled) return;
         const ids = meshSourceIdsFor(request.nodeId);
         const points = prepared.points;
         const indices = prepared.indices;

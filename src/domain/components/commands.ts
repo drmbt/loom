@@ -765,6 +765,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.portNames === undefined ? {} : { portNames: input.portNames }),
         nodes: context.registry,
+        components,
       });
       diagnostics.push(...built.diagnostics);
       if (built.diagnostics.some((diagnostic) => diagnostic.severity === "error")) return reject();
@@ -790,6 +791,8 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
       const applied = context.apply({
         label: `Save "${input.name}" as a component`,
         recipe: (draft) => {
+          // Peers left standing must keep the same total order as the reminted edges.
+          for (const [edgeId, order] of Object.entries(built.edgeOrders)) draft.edges[edgeId]!.order = order;
           for (const edgeId of built.removedEdgeIds) delete draft.edges[edgeId];
           for (const nodeId of Object.keys(built.definition.graph.nodes)) delete draft.nodes[nodeId];
 
@@ -813,6 +816,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
               id: edgeId,
               source: { ...wiring.outer },
               target: { nodeId: instanceNodeId, portId: wiring.externalId },
+              ...(wiring.order === undefined ? {} : { order: wiring.order }),
             };
           }
           for (const wiring of built.outputWiring) {
@@ -821,6 +825,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
               id: edgeId,
               source: { nodeId: instanceNodeId, portId: wiring.externalId },
               target: { ...wiring.outer },
+              ...(wiring.order === undefined ? {} : { order: wiring.order }),
             };
           }
         },
@@ -1243,6 +1248,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
         label: input.label ?? port.label,
         nodeId: input.nodeId,
         portId: input.portId,
+        ...(input.direction === "input" && port.variadic === true ? { variadic: true } : {}),
       };
       const next = withExposedPort(definition, input.direction, exposed);
       return commitDefinitionStep(context, `Expose ${exposed.label}`, next, diagnostics);

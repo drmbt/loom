@@ -3,6 +3,7 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { ParameterMode, ParameterSchema, ParameterValue, StoredParameter } from "../types/parameters.ts";
 import type { ResolvedParameters } from "../parameters/resolve.ts";
 import { storedValues } from "../parameters/stored-values.ts";
+import { componentKey } from "../parameters/slots.ts";
 
 /**
  * B238 — the published page of ONE instance, in the two shapes its internals are written
@@ -79,8 +80,9 @@ export const HOP_INVARIANT_MODES: ReadonlySet<ParameterMode> = new Set<Parameter
  * `storedValues(...)`, unchanged. `stored` substitutes the UNRESOLVED slot — a number
  * that has not been resolved cannot have been decoded, and the internal parameter it
  * lands on decodes exactly once, like any slot a user typed there directly. A compound
- * published per component (`tint.r`, §V113) has no slot at the bare key, so it takes the
- * `values` path unchanged and its decode count is untouched.
+ * published per component (`tint.r`, §V113) keeps its resolved base tuple in stored
+ * space and carries each hop-invariant component slot separately. The target resolver
+ * assembles those channels before its single colour decode.
  */
 export interface PublishedPage {
   /** STORED space, fully resolved. The `parent.<key>` scope (§V81) reads this. */
@@ -119,10 +121,16 @@ export function publishedPage(
   const stored: Record<string, StoredParameter> = { ...values };
   const deferred = new Set<RuntimeDiagnostic>();
   for (const entry of resolved.entries) {
-    if (!driving.has(entry.key) || entry.slot === undefined) continue;
-    if (!HOP_INVARIANT_MODES.has(entry.mode)) continue;
-    stored[entry.key] = entry.slot;
-    if (entry.diagnostic !== null) deferred.add(entry.diagnostic);
+    if (!driving.has(entry.key)) continue;
+    if (entry.slot !== undefined && HOP_INVARIANT_MODES.has(entry.mode)) {
+      stored[entry.key] = entry.slot;
+      if (entry.diagnostic !== null) deferred.add(entry.diagnostic);
+    }
+    for (const component of entry.components ?? []) {
+      if (component.slot === undefined || !HOP_INVARIANT_MODES.has(component.mode)) continue;
+      stored[componentKey(entry.key, component.name)] = component.slot;
+      if (component.diagnostic !== null) deferred.add(component.diagnostic);
+    }
   }
   return { values, stored, deferred };
 }

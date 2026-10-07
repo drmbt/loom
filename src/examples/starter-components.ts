@@ -28,6 +28,7 @@ import { DEPTH_CARVE_KERNEL, DEPTH_PAINT_KERNEL } from "./shaders/depth-points.w
 import { TIME_GRID_BREAK_WGSL, TIME_GRID_MAP_WGSL, TIME_GRID_SWEEP_WGSL } from "./shaders/time-grid.wgsl.ts";
 import { SHARED_UNIFORMS_WGSL } from "../runtime/backend/shared-uniforms.ts";
 import { SHADER_SOURCE_PARAMETER } from "../domain/commands/apply-patch.ts";
+import { bloomPyramidGraph } from "./bloom-pyramid.ts";
 
 /**
  * The starter component set (T190, §V94, §V79).
@@ -1345,6 +1346,30 @@ const bloomComponentHost: ProjectDocument = {
   },
 };
 
+/** The shared HDR filtering graph; gain and picture addition remain ordinary neighbours. */
+const bloomPyramid = bloomPyramidGraph({
+  ids: { bright: "bright", down: ["bloomDown1", "bloomDown2", "bloomDown3", "bloomDown4"], up: ["bloomUp0", "bloomUp1", "bloomUp2", "bloomUp3"] },
+  edgePrefix: "bloom",
+  layout: { bright: [-1000, 300], down: [-700, 300], up: [-400, 150], step: [0, 150] },
+  threshold: 1.2, knee: 0.8, firstClampLuma: 1, lower: 1, radius: 1,
+  format: { mode: "fixed", format: "rgba16float" },
+});
+
+const bloomPyramidHost = document("component-bloom-pyramid", "Bloom Pyramid", settings(), graph([
+  node("plate", "circle", [-1600, 0], { center: [0.5, 0.5], radius: [0.07, 0.12], softness: 0.01, fillcolor: [1, 1, 1, 1], bgcolor: [0.03, 0.03, 0.03, 1] }, { label: "circle_plate" }),
+  node("hdr", "level", [-1300, 0], { brightness: 6 }, { label: "level_hdr", format: { mode: "fixed", format: "rgba16float" } }),
+  ...bloomPyramid.nodes,
+  node("combine", "add", [-100, 0], { opacity: 0.35 }, { label: "add_glow" }),
+  node("out", "output", [200, 0], {}, { label: "output1" }),
+], [
+  edge("plate-hdr", ["plate", "out"], ["hdr", "input"]),
+  edge("hdr-bright", ["hdr", "out"], ["bright", "input"]),
+  ...bloomPyramid.edges,
+  edge("glow-combine", bloomPyramid.glow, ["combine", "in1"]),
+  edge("picture-combine", ["hdr", "out"], ["combine", "in2"], 0),
+  edge("combined-out", ["combine", "out"], ["out", "input"]),
+]));
+
 /**
  * Antialias's host (T1276): a picture with hard staircases in it, the pass, and an output.
  *
@@ -1568,6 +1593,23 @@ export const STARTER_COMPONENT_SPECS: readonly StarterComponentSpec[] = [
         definition: { type: "number", label: "Intensity", default: 1, min: 0, max: 1 },
         targets: [{ nodeId: "combine", key: "opacity" }],
       },
+    ],
+  },
+  {
+    componentId: "bloomPyramid",
+    name: "Bloom Pyramid",
+    description: "HDR highlight glow at several scales. Add Glow to your picture; Bright is the extracted source for streaks or flares.",
+    host: bloomPyramidHost,
+    selection: bloomPyramid.nodes.map(node => node.id),
+    portNames: { "bright.input": "picture", "bloomUp0.out": "out" },
+    boundaryLabels: { in_picture: "Picture", out_out: "Glow" },
+    exposeOutputs: [{ nodeId: "bright", portId: "out", externalId: "bright", label: "Bright" }],
+    publish: [
+      { key: "threshold", definition: { type: "number", label: "Threshold", default: 1.2, min: 0, max: 10, range: "floor" }, targets: [{ nodeId: "bright", key: "threshold" }] },
+      { key: "knee", definition: { type: "number", label: "Knee", default: 0.8, min: 0, max: 4, range: "floor", description: "Softness of highlight extraction around Threshold." }, targets: [{ nodeId: "bright", key: "knee" }] },
+      { key: "radius", definition: { type: "number", label: "Radius", default: 1, min: 0, max: 4, range: "floor", step: 0.1, description: "Filter radius at each level; larger gives a softer, wider halo." }, targets: [0, 1, 2, 3].map(level => ({ nodeId: `bloomUp${level}`, key: "radius" })) },
+      { key: "spread", definition: { type: "number", label: "Spread", default: 1, min: 0, max: 2, range: "bounded", step: 0.1, description: "Higher gives the wider halos more of the glow." }, targets: [0, 1, 2, 3].map(level => ({ nodeId: `bloomUp${level}`, key: "lower" })) },
+      { key: "fireflyFilter", definition: { type: "number", label: "Firefly Filter", default: 1, min: 0, max: 1, range: "bounded", step: 1, description: "1 suppresses isolated hot speckles before widening the glow; 0 leaves them unchanged." }, targets: [{ nodeId: "bloomDown1", key: "clampLuma" }] },
     ],
   },
   {

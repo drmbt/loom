@@ -5,9 +5,10 @@ import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { EdgeId, GroupId, NodeId, PortId } from "../types/ids.ts";
 import { isDefaultChannelMask, MIN_NODE_SIZE } from "../types/graph.ts";
 import { supportsChannelMask } from "../graph/channel-mask.ts";
-import { isComponentInstance } from "../components/instance.ts";
+import { COMPONENT_OVERRIDES_STATE_KEY, internalParameterPath, isComponentInstance, parseDescendantParameterPath, readComponentInstance } from "../components/instance.ts";
+import { toInstance } from "../components/addressing.ts";
 import { INTERNAL_CHANNEL_MASKS_KEY, internalChannelMasks } from "../components/internal-channel-masks.ts";
-import type { GraphDocument, GraphEdge, GraphNode } from "../types/graph.ts";
+import type { FlatGraph, GraphDocument, GraphEdge, GraphNode } from "../types/graph.ts";
 import type { StoredParameter } from "../types/parameters.ts";
 import type {
   GraphPatch,
@@ -114,11 +115,14 @@ interface PatchRun {
    * an operation can check an authorization and can never mint one.
    */
   holds: (capability: CapabilityClass) => boolean;
+  readonly internalGraph: FlatGraph | undefined;
+  readonly authoredGraph: GraphDocument;
 }
 
 export function applyGraphPatch(
   patch: GraphPatch,
   context: CommandContext,
+  internalGraph?: FlatGraph,
 ): CommandOutcome<GraphPatchResult> {
   const current = context.store.getRevision();
 
@@ -150,6 +154,8 @@ export function applyGraphPatch(
     createdIds: {},
     dryRun: context.dryRun,
     holds: context.holds,
+    internalGraph,
+    authoredGraph: context.graph,
   };
 
   let applied;
@@ -692,7 +698,27 @@ function executeOperation(
     }
 
     case "setParameters": {
-      const node = requireNode(operation.nodeId);
+      const owner = requireNode(operation.nodeId);
+      let node = owner;
+      const relativeId = operation.internalNodeId;
+      if (relativeId !== undefined) {
+        if (!isComponentInstance(owner)) fail("node.parameters.notComponent", "Internal parameters require a component instance.", { nodeId: owner.id });
+        if (run.internalGraph === undefined) fail("node.parameters.noFlattening", "Internal parameters require the current flattened graph.", { nodeId: owner.id });
+        const before = run.authoredGraph.nodes[owner.id];
+        if (run.internalGraph!.revision !== run.authoredGraph.revision || before === undefined ||
+          before.type !== owner.type || JSON.stringify(before.parameters) !== JSON.stringify(owner.parameters)) {
+          fail("node.parameters.staleFlattening", "The instance changed after its internal parameters were read. Apply the instance edit first, then re-read its flattened graph.", { nodeId: owner.id });
+        }
+        const flatId = toInstance([owner.id], relativeId);
+        const target = run.internalGraph!.nodes[flatId];
+        if (target === undefined) fail("node.missing", `internal node "${relativeId}" does not exist in instance "${owner.id}".`, { nodeId: flatId });
+        const parameters = { ...target!.parameters };
+        for (const [path, value] of Object.entries(readComponentInstance(owner)!.overrides ?? {})) {
+          const addressed = parseDescendantParameterPath(path);
+          if (addressed?.nodeId === relativeId) parameters[addressed.key] = value;
+        }
+        node = { ...target!, parameters };
+      }
       const definition = registry.get(node.type);
       if (definition === undefined) {
         fail(
@@ -715,6 +741,12 @@ function executeOperation(
       const coupled = definition.coupledParameters?.(node.parameters, operation.parameters) ?? null;
       const writes = coupled === null ? operation.parameters : { ...coupled.set, ...operation.parameters };
       const removed = (coupled?.remove ?? []).filter((key) => !(key in writes));
+      if (relativeId !== undefined && Object.values(writes).some(isParameterSlot)) {
+        fail("node.parameters.internalSlot", "Internal instance overrides accept plain values, not parameter mode slots.", { nodeId: node.id });
+      }
+      if (relativeId !== undefined && removed.length > 0) {
+        fail("node.parameters.internalRemoval", "This edit removes inherited parameters, which a plain instance override cannot represent.", { nodeId: node.id });
+      }
       const schema = effectiveParameterSchema(
         definition,
         coupled === null
@@ -736,7 +768,7 @@ function executeOperation(
         // back to a seeded default instead of the reference the user had. A slot-shaped write
         // (a mode switch, a paste) still replaces wholesale.
         node.parameters[key] =
-          isParameterSlot(existing) && !isParameterSlot(value)
+          relativeId === undefined && isParameterSlot(existing) && !isParameterSlot(value)
             ? withBinding(existing, { kind: "static", value: value as ParameterValue })
             : (value as StoredParameter);
       }
@@ -752,7 +784,14 @@ function executeOperation(
       // loop no bind check and no texture topo sort can see, and the runtime guard that
       // names it is a mitigation, not the gate — a document should never hold the cycle
       // in the first place.
-      refuseReferenceCycle(node.id);
+      if (relativeId === undefined) refuseReferenceCycle(node.id);
+      else {
+        // Plain replacements cannot add parameter-slot expression/bind edges (§B293).
+        // Keep the definition untouched; flattening and detach project these same overrides.
+        const overrides = { ...readComponentInstance(owner)!.overrides };
+        for (const key of Object.keys(writes)) overrides[internalParameterPath(relativeId, key)] = node.parameters[key] as ParameterValue;
+        owner.state = { ...owner.state, [COMPONENT_OVERRIDES_STATE_KEY]: overrides };
+      }
       return;
     }
 

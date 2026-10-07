@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { APP_VIEWPORT, modKey, openApp } from "./app";
+import { readFile } from "node:fs/promises";
+import type { ProjectDocument } from "../../domain/types/graph.ts";
+import { storedStaticValue } from "../../domain/parameters/slots.ts";
+import { APP_VIEWPORT, dragNumber, modKey, openApp, selectNode } from "./app";
 
 /**
  * §T1696b / §B286 — A KEY PRESSED INSIDE A COMPONENT ACTS ON THE COMPONENT, in a real browser.
@@ -119,4 +122,37 @@ test("Cmd+Z inside Bloom undoes the edit made inside, and the edit made at the r
   await expect(node(page, bloom)).toBeVisible();
   await expect(node(page, rootNode)).toBeVisible();
   await expect(page.locator(".react-flow__node")).toHaveCount(2);
+});
+
+test("Bloom Pyramid is placed from the library, tuned and reopened with its editable graph", async ({ page }) => {
+  await openApp(page);
+  await page.getByRole("tab", { name: "components" }).click();
+  await page.getByRole("button", { name: /^Bloom Pyramid\s*v\d/ }).click();
+  await expect(page.locator(".react-flow__node")).toHaveCount(1);
+  const instanceId = await page.locator(".react-flow__node").first().getAttribute("data-id");
+  if (instanceId === null) throw new Error("Bloom Pyramid instance has no id");
+  await selectNode(page, instanceId);
+  const inspector = page.getByRole("tabpanel", { name: "inspector" });
+  for (const label of ["Threshold", "Knee", "Radius", "Spread", "Firefly Filter"]) {
+    await expect(inspector.getByRole("spinbutton", { name: label, exact: true })).toHaveCount(1);
+  }
+  const change = await dragNumber(page, "Threshold", 80);
+  expect(change.after).not.toBe(change.before);
+
+  const downloading = page.waitForEvent("download");
+  await page.getByTestId("project-save").click();
+  const savedPath = await (await downloading).path();
+  if (savedPath === null) throw new Error("Saved project has no local download");
+  const saved = JSON.parse(await readFile(savedPath, "utf8")) as ProjectDocument;
+  expect(storedStaticValue(saved.graph.nodes[instanceId]?.parameters["threshold"])).toBe(Number(change.after));
+  await openExample(page, savedPath);
+  await selectNode(page, instanceId);
+  await expect(inspector.getByRole("spinbutton", { name: "Threshold", exact: true })).toHaveValue(change.after);
+
+  await diveInto(page, instanceId);
+  await expect(node(page, "bright")).toBeVisible();
+  await expect(page.locator(".react-flow__node")).toHaveCount(11);
+  await expect(node(page, "bloomUp0")).toHaveCount(1);
+  await expect(node(page, "in_picture")).toHaveCount(1);
+  await expect(node(page, "out_out")).toHaveCount(1);
 });

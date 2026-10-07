@@ -773,12 +773,13 @@ export function useGraphCompile(
    * pulse on a node INSIDE a component instance ("no node c1/reset") was unaddressable
    * once the pulse watcher started seeing it. The bus is in the domain and has no handle
    * into this tree, so the flattening reaches it the way the resolver already does: a
-   * read function attached from the one place that owns it.
+   * read function attached from the one place that owns it. Read the canonical CURRENT
+   * document, not this hook's last React render: a command may follow another write before
+   * React flushes, and the values lane can advance the document without rendering at all.
+   * Timeline segment overrides still belong to the compile, not this authored-data reader.
    */
-  const flattenedRef = useRef(flattened);
-  flattenedRef.current = flattened;
   useEffect(() => {
-    runtime.bus.attachFlattenedGraph(() => flattenedRef.current);
+    runtime.bus.attachFlattenedGraph(() => runtime.flattened.current());
   }, [runtime]);
 
   /**
