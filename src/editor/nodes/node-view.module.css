@@ -262,6 +262,27 @@
 }
 
 /*
+  VNB15 (owner's ruling, 2026-10-07) — AN INSTANCE'S KIND IS ITS COMPONENT'S NAME, AND IT
+  GIVES WAY LAST. For `depthpoints_frontwall_left` the rule above read `dep…_frontwall_left`,
+  the component's name cut to the three letters that the reported stage previz showed for
+  three different components. Here the two parts swap roles: the ROLE gives way first, down
+  to the same 3.4em floor the kind had, and only then is the kind cut.
+*/
+.nameInParts[data-instance] .restKind {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.nameInParts[data-instance] .restRole {
+  flex: 0 1000 max-content;
+  width: 3.4em;
+  min-width: auto;
+  overflow: clip;
+}
+
+/*
   T416 — the node's TYPE, beside its name and behind it in every way that reads.
   Dimmed, smaller, unbolded, lowercase: the name is the heading and this is the caption.
 
@@ -354,6 +375,20 @@
 
 [data-kind-labels] .kindLabelClip {
   display: block;
+}
+
+/*
+  VNB15 (owner's ruling, 2026-10-07) — AN INSTANCE'S LABEL IS NOT CLIPPED AT ITS NODE'S EDGE.
+  This reverses the clip described above, for component instances only. An instance's kind
+  is its component's whole name: on the reported stage previz, fitted at 14 %, stagecamera1,
+  stagefeeds1 and stageset1 all read `sta`. So an instance's label runs past its node's right
+  edge, uncapped and unfaded, and reads the component's whole name. It may cross the gutter
+  to a neighbour; components are few on a canvas and their name is the most telling word on
+  it. The rule under the header and the zoom written on the label are unchanged.
+*/
+.kindLabelClip[data-instance] {
+  overflow: visible;
+  mask-image: none;
 }
 
 .kindLabel {

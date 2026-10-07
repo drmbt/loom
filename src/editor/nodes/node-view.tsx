@@ -382,7 +382,8 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           // Two boxes: the outer is the band a label may use (the node's width, from the line
           // under the header upward, B258) and clips; the inner is the one the canvas tells
           // the zoom, and only its transform ever changes (see `.kindLabelClip`).
-          <span className={styles.kindLabelClip} aria-hidden="true">
+          // VNB15: an instance's label is not clipped at its node's edge (see `.kindLabelClip`).
+          <span className={styles.kindLabelClip} aria-hidden="true" data-instance={instanceRef !== null ? true : undefined}>
             <span ref={joinKindLabels} className={styles.kindLabel} data-testid={`node-kind-label-${id}`}>
               <span className={styles.kindLabelKind}>{kindLabel.kind}</span>
               {kindLabel.rest === "" ? null : (
@@ -420,6 +421,8 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
               <span
                 className={cx(styles.name, nameAtRest !== null && styles.nameInParts)}
                 data-testid={`node-name-${id}`}
+                // VNB15: an instance's kind is its component's name, so its ROLE gives way first.
+                data-instance={instanceRef !== null ? true : undefined}
                 title={displayName}
                 // T415: TouchDesigner's own gesture, and the one the owner asked for —
                 // "edit name directly in the header bar". Routed through the command so

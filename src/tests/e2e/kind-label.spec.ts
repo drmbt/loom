@@ -96,7 +96,7 @@ interface LabelGeometry {
   readonly withRest: number;
   /** [min, max] height of a label on screen, CSS px. */
   readonly height: readonly [number, number];
-  /** The furthest any DRAWN part of a label reaches past its own node's left or right edge, CSS px. */
+  /** The furthest any DRAWN part of a label reaches past its own node's left or right edge, CSS px. Not an instance's (VNB15). */
   readonly furthestBeyondOwnWidth: number;
   /** The furthest any drawn part reaches BELOW the line under its own node's header, CSS px (B258). */
   readonly furthestBelowHeaderLine: number;
@@ -167,12 +167,21 @@ const measure = (page: Page): Promise<LabelGeometry> =>
           inASlot: slots.some((slot) => overlap(box, slot)),
           rest: rest !== undefined && getComputedStyle(rest).display !== "none",
           word: label.firstElementChild?.textContent ?? "",
+          instance: clipBox.dataset["instance"] !== undefined,
         };
       });
+    /*
+     * VNB15 — by the owner's ruling of 2026-10-07, a COMPONENT INSTANCE's label is not
+     * clipped at its node's edge: its kind is its component's whole name, which the clip cut
+     * to `sta` on the stage previz. So the width and neighbour claims below are made of
+     * every OTHER node, and an instance's label is held to its whole name instead
+     * (`component-name-labels.spec.ts`). Every plain node is still measured as before.
+     */
+    const plain = drawn.filter((each) => !each.instance);
     let overlappingPairs = 0;
-    for (let a = 0; a < drawn.length; a += 1) {
-      for (let b = a + 1; b < drawn.length; b += 1) {
-        if (overlap(drawn[a]!, drawn[b]!)) overlappingPairs += 1;
+    for (let a = 0; a < plain.length; a += 1) {
+      for (let b = a + 1; b < plain.length; b += 1) {
+        if (overlap(plain[a]!, plain[b]!)) overlappingPairs += 1;
       }
     }
     const heights = drawn.map((each) => each.height);
@@ -182,12 +191,12 @@ const measure = (page: Page): Promise<LabelGeometry> =>
       shown: drawn.length,
       withRest: drawn.filter((each) => each.rest).length,
       height: [Math.min(...heights), Math.max(...heights)] as const,
-      furthestBeyondOwnWidth: Math.max(0, ...drawn.map((each) => each.beyondWidth)),
+      furthestBeyondOwnWidth: Math.max(0, ...plain.map((each) => each.beyondWidth)),
       furthestBelowHeaderLine: Math.max(0, ...drawn.map((each) => each.belowHeaderLine)),
       furthestAboveOwnNode: Math.max(0, ...drawn.map((each) => each.aboveNode)),
       overlappingPairs,
-      onAnotherNode: drawn.filter((each) => each.onAnotherNode).map((each) => each.id),
-      inASlot: drawn.filter((each) => each.inASlot).map((each) => each.id),
+      onAnotherNode: plain.filter((each) => each.onAnotherNode).map((each) => each.id),
+      inASlot: plain.filter((each) => each.inASlot).map((each) => each.id),
       firstWords: [...new Set(drawn.map((each) => each.word))].sort(),
     };
   });
