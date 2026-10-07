@@ -367,3 +367,16 @@ export function setLaneProps(document: AutomationDocument, laneId: string, props
   const next = mapLanes(document, (lane) => (lane.id === laneId ? { ...lane, ...props } : lane));
   return isValidDocument(next) ? next : document;
 }
+
+/**
+ * Set one key's time and/or normalized value exactly (the table view). Goes through
+ * `moveKeys`, so a time typed past a neighbour stops one tick short of it rather than
+ * crossing, and a value is held in 0..1.
+ */
+export function setKey(document: AutomationDocument, ref: KeyRef, change: { t?: number; v?: number }): AutomationDocument {
+  const key = document.lanes.find((lane) => lane.id === ref.lane)?.keys.find((each) => each.id === ref.key);
+  if (key === undefined) return document;
+  const dt = change.t === undefined ? 0 : Math.round(change.t) - key.t;
+  const dv = change.v === undefined ? 0 : change.v - key.v;
+  return moveKeys(document, [ref], dt, dv).document;
+}

@@ -114,3 +114,46 @@ export function marquee(
   }
   return caught;
 }
+
+/**
+ * Houdini's BOX TRANSFORM: the bounding box of the selected keys, in curve-area pixels.
+ * Null below two keys, or when the box has no width (keys on one tick have nothing to
+ * scale in time; their value edges still work when it has height, and vice versa).
+ */
+export function selectionBox(geometry: Geometry, lanes: readonly ResolvedLane[], selection: readonly KeyRef[]): Rect | null {
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  let count = 0;
+  for (const lane of lanes) {
+    for (const key of lane.keys) {
+      if (!selection.some((ref) => ref.lane === lane.lane.id && ref.key === key.key.id)) continue;
+      const point = keyPoint(geometry, lane, key.t, key.v);
+      x0 = Math.min(x0, point.x);
+      x1 = Math.max(x1, point.x);
+      y0 = Math.min(y0, point.y);
+      y1 = Math.max(y1, point.y);
+      count += 1;
+    }
+  }
+  if (count < 2 || (x1 - x0 < 1 && y1 - y0 < 1)) return null;
+  return { x0, y0, x1, y1 };
+}
+
+export type BoxPart = "left" | "right" | "top" | "bottom";
+
+/** Which EDGE of the box is under the pointer (within `slop` px); the inside is a key drag. */
+export function hitBox(box: Rect, x: number, y: number, slop = 4): BoxPart | null {
+  const withinY = y >= box.y0 - slop && y <= box.y1 + slop;
+  const withinX = x >= box.x0 - slop && x <= box.x1 + slop;
+  if (withinY && box.x1 - box.x0 >= 1) {
+    if (Math.abs(x - box.x0) <= slop) return "left";
+    if (Math.abs(x - box.x1) <= slop) return "right";
+  }
+  if (withinX && box.y1 - box.y0 >= 1) {
+    if (Math.abs(y - box.y0) <= slop) return "top";
+    if (Math.abs(y - box.y1) <= slop) return "bottom";
+  }
+  return null;
+}

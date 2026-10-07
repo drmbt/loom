@@ -11,7 +11,6 @@ import type { FrameInputs } from "@domain/types/backend.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
 import type { FrameRange, GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
-import type { StoredParameter } from "@domain/types/parameters.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { AUTOMATION_NODE_TYPE, playheadTicks } from "@nodes/definitions/automation.ts";
 import { createParameterEditor, type ParameterEditor } from "@editor/inspector/parameter-editor.ts";
@@ -41,8 +40,10 @@ import {
   type KeyRef,
   type SnapMode,
 } from "./timeline-edits.ts";
-import { hitTest, marquee, type Rect } from "./timeline-hit.ts";
-import { automationNodes, currentAutomationNode, laneReferenceCounts, type AutomationNodeView } from "./timeline-model.ts";
+import { hitBox, hitTest, marquee, selectionBox, type BoxPart, type Rect } from "./timeline-hit.ts";
+import { DopeStrip } from "./dope-strip.tsx";
+import { KeyTable } from "./key-table.tsx";
+import { automationNodes, currentAutomationNode, laneReferenceCounts, lanesStored, type AutomationNodeView } from "./timeline-model.ts";
 import { TimelineStatus } from "./timeline-status.tsx";
 import {
   DEFAULT_VIEW,
@@ -99,16 +100,12 @@ type Drag =
   /** `selection` is the drag's own: the click that started it may not have re-rendered yet. */
   | { kind: "keys"; nodeId: NodeId; origin: AutomationDocument; last: AutomationDocument; selection: readonly KeyRef[]; x: number; y: number; moved: boolean }
   | { kind: "handle"; nodeId: NodeId; origin: AutomationDocument; last: AutomationDocument; ref: KeyRef; side: "in" | "out" }
+  | { kind: "box"; nodeId: NodeId; origin: AutomationDocument; last: AutomationDocument; selection: readonly KeyRef[]; part: BoxPart; box: Rect; pivotTicks: number | null }
   | { kind: "marquee"; rect: Rect; additive: boolean }
   | { kind: "pan"; x: number; y: number }
   | { kind: "seek" };
 
 const SAMPLE_MS = 100;
-
-/** The stored lanes parameter with new text, keeping a static slot's retained bindings. */
-function lanesStored(stored: StoredParameter | undefined, text: string): StoredParameter {
-  return isParameterSlot(stored) ? { ...stored, bindings: { ...stored.bindings, static: { kind: "static", value: text } } } : text;
-}
 
 export function TimelinePane(props: TimelinePaneProps) {
   const { graph, bus, invocation, selection, latestFrame, fps, range, playing = false, onSeek } = props;
@@ -128,6 +125,7 @@ export function TimelinePane(props: TimelinePaneProps) {
   const [marqueeRect, setMarqueeRect] = useState<Rect | null>(null);
   const [frame, setFrame] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showTable, setShowTable] = useState(false);
   const clipboard = useRef<KeyClipboard | null>(null);
   const drag = useRef<Drag | null>(null);
   const held = useRef(new Set<string>());
@@ -147,6 +145,8 @@ export function TimelinePane(props: TimelinePaneProps) {
     return compiled.ok ? compiled.compiled.lanes : [];
   }, [current, graph]);
   const shown = useMemo(() => resolved.filter((lane) => solo === null || lane.lane.id === solo), [resolved, solo]);
+  /** Houdini's box transform around the selection, in curve-area pixels (needs the canvas's size, so read per render). */
+  const box = selectionBox({ view, height: Math.max(1, (canvasRef.current?.clientHeight ?? 0) - RULER_HEIGHT), mode }, shown, keys);
 
   // The playhead: a 10 Hz sample of the last rendered frame (§V16).
   const playhead = useRef<number | null>(null);
@@ -177,9 +177,10 @@ export function TimelinePane(props: TimelinePaneProps) {
       playheadTicks: playhead.current,
       range: [framesToTicks(range.start, rate), framesToTicks(range.end + 1, rate)],
       marquee: marqueeRect,
+      box,
       frameLabels: false,
     });
-  }, [keys, marqueeRect, mode, range.end, range.start, rate, shown, view]);
+  }, [box, keys, marqueeRect, mode, range.end, range.start, rate, shown, view]);
 
   useLayoutEffect(() => paint(), [paint, frame]);
   // Smooth while playing: one repaint per display frame, and none while paused.
@@ -353,6 +354,19 @@ export function TimelinePane(props: TimelinePaneProps) {
       drag.current = { kind: "keys", nodeId: current.id, origin: document, last: document, selection: next, x, y, moved: false };
       return;
     }
+    if (box !== null && !event.shiftKey) {
+      const part = hitBox(box, x, y);
+      if (part !== null) {
+        // The pivot is the opposite edge, or the playhead with Ctrl / Cmd held (time edges).
+        const pivotTicks = event.ctrlKey || event.metaKey ? playheadOrZero() : null;
+        drag.current = { kind: "box", nodeId: current.id, origin: document, last: document, selection: keys, part, box, pivotTicks };
+        return;
+      }
+      if (x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1) {
+        drag.current = { kind: "keys", nodeId: current.id, origin: document, last: document, selection: keys, x, y, moved: false };
+        return;
+      }
+    }
     drag.current = { kind: "marquee", rect: { x0: x, y0: y, x1: x, y1: y }, additive: event.shiftKey };
   };
 
@@ -385,6 +399,26 @@ export function TimelinePane(props: TimelinePaneProps) {
       const dt = xToTick(view, x) - key.t;
       const dv = storedValue(lane, yToValue(view, curveHeight(), y), mode) - key.v;
       const next = setHandle(current_.origin, current_.ref, current_.side, [dt, dv]);
+      drag.current = { ...current_, last: next };
+      write(node, next, "live", current_.origin);
+      return;
+    }
+    if (current_.kind === "box") {
+      const { box: from, part } = current_;
+      const firstLane = current_.origin.lanes.find((lane) => current_.selection.some((ref) => ref.lane === lane.id)) ?? { min: 0, max: 1 };
+      let next = current_.origin;
+      if (part === "left" || part === "right") {
+        const edge = xToTick(view, part === "left" ? from.x0 : from.x1);
+        const pivot = current_.pivotTicks ?? xToTick(view, part === "left" ? from.x1 : from.x0);
+        const sx = (snapTicks(xToTick(view, x), snap, rate) - pivot) / (edge - pivot);
+        if (Number.isFinite(sx) && sx > 0) next = scaleKeys(current_.origin, current_.selection, pivot, 0, sx, 1);
+      } else {
+        const valueAt = (pixel: number): number => storedValue(firstLane, yToValue(view, curveHeight(), pixel), mode);
+        const edge = valueAt(part === "top" ? from.y0 : from.y1);
+        const pivot = valueAt(part === "top" ? from.y1 : from.y0);
+        const sy = (valueAt(y) - pivot) / (edge - pivot);
+        if (Number.isFinite(sy)) next = scaleKeys(current_.origin, current_.selection, 0, pivot, 1, sy);
+      }
       drag.current = { ...current_, last: next };
       write(node, next, "live", current_.origin);
       return;
@@ -427,7 +461,7 @@ export function TimelinePane(props: TimelinePaneProps) {
       setKeys(current_.additive ? [...keys, ...caught.filter((ref) => !keys.some((each) => sameRef(each, ref)))] : caught);
       return;
     }
-    if (current_.kind === "keys" || current_.kind === "handle") {
+    if (current_.kind === "keys" || current_.kind === "handle" || current_.kind === "box") {
       if (current_.kind === "keys" && !current_.moved) return;
       const node = nodes.find((each) => each.id === current_.nodeId);
       if (node === undefined) return;
@@ -555,7 +589,27 @@ export function TimelinePane(props: TimelinePaneProps) {
           <button type="button" className={styles.toggle} onClick={() => setView(frameAll(shown, width(), mode))} title="Frame all keys and handles (H)">
             H
           </button>
+          <button type="button" className={styles.toggle} data-on={showTable ? "" : undefined} onClick={() => setShowTable(!showTable)} title="the selected keys as a table">
+            table
+          </button>
         </div>
+        <div className={styles.body}>
+        <div className={styles.curve}>
+        <DopeStrip
+          graph={graph}
+          nodes={nodes}
+          view={view}
+          rate={rate}
+          snap={snap}
+          playheadTicks={() => playhead.current}
+          bus={bus}
+          invocation={invocation}
+          currentNode={current?.id ?? null}
+          onSelect={(nodeId, refs) => {
+            if (nodeId !== null) setLastTouched(nodeId);
+            setKeys(refs);
+          }}
+        />
         <canvas
           ref={canvasRef}
           className={styles.canvas}
@@ -566,6 +620,13 @@ export function TimelinePane(props: TimelinePaneProps) {
           onWheel={onWheel}
           onContextMenu={(event) => event.preventDefault()}
         />
+        </div>
+        {showTable && current !== null && document !== null && (
+          <div className={styles.side}>
+            <KeyTable document={document} selection={keys} rate={rate} editable={current.editable} onChange={commitOnce} />
+          </div>
+        )}
+        </div>
         {current === null && <div className={styles.empty}>no lanes — + adds one</div>}
       </div>
     </div>

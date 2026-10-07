@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useSyncExternalStore } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { newKey, newLane, parseAutomation, serializeAutomation } from "@domain/automation/model.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
@@ -188,5 +188,85 @@ describe("VN62 — the timeline pane writes the document", () => {
     } finally {
       window.removeEventListener("keydown", reachedWindow);
     }
+  });
+
+  it("a dope-sheet summary drag retimes a cue in TWO nodes, and one undo restores both", async () => {
+    const { runtime, autoId } = await runtimeWith();
+    const added = await runtime.bus.execute(
+      "graph.applyPatch",
+      {
+        baseRevision: runtime.bus.store.getRevision(),
+        label: "second node",
+        operations: [{ op: "addNode", ref: "$two", type: "automation", position: { x: 0, y: 200 }, label: "automation_two",
+          parameters: { lanes: serializeAutomation({ version: 1, lanes: [newLane("lane1", "other", [newKey("k1", 2 * S, 0.3), newKey("k2", 4 * S, 1)])] }) } }],
+      } as never,
+      runtime.invocation,
+    );
+    const twoId = added.output.createdIds["$two"]!;
+    const { view } = await mount(runtime);
+    const strip = view.container.querySelector<HTMLCanvasElement>("[data-dope-strip]")!;
+    await act(async () => {
+      fireEvent.pointerDown(strip, { clientX: 200, clientY: 7, button: 0, pointerId: 2 });
+      fireEvent.pointerMove(strip, { clientX: 215, clientY: 7, pointerId: 2 });
+      fireEvent.pointerMove(strip, { clientX: 230, clientY: 7, pointerId: 2 });
+      fireEvent.pointerUp(strip, { clientX: 230, clientY: 7, pointerId: 2 });
+    });
+    // 30 px at 100 px a second is 0.3 s, nine frames at 30 fps: 2 s + 72 000 ticks.
+    await waitFor(() => {
+      expect(lanesOf(runtime, autoId)[0]!.keys.map((key) => key.t)).toEqual([0, 552_000]);
+      expect(lanesOf(runtime, twoId)[0]!.keys.map((key) => key.t)).toEqual([552_000, 4 * S]);
+    });
+    await undo(runtime);
+    expect(lanesOf(runtime, autoId)[0]!.keys.map((key) => key.t)).toEqual([0, 2 * S]);
+    expect(lanesOf(runtime, twoId)[0]!.keys.map((key) => key.t)).toEqual([2 * S, 4 * S]);
+  });
+
+  it("the table sets a selected key's frame and value exactly", async () => {
+    const { runtime, autoId } = await runtimeWith();
+    const { canvas } = await mount(runtime);
+    await act(async () => {
+      fireEvent.pointerDown(canvas, { clientX: 200, clientY: yOf(1), button: 0, pointerId: 1 });
+      fireEvent.pointerUp(canvas, { clientX: 200, clientY: yOf(1), pointerId: 1 });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("table"));
+    });
+    const frame = screen.getByLabelText("level k2 frame");
+    await act(async () => {
+      fireEvent.change(frame, { target: { value: "45" } });
+      fireEvent.keyDown(frame, { key: "Enter" });
+    });
+    await settle();
+    expect(lanesOf(runtime, autoId)[0]!.keys[1]).toMatchObject({ t: 45 * 8_000, v: 1 });
+    const value = screen.getByLabelText("level k2 value");
+    await act(async () => {
+      fireEvent.change(value, { target: { value: "0.25" } });
+      fireEvent.keyDown(value, { key: "Enter" });
+    });
+    await settle();
+    expect(lanesOf(runtime, autoId)[0]!.keys[1]).toMatchObject({ t: 45 * 8_000, v: 0.25 });
+  });
+
+  it("dragging the box's right edge scales the selection in time about its left edge, one undo step", async () => {
+    const { runtime, autoId } = await runtimeWith();
+    const { canvas } = await mount(runtime);
+    await act(async () => {
+      fireEvent.pointerDown(canvas, { clientX: 0, clientY: yOf(0), button: 0, pointerId: 1 });
+      fireEvent.pointerUp(canvas, { clientX: 0, clientY: yOf(0), pointerId: 1 });
+    });
+    await act(async () => {
+      fireEvent.pointerDown(canvas, { clientX: 200, clientY: yOf(1), button: 0, shiftKey: true, pointerId: 1 });
+      fireEvent.pointerUp(canvas, { clientX: 200, clientY: yOf(1), pointerId: 1 });
+    });
+    await act(async () => {
+      fireEvent.pointerDown(canvas, { clientX: 203, clientY: yOf(0.5), button: 0, pointerId: 1 });
+      fireEvent.pointerMove(canvas, { clientX: 300, clientY: yOf(0.5), pointerId: 1 });
+      fireEvent.pointerMove(canvas, { clientX: 400, clientY: yOf(0.5), pointerId: 1 });
+      fireEvent.pointerUp(canvas, { clientX: 400, clientY: yOf(0.5), pointerId: 1 });
+    });
+    await settle();
+    expect(lanesOf(runtime, autoId)[0]!.keys.map((key) => key.t)).toEqual([0, 4 * S]);
+    await undo(runtime);
+    expect(lanesOf(runtime, autoId)[0]!.keys.map((key) => key.t)).toEqual([0, 2 * S]);
   });
 });

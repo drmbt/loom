@@ -5,6 +5,7 @@ import { formatTimecode, frameToTimecode, supportsDropFrame } from "@domain/time
 import { rateOf } from "@domain/time/ticks.ts";
 import type { FrameRange, GraphDocument, GraphNode } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
+import type { StoredParameter } from "@domain/types/parameters.ts";
 import { AUTOMATION_NODE_TYPE } from "@nodes/definitions/automation.ts";
 
 /**
@@ -100,4 +101,9 @@ export function timelineShows(written: readonly NodeId[], graph: GraphDocument):
     if (node.type === AUTOMATION_NODE_TYPE) return true;
     return Object.values(node.parameters).some((stored) => isParameterSlot(stored) && stored.bindings.expression !== undefined);
   });
+}
+
+/** The stored lanes parameter with new text, keeping a static slot's retained bindings. */
+export function lanesStored(stored: StoredParameter | undefined, text: string): StoredParameter {
+  return isParameterSlot(stored) ? { ...stored, bindings: { ...stored.bindings, static: { kind: "static", value: text } } } : text;
 }

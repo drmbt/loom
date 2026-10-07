@@ -178,3 +178,55 @@
   color: var(--text-dim);
   pointer-events: none;
 }
+.dope {
+  display: block;
+  width: 100%;
+  flex: 0 0 auto;
+  border-bottom: var(--border-hairline);
+  touch-action: none;
+}
+.body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+.curve {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.side {
+  flex: 0 0 300px;
+  overflow: auto;
+  border-left: var(--border-hairline);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}
+.table th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: normal;
+  padding: var(--space-1);
+  border-bottom: var(--border-hairline);
+}
+.table td {
+  padding: 1px var(--space-1);
+}
+.cell {
+  width: 100%;
+  min-width: 0;
+  height: var(--control-h);
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-sunken);
+  border: var(--border-hairline);
+}
+.tableEmpty {
+  padding: var(--space-2);
+  color: var(--text-dim);
+}

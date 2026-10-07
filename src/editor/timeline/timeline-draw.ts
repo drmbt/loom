@@ -36,6 +36,8 @@ export interface DrawState {
   /** The project's in/out, in ticks: outside it is shaded. */
   readonly range: readonly [number, number] | null;
   readonly marquee: Rect | null;
+  /** The selection's box transform, when it has one. */
+  readonly box: Rect | null;
   /** Label the ruler in frames rather than timecode. */
   readonly frameLabels: boolean;
 }
@@ -215,6 +217,17 @@ export function paintTimeline(canvas: HTMLCanvasElement, state: DrawState): void
       context.stroke();
     }
     context.globalAlpha = 1;
+  }
+
+  if (state.box !== null) {
+    const { x0, y0, x1, y1 } = state.box;
+    context.strokeStyle = colour("text-dim");
+    context.lineWidth = 1;
+    context.strokeRect(Math.round(x0) - 3.5, Math.round(y0) - 3.5, x1 - x0 + 7, y1 - y0 + 7);
+    context.fillStyle = colour("text-dim");
+    for (const [hx, hy] of [[x0 - 3, (y0 + y1) / 2], [x1 + 3, (y0 + y1) / 2], [(x0 + x1) / 2, y0 - 3], [(x0 + x1) / 2, y1 + 3]] as const) {
+      context.fillRect(hx - 2.5, hy - 2.5, 5, 5);
+    }
   }
 
   if (state.marquee !== null) {
