@@ -197,6 +197,18 @@ row". Dragging a parameter's NAME to reference it is VN63, built as a general dr
   a timecode display mode (SMPTE, frames, seconds) as a pane setting.
 - The frame clock does not change: timeline frame 0 is the project's start timecode,
   `timeSeconds` stays frameIndex/fps, and an automation node converts the frame to ticks once.
+- **Addressing, TD's Animation COMP model (Vincent, 2026-10-06, after comparing Houdini and TD).**
+  Storage is one unit; reading is any unit. An automation node has an **index** source: the
+  playhead (default), or an expression read in a chosen unit: frames, seconds, samples at a
+  rate, or a 0..1 fraction of the lane's range. So a slider, an LFO or another lane can scrub a
+  curve, and a lane can be driven as a normalized envelope. The fraction is an addressing mode,
+  not the storage. Expressions already carry Houdini's pair: `frame` ($F, 0-based in Loom),
+  `time` ($T = frame/fps), `fps`, plus `absframe` / `abstime`.
+- **Changing fps** asks Houdini's question: keep each key's TIME (default, ticks unchanged, so a
+  key moves to a new frame number) or keep each key's FRAME (ticks scaled by old/new rate). The
+  timeline range follows the same choice.
+- Component-local time (TD's Time COMP) is upstream T616 (open, opt-in, derive-never-accumulate);
+  VN72's regions cover placing material in time, not separate clocks.
 
 **Lane plan.** VN61–VN64 run beside the VN33 → VN35 → VN36 stack: their surface is new
 `src/domain/automation/**`, `src/domain/time/**`, `src/nodes/definitions/automation.ts`,
