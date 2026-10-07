@@ -412,6 +412,9 @@ describe("EVERY value node honours mute and bypass (T541, §V437)", () => {
     on: true,
     held: true,
     presses: 3,
+    // VN61: a fresh Automation node has no lanes and honestly publishes an empty bag, so the
+    // sweep hands it one lane holding 0.5. No other node has a `lanes` parameter.
+    lanes: JSON.stringify({ version: 1, lanes: [{ id: "lane1", name: "level", keys: [{ id: "key1", t: 0, v: 0.5 }] }] }),
   };
 
   const evaluateOne = (

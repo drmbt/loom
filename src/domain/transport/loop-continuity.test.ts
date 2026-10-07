@@ -286,6 +286,8 @@ const CLOCK_OWNERSHIP: Readonly<Record<string, "free-running" | "timeline-anchor
   // Turning either of these free-running would be a different bug, not the same fix.
   timer: "timeline-anchored",
   audioPattern: "timeline-anchored",
+  // VN61: a lane is a position in the piece, read at the playhead, like the Timer.
+  automation: "timeline-anchored",
   // DELTA-DRIVEN: reads the frame STEP, never a clock position. A lap carries a real step
   // (T464), so these pass through a loop boundary with no discontinuity at all.
   valueSlope: "delta-driven",
