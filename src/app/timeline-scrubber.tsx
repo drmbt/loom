@@ -28,16 +28,25 @@ import styles from "./timeline-scrubber.module.css";
  * past it would be right to call that broken. This component neither owns the range nor
  * keeps a copy: it renders the document's value and asks for a new one.
  *
- * ## Why the scrub commits on RELEASE (§V170)
+ * ## The scrub seeks LIVE, at most once a display frame (VN76, §V170 as amended)
  *
- * The rule was cost: a seek REPLAYED from frame zero, O(frames), so a seek per pointer
- * sample would have replayed the graph a few hundred times across one drag. VN71 (the
- * owner's ruling, 2026-10-07; §V170 as amended) made a seek a JUMP — one frame, and
- * temporal state carries on — so the cost is gone and the rule stands for the other half
- * of its reason: every seek renders a frame, and a feedback graph takes each one as its
- * next frame. A drag that sought on every sample would feed it a few hundred frames of the
- * scrub's path. The playhead follows the pointer live, and exactly one seek is issued, on
- * release; the tooltip says what a seek does to feedback.
+ * It used to seek once, on release: a seek REPLAYED from frame zero, O(frames), and a seek
+ * per pointer sample would have replayed the graph hundreds of times across one drag. VN71
+ * made a seek a JUMP — one frame, temporal state carried on — and the owner asked for live
+ * scrubbing (2026-10-07: "yes, I want live scrubbing"). So a drag seeks as it goes:
+ *
+ *  - COALESCED to one seek per animation frame. A pointer move records where the pointer
+ *    is; one `requestAnimationFrame` callback seeks to the LATEST position, so positions a
+ *    frame never got to render are dropped rather than queued, and a fast drag costs one
+ *    render a display frame however many pointer samples arrive. A move that lands on the
+ *    frame already sought asks for nothing.
+ *  - FINISHED by one seek at release, to where the pointer stopped, so the playhead lands
+ *    exactly there whatever the last animation frame caught. A press and release with no
+ *    move is that one seek alone.
+ *
+ * Feedback CARRIES ON THROUGH THE DRAG, accepted by the owner: every seek renders a frame
+ * and a feedback graph takes each as its next, so a drag feeds it the frames of its path.
+ * That is the scrub TouchDesigner has; `runtime.resetFeedback` starts the trail over.
  *
  * ## §V16
  *
@@ -95,6 +104,12 @@ export function TimelineScrubber({
   const playheadRef = useRef<HTMLDivElement | null>(null);
   /** Where the pointer is during a drag, as a fraction. Null when nobody is dragging. */
   const dragRef = useRef<number | null>(null);
+  /** VN76: the animation frame that will seek to `dragRef`, null when none is scheduled. */
+  const liveSeekRef = useRef<number | null>(null);
+  /** VN76: the frame this drag last sought, so a move within one frame asks for nothing. */
+  const soughtRef = useRef<number | null>(null);
+  const onSeekRef = useRef(onSeek);
+  onSeekRef.current = onSeek;
 
   /**
    * T1259 — THE PLAYHEAD IS A COMPOSITOR ANIMATION, NOT A SCRIPT WRITE PER FRAME.
@@ -200,12 +215,36 @@ export function TimelineScrubber({
     return clamp01((clientX - box.left) / box.width);
   }, []);
 
+  const cancelLiveSeek = useCallback((): void => {
+    if (liveSeekRef.current === null) return;
+    cancelAnimationFrame(liveSeekRef.current);
+    liveSeekRef.current = null;
+  }, []);
+  // A frame scheduled by a drag must not seek after the strip is gone.
+  useEffect(() => cancelLiveSeek, [cancelLiveSeek]);
+
+  /** VN76: at most one seek per animation frame, to the LATEST pointer position. */
+  const scheduleLiveSeek = useCallback((): void => {
+    if (liveSeekRef.current !== null) return;
+    liveSeekRef.current = requestAnimationFrame(() => {
+      liveSeekRef.current = null;
+      const fraction = dragRef.current;
+      const seek = onSeekRef.current;
+      if (fraction === null || seek === undefined) return;
+      const frame = frameAtFraction(rangeRef.current, fraction);
+      if (frame === soughtRef.current) return;
+      soughtRef.current = frame;
+      seek(frame);
+    });
+  }, []);
+
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (onSeek === undefined || event.button !== 0) return;
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       dragRef.current = fractionAt(event.clientX);
+      soughtRef.current = null;
       sync();
     },
     [fractionAt, onSeek, sync],
@@ -216,8 +255,9 @@ export function TimelineScrubber({
       if (dragRef.current === null) return;
       dragRef.current = fractionAt(event.clientX);
       sync();
+      scheduleLiveSeek();
     },
-    [fractionAt, sync],
+    [fractionAt, scheduleLiveSeek, sync],
   );
 
   const endDrag = useCallback(
@@ -225,11 +265,13 @@ export function TimelineScrubber({
       if (dragRef.current === null || onSeek === undefined) return;
       const fraction = fractionAt(event.clientX);
       dragRef.current = null;
-      // ONE seek per gesture (§V170) — see the note at the top of the file. The playhead
-      // re-syncs to the replayed frame on the next sample.
+      // VN76: the live frame still pending is superseded by this one — see the note at the
+      // top of the file. The final seek always lands where the pointer stopped.
+      cancelLiveSeek();
+      soughtRef.current = null;
       onSeek(frameAtFraction(range, fraction));
     },
-    [fractionAt, onSeek, range],
+    [cancelLiveSeek, fractionAt, onSeek, range],
   );
 
   const shownFrame = frameIndex;
@@ -268,6 +310,7 @@ export function TimelineScrubber({
           onPointerUp={endDrag}
           onPointerCancel={() => {
             dragRef.current = null;
+            cancelLiveSeek();
           }}
           onKeyDown={(event) => {
             if (onSeek === undefined || frameIndex === null) return;
