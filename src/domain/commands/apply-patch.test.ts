@@ -4,6 +4,9 @@ import type { GraphDocument } from "../types/graph.ts";
 import type { GraphPatchOperation } from "../types/patch.ts";
 import { alice, bob, contextFor, createHarness, patch, type Harness } from "./test-support.ts";
 import { z } from "zod";
+import { createComponentHarness, graphOf, instanceNode, node } from "../components/test-support.ts";
+import { flattenComponents } from "../../compiler/flatten.ts";
+import { COMPONENT_OVERRIDES_STATE_KEY } from "../components/instance.ts";
 
 /**
  * `graph.applyPatch` invariants: §V13 §V14 §V32 §V33 §V34 §V35 §V36 §V40.
@@ -38,6 +41,102 @@ async function apply(operations: GraphPatchOperation[], options: { actor?: typeo
 const graph = (): GraphDocument => harness.store.view.getGraph();
 const nodeCount = (): number => Object.keys(graph().nodes).length;
 const edgeCount = (): number => Object.keys(graph().edges).length;
+
+describe("per-instance internal parameter patches", () => {
+  function fixture(attach = true) {
+    const h = createComponentHarness("internal");
+    h.components.register({ componentId: "inner", version: 1, name: "Inner",
+      graph: graphOf([node("blur", "test.blur", { radius: 4 })]), inputs: [],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "blur", portId: "out" }],
+      parameters: [{ key: "softness", definition: { type: "number", label: "Softness", default: 4 }, targets: [{ nodeId: "blur", key: "radius" }] }] });
+    h.components.register({ componentId: "outer", version: 1, name: "Outer",
+      graph: graphOf([instanceNode("inner", "inner", 1, {})]), inputs: [],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "inner", portId: "out" }],
+      parameters: [{ key: "softness", definition: { type: "number", label: "Softness", default: 4 }, targets: [{ nodeId: "inner", key: "softness" }] }] });
+    const flat = () => flattenComponents({ graph: h.store.view.getGraph(), registry: h.nodes, components: h.components.view() });
+    if (attach) h.bus.attachFlattenedGraph(flat);
+    return { ...h, flat };
+  }
+
+  async function place(h: ReturnType<typeof fixture>) {
+    const result = await h.bus.execute("component.instantiate", { componentId: "outer" }, ctx());
+    expect(result.status).toBe("applied");
+    return result.output.nodeId!;
+  }
+
+  it("keeps nested overrides local, undoable and equal after detaching", async () => {
+    const h = fixture();
+    const first = await place(h);
+    const second = await place(h);
+    const definitionsBefore = JSON.stringify(h.components.all());
+    const write = () => h.bus.execute("graph.applyPatch", patch(h.store.view.getRevision(), [
+      { op: "setParameters", nodeId: first, internalNodeId: "inner/blur", parameters: { radius: 19 } },
+    ]), ctx());
+    expect((await write()).status).toBe("applied");
+    expect(h.store.view.getGraph().nodes[first]!.state?.[COMPONENT_OVERRIDES_STATE_KEY]).toEqual({ "inner/blur/radius": 19 });
+    expect(h.flat().graph.nodes[`${first}/inner/blur`]!.parameters.radius).toBe(19);
+    expect(h.flat().graph.nodes[`${second}/inner/blur`]!.parameters.radius).toBe(4);
+    await h.bus.execute("graph.undo", {}, ctx());
+    expect(h.flat().graph.nodes[`${first}/inner/blur`]!.parameters.radius).toBe(4);
+    await h.bus.execute("graph.redo", {}, ctx());
+    expect(h.flat().graph.nodes[`${first}/inner/blur`]!.parameters.radius).toBe(19);
+    const detached = await h.bus.execute("component.detach", { nodeId: first }, ctx());
+    expect(detached.status).toBe("applied");
+    const copy = detached.output.copies.inner!;
+    expect(h.flat().graph.nodes[`${copy}/blur`]!.parameters.radius).toBe(19);
+    expect(JSON.stringify(h.components.all())).toBe(definitionsBefore);
+  });
+
+  it("validates without writing and rejects missing targets, wrong values, slots and malformed paths atomically", async () => {
+    const h = fixture();
+    const owner = await place(h);
+    const operation = { op: "setParameters" as const, nodeId: owner, internalNodeId: "inner/blur", parameters: { radius: 9 } };
+    const before = JSON.stringify(h.store.view.getGraph());
+    expect((await h.bus.execute("graph.applyPatch", patch(h.store.view.getRevision(), [operation]), ctx(alice, { dryRun: true }))).status).toBe("validated");
+    expect(JSON.stringify(h.store.view.getGraph())).toBe(before);
+    for (const invalid of [
+      { ...operation, internalNodeId: "inner/missing" },
+      { ...operation, internalNodeId: "/inner/blur" },
+      { ...operation, parameters: { radius: "wrong" } },
+      { ...operation, parameters: { unused: 9 } },
+      { ...operation, parameters: { radius: { mode: "expression", bindings: { expression: { kind: "expression", source: "time" } } } } },
+    ]) {
+      const result = await h.bus.execute("graph.applyPatch", patch(h.store.view.getRevision(), [operation, invalid as GraphPatchOperation]), ctx());
+      expect(result.status).toBe("rejected");
+      expect(JSON.stringify(h.store.view.getGraph())).toBe(before);
+    }
+  });
+
+  it("refuses absent or stale flattened reads instead of writing unchecked state", async () => {
+    const h = fixture(false);
+    const owner = await place(h);
+    const operation = { op: "setParameters" as const, nodeId: owner, internalNodeId: "inner/blur", parameters: { radius: 9 } };
+    const before = JSON.stringify(h.store.view.getGraph());
+    const absent = await h.bus.execute("graph.applyPatch", patch(h.store.view.getRevision(), [operation]), ctx());
+    expect(absent.diagnostics.some(d => d.code === "node.parameters.noFlattening")).toBe(true);
+    expect(JSON.stringify(h.store.view.getGraph())).toBe(before);
+    const stale = h.flat();
+    h.bus.attachFlattenedGraph(() => stale);
+    await place(h);
+    const changed = JSON.stringify(h.store.view.getGraph());
+    const rejected = await h.bus.execute("graph.applyPatch", patch(h.store.view.getRevision(), [operation]), ctx());
+    expect(rejected.diagnostics.some(d => d.code === "node.parameters.staleFlattening")).toBe(true);
+    expect(JSON.stringify(h.store.view.getGraph())).toBe(changed);
+  });
+
+  it("refuses an internal schema read after changing its published page in the same batch", async () => {
+    const h = fixture();
+    const owner = await place(h);
+    const before = JSON.stringify(h.store.view.getGraph());
+    const result = await h.bus.execute("graph.applyPatch", patch(h.store.view.getRevision(), [
+      { op: "setParameters", nodeId: owner, parameters: { softness: 12 } },
+      { op: "setParameters", nodeId: owner, internalNodeId: "inner/blur", parameters: { radius: 9 } },
+    ]), ctx());
+    expect(result.status).toBe("rejected");
+    expect(result.diagnostics.some(d => d.code === "node.parameters.staleFlattening")).toBe(true);
+    expect(JSON.stringify(h.store.view.getGraph())).toBe(before);
+  });
+});
 
 describe("graph.applyPatch — temp ids and undo grouping (§V34, §V35)", () => {
   it("adds three nodes and wires them in one patch, returning stable ids", async () => {

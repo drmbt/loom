@@ -2,7 +2,8 @@ import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/g
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
 import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../examples/documents/builders.ts";
-import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
+import { BRIGHT_PASS_WGSL } from "../../nodes/shaders/bloom-pyramid.wgsl.ts";
+import { bloomPyramidGraph } from "../../examples/bloom-pyramid.ts";
 import { DOF_WGSL, GTAO_WGSL } from "../furnace/screen-space.ts";
 import { GLOSSY_SSR_WGSL } from "./reflections.ts";
 import { ENVIRONMENT_HDRI_WGSL, ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "./atmosphere.ts";
@@ -570,7 +571,13 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
   // ── Optics: streak columns (half size), halo rings (quarter), bloom pyramid ──
   // A "scale" resolution is relative to the node's own INPUT, so each chained pass states its
   // factor against the pass before it: the bloom halves on the way down and doubles back up.
-  nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: plan.whiteRoom ? 3 : 1.4, knee: 0.8 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }));
+  const bloom = bloomPyramidGraph({
+    ids: { bright: "bright", down: ["bloomDown1", "bloomDown2", "bloomDown3", "bloomDown4"], up: ["bloomUp0", "bloomUp1", "bloomUp2", "bloomUp3"] },
+    edgePrefix: "bloom", layout: { bright: [-1300, 300], down: [-900, 300], up: [-700, 150], step: [0, 150] },
+    threshold: plan.whiteRoom ? 3 : 1.4, knee: 0.8, firstClampLuma: 1, lower: 1,
+  });
+  nodes.push(...bloom.nodes);
+  edges.push(...bloom.edges);
   // The streaks' OWN source, far above the bloom's: only clipped lamps streak in the reference —
   // never chrome glints, lit paint or a sodium pool (the owner: "over the top… sensitivity").
   nodes.push(node("streakSrc", "customWgsl", [-1300, 200], { source: BRIGHT_PASS_WGSL, threshold: plan.whiteRoom ? 6 : 4.5, knee: 1.2 }, { label: "wgsl_streaksrc", resolution: { mode: "scale", factor: 0.5 } }));
@@ -599,15 +606,6 @@ function shotDocument(facts: OnNothingFacts, options: OnNothingOptions): Project
   edges.push(edge("scene-hot", scene, ["hot", "input"]));
   nodes.push(node("halo", "customWgsl", [-1100, 500], { source: HALO_WGSL, radius: 0.3, width: 0.006, dispersion: 0.14, axis: 0.08 }, { label: "wgsl_halo", resolution: { mode: "scale", factor: 1 } }));
   edges.push(edge("hot-halo", ["hot", "out"], ["halo", "input"]));
-  for (const level of [1, 2, 3, 4]) {
-    nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } }));
-    edges.push(edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]));
-  }
-  for (const level of [0, 1, 2, 3]) {
-    nodes.push(node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } }));
-    edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
-    edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
-  }
   pass("optics", OPTICS_COMPOSITE_WGSL, { streak: opticsGain[base].streak, halo: opticsGain[base].halo, bloom: base === "tableau" ? 0.04 : 0.12, streakTint: [0.9, 0.97, 1, 1] }, [react.streak(["streak2", "out"]), ["halo", "out"], ["bloomUp0", "out"]], [-500, 0]);
 
   // ── Lens and grade ──

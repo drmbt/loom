@@ -121,6 +121,43 @@ async function detached(graph: GraphDocument): Promise<GraphDocument> {
 }
 
 describe("B238 on Dawn — an instance and its detached graph are one picture", () => {
+  it("nested published colour channels keep moving and match ordinary Solid parameters on pixels", async () => {
+    requireDawn();
+    const tint: GraphComponentDefinition = {
+      componentId: "tint", version: 1, name: "Tint",
+      graph: graphOf({ src: node("src", "solid", "solid_inner", { color: [1, 1, 1, 1] }) }, {}),
+      inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "src", portId: "out" }],
+      parameters: [{ key: "tint", definition: { type: "color", label: "Tint", default: [1, 1, 1, 1], space: "display" }, targets: [{ nodeId: "src", key: "color" }] }],
+    };
+    const wrapped: GraphComponentDefinition = {
+      componentId: "wrappedTint", version: 1, name: "Wrapped Tint",
+      graph: graphOf({ inner: node("inner", componentNodeType("tint", 1), "tint_inner", {}) }, {}),
+      inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "inner", portId: "out" }],
+      parameters: [{ key: "color", definition: { type: "color", label: "Color", default: [1, 1, 1, 1], space: "display" }, targets: [{ nodeId: "inner", key: "tint" }] }],
+    };
+    const system = catalogue([tint, wrapped]);
+    const moving = (source: string) => ({ mode: "expression", bindings: { expression: { kind: "expression", source }, static: { kind: "static", value: 0.9 } } });
+    const page = { color: [0.2, 0.3, 0.75, 1], "color.r": moving("0.25 + time * 0.5"), "color.g": moving("0.5 - time * 0.5") };
+    const makeGraph = (type: string, label: string) => graphOf({
+      paint: node("paint", type, label, page),
+      out: node("out", "output", "output1", { toneMap: "none" }),
+    }, { painted: edge("painted", "paint", "out") });
+    const capture = async (graph: GraphDocument) => {
+      const result = await renderHeadless({ host: nodeGpuHost(), graph, settings, fps: FPS, frames: 31, capture: [0, 30], animate: true, components: system.components.view() });
+      expect(result.frames.map(frame => frame.frameIndex)).toEqual([0, 30]);
+      return result.frames.map(frame => ({ bytes: Buffer.from(frame.bytes), pixel: [...decodeComponents(frame.bytes, frame.format).slice(0, 4)] }));
+    };
+    const before = await capture(makeGraph(componentNodeType("wrappedTint", 1), "wrappedtint1"));
+    const ordinary = await capture(makeGraph("solid", "solid_ordinary"));
+    for (let index = 0; index < before.length; index += 1) expect(Buffer.compare(before[index]!.bytes, ordinary[index]!.bytes)).toBe(0);
+    // Both animated channels move in opposite directions; equality cannot be two
+    // pictures stuck at the same retained colour or decoded at each nesting level.
+    expect(before[0]!.pixel[0]).toBeLessThan(before[1]!.pixel[0]!);
+    expect(before[0]!.pixel[1]).toBeGreaterThan(before[1]!.pixel[1]!);
+    expect(before[0]!.pixel[2]).toBe(before[1]!.pixel[2]);
+    expect(before[0]!.pixel[3]).toBe(1);
+  }, 120_000);
+
   it("bright 0.5 (a fan-out) × gain 0.8 (a parent.<key> read): byte-identical before and after detach, and not the definition's 1.0", async () => {
     requireDawn();
     const instance = lookGraph({ bright: 0.5, gain: 0.8 });

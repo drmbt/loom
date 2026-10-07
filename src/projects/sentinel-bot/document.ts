@@ -5,6 +5,7 @@ import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/g
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
 import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../examples/documents/builders.ts";
+import { bloomPyramidGraph } from "../../examples/bloom-pyramid.ts";
 import { SHOWCASE_BEAT, SHOWCASE_BEAT_FILE, SHOWCASE_BEAT_OFFSET_SECONDS } from "../../examples/build-showcase-beat.ts";
 import { serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { serializePresetBank } from "../../domain/presets/bank.ts";
@@ -16,7 +17,6 @@ import { against, dockTurn, FIELD_BARS, fieldTurn, glimpseShot, pace, PACK_BARS,
 import { DEFAULT_PROJECT_FPS, SEEK_FRAME_LIMIT } from "../../domain/types/graph.ts";
 import type { KitFacts, MeshSelectionFacts, Vec3 } from "./kit.ts";
 import { CHAMBERS, PATH, chamberExpression, pathExpression } from "./path.ts";
-import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../furnace/post.ts";
 import { DOF_WGSL, GTAO_WGSL, SSR_WGSL } from "../furnace/screen-space.ts";
 import { FIELD_BERTH, SWIM_WAY, swimLungeExpression, KIND, JOINT_ATTRIBUTES, PACK_WANDER, adriftAheadExpression, adriftExpression, ownCountOf, jointCount, jointKernel, type Pick } from "./rig.ts";
 import { hueExpression, hullSurfaceWgsl, lampParameter } from "./surface.ts";
@@ -873,6 +873,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   const unplaced = controls.map((control) => control.id).filter((id) => !placed.includes(id));
   if (unplaced.length > 0 || new Set(placed).size !== placed.length) throw new Error(`sentinel-bot: every control goes on exactly one panel; not placed: ${unplaced.join(", ") || "none"}; placed ${placed.length} of ${controls.length}.`);
 
+  const bloom = bloomPyramidGraph({
+    ids: { bright: "wgsl_bright", down: ["wgsl_bloomdown1", "wgsl_bloomdown2", "wgsl_bloomdown3", "wgsl_bloomdown4"], up: ["wgsl_bloomup0", "wgsl_bloomup1", "wgsl_bloomup2", "wgsl_bloomup3"] },
+    edgePrefix: "bloom",
+    layout: { bright: [-600, 300], down: [-300, 300], up: [0, 150], step: [0, 150] },
+    threshold: 1.4, knee: 1, firstClampLuma: 1, lower: 1,
+  });
   const nodes: GraphNode[] = [
     // ── The track, and the lanes the piece listens to ──
     node("audiofile_track", "audioFileIn", [-3600, 600], {
@@ -1355,9 +1361,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       aperture: expressionSlot(`${on("slider_focus")} * 55 / ${RIG("lens")} * (1 + ${on("slider_pump")} * 1.4 * ${KICK} * (${phraseDraw(BAR, 11)} < 0.45))`, 0.5),
       maxRadius: 14,
     }, { label: "wgsl_focus", resolution: { mode: "project" } }),
-    node("wgsl_bright", "customWgsl", [-600, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 1 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }),
-    ...[1, 2, 3, 4].map((level) => node(`wgsl_bloomdown${level}`, "customWgsl", [-300, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } })),
-    ...[0, 1, 2, 3].map((level) => node(`wgsl_bloomup${level}`, "customWgslMulti", [0, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } })),
+    ...bloom.nodes.map(({ id, type, position, parameters, ...extra }) => node(id, type, [position.x, position.y], parameters, extra)),
     node("add_glow", "add", [300, 0], { opacity: 0.4 }, { label: "add_glow", resolution: { mode: "project" } }),
     // A lens that is not perfect, and film: a little barrel, soft fringed edges, a vignette; then the
     // grade (a filmic curve, crushed blacks, green in the shadows as the film has it) and grain.
@@ -1472,11 +1476,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("haze-focus", ["wgsl_haze", "out"], ["wgsl_focus", "input"]),
     edge("depth-focus", ["render_shot", "depth"], ["wgsl_focus", "more"], 0),
     edge("focus-bright", ["wgsl_focus", "out"], ["wgsl_bright", "input"]),
-    ...[1, 2, 3, 4].map((level) => edge(`bloom-down${level}`, [level === 1 ? "wgsl_bright" : `wgsl_bloomdown${level - 1}`, "out"], [`wgsl_bloomdown${level}`, "input"])),
-    ...[0, 1, 2, 3].flatMap((level) => [
-      edge(`bloom-up${level}-lower`, [level === 3 ? "wgsl_bloomdown4" : `wgsl_bloomup${level + 1}`, "out"], [`wgsl_bloomup${level}`, "input"]),
-      edge(`bloom-up${level}-own`, [level === 0 ? "wgsl_bright" : `wgsl_bloomdown${level}`, "out"], [`wgsl_bloomup${level}`, "more"], 0),
-    ]),
+    ...bloom.edges,
     // The bloom is the FRONT layer: Add's opacity scales in1.
     edge("glow-front", ["wgsl_bloomup0", "out"], ["add_glow", "in1"]),
     edge("glow-back", ["wgsl_focus", "out"], ["add_glow", "in2"]),

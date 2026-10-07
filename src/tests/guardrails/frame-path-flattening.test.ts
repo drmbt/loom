@@ -77,11 +77,6 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
     why: "§T1391b: NOT per frame — on a perform command (which Window Outs exist, and the one being opened), on a document change (close the window of a deleted Window Out), and when the inspector describes a window. A Window Out is an AUTHORED node the user picks; a perform window for one inside a component is not offered. §T1536b: the edit-mapping mode reads it (one site) on a toggle, a document change, a new plan and a window resize, to find the Corner Pin / Grid Warp upstream — authored nodes, whose parameters a drag writes.",
   },
   {
-    file: "app/use-mesh-sources.ts",
-    reads: 1,
-    why: "T1353b: NOT per frame — once per file load, to find the AUTHORED node its measured Vertices/Triangles are written to through the bus. A mesh inside a component has no authored node of that id, and the hook says so instead of writing.",
-  },
-  {
     file: "app/flattened-graph.ts",
     reads: 1,
     why: "THE declared read. This is the memo that produces the flattened document every frame path reads instead; it is called per frame and answers from cache unless the document or the catalogue moved (§V529).",

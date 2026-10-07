@@ -78,12 +78,13 @@ describe("the shipped starter components are what the save path writes (§V94)",
     }
   });
 
-  it("names the twelve the spec asks for", () => {
+  it("names the shipped component set", () => {
     expect(STARTER_COMPONENT_SPECS.map((spec) => spec.name).sort()).toEqual([
       "Antialias",
       "AudioAnalysis",
       "AudioLevel",
       "Bloom",
+      "Bloom Pyramid",
       "DepthCut",
       "DepthPoints",
       "DisplacementStack",

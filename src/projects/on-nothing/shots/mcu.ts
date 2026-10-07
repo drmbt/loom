@@ -2,7 +2,8 @@ import type { ProjectDocument } from "../../../domain/types/graph.ts";
 import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { expressionSlot } from "../../../examples/documents/builders.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../../runtime/backend/shared-uniforms.ts";
-import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
+import { BRIGHT_PASS_WGSL } from "../../../nodes/shaders/bloom-pyramid.wgsl.ts";
+import { bloomPyramidGraph } from "../../../examples/bloom-pyramid.ts";
 import { CAMERA_PARAMS, GTAO_WGSL, VIEW } from "../../furnace/screen-space.ts";
 import { ENVIRONMENT_HDRI_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { CRT_WGSL, GRADE_WGSL, LENS_WGSL, OPTICS_COMPOSITE_WGSL, STREAK_WGSL } from "../fx.ts";
@@ -1229,7 +1230,13 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
   // one direction per cut: each beat's columns grow from `from` to `to` over the beat
   const grow = switched(take.beats.map((beat, b) => `clamp((abstime - ${starts[b]!.toFixed(5)}) / ${(beat.frames / 24).toFixed(5)}, 0, 1)`), starts);
   const reach = `((${take.streak.from} + (${take.streak.to - take.streak.from}) * (${grow})) * (0.9 + 0.2 * ${loud}))`;
-  g.node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 0.8 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } });
+  const bloom = bloomPyramidGraph({
+    ids: { bright: "bright", down: ["bloomDown1", "bloomDown2", "bloomDown3", "bloomDown4"], up: ["bloomUp0", "bloomUp1", "bloomUp2", "bloomUp3"] },
+    edgePrefix: "bloom", layout: { bright: [-1300, 300], down: [-900, 300], up: [-700, 150], step: [0, 150] },
+    threshold: 1.4, knee: 0.8, firstClampLuma: 1, lower: 1,
+  });
+  g.nodes.push(...bloom.nodes);
+  g.edges.push(...bloom.edges);
   g.edge("scene-bright", scene, ["bright", "input"]);
   g.node("streakSrc", "customWgsl", [-1300, 200], { source: BRIGHT_PASS_WGSL, threshold: take.streak.threshold, knee: 1.2 }, { label: "wgsl_streaksrc", resolution: { mode: "scale", factor: 0.5 } });
   g.edge("scene-streaksrc", scene, ["streakSrc", "input"]);
@@ -1238,15 +1245,6 @@ export function mcuDocument(facts: OnNothingFacts, options: McuOptions): Project
     g.node(id, "customWgsl", [-1100 + index * 100, 300], { source: STREAK_WGSL, step: expressionSlot(`${reach} / ${div}`, take.streak.from / div), decay: index === 2 ? 1.6 : 50, finish: index === 2 ? 1 : 0, compress: index === 0 ? 3 : 0, ...(index === 0 ? { minSize: 0.004 } : {}), down: 0, gain: take.streak.gain, striation: 0.22, striationScale: 110 }, { label: `wgsl_${id}`, resolution: { mode: "scale", factor: 1 } });
     g.edge(`into-${id}`, [index === 0 ? "streakSrc" : `streak${index - 1}`, "out"], [id, "input"]);
   });
-  for (const level of [1, 2, 3, 4]) {
-    g.node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } });
-    g.edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]);
-  }
-  for (const level of [0, 1, 2, 3]) {
-    g.node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } });
-    g.edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]);
-    g.edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0);
-  }
   g.pass("optics", OPTICS_COMPOSITE_WGSL, { streak: 0.8, halo: 0, bloom: 0.12, streakTint: [0.9, 0.97, 1, 1] }, scene, [["streak2", "out"], ["bright", "out"], ["bloomUp0", "out"]], [-500, 0]);
 
   // ── Lens and grade ──

@@ -89,7 +89,9 @@ export function registerGraphCommands(bus: LoomBus): void {
     // the command's input; the coverage guard beside it (GRAPH_PATCH_OPERATIONS_COVERED) is
     // what holds the two together.
     inputSchema: graphPatchSchema as unknown as CommandInputSchema<"graph.applyPatch">,
-    handler: (input: GraphPatch, context) => applyGraphPatch(input, context),
+    handler: (input: GraphPatch, context) => applyGraphPatch(input, context,
+      input.operations.some(operation => operation.op === "setParameters" && operation.internalNodeId !== undefined)
+        ? bus.flattenedGraph() : undefined),
     rejectionOutput: (_input, diagnostics, revision): GraphPatchResult => ({
       status: "rejected",
       revision,

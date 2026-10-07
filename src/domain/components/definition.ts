@@ -12,6 +12,7 @@ import { componentInstances, readParentBindings } from "./instance.ts";
 import { parseParentReference } from "./parent-scope.ts";
 import type { ComponentGraphSource } from "./recursion.ts";
 import { PAGE_TARGET, PRESET_STATE_KEYS, PRESET_STATE_PARAMETERS, pageBanksOf } from "../presets/bank-view.ts";
+import { liveSourceReferenceTokens } from "../graph/source-references.ts";
 
 /**
  * A component definition seen as a node manifest (§V79).
@@ -81,7 +82,13 @@ function exposedPortDefinitions(
     // guessed: a port with an invented type would let §V13 pass a connection the
     // compiler must then refuse. `validateComponentDefinition` reports it.
     if (internal === undefined) continue;
-    ports.push({ id: port.externalId, label: port.label, type: internal.type });
+    ports.push({
+      id: port.externalId,
+      label: port.label,
+      type: internal.type,
+      ...(internal.optional === undefined ? {} : { optional: internal.optional }),
+      ...(direction === "input" && port.variadic === true && internal.variadic === true ? { variadic: true } : {}),
+    });
   }
   return ports;
 }
@@ -337,13 +344,36 @@ export function validateComponentDefinition(
         );
         continue;
       }
-      if (internalPortOf(definition.graph, port, direction, nodes) === undefined) {
+      const internal = internalPortOf(definition.graph, port, direction, nodes);
+      if (internal === undefined) {
         diagnostics.push(
           error(
             "component.port.missingPort",
             `Exposed port "${port.externalId}" maps to "${port.nodeId}.${port.portId}", which is not an ${direction} port.`,
           ),
         );
+      } else if (port.variadic === true && (direction !== "input" || internal.variadic !== true)) {
+        diagnostics.push(error(
+          "component.port.variadic",
+          `Exposed port "${port.externalId}" declares a whole variadic input, but "${port.nodeId}.${port.portId}" is not a variadic input.`,
+        ));
+      } else if (port.variadic === true) {
+        const alias = definition.inputs.find((other) => other.externalId !== port.externalId && other.nodeId === port.nodeId && other.portId === port.portId);
+        if (alias !== undefined) {
+          diagnostics.push(error(
+            "component.port.variadic",
+            `Whole input "${port.externalId}" cannot share "${port.nodeId}.${port.portId}" with exposed input "${alias.externalId}".`,
+          ));
+        }
+        const node = definition.graph.nodes[port.nodeId]!;
+        const wired = Object.values(definition.graph.edges).some((edge) => edge.target.nodeId === port.nodeId && edge.target.portId === port.portId);
+        const named = nodes.get(node.type)?.sourceReferences?.some((spec) => spec.input === port.portId && liveSourceReferenceTokens(spec, node, definition.graph.edges).length > 0) === true;
+        if (wired || named) {
+          diagnostics.push(error(
+            "component.port.variadic",
+            `Whole input "${port.externalId}" cannot expose "${port.nodeId}.${port.portId}" while that input has an internal ${wired ? "wire" : "named source"}.`,
+          ));
+        }
       }
     }
   }

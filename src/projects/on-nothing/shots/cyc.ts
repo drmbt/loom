@@ -2,7 +2,7 @@ import type { GraphEdge, GraphNode, ProjectDocument } from "../../../domain/type
 import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../../domain/types/schemas.ts";
 import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../../examples/documents/builders.ts";
-import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
+import { bloomPyramidGraph } from "../../../examples/bloom-pyramid.ts";
 import { GTAO_WGSL } from "../../furnace/screen-space.ts";
 import { CRT_WGSL, LENS_WGSL } from "../fx.ts";
 import type { Bone, OnNothingFacts } from "../scene-facts.ts";
@@ -435,17 +435,14 @@ export function cycDocument(facts: OnNothingFacts, options: CycOptions): Project
   const scene = last;
 
   // ── Diffusion: the whole picture, blurred wide (the bloom pyramid with no threshold) ──
-  nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: 0, knee: 0.001 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }));
+  const bloom = bloomPyramidGraph({
+    ids: { bright: "bright", down: ["bloomDown1", "bloomDown2", "bloomDown3", "bloomDown4"], up: ["bloomUp0", "bloomUp1", "bloomUp2", "bloomUp3"] },
+    edgePrefix: "bloom", layout: { bright: [-1300, 300], down: [-900, 300], up: [-700, 150], step: [0, 150] },
+    threshold: 0, knee: 0.001, firstClampLuma: 0, lower: 1.4,
+  });
+  nodes.push(...bloom.nodes);
+  edges.push(...bloom.edges);
   edges.push(edge("scene-bright", scene, ["bright", "input"]));
-  for (const level of [1, 2, 3, 4]) {
-    nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } }));
-    edges.push(edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]));
-  }
-  for (const level of [0, 1, 2, 3]) {
-    nodes.push(node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1.4 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } }));
-    edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
-    edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
-  }
   pass("mist", CYC_MIST_WGSL, { amount: 0.14 }, [["bloomUp0", "out"]], [-500, 0]);
   pass("lens", LENS_WGSL, p.lens, [], [-300, 0]);
   pass("finish", CYC_FINISH_WGSL, p.finish, [], [-100, 0]);

@@ -3,14 +3,13 @@ import { kindOfType, withKind } from "../../../domain/graph/node-kinds.ts";
 import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../../domain/types/schemas.ts";
 import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../../examples/documents/builders.ts";
-import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
+import { bloomPyramidGraph } from "../../../examples/bloom-pyramid.ts";
 
 /**
  * T1407b — the plumbing the title and the ring shots share (`shots/title.ts`, `shots/ring.ts`):
  * a graph under construction with a running "last picture" the passes chain onto, the bloom
  * pyramid, and the camera parameters a screen-space pass reads off the Camera node.
- * `document.ts` keeps its own copy for the shots it builds; these files are kept apart from it
- * so parallel sessions on other shots never touch the same lines.
+ * Each shot keeps its own chain; the bloom itself is the shared nine-node recipe.
  */
 
 export type Port = readonly [string, string];
@@ -58,18 +57,17 @@ export class Chain {
    * Returns the finished glow.
    */
   bloom(from: Port, threshold: number, x: number): Port {
-    this.add("bright", "customWgsl", [x, 300], { source: BRIGHT_PASS_WGSL, threshold, knee: 0.8 }, { resolution: { mode: "scale", factor: 0.5 } });
+    const bloom = bloomPyramidGraph({
+      ids: { bright: "bright", down: ["bloomDown1", "bloomDown2", "bloomDown3", "bloomDown4"], up: ["bloomUp0", "bloomUp1", "bloomUp2", "bloomUp3"] },
+      edgePrefix: "bloom", layout: { bright: [x, 300], down: [x + 200, 300], up: [x + 400, 150], step: [0, 150] },
+      threshold, knee: 0.8, firstClampLuma: 1, lower: 1,
+    });
+    this.nodes.push(...bloom.nodes);
     this.link(from, ["bright", "input"]);
-    for (const level of [1, 2, 3, 4]) {
-      this.add(`bloomDown${level}`, "customWgsl", [x + 200, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { resolution: { mode: "scale", factor: 0.5 } });
-      this.link([level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]);
+    for (const edge of bloom.edges) {
+      this.link([edge.source.nodeId, edge.source.portId], [edge.target.nodeId, edge.target.portId], edge.order);
     }
-    for (const level of [0, 1, 2, 3]) {
-      this.add(`bloomUp${level}`, "customWgslMulti", [x + 400, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { resolution: { mode: "scale", factor: 2 } });
-      this.link([level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]);
-      this.link([level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0);
-    }
-    return ["bloomUp0", "out"];
+    return bloom.glow;
   }
 
   document(shot: string, width: number, height: number): ProjectDocument {

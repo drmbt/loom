@@ -1,11 +1,24 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { compileGraph } from "../../compiler/index.ts";
 import { flattenComponents } from "../../compiler/flatten.ts";
+import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
+import { createNodeRegistry } from "../../nodes/registry/registry.ts";
+import { TAA_WGSL } from "../../projects/furnace/taa.ts";
+import { createDomainBus } from "../commands/index.ts";
 import { alice, contextFor } from "../commands/test-support.ts";
+import { incomingEdgesInOrder } from "../graph/edge-order.ts";
+import { createSequentialIdFactory } from "../graph/ids.ts";
+import { createGraphStore } from "../graph/store.ts";
 import type { GraphDocument } from "../types/graph.ts";
+import { registerComponentCommands } from "./commands.ts";
 import { componentNodeType } from "./component-type.ts";
 import { readComponentInstance } from "./instance.ts";
 import { internalParameterValues } from "./flatten.ts";
+import { flattenedNodeId } from "./internal-resolutions.ts";
 import { openComponentSession } from "./session.ts";
+import { createComponentSystem } from "./registry.ts";
+import { buildComponentFromSelection } from "./save-selection.ts";
+import { createTestRegistry } from "../../nodes/registry/test-nodes.ts";
 import {
   blurKnob,
   bloomComponent,
@@ -387,6 +400,202 @@ describe("instances reference, they never copy (§V79)", () => {
 });
 
 describe("component.saveSelection (T129)", () => {
+  function fixedInputFixture(orders: readonly (number | undefined)[], aliases = false, nested = false) {
+    const internal = {
+      componentId: "legacy", version: 1, name: "Legacy",
+      graph: graphOf([node("inner", "test.solid"), node("mix", "test.composite")], {
+        a: { id: "a", source: { nodeId: "inner", portId: "out" }, target: { nodeId: "mix", portId: "layers" }, ...(orders[0] === undefined ? {} : { order: orders[0] }) },
+      }),
+      inputs: ["left", ...(aliases ? ["right"] : [])].map(externalId => ({ externalId, label: externalId, nodeId: "mix", portId: "layers" })),
+      outputs: [{ externalId: "out", label: "Out", nodeId: "mix", portId: "out" }], parameters: [],
+    };
+    const wrapper = { ...internal, componentId: "outer", name: "Outer",
+      graph: graphOf([instanceNode("child", "legacy", 1)]),
+      inputs: internal.inputs.map(port => ({ ...port, nodeId: "child", portId: port.externalId })),
+      outputs: [{ externalId: "out", label: "Out", nodeId: "child", portId: "out" }],
+    };
+    const initial = graphOf([node("external", "test.solid"), node("other", "test.solid"), instanceNode("instance", nested ? "outer" : "legacy", 1)], {
+      z: { id: "z", source: { nodeId: "external", portId: "out" }, target: { nodeId: "instance", portId: "left" }, ...(orders[1] === undefined ? {} : { order: orders[1] }) },
+      ...(aliases ? { zz: { id: "zz", source: { nodeId: "other", portId: "out" }, target: { nodeId: "instance", portId: "right" }, ...(orders[2] === undefined ? {} : { order: orders[2] }) } } : {}),
+    });
+    const harness = createComponentHarness("legacy", initial);
+    harness.components.register(internal);
+    if (nested) harness.components.register(wrapper);
+    return { ...harness, target: nested ? "instance/child/mix" : "instance/mix" };
+  }
+
+  it.each([{ orders: [] }, { orders: [1, 1] }, { orders: [Number.MAX_SAFE_INTEGER, undefined] }])("refuses a legacy fixed input whose hidden order uses IDs (%j)", async ({ orders }) => {
+    const harness = fixedInputFixture(orders);
+    const before = JSON.stringify(harness.store.view.getGraph());
+    const definitions = JSON.stringify(harness.components.all());
+    const saved = await harness.bus.execute("component.saveSelection", { componentId: "wrapped", nodeIds: ["instance"], name: "Wrapped" }, ctx);
+    expect(saved.status).toBe("rejected");
+    expect(saved.diagnostics?.map(d => d.code)).toContain("component.selection.inputOrder");
+    expect(JSON.stringify(harness.store.view.getGraph())).toBe(before);
+    expect(JSON.stringify(harness.components.all())).toBe(definitions);
+  });
+
+  it.each([false, true])("checks all fixed aliases at the final consumer (nested=%s)", async nested => {
+    const harness = fixedInputFixture([1, 0, 0], true, nested);
+    const before = JSON.stringify(harness.store.view.getGraph());
+    // One external feed moves with the component; the other still crosses the selection.
+    const saved = await harness.bus.execute("component.saveSelection", { nodeIds: ["instance", "external"], name: "Wrapped" }, ctx);
+    expect(saved.status).toBe("rejected");
+    expect(saved.diagnostics?.map(d => d.code)).toContain("component.selection.inputOrder");
+    expect(JSON.stringify(harness.store.view.getGraph())).toBe(before);
+  });
+
+  it("checks feeds carried by a fixed ancestor through a whole-input child", async () => {
+    const harness = createComponentHarness("legacy", graphOf([node("external", "test.solid"), instanceNode("instance", "ancestor", 1)], {
+      z: { id: "z", source: { nodeId: "external", portId: "out" }, target: { nodeId: "instance", portId: "left" }, order: 1 },
+    }));
+    harness.components.register({ componentId: "whole", version: 1, name: "Whole",
+      graph: graphOf([node("mix", "test.composite")]),
+      inputs: [{ externalId: "layers", label: "Layers", nodeId: "mix", portId: "layers", variadic: true }],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "mix", portId: "out" }], parameters: [],
+    });
+    harness.components.register({ componentId: "ancestor", version: 1, name: "Ancestor",
+      graph: graphOf([node("inside", "test.solid"), instanceNode("child", "whole", 1)], {
+        a: { id: "a", source: { nodeId: "inside", portId: "out" }, target: { nodeId: "child", portId: "layers" }, order: 1 },
+      }),
+      inputs: [{ externalId: "left", label: "Left", nodeId: "child", portId: "layers" }],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "child", portId: "out" }], parameters: [],
+    });
+    const before = JSON.stringify(harness.store.view.getGraph());
+    const saved = await harness.bus.execute("component.saveSelection", { nodeIds: ["instance"], name: "Wrapped" }, ctx);
+    expect(saved.status).toBe("rejected");
+    expect(saved.diagnostics?.map(d => d.code)).toContain("component.selection.inputOrder");
+    expect(JSON.stringify(harness.store.view.getGraph())).toBe(before);
+  });
+
+  it("keeps a carried wire's named alternative dormant at a variadic consumer", async () => {
+    // A local node fixture exercises the existing wire-or-name contract on a variadic input.
+    const base = createTestRegistry().view();
+    const named = { ...base.require("test.composite"), type: "test.namedMix",
+      parameters: { sources: { type: "string" as const, label: "Sources", default: "" } },
+      sourceReferences: [{ parameter: "sources", input: "layers", list: true, wire: true }],
+    };
+    const system = createComponentSystem(createNodeRegistry([...base.list(), named]).view());
+    system.components.register({ componentId: "named", version: 1, name: "Named",
+      graph: graphOf([node("inside", "test.solid", {}, { label: "solid_inside" }), node("mix", "test.namedMix", { sources: "solid_inside" })]),
+      inputs: [{ externalId: "left", label: "Left", nodeId: "mix", portId: "layers" }],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "mix", portId: "out" }], parameters: [],
+    });
+    const store = createGraphStore({ initialGraph: graphOf([node("external", "test.solid"), instanceNode("instance", "named", 1)], {
+      z: { id: "z", source: { nodeId: "external", portId: "out" }, target: { nodeId: "instance", portId: "left" }, order: 0 },
+    }) });
+    const { bus } = createDomainBus({ store, registry: system.nodes });
+    registerComponentCommands(bus, { components: system.components });
+    const saved = await bus.execute("component.saveSelection", { nodeIds: ["instance"], name: "Wrapped" }, ctx);
+    expect(saved.status, saved.diagnostics?.map(d => d.message).join("; ")).toBe("applied");
+  });
+
+  it.each([false, true])("preserves a sparse fixed-input position relative to its hidden feed (nested=%s)", async nested => {
+    const harness = fixedInputFixture([1, 4], false, nested);
+    const saved = await harness.bus.execute("component.saveSelection", { nodeIds: ["instance"], name: "Wrapped" }, ctx);
+    expect(saved.status).toBe("applied");
+    const flat = flattenComponents({ graph: harness.store.view.getGraph(), registry: harness.nodes, components: harness.components.view() });
+    const edges = incomingEdgesInOrder(flat.graph, flattenedNodeId(saved.output.instanceNodeId!, harness.target), "layers");
+    expect(edges.map(edge => edge.order)).toEqual([1, 4]);
+    expect(edges[1]?.source.nodeId).toBe("external");
+  });
+
+  it("allows ID-sensitive feeds that all move with the selected component", async () => {
+    const harness = fixedInputFixture([], true, true);
+    const flat = () => flattenComponents({ graph: harness.store.view.getGraph(), registry: harness.nodes, components: harness.components.view() });
+    const before = incomingEdgesInOrder(flat().graph, harness.target, "layers").map(edge => edge.source.nodeId);
+    const saved = await harness.bus.execute("component.saveSelection", { nodeIds: ["instance", "external", "other"], name: "Wrapped" }, ctx);
+    expect(saved.status).toBe("applied");
+    const prefix = flattenedNodeId(saved.output.instanceNodeId!, "");
+    expect(incomingEdgesInOrder(flat().graph, `${prefix}${harness.target}`, "layers").map(edge => edge.source.nodeId.replace(prefix, ""))).toEqual(before);
+  });
+
+  it("requires a catalogue only for selected components with crossing inputs", () => {
+    const harness = fixedInputFixture([1, 4]);
+    const request = { graph: harness.store.view.getGraph(), nodeIds: ["instance"], componentId: "wrapped", name: "Wrapped", nodes: harness.nodes };
+    expect(buildComponentFromSelection(request).diagnostics.map(d => d.code)).toContain("component.selection.inputOrder");
+    const noInputs = { ...request, graph: { ...request.graph, edges: {} } };
+    expect(buildComponentFromSelection(noInputs).diagnostics).toEqual([]);
+  });
+
+  it.each(["data", "color"] as const)("preserves depth/history binding order across a %s input boundary", async (space) => {
+    // Furnace's TAA reads Depth then History on More. Only History moves into the
+    // component with TAA; the crossing Depth edge must keep its place ahead of it.
+    // Colour also covers the synthesized In path, while data uses a direct exposure.
+    const initialGraph = graphOf([
+      node("view", "camera", {}, { label: "camera_view" }),
+      node("grid", "pointGrid", { cols: 2, rows: 2 }, { label: "grid_surface" }),
+      node("geo", "geometry", { mode: "surface" }, { label: "geometry_surface" }),
+      node("light", "light", {}, { label: "light_key" }),
+      node("shot", "render", { scenes: "geometry_surface", camera: "camera_view", lights: "light_key", depthOutput: true }, { label: "render_shot" }),
+      node("field", "solid", { color: [0.25, 0.25, 0.25, 1] }, { label: "solid_field" }),
+      node("taa", "customWgslMulti", { source: TAA_WGSL }, { label: "wgsl_taa" }),
+      node("history", "feedback", { source: "wgsl_taa" }, { label: "feedback_history" }),
+      node("out", "output", {}, { label: "output1" }),
+    ], {
+      grid: { id: "grid", source: { nodeId: "grid", portId: "out" }, target: { nodeId: "geo", portId: "points" } },
+      picture: { id: "picture", source: { nodeId: "shot", portId: "out" }, target: { nodeId: "taa", portId: "input" } },
+      depth: { id: "depth", source: { nodeId: space === "data" ? "shot" : "field", portId: space === "data" ? "depth" : "out" }, target: { nodeId: "taa", portId: "more" }, order: 0 },
+      history: { id: "history", source: { nodeId: "history", portId: "out" }, target: { nodeId: "taa", portId: "more" }, order: 1 },
+      out: { id: "out", source: { nodeId: "taa", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+    });
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
+    const store = createGraphStore({ initialGraph, ids: createSequentialIdFactory("capture") });
+    const { bus } = createDomainBus({ store, registry: system.nodes });
+    registerComponentCommands(bus, { components: system.components });
+    const compile = () => compileGraph({
+      graph: store.view.getGraph(), settings: store.view.getSettings(), registry: system.nodes, components: system.components.view(),
+      capabilities: { tier: "B", features: [], formats: ["rgba8unorm", "rgba16float", "r32float", "depth24plus"], timestampQuery: false, limits: { maxTextureDimension2D: 8192 } },
+    });
+    const bindings = (plan: ReturnType<typeof compile>, id: string) => {
+      expect(plan.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+      const pass = plan.passes.find(pass => pass.kind === "effect" && pass.nodeId === id);
+      expect(pass?.kind).toBe("effect");
+      if (pass?.kind !== "effect") throw new Error("The TAA effect pass is missing");
+      return pass.textures?.map(texture => [texture.binding, texture.resourceId]);
+    };
+    const before = bindings(compile(), "taa");
+    expect(before?.map(binding => binding[0])).toEqual(["inputTexture", "inputTexture1", "inputTexture2"]);
+    expect(before?.[1]?.[1]).toBe(space === "data" ? "target:shot:depth" : "target:field:out");
+    expect(before?.[2]?.[1]).toBe("pingpong:history:out");
+
+    const saved = await bus.execute("component.saveSelection", { nodeIds: ["taa", "history"], name: "Temporal Resolve" }, ctx);
+    expect(saved.status, saved.diagnostics?.map(d => d.message).join("; ")).toBe("applied");
+    const instanceId = saved.output.instanceNodeId!;
+    const after = bindings(compile(), flattenedNodeId(instanceId, "taa"));
+    expect(after?.map(binding => [binding[0], binding[1]?.replaceAll(flattenedNodeId(instanceId, ""), "")])).toEqual(before);
+
+    await bus.execute("graph.undo", {}, ctx);
+    expect(store.view.getGraph().edges).toEqual(initialGraph.edges);
+    await bus.execute("graph.redo", {}, ctx);
+    expect(bindings(compile(), flattenedNodeId(instanceId, "taa"))).toEqual(after);
+  });
+
+  it.each(["declared", "sparse", "legacy", "tied", "mixed"] as const)("keeps selected outputs in their existing external variadic slots (%s order)", async (ordering) => {
+    const orders: readonly (number | undefined)[] = {
+      declared: [0, 2, 1], sparse: [4, 12, 8], legacy: [], tied: [4, 4, 4], mixed: [6, undefined, 6],
+    }[ordering];
+    const initialGraph = graphOf([
+      node("first", "test.solid", {}, { label: "solid_first" }),
+      node("second", "test.solid", {}, { label: "solid_second" }),
+      node("third", "test.solid", {}, { label: "solid_third" }),
+      node("mix", "test.composite", {}, { label: "composite_mix" }),
+    ], {
+      z: { id: "z", source: { nodeId: "first", portId: "out" }, target: { nodeId: "mix", portId: "layers" }, ...(orders[0] === undefined ? {} : { order: orders[0] }) },
+      a: { id: "a", source: { nodeId: "second", portId: "out" }, target: { nodeId: "mix", portId: "layers" }, ...(orders[1] === undefined ? {} : { order: orders[1] }) },
+      m: { id: "m", source: { nodeId: "third", portId: "out" }, target: { nodeId: "mix", portId: "layers" }, ...(orders[2] === undefined ? {} : { order: orders[2] }) },
+    });
+    const before = incomingEdgesInOrder(initialGraph, "mix", "layers").map(edge => edge.source.nodeId);
+    const harness = createComponentHarness("capture", initialGraph);
+    const saved = await harness.bus.execute("component.saveSelection", { nodeIds: ["first", "second"], name: "Layers" }, ctx);
+    expect(saved.status).toBe("applied");
+    const flat = flattenComponents({ graph: harness.store.view.getGraph(), registry: harness.nodes, components: harness.components.view() });
+    const incoming = incomingEdgesInOrder(flat.graph, "mix", "layers");
+    const after = incoming.map(edge => edge.source.nodeId.replace(flattenedNodeId(saved.output.instanceNodeId!, ""), ""));
+    expect(after).toEqual(before);
+    if (ordering === "sparse") expect(incoming.map(edge => edge.order)).toEqual([4, 8, 12]);
+  });
+
   it("keeps internal wiring and exposes exactly the ports that crossed the boundary", async () => {
     const harness = createComponentHarness(
       "t",
