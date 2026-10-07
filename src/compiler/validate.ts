@@ -8,9 +8,11 @@ import { arePortsCompatible, describePortType } from "../domain/graph/port-compa
 import { resolveParameterSchema, effectiveParameterSchema, type ParameterMapBinding } from "../domain/parameters/resolve.ts";
 import {
   NO_INSTANCES,
+  NO_PAGES,
   parameterReadOptions,
   type FlatteningReads,
   type InstanceChannelSources,
+  type InstancePages,
 } from "../domain/parameters/node-references.ts";
 import { NO_MORPHS } from "../domain/presets/morph-index.ts";
 import type { ParameterReadOptions, ResolveParametersOptions } from "../domain/parameters/resolve.ts";
@@ -47,6 +49,8 @@ export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "chan
    * here, so a `compileGraph` caller cannot forget it.
    */
   readonly instances?: InstanceChannelSources | undefined;
+  /** VN36: and the instance pages `op('<instance>').par.<key>` reads, by the same rule. */
+  readonly instancePages?: InstancePages | undefined;
 };
 
 /**
@@ -56,7 +60,11 @@ export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "chan
  * reads nothing fading and no instance — said here, once, for the three compiler readers.
  */
 export function flatteningReadsOf(resolution: ParameterResolution): FlatteningReads {
-  return { morphs: resolution.morphs ?? NO_MORPHS, instanceChannels: resolution.instances ?? NO_INSTANCES };
+  return {
+    morphs: resolution.morphs ?? NO_MORPHS,
+    instanceChannels: resolution.instances ?? NO_INSTANCES,
+    instancePages: resolution.instancePages ?? NO_PAGES,
+  };
 }
 
 export interface ResolvedNode {

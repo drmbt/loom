@@ -10,7 +10,7 @@ import { createDomainBus } from "../../domain/commands/index.ts";
 import type { GraphPatchOperation } from "../../domain/types/patch.ts";
 import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import type { ComponentRegistryView } from "../../domain/components/index.ts";
-import { NO_INSTANCES, type FlatteningReads } from "../../domain/parameters/node-references.ts";
+import { NO_INSTANCES, NO_PAGES, type FlatteningReads } from "../../domain/parameters/node-references.ts";
 import { buildMorphIndex } from "../../domain/presets/morph-index.ts";
 import { effectiveParameterSchema } from "../../domain/parameters/resolve.ts";
 import type { FlatGraph, GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
@@ -357,6 +357,7 @@ export async function renderUnderPolicy(request: OracleRunRequest): Promise<stri
       flattened ?? {
         morphs: buildMorphIndex({ document: store.view.getGraph(), registry: request.registry }),
         instanceChannels: NO_INSTANCES,
+        instancePages: NO_PAGES,
       };
 
     const compileNow = (resolution?: ParameterResolution) =>

@@ -25,7 +25,7 @@ import type { AudioFeatures } from "../../domain/types/frame.ts";
 import type { FeatureTrackRecorder } from "../../domain/audio/feature-track.ts";
 import type { GpuHost } from "../../runtime/backend/vgpu/gpu-host.ts";
 import { analyzeChannelEntries, analyzeOperationOf, createAnalyzeChannels } from "../../runtime/execution/analyze-channels.ts";
-import { NO_INSTANCES } from "../../domain/parameters/node-references.ts";
+import { NO_INSTANCES, NO_PAGES } from "../../domain/parameters/node-references.ts";
 import { createFrameDriver } from "../../runtime/execution/frame-driver.ts";
 import { inferenceSourceIdFor } from "../../runtime/execution/inference-sources.ts";
 import { offlineTransport } from "../../runtime/execution/offline-transport.ts";
@@ -1283,7 +1283,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
                 // T1497b: the same morph index the per-frame compile below derives, so a
                 // recalled widget publishes the fading value here as it does live — and
                 // (§T1559b) the instances a value node's own `op('<instance>')` can name.
-                flattening: { morphs, instanceChannels: flattened?.instanceChannels ?? NO_INSTANCES },
+                flattening: { morphs, instanceChannels: flattened?.instanceChannels ?? NO_INSTANCES, instancePages: flattened?.instancePages ?? NO_PAGES },
                 // T655/T654: analyze readbacks enter the value graph here — the same
                 // extras.channels seam `useValueGraph` threads live, number-narrowed
                 // the same way.
@@ -1321,7 +1321,7 @@ export async function renderHeadless(unmeasured: HeadlessRenderRequest): Promise
               if (analyze !== null) {
                 // T1530b: Operation AT THIS FRAME, before the sample that reads its reduction.
                 let changed = false;
-                const read = { frame: inputs.frame, channels, flattening: { morphs, instanceChannels: flattened?.instanceChannels ?? NO_INSTANCES } };
+                const read = { frame: inputs.frame, channels, flattening: { morphs, instanceChannels: flattened?.instanceChannels ?? NO_INSTANCES, instancePages: flattened?.instancePages ?? NO_PAGES } };
                 const nextEntries = analyzeTracked.map((entry) => {
                   const node = logicalGraph.nodes[entry.nodeId as keyof typeof logicalGraph.nodes];
                   const operation = node === undefined ? entry.operation : analyzeOperationOf(node, logicalGraph, registry(request.nodes), read);

@@ -13,7 +13,7 @@ import type {
   StoredParameter,
 } from "../domain/types/parameters.ts";
 import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
-import type { FlatteningReads, InstanceChannelSource, InstanceChannelSources } from "../domain/parameters/node-references.ts";
+import { NO_PAGES, type FlatteningReads, type InstanceChannelSource, type InstanceChannelSources, type InstancePage, type InstancePages } from "../domain/parameters/node-references.ts";
 import { NO_MORPHS, buildMorphIndex, type MorphIndexInput, type PublishedOrigin } from "../domain/presets/morph-index.ts";
 import { timelineCueProblems } from "../domain/presets/timeline-cues.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../domain/graph/names.ts";
@@ -414,6 +414,7 @@ function identityFlattening(graph: GraphDocument): FlattenedGraph {
     sources,
     instanceOutputs: new Map(),
     instanceChannels: new Map(),
+    instancePages: NO_PAGES,
     sinks: [],
     recursion: null,
     diagnostics: [],
@@ -485,6 +486,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       sources: new Map(),
       instanceOutputs: new Map(),
       instanceChannels: new Map(),
+      instancePages: NO_PAGES,
       sinks: [],
       recursion,
       diagnostics,
@@ -497,6 +499,8 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
 
   const nodes: Record<NodeId, GraphNode> = {};
   const instanceNodes = new Map<NodeId, GraphNode>();
+  /** VN36: each instance's published page as a schema, for `instancePages`. */
+  const pageSchemas = new Map<NodeId, ParameterSchema>();
   const edges: Record<string, GraphEdge> = {};
   const sources = new Map<NodeId, ComponentSource>();
   const instanceOutputs = new Map<NodeId, ReadonlyMap<PortId, FlatEndpoint>>();
@@ -743,6 +747,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
 
       if (instance !== null) {
         instanceNodes.set(flatId, resolved);
+        if (componentDefinition !== undefined) pageSchemas.set(flatId, schema ?? {});
         if (Object.keys(publishedFrom).length > 0) publishedOrigins.set(flatId, publishedFrom);
       }
 
@@ -1061,6 +1066,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     sources,
     instanceOutputs,
     instanceChannels: instanceChannelsOf(instanceNodes, instanceOutputs, nodes, request.registry),
+    instancePages: instancePagesOf(instanceNodes, pageSchemas),
     sinks,
     recursion: null,
     diagnostics,
@@ -1104,6 +1110,26 @@ function instanceChannelsOf(
       sources.push({ port, publisher: inner.label });
     }
     byLabel.set(label, sources);
+  }
+  return byLabel;
+}
+
+/**
+ * VN36: instance LABEL → its page, for `op('<instance>').par.<key>` and so `parent()`.
+ * First-wins in flat-id order, like `nodeNames` and `instanceChannelsOf`; B41 has already
+ * made instance labels unique across the flattening, so first-wins decides nothing in a
+ * flattening this walk produced. An unlabelled instance has no name to read it by.
+ */
+function instancePagesOf(
+  instanceNodes: ReadonlyMap<NodeId, GraphNode>,
+  pageSchemas: ReadonlyMap<NodeId, ParameterSchema>,
+): InstancePages {
+  const byLabel = new Map<string, InstancePage>();
+  for (const instanceId of [...instanceNodes.keys()].sort()) {
+    const node = instanceNodes.get(instanceId);
+    const schema = pageSchemas.get(instanceId);
+    if (node?.label === undefined || schema === undefined || byLabel.has(node.label)) continue;
+    byLabel.set(node.label, { node, schema });
   }
   return byLabel;
 }

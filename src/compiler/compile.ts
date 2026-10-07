@@ -94,7 +94,7 @@ function withTimeProbe(probe: TimeProbe | undefined): { timeProbe?: TimeProbe } 
 }
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import type { ParameterMorphs } from "../domain/parameters/resolve.ts";
-import type { InstanceChannelSources } from "../domain/parameters/node-references.ts";
+import type { InstanceChannelSources, InstancePages } from "../domain/parameters/node-references.ts";
 import { buildMorphIndex } from "../domain/presets/morph-index.ts";
 import { timelineCueProblems } from "../domain/presets/timeline-cues.ts";
 import { outputPixelScale } from "../domain/types/graph.ts";
@@ -864,6 +864,8 @@ export interface RetainedCompile {
   readonly morphs: ParameterMorphs;
   /** T1485b: the component instances this compile's `op()` reads could name, kept as `morphs` is. */
   readonly instances: InstanceChannelSources | undefined;
+  /** VN36: and the instance pages its `op('<instance>').par` (and `parent()`) reads resolve. */
+  readonly instancePages: InstancePages | undefined;
   /**
    * T1652b: what each node SAID about its own values in this compile, by id: the
    * diagnostics of resolving its parameters, then those its `compile` returned. Only
@@ -940,7 +942,14 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
     request.resolution?.morphs ?? flattened?.morphs ?? buildMorphIndex({ document: request.graph, registry });
   // T1485b: and the instances `op('<instance>').chan` can name, by the same precedence.
   const instances = request.resolution?.instances ?? flattened?.instanceChannels;
-  const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs, ...(instances === undefined ? {} : { instances }) };
+  // VN36: and the instance pages `op('<instance>').par` reads, by the same precedence.
+  const instancePages = request.resolution?.instancePages ?? flattened?.instancePages;
+  const reading: ParameterResolution = {
+    ...(request.resolution ?? {}),
+    morphs,
+    ...(instances === undefined ? {} : { instances }),
+    ...(instancePages === undefined ? {} : { instancePages }),
+  };
   // §T1559b (2): what a cue list that follows the timeline cannot do as written (every
   // `cue.timeline.*` warning of its plan), where both roots read problems. A flattening
   // already carries them (`flattened.diagnostics`, above: once per flattening, not per frame
@@ -2712,7 +2721,7 @@ export function compileGraphRetaining(request: CompileRequest): CompileGraphResu
       signature: structure.signature,
       estimatedResourceBytes,
     },
-    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput, morphs, instances, said },
+    retained: { request, graph, order: topology.order, nodes: retainedNodes, scenePayloads: sceneInfoByOutput, morphs, instances, instancePages, said },
   };
 }
 

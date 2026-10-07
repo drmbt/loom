@@ -244,7 +244,7 @@ export function useValueGraph(runtime: AppRuntime, externalChannels?: ChannelRes
         const result = once.evaluate(flattened.graph, ZERO_FRAME, {
           pointer: { x: 0, y: 0, buttons: 0 },
           // The structural compile reads no fade (it has no frame); it does read instances.
-          flattening: { morphs: NO_MORPHS, instanceChannels: flattened.instanceChannels, ...(flattened.structure === undefined ? {} : { structure: flattened.structure }) },
+          flattening: { morphs: NO_MORPHS, instanceChannels: flattened.instanceChannels, instancePages: flattened.instancePages, ...(flattened.structure === undefined ? {} : { structure: flattened.structure }) },
         });
         structural.current = { flattened, resolver: result.resolver, byName: result.byName };
         return result.resolver(channel, context);
