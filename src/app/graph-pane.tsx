@@ -122,14 +122,6 @@ export interface GraphPaneProps {
    */
   componentPath?: readonly NodeId[];
   /**
-   * T969(b): the bus the app's DOORS dispatch on — the keymap, the command palette, the
-   * menubar — which is the ROOT bus even while this pane is editing a component's
-   * internals through a session bus. View-state commands the canvas owns register on both,
-   * so `mod+a` reaches the mounted canvas from either side. Defaults to the pane's own bus,
-   * which is the same object whenever nobody is inside a component.
-   */
-  rootBus?: LoomBus;
-  /**
    * T1395b: where a refused file drop says why — the app's notice path, the same one a
    * refused hotkey reaches. Optional like the other sinks; a caller without one still
    * gets a document the refusal left untouched.
@@ -211,7 +203,6 @@ function GraphPaneInner({
   componentPath,
   orbits,
   interest,
-  rootBus: rootBusProp,
   onCommandRefused,
   phone,
 }: GraphPaneProps) {
@@ -219,10 +210,15 @@ function GraphPaneInner({
   // from the runtime rather than threaded as a prop, because the runtime IS the loaded
   // document: `adoptDocument` builds a new one per open (`app.tsx`, `app-runtime.ts`).
   const { bus, components, documentIdentity, invocation, nodeRuntime, registry, settings, flattened } = useAppRuntime();
-  // T969(b): the same object as `bus` unless the caller is showing a component's internals.
-  const rootBus = rootBusProp ?? bus;
-  const isExporting = useCallback(() => renderRangeHolderFor(rootBus).current?.busy() === true, [rootBus]);
-  const doorBuses = useMemo(() => [rootBus], [rootBus]);
+  /*
+   * §T1696b: the APP's bus, which is `bus` itself unless this pane is showing a component's
+   * inside. The commands a canvas answers (select all, frame, home) are the app's: they are
+   * registered there once, a session inherits them, and what they hold is kept there
+   * (`sharedForBus`). T969(b) and T1195 registered each on two buses and filled two
+   * holders, because the keymap dispatched on one bus and the canvas listened on the other.
+   */
+  const appBus = bus.root;
+  const isExporting = useCallback(() => renderRangeHolderFor(appBus).current?.busy() === true, [appBus]);
   // T601: the component catalogue view, for resolving an instance's preview target.
   const componentsView = useMemo(() => components.view(), [components]);
   const flow = useReactFlow();
@@ -862,14 +858,13 @@ function GraphPaneInner({
         flow.setNodes((nodes) => nodes.map((node) => ({ ...node, selected: wanted.has(node.id) })));
       },
     };
-    // `commandHolder` is one object per bus, so this is one holder at the root and two
-    // inside a component; registration itself is idempotent on each.
-    const holders = new Set([registerSelectionCommands(bus), registerSelectionCommands(rootBus)]);
-    for (const holder of holders) holder.current = handlers;
+    // §T1696b: one registration, one holder, at the app's bus; registration is idempotent.
+    const holder = registerSelectionCommands(appBus);
+    holder.current = handlers;
     return () => {
-      for (const holder of holders) if (holder.current === handlers) holder.current = null;
+      if (holder.current === handlers) holder.current = null;
     };
-  }, [bus, flow, rootBus]);
+  }, [appBus, flow]);
 
   /**
    * `F` and `f` (T430/§V354). Same shape as select-all above and for the same reason: the
@@ -922,14 +917,13 @@ function GraphPaneInner({
         return all.length;
       },
     };
-    // One holder at the root (`bus === rootBus`), two inside a component; registration
-    // itself is idempotent on each. Same construction as select-all above.
-    const holders = new Set([registerViewCommands(bus), registerViewCommands(rootBus)]);
-    for (const holder of holders) holder.current = handlers;
+    // §T1696b: one registration, one holder, at the app's bus. Same construction as select-all above.
+    const holder = registerViewCommands(appBus);
+    holder.current = handlers;
     return () => {
-      for (const holder of holders) if (holder.current === handlers) holder.current = null;
+      if (holder.current === handlers) holder.current = null;
     };
-  }, [bus, flow, rootBus]);
+  }, [appBus, flow]);
 
   // §V351/B66/B67: declaring the `graph` context and being able to hold focus are one
   // call. See `useKeymapPane` for why neither half works without the other.
@@ -1148,15 +1142,6 @@ function GraphPaneInner({
       <GraphMenuHost bus={bus} selection={selection}>
         <GraphCanvas
           bus={bus}
-          /*
-           * T969(b)'s list, now serving `graph.selectNodes` AND `ui.openNodeSearch`
-           * (T1195): inside a component `bus` is the session bus, while the keymap, the
-           * palette and the right-click menus keep dispatching on the ROOT one — so a
-           * paste run from a hotkey while dived would select on a bus no canvas was
-           * answering, and `tab` opened nothing at all. Memoised so the registration
-           * effects do not re-run every render.
-           */
-          doorBuses={doorBuses}
           components={componentsView}
           invocation={invocation}
           runtime={nodeRuntime}

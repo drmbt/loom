@@ -27,6 +27,32 @@ export function resolveValuePlotMode(
   return isPurePeriodic ? "trail" : "bar";
 }
 
+/**
+ * T1691b — THE SIZE BELOW WHICH A PLOT'S PICTURE CANNOT BE READ, as a share of its own size.
+ *
+ * A plot on a canvas zoomed far out still wrote its picture ten times a second. Below
+ * this share it does not (`useVisibleSubscribe`, which is where the rule is; this is only
+ * the fact about each picture that the rule asks for), and it draws the current one at
+ * once when it is larger again.
+ *
+ *  - BARS, a quarter: a bar's track is 4 px tall (`.barTrack`), so under 25 % a bar is
+ *    less than one pixel and what moves is a fraction of a pixel's colour. Its number
+ *    (10 px) is under 2.5.
+ *  - A CURVE, a sixth: the curve's box is 48 px tall (`.canvas`), so under 1/6 it is under
+ *    8 px, which is the height T1597b measured a line of text to be unreadable at (7.7).
+ *    A curve is a shape, and a shape reads smaller than a bar's edge does.
+ *
+ * In px of the screen, not of the device: on a display of ratio 2 the same bar is two
+ * device pixels where this stops it. Chosen for what can be READ, not for what can be
+ * detected.
+ */
+export const BARS_LEGIBLE_SCALE = 1 / 4;
+export const CURVE_LEGIBLE_SCALE = 1 / 6;
+
+export function legibleScaleOf(mode: ValuePlotMode): number {
+  return mode === "bar" ? BARS_LEGIBLE_SCALE : CURVE_LEGIBLE_SCALE;
+}
+
 /** The extremes a channel has actually reached while the plot has been watching. */
 export interface ObservedRange {
   low: number;

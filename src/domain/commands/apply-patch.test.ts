@@ -709,6 +709,7 @@ describe("graph.applyPatch — structural validation of untrusted input (§V66)"
   it("turns a throwing handler into an audited rejection", async () => {
     harness.bus.registerCommand({
       name: "test.rename",
+      inSession: "definition",
       inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
       handler: () => {
         throw new TypeError("boom");
@@ -967,6 +968,30 @@ describe("graph.applyPatch — op() reference cycles refused at write time (T331
     ]);
     expect(result.status).toBe("rejected");
     expect(result.diagnostics.some((d) => d.code === "parameter.referenceCycle")).toBe(true);
+  });
+
+  it("⚑ B293 — accepts a parameter that reads ANOTHER parameter of its own node", async () => {
+    // It was refused: the gate was keyed by node, so a node reading itself at all was "a cycle".
+    const [a] = await twoNodes();
+    const result = await apply([
+      { op: "setParameters", nodeId: a, parameters: { amount: expression("op('solid1').par.label * 2") } as never },
+    ]);
+    expect(result.diagnostics.filter((d) => d.code === "parameter.referenceCycle")).toEqual([]);
+    expect(result.status).toBe("applied");
+  });
+
+  it("⚑ B293 — refuses the patch that closes a ring between two parameters of ONE node, named from the one written", async () => {
+    const [a] = await twoNodes();
+    await apply([{ op: "setParameters", nodeId: a, parameters: { amount: expression("op('solid1').par.label") } as never }]);
+    const snapshot = graph();
+    const result = await apply([
+      { op: "setParameters", nodeId: a, parameters: { label: expression("op('solid1').par.amount") } as never },
+    ]);
+    expect(result.status).toBe("rejected");
+    expect(result.diagnostics.find((d) => d.code === "parameter.referenceCycle")?.message).toBe(
+      "Parameter reference chain is circular: solid1.amount → solid1.label → solid1.amount.",
+    );
+    expect(graph()).toBe(snapshot);
   });
 
   it("still accepts an acyclic cross-node reference", async () => {

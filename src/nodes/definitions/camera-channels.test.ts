@@ -9,7 +9,9 @@ import { effectiveParameterSchema, resolveParameters } from "../../domain/parame
 import type { FrameEvaluationInput } from "../../domain/types/frame.ts";
 import { authoredGraph, type FlatGraph, type GraphDocument } from "../../domain/types/graph.ts";
 import { publishesValueChannels } from "../../domain/types/node-definition.ts";
-import { edge, expressionSlot, graph, named, settings } from "../../examples/documents/builders.ts";
+import { codeBuiltFindings } from "../../examples/checked-project.ts";
+import { refusedAtCodeSave } from "../../compiler/document-findings.ts";
+import { document as project, edge, expressionSlot, graph, named, settings } from "../../examples/documents/builders.ts";
 import { TIER_B_CAPABILITIES } from "../../examples/runner.ts";
 import { createNodeRegistry } from "../registry/registry.ts";
 import { allNodeDefinitions } from "./index.ts";
@@ -390,5 +392,62 @@ describe("T1671b — the channels follow an Aimed frame, with no change on the r
     const compiled = compileGraph({ graph: shot(DIRECTED, { lens: "op('camera_rig').par.lookAt.z" }), settings: SETTINGS, registry, capabilities: TIER_B_CAPABILITIES } as never);
     const said = compiled.diagnostics.filter((entry) => entry.code === "parameter.reference.notComposed");
     expect(said.map((entry) => entry.suggestion)).toEqual(["Read op('camera_rig').chan.aimZ for the point it looks at in the world."]);
+  });
+});
+
+/**
+ * §B293 — THE CONSUMER'S SHAPE: a directed shot whose Look At z is the length of its own
+ * Heading, so the aim is the Heading's own length straight ahead. One node, two parameters,
+ * no ring; it was refused as `parameter.referenceCycle` by the checked save and the consumer
+ * wrote the distance out in full. Held through the real resolve, at the compile, and at the
+ * checked save; and the ring that IS one (Look At from the camera's own `chan.distance`,
+ * which is composed from Look At) is still refused, by name.
+ */
+describe("B293 — a camera's Look At from the length of its own Heading", () => {
+  const LENGTH = "0 - (op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.y ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5";
+  // One to the frame's side, so the view DEPENDS on how far off the aim is.
+  const directed = (lookAtZ: unknown) => ({ frame: "aimed", eye: [1, 0, 0], lookAt: [0, 0, -1], "lookAt.z": lookAtZ, origin: [2, 1, -1], heading: [0, 3, -4], fov: 40 });
+  const cycles = (document: GraphDocument) =>
+    compileGraph({ graph: document, settings: SETTINGS, registry, capabilities: TIER_B_CAPABILITIES } as never).diagnostics.filter((entry) => entry.code === "parameter.referenceCycle" && entry.message.startsWith("Parameter reference chain is circular"));
+  const refusedAtSave = (document: GraphDocument): string[] =>
+    codeBuiltFindings(project("b293", "B293", SETTINGS, document))
+      .filter(refusedAtCodeSave)
+      .map((finding) => `${finding.diagnostic.code}: ${finding.diagnostic.message}`);
+
+  it("⚑ resolves, from the camera and from every node that reads its pose, and draws what the number written out draws", () => {
+    const byExpression = shot(directed(expressionSlot(LENGTH, -1)));
+    const written = shot(directed(-5));
+    // Through the real resolve, read from OTHER nodes (the Constants): this is the read that failed.
+    expect(read(byExpression, "aimZ")).toEqual({ value: -5, said: null, code: null });
+    expect(read(byExpression, "distance").value).toBeCloseTo(Math.sqrt(26), 12);
+    expect(read(byExpression, "distance").said).toBeNull();
+    expect(vector(byExpression, "aim")).toEqual([2, 4, -5]);
+    // The Render's own matrix, against the number written out: exact.
+    expect(drawnThrough(byExpression)).toEqual(drawnThrough(written));
+    // And it MOVES with Heading: a retained −1 would have been the other picture.
+    expect(drawnThrough(byExpression)).not.toEqual(drawnThrough(shot(directed(-1))));
+    expect(cycles(byExpression)).toEqual([]);
+  });
+
+  it("⚑ is accepted at the checked save, and by the patch that writes it", () => {
+    expect(refusedAtSave(shot(directed(expressionSlot(LENGTH, -1))))).toEqual([]);
+  });
+
+  it("⚑ STILL A RING: Look At from the camera's own chan.distance, which is composed FROM Look At, says so by name everywhere", () => {
+    const ringed = shot(directed(expressionSlot("0 - op('camera_rig').chan.distance", -1)));
+    // The compile and the checked save: the ring, with the channel it goes through.
+    expect(cycles(ringed).map((entry) => entry.message)).toEqual([
+      "Parameter reference chain is circular: camera_rig.lookAt.z → camera_rig.chan.distance → camera_rig.lookAt.z.",
+    ]);
+    expect(refusedAtSave(ringed).filter((line) => line.startsWith("parameter.referenceCycle: Parameter reference chain is circular"))).toHaveLength(1);
+    // The real resolve: a reader of the pose gets the ring's failure, never a number, and it names what composes what.
+    const aim = read(ringed, "aimZ");
+    expect(aim.value).toBe(-99);
+    expect(aim.said).toContain("that reference is a cycle");
+    expect(aim.said).toContain(`"camera_rig" composes distance from its lookAt`);
+    // A parameter the pose is NOT composed from may read it: Near from the distance is no ring.
+    const fine = shot({ ...directed(-5), near: expressionSlot("op('camera_rig').chan.distance / 50", 0.1) });
+    expect(cycles(fine)).toEqual([]);
+    expect(refusedAtSave(fine)).toEqual([]);
   });
 });

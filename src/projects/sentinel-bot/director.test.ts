@@ -76,6 +76,12 @@ describe("the sentinel's file", () => {
     const compiled = compileGraph({ graph: built.graph, settings: built.settings, registry: createNodeRegistry(allNodeDefinitions).view(), capabilities: TIER_B_CAPABILITIES });
     expect(compiled.diagnostics.filter((entry) => entry.severity === "error").map((entry) => entry.message)).toEqual([]);
     expect(compiled.diagnostics.filter((entry) => diagnosticClass(entry.code) === "never").map((entry) => `${entry.code}: ${entry.message}`)).toEqual([]);
+    // THE RINGS' SHADOW IS CAST BY THE KIT'S LOW RING (§T1689b): a Mesh File In of it is on the ring Geometry's Shadow
+    // Mesh, and the engine has nothing to say of it (no triangles, or a proxy that does not fit the shape it stands for).
+    const wires = Object.values(built.graph.edges).map((wire) => `${wire.source.nodeId}.${wire.source.portId} > ${wire.target.nodeId}.${wire.target.portId}`);
+    expect(wires).toContain("mesh_ringshadow.out > geometry_ring.shadowMesh");
+    expect(wires).toContain("mesh_ring.out > geometry_ring.mesh");
+    expect(compiled.diagnostics.filter((entry) => entry.code.startsWith("node.scene.shadowMesh")).map((entry) => entry.message)).toEqual([]);
     // It compiled the whole piece, not a stub of it.
     expect(compiled.passes.length).toBeGreaterThan(20);
   });
@@ -303,6 +309,8 @@ interface Run {
   /** Which place it is in (1 the fields), and which shot of the early glimpse of them (0 none). */
   readonly place: number[];
   readonly glimpse: number[];
+  /** The body light's Shadow On, per frame, as its expression has it (anything but 0 is on). */
+  readonly bodyShadow: number[];
   /** Metres travelled by the last frame. */
   readonly distance: number;
   /** The camera, per frame: the lens the shot asks for and the one the Camera is given, degrees; and the kick. */
@@ -329,7 +337,7 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
     if (typeof stored !== "object" || stored === null || !("bindings" in stored) || stored.bindings.expression?.kind !== "expression") throw new Error(`${nodeId}.${key} is not an expression`);
     return stored.bindings.expression.source;
   };
-  const [fovSource, apertureSource] = [expressionOf("camera_rig", "fov"), expressionOf("wgsl_focus", "aperture")];
+  const [fovSource, apertureSource, bodyShadowSource] = [expressionOf("camera_rig", "fov"), expressionOf("wgsl_focus", "aperture"), expressionOf("light_body", "shadowOn")];
   const registry = createNodeRegistry(allNodeDefinitions).view();
   const flattened = flattenComponents({ graph, registry, components: await starterComponentsView() });
   const audio = shippedClipAudio(graph, FPS);
@@ -349,6 +357,7 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
   const rushing: number[] = [];
   const place: number[] = [];
   const glimpse: number[] = [];
+  const bodyShadow: number[] = [];
   const lens: number[] = [];
   const fov: number[] = [];
   const kick: number[] = [];
@@ -396,6 +405,7 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
     fov.push(evaluated(fovSource));
     kick.push(read("lag_hits:kickCount"));
     aperture.push(evaluated(apertureSource));
+    bodyShadow.push(evaluated(bodyShadowSource));
     apertureAtRest.push((read("slider_focus:focus") * 55) / read("expression_camera:lens"));
     pick.push(read("expression_camera:pick"));
     shotBars.push(read("expression_cut:bars"));
@@ -403,7 +413,7 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
     last = read("speed_travel:value");
     if (index === 0) first = last;
   }
-  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, pack, rush, rushing, place, glimpse, distance: last - first, lens, fov, kick, aperture, apertureAtRest, pick, shotBars, hold };
+  return { rate, energy, lift, intensity, bar, swimAsked, swim, perch, attack, pack, rush, rushing, place, glimpse, bodyShadow, distance: last - first, lens, fov, kick, aperture, apertureAtRest, pick, shotBars, hold };
 }
 
 /** The frames of a stretch of the clip, in seconds. */
@@ -551,6 +561,23 @@ describe("the sentinel follows its own clip, through the document's value graph"
     expect(shown.length).toBeGreaterThanOrEqual(1);
     // Whatever pace it is on is one of the three (the rule for which is camera.test.ts's).
     expect([...new Set(followed.shotBars)].every((bars) => bars === 8 || bars === 4 || bars === 2)).toBe(true);
+  });
+
+  it("the body light's shadow is the tunnel's: on in the bore, out for as long as it is in a place, and back with the bore", async () => {
+    // §T1688b: Shadow On is a value, so a place can put a shadow out and no plan is rebuilt for it. Out of the bore
+    // nothing is in that light's reach to take a shadow, and its sweeps were the largest cost of the frame.
+    const followed = await run(true, true);
+    const inPlace = followed.place.map((place) => place !== 0);
+    // The shipped clip holds both: the tunnel, and from bar 12 the glimpse of the fields.
+    expect(inPlace.includes(true) && inPlace.includes(false)).toBe(true);
+    // On is anything but 0 (the engine's rule for a driven switch): frame for frame it is on exactly where there is no place.
+    expect(followed.bodyShadow.map((value) => value !== 0)).toEqual(inPlace.map((out) => !out));
+    // …and it is a switch here, not a fade: one or nothing.
+    expect([...new Set(followed.bodyShadow)].sort()).toEqual([0, 1]);
+    // Not following the track there is no place to go to: the shadow never goes out.
+    const unfollowed = await run(false, true);
+    expect(unfollowed.place.every((place) => place === 0)).toBe(true);
+    expect(unfollowed.bodyShadow.every((value) => value === 1)).toBe(true);
   });
 
   it("with nothing playing the switch changes nothing", async () => {

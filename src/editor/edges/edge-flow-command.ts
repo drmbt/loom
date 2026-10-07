@@ -88,6 +88,7 @@ export function registerEdgeFlowCommand(bus: LoomBus): EdgeFlowStore {
 
   bus.registerCommand({
     name: TOGGLE_EDGE_FLOW_COMMAND,
+    inSession: "app",
     inputSchema: z.object({ show: z.boolean().optional() }).strict(),
     description:
       "Show or hide the animated flow dashes on edges — speed and opacity from real per-pass GPU ms (T1013).",

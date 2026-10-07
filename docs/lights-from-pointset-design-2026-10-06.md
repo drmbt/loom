@@ -1106,3 +1106,97 @@ Each of the 62 shipped Renders' own targets, frames 0 and 60, raw bytes, main (`
 - **Primitive instances reading a layer other than the first on Dawn**: the instances generator's lookup is the surface generator's own function and its text is pinned, but no Dawn test puts a casting Light's second layer on an instances draw.
 - A browser; a second GPU; a device whose `maxTextureArrayLayers` is the floor of 256 (the refusal is tested against this device's own limit, whatever it reports).
 - An unfiltered test run, by accident: a scratch script handed vitest an empty list of files, which is the whole suite. It ran for about ten minutes before it was stopped, and its result was not read. The script refuses an empty list now.
+
+## 17. T1688b as built (2026-10-07): Shadow On, a casting light's shadow switched by a value
+
+Asked by a consumer (sentinel-bot): its body light's shadow is wanted in the tunnel and wasted in three of the show's six turns, where nothing stands in the light's twelve metres. Cast Shadows is structure (the map, the sweeps, the block of lit text), so a place could not put the shadow out without a recompile.
+
+### 17.1 What it is
+
+- **Cast Shadows stays structure.** Beside it the Light has a VALUE, **Shadow On** (`shadowOn`, a boolean, default on, not compile-time). A cue, a preset or an expression turns it and nothing is rebuilt.
+- **A switch and no amount.** TouchDesigner's Light COMP has Shadow Type (Off, Hard, Soft, Custom), a menu, and no strength; its strength is on the material (Phong MAT Shadow Strength). Notch's Light has Casts Shadows, a toggle. Both put a switch on the light. A fraction would need the lookup's text to change (a mix) and would keep the lookup's cost.
+- **The mechanism is T1598b's, unchanged.** A light whose shadow is out reaches nothing: every caster draw of its sweeps stays in the plan and carries `skip`, and each sweep's far plate still clears. The map then says "nothing here" and never what it held when the shadow went out; the lit text, its bindings and its resources are the ones it has with the shadow on (§V1029: one text at 0 and at 1); the frame it comes back the sweeps draw the casters where they are. The Light Depth output's sweep follows, since it is that light's map as data.
+- **A driven value is on unless it is 0** (the rule of every driven boolean). There is no half shadow.
+- **What stays while it is out**: the lit pass's lookup (25 reads at Shadow Softness 2, of a map that holds nothing) and one clear a sweep.
+
+### 17.2 Claims
+
+- `shadow-switch.test.ts` (9, no GPU): out, every caster draw of that light's sweeps is skipped and its far plate still clears (a sun; a point light's six faces); it is that light's alone, in either order; the Light Depth output goes out with it. The plan with the shadow out is the plan with it on but for the flags: the same passes, text, targets, layers, bindings and resources, and the device is asked for no shader module and no pipeline going out or coming back. The parameter is a boolean that defaults on, is not compile-time, and is live only on a casting Light in Single mode; a revision that moves it is values-only, one that moves Cast Shadows is structure.
+- `vgpu/shadow-switch.gpu.test.ts` (6, Dawn), whole frames byte for byte: out equals the same light with Cast Shadows off (a sun, a point light, a soft sun); the light beside it keeps its shadow; on, out, out, on over four frames with the caster moving, each frame equal to the document that was that way all along (the map is not stale); driven, 0.5 and -1 are on and 0 is out.
+- 14 mutations of the product, 14 red (the worker's run, before parking).
+
+### 17.3 The landing's ladder (main at `9a95def1` with this on top)
+
+- The two files above and the five pin files (`material-textures`, `light-points`, `grid-uv`, `scene-light-guard`, `generated-text-growth`): green, no pin re-taken.
+- The 27 catalogue walkers (460 tests), the fifteen test files that name the Light's shadow parameters (116), `test:gates`, `test:first-import`, `pnpm build`: green. One gate asked for a ledger row: `effective-schema-closure.test.ts` now names the new test's two reads of the Light's declared schema, with the reason.
+- **The 27 shipped casting Renders**, frames 0 and 60 of each Render's own target, clean main against main with this: 0 channel values differ in all 27 (no control run was needed: there was nothing to explain).
+- **A PBR surface** (not in the Dawn file, whose meshes are lambert): Shadow On off against Cast Shadows off, a sun and a point light on a Material · PBR floor and box: 0 of 36,864 half-floats differ in each; against the shadow on, 450 and 1,317 differ. The block and the row agree to the bit here.
+
+### 17.4 What it is worth, on the consumer
+
+sentinel-bot at 1280 × 720 with its pack of three out, headless on Dawn, the whole frame's GPU time by the reference-pass rule (B260): the document before (the body light always casting) and after (its Shadow On driven by the place: on in the tunnel, out in the fields, the dock and the temple), each held at a place by the panel's Place, 150 frames after 12 of warm-up, the two alternated (before, after, before, after, before, after, before), a fixed reference pass beside every frame (2.69 to 2.82 ms throughout).
+
+| place | before, ms | after, ms | of the reference, before to after |
+|---|---|---|---|
+| the fields | 11.7 to 12.1 | 9.0 to 9.2 | 4.35 to 3.40, -21.8 % |
+| the dock | 12.1 to 12.3 | 9.5 to 9.6 | 4.48 to 3.51, -21.7 % |
+| the temple | 11.9 to 12.1 | 9.3 to 9.4 | 4.39 to 3.37, -23.3 % |
+| the tunnel (the shadow stays on) | 13.6 to 13.7 | 13.6 to 13.6 | 4.85 to 4.86, +0.2 % |
+
+About 2.6 ms a frame in each of the three places, and nothing in the tunnel. The picture: one frame of each place with the shadow on and out, whole-frame PSNR 61.8, 66.6 and 60.4 dB; looked at side by side, no difference found.
+
+### 17.5 Not checked
+
+- Primitive instances and a points geometry under a light whose shadow is out (the Dawn file's casters are file meshes).
+- The app: a Shadow On toggled from the inspector or a cue, and the performance panel's sweep rows while it is out.
+- GPU time in a browser; the figures above are Dawn's.
+
+## 18. T1689b (2026-10-07): a Geometry's shadow mesh
+
+A casting light draws every caster again, a point light six times, and what that costs is triangles (`docs/sentinel-perf-analysis-2026-10-06.md`, 9.5): on the consumer 1,620 rings of 716 triangles are 2.3 to 2.7 ms of a 2.8 to 3.0 ms shadow. A level of detail built in the document cannot choose per pass. The engine can: the Geometry takes a second, lighter mesh that only the shadow sweeps draw.
+
+**The reference tools.** TouchDesigner's Light COMP has Shadow Casters, a list of Geometry COMPs, so a light's caster may be another, lighter object than the one rendered. Notch's objects carry a Cast Shadows switch of their own beside their visibility, the same idiom (from memory of its manual: its Light page was re-read for T1688b, its object pages not today). Loom has both halves already (a Light's Shadow Casters, a Geometry's Shadow Only), and with them a proxy is a second Geometry: a second resolve of every instance, a second set of records, and two nodes to keep in step. So the proxy is an input of the ONE Geometry, and its instances are the shape's by construction.
+
+### 18.1 The rules
+
+- **The port.** `shadowMesh` ("Shadow Mesh") on Geometry, a pointset, optional, after Shape Mesh. Read in Instances mode with Shape: Mesh, the one mode that has a Shape Mesh to stand in for.
+- **No shadow mesh: the shape casts itself.** The plan is the plan it was, byte for byte: no pin moved.
+- **The same instance layout is not a claim to check: it is how it is drawn.** A sweep binds the shadow mesh's vertices and index list and the SHAPE'S instance records: the same count, the same matrices, the same Group and live count. What the author owes is the frame: the shadow mesh is authored where the shape is (the same origin, axes and size, the same Frame on its Mesh File In).
+- **Which sweeps.** Every sweep that asks what stands between a source of light and a surface: a casting light's map (a sun's one sweep and a point light's six faces alike), the Light Depth output (it is that light's map as data), and a projector's occlusion map. **Ruled: a projector's occlusion takes it too.** It is a shadow of projected light; a Render whose sun shadows a wall by the proxy and whose projector is cut off by the full mesh would show two silhouettes of one object. Not the camera's sweeps (the Depth output, the occlusion prepass) and no draw the camera sees: those are the shape.
+- **The matte** (the Shadow output) reads the same maps, so it shows the proxy's shadow. Nothing to build.
+- **Shadow On, a light's caster lists and the reach skip are unchanged.** They decide whether a sweep's draw of a geometry happens; this decides what that draw draws.
+- **A geometry that leaves instances out** (a Group, a counted pointset) draws by indirect arguments, which hold a vertex count. The resolve pass writes a second set, the shadow mesh's vertex count and the same instance count, into a buffer of its own (`instanceShadowArgs`). The pass's text gains that write only where a shadow mesh is wired.
+- **Self-shadowing, when caster and receiver differ.** The lit surface is tested against a map drawn from another surface.
+  - A shadow mesh that lies INSIDE the shape (the usual result of taking vertices away from a convex form: a chord lies inside its arc) stores depths behind the shape's lit side, so the lit side never falls into its own shadow. What shows: the cast shadow is smaller by how far the proxy falls short, and along the shape's own silhouette a sliver of its far side, that wide, stays lit.
+  - One that pokes OUT stores depths in front of the lit side: the shape is shadowed by its own proxy wherever the excess is more than the light's Shadow Bias, as dark facets on the lit side.
+  - So: keep it inside; where it cannot be, the light's Shadow Bias (world units) is the remedy, at the cost it always has. The engine adds no bias of its own: it cannot know the excess, and a hidden one would move every shadow of the geometry.
+- **What the node says.** The port's description says the three sentences above. A Shadow Mesh that is not a mesh with a position and a normal is refused by name (`node.scene.shadowMesh`). One wired to a Geometry that draws no Shape Mesh is read by nothing and says nothing, as the Shape Mesh itself does in another mode (the catalogue's convention for an optional input a mode does not read, held by `catalogue-chain.test.ts`; the description carries the sentence). And where both meshes carry a bounding sphere, a shadow mesh whose sphere is centred more than a quarter of the shape's radius away, or is more than a quarter larger or smaller, is remarked on with both spheres (`node.scene.shadowMeshFit`): that is the wrong Frame or the wrong unit, the one mistake about fit the engine can see. It cannot see whether the proxy is inside.
+- **Not in this row.** A shadow mesh for a Surface (a file mesh skinned or drawn as itself): the same idea, another draw path, no consumer yet. Levels of detail by distance (T1592b F2) stay their own decision.
+
+### 18.2 As built
+
+- `GeometryPayload.instanceMesh.shadow` (the proxy's attributes, triangles, index list and, when the geometry compacts, its arguments). The Render's depth sweep draws it unless the sweep is the camera's.
+- `instance-records.ts`: the second arguments' storage. `instance-resolve.wgsl.ts`: the second write, a binding after the sources, one more uniform word.
+- **Tests.** `shadow-mesh.test.ts` (14, no GPU) over `shadow-mesh.fixture.ts`: a torus in two meshes of one frame, 720 and 180 triangles (the consumer's are 716 and 178), drawn as mesh instances in front of a wall. `vgpu/shadow-mesh.gpu.test.ts` (8, Dawn).
+- **On Dawn.** The shape wired to Shadow Mesh is the picture with nothing wired, byte for byte: a sun, a point light's six faces, both with the matte, and a geometry that leaves an instance out (the second arguments on a real device). With Cast Shadows off the low ring on Shadow Mesh changes no byte. A shadow mesh that stands apart casts from where it stands.
+- **The proxy's shadow on a lit wall.** Under a sun straight at the wall the ring's shadow is an annulus, 1.1 to 1.9 m. A mesh of M segments round falls short of a circle of radius ρ by at most its sagitta, ρ (1 − cos(π / M)): for the low ring's fifteen, 0.0415 m at the outer edge and 0.0240 m at the inner. The map is twice the picture, a texel 1/32 m. Claim, and it holds: the two pictures differ ONLY at pixels whose centre lies between the low ring's deepest chord and the circle, a texel's diagonal either side (radius 1.8143 to 1.9442 and 1.0318 to 1.1442); every other pixel of the wall is the same bytes; and inside those bands fewer than half the pixels differ. The edge moves by the proxy's own facets and one texel, and by nothing else.
+- **11 edits of the product, one at a time, 14 runs against the plan test or the Dawn test, 13 red.** The one run not red: with the second arguments missing the Dawn picture does not move (the low ring is drawn by the shape's vertex count, past the end of its index list, and the device shows nothing for the excess); the plan test sees that edit.
+
+### 18.3 Measured
+
+A fixture of the consumer's shape: 1,620 instances of the 720-triangle ring round a casting point light (six faces), 1280 x 720, the 180-triangle ring on Shadow Mesh or not. Rule 12: a reference compute pass beside every frame, the variants alternated in one process, the first repeated last; passes grouped as the app draws them; milliseconds at the reference's fastest clock (2.687 ms).
+
+| | Triangles swept a frame | The sweeps | The whole frame |
+|---|---|---|---|
+| No shadow mesh | 6,998,414 | 3.52, 3.55, 3.52, 3.53 ms | 5.57, 5.62, 5.58, 5.61 ms |
+| The low ring on Shadow Mesh | 1,749,614 | 1.19, 1.20 | 3.27, 3.26 |
+| Cast Shadows off, with and without | 0 | 0 | 2.03, 2.02 (the same picture) |
+
+**2.33 ms back, two thirds of the sweeps and all of it in them**; the expectation from the consumer's own ablation was 1.7 to 2.0. What is left of the shadow, 1.2 ms, is a quarter of the triangles and the six passes.
+
+### 18.4 What else moved, and what was not checked
+
+- **Shipped pictures.** The 27 shipped Renders with a casting light, each Render's own target at frames 0 and 60, raw bytes, main (`a2501951`) against this: 27 of 27 the same bytes. The control beside each, main's tree against main's tree: 27 of 27 the same bytes in this take.
+- **Shipped plans.** No pin moved: the five whole-plan and text pin files are unchanged and green. §V1029's ledger gained one row, `geometry.shadowMesh`, flat.
+- **Four shipped examples moved a node up 16**, in their sources and regenerated one at a time: E13 (two Geometries), E25, E45, E69. A Geometry is one port row taller, and the layout gate's gutter under it was 20 where 36 is asked. Positions only; the precedent is T1581b's own, for the Shape Mesh row.
+- **Not checked.** A shadow mesh that pokes out of its shape, on Dawn (the rule is written from the lookup's arithmetic, and the fixture's low ring lies inside its torus but for the inner equator's chords). A point light's shadow of the proxy against an analytic edge (the sun's is the analytic one; the point light's six faces are held by the equality with the shape and by the plan). A projector's occlusion by the proxy on Dawn (the plan test holds which mesh its sweep draws). The consumer's own `ring_low`: nothing of `src/projects/sentinel-bot/**` was touched. A browser.

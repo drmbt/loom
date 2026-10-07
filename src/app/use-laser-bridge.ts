@@ -194,6 +194,7 @@ export function useLaserBridge(options: {
     if (bus === undefined || bus.hasCommand("laser.estop")) return;
     bus.registerCommand({
       name: "laser.estop",
+      inSession: "app",
       inputSchema: NO_INPUT,
       description:
         "EMERGENCY STOP the laser output: blank, stop, e-stop the DAC and disarm this session. Safe to fire at any time; does nothing when no laser is connected.",

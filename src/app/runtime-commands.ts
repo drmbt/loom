@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 
 import type { LoomBus } from "@domain/commands/bus.ts";
-import { COMPONENT_ID_SEPARATOR, flattenedNodeId } from "@domain/components/internal-resolutions.ts";
 import type { CompiledGraph } from "../compiler/types.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { z } from "zod";
@@ -29,8 +28,9 @@ declare module "@domain/types/commands.ts" {
 }
 
 /**
- * The one input shape `runtime.resetFeedback` takes. Both registrations below declare it
- * (T1556b): the document's command, and the forward a component session bus carries.
+ * The input `runtime.resetFeedback` takes (T1556b). `nodeIds` are node ADDRESSES
+ * (`nodeIdsInput`): fired inside a component session they are rewritten onto the instance
+ * in view, which is the whole of what VNB6's hand-written forward did (§T1695b).
  */
 export const RESET_FEEDBACK_INPUT = z.object({ nodeIds: nodeIdsInput.optional() }).strict();
 
@@ -50,9 +50,10 @@ export function registerResetFeedbackCommand(
   if (bus.hasCommand("runtime.resetFeedback")) return;
   bus.registerCommand({
       name: "runtime.resetFeedback",
+      inSession: "instance",
       inputSchema: RESET_FEEDBACK_INPUT,
       description: "Clear temporal (feedback) history — one node's pair, or all of them.",
-      handler: (input) => {
+      handler: (input, context) => {
         const backend = sources.backend();
         const feedback = sources.compiled()?.feedback ?? [];
         if (backend === undefined) {
@@ -95,60 +96,28 @@ export function registerResetFeedbackCommand(
             ],
           };
         }
+        const cleared = pairs.length + (scoped ? ringIds.length : rings.length);
+        // §V36 (§B288): a dry run says what WOULD be cleared. A reset has no rollback.
+        if (context.dryRun) return { status: "validated", output: { cleared }, diagnostics: [] };
         backend.resetTemporalHistory(
           scoped ? [...pairs.map((pair) => pair.resourceId), ...ringIds] : undefined,
         );
-        return {
-          status: "applied",
-          output: { cleared: pairs.length + (scoped ? ringIds.length : rings.length) },
-          diagnostics: [],
-        };
+        return { status: "applied", output: { cleared }, diagnostics: [] };
       },
+      rejectionOutput: () => ({ cleared: 0 }),
     });
 }
 
-/**
- * VNB6 — the same command on a COMPONENT SESSION bus, forwarded to the document's.
- *
- * Diving into a component edits through a separate bus (`openComponentSession`), which
- * knows component commands and nothing about the renderer. `parameter.pulse` asks the bus
- * it runs on whether the pulse's command exists, so every Reset inside a component —
- * Feedback, Echo, Cache, Slit Scan — refused with "which no track has registered": the
- * button was there and could not work (§V123's "a button that lies", reached by packaging
- * the node, which is exactly when TouchDesigner's reset idiom is wanted most).
- *
- * The history being cleared lives in the ROOT plan under FLATTENED ids, so the forward
- * rewrites each id onto the instance the user is standing in (`<instance>/<node>`, nested
- * paths joined the same way). One instance, not every instance of the definition: a pulse
- * inside a definition acts on its instance (T1541b's rule for preset recalls). `path` is a
- * getter because one session outlives a move between two instances of the same component.
+/*
+ * VNB6 (pull request #1) registered a forward of this command on every component session
+ * bus, because a Reset pulse inside a component refused with "which no track has
+ * registered". §T1695b replaced it with the rule it was the first case of: the command is
+ * declared `instance` above, a session bus inherits it from the project's bus, and its
+ * node addresses are rewritten onto the instance the editor is viewing by the bus itself
+ * (`src/domain/commands/bus.ts`, `src/domain/components/addressing.ts`). The contributor's
+ * test stands as written (`component-editing.test.tsx`, "a Reset pulse inside a component
+ * clears ITS instance's history").
  */
-export function registerForwardedResetFeedback(
-  session: LoomBus,
-  root: LoomBus,
-  path: () => readonly string[],
-): void {
-  if (session.hasCommand("runtime.resetFeedback")) return;
-  session.registerCommand({
-    name: "runtime.resetFeedback",
-    inputSchema: RESET_FEEDBACK_INPUT,
-    description: "Clear temporal (feedback) history for the component instance being edited.",
-    handler: async (input, context) => {
-      const prefix = path().join(COMPONENT_ID_SEPARATOR);
-      const result = await root.execute(
-        "runtime.resetFeedback",
-        input.nodeIds === undefined ? {} : { nodeIds: input.nodeIds.map((id) => flattenedNodeId(prefix, id)) },
-        context.invocation,
-      );
-      return {
-        status: result.status === "applied" ? ("applied" as const) : ("rejected" as const),
-        output: { cleared: result.output.cleared },
-        diagnostics: result.diagnostics,
-      };
-    },
-    rejectionOutput: () => ({ cleared: 0 }),
-  });
-}
 
 export function useRuntimeCommands(inputs: {
   bus: LoomBus;

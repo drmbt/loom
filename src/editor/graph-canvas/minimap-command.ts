@@ -116,6 +116,7 @@ export function registerMinimapCommand(bus: LoomBus): MinimapStore {
 
   bus.registerCommand({
     name: TOGGLE_MINIMAP_COMMAND,
+    inSession: "app",
     inputSchema: z.object({ show: z.boolean().optional() }).strict(),
     description:
       "Show or hide the network overview map in the graph pane's corner — drag it to pan, click it to jump (T1257).",

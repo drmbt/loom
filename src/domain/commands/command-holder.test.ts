@@ -83,6 +83,9 @@ const MODULES: readonly HolderEntry[] = [
   { label: "ui.beginRename", path: "src/editor/nodes/rename-session.ts", load: () => import("@editor/nodes/rename-session.ts"), accessor: "renameSessionStoreFor" },
   { label: "ui.setPreviewView#store", path: "src/editor/viewer/preview-view-store.ts", load: () => import("@editor/viewer/preview-view-store.ts"), accessor: "previewViewStoreFor" },
   { label: "graph.toggleReferenceLines", path: "src/editor/edges/reference-lines-command.ts", load: () => import("@editor/edges/reference-lines-command.ts"), accessor: "referenceLinesStoreFor" },
+  // §T1696b (§B292): the two clipboards, kept at the root so a component session shares its project's.
+  { label: "graph.copySelection#clipboard", path: "src/domain/commands/editor-commands.ts", load: () => import("./editor-commands.ts"), accessor: "graphClipboardFor" },
+  { label: "parameter.copy#clipboard", path: "src/domain/commands/parameter-commands.ts", load: () => import("./parameter-commands.ts"), accessor: "parameterClipboardFor" },
   // T1505b: the component catalogue the preset commands read, attached by `registerComponentCommands`.
   { label: "preset.recall#catalogue", path: "src/domain/presets/bank-view.ts", load: () => import("@domain/presets/bank-view.ts"), accessor: "presetCatalogueHolderFor" },
 ];
@@ -191,7 +194,7 @@ describe("§T719 — a re-executed command module keeps its surface", () => {
 
     const usesSharedStore = sources
       .filter(({ file }) => file !== "src/domain/commands/command-holder.ts")
-      .filter(({ text }) => /\b(commandHolder|sharedForBus)</.test(text))
+      .filter(({ text }) => /\b(commandHolder|sharedForBus|sharedForDocument)</.test(text))
       .map(({ file }) => file)
       .sort();
     const covered = [...new Set(MODULES.map((entry) => entry.path))].sort();

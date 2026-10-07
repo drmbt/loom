@@ -90,6 +90,7 @@ export function registerControlCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: CONTROL_FROM_PARAMETER_COMMAND,
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput, parameterKey: idInput, panelId: idInput.optional() }).strict(),
     description: "Create the fitting control (slider, toggle, XY pad) for a parameter, bind it and add it to a Panel (T1514b).",
     handler: (input, context) => {
@@ -108,6 +109,7 @@ export function registerControlCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: BIND_CONTROL_COMMAND,
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput, parameterKey: idInput, controlId: idInput, channel: z.string().min(1).optional() }).strict(),
     description: "Drive a parameter from an existing control's channel (T1514b).",
     handler: (input, context) =>
@@ -117,6 +119,7 @@ export function registerControlCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: UNBIND_CONTROL_COMMAND,
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput, parameterKey: idInput }).strict(),
     description: "Let go of the control a parameter reads; it goes back to the value it held (T1514b).",
     handler: (input, context) => {
@@ -130,6 +133,7 @@ export function registerControlCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: "control.learnMidi",
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput, parameterKey: idInput, source: midiSourceInput, portId: z.string().min(1) }).strict(),
     description: "Learn a MIDI controller onto a panel control or XY axis in one undo step.",
     handler: (input, context) => {
@@ -141,6 +145,7 @@ export function registerControlCommands(bus: LoomBus): void {
   });
   bus.registerCommand({
     name: "control.unlearnMidi",
+    inSession: "definition",
     inputSchema: z.object({ nodeId: idInput, parameterKey: idInput }).strict(),
     description: "Unlink a panel control from MIDI and restore its retained manual value.",
     handler: (input, context) => run(context, unlearnControlMidiPlan(context.graph, context.registry,

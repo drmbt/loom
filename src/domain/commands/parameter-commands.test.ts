@@ -96,6 +96,7 @@ describe("parameter.pulse", () => {
     // backend. The pulse's own contract is that it names a command and the bus finds it.
     harness.bus.registerCommand({
       name: "test.clearHistory",
+      inSession: "app",
       inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
       handler: (input) => {
         fired.push(input);

@@ -80,7 +80,8 @@ describe("same-frame value parameter dependencies", () => {
       node("b-widget", "slider", { parameters: { value: expression("op('knob').par.value") } }),
       node("z-source", "test-count-source", { label: "knob", parameters: { value: expression("op('driver').chan.value") } }),
       node("y-driver", "slider", { label: "driver", parameters: { value: 0.8 } })], []);
-    const dependencies = vi.spyOn(parameterDependencyModule, "parameterDependencies");
+    // B293: the walk is over (node, key) and reads each node's expressions once, through keyReads.
+    const dependencies = vi.spyOn(parameterDependencyModule, "keyReads");
     try {
       const session = createValueGraphSession(definitions);
       const first = session.evaluate(flatDocument(document), frameAt(0), { flattening: NO_FLATTENING });
@@ -89,9 +90,14 @@ describe("same-frame value parameter dependencies", () => {
       expect(second.byId.get("a-widget")).toEqual({ value: 0.2 });
       expect(second.byId.get("b-widget")).toEqual({ value: 0.8 });
       expect(evaluateSource).toHaveBeenCalledTimes(2);
-      expect(dependencies).toHaveBeenCalledTimes(1);
-      session.evaluate(flatDocument({ ...document, revision: 2 }), frameAt(2 / 60), { flattening: NO_FLATTENING });
-      expect(dependencies).toHaveBeenCalledTimes(2);
+      // Once a node whose parameters are walked (the four here), on the first frame and never on the second.
+      const parsed = dependencies.mock.calls.length;
+      expect(parsed).toBeGreaterThan(0);
+      expect(parsed).toBeLessThanOrEqual(4);
+      session.evaluate(flatDocument(document), frameAt(2 / 60), { flattening: NO_FLATTENING });
+      expect(dependencies).toHaveBeenCalledTimes(parsed);
+      session.evaluate(flatDocument({ ...document, revision: 2 }), frameAt(3 / 60), { flattening: NO_FLATTENING });
+      expect(dependencies).toHaveBeenCalledTimes(parsed * 2);
     } finally { dependencies.mockRestore(); }
   });
 
@@ -113,6 +119,52 @@ describe("same-frame value parameter dependencies", () => {
     expect(result.byId.get("a-widget")).toEqual({ value: 0.75 });
     expect(result.byId.has("b-grade")).toBe(false);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("⚑ B293 — a value node whose parameter reads ANOTHER parameter of its own node is not a cycle, and publishes", () => {
+    // The order was walked node to node, so this node waited for ITSELF: a "cycle", and it emitted nothing.
+    const document = graphOf([
+      node("a-widget", "slider", { label: "fader", parameters: { value: expression("op('fader').par.max * 0.5"), max: 0.8 } }),
+    ], []);
+    const result = createValueGraphSession(registry).evaluate(flatDocument(document), frameAt(0), { flattening: NO_FLATTENING });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.byId.get("a-widget")).toEqual({ value: 0.4 });
+  });
+
+  it("⚑ B293 — it still waits for a bag that own parameter reads on the way: the order is by what each KEY reads", () => {
+    // fader.value reads fader.max; fader.max reads the knob's channel. The knob sorts LAST by id.
+    const document = graphOf([
+      node("a-widget", "slider", { label: "fader", parameters: { value: expression("op('fader').par.max * 0.5"), max: expression("op('knob').chan.value") } }),
+      node("z-source", "slider", { label: "knob", parameters: { value: 0.6 } }),
+    ], []);
+    const result = createValueGraphSession(registry).evaluate(flatDocument(document), frameAt(0), { flattening: NO_FLATTENING });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.byId.get("a-widget")).toEqual({ value: 0.3 });
+  });
+
+  it("⚑ B293 — two value nodes that read each other's UNRELATED parameters are not a cycle", () => {
+    const document = graphOf([
+      node("a", "slider", { label: "left", parameters: { value: expression("op('right').par.max * 0.5"), max: 1 } }),
+      node("b", "slider", { label: "right", parameters: { value: expression("op('left').par.max * 0.25"), max: 0.8 } }),
+    ], []);
+    const result = createValueGraphSession(registry).evaluate(flatDocument(document), frameAt(0), { flattening: NO_FLATTENING });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.byId.get("a")).toEqual({ value: 0.4 });
+    expect(result.byId.get("b")).toEqual({ value: 0.25 });
+  });
+
+  it("⚑ STILL A CYCLE: a value node whose parameter reads its own CHANNEL, and two that read each other's", () => {
+    const own = graphOf([node("a", "slider", { label: "fader", parameters: { max: expression("op('fader').chan.value + 1") } })], []);
+    const first = createValueGraphSession(registry).evaluate(flatDocument(own), frameAt(0), { flattening: NO_FLATTENING });
+    expect(first.diagnostics.map(d => d.code)).toContain("valueGraph.cycle");
+    expect(first.byId.size).toBe(0);
+    const pair = graphOf([
+      node("a", "slider", { label: "left", parameters: { value: expression("op('right').chan.value") } }),
+      node("b", "slider", { label: "right", parameters: { value: expression("op('left').chan.value") } }),
+    ], []);
+    const second = createValueGraphSession(registry).evaluate(flatDocument(pair), frameAt(0), { flattening: NO_FLATTENING });
+    expect(second.diagnostics.map(d => d.code)).toContain("valueGraph.cycle");
+    expect(second.byId.size).toBe(0);
   });
 
   it("reads external reference channels without replacing a muted value node's silence", () => {

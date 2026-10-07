@@ -814,12 +814,14 @@ export function useModelInference(
    * (§V39). The headless server has no inference thread at all, so the same registration
    * there would be a command that lies — §V123's "a button that lies" one layer up.
    */
-  const resetRef = useRef<(nodeIds: readonly string[] | undefined) => number>(() => 0);
-  resetRef.current = (nodeIds) => {
+  const resetRef = useRef<(nodeIds: readonly string[] | undefined, dryRun: boolean) => number>(() => 0);
+  resetRef.current = (nodeIds, dryRun) => {
     const wanted = nodeIds === undefined ? undefined : new Set(nodeIds);
     const hit = targetsRef.current.filter(
       (candidate) => wanted === undefined || wanted.has(candidate.nodeId),
     );
+    // §V36 (§B288): a dry run counts what a reset would restart, and restarts nothing.
+    if (dryRun) return hit.length;
     // The THREAD goes first, and unconditionally: it is shared, so a wedged worker is not
     // a per-node fact and refusing to drop it because the named node happens to be gone
     // would leave the one state nothing else can clear.
@@ -847,14 +849,16 @@ export function useModelInference(
     if (bus === undefined || bus.hasCommand("runtime.resetInference")) return;
     bus.registerCommand({
       name: "runtime.resetInference",
+      inSession: "instance",
       inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
       description:
         "Restart inference: the worker thread, model sessions and provider ladders, and the named nodes' results. Keeps the downloaded models.",
-      handler: (input) => ({
-        status: "applied",
-        output: { reset: resetRef.current(input.nodeIds) },
+      handler: (input, context) => ({
+        status: context.dryRun ? "validated" : "applied",
+        output: { reset: resetRef.current(input.nodeIds, context.dryRun) },
         diagnostics: [],
       }),
+      rejectionOutput: () => ({ reset: 0 }),
     });
   }, [bus]);
 

@@ -74,8 +74,8 @@ export const castingLamp = (position: readonly [number, number, number], intensi
   ...more,
 });
 
-/** The floor and the box under these Lights (`light_c0`, `light_c1`, …), listed in this order. */
-export function shadowLayersScene(lights: ReadonlyArray<Parameters>, render: Parameters = {}): GraphDocument {
+/** The floor and the box under these Lights (`light_c0`, `light_c1`, …), listed in this order. `box`: more of the box's Geometry (a Transform). */
+export function shadowLayersScene(lights: ReadonlyArray<Parameters>, render: Parameters = {}, box: Parameters = {}): GraphDocument {
   const facts = (role: string) => {
     const found = prepareMesh(SHADOW_LAYERS_GLB, role)?.facts;
     if (found === undefined) throw new Error(`the fixture has no "${role}"`);
@@ -85,7 +85,7 @@ export function shadowLayersScene(lights: ReadonlyArray<Parameters>, render: Par
     node("mesh_floor", "meshFileIn", { select: "floor", ...facts("floor") }),
     node("mesh_box", "meshFileIn", { select: "box", ...facts("box") }),
     node("geometry_floor", "geometry", { mode: "surface" }),
-    node("geometry_box", "geometry", { mode: "surface" }),
+    node("geometry_box", "geometry", { mode: "surface", ...box }),
     node("camera_shot", "camera", { ...SHADOW_LAYERS_CAMERA }),
     ...lights.map((parameters, index) => node(`light_c${index}`, "light", parameters)),
     node("render_shot", "render", {

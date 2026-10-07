@@ -141,6 +141,12 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "command's input schema. A pulse's template is manifest data; there is no instance.",
     reads: ["definition.parameters"],
   },
+  "src/tests/integration/session-commands.test.tsx": {
+    reason:
+      "§T1695b: finds every PULSE a node TYPE declares, to ask whether a component session can " +
+      "run the command it fires. Which command a pulse names is manifest data; there is no instance.",
+    reads: ["definition.parameters"],
+  },
   "src/nodes/definitions/custom-wgsl.test.ts": {
     reason:
       `${TYPE_ONLY_UNIT_TEST} ${HOOK_UNDER_TEST} SIX hook calls now, not two — each drives ` +
@@ -189,6 +195,14 @@ const RAW_SCHEMA_READS: Readonly<Record<string, { readonly reason: string; reado
       "four pins carry `handle: \"picture\"` (what the preview overlay offers), and Feather's " +
       "`inactiveWhen` follows Outside. Both are properties of the manifest, not of an instance.",
     reads: ["cornerPinNode.parameters", "cornerPinNode.parameters"],
+  },
+  "src/nodes/definitions/shadow-switch.test.ts": {
+    reason:
+      `${TYPE_ONLY_UNIT_TEST} T1688b's two reads pin what the Light DECLARES: Shadow On is a ` +
+      "boolean that defaults to on and is NOT compile-time, beside Cast Shadows which is, and " +
+      "its `inactiveWhen` follows Mode and Cast Shadows. A value against structure is a " +
+      "property of the manifest, not of an instance.",
+    reads: ["lightNode.parameters", "lightNode.parameters"],
   },
   "src/nodes/definitions/annotate.test.ts": {
     reason:

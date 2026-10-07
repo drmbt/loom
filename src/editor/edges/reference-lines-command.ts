@@ -110,6 +110,7 @@ export function registerReferenceLinesCommand(bus: LoomBus): ReferenceLinesStore
 
   bus.registerCommand({
     name: TOGGLE_REFERENCE_LINES_COMMAND,
+    inSession: "app",
     inputSchema: z.object({ show: z.boolean().optional() }).strict(),
     description: "Show or hide reference lines — which parameters read which nodes (§V153).",
     handler: (input, context) => {

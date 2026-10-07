@@ -148,7 +148,8 @@ describe("a Geometry drawing a mesh at every point (T1581b)", () => {
     // Mesh is a Shape, and the shape arrives on a second pointset input AFTER points (§V306).
     const shape = parameters["shape"] as { options: ReadonlyArray<{ value: string }> };
     expect(shape.options.map((option) => option.value)).toEqual(["quad", "box", "octahedron", "mesh"]);
-    expect(geometryNode.inputs.filter((port) => port.type.kind === "pointset").map((port) => port.id)).toEqual(["points", "mesh"]);
+    // T1689b: and the shape's stand-in for the shadow sweeps after it, optional.
+    expect(geometryNode.inputs.filter((port) => port.type.kind === "pointset").map((port) => [port.id, port.optional === true])).toEqual([["points", false], ["mesh", true], ["shadowMesh", true]]);
   });
 
   it("resolves every instance ONCE, in a pass the Geometry owns, however many Renders draw it", () => {

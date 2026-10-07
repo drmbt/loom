@@ -33,7 +33,7 @@ import { bindCycleDiagnostics } from "../parameters/bind-cycles.ts";
 import { effectiveParameterSchema } from "../parameters/resolve.ts";
 import { isParameterSlot, withBinding } from "../parameters/slots.ts";
 import type { ParameterValue } from "../types/parameters.ts";
-import { referenceCyclesThrough } from "../graph/reference-cycles.ts";
+import { channelDependenciesOf, referenceCyclesThrough } from "../graph/reference-cycles.ts";
 import type { CommandContext, CommandOutcome } from "./bus.ts";
 import { isValueOnlyPatch, overlappingEntities } from "./patch-scope.ts";
 
@@ -394,7 +394,7 @@ function executeOperation(
    * repairable, and refusing every unrelated edit is a gate that blocks its own fix.
    */
   const refuseReferenceCycle = (nodeId: NodeId): void => {
-    const cycles = referenceCyclesThrough(draft, nodeId);
+    const cycles = referenceCyclesThrough(draft, nodeId, (node) => channelDependenciesOf(registry.get(node.type)));
     if (cycles.length > 0) {
       run.diagnostics.push(...cycles);
       throw new PatchAbort();

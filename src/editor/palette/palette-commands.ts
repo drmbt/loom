@@ -42,6 +42,7 @@ export function registerPaletteCommands(bus: LoomBus): PaletteHolder {
   if (!bus.hasCommand("ui.openCommandPalette")) {
     bus.registerCommand({
       name: "ui.openCommandPalette",
+      inSession: "app",
       inputSchema: NO_INPUT,
       description: "Open the command palette.",
       handler: (_input, context) => {
@@ -57,6 +58,7 @@ export function registerPaletteCommands(bus: LoomBus): PaletteHolder {
   if (!bus.hasCommand("ui.closeCommandPalette")) {
     bus.registerCommand({
       name: "ui.closeCommandPalette",
+      inSession: "app",
       inputSchema: NO_INPUT,
       description: "Close the command palette.",
       handler: (_input, context) => {

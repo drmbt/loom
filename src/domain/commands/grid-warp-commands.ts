@@ -154,6 +154,7 @@ export function registerGridWarpCommands(bus: LoomBus): void {
   if (!bus.hasCommand(GRID_WARP_INSERT_LINE_COMMAND)) {
     bus.registerCommand({
       name: GRID_WARP_INSERT_LINE_COMMAND,
+      inSession: "definition",
       inputSchema: z.object({ nodeId: idInput, axis: gridAxisSchema, at: finiteInput }).strict(),
       description: "Insert a column or row into a Grid Warp at a place on its current surface, keeping the picture where it is (§T1534b).",
       handler: (input, context) =>
@@ -164,6 +165,7 @@ export function registerGridWarpCommands(bus: LoomBus): void {
   if (!bus.hasCommand(GRID_WARP_DELETE_LINE_COMMAND)) {
     bus.registerCommand({
       name: GRID_WARP_DELETE_LINE_COMMAND,
+      inSession: "definition",
       inputSchema: z.object({ nodeId: idInput, axis: gridAxisSchema, index: z.number().int() }).strict(),
       description: "Delete one column or row of a Grid Warp; every other point keeps its place (§T1534b).",
       handler: (input, context) =>

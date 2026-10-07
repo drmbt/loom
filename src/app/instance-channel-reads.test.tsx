@@ -12,7 +12,7 @@ import { createAppRuntime } from "./app-runtime.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import { liveParameters, type LiveReads } from "./perform-mapping.ts";
 import { usePulseFiring } from "./pulse-firing.ts";
-import { z } from "zod";
+import { RESET_FEEDBACK_INPUT } from "./runtime-commands.ts";
 
 /**
  * §T1551b — `op('<instance>').chan.<c>` reads the instance's value in the readers OUTSIDE the
@@ -87,7 +87,8 @@ describe("§T1551b — the pulse watcher reads op('<instance>').chan.<c>", () =>
     let frameIndex = 0;
     runtime.bus.registerCommand({
       name: "runtime.resetFeedback",
-      inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
+      inSession: "instance",
+      inputSchema: RESET_FEEDBACK_INPUT,
       description: "Test double for the feedback reset the pulse fires.",
       handler: (input) => {
         cleared.push({ frame: frameIndex, nodeIds: [...(input.nodeIds ?? [])] });

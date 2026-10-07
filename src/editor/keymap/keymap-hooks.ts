@@ -4,6 +4,7 @@ import type {
   CommandName,
   CommandResult,
 } from "../../domain/types/commands.ts";
+import type { LoomBus } from "@domain/commands/bus.ts";
 import { selectCreatedNodes } from "@editor/selection/select-created.ts";
 import type { KeymapContextValue } from "./keymap-context.ts";
 import { KeymapReactContext } from "./keymap-context.ts";
@@ -46,11 +47,19 @@ export function useBindingKeyDisplay(bindingId: string): string | null {
  * command palette, so there stays exactly one mutation path (§V29). Resolves to `null`
  * when no track has registered the command yet, instead of throwing.
  */
-export function useRunCommand(): (
+export function useRunCommand(
+  /**
+   * §T1696b: the bus to run on, for a surface that read its target from a document of its
+   * own (a context menu). Absent: the keymap's, which is the bus of what the canvas shows.
+   */
+  on?: LoomBus,
+): (
   command: string,
   input?: Record<string, unknown>,
 ) => Promise<CommandResult<CommandName> | null> {
-  const { bus, invocationContext } = useKeymap();
+  const keymap = useKeymap();
+  const bus = on ?? keymap.bus;
+  const invocationContext = keymap.invocationContext;
   return useCallback(
     async (command, input = {}) => {
       if (!bus.hasCommand(command)) return null;

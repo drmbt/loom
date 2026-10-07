@@ -10,6 +10,7 @@ export const KIT_FIXTURE: KitFacts = {
   // The rig never reads the meshes' selections; a test that draws them must load the kit.
   robot: { select: "", vertices: 0, triangles: 0, parts: "" },
   ring: { select: "", vertices: 0, triangles: 0, parts: "" },
+  ringLow: { select: "", vertices: 0, triangles: 0, parts: "" },
   hub: { select: "", vertices: 0, triangles: 0, parts: "" },
   claw: { select: "", vertices: 0, triangles: 0, parts: "" },
   phalanxMeshes: [],

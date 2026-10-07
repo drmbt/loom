@@ -165,6 +165,7 @@ export function registerPresetDeleteCommand(bus: LoomBus): void {
 
   bus.registerCommand({
     name: PRESET_DELETE_COMMAND,
+    inSession: "definition",
     inputSchema: presetDeleteInputSchema,
     description: "Delete one preset from a bank, as one patch and one undo step (§T1502b).",
     handler: (input, context) => {

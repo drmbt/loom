@@ -8,7 +8,7 @@ import type { PlotRange } from "./plot-range.ts";
 import type { ValueHistory, ValueHistorySource } from "./value-history.ts";
 import { FUNCTION_PLOT_SAMPLES, sampleValueFunction } from "./value-function.ts";
 import { sampleValueChainPlot } from "./value-plot-chain.ts";
-import { formatValue, resolveValuePlotMode } from "./value-plot-mode.ts";
+import { formatValue, legibleScaleOf, resolveValuePlotMode } from "./value-plot-mode.ts";
 import { ValueBars } from "./value-bars.tsx";
 import type { ValuePlotMode } from "@domain/types/graph.ts";
 import type { ValuePlotChain } from "./value-plot-chain.ts";
@@ -98,7 +98,10 @@ import styles from "./value-plot.module.css";
  * The history ring notifies at 10 Hz. A plot in a hidden graph pane — a tab behind the
  * viewer, a window on another screen — used to re-render on every one of those ticks for
  * nobody; the subscription is now gated on the plot's own visibility, and a plot that
- * comes back re-reads the ring at once (§V86). A VISIBLE plot still re-renders per tick,
+ * comes back re-reads the ring at once (§V86). Since T1691b "visible" is also: on screen,
+ * not under a fullscreen Viewer, and large enough to read (a canvas fitted to 220 nodes
+ * draws a bar 0.2 px tall, and its ten writes a second cost a raster of the whole canvas).
+ * A VISIBLE plot still re-renders per tick,
  * because its picture moved; what it no longer does per tick is re-evaluate the function
  * plot's whole cycle (that is a property of the node's parameters, sampled once per
  * parameter change; only the phase follows the clock) or format the x coordinates of a
@@ -250,12 +253,6 @@ export function ValuePlot({
   onSetMode,
 }: ValuePlotProps) {
   const root = useRef<HTMLDivElement>(null);
-  const subscribe = useVisibleSubscribe(
-    root,
-    useCallback((listener: () => void) => history.subscribe(nodeId, listener), [history, nodeId]),
-  );
-  const snapshot = useCallback(() => history.get(nodeId), [history, nodeId]);
-  const value = useStoreSelector(subscribe, snapshot, identity);
   // Held across renders, per node, because the whole point is that it does NOT follow
   // every window. Declared above the empty-state return so the hook order is fixed.
   const heldRange = useRef<PlotRange | null>(null);
@@ -297,6 +294,19 @@ export function ValuePlot({
    */
   const isPurePeriodic = curve !== null;
   const resolvedMode = resolveValuePlotMode(mode, isPurePeriodic);
+  /*
+   * T1691b: the ring's tick reaches this plot only while its picture can be seen AND read:
+   * on screen, not under a fullscreen Viewer, and drawn at a size the picture is legible
+   * at (`legibleScaleOf`). Below `resolvedMode` because which picture it is decides that
+   * size. It reads the ring again the moment it can be read, so nothing is ever stale.
+   */
+  const subscribe = useVisibleSubscribe(
+    root,
+    useCallback((listener: () => void) => history.subscribe(nodeId, listener), [history, nodeId]),
+    legibleScaleOf(resolvedMode),
+  );
+  const snapshot = useCallback(() => history.get(nodeId), [history, nodeId]);
+  const value = useStoreSelector(subscribe, snapshot, identity);
   const control =
     onSetMode === undefined ? null : (
       <PlotModeButton

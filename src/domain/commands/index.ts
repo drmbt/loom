@@ -1,7 +1,7 @@
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { SystemClipboard } from "./loom-clipboard.ts";
 import { createGraphStore, type GraphStore, type GraphStoreOptions } from "../graph/store.ts";
-import { createCommandBus, type LoomBus } from "./bus.ts";
+import { createCommandBus, type LoomBus, type SessionScope } from "./bus.ts";
 import { registerEditorCommands } from "./editor-commands.ts";
 import { registerLayoutCommands } from "./layout-commands.ts";
 import { registerGraphCommands } from "./graph-commands.ts";
@@ -19,11 +19,13 @@ import { registerControlDefaultCommands } from "./control-default-commands.ts";
 
 export {
   CapabilityDeniedError,
+  CommandRefusedError,
   InvalidCommandInputError,
   InvalidInvocationError,
   UnknownCommandError,
   UnknownQueryError,
   createCommandBus,
+  inSessionKind,
 } from "./bus.ts";
 export type {
   AppliedInfo,
@@ -33,10 +35,14 @@ export type {
   CommandHandler,
   CommandOutcome,
   CommandRegistration,
+  CommandSession,
+  InSession,
+  InSessionKind,
   QueryContext,
   QueryHandler,
   QueryRegistration,
   LoomBus,
+  SessionScope,
 } from "./bus.ts";
 export { SHADER_SOURCE_PARAMETER, applyGraphPatch } from "./apply-patch.ts";
 export { registerEditorCommands } from "./editor-commands.ts";
@@ -104,6 +110,14 @@ export interface DomainBusOptions extends GraphStoreOptions {
    * a copy made in one window paste in another. Supersedes `clipboard` when both are given.
    */
   systemClipboard?: SystemClipboard | undefined;
+  /**
+   * §T1695b: the bus this one inherits from, which makes it a component session's bus. It
+   * then registers the commands that edit a graph and none of the app's: those it answers
+   * through the parent (`InSession` in `bus.ts`).
+   */
+  parent?: LoomBus | undefined;
+  /** §T1695b: what the session edits and through which instance. */
+  scope?: SessionScope | undefined;
 }
 
 /**
@@ -112,12 +126,14 @@ export interface DomainBusOptions extends GraphStoreOptions {
  * returned bus rather than building their own (§V29, §V39).
  */
 export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus; store: GraphStore } {
-  const { registry, store: providedStore, grants, clipboard, systemClipboard, ...storeOptions } = options;
+  const { registry, store: providedStore, grants, clipboard, systemClipboard, parent, scope, ...storeOptions } = options;
   const store = providedStore ?? createGraphStore(storeOptions);
   const bus = createCommandBus({
     store,
     ...(registry === undefined ? {} : { registry }),
     ...(grants === undefined ? {} : { grants }),
+    ...(parent === undefined ? {} : { parent }),
+    ...(scope === undefined ? {} : { scope }),
   });
   registerGraphCommands(bus);
   registerNodeOutputCommands(bus);
@@ -128,7 +144,9 @@ export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus;
     ...(systemClipboard === undefined ? {} : { systemClipboard }),
   });
   registerValidateCommand(bus);
-  registerSettingsCommands(bus);
+  // §T1695b: the project's settings are the project's (`app`), so a session inherits the
+  // command. Its own copy wrote a session store's settings, which nothing reads (§B291).
+  if (parent === undefined) registerSettingsCommands(bus);
   // T1496b: preset Store/Recall are graph edits like any other, so every bus has them —
   // the app, the headless helper and the tests alike, with no second registration site.
   registerPresetCommands(bus);

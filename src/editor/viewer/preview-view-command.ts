@@ -94,6 +94,8 @@ export function registerPreviewViewCommands(bus: LoomBus): PreviewViewStore {
 
   bus.registerCommand({
     name: SET_PREVIEW_VIEW_COMMAND,
+    // T1697b: `app` for now. It takes the id its door sends; whether it is an `instance` command is that task's look.
+    inSession: "app",
     inputSchema: z.object({ nodeId: idInput.optional(), lens: z.enum(PREVIEW_LENSES).optional(), exposureStops: finiteInput.optional(), tonemap: z.boolean().optional() }).strict(),
     description: "Set a node preview's lens — isolate a channel, change exposure, tonemap.",
     handler: (input, context) => {
@@ -159,6 +161,8 @@ export function registerPreviewViewCommands(bus: LoomBus): PreviewViewStore {
 
   bus.registerCommand({
     name: RESET_PREVIEW_VIEW_COMMAND,
+    // T1697b: `app` for now. It takes the id its door sends; whether it is an `instance` command is that task's look.
+    inSession: "app",
     inputSchema: z.object({ nodeId: idInput.optional() }).strict(),
     description: "Reset a node preview's lens back to the plain picture.",
     handler: (input, context) => {
@@ -204,7 +208,8 @@ export function usePreviewViews(
   bus: LoomBus,
   selection: readonly NodeId[],
 ): PreviewViewStore {
-  const store = useMemo(() => registerPreviewViewCommands(bus), [bus]);
+  // §T1696b: the app's command, registered on the app's bus whichever bus the pane edits through.
+  const store = useMemo(() => registerPreviewViewCommands(bus.root), [bus]);
   const selected = selection.length === 1 ? selection[0] : undefined;
 
   useEffect(() => {

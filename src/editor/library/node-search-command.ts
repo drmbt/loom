@@ -95,6 +95,7 @@ export function registerNodeSearchCommand(bus: LoomBus): NodeSearchHolder {
 
   bus.registerCommand({
     name: OPEN_NODE_SEARCH_COMMAND,
+    inSession: "app",
     inputSchema: z.object({ position: pointInput.optional() }).strict(),
     description: "Search the node catalogue and add one at the cursor.",
     handler: (input, context) => {

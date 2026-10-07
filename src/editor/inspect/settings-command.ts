@@ -57,6 +57,7 @@ export function registerProjectSettingsCommand(bus: LoomBus): ProjectSettingsHol
 
   bus.registerCommand({
     name: OPEN_SETTINGS_COMMAND,
+    inSession: "app",
     inputSchema: NO_INPUT,
     description: "Open project settings — resolution, working format, frame rate, seed.",
     handler: (_input, context) => {

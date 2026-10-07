@@ -43,6 +43,12 @@ export interface KitFacts {
   readonly robot: MeshSelectionFacts;
   /** One tentacle ring, in its joint frame: the shape drawn at every ring joint. */
   readonly ring: MeshSelectionFacts;
+  /**
+   * The same ring at a quarter of its triangles, in the same joint frame: what casts the ring's shadow (§T1689b, a
+   * Geometry's Shadow Mesh). Never drawn to the eye: its decimation moves the border between the lit spine and the
+   * dark band.
+   */
+  readonly ringLow: MeshSelectionFacts;
   /** The claw's cone, in its joint frame. */
   readonly hub: MeshSelectionFacts;
   /** The whole claw as one rigid piece, fingers at rest, in the hub's joint frame. */
@@ -86,6 +92,13 @@ function info(marker: DecodedMarker, key: string): number {
   const value = marker.extras?.[`loom_${key}`];
   if (typeof value !== "number") throw new Error(`The sentinel kit's kit.info has no loom_${key}; rebuild it with tools/blender/sentinel-bot/build.py.`);
   return value;
+}
+
+/** The kit's low ring. A kit from before it was written has none: the file must be rebuilt, said by name. */
+function shadowRing(shape: (select: string) => DecodedMesh): MeshSelectionFacts {
+  const mesh = shape("ring_low");
+  if (mesh.triangleCount === 0) throw new Error("The sentinel kit has no ring_low; rebuild it with tools/blender/sentinel-bot/build.py.");
+  return selectionFacts("ring_low", mesh);
 }
 
 export function selectionFacts(select: string, mesh: DecodedMesh): MeshSelectionFacts {
@@ -136,6 +149,7 @@ export function kitFactsFrom(glbUrl: string, robot: DecodedMesh, shape: (select:
     glbUrl,
     robot: selectionFacts(ROBOT_SELECT, robot),
     ring: selectionFacts("ring", shape("ring")),
+    ringLow: shadowRing(shape),
     hub: selectionFacts("hub", shape("hub")),
     claw: selectionFacts("claw", shape("claw")),
     phalanxMeshes: phalanges.map((phalanx) => selectionFacts(`phalanx_${phalanx.finger}_${phalanx.link}`, shape(`phalanx_${phalanx.finger}_${phalanx.link}`))),

@@ -77,6 +77,7 @@ async function setup() {
   const fired: Array<{ nodeIds?: readonly string[] }> = [];
   bus.registerCommand({
     name: "test.clearHistory",
+    inSession: "app",
     inputSchema: z.object({ nodeIds: z.array(z.string()).optional() }).strict(),
     handler: (input) => {
       fired.push(input);

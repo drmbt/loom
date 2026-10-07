@@ -70,6 +70,13 @@ export interface LightPayload {
      */
     readonly shadows: boolean;
     /**
+     * T1688b: a CASTING light's shadow, on or out THIS FRAME. A value: `false` and none of
+     * this light's sweeps draws a caster this frame (each draw is skipped, the far plate
+     * still clears), so its map says "nothing here" and the light shades unoccluded. The
+     * map, the passes and the lit text are what they are with it on. Absent: on.
+     */
+    readonly shadowOn?: boolean;
+    /**
      * T481 (V426): the world-units half-extent of the ortho shadow volume around the
      * origin. EXPLICIT, never auto-fit — payloads carry no scene bounds, and a derived
      * box would silently crop the shadow plausibly-wrong. A number the user can see
@@ -203,6 +210,20 @@ export interface GeometryPayload {
      * record through `records.visible`. Absent: every slot is drawn, `capacity` of them.
      */
     readonly drawArgs?: string;
+    /**
+     * T1689b: the SHADOW MESH, when the Geometry has one: what every sweep that asks what
+     * stands between a source of light and a surface draws in the shape's place (a light's
+     * shadow map, the Light Depth output, a projector's occlusion map). The same records
+     * place it, so it is authored in the shape's own frame. `drawArgs` is its own indirect
+     * arguments (its vertex count, the same instance count), present exactly when the
+     * shape's are. Nothing the camera sees reads it.
+     */
+    readonly shadow?: {
+      readonly pairs: Readonly<Record<string, ScenePairRef>>;
+      readonly triangles: number;
+      readonly indexBuffer: string;
+      readonly drawArgs?: string;
+    };
     readonly records: {
       readonly buffer: string;
       readonly m0: number;

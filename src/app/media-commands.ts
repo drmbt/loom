@@ -84,6 +84,8 @@ function run(
   registry: MediaControlRegistry,
   nodeIds: readonly string[] | undefined,
   verb: "cue" | "reload",
+  /** §V36 (§B288): count what the verb would reach, and move nothing. */
+  dryRun: boolean,
 ): { count: number; missing: readonly string[]; unsupported: readonly string[] } {
   const wanted = nodeIds ?? registry.ids();
   const missing: string[] = [];
@@ -101,7 +103,7 @@ function run(
       unsupported.push(nodeId);
       continue;
     }
-    handler.call(control);
+    if (!dryRun) handler.call(control);
     count += 1;
   }
   return { count, missing, unsupported };
@@ -120,10 +122,11 @@ export function useMediaCommands(bus: LoomBus, registry: MediaControlRegistry): 
 
     bus.registerCommand({
       name: "media.cue",
+      inSession: "instance",
       inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
       description: "Jump a media node's playhead to its cue point.",
-      handler: (input) => {
-        const { count, missing, unsupported } = run(registryRef.current, input.nodeIds, "cue");
+      handler: (input, context) => {
+        const { count, missing, unsupported } = run(registryRef.current, input.nodeIds, "cue", context.dryRun);
         if (count === 0) {
           // T1223: a loaded STILL is a different refusal from an unloaded node, and saying
           // "no loaded media" about a picture that is on screen would send the user to
@@ -152,16 +155,18 @@ export function useMediaCommands(bus: LoomBus, registry: MediaControlRegistry): 
             ],
           };
         }
-        return { status: "applied", output: { cued: count }, diagnostics: [] };
+        return { status: context.dryRun ? "validated" : "applied", output: { cued: count }, diagnostics: [] };
       },
+      rejectionOutput: () => ({ cued: 0 }),
     });
 
     bus.registerCommand({
       name: "media.reload",
+      inSession: "instance",
       inputSchema: z.object({ nodeIds: nodeIdsInput.optional() }).strict(),
       description: "Re-open a media node's file from source.",
-      handler: (input) => {
-        const { count, missing } = run(registryRef.current, input.nodeIds, "reload");
+      handler: (input, context) => {
+        const { count, missing } = run(registryRef.current, input.nodeIds, "reload", context.dryRun);
         if (count === 0) {
           return {
             status: "rejected",
@@ -180,8 +185,9 @@ export function useMediaCommands(bus: LoomBus, registry: MediaControlRegistry): 
             ],
           };
         }
-        return { status: "applied", output: { reloaded: count }, diagnostics: [] };
+        return { status: context.dryRun ? "validated" : "applied", output: { reloaded: count }, diagnostics: [] };
       },
+      rejectionOutput: () => ({ reloaded: 0 }),
     });
   }, [bus]);
 }

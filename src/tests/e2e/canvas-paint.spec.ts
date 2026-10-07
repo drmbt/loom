@@ -16,7 +16,9 @@ import { serializePresetBank } from "@domain/presets/bank.ts";
 import { serializePanelBoard } from "@nodes/definitions/controls.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 
-import { APP_VIEWPORT, openApp, selectNode } from "./app.ts";
+import { BARS_LEGIBLE_SCALE, CURVE_LEGIBLE_SCALE } from "@editor/nodes/value-plot-mode.ts";
+
+import { APP_VIEWPORT, fitAll, openApp, selectNode, viewportSettled } from "./app.ts";
 
 /**
  * T1653b — WHAT A VALUE WRITTEN COSTS CHROMIUM'S PAINT PIPELINE, counted in its own trace.
@@ -120,8 +122,11 @@ const drawn = (page: Page): Promise<void> => page.evaluate(() => new Promise<voi
  * A chain of `levels` Level nodes on a grid, a Slider (0..1, default 0.5) on a published
  * Panel, an Output. Built through the bus and written as the app saves, so opening it is
  * opening a project.
+ *
+ * `signals` (T1691b): that many LFOs, each into a Lag, in a row to the left of the slider:
+ * tiles whose value moves by itself, a curve and a bar of each.
  */
-async function documentOf(levels: number): Promise<{ path: string; slider: string; level: string }> {
+async function documentOf(levels: number, signals = 0): Promise<{ path: string; slider: string; level: string; lag: string; signals: string[] }> {
   const store = createGraphStore();
   const registry = createNodeRegistry(allNodeDefinitions).view();
   const { bus } = createDomainBus({ store, registry });
@@ -151,6 +156,12 @@ async function documentOf(levels: number): Promise<{ path: string; slider: strin
     operations.push({ op: "connect", source: { nodeId: previous, portId: "out" }, target: { nodeId: ref, portId: "input" } });
     previous = ref;
   }
+  for (let index = 0; index < signals; index += 1) {
+    const x = -1200 - index * 360;
+    operations.push({ op: "addNode", ref: `$lfo${String(index)}`, type: "lfo", position: { x, y: 0 }, label: `lfo_s${String(index)}` });
+    operations.push({ op: "addNode", ref: `$lag${String(index)}`, type: "valueLag", position: { x, y: 300 }, label: `lag_s${String(index)}` });
+    operations.push({ op: "connect", source: { nodeId: `$lfo${String(index)}`, portId: "out" }, target: { nodeId: `$lag${String(index)}`, portId: "in" } });
+  }
   operations.push({ op: "addNode", ref: "$out", type: "output", position: { x: 22 * 360, y: 0 }, label: "output_frame" });
   operations.push({ op: "connect", source: { nodeId: previous, portId: "out" }, target: { nodeId: "$out", portId: "input" } });
   const result = await bus.execute(
@@ -165,7 +176,8 @@ async function documentOf(levels: number): Promise<{ path: string; slider: strin
   const path = join(await mkdtemp(join(tmpdir(), "loom-canvas-paint-")), `paint-${String(levels)}.loom.json`);
   await writeFile(path, buildProjectFile({ document, now: () => now }).text);
   const idOf = (label: string): string => Object.values(graph.nodes).find((node) => node.label === label)?.id ?? "";
-  return { path, slider: idOf("slider_gain"), level: idOf("level_n0") };
+  const signalIds = Array.from({ length: signals }, (_, index) => [idOf(`lfo_s${String(index)}`), idOf(`lag_s${String(index)}`)]).flat();
+  return { path, slider: idOf("slider_gain"), level: idOf("level_n0"), lag: idOf("lag_s0"), signals: signalIds };
 }
 
 async function openDocument(page: Page, path: string): Promise<void> {
@@ -329,4 +341,185 @@ test("a preset's fade in flight forces no full compositor update: its bar and th
   await expect(bar).toHaveCount(1);
   expect(Number(await bar.getAttribute("data-morph-progress"))).toBeLessThan(1);
   expect(counts.fullUpdates, `a preset's FADE BAR in flight forced ${String(counts.fullUpdates)} full compositor updates in 0.7 s; laid out again: ${counts.laidOut}`).toBe(0);
+});
+
+/*
+ * T1691b, T1683b — A TILE NOBODY CAN READ MAKES NO PERIODIC WRITE.
+ *
+ * Measured on a 220-node project fitted on the canvas (zoom 5 %, a value bar 0.2 px tall):
+ * the tiles' ten writes a second made the browser raster the whole canvas again, 12 to
+ * 13 ms of every frame on the GPU process's main thread, 24 frames a second where the same
+ * scene runs at 47 with the bars hidden. Behind a fullscreen Viewer the same raster was
+ * paid for tiles under the picture. The cause is the WRITE, so the writes are counted (a
+ * MutationObserver over the tiles) and so is what they invalidate (the canvas nodes
+ * Chromium's paint invalidator visits): none while a tile cannot be read, some while it can.
+ *
+ * And nothing stale: the first frame on which a tile can be read again already shows the
+ * value of that moment, not the one it last wrote.
+ */
+
+/** Every DOM write inside a canvas tile for `ms`, by node id: attributes, text, children. */
+const tileWrites = (page: Page, ms: number): Promise<Record<string, number>> =>
+  page.evaluate(
+    (duration) =>
+      new Promise<Record<string, number>>((resolve) => {
+        const writes: Record<string, number> = {};
+        const observer = new MutationObserver((records) => {
+          for (const record of records) {
+            const target = record.target.nodeType === Node.TEXT_NODE ? record.target.parentElement : (record.target as Element);
+            const id = target?.closest(".react-flow__node")?.getAttribute("data-id");
+            if (id !== null && id !== undefined) writes[id] = (writes[id] ?? 0) + 1;
+          }
+        });
+        const viewport = document.querySelector(".react-flow__viewport");
+        if (viewport === null) throw new Error("no canvas viewport");
+        observer.observe(viewport, { subtree: true, attributes: true, characterData: true, childList: true });
+        setTimeout(() => {
+          observer.disconnect();
+          resolve(writes);
+        }, duration);
+      }),
+    ms,
+  );
+
+/** The share of its own size a node's value plot is drawn at: what `useVisibleSubscribe` reads. */
+const plotScale = (page: Page, nodeId: string): Promise<number> =>
+  page.evaluate((id) => {
+    const plot = document.querySelector<HTMLElement>(`[data-testid="value-plot-${id}"]`);
+    return plot === null || plot.offsetHeight === 0 ? Number.NaN : plot.getBoundingClientRect().height / plot.offsetHeight;
+  }, nodeId);
+
+/** The value a node's plot shows for its first channel, as written in the DOM; null while it shows none. */
+const shownValue = (page: Page, nodeId: string): Promise<string | null> =>
+  page.evaluate((id) => document.querySelector(`[data-testid="value-plot-${id}"] [data-channel-name]`)?.getAttribute("data-channel-value") ?? null, nodeId);
+
+interface SeenFrame {
+  readonly scale: number;
+  readonly covered: boolean;
+  readonly value: string | null;
+}
+
+/** From now on, on every animation frame: how large the node's plot is drawn, whether something is fullscreen, and the value it shows. */
+const recordFrames = (page: Page, nodeId: string): Promise<void> =>
+  page.evaluate((id) => {
+    const frames: SeenFrame[] = [];
+    (window as unknown as { __t1691: SeenFrame[] }).__t1691 = frames;
+    const sample = (): void => {
+      const plot = document.querySelector<HTMLElement>(`[data-testid="value-plot-${id}"]`);
+      if (plot !== null && plot.offsetHeight > 0) {
+        frames.push({
+          scale: plot.getBoundingClientRect().height / plot.offsetHeight,
+          covered: document.fullscreenElement !== null,
+          value: plot.querySelector("[data-channel-name]")?.getAttribute("data-channel-value") ?? null,
+        });
+      }
+      if (frames.length < 900) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, nodeId);
+const recordedFrames = (page: Page): Promise<SeenFrame[]> => page.evaluate(() => (window as unknown as { __t1691: SeenFrame[] }).__t1691);
+
+/** The wheel over a node until its plot is drawn at `share` of its size or more. */
+async function zoomOnto(page: Page, nodeId: string, share: number): Promise<void> {
+  const node = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
+  for (let step = 0; step < 80 && !((await plotScale(page, nodeId)) >= share); step += 1) {
+    const box = await node.boundingBox();
+    if (box === null) throw new Error("the node has no box");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -200);
+    await drawn(page);
+  }
+  expect(await plotScale(page, nodeId), "the wheel did not zoom the canvas in on the node").toBeGreaterThanOrEqual(share);
+  await page.mouse.move(5, 5);
+  await viewportSettled(page);
+}
+
+test("a canvas fitted to 200 nodes: tiles too small to read write nothing and repaint nothing while their values move; zoomed in they are live, from the first frame (T1691b)", async ({ browser, page }) => {
+  const built = await documentOf(200, 12);
+  await openDocument(page, built.path);
+  await fitAll(page);
+  // Not vacuous: the tiles with a value are there, and every picture is under the size it can be read at.
+  expect(await page.locator('.react-flow__node [data-testid^="value-plot-"]').count()).toBeGreaterThanOrEqual(24);
+  const fittedScale = await plotScale(page, built.lag);
+  expect(fittedScale, "the fitted canvas draws a tile large enough to read: this document no longer tests the rule").toBeLessThan(CURVE_LEGIBLE_SCALE);
+  expect(CURVE_LEGIBLE_SCALE).toBeLessThanOrEqual(BARS_LEGIBLE_SCALE);
+
+  // 1. FITTED, the signals running: no write in any tile, nothing of the canvas invalidated.
+  let small: Record<string, number> = {};
+  const fitted = await traced(browser, page, async () => {
+    small = await tileWrites(page, 1200);
+  });
+  expect(small, `tiles drawn at ${(fittedScale * 100).toFixed(1)} % of their size wrote to the DOM in 1.2 s (node id: writes)`).toEqual({});
+  expect(fitted.nodeVisits, `the paint invalidator visited ${String(fitted.nodeVisits)} canvas nodes in 1.2 s of a fitted canvas`).toBe(0);
+
+  // 2. A value written while nobody can read its tile: the tile does not follow it.
+  const held = await holdSlider(page);
+  await held.to(0.9);
+  await held.release();
+  const written = Number(await held.slider.getAttribute("aria-valuenow"));
+  await page.waitForTimeout(400);
+  const unread = await shownValue(page, built.slider);
+  expect(unread === null ? Number.NaN : Number(unread), "the slider's tile followed a value at a size nobody reads it at: its writes were not stopped").not.toBe(written);
+
+  // 3. ZOOMED IN on it: the first frame it is drawn large enough to read shows the value written, not the one from before.
+  await recordFrames(page, built.slider);
+  await zoomOnto(page, built.slider, 0.5);
+  const frames = await recordedFrames(page);
+  const firstRead = frames.findIndex((frame) => frame.scale >= BARS_LEGIBLE_SCALE);
+  expect(firstRead, "no frame was recorded before the tile was readable: the claim below would hold of nothing").toBeGreaterThan(0);
+  expect(frames[firstRead - 1]?.value ?? null, "the frame before it was readable already showed the new value").toBe(unread);
+  expect(Number(frames[firstRead]?.value), `the first frame the tile was readable (drawn at ${((frames[firstRead]?.scale ?? 0) * 100).toFixed(0)} %) showed the value from before`).toBe(written);
+
+  // 4. LIVE now: the tiles on screen write and repaint; a tile panned out of the canvas does neither.
+  let large: Record<string, number> = {};
+  const zoomed = await traced(browser, page, async () => {
+    large = await tileWrites(page, 1200);
+  });
+  const where = await page.evaluate((ids) => {
+    const canvas = document.querySelector('[data-testid="graph-canvas"]')?.getBoundingClientRect();
+    if (canvas === undefined) throw new Error("no canvas");
+    return Object.fromEntries(ids.map((id) => {
+      const box = document.querySelector(`[data-testid="value-plot-${id}"]`)?.getBoundingClientRect();
+      return [id, box !== undefined && box.right > canvas.left && box.left < canvas.right && box.bottom > canvas.top && box.top < canvas.bottom];
+    }));
+  }, built.signals);
+  const onScreen = built.signals.filter((id) => where[id] === true);
+  const offScreen = built.signals.filter((id) => where[id] !== true);
+  expect(onScreen.length, "no signal's tile is on screen after the zoom").toBeGreaterThan(0);
+  expect(offScreen.length, "every signal's tile is on screen: nothing here is off screen").toBeGreaterThan(0);
+  expect(onScreen.filter((id) => (large[id] ?? 0) === 0), "a readable tile on screen, its signal running, wrote nothing in 1.2 s").toEqual([]);
+  expect(offScreen.filter((id) => (large[id] ?? 0) > 0), "a tile outside the canvas wrote to the DOM").toEqual([]);
+  expect(zoomed.nodeVisits, "no canvas node was repainted with readable tiles live: the count above is not counting").toBeGreaterThan(0);
+});
+
+test("under a fullscreen Viewer the tiles write nothing and repaint nothing; out of it they are current on the first frame (T1683b)", async ({ browser, page }) => {
+  const built = await documentOf(50, 4);
+  await openDocument(page, built.path);
+  await fitAll(page);
+  const lfo = built.signals[0] ?? "";
+  await zoomOnto(page, lfo, 0.5);
+  // Not vacuous: in front of the editor this tile is live.
+  expect((await tileWrites(page, 600))[lfo] ?? 0, "the signal's tile is not live with the editor in front").toBeGreaterThan(0);
+
+  await page.getByTestId("viewer-fullscreen").click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null), { message: "the Viewer did not go fullscreen" }).toBe(true);
+  await drawn(page);
+  let under: Record<string, number> = {};
+  const covered = await traced(browser, page, async () => {
+    under = await tileWrites(page, 1200);
+  });
+  expect(under, "tiles under a fullscreen Viewer wrote to the DOM in 1.2 s (node id: writes)").toEqual({});
+  expect(covered.nodeVisits, `the paint invalidator visited ${String(covered.nodeVisits)} canvas nodes in 1.2 s under a fullscreen Viewer`).toBe(0);
+
+  const stale = await shownValue(page, lfo);
+  await recordFrames(page, lfo);
+  await drawn(page);
+  await page.evaluate(() => document.exitFullscreen());
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  await drawn(page);
+  const frames = await recordedFrames(page);
+  const firstBack = frames.findIndex((frame) => !frame.covered);
+  expect(firstBack, "no frame was recorded under the Viewer").toBeGreaterThan(0);
+  expect(frames[firstBack - 1]?.value ?? null).toBe(stale);
+  expect(frames[firstBack]?.value ?? null, "the first frame with the editor back showed the value from before the Viewer covered it").not.toBe(stale);
 });

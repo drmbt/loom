@@ -69,6 +69,8 @@ export function registerNodeInfoCommand(bus: LoomBus): NodeInfoHolder {
 
   bus.registerCommand({
     name: SHOW_NODE_INFO_COMMAND,
+    // T1697b: `app` for now. It takes the id its door sends; whether it is an `instance` command is that task's look.
+    inSession: "app",
     inputSchema: z.object({ nodeId: idInput.optional() }).strict(),
     description: "Show node info — resolution, format, GPU time, pass count.",
     handler: (input, context) => {

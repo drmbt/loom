@@ -134,6 +134,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
   if (!bus.hasCommand("transport.togglePlay")) {
     bus.registerCommand({
       name: "transport.togglePlay",
+      inSession: "app",
       inputSchema: NO_INPUT,
       description: "Play or pause the live frame loop.",
       handler: (_input, context) => {
@@ -163,6 +164,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
     if (bus.hasCommand(name)) return;
     bus.registerCommand<"transport.play">({
       name: name as "transport.play",
+      inSession: "app",
       inputSchema: NO_INPUT,
       description: want ? "Start the frame loop (idempotent)." : "Stop the frame loop (idempotent).",
       handler: (_input, context) => {
@@ -190,6 +192,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
   if (!bus.hasCommand("transport.stepFrame")) {
     bus.registerCommand({
       name: "transport.stepFrame",
+      inSession: "app",
       inputSchema: z.object({ frames: z.number().optional() }).strict(),
       description: "Render exactly one frame (or the given count) synchronously.",
       handler: (input, context) => {
@@ -212,6 +215,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
   if (!bus.hasCommand("transport.seek")) {
     bus.registerCommand({
       name: "transport.seek",
+      inSession: "app",
       inputSchema: z.object({ frameIndex: z.number() }).strict(),
       description: "Jump to a frame by replaying from the start (§V170).",
       handler: (input, context) => {
@@ -265,6 +269,7 @@ export function registerTransportCommands(bus: LoomBus): TransportHolder {
   if (!bus.hasCommand("transport.toggleLoop")) {
     bus.registerCommand({
       name: "transport.toggleLoop",
+      inSession: "app",
       inputSchema: NO_INPUT,
       description: "Loop playback over the timeline's in/out range.",
       handler: (_input, context) => {

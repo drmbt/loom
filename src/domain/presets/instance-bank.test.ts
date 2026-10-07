@@ -664,7 +664,11 @@ describe("T1541b — a recall named by the page bank's flat id is the instance's
     expect(doc.store.view.getHistory(alice).undo.length).toBe(undoBefore + 1);
 
     const revision = doc.store.view.getRevision();
-    expect(codes(await doc.bus.execute("preset.recall", { nodeId: "a/inner", name: "calm" }, ctx))).toEqual(["preset.bank.nested"]);
+    // §T1695b: an INNER bank named from a running instance (an expression on its Recall
+    // pulse) has its own refusal, which says why: what it writes is the component's.
+    const inner = await doc.bus.execute("preset.recall", { nodeId: "a/inner", name: "calm" }, ctx);
+    expect(codes(inner)).toEqual(["preset.bank.inner"]);
+    expect(inner.diagnostics[0]?.message).toContain("the same for every instance");
     expect(codes(await doc.bus.execute("preset.recall", { nodeId: "a/x/looks", name: "calm" }, ctx))).toEqual(["preset.bank.nested"]);
     expect(doc.store.view.getRevision()).toBe(revision);
   });

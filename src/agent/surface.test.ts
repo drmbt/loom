@@ -151,6 +151,7 @@ let saved = 0;
 function registerSaveCommand(bus: LoomBus): void {
   (bus.registerCommand as unknown as (registration: unknown) => void)({
     name: "project.save",
+    inSession: "app",
     // §T1556b: the real command's input (`project-commands.ts`), which the tool's schema matches.
     inputSchema: saveProjectInput,
     handler: () => {

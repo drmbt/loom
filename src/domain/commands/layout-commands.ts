@@ -136,6 +136,7 @@ export function registerLayoutCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: "graph.layoutAll",
+    inSession: "definition",
     inputSchema: NO_INPUT,
     description: "Arrange every node in reading order: data flows left to right (§V189).",
     handler: (_input, context) => {
@@ -149,6 +150,7 @@ export function registerLayoutCommands(bus: LoomBus): void {
 
   bus.registerCommand({
     name: "graph.layout",
+    inSession: "definition",
     inputSchema: z.object({ nodeIds: nodeIdsInput }).strict(),
     description: "Arrange the selected nodes into the positions the whole-graph layout gives them.",
     handler: (input, context) => {

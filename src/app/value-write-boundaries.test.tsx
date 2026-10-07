@@ -189,7 +189,12 @@ vi.mock("@editor/graph-canvas/index.ts", async (importOriginal) => {
 });
 vi.mock("@domain/graph/parameter-dependencies.ts", async (importOriginal) => {
   const original = await importOriginal<typeof import("@domain/graph/parameter-dependencies.ts")>();
-  return { ...original, parameterDependencies: (...args: Parameters<typeof original.parameterDependencies>) => ((counts.referenceParses += 1), original.parameterDependencies(...args)) };
+  return {
+    ...original,
+    parameterDependencies: (...args: Parameters<typeof original.parameterDependencies>) => ((counts.referenceParses += 1), original.parameterDependencies(...args)),
+    // B293: the value graph and the cycle gate read a node's expressions at (node, key), through this.
+    keyReads: (...args: Parameters<typeof original.keyReads>) => ((counts.referenceParses += 1), original.keyReads(...args)),
+  };
 });
 vi.mock("@domain/components/component-file.ts", async (importOriginal) => {
   const original = await importOriginal<typeof import("@domain/components/component-file.ts")>();

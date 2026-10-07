@@ -407,9 +407,9 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // The whole way to the aim: its direction is the way the frame faces, its length how far off the aim is.
     heading: [...restToAim], "heading.x": expressionSlot(toAim.x, restToAim[0]), "heading.y": expressionSlot(toAim.y, restToAim[1]), "heading.z": expressionSlot(toAim.z, restToAim[2]),
     eye: [...UNTRIMMED.eye],
-    // Straight ahead, the Heading's own length off. (Said again in full: a parameter may not read another parameter
-    // of its own node, which the engine takes for a cycle, node by node: parameter.referenceCycle.)
-    lookAt: [...UNTRIMMED.lookAt], "lookAt.z": expressionSlot(`(0 - (${toAim.x} ^ 2 + ${toAim.y} ^ 2 + ${toAim.z} ^ 2) ^ 0.5)`, UNTRIMMED.lookAt[2] as number),
+    // Straight ahead, the Heading's own length off: read off the node, not said again (§B293: a parameter may read
+    // another parameter of its own node).
+    lookAt: [...UNTRIMMED.lookAt], "lookAt.z": expressionSlot("(0 - (op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.y ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5)", UNTRIMMED.lookAt[2] as number),
   };
   // The face's light hangs a hand's breadth in front of the foremost lens (the kit's own measure): clear of
   // the hull, which casts its shadow, and not out in the air ahead where its glow read as a ball the robot chased.
@@ -619,6 +619,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // The line each robot's searchlight shines along (searchlight.ts): the rig's points out along its nose, from its
     // face on. Of the rig, with the pieces: the same kernel and the same knobs the hull is placed by.
     node("kernel_searchline", "pointKernel", [-3900, 10600], { capacity: SEARCH.points * robots.length, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(facts, robots, { axis: [face, face + SEARCH.length], count: SEARCH.points }), ...rig }, { label: "kernel_searchline" }),
+    // WHAT CASTS A RING'S SHADOW (§T1689b, a Geometry's Shadow Mesh): the kit's low ring, a quarter of the
+    // triangles in the same joint frame. A ring is drawn at every station of every tentacle, and six of the nine
+    // passes it was drawn in were the body light's sweeps (the lead's measurement, §T1666b). The camera sees the
+    // ring itself; a shadow shows an outline and not a bevel.
+    node("mesh_ringshadow", "meshFileIn", [-3000, 150], { file: facts.glbUrl, select: facts.ringLow.select, vertices: facts.ringLow.vertices, triangles: facts.ringLow.triangles, parts: facts.ringLow.parts }, { label: "mesh_ringshadow" }),
     ...pieces.flatMap((piece, index) => [
       node(`mesh_${piece.role}`, "meshFileIn", [-2700, index * 150], { file: facts.glbUrl, select: piece.shape.select, vertices: piece.shape.vertices, triangles: piece.shape.triangles, parts: piece.shape.parts }, { label: `mesh_${piece.role}` }),
       // A piece drawn on the strands' wrists has no points of its own.
@@ -1204,6 +1209,12 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
       position: [0, 0, -0.3], "position.x": core.x, "position.y": core.y, "position.z": core.z,
       falloff: "inverseSquare", range: 12, shadows: true, shadowExtent: 12, shadowSoftness: 1.5,
       shadowCasters: hingedClaws ? "geometry_ring geometry_hub" : "geometry_ring geometry_claw",
+      // THE SHADOW IS THE TUNNEL'S (§T1688b: Shadow On, a value). It is what puts the robot IN the bore, and out of
+      // the bore nothing is in its twelve metres to take it: the fields have no wall, the dock's and the temple's
+      // stand twenty and thirty metres off. There its six sweeps of every ring and claw were the largest single
+      // cost of the frame for nothing (the lead's measurement, §T1666b: 2.8 to 3.0 ms of 10.5 to 12.4 with the pack
+      // out). So it is on in the tunnel and out in a place, and no sweep draws a caster while it is out.
+      shadowOn: expressionSlot(`(1 - ${OUT})`, true),
     }, { label: "light_body" }),
     // Each follower of the pack throws its own light too, or it is a row of dots in the dark and not a robot in a
     // tunnel: one light at its middle, the legs' colour, as bright as it is out (and where it is: coming up from behind).
@@ -1415,6 +1426,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("glimpse-named", ["constant_glimpse", "out"], ["expression_glimpsed", "in"]),
     ...pieces.flatMap((piece) => [
       edge(`${piece.role}-shape`, [`mesh_${piece.role}`, "out"], [`geometry_${piece.role}`, "mesh"]),
+      ...(piece.role === "ring" ? [edge("ring-shadow", ["mesh_ringshadow", "out"], ["geometry_ring", "shadowMesh"])] : []),
       edge(`${piece.role}-points`, [pointsOf(piece), "out"], [`geometry_${piece.role}`, "points"]),
     ]),
     ...(ropes

@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { compileGraph } from "../../compiler/index.ts";
 import type { GraphDocument } from "../../domain/types/graph.ts";
-import { edge, graph, named, settings } from "../../examples/documents/builders.ts";
+import { edge, expressionSlot, graph, named, settings } from "../../examples/documents/builders.ts";
 import { TIER_B_CAPABILITIES } from "../../examples/runner.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { createVgpuBackend } from "../../runtime/backend/vgpu/vgpu-backend.ts";
@@ -187,5 +187,24 @@ describe("T1671b on a real device — an Aimed frame's forward is Heading, climb
     const up = await render({ frame: "aimed", eye: [0, 0, 0], lookAt: [0, 0, -1.5], origin: [0.45, -2, 0.3], heading: [0, 7, 0] });
     expect(differing(up, await render({ eye: [0.45, -2, 0.3], lookAt: [0.45, -0.5, 0.3] }))).toBe(0);
     expect(drawn(up)).toBeGreaterThan(20);
+  }, 120_000);
+});
+
+/**
+ * §B293 ON A REAL DEVICE — the consumer's shape: a directed shot whose Look At z is the
+ * length of its own Heading. It was refused as a cycle (one node, two parameters, no ring).
+ */
+describe("B293 on a real device — Look At from the length of the camera's own Heading", () => {
+  it("⚑ draws the same pixels as the distance written out", async () => {
+    requireDawn();
+    const length = "0 - (op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.y ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5";
+    // One to the frame's side, so the view DEPENDS on how far off the aim is.
+    const directed = { frame: "aimed", eye: [1, 0, 0], origin: [0, -3, 4], heading: [0, 3, -4] };
+    // The retained number is NOT the answer: a read that fell back would draw the other picture.
+    const byExpression = await render({ ...directed, lookAt: [0, 0, -1], "lookAt.z": expressionSlot(length, -1) });
+    const written = await render({ ...directed, lookAt: [0, 0, -5] });
+    expect(differing(byExpression, written)).toBe(0);
+    expect(drawn(byExpression)).toBeGreaterThan(200);
+    expect(differing(byExpression, await render({ ...directed, lookAt: [0, 0, -1] }))).toBeGreaterThan(200);
   }, 120_000);
 });

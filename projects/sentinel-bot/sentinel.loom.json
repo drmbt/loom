@@ -2408,6 +2408,17 @@
           "portId": "points"
         }
       },
+      "ring-shadow": {
+        "id": "ring-shadow",
+        "source": {
+          "nodeId": "mesh_ringshadow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geometry_ring",
+          "portId": "shadowMesh"
+        }
+      },
       "ring-shape": {
         "id": "ring-shape",
         "source": {
@@ -2785,7 +2796,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(0 - ((((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + (op('expression_camera').chan.aim < 1) * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000))) - ((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 1.9)) + op('expression_camera').chan.right + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + 0.0000) + 0.22 * sin(abstime * 0.73 + 1.3000)) + 0.02 * sin(abstime * 2.3))) ^ 2 + (((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + (op('expression_camera').chan.aim < 1) * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000))) - ((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) + 0.7)) + op('expression_camera').chan.up + op('expression_camera').chan.ride * (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + 2.0000) + 0.18 * sin(abstime * 0.57 + 0.0000)) + 0.015 * sin(abstime * 1.7 + 1))) ^ 2 + ((op('speed_travel').chan.value + (op('expression_camera').chan.aim + (op('expression_camera').chan.aim < 1) * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5)))))) - (op('speed_travel').chan.value + (op('expression_camera').chan.ahead + op('expression_camera').chan.ride * ((max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * ((0.7 * sin(abstime * 0.21)) + (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 0.000)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + -0.0250)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + -0.0250))) - 0.5))))))) ^ 2) ^ 0.5)"
+                "source": "(0 - (op('camera_rig').par.heading.x ^ 2 + op('camera_rig').par.heading.y ^ 2 + op('camera_rig').par.heading.z ^ 2) ^ 0.5)"
               },
               "static": {
                 "kind": "static",
@@ -6839,6 +6850,19 @@
           "range": 12,
           "shadowCasters": "geometry_ring geometry_claw",
           "shadowExtent": 12,
+          "shadowOn": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "(1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))))"
+              },
+              "static": {
+                "kind": "static",
+                "value": true
+              }
+            },
+            "mode": "expression"
+          },
           "shadowSoftness": 1.5,
           "shadows": true
         },
@@ -8612,6 +8636,23 @@
         },
         "position": {
           "x": -3780,
+          "y": 225
+        },
+        "type": "meshFileIn"
+      },
+      "mesh_ringshadow": {
+        "definitionVersion": 1,
+        "id": "mesh_ringshadow",
+        "label": "mesh_ringshadow",
+        "parameters": {
+          "file": "media/sentinel-bot/sentinel.glb",
+          "parts": "1:mand_0_0 2:mand_0_1 3:mand_0_2 4:mand_0_3 5:mand_0_4 6:mand_0_5 7:mand_1_0 8:mand_1_1 9:mand_1_2 10:mand_1_3 11:mand_1_4 12:mand_1_5 13:mand_2_0 14:mand_2_1 15:mand_2_2 16:mand_2_3 17:mand_2_4 18:mand_2_5 19:mand_3_0 20:mand_3_1 21:mand_3_2 22:mand_3_3 23:mand_3_4 24:mand_3_5",
+          "select": "ring_low",
+          "triangles": 178,
+          "vertices": 480
+        },
+        "position": {
+          "x": -4200,
           "y": 225
         },
         "type": "meshFileIn"

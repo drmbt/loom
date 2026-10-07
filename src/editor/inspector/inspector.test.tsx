@@ -598,6 +598,7 @@ describe("T1342b — the type badge opens this node's reference", () => {
     const asked: unknown[] = [];
     bus.registerCommand({
       name: "ui.openHelp",
+      inSession: "app",
       inputSchema: z.object({ section: z.enum(["shortcuts", "nodes", "expressions", "agents"]).optional(), nodeType: z.string().optional() }).strict(),
       description: "test double",
       handler: (input, ctx) => {

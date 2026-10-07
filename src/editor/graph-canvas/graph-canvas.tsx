@@ -36,7 +36,7 @@ import type { GraphPatch, GraphPatchOperation } from "@domain/types/patch.ts";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import { NodeView } from "@editor/nodes/node-view.tsx";
 import { AnnotationNode } from "@editor/nodes/annotation-node.tsx";
-import { registerRenameSessionCommand } from "@editor/nodes/rename-session.ts";
+import { registerRenameSessionCommand, renameCanvasHolderFor } from "@editor/nodes/rename-session.ts";
 import { createKindLabelRegistry } from "@editor/nodes/kind-label.ts";
 import { SignalEdge } from "@editor/edges/signal-edge.tsx";
 import {
@@ -95,6 +95,7 @@ import { joinPanelOperations, panelUnderDrop } from "@editor/controls/panel-join
 import { presetCatalogueHolderFor } from "@domain/presets/bank-view.ts";
 import { addBankTargetsOperations, bankUnderDrop, topmostDropTarget } from "@editor/controls/bank-join.ts";
 import { orderSelection, promoteInSelection } from "@editor/selection/selection-order.ts";
+import { VIEW_CLIP_ATTRIBUTE } from "@ui/hooks/use-visible-subscribe.ts";
 import styles from "./graph-canvas.module.css";
 
 /**
@@ -147,19 +148,6 @@ const EMPTY_SELECTION: readonly NodeId[] = [];
 
 export interface GraphCanvasProps {
   bus: LoomBus;
-  /**
-   * The OTHER buses the app's doors dispatch on — T969(b)'s reason, unchanged: inside a
-   * component `bus` is the session bus, while the keymap, the menubar, the palette and
-   * the right-click menus all keep dispatching on the ROOT bus. There is one canvas, so
-   * every door that can reach it gets the same handlers.
-   *
-   * T1195 renamed this from `selectionBuses`, and the name is the fix's other half. Two
-   * of the three surfaces it should have covered were missed — `view.frameAll` (the
-   * owner's dead Shift+F) and `ui.openNodeSearch` — because a list called "selection
-   * buses" reads as a detail of one command rather than as THE rule for every view-state
-   * surface the canvas owns. Anything registered off `bus` in this file belongs here too.
-   */
-  doorBuses?: readonly LoomBus[];
   /** Actor identity for every mutation this canvas makes (§V30). */
   invocation: InvocationContext;
   /**
@@ -214,7 +202,6 @@ export interface GraphCanvasProps {
 
 export function GraphCanvas({
   bus,
-  doorBuses,
   components,
   invocation,
   runtime,
@@ -258,9 +245,9 @@ export function GraphCanvas({
    * a sum over the overlays that are actually mounted, and a second canvas showing a
    * different part of the graph has a different set of them.
    */
-  const timingOverlay = useMemo(() => registerTimingOverlayCommand(bus), [bus]);
+  const timingOverlay = useMemo(() => registerTimingOverlayCommand(bus.root), [bus]);
   /** T1013 — the flow dashes' switch, the timing overlay's twin in the Debug submenu. */
-  const edgeFlow = useMemo(() => registerEdgeFlowCommand(bus), [bus]);
+  const edgeFlow = useMemo(() => registerEdgeFlowCommand(bus.root), [bus]);
   const timingScale = useMemo(() => createNodeTimingScaleStore(), []);
   useEffect(() => () => timingScale.dispose(), [timingScale]);
 
@@ -281,13 +268,17 @@ export function GraphCanvas({
    * nodes and 1200 `op()` reads this walk was 10 000 expression nodes, and every moved
    * slider ran it and re-rendered all 300 lines — for a picture a value cannot change.
    */
-  const referenceLines = useMemo(() => registerReferenceLinesCommand(bus), [bus]);
+  const referenceLines = useMemo(() => registerReferenceLinesCommand(bus.root), [bus]);
   const showReferenceLines = useSyncExternalStore(referenceLines.subscribe, referenceLines.get);
-  // T1257: on the door buses too — the `o` key dispatches on the root bus (T1195).
-  const minimap = useMemo(() => {
-    for (const door of doorBuses ?? []) registerMinimapCommand(door);
-    return registerMinimapCommand(bus);
-  }, [bus, doorBuses]);
+  /*
+   * §T1696b: the commands this canvas answers that are the APP's (the map, select these
+   * nodes, the node browser, rename) are registered on the app's bus, once. A component
+   * session inherits them, so a key, a menu row and this canvas's own gestures reach one
+   * registration and one holder whichever bus they dispatch on. T1195 and T1257 registered
+   * each on the canvas's bus and on a list of "door" buses.
+   */
+  const appBus = bus.root;
+  const minimap = useMemo(() => registerMinimapCommand(appBus), [appBus]);
   const showMinimap = useSyncExternalStore(minimap.subscribe, minimap.get);
   // The map's DOM lands here (see `graph-minimap.tsx`); state, not a ref, so the portal
   // renders once the host exists.
@@ -400,15 +391,12 @@ export function GraphCanvas({
     };
     // `commandHolder` is one object per bus, so this is one holder at the root and two
     // inside a component; registration itself is idempotent on each.
-    const holders = new Set([
-      registerSelectNodesCommand(bus),
-      ...(doorBuses ?? []).map(registerSelectNodesCommand),
-    ]);
-    for (const holder of holders) holder.current = handlers;
+    const holder = registerSelectNodesCommand(appBus);
+    holder.current = handlers;
     return () => {
-      for (const holder of holders) if (holder.current === handlers) holder.current = null;
+      if (holder.current === handlers) holder.current = null;
     };
-  }, [bus, selectNodes, doorBuses]);
+  }, [appBus, selectNodes]);
 
   /** The canvas element — the double-click boundary and the viewport-centre fallback. */
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -1048,7 +1036,16 @@ export function GraphCanvas({
    * command rather than a `setNodeLabel` patch of its own — the node header supplies the
    * argument, it does not own a second rename (§V29, §V61).
    */
-  const renameSession = useMemo(() => registerRenameSessionCommand(bus), [bus]);
+  const renameSession = useMemo(() => registerRenameSessionCommand(bus.root), [bus]);
+  // §T1695b: the command asks THIS canvas whether it shows the node, whichever graph that is.
+  useEffect(() => {
+    const holder = renameCanvasHolderFor(bus);
+    const canvas = { holds: (nodeId: NodeId) => bus.store.getGraph().nodes[nodeId] !== undefined };
+    holder.current = canvas;
+    return () => {
+      if (holder.current === canvas) holder.current = null;
+    };
+  }, [bus]);
   const beginRename = useCallback(
     (nodeId: NodeId) => {
       void bus.execute("ui.beginRename", { nodeIds: [nodeId] }, invocation);
@@ -1108,17 +1105,14 @@ export function GraphCanvas({
    * The double-click below never broke, because it executes on this canvas's OWN bus —
    * which is exactly why a keyboard-only defect can live behind a working gesture.
    */
-  const nodeSearchHolders = useMemo(
-    () => new Set([registerNodeSearchCommand(bus), ...(doorBuses ?? []).map(registerNodeSearchCommand)]),
-    [bus, doorBuses],
-  );
+  const nodeSearchHolder = useMemo(() => registerNodeSearchCommand(appBus), [appBus]);
   useEffect(() => {
     const handlers = { open: openNodeSearch };
-    for (const holder of nodeSearchHolders) holder.current = handlers;
+    nodeSearchHolder.current = handlers;
     return () => {
-      for (const holder of nodeSearchHolders) if (holder.current === handlers) holder.current = null;
+      if (nodeSearchHolder.current === handlers) nodeSearchHolder.current = null;
     };
-  }, [nodeSearchHolders, openNodeSearch]);
+  }, [nodeSearchHolder, openNodeSearch]);
 
   /**
    * The gesture. It does not open anything itself — it names the command, the way the
@@ -1232,6 +1226,8 @@ export function GraphCanvas({
       <div
         className={styles.canvas}
         data-testid="graph-canvas"
+        // T1691b: this box is the view the tiles are panned in; one outside it is off screen.
+        {...{ [VIEW_CLIP_ATTRIBUTE]: "" }}
         data-pan-key={panKeyHeld ? "held" : undefined}
         ref={canvasRef}
         onDoubleClick={onCanvasDoubleClick}

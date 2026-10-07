@@ -759,7 +759,8 @@ function resolveSlot(
       const evaluated = evaluateExpression(
         binding.source,
         expressionScope(context.options),
-        context.options.nodes,
+        // §B293: the reader is told which parameter is asking, so a ring through it is seen here.
+        context.options.nodes?.readingFrom?.(context.node.id, key) ?? context.options.nodes,
       );
       if (!evaluated.ok) {
         /**

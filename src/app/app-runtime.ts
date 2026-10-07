@@ -105,6 +105,15 @@ export interface AppRuntime {
    */
   readonly unknownParameters: readonly UnknownParameter[];
   /**
+   * §T1695b: registers the composition root's own GRAPH-EDITING commands (`control.*`) on a
+   * document bus. Called here for the project's bus, and by every component session for its
+   * own: a `"definition"` command is never inherited, so a session that lacked a copy
+   * would not have the command at all.
+   */
+  readonly registerDocumentCommands: (bus: LoomBus) => void;
+  /** §T1696b: the host's component-file picker, which a component session's `component.import` takes too. */
+  readonly componentFiles: { readonly readFile: () => ReturnType<typeof readProjectFile>; readonly retainsPickedFiles: boolean };
+  /**
    * The shipped starter components, installed at boot (T190, §V94, §V193).
    *
    * A field rather than a fire-and-forget call because a shipped file that fails to
@@ -266,17 +275,22 @@ export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
   });
   // T1395b: `component.export` writes through the same picker-then-download ladder a save does.
   // T1494b: and `component.import` with no file in hand asks through the open picker.
-  registerComponentCommands(bus, {
-    components,
-    writeFile: (file) => writeProjectFile(file),
+  const componentFiles = {
     readFile: () => readProjectFile(),
     // T1519b: the asset picker keeps retained references exactly where this exists
     // (`AssetField`), so an export refusing a session-only file can name the fix.
     retainsPickedFiles: typeof (globalThis as { showOpenFilePicker?: unknown }).showOpenFilePicker === "function",
+  };
+  registerComponentCommands(bus, {
+    components,
+    writeFile: (file) => writeProjectFile(file),
+    ...componentFiles,
   });
   registerProjectCommands(bus);
   // T1514b: mapping starts from the parameter — the Inspector's right-click rows name these.
-  registerControlCommands(bus);
+  // §T1695b: graph edits, so through the one registrar every document bus is given.
+  const registerDocumentCommands = (target: LoomBus): void => registerControlCommands(target);
+  registerDocumentCommands(bus);
   const nodeRuntime = createNodeRuntimeStore();
 
   // §V16: the hub sinks into the channel the canvas ALREADY owns. A second per-node
@@ -347,6 +361,8 @@ export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
       return bus.store.getSettings();
     },
     project,
+    registerDocumentCommands,
+    componentFiles,
     unknownParameters: options.unknownParameters ?? [],
     starterComponents,
     projectDocument() {

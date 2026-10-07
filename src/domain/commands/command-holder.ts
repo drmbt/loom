@@ -90,6 +90,23 @@ function store(): HolderStore {
  * comparing the actual objects rather than by reviewing the strings.
  */
 export function sharedForBus<T extends object>(bus: object, key: string, create: () => T): T {
+  /*
+   * §T1695b — APP STATE LIVES AT THE ROOT. A component session's bus inherits the app's
+   * commands from its parent (`InSession` in `bus.ts`), so what such a command holds (the
+   * canvas a view command reaches, a display switch, the title being renamed) must be the
+   * one object whichever bus asks. Keyed by the session bus it was a second, empty one: the
+   * root command read `null` while the canvas wrote next door, or wrote a store the canvas
+   * never read (§T1195's M2 and M3). State that belongs to ONE document asks
+   * `sharedForDocument` and says so.
+   */
+  return sharedForDocument((bus as { readonly root?: object }).root ?? bus, key, create);
+}
+
+/**
+ * As `sharedForBus`, keyed by THIS bus and not its root: for state that is a fact about the
+ * document one bus edits (the component a session is editing), never about the app.
+ */
+export function sharedForDocument<T extends object>(bus: object, key: string, create: () => T): T {
   const byBus = store();
   let byKey = byBus.get(bus);
   if (byKey === undefined) {

@@ -132,6 +132,13 @@ export type NodeReferenceReader = ((name: string, path: readonly string[]) => No
    * spelling exists. Absent on a reader that cannot say (a hand-built one).
    */
   readonly spelledLike?: (name: string) => SpelledLike;
+  /**
+   * §B293: the same reader, told WHICH PARAMETER IS ASKING. A ring is a parameter reached
+   * again, and the parameter a resolve starts from is on it like any other: without this
+   * the first one was not, so a ring was caught one hop late and a parameter read from its
+   * own node and from another node could answer differently. Absent on a hand-built reader.
+   */
+  readonly readingFrom?: (nodeId: string, key: string) => NodeReferenceReader;
 };
 
 /**

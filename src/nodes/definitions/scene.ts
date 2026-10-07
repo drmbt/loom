@@ -18,7 +18,7 @@ import { readColor, readNumber, readVector } from "./parameter-readers.ts";
 import { countedDrawSupport, resolveColorMap, resolveScalarMap } from "./points.ts";
 import { attributeBinding } from "./point-storage.ts";
 import { instanceRecordStorage, isPackedType, packedGroups } from "./instance-records.ts";
-import { instanceResolveWgsl, RESOLVE_ARGS_BINDING, RESOLVE_LIVE_BINDING, RESOLVE_RECORDS_BINDING, RESOLVE_SOURCE_PREFIX, resolveWorkgroups, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
+import { instanceResolveWgsl, RESOLVE_ARGS_BINDING, RESOLVE_LIVE_BINDING, RESOLVE_RECORDS_BINDING, RESOLVE_SHADOW_ARGS_BINDING, RESOLVE_SOURCE_PREFIX, resolveWorkgroups, type InstanceResolveOptions } from "../shaders/instance-resolve.wgsl.ts";
 import { bindInstanceAttributes } from "./instance-attributes.ts";
 import { applyMaterialOverrides } from "./material-overrides.ts";
 import { compileLightPoints, lightMapRefusal, lightSpotDraw, lightSpotUnbuilt, lightTablePlan, type LightTablePlan, type NamedLight, type PointLightSource } from "./light-points.ts";
@@ -604,8 +604,16 @@ const LIGHT_PARAMETERS: ParameterSchema = {
     default: false,
     compileTime: true,
     description:
-      "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible. Shadow Casters and Shadow Exclude choose which geometries those passes draw (T1598b).",
+      "T481: this light casts — ADDS ONE FULL SCENE PASS per render that lists it (a directional light), or SIX (a point light: one per cube face, T1362b). The passes are named per light in the performance panel so their cost is visible. Shadow Casters and Shadow Exclude choose which geometries those passes draw (T1598b). Changing it rebuilds the Render: to put a shadow out and bring it back while playing, use Shadow On.",
     inactiveWhen: pointsCastNothing,
+  },
+  shadowOn: {
+    type: "boolean",
+    label: "Shadow On",
+    default: true,
+    description:
+      "T1688b: the switch of a casting light's shadow, and A VALUE: a cue, a preset or an expression turns it, and nothing is rebuilt. Off, this frame none of this light's shadow passes draws a caster (their cost is the casters' triangles, a point light's six times) and the light shades everything in its reach as if nothing stood in its way; the frame it comes back on, the shadow is drawn from where the casters are now. The lookup the lit pass makes stays (Shadow Softness prices it): to be rid of that too, turn Cast Shadows off, which rebuilds. Driven by an expression, any value but 0 is on.",
+    inactiveWhen: (values) => pointsCastNothing(values) ?? (values["shadows"] === true ? null : "Only a casting light has a shadow to switch."),
   },
   shadowExtent: {
     type: "number",
@@ -744,6 +752,8 @@ export const lightNode: NodeDefinition = {
         direction: vec3(parameters, "direction", [-0.4, -0.8, -0.45]),
         position: vec3(parameters, "position", [1, 2, 1.5]),
         shadows: parameters["shadows"] === true,
+        /* T1688b: out only when it says so; a document from before the parameter has it on. */
+        ...(parameters["shadowOn"] === false ? { shadowOn: false } : {}),
         shadowExtent: readNumber(parameters, "shadowExtent", 8),
         shadowSoftness: readNumber(parameters, "shadowSoftness", 2),
         shadowBias: Math.max(0, readNumber(parameters, "shadowBias", 0)),
@@ -1156,6 +1166,15 @@ export const geometryNode: NodeDefinition = {
         "Instances mode, Shape: Mesh — the mesh drawn at every point of Points: a Mesh File In (set its Frame to Object, so the shape is in its own frame rather than where the file placed it), or anything downstream that keeps its triangles. Read in no other mode.",
     },
     {
+      // T1689b: the shape's stand-in for every shadow sweep. After `mesh`, optional.
+      id: "shadowMesh",
+      label: "Shadow Mesh",
+      optional: true,
+      type: { kind: "pointset", requires: [{ name: "position", type: "vec3f" }] },
+      description:
+        "T1689b: Instances mode, Shape: Mesh — a lighter mesh that CASTS in the shape's place. Every pass that asks what stands between a light and a surface draws it instead of the Shape Mesh (a casting light's shadow passes, a point light's six times; the Light Depth output; a projector's occlusion), at the same instances with the same transforms. What the camera sees is the Shape Mesh, untouched. Author it in the shape's own frame (the same origin, axes and size: the same Frame on its Mesh File In) and keep it INSIDE the shape: where it pokes out, the shape falls into its own shadow by more than the light's Shadow Bias; where it falls short, the shadow's edge is that much smaller and a sliver of the shape's far side stays lit. Not wired: the shape casts itself. Read in no other mode, as Shape Mesh is: a Geometry that draws no Shape Mesh casts what it draws.",
+    },
+    {
       // T447: reference-fed — the `material` PARAMETER names the node; the compiler
       // synthesizes this edge; connect is refused with the parameter named.
       id: "material",
@@ -1520,6 +1539,8 @@ export const geometryNode: NodeDefinition = {
      */
     let instanceMesh: GeometryPayload["instanceMesh"];
     let resolve: { pass: DispatchPassDescriptor; scratch: ScratchRequest[] } | undefined;
+    /* T1689b: what the node says about its Shadow Mesh while it still draws. */
+    const shadowNotes: Array<NonNullable<CompiledNodeDescription["diagnostics"]>[number]> = [];
     if (meshShape) {
       const refuseShape = (message: string, suggestion: string): CompiledNodeDescription => ({
         passes: [],
@@ -1546,6 +1567,32 @@ export const geometryNode: NodeDefinition = {
           "Keep position and normal through any kernel between the Mesh File In and the Geometry.",
         );
       }
+      /*
+       * T1689b — THE SHADOW MESH: an optional second mesh the shadow sweeps draw in the
+       * shape's place. It needs what a sweep reads of the shape (triangles, a position and
+       * the normal the instanced depth generator declares) and nothing else. What it cannot
+       * be checked for is that it IS the shape, lighter: only that it stands where the shape
+       * stands, when both carry a bound.
+       */
+      const shadowShape = inputs["shadowMesh"]?.pointset;
+      const shadowTopology = shadowShape === undefined ? null : typeof shadowShape.topology === "string" ? parseTopology(shadowShape.topology) : null;
+      if (shadowShape !== undefined && (shadowTopology === null || shadowTopology.kind !== "mesh" || shadowShape.pairs["position"]?.type !== "vec3f" || shadowShape.pairs["normal"]?.type !== "vec3f")) {
+        return {
+          passes: [],
+          diagnostics: [
+            {
+              severity: "error",
+              code: "node.scene.shadowMesh",
+              message: `Node "${nodeId}": the Shadow Mesh input ${
+                shadowTopology === null || shadowTopology.kind !== "mesh" ? "carries no mesh triangles" : "is a mesh without a vec3f `position` and `normal`"
+              }, and a shadow pass draws it as the Shape Mesh is drawn.`,
+              nodeId,
+              suggestion: "Wire a Mesh File In (the same Frame as the Shape Mesh's), or unwire Shadow Mesh: the shape then casts itself.",
+            },
+          ],
+        };
+      }
+      const shadowFit = shadowShape === undefined ? undefined : shadowMeshFit(nodeId, shape.bounds, shadowShape.bounds);
       /* The compound-head resolver again (see Orient): one vec3f attribute is the whole place. */
       const resolvedPlace = resolveColorMap(nodeId, parameterMaps["instanceTranslate"], pointset, "points", "instanceTranslate", "vec3f");
       if ("refusal" in resolvedPlace) return resolvedPlace.refusal;
@@ -1570,8 +1617,12 @@ export const geometryNode: NodeDefinition = {
         tint: tintMap !== undefined,
         compact,
         fields: custom.bound.map((field) => ({ name: field.name, type: field.type })),
+        ...(shadowShape === undefined ? {} : { shadowMesh: true }),
       });
       if (!records.ok) return refuseShape(records.errors.join(" "), "Lower the point capacity.");
+      /* T1689b: a geometry that compacts draws by indirect arguments, and they hold a vertex
+         count: the shadow mesh's draws need their own, written by the same pass. */
+      const shadowArgs = records.shadowArgs;
       const sources = packedGroups();
       const unreadable = [
         ...(scaleMap === undefined || isPackedType(scaleMap.type) ? [] : [`scale (${scaleMap.type})`]),
@@ -1609,7 +1660,7 @@ export const geometryNode: NodeDefinition = {
         pass: {
           kind: "dispatch",
           id: `${nodeId}:instances:resolve`,
-          shader: instanceResolveWgsl({ ...reads, groups: sources.count }),
+          shader: instanceResolveWgsl({ ...reads, groups: sources.count, ...(shadowArgs === undefined ? {} : { shadowArgs: true }) }),
           entryPoint: "main",
           /* F1: compacting, ONE workgroup — its invocations share the count of what they
              accept, which is what lets one dispatch resolve, compact and count. */
@@ -1619,6 +1670,7 @@ export const geometryNode: NodeDefinition = {
             ...(records.args === undefined ? [] : [{ binding: RESOLVE_ARGS_BINDING, resourceId: records.args.resourceId }]),
             ...(pointset.count === undefined ? [] : [{ binding: RESOLVE_LIVE_BINDING, resourceId: pointset.count.buffer }]),
             ...sources.bindings(RESOLVE_SOURCE_PREFIX),
+            ...(shadowArgs === undefined ? [] : [{ binding: RESOLVE_SHADOW_ARGS_BINDING, resourceId: shadowArgs.resourceId }]),
           ],
           uniforms: {
             object0: objectRow(0),
@@ -1628,19 +1680,31 @@ export const geometryNode: NodeDefinition = {
             scale: [readNumber(parameters, "scale", 1), 0, 0, 0],
             count: pointset.capacity,
             vertexCount: shapeTopology.triangles * 3,
+            ...(shadowArgs === undefined || shadowTopology === null || shadowTopology.kind !== "mesh" ? {} : { shadowVertexCount: shadowTopology.triangles * 3 }),
           },
           uniformBinding: "params",
           nodeId,
         },
-        scratch: [records.scratch, ...(records.args === undefined ? [] : [records.args.scratch])],
+        scratch: [records.scratch, ...(records.args === undefined ? [] : [records.args.scratch]), ...(shadowArgs === undefined ? [] : [shadowArgs.scratch])],
       };
       instanceMesh = {
         pairs: shape.pairs,
         triangles: shapeTopology.triangles,
         indexBuffer: shapeTopology.indexBuffer,
         ...(records.args === undefined ? {} : { drawArgs: records.args.resourceId }),
+        ...(shadowShape === undefined || shadowTopology === null || shadowTopology.kind !== "mesh"
+          ? {}
+          : {
+              shadow: {
+                pairs: shadowShape.pairs,
+                triangles: shadowTopology.triangles,
+                indexBuffer: shadowTopology.indexBuffer,
+                ...(shadowArgs === undefined ? {} : { drawArgs: shadowArgs.resourceId }),
+              },
+            }),
         records: { buffer: records.resourceId, ...records.offsets },
       };
+      if (shadowFit !== undefined) shadowNotes.push(shadowFit);
     }
     const shapeParameter = parameters["shape"];
     const payload: GeometryPayload = {
@@ -1694,10 +1758,11 @@ export const geometryNode: NodeDefinition = {
       ...(pointset.count === undefined ? {} : { count: { buffer: pointset.count.buffer } }),
       material,
     };
-    if (resolve !== undefined) {
-      return { passes: [resolve.pass], scratch: resolve.scratch, scene: { out: payload } } as CompiledNodeDescription;
-    }
-    return { passes: [], scene: { out: payload } } as CompiledNodeDescription;
+    const built =
+      resolve !== undefined
+        ? ({ passes: [resolve.pass], scratch: resolve.scratch, scene: { out: payload } } as CompiledNodeDescription)
+        : ({ passes: [], scene: { out: payload } } as CompiledNodeDescription);
+    return shadowNotes.length === 0 ? built : { ...built, diagnostics: shadowNotes };
   },
 };
 
@@ -1710,6 +1775,34 @@ function meshInstanceCount(payload: GeometryPayload): DrawPassDescriptor["instan
   const drawArgs = payload.instanceMesh?.drawArgs;
   return drawArgs === undefined ? payload.capacity : { indirect: drawArgs };
 }
+
+/**
+ * T1689b — DOES THE SHADOW MESH STAND WHERE THE SHAPE STANDS? The one thing about a shadow
+ * mesh the engine can check: both meshes are drawn by the same instance records, so they
+ * must share a frame, and the mistake that breaks it (another Frame on the Mesh File In,
+ * another unit) moves or resizes the whole mesh. Where both carry a bounding sphere, a
+ * centre more than a quarter of the shape's radius away, or a radius off by more than a
+ * quarter, is said. A remark, never a refusal: a stand-in is allowed to be smaller.
+ */
+function shadowMeshFit(
+  nodeId: string,
+  shape: { readonly center: readonly [number, number, number]; readonly radius: number } | undefined,
+  shadow: { readonly center: readonly [number, number, number]; readonly radius: number } | undefined,
+): NonNullable<CompiledNodeDescription["diagnostics"]>[number] | undefined {
+  if (shape === undefined || shadow === undefined || !(shape.radius > 0)) return undefined;
+  const apart = Math.hypot(shadow.center[0] - shape.center[0], shadow.center[1] - shape.center[1], shadow.center[2] - shape.center[2]);
+  const ratio = shadow.radius / shape.radius;
+  if (apart <= shape.radius * SHADOW_MESH_FIT && ratio >= 1 - SHADOW_MESH_FIT && ratio <= 1 + SHADOW_MESH_FIT) return undefined;
+  const places = (value: number): string => value.toPrecision(3);
+  return {
+    severity: "warning",
+    code: "node.scene.shadowMeshFit",
+    message: `Node "${nodeId}": the Shadow Mesh does not stand where the Shape Mesh stands: its bounding sphere has radius ${places(shadow.radius)} and its centre is ${places(apart)} from the shape's, whose radius is ${places(shape.radius)}. Both are drawn at the same instances, so the shadow is cast from there.`,
+    nodeId,
+    suggestion: "Give the Shadow Mesh's Mesh File In the Frame of the Shape Mesh's (Object, for an instance shape), and author the two in one frame at one size.",
+  };
+}
+const SHADOW_MESH_FIT = 0.25;
 
 /**
  * T1581b — what a MESH-INSTANCE draw binds and reads: the shape's vertex attributes and the
@@ -2548,9 +2641,16 @@ export const renderNode: NodeDefinition = {
         /* T1581b: MESH instances sweep through the mesh generator — the indexed mesh's own
            depth contract, each instance placed by its record exactly as the lit draw places it. */
         if (payload.instanceMesh !== undefined) {
-          const storage = meshInstanceStorage(payload.instanceMesh, false);
+          /* T1689b: a sweep that asks what stands between a source of light and a surface
+             (a light's map, the Light Depth output, a projector's occlusion) draws the
+             geometry's SHADOW MESH where it has one: the same records, so the same instances
+             at the same places, and its own triangles and arguments. A sweep from the camera
+             (the Depth output, the occlusion prepass) states what the camera sees: the shape. */
+          const proxy = options.fromCamera === true ? undefined : payload.instanceMesh.shadow;
+          const swept = proxy === undefined ? payload.instanceMesh : { ...payload.instanceMesh, pairs: proxy.pairs, triangles: proxy.triangles, indexBuffer: proxy.indexBuffer };
+          const storage = meshInstanceStorage(swept, false);
           if (storage === undefined) return; // the lit loop refuses this by name
-          const vertexCount = payload.instanceMesh.triangles * 3;
+          const vertexCount = swept.triangles * 3;
           passes.push({
             kind: "draw",
             id: `${nodeId}:${options.prefix}:${geometryIndex}`,
@@ -2558,7 +2658,7 @@ export const renderNode: NodeDefinition = {
             shader: depthShader(shadowMeshWgsl({ ...depthOptions, instanced: storage.option })),
             target: options.target,
             topology: "triangle-list",
-            instances: meshInstanceCount(payload),
+            instances: proxy?.drawArgs === undefined ? meshInstanceCount(payload) : { indirect: proxy.drawArgs },
             vertexCount,
             buffers: storage.buffers,
             uniforms: {
@@ -2741,6 +2841,18 @@ export const renderNode: NodeDefinition = {
      */
     const reachOf = (light: LightPayload["light"], face: number) => (payload: GeometryPayload): boolean =>
       payload.bounds === undefined || pointShadowFaceReaches(light.position, Math.max(0.1, light.shadowExtent), face, payload.bounds);
+    /*
+     * T1688b — A LIGHT WHOSE SHADOW IS OUT THIS FRAME REACHES NOTHING. Shadow On is a value,
+     * and this is the mechanism a value already had (T1598b): every draw of the light's
+     * sweeps stays in the plan and carries `skip`, and each sweep's far plate still clears.
+     * So the map holds "nothing here" and not what it held when the shadow went out; the lit
+     * text and its bindings are the ones it has with the shadow on (§V1029: one text at 0 and
+     * at 1); and the frame it comes back, the sweeps draw the casters where they are.
+     * `face` absent: a directional light's one sweep, which has no reach of its own.
+     */
+    const NOTHING_IN_REACH = (): boolean => false;
+    const sweepReachOf = (light: LightPayload["light"], face?: number): { readonly reaches?: (payload: GeometryPayload) => boolean } =>
+      light.shadowOn === false ? { reaches: NOTHING_IN_REACH } : face === undefined ? {} : { reaches: reachOf(light, face) };
 
     /* T481: the shadow phase — every map is rendered BEFORE the lit draws that read it.
        Zero casting lights emits nothing here and nothing below changes: §V309 holds as
@@ -2764,7 +2876,7 @@ export const renderNode: NodeDefinition = {
               target: shadowTargetOf(slot),
               layer: shadowLayerOf(slot),
               casters: castersBySlot[slot] ?? [],
-              reaches: reachOf(light, face),
+              ...sweepReachOf(light, face),
               matrix,
               linearDepth: false,
               extraUniforms: {},
@@ -2782,6 +2894,7 @@ export const renderNode: NodeDefinition = {
           target: shadowTargetOf(slot),
           layer: shadowLayerOf(slot),
           casters: castersBySlot[slot] ?? [],
+          ...sweepReachOf(light),
           matrix: shadowMatrices[slot],
           linearDepth: false,
           extraUniforms: {},
@@ -2842,7 +2955,7 @@ export const renderNode: NodeDefinition = {
             prefix: `lightDepth:face${face}`,
             target: lightDepthTarget,
             casters: castersBySlot[0] ?? [],
-            reaches: reachOf(first.light, face),
+            ...sweepReachOf(first.light, face),
             matrix,
             linearDepth: false,
             extraUniforms: {},
@@ -2854,7 +2967,7 @@ export const renderNode: NodeDefinition = {
           });
         });
       } else {
-        emitDepthSweep({ prefix: "lightDepth", target: lightDepthTarget, casters: castersBySlot[0] ?? [], matrix: shadowMatrices[0], linearDepth: false, extraUniforms: {} });
+        emitDepthSweep({ prefix: "lightDepth", target: lightDepthTarget, casters: castersBySlot[0] ?? [], ...sweepReachOf(first.light), matrix: shadowMatrices[0], linearDepth: false, extraUniforms: {} });
       }
     }
 

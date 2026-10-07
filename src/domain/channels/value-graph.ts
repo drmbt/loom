@@ -8,7 +8,8 @@ import type { ChannelResolver } from "../parameters/resolve.ts";
 import { resolveParameterSchema, effectiveParameterSchema } from "../parameters/resolve.ts";
 import { bypassPassthroughPorts } from "../graph/bypass.ts";
 import { nodeNames } from "../graph/names.ts";
-import { bindingTargets, parameterDependencies } from "../graph/parameter-dependencies.ts";
+import { bindingTargets, channelTargetName, keyReads, type KeyRead } from "../graph/parameter-dependencies.ts";
+import { channelDependenciesOf } from "../graph/reference-cycles.ts";
 import { parameterReadOptions, type FlatteningReads } from "../parameters/node-references.ts";
 
 /**
@@ -203,44 +204,79 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
       const structure = flattening.structure ?? graph;
       let dependencies = dependenciesByGraph.get(structure);
       if (dependencies === undefined) {
-        const authored = parameterDependencies(graph);
-        /*
+/*
+         * §B293 — WHICH BAGS A MEMBER'S OWN BAG WAITS FOR, walked over (node, key).
+         *
+         * A member's bag is made from all of its parameters, so the walk starts at every
+         * one of them and follows what each READS: another parameter (of any node, its own
+         * included), which is walked in turn; or a channel, which is a bag to wait for when
+         * a member publishes it, and the parameters it is composed from when a definition
+         * declares them (a camera's pose). It used to walk node to node, so a value node
+         * whose parameter read another parameter of ITS OWN node waited for itself: a
+         * "cycle", and it emitted nothing. A member that reads its own CHANNEL does wait
+         * for itself, and that is still the cycle it is.
+         *
          * T1485b: `op('<instance>')` names no node of the flattening (the instance was
-         * inlined), so `parameterDependencies` finds nothing for it. The read goes to the
-         * inner nodes the instance's value outputs publish from, and it has to be ordered
-         * after them like any other reference — or a reader whose id sorts first reads a
-         * bag that is not published yet. The instances are the flattening's own, so they
-         * are as fixed as the graph this memo is keyed on.
+         * inlined). The read goes to the inner nodes the instance's value outputs publish
+         * from, and it is ordered after them like any other, or a reader whose id sorts
+         * first reads a bag that is not published yet. The instances are the flattening's
+         * own, so they are as fixed as the graph this memo is keyed on.
          */
-        const named = flattening.instanceChannels.size === 0 ? null : nodeNames(graph);
-        const readsOf = (owner: NodeId): NodeId[] => {
-          const reads = (authored.get(owner) ?? [])
-            .filter((reference) => reference.kind === "reference" || reference.kind === "driven")
-            .map((reference) => reference.to);
-          if (named === null) return reads;
-          for (const target of bindingTargets(graph.nodes[owner]?.parameters ?? {})) {
-            if (target.kind !== "reference") continue;
-            for (const source of flattening.instanceChannels.get(target.address) ?? []) {
-              const publisher = named.get(source.publisher);
-              if (publisher !== undefined) reads.push(publisher);
-            }
-          }
+        const named = nodeNames(graph);
+        const readsByNode = new Map<NodeId, readonly KeyRead[]>();
+        const readsOf = (owner: NodeId): readonly KeyRead[] => {
+          const known = readsByNode.get(owner);
+          if (known !== undefined) return known;
+          const reads = keyReads(graph.nodes[owner]?.parameters ?? {});
+          readsByNode.set(owner, reads);
           return reads;
         };
         const compiled = new Map<NodeId, Set<NodeId>>();
         for (const target of members.keys()) {
           const sources = new Set<NodeId>();
-          const visited = new Set<NodeId>();
-          const pending = [target];
+          const visited = new Set<string>();
+          /** A parameter to walk; `null` is every parameter the node has. */
+          const pending: Array<readonly [NodeId, string | null]> = [[target, null]];
+          const bagOf = (publisher: NodeId): void => {
+            if (members.has(publisher)) sources.add(publisher);
+          };
           while (pending.length > 0) {
-            const owner = pending.pop()!;
-            if (visited.has(owner)) continue;
-            visited.add(owner);
+            const [owner, key] = pending.pop()!;
+            const id = `${owner}\u0000${key ?? ""}`;
+            if (visited.has(id) || visited.has(`${owner}\u0000`)) continue;
+            visited.add(id);
+            const ownerNode = graph.nodes[owner];
+            if (ownerNode === undefined) continue;
+            // A legacy `driven` slot names a channel outright.
+            for (const driven of bindingTargets(ownerNode.parameters)) {
+              if (driven.kind !== "driven") continue;
+              if (key !== null && driven.parameterKey.split(".")[0] !== key) continue;
+              const publisher = named.get(channelTargetName(driven.address));
+              if (publisher !== undefined) bagOf(publisher);
+            }
             for (const read of readsOf(owner)) {
-              if (members.has(read)) sources.add(read);
-              // A nonvalue parameter owner may itself read a value channel. Walk that
-              // chain once when the graph changes, without evaluating any node's state.
-              else pending.push(read);
+              if (key !== null && read.from !== key) continue;
+              const instance = read.node === null ? undefined : flattening.instanceChannels.get(read.node);
+              if (instance !== undefined) {
+                for (const source of instance) {
+                  const publisher = named.get(source.publisher);
+                  if (publisher !== undefined) bagOf(publisher);
+                }
+                continue;
+              }
+              const to = read.node === null ? owner : named.get(read.node);
+              const toNode = to === undefined ? undefined : graph.nodes[to];
+              if (to === undefined || toNode === undefined) continue;
+              if (read.kind === "parameter") {
+                pending.push([to, read.key]);
+                continue;
+              }
+              if (members.has(to)) {
+                sources.add(to);
+                continue;
+              }
+              const composed = channelDependenciesOf(registry.get(toNode.type));
+              if (composed !== null && composed !== "all") for (const parameter of composed) pending.push([to, parameter]);
             }
           }
           if (sources.size > 0) compiled.set(target, sources);

@@ -176,7 +176,14 @@ export function ContextMenuHost({
   className,
   children,
 }: ContextMenuHostProps) {
-  const run = useRunCommand();
+  /*
+   * §T1696b (§B286): a row RUNS on the bus this host read its target from. The graph, the
+   * selection and "is this command there" all came from `bus`, and the dispatch went to the
+   * keymap's, which was another one whenever the two differed: a row built from a
+   * component's node ran on the project, and a row built from a project Panel would run on
+   * a component. One bus per host, for all three.
+   */
+  const run = useRunCommand(bus);
   const hostRef = useRef<HTMLDivElement | null>(null);
   /**
    * Whether the menu is closing because an item was CHOSEN, as opposed to dismissed.
