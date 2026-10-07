@@ -619,6 +619,11 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     // The line each robot's searchlight shines along (searchlight.ts): the rig's points out along its nose, from its
     // face on. Of the rig, with the pieces: the same kernel and the same knobs the hull is placed by.
     node("kernel_searchline", "pointKernel", [-3900, 10600], { capacity: SEARCH.points * robots.length, attributes: JOINT_ATTRIBUTES, kernel: jointKernel(facts, robots, { axis: [face, face + SEARCH.length], count: SEARCH.points }), ...rig }, { label: "kernel_searchline" }),
+    // WHAT CASTS A RING'S SHADOW (§T1689b, a Geometry's Shadow Mesh): the kit's low ring, a quarter of the
+    // triangles in the same joint frame. A ring is drawn at every station of every tentacle, and six of the nine
+    // passes it was drawn in were the body light's sweeps (the lead's measurement, §T1666b). The camera sees the
+    // ring itself; a shadow shows an outline and not a bevel.
+    node("mesh_ringshadow", "meshFileIn", [-3000, 150], { file: facts.glbUrl, select: facts.ringLow.select, vertices: facts.ringLow.vertices, triangles: facts.ringLow.triangles, parts: facts.ringLow.parts }, { label: "mesh_ringshadow" }),
     ...pieces.flatMap((piece, index) => [
       node(`mesh_${piece.role}`, "meshFileIn", [-2700, index * 150], { file: facts.glbUrl, select: piece.shape.select, vertices: piece.shape.vertices, triangles: piece.shape.triangles, parts: piece.shape.parts }, { label: `mesh_${piece.role}` }),
       // A piece drawn on the strands' wrists has no points of its own.
@@ -1421,6 +1426,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("glimpse-named", ["constant_glimpse", "out"], ["expression_glimpsed", "in"]),
     ...pieces.flatMap((piece) => [
       edge(`${piece.role}-shape`, [`mesh_${piece.role}`, "out"], [`geometry_${piece.role}`, "mesh"]),
+      ...(piece.role === "ring" ? [edge("ring-shadow", ["mesh_ringshadow", "out"], ["geometry_ring", "shadowMesh"])] : []),
       edge(`${piece.role}-points`, [pointsOf(piece), "out"], [`geometry_${piece.role}`, "points"]),
     ]),
     ...(ropes

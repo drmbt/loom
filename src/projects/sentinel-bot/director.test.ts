@@ -76,6 +76,12 @@ describe("the sentinel's file", () => {
     const compiled = compileGraph({ graph: built.graph, settings: built.settings, registry: createNodeRegistry(allNodeDefinitions).view(), capabilities: TIER_B_CAPABILITIES });
     expect(compiled.diagnostics.filter((entry) => entry.severity === "error").map((entry) => entry.message)).toEqual([]);
     expect(compiled.diagnostics.filter((entry) => diagnosticClass(entry.code) === "never").map((entry) => `${entry.code}: ${entry.message}`)).toEqual([]);
+    // THE RINGS' SHADOW IS CAST BY THE KIT'S LOW RING (§T1689b): a Mesh File In of it is on the ring Geometry's Shadow
+    // Mesh, and the engine has nothing to say of it (no triangles, or a proxy that does not fit the shape it stands for).
+    const wires = Object.values(built.graph.edges).map((wire) => `${wire.source.nodeId}.${wire.source.portId} > ${wire.target.nodeId}.${wire.target.portId}`);
+    expect(wires).toContain("mesh_ringshadow.out > geometry_ring.shadowMesh");
+    expect(wires).toContain("mesh_ring.out > geometry_ring.mesh");
+    expect(compiled.diagnostics.filter((entry) => entry.code.startsWith("node.scene.shadowMesh")).map((entry) => entry.message)).toEqual([]);
     // It compiled the whole piece, not a stub of it.
     expect(compiled.passes.length).toBeGreaterThan(20);
   });

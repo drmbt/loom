@@ -2408,6 +2408,17 @@
           "portId": "points"
         }
       },
+      "ring-shadow": {
+        "id": "ring-shadow",
+        "source": {
+          "nodeId": "mesh_ringshadow",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "geometry_ring",
+          "portId": "shadowMesh"
+        }
+      },
       "ring-shape": {
         "id": "ring-shape",
         "source": {
@@ -8625,6 +8636,23 @@
         },
         "position": {
           "x": -3780,
+          "y": 225
+        },
+        "type": "meshFileIn"
+      },
+      "mesh_ringshadow": {
+        "definitionVersion": 1,
+        "id": "mesh_ringshadow",
+        "label": "mesh_ringshadow",
+        "parameters": {
+          "file": "media/sentinel-bot/sentinel.glb",
+          "parts": "1:mand_0_0 2:mand_0_1 3:mand_0_2 4:mand_0_3 5:mand_0_4 6:mand_0_5 7:mand_1_0 8:mand_1_1 9:mand_1_2 10:mand_1_3 11:mand_1_4 12:mand_1_5 13:mand_2_0 14:mand_2_1 15:mand_2_2 16:mand_2_3 17:mand_2_4 18:mand_2_5 19:mand_3_0 20:mand_3_1 21:mand_3_2 22:mand_3_3 23:mand_3_4 24:mand_3_5",
+          "select": "ring_low",
+          "triangles": 178,
+          "vertices": 480
+        },
+        "position": {
+          "x": -4200,
           "y": 225
         },
         "type": "meshFileIn"
