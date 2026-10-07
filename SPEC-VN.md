@@ -112,6 +112,77 @@ VN54|.|**RFE: user-defined commands.** 07 §5. Declarative sequences of register
 VN55|.|**RFE: DMX / Art-Net adapter for the mapper.** 05.|VN49
 VN56|.|**RFE: sandboxed script widgets.** 03 §3, README risks. Needs the owner's trust ruling.|VN41
 
+## Timeline and automation roadmap (asked 2026-10-06)
+
+A bottom-tray timeline: bezier automation lanes for any value, a reference audio or video file with a
+waveform, playback locked to the playhead, and the playhead driven by Loom's own transport or chased
+from LTC. Build order: take the first `.` row whose `needs` are all `x`. VN8 / upstream T1456b
+("a keyframe/curve channel node", open, no design) is the upstream row this answers; a PR cites it.
+
+**Sources and what we may copy.**
+- **IntentDev/Keyframer has NO licence** (no LICENSE, GitHub reports none), so its code is all rights
+  reserved. Take its ideas, gestures and TD's documented keyframe semantics; write the TypeScript
+  clean-room, or ask IntentDev for a licence first. Loom (upstream) has no licence either.
+- **ltc-lab** (`../ltc-lab`, Vincent's) has no licence file. It is ours to port from once Vincent
+  says so; record the source file in each ported module's header.
+- What each brings. **Keyframer:** TD's segment set (`constant linear ease easein easeout easep(2)
+  easeinp(2) easeoutp(2) cubic bezier`), weighted handles as slope + accel with the accel clamp
+  (`relX = accel/√(slope²+1)`, x-extent ≤ dx), and the gestures (Alt-click insert, Alt-Ctrl-click
+  insert on every lane, Shift/Shift-Ctrl axis lock, D/F scale, T for unified/broken handles,
+  arrow nudges ×2/×4/×8, H to frame all, copy and paste relative to the earliest key). It never
+  evaluates curves itself (TD's Keyframe CHOP does), so the x(u) → u solver is ours.
+  **ltc-lab:** the LTC encoder and decoder AudioWorklets (`src/lib/ltc/*`, tested, framework-free;
+  NON-DROP ONLY, no reverse, no freewheel), a monotone bezier evaluator (`lib/automation.ts`), the
+  waveform (STFT min/max + four band energies at 50 bins/s, band-coloured canvas 2D, a separate
+  playhead overlay canvas, an overview strip: `server/waveform.mjs`, `lib/waveform-client.ts`, the
+  draw helpers in `WaveformEditor.tsx`), recording automation from live input (`lib/record.ts`,
+  thinning + merge), MTC out (`lib/mtc.ts`), beat-grid snapping, loop regions, markers with cue
+  stacks, and generated envelopes (onsets with ADSR, RMS follower).
+
+**What Loom has today** (survey 2026-10-06). No keyframe node, no timeline pane (only the one-row
+header scrubber; the owner ruled the header does not grow), no LTC, no waveform, no parameter drag.
+Usable seams: a value node's `valueEvaluate` publishes channels and `op('<node>').chan.<lane>`
+reads them with no per-type code; MIDI learn (`midi-controls.ts:58`) is the precedent for writing
+an expression slot through a patch; `audioFileIn` / `movieFileIn` already lock to the timeline
+(`play mode = timeline`, `mediaPlayhead`, `media-playback.ts`); `decodeAtFixedRate` gives 48 kHz mono
+PCM; a bottom-tray tab is `layout-storage.ts` + `pane-tree.ts` + `app-shell.tsx` + `app.tsx`
+(template: T1388b's `6502db5b`); inspector rows carry `data-parameter-key` / `data-node-id`.
+**Two hard limits:** `SEEK_FRAME_LIMIT = 10_000` (a seek replays from frame 0; three minutes at
+60 fps is 10 800 frames, upstream T1687b), and chasing LTC with `transport.seek` would replay from
+zero on every frame, so a chase has to be its own transport source.
+
+**Parameter drag-to-reference is NOT on any roadmap.** VN14 is the reverse direction (a Panel control
+onto a parameter); upstream T986 drags a NODE into an expression field; T1388b phase 2 lists
+"drag a widget onto a parameter row". Dragging a parameter's NAME somewhere to reference it is VN63.
+
+**Lane plan.** VN61–VN64 can run beside the VN33 → VN35 → VN36 stack. Their surface: new
+`src/domain/automation/**`, new `src/nodes/definitions/automation.ts`, new
+`src/editor/timeline/**`, plus the hotspots `node-kinds.ts`, `src/nodes/definitions/index.ts`,
+`src/domain/render/{reproducibility,side-effects}.ts`, `layout-storage.ts`, `pane-tree.ts`,
+`app-shell.tsx`, `app.tsx`. None of those is in VN36's grant. The design choices that keep it
+clear: lanes are a value node's channels (not a project setting or a new parameter type, which
+would need `src/domain/types/**`); a parameter follows a lane through an ordinary expression (not
+T1508b-style overrides, which need `compile.ts` / `flatten.ts`); no new diagnostic codes; the
+drag is read from the existing inspector data attributes with a capture listener, so
+`inspector.tsx` is untouched. VN65 (LTC) touches the transport (`live-clock.ts`,
+`use-frame-loop.ts`), which no lane holds, but it is the riskiest row and goes after VN62.
+
+id|status|piece|needs
+VN61|.|**Automation node and curve maths (headless).** A value node `automation` (kind `automation`, so `automation_show`) whose lanes are stored as one JSON string parameter (the `cueList.cues` precedent) and each published as a channel named for the lane. Per lane: name, keys, pre/post extend (hold, cycle, mirror, slope). Per key: time, value, segment function, in/out slope + accel, unified/broken. Segment functions: TD's set above. Evaluation in `src/domain/automation/` from `frame.timeSeconds` only (§V44): closed-form eases, weighted bezier solved for x(u) = t by Newton with a bisection fallback (x is monotone because handle x is clamped to the segment). **Decision for Vincent:** store key time in SECONDS and display frames/timecode (survives an fps change; Keyframer and TD store frames). Gate: a parameter driven by `op('automation_x').chan.<lane>` renders differently at two playhead positions, and the same with the expression removed renders identically (cut-the-wire). Clean-room, no Keyframer code. Small–medium.|none
+VN62|.|**Timeline pane in the bottom tray.** A `timeline` tab: lane list on the left (+ adds a lane to the selected or a new `automation` node; rename, colour, show/hide, reorder, delete), the curve editor on the right with a ruler in frames / seconds / timecode, the playhead (click and drag seeks through `transport.seek`), zoom at the cursor, pan, follow-playhead paging (ltc-lab's 20/80 %), frame snapping. Keyframer's gestures as listed above. Every edit is a `setParameters` on the node's lanes parameter through the bus, so undo, audit and the agent tools come free. Canvas 2D, hit-testing in TS; colours from tokens (V17). Medium.|VN61
+VN63|.|**Drag a parameter's name to reference it.** TD's gesture, general rather than timeline-only. Modifier-drag a parameter's label (plain pointer-down on a label is already the value-ladder scrub, `label-drag.ts`) carries `application/x-loom-parameter` {nodeId, key}. Dropped on the timeline's lane list: creates a lane seeded with the parameter's current value and writes `op('automation_x').chan.<lane>` into that parameter's expression slot (the MIDI-learn patch shape). The drop target is generic, so VN14 (the reverse direction), T986 and T1388b's "drag a widget onto a parameter row" reuse it. Detected through `data-parameter-key` / `data-node-id` with a capture listener; no `inspector.tsx` edit while VN36 holds it. Which modifier: Vincent's call (TD uses a plain drag of the name; Loom's label drag is taken). Small–medium.|VN62
+VN64|.|**Reference media on the timeline.** The timeline takes one audio or video file as its reference track: it creates (or adopts) an `audioFileIn` / `movieFileIn` in `play mode = timeline`, so playback already locks to the playhead through `mediaPlayhead`. The pane draws its waveform under the lanes (ltc-lab's peaks: min/max plus band colour, computed once in a worker from `decodeAtFixedRate`, cached per file; overview strip; playhead on its own overlay canvas). **Set the project range from the media**: one action writes `project.setSettings` with frameRange = round(duration × fps) (no demuxer, so video frame count is duration × fps). Refuses past `SEEK_FRAME_LIMIT` with the number it needed, until T1687b lifts the limit. Medium.|VN62
+VN65|.|**LTC chase.** The playhead follows incoming LTC instead of Loom's clock. Port ltc-lab's decoder worklet (`src/lib/ltc/decoder.ts`, `worklet.ts`, `embed.ts`) onto the audio-input seam (docs/io-integration-plan.md:154 already plans "a decoder over the audio-input seam plus a transport source"). A new `TransportSource` next to `liveClock()`: lock, then follow; freewheel for N frames through a dropout (ltc-lab has none, its SPRINTBOARD 6.31); offset in frames; lock / freewheel / lost shown by the header readout. ADD what ltc-lab lacks: 29.97 drop-frame (decode the DF bit, DF timecode maths), and reverse play. Must not seek every frame (a seek replays from 0); the chase source sets frame time directly, and a jump larger than the replay budget is a relocate with a warning. Reference media follows the chased playhead (ltc-lab disables its local playback while chasing; we don't). Medium–large; touches the transport, so its own lane after VN62.|VN62
+VN66|.|**Record automation from live values.** Punch-in: arm a lane, play, and the bound parameter's live value (a slider, MIDI, OSC) is written as keys, thinned (ltc-lab `lib/record.ts`: thinning + merge into existing keys). Small–medium.|VN63
+VN67|.|**Markers, loop region and timeline cues on the lanes.** Draw upstream's timeline cues (T1508b, a `cueList` with `follow: "timeline"`) as markers on the ruler and edit their times by drag; a loop region on the ruler (I/O/L keys, ltc-lab) that writes the transport loop. No second cue system: markers ARE the cue list. Small–medium.|VN62
+VN68|.|**Beat grid and snapping.** A BPM + offset grid on the ruler and snap to Bar / beat / 1/8 / 1/16 (ltc-lab `beat-snap.ts`). Reads upstream's tempo when T1228 lands; until then a per-timeline BPM. Small.|VN62
+VN69|.|**Lanes generated from the reference audio.** From VN64's analysis: an onset lane with attack/decay/sustain/release, and an RMS-follower lane (ltc-lab `onset-envelope.ts`, `rms.ts`), baked to keys so they edit like any lane. Small–medium.|VN64
+VN70|.|**LTC and MTC out.** Generate LTC on an audio output from Loom's transport (ltc-lab encoder worklet, with VN65's drop-frame) and MTC quarter-frame + full-frame over Web MIDI (`lib/mtc.ts`), so Loom can be the master. Small–medium.|VN65
+
+Not carried over from ltc-lab, as its own show-player concerns: stems (demucs), lyrics (whisper), multi-track show
+lists with per-track start TC, Resolume column/BPM cue actions, the performance view and the `/monitor` page.
+Revisit if Loom becomes the show player.
+
 ## Needs a reproduction
 
 id|status|report|notes
@@ -123,5 +194,5 @@ VNB5|?|**React logs "Maximum update depth exceeded" in the dev build (Chrome, `p
 ## Tracked upstream
 
 id|status|topic|upstream
-VN8|→|Bezier keyframe automation locked to the timeline (reference: TD's Keyframer component)|T1456b, open
+VN8|→|Bezier keyframe automation locked to the timeline (reference: TD's Keyframer component). **Specified as VN61–VN70** (Timeline and automation roadmap); a PR there cites T1456b.|T1456b, open
 VN9|→|Colour themes / skins|V17: dark-only in v1, by ruling; every colour is already a CSS token
