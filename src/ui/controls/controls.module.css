@@ -106,8 +106,19 @@
   and the pointer capture never sees the moves.
 */
 .labelDraggable {
-  cursor: ew-resize;
   touch-action: none;
+}
+/* VN63: a name that carries a reference is grabbed; once a hold arms the ladder (T1026) it scrubs. */
+.labelText[draggable="true"] {
+  cursor: grab;
+}
+.labelText[data-ladder-armed] {
+  cursor: ew-resize;
+}
+/* VN63: a row a dragged parameter can be dropped on, while the drag is over it. */
+.row[data-drop-target] {
+  outline: 1px dashed var(--signal);
+  outline-offset: -1px;
 }
 
 .descriptionLegacy {

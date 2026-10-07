@@ -516,6 +516,8 @@ function ParameterControlImpl({
         stacked={options?.stacked ?? false}
         labelHint={options?.labelHint ?? null}
         {...(options?.labelDrag === undefined ? {} : { labelDrag: options.labelDrag })}
+        // VN63: the key a reference drag carries and a drop on this row writes.
+        parameterKey={parameterKey}
         controlId={controlId}
         descriptionId={descriptionId}
         expanded={expanded}

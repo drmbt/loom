@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedComponent } from "@domain/parameters/resolve.ts";
 import type {
   ParameterValue,
@@ -8,6 +8,7 @@ import type {
   VectorParameter,
 } from "@domain/types/parameters.ts";
 import { installDomStubs } from "../testing/install-dom-stubs.ts";
+import { LADDER_HOLD_MS } from "./control-row.tsx";
 import { ParameterControl } from "./parameter-control.tsx";
 import type { EditPhase } from "./types.ts";
 
@@ -115,9 +116,25 @@ function renderVector(options: { driven?: string | null } = {}): Harness {
 const field = (name: string): HTMLInputElement =>
   screen.getByRole("spinbutton", { name }) as HTMLInputElement;
 
-/** One press, one move, one release — the whole gesture, in pixels of horizontal travel. */
+/**
+ * VN63: the name's ladder runs after a HOLD (TouchDesigner's split: a drag of the name
+ * that moves at once carries a reference). Every name gesture here holds first; a field
+ * ignores the timer, so the same helper still drags a field exactly as before.
+ */
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+const hold = (): void => {
+  vi.advanceTimersByTime(LADDER_HOLD_MS);
+};
+
+/** One press, a hold, one move, one release — the whole gesture, in pixels of horizontal travel. */
 function dragBy(target: HTMLElement, deltaX: number, from = 40): void {
   fireEvent.pointerDown(target, { pointerId: 7, clientX: from, button: 0 });
+  hold();
   fireEvent.pointerMove(target, { pointerId: 7, clientX: from + deltaX });
   fireEvent.pointerUp(target, { pointerId: 7, clientX: from + deltaX });
 }
@@ -197,6 +214,7 @@ describe("T1026 — dragging the name moves every channel together", () => {
   it("is absolute: dragging out and back returns to the value it started from", () => {
     const { changes, name } = renderVector();
     fireEvent.pointerDown(name, { pointerId: 7, clientX: 40, button: 0 });
+    hold();
     fireEvent.pointerMove(name, { pointerId: 7, clientX: 120 });
     fireEvent.pointerMove(name, { pointerId: 7, clientX: 40 });
     fireEvent.pointerUp(name, { pointerId: 7, clientX: 40 });
@@ -221,6 +239,30 @@ describe("T1026 — dragging the name moves every channel together", () => {
     dragBy(name, 20);
     fireEvent.click(name);
     expect(name.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("VN63 — a press that moves BEFORE the hold is not the ladder: nothing is written", () => {
+    const { changes, name } = renderVector();
+    fireEvent.pointerDown(name, { pointerId: 7, clientX: 40, button: 0 });
+    fireEvent.pointerMove(name, { pointerId: 7, clientX: 60 });
+    // The hold elapsing after the press already moved must not arm it late.
+    hold();
+    fireEvent.pointerMove(name, { pointerId: 7, clientX: 80 });
+    fireEvent.pointerUp(name, { pointerId: 7, clientX: 80 });
+    expect(changes).toEqual([]);
+    expect(name.hasAttribute("data-ladder-armed")).toBe(false);
+  });
+
+  it("VN63 — the hold arms the ladder visibly, and a wobble under the tolerance still counts", () => {
+    const { changes, name } = renderVector();
+    fireEvent.pointerDown(name, { pointerId: 7, clientX: 40, clientY: 10, button: 0 });
+    fireEvent.pointerMove(name, { pointerId: 7, clientX: 42, clientY: 11 });
+    hold();
+    expect(name.hasAttribute("data-ladder-armed")).toBe(true);
+    fireEvent.pointerMove(name, { pointerId: 7, clientX: 50, clientY: 11 });
+    fireEvent.pointerUp(name, { pointerId: 7, clientX: 50, clientY: 11 });
+    expect(changes.at(-1)).toEqual([[12, 13], "commit"]);
+    expect(name.hasAttribute("data-ladder-armed")).toBe(false);
   });
 });
 

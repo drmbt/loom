@@ -1,8 +1,9 @@
-import { useRef } from "react";
-import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import type { DragEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { cx } from "../cx.ts";
 import { DRAG_THRESHOLD_PX, dragModifierFrom } from "./drag-math.ts";
 import type { LabelDragHandlers } from "./label-drag.ts";
+import { ParameterDragContext, carriesParameter, nodeIdOf, readParameterDrag, writeParameterDrag } from "./parameter-drag-context.ts";
 import { ParameterSources } from "./parameter-sources.tsx";
 import type { ParameterSourceView } from "./parameter-sources.tsx";
 import styles from "./controls.module.css";
@@ -86,6 +87,11 @@ export interface ControlRowProps {
    * click exactly as it is in `NumberField`. Absent = the label is what it always was.
    */
   labelDrag?: LabelDragHandlers | undefined;
+  /**
+   * VN63 — the parameter this row edits. With a `ParameterDragContext` provider above, it
+   * makes the name a reference-drag source and the row a drop target for one.
+   */
+  parameterKey?: string | undefined;
   expanded?: boolean;
   /** Rendered full width beneath the row when `expanded` — the mode panel. */
   expansion?: ReactNode;
@@ -114,14 +120,36 @@ function LabelBox({
   return <div className={className}>{children}</div>;
 }
 
+/**
+ * VN63 — how long a still press on the NAME waits before it becomes the value ladder, and
+ * how far it may wobble meanwhile. TouchDesigner's split (Vincent, 2026-10-07): a name that
+ * is dragged AT ONCE carries a reference (`parameter-drag-context.ts`); a name pressed and
+ * HELD, then dragged, is the ladder. 300 ms is long enough that a deliberate grab-and-go
+ * never arms it and short enough that holding to scrub does not feel like waiting; 3 px
+ * lets a shaky hand still count as holding.
+ */
+export const LADDER_HOLD_MS = 300;
+export const HOLD_TOLERANCE_PX = 3;
+
 interface LabelDragState {
   pointerId: number;
   startX: number;
+  startY: number;
+  /** The hold elapsed: from here the press is the ladder (T1026) and owns the pointer. */
+  armed: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
   moved: boolean;
   lastDelta: number;
 }
 
 /**
+ * VN63 reverses T1026's timing, citing TouchDesigner's docs (the ladder is a hold there, and
+ * a drag of the name is the reference): the ladder now runs only after `LADDER_HOLD_MS` of a
+ * still press. Until it arms, the pointer is NOT captured, so a press that moves at once is
+ * free to become the browser's own drag and carry a reference; once armed, the label shows
+ * it (`data-ladder-armed`, a resize cursor) and takes the pointer, and the rest is T1026's
+ * gesture unchanged.
+ *
  * The pointer/keyboard plumbing for a label drag (T1026). Deliberately shaped like
  * `NumberField`'s: absolute travel from the press (accumulating per-move deltas would make
  * the result depend on event granularity, so dragging out and back would not return to the
@@ -137,6 +165,11 @@ function useLabelDragGesture(labelDrag: LabelDragHandlers | undefined) {
   const suppressClickRef = useRef(false);
   /** True while an arrow key is held, so key-up knows there is an undo group to close. */
   const nudgingRef = useRef(false);
+  // A hold still pending when the row goes away must not arm a ladder on a detached label.
+  useEffect(() => () => {
+    const timer = dragRef.current?.timer;
+    if (timer !== undefined && timer !== null) clearTimeout(timer);
+  }, []);
 
   const consumeClick = (): boolean => {
     if (!suppressClickRef.current) return false;
@@ -144,13 +177,18 @@ function useLabelDragGesture(labelDrag: LabelDragHandlers | undefined) {
     return true;
   };
 
-  if (labelDrag === undefined) return { props: {}, consumeClick };
+  /** True while a hold has armed the ladder: a native drag that starts now is refused. */
+  const isArmed = (): boolean => dragRef.current?.armed === true;
+
+  if (labelDrag === undefined) return { props: {}, consumeClick, isArmed };
 
   const end = (event: ReactPointerEvent<HTMLElement>): void => {
     const drag = dragRef.current;
     if (drag === null || drag.pointerId !== event.pointerId) return;
     dragRef.current = null;
+    if (drag.timer !== null) clearTimeout(drag.timer);
     const target = event.currentTarget;
+    target.removeAttribute("data-ladder-armed");
     if (
       typeof target.hasPointerCapture === "function" &&
       target.hasPointerCapture(event.pointerId) &&
@@ -169,15 +207,29 @@ function useLabelDragGesture(labelDrag: LabelDragHandlers | undefined) {
       event.stopPropagation();
       if (event.button !== 0) return;
       const target = event.currentTarget;
-      if (typeof target.setPointerCapture === "function") {
-        target.setPointerCapture(event.pointerId);
-      }
-      dragRef.current = { pointerId: event.pointerId, startX: event.clientX, moved: false, lastDelta: 0 };
+      const pointerId = event.pointerId;
+      const drag: LabelDragState = { pointerId, startX: event.clientX, startY: event.clientY, armed: false, timer: null, moved: false, lastDelta: 0 };
+      drag.timer = setTimeout(() => {
+        if (dragRef.current !== drag) return;
+        drag.timer = null;
+        drag.armed = true;
+        target.setAttribute("data-ladder-armed", "");
+        if (typeof target.setPointerCapture === "function") target.setPointerCapture(pointerId);
+      }, LADDER_HOLD_MS);
+      dragRef.current = drag;
     },
     onPointerMove: (event: ReactPointerEvent<HTMLElement>): void => {
       const drag = dragRef.current;
       if (drag === null || drag.pointerId !== event.pointerId) return;
       event.stopPropagation();
+      if (!drag.armed) {
+        // Moving before the hold: not the ladder. The browser's drag (a reference) may take it.
+        if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > HOLD_TOLERANCE_PX) {
+          if (drag.timer !== null) clearTimeout(drag.timer);
+          dragRef.current = null;
+        }
+        return;
+      }
       const deltaX = event.clientX - drag.startX;
       if (!drag.moved) {
         if (Math.abs(deltaX) < DRAG_THRESHOLD_PX) return;
@@ -207,7 +259,55 @@ function useLabelDragGesture(labelDrag: LabelDragHandlers | undefined) {
     },
   };
 
-  return { props, consumeClick };
+  return { props, consumeClick, isArmed };
+}
+
+/**
+ * VN63 — the NAME as the source of a reference drag, and the ROW as a drop target for one.
+ * Both need the parameter's key (stamped on the row) and its node (the closest
+ * `[data-node-id]`, which the inspector already sets), plus the service a provider gives;
+ * without all three the name is not draggable and the row ignores drags.
+ */
+function useParameterDrag(parameterKey: string | undefined, isArmed: () => boolean) {
+  const service = useContext(ParameterDragContext);
+  const [dropping, setDropping] = useState(false);
+  if (service === null || parameterKey === undefined) return { source: {}, target: {}, dropping: false };
+  const source = {
+    draggable: true,
+    onDragStart: (event: DragEvent<HTMLElement>): void => {
+      event.stopPropagation();
+      const nodeId = nodeIdOf(event.currentTarget);
+      const text = nodeId === null ? null : service.referenceText({ nodeId, key: parameterKey });
+      // A hold that armed the ladder owns the press: no reference drag starts under it.
+      if (isArmed() || nodeId === null || text === null) {
+        event.preventDefault();
+        return;
+      }
+      writeParameterDrag(event.dataTransfer, { nodeId, key: parameterKey }, text);
+    },
+  };
+  const target = {
+    "data-parameter-key": parameterKey,
+    onDragOver: (event: DragEvent<HTMLElement>): void => {
+      if (!carriesParameter(event.dataTransfer)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "link";
+      if (!dropping) setDropping(true);
+    },
+    onDragLeave: (): void => setDropping(false),
+    onDrop: (event: DragEvent<HTMLElement>): void => {
+      setDropping(false);
+      const dragged = readParameterDrag(event.dataTransfer);
+      const nodeId = nodeIdOf(event.currentTarget);
+      if (dragged === null || nodeId === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      // A parameter dropped on itself would read itself: ignored, not refused.
+      if (dragged.nodeId === nodeId && dragged.key === parameterKey) return;
+      service.dropOnParameter({ nodeId, key: parameterKey }, dragged);
+    },
+  };
+  return { source, target, dropping };
 }
 
 export function ControlRow({
@@ -226,11 +326,13 @@ export function ControlRow({
   onToggleModes,
   labelHint = null,
   labelDrag,
+  parameterKey,
   expanded = false,
   expansion,
   children,
 }: ControlRowProps) {
-  const { props: dragProps, consumeClick } = useLabelDragGesture(labelDrag);
+  const { props: dragProps, consumeClick, isArmed } = useLabelDragGesture(labelDrag);
+  const reference = useParameterDrag(parameterKey, isArmed);
   const compact = variant === "node";
   // Node-embedded controls stay bare: the inspector is where the full set lives.
   const hasDescription = !compact && description !== undefined && description !== "";
@@ -254,6 +356,8 @@ export function ControlRow({
         inactive !== null && styles.rowInactive,
       )}
       data-inactive={inactive === null ? undefined : true}
+      data-drop-target={reference.dropping ? "" : undefined}
+      {...reference.target}
     >
       {/*
         A row that can disclose modes is NOT a `<label>`: the name is a button, and a
@@ -285,6 +389,7 @@ export function ControlRow({
             )}
             {...describedProps}
             {...dragProps}
+            {...reference.source}
           >
             {label}
           </span>
@@ -302,6 +407,7 @@ export function ControlRow({
             {...describedProps}
             onPointerDown={(event) => event.stopPropagation()}
             {...dragProps}
+            {...reference.source}
             onClick={() => {
               // A drag that moved is not a click, so it must not also toggle the panel.
               if (consumeClick()) return;
