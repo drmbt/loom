@@ -261,6 +261,8 @@ export const NODE_KINDS: Readonly<Record<string, string>> = {
   panel: "panel",
   presets: "presets",
   cueList: "cuelist",
+  // VN61: keyframed lanes, each a channel (`automation_score`).
+  automation: "automation",
 
   // scene
   camera: "camera",
