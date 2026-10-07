@@ -58,6 +58,37 @@ VNB14|?|**The desktop smoke fails at its offline-export step, before and after V
 VNB15|.|**Component names are cropped to about three letters.** Reported 2026-10-06. Not located yet: find where a component instance's name is drawn on the canvas and why its width collapses. Distinct from VNB9 (Panel captions hiding values).|canvas, components
 VNB16|.|**Zoomed out, node previews lose their place.** Reported 2026-10-06: at low canvas zoom, node viewer previews stop following their nodes and drift from the nodes' positions. Not located yet; the preview tiles' zoom handling is around `src/editor/graph-canvas/graph-canvas.tsx:963` (T490's preview ladder).|canvas, previews, T490
 
+## COMP-model roadmap (VN20, laubsauger/loom#3)
+
+The proposal broken into pull-request-sized rows, in build order: take the first row that is `.` and whose `needs` are all `x`. The documents live on the unmerged branch `pr/drmbt-comp-model-2026-10-06` (worktree `../loom-comp-model`); read one with `git show pr/drmbt-comp-model-2026-10-06:docs/comp-model-2026-10-06/<file>`. "01 §4" means document 01, section 4. "Upstream" is the maintainer's sort in SPEC.md T1701b (2026-10-06): the owner said *"PR #3 will be handled by an external collaborator"*, i.e. each row arrives as our pull request, reviewed like #1 and #2. Each row's PR is cut from `upstream/main` (CLAUDE.local.md, Git).
+
+id|status|piece|needs
+VN33|~|**Stage 0: a Mesh File In inside a component loads (mesh write-back through instance overrides).** 01 §4 stage 0. The loader writes measured facts as the owning instance's `componentOverrides` instead of giving up with `mesh.component` (`src/app/use-mesh-sources.ts`); follow `setNodeChannelMask`'s `internalNodeId` pattern (`src/domain/commands/apply-patch.ts`). Check nested instances and `src/app/dock-panes.tsx:166`. Repro on Dawn, instanced twice. Upstream: low regret. **IN PROGRESS** on `pr/drmbt-mesh-writeback-2026-10-06` (worktree `../loom-mesh-writeback`).|none
+VN34|.|**Table node and one table editor (a DAT analog).** 06. TSV/CSV/JSON/XML, file sync, Lister-style pane and bottom-bar tabs, ported from drmbt/TD-table-editor onto the bus. Upstream: low regret.|none
+VN32|.|**Versioned save (TD convention)** is already a row above; it is also 09. Upstream: low regret.|none
+VN35|.|**Stage 1: path-aware names.** 01 §4 stage 1. `op('a/b')`, relative paths, path-valued scene/projector/camera references, lexical lookup with a global fallback plus a deprecation note. Gate: three Projector instances bind three projectors. Upstream: low regret (also serves upstream T1673b). Unblocks most of what follows.|none
+VN36|.|**`parent()` in expressions.** 01 §2.3, 02. `parent().par.key`, `parent(n)`; `parent.<key>` parses forever. Deletes v8's knob holders. Upstream: low regret.|none (shortcuts form needs VN43)
+VN37|.|**Command bible.** 07 §4. Generated reference of every registered command, gated against the registry. Upstream: low regret.|VN34 to display it (optional)
+VN38|.|**Two-way bind (TD's meaning).** 02 §2, upstream T1702b (the owner confirmed bind was meant to be two-way). One value, a bind master, many binders; today's one-way bind migrates to an expression. Upstream: large.|VN35
+VN39|.|**TD terminology in display text and docs.** 02 §1 (COMP, custom parameter, Constant, Reference, Container COMP, clone/clone-immune). Needs the owner's agreement on names.|VN38 for `bind`
+VN40|.|**Stage 2: folder storage.** 01 §4 stage 2. A component is a folder of real document nodes with paths; collapse-to-folder by default. Upstream: large (frozen domain types, ids, undo, presets, the phone, the flatten's cost). Read with upstream §B286/T1696b.|VN35
+VN41|.|**Base and Container COMPs; a COMP owns its panel.** 03 §2–3. Replaces the Panel node (keep loading old ones, with a convert action). Covers VN10. Upstream: large.|VN40, VN38
+VN42|.|**Container layout and per-parameter presentation.** 03 §3 (align modes, child sizing; fader/knob/radio/momentary/picker, group-editable, scoped stylesheet). Covers VN19.|VN41
+VN43|.|**Common page: parent and global shortcuts, tags.** 03 §4 (`parent.Rig`, `op.Desk`).|VN35
+VN44|.|**Publish panels by path to a desk and the phone remote.** 03 §3. Ends the root-only Panel and phone door (`panelBoard`, `vetPhoneSet`, `phone-writes.ts`).|VN41, VN35
+VN45|.|**Panel values and viewer active (interactive viewports).** 03 §3. Drag the stage camera instead of Shot/Orbit/Zoom sliders.|VN41, VN38
+VN46|.|**Node dashboards (Resolume model).** 04 §1. Unassigned normalized controls on every node; parameters reference them over their own ranges. Covers VN14's intent. Upstream: large.|VN35, VN38
+VN47|.|**Presets capture dashboards; banks local to a COMP.** 04 §2. Simplifies upstream T1505b once COMPs are folders. Covers VN15, VN16.|VN46, VN40
+VN48|.|**Persistent preset library across projects.** 04 §3. The local tier of 08's palette.|VN40
+VN49|.|**Mappers: MIDI, OSC, keys.** 05. A table and learn mode per protocol (Mod+Shift+M/O/K, Mod+Alt+M/O/K), feedback out, missing-target resolve, additive import. Builds on upstream T1388b phase 2.|VN34, VN35, VN38, VN46
+VN50|.|**Stage 3: opt-in link to a master; clone-immune children.** 01 §4 stage 3. Replaces §V79; retires `detached`. Upstream: large.|VN40
+VN51|.|**Published components and palette tiers.** 08 §3–4 (built-in / community / local; publish as a PR to a curated repo). Upstream: the owner's call alone.|VN41, VN50, VN48
+VN52|.|**Family colour, MAT and DAT families.** 08 §2. The colour reverses T712's "very subtle": the owner's call alone. MAT can go any time; DAT needs VN34.|none (DAT: VN34)
+VN53|.|**RFE: command actions on triggers.** 07 §3. {command, input} data from mapper rows, panel buttons, cues; trigger-safe allowlist.|VN37
+VN54|.|**RFE: user-defined commands.** 07 §5. Declarative sequences of registered commands with typed slots; no loops, no eval.|VN53, VN48
+VN55|.|**RFE: DMX / Art-Net adapter for the mapper.** 05.|VN49
+VN56|.|**RFE: sandboxed script widgets.** 03 §3, README risks. Needs the owner's trust ruling.|VN41
+
 ## Needs a reproduction
 
 id|status|report|notes
