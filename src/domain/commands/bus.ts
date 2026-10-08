@@ -18,6 +18,10 @@ import { authoredGraph, type FlatGraph, type GraphDocument, type ProjectSettings
 import type { ChannelResolver } from "../parameters/resolve.ts";
 import { NO_FLATTENING, type FlatteningReads, type ParameterReadContext } from "../parameters/node-references.ts";
 import type { Revision } from "../types/ids.ts";
+import { isComponentInstance } from "../components/instance.ts";
+import { isNodePath } from "../components/addressing.ts";
+import { keyReads } from "../graph/parameter-dependencies.ts";
+import { channelDependenciesOf, referenceCyclesThrough } from "../graph/reference-cycles.ts";
 import type { IdFactory } from "../graph/ids.ts";
 import type { GraphStore, GraphStoreView, HistoryOutcome } from "../graph/store.ts";
 import { createCapabilityGrantStore, type CapabilityGrantStore } from "./grants.ts";
@@ -145,6 +149,9 @@ export interface SessionScope {
   readonly instancePath: () => InstancePath | undefined;
 }
 
+export interface ReferenceCycleHost { readonly componentId: string; readonly version: number }
+export type ReferenceCycleValidator = (graph: GraphDocument, nodeId: string, host?: ReferenceCycleHost) => RuntimeDiagnostic[];
+
 /** `CommandContext.session`: what a handler on a session bus can ask of where it runs. */
 export interface CommandSession {
   readonly instancePath: () => InstancePath | undefined;
@@ -184,6 +191,8 @@ export interface CommandContext {
    * does not want.
    */
   readonly holds: (capability: CapabilityClass) => boolean;
+  /** Scoped validation shared by every command that applies a graph patch. */
+  readonly referenceCycles: (graph: GraphDocument, nodeId: string) => RuntimeDiagnostic[];
   /**
    * THE channel resolver the running app is resolving `driven` parameters through, or
    * `undefined` when no app is attached (T593, B121, B8, §V61, §V109).
@@ -542,6 +551,9 @@ export interface LoomBus extends AppCommandBus {
   attachFlattenedGraph: (read: () => (FlatteningReads & { readonly graph: FlatGraph }) | undefined) => void;
   /** The flattened document, or undefined when nothing has attached one. */
   readonly flattenedGraph: () => FlatGraph | undefined;
+  /** The composition root supplies the same component projection used by the compiler. */
+  attachReferenceCycleValidator: (validate: ReferenceCycleValidator) => void;
+  readonly referenceCycles: ReferenceCycleValidator;
   /** Read-only document access for the UI. Mutation stays behind `execute` (§V29). */
   readonly store: GraphStoreView;
   readonly registry: NodeRegistryView;
@@ -559,6 +571,7 @@ export interface CommandBusOptions {
   parent?: LoomBus | undefined;
   /** §T1695b: what the session edits and through which instance. Only read with a `parent`. */
   scope?: SessionScope | undefined;
+  referenceHost?: ReferenceCycleHost;
 }
 
 /** The code of the refusal a session issues for an `instance` command with no instance in view. */
@@ -681,6 +694,7 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
   }
   /** T593: null until a composition root attaches one. Null means "no app", not "empty". */
   let readChannels: (() => ChannelResolver | undefined) | null = null;
+  let validateReferenceCycles: ReferenceCycleValidator | undefined;
   /** T615: likewise — null is "no app", and a handler falls back to the document. */
   let readFlattened: (() => (FlatteningReads & { readonly graph: FlatGraph }) | undefined) | null = null;
   /** T1497b: likewise — null is "no app", and a morph commits as a cut. */
@@ -713,6 +727,17 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
       readFlattened = read;
     },
     flattenedGraph: () => readFlattened?.()?.graph ?? undefined,
+    attachReferenceCycleValidator(validate): void { validateReferenceCycles = validate; },
+    referenceCycles(graph, nodeId, host): RuntimeDiagnostic[] {
+      if (validateReferenceCycles !== undefined) return validateReferenceCycles(graph, nodeId, host);
+      if (parent !== undefined) return parent.referenceCycles(graph, nodeId, host);
+      if (Object.values(graph.nodes).some(isComponentInstance) && Object.values(graph.nodes).some(node => keyReads(node.parameters).some(read => read.node !== null && isNodePath(read.node)))) {
+        return [{ severity: "error", code: "parameter.referenceProjection.missing", nodeId,
+          message: "Path reference cycle validation requires the component-aware graph projection.",
+          suggestion: "Attach the composition root's reference cycle validator before editing component paths." }];
+      }
+      return referenceCyclesThrough(graph, nodeId, node => channelDependenciesOf(registry.get(node.type)));
+    },
 
     attachFrame(read: () => FrameEvaluationInput | undefined): void {
       readFrame = read;
@@ -907,6 +932,7 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
         // T1497b: likewise read AT INVOCATION — the frame on screen when the command ran.
         frameClock: readFrameClock?.() ?? undefined,
         readScope: () => readScopeOver(graph),
+        referenceCycles: (draft, nodeId) => bus.referenceCycles(draft, nodeId, options.referenceHost),
         holds: (capability: CapabilityClass): boolean => grants.has(context.actor, capability),
         applySettings: (request: ApplySettingsRequest): AppliedInfo =>
           store.internals.applySettings({

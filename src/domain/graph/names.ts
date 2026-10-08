@@ -10,6 +10,7 @@ import { CUE_LIST_NODE_TYPE, parseCueList, serializeCueList } from "../presets/c
 import type { StoredParameter } from "../types/parameters.ts";
 import { parsePanelBoard, serializePanelBoard } from "../../nodes/definitions/controls.ts";
 import { kindOfType, roleFromText, withKind } from "./node-kinds.ts";
+import { renamedPathHead } from "../components/addressing.ts";
 
 /**
  * Node names as identifiers (T221/T222, §V127-§V129).
@@ -84,9 +85,17 @@ export function resolveRename(graph: GraphDocument, requested: string, excludeNo
   }
 }
 
-/** Matches `op('name')` / `op("name")`, the coming reference syntax, name captured. */
-const referencePattern = (name: string): RegExp =>
-  new RegExp(String.raw`op\(\s*(['"])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\1\s*\)`, "g");
+/** Matches every `op('…')` / `op("…")`, quote and name captured. */
+const OP_REFERENCE = /op\(\s*(['"])([^'"]*)\1\s*\)/g;
+
+/**
+ * What a rename makes of one written reference: `name` itself, or (VN35) a path whose first
+ * name is `name` when `paths` is on. Undefined when the reference is not to the node.
+ */
+function renamedReference(written: string, name: string, rename: string, paths: boolean): string | undefined {
+  if (written === name) return rename;
+  return paths ? renamedPathHead(written, name, rename) : undefined;
+}
 
 /**
  * §V128: rewrites every stored reference to `oldName` into one to `newName`, across the
@@ -98,15 +107,27 @@ export function rewriteNodeNameReferences(
   graph: GraphDocument,
   oldName: string,
   newName: string,
+  options: RewriteOptions = {},
 ): number {
   if (oldName === newName) return 0;
+  const paths = options.paths ?? true;
   let rewritten = 0;
   for (const nodeId of Object.keys(graph.nodes).sort()) {
     const node = graph.nodes[nodeId];
     if (node === undefined) continue;
-    for (const clause of REFERENCE_CLAUSES) rewritten += clause(node, oldName, newName);
+    for (const clause of REFERENCE_CLAUSES) rewritten += clause(node, oldName, newName, paths);
   }
   return rewritten;
+}
+
+export interface RewriteOptions {
+  /**
+   * VN35: also move a PATH whose first name is the renamed node (`old/inner` → `new/inner`).
+   * On for every rename an author makes. B41's uniquing in the flattener turns it off: it
+   * renames a COPY's labels so bare names stay inside their instance, while a path is read
+   * in the names the author wrote, which that renumbering does not change.
+   */
+  readonly paths?: boolean;
 }
 
 /**
@@ -124,7 +145,7 @@ export function countNodeNameReferences(graph: GraphDocument, name: string): num
   for (const nodeId of Object.keys(graph.nodes).sort()) {
     const node = graph.nodes[nodeId];
     if (node === undefined) continue;
-    for (const clause of REFERENCE_CLAUSES) count += clause(node, name, null);
+    for (const clause of REFERENCE_CLAUSES) count += clause(node, name, null, true);
   }
   return count;
 }
@@ -137,21 +158,25 @@ export function countNodeNameReferences(graph: GraphDocument, name: string): num
  * answering both questions — `rename === null` counts, a string rewrites — so the two
  * surfaces cannot drift apart again: they are the same walk.
  */
-type ReferenceClause = (node: GraphNode, name: string, rename: string | null) => number;
+type ReferenceClause = (node: GraphNode, name: string, rename: string | null, paths: boolean) => number;
 
-/** Kind 1: `op('name')` inside expression payloads (the original clause). */
-const expressionClause: ReferenceClause = (node, name, rename) => {
-  const pattern = referencePattern(name);
+/** Kind 1: `op('name')` inside expression payloads (the original clause), and `op('name/inner')` (VN35). */
+const expressionClause: ReferenceClause = (node, name, rename, paths) => {
   let touched = 0;
   for (const key of Object.keys(node.parameters).sort()) {
     const stored = node.parameters[key];
     if (stored === undefined || !isParameterSlot(stored)) continue;
     const binding = stored.bindings.expression;
     if (binding?.kind !== "expression") continue;
-    pattern.lastIndex = 0;
-    if (!pattern.test(binding.source)) continue;
+    let hit = false;
+    const source = binding.source.replace(OP_REFERENCE, (match, quote: string, written: string) => {
+      const moved = renamedReference(written, name, rename ?? name, paths);
+      if (moved === undefined) return match;
+      hit = true;
+      return `op(${quote}${moved}${quote})`;
+    });
+    if (!hit) continue;
     if (rename !== null) {
-      const source = binding.source.replace(referencePattern(name), (_match, quote: string) => `op(${quote}${rename}${quote})`);
       node.parameters[key] = {
         ...stored,
         bindings: { ...stored.bindings, expression: { kind: "expression", source } },
@@ -191,22 +216,25 @@ const drivenChannelClause: ReferenceClause = (node, name, rename) => {
  * move, separators and order preserved — because list order is draw/light order and a
  * rename must not reshuffle the scene.
  */
-const sourceReferenceClause: ReferenceClause = (node, name, rename) => {
+const sourceReferenceClause: ReferenceClause = (node, name, rename, paths) => {
   let touched = 0;
   for (const spec of sourceReferencesOf(node.type)) {
     const stored = node.parameters[spec.parameter];
     if (typeof stored !== "string") continue;
     if (spec.list === true) {
-      if (!sourceReferenceTokens(spec, node.parameters).includes(name)) continue;
+      const tokens = sourceReferenceTokens(spec, node.parameters);
+      if (!tokens.some((token) => renamedReference(token, name, name, paths) !== undefined)) continue;
       if (rename !== null) {
         node.parameters[spec.parameter] = stored
           .split(/([\s,]+)/)
-          .map((piece) => (piece === name ? rename : piece))
+          .map((piece) => renamedReference(piece, name, rename, paths) ?? piece)
           .join("");
       }
       touched += 1;
-    } else if (stored.trim() === name) {
-      if (rename !== null) node.parameters[spec.parameter] = rename;
+    } else {
+      const moved = renamedReference(stored.trim(), name, rename ?? name, paths);
+      if (moved === undefined) continue;
+      if (rename !== null) node.parameters[spec.parameter] = moved;
       touched += 1;
     }
   }
@@ -239,7 +267,7 @@ function renamedKey<T>(record: Readonly<Record<string, T>>, name: string, rename
  * a node name, so the key never moves — but their slots are stored references like any
  * other, and an expression in one names root nodes. Kinds 1 and 2 run over them.
  */
-const presetBankClause: ReferenceClause = (node, name, rename) => {
+const presetBankClause: ReferenceClause = (node, name, rename, paths) => {
   const instance = isComponentNodeType(node.type);
   // `parent` on an instance's records is the reserved word, never a root node's name.
   if ((!isPresetsNode(node) && !instance) || (instance && name === PAGE_TARGET)) return 0;
@@ -251,7 +279,7 @@ const presetBankClause: ReferenceClause = (node, name, rename) => {
     const walked: Record<string, Record<string, StoredParameter>> = {};
     for (const [nodeName, record] of Object.entries(values)) {
       const standIn: GraphNode = { id: node.id, type: "", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { ...record } };
-      hits += expressionClause(standIn, name, rename) + drivenChannelClause(standIn, name, rename);
+      hits += expressionClause(standIn, name, rename, paths) + drivenChannelClause(standIn, name, rename, paths);
       walked[nodeName] = standIn.parameters;
     }
     if (name in walked) hits += 1;

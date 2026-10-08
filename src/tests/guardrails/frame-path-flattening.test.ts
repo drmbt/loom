@@ -83,8 +83,8 @@ const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
   },
   {
     file: "app/app-runtime.ts",
-    reads: 2,
-    why: "`projectDocument()` and the derived external asset records used by snapshots/save/project queries. Neither runs per frame. A file holds the authored document, instances and all; saving a flattening would destroy every component in the project (§V79).",
+    reads: 3,
+    why: "`projectDocument()`, derived external asset records for snapshots/save/project queries, and the root document supplied to command-time reference-cycle validation of a definition edit. None runs per frame. A file holds the authored document, instances and all; saving a flattening would destroy every component in the project (§V79).",
   },
   {
     file: "app/use-graph-compile.ts",

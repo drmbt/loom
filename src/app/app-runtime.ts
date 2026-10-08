@@ -12,6 +12,7 @@ import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import { createNodeRegistry } from "@nodes/registry/registry.ts";
 import { createComponentSystem, registerComponentCommands } from "@domain/components/index.ts";
 import { createFlattenedGraphSource } from "./flattened-graph.ts";
+import { createReferenceCycleValidator } from "./reference-cycle-validation.ts";
 import type { FlattenedGraphSource } from "./flattened-graph.ts";
 import { installStarterComponents } from "@editor/component/index.ts";
 import type { StarterSetInstall } from "@editor/component/index.ts";
@@ -339,6 +340,7 @@ export function createAppRuntime(options: AppRuntimeOptions = {}): AppRuntime {
   // T615: the ONE flattening. Built beside the bus so a frame path has somewhere to read
   // the flattened document FROM, and the raw one has no reason to be read at all.
   const flattened = createFlattenedGraphSource({ store: bus.store, registry, components });
+  bus.attachReferenceCycleValidator(createReferenceCycleValidator({ registry, components: () => components.view(), root: bus.store.getGraph }));
   const openedAssets = project.assets;
   // A file binding already mutates through the parameter command. Its external asset
   // record is a pure projection, shared by snapshots, manual save and project queries.
