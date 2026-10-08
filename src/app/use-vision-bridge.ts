@@ -35,7 +35,7 @@ import { createNativeFfglSources, type FfglTarget } from "./native-ffgl-sources.
 declare module "@domain/types/commands.ts" {
   interface CommandMap {
     /** VN85: raise an FFGL event parameter (Recall, Keyframe, PaletteFlip …) on these nodes for their next frame. */
-    "runtime.ffglEvent": { input: { nodeIds: readonly string[]; event: string }; output: { raised: number } };
+    "runtime.ffglEvent": { input: { nodeIds: readonly string[]; event: number }; output: { raised: number } };
   }
 }
 
@@ -248,7 +248,8 @@ export function useVisionBridge(options: {
     bus.registerCommand({
       name: FFGL_EVENT_COMMAND,
       inSession: "instance",
-      inputSchema: z.object({ nodeIds: nodeIdsInput, event: z.string().min(1) }).strict(),
+      // The event is the plugin's parameter INDEX: an instance command's strings may only be node addresses (§T1695b).
+      inputSchema: z.object({ nodeIds: nodeIdsInput, event: z.number().int().nonnegative() }).strict(),
       description: "Raise an FFGL plugin's event parameter (an FFGL node's pulse) on the named nodes for their next frame.",
       handler: (input, context) => ({
         status: context.dryRun ? "validated" : "applied",
