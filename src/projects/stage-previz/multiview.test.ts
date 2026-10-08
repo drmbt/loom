@@ -12,7 +12,8 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
  * VN80 — stage-previz-11's quad multiview, read where its consumers read it. Each HazeView
  * instance's haze passes (its three beams and its composite) carry the eye, aim and field of
  * view their own picture is drawn through; the quad pass takes the four pictures in the order
- * its shader lays them out; the Layout fader picks the single view or the quad.
+ * its shader lays them out; and `layer_quad`, a Layer over the single view, costs nothing while
+ * it is off: bypassed, its picture's chain is pruned and none of the four views cooks.
  */
 const VIEWS = {
   view_tight: { eye: [0, 2.2, 17], aim: [0, 4.7, -1.5], fov: 24 },
@@ -26,9 +27,12 @@ const loaded = loadProject(readFileSync("projects/stage-previz/stage-previz-11.l
 if (!loaded.ok) throw new Error(`stage-previz-11 did not load: ${loaded.reason}`);
 const { document } = loaded;
 
-function compiled(values: Readonly<Record<string, number>> = {}) {
+/** The document compiled with the quad's Layer on (the Panel switch) unless `quad` says off. */
+function compiled(values: Readonly<Record<string, number>> = {}, quad = true) {
   const channels: ChannelResolver = (name, context) => (context.definition.type === "number" ? values[name.split(":")[1] ?? name] : undefined);
-  const plan = compileGraph({ graph: document.graph, settings: document.settings, registry: system.nodes, capabilities: TIER_B_CAPABILITIES, components: system.components.view(), resolution: { channels } });
+  const layer = document.graph.nodes["layerQuad"]!;
+  const graph = { ...document.graph, nodes: { ...document.graph.nodes, layerQuad: { ...layer, ui: { ...layer.ui, bypassed: !quad } } } };
+  const plan = compileGraph({ graph, settings: document.settings, registry: system.nodes, capabilities: TIER_B_CAPABILITIES, components: system.components.view(), resolution: { channels } });
   if (!plan.ok) throw new Error("stage-previz-11 did not compile");
   return plan;
 }
@@ -56,13 +60,25 @@ describe("stage-previz-11: the quad multiview", () => {
     for (const view of Object.keys(VIEWS)) expect(uniformsOf(moved, `${view}/atmosphere`)!["eye"]).toEqual(uniformsOf(front, `${view}/atmosphere`)!["eye"]);
   });
 
-  it("the quad takes tight, wide, angled, profile in its shader's order, and Layout picks single or quad", () => {
+  it("the quad takes tight, wide, angled, profile in its shader's order, as the picture of a Layer over the single view", () => {
     const into = (nodeId: string, portId: string) =>
       Object.values(document.graph.edges).filter((wire) => wire.target.nodeId === nodeId && wire.target.portId === portId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((wire) => wire.source.nodeId);
     expect(into("quad", "input")).toEqual(["view_tight"]);
     expect(into("quad", "more")).toEqual(["view_wide", "view_angled", "view_profile"]);
-    expect(into("pick", "inputs")).toEqual(["hazeRender", "quad"]);
-    expect(into("out", "input")).toEqual(["pick"]);
-    expect(uniformsOf(compiled({ layout: 0 }), "pick")).not.toEqual(uniformsOf(compiled({ layout: 1 }), "pick"));
+    expect(into("layerQuad", "below")).toEqual(["hazeRender"]);
+    expect(into("layerQuad", "picture")).toEqual(["quad"]);
+    expect(into("out", "input")).toEqual(["layerQuad"]);
+  });
+
+  it("opens with the quad off, and off it cooks none of the four views: the plan is the single view's alone", () => {
+    expect(document.graph.nodes["layerQuad"]!.ui?.bypassed).toBe(true);
+    const cooking = (plan: ReturnType<typeof compiled>) =>
+      new Set(plan.passes.map((pass) => ("nodeId" in pass ? String(pass.nodeId) : "")).filter((id) => id.startsWith("view_") || id === "quad").map((id) => id.split("/")[0]));
+    expect([...cooking(compiled({}, false))]).toEqual([]);
+    expect([...cooking(compiled({}, true))].sort()).toEqual(["quad", "view_angled", "view_profile", "view_tight", "view_wide"]);
+    // and what it does cook is the single view's chain: every haze pass the single view has
+    const single = compiled({}, false).passes.filter((pass) => "nodeId" in pass && String(pass.nodeId).startsWith("hazeRender/")).length;
+    expect(single).toBeGreaterThan(0);
+    expect(compiled({}, true).passes.filter((pass) => "nodeId" in pass && String(pass.nodeId).startsWith("hazeRender/")).length).toBe(single);
   });
 });

@@ -12307,16 +12307,15 @@
           "portId": "controls"
         }
       },
-      "e-hazeRender-pick": {
-        "id": "e-hazeRender-pick",
-        "order": 0,
+      "e-hazeRender-layerQuad": {
+        "id": "e-hazeRender-layerQuad",
         "source": {
           "nodeId": "hazeRender",
           "portId": "picture"
         },
         "target": {
-          "nodeId": "pick",
-          "portId": "inputs"
+          "nodeId": "layerQuad",
+          "portId": "below"
         }
       },
       "e-kabuki-desk": {
@@ -12331,16 +12330,15 @@
           "portId": "controls"
         }
       },
-      "e-layout-desk": {
-        "id": "e-layout-desk",
-        "order": 117,
+      "e-layerQuad-out": {
+        "id": "e-layerQuad-out",
         "source": {
-          "nodeId": "layout",
+          "nodeId": "layerQuad",
           "portId": "out"
         },
         "target": {
-          "nodeId": "desk",
-          "portId": "controls"
+          "nodeId": "out",
+          "portId": "input"
         }
       },
       "e-leds-desk": {
@@ -12466,27 +12464,15 @@
           "portId": "controls"
         }
       },
-      "e-pick-out": {
-        "id": "e-pick-out",
-        "source": {
-          "nodeId": "pick",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "out",
-          "portId": "input"
-        }
-      },
-      "e-quad-pick": {
-        "id": "e-quad-pick",
-        "order": 1,
+      "e-quad-layerQuad": {
+        "id": "e-quad-layerQuad",
         "source": {
           "nodeId": "quad",
           "portId": "out"
         },
         "target": {
-          "nodeId": "pick",
-          "portId": "inputs"
+          "nodeId": "layerQuad",
+          "portId": "picture"
         }
       },
       "e-scrim-desk": {
@@ -12848,7 +12834,7 @@
         "id": "desk",
         "label": "panel_desk",
         "parameters": {
-          "board": "{\n  \"columns\": 6,\n  \"items\": [\n    {\"label\":\"Feeds and view\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_source\",\"rect\":{\"x\":0,\"y\":1,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":3,\"y\":1,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_orbit\",\"rect\":{\"x\":0,\"y\":2,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_zoom\",\"rect\":{\"x\":3,\"y\":2,\"w\":3,\"h\":1}},\n    {\"label\":\"Stage\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_kabuki\",\"rect\":{\"x\":0,\"y\":5,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_leds\",\"rect\":{\"x\":2,\"y\":5,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_strobes\",\"rect\":{\"x\":4,\"y\":5,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_deckTone\",\"rect\":{\"x\":0,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_scrim\",\"rect\":{\"x\":2,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_work\",\"rect\":{\"x\":4,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"toggle_talent\",\"rect\":{\"x\":0,\"y\":7,\"w\":2,\"h\":1}},\n    {\"label\":\"Atmosphere\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":9,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_fog\",\"rect\":{\"x\":2,\"y\":9,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_beams\",\"rect\":{\"x\":4,\"y\":9,\"w\":2,\"h\":1}},\n    {\"label\":\"Presets\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"member\":\"presets1\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"label\":\"Projectors\",\"rect\":{\"x\":0,\"y\":12,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_dsThrow\",\"rect\":{\"x\":0,\"y\":14,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsOffset\",\"rect\":{\"x\":2,\"y\":14,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsTilt\",\"rect\":{\"x\":4,\"y\":14,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsKeyV\",\"rect\":{\"x\":0,\"y\":15,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_dsKeyH\",\"rect\":{\"x\":3,\"y\":15,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_sideTilt\",\"rect\":{\"x\":0,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideThrow\",\"rect\":{\"x\":2,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideRoll\",\"rect\":{\"x\":4,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideKeyV\",\"rect\":{\"x\":0,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_sideKeyH\",\"rect\":{\"x\":3,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_trussTrim\",\"rect\":{\"x\":0,\"y\":13,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_dsTrim\",\"rect\":{\"x\":3,\"y\":13,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_layout\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 6,\n  \"items\": [\n    {\"label\":\"Feeds and view\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_source\",\"rect\":{\"x\":0,\"y\":1,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":3,\"y\":1,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_orbit\",\"rect\":{\"x\":0,\"y\":2,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_zoom\",\"rect\":{\"x\":3,\"y\":2,\"w\":3,\"h\":1}},\n    {\"label\":\"Stage\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_kabuki\",\"rect\":{\"x\":0,\"y\":5,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_leds\",\"rect\":{\"x\":2,\"y\":5,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_strobes\",\"rect\":{\"x\":4,\"y\":5,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_deckTone\",\"rect\":{\"x\":0,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_scrim\",\"rect\":{\"x\":2,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_work\",\"rect\":{\"x\":4,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"toggle_talent\",\"rect\":{\"x\":0,\"y\":7,\"w\":2,\"h\":1}},\n    {\"label\":\"Atmosphere\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":9,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_fog\",\"rect\":{\"x\":2,\"y\":9,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_beams\",\"rect\":{\"x\":4,\"y\":9,\"w\":2,\"h\":1}},\n    {\"label\":\"Presets\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"member\":\"presets1\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"label\":\"Projectors\",\"rect\":{\"x\":0,\"y\":12,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_dsThrow\",\"rect\":{\"x\":0,\"y\":14,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsOffset\",\"rect\":{\"x\":2,\"y\":14,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsTilt\",\"rect\":{\"x\":4,\"y\":14,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsKeyV\",\"rect\":{\"x\":0,\"y\":15,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_dsKeyH\",\"rect\":{\"x\":3,\"y\":15,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_sideTilt\",\"rect\":{\"x\":0,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideThrow\",\"rect\":{\"x\":2,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideRoll\",\"rect\":{\"x\":4,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideKeyV\",\"rect\":{\"x\":0,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_sideKeyH\",\"rect\":{\"x\":3,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_trussTrim\",\"rect\":{\"x\":0,\"y\":13,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_dsTrim\",\"rect\":{\"x\":3,\"y\":13,\"w\":3,\"h\":1}},\n    {\"member\":\"layer_quad\",\"rect\":{\"x\":0,\"y\":3,\"w\":6,\"h\":1}}\n  ]\n}",
           "layout": "",
           "remote": false,
           "title": "Stage previz"
@@ -13081,24 +13067,23 @@
         },
         "type": "slider"
       },
-      "layout": {
-        "definitionVersion": 2,
-        "id": "layout",
-        "label": "slider_layout",
+      "layerQuad": {
+        "definitionVersion": 1,
+        "id": "layerQuad",
+        "label": "layer_quad",
         "parameters": {
-          "caption": "Layout: single · quad",
-          "channel": "layout",
-          "defaultValue": 1,
-          "max": 1,
-          "min": 0,
-          "step": 1,
-          "value": 1
+          "blend": "over",
+          "opacity": 1,
+          "picture": ""
         },
         "position": {
-          "x": -3800,
-          "y": -1420
+          "x": -2400,
+          "y": 900
         },
-        "type": "slider"
+        "type": "layer",
+        "ui": {
+          "bypassed": true
+        }
       },
       "leds": {
         "definitionVersion": 2,
@@ -13368,31 +13353,6 @@
           "y": 900
         },
         "type": "output"
-      },
-      "pick": {
-        "definitionVersion": 1,
-        "id": "pick",
-        "label": "switch_layout",
-        "parameters": {
-          "index": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('slider_layout').chan.layout"
-              },
-              "static": {
-                "kind": "static",
-                "value": 1
-              }
-            },
-            "mode": "expression"
-          }
-        },
-        "position": {
-          "x": -2400,
-          "y": 900
-        },
-        "type": "switch"
       },
       "projectorRig": {
         "definitionVersion": 1,
