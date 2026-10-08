@@ -260,6 +260,35 @@ Not carried over from ltc-lab, as show-player concerns: stems (demucs), lyrics (
 Resolume column/BPM cue actions, the performance view and the `/monitor` page. Revisit if Loom becomes the show
 player.
 
+## FFGL plugins inside Loom (filed 2026-10-08, parked: "let's not build this yet")
+
+Running Vincent's Resolume FFGL plugins (`~/Documents/GitHub/drmbt-custom-fx`) inside Loom. This is FFGL→Loom, the reverse of VN21 / `drmbt-custom-fx/docs/loom-ffgl-feasibility.md` (Loom→FFGL export, `experiments/loom-native`); cross-referenced, not merged. Source: session "Loom custom code node support", 2026-10-08.
+
+**Assets that exist (verified 2026-10-08).**
+- `drmbt-custom-fx/web/`: 41 pure-GL plugins, unmodified C++ + FFGL SDK, compiled by Emscripten to per-effect WASM (`web/public/plugins/` + `manifest.json`). A JS host speaks plugMain on WebGL2, with a GLSL 410 → 300 es rewrite (`FFGLWebCompat.h`). Params come from FFGL enumeration (sliders, dropdowns, toggles, events, HSBA quads), and it writes Arena preset XML. Vision/CoreML/ONNX effects are excluded.
+- Loom desktop's native addons (`src/devices/native/syphon-*.mm`, IOSurface textures between main process and page) are the template for a native host.
+- `customWgsl`'s param reflection (`src/nodes/definitions/custom-wgsl.ts`, `params-reflection.ts`) is the precedent for a plugin-reflected schema. `requires: ["desktop","macos"]` (`syphon-in.ts`) gates desktop-only nodes.
+
+**Before any of it starts (rule 2 verdict: don't start yet), three things are needed.**
+1. A design note: the per-frame WebGPU↔WebGL2 interop cost (two copies and a sync, measured at 1080p), and how a WebGL-based node is tested, since vgpu/node has no WebGL2 context (probably a Playwright gpu spec).
+2. An owner ruling on where plugin binaries/WASM live. drmbt-custom-fx is private, so a public upstream PR can't ship them; fetching from the drmbt-custom-fx build is likely.
+3. A decision whether upstream wants FFGL nodes at all, or this stays on `drmbt`.
+
+**Surface.**
+- New `src/nodes/definitions/ffgl*.ts` + shaders, `src/devices/native/ffgl-host.mm` + build script, `src/desktop/` wiring, a plugin-manifest loader, `docs/ffgl-host-design-<date>.md`.
+- Cross-repo: `drmbt-custom-fx/web/wasm/bridge.cpp` may need a texture-in/out entry point.
+- Hotspots: `node-kinds.ts` (kind `ffgl`), `src/nodes/registry/**`, `package.json` (native build), possibly `vite.config.ts` (`.wasm` assets), and the command coverage table if it adds a load command.
+- Contract change (dynamic schemas from a binary): `test:gates`, a harder upstream review, and a §T proposal in the PR.
+- No FFGL/WebGL rows upstream. Overlaps no live lane today, except a shared native build script.
+
+Order once greenlit: VN84, then VN86 using VN84 as its parity oracle, then VN85.
+
+id|status|piece|needs
+VN84|.|**Browser FFGL node (WASM + WebGL2).** A node type (`ffglEffect`, kind `ffgl`) that loads a plugin module from the drmbt-custom-fx manifest, reflects its FFGL parameters into the parameter schema (same names, order, 0..1 ranges, HSBA colour quads, event buttons, so presets and MIDI maps carry over), and runs it in an OffscreenCanvas WebGL2 context. Frames go in WebGPU→WebGL2 and back through `copyExternalImageToTexture`: two GPU copies and a sync point per frame. Time and BPM come from `FrameEvaluationInput` (§V44), never the plugin's clock. Size M, 1 PR. Parked.|the three decisions above
+VN85|.|**Native FFGL host (Electron, macOS first).** An addon in `src/devices/native/` that dlopens `.bundle` plugins, owns a GL 4.1 core context, and shares textures through IOSurface (GL ↔ Metal/Dawn), like the Syphon addons. Same node type and parameter contract as VN84, so a document is portable; the native backend is gated `requires: ["desktop","macos"]`. Windows `.dll` later. Size L, 1–2 PRs. Parked.|VN84
+VN86|.|**Port a plugin into a Loom component.** A tool or skill that turns an FFGL plugin into a component (customWgsl kernels plus published parameters matching the FFGL table 1:1), plus a parity check that renders the FFGL host's output (VN84 or VN85) and the ported component side by side in Loom. Shader translation GLSL→WGSL (naga or by hand); many drmbt effects are one fragment shader plus a parameter table. Size M (tooling plus one ported reference effect). Parked.|VN84
+VN87|.|**A GLSL / ISF code node (sibling).** A code node that takes a GLSL (or ISF) fragment shader and reflects its uniforms as parameters, the way `customWgsl` reflects a Params struct. It serves VN86's ports and stands alone for shader authors. Its own design question (translate to WGSL at compile, or run through VN84's WebGL2 path). Parked, not assessed.|none
+
 ## Needs a reproduction
 
 id|status|report|notes
