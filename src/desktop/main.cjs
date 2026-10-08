@@ -14,6 +14,14 @@ const nativeInput = process.env.LOOM_NATIVE_INPUT_ADDON
   ? require('./native-input.cjs').installNativeInput({ ipcMain, sharedTexture,
     native: require(process.env.LOOM_NATIVE_INPUT_ADDON), origin }) : null;
 let nativeInference = null;
+// VN85: the native FFGL host, only when run.mjs built its addon (a failed build leaves it unset).
+const nativeFfgl = process.env.LOOM_NATIVE_FFGL_ADDON && nativeOutput
+  ? require('./native-ffgl.cjs').installNativeFfgl({ ipcMain, BrowserWindow, sharedTexture, origin,
+    native: require(process.env.LOOM_NATIVE_FFGL_ADDON), folders: () => {
+      const { defaultFfglPluginFolders } = require('./ffgl-plugins.cjs');
+      return process.env.LOOM_FFGL_PLUGIN_DIRS ? process.env.LOOM_FFGL_PLUGIN_DIRS.split(':').filter(Boolean)
+        : defaultFfglPluginFolders({ repoRoot: join(__dirname, '../..'), home: require('node:os').homedir() });
+    } }) : null;
 let nativeNdiInput = null;
 let nativeNdiOutput = null;
 const inferenceReady = process.env.LOOM_NATIVE_VISION_DIRECTORY
@@ -28,6 +36,7 @@ const inferenceReady = process.env.LOOM_NATIVE_VISION_DIRECTORY
 module.exports.nativeOutputDiagnostics = () => [...(nativeOutput?.diagnostics() ?? []), ...(nativeNdiOutput?.diagnostics() ?? [])];
 module.exports.nativeInputDiagnostics = () => [...(nativeInput?.diagnostics() ?? []), ...(nativeNdiInput?.diagnostics() ?? [])];
 module.exports.nativeInferenceDiagnostics = () => nativeInference?.diagnostics() ?? [];
+module.exports.nativeFfglDiagnostics = () => nativeFfgl?.diagnostics() ?? [];
 app.on('will-quit', () => {
   const pending = nativeInput?.dispose();
   if (pending?.length) console.error('LOOM_NATIVE_INPUT_PENDING_SHUTDOWN', JSON.stringify(pending));
@@ -38,7 +47,7 @@ app.on('will-quit', () => {
 });
 if (process.env.LOOM_NATIVE_NDI_ADDON && !nativeInput) throw new Error('NDI input requires the native desktop input host');
 const appPreferences = nativeOutput ? { ...webPreferences, preload: join(__dirname, 'preload.cjs'),
-  additionalArguments: process.env.LOOM_NATIVE_NDI_ADDON ? ['--loom-ndi-input'] : [],
+  additionalArguments: [...(process.env.LOOM_NATIVE_NDI_ADDON ? ['--loom-ndi-input'] : []), ...(nativeFfgl ? ['--loom-ffgl'] : [])],
 } : webPreferences;
 const profile = process.env.LOOM_DESKTOP_PROFILE;
 if (!profile || !isAbsolute(profile)) throw new Error('An absolute desktop profile path is required');
@@ -129,7 +138,8 @@ module.exports.startDesktop = () => {
   const window = new BrowserWindow({ width: 1600, height: 1000, title: 'Loom Development', webPreferences: appPreferences });
   if (nativeInput) installUnloadGate({ window, inputs: {
     retireOwner: owner => Promise.all([nativeInput.retireOwner(owner), nativeNdiInput?.retireOwner(owner),
-      nativeOutput.retireOwner(owner), nativeNdiOutput?.retireOwner(owner), nativeInference?.retireOwner(owner)]),
+      nativeOutput.retireOwner(owner), nativeNdiOutput?.retireOwner(owner), nativeInference?.retireOwner(owner),
+      nativeFfgl?.retireOwner(owner)]),
   }, onError: error => {
     console.error('LOOM_NATIVE_UNLOAD_FAILED', String(error));
     if (window.isDestroyed()) return; // The diagnostic is logged; no dialog can own a destroyed window.

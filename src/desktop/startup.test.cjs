@@ -6,7 +6,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { runInNewContext } = require('node:vm');
 
-function loadMain() {
+function loadMain(env = {}) {
   const calls = [];
   const module = { exports: {} };
   const app = { on() {}, setPath() { calls.push('profile'); }, enableSandbox() { calls.push('sandbox'); },
@@ -19,7 +19,7 @@ function loadMain() {
     throw new Error(`Unexpected startup dependency: ${name}`);
   };
   runInNewContext(readFileSync(join(__dirname, 'main.cjs'), 'utf8'), {
-    module, require: load, process: { env: { LOOM_DESKTOP_PROFILE: '/test-profile' } },
+    module, require: load, process: { env: { LOOM_DESKTOP_PROFILE: '/test-profile', ...env } },
     setTimeout() { return 1; }, clearTimeout() {}, __dirname,
   });
   return { calls, host: module.exports };
@@ -108,4 +108,11 @@ test('non-Mac status does not invent OS grants or launch a Mac settings path', a
     .every(entry => entry.system === (entry.id === 'ndi' ? 'managed-by-os' : 'managed-by-browser')));
   await assert.rejects(h.handlers.get('loom-permissions-system-settings')(h.event), /not implemented on this platform/);
   assert.deepEqual(h.opened, []);
+});
+
+test('VN85: an FFGL addon without the native video host is ignored, not loaded', () => {
+  // The stub loader throws on any unexpected require, so reaching here proves neither
+  // native-ffgl.cjs nor the addon was loaded.
+  const { host } = loadMain({ LOOM_NATIVE_FFGL_ADDON: '/nowhere/ffgl-host.node' });
+  assert.equal(host.nativeFfglDiagnostics().length, 0);
 });
