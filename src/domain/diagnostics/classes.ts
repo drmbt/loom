@@ -725,6 +725,9 @@ export const DIAGNOSTIC_CLASSES: Readonly<Record<string, DiagnosticClassRow>> = 
   "viewer.noOutput": { class: "act" },
   "viewer.noPane": { class: "act" },
   "vision.helper.absent": { class: "elsewhereHost" },
+  // VN85: the native FFGL host runs only in the desktop app, as native Vision does.
+  "ffgl.native.refused": { class: "elsewhereHost" },
+  "ffgl.native.starting": { class: "elsewhereHost" },
   "vision.native.refused": { class: "elsewhereHost" },
   "vision.native.retirement": { class: "elsewhereHost" },
   "vision.native.starting": { class: "elsewhereHost" },
