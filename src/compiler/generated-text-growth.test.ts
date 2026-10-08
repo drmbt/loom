@@ -1133,6 +1133,9 @@ const LEDGER: Readonly<Record<string, Row>> = {
         light: casting("directional"),
       }),
   },
+  // VN85: the FFGL node's two passes are constant texts; the plugin and its table go to the native host, not into WGSL.
+  "ffgl.plugin": notACount("one plugin's bundle name, resolved by the desktop host."),
+  "ffgl.manifest": notACount("the plugin's own table, read from the plugin by the app: it shapes the node's controls, never its shader text."),
   "meshFileIn.vertices": flat(FROM_THE_FILE),
   "meshFileIn.triangles": flat(FROM_THE_FILE),
   "meshFileIn.clipFrames": flat(FROM_THE_FILE),
