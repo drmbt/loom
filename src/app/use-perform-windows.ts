@@ -353,7 +353,7 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
               nodeId,
               name: performWindowName(nodeId),
               title: `Loom — ${node.label ?? nodeId}`,
-              features: placementFeatures(target.screen, { fullscreen: fullscreen && screens.permission() === "granted" }),
+              features: placementFeatures(target.screen, { fullscreen }),
               outputId: outputFor(nodeId),
               fullscreen,
               hideCursor: booleanParameter(parameters, "hideCursor", true),
@@ -363,6 +363,9 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
                 changed.current();
               },
               onMappingKey: mappingOps.key,
+              onFullscreenChanged: () => {
+                for (const listener of listeners.current) listener();
+              },
             },
           );
           if (handle === null) blocked.push(nodeId);
@@ -460,8 +463,10 @@ export function usePerformWindows({ bus, backend, plan, displaySinks, openWindow
         const resolved = resolveScreen(screens.screens(), stringParameter(parametersOf(node, authored), "screen", ""), screens.editor());
         const where = resolved.screen === undefined ? "this screen" : resolved.screen.label;
         const size = resolved.screen === undefined ? "" : ` (${physicalSize(resolved.screen).join("×")} physical)`;
-        const state = handles.current.has(nodeId) ? `Open on ${where}` : `Closed — opens on ${where}${size}`;
-        return resolved.warning === undefined ? state : `${state}. ${resolved.warning}`;
+        const handle = handles.current.get(nodeId);
+        const state = handle === undefined ? `Closed — opens on ${where}${size}` : `Open on ${where}`;
+        const messages = [state, resolved.warning, handle?.fullscreenMessage].filter((message) => message !== undefined && message !== null);
+        return messages.join(". ");
       },
       mapping: (nodeId) => mappingOps.view(nodeId),
       setEditingMapping: (nodeId, on) => mappingOps.set(nodeId, on),

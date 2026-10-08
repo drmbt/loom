@@ -482,7 +482,7 @@
       "clip-bar": {
         "id": "clip-bar",
         "source": {
-          "nodeId": "audiofile_track",
+          "nodeId": "select_audio",
           "portId": "out"
         },
         "target": {
@@ -493,7 +493,7 @@
       "clip-hits": {
         "id": "clip-hits",
         "source": {
-          "nodeId": "audiofile_track",
+          "nodeId": "select_audio",
           "portId": "out"
         },
         "target": {
@@ -504,7 +504,7 @@
       "clip-kick": {
         "id": "clip-kick",
         "source": {
-          "nodeId": "audiofile_track",
+          "nodeId": "select_audio",
           "portId": "out"
         },
         "target": {
@@ -515,7 +515,7 @@
       "clip-levels": {
         "id": "clip-levels",
         "source": {
-          "nodeId": "audiofile_track",
+          "nodeId": "select_audio",
           "portId": "out"
         },
         "target": {
@@ -2650,6 +2650,17 @@
           "portId": "points"
         }
       },
+      "track-audio": {
+        "id": "track-audio",
+        "source": {
+          "nodeId": "audiofile_track",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "select_audio",
+          "portId": "in"
+        }
+      },
       "want-count": {
         "id": "want-count",
         "source": {
@@ -2713,7 +2724,7 @@
           "volume": 1
         },
         "position": {
-          "x": -5040,
+          "x": -5460,
           "y": 900
         },
         "type": "audioFileIn"
@@ -2866,7 +2877,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_attack').chan.attack, max((op('toggle_follow').chan.follow * (op('lag_intensity').chan.level > 0.85) * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 3) * 12.9898) * 43758.5453) < 0.3)), ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5) * (mod(op('audiofile_track').chan.bar, 16) >= 8) * (mod(op('audiofile_track').chan.bar, 16) < 12))) * (op('constant_energy').chan.value > 0))"
+                "source": "max(op('slider_attack').chan.attack, max((op('toggle_follow').chan.follow * (op('lag_intensity').chan.level > 0.85) * (fract(sin((floor(op('select_audio').chan.bar / 4) + 3) * 12.9898) * 43758.5453) < 0.3)), ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, mod(floor(op('select_audio').chan.bar / 16), 6) == 5) * (mod(op('select_audio').chan.bar, 16) >= 8) * (mod(op('select_audio').chan.bar, 16) < 12))) * (op('constant_energy').chan.value > 0))"
               },
               "static": {
                 "kind": "static",
@@ -2916,7 +2927,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16) * (1 + (op('audiofile_track').chan.bar >= 14)))"
+                "source": "((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16) * (1 + (op('select_audio').chan.bar >= 14)))"
               },
               "static": {
                 "kind": "static",
@@ -2941,7 +2952,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * -0.45 + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * -0.12 + max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))) * -0.36 + (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))) * (op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * ((mod(floor(op('audiofile_track').chan.bar / 16), 6) == 1) * 0.05 + (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 4) * -0.28)) + op('slider_hueturn').chan.hueturn"
+                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) * -0.45 + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * -0.12 + max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5))) * -0.36 + (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16))))) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))) * (op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * ((mod(floor(op('select_audio').chan.bar / 16), 6) == 1) * 0.05 + (mod(floor(op('select_audio').chan.bar / 16), 6) == 4) * -0.28)) + op('slider_hueturn').chan.hueturn"
               },
               "static": {
                 "kind": "static",
@@ -2991,7 +3002,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(max(op('slider_pack').chan.pack, 3 * max(max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor((op('audiofile_track').chan.bar + 2) / 16), 6) == 2, ((op('audiofile_track').chan.bar + 2) >= 12) * ((op('audiofile_track').chan.bar + 2) < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor((op('audiofile_track').chan.bar + 2) / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor((op('audiofile_track').chan.bar + 2) / 16), 6) == 5))))))), (1 + (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0)) * 2 * (fract(sin((floor(op('audiofile_track').chan.bar / 8) + 6) * 12.9898) * 43758.5453) < 0.22)))"
+                "source": "max(max(op('slider_pack').chan.pack, 3 * max(max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5))))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor((op('select_audio').chan.bar + 2) / 16), 6) == 2, ((op('select_audio').chan.bar + 2) >= 12) * ((op('select_audio').chan.bar + 2) < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor((op('select_audio').chan.bar + 2) / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor((op('select_audio').chan.bar + 2) / 16), 6) == 5))))))), (1 + (op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0)) * 2 * (fract(sin((floor(op('select_audio').chan.bar / 8) + 6) * 12.9898) * 43758.5453) < 0.22)))"
               },
               "static": {
                 "kind": "static",
@@ -3016,7 +3027,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('toggle_perch').chan.perch, max((op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * (1 - smoothstep(0.12, 0.3, op('constant_energy').chan.value))), max(max((op('toggle_follow').chan.follow * (op('lag_intensity').chan.level < 0.5) * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 2) * 12.9898) * 43758.5453) < 0.6)), (op('toggle_follow').chan.follow * (op('lag_intensity').chan.level < 0.85) * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 5) * 12.9898) * 43758.5453) < 0.25) * (mod(op('audiofile_track').chan.bar, 4) < 2))), ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5) * (mod(op('audiofile_track').chan.bar, 16) >= 8) * (mod(op('audiofile_track').chan.bar, 16) < 12))) * (op('constant_energy').chan.value > 0)))"
+                "source": "max(op('toggle_perch').chan.perch, max((op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0) * (1 - smoothstep(0.12, 0.3, op('constant_energy').chan.value))), max(max((op('toggle_follow').chan.follow * (op('lag_intensity').chan.level < 0.5) * (fract(sin((floor(op('select_audio').chan.bar / 4) + 2) * 12.9898) * 43758.5453) < 0.6)), (op('toggle_follow').chan.follow * (op('lag_intensity').chan.level < 0.85) * (fract(sin((floor(op('select_audio').chan.bar / 4) + 5) * 12.9898) * 43758.5453) < 0.25) * (mod(op('select_audio').chan.bar, 4) < 2))), ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, mod(floor(op('select_audio').chan.bar / 16), 6) == 5) * (mod(op('select_audio').chan.bar, 16) >= 8) * (mod(op('select_audio').chan.bar, 16) < 12))) * (op('constant_energy').chan.value > 0)))"
               },
               "static": {
                 "kind": "static",
@@ -3041,7 +3052,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 2 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) + 3 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) + 2 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) + 3 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -3091,7 +3102,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0)) * (op('lag_intensity').chan.level > 0.75) * (fract(sin((floor(op('audiofile_track').chan.bar / 8) + 7) * 12.9898) * 43758.5453) < 0.5)) * (1 - ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5) * (mod(op('audiofile_track').chan.bar, 16) >= 8) * (mod(op('audiofile_track').chan.bar, 16) < 12)))"
+                "source": "((op('toggle_follow').chan.follow * (op('constant_energy').chan.value > 0)) * (op('lag_intensity').chan.level > 0.75) * (fract(sin((floor(op('select_audio').chan.bar / 8) + 7) * 12.9898) * 43758.5453) < 0.5)) * (1 - ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, mod(floor(op('select_audio').chan.bar / 16), 6) == 5) * (mod(op('select_audio').chan.bar, 16) >= 8) * (mod(op('select_audio').chan.bar, 16) < 12)))"
               },
               "static": {
                 "kind": "static",
@@ -3116,7 +3127,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_search').chan.search, max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))) * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 9) * 12.9898) * 43758.5453) < 0.55))"
+                "source": "max(op('slider_search').chan.search, max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5))))) * (fract(sin((floor(op('select_audio').chan.bar / 4) + 9) * 12.9898) * 43758.5453) < 0.55))"
               },
               "static": {
                 "kind": "static",
@@ -3141,7 +3152,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(op('slider_spiral').chan.spiral, 0.5 * (op('toggle_follow').chan.follow * (op('lag_intensity').chan.level > 0.45) * (op('lag_intensity').chan.level < 0.8) * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 4) * 12.9898) * 43758.5453) < 0.25)) * (op('constant_energy').chan.value > 0))"
+                "source": "max(op('slider_spiral').chan.spiral, 0.5 * (op('toggle_follow').chan.follow * (op('lag_intensity').chan.level > 0.45) * (op('lag_intensity').chan.level < 0.8) * (fract(sin((floor(op('select_audio').chan.bar / 4) + 4) * 12.9898) * 43758.5453) < 0.25)) * (op('constant_energy').chan.value > 0))"
               },
               "static": {
                 "kind": "static",
@@ -3179,7 +3190,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(max(max(op('slider_swim').chan.swim, op('constant_rush').chan.value), smoothstep(1.1, 1.6, op('lag_pack').chan.value)), max((op('toggle_follow').chan.follow * smoothstep(1.5, 2.2, op('constant_lift').chan.value)), (op('toggle_follow').chan.follow * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 1) * 12.9898) * 43758.5453) < (op('lag_intensity').chan.level - 0.7) * 2.2))) * (1 - (op('toggle_follow').chan.follow * (op('lag_intensity').chan.level > 0.85) * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 3) * 12.9898) * 43758.5453) < 0.3))))"
+                "source": "max(max(max(op('slider_swim').chan.swim, op('constant_rush').chan.value), smoothstep(1.1, 1.6, op('lag_pack').chan.value)), max((op('toggle_follow').chan.follow * smoothstep(1.5, 2.2, op('constant_lift').chan.value)), (op('toggle_follow').chan.follow * (fract(sin((floor(op('select_audio').chan.bar / 4) + 1) * 12.9898) * 43758.5453) < (op('lag_intensity').chan.level - 0.7) * 2.2))) * (1 - (op('toggle_follow').chan.follow * (op('lag_intensity').chan.level > 0.85) * (fract(sin((floor(op('select_audio').chan.bar / 4) + 3) * 12.9898) * 43758.5453) < 0.3))))"
               },
               "static": {
                 "kind": "static",
@@ -4147,7 +4158,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * (0.55 + 0.45 * (op('lag_levels').chan.high * op('slider_react').chan.react))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * (0.55 + 0.45 * (op('lag_levels').chan.high * op('slider_react').chan.react))"
               },
               "static": {
                 "kind": "static",
@@ -4160,7 +4171,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -4215,7 +4226,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * (0.55 + 0.45 * (op('lag_levels').chan.high * op('slider_react').chan.react))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * (0.55 + 0.45 * (op('lag_levels').chan.high * op('slider_react').chan.react))"
               },
               "static": {
                 "kind": "static",
@@ -4228,7 +4239,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -4281,7 +4292,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * (fract(floor(op('audiofile_track').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
+                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) * (fract(floor(op('select_audio').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
               },
               "static": {
                 "kind": "static",
@@ -4295,7 +4306,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",
@@ -4308,7 +4319,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "floor(op('audiofile_track').chan.beat)"
+                "source": "floor(op('select_audio').chan.beat)"
               },
               "static": {
                 "kind": "static",
@@ -4362,7 +4373,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))"
+                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))))"
               },
               "static": {
                 "kind": "static",
@@ -4403,7 +4414,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -4444,7 +4455,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -4498,7 +4509,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -4634,7 +4645,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -4727,7 +4738,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -4781,7 +4792,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -4822,7 +4833,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -4860,7 +4871,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))"
+                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))))"
               },
               "static": {
                 "kind": "static",
@@ -5258,7 +5269,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+                "source": "(op('select_audio').chan.beat + op('select_audio').chan.beatPhase)"
               },
               "static": {
                 "kind": "static",
@@ -5272,7 +5283,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))))"
+                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5))))))"
               },
               "static": {
                 "kind": "static",
@@ -5339,7 +5350,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+                "source": "(op('select_audio').chan.beat + op('select_audio').chan.beatPhase)"
               },
               "static": {
                 "kind": "static",
@@ -5411,7 +5422,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))))"
+                "source": "op('slider_lamp').chan.lamp * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5))))))"
               },
               "static": {
                 "kind": "static",
@@ -5449,7 +5460,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))"
+                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))))"
               },
               "static": {
                 "kind": "static",
@@ -5929,7 +5940,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))"
+                "source": "max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))))"
               },
               "static": {
                 "kind": "static",
@@ -6301,7 +6312,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * (fract(floor(op('audiofile_track').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
+                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) * (fract(floor(op('select_audio').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
               },
               "static": {
                 "kind": "static",
@@ -6315,7 +6326,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",
@@ -6329,7 +6340,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "floor(op('audiofile_track').chan.beat)"
+                "source": "floor(op('select_audio').chan.beat)"
               },
               "static": {
                 "kind": "static",
@@ -6370,7 +6381,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",
@@ -6854,7 +6865,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))))"
+                "source": "(1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5))))))"
               },
               "static": {
                 "kind": "static",
@@ -7226,7 +7237,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000)))"
+                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 1.9)) + 1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -4.0000) + 0.22 * sin(abstime * 0.73 + -5.5000)))"
               },
               "static": {
                 "kind": "static",
@@ -7239,7 +7250,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000)))"
+                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-5.5 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 1, 0, 1) * clamp(op('lag_pack').chan.value - 1, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 1, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 2.300)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.3450)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.3450))) - 0.5))))) + 0.7)) + 0.9 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -5.5), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -0.4000) + 0.18 * sin(abstime * 0.57 + -4.0000)))"
               },
               "static": {
                 "kind": "static",
@@ -7343,7 +7354,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650)))"
+                "source": "((14.0 * sin(0.0327249235 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.4) + 5.0 * sin(0.085084801 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 1.9)) + -1.5 * ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.5 * sin(abstime * 0.31 + -17.4500) + 0.22 * sin(abstime * 0.73 + -28.3650)))"
               },
               "static": {
                 "kind": "static",
@@ -7356,7 +7367,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))))) * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500)))"
+                "source": "((6.0 * sin(0.0261799388 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 2.2) + 2.5 * sin(0.0719948316 * ((op('speed_travel').chan.value + (-11 - 0.3 - 45 * (1 - (clamp(op('lag_pack').chan.value - 2, 0, 1) * clamp(op('lag_pack').chan.value - 2, 0, 1) * (3 - 2 * clamp(op('lag_pack').chan.value - 2, 0, 1)))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (clamp(op('lag_rate').chan.value / 2, 0, 1) * 0.6 * (0.725 + 0.275 * sin(abstime * 0.41 + 4.600)) * (smoothstep(0, 0.2, fract(op('speed_stroke').chan.value + 0.7150)) * (1 - smoothstep(0.2, 1, fract(op('speed_stroke').chan.value + 0.7150))) - 0.5))))) + 0.7)) + -0.85 * max((op('slider_bore').chan.bore / 2.6), ((op('slider_bore').chan.bore / 2.6) * (1 + 0.9 * max((1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + -11), 96) - 48))), 1.6 * max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))))))) * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16))))) + (max(op('lag_swim').chan.value, (1 - smoothstep(6, 13, abs(mod((op('speed_travel').chan.value + 2.5), 96) - 48)))) * (1 - 0.80 * clamp(op('lag_pack').chan.value - 1, 0, 1))) * (0.38 * sin(abstime * 0.23 + -8.4700) + 0.18 * sin(abstime * 0.57 + -17.4500)))"
               },
               "static": {
                 "kind": "static",
@@ -7526,7 +7537,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.3 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "1.3 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",
@@ -7655,7 +7666,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+                "source": "(op('select_audio').chan.beat + op('select_audio').chan.beatPhase)"
               },
               "static": {
                 "kind": "static",
@@ -7668,7 +7679,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * 0.55 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))))"
+                "source": "op('slider_lamp').chan.lamp * 0.55 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5))))))"
               },
               "static": {
                 "kind": "static",
@@ -7755,7 +7766,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "floor(op('audiofile_track').chan.beat)"
+                "source": "floor(op('select_audio').chan.beat)"
               },
               "static": {
                 "kind": "static",
@@ -7866,7 +7877,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1.1 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.8 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) + 0.8 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "1.1 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) + 0.8 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) + 0.8 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -7885,7 +7896,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "1 - 0.72 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) - 0.86 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "1 - 0.72 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) - 0.86 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -7898,7 +7909,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.61 - 0.06 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) - 0.2 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "0.61 - 0.06 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) - 0.2 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -7911,7 +7922,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.27 + 0.63 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) + 0.66 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "0.27 + 0.63 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) + 0.66 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -7937,7 +7948,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+                "source": "(op('select_audio').chan.beat + op('select_audio').chan.beatPhase)"
               },
               "static": {
                 "kind": "static",
@@ -8262,7 +8273,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * 0.23 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))))"
+                "source": "op('slider_lamp').chan.lamp * 0.23 * (0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5))))))"
               },
               "static": {
                 "kind": "static",
@@ -8282,7 +8293,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((clamp(abs(fract(-0.012499999999999999 + 0.333333) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) - max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))) + 0.3 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) + 0.14 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "((clamp(abs(fract(-0.012499999999999999 + 0.333333) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) - max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))) + 0.3 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) + 0.14 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -8295,7 +8306,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((clamp(abs(fract(-0.012499999999999999 + 0.666667) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) - max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))) + 0.62 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) + 0.5 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "((clamp(abs(fract(-0.012499999999999999 + 0.666667) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) - max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))) + 0.62 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) + 0.5 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -8308,7 +8319,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "((clamp(abs(fract(-0.012499999999999999 + 0.000000) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) - max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) + max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "((clamp(abs(fract(-0.012499999999999999 + 0.000000) * 6 - 3) - 1, 0, 1) * 0.96 + 0.04)) * (1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) - max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) + max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -8460,7 +8471,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "floor(op('audiofile_track').chan.beat)"
+                "source": "floor(op('select_audio').chan.beat)"
               },
               "static": {
                 "kind": "static",
@@ -8883,7 +8894,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.1 + 0.25 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.1 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) + 0.04 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "0.1 + 0.25 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) + 0.1 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) + 0.04 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -8985,6 +8996,19 @@
           "y": 450
         },
         "type": "pointRope"
+      },
+      "select_audio": {
+        "definitionVersion": 1,
+        "id": "select_audio",
+        "label": "select_audio",
+        "parameters": {
+          "channels": "*"
+        },
+        "position": {
+          "x": -5040,
+          "y": 900
+        },
+        "type": "valueSelect"
       },
       "select_bar": {
         "definitionVersion": 1,
@@ -10521,7 +10545,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_focus').chan.focus * 55 / op('expression_camera').chan.lens * (1 + op('slider_pump').chan.pump * 1.4 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * (fract(sin((floor(op('audiofile_track').chan.bar / 4) + 11) * 12.9898) * 43758.5453) < 0.45))"
+                "source": "op('slider_focus').chan.focus * 55 / op('expression_camera').chan.lens * (1 + op('slider_pump').chan.pump * 1.4 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * (fract(sin((floor(op('select_audio').chan.bar / 4) + 11) * 12.9898) * 43758.5453) < 0.45))"
               },
               "static": {
                 "kind": "static",
@@ -10710,7 +10734,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)"
+                "source": "(op('select_audio').chan.beat + op('select_audio').chan.beatPhase)"
               },
               "static": {
                 "kind": "static",
@@ -10729,7 +10753,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.044 + 0.25 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.02 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) - 0.01 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "0.044 + 0.25 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) + 0.02 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) - 0.01 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -10742,7 +10766,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.04 + 0.14 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.1 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) + 0.05 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "0.04 + 0.14 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) + 0.1 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) + 0.05 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -10755,7 +10779,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "0.016 + 0.062 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) + 0.2 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) + 0.24 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))"
+                "source": "0.016 + 0.062 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) + 0.2 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) + 0.24 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))"
               },
               "static": {
                 "kind": "static",
@@ -10768,7 +10792,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_haze').chan.haze * (1 - 0.86 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) - 0.72 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) - 0.62 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5))))"
+                "source": "op('slider_haze').chan.haze * (1 - 0.86 * max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) - 0.72 * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) - 0.62 * max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5))))"
               },
               "static": {
                 "kind": "static",
@@ -10781,7 +10805,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))"
               },
               "static": {
                 "kind": "static",
@@ -10941,7 +10965,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))) * (fract(floor(op('audiofile_track').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
+                "source": "(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))) * (fract(floor(op('select_audio').chan.beat) * 0.7548777) < 0.03 + 0.22 * smoothstep(0.45, 0.95, op('lag_intensity').chan.level)) * (min((op('lag_hits').chan.snareCount * op('slider_react').chan.react), 1) ^ 8))"
               },
               "static": {
                 "kind": "static",
@@ -10980,7 +11004,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_lamp').chan.lamp * ((0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 5)))))) + 12 * (0.75 + 0.5 * (op('lag_levels').chan.low * op('slider_react').chan.react)) * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))))"
+                "source": "op('slider_lamp').chan.lamp * ((0.7 + (op('lag_levels').chan.low * op('slider_react').chan.react) * 0.8 + 0.6 * (op('lag_hits').chan.kickCount * op('slider_react').chan.react) * op('lag_perched').chan.value) * (1 - max(max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16)))), max(max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))), max(floor(op('slider_fields').chan.fields + 0.5) == 3, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 5)))))) + 12 * (0.75 + 0.5 * (op('lag_levels').chan.low * op('slider_react').chan.react)) * max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))))"
               },
               "static": {
                 "kind": "static",
@@ -10993,7 +11017,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24)) + 1.9)))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24)) + 1.9)))"
               },
               "static": {
                 "kind": "static",
@@ -11006,7 +11030,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24)) + 0.7)) + 42.8)"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24)) + 0.7)) + 42.8)"
               },
               "static": {
                 "kind": "static",
@@ -11019,7 +11043,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + -1.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + -1.5) * 24))"
               },
               "static": {
                 "kind": "static",
@@ -11032,7 +11056,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24)) + 1.9)))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24)) + 1.9)))"
               },
               "static": {
                 "kind": "static",
@@ -11045,7 +11069,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24)) + 0.7)) + 42.8)"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24)) + 0.7)) + 42.8)"
               },
               "static": {
                 "kind": "static",
@@ -11058,7 +11082,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + -0.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + -0.5) * 24))"
               },
               "static": {
                 "kind": "static",
@@ -11071,7 +11095,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24)) + 1.9)))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24)) + 1.9)))"
               },
               "static": {
                 "kind": "static",
@@ -11084,7 +11108,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24)) + 0.7)) + 42.8)"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24)) + 0.7)) + 42.8)"
               },
               "static": {
                 "kind": "static",
@@ -11097,7 +11121,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + 0.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + 0.5) * 24))"
               },
               "static": {
                 "kind": "static",
@@ -11110,7 +11134,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24)) + 1.9)))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24)) + 1.9)))"
               },
               "static": {
                 "kind": "static",
@@ -11123,7 +11147,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24)) + 0.7)) + 42.8)"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24)) + 0.7)) + 42.8)"
               },
               "static": {
                 "kind": "static",
@@ -11136,7 +11160,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + 1.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + 1.5) * 24))"
               },
               "static": {
                 "kind": "static",
@@ -11149,7 +11173,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24)) + 1.9)))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 1.9))) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((14.0 * sin(0.0327249235 * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24)) + 0.4) + 5.0 * sin(0.085084801 * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24)) + 1.9)))"
               },
               "static": {
                 "kind": "static",
@@ -11162,7 +11186,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24)) + 0.7)) + 42.8)"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + 0.7)) + op('slider_bore').chan.bore * (1 + 0.9 * (1 - smoothstep(6, 13, abs(mod(((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8), 96) - 48)))) - 0.35) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * ((6.0 * sin(0.0261799388 * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24)) + 2.2) + 2.5 * sin(0.0719948316 * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24)) + 0.7)) + 42.8)"
               },
               "static": {
                 "kind": "static",
@@ -11175,7 +11199,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24))"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * (((floor(op('speed_travel').chan.value / 12.8) + 2.5) * 12.8)) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * (((floor(op('speed_travel').chan.value / 24) + 2.5) * 24))"
               },
               "static": {
                 "kind": "static",
@@ -11201,7 +11225,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('audiofile_track').chan.bar / 16), 6) == 2, (op('audiofile_track').chan.bar >= 12) * (op('audiofile_track').chan.bar < 16))))"
+                "source": "max(floor(op('slider_fields').chan.fields + 0.5) == 1, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * max(mod(floor(op('select_audio').chan.bar / 16), 6) == 2, (op('select_audio').chan.bar >= 12) * (op('select_audio').chan.bar < 16))))"
               },
               "static": {
                 "kind": "static",
@@ -11261,7 +11285,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3)))) * floor(op('speed_travel').chan.value / 12.8) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('audiofile_track').chan.bar / 16), 6) == 3))) * floor(op('speed_travel').chan.value / 24)"
+                "source": "(1 - max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3)))) * floor(op('speed_travel').chan.value / 12.8) + max(floor(op('slider_fields').chan.fields + 0.5) == 2, (floor(op('slider_fields').chan.fields + 0.5) == 0) * ((op('toggle_follow').chan.follow * (op('lag_usual').chan.level > 0.001)) * (mod(floor(op('select_audio').chan.bar / 16), 6) == 3))) * floor(op('speed_travel').chan.value / 24)"
               },
               "static": {
                 "kind": "static",
@@ -11274,7 +11298,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "floor(op('audiofile_track').chan.beat)"
+                "source": "floor(op('select_audio').chan.beat)"
               },
               "static": {
                 "kind": "static",

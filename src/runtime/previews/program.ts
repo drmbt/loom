@@ -132,13 +132,14 @@ export function buildPreviewProgram(
       // T375 (§V57): the source's DECLARED space, not an assumption. An Output node's
       // target is display-encoded; every other node's is linear; the tile is the same
       // picture either way because the shader is told which it is getting.
-      shader: previewShader(entry.request.view.mode, entry.request.source.space),
+      shader: previewShader(entry.request.view.mode, entry.request.source.space, entry.request.source.format === "r32float"),
       target: tile.resourceId,
       clear: true,
       textures: [
-        { binding: PREVIEW_TEXTURE_BINDING, resourceId: entry.request.source.resourceId },
+        { binding: PREVIEW_TEXTURE_BINDING, resourceId: entry.request.source.resourceId,
+          ...(entry.request.source.format === "r32float" ? { sampled: "unfiltered" as const } : {}) },
       ],
-      samplers: [{ binding: PREVIEW_SAMPLER_BINDING, resourceId: PREVIEW_SAMPLER.id }],
+      samplers: entry.request.source.format === "r32float" ? [] : [{ binding: PREVIEW_SAMPLER_BINDING, resourceId: PREVIEW_SAMPLER.id }],
       uniforms: previewUniforms(entry.request.view),
       uniformBinding: PREVIEW_UNIFORM_BINDING,
       nodeId: entry.ref.nodeId,

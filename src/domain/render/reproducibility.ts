@@ -414,6 +414,8 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   presets: "pure",
   // T1500b: a cue list — no ports, no passes; a GO is a document edit, never a frame read.
   cueList: "pure",
+  // VN61: curves of the frame index — no clock, no state, no device.
+  automation: "pure",
   valueBeat: "pure",
   valueSelect: "pure",
   audioPattern: "pure",
@@ -423,6 +425,8 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // Classifying them `external-live` here would condemn the locked case, which is the one
   // configuration in the whole catalogue that was built specifically to reproduce.
   movieFileIn: "pure",
+  // A saved float map is fixed data; preparation never runs during rendering.
+  floatMapIn: "pure",
   audioFileIn: "pure",
 };
 

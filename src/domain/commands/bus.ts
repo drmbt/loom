@@ -463,6 +463,13 @@ export interface LoomBus extends AppCommandBus {
   >(
     registration: Omit<CommandRegistration<TName>, "inputSchema"> & { readonly inputSchema: S } & InputKeysCovered<TName, S>,
   ) => void;
+  /** Explicitly refresh an owned command's schema and handler, preserving its session and capability contract. */
+  replaceCommand: <
+    TName extends CommandName,
+    S extends CommandRegistration<TName>["inputSchema"] = CommandRegistration<TName>["inputSchema"],
+  >(
+    registration: Omit<CommandRegistration<TName>, "inputSchema"> & { readonly inputSchema: S } & InputKeysCovered<TName, S>,
+  ) => void;
   registerQuery: <TName extends QueryName>(registration: QueryRegistration<TName>) => void;
   /**
    * Whether `execute(name)` has a command to run: one registered here, or (§T1695b) one a
@@ -679,6 +686,50 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
     return schema !== undefined && !isAnyInput(schema) && stringLeavesOf(schema).some((leaf) => leaf.kind === "node");
   };
 
+  /** Validate before publishing either a new registration or an explicit refresh. */
+  function storedCommand<TName extends CommandName>(registration: CommandRegistration<TName>): StoredCommand {
+    if (registration.inputSchema === undefined || registration.inputSchema === null) {
+      // The type already requires it; this is for a caller that cast its way past.
+      throw new Error(`Command "${registration.name}" is registered without an inputSchema (§T1556b).`);
+    }
+    if (registration.inSession === undefined || registration.inSession === null) {
+      // Likewise required by the type.
+      throw new Error(`Command "${registration.name}" is registered without saying what it means inside a component session (inSession, §T1695b).`);
+    }
+    if (registration.inSession === "instance" && registration.rejectionOutput === undefined) {
+      // A session refuses it when no instance is in view, and a pulse relays that sentence:
+      // a refusal that can only be thrown would reach the user as "command failed".
+      throw new Error(`Command "${registration.name}" is declared "instance" and has no rejectionOutput to answer a session's refusal with (§T1695b).`);
+    }
+    if (registration.inSession === "instance") {
+      // Its addresses are rewritten from its schema, so the schema has to say which strings
+      // they are. An undeclared one would reach the project as the definition's bare id:
+      // the wrong node, or none, and nothing said.
+      const leaves = isAnyInput(registration.inputSchema) ? [] : stringLeavesOf(registration.inputSchema);
+      const undeclared = leaves.filter((leaf) => leaf.kind === "unmarked").map((leaf) => leaf.path);
+      if (undeclared.length > 0 || !leaves.some((leaf) => leaf.kind === "node")) {
+        throw new Error(
+          `Command "${registration.name}" is declared "instance", so every string of its input is a node address (nodeIdInput, nodeIdsInput) or a canvas id, and at least one is an address${undeclared.length > 0 ? `; undeclared: ${undeclared.join(", ")}` : ""} (§T1695b).`,
+        );
+      }
+    }
+    if (inherits(registration.name)) {
+      // The double registration §T969(b) and §T1195 grew, refused where it would start.
+      throw new Error(
+        `Command "${registration.name}" is inherited from the parent bus (declared "${String(parent?.inSessionOf(registration.name))}"); a session bus does not register its own (§T1695b).`,
+      );
+    }
+    return {
+      name: registration.name,
+      inputSchema: registration.inputSchema as StoredCommand["inputSchema"],
+      inSession: registration.inSession,
+      handler: registration.handler as StoredCommand["handler"],
+      requiredCapabilities: registration.requiredCapabilities ?? [],
+      description: registration.description,
+      rejectionOutput: registration.rejectionOutput as StoredCommand["rejectionOutput"],
+    };
+  }
+
   /** The bus's own refusal, answered as the registration can answer it (see `LoomBus.refuse`). */
   function refusal<TName extends CommandName>(
     registration: StoredCommand,
@@ -761,46 +812,30 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
       if (commands.has(registration.name)) {
         throw new Error(`Command "${registration.name}" is already registered.`);
       }
-      if (registration.inputSchema === undefined || registration.inputSchema === null) {
-        // The type already requires it; this is for a caller that cast its way past.
-        throw new Error(`Command "${registration.name}" is registered without an inputSchema (§T1556b).`);
+      commands.set(registration.name, storedCommand(registration));
+    },
+
+    replaceCommand<TName extends CommandName>(registration: CommandRegistration<TName>): void {
+      const previous = commands.get(registration.name);
+      if (previous === undefined) {
+        throw new Error(`Command "${registration.name}" is not owned by this bus and cannot be replaced.`);
       }
-      if (registration.inSession === undefined || registration.inSession === null) {
-        // Likewise required by the type.
-        throw new Error(`Command "${registration.name}" is registered without saying what it means inside a component session (inSession, §T1695b).`);
+      const replacement = storedCommand(registration);
+      const previousSession = previous.inSession;
+      const nextSession = replacement.inSession;
+      const sameSession = typeof previousSession === "string" && typeof nextSession === "string"
+        ? previousSession === nextSession
+        : typeof previousSession === "object" && typeof nextSession === "object"
+          && previousSession.definition === nextSession.definition && previousSession.handsUp === nextSession.handsUp;
+      if (!sameSession) {
+        throw new Error(`Command "${registration.name}" cannot change its inSession declaration when replaced.`);
       }
-      if (registration.inSession === "instance" && registration.rejectionOutput === undefined) {
-        // A session refuses it when no instance is in view, and a pulse relays that sentence:
-        // a refusal that can only be thrown would reach the user as "command failed".
-        throw new Error(`Command "${registration.name}" is declared "instance" and has no rejectionOutput to answer a session's refusal with (§T1695b).`);
+      const previousCapabilities = new Set(previous.requiredCapabilities);
+      const nextCapabilities = new Set(replacement.requiredCapabilities);
+      if (previousCapabilities.size !== nextCapabilities.size || [...previousCapabilities].some(capability => !nextCapabilities.has(capability))) {
+        throw new Error(`Command "${registration.name}" cannot change its requiredCapabilities when replaced.`);
       }
-      if (registration.inSession === "instance") {
-        // Its addresses are rewritten from its schema, so the schema has to say which strings
-        // they are. An undeclared one would reach the project as the definition's bare id:
-        // the wrong node, or none, and nothing said.
-        const leaves = isAnyInput(registration.inputSchema) ? [] : stringLeavesOf(registration.inputSchema);
-        const undeclared = leaves.filter((leaf) => leaf.kind === "unmarked").map((leaf) => leaf.path);
-        if (undeclared.length > 0 || !leaves.some((leaf) => leaf.kind === "node")) {
-          throw new Error(
-            `Command "${registration.name}" is declared "instance", so every string of its input is a node address (nodeIdInput, nodeIdsInput) or a canvas id, and at least one is an address${undeclared.length > 0 ? `; undeclared: ${undeclared.join(", ")}` : ""} (§T1695b).`,
-          );
-        }
-      }
-      if (inherits(registration.name)) {
-        // The double registration §T969(b) and §T1195 grew, refused where it would start.
-        throw new Error(
-          `Command "${registration.name}" is inherited from the parent bus (declared "${String(parent?.inSessionOf(registration.name))}"); a session bus does not register its own (§T1695b).`,
-        );
-      }
-      commands.set(registration.name, {
-        name: registration.name,
-        inputSchema: registration.inputSchema as StoredCommand["inputSchema"],
-        inSession: registration.inSession,
-        handler: registration.handler as StoredCommand["handler"],
-        requiredCapabilities: registration.requiredCapabilities ?? [],
-        description: registration.description,
-        rejectionOutput: registration.rejectionOutput as StoredCommand["rejectionOutput"],
-      });
+      commands.set(registration.name, replacement);
     },
 
     registerQuery<TName extends QueryName>(registration: QueryRegistration<TName>): void {

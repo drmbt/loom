@@ -138,6 +138,16 @@ describe("perform windows, through perform.toggle", () => {
     expect(presented[0]!.disposed).toBe(true);
   });
 
+  it("shows a fullscreen refusal in the Window Out's inspector status", async () => {
+    const { ids, hook, toggle } = await setup(["window"]);
+    await toggle();
+    // This fixture's child has no Fullscreen API. An open popup is not evidence that
+    // fullscreen succeeded, and the inspector must say why the requested mode did not.
+    expect(hook.result.current.surface.describe(ids[0]!)).toContain("Fullscreen is unavailable in this browser.");
+    await toggle();
+    expect(hook.result.current.surface.describe(ids[0]!)).not.toContain("Fullscreen");
+  });
+
   it("closes a window whose Window Out is deleted", async () => {
     const { bus, ids, displaySinks, toggle } = await setup(["window"]);
     await toggle();

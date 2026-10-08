@@ -20,6 +20,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const FILES: ReadonlyArray<readonly [string, string]> = [
+  ["birefnet-lite-dynamic", "photo-mask.onnx"],
+  ["ormbg-quantized", "ormbg.onnx"],
   ["depth-anything-v2-small", "depth.onnx"],
   ["depth-anything-v2-small-q4f16", "depth-q4f16.onnx"],
   ["movenet-lightning", "pose.onnx"],

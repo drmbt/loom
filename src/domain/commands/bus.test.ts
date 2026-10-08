@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { NodeId } from "../types/ids.ts";
 import { alice, agent, contextFor, createHarness, patch, type Harness } from "./test-support.ts";
-import { CapabilityDeniedError, InvalidCommandInputError, InvalidInvocationError, UnknownCommandError, UnknownQueryError } from "./bus.ts";
+import { CapabilityDeniedError, createCommandBus, InvalidCommandInputError, InvalidInvocationError, UnknownCommandError, UnknownQueryError, type CommandRegistration } from "./bus.ts";
 import { createCapabilityGrantStore } from "./grants.ts";
 import { z } from "zod";
-import { ANY_INPUT, NO_INPUT } from "./input-schema.ts";
+import { ANY_INPUT, NO_INPUT, nodeIdInput, canvasNodeIdInput } from "./input-schema.ts";
 
 /**
  * Bus invariants: §V29 §V30 §V31 §V36 §V38 §V39.
@@ -131,6 +131,7 @@ describe("command bus — registration surface (§V39)", () => {
       // revert is a claim about THIS FILE (the value the document was opened with).
       "parameter.revert",
       "parameter.setMode",
+      "photoMapping.create",
       // T1496b: a preset bank's Store and Recall are document edits, so every bus has them.
       // T1502b: and Delete beside them.
       "preset.delete",
@@ -165,6 +166,106 @@ describe("command bus — registration surface (§V39)", () => {
         },
       }),
     ).toThrow(/already registered/);
+  });
+
+  it("explicitly refreshes schema and handler without replacing the document or undo history", async () => {
+    const original = {
+      name: "test.rename" as const,
+      inSession: "definition" as const,
+      inputSchema: z.object({ nodeId: z.string(), label: z.literal("old") }).strict(),
+      handler: () => ({ status: "applied" as const, output: { ok: true } }),
+    };
+    harness.bus.registerCommand(original);
+    const built = await addSolid();
+    const nodeId = built.output.createdIds["$a"]!;
+    const graph = harness.store.view.getGraph();
+    const store = harness.bus.store;
+    await expect(harness.bus.execute("test.rename", { nodeId, label: "new" }, contextFor(alice)))
+      .rejects.toBeInstanceOf(InvalidCommandInputError);
+    harness.bus.replaceCommand({ ...original,
+      inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
+      handler: () => ({ status: "applied", output: { ok: false } }),
+    });
+    expect(harness.bus.store).toBe(store);
+    expect(harness.store.view.getGraph()).toBe(graph);
+    expect((await harness.bus.execute("test.rename", { nodeId, label: "new" }, contextFor(alice))).output).toEqual({ ok: false });
+    await harness.bus.execute("graph.undo", {}, contextFor(alice));
+    expect(harness.store.view.getGraph().nodes[nodeId]).toBeUndefined();
+  });
+
+  it("refuses to replace missing or inherited commands", async () => {
+    const original: CommandRegistration<"test.exportSomething"> = {
+      name: "test.exportSomething", inSession: "app", inputSchema: NO_INPUT,
+      handler: () => ({ status: "applied", output: { ok: true } }),
+    };
+    expect(() => harness.bus.replaceCommand(original)).toThrow(/not owned/);
+    harness.bus.registerCommand(original);
+    const session = createCommandBus({ parent: harness.bus });
+    expect(session.hasCommand(original.name)).toBe(true);
+    expect(() => session.replaceCommand(original)).toThrow(/not owned/);
+    expect((await session.execute(original.name, {}, contextFor(alice))).output).toEqual({ ok: true });
+  });
+
+  it("keeps the old schema and handler when replacement registration is invalid", async () => {
+    const original: CommandRegistration<"test.rename"> = {
+      name: "test.rename", inSession: "definition",
+      inputSchema: z.object({ nodeId: z.string(), label: z.literal("old") }).strict(),
+      handler: () => ({ status: "applied", output: { ok: true } }),
+    };
+    harness.bus.registerCommand(original);
+    expect(() => harness.bus.replaceCommand({ ...original, inputSchema: undefined } as never)).toThrow(/without an inputSchema/);
+    expect(() => harness.bus.replaceCommand({ ...original, inSession: undefined } as never)).toThrow(/without saying/);
+    expect(() => harness.bus.replaceCommand({ ...original, inSession: "app" })).toThrow(/cannot change its inSession/);
+    expect(() => harness.bus.replaceCommand({ ...original, requiredCapabilities: ["export"] })).toThrow(/cannot change its requiredCapabilities/);
+    expect(harness.bus.inputSchemaOf(original.name)).toBe(original.inputSchema);
+    await expect(harness.bus.execute(original.name, { nodeId: "n", label: "new" }, contextFor(alice)))
+      .rejects.toBeInstanceOf(InvalidCommandInputError);
+    expect((await harness.bus.execute(original.name, { nodeId: "n", label: "old" }, contextFor(alice))).output).toEqual({ ok: true });
+  });
+
+  it("preserves instance address and refusal validation during replacement", async () => {
+    const original: CommandRegistration<"test.rename"> = {
+      name: "test.rename", inSession: "instance",
+      inputSchema: z.object({ nodeId: nodeIdInput, label: canvasNodeIdInput }).strict(),
+      rejectionOutput: () => ({ ok: false }),
+      handler: () => ({ status: "applied", output: { ok: true } }),
+    };
+    harness.bus.registerCommand(original);
+    expect(() => harness.bus.replaceCommand({ ...original, rejectionOutput: undefined } as never)).toThrow(/has no rejectionOutput/);
+    expect(() => harness.bus.replaceCommand({ ...original,
+      inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
+    })).toThrow(/every string of its input is a node address/);
+    expect(harness.bus.inputSchemaOf(original.name)).toBe(original.inputSchema);
+    expect((await harness.bus.execute(original.name, { nodeId: "n", label: "old" }, contextFor(alice))).output).toEqual({ ok: true });
+  });
+
+  it("preserves capability requirements and accepts equivalent capability sets", async () => {
+    const original: CommandRegistration<"test.exportSomething"> = {
+      name: "test.exportSomething", inSession: "app", inputSchema: NO_INPUT,
+      requiredCapabilities: ["export", "localFile"],
+      handler: () => ({ status: "applied", output: { ok: true } }),
+    };
+    harness.bus.registerCommand(original);
+    expect(() => harness.bus.replaceCommand({ ...original, requiredCapabilities: ["localFile"] })).toThrow(/requiredCapabilities/);
+    expect(() => harness.bus.replaceCommand({ ...original, requiredCapabilities: [] })).toThrow(/requiredCapabilities/);
+    harness.bus.replaceCommand({ ...original, requiredCapabilities: ["localFile", "export"] });
+    await expect(harness.bus.execute(original.name, {}, contextFor(alice))).rejects.toBeInstanceOf(CapabilityDeniedError);
+    harness.bus.grants.grant(alice, "export");
+    await expect(harness.bus.execute(original.name, {}, contextFor(alice))).rejects.toBeInstanceOf(CapabilityDeniedError);
+    harness.bus.grants.grant(alice, "localFile");
+    expect((await harness.bus.execute(original.name, {}, contextFor(alice))).output).toEqual({ ok: true });
+  });
+
+  it("preserves the complete definition hand-up declaration", () => {
+    const original: CommandRegistration<"test.rename"> = {
+      name: "test.rename", inSession: { definition: true, handsUp: "An explicit project action" },
+      inputSchema: z.object({ nodeId: z.string(), label: z.string() }).strict(),
+      handler: () => ({ status: "applied", output: { ok: true } }),
+    };
+    harness.bus.registerCommand(original);
+    harness.bus.replaceCommand({ ...original, inSession: { definition: true, handsUp: "An explicit project action" } });
+    expect(() => harness.bus.replaceCommand({ ...original, inSession: { definition: true, handsUp: "Anything" } })).toThrow(/cannot change its inSession/);
+    expect(() => harness.bus.replaceCommand({ ...original, inSession: "definition" })).toThrow(/cannot change its inSession/);
   });
 
   it("throws for an unknown command or query rather than silently no-op'ing", async () => {

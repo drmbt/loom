@@ -71,6 +71,7 @@ const RAW_READ = /store\.getGraph/g;
  * is written down too (§V464(c)).
  */
 const DECLARED: ReadonlyArray<{ file: string; reads: number; why: string }> = [
+  { file: "app/photo-mapping-host.tsx", reads: 1, why: "User-triggered Apply validates and patches the authored root recipe; never runs in a frame." },
   {
     file: "app/use-perform-windows.ts",
     reads: 4,

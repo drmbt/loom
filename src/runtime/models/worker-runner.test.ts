@@ -77,6 +77,63 @@ const runnerOver = (fake: ReturnType<typeof fakeWorker>) =>
   });
 
 describe("the main thread's half", () => {
+  it("captures native raw values explicitly while preserving the encoded result", async () => {
+    const fake = fakeWorker();
+    const runner = createWorkerRunner({
+      worker: fake.worker,
+      describe: () => ({ ...target, captureRaw: false }),
+      weightsFor: async () => new ArrayBuffer(8),
+    });
+    const running = runner.runRaw("n1", new ArrayBuffer(4));
+    await Promise.resolve();
+    fake.deliver({ kind: "loaded", sessionKey: sessionKeyFor("m", PROVIDERS), backend: "wasm", millis: 1, isolated: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    const request = fake.sent.find(message => message.kind === "run");
+    expect(request?.kind === "run" && request.captureRaw).toBe(true);
+    const values = new Float32Array([2.125, 19.375, 4.5, 80]);
+    const bytes = new Uint8Array([1, 2]);
+    fake.deliver({ kind: "result", requestId: 1, bytes: bytes.buffer,
+      raw: { bytes: values.buffer, width: 2, height: 2 }, backend: "wasm", millis: 1, isolated: true });
+    const result = await running;
+    expect(result.bytes.buffer).toBe(bytes.buffer);
+    expect(result.raw.values.buffer).toBe(values.buffer);
+    expect([...result.raw.values]).toEqual([...values]);
+    expect([result.raw.width, result.raw.height]).toEqual([2, 2]);
+    runner.dispose();
+  });
+
+  it.each(["missing", "length", "fractional", "empty"] as const)("refuses %s raw output", async kind => {
+    const fake = fakeWorker();
+    const runner = runnerOver(fake);
+    const running = runner.runRaw("n1", new ArrayBuffer(4));
+    const rejected = expect(running).rejects.toThrow(kind === "missing" ? "no raw output" : "invalid raw output dimensions");
+    await Promise.resolve();
+    fake.deliver({ kind: "loaded", sessionKey: sessionKeyFor("m", PROVIDERS), backend: "wasm", millis: 1, isolated: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    fake.deliver({ kind: "result", requestId: 1, bytes: new ArrayBuffer(16),
+      ...(kind === "missing" ? {} : { raw: { bytes: new ArrayBuffer(kind === "length" ? 12 : 16),
+        width: kind === "fractional" ? 1.5 : kind === "empty" ? 0 : 2, height: 2 } }),
+      backend: "wasm", millis: 1, isolated: true });
+    await rejected;
+    runner.dispose();
+  });
+
+  it.each(["crash", "dispose", "retire"] as const)("rejects pending raw capture on %s", async end => {
+    const fake = fakeWorker();
+    const runner = createWorkerRunner({ worker: fake.worker, describe: () => target,
+      weightsFor: () => new Promise(() => {}) });
+    const pending = runner.runRaw("n1", new ArrayBuffer(4));
+    const rejected = expect(pending).rejects.toThrow(end === "crash" ? "stopped" : end === "dispose" ? "disposed" : "retired");
+    if (end === "crash") fake.crash();
+    else if (end === "dispose") runner.dispose();
+    else runner.retainNodes([]);
+    await rejected;
+    expect(fake.sent.filter(message => message.kind === "run")).toEqual([]);
+    runner.dispose();
+  });
+
   it("retires a node during acquisition without cancelling shared weights or posting its stale run", async () => {
     const fake = fakeWorker();
     let acquired!: (weights: ArrayBuffer) => void;
@@ -287,31 +344,33 @@ describe("the worker's half", () => {
    * became wrong. A fake whose contract is copied from the artefact is the only kind that
    * can disagree with the code it stands in for.
    */
-  function fakeSession(modelId: string, output: Float32Array): InferenceSessionLike {
+  function fakeSession(modelId: string, output: Float32Array, dims?: readonly number[]): InferenceSessionLike {
     const signature = signatureFor(modelId);
     if (signature === undefined) throw new Error(`no recorded signature for ${modelId}`);
     return {
       inputNames: [...signature.inputs],
       outputNames: [...signature.outputs],
       run: async () =>
-        Object.fromEntries(signature.outputs.map((name) => [name, { data: output }])),
+        Object.fromEntries(signature.outputs.map((name) => [name, { data: output, ...(dims === undefined ? {} : { dims }) }])),
     };
   }
 
-  function core(output: Float32Array, modelId: string = DEPTH_ID) {
+  function core(output: Float32Array, modelId: string = DEPTH_ID, dims?: readonly number[]) {
     const posted: InferenceResponse[] = [];
     const created: unknown[] = [];
+    const transfers: (Transferable[] | undefined)[] = [];
     return {
       posted,
       created,
+      transfers,
       instance: createWorkerCore({
       isolated: true,
-        createSession: async () => fakeSession(modelId, output),
+        createSession: async () => fakeSession(modelId, output, dims),
         createTensor: (type, data, dims) => {
           created.push({ type, length: data.length, dims });
           return {};
         },
-        post: (response) => posted.push(response),
+        post: (response, transfer) => { posted.push(response); transfers.push(transfer); },
       }),
     };
   }
@@ -326,7 +385,39 @@ describe("the worker's half", () => {
     expect(c.created[0]).toEqual({ type: "float32", length: 3 * 4, dims: [1, 3, 2, 2] });
     const result = c.posted.find((m) => m.kind === "result");
     expect(result?.kind === "result" && result.bytes.byteLength).toBe(2 * 2 * 4);
+    expect(result?.kind === "result" && result.raw).toBeUndefined();
+    expect(c.transfers[c.posted.indexOf(result!)]).toEqual([result?.kind === "result" ? result.bytes : undefined]);
   });
+
+  it("captures native depth before normalization and resampling only when requested", async () => {
+    const output = new Float32Array([4.125, 12.5, 40, 100]);
+    const c = core(output, DEPTH_ID, [1, 1, 2, 2]);
+    await c.instance.handle({ kind: "load", modelId: DEPTH_ID, sessionKey: "depth@wasm", weights: new ArrayBuffer(4), providers: ["wasm"] });
+    await c.instance.handle({ kind: "run", nodeId: "depth", requestId: 7, sessionKey: "depth@wasm",
+      nodeType: "depth", modelId: DEPTH_ID, ratio: 0, smoothing: 1, captureRaw: true,
+      texels: new Float32Array(16).buffer, width: 4, height: 2, side: 2, sourceWidth: 4, sourceHeight: 2 });
+    const result = c.posted.find(message => message.kind === "result");
+    if (result?.kind !== "result" || result.raw === undefined) throw new Error("Expected raw depth capture");
+    expect([result.raw.width, result.raw.height]).toEqual([2, 2]);
+    expect([...new Float32Array(result.raw.bytes)]).toEqual([...output]);
+    expect(result.raw.bytes).not.toBe(output.buffer);
+    expect(result.bytes.byteLength).toBe(4 * 2 * 4);
+    expect([...new Float32Array(result.bytes)].every(value => value >= 0 && value <= 1)).toBe(true);
+    expect(c.transfers[c.posted.indexOf(result)]).toEqual([result.bytes, result.raw.bytes]);
+  });
+
+  it.each([undefined, [4], [1, 1, 2, 3], [1, 1, 0, 4], [1, 1, 1.5, 2]] as const)(
+    "refuses raw capture with invalid native shape %j", async dims => {
+      const c = core(new Float32Array(4), DEPTH_ID, dims);
+      await c.instance.handle({ kind: "load", modelId: DEPTH_ID, sessionKey: "depth@wasm", weights: new ArrayBuffer(4), providers: ["wasm"] });
+      await c.instance.handle({ kind: "run", nodeId: "depth", requestId: 42, sessionKey: "depth@wasm",
+        nodeType: "depth", modelId: DEPTH_ID, ratio: 0, smoothing: 1, captureRaw: true,
+        texels: new Float32Array(16).buffer, width: 2, height: 2, side: 2, sourceWidth: 2, sourceHeight: 2 });
+      expect(c.posted.filter(message => message.kind === "result")).toEqual([]);
+      expect(c.posted.find(message => message.kind === "error")).toMatchObject({ kind: "error", requestId: 42,
+        message: expect.stringContaining("Raw preparation requires") });
+    },
+  );
 
   it("packs POSE as uint8 x4 NHWC — the model's signature, not its card (§B148)", async () => {
     const c = core(new Float32Array(POSE_KEYPOINT_COUNT * 3), POSE_ID);

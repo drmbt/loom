@@ -44,7 +44,7 @@
  * `current ▸ next`), and the list scrolls ITSELF — never the page — to keep the standby in
  * view when Loom moves it.
  *
- * T1607b — SCROLL TO EVERY CONTROL WITHOUT MOVING ONE, AND PAGES
+ * T1607b — SCROLL TO EVERY CONTROL WITHOUT MOVING ONE
  * (`docs/phone-panel-scrolling-design-2026-10-05.md`). A touch that lands on a control is
  * not yet the control's. Sliders, faders, toggles and buttons are `touch-action: pan-y`, so
  * the BROWSER scrolls a touch that goes up or down (and says so with `pointercancel`); the
@@ -54,9 +54,9 @@
  * flips on release (`click`), a momentary Button is pressed on release or held once a
  * finger has rested `PRESS_MS`. An XY pad owns both axes (`touch-action: none`), so a page
  * that scrolls and shows one grows a rail down its right edge that only ever scrolls. A
- * board with two or more labelled sections gets a pager above the tabs: All, and a page per
- * label drawn so its own columns fill the width. Those rules are `PHONE_PAGE_LOGIC`, plain
- * functions of numbers that the test runs from the same string the phone does.
+ * board keeps every labelled section in its authored position. The gesture rules are
+ * `PHONE_PAGE_LOGIC`, plain functions of numbers that the test runs from the same string
+ * the phone does.
  *
  * B269 — A BOARD OF NARROW COLUMNS IS NEVER CRUSHED OR CLIPPED. A row is as tall as a column
  * is wide and never lower than a floor (`--row`); what a finger can hit is half the gap
@@ -110,9 +110,6 @@ export const PHONE_NAME_STORAGE_KEY = "loom.phone.cameraName";
 /** T1517b: where the phone keeps the tab it last showed (its `localStorage`). */
 export const PHONE_TAB_STORAGE_KEY = "loom.phone.tab";
 
-/** T1607b: where the phone keeps the page it last showed of each Panel — a JSON object, tab key → page name. */
-export const PHONE_PAGE_STORAGE_KEY = "loom.phone.page";
-
 /**
  * T1647b TRIAL — deleted when the owner has chosen: where the phone keeps what it is trying,
  * a JSON object `{ touch, rows }` (a key of `TOUCH_MODES`, and a row height in px).
@@ -142,12 +139,10 @@ html, body {
 }
 body {
   /* --pad is the page gutter; --bar the bottom tab bar's height above the safe area.
-     T1607b: --pager is the pager's height while a Panel has pages, --rail what the scroll
-     rail takes from the right gutter while it shows; both 0 otherwise. */
+     T1607b: --rail is what the scroll rail takes from the right gutter while it shows. */
   --pad: 12px;
   --bar: 64px;
   --gap: 6px;
-  --pager: 0px;
   --rail: 0px;
   /* B269: the least a board's row may be DRAWN. Not a guideline's number: at 30 px the owner
      called his sliders crunched, at 39 to 45 "a smidge too chunky", so it sits between, and
@@ -161,7 +156,7 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   padding: calc(var(--pad) + env(safe-area-inset-top)) calc(var(--pad) + var(--rail) + env(safe-area-inset-right))
-    calc(var(--bar) + var(--pager) + var(--pad) + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left));
+    calc(var(--bar) + var(--pad) + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left));
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
@@ -184,7 +179,7 @@ body {
   position: fixed;
   left: calc(var(--pad) + env(safe-area-inset-left));
   right: calc(var(--pad) + env(safe-area-inset-right));
-  bottom: calc(var(--bar) + var(--pager) + var(--pad) + env(safe-area-inset-bottom));
+  bottom: calc(var(--bar) + var(--pad) + env(safe-area-inset-bottom));
   z-index: 4;
   padding: 14px 16px;
   border: 1px solid var(--error);
@@ -236,45 +231,6 @@ body {
 #tabs .dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--signal); }
 #tabs .dot.live { background: var(--ok); }
 /*
- * T1607b: the pager — the shown Panel's labelled sections as pages, directly above the tab
- * bar so every way round the surface is under one thumb. Shown only for a board with pages.
- */
-body.paged { --pager: 52px; }
-#pager {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--bar) + env(safe-area-inset-bottom));
-  z-index: 3;
-  display: flex;
-  gap: 6px;
-  height: var(--pager);
-  padding: 4px calc(8px + env(safe-area-inset-right)) 4px calc(8px + env(safe-area-inset-left));
-  border-top: 1px solid var(--line);
-  background: var(--bg-panel);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-#pager::-webkit-scrollbar { display: none; }
-#pager button {
-  flex: 1 0 auto;
-  min-width: 56px;
-  max-width: 200px;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: transparent;
-  color: var(--text-dim);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#pager button[aria-selected="true"] { border-color: var(--signal); background: var(--bg-raise); color: var(--text); }
-/*
  * T1607b: the scroll rail. An XY pad owns every touch that lands on it (touch-action:
  * none), so a page that scrolls and shows one keeps this strip at its right edge: it
  * handles nothing, which leaves a touch on it to the browser to scroll. The thumb says
@@ -285,7 +241,7 @@ body.railed { --rail: 28px; }
   position: fixed;
   top: 0;
   right: 0;
-  bottom: calc(var(--bar) + var(--pager) + env(safe-area-inset-bottom));
+  bottom: calc(var(--bar) + env(safe-area-inset-bottom));
   z-index: 2;
   width: calc(32px + env(safe-area-inset-right));
   border-left: 1px solid var(--line);
@@ -679,7 +635,10 @@ body.knobs .grip {
   border: 2px solid var(--signal);
   border-radius: 9px;
   background: color-mix(in srgb, var(--signal) 20%, transparent);
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: none;
+  /* A touch on the knob belongs to the slider from touchdown. The bare track keeps
+     pan-y: Chromium must not claim a knob drag as scrolling before the script sees it. */
   /* UNDER the caption's and the value's chips, as the handle is (.board .w.slider > .cap):
      drawn above them it covered the caption wherever the value sat under the text. */
 }
@@ -699,7 +658,7 @@ body.railleft #rail { right: auto; left: 0; width: calc(56px + env(safe-area-ins
 body.railleft #rail .railthumb { left: auto; right: 25px; }
 /* L: the SWITCH, at the left end of the tab bar — fixed, so it is in reach scrolled or not,
    upright or sideways. In Scroll the board takes no touch at all (a touch falls through to
-   the page, which scrolls) and is dimmed; the tab bar and the pager answer as ever. */
+   the page, which scrolls) and is dimmed; the tab bar answers as ever. */
 #lock {
   position: fixed;
   left: 0;
@@ -853,49 +812,6 @@ export const PHONE_PAGE_LOGIC = String.raw`
     if (step > 0) v = Math.round(v / step) * step;
     var lo = Math.min(min, max), hi = Math.max(min, max);
     return tidy(v < lo ? lo : v > hi ? hi : v);
-  }
-
-  /*
-   * A BOARD'S LABELLED SECTIONS, AS PAGES. cells is the board as drawn: { label, x, y, w, h }
-   * in whole grid cells, label a string for a label and null for a control. A control
-   * belongs to the nearest label above it that it overlaps across (the most overlap wins,
-   * then the one placed first). A page is the box round one label and its controls, and
-   * names its cells by index; pages run left to right, then down, the way sections drawn
-   * as columns read. Fewer than two labels with controls: no pages — the board is one
-   * page already.
-   */
-  function pagesOf(cells) {
-    var pages = [];
-    var byLabel = {};
-    cells.forEach(function (cell, index) {
-      if (cell.label !== null) return;
-      var best = -1, bestBottom = -1, bestOver = 0;
-      cells.forEach(function (label, at) {
-        if (label.label === null || label.label === "") return;
-        var over = Math.min(cell.x + cell.w, label.x + label.w) - Math.max(cell.x, label.x);
-        var bottom = label.y + label.h;
-        if (over <= 0 || bottom > cell.y) return;
-        if (bottom > bestBottom || (bottom === bestBottom && over > bestOver)) { best = at; bestBottom = bottom; bestOver = over; }
-      });
-      if (best < 0) return;
-      var page = byLabel[best];
-      if (!page) {
-        var head = cells[best];
-        page = byLabel[best] = { name: head.label, at: best, x: head.x, y: head.y, right: head.x + head.w, bottom: head.y + head.h, cells: [best] };
-        pages.push(page);
-      }
-      page.cells.push(index);
-      page.x = Math.min(page.x, cell.x);
-      page.y = Math.min(page.y, cell.y);
-      page.right = Math.max(page.right, cell.x + cell.w);
-      page.bottom = Math.max(page.bottom, cell.y + cell.h);
-    });
-    if (pages.length < 2) return [];
-    pages.sort(function (a, b) {
-      var p = cells[a.at], q = cells[b.at];
-      return p.x - q.x || p.y - q.y || a.at - b.at;
-    });
-    return pages.map(function (p) { return { name: p.name, x: p.x, y: p.y, w: p.right - p.x, h: p.bottom - p.y, cells: p.cells }; });
   }
 `;
 
@@ -1775,8 +1691,7 @@ ${PHONE_PAGE_LOGIC}
     var cols = whole(board.columns, 1, 64);
     var wrap = el("div", "boardwrap");
     var grid = el("div", "board");
-    // T1607b: what is drawn where, kept so a page can show a section of it (lay).
-    var cells = [];
+    grid.style.setProperty("--cols", String(cols));
     board.items.forEach(function (item) {
       var node = null;
       if (item.kind === "label") {
@@ -1788,106 +1703,32 @@ ${PHONE_PAGE_LOGIC}
       if (node === null) return;
       var r = item.rect || {};
       var x = whole(r.x, 0, cols - 1);
-      cells.push({
-        node: node,
-        label: item.kind === "label" ? String(item.text || "").trim() : null,
-        x: x,
-        y: whole(r.y, 0, 9999),
-        w: whole(r.w, 1, cols - x),
-        h: whole(r.h, 1, 9999)
-      });
+      var y = whole(r.y, 0, 9999);
+      var w = whole(r.w, 1, cols - x);
+      var h = whole(r.h, 1, 9999);
+      node.style.gridColumn = (x + 1) + " / span " + w;
+      node.style.gridRow = (y + 1) + " / span " + h;
       grid.appendChild(node);
     });
     wrap.appendChild(grid);
     section.appendChild(wrap);
-    return { grid: grid, cols: cols, cells: cells, pages: pagesOf(cells) };
   }
 
-  /* ----------------------------------------------------- pages and the rail (T1607b) */
+  /* ----------------------------------------------------- tab scroll and the rail (T1607b) */
 
-  /*
-   * PAGES. A board with labelled sections (pagesOf) can be shown one section at a time:
-   * the pager above the tab bar offers All — the board as its owner drew it — and a page
-   * per label. A page is the same grid with the other cells hidden and its own moved to
-   * its top-left corner, so ITS columns fill the width; no control is built twice, and one
-   * that is held keeps its touch. The phone remembers the page per Panel (by name, like the
-   * tab: a section that is gone shows All without forgetting the choice) and, for this
-   * visit, how far every tab and page was scrolled.
-   */
-  var pagerEl = document.getElementById("pager");
   var railEl = document.getElementById("rail");
   var railThumb = railEl.firstChild;
-  var boards = {};     // tab key -> what drawBoard returned
-  var pageChosen = readPages();
-  var offsets = {};    // view (tab + page) -> how far it was scrolled
-  var viewShown = "";  // the view showing now
+  var offsets = {};    // tab key -> how far it was scrolled this visit
+  var viewShown = "";  // the tab showing now
   var tabShown = "";   // the tab showing now
 
-  function readPages() {
-    try {
-      var kept = JSON.parse(localStorage.getItem(CONFIG.pageKey) || "{}");
-      return kept && typeof kept === "object" && !Array.isArray(kept) ? kept : {};
-    } catch (x) { return {}; }
-  }
-  function keepPages() {
-    try { localStorage.setItem(CONFIG.pageKey, JSON.stringify(pageChosen)); } catch (x) { /* storage off: this visit only */ }
-  }
-  function pageOf(tab) {
-    var board = own(boards, tab);
-    var name = own(pageChosen, tab);
-    if (!board || typeof name !== "string") return null;
-    for (var i = 0; i < board.pages.length; i++) if (board.pages[i].name === name) return board.pages[i];
-    return null;
-  }
-  function lay(board, page) {
-    board.grid.style.setProperty("--cols", String(page ? page.w : board.cols));
-    board.cells.forEach(function (cell, index) {
-      var on = page === null || page.cells.indexOf(index) >= 0;
-      cell.node.hidden = !on;
-      if (!on) return;
-      cell.node.style.gridColumn = (cell.x - (page ? page.x : 0) + 1) + " / span " + cell.w;
-      cell.node.style.gridRow = (cell.y - (page ? page.y : 0) + 1) + " / span " + cell.h;
-    });
-  }
-  function showPager(tab) {
-    var board = own(boards, tab);
-    var pages = board ? board.pages : [];
-    var page = pageOf(tab);
-    pagerEl.textContent = "";
-    pagerEl.hidden = pages.length === 0;
-    document.body.classList.toggle("paged", pages.length > 0);
-    if (board) lay(board, page);
-    if (pages.length === 0) return;
-    // Chip 0 is All; chip n is pages[n - 1].
-    [null].concat(pages).forEach(function (p, index) {
-      var b = el("button", "", p ? p.name : "All");
-      b.type = "button";
-      b.setAttribute("role", "tab");
-      b.setAttribute("data-page", String(index));
-      b.setAttribute("aria-selected", p === page ? "true" : "false");
-      pagerEl.appendChild(b);
-    });
-  }
-  pagerEl.addEventListener("click", function (event) {
-    var b = event.target && event.target.closest ? event.target.closest("button[data-page]") : null;
-    var board = own(boards, tabShown);
-    if (b === null || !board) return;
-    var page = board.pages[Number(b.getAttribute("data-page")) - 1];
-    leave();
-    if (page) pageChosen[tabShown] = page.name;
-    else delete pageChosen[tabShown];
-    keepPages();
-    showTab();
-  });
-
-  /* How far the page is scrolled: remembered on the way out of a view, put back on the way in. */
+  /* How far the tab is scrolled: remembered on the way out, put back on the way in. */
   function scroller() { return document.scrollingElement || document.documentElement; }
   function leave() {
     if (viewShown !== "") offsets[viewShown] = scroller().scrollTop;
   }
   function arrive() {
-    var page = pageOf(tabShown);
-    viewShown = tabShown + "\n" + (page ? page.name : "");
+    viewShown = tabShown;
     // Only when it differs: a redraw of the view a finger is scrolling must not touch its scroll.
     var s = scroller();
     var kept = own(offsets, viewShown) || 0;
@@ -2020,7 +1861,6 @@ ${PHONE_PAGE_LOGIC}
     // T1607b: the redraw is the same view — it comes back where it was scrolled.
     leave();
     views = {};
-    boards = {};
     panelsEl.textContent = "";
     var list = [];
     if (panels.length === 0) {
@@ -2040,8 +1880,7 @@ ${PHONE_PAGE_LOGIC}
       section.setAttribute("data-tab", key);
       var board = boardOf(p);
       if (board) {
-        boards[key] = drawBoard(section, board);
-        lay(boards[key], pageOf(key));
+        drawBoard(section, board);
       } else drawRows(section, p.rows || []);
       panelsEl.appendChild(section);
       list.push({ key: key, label: title });
@@ -2108,10 +1947,8 @@ ${PHONE_PAGE_LOGIC}
     }
     var sections = panelsEl.querySelectorAll("section[data-tab]");
     for (var k = 0; k < sections.length; k++) sections[k].hidden = sections[k].getAttribute("data-tab") !== shown;
-    // T1607b: the shown Panel's page and pager, the rail if this view needs one, and the
-    // view back where it was scrolled — in that order, each changes what the next measures.
+    // T1607b: the rail if this view needs one, then the tab back where it was scrolled.
     tabShown = shown;
-    showPager(shown);
     rail();
     arrive();
     // A list that was drawn while its tab was hidden finds its standby now.
@@ -2526,7 +2363,6 @@ export function phonePageHtml(): string {
     signal: PHONE_SIGNAL_PATH,
     nameKey: PHONE_NAME_STORAGE_KEY,
     tabKey: PHONE_TAB_STORAGE_KEY,
-    pageKey: PHONE_PAGE_STORAGE_KEY,
     trialKey: PHONE_TRIAL_STORAGE_KEY,
     nameMax: PHONE_NAME_MAX_CHARS,
     reasonMax: PHONE_REASON_MAX_CHARS,
@@ -2567,9 +2403,8 @@ export function phonePageHtml(): string {
     '<button id="camGo" type="button" class="ctl">Start camera</button>',
     `<label class="field">Sends as <input id="camName" type="text" maxlength="${String(PHONE_NAME_MAX_CHARS)}" autocomplete="off" spellcheck="false"></label>`,
     "</section>",
-    // T1607b: the scroll rail (shown beside a pad on a page that scrolls) and the pager.
+    // T1607b: the scroll rail (shown beside a pad on a page that scrolls).
     '<div id="rail" aria-hidden="true" hidden><div class="railthumb"></div></div>',
-    '<nav id="pager" role="tablist" aria-label="Pages of this panel" hidden></nav>',
     '<nav id="tabs" role="tablist" aria-label="Panels and camera"></nav>',
     // T1647b TRIAL — deleted when the owner has chosen: the lock's switch (mode L) and the two choices.
     '<button id="lock" type="button" aria-label="Scroll only: no control answers" aria-pressed="false" hidden><span class="play">Play</span><span class="scroll">Scroll</span></button>',

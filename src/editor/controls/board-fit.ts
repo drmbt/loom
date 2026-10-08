@@ -7,12 +7,15 @@ import { controlChannel } from "@nodes/definitions/controls.ts";
  *
  *   1. SCALE THE TYPE with the cell (`boardBaseFontPx`), shrinking it further — never below
  *      `BOARD_FONT_MIN_PX` — until caption and value fit whole;
- *   2. if they cannot, DROP THE VALUE and size the caption alone the same way — a toggle
- *      keeps a small switch (its state is the switch), a button drops its count;
- *   3. only if the caption alone cannot fit at the minimum does it ellipsise.
+ *   2. if they cannot, the CAPTION gives way: it ellipsises at the minimum size and the
+ *      value stays whole beside it. A toggle alone may first trade its On/Off text for a
+ *      small switch (its state IS the switch, so nothing is hidden) to keep its caption.
  *
- * So a value is either shown whole or not at all — the readout never truncates — and the
- * two are never cut together. Decided from arithmetic on the rect and the document, not
+ * VNB9 reversed T1518b's order, which dropped the value first and kept the caption whole:
+ * on `stage-previz-2` a slider captioned "Side keystone H, ° (squares the floor image)"
+ * showed no number at all, and a control whose number cannot be seen cannot be read on
+ * stage. The whole caption, and the value, are on the control's hover. Still: the readout
+ * never truncates, and the two are never cut together. Decided from arithmetic on the rect and the document, not
  * from a measurement, so jsdom and the browser agree and a test can read the decision.
  * The em widths below are the CSS of a board widget (`control-widget.module.css`, `.board`),
  * and the glyph estimate is deliberately a few percent WIDE of Archivo (measured: "Invert"
@@ -117,7 +120,7 @@ export interface BoardFit {
   readonly fontPx: number;
   /** Whether its value (a slider's number, a toggle's On/Off, a button's count) is shown. */
   readonly value: boolean;
-  /** `whole`: the caption fits at `fontPx`; `cut`: it does not even alone at the minimum, and ellipsises. */
+  /** `whole`: the caption fits at `fontPx`; `cut`: it does not fit beside the value at the minimum, and ellipsises (VNB9). */
   readonly caption: "whole" | "cut";
 }
 
@@ -157,12 +160,14 @@ export function boardFit({ kind, caption, valueEm, widthPx, cellPx }: BoardFitRe
   const room = widthPx - (label ? 0 : BORDER_PX);
   const base = boardBaseFontPx(cellPx);
   const hasValue = !label && valueEm > 0;
-  for (const withValue of hasValue ? [true, false] : [false]) {
+  // VNB9: only a toggle may drop its value text, because its switch still shows the state.
+  const tries = !hasValue ? [false] : kind === "toggle" ? [true, false] : [true];
+  for (const withValue of tries) {
     const em = lineEm(kind, captionEm, valueEm, withValue);
     const fontPx = halfPixelFloor(Math.min(base, room / Math.max(em, 0.01)));
     if (fontPx >= BOARD_FONT_MIN_PX) return { fontPx, value: withValue, caption: "whole" };
   }
-  return { fontPx: BOARD_FONT_MIN_PX, value: false, caption: "cut" };
+  return { fontPx: BOARD_FONT_MIN_PX, value: hasValue && kind !== "toggle", caption: "cut" };
 }
 
 /* ------------------------------------------------------------------ T1501b */

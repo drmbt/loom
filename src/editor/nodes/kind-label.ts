@@ -133,6 +133,68 @@ export function kindLabelParts(name: string | undefined, kind: string): KindLabe
   return { kind, rest: name.slice(kind.length), joined: true };
 }
 
+/**
+ * VNB15 (owner's ruling, 2026-10-07: option (b) after seeing (a) at 10 %) — A COMPONENT
+ * INSTANCE'S LABEL REACHES PAST ITS NODE, AS FAR AS THE NEXT NODE.
+ *
+ * An instance's kind is its component's whole name: the clip at the node's width cut
+ * `stagecamera1`, `stagefeeds1` and `stageset1` to `sta`. Uncapped (option (a)), E79's
+ * `audioanalysis1` ran over the labels of the row beside it. So an instance's clip reaches
+ * past its node's right edge exactly as far as the gap to the nearest node to its right
+ * IN ITS ROW, and stops there: whole where there is room, cut where there is not, never
+ * over a neighbour or a neighbour's label.
+ *
+ * ITS ROW is the band its label can occupy: from the line under its header up the clip's
+ * whole reach (`--kind-label-reach`). A node is in it when the node, or the band ITS label
+ * can occupy above it, overlaps that band. The band is the label's reach at ANY zoom, not
+ * at this one, so the answer is a fact of the layout alone: a zoom never changes it and
+ * never recomputes it.
+ *
+ * The answer is in GRAPH px, so it is written once per layout change and holds at every
+ * zoom (the clip is inside the node, which the canvas scales). Cost, bounded: nothing on
+ * a pan or a zoom; per LAYOUT change, one pass to list the boxes, O(nodes), and one pass
+ * over them for each registered instance, O(instances × nodes), with a DOM write only on a
+ * clip whose answer changed. Instances are few (E79 has 1 in 79 nodes, the stage previz 6
+ * in 43), and a canvas with none does the listing pass alone.
+ */
+/** `--pane-header-h`: the line the label stands on, below the node's top edge, graph px. */
+export const KIND_LABEL_HEADER_PX = 24;
+/** `--kind-label-reach`: how far above that line a label can rise, graph px. */
+export const KIND_LABEL_REACH_PX = 160;
+/** The property an instance clip is told its reach past its node's edge through. */
+export const INSTANCE_REACH_PROPERTY = "--instance-reach";
+/** Present on an instance clip that has a neighbour to stop at; absent, it runs on uncapped. */
+export const INSTANCE_REACH_ATTRIBUTE = "data-reach";
+
+/** A node's box in graph px. */
+export interface KindLabelBox {
+  readonly nodeId: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * How far past its right edge an instance's label may reach, in graph px: the gap to the
+ * nearest node to its right whose row band meets this one's, 0 when one overlaps it, and
+ * `Infinity` when nothing is to its right in its row.
+ */
+export function instanceReach(instance: KindLabelBox, boxes: ReadonlyArray<KindLabelBox>): number {
+  const top = instance.y + KIND_LABEL_HEADER_PX - KIND_LABEL_REACH_PX;
+  const bottom = instance.y + KIND_LABEL_HEADER_PX;
+  const right = instance.x + instance.width;
+  let nearest = Infinity;
+  for (const other of boxes) {
+    if (other.nodeId === instance.nodeId || !(other.x > instance.x)) continue;
+    const otherTop = other.y + KIND_LABEL_HEADER_PX - KIND_LABEL_REACH_PX;
+    const otherBottom = other.y + Math.max(other.height, KIND_LABEL_HEADER_PX);
+    if (otherBottom <= top || otherTop >= bottom) continue;
+    if (other.x < nearest) nearest = other.x;
+  }
+  return nearest === Infinity ? Infinity : Math.max(0, nearest - right);
+}
+
 export interface KindLabelRegistry {
   /**
    * A label element joins the canvas; the function returned takes it out again.
@@ -146,17 +208,42 @@ export interface KindLabelRegistry {
   attach(root: HTMLElement | null): void;
   /** The canvas's zoom, as often as the canvas likes: only a CHANGE does any work. */
   apply(zoom: number): void;
+  /**
+   * VNB15 — a component instance's label CLIP joins, under its node's id; the function
+   * returned takes it out again. Its reach past its node's edge is written on it from the
+   * layout (`layout`), never from the zoom.
+   */
+  registerInstance(clip: HTMLElement, nodeId: string): () => void;
+  /**
+   * VNB15 — the nodes' boxes in GRAPH px, when the LAYOUT changed (a node moved, resized,
+   * appeared or left). A pan or a zoom changes no box and never calls this.
+   */
+  layout(boxes: ReadonlyArray<KindLabelBox>): void;
 }
 
 /** One per canvas: two canvases on one document zoom separately (§V97). */
 export function createKindLabelRegistry(): KindLabelRegistry {
   const labels = new Set<HTMLElement>();
+  const instances = new Map<HTMLElement, string>();
+  let boxes: ReadonlyArray<KindLabelBox> = [];
   let root: HTMLElement | null = null;
   let zoom = Number.NaN;
   let tier: KindLabelTier = "off";
 
   const shown = (): boolean => tier === "name" || tier === "kind";
   const tell = (label: HTMLElement): void => label.style.setProperty(KIND_LABEL_ZOOM_PROPERTY, String(zoom));
+  /** Writes one instance clip's reach, and only when it changed. */
+  const reach = (clip: HTMLElement, nodeId: string): void => {
+    const own = boxes.find((box) => box.nodeId === nodeId);
+    const px = own === undefined ? Infinity : instanceReach(own, boxes);
+    if (px === Infinity) {
+      if (clip.hasAttribute(INSTANCE_REACH_ATTRIBUTE)) clip.removeAttribute(INSTANCE_REACH_ATTRIBUTE);
+      return;
+    }
+    const value = `${String(px)}px`;
+    if (clip.style.getPropertyValue(INSTANCE_REACH_PROPERTY) !== value) clip.style.setProperty(INSTANCE_REACH_PROPERTY, value);
+    if (!clip.hasAttribute(INSTANCE_REACH_ATTRIBUTE)) clip.setAttribute(INSTANCE_REACH_ATTRIBUTE, "");
+  };
   const writeTier = (): void => {
     if (root === null) return;
     if (shown()) root.setAttribute(KIND_LABEL_TIER_ATTRIBUTE, tier);
@@ -178,6 +265,17 @@ export function createKindLabelRegistry(): KindLabelRegistry {
       root?.removeAttribute(KIND_LABEL_TIER_ATTRIBUTE);
       root = next;
       writeTier();
+    },
+    registerInstance(clip, nodeId) {
+      instances.set(clip, nodeId);
+      reach(clip, nodeId);
+      return () => {
+        instances.delete(clip);
+      };
+    },
+    layout(next) {
+      boxes = next;
+      for (const [clip, nodeId] of instances) reach(clip, nodeId);
     },
     apply(next) {
       // A pan, and every other canvas event that is not a zoom, ends here.

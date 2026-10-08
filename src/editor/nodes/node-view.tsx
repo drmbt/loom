@@ -125,6 +125,8 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
    * which is what keeps a zoom from re-rendering a single node (§V16).
    */
   const joinKindLabels = useCallback((label: HTMLSpanElement) => kindLabels.register(label), [kindLabels]);
+  // VNB15: an instance's label clip is told, from the layout, how far past its node it may reach.
+  const joinInstanceClip = useCallback((clip: HTMLSpanElement) => kindLabels.registerInstance(clip, id), [kindLabels, id]);
 
   /**
    * §V101 — a badge press acts on the whole selection when this node is IN it, and on
@@ -242,6 +244,8 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
    * definition", so an unrenamed node tracks a retitled definition (§V29 rename).
    */
   const displayName = node.label ?? definition?.title ?? node.type;
+  /** VNB15: an instance's whole name and its component's, which a label at low zoom may cut. */
+  const instanceTitle = instanceRef === null ? undefined : `${displayName} · ${definition?.title ?? node.type}`;
 
   /**
    * T416 — the TYPE beside the name, and only when the name stopped carrying it.
@@ -331,6 +335,8 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
       <div
         className={cx(styles.node, selected && styles.selected)}
         data-testid={`node-${id}`}
+        // VNB15: an instance's whole name, on hover anywhere on it, whatever its label shows.
+        title={instanceTitle}
         data-status={status}
         // T607: a boundary node's dangling side wears a LEAD — the "dangling input
         // cable" of the owner's framing — saying "fed from outside" (In) or "feeds
@@ -382,8 +388,15 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
           // Two boxes: the outer is the band a label may use (the node's width, from the line
           // under the header upward, B258) and clips; the inner is the one the canvas tells
           // the zoom, and only its transform ever changes (see `.kindLabelClip`).
-          <span className={styles.kindLabelClip} aria-hidden="true">
-            <span ref={joinKindLabels} className={styles.kindLabel} data-testid={`node-kind-label-${id}`}>
+          // VNB15: an instance's label reaches past its node's edge, to the next node in its
+          // row (`instanceReach`), and its hover gives the whole name (see `.kindLabelClip`).
+          <span
+            ref={instanceRef !== null ? joinInstanceClip : undefined}
+            className={styles.kindLabelClip}
+            aria-hidden="true"
+            data-instance={instanceRef !== null ? true : undefined}
+          >
+            <span ref={joinKindLabels} className={styles.kindLabel} data-testid={`node-kind-label-${id}`} title={instanceTitle}>
               <span className={styles.kindLabelKind}>{kindLabel.kind}</span>
               {kindLabel.rest === "" ? null : (
                 <span className={styles.kindLabelRest} data-joined={kindLabel.joined}>
@@ -420,6 +433,8 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
               <span
                 className={cx(styles.name, nameAtRest !== null && styles.nameInParts)}
                 data-testid={`node-name-${id}`}
+                // VNB15: an instance's kind is its component's name, so its ROLE gives way first.
+                data-instance={instanceRef !== null ? true : undefined}
                 title={displayName}
                 // T415: TouchDesigner's own gesture, and the one the owner asked for —
                 // "edit name directly in the header bar". Routed through the command so

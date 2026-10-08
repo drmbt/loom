@@ -1,0 +1,239 @@
+/* VN62 — the timeline pane. Tokens only (§V17). */
+.pane {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-ui);
+  outline: none;
+}
+.lanes {
+  flex: 0 0 220px;
+  overflow: auto;
+  border-right: var(--border-hairline);
+  padding: var(--space-2);
+}
+.lanesHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: var(--border-hairline);
+  margin-bottom: var(--space-2);
+}
+.currentName {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group {
+  margin-bottom: var(--space-2);
+}
+.groupName {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: var(--space-1) 0;
+  color: var(--text-dim);
+  font: inherit;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.groupName[data-current] {
+  color: var(--signal);
+}
+.lane {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--control-h);
+}
+.lane[data-muted] .laneName {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+.swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border: var(--border-hairline);
+  border-radius: var(--radius);
+  padding: 0;
+  cursor: pointer;
+}
+.laneName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.renameField {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--control-h);
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--bg-sunken);
+  border: var(--border-hairline);
+}
+.renameField[aria-invalid="true"] {
+  border-color: var(--error);
+}
+.refs {
+  color: var(--text-dim);
+  font-size: var(--fs-micro);
+  min-width: 1.5em;
+  text-align: right;
+}
+.toggle,
+.iconButton,
+.danger {
+  flex: 0 0 auto;
+  min-width: var(--control-h);
+  height: var(--control-h);
+  padding: 0 var(--space-1);
+  font: inherit;
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  background: var(--bg-raise);
+  border: var(--border-hairline);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.toggle[data-on] {
+  color: var(--signal);
+  border-color: var(--signal);
+}
+.toggle:disabled,
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.danger {
+  color: var(--error);
+  border-color: var(--error);
+}
+.error {
+  color: var(--error);
+  font-size: var(--fs-micro);
+}
+.editor {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--border-hairline);
+}
+.readout {
+  display: flex;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+.timecode {
+  color: var(--text);
+}
+.spacer {
+  flex: 1 1 auto;
+}
+.notice {
+  color: var(--warn);
+  font-size: var(--fs-micro);
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-dim);
+  font-size: var(--fs-micro);
+}
+.canvas {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  display: block;
+  touch-action: none;
+}
+.empty {
+  position: absolute;
+  inset: 50% 0 auto 0;
+  text-align: center;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+.dope {
+  display: block;
+  width: 100%;
+  flex: 0 0 auto;
+  border-bottom: var(--border-hairline);
+  touch-action: none;
+}
+.body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+.curve {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.side {
+  flex: 0 0 300px;
+  overflow: auto;
+  border-left: var(--border-hairline);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}
+.table th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: normal;
+  padding: var(--space-1);
+  border-bottom: var(--border-hairline);
+}
+.table td {
+  padding: 1px var(--space-1);
+}
+.cell {
+  width: 100%;
+  min-width: 0;
+  height: var(--control-h);
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-sunken);
+  border: var(--border-hairline);
+}
+.tableEmpty {
+  padding: var(--space-2);
+  color: var(--text-dim);
+}
+/* VN63: where a dragged parameter would land on the lane list. */
+.lanes[data-drop-over],
+.group[data-drop-over],
+.lane[data-drop-over] {
+  outline: 1px dashed var(--signal);
+  outline-offset: -1px;
+}

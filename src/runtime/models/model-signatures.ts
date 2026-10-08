@@ -61,6 +61,22 @@ export interface ModelSignature {
 }
 
 export const MODEL_SIGNATURES: readonly ModelSignature[] = [
+  // Extracted from BiRefNet Lite at 173d635 on 2026-10-08; output_image is logits.
+  {
+    modelId: "birefnet-lite-dynamic",
+    input: { name: "input_image", type: "float32", shape: ["1", "3", "h", "w"] },
+    output: { name: "output_image", type: "float32" },
+    inputs: ["input_image"],
+    outputs: ["output_image"],
+  },
+  // Extracted from ORMBG Q8 at 034e2d8 on 2026-10-08; raw alphas are probabilities.
+  {
+    modelId: "ormbg-quantized",
+    input: { name: "pixel_values", type: "float32", shape: ["1", "3", "1024", "1024"] },
+    output: { name: "alphas", type: "float32" },
+    inputs: ["pixel_values"],
+    outputs: ["alphas"],
+  },
   {
     modelId: "depth-anything-v2-small",
     input: { name: "pixel_values", type: "float32", shape: ["batch_size", "3", "height", "width"] },

@@ -17,10 +17,12 @@ import type { PresentableCanvas, PresentationHandle, PresentationOptions } from 
  *
  * ## Fullscreen
  *
- * Asked for in the `window.open` features (Chrome's fullscreen popup, granted with the
- * window-management permission). Where that is not granted the window opens placed and
- * sized on its screen, and a click inside it goes fullscreen — the Fullscreen API needs a
- * gesture IN that window. A double click toggles, as on the viewer (T813).
+ * Requested through the child's Fullscreen API on open. The popup feature is retained
+ * for the desktop host; the old Chrome fullscreen-popup experiment does not provide this
+ * in an ordinary browser. Chrome permits the automatic request only with automatic
+ * fullscreen permission: window-management alone is insufficient, and opening a popup
+ * consumes the opener's activation. A refusal is shown here and in the inspector; a click
+ * in the child requests fullscreen with its own gesture. A double click toggles (T813).
  *
  * ## Edit mapping (§T1536b)
  *
@@ -50,6 +52,8 @@ export interface PerformWindowRequest {
   readonly fullscreen: boolean;
   readonly hideCursor: boolean;
   readonly onClosed: (nodeId: string) => void;
+  /** Fullscreen changed or a request was refused; refresh the owning inspector's status. */
+  readonly onFullscreenChanged: (nodeId: string) => void;
   /** §T1536b: `M` (toggle) or Escape (leave) in the window; true when it acted. */
   readonly onMappingKey: (nodeId: string, key: "toggle" | "leave") => boolean;
 }
@@ -68,6 +72,8 @@ export interface PerformWindowHandle {
   /** Repoint at the node's target after a recompile (or its first appearance). */
   setOutput(outputId: string | undefined): void;
   setHideCursor(hidden: boolean): void;
+  /** A browser refusal, until a successful request or fullscreen change clears it. */
+  readonly fullscreenMessage: string | null;
   close(): void;
   readonly closed: boolean;
 }
@@ -108,9 +114,74 @@ export function openPerformWindow(deps: PerformWindowDeps, request: PerformWindo
   };
   attach();
 
+  let closed = false;
+  let fullscreenMessage: string | null = null;
+  let fullscreenRequest = 0;
+  let fullscreenNotice: HTMLButtonElement | undefined;
+  const reportFullscreen = (message: string | null): void => {
+    if (closed || message === fullscreenMessage) return;
+    fullscreenMessage = message;
+    if (message === null) {
+      fullscreenNotice?.remove();
+      fullscreenNotice = undefined;
+    } else {
+      if (fullscreenNotice === undefined) {
+        const theme = deps.parent.getComputedStyle(deps.parent.document.documentElement);
+        for (const name of ["--bg-panel", "--text", "--line", "--font-ui", "--fs-ui"]) {
+          doc.documentElement.style.setProperty(name, theme.getPropertyValue(name));
+        }
+        fullscreenNotice = doc.createElement("button");
+        fullscreenNotice.type = "button";
+        fullscreenNotice.dataset["performFullscreenNotice"] = request.nodeId;
+        Object.assign(fullscreenNotice.style, {
+          position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)",
+          maxWidth: "calc(100vw - 32px)", padding: "12px 16px", background: "var(--bg-panel)",
+          color: "var(--text)", border: "1px solid var(--line)", borderRadius: "4px", cursor: "pointer",
+          font: "var(--fs-ui) var(--font-ui)", zIndex: "1",
+        });
+        fullscreenNotice.addEventListener("click", (event) => {
+          event.stopPropagation();
+          toggleFullscreen();
+        });
+        doc.body.appendChild(fullscreenNotice);
+      }
+      const supported = typeof doc.documentElement.requestFullscreen === "function";
+      const action = doc.fullscreenElement ? "Exit fullscreen" : "Enter fullscreen";
+      fullscreenNotice.disabled = !supported;
+      fullscreenNotice.setAttribute("aria-label", supported ? action : "Fullscreen unavailable");
+      fullscreenNotice.textContent = supported ? `${message} ${action}.` : message;
+    }
+    request.onFullscreenChanged(request.nodeId);
+  };
+  const fullscreenFailure = (error: unknown): void => {
+    const reason = error instanceof Error ? error.message : String(error);
+    reportFullscreen(`Fullscreen was refused by the browser: ${reason}`);
+  };
+  const followFullscreenRequest = (start: () => Promise<void>): void => {
+    const current = ++fullscreenRequest;
+    void start().then(
+      () => { if (current === fullscreenRequest) reportFullscreen(null); },
+      (error: unknown) => { if (current === fullscreenRequest) fullscreenFailure(error); },
+    );
+  };
+  const enterFullscreen = (): void => {
+    if (doc.fullscreenElement) return;
+    if (typeof doc.documentElement.requestFullscreen !== "function") {
+      reportFullscreen("Fullscreen is unavailable in this browser.");
+      return;
+    }
+    followFullscreenRequest(() => doc.documentElement.requestFullscreen({ navigationUI: "hide" }));
+  };
   const toggleFullscreen = (): void => {
-    if (doc.fullscreenElement === null) void doc.documentElement.requestFullscreen?.().catch(() => undefined);
-    else void doc.exitFullscreen?.().catch(() => undefined);
+    if (!doc.fullscreenElement) enterFullscreen();
+    else if (typeof doc.exitFullscreen !== "function") reportFullscreen("Exiting fullscreen is unavailable in this browser.");
+    else followFullscreenRequest(() => doc.exitFullscreen());
+  };
+  const onFullscreenChange = (): void => {
+    // A completed browser transition owns the status, even if an older request settles later.
+    fullscreenRequest += 1;
+    reportFullscreen(null);
+    if (!closed) request.onFullscreenChanged(request.nodeId);
   };
   /** §T1536b: a press on the mapping layer is a mapping gesture. */
   const onMappingLayer = (event: Event): boolean =>
@@ -118,7 +189,7 @@ export function openPerformWindow(deps: PerformWindowDeps, request: PerformWindo
     typeof (event.target as Element | null)?.closest === "function" && (event.target as Element).closest("[data-perform-mapping]") !== null;
   const onClick = (event: MouseEvent): void => {
     if (onMappingLayer(event)) return;
-    if (request.fullscreen && doc.fullscreenElement === null) toggleFullscreen();
+    if (request.fullscreen && !doc.fullscreenElement) enterFullscreen();
   };
   const onDoubleClick = (event: MouseEvent): void => {
     if (!onMappingLayer(event)) toggleFullscreen();
@@ -134,8 +205,8 @@ export function openPerformWindow(deps: PerformWindowDeps, request: PerformWindo
   doc.addEventListener("click", onClick);
   doc.addEventListener("dblclick", onDoubleClick);
   doc.addEventListener("keydown", onKeyDown);
+  doc.addEventListener("fullscreenchange", onFullscreenChange);
 
-  let closed = false;
   const teardown = (): void => {
     if (closed) return;
     closed = true;
@@ -144,6 +215,8 @@ export function openPerformWindow(deps: PerformWindowDeps, request: PerformWindo
     doc.removeEventListener("click", onClick);
     doc.removeEventListener("dblclick", onDoubleClick);
     doc.removeEventListener("keydown", onKeyDown);
+    doc.removeEventListener("fullscreenchange", onFullscreenChange);
+    fullscreenNotice?.remove();
     child.removeEventListener("pagehide", onChildGone);
     deps.parent.removeEventListener("pagehide", onParentGone);
     request.onClosed(request.nodeId);
@@ -152,6 +225,7 @@ export function openPerformWindow(deps: PerformWindowDeps, request: PerformWindo
   const onParentGone = (): void => child.close();
   child.addEventListener("pagehide", onChildGone);
   deps.parent.addEventListener("pagehide", onParentGone);
+  if (request.fullscreen) enterFullscreen();
 
   return {
     nodeId: request.nodeId,
@@ -172,6 +246,9 @@ export function openPerformWindow(deps: PerformWindowDeps, request: PerformWindo
       // T1530b: called every frame while open — write only when the answer changed.
       const cursor = hidden ? "none" : "default";
       if (body.cursor !== cursor) body.cursor = cursor;
+    },
+    get fullscreenMessage() {
+      return fullscreenMessage;
     },
     close() {
       teardown();

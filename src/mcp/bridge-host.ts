@@ -32,7 +32,7 @@ import {
   type LoopbackWebSocketServer,
 } from "@devices/transport/loopback-ws.ts";
 import type { McpToolListing, McpToolSource } from "./server.ts";
-import { NODE_NAMES, PARAMETER_MODES } from "@agent/schemas.ts";
+import { NETWORK_AUTHORING, NODE_NAMES, PARAMETER_MODES } from "@agent/schemas.ts";
 
 /**
  * THE NODE HALF OF THE BRIDGE (T451, T921, §V288, §V338).
@@ -1493,8 +1493,9 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
      * `instructions` plus the tool schemas is the ENTIRE text a client over stdio ever
      * receives: no repo, no `AGENTS.md`, no source. So the guidance that stopped an agent
      * from reaching for `bind` where it wanted `expression` has to live here, in the app's
-     * own vocabulary — nodes, parameters, modes. A sentence naming a file, a script or a
-     * test would be in the wrong document, because this reader can act on none of them.
+     * own vocabulary — nodes, parameters, modes. The authoring scope belongs here too:
+     * a network request uses those tools and saves a portable file; implementation work
+     * requires an explicit request even when the client also has repository access.
      *
      * `PARAMETER_MODES` is the SAME string the `parameters` schema publishes, imported
      * rather than restated: two copies of the mode list is two things to keep in step, and
@@ -1537,6 +1538,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
       // for the reason `PARAMETER_MODES` is. A client that writes `op('lamp')` against a node
       // it asked to be called `lamp` has to have been told, here, that it is `slider_lamp`.
       const document =
+        `${NETWORK_AUTHORING} ` +
         `${PARAMETER_MODES} ` +
         `${NODE_NAMES} ` +
         "An async source publishes its own latency, so `cache.index` as an expression " +

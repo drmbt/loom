@@ -410,6 +410,7 @@ describe("T931 — dropping a tab into another pane's tab strip", () => {
       "problems",
       "performance",
       "agent",
+      "timeline",
       "controls",
       "terminal",
     ]);
@@ -454,6 +455,7 @@ describe("T931 — dropping a tab into another pane's tab strip", () => {
       "shader",
       "performance",
       "agent",
+      "timeline",
       "controls",
       "terminal",
     ]);
@@ -1327,7 +1329,7 @@ describe("T854 — every tab carries its own close", () => {
     await user.click(within(bottom).getByRole("button", { name: "Close examples" }));
 
     const leaf = findLeaf(readPaneTreeStore(storage).current, "leaf-bottom");
-    expect(leaf?.tabs.map((tab) => tab.role)).toEqual(["shader", "problems", "performance", "agent", "controls", "terminal"]);
+    expect(leaf?.tabs.map((tab) => tab.role)).toEqual(["shader", "problems", "performance", "agent", "timeline", "controls", "terminal"]);
     // Untouched: the tab you were looking at is still the tab you are looking at.
     expect(leaf?.active).toBe(leaf?.tabs[1]?.key);
     expect(within(zoneElement("bottom")).getByRole("tab", { name: "problems" }).getAttribute("aria-selected")).toBe("true");
@@ -1346,7 +1348,7 @@ describe("T854 — every tab carries its own close", () => {
     // `closeTab`'s own rule, reached through the strip: active falls to the first
     // remaining tab, never to null while tabs remain.
     const leaf = findLeaf(readPaneTreeStore(storage).current, "leaf-bottom");
-    expect(leaf?.tabs.map((tab) => tab.role)).toEqual(["shader", "problems", "performance", "agent", "controls", "terminal"]);
+    expect(leaf?.tabs.map((tab) => tab.role)).toEqual(["shader", "problems", "performance", "agent", "timeline", "controls", "terminal"]);
     expect(leaf?.active).toBe(leaf?.tabs[0]?.key);
     const after = zoneElement("bottom");
     expect(within(after).getByRole("tab", { name: "shader editor" }).getAttribute("aria-selected")).toBe("true");
@@ -1387,6 +1389,7 @@ describe("T854 — every tab carries its own close", () => {
       "problems",
       "performance",
       "agent",
+      "timeline",
       "controls",
       "terminal",
     ]);

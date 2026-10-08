@@ -920,36 +920,33 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       // to write here — the export path needs the value RETURNED, not stored.
       stepOnce: () => driverRef.current?.step() ?? null,
       /**
-       * §V170 — a seek REPLAYS. A graph with feedback, a Cache or a point simulation has
-       * no state at a frame it has not reached, so resetting the counter and leaving the
-       * GPU's temporal history alone would show a picture belonging to a different
-       * history: a scrub that looks like it works and is a lie. Clearing history and
-       * stepping forward from zero costs O(frames) and is the true state at that frame.
+       * VN71 — §V170 AS AMENDED: a seek JUMPS. It renders the target frame and leaves temporal
+       * state as it is, as TouchDesigner does (the owner's ruling, 2026-10-07). It used to
+       * clear history and replay 0..N so a feedback graph showed its true state at N; that
+       * made every seek O(N) and capped the range at what a seek would replay. Feedback
+       * depends on the previous frame, so a sought feedback graph carries on from what it
+       * holds — and N frames of feedback are what playing N frames gives, the user's call.
+       * Starting over is `runtime.resetFeedback`, or `resetState` below for a caller that
+       * owes a fresh start (a document load, a take).
        */
       seek: (frameIndex) => {
         const live = driverRef.current;
         if (live === null) return -1;
-        // §T1544b: a run still installing is abandoned — this replays from zero itself — and
-        // play it owed is owed by this one.
+        // §T1544b: a run still installing is abandoned — this lands somewhere else — and play
+        // it owed is owed by this one.
         const wasRunning = live.running || (tail !== null && resumeAfter);
         generation += 1;
         tail = null;
         resumeAfter = false;
         if (live.running) live.stop();
         transport.reset();
-        // T510: a seek REPLAYS from zero, so its clear includes the point pairs —
-        // "a SEEK zeroes frameIndex and drops the point pairs together", now true on
-        // both halves. Silent: the scrub is its own visible event (T553).
-        backend.resetTemporalHistory(undefined, { buffers: true, silent: true });
-        // §V181: the CPU half of the same rule. GPU temporal history and value-graph state
-        // are both "not a function of frame index", so both are cleared before the replay
-        // or the replayed frames carry a trajectory from the history just abandoned.
-        onResetRef.current?.();
-        // §T1544b: every replayed frame in its own segment's plan (`stepInStructure`).
-        const replayed = stepInStructure(frameIndex + 1, (last) => {
+        // The clock lands its next frame ON the target (`wrapTo` records it, T740).
+        if (frameIndex > 0) transport.wrapTo?.(frameIndex);
+        // §T1544b: the one frame in its own segment's plan, installed first when it is not.
+        const landed = stepInStructure(1, (last) => {
           latestFrameRef.current = last;
         });
-        if (replayed.pending) {
+        if (landed.pending) {
           landsOn = frameIndex;
           resumeAfter = wasRunning;
           setPlaying(wasRunning);
@@ -957,7 +954,17 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
         }
         if (wasRunning) live.start();
         setPlaying(live.running);
-        return replayed.last?.frame.frameIndex ?? -1;
+        return landed.last?.frame.frameIndex ?? -1;
+      },
+      /**
+       * VN71 — every kind of temporal state, cleared: GPU feedback pairs, rings and point
+       * buffers (T510: silent, the caller's event is its own, T553), and the CPU's value-graph
+       * stages (§V181). Point kernels reseed from `ctx.firstRun`, which this arms, so the next
+       * frame rendered — whatever its index — starts a fresh history.
+       */
+      resetState: () => {
+        backend.resetTemporalHistory(undefined, { buffers: true, silent: true });
+        onResetRef.current?.();
       },
       /*
        * §T1537b — the export's half: resolves once the plan for timeline frame `frameIndex`
@@ -977,8 +984,8 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
       // leaves the absolute clock growing (T461); only a take starts its clock at zero.
       // T1497b: zeroing the count starts a new EPOCH, in the same breath — every morph
       // record already in the document is finished for the take, and stays finished after.
-      resetAbsoluteClock: () => {
-        transport.resetAbsolute();
+      resetAbsoluteClock: (at) => {
+        transport.resetAbsolute(at);
         epochRef.current = mintClockEpoch();
       },
       isLooping: () => loopingRef.current,
@@ -1215,8 +1222,13 @@ export function useFrameLoop(options: FrameLoopOptions): FrameLoopResult {
            */
           boundaryOwedRef.current = false;
           feedbackResetOwedRef.current = false;
-          backend.resetTemporalHistory(undefined, { buffers: true, silent: true });
-          transportHolderFor(bus).current?.seek(0);
+          // VN71: a seek no longer clears anything, so the load clears both halves itself.
+          const handlers = transportHolderFor(bus).current;
+          if (handlers === null) backend.resetTemporalHistory(undefined, { buffers: true, silent: true });
+          else {
+            handlers.resetState();
+            handlers.seek(0);
+          }
         } else if (feedbackResetOwedRef.current) {
           feedbackResetOwedRef.current = false;
           backend.resetTemporalHistory(undefined, { silent: true });

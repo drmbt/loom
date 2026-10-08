@@ -40,6 +40,7 @@ test("Common input drops swap sources and reorder layers without losing wires", 
   const file = buildProjectFile({ document: project, now: () => project.updatedAt });
   await openApp(page);
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles({ name: "connections.loom.json", mimeType: "application/json", buffer: Buffer.from(file.text) });
   await selectNode(page, ids["$over"]!);
@@ -58,6 +59,7 @@ test("Common input drops swap sources and reorder layers without losing wires", 
   await expect(connections.getByLabel("Socket for the wire from red1")).toHaveValue("in2#2");
 
   const downloadEvent = page.waitForEvent("download");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-save").click();
   const savedPath = await (await downloadEvent).path();
   if (savedPath === null) throw new Error("Saved project has no local download.");

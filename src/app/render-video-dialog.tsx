@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 
 import type { ProjectSettings } from "@domain/types/graph.ts";
-import { SEEK_FRAME_LIMIT } from "@domain/types/graph.ts";
+import { projectFps } from "@domain/types/graph.ts";
+import { frameRangeLimit } from "@domain/transport/range-limit.ts";
 import { NumberField } from "@ui/controls/number-field.tsx";
 import { ResolutionControl } from "@ui/controls/resolution-control.tsx";
 import { BooleanField } from "@ui/controls/boolean-field.tsx";
@@ -19,6 +20,7 @@ import type { RenderRangeSession } from "./use-render-range.ts";
 import styles from "./render-video-dialog.module.css";
 
 const FPS_SPEC: NumericSpec = { min: 1, max: 240, step: 1, precision: 0 };
+/** An output frame range; the out point's `max` is one day of OUTPUT frames, the range cap at the rate this range counts in (VN71). */
 const rangeSpec = (max: number, min = 0): NumericSpec => ({ min, max, step: 1, precision: 0 });
 
 export interface RenderVideoDialogProps {
@@ -151,11 +153,27 @@ export function RenderVideoDialog({
                   disabled={session.rendering}
                   label="render range out"
                   value={shown("end", range.end)}
-                  spec={rangeSpec(SEEK_FRAME_LIMIT, range.start + 1)}
+                  spec={rangeSpec(frameRangeLimit(fps), range.start + 1)}
                   onChange={commitOnly("end", (next) =>
                     session.setRenderSettings({ range: { start: range.start, end: next } }))}
                 />
               </div>
+            </div>
+            {/*
+              VN71 — a take starts AT its in point from cleared temporal state, so a feedback
+              trail or a simulation begins there. This many project frames are played first and
+              not recorded, when the user wants the take to open on a built-up state. 0 by
+              default: nothing pre-rolls unless asked.
+            */}
+            <div className={styles.row}>
+              <span className={styles.label}>pre-roll frames</span>
+              <NumberField
+                disabled={session.rendering}
+                label="render pre-roll frames"
+                value={shown("preRoll", session.renderSettings.preRollFrames ?? 0)}
+                spec={rangeSpec(frameRangeLimit(projectFps(settings)))}
+                onChange={commitOnly("preRoll", (next) => session.setRenderSettings({ preRollFrames: next }))}
+              />
             </div>
           </section>
 

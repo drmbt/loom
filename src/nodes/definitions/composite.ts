@@ -404,18 +404,19 @@ export const maskNode: NodeDefinition = {
       return { passes: [], diagnostics: [missingCompileResource(nodeId, what)] };
     }
     const apply: MaskApply = isMaskApply(parameters["apply"]) ? parameters["apply"] : "alpha";
+    const unfiltered = mask.format === "r32float";
     const pass: EffectPassDescriptor = {
       kind: "effect",
       // The mode is part of the structure, so it belongs in the key the pipeline rebuilds
       // on (§V5). SUFFIXED ONLY WHEN IT IS NOT THE DEFAULT, on `output.toneMap`'s
       // precedent: `alpha` keeps the id it has always had, so upgrading moves no existing
       // project's structural key. The two ids are still distinct, which is all §V5 asks.
-      id: apply === "alpha" ? `${nodeId}:mask` : `${nodeId}:mask:${apply}`,
-      shader: maskShaderFor(apply),
+      id: `${apply === "alpha" ? `${nodeId}:mask` : `${nodeId}:mask:${apply}`}${unfiltered ? ":float" : ""}`,
+      shader: maskShaderFor(apply, unfiltered),
       target,
       textures: [
         { binding: "inputTexture", resourceId: source.resource },
-        { binding: "maskTexture", resourceId: mask.resource },
+        { binding: "maskTexture", resourceId: mask.resource, ...(unfiltered ? { sampled: "unfiltered" as const } : {}) },
       ],
       samplers: [{ binding: "inputSampler", resourceId: source.sampler }],
       uniformBinding: "params",

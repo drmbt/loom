@@ -83,6 +83,7 @@ test("sRGB grey reaches the compositor without a second decode (T1307)", async (
   const file = buildProjectFile({ document: project, now: () => project.updatedAt });
   await openApp(page);
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles({ name: "srgb-test.loom.json", mimeType: "application/json", buffer: Buffer.from(file.text) });
   const canvas = page.getByTestId("viewer-canvas");
@@ -346,6 +347,7 @@ test("Mask cutout is visible in default viewer and node preview, while RGB retai
   const file = buildProjectFile({ document: project, now: () => project.updatedAt });
   await openApp(page);
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles({ name: "alpha-test.loom.json", mimeType: "application/json", buffer: Buffer.from(file.text) });
   await fitAll(page);

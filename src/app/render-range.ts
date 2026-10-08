@@ -18,10 +18,10 @@ import { NO_INPUT } from "@domain/commands/input-schema.ts";
  * ## Deterministic, and that is the whole design
  *
  * This is NOT a screen recording. Nothing here reads a clock, waits for a frame or
- * samples what the display happened to show. The transport is seeked to the in point —
- * which REPLAYS and clears temporal state (§V170), so a feedback graph starts the take
- * from the state that genuinely belongs to that frame — and then stepped one frame at a
- * time, synchronously. Output cadence selects source frames and gives the recorder
+ * samples what the display happened to show. Temporal state is cleared and the transport
+ * jumps to the in point, less the take's pre-roll (VN71) — so every take of one project
+ * starts from the same state, whatever was on screen — and then it is stepped one frame
+ * at a time: the pre-roll unrecorded, then in → out. Output cadence selects source frames and gives the recorder
  * consecutive output indices; progress retains the sampled project-frame index (§V44). The same project, seed and range
  * produce the same file, on a fast machine and on a slow one.
  *
@@ -111,8 +111,17 @@ export interface RangeTransport {
   seek(frameIndex: number): number;
   stepOnce(): ReturnType<TransportHandlers["stepOnce"]>;
   latestFrame(): ReturnType<TransportHandlers["stepOnce"]>;
-  /** T467: a take is a fresh performance — the absolute clock starts at zero. */
-  resetAbsoluteClock(): void;
+  /**
+   * T467: a take is a fresh performance — the absolute clock starts at zero. VN71: or at the
+   * in point, for a take that JUMPS there, so its frames carry what a pre-roll would give.
+   */
+  resetAbsoluteClock(at?: number): void;
+  /**
+   * VN71: clear all temporal state, GPU and CPU. A take is a fresh performance (T467). The
+   * app's transport always has it (`TransportHandlers.resetState`). Every caller states
+   * how its owned history is cleared before a fresh take starts.
+   */
+  resetState(): void;
   /** §T1537b: awaited before each frame is stepped — its structure is installed first. */
   prepareFrame?(frameIndex: number): Promise<void>;
 }
@@ -131,7 +140,13 @@ export interface RenderFrameRangeInputs {
   readonly onDiagnostic?: ((diagnostic: RuntimeDiagnostic) => void) | undefined;
   readonly signal?: AbortSignal | undefined;
   readonly onProgress?: ((progress: RenderRangeProgress) => void) | undefined;
-  /** Reports deterministic replay before a non-zero in point. */
+  /**
+   * VN71: project frames played before the in point and not recorded, so a feedback trail
+   * or a simulation has built up by the first recorded frame. 0 (the default) starts the
+   * take AT the in point from cleared state. The user's to choose: nothing pre-rolls for them.
+   */
+  readonly preRollFrames?: number | undefined;
+  /** Reports the pre-roll's progress: frames played, of how many. */
   readonly onPreRollProgress?: ((completedFrames: number, totalFrames: number) => void) | undefined;
   /** Gives the app a paint/cancel turn during long deterministic replay. */
   readonly yieldControl?: (() => Promise<void>) | undefined;
@@ -210,10 +225,17 @@ export async function renderFrameRange(inputs: RenderFrameRangeInputs): Promise<
      * creation, so without this a project rendered on two different days would carry a
      * different abstime into every frame — and different PIXELS wherever an expression or
      * shader reads it, breaking "the same project renders the same file" (T431). Zeroed
-     * before the seek so the replayed frames 0..start carry abs 0..start, deterministic.
+     * before the take's first frame, deterministic.
      * The LIVE clock is untouched: only a render resets it (T461's rule kept whole).
+     *
+     * VN71 — the take starts at `entry`, its in point less its pre-roll, over CLEARED
+     * temporal state: a seek no longer replays from zero (§V170 as amended), so this is
+     * what makes two takes of one project the same file. The count starts AT `entry`, so the
+     * in point carries the in point's abstime however long the pre-roll was.
      */
-    transport.resetAbsoluteClock();
+    const preRoll = Math.min(sourceRange.start, Math.max(0, Math.trunc(inputs.preRollFrames ?? 0)));
+    const entry = sourceRange.start - preRoll;
+    transport.resetAbsoluteClock(entry);
     /*
      * §T1537b — every step below is preceded by `prepareFrame` for the frame it is about to
      * render, so a structural cue switches ON its frame in the take, deterministically: the
@@ -222,19 +244,18 @@ export async function renderFrameRange(inputs: RenderFrameRangeInputs): Promise<
     const prepare = async (frameIndex: number): Promise<void> => {
       await transport.prepareFrame?.(frameIndex);
     };
-    await prepare(0);
-    // §V170 — build the in point's true temporal state from frame zero. `seek(start)` did
-    // the same replay in one synchronous loop, which froze the page and made later ranges
-    // look hung. Reset through the canonical seek, then expose each required replay step
-    // to cancellation and the browser scheduler without skipping any temporal work.
-    transport.seek(0);
+    await prepare(entry);
+    // Cleared, then the jump renders `entry` as the first frame of a fresh history. The
+    // pre-roll steps below are each exposed to cancellation and the browser scheduler.
+    transport.resetState();
+    transport.seek(entry);
     let frame = transport.latestFrame();
-    let sourceFrameIndex = 0;
+    let sourceFrameIndex = entry;
     let completedFrames = 0;
     let settledSourceFrame: number | null = null;
     if (frame !== null) {
-      await inputs.onFrameRendered?.(0);
-      settledSourceFrame = 0;
+      await inputs.onFrameRendered?.(entry);
+      settledSourceFrame = entry;
     }
     while (frame !== null && sourceFrameIndex < sourceRange.start) {
       stopIfCancelled();
@@ -253,7 +274,7 @@ export async function renderFrameRange(inputs: RenderFrameRangeInputs): Promise<
       }
       await inputs.onFrameRendered?.(sourceFrameIndex);
       settledSourceFrame = sourceFrameIndex;
-      inputs.onPreRollProgress?.(sourceFrameIndex, sourceRange.start);
+      inputs.onPreRollProgress?.(sourceFrameIndex - entry, preRoll);
       if (sourceFrameIndex % PRE_ROLL_YIELD_INTERVAL === 0 || sourceFrameIndex === sourceRange.start) {
         await inputs.yieldControl?.();
       }

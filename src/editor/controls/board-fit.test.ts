@@ -14,8 +14,10 @@ import {
  * T1518b — WHAT A BOARD CELL SAYS WHEN IT IS SMALL. The owner's screenshot of E81's Panel on
  * the canvas: a 2-cell toggle reading "I.. Off" and the XY pad "To… 0..", caption and value
  * BOTH cut, so neither could be read. The rule these tests pin, in its order: the type
- * shrinks with the cell (never below the minimum), then the VALUE goes, and only a caption
- * that cannot fit alone at the minimum is cut. A value is whole or absent, never cut.
+ * shrinks with the cell (never below the minimum), then the CAPTION is cut and the value
+ * stays (VNB9 reversed T1518b's "the value goes first": a hidden number cannot be read on
+ * stage). A toggle alone may drop On/Off first, because its switch still shows the state.
+ * A value is never cut, and never cut together with its caption.
  *
  * The widths are E81's own: the Panel body is 164px wide (`controlsContentWidth`), eight
  * columns, so a cell is 20.5px and an item `w` cells wide has `w × 20.5 − 2` px.
@@ -28,7 +30,7 @@ const onTab = (w: number) => w * TAB_CELL + (w - 1) * 4;
 const fit = (kind: string, caption: string, widthPx: number, cellPx: number, parameters: Record<string, unknown> = {}) =>
   boardFit({ kind, caption, valueEm: kind === "label" ? 0 : boardValueEm(kind, parameters), widthPx, cellPx });
 
-describe("T1518b — the value goes before the caption is cut", () => {
+describe("VNB9 — the caption is cut before the value goes", () => {
   it("E81's 2-cell toggle on the canvas keeps its whole caption and drops On/Off", () => {
     const toggle = fit("toggle", "Invert", onCanvas(2), CANVAS_CELL);
     expect(toggle.value).toBe(false);
@@ -36,9 +38,14 @@ describe("T1518b — the value goes before the caption is cut", () => {
     expect(toggle.fontPx).toBeGreaterThanOrEqual(BOARD_FONT_MIN_PX);
   });
 
-  it("E81's XY pad on the canvas keeps 'Top-right pin' whole and drops its numbers", () => {
+  it("E81's XY pad on the canvas keeps its numbers and cuts 'Top-right pin'", () => {
     const pad = fit("xyPad", "Top-right pin", onCanvas(3), CANVAS_CELL);
-    expect(pad).toMatchObject({ value: false, caption: "whole" });
+    expect(pad).toEqual({ fontPx: BOARD_FONT_MIN_PX, value: true, caption: "cut" });
+  });
+
+  it("the reported slider: a caption far longer than its cell is cut, and its number stays", () => {
+    const keystone = fit("slider", "Side keystone H, ° (squares the floor image)", onTab(2), TAB_CELL, { min: -45, max: 45 });
+    expect(keystone).toEqual({ fontPx: BOARD_FONT_MIN_PX, value: true, caption: "cut" });
   });
 
   it("a control with room keeps both: E81's 5-cell slider and 3-cell button on the canvas", () => {
@@ -51,22 +58,26 @@ describe("T1518b — the value goes before the caption is cut", () => {
   });
 });
 
-describe("T1518b — the order: type first, then the value, then the caption", () => {
-  it("shrinks the type to keep the value before it gives the value up", () => {
+describe("VNB9 — the order: type first, then the caption; the value never goes", () => {
+  it("shrinks the type to keep the caption whole beside the value before it cuts the caption", () => {
     // Wide enough for "Heat 0.00" only below the base size: the value stays, smaller.
     const base = fit("slider", "Heat", 400, CANVAS_CELL);
     const squeezed = fit("slider", "Heat", 50, CANVAS_CELL);
     expect(squeezed.value).toBe(true);
     expect(squeezed.fontPx).toBeLessThan(base.fontPx);
     expect(squeezed.fontPx).toBeGreaterThanOrEqual(BOARD_FONT_MIN_PX);
-    // A little narrower and it no longer fits at the minimum: the value goes, the caption grows back.
-    const dropped = fit("slider", "Heat", 40, CANVAS_CELL);
-    expect(dropped).toMatchObject({ value: false, caption: "whole" });
-    expect(dropped.fontPx).toBeGreaterThan(squeezed.fontPx);
+    // A little narrower and it no longer fits at the minimum: the caption is cut, the value stays.
+    expect(fit("slider", "Heat", 40, CANVAS_CELL)).toEqual({ fontPx: BOARD_FONT_MIN_PX, value: true, caption: "cut" });
+    // So is a button's count.
+    expect(fit("button", "Next hue", 30, CANVAS_CELL)).toEqual({ fontPx: BOARD_FONT_MIN_PX, value: true, caption: "cut" });
   });
 
-  it("cuts a caption only when it cannot fit alone at the minimum size — and then shows no value", () => {
+  it("a toggle trades On/Off for its small switch before it cuts its caption, and its switch stays", () => {
     expect(fit("toggle", "A very long caption indeed", onCanvas(1), CANVAS_CELL)).toEqual({ fontPx: BOARD_FONT_MIN_PX, value: false, caption: "cut" });
+  });
+
+  it("a label has no value to keep: it is cut only when it cannot fit at the minimum", () => {
+    expect(fit("label", "A very long label for a single cell", onCanvas(1), CANVAS_CELL)).toEqual({ fontPx: BOARD_FONT_MIN_PX, value: false, caption: "cut" });
   });
 
   it("what it promises fits: the line it sizes is no wider than the cell", () => {

@@ -251,3 +251,104 @@ describe("T1516b — EDIT mode arranges, through the bus", () => {
     expect(rectOf("member:heat")).toBeUndefined();
   });
 });
+
+/**
+ * VN74 — A WIDGET'S CAPTION IS RENAMED FROM THE BOARD'S EDITOR. Selecting a control in edit
+ * mode showed what it drives but gave no way to rename it. Now its Caption field writes the
+ * widget node's `caption` parameter through the bus, one undo step, and the same panel reads
+ * the whole caption and the value a small cell may cut (VNB9).
+ */
+describe("VN74 — a selected widget's caption, renamed in the board editor", () => {
+  it("writes the new caption to the document as one undo step, and the board and the readout follow", async () => {
+    const { runtime, ids } = await desk();
+    render(<Pane runtime={runtime} />);
+    await edit();
+    await dragBy(screen.getByRole("button", { name: "Move Heat" }), { x: 0, y: 0 });
+    const inspect = document.querySelector("[data-board-inspect]") as HTMLElement;
+    // The whole caption and the value, as the slider prints them.
+    expect(inspect.querySelector("[data-board-inspect-caption]")?.textContent).toBe("Heat");
+    expect(inspect.querySelector("[data-board-inspect-value]")?.textContent).toBe("0.25");
+
+    const field = within(inspect).getByRole("textbox", { name: "Caption" });
+    expect((field as HTMLInputElement).value).toBe("Heat");
+    const before = undoDepth(runtime);
+    await act(async () => {
+      fireEvent.change(field, { target: { value: "Side keystone H, ° (squares the floor image)" } });
+      fireEvent.keyDown(field, { key: "Enter" });
+      await settle();
+    });
+    expect(runtime.bus.store.getGraph().nodes[ids["$heat"]!]!.parameters["caption"]).toBe("Side keystone H, ° (squares the floor image)");
+    expect(undoDepth(runtime)).toBe(before + 1);
+    // Leaving the field after Enter writes nothing more: the caption did not change again.
+    await act(async () => {
+      fireEvent.blur(field);
+      await settle();
+    });
+    expect(undoDepth(runtime)).toBe(before + 1);
+    expect(inspect.querySelector("[data-board-inspect-caption]")?.textContent).toBe("Side keystone H, ° (squares the floor image)");
+    // The board's own control is now called by the new caption.
+    expect(screen.getByRole("button", { name: "Move Side keystone H, ° (squares the floor image)" })).toBeTruthy();
+
+    // One undo takes the rename back.
+    await act(async () => {
+      await runtime.bus.execute("graph.undo", {}, runtime.invocation);
+      await settle();
+    });
+    expect(runtime.bus.store.getGraph().nodes[ids["$heat"]!]!.parameters["caption"]).toBe("Heat");
+    expect((field as HTMLInputElement).value).toBe("Heat");
+    await act(async () => { fireEvent.blur(field); await settle(); });
+    expect(runtime.bus.store.getGraph().nodes[ids["$heat"]!]!.parameters["caption"]).toBe("Heat");
+  });
+
+  it("offers no caption for a label, which has its own Text field", async () => {
+    const { runtime } = await desk();
+    render(<Pane runtime={runtime} />);
+    await edit();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "+ Label" }));
+      await settle();
+    });
+    const inspect = document.querySelector("[data-board-inspect]") as HTMLElement;
+    expect(within(inspect).queryByRole("textbox", { name: "Caption" })).toBeNull();
+    expect(within(inspect).getByRole("textbox", { name: "Label text" })).toBeTruthy();
+  });
+});
+
+
+describe("review — a stored constant slot is still the visible value", () => {
+  it("the board inspector reads the same constant that the widget shows", async () => {
+    const { runtime, ids } = await desk();
+    await runtime.bus.execute("graph.applyPatch", {
+      baseRevision: runtime.bus.store.getRevision(), label: "constant slot",
+      operations: [{ op: "setParameters", nodeId: ids["$heat"]!, parameters: { value: { mode: "static", bindings: { static: { kind: "static", value: 0.75 } } } } }],
+    }, runtime.invocation);
+    render(<Pane runtime={runtime} />);
+    await edit();
+    await dragBy(screen.getByRole("button", { name: "Move Heat" }), { x: 0, y: 0 });
+    const inspect = document.querySelector("[data-board-inspect]") as HTMLElement;
+    expect(inspect.querySelector("[data-board-inspect-value]")?.textContent).toBe("0.75");
+    runtime.dispose();
+  });
+});
+
+
+describe("review — undo cannot be reversed by leaving the caption field", () => {
+  it("blur after undo does not reinstate the undone caption", async () => {
+    const { runtime, ids } = await desk();
+    render(<Pane runtime={runtime} />);
+    await edit();
+    await dragBy(screen.getByRole("button", { name: "Move Heat" }), { x: 0, y: 0 });
+    const inspect = document.querySelector("[data-board-inspect]") as HTMLElement;
+    const field = within(inspect).getByRole("textbox", { name: "Caption" });
+    await act(async () => {
+      fireEvent.change(field, { target: { value: "Renamed heat" } });
+      fireEvent.keyDown(field, { key: "Enter" });
+      await settle();
+    });
+    await act(async () => { await runtime.bus.execute("graph.undo", {}, runtime.invocation); await settle(); });
+    expect(runtime.bus.store.getGraph().nodes[ids["$heat"]!]!.parameters["caption"]).toBe("Heat");
+    await act(async () => { fireEvent.blur(field); await settle(); });
+    expect(runtime.bus.store.getGraph().nodes[ids["$heat"]!]!.parameters["caption"]).toBe("Heat");
+    runtime.dispose();
+  });
+});

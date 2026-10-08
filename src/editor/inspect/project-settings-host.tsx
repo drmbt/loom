@@ -19,9 +19,11 @@ export interface ProjectSettingsHostProps {
   settings: ProjectSettings;
   /** One field at a time — a partial patch through `project.setSettings` (§V29). */
   onChange: (patch: Partial<ProjectSettings>, label: string) => void;
+  /** Contextual output setup; the host closes settings before opening preparation. */
+  onPreparePhoto?: () => void;
 }
 
-export function ProjectSettingsHost({ bus, settings, onChange }: ProjectSettingsHostProps) {
+export function ProjectSettingsHost({ bus, settings, onChange, onPreparePhoto }: ProjectSettingsHostProps) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -43,6 +45,10 @@ export function ProjectSettingsHost({ bus, settings, onChange }: ProjectSettings
       onChange={onChange}
       open={open}
       onOpenChange={setOpen}
+      {...(onPreparePhoto === undefined ? {} : { onPreparePhoto: () => {
+        setOpen(false);
+        onPreparePhoto();
+      } })}
     />
   );
 }

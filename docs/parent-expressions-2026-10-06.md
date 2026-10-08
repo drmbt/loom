@@ -98,7 +98,7 @@ the copy holds its static. `nestedParentReads` counts `parent(n)` too.
   fan-out and now `parent()` carry it live. VN38 migrates binds.
 - Reference cycles (§V152). A ring through the boundary (a page knob reads an inner node
   that reads `parent()`) is a plain `(node, key)` ring for the reader's guard, which names
-  it at runtime. The authoring-time refusal does not see it yet.
+  it at runtime. Command-time and saved-file validation include published pages; publication refuses a newly activated ring before it changes a definition.
 - Rename (§V128). `parent()` names no node. The rewritten name is a flattening artifact and
   is never stored.
 

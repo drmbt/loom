@@ -78,6 +78,16 @@ export interface LiveClockOptions {
 export const DEFAULT_TIMELINE_FPS = DEFAULT_PROJECT_FPS;
 
 /**
+ * The live clock's own surface: a `TransportSource` whose `resetAbsolute` can start the count
+ * somewhere other than zero (VN71). A take starts at its in point less its pre-roll and
+ * starts its count THERE, so the in point carries the in point's abstime however long the
+ * pre-roll — the abstime a play from zero would have given it.
+ */
+export interface LiveClock extends TransportSource {
+  resetAbsolute(at?: number): void;
+}
+
+/**
  * Live transport: two clocks, one selected (§I.frame, T63, T271).
  *
  * This is the ONLY place allowed to read wall-clock time. Nodes receive
@@ -118,7 +128,7 @@ export const DEFAULT_TIMELINE_FPS = DEFAULT_PROJECT_FPS;
  * and pull one graph apart — which is the same failure the delta clamp below already
  * fixed for the backgrounded-tab case, in a different disguise.
  */
-export function liveClock(options: LiveClockOptions = {}): TransportSource {
+export function liveClock(options: LiveClockOptions = {}): LiveClock {
   const now = options.now ?? (() => performance.now());
   const maxDelta = options.maxDeltaSeconds ?? 0.25;
   // Read PER FRAME, not captured: the project's fps is a document setting the user can
@@ -312,9 +322,10 @@ export function liveClock(options: LiveClockOptions = {}): TransportSource {
      * why this is a separate verb rather than a flag on `reset`: the live paths cannot
      * reach it by accident.
      */
-    resetAbsolute(): void {
-      absFrameIndex = 0;
-      absSeconds = 0;
+    resetAbsolute(at = 0): void {
+      // `hasEmittedAbs` re-armed means the next frame carries this count rather than one past it.
+      absFrameIndex = Math.max(0, Math.trunc(at));
+      absSeconds = absFrameIndex / fpsNow();
       hasEmittedAbs = false;
     },
     reset(nextSeed?: number): void {

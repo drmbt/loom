@@ -484,6 +484,30 @@ describe("preview system", () => {
     expect(result.program.resources.some((resource) => resource.kind === "sampler")).toBe(true);
   });
 
+  it("rebuilds when a data texture changes to scalar float32 without changing its identity", () => {
+    const host = fakeHost();
+    const system = createPreviewSystem({ host, capacity: 8 });
+    const source = { ...request("map").source, space: "data" as const };
+    run(system, [request("map", { source })], 1);
+    const colourProgram = host.programs[0];
+    run(system, [request("map", { source: { ...source, format: "r32float" } })], 1, { startIndex: 1 });
+    expect(host.programs).toHaveLength(2);
+    const scalarProgram = host.programs[1];
+    expect(scalarProgram).not.toBe(colourProgram);
+    const scalarPass = scalarProgram?.passes[0];
+    expect(scalarPass?.textures).toEqual([
+      { binding: "previewTexture", resourceId: source.resourceId, sampled: "unfiltered" },
+    ]);
+    expect(scalarPass?.kind).toBe("effect");
+    if (scalarPass?.kind !== "effect") throw new Error("Missing scalar preview effect pass");
+    expect(scalarPass.samplers ?? []).toEqual([]);
+    expect(scalarPass?.shader).toContain("textureLoad(previewTexture");
+    expect(scalarPass?.shader).not.toContain("textureSampleLevel(previewTexture");
+    run(system, [request("map", { source })], 1, { startIndex: 2 });
+    expect(host.programs).toHaveLength(3);
+    expect(host.programs[2]?.passes[0]?.shader).toContain("textureSampleLevel(previewTexture");
+  });
+
   it("suspends the surplus and gives it no tile at all", () => {
     const host = fakeHost();
     const system = createPreviewSystem({ host, capacity: 1 });

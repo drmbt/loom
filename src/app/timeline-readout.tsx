@@ -118,9 +118,9 @@ export function TimelineReadout({ latestFrame, frameClock, onSeek, intervalMs = 
     <div className={styles.readout} role="group" aria-label="Timeline readout">
       <div className={styles.field}>
         <span className={styles.label}>frame</span>
-        {/* §V170 on the surface, in one line: the field says a seek REPLAYS, so nobody
-            reads a scrub that re-runs a simulation as a free jump. */}
-        <Tooltip label="Type a frame to seek — a seek replays from the start">
+        {/* §V170 (as amended, VN71) on the surface, in one line: a seek JUMPS and feedback
+            carries on, so nobody reads the frame as a replay from the start. */}
+        <Tooltip label="Type a frame to seek — feedback carries on from where it is">
           <input
             className={styles.input}
             aria-label="Frame"

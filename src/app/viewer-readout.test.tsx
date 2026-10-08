@@ -191,6 +191,11 @@ describe("T1346b — the viewer readout is one line, and the probe joins it only
     const probed = screen.getByTestId("viewer-readout");
     expect(probed.textContent).toContain("1280 × 720");
     expect(probed.querySelectorAll("dd").length).toBe(3);
+    // Narrow panes may elide a field visually, but its full value remains available.
+    const facts = probed.querySelectorAll("dd");
+    expect(facts[0]?.getAttribute("title")).toBe("1280 × 720 · rgba16float");
+    expect(facts[2]?.getAttribute("title")).toBe(facts[2]?.textContent);
+    expect(facts[2]?.textContent).toContain("0.5020");
     // The gates that read the viewer's resolution find it on this one element (§V349).
     expect(probed.getAttribute("aria-label")).toBe("Resolved output");
     runtime.dispose();

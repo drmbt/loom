@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { frameRangeLimit, rangeLimitSentence } from "@domain/transport/range-limit.ts";
+import { projectFps } from "@domain/types/graph.ts";
 import { alice, contextFor, createHarness } from "@domain/commands/test-support.ts";
 import { registerTransportCommands, transportHolderFor } from "./transport-commands.ts";
 import type { TransportHandlers } from "./transport-commands.ts";
@@ -28,6 +30,7 @@ function fakeHandlers(): TransportHandlers & {
       state.playing = !state.playing;
     },
     resetAbsoluteClock: () => {},
+    resetState: () => {},
     seek: (frameIndex: number) => frameIndex,
     stepFrame: (frames: number) => {
       state.stepped.push(frames);
@@ -78,6 +81,25 @@ describe("registerTransportCommands", () => {
     expect(step.status).toBe("applied");
     expect(step.output).toEqual({ frameIndex: 2 });
     expect(handlers.stepped).toEqual([3]);
+  });
+
+  it("VN71: seeks past the old 10 000-frame limit, and refuses only past one day at the project rate, saying so", async () => {
+    const { bus } = createHarness();
+    const holder = registerTransportCommands(bus);
+    const sought: number[] = [];
+    holder.current = { ...fakeHandlers(), seek: (frameIndex: number) => (sought.push(frameIndex), frameIndex) };
+    const fps = projectFps(bus.store.getSettings());
+
+    const hour = await bus.execute("transport.seek", { frameIndex: 215_999 }, contextFor(alice));
+    expect(hour).toMatchObject({ status: "applied", output: { frameIndex: 215_999 } });
+    expect(hour.diagnostics ?? []).toEqual([]);
+
+    const past = await bus.execute("transport.seek", { frameIndex: frameRangeLimit(fps) + 1 }, contextFor(alice));
+    expect(past.status).toBe("rejected");
+    expect(past.diagnostics).toEqual([
+      { severity: "warning", code: "transport.seekLimit", message: rangeLimitSentence(frameRangeLimit(fps) + 1, fps) },
+    ]);
+    expect(sought).toEqual([215_999]);
   });
 
   it("does not mutate on a dry run, and registration is idempotent", async () => {

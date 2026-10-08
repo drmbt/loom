@@ -252,6 +252,15 @@ const DECLARED: Readonly<
       "answering it. Classified `timeline-anchored` in CLOCK_OWNERSHIP and said out loud in " +
       "the node's own description, next door to the LFO, which is free-running (B98).",
   },
+  "src/nodes/definitions/automation.ts": {
+    kind: "timeline-anchored",
+    reads: 2,
+    reason:
+      "VN61's AUTOMATION. Its playhead is two reads of one decision: `frameIndex` at the " +
+      "project rate times its sub-frames, converted to integer ticks, and `timeSeconds` when a " +
+      "transport states no fps. A lane is a position IN the piece, so it wraps at a loop and " +
+      "follows a scrub, as the Timer does, and the node's description says so.",
+  },
   "src/nodes/definitions/audio.ts": {
     kind: "timeline-anchored",
     reads: 4,
