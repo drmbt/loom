@@ -14,6 +14,17 @@
 // sequence. Nothing else in the process is touched. When the rebind does not take, the instance
 // reports clock "wallclock" and its output is not reproducible; it is never silently assumed.
 //
+// THE PLUGIN'S CLOCK (pluginClock below). drmbt effects are written for Arena's FREE clock: their
+// simulations integrate dt per frame, so the time a plugin sees must behave like one: never
+// backwards, one frame interval per frame, no huge dt. The caller's time drives it, with seeks
+// absorbed:
+//   * first frame after open, or `reset` (a render take restarting): clock = max(0, time);
+//   * a forward step 0 < d <= 8 intervals: clock += d (real time, dropped frames included);
+//   * d == 0 (the same frame cooked again): clock unchanged, so a re-cook is deterministic;
+//   * a backward seek, or a forward jump beyond 8 intervals: clock += ONE interval.
+// So the frame after any seek is exactly the frame a normal one-interval step would give.
+// Design and the reasoning: docs/ffgl-host-design-2026-10-08.md, "The plugin clock".
+//
 // ORIENTATION. A Chromium capture surface is top row first. FFGL plugins are OpenGL programs
 // and see their input bottom row first, as in Resolume. The input blit flips rows; the output
 // surface is therefore bottom row first, which is Syphon's layout (VNB13), and the page imports
@@ -37,6 +48,7 @@
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
 #include <mach/mach.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <climits>
@@ -129,7 +141,10 @@ struct Instance {
   GLuint inputRect = 0, input2D = 0, inputFramebuffer = 0, program = 0, vertexArray = 0, timer = 0;
   GLint sizeLocation = -1;
   OutputSlot slots[kOutputSlots];
+  // The plugin's clock (what the rebound steady_clock answers), and the caller time it last saw.
   double hostTime = 0;
+  double lastCallerTime = 0;
+  bool clockStarted = false;
   uint64_t random = 0;
   uint64_t sequence = 0;
   std::atomic<bool> busy{false}, closed{false};
@@ -655,12 +670,25 @@ struct OpenJob : Job {
   }
 };
 
+void pluginClock(Instance &instance, double time, double interval, bool reset) {
+  if (reset || !instance.clockStarted) {
+    instance.hostTime = std::max(0.0, time);
+    instance.clockStarted = true;
+  } else {
+    const double step = time - instance.lastCallerTime;
+    if (step > 0 && step <= 8 * interval) instance.hostTime += step;
+    else if (step != 0) instance.hostTime += interval;
+  }
+  instance.lastCallerTime = time;
+}
+
 struct ParameterWrite { uint32_t index; bool isText; float value; std::string textValue; };
 
 // process(instance, inputSurface, frame) → an output surface lease. One per instance at a time.
 struct ProcessJob : Job {
   std::shared_ptr<Instance> instance; IOSurfaceRef input = nullptr;
-  double time = 0, bpm = 120, barPhase = 0;
+  double time = 0, bpm = 120, barPhase = 0, interval = 1.0 / 60.0;
+  bool reset = false;
   std::vector<ParameterWrite> writes; std::vector<uint32_t> pulses;
   size_t slot = 0; std::string lease; uint64_t sequence = 0;
   double cpuMs = 0, gpuMs = -1, blitMs = 0;
@@ -698,7 +726,7 @@ struct ProcessJob : Job {
     glCheck("in the input blit");
     blitMs = nowMs() - start;
     // Parameters, pulses, time and beat, then the plugin.
-    instance->hostTime = time;
+    pluginClock(*instance, time, interval, reset);
     const uint32_t count = call(library, nullptr, FF_GET_NUM_PARAMETERS, none(), "FF_GET_NUM_PARAMETERS").UIntValue;
     auto write = [&](uint32_t index, float value) {
       SetParameterStruct parameter{ index, ffUInt(0) }; memcpy(&parameter.NewParameterValue.UIntValue, &value, sizeof(value));
@@ -764,6 +792,7 @@ struct ProcessJob : Job {
     set(env, value, "height", number(env, instance->height));
     set(env, value, "sequence", number(env, (double)sequence));
     set(env, value, "bottomUp", boolean(env, true));
+    set(env, value, "clock", number(env, instance->hostTime));
     napi_value timing; check(napi_create_object(env, &timing));
     set(env, timing, "cpuMs", number(env, cpuMs));
     set(env, timing, "gpuMs", number(env, gpuMs));
@@ -859,6 +888,12 @@ napi_value process(napi_env env, napi_callback_info info) {
     job->time = numberArgument(env, property(env, argv[2], "time"), "time");
     job->bpm = numberArgument(env, property(env, argv[2], "bpm"), "bpm");
     job->barPhase = numberArgument(env, property(env, argv[2], "barPhase"), "barPhase");
+    napi_value interval = property(env, argv[2], "interval"), reset = property(env, argv[2], "reset");
+    if (!isUndefined(env, interval)) {
+      job->interval = numberArgument(env, interval, "interval");
+      if (job->interval <= 0 || job->interval > 1) throw std::runtime_error("FFGL frame interval must be in (0, 1] seconds");
+    }
+    if (!isUndefined(env, reset)) check(napi_get_value_bool(env, reset, &job->reset));
     napi_value writes = property(env, argv[2], "parameters");
     if (!isUndefined(env, writes)) {
       uint32_t length = 0; check(napi_get_array_length(env, writes, &length));

@@ -124,17 +124,86 @@ test('VignettePlus: Size 0 / Softness 0 zeroes the corners and leaves the centre
 
 test('StylizedGrain: the plugin\'s clock is the host\'s time (the rebind took)', async () => {
   const input = host.createStudySurface(W, H, picture());
-  const plugin = await host.open(binaryOf('StylizedGrain'), W, H, 7);
+  // A fresh instance's clock starts at its first frame's time, so these are three takes.
+  const take = async (time, speed) => {
+    const plugin = await host.open(binaryOf('StylizedGrain'), W, H, 7);
+    try {
+      assert.deepEqual(plugin.clock, { mode: 'host', steadyClock: 1, rand: 1, randomDevice: 1 });
+      const index = plugin.parameters.find(p => p.name === 'Speed').index;
+      return (await render(plugin.instance, input, frame(time, [[index, speed]]))).bytes;
+    } finally { await host.close(plugin.instance); }
+  };
   try {
-    assert.deepEqual(plugin.clock, { mode: 'host', steadyClock: 1, rand: 1, randomDevice: 1 });
-    const speed = plugin.parameters.find(p => p.name === 'Speed');
-    const at = async (time, value) => (await render(plugin.instance, input, frame(time, [[speed.index, value]]))).bytes;
-    const one = await at(1, 0.5), two = await at(2, 0.5), oneAgain = await at(1, 0.5);
+    const one = await take(1, 0.5), two = await take(2, 0.5), oneAgain = await take(1, 0.5);
     assert.ok(one.equals(oneAgain), 'same host time, same bytes');
     assert.ok(!one.equals(two), 'times in different grain frames differ');
-    assert.ok((await at(1, 0)).equals(await at(2, 0)), 'Speed 0: grain frame is constant, so time has no effect');
+    assert.ok((await take(1, 0)).equals(await take(2, 0)), 'Speed 0: grain frame is constant, so time has no effect');
+  } finally { host.destroyStudySurface(input); }
+});
+
+test('the plugin clock is a free clock: monotonic, one interval across a seek, fresh on reset', async () => {
+  const input = host.createStudySurface(W, H, picture());
+  const plugin = await host.open(binaryOf('VignettePlus'), W, H);
+  try {
+    const clocks = [];
+    const at = async (time, extra = {}) => {
+      const result = await host.process(plugin.instance, input, { ...frame(time), interval: 1 / 60, ...extra });
+      host.release(result.leaseId); clocks.push(result.clock);
+    };
+    await at(5); await at(5 + 1 / 60); await at(5 + 1 / 60);   // start at the time; step; re-cook
+    await at(1);                                                   // backward seek: one interval
+    await at(1 + 0.1);                                             // 6 intervals of real time: kept
+    await at(500);                                                 // forward jump: one interval
+    await at(9, { reset: true });                                  // a new take
+    const e = 1 / 60;
+    const expected = [5, 5 + e, 5 + e, 5 + 2 * e, 5 + 2 * e + 0.1, 5 + 3 * e + 0.1, 9];
+    clocks.forEach((clock, i) => assert.ok(Math.abs(clock - expected[i]) < 1e-9, `clock ${i}: ${clock} vs ${expected[i]}`));
+    assert.throws(() => host.process(plugin.instance, input, { ...frame(0), interval: 0 }), /interval/);
   } finally { await host.close(plugin.instance); host.destroyStudySurface(input); }
 });
+
+// The frame after a seek must be the frame a normal one-interval step gives, so a simulation
+// integrating dt sees neither a negative nor an exploding step. Exact: same bytes, every frame.
+// LiquidWake's Mix defaults to 0 (a pass-through); at 1 its simulation reaches the output.
+const SEEK_SETTINGS = { glitch_mosher: [], LiquidWake: [[0, 1]] };
+for (const name of ['glitch_mosher', 'LiquidWake']) {
+  test(`${name}: a backward seek and a far forward jump each step the plugin by one interval`, async () => {
+    const SW = 320, SH = 180, e = 1 / 60;
+    const cards = Array.from({ length: 12 }, (_, i) => {
+      const bytes = Buffer.alloc(SW * SH * 4);
+      for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) {
+        const k = (y * SW + x) * 4, u = (x + i * 7) % SW;
+        bytes[k] = u * 255 / SW; bytes[k + 1] = y * 255 / SH; bytes[k + 2] = ((u >> 4) ^ (y >> 4)) & 1 ? 220 : 30; bytes[k + 3] = 255;
+      }
+      return bytes;
+    });
+    const sequence = async times => {
+      const plugin = await host.open(binaryOf(name), SW, SH, 3);
+      const frames = [];
+      try {
+        for (let i = 0; i < times.length; i++) {
+          const surface = host.createStudySurface(SW, SH, cards[i]);
+          try {
+            const result = await host.process(plugin.instance, surface, { time: times[i], bpm: 120, barPhase: 0, interval: e,
+              parameters: i === 0 ? SEEK_SETTINGS[name] : [] });
+            frames.push(Buffer.from(host.readStudySurface(result.handle))); host.release(result.leaseId);
+          } finally { host.destroyStudySurface(surface); }
+        }
+      } finally { await host.close(plugin.instance); }
+      return frames;
+    };
+    const straight = await sequence(cards.map((_, i) => 2 + i * e));
+    const back = await sequence(cards.map((_, i) => (i < 6 ? 2 + i * e : (i - 6) * e)));
+    const forward = await sequence(cards.map((_, i) => (i < 6 ? 2 + i * e : 1000 + (i - 6) * e)));
+    for (let i = 0; i < cards.length; i++) {
+      assert.ok(back[i].equals(straight[i]), `${name} frame ${i}: backward seek == straight run`);
+      assert.ok(forward[i].equals(straight[i]), `${name} frame ${i}: forward jump == straight run`);
+    }
+    assert.ok(straight.every(bytes => bytes.some(value => value !== 0)), `${name}: no black frame`);
+    assert.ok(!straight[11].equals(straight[6]), `${name}: the sequence moves`);
+    assert.ok(!straight[11].equals(cards[11]), `${name}: the effect reaches the output (not a pass-through)`);
+  });
+}
 
 test('a misbehaving request is an error, not a crash, and leases account exactly', async () => {
   const input = host.createStudySurface(W, H, picture());
