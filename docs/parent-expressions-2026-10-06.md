@@ -132,5 +132,21 @@ the diagnostics are permanent.
   pins it yet.
 - Completion: offer `parent().par.` keys, and `op('<instance>').par.` keys (§V150 allows
   offering less than the reader accepts, and this does).
-- Authoring-time refusal of a ring through the boundary.
+- Authoring-time refusal of a ring through the boundary is implemented at landing (see below).
 - VN38 (two-way bind) and VN43 (`parent.Name` shortcuts).
+
+## Landing on validated VN35
+
+This change is ported onto the repaired VN35 implementation rather than restoring #4's
+unchecked writer. Dissolved pages pass through the same path resolution as physical nodes,
+and `op('outer/inner').par.key` can name a nested instance's published page. Page records
+contain only schema-declared parameters and compound components.
+
+The command-time validator and saved-file compiler validator share a reference graph that
+includes published pages. Definition-only publication is checked before registration: a
+newly executable cycle is refused, including dry runs, while an unrelated edit remains
+possible in a file carrying an existing cycle. Lexer whitespace before `parent (` is
+handled by the AST span walker, including tabs, newlines and multiple spaces.
+
+The app-command lamp fixture also has a CPU compiler proof of independent red/green values.
+The Dawn pixel checks remain required and fail explicitly when no adapter is available.

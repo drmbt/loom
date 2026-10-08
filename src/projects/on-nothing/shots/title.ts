@@ -3,7 +3,7 @@ import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import type { ParameterSlot } from "../../../domain/types/parameters.ts";
 import { expressionSlot } from "../../../examples/documents/builders.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../../runtime/backend/shared-uniforms.ts";
-import { BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
+import { BRIGHT_PASS_WGSL } from "../../../nodes/shaders/bloom-pyramid.wgsl.ts";
 import { CAMERA_PARAMS, DOF_WGSL, GTAO_WGSL, VIEW } from "../../furnace/screen-space.ts";
 import { ENVIRONMENT_HDRI_WGSL, ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { CRT_WGSL, GRADE_WGSL } from "../fx.ts";

@@ -6,6 +6,8 @@ import { effectiveInternalOverrides } from "./flatten.ts";
 import { internalChannelMasks, projectInternalChannelMasks } from "./internal-channel-masks.ts";
 import { internalResolutions, projectInternalResolutions } from "./internal-resolutions.ts";
 import { publishedPage, publishedSchema, type PublishedPage } from "./published-page.ts";
+import { COMPONENT_OVERRIDES_STATE_KEY, isComponentInstance, parseInternalParameterPath, readComponentInstance } from "./instance.ts";
+import { enteredThrough } from "./addressing.ts";
 
 /**
  * T1553b — WHAT ONE INSTANCE DOES TO ITS DEFINITION, decided once for both of its readers.
@@ -56,10 +58,26 @@ export function applyInstance(input: {
   const page = publishedPage(read(instance, publishedSchema(definition)), definition);
   const masked = projectInternalChannelMasks(definition.graph, internalChannelMasks(instance));
   const sized = projectInternalResolutions(masked.graph, internalResolutions(instance));
+  const overrides = effectiveInternalOverrides(definition, instance, page.stored);
+  const nodes = { ...sized.graph.nodes };
+  let nested = false;
+  // Only the instance's OWN descendant overrides belong in nested state. Published values
+  // remain deferred until the callers rename labels, exactly as direct overrides do.
+  for (const [path, value] of Object.entries(readComponentInstance(instance)?.overrides ?? {})) {
+    const addressed = parseInternalParameterPath(path);
+    if (addressed === null || enteredThrough(addressed.key) === undefined) continue;
+    const child = nodes[addressed.nodeId];
+    if (child === undefined || !isComponentInstance(child)) continue;
+    nodes[addressed.nodeId] = { ...child, state: { ...child.state, [COMPONENT_OVERRIDES_STATE_KEY]: {
+      ...readComponentInstance(child)!.overrides, [addressed.key]: value,
+    } } };
+    delete overrides[path];
+    nested = true;
+  }
   return {
     page,
-    overrides: effectiveInternalOverrides(definition, instance, page.stored),
-    graph: sized.graph,
+    overrides,
+    graph: nested ? { ...sized.graph, nodes } : sized.graph,
     missing: { channelMasks: masked.missing, resolutions: sized.missing },
   };
 }

@@ -17,6 +17,8 @@ import {
 } from "../tests/fixtures/animated-component.ts";
 import { useGraphCompile } from "./use-graph-compile.ts";
 import { useValueGraph } from "./use-value-graph.ts";
+import { graphOf, node } from "@domain/components/test-support.ts";
+import type { GraphComponentDefinition } from "@domain/types/components.ts";
 
 /**
  * §V28b/T182 — a disconnected texture-producing node must still compile and preview.
@@ -53,6 +55,47 @@ async function seed(runtime: AppRuntime, operations: GraphPatchOperation[]) {
     runtime.invocation,
   );
 }
+
+describe("current flattening published to the command bus", () => {
+  it("measures a component mesh after changing its file, before React renders the new revision", async () => {
+    const component: GraphComponentDefinition = {
+      componentId: "meshAsset", version: 1, name: "Mesh Asset",
+      graph: graphOf([node("mesh", "meshFileIn", { file: "media/first.glb" }, { label: "mesh_asset" })]),
+      inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "mesh", portId: "out" }],
+      parameters: [{ key: "file", definition: { type: "asset", label: "File", kind: "gltf" }, targets: [{ nodeId: "mesh", key: "file" }] }],
+    };
+    const runtime = createAppRuntime({ identityStorage: null, components: [component] });
+    try {
+      const placed = await runtime.bus.execute("component.instantiate", { componentId: component.componentId }, runtime.invocation);
+      expect(placed.status).toBe("applied");
+      const owner = placed.output.nodeId!;
+      expect((await seed(runtime, [{ op: "setParameters", nodeId: owner, parameters: { file: "media/first.glb" } }])).status).toBe("applied");
+      let renders = 0;
+      const hook = renderHook(() => {
+        renders += 1;
+        return useGraphCompile(runtime, CAPABILITIES);
+      });
+      const rendered = hook.result.current.flatGraph;
+      const renderCount = renders;
+      await act(async () => {
+        // The bus applies synchronously; await both results only AFTER their handlers ran,
+        // while React still holds the previously rendered document and plan.
+        const file = seed(runtime, [{ op: "setParameters", nodeId: owner, parameters: { file: "media/second.glb" } }]);
+        const current = runtime.bus.flattenedGraph();
+        const measure = seed(runtime, [{ op: "setParameters", nodeId: owner, internalNodeId: "mesh",
+          parameters: { vertices: 24, triangles: 12, parts: "", joints: "", clips: "", clipFrames: 0, frameOrigin: "", bounds: "0,0,0,0.8661" },
+        }]);
+        expect(renders).toBe(renderCount);
+        expect(hook.result.current.flatGraph).toBe(rendered);
+        const outcomes = await Promise.all([file, measure]);
+        expect(outcomes.map(result => result.status)).toEqual(["applied", "applied"]);
+        expect(current?.nodes[`${owner}/mesh`]!.parameters.file).toBe("media/second.glb");
+      });
+      expect(runtime.flattened.current().graph.nodes[`${owner}/mesh`]!.parameters).toMatchObject({ file: "media/second.glb", vertices: 24, triangles: 12 });
+      hook.unmount();
+    } finally { runtime.dispose(); }
+  });
+});
 
 describe("useGraphCompile — default-on previews (§V28a, §V28b, §V28c)", () => {
   it("recompiles when a take-local output resolution changes without a document edit", async () => {

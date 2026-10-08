@@ -4,6 +4,12 @@ import { evaluateExpression, parseExpression } from "./evaluate.ts";
 import { formatParentRead, parentReadsOf, rewriteParentReads } from "./parent-reads.ts";
 
 describe("VN36 — parent() in the grammar", () => {
+  it.each(["parent  ().par.gain", "parent\t().par.gain", "parent\n(2).par.gain"])("finds and rewrites reads with lexer whitespace: %s", source => {
+    expect(parseExpression(source).ok).toBe(true);
+    expect(parentReadsOf(source)).toHaveLength(1);
+    expect(rewriteParentReads(source, () => "op('rig').par.gain")).toBe("op('rig').par.gain");
+  });
+
   it("parses parent() as one hop and parent(n) as n, reading .par.key and one component", () => {
     expect(parseExpression("parent().par.gain")).toEqual({
       ok: true,

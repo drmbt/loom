@@ -19,7 +19,7 @@ import { timelineCueProblems } from "../domain/presets/timeline-cues.ts";
 import { renumberedName, rewriteNodeNameReferences } from "../domain/graph/names.ts";
 import { isPreviewablePortKind } from "../domain/graph/previewable.ts";
 import { effectiveParameterSchema, STORED_READ } from "../domain/parameters/resolve.ts";
-import { isParameterSlot, storedStaticValue } from "../domain/parameters/slots.ts";
+import { componentKey, isComponentKeyOf, isParameterSlot, parseComponentKey, storedStaticValue } from "../domain/parameters/slots.ts";
 import type { NodeRegistryView } from "../nodes/registry/registry.ts";
 import type { NodeDefinition } from "../domain/types/node-definition.ts";
 import type { PortType } from "../domain/types/ports.ts";
@@ -316,6 +316,9 @@ interface LevelInput {
   readonly chain: ReadonlyArray<Readonly<Record<string, ParameterValue>>>;
   /** T1524b: `chain`'s twin — each enclosing instance's published key → the root parameter behind it. */
   readonly scopeOrigins: ReadonlyArray<Readonly<Record<string, PublishedOrigin>>>;
+  /** Authoring scopes carried alongside projected values, keyed by internal parameter path. */
+  readonly parameterScopes: Readonly<Record<string, string>>;
+  readonly scopeParameterScopes: ReadonlyArray<Readonly<Record<string, string>>>;
 }
 
 interface LevelResult {
@@ -589,6 +592,7 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
   const scopes = new Map<string, NameScope & { readonly names: Map<string, { node: NodeId } | { scope: string }> }>();
   const scopeOf = new Map<NodeId, string>();
   const authoredOf = new Map<NodeId, string>();
+  const parameterScopes = new Map<NodeId, Readonly<Record<string, string>>>();
   const nameNode = (prefix: string, authored: string | undefined, flatId: NodeId): void => {
     scopeOf.set(flatId, prefix);
     if (authored === undefined) return;
@@ -623,6 +627,8 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     scopeOrigins: ReadonlyArray<Readonly<Record<string, PublishedOrigin>>>,
     /** T1524b: filled with the root parameter behind each `parent.<key>` value written below. */
     bound: Record<string, PublishedOrigin>,
+    keyScopes: Record<string, string>,
+    scopeParameterScopes: ReadonlyArray<Readonly<Record<string, string>>>,
   ): Record<string, StoredParameter> => {
     const parameters: Record<string, StoredParameter> = { ...node.parameters };
     for (const key of Object.keys(forNode).sort()) {
@@ -658,6 +664,9 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
         continue;
       }
       parameters[key] = lookup.value;
+      const reference = parseParentReference(binding.ref)!;
+      const authoredScope = scopeParameterScopes[scopeParameterScopes.length - reference.hops]?.[reference.key];
+      if (authoredScope !== undefined) keyScopes[key] = authoredScope;
       const origin = parentOrigin(scopeOrigins, binding.ref);
       if (origin !== undefined) bound[key] = origin;
     }
@@ -697,6 +706,9 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       const driven = drivers[key]?.({ node, key, definition: parameterDefinition });
       if (driven === undefined) continue;
       parameters[key] = driven;
+      const reference = parseParentReference(readParentBindings(node)[key] ?? "");
+      const authoredScope = reference === null ? undefined : scopeParameterScopes[scopeParameterScopes.length - reference.hops]?.[reference.key];
+      if (authoredScope !== undefined) keyScopes[key] = authoredScope;
       const origin = parentOrigin(scopeOrigins, readParentBindings(node)[key] ?? "");
       if (origin !== undefined) bound[key] = origin;
     }
@@ -759,14 +771,21 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       // T1524b: the root parameters this node's values came from — the published fan-out
       // (§V80) and, beside it, every `parent.<key>` read `effectiveParameters` resolves.
       const publishedFrom: Record<string, PublishedOrigin> = { ...origins.get(nodeId) };
-      // VN36: and every `parent()` read becomes an `op()` read of the instance it names, here,
-      // before an instance's page is carried inward (T1017). See `parent-references.ts`.
+      const overrides = grouped.get(nodeId) ?? {};
+      const keyScopes: Record<string, string> = {};
+      for (const key of new Set([...Object.keys(node.parameters), ...Object.keys(overrides)])) {
+        keyScopes[key] = key in overrides ? input.parameterScopes[internalParameterPath(nodeId, key)] ?? input.prefix : input.prefix;
+      }
       const parameters = resolveParentReferences(
-        effectiveParameters(node, schema, grouped.get(nodeId) ?? {}, scope, flatId, input.scopeOrigins, publishedFrom),
+        effectiveParameters(node, schema, overrides, scope, flatId, input.scopeOrigins, publishedFrom, keyScopes, input.scopeParameterScopes),
         parents,
-        (diagnostic) => report(diagnostic, flatId),
+        diagnostic => report(diagnostic, flatId),
       );
+      for (const key of Object.keys(parameters)) if (keyScopes[key] === undefined) keyScopes[key] = input.prefix;
+      parameterScopes.set(flatId, keyScopes);
       const resolved: GraphNode = { ...node, id: flatId, parameters };
+      scopeOf.set(flatId, input.prefix);
+      if (authored !== undefined) authoredOf.set(flatId, authored);
 
       if (instance !== null) {
         instanceNodes.set(flatId, resolved);
@@ -867,6 +886,24 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
       scopes.set(flatId, { parent: input.prefix, label: authored, names: new Map() });
       const enclosing = scopes.get(input.prefix)?.names;
       if (authored !== undefined && enclosing !== undefined && !enclosing.has(authored)) enclosing.set(authored, { scope: flatId });
+      const projectedScopes: Record<string, string> = {};
+      const pageScopes: Record<string, string> = {};
+      for (const publishedParameter of componentDefinition.parameters) {
+        const authoredScope = keyScopes[publishedParameter.key] ?? input.prefix;
+        pageScopes[publishedParameter.key] = authoredScope;
+        for (const target of publishedParameter.targets) {
+          projectedScopes[internalParameterPath(target.nodeId, target.key)] = authoredScope;
+          for (const key of Object.keys(parameters)) {
+            const component = parseComponentKey(key);
+            if (component?.base === publishedParameter.key) {
+              pageScopes[key] = keyScopes[key] ?? input.prefix;
+              projectedScopes[internalParameterPath(target.nodeId, componentKey(target.key, component.component))] = pageScopes[key]!;
+            }
+          }
+        }
+      }
+      // An internal override is authored on its target node, so it retains that node's scope.
+      for (const path of Object.keys(readComponentInstance(resolved)?.overrides ?? {})) delete projectedScopes[path];
       const child = flattenLevel({
         graph: applied.graph,
         definition: componentDefinition,
@@ -880,6 +917,8 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
           publishedFrom,
         ),
         chain: [...input.chain, published],
+        parameterScopes: projectedScopes,
+        scopeParameterScopes: [...input.scopeParameterScopes, pageScopes],
         scopeOrigins: [
           ...input.scopeOrigins,
           publishedKeyOrigins(componentDefinition, input.definition === null ? node.id : null, publishedFrom),
@@ -1047,6 +1086,8 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
     origins: {},
     chain: [],
     scopeOrigins: [],
+    parameterScopes: {},
+    scopeParameterScopes: [],
   });
 
   // Parent-level wires are known only after every level has expanded. Resolve the first
@@ -1064,7 +1105,11 @@ export function flattenComponents(request: FlattenRequest): FlattenedGraph {
   }
 
   // VN35: paths name nodes the walk above has now placed; resolve them before anything reads a name.
-  diagnostics.push(...resolvePathReferences({ nodes, edges, scopes, scopeOf, authoredOf }));
+  // Dissolved pages carry expressions too; apply the same path rule before any reader uses them.
+  const referenceNodes = { ...nodes, ...Object.fromEntries(instanceNodes) };
+  diagnostics.push(...resolvePathReferences({ nodes: referenceNodes, edges, scopes, scopeOf, authoredOf, parameterScopes }));
+  for (const id of Object.keys(nodes)) nodes[id] = referenceNodes[id]!;
+  for (const id of instanceNodes.keys()) instanceNodes.set(id, referenceNodes[id]!);
 
   const graph = flat({
     revision: request.graph.revision,
@@ -1152,7 +1197,8 @@ function instancePagesOf(
     const node = instanceNodes.get(instanceId);
     const schema = pageSchemas.get(instanceId);
     if (node?.label === undefined || schema === undefined || byLabel.has(node.label)) continue;
-    byLabel.set(node.label, { node, schema });
+    const parameters = Object.fromEntries(Object.entries(node.parameters).filter(([key]) => Object.hasOwn(schema, key) || isComponentKeyOf(schema, key)));
+    byLabel.set(node.label, { node: { ...node, parameters }, schema });
   }
   return byLabel;
 }

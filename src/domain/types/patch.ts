@@ -54,15 +54,8 @@ export type GraphPatchOperation =
    * order nobody asked for.
    */
   | { op: "reorderEdges"; nodeId: NodeRef; portId: PortId; edgeIds: EdgeId[] }
-  /**
-   * VN33: with `internalNodeId`, `nodeId` is a component INSTANCE and the write lands in
-   * that instance's own overrides (`state.componentOverrides`, keyed
-   * `internalParameterPath(internalNodeId, key)`), which flattening applies over the
-   * definition. The shared definition is not touched, so two instances of one component
-   * carry their own values. One level only: an id inside a nested instance (`b/inner`) is
-   * refused by name, because an override key is `<node>/<key>` split at its first "/".
-   */
-  | { op: "setParameters"; nodeId: NodeRef; parameters: Record<string, StoredParameter>; internalNodeId?: string }
+  /** internalNodeId addresses an existing descendant of a component instance; its overrides are plain values. */
+  | { op: "setParameters"; nodeId: NodeRef; parameters: Record<string, StoredParameter>; internalNodeId?: NodeId }
   /**
    * §T1641b slice 2: delete stored keys the node's schema does NOT declare.
    *

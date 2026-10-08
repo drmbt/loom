@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { createAppRuntime } from "../../app/app-runtime.ts";
+import { compileGraphRetaining, flattenComponents } from "../../compiler/index.ts";
+import { testCapabilities } from "../../compiler/test-support.ts";
+import { createValueGraphSession } from "../../domain/channels/value-graph.ts";
 import { openComponentSession } from "../../domain/components/session.ts";
 import type { RuntimeDiagnostic } from "../../domain/types/diagnostics.ts";
 import type { GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
@@ -40,6 +43,7 @@ interface Staged {
   /** The Solid's id inside the component: the instance's flat child is `<instance>/<inner>`. */
   readonly inner: string;
   readonly components: ReturnType<ReturnType<typeof createAppRuntime>["components"]["view"]>;
+  readonly registry: ReturnType<typeof createAppRuntime>["registry"];
 }
 
 /** `pages`: each instance's `gain`. `publish`: false cuts the publish. */
@@ -62,7 +66,8 @@ async function stage(pages: { a: StoredParameter; b: StoredParameter }, publish 
   }
 
   // Inside the component: publish `gain`, and aim the Solid's red and green at it.
-  const session = openComponentSession({ components: runtime.components, nodes: runtime.registry, componentId, version: 1 });
+  const session = openComponentSession({ components: runtime.components, nodes: runtime.registry, componentId, version: 1,
+    parent: runtime.bus, root: runtime.bus.store.getGraph, instancePath: () => [instances.a] });
   const inner = Object.keys(session.bus.store.getGraph().nodes)[0]!;
   const exposed = await session.bus.execute("component.exposePort", { direction: "output", nodeId: inner, portId: "out", externalId: "out", label: "Out" }, invocation);
   expect(exposed.status, exposed.diagnostics.map((each) => each.message).join("; ")).toBe("applied");
@@ -97,7 +102,9 @@ async function stage(pages: { a: StoredParameter; b: StoredParameter }, publish 
   ] }, invocation);
   expect(shown.status).toBe("applied");
   expect(definition.outputs.map((each) => each.externalId)).toEqual(["out"]);
-  return { graph: bus.store.getGraph(), instances, inner, components: runtime.components.view() };
+  const result = { graph: bus.store.getGraph(), instances, inner, components: runtime.components.view(), registry: runtime.registry };
+  runtime.dispose();
+  return result;
 }
 
 /** Every frame of `instance`'s output, as the first pixel's RGB. The Solid fills the frame. */
@@ -129,6 +136,18 @@ async function dawn(): Promise<void> {
 }
 
 describe("VN36: parent().par.gain, one component placed twice (Dawn)", () => {
+  it("builds two independently coloured instances through commands and the real compiler", async () => {
+    const staged = await stage({ a: 1, b: 0 });
+    const flattened = flattenComponents({ graph: staged.graph, registry: staged.registry, components: staged.components });
+    const frame = { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "realtime" as const, randomSeed: 7 };
+    const channels = createValueGraphSession(staged.registry).evaluate(flattened.graph, frame, { flattening: flattened }).resolver;
+    const ids = [staged.instances.a, staged.instances.b].map(id => `${id}/${staged.inner}`);
+    const result = compileGraphRetaining({ graph: staged.graph, settings: SETTINGS, registry: staged.registry, capabilities: testCapabilities(),
+      components: staged.components, flattened, resolution: { frame, channels }, sinks: ids.map(nodeId => ({ nodeId, portId: "out", kind: "preview" as const })) });
+    expect(result.compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(ids.map(id => result.retained?.nodes.get(id)?.context.parameters.color)).toEqual([[1, 0, 0, 1], [0, 1, 0, 1]]);
+  });
+
   it("each instance renders from ITS OWN page: gain 1 is red, gain 0 is green", async () => {
     await dawn();
     const staged = await stage({ a: 1, b: 0 });

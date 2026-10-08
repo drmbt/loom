@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { GraphDocument, GraphNode } from "@domain/types/graph.ts";
-import type { ParameterValue } from "@domain/types/parameters.ts";
-import { isComponentInstance } from "@domain/components/instance.ts";
-import { enteredThrough } from "@domain/components/addressing.ts";
+import type { GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { GlbDecodeError, type MeshFrame } from "@domain/mesh/glb.ts";
 import { storedStaticValue } from "@domain/parameters/slots.ts";
+import { enteredThrough } from "@domain/components/addressing.ts";
+import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { meshSourceIdsFor, prepareMesh, type PreparedMesh } from "@/points/mesh.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { AppRuntime } from "./app-runtime.ts";
@@ -23,10 +22,9 @@ import type { AppRuntime } from "./app-runtime.ts";
  * the file's size; the sources are already registered by then and the upload lands on the
  * first frame of the new plan.
  *
- * A mesh node inside a component is sized through its instance (VN33, `factsTarget`). A
- * file that will not decode, a selection that matches nothing, or a mesh inside a NESTED
- * component registers nothing and says why here; the node keeps publishing its degenerate
- * stand-in and draws nothing.
+ * A file that will not decode or a selection that matches nothing registers nothing and
+ * says why. An internal mesh's measured facts belong to its owning instance's overrides,
+ * never the shared definition; already measured internal meshes feed their flat sources.
  *
  * HONEST LIMIT: the decode runs on the main thread. A 100 MB export takes on the order of
  * a second, once per file and selection; moving it to a worker is the follow-up if a
@@ -87,94 +85,6 @@ function meshRequests(graph: GraphDocument): MeshRequest[] {
   return requests.sort((a, b) => (a.nodeId < b.nodeId ? -1 : a.nodeId > b.nodeId ? 1 : 0));
 }
 
-/**
- * VN33 — WHERE a mesh node's measured facts are read and written. A node at the root holds
- * them itself. A node inside a component is a flattened id (`instance/inner`) the document
- * does not hold: its facts are that INSTANCE's overrides of `inner` (`setParameters` with
- * `internalNodeId`), so each instance carries the size of the file IT loads and the shared
- * definition is not touched. "Already sized" then reads the flattened node, the definition
- * with the overrides applied, because that is what the compile sizes the node by.
- *
- * One level: an override key is `<node>/<key>`, so a node inside a NESTED instance
- * (`a/b/inner`) is refused by name, and the mesh keeps drawing nothing there.
- */
-function factsTarget(
-  root: GraphDocument,
-  flat: GraphDocument,
-  nodeId: NodeId,
-): { readonly nodeId: NodeId; readonly internalNodeId?: string; readonly parameters: GraphNode["parameters"] } | { readonly refused: string } {
-  const own = root.nodes[nodeId];
-  if (own !== undefined) return { nodeId, parameters: own.parameters };
-  const entered = enteredThrough(nodeId);
-  const instance = entered === undefined ? undefined : root.nodes[entered.instance];
-  const flattened = flat.nodes[nodeId];
-  if (entered === undefined || instance === undefined || flattened === undefined || !isComponentInstance(instance)) {
-    return { refused: "the document holds no node or component instance by that id, so its facts have nowhere to go" };
-  }
-  if (enteredThrough(entered.rest) !== undefined) {
-    return { refused: "it sits inside a nested component, and an instance's overrides reach its own internal nodes only; set its Vertices/Triangles on the nested component's node" };
-  }
-  return { nodeId: instance.id, internalNodeId: entered.rest, parameters: flattened.parameters };
-}
-
-interface MeshMeasure {
-  /** True when the node is already sized for the file: its buffers may be fed. */
-  readonly sized: boolean;
-  /** Why the node cannot be sized from here (VN33: a nested component). */
-  readonly refused?: string;
-}
-
-/**
- * The loader's measure step. Answers whether the node is already sized for this file;
- * otherwise writes the facts through the bus (the write changes `sized`, which re-runs the
- * hook's effect) and answers false: registering now would offer the stand-in's one-vertex
- * buffer a whole file's bytes.
- */
-function measureMesh(
-  runtime: Pick<AppRuntime, "bus" | "flattened" | "invocation">,
-  nodeId: NodeId,
-  facts: PreparedMesh["facts"],
-): MeshMeasure {
-  const bus = runtime.bus;
-  const target = factsTarget(bus.store.getGraph(), runtime.flattened.current().graph, nodeId);
-  if ("refused" in target) return { sized: false, refused: target.refused };
-  const write = (parameters: Record<string, ParameterValue>): void =>
-    void bus.execute(
-      "graph.applyPatch",
-      {
-        baseRevision: bus.store.getRevision(),
-        label: "Measure mesh",
-        operations: [{ op: "setParameters", nodeId: target.nodeId, parameters, ...(target.internalNodeId === undefined ? {} : { internalNodeId: target.internalNodeId }) }],
-      },
-      runtime.invocation,
-    );
-  const parameters = target.parameters;
-  // An unskinned node may never have stored Joints at all: absent reads as the empty table.
-  const joints = typeof parameters["joints"] === "string" ? parameters["joints"] : "";
-  // T1410b: absent clip facts read as the no-clip file's ("" and 0).
-  const clips = typeof parameters["clips"] === "string" ? parameters["clips"] : "";
-  const clipFrames = typeof parameters["clipFrames"] === "number" ? parameters["clipFrames"] : 0;
-  // T1581b: absent reads as the world frame's (empty).
-  const frameOrigin = typeof parameters["frameOrigin"] === "string" ? parameters["frameOrigin"] : "";
-  if (
-    parameters["vertices"] === facts.vertices &&
-    parameters["triangles"] === facts.triangles &&
-    parameters["parts"] === facts.parts &&
-    joints === facts.joints &&
-    clips === facts.clips &&
-    clipFrames === facts.clipFrames &&
-    frameOrigin === facts.frameOrigin
-  ) {
-    /* T1598b: Bounds sizes NOTHING, so it is not part of "sized for this file": a document
-       saved before it existed still feeds. It is written beside the facts, and on its own
-       when it is all that is missing. */
-    if (parameters["bounds"] !== facts.bounds) write({ bounds: facts.bounds });
-    return { sized: true };
-  }
-  write({ vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, joints: facts.joints, clips: facts.clips, clipFrames: facts.clipFrames, frameOrigin: facts.frameOrigin, bounds: facts.bounds });
-  return { sized: false };
-}
-
 export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null, graph: GraphDocument): MeshWiring {
   const [diagnostics, setDiagnostics] = useState<readonly RuntimeDiagnostic[]>(NO_DIAGNOSTICS);
   const runtimeRef = useRef(runtime);
@@ -217,6 +127,62 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
       return loading;
     };
 
+    /**
+     * True when the node is already sized for this file. Otherwise writes the facts (the
+     * write changes `sized`, which re-runs this effect) and answers false: registering
+     * now would offer the stand-in's one-vertex buffer a whole file's bytes.
+     */
+    const sizedFor = async (nodeId: NodeId, facts: PreparedMesh["facts"]): Promise<boolean> => {
+      const bus = runtimeRef.current.bus;
+      const stored = runtimeRef.current.flattened.current().graph.nodes[nodeId];
+      if (stored === undefined) {
+        found.push({
+          severity: "error",
+          code: "node.missing",
+          message: `Mesh "${nodeId}" no longer exists in the flattened document.`,
+          nodeId,
+        });
+        return false;
+      }
+      const writeFacts = async (parameters: Extract<GraphPatchOperation, { op: "setParameters" }>["parameters"]): Promise<void> => {
+        const address = enteredThrough(nodeId);
+        const operation: GraphPatchOperation = { op: "setParameters", nodeId: address?.instance ?? nodeId, parameters,
+          ...(address === undefined ? {} : { internalNodeId: address.rest }),
+        };
+        const result = await bus.execute("graph.applyPatch", {
+          baseRevision: bus.store.getRevision(), label: "Measure mesh", operations: [operation],
+        }, runtimeRef.current.invocation);
+        if (result.status !== "applied") found.push(...result.diagnostics);
+      };
+      const parameters = stored.parameters;
+      // An unskinned node may never have stored Joints at all: absent reads as the empty table.
+      const joints = typeof parameters["joints"] === "string" ? parameters["joints"] : "";
+      // T1410b: absent clip facts read as the no-clip file's ("" and 0).
+      const clips = typeof parameters["clips"] === "string" ? parameters["clips"] : "";
+      const clipFrames = typeof parameters["clipFrames"] === "number" ? parameters["clipFrames"] : 0;
+      // T1581b: absent reads as the world frame's (empty).
+      const frameOrigin = typeof parameters["frameOrigin"] === "string" ? parameters["frameOrigin"] : "";
+      if (
+        parameters["vertices"] === facts.vertices &&
+        parameters["triangles"] === facts.triangles &&
+        parameters["parts"] === facts.parts &&
+        joints === facts.joints &&
+        clips === facts.clips &&
+        clipFrames === facts.clipFrames &&
+        frameOrigin === facts.frameOrigin
+      ) {
+        /* T1598b: Bounds sizes NOTHING, so it is not part of "sized for this file": a
+           document saved before it existed, or a mesh inside a component, still feeds.
+           It is written beside the facts, and on its own when it is all that is missing. */
+        if (parameters["bounds"] !== facts.bounds) {
+          await writeFacts({ bounds: facts.bounds });
+        }
+        return true;
+      }
+      await writeFacts({ ...facts });
+      return false;
+    };
+
     void (async () => {
       for (const request of requests) {
         const preparedKey = `${request.file}|${request.select}|${request.clip}@${request.clipRate}|${request.lamps}|${request.frame}`;
@@ -247,11 +213,8 @@ export function useMeshSources(runtime: AppRuntime, backend: LoomBackend | null,
         for (const warning of prepared.mesh.warnings) {
           found.push({ severity: "info", code: "mesh.note", message: `Mesh "${request.nodeId}": ${warning}`, nodeId: request.nodeId });
         }
-        const measured = measureMesh(runtimeRef.current, request.nodeId, prepared.facts);
-        if (measured.refused !== undefined) {
-          found.push({ severity: "warning", code: "mesh.unsizable", message: `Mesh "${request.nodeId}": ${measured.refused} (${prepared.facts.vertices} / ${prepared.facts.triangles}).`, nodeId: request.nodeId });
-        }
-        if (!measured.sized) continue;
+        if (!await sizedFor(request.nodeId, prepared.facts)) continue;
+        if (cancelled) return;
         const ids = meshSourceIdsFor(request.nodeId);
         const points = prepared.points;
         const indices = prepared.indices;

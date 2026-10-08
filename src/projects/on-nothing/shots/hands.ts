@@ -2,7 +2,7 @@ import type { ProjectDocument } from "../../../domain/types/graph.ts";
 import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { expressionSlot } from "../../../examples/documents/builders.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../../runtime/backend/shared-uniforms.ts";
-import { BLOOM_DOWN_WGSL, BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
+import { BLOOM_DOWN_WGSL, BRIGHT_PASS_WGSL } from "../../../nodes/shaders/bloom-pyramid.wgsl.ts";
 import { CAMERA_PARAMS, GTAO_WGSL, VIEW } from "../../furnace/screen-space.ts";
 import { hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { geometryName, meshName } from "../names.ts";

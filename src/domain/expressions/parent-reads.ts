@@ -27,7 +27,7 @@ export interface ParentRead {
  */
 export function parentReadsOf(source: string): ParentRead[] {
   // Cheap refusal first: this runs over every expression slot of every flattening.
-  if (!source.includes(`${PARENT_FUNCTION}(`) && !source.includes(`${PARENT_FUNCTION} (`)) return [];
+  if (!source.includes(PARENT_FUNCTION)) return [];
   const parsed = parseExpression(source);
   if (!parsed.ok) return [];
   const offset = source.length - source.trimStart().length;

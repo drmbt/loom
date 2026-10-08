@@ -1,0 +1,715 @@
+{
+  "assets": [],
+  "componentLibrary": {
+    "components": [
+      {
+        "componentId": "bloomPyramid",
+        "description": "HDR highlight glow at several scales. Add Glow to your picture; Bright is the extracted source for streaks or flares.",
+        "graph": {
+          "edges": {
+            "bloom-down1": {
+              "id": "bloom-down1",
+              "source": {
+                "nodeId": "bright",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomDown1",
+                "portId": "input"
+              }
+            },
+            "bloom-down2": {
+              "id": "bloom-down2",
+              "source": {
+                "nodeId": "bloomDown1",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomDown2",
+                "portId": "input"
+              }
+            },
+            "bloom-down3": {
+              "id": "bloom-down3",
+              "source": {
+                "nodeId": "bloomDown2",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomDown3",
+                "portId": "input"
+              }
+            },
+            "bloom-down4": {
+              "id": "bloom-down4",
+              "source": {
+                "nodeId": "bloomDown3",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomDown4",
+                "portId": "input"
+              }
+            },
+            "bloom-up0-lower": {
+              "id": "bloom-up0-lower",
+              "source": {
+                "nodeId": "bloomUp1",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomUp0",
+                "portId": "input"
+              }
+            },
+            "bloom-up0-own": {
+              "id": "bloom-up0-own",
+              "order": 0,
+              "source": {
+                "nodeId": "bright",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomUp0",
+                "portId": "more"
+              }
+            },
+            "bloom-up1-lower": {
+              "id": "bloom-up1-lower",
+              "source": {
+                "nodeId": "bloomUp2",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomUp1",
+                "portId": "input"
+              }
+            },
+            "bloom-up1-own": {
+              "id": "bloom-up1-own",
+              "order": 0,
+              "source": {
+                "nodeId": "bloomDown1",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomUp1",
+                "portId": "more"
+              }
+            },
+            "bloom-up2-lower": {
+              "id": "bloom-up2-lower",
+              "source": {
+                "nodeId": "bloomUp3",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomUp2",
+                "portId": "input"
+              }
+            },
+            "bloom-up2-own": {
+              "id": "bloom-up2-own",
+              "order": 0,
+              "source": {
+                "nodeId": "bloomDown2",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomUp2",
+                "portId": "more"
+              }
+            },
+            "bloom-up3-lower": {
+              "id": "bloom-up3-lower",
+              "source": {
+                "nodeId": "bloomDown4",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomUp3",
+                "portId": "input"
+              }
+            },
+            "bloom-up3-own": {
+              "id": "bloom-up3-own",
+              "order": 0,
+              "source": {
+                "nodeId": "bloomDown3",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bloomUp3",
+                "portId": "more"
+              }
+            },
+            "in_picture_feed_1": {
+              "id": "in_picture_feed_1",
+              "source": {
+                "nodeId": "in_picture",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "bright",
+                "portId": "input"
+              }
+            },
+            "out_out_feed": {
+              "id": "out_out_feed",
+              "source": {
+                "nodeId": "bloomUp0",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "out_out",
+                "portId": "in"
+              }
+            }
+          },
+          "groups": {},
+          "nodes": {
+            "bloomDown1": {
+              "definitionVersion": 1,
+              "format": {
+                "format": "rgba16float",
+                "mode": "fixed"
+              },
+              "id": "bloomDown1",
+              "label": "wgsl_bloomdown1",
+              "parameters": {
+                "clampLuma": 1,
+                "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+              },
+              "position": {
+                "x": 516,
+                "y": -74
+              },
+              "resolution": {
+                "factor": 0.5,
+                "mode": "scale"
+              },
+              "type": "customWgsl"
+            },
+            "bloomDown2": {
+              "definitionVersion": 1,
+              "format": {
+                "format": "rgba16float",
+                "mode": "fixed"
+              },
+              "id": "bloomDown2",
+              "label": "wgsl_bloomdown2",
+              "parameters": {
+                "clampLuma": 0,
+                "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+              },
+              "position": {
+                "x": 774,
+                "y": -74
+              },
+              "resolution": {
+                "factor": 0.5,
+                "mode": "scale"
+              },
+              "type": "customWgsl"
+            },
+            "bloomDown3": {
+              "definitionVersion": 1,
+              "format": {
+                "format": "rgba16float",
+                "mode": "fixed"
+              },
+              "id": "bloomDown3",
+              "label": "wgsl_bloomdown3",
+              "parameters": {
+                "clampLuma": 0,
+                "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+              },
+              "position": {
+                "x": 1032,
+                "y": -74
+              },
+              "resolution": {
+                "factor": 0.5,
+                "mode": "scale"
+              },
+              "type": "customWgsl"
+            },
+            "bloomDown4": {
+              "definitionVersion": 1,
+              "format": {
+                "format": "rgba16float",
+                "mode": "fixed"
+              },
+              "id": "bloomDown4",
+              "label": "wgsl_bloomdown4",
+              "parameters": {
+                "clampLuma": 0,
+                "source": "struct Params {\n  clampLuma: f32, // @default 0  Above 0: the first level's firefly clamp (Karis average weight).\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn tap(uv: vec2f) -> vec3f {\n  return textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n}\n\nfn karis(c: vec3f) -> f32 {\n  return select(1.0, 1.0 / (1.0 + dot(c, vec3f(0.2126, 0.7152, 0.0722))), params.clampLuma > 0.0);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = 1.0 / vec2f(textureDimensions(inputTexture));\n  let a = tap(uv + t * vec2f(-2.0, -2.0)); let b = tap(uv + t * vec2f(0.0, -2.0)); let c = tap(uv + t * vec2f(2.0, -2.0));\n  let d = tap(uv + t * vec2f(-2.0, 0.0));  let e = tap(uv);                          let f = tap(uv + t * vec2f(2.0, 0.0));\n  let g = tap(uv + t * vec2f(-2.0, 2.0));  let h = tap(uv + t * vec2f(0.0, 2.0));  let i = tap(uv + t * vec2f(2.0, 2.0));\n  let j = tap(uv + t * vec2f(-1.0, -1.0)); let k = tap(uv + t * vec2f(1.0, -1.0));\n  let l = tap(uv + t * vec2f(-1.0, 1.0));  let m = tap(uv + t * vec2f(1.0, 1.0));\n  // Five boxes: the centre one weighted 0.5, the four corner ones 0.125 each.\n  let b0 = (j + k + l + m) * 0.25;\n  let b1 = (a + b + d + e) * 0.25;\n  let b2 = (b + c + e + f) * 0.25;\n  let b3 = (d + e + g + h) * 0.25;\n  let b4 = (e + f + h + i) * 0.25;\n  let w0 = 0.5 * karis(b0);\n  let w1 = 0.125 * karis(b1); let w2 = 0.125 * karis(b2); let w3 = 0.125 * karis(b3); let w4 = 0.125 * karis(b4);\n  let sum = (b0 * w0 + b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4) / max(w0 + w1 + w2 + w3 + w4, 1e-6);\n  return vec4f(sum, 1.0);\n}"
+              },
+              "position": {
+                "x": 1290,
+                "y": -74
+              },
+              "resolution": {
+                "factor": 0.5,
+                "mode": "scale"
+              },
+              "type": "customWgsl"
+            },
+            "bloomUp0": {
+              "definitionVersion": 1,
+              "format": {
+                "format": "rgba16float",
+                "mode": "fixed"
+              },
+              "id": "bloomUp0",
+              "label": "wgsl_bloomup0",
+              "parameters": {
+                "lower": 1,
+                "radius": 1,
+                "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+              },
+              "position": {
+                "x": 2322,
+                "y": -90
+              },
+              "resolution": {
+                "factor": 2,
+                "mode": "scale"
+              },
+              "type": "customWgslMulti"
+            },
+            "bloomUp1": {
+              "definitionVersion": 1,
+              "format": {
+                "format": "rgba16float",
+                "mode": "fixed"
+              },
+              "id": "bloomUp1",
+              "label": "wgsl_bloomup1",
+              "parameters": {
+                "lower": 1,
+                "radius": 1,
+                "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+              },
+              "position": {
+                "x": 2064,
+                "y": -90
+              },
+              "resolution": {
+                "factor": 2,
+                "mode": "scale"
+              },
+              "type": "customWgslMulti"
+            },
+            "bloomUp2": {
+              "definitionVersion": 1,
+              "format": {
+                "format": "rgba16float",
+                "mode": "fixed"
+              },
+              "id": "bloomUp2",
+              "label": "wgsl_bloomup2",
+              "parameters": {
+                "lower": 1,
+                "radius": 1,
+                "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+              },
+              "position": {
+                "x": 1806,
+                "y": -90
+              },
+              "resolution": {
+                "factor": 2,
+                "mode": "scale"
+              },
+              "type": "customWgslMulti"
+            },
+            "bloomUp3": {
+              "definitionVersion": 1,
+              "format": {
+                "format": "rgba16float",
+                "mode": "fixed"
+              },
+              "id": "bloomUp3",
+              "label": "wgsl_bloomup3",
+              "parameters": {
+                "lower": 1,
+                "radius": 1,
+                "source": "struct Params {\n  radius: f32, // @default 1  Tent radius, in texels of the lower level.\n  lower: f32, // @default 1  Weight of the wider glow coming up from below.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let t = params.radius / vec2f(textureDimensions(inputTexture));\n  var wide = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * 4.0;\n  wide = wide + (textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, 0.0), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(0.0, t.y), 0.0).rgb) * 2.0;\n  wide = wide + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, -t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(-t.x, t.y), 0.0).rgb\n    + textureSampleLevel(inputTexture, inputSampler, uv + vec2f(t.x, t.y), 0.0).rgb;\n  let size = vec2f(textureDimensions(inputTexture1));\n  let own = textureLoad(inputTexture1, clamp(vec2i(uv * size), vec2i(0), vec2i(size) - vec2i(1)), 0).rgb;\n  // An AVERAGE, not a sum: summing every level multiplied the bright pass's energy about 7×\n  // on its way up, and the glow washed the frame.\n  return vec4f(mix(own, wide / 16.0, params.lower * 0.5), 1.0);\n}"
+              },
+              "position": {
+                "x": 1548,
+                "y": -90
+              },
+              "resolution": {
+                "factor": 2,
+                "mode": "scale"
+              },
+              "type": "customWgslMulti"
+            },
+            "bright": {
+              "definitionVersion": 1,
+              "format": {
+                "format": "rgba16float",
+                "mode": "fixed"
+              },
+              "id": "bright",
+              "label": "wgsl_bright",
+              "parameters": {
+                "knee": 0.8,
+                "source": "struct Params {\n  threshold: f32, // @default 1.2  Linear radiance where bloom starts.\n  knee: f32, // @default 0.8  Softness of the threshold.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let color = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let brightness = max(color.r, max(color.g, color.b));\n  let soft = clamp(brightness - params.threshold + params.knee, 0.0, 2.0 * params.knee);\n  let weight = max(soft * soft / (4.0 * params.knee + 1e-4), brightness - params.threshold) / max(brightness, 1e-4);\n  return vec4f(color * weight, 1.0);\n}",
+                "threshold": 1.2
+              },
+              "position": {
+                "x": 258,
+                "y": -74
+              },
+              "resolution": {
+                "factor": 0.5,
+                "mode": "scale"
+              },
+              "type": "customWgsl"
+            },
+            "in_picture": {
+              "definitionVersion": 1,
+              "id": "in_picture",
+              "label": "Picture",
+              "parameters": {},
+              "position": {
+                "x": 0,
+                "y": -74
+              },
+              "type": "componentIn"
+            },
+            "out_out": {
+              "definitionVersion": 1,
+              "id": "out_out",
+              "label": "Glow",
+              "parameters": {},
+              "position": {
+                "x": 2580,
+                "y": -74
+              },
+              "type": "componentOut"
+            }
+          },
+          "revision": 2
+        },
+        "inputs": [
+          {
+            "externalId": "picture",
+            "label": "Picture",
+            "nodeId": "in_picture",
+            "portId": "in"
+          }
+        ],
+        "name": "Bloom Pyramid",
+        "outputs": [
+          {
+            "externalId": "out",
+            "label": "Glow",
+            "nodeId": "out_out",
+            "portId": "out"
+          },
+          {
+            "externalId": "bright",
+            "label": "Bright",
+            "nodeId": "bright",
+            "portId": "out"
+          }
+        ],
+        "parameters": [
+          {
+            "definition": {
+              "default": 1.2,
+              "label": "Threshold",
+              "max": 10,
+              "min": 0,
+              "range": "floor",
+              "type": "number"
+            },
+            "key": "threshold",
+            "targets": [
+              {
+                "key": "threshold",
+                "nodeId": "bright"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 0.8,
+              "description": "Softness of highlight extraction around Threshold.",
+              "label": "Knee",
+              "max": 4,
+              "min": 0,
+              "range": "floor",
+              "type": "number"
+            },
+            "key": "knee",
+            "targets": [
+              {
+                "key": "knee",
+                "nodeId": "bright"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 1,
+              "description": "Filter radius at each level; larger gives a softer, wider halo.",
+              "label": "Radius",
+              "max": 4,
+              "min": 0,
+              "range": "floor",
+              "step": 0.1,
+              "type": "number"
+            },
+            "key": "radius",
+            "targets": [
+              {
+                "key": "radius",
+                "nodeId": "bloomUp0"
+              },
+              {
+                "key": "radius",
+                "nodeId": "bloomUp1"
+              },
+              {
+                "key": "radius",
+                "nodeId": "bloomUp2"
+              },
+              {
+                "key": "radius",
+                "nodeId": "bloomUp3"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 1,
+              "description": "Higher gives the wider halos more of the glow.",
+              "label": "Spread",
+              "max": 2,
+              "min": 0,
+              "range": "bounded",
+              "step": 0.1,
+              "type": "number"
+            },
+            "key": "spread",
+            "targets": [
+              {
+                "key": "lower",
+                "nodeId": "bloomUp0"
+              },
+              {
+                "key": "lower",
+                "nodeId": "bloomUp1"
+              },
+              {
+                "key": "lower",
+                "nodeId": "bloomUp2"
+              },
+              {
+                "key": "lower",
+                "nodeId": "bloomUp3"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 1,
+              "description": "1 suppresses isolated hot speckles before widening the glow; 0 leaves them unchanged.",
+              "label": "Firefly Filter",
+              "max": 1,
+              "min": 0,
+              "range": "bounded",
+              "step": 1,
+              "type": "number"
+            },
+            "key": "fireflyFilter",
+            "targets": [
+              {
+                "key": "clampLuma",
+                "nodeId": "bloomDown1"
+              }
+            ]
+          }
+        ],
+        "version": 1
+      }
+    ],
+    "schemaVersion": 1
+  },
+  "createdAt": "2026-08-29T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "combined-out": {
+        "id": "combined-out",
+        "source": {
+          "nodeId": "combine",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "out",
+          "portId": "input"
+        }
+      },
+      "ed_bloomPyramid2": {
+        "id": "ed_bloomPyramid2",
+        "source": {
+          "nodeId": "hdr",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_bloomPyramid1",
+          "portId": "picture"
+        }
+      },
+      "ed_bloomPyramid3": {
+        "id": "ed_bloomPyramid3",
+        "source": {
+          "nodeId": "nd_bloomPyramid1",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "combine",
+          "portId": "in1"
+        }
+      },
+      "picture-combine": {
+        "id": "picture-combine",
+        "order": 0,
+        "source": {
+          "nodeId": "hdr",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "combine",
+          "portId": "in2"
+        }
+      },
+      "plate-hdr": {
+        "id": "plate-hdr",
+        "source": {
+          "nodeId": "plate",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "hdr",
+          "portId": "input"
+        }
+      }
+    },
+    "groups": {},
+    "nodes": {
+      "combine": {
+        "definitionVersion": 1,
+        "id": "combine",
+        "label": "add_glow",
+        "parameters": {
+          "opacity": 0.35
+        },
+        "position": {
+          "x": -100,
+          "y": 0
+        },
+        "type": "add"
+      },
+      "hdr": {
+        "definitionVersion": 1,
+        "format": {
+          "format": "rgba16float",
+          "mode": "fixed"
+        },
+        "id": "hdr",
+        "label": "level_hdr",
+        "parameters": {
+          "brightness": 6
+        },
+        "position": {
+          "x": -1300,
+          "y": 0
+        },
+        "type": "level"
+      },
+      "nd_bloomPyramid1": {
+        "definitionVersion": 1,
+        "id": "nd_bloomPyramid1",
+        "label": "bloompyramid1",
+        "parameters": {},
+        "position": {
+          "x": -600,
+          "y": 433
+        },
+        "type": "component:bloomPyramid@1"
+      },
+      "out": {
+        "definitionVersion": 1,
+        "id": "out",
+        "label": "output1",
+        "parameters": {},
+        "position": {
+          "x": 200,
+          "y": 0
+        },
+        "type": "output"
+      },
+      "plate": {
+        "definitionVersion": 1,
+        "id": "plate",
+        "label": "circle_plate",
+        "parameters": {
+          "bgcolor": [
+            0.03,
+            0.03,
+            0.03,
+            1
+          ],
+          "center": [
+            0.5,
+            0.5
+          ],
+          "fillcolor": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "radius": [
+            0.07,
+            0.12
+          ],
+          "softness": 0.01
+        },
+        "position": {
+          "x": -1600,
+          "y": 0
+        },
+        "type": "circle"
+      }
+    },
+    "revision": 2
+  },
+  "name": "Bloom Pyramid",
+  "projectId": "component-bloomPyramid",
+  "schemaVersion": 5,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 1073741824
+    },
+    "outputResolution": {
+      "height": 720,
+      "width": 1280
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 7,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-08-29T00:00:00.000Z"
+}

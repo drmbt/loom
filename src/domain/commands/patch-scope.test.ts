@@ -34,6 +34,7 @@ describe("operation classification (§V33)", () => {
   it("classifies value edits and structural edits apart", () => {
     const value: GraphPatchOperation[] = [
       { op: "setParameters", nodeId: "a", parameters: { amount: 1 } },
+      { op: "setParameters", nodeId: "a", internalNodeId: "inner/mesh", parameters: { vertices: 24 } },
       { op: "setShaderSource", nodeId: "a", source: "" },
       { op: "moveNodes", positions: { a: { x: 1, y: 1 } } },
       { op: "setNodeUi", nodeId: "a", ui: { bypassed: true } },
@@ -62,6 +63,7 @@ describe("operation classification (§V33)", () => {
 describe("entity scope (§V33)", () => {
   it("scopes a value edit to the one entity whose value changes", () => {
     expect(scope({ op: "setParameters", nodeId: "a", parameters: { amount: 1 } })).toEqual(["node:a"]);
+    expect(scope({ op: "setParameters", nodeId: "a", internalNodeId: "inner/mesh", parameters: { vertices: 24 } })).toEqual(["node:a"]);
     expect(scope({ op: "moveNodes", positions: { a: { x: 0, y: 0 }, c: { x: 0, y: 0 } } })).toEqual([
       "node:a",
       "node:c",

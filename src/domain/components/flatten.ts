@@ -3,7 +3,8 @@ import type { GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { StoredParameter } from "../types/parameters.ts";
 import { formatComponentPath } from "../types/components.ts";
-import { internalParameterPath, readComponentInstance } from "./instance.ts";
+import { internalParameterPath, parseDescendantParameterPath, readComponentInstance } from "./instance.ts";
+import { componentKey, componentNamesFor, parseComponentKey } from "../parameters/slots.ts";
 
 /**
  * What the flattening compiler needs from this track (§V82, T134 is theirs).
@@ -38,8 +39,19 @@ export function internalParameterValues(
   for (const published of definition.parameters) {
     const value = publishedValues[published.key];
     if (value === undefined) continue;
+    const components = componentNamesFor(published.definition);
     for (const target of published.targets) {
-      values[internalParameterPath(target.nodeId, target.key)] = value;
+      const path = internalParameterPath(target.nodeId, target.key);
+      values[path] = value;
+      // A whole published vector/colour may carry independently animated channels.
+      // Rename the base key on every target, retaining each slot for its own resolver.
+      for (const name of components ?? []) {
+        const channelPath = internalParameterPath(target.nodeId, componentKey(target.key, name));
+        // The next whole writer replaces earlier projected channels before its own.
+        delete values[channelPath];
+        const component = publishedValues[componentKey(published.key, name)];
+        if (component !== undefined) values[channelPath] = component;
+      }
     }
   }
   return values;
@@ -58,10 +70,17 @@ export function effectiveInternalOverrides(
   publishedValues: Readonly<Record<string, StoredParameter>>,
 ): Record<string, StoredParameter> {
   const state = readComponentInstance(instance);
-  return {
-    ...internalParameterValues(definition, publishedValues),
-    ...(state?.overrides ?? {}),
-  };
+  const values = internalParameterValues(definition, publishedValues);
+  const own = state?.overrides ?? {};
+  // Clear only this projection, not the definition's authored channel slots. Apply the
+  // owner's whole values before its channels, independent of record insertion order.
+  for (const path of Object.keys(values)) {
+    const target = parseDescendantParameterPath(path);
+    if (target === null) continue;
+    const channel = parseComponentKey(target.key);
+    if (channel !== null && Object.hasOwn(own, internalParameterPath(target.nodeId, channel.base))) delete values[path];
+  }
+  return { ...values, ...own };
 }
 
 /**

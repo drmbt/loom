@@ -224,6 +224,16 @@ export function referenceCycleDiagnostics(graph: GraphDocument, channels: Channe
   return rings(keyEdges(graph, channels)).map(cycleDiagnostic);
 }
 
+/** Published pages participate in validation even though their nodes are dissolved at compile. */
+export function referenceGraphWithPages(graph: GraphDocument, pages: Iterable<GraphNode>): GraphDocument {
+  let nodes: GraphDocument["nodes"] | undefined;
+  for (const page of pages) {
+    nodes ??= { ...graph.nodes };
+    nodes[page.id] = page;
+  }
+  return nodes === undefined ? graph : { ...graph, nodes };
+}
+
 /**
  * The rings that pass through ONE node — the patch gate's question (§V152).
  *

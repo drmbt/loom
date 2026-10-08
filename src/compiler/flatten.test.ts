@@ -714,6 +714,135 @@ describe("animated published parameters (T1017, §V837)", () => {
     expect(passFor(at([bloom(), outer], document, frameAt(5, 300)), "w1/inner/blurA")?.uniforms?.["radius"]).toBe(30);
   });
 
+  it.each([1, 2])("keeps mixed vector channel drivers live through %i published levels", async (levels) => {
+    const { allNodeDefinitions } = await import("../nodes/definitions/index.ts");
+    const source = `struct Params { eye: vec3f, // @default [0, 0, 8]
+};
+@group(0) @binding(3) var<uniform> params: Params;
+@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f { return vec4f(params.eye, 1.0); }`;
+    const targets = (key: string) => ["first", "second"].map((nodeId) => ({ nodeId, key }));
+    const vector: GraphComponentDefinition = {
+      componentId: "vector",
+      version: 1,
+      name: "Vector",
+      graph: graphOf([
+        testNode("first", "customWgsl", { label: "wgsl_first", parameters: { source } }),
+        testNode("second", "customWgsl", { label: "wgsl_second", parameters: { source } }),
+        // Deliberately collides with the caller's reference: publication must land AFTER renaming.
+        testNode("local", "constant", { label: "constant_root", parameters: { value: 99 } }),
+      ], { next: testEdge("next", ["first", "out"], ["second", "input"]) }),
+      inputs: [{ externalId: "source", label: "Source", nodeId: "first", portId: "input" }],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "second", portId: "out" }],
+      parameters: [{ key: "eye", definition: { type: "vector", size: 3, label: "Eye", default: [0, 0, 8] }, targets: targets("eye") }],
+    };
+    const scalar: GraphComponentDefinition = {
+      ...vector,
+      componentId: "scalar",
+      name: "Scalar",
+      parameters: ["x", "y", "z"].map((axis) => ({
+        key: axis,
+        definition: { type: "number", label: axis, default: 0 },
+        targets: targets(`eye.${axis}`),
+      })),
+    };
+    const wrap = (definition: GraphComponentDefinition): GraphComponentDefinition => ({
+      ...wrapper(definition.componentId),
+      componentId: `${definition.componentId}Outer`,
+      name: `${definition.name}Outer`,
+      parameters: definition.parameters.map((published) => ({ ...published, targets: [{ nodeId: "inner", key: published.key }] })),
+    });
+    const definitions = levels === 1 ? [vector, scalar] : [vector, scalar, wrap(vector), wrap(scalar)];
+    const x = expressionSlot("op('constant_root').par.value + time", -2);
+    const y = drivenSlot("lfo1", -3);
+    const document = graphOf([
+      testNode("picture", "solid", { label: "solid_picture" }),
+      testNode("root", "constant", { label: "constant_root", parameters: { value: 7 } }),
+      testNode("lfo", "lfo", { label: "lfo1", parameters: { frequency: 1, amplitude: 10, offset: 20 } }),
+      instance("v", levels === 1 ? "vector" : "vectorOuter", 1, { parameters: { eye: [0, 2, 9], "eye.x": x, "eye.y": y } }),
+      instance("s", levels === 1 ? "scalar" : "scalarOuter", 1, { parameters: { x, y, z: 9 } }),
+    ], {
+      vector: testEdge("vector", ["picture", "out"], ["v", "source"]),
+      scalar: testEdge("scalar", ["picture", "out"], ["s", "source"]),
+    });
+    const system = createComponentSystem(createCompilerTestRegistry(allNodeDefinitions).view(), definitions);
+    // Reuse ONE flattening at both moments, just as the app's per-frame resolver does.
+    const flattened = flattenComponents({ graph: document, registry: system.nodes, components: system.components.view() });
+    const channels = graphChannelResolver(flattened.graph, system.nodes);
+    for (const [seconds, expectedY] of [[0.25, 30], [0.75, 10]] as const) {
+      const compiled = compileGraph({
+        graph: document, settings: testSettings(), registry: system.nodes, capabilities: testCapabilities(), flattened,
+        sinks: [{ nodeId: "v", portId: "out", kind: "readback" }, { nodeId: "s", portId: "out", kind: "readback" }],
+        resolution: { frame: frameAt(seconds, seconds * 60), channels },
+      });
+      expect(compiled.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+      for (const target of ["first", "second"]) {
+        const suffix = levels === 1 ? target : `inner/${target}`;
+        const control = passFor(compiled, `s/${suffix}`)?.uniforms?.["eye"];
+        const actual = passFor(compiled, `v/${suffix}`)?.uniforms?.["eye"];
+        expect(control).toEqual([7 + seconds, expectedY, 9]);
+        expect(actual).toEqual(control);
+      }
+      expect(compiled.diagnostics).toEqual([]);
+    }
+  });
+
+  it.each([
+    { name: "a later whole publication", later: true, overrides: {}, authored: false, expected: [10, 20, 30] },
+    { name: "an instance's whole override", later: false, overrides: { "shader/eye": [40, 50, 60] }, authored: false, expected: [40, 50, 60] },
+    { name: "an own channel before an own whole override", later: true, overrides: { "shader/eye.x": 70, "shader/eye": [40, 50, 60] }, authored: false, expected: [70, 50, 60] },
+    { name: "an own channel after an own whole override", later: true, overrides: { "shader/eye": [40, 50, 60], "shader/eye.x": 70 }, authored: false, expected: [70, 50, 60] },
+    { name: "a definition's own channel under a later publication", later: true, overrides: {}, authored: true, expected: [10, 12, 30] },
+    { name: "a definition's own channel under an instance override", later: false, overrides: { "shader/eye": [40, 50, 60] }, authored: true, expected: [40, 12, 60] },
+    { name: "a later publication's own animated channel", later: true, overrides: {}, authored: false, lastY: true, expected: [10, 202, 30] },
+  ] satisfies Array<{ name: string; later: boolean; overrides: Record<string, ParameterValue>; authored: boolean; lastY?: boolean; expected: number[] }>)("gives $name its vector precedence before and after detach", async (scenario) => {
+    const { later, overrides, authored, expected } = scenario;
+    const { allNodeDefinitions } = await import("../nodes/definitions/index.ts");
+    const { createDomainBus } = await import("../domain/commands/index.ts");
+    const { registerComponentCommands } = await import("../domain/components/commands.ts");
+    const { alice, contextFor } = await import("../domain/commands/test-support.ts");
+    const vector = { type: "vector", size: 3, label: "Eye", default: [0, 0, 8] } as const;
+    const definition: GraphComponentDefinition = {
+      componentId: "vectorPrecedence", version: 1, name: "VectorPrecedence",
+      graph: graphOf([testNode("shader", "customWgsl", { parameters: {
+        source: `struct Params { eye: vec3f, // @default [0, 0, 8]
+};
+@group(0) @binding(3) var<uniform> params: Params;
+@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f { return vec4f(params.eye, 1.0); }`,
+        ...(authored ? { "eye.y": expressionSlot("time + 10", 0) } : {}),
+      } })]),
+      inputs: [{ externalId: "source", label: "Source", nodeId: "shader", portId: "input" }],
+      outputs: [{ externalId: "out", label: "Out", nodeId: "shader", portId: "out" }],
+      parameters: (later ? ["first", "last"] : ["first"]).map((key) => ({ key, definition: vector, targets: [{ nodeId: "shader", key: "eye" }] })),
+    };
+    const document = graphOf([
+      testNode("picture", "solid"),
+      instance("v", definition.componentId, 1, {
+        parameters: {
+          first: [1, 2, 3], "first.x": expressionSlot("time + 100", 0),
+          ...(later ? { last: [10, 20, 30] } : {}),
+          ...("lastY" in scenario && scenario.lastY ? { "last.y": expressionSlot("time + 200", 0) } : {}),
+        },
+        state: { [COMPONENT_OVERRIDES_STATE_KEY]: overrides },
+      }),
+    ], { feed: testEdge("feed", ["picture", "out"], ["v", "source"]) });
+    const system = createComponentSystem(createCompilerTestRegistry(allNodeDefinitions).view(), [definition]);
+    const compile = (graph: GraphDocument, sink: string) => compileGraph({
+      graph, settings: testSettings(), registry: system.nodes, components: system.components.view(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: sink, portId: "out", kind: "readback" }], resolution: { frame: frameAt(2, 120) },
+    });
+    const before = compile(document, "v");
+    expect(before.diagnostics).toEqual([]);
+    expect(passFor(before, "v/shader")?.uniforms?.["eye"]).toEqual(expected);
+    const { bus, store } = createDomainBus({ registry: system.nodes, initialGraph: document });
+    registerComponentCommands(bus, { components: system.components });
+    const detached = await bus.execute("component.detach", { nodeId: "v" }, contextFor(alice));
+    expect(detached.status).toBe("applied");
+    const shader = detached.output.copies["shader"]!;
+    const after = compile(store.view.getGraph(), shader);
+    expect(after.diagnostics).toEqual([]);
+    expect(passFor(after, shader)?.uniforms?.["eye"]).toEqual(expected);
+  });
+
   it("arms the frame loop's own gate, which the instance node used to take with it", async () => {
     // The half that would have made the rest of this describe block dead in the APP.
     // `use-graph-compile.ts` builds `animate` only when `hasAnimatedParameters(flatGraph)`
@@ -815,6 +944,7 @@ describe("published colour space through a flattening (§V56, B8)", () => {
   const compileReal = async (
     definition: GraphComponentDefinition,
     node: GraphNode,
+    frame?: FrameEvaluationInput,
   ): Promise<CompiledGraph> => {
     const { allNodeDefinitions } = await import("../nodes/definitions/index.ts");
     const { createNodeRegistry } = await import("../nodes/registry/registry.ts");
@@ -825,6 +955,7 @@ describe("published colour space through a flattening (§V56, B8)", () => {
       registry: system.nodes,
       capabilities: testCapabilities(),
       components: system.components.view(),
+      ...(frame === undefined ? {} : { resolution: { frame } }),
     });
   };
 
@@ -849,8 +980,8 @@ describe("published colour space through a flattening (§V56, B8)", () => {
 
   it("decodes it exactly once when a per-component slot drives one channel (§V113)", async () => {
     // The compound is published at the bare key while storage carries a slot PER
-    // COMPONENT, so the boundary reassembles rather than deferring — the path where a
-    // second decode would be easiest to reintroduce without noticing.
+    // COMPONENT, so the target reassembles before decoding — the path where a second
+    // decode would be easiest to reintroduce without noticing.
     const compiled = await compileReal(
       painter([tint([{ nodeId: "fill", key: "color" }])]),
       instance("c1", "painter" as ComponentId, 1, {
@@ -867,6 +998,34 @@ describe("published colour space through a flattening (§V56, B8)", () => {
 
     expect(filledWith(compiled)?.[0]).toBeCloseTo(MID_GREY_LINEAR, 10);
     expect(filledWith(compiled)?.[0]).not.toBeCloseTo(MID_GREY_TWICE, 4);
+  });
+
+  it("keeps an animated colour channel live while baking a sibling bind in the caller's scope", async () => {
+    const definition = painter([
+      tint([{ nodeId: "fill", key: "color" }]),
+      { key: "gain", definition: { type: "number", label: "Gain", default: 0 }, targets: [] },
+    ]);
+    const node = instance("c1", "painter", 1, {
+      ui: { previewPinned: true },
+      parameters: {
+        tint: [0, 0, 0.5, 1],
+        gain: 0.5,
+        "tint.r": { mode: "bind", bindings: { bind: { kind: "bind", ref: "gain" } } },
+        "tint.g": { mode: "expression", bindings: { expression: { kind: "expression", source: "time * 0.5" } } },
+      },
+    });
+    for (const [timeSeconds, expectedGreen] of [[0.4, 0.033104766570885055], [1, MID_GREY_LINEAR]] as const) {
+      const compiled = await compileReal(definition, node, {
+        timeSeconds, deltaSeconds: 1 / 60, frameIndex: timeSeconds * 60, mode: "offline", randomSeed: 7,
+      });
+      expect(compiled.diagnostics).toEqual([]);
+      const color = filledWith(compiled);
+      // Carrying gain into the inner node would bind against a parameter it does not have.
+      expect(color?.[0]).toBeCloseTo(MID_GREY_LINEAR, 10);
+      expect(color?.[1]).toBeCloseTo(expectedGreen, 10);
+      expect(color?.[2]).toBeCloseTo(MID_GREY_LINEAR, 10);
+      expect(color?.[3]).toBe(1);
+    }
   });
 });
 

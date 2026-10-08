@@ -159,6 +159,7 @@ export const exposedPortSchema = z.object({
   label: z.string(),
   nodeId: z.string().min(1),
   portId: z.string().min(1),
+  variadic: z.literal(true).optional(),
 });
 
 export const publishedParameterSchema = z.object({

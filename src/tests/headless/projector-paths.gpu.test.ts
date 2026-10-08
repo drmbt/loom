@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { createAppRuntime } from "../../app/app-runtime.ts";
+import { flattenComponents } from "../../compiler/flatten.ts";
+import { synthesizeSourceReferenceEdges } from "../../compiler/source-reference-edges.ts";
 import { cameraPayloadMatrix, transformPoint } from "../../domain/geometry/camera.ts";
 import type { GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
@@ -58,9 +60,10 @@ function rgbAt(bytes: Uint8Array, x: number): [number, number, number] {
   return [bytes[at] ?? -1, bytes[at + 1] ?? -1, bytes[at + 2] ?? -1];
 }
 
-async function stage(): Promise<{ graph: GraphDocument; shot: string; components: ReturnType<ReturnType<typeof createAppRuntime>["components"]["view"]> }> {
+async function stage(): Promise<{ graph: GraphDocument; shot: string; components: ReturnType<ReturnType<typeof createAppRuntime>["components"]["view"]>; registry: ReturnType<typeof createAppRuntime>["registry"] }> {
   const runtime = createAppRuntime({ identityStorage: null });
   const { bus, invocation } = runtime;
+  bus.attachFlattenedGraph(() => runtime.flattened.current());
   const added = await bus.execute("graph.applyPatch", { baseRevision: 0, operations: [
     { op: "addNode", ref: "$beam", type: "projector", position: { x: 0, y: 0 }, label: "projector_beam",
       parameters: { throwRatio: 6, occlusion: false } },
@@ -100,7 +103,9 @@ async function stage(): Promise<{ graph: GraphDocument; shot: string; components
     { op: "connect", source: { nodeId: "$shot", portId: "out" }, target: { nodeId: "$out", portId: "input" } },
   ] }, invocation);
   expect(rest.status).toBe("applied");
-  return { graph: bus.store.getGraph(), shot: rest.output.createdIds["$shot"]!, components: runtime.components.view() };
+  const result = { graph: bus.store.getGraph(), shot: rest.output.createdIds["$shot"]!, components: runtime.components.view(), registry: runtime.registry };
+  runtime.dispose();
+  return result;
 }
 
 async function render(staged: Awaited<ReturnType<typeof stage>>, projectors?: string) {
@@ -121,6 +126,22 @@ async function render(staged: Awaited<ReturnType<typeof stage>>, projectors?: st
 }
 
 describe("VN35: three instances of one Projector component, three projectors bound by path (Dawn)", () => {
+  it("extracts and binds three independently aimed and coloured projectors through validated commands", async () => {
+    const staged = await stage();
+    const flattened = flattenComponents({ graph: staged.graph, registry: staged.registry, components: staged.components });
+    const synthesized = synthesizeSourceReferenceEdges(flattened.graph, staged.registry);
+    expect(synthesized.diagnostics).toEqual([]);
+    const beams = Object.values(synthesized.graph.edges)
+      .filter(edge => edge.target.nodeId === staged.shot && edge.target.portId === "projectors")
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map(edge => synthesized.graph.nodes[edge.source.nodeId]!);
+    expect(beams).toHaveLength(3);
+    expect(new Set(beams.map(beam => beam.id)).size).toBe(3);
+    for (const [index, spec] of BEAMS.entries()) {
+      expect(beams[index]!.parameters).toMatchObject({ eye: [spec.x, 0, 4], lookAt: [spec.x, 0, 0], color: [...spec.color] });
+    }
+  });
+
   it("each third of the stage is lit by its own instance's projector and no other", async () => {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);

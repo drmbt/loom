@@ -364,7 +364,6 @@ export const graphPatchOperationSchema = z.discriminatedUnion("op", [
       edgeIds: z.array(z.string().min(1)),
     })
     .strict(),
-  // VN33: the nested shape parses, so apply-patch can refuse it by name rather than as malformed.
   z.object({ op: z.literal("setParameters"), nodeId: refString, parameters: patchParameters,
     internalNodeId: z.string().regex(/^[^/]+(?:\/[^/]+)*$/).optional(),
   }).strict(),

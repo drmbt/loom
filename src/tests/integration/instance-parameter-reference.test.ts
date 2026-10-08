@@ -98,6 +98,27 @@ function compiledAt(gain: StoredParameter, amount: StoredParameter, time: number
 }
 
 describe("VN36 — the compiler reads op('<instance>').par.<key>", () => {
+  it("evaluates a published page expression containing a component path", () => {
+    const gain = expressionSlot("op('rig1/value_hold').chan.x * 0.5", 0.3);
+    expect(compiledAt(gain, expressionSlot("op('rig1').par.gain * 2", 0.25), 1).amount).toBe(1);
+  });
+
+  it("reads a nested instance's page through its authored path", () => {
+    const outer: GraphComponentDefinition = {
+      componentId: "outer", version: 1, name: "Outer", inputs: [], outputs: [], parameters: [],
+      graph: { revision: 1, groups: {}, edges: {}, nodes: {
+        inner: node("inner", componentNodeType("rig", 1), { gain: 0.75 }, "rig_inner"),
+      } },
+    };
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view(), [RIG, outer]);
+    const graph = document(0.3, expressionSlot("op('outer1/rig_inner').par.gain", 0.25));
+    graph.nodes.inst = node("inst", componentNodeType("outer", 1), {}, "outer1");
+    const flattened = flattenComponents({ graph, registry: system.nodes, components: system.components.view() });
+    const result = compileGraphRetaining({ graph, registry: system.nodes, components: system.components.view(), flattened,
+      settings: testSettings(), capabilities: testCapabilities() });
+    expect(result.retained?.nodes.get("fx")?.context.parameters.amount).toBe(0.75);
+  });
+
   it("reads the instance's page value, and follows it when the page changes", () => {
     const read = expressionSlot("op('rig1').par.gain", 0.25);
     expect(compiledAt(0.6, read, 1)).toEqual({ amount: 0.6, said: [] });
