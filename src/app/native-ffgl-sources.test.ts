@@ -46,8 +46,8 @@ it("runs each live frame with the node's resolved values as FFGL writes; an even
   const h = harness(); h.sources.track([h.target], h.backend); await flush();
   expect(createNativeFfglSource).toHaveBeenCalledWith(h.backend, expect.anything(), { plugin: "VignettePlus", size: [4, 2], inputResourceId: "scratch:ffgl1:ffglInput" });
   expect(h.media.get("ffgl:ffgl1")?.currentFrame()?.bytes?.length).toBe(32);
-  expect(h.sources.fire(["ffgl1"], "recall")).toBe(1);
-  expect(h.sources.fire(["ffgl1"], "size")).toBe(0);
+  expect(h.sources.fire(["ffgl1"], 2)).toBe(1);
+  expect(h.sources.fire(["ffgl1"], 0)).toBe(0);
   h.sources.observe(frame(1)); await flush();
   expect(h.source.run).toHaveBeenLastCalledWith(expect.objectContaining({ bpm: 128, parameters: [[0, 0.25], [1, true]], pulses: [2] }));
   h.sources.observe(frame(2)); await flush();

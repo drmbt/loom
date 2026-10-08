@@ -85,9 +85,19 @@ export function createNativeFfglSource(backend: LoomBackend, bridge: DesktopFfgl
   let session: string | undefined;
   const ready: Promise<void> = Promise.all([opened, sender.promise]).then(([id]) => { session = id; });
   void ready.catch(() => undefined);
+  let releaseScheduled = false;
+  // The backend uploads a delivered frame once; the external texture keeps its pixels. The
+  // VideoFrame is closed right after, because holding it holds the shared-texture import, and
+  // main frees the plugin's output surface (and lets the next frame through) only when every
+  // reference is released. Holding it was a deadlock on the second frame.
   const source: MediaSource = { currentFrame() {
-    if (closed || !image) return undefined;
-    return nativeMediaFrame("ffgl", image, sequence);
+    const frame = image;
+    if (closed || !frame) return undefined;
+    if (!releaseScheduled) {
+      releaseScheduled = true;
+      queueMicrotask(() => { releaseScheduled = false; if (image === frame) discard(); });
+    }
+    return nativeMediaFrame("ffgl", frame, sequence);
   } };
   return {
     source, ready,

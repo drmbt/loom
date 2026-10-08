@@ -138,12 +138,12 @@ export function createNativeFfglSources(options: {
         } catch (error) { entry.error = String(error); }
       }
     },
-    /** `runtime.ffglEvent`: raise the named event parameter of these nodes for their next frame. */
-    fire(nodeIds: readonly string[], event: string): number {
+    /** `runtime.ffglEvent`: raise the event parameter at this FFGL index on these nodes for their next frame. */
+    fire(nodeIds: readonly string[], event: number): number {
       let raised = 0;
       for (const id of nodeIds) {
         const entry = entries.get(id);
-        const control = entry?.controls.find(c => c.key === event);
+        const control = entry?.controls.find(c => c.kind === "pulse" && c.index === event);
         if (!entry || control?.kind !== "pulse") continue;
         entry.pulses.add(control.index); raised++;
       }

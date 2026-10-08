@@ -29,7 +29,7 @@ describe("FFGL node schema (reflected from the stored plugin table)", () => {
     expect(schema["blackBG"]).toMatchObject({ type: "boolean", default: false });
     expect(schema["preset"]).toMatchObject({ type: "enum", default: "0", options: [{ value: "0", label: "None" }, { value: "1", label: "talk" }, { value: "2", label: "tonka" }] });
     // An event is a pulse that fires the native host's event command for THIS node.
-    expect(schema["recall"]).toEqual({ type: "pulse", label: "Recall", group: "VignettePlus", fires: FFGL_EVENT_COMMAND, input: { nodeIds: ["$node"], event: "recall" } });
+    expect(schema["recall"]).toEqual({ type: "pulse", label: "Recall", group: "VignettePlus", fires: FFGL_EVENT_COMMAND, input: { nodeIds: ["$node"], event: 7 } });
     // The same text yields the same (shared, cached) schema object.
     expect(ffglParameterSchema({ manifest: VIGNETTE })).toBe(schema);
   });

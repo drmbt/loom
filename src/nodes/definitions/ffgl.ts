@@ -99,7 +99,9 @@ function definitionOf(control: FfglControl, group: string): ParameterDefinition 
     case "toggle":
       return { ...base, type: "boolean", default: control.default };
     case "pulse":
-      return { ...base, type: "pulse", fires: FFGL_EVENT_COMMAND, input: { nodeIds: ["$node"], event: control.key } };
+      // The event travels as the plugin's own parameter index: an instance command's strings
+      // may only be node addresses (§T1695b), and the index is what the native host takes.
+      return { ...base, type: "pulse", fires: FFGL_EVENT_COMMAND, input: { nodeIds: ["$node"], event: control.index } };
     case "menu": {
       const options = control.options.map(option => ({ value: String(option.value), label: option.label || String(option.value) }));
       const fallback = options.find(option => option.value === String(control.default))?.value ?? options[0]?.value ?? "0";
