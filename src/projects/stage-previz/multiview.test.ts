@@ -16,8 +16,8 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
  */
 const VIEWS = {
   view_tight: { eye: [0, 2.2, 17], aim: [0, 4.7, -1.5], fov: 24 },
-  view_wide: { eye: [0, 3.6, 25], aim: [0, 4.9, 0.5], fov: 34 },
-  view_angled: { eye: [-15, 3.6, 21], aim: [0, 4.6, -0.5], fov: 34 },
+  view_wide: { eye: [0, 3.6, 24], aim: [0, 4.9, 0.5], fov: 29 },
+  view_angled: { eye: [-19, 3.8, 15.5], aim: [0, 4.6, -0.2], fov: 28 },
   view_profile: { eye: [-22, 5.0, 2.0], aim: [0, 5.0, 2.0], fov: 30 },
 } as const;
 

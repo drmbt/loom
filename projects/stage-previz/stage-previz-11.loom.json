@@ -14043,7 +14043,7 @@
         "parameters": {
           "aimX": 0,
           "aimY": 4.6,
-          "aimZ": -0.5,
+          "aimZ": -0.2,
           "beams": {
             "bindings": {
               "expression": {
@@ -14057,9 +14057,9 @@
             },
             "mode": "expression"
           },
-          "eyeX": -15,
-          "eyeY": 3.6,
-          "eyeZ": 21,
+          "eyeX": -19,
+          "eyeY": 3.8,
+          "eyeZ": 15.5,
           "fog": {
             "bindings": {
               "expression": {
@@ -14073,7 +14073,7 @@
             },
             "mode": "expression"
           },
-          "fov": 34,
+          "fov": 28,
           "haze": {
             "bindings": {
               "expression": {
@@ -14233,7 +14233,7 @@
           },
           "eyeX": 0,
           "eyeY": 3.6,
-          "eyeZ": 25,
+          "eyeZ": 24,
           "fog": {
             "bindings": {
               "expression": {
@@ -14247,7 +14247,7 @@
             },
             "mode": "expression"
           },
-          "fov": 34,
+          "fov": 29,
           "haze": {
             "bindings": {
               "expression": {
