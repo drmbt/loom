@@ -145,6 +145,9 @@ struct Instance {
   double hostTime = 0;
   double lastCallerTime = 0;
   bool clockStarted = false;
+  // FF_SET_TIME goes only to a plugin that declares FF_CAP_SET_TIME, as Resolume does: a
+  // plugin reading hostTime without declaring it sees 0 in Arena, and must see 0 here.
+  bool supportsSetTime = false;
   uint64_t random = 0;
   uint64_t sequence = 0;
   std::atomic<bool> busy{false}, closed{false};
@@ -649,6 +652,7 @@ struct OpenJob : Job {
         call(*instance->library, instance.get(), FF_SET_HOSTINFO, pointer(&host), "FF_SET_HOSTINFO");
         glCheck("after FF_INSTANTIATE_GL");
         record = describe(*instance->library, instance.get());
+        instance->supportsSetTime = record.setTime;
       } catch (...) {
         if (instance->ffInstance) { try { call(*instance->library, instance.get(), FF_DEINSTANTIATE_GL, none(), "FF_DEINSTANTIATE_GL"); } catch (...) {} }
         destroyResources(*instance);
@@ -750,8 +754,10 @@ struct ProcessJob : Job {
         throw std::runtime_error("FFGL parameter " + std::to_string(index) + " is not an event");
       write(index, 1.0f); instance->pulsesToClear.push_back(index);
     }
-    double hostTime = time;
-    call(library, instance.get(), FF_SET_TIME, pointer(&hostTime), "FF_SET_TIME");
+    if (instance->supportsSetTime) {
+      double hostTime = time;
+      call(library, instance.get(), FF_SET_TIME, pointer(&hostTime), "FF_SET_TIME");
+    }
     SetBeatinfoStruct beat{ (float)bpm, (float)barPhase };
     call(library, instance.get(), FF_SET_BEATINFO, pointer(&beat), "FF_SET_BEATINFO");
     auto &target = instance->slots[slot];

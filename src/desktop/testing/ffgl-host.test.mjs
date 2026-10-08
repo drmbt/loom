@@ -205,6 +205,29 @@ for (const name of ['glitch_mosher', 'LiquidWake']) {
   });
 }
 
+test('FigletText: Phase is periodic, and FF_SET_TIME carries the host time to a plugin that declares it', async () => {
+  const input = host.createStudySurface(W, H, picture());
+  const take = async (time, settings) => {
+    const plugin = await host.open(binaryOf('FigletText'), W, H);
+    try {
+      // The SDK's CFFGLPluginManager defaults m_timeSupported to true, so every drmbt build declares it.
+      assert.equal(plugin.supportsSetTime, true);
+      const at = name => plugin.parameters.find(p => p.name === name).index;
+      const writes = Object.entries(settings).map(([name, value]) => [at(name), value]);
+      return (await render(plugin.instance, input, frame(time, [[at('Animate'), true], [at('Anim Mode'), 1], ...writes]))).bytes;
+    } finally { await host.close(plugin.instance); }
+  };
+  try {
+    // Speed is a -1..1 fader on 0..1 (BindFloat): 0.5 stops it, so Phase alone drives the frame.
+    const zero = await take(0, { Speed: 0.5, Phase: 0 });
+    assert.ok(zero.equals(await take(0, { Speed: 0.5, Phase: 1 })), 'Phase 1 wraps to Phase 0, exactly');
+    assert.ok(!zero.equals(await take(0, { Speed: 0.5, Phase: 0.25 })), 'Phase 0.25 is a different frame');
+    // Full speed reads hostTime, which only FF_SET_TIME sets: 0.0005 cycles/s, so 100 s moves the phase by 0.05.
+    assert.ok(!(await take(0, { Speed: 1, Phase: 0 })).equals(await take(100, { Speed: 1, Phase: 0 })), 'SetTime moves Speed');
+    assert.ok((await take(0, { Speed: 1, Phase: 0 })).equals(await take(0, { Speed: 1, Phase: 0 })), 'same time, same frame');
+  } finally { host.destroyStudySurface(input); }
+});
+
 test('a misbehaving request is an error, not a crash, and leases account exactly', async () => {
   const input = host.createStudySurface(W, H, picture());
   const plugin = await host.open(binaryOf('VignettePlus'), W, H);
