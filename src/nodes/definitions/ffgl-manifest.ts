@@ -43,6 +43,8 @@ export interface FfglManifest {
   /** The bundle name the plugin folders resolve (`VignettePlus`). */
   readonly name: string;
   readonly version: string;
+  /** FF_EFFECT 0 (needs an input), FF_SOURCE 1 (generates), FF_MIXER 2. Absent = effect. */
+  readonly pluginType?: number;
   readonly parameters: readonly FfglRawParameter[];
 }
 
@@ -87,11 +89,13 @@ export function parseFfglManifest(value: unknown): FfglManifest {
       elements: elements.map(e => ({ name: (e as Record<string, unknown>)["name"] as string, value: (e as Record<string, unknown>)["value"] as number })),
     };
   });
-  return { format: 1, id, name, version, parameters: parsed };
+  const pluginType = value["pluginType"];
+  if (pluginType !== undefined && !(pluginType === 0 || pluginType === 1 || pluginType === 2)) throw new Error("FFGL manifest pluginType must be 0, 1 or 2");
+  return { format: 1, id, name, version, ...(pluginType === undefined ? {} : { pluginType }), parameters: parsed };
 }
 
 /** The keys a node owns outright; a reflected control never takes one. */
-export const FFGL_RESERVED_KEYS: ReadonlySet<string> = new Set(["plugin", "manifest", "input", "out"]);
+export const FFGL_RESERVED_KEYS: ReadonlySet<string> = new Set(["plugin", "manifest", "bpm", "input", "out"]);
 
 /** `Tint_saturation` → `tintSaturation`; `BlackBG` → `blackBG`. Letters and digits only. */
 function keyOf(name: string): string {
@@ -183,4 +187,78 @@ export function diffFfglTables(a: readonly FfglRawParameter[], b: readonly FfglR
     if (le !== re) differences.push({ index: i, field: "elements", a: le, b: re });
   }
   return differences;
+}
+
+/**
+ * HSB(A) → RGB(A), the FFGL SDK's own conversion (ffglquickstart HSVtoRGB, with its hue 1 → 0
+ * rule), so a colour a node shows is the colour the plugin would compute from the quad.
+ */
+export function hsbToRgb(h: number, s: number, v: number): [number, number, number] {
+  const hue = h >= 1 ? 0 : Math.max(0, h);
+  const i = Math.floor(hue * 6), f = hue * 6 - i;
+  const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+  switch (i % 6) {
+    case 0: return [v, t, p];
+    case 1: return [q, v, p];
+    case 2: return [p, v, t];
+    case 3: return [p, q, v];
+    case 4: return [t, p, v];
+    default: return [v, p, q];
+  }
+}
+/** RGB → HSB, the inverse used when a Loom colour is written back to a plugin's quad. Grey has hue 0. */
+export function rgbToHsb(r: number, g: number, b: number): [number, number, number] {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d > 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+    if (h < 0) h += 1;
+  }
+  return [h, max === 0 ? 0 : d / max, max];
+}
+
+/** A resolved Loom value for one control, as the node's parameter read gives it. */
+export type FfglControlValue = number | boolean | string | readonly number[];
+
+/**
+ * The FFGL writes for one frame: [parameter index, value] for every control that has a value.
+ * A colour becomes its quad (hsba) or triple (rgb); a menu's value is its element's own value.
+ * Pulses are not values: they arrive as events (runtime.ffglEvent).
+ */
+export function ffglParameterWrites(controls: readonly FfglControl[], read: (key: string) => FfglControlValue | undefined): Array<[number, number | boolean | string]> {
+  const writes: Array<[number, number | boolean | string]> = [];
+  for (const control of controls) {
+    const value = read(control.key);
+    if (value === undefined) continue;
+    switch (control.kind) {
+      case "float": case "integer":
+        if (typeof value === "number" && Number.isFinite(value)) writes.push([control.index, value]);
+        break;
+      case "toggle":
+        if (typeof value === "boolean") writes.push([control.index, value]);
+        break;
+      case "menu": {
+        const chosen = typeof value === "string" ? Number(value) : value;
+        if (typeof chosen === "number" && Number.isFinite(chosen)) writes.push([control.index, chosen]);
+        break;
+      }
+      case "text":
+        if (typeof value === "string") writes.push([control.index, value]);
+        break;
+      case "hsba": case "rgb": {
+        if (!Array.isArray(value) || value.length < 3) break;
+        const [r, g, b, a = 1] = value as readonly number[];
+        if (control.kind === "rgb") { writes.push([control.indices[0], r!], [control.indices[1], g!], [control.indices[2], b!]); break; }
+        const [h, s, v] = rgbToHsb(r!, g!, b!);
+        writes.push([control.indices[0], h], [control.indices[1], s], [control.indices[2], v], [control.indices[3], a]);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return writes;
 }
