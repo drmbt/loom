@@ -23,7 +23,7 @@ describe("stage previz: the committed sessions", () => {
     expect(upgradedSession(session(name), glb)).toBe(session(name));
   });
 
-  it.each(["stage-previz-8.loom.json", "stage-previz-9.loom.json", "stage-previz-10.loom.json"])("an upgrade of %s is refused, by name, and writes nothing", (name) => {
+  it.each(["stage-previz-8.loom.json", "stage-previz-9.loom.json", "stage-previz-10.loom.json", "stage-previz-11.loom.json"])("an upgrade of %s is refused, by name, and writes nothing", (name) => {
     // Its rig lives inside six components, which applyRig does not reach: what it would write
     // names nodes the root graph no longer has, and the checked save refuses that.
     expect(() => upgradedSession(session(name), glb)).toThrow(DocumentRefused);

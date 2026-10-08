@@ -20,7 +20,8 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
  * floor. -10 is on layout revision 2 (`stage-r2.glb`): the scrim's straight face 30' wide at
  * z −2.6816, its top at 8.5598, the deck's top 1.9812, trims in feet above the house deck; its
  * presets are the 0.74 alone, from where the plot hangs its truss (42.9' wide) and slid upstage
- * to fill the face. Both decks are 48' wide with their front edge at z 4.7536.
+ * to fill the face. -11 is -10 with the quad multiview (multiview.test.ts). Both decks are 48'
+ * wide with their front edge at z 4.7536.
  */
 const FT = 0.3048;
 const DECK_HALF = 24 * FT;
@@ -59,6 +60,10 @@ const SESSIONS: readonly Session[] = [
   },
   {
     file: "stage-previz-10", scrimZ: -2.6816, deckTop: 1.9812, openTrim: 22.5833, scrimTop: 8.5598,
+    presets: { ds74_plot: { trim: 22.5833, half: 42.9208 / 2 * FT }, ds74_fill: { trim: 22.5833, half: 15 * FT } },
+  },
+  {
+    file: "stage-previz-11", scrimZ: -2.6816, deckTop: 1.9812, openTrim: 22.5833, scrimTop: 8.5598,
     presets: { ds74_plot: { trim: 22.5833, half: 42.9208 / 2 * FT }, ds74_fill: { trim: 22.5833, half: 15 * FT } },
   },
 ];
