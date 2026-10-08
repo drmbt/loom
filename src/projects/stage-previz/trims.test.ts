@@ -18,8 +18,9 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
  * Model facts (glTF metres, from each session's GLB): -9 is on the first export (`stage.glb`):
  * the scrim's flat part 36' wide at z −4.35, the deck's top 1.8572, trims in feet off the venue
  * floor. -10 is on layout revision 2 (`stage-r2.glb`): the scrim's straight face 30' wide at
- * z −2.6816, the deck's top 1.9812, trims in feet above the house deck. Both decks are 48'
- * wide with their front edge at z 4.7536.
+ * z −2.6816, its top at 8.5598, the deck's top 1.9812, trims in feet above the house deck; its
+ * presets are the 0.74 alone, from where the plot hangs its truss (42.9' wide) and slid upstage
+ * to fill the face. Both decks are 48' wide with their front edge at z 4.7536.
  */
 const FT = 0.3048;
 const DECK_HALF = 24 * FT;
@@ -43,16 +44,23 @@ interface Beam {
 interface Session {
   readonly file: string;
   readonly scrimZ: number;
-  readonly scrimHalf: number;
   readonly deckTop: number;
-  /** Each preset by name, with the trim (feet) its faders hold. */
-  readonly presets: Readonly<Record<string, number>>;
+  /** Each preset by name, with the trim (feet) its faders hold and the half width (m) its DS image lands. */
+  readonly presets: Readonly<Record<string, { readonly trim: number; readonly half: number }>>;
+  /** Where every DS image's top edge lands, when the presets hold it on the scrim's top. */
+  readonly scrimTop?: number;
   /** Where the faders open. */
   readonly openTrim: number;
 }
 const SESSIONS: readonly Session[] = [
-  { file: "stage-previz-9", scrimZ: -4.35, scrimHalf: 18 * FT, deckTop: 1.8572, presets: { ds37_21ft: 21, ds74_21ft: 21, ds37_26ft: 26, ds74_26ft: 26 }, openTrim: 21 },
-  { file: "stage-previz-10", scrimZ: -2.6816, scrimHalf: 15 * FT, deckTop: 1.9812, presets: { ds37: 22.5833, ds74: 22.5833 }, openTrim: 22.5833 },
+  {
+    file: "stage-previz-9", scrimZ: -4.35, deckTop: 1.8572, openTrim: 21,
+    presets: { ds37_21ft: { trim: 21, half: 18 * FT }, ds74_21ft: { trim: 21, half: 18 * FT }, ds37_26ft: { trim: 26, half: 18 * FT }, ds74_26ft: { trim: 26, half: 18 * FT } },
+  },
+  {
+    file: "stage-previz-10", scrimZ: -2.6816, deckTop: 1.9812, openTrim: 22.5833, scrimTop: 8.5598,
+    presets: { ds74_plot: { trim: 22.5833, half: 42.9208 / 2 * FT }, ds74_fill: { trim: 22.5833, half: 15 * FT } },
+  },
 ];
 
 /** Each session in a component system of its own: -9 and -10 define components under the same ids. */
@@ -130,26 +138,29 @@ describe.each(SESSIONS)("$file: the trims and the presets", (session) => {
   const opened = open(session);
   const names = Object.keys(session.presets);
 
-  it("holds a 0.37 and a 0.74 DS lens at each trim, every one on live input", () => {
+  it("holds its DS lens presets at each trim, every one on live input", () => {
     expect(opened.presets.map((preset) => preset.name)).toEqual(names);
     for (const preset of opened.presets) {
       expect(preset.values["slider_source"]).toEqual({ value: 0 });
       expect(preset.values["slider_dsThrow"]).toEqual({ value: preset.name.startsWith("ds37") ? 0.37 : 0.74 });
-      expect(preset.values["slider_trussTrim"]).toEqual({ value: session.presets[preset.name] });
-      expect(preset.values["slider_dsTrim"]).toEqual({ value: session.presets[preset.name] });
+      expect(preset.values["slider_trussTrim"]).toEqual({ value: session.presets[preset.name]!.trim });
+      expect(preset.values["slider_dsTrim"]).toEqual({ value: session.presets[preset.name]!.trim });
     }
   });
 
-  it.each(names)("%s: the DS image fills the scrim's width, level and square", (name) => {
+  it.each(names)("%s: the DS image lands its width on the scrim, level and square", (name) => {
     const { DS } = beams(opened, name);
     const c = corners(DS, 2, session.scrimZ);
-    for (const point of Object.values(c)) expect(Math.abs(Math.abs(point[0]) - session.scrimHalf)).toBeLessThan(MM);
+    // the plotted 0.74 is 42.9' wide to the inch: four decimals of a foot, a few hundredths of a millimetre
+    for (const point of Object.values(c)) expect(Math.abs(Math.abs(point[0]) - session.presets[name]!.half)).toBeLessThan(MM);
+    if (session.scrimTop !== undefined) expect(Math.abs(c.topLeft[1] - session.scrimTop)).toBeLessThan(MM);
     expect(Math.abs(c.topLeft[1] - c.topRight[1])).toBeLessThan(MM);
     expect(Math.abs(c.bottomLeft[1] - c.bottomRight[1])).toBeLessThan(MM);
   });
 
-  it.each([...new Set(Object.values(session.presets))])("%s': the 0.37 and the 0.74 cover the scrim the same: the same top edge, both past the scrim's foot", (trim) => {
-    const at = (lens: string) => names.find((name) => name.startsWith(lens) && session.presets[name] === trim)!;
+  const paired = [...new Set(Object.values(session.presets).map((preset) => preset.trim))].filter((trim) => names.some((name) => name.startsWith("ds37") && session.presets[name]!.trim === trim));
+  it.skipIf(paired.length === 0).each(paired)("%s': the 0.37 and the 0.74 cover the scrim the same: the same top edge, both past the scrim's foot", (trim) => {
+    const at = (lens: string) => names.find((name) => name.startsWith(lens) && session.presets[name]!.trim === trim)!;
     const wide = corners(beams(opened, at("ds37")).DS, 2, session.scrimZ);
     const long = corners(beams(opened, at("ds74")).DS, 2, session.scrimZ);
     expect(Math.abs(wide.topLeft[1] - long.topLeft[1])).toBeLessThan(MM);
@@ -182,8 +193,8 @@ describe.each(SESSIONS)("$file: the trims and the presets", (session) => {
   it("Truss trim carries the side lenses and nothing of the DS; DS truss trim carries the DS lens and nothing of the sides", () => {
     const first = names[0]!;
     const base = beams(opened, first);
-    const frame = beams(opened, first, { trussTrim: session.presets[first]! + 5 });
-    const ds = beams(opened, first, { dsTrim: session.presets[first]! + 5 });
+    const frame = beams(opened, first, { trussTrim: session.presets[first]!.trim + 5 });
+    const ds = beams(opened, first, { dsTrim: session.presets[first]!.trim + 5 });
     expect(frame.SR.lens[1] - base.SR.lens[1]).toBeCloseTo(5 * FT, 4);
     expect(frame.SL.lens[1] - base.SL.lens[1]).toBeCloseTo(5 * FT, 4);
     expect(frame.DS.lens).toEqual(base.DS.lens);
@@ -204,7 +215,7 @@ describe.each(SESSIONS)("$file: the trims and the presets", (session) => {
 describe("stage-previz-10: the trims are measured from the house deck", () => {
   it("at the plot's 22'-7\", the frame's projectors hang where layout revision 2 puts them", () => {
     const opened = open(SESSIONS[1]!);
-    const { SR, DS } = beams(opened, "ds74", { dsOffset: 0, dsTilt: 0 });
+    const { SR, DS } = beams(opened, "ds74_plot", { dsTilt: 0 });
     // layout.py: the side lens 20'-5" over the house deck, the DS lens 19'-8" at zero tilt (5'0" house deck)
     expect(SR.lens[1]).toBeCloseTo(5 * FT + (20 + 5 / 12) * FT, 3);
     expect(DS.lens[1]).toBeCloseTo(5 * FT + (19 + 8 / 12) * FT, 3);

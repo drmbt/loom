@@ -6402,7 +6402,7 @@
               "default": 0,
               "label": "DS truss Z, ft",
               "max": 40,
-              "min": -30,
+              "min": -10,
               "step": 0.5,
               "type": "number"
             },
@@ -8650,7 +8650,7 @@
               "default": 0,
               "label": "DS truss Z, ft",
               "max": 40,
-              "min": -30,
+              "min": -10,
               "step": 0.5,
               "type": "number"
             },
@@ -10549,7 +10549,7 @@
           "max": 45,
           "min": -45,
           "step": 0.1,
-          "value": 32.1516
+          "value": 8.312
         },
         "position": {
           "x": -3500,
@@ -10566,9 +10566,9 @@
           "channel": "dsOffset",
           "defaultValue": 0,
           "max": 40,
-          "min": -30,
+          "min": -10,
           "step": 0.5,
-          "value": -22.0258
+          "value": 0
         },
         "position": {
           "x": -4100,
@@ -10587,7 +10587,7 @@
           "max": 2.5,
           "min": 0.3,
           "step": 0.01,
-          "value": 0.37
+          "value": 0.74
         },
         "position": {
           "x": -4400,
@@ -10606,7 +10606,7 @@
           "max": 60,
           "min": -20,
           "step": 0.1,
-          "value": 36.6569
+          "value": 19.083
         },
         "position": {
           "x": -3800,
@@ -10948,11 +10948,11 @@
         "id": "nd_9b04bc5bd9e652",
         "label": "presets1",
         "parameters": {
-          "current": "ds37",
+          "current": "ds74_plot",
           "curve": "smooth",
           "morph": 0,
           "morphs": "{\n  \"version\": 1,\n  \"records\": []\n}\n",
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"ds37\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -41\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.37\n        },\n        \"slider_dsOffset\": {\n          \"value\": -22.0258\n        },\n        \"slider_dsTilt\": {\n          \"value\": 36.6569\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 32.1516\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 39.5573\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.1603\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 27.5506\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        }\n      }\n    },\n    {\n      \"name\": \"ds74\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -3\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": -7.9834\n        },\n        \"slider_dsTilt\": {\n          \"value\": 12.2701\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 5.2476\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 39.5573\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.1603\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 27.5506\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        }\n      }\n    }\n  ]\n}\n",
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"ds74_plot\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -3\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": 0\n        },\n        \"slider_dsTilt\": {\n          \"value\": 19.083\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 8.312\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 39.5573\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.1603\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 27.5506\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        }\n      }\n    },\n    {\n      \"name\": \"ds74_fill\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -3\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": -8.461\n        },\n        \"slider_dsTilt\": {\n          \"value\": 15.609\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 6.729\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 39.5573\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.1603\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 27.5506\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        }\n      }\n    }\n  ]\n}\n",
           "select": "",
           "targets": "slider_source.value slider_shot.value slider_kabuki.value slider_leds.value slider_work.value slider_haze.value slider_fog.value slider_beams.value toggle_talent.on slider_orbit.value slider_zoom.value slider_dsThrow.value slider_dsOffset.value slider_dsTilt.value slider_dsKeyV.value slider_dsKeyH.value slider_sideTilt.value slider_sideThrow.value slider_sideRoll.value slider_sideKeyV.value slider_sideKeyH.value slider_deckTone.value slider_scrim.value slider_strobes.value slider_trussTrim.value slider_dsTrim.value"
         },
@@ -10967,7 +10967,7 @@
         "id": "nd_9b04bc5bd9e66i",
         "label": "cuelist1",
         "parameters": {
-          "cues": "{\n  \"version\": 1,\n  \"cues\": [\n    {\n      \"name\": \"1\",\n      \"bank\": \"presets1\",\n      \"preset\": \"ds37\"\n    },\n    {\n      \"name\": \"2\",\n      \"bank\": \"presets1\",\n      \"preset\": \"ds74\"\n    }\n  ]\n}\n",
+          "cues": "{\n  \"version\": 1,\n  \"cues\": [\n    {\n      \"name\": \"1\",\n      \"bank\": \"presets1\",\n      \"preset\": \"ds74_plot\"\n    },\n    {\n      \"name\": \"2\",\n      \"bank\": \"presets1\",\n      \"preset\": \"ds74_fill\"\n    }\n  ]\n}\n",
           "current": "",
           "follow": "live",
           "keys": true,
@@ -10991,7 +10991,7 @@
           "max": 180,
           "min": -180,
           "step": 1,
-          "value": -41
+          "value": -3
         },
         "position": {
           "x": -1700,
