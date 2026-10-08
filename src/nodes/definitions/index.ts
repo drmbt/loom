@@ -33,6 +33,7 @@ import { floatMapInNode } from "./float-map-in.ts";
 import { screenInNode } from "./screen-in.ts";
 export { screenInNode, SCREEN_IN_TYPE } from "./screen-in.ts";
 import { syphonInNode } from "./syphon-in.ts";
+import { ffglNode } from "./ffgl.ts";
 import { ndiInNode } from "./ndi-in.ts";
 import { syphonOutNode } from "./syphon-out.ts";
 import { windowOutNode } from "./window-out.ts";
@@ -43,6 +44,7 @@ export { ndiOutNode, NDI_OUT_TYPE } from "./ndi-out.ts";
 export { syphonOutNode, SYPHON_OUT_TYPE } from "./syphon-out.ts";
 export { windowOutNode, WINDOW_OUT_TYPE } from "./window-out.ts";
 export { syphonInNode, SYPHON_IN_TYPE } from "./syphon-in.ts";
+export { ffglNode, FFGL_TYPE_NAME, ffglSourceIdFor } from "./ffgl.ts";
 export { ndiInNode, NDI_IN_TYPE } from "./ndi-in.ts";
 import { valueGraphNodeDefinitions } from "./value-graph-nodes.ts";
 import { valueStructureNodeDefinitions } from "./value-structure-nodes.ts";
@@ -311,6 +313,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   ndiOutNode,
   spoutInNode,
   spoutOutNode,
+  // VN85: a Resolume FFGL plugin, run by the desktop's native host.
+  ffglNode,
   ...valueGraphNodeDefinitions,
   ...valueStructureNodeDefinitions,
   ...controlNodeDefinitions,
