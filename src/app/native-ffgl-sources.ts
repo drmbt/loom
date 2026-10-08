@@ -13,7 +13,13 @@ import { createNativeFfglSource, desktopFfglBridge, manifestFromDescription, typ
  * Per frame: the node's resolved parameters become FFGL writes (ffgl-manifest.ts, the one
  * mapping), the frame's abs time becomes the plugin's clock (the host keeps it monotonic and
  * steps one interval across a seek), and an event pulse (runtime.ffglEvent) is raised for one
- * frame. Realtime frames run without waiting (the result is a frame or more late); any other
+ * frame.
+ *
+ * Upstream's contract (VN71): a SEEK jumps and keeps temporal history, so a seek is NOT a
+ * reset here either — the host steps the plugin's clock by one interval and its state stays.
+ * A TAKE is a fresh performance and says so explicitly: the render path's `prepareForRender`
+ * drains and re-opens every instance and then calls `restart()`, so the take's first frame
+ * (its entry, which may be an in point, not frame 0) carries `reset` and starts the clock there. Realtime frames run without waiting (the result is a frame or more late); any other
  * mode settles each frame before it is read, so an offline take is exact.
  *
  * Manifests: a node whose `plugin` names a plugin its stored table does not describe is probed
@@ -44,16 +50,18 @@ interface Entry {
   frame?: number;
   pulses: Set<number>;
   probing?: boolean;
+  /** The next request starts the plugin's clock afresh (a take, `restart()`). */
+  resetNext?: boolean;
 }
 
-export function ffglFrameRequest(frame: FrameEvaluationInput, bpm: number, writes: FfglFrameRequest["parameters"], pulses: readonly number[]): FfglFrameRequest {
+export function ffglFrameRequest(frame: FrameEvaluationInput, bpm: number, writes: FfglFrameRequest["parameters"], pulses: readonly number[], reset = false): FfglFrameRequest {
   const time = absTimeSecondsOf(frame);
   const beats = (time * bpm) / 60;
   return {
     time, bpm, barPhase: beats / 4 - Math.floor(beats / 4),
     interval: frame.deltaSeconds > 0 && frame.deltaSeconds <= 1 ? frame.deltaSeconds : 1 / 60,
-    // A non-realtime take starts its own clock (the host's reset rule); live play never resets.
-    ...(frame.mode !== "realtime" && frame.frameIndex === 0 ? { reset: true } : {}),
+    // Only an explicit take reset restarts the clock; a seek never does (VN71).
+    ...(reset ? { reset: true } : {}),
     parameters: writes, pulses,
   };
 }
@@ -79,7 +87,9 @@ export function createNativeFfglSources(options: {
     const values = entry.target.read(frame);
     const pulses = [...entry.pulses];
     entry.pulses.clear();
-    return ffglFrameRequest(frame, values.bpm, ffglParameterWrites(entry.controls, key => values.value(key)), pulses);
+    const reset = entry.resetNext === true;
+    entry.resetNext = false;
+    return ffglFrameRequest(frame, values.bpm, ffglParameterWrites(entry.controls, key => values.value(key)), pulses, reset);
   };
   const run = (entry: Entry, frame: FrameEvaluationInput) => {
     if (entry.error) return Promise.reject(new Error(entry.error));
@@ -138,6 +148,8 @@ export function createNativeFfglSources(options: {
         } catch (error) { entry.error = String(error); }
       }
     },
+    /** A take begins: every instance's next frame starts its plugin clock at that frame's time. */
+    restart() { for (const entry of entries.values()) entry.resetNext = true; },
     /** `runtime.ffglEvent`: raise the event parameter at this FFGL index on these nodes for their next frame. */
     fire(nodeIds: readonly string[], event: number): number {
       let raised = 0;

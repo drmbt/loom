@@ -81,8 +81,12 @@ gate proves on glitch_mosher and LiquidWake: a 12-frame run with a backward seek
 +998 s jump, give the same bytes as a straight run, every frame.
 
 The node feeds the clock the frame's **abs time** (`absTimeSecondsOf`), with `interval =
-deltaSeconds`, and `reset` at frame 0 of a non-realtime take — so a live simulation keeps running
-while the transport is paused, and an offline take starts clean.
+deltaSeconds`, so a live simulation keeps running while the transport is paused. This follows
+upstream's VN71 contract: a **seek** jumps and keeps temporal history, so it is not a reset here
+either (the clock steps one interval, plugin state stays). A **take** resets explicitly: the render
+path's `prepareForRender` drains and re-opens every plugin instance and calls the tracker's
+`restart()`, so the take's first frame — its entry, which may be an in point rather than frame 0 —
+carries `reset` and starts the clock at that frame's time.
 
 `FF_SET_TIME` is sent **only to a plugin that declares `FF_CAP_SET_TIME`**, as Resolume does. The
 SDK's `CFFGLPluginManager` defaults `m_timeSupported` to true, so every drmbt build declares it.

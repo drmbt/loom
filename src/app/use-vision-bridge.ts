@@ -512,6 +512,8 @@ export function useVisionBridge(options: {
     await ffgl.drain();
     const graph = trackedGraphRef.current;
     if (graph) ffgl.track(ffglTargets(graph, ffglSizedRef.current), backendRef.current?.() ?? null);
+    // The take's explicit reset (VN71): its first frame starts every plugin clock afresh.
+    ffgl.restart();
     refreshNative();
   }, [native, ffgl, ffglTargets, refreshNative]);
 

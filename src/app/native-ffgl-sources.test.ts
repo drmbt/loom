@@ -37,8 +37,9 @@ function harness(manifest = MANIFEST) {
 it("a frame's request: abs time, the frame interval, the node's writes, and a reset only at a take's first frame", () => {
   expect(ffglFrameRequest(frame(3), 120, [[0, 1]], [2])).toEqual({ time: 100 + 3 / 60, bpm: 120, barPhase: ((100 + 3 / 60) * 2 / 4) % 1,
     interval: 1 / 60, parameters: [[0, 1]], pulses: [2] });
-  expect(ffglFrameRequest(frame(0, "offline"), 120, [], []).reset).toBe(true);
-  expect(ffglFrameRequest(frame(0, "realtime"), 120, [], []).reset).toBeUndefined();
+  // VN71: no frame index or mode implies a reset; only an explicit take restart does.
+  expect(ffglFrameRequest(frame(0, "offline"), 120, [], []).reset).toBeUndefined();
+  expect(ffglFrameRequest(frame(7, "offline"), 120, [], [], true).reset).toBe(true);
   expect(ffglFrameRequest(frame(1, "offline", 0), 120, [], []).interval).toBe(1 / 60);
 });
 
@@ -57,12 +58,16 @@ it("runs each live frame with the node's resolved values as FFGL writes; an even
   expect(h.source.close).toHaveBeenCalled(); expect(h.media.size).toBe(0);
 });
 
-it("offline waits for each frame's result exactly once", async () => {
+it("offline waits for each frame's result exactly once; a take's restart resets only its first frame, wherever it starts", async () => {
   const h = harness(); h.sources.track([h.target], h.backend); await flush();
-  for (const index of [0, 1, 2]) { h.sources.observe(frame(index, "offline")); await h.sources.settle(index); await h.sources.settle(index); }
+  h.sources.restart();
+  for (const index of [40, 41, 42]) { h.sources.observe(frame(index, "offline")); await h.sources.settle(index); await h.sources.settle(index); }
   expect(h.source.run).toHaveBeenCalledTimes(3);
   expect(h.source.run.mock.calls[0]![0]).toMatchObject({ reset: true });
   expect(h.source.run.mock.calls[1]![0]).not.toHaveProperty("reset");
+  // A seek (frame 0 again, no restart) keeps history: no reset.
+  h.sources.observe(frame(0, "offline")); await h.sources.settle(0);
+  expect(h.source.run.mock.calls[3]![0]).not.toHaveProperty("reset");
 });
 
 it("a node whose stored table is not the plugin's gets the probed table stored; a matching one is left alone", async () => {
