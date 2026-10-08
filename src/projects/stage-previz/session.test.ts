@@ -9,7 +9,7 @@ import { STAGE_GLB_PATH, STAGE_SESSION_PATH, builtSession, upgradedSession } fro
  *
  * The base session is GENERATED, so it is held to its source byte for byte, as the examples
  * are (`src/examples/sync.test.ts`). After a change to the source or a new export, regenerate
- * it with the command in build.ts's header. `-7`, `-8` and `-9` are sessions saved from the app (`-9` built from `-8`, VN78).
+ * it with the command in build.ts's header. `-7`, `-8` and `-9` are sessions saved from the app (`-9` built from an app save of `-8`, VN78).
  */
 const glb = new Uint8Array(readFileSync(STAGE_GLB_PATH));
 const session = (name: string): string => readFileSync(`projects/stage-previz/${name}`, "utf8");
