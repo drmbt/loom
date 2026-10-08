@@ -19,7 +19,7 @@ describe("node paths (VN35)", () => {
   it("parses relative paths and refuses the malformed", () => {
     expect(parseNodePath("rig_a/projector_lamp")).toEqual({ up: 0, names: ["rig_a", "projector_lamp"] });
     expect(parseNodePath("../../camera_stage")).toEqual({ up: 2, names: ["camera_stage"] });
-    for (const malformed of ["/rig_a", "rig_a/", "rig_a//x", "..", "rig_a/../x", ""]) {
+    for (const malformed of ["/rig_a", "rig_a/", "rig_a//x", "..", "rig_a/../x", "./rig_a", "rig_a/./x", ""]) {
       expect(parseNodePath(malformed), malformed).toBeUndefined();
     }
     expect(formatNodePath({ up: 1, names: ["rig_b", "render_rig"] })).toBe("../rig_b/render_rig");

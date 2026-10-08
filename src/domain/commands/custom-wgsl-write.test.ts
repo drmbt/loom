@@ -7,6 +7,8 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { SHARED_UNIFORMS_WGSL } from "../../runtime/backend/shared-uniforms.ts";
 import type { GraphDocument } from "../types/graph.ts";
 import type { InvocationContext } from "../types/commands.ts";
+import { createComponentSystem, componentNodeType } from "../components/index.ts";
+import { flattenComponents } from "../../compiler/flatten.ts";
 
 /**
  * T880 — a reflected control is an EDITABLE control. The owner reported that the parameters a
@@ -38,6 +40,35 @@ function harness() {
 }
 
 describe("customWgsl reflected controls are editable (T880)", () => {
+  it("validates internal fields against earlier source overrides in the same atomic batch", async () => {
+    const initial = harness().store.view.getGraph();
+    const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
+    system.components.register({ componentId: "effect", version: 1, name: "Effect", graph: initial,
+      inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "fx", portId: "out" }], parameters: [] });
+    const { bus, store } = createDomainBus({ registry: system.nodes });
+    const added = await bus.execute("graph.applyPatch", { baseRevision: 0, operations: [
+      { op: "addNode", ref: "$effect", type: componentNodeType("effect", 1), position: { x: 0, y: 0 } },
+    ] }, CTX);
+    expect(added.status).toBe("applied");
+    const owner = added.output.createdIds.$effect!;
+    const flat = () => flattenComponents({ graph: store.view.getGraph(), registry: system.nodes, components: system.components.view() });
+    bus.attachFlattenedGraph(flat);
+    const source = SOURCE.replaceAll("orbitSpeed", "turnSpeed");
+    const before = JSON.stringify(store.view.getGraph());
+    const rejected = await bus.execute("graph.applyPatch", { baseRevision: store.view.getRevision(), operations: [
+      { op: "setParameters", nodeId: owner, internalNodeId: "fx", parameters: { source } },
+      { op: "setParameters", nodeId: owner, internalNodeId: "fx", parameters: { orbitSpeed: 2 } },
+    ] }, CTX);
+    expect(rejected.status).toBe("rejected");
+    expect(JSON.stringify(store.view.getGraph())).toBe(before);
+    const applied = await bus.execute("graph.applyPatch", { baseRevision: store.view.getRevision(), operations: [
+      { op: "setParameters", nodeId: owner, internalNodeId: "fx", parameters: { source } },
+      { op: "setParameters", nodeId: owner, internalNodeId: "fx", parameters: { turnSpeed: 2 } },
+    ] }, CTX);
+    expect(applied.status).toBe("applied");
+    expect(flat().graph.nodes[`${owner}/fx`]!.parameters).toMatchObject({ source, turnSpeed: 2 });
+    expect(system.components.get("effect", 1)!.graph.nodes.fx!.parameters.source).toBe(SOURCE);
+  });
   it("a value written to a reflected number applies and persists", async () => {
     const { store, bus } = harness();
     const result = await bus.execute(

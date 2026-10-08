@@ -1,18 +1,180 @@
 // @vitest-environment jsdom
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useSyncExternalStore } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { graphOf, instanceNode, node } from "@domain/components/test-support.ts";
+import type { GraphComponentDefinition } from "@domain/types/components.ts";
 import { cubePrimitive, encodeFixtureGlb } from "@domain/mesh/glb.fixture.ts";
 import { createFileReference } from "@domain/media/file-reference.ts";
 import { slotFromValue } from "@domain/parameters/slots.ts";
+import { buildProjectFile } from "@domain/project/project-file.ts";
+import { parseProjectDocument } from "@domain/project/serialize.ts";
 import { meshSourceIdsFor, prepareMesh } from "@/points/mesh.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { createAppRuntime } from "./app-runtime.ts";
 import { useMeshSources } from "./use-mesh-sources.ts";
+import { useGraphCompile } from "./use-graph-compile.ts";
+import { TIER_B_CAPABILITIES } from "@/examples/runner.ts";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("mesh file source bindings", () => {
+  it("feeds a premeasured internal mesh without changing its shared definition", async () => {
+    const bytes = encodeFixtureGlb({ nodes: [{ name: "cube", mesh: [cubePrimitive()] }] });
+    const prepared = prepareMesh(bytes, "");
+    if (prepared === null) throw new Error("Cube fixture must contain a mesh");
+    const definition: GraphComponentDefinition = {
+      componentId: "meshAsset", version: 1, name: "Mesh Asset",
+      graph: graphOf([node("mesh", "meshFileIn", { file: "media/cube.glb", ...prepared.facts }, { label: "mesh_asset" })]),
+      inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "mesh", portId: "out" }], parameters: [],
+    };
+    const runtime = createAppRuntime({ identityStorage: null, components: [definition] });
+    const unregister = vi.fn();
+    const registerMediaSource = vi.fn<LoomBackend["registerMediaSource"]>(() => unregister);
+    const backend = { registerMediaSource } as unknown as LoomBackend;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array(bytes))));
+    try {
+      const placed = await runtime.bus.execute("component.instantiate", { componentId: definition.componentId }, runtime.invocation);
+      expect(placed.status).toBe("applied");
+      const definitionBefore = JSON.stringify(runtime.components.get(definition.componentId, 1));
+      const revisionBefore = runtime.bus.store.getRevision();
+      const mesh = Object.values(runtime.flattened.current().graph.nodes).find(each => each.type === "meshFileIn");
+      if (mesh === undefined) throw new Error("Component must flatten to its mesh");
+      const hook = renderHook(() => useMeshSources(runtime, backend, runtime.flattened.current().graph));
+      await waitFor(() => expect(registerMediaSource).toHaveBeenCalledTimes(2));
+      expect(registerMediaSource.mock.calls.map(call => call[0])).toEqual(Object.values(meshSourceIdsFor(mesh.id)).slice(0, 2));
+      expect(hook.result.current.diagnostics).toEqual([]);
+      expect(runtime.bus.store.getRevision()).toBe(revisionBefore);
+      expect(JSON.stringify(runtime.components.get(definition.componentId, 1))).toBe(definitionBefore);
+      hook.unmount();
+      expect(unregister).toHaveBeenCalledTimes(2);
+    } finally { runtime.dispose(); }
+  });
+
+  it.each([false, true])("measures and feeds independent files per linked mesh instance (nested=%s)", async nested => {
+    const small = encodeFixtureGlb({ nodes: [{ name: "a", mesh: [cubePrimitive()] }] });
+    const large = encodeFixtureGlb({ nodes: [{ name: "a", mesh: [cubePrimitive()] }, { name: "b", translation: [4, 0, 0], mesh: [cubePrimitive()] }] });
+    const prepared = [small, large].map(bytes => {
+      const mesh = prepareMesh(bytes, "");
+      if (mesh === null) throw new Error("Fixture must contain a mesh");
+      return mesh;
+    });
+    const fileParameter: GraphComponentDefinition["parameters"][number] = {
+      key: "file", definition: { type: "asset", label: "File", kind: "gltf" }, targets: [{ nodeId: "mesh", key: "file" }],
+    };
+    const definition: GraphComponentDefinition = {
+      componentId: "meshAsset", version: 1, name: "Mesh Asset",
+      graph: graphOf([node("mesh", "meshFileIn", {}, { label: "mesh_asset" })]),
+      inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "mesh", portId: "out" }], parameters: [fileParameter],
+    };
+    const outer: GraphComponentDefinition = {
+      componentId: "meshShell", version: 1, name: "Mesh Shell",
+      graph: graphOf([instanceNode("inner", definition.componentId, 1)]),
+      inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "inner", portId: "out" }],
+      parameters: [{ ...fileParameter, targets: [{ nodeId: "inner", key: "file" }] }],
+    };
+    const runtime = createAppRuntime({ identityStorage: null, components: nested ? [definition, outer] : [definition] });
+    const moved = encodeFixtureGlb({ nodes: [{ name: "a", translation: [8, 0, 0], mesh: [cubePrimitive()] }] });
+    const movedMesh = prepareMesh(moved, "");
+    if (movedMesh === null) throw new Error("Moved fixture must contain a mesh");
+    const files = ["media/small.glb", "media/large.glb"];
+    const fetchFile = vi.fn(async (url: string) => {
+      const bytes = url === files[0] ? small : url === files[1] ? large : url === "media/moved.glb" ? moved : undefined;
+      if (bytes === undefined) throw new Error(`Unexpected fixture file: ${url}`);
+      return new Response(new Uint8Array(bytes));
+    });
+    vi.stubGlobal("fetch", fetchFile);
+    const unregister = vi.fn();
+    const registerMediaSource = vi.fn<LoomBackend["registerMediaSource"]>(() => unregister);
+    const backend = { registerMediaSource } as unknown as LoomBackend;
+    try {
+      const instances: string[] = [];
+      for (const file of files) {
+        const placed = await runtime.bus.execute("component.instantiate", { componentId: nested ? outer.componentId : definition.componentId }, runtime.invocation);
+        expect(placed.status).toBe("applied");
+        const id = placed.output.nodeId!;
+        instances.push(id);
+        const written = await runtime.bus.execute("graph.applyPatch", { baseRevision: runtime.bus.store.getRevision(), operations: [
+          { op: "setParameters", nodeId: id, parameters: { file } },
+        ] }, runtime.invocation);
+        expect(written.status).toBe("applied");
+      }
+      const definitionsBefore = JSON.stringify(runtime.components.all());
+      const stateOf = () => instances.map(id => JSON.stringify(runtime.bus.store.getGraph().nodes[id]!.state));
+      const beforeMeasurement = stateOf();
+      const mountLoader = () => renderHook(() => {
+        useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
+        const compiled = useGraphCompile(runtime, TIER_B_CAPABILITIES);
+        return useMeshSources(runtime, backend, compiled.flatGraph);
+      });
+      let hook = mountLoader();
+      await waitFor(() => {
+        const flat = runtime.flattened.current().graph;
+        for (const [index, owner] of instances.entries()) {
+          const meshId = `${owner}/${nested ? "inner/" : ""}mesh`;
+          const parameters = flat.nodes[meshId]?.parameters;
+          expect(parameters).toMatchObject(prepared[index]!.facts);
+          const ids = meshSourceIdsFor(meshId);
+          for (const [sourceId, bytes] of [[ids.points, prepared[index]!.points], [ids.indices, prepared[index]!.indices]] as const) {
+            const call = registerMediaSource.mock.calls.findLast(each => each[0] === sourceId);
+            expect(call?.[1].currentFrame()?.bytes).toEqual(bytes);
+          }
+        }
+      });
+      expect(hook.result.current.diagnostics).toEqual([]);
+      expect(fetchFile).toHaveBeenCalledTimes(2);
+      // PR #4: each loader measurement is one undo step on its owning instance.
+      // Stop the loader while undoing so it cannot immediately measure again.
+      hook.unmount();
+      const measured = stateOf();
+      expect(measured.filter((state, index) => state !== beforeMeasurement[index])).toHaveLength(2);
+      expect((await runtime.bus.execute("graph.undo", {}, runtime.invocation)).status).toBe("applied");
+      expect(stateOf().filter((state, index) => state === beforeMeasurement[index])).toHaveLength(1);
+      expect((await runtime.bus.execute("graph.undo", {}, runtime.invocation)).status).toBe("applied");
+      expect(stateOf()).toEqual(beforeMeasurement);
+      expect(JSON.stringify(runtime.components.all())).toBe(definitionsBefore);
+      for (let step = 0; step < 2; step++) {
+        expect((await runtime.bus.execute("graph.redo", {}, runtime.invocation)).status).toBe("applied");
+      }
+      expect(stateOf()).toEqual(measured);
+      const beforeRemount = registerMediaSource.mock.calls.length;
+      hook = mountLoader();
+      await waitFor(() => expect(registerMediaSource).toHaveBeenCalledTimes(beforeRemount + 4));
+      expect(fetchFile).toHaveBeenCalledTimes(4);
+      const firstFacts = runtime.flattened.current().graph.nodes[`${instances[0]}/${nested ? "inner/" : ""}mesh`]!.parameters;
+      await act(async () => {
+        const changed = await runtime.bus.execute("graph.applyPatch", { baseRevision: runtime.bus.store.getRevision(), operations: [
+          { op: "setParameters", nodeId: instances[1]!, parameters: { file: "media/moved.glb" } },
+        ] }, runtime.invocation);
+        expect(changed.status).toBe("applied");
+      });
+      const secondMeshId = `${instances[1]}/${nested ? "inner/" : ""}mesh`;
+      await waitFor(() => {
+        expect(runtime.flattened.current().graph.nodes[secondMeshId]!.parameters).toMatchObject(movedMesh.facts);
+        const call = registerMediaSource.mock.calls.findLast(each => each[0] === meshSourceIdsFor(secondMeshId).points);
+        expect(call?.[1].currentFrame()?.bytes).toEqual(movedMesh.points);
+      });
+      expect(runtime.flattened.current().graph.nodes[`${instances[0]}/${nested ? "inner/" : ""}mesh`]!.parameters).toEqual(firstFacts);
+      expect(fetchFile).toHaveBeenCalledTimes(5);
+      expect(JSON.stringify(runtime.components.all())).toBe(definitionsBefore);
+      hook.unmount();
+      expect(unregister).toHaveBeenCalledTimes(registerMediaSource.mock.calls.length);
+      const saved = buildProjectFile({ document: runtime.projectDocument(), components: runtime.components.all() });
+      const parsed = parseProjectDocument(saved.text);
+      if (!parsed.ok) throw new Error(parsed.reason);
+      const reopened = createAppRuntime({ identityStorage: null, document: parsed.document, components: runtime.components.all() });
+      const beforeReopen = registerMediaSource.mock.calls.length;
+      try {
+        const reloaded = renderHook(() => useMeshSources(reopened, backend, reopened.flattened.current().graph));
+        await waitFor(() => expect(registerMediaSource.mock.calls.length).toBe(beforeReopen + 4));
+        expect(reloaded.result.current.diagnostics).toEqual([]);
+        expect(reopened.flattened.current().graph.nodes[secondMeshId]!.parameters).toMatchObject(movedMesh.facts);
+        reloaded.unmount();
+        expect(unregister).toHaveBeenCalledTimes(registerMediaSource.mock.calls.length);
+      } finally { reopened.dispose(); }
+    } finally { runtime.dispose(); }
+  });
+
   it.each([false, true])("reads a resolved file, registers decoded buffers, and releases them (slot=%s)", async slot => {
     const bytes = encodeFixtureGlb({ nodes: [{ name: "cube", mesh: [cubePrimitive()] }] });
     const prepared = prepareMesh(bytes, "");
@@ -123,130 +285,6 @@ describe("mesh file source bindings", () => {
       await waitFor(() => expect(registerMediaSource).toHaveBeenCalledTimes(2));
       await waitFor(() => expect(runtime.bus.store.getGraph().nodes[id]!.parameters["bounds"]).toBe("3,0,0,0.8661"));
       expect(hook.result.current.diagnostics).toEqual([]);
-      hook.unmount();
-    } finally { runtime.dispose(); }
-  });
-});
-
-/*
- * VN33 — the literal bug: a Mesh File In inside a component drew nothing. The loader found
- * the node by `getGraph().nodes[nodeId]`, an inner node's id is flattened (`instance/inner`)
- * and the document does not hold it, so the facts were never written and the node stayed
- * the one-vertex stand-in. They are now that INSTANCE's overrides: each instance carries the
- * size of the file it loads, and the shared definition is not touched.
- */
-describe("VN33: a mesh inside a component", () => {
-  const one = encodeFixtureGlb({ nodes: [{ name: "a", mesh: [cubePrimitive()] }] });
-  const two = encodeFixtureGlb({ nodes: [{ name: "a", mesh: [cubePrimitive()] }, { name: "b", translation: [3, 0, 0], mesh: [cubePrimitive()] }] });
-  const factsOf = (bytes: Uint8Array) => {
-    const prepared = prepareMesh(bytes, "");
-    if (prepared === null) throw new Error("fixture must contain a mesh");
-    return prepared.facts;
-  };
-
-  async function fixture(nested = false) {
-    const runtime = createAppRuntime({ identityStorage: null });
-    const { bus, invocation } = runtime;
-    const added = await bus.execute("graph.applyPatch", { baseRevision: 0, operations: [
-      { op: "addNode", ref: "$mesh", type: "meshFileIn", position: { x: 0, y: 0 }, parameters: { file: "media/one.glb" } },
-      { op: "addNode", ref: "$geo", type: "geometry", position: { x: 200, y: 0 } },
-      { op: "connect", source: { nodeId: "$mesh", portId: "out" }, target: { nodeId: "$geo", portId: "points" } },
-    ] }, invocation);
-    expect(added.status).toBe("applied");
-    const meshId = added.output.createdIds["$mesh"]!;
-    let saved = await bus.execute("component.saveSelection", { nodeIds: [meshId], name: "Stage" }, invocation);
-    expect(saved.status).toBe("applied");
-    if (nested) {
-      saved = await bus.execute("component.saveSelection", { nodeIds: [saved.output.instanceNodeId!], name: "Venue" }, invocation);
-      expect(saved.status).toBe("applied");
-    }
-    const second = await bus.execute("component.instantiate", { componentId: saved.output.componentId! }, invocation);
-    expect(second.status).toBe("applied");
-    return { runtime, meshId, componentId: saved.output.componentId!, first: saved.output.instanceNodeId!, second: second.output.nodeId! };
-  }
-
-  const serve = (files: Record<string, Uint8Array>) =>
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(new Uint8Array(files[url]!))));
-  const useFlatGraph = (runtime: ReturnType<typeof createAppRuntime>) =>
-    useSyncExternalStore(runtime.bus.store.subscribe, () => runtime.flattened.current().graph);
-
-  it("sizes each instance for the file IT loads, through the bus, and leaves the definition alone", async () => {
-    const { runtime, meshId, componentId, first, second } = await fixture();
-    try {
-      // The second instance loads another file: its own override, beside the size.
-      const routed = await runtime.bus.execute("graph.applyPatch", { baseRevision: runtime.bus.store.getRevision(), operations: [
-        { op: "setParameters", nodeId: second, internalNodeId: meshId, parameters: { file: "media/two.glb" } },
-      ] }, runtime.invocation);
-      expect(routed.status).toBe("applied");
-      serve({ "media/one.glb": one, "media/two.glb": two });
-      const definitionBefore = JSON.stringify(runtime.components.latest(componentId));
-      // What is registered NOW: the effect re-runs after each write and releases what it fed.
-      const live = new Map<string, Uint8Array>();
-      const registerMediaSource = vi.fn<LoomBackend["registerMediaSource"]>((id, source) => {
-        live.set(id, source.currentFrame()!.bytes as Uint8Array);
-        return () => live.delete(id);
-      });
-      const backend = { registerMediaSource } as unknown as LoomBackend;
-      const stateOf = () => [first, second].map(id => JSON.stringify(runtime.bus.store.getGraph().nodes[id]!.state ?? {}));
-      const before = stateOf();
-
-      const hook = renderHook(() => useMeshSources(runtime, backend, useFlatGraph(runtime)));
-      const ids = [meshSourceIdsFor(`${first}/${meshId}`), meshSourceIdsFor(`${second}/${meshId}`)];
-      await waitFor(() => expect([...live.keys()].sort()).toEqual([ids[0]!.points, ids[0]!.indices, ids[1]!.points, ids[1]!.indices].sort()));
-      expect(hook.result.current.diagnostics).toEqual([]);
-      // Each instance is fed ITS file's bytes.
-      expect(live.get(ids[0]!.points)).toEqual(prepareMesh(one, "")!.points);
-      expect(live.get(ids[1]!.points)).toEqual(prepareMesh(two, "")!.points);
-
-      const flat = runtime.flattened.current().graph.nodes;
-      for (const [instance, facts] of [[first, factsOf(one)], [second, factsOf(two)]] as const) {
-        expect(flat[`${instance}/${meshId}`]!.parameters).toMatchObject({ vertices: facts.vertices, triangles: facts.triangles, parts: facts.parts, bounds: facts.bounds });
-      }
-      expect(factsOf(two).vertices).not.toBe(factsOf(one).vertices);
-      // Nothing was written into the shared definition.
-      expect(JSON.stringify(runtime.components.latest(componentId))).toBe(definitionBefore);
-      hook.unmount();
-
-      // One measure is one undo step: two undos restore both instances exactly as they were.
-      const measured = stateOf();
-      expect(measured.filter((state, index) => state !== before[index])).toHaveLength(2);
-      expect((await runtime.bus.execute("graph.undo", {}, runtime.invocation)).status).toBe("applied");
-      expect(stateOf().filter((state, index) => state === before[index])).toHaveLength(1);
-      expect((await runtime.bus.execute("graph.undo", {}, runtime.invocation)).status).toBe("applied");
-      expect(stateOf()).toEqual(before);
-      expect(runtime.flattened.current().graph.nodes[`${second}/${meshId}`]!.parameters["file"]).toBe("media/two.glb");
-    } finally { runtime.dispose(); }
-  });
-
-  it("the op refuses a node that is not an instance, and a nested path, by name", async () => {
-    const { runtime, meshId, first } = await fixture();
-    try {
-      const geo = Object.values(runtime.bus.store.getGraph().nodes).find(node => node.type === "geometry")!.id;
-      const send = (nodeId: string, internalNodeId: string) => runtime.bus.execute("graph.applyPatch", { baseRevision: runtime.bus.store.getRevision(), operations: [
-        { op: "setParameters", nodeId, internalNodeId, parameters: { vertices: 8 } },
-      ] }, runtime.invocation);
-      const plain = await send(geo, meshId);
-      expect(plain.status).toBe("rejected");
-      expect(plain.diagnostics.map(d => d.code)).toEqual(["parameter.internal.notComponent"]);
-      const nested = await send(first, `${meshId}/${meshId}`);
-      expect(nested.status).toBe("rejected");
-      expect(nested.diagnostics.map(d => d.code)).toEqual(["parameter.internal.nested"]);
-    } finally { runtime.dispose(); }
-  });
-
-  it("refuses a mesh inside a NESTED component by name, and feeds nothing", async () => {
-    const { runtime } = await fixture(true);
-    try {
-      serve({ "media/one.glb": one });
-      const registerMediaSource = vi.fn<LoomBackend["registerMediaSource"]>(() => () => {});
-      const backend = { registerMediaSource } as unknown as LoomBackend;
-      const revision = runtime.bus.store.getRevision();
-      const hook = renderHook(() => useMeshSources(runtime, backend, useFlatGraph(runtime)));
-      await waitFor(() => expect(hook.result.current.diagnostics).toHaveLength(2));
-      expect(hook.result.current.diagnostics.map(d => d.code)).toEqual(["mesh.unsizable", "mesh.unsizable"]);
-      expect(hook.result.current.diagnostics[0]!.message).toContain("nested component");
-      expect(registerMediaSource).not.toHaveBeenCalled();
-      expect(runtime.bus.store.getRevision()).toBe(revision);
       hook.unmount();
     } finally { runtime.dispose(); }
   });

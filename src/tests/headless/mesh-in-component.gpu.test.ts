@@ -5,27 +5,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAppRuntime } from "../../app/app-runtime.ts";
 import { useMeshSources } from "../../app/use-mesh-sources.ts";
+import { useGraphCompile } from "../../app/use-graph-compile.ts";
+import { TIER_B_CAPABILITIES } from "../../examples/runner.ts";
+import { toInstance } from "../../domain/components/addressing.ts";
 import { cameraPayloadMatrix, transformPoint } from "../../domain/geometry/camera.ts";
 import { cubePrimitive, encodeFixtureGlb } from "../../domain/mesh/glb.fixture.ts";
 import type { GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
-import { meshSourceIdsFor } from "../../points/mesh.ts";
+import { meshSourceIdsFor, prepareMesh } from "../../points/mesh.ts";
 import type { LoomBackend } from "../../runtime/backend/index.ts";
 import { nodeGpuHost, probeDawn } from "../../runtime/backend/vgpu/node-gpu-host.ts";
 import { renderHeadless } from "./render-harness.ts";
 
 /**
- * VN33 — A MESH FILE IN INSIDE A COMPONENT DREW NOTHING, through the real stack on Dawn.
- *
- * The loader (`useMeshSources`) measures the file and writes the facts that SIZE the node.
- * It found the node with `getGraph().nodes[nodeId]`; an inner node's id is flattened
- * (`instance/inner`), the document does not hold it, so the facts were never written and
- * the node compiled as the one-vertex stand-in. The harness feeds a mesh by its flat id and
- * refuses a node not sized for the file, so the unfixed loader fails here by name.
- *
- * Built through the app's own commands: a mesh saved as a component, instanced twice, the
- * second instance loading another file. The loader's writes land as each instance's
- * overrides, and the render of each instance's Geometry alone draws ITS file and nothing of
- * the other's (§V321): file one is a cube above the axis, file two two cubes below it.
+ * Adapted from drmbt's PR #4 (VN33): extract a Mesh File In into a component through the app's
+ * commands, instantiate it twice, and load different files through validated overrides.
+ * Each Geometry must render only its own instance's mesh (§V321). Cover both direct and
+ * nested instances using main's existing descendant write path.
  */
 
 const SIZE = 64;
@@ -61,14 +56,17 @@ function texelOf(world: Vec3): number {
 }
 const lit = (bytes: Uint8Array, world: Vec3): boolean => {
   const at = texelOf(world);
-  return (bytes[at] ?? 0) + (bytes[at + 1] ?? 0) + (bytes[at + 2] ?? 0) > 0;
+  if (at < 0 || at + 2 >= bytes.length) throw new Error(`Fixture sample ${world.join(",")} is outside the captured frame`);
+  return bytes[at]! + bytes[at + 1]! + bytes[at + 2]! > 0;
 };
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-async function stage() {
+async function stage(nested: boolean) {
   const runtime = createAppRuntime({ identityStorage: null });
   const { bus, invocation } = runtime;
+  // The composition root supplies this read before an internal edit can be validated.
+  bus.attachFlattenedGraph(() => runtime.flattened.current());
   const added = await bus.execute("graph.applyPatch", { baseRevision: 0, operations: [
     { op: "addNode", ref: "$mesh", type: "meshFileIn", position: { x: 0, y: 0 }, label: "mesh_stage", parameters: { file: "media/one.glb" } },
     { op: "addNode", ref: "$a", type: "geometry", position: { x: 200, y: 0 }, label: "geometry_a", parameters: { mode: "surface" } },
@@ -76,8 +74,15 @@ async function stage() {
   ] }, invocation);
   expect(added.status).toBe("applied");
   const meshId = added.output.createdIds["$mesh"]!;
-  const saved = await bus.execute("component.saveSelection", { nodeIds: [meshId], name: "Stage" }, invocation);
+  let saved = await bus.execute("component.saveSelection", { nodeIds: [meshId], name: "Stage" }, invocation);
   expect(saved.status).toBe("applied");
+  let internalNodeId = meshId;
+  if (nested) {
+    const inner = saved.output.instanceNodeId!;
+    saved = await bus.execute("component.saveSelection", { nodeIds: [inner], name: "Venue" }, invocation);
+    expect(saved.status).toBe("applied");
+    internalNodeId = toInstance([inner], meshId);
+  }
   const port = saved.output.exposedOutputs[0]!;
   const placed = await bus.execute("component.instantiate", { componentId: saved.output.componentId! }, invocation);
   expect(placed.status).toBe("applied");
@@ -92,37 +97,63 @@ async function stage() {
     { op: "addNode", ref: "$out", type: "output", position: { x: 800, y: 0 }, label: "output_main" },
     { op: "connect", source: { nodeId: "$shot", portId: "out" }, target: { nodeId: "$out", portId: "input" } },
     // The second instance loads the other file: its own override, through the same op.
-    { op: "setParameters", nodeId: second, internalNodeId: meshId, parameters: { file: "media/two.glb" } },
+    { op: "setParameters", nodeId: second, internalNodeId, parameters: { file: "media/two.glb" } },
   ] }, invocation);
   expect(rest.diagnostics).toEqual([]);
   expect(rest.status).toBe("applied");
-  return { runtime, meshId, first, second, shot: rest.output.createdIds["$shot"]! };
+  return { runtime, flatA: toInstance([first], internalNodeId), flatB: toInstance([second], internalNodeId), shot: rest.output.createdIds["$shot"]! };
 }
 
-describe("VN33: a Mesh File In inside a component draws, each instance its own file (Dawn)", () => {
-  it("the loader sizes both instances, and each Geometry draws its own instance's mesh", async () => {
+async function measure({ runtime, flatA, flatB }: Awaited<ReturnType<typeof stage>>): Promise<void> {
+  const files: Record<string, Uint8Array> = { "media/one.glb": ONE, "media/two.glb": TWO };
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    const bytes = files[url];
+    if (bytes === undefined) throw new Error(`Unexpected fixture file: ${url}`);
+    return new Response(new Uint8Array(bytes));
+  }));
+  const live = new Map<string, unknown>();
+  const registerMediaSource = vi.fn<LoomBackend["registerMediaSource"]>((id, source) => {
+    live.set(id, source.currentFrame()?.bytes);
+    return () => live.delete(id);
+  });
+  const backend = { registerMediaSource } as unknown as LoomBackend;
+  const definitionsBefore = JSON.stringify(runtime.components.all());
+  const hook = renderHook(() => {
+    useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
+    const compiled = useGraphCompile(runtime, TIER_B_CAPABILITIES);
+    return useMeshSources(runtime, backend, compiled.flatGraph);
+  });
+  try {
+    await waitFor(() => expect([...live.keys()].sort()).toEqual([
+      meshSourceIdsFor(flatA).points, meshSourceIdsFor(flatA).indices, meshSourceIdsFor(flatB).points, meshSourceIdsFor(flatB).indices,
+    ].sort()), { timeout: 5000 });
+    for (const [id, bytes] of [[flatA, ONE], [flatB, TWO]] as const) {
+      const prepared = prepareMesh(bytes, "");
+      if (prepared === null) throw new Error("Fixture must contain a mesh");
+      expect(runtime.flattened.current().graph.nodes[id]!.parameters).toMatchObject(prepared.facts);
+      const sources = meshSourceIdsFor(id);
+      expect(live.get(sources.points)).toEqual(prepared.points);
+      expect(live.get(sources.indices)).toEqual(prepared.indices);
+    }
+    expect(hook.result.current.diagnostics).toEqual([]);
+    expect(JSON.stringify(runtime.components.all())).toBe(definitionsBefore);
+  } finally { hook.unmount(); }
+  expect([...live]).toEqual([]);
+}
+
+describe("VN33: extracted mesh components load independent files", () => {
+  it.each([false, true])("the app loader sizes both extracted instances (nested=%s)", async nested => {
+    const fixture = await stage(nested);
+    try { await measure(fixture); } finally { fixture.runtime.dispose(); }
+  });
+
+  it.each([false, true])("each Geometry draws only its own instance's mesh on Dawn (nested=%s)", async nested => {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
-    const { runtime, meshId, first, second, shot } = await stage();
+    const fixture = await stage(nested);
+    const { runtime, flatA, flatB, shot } = fixture;
     try {
-      const flatA = `${first}/${meshId}`;
-      const flatB = `${second}/${meshId}`;
-
-      // THE LOADER: the app's hook, reading the files, writing the facts through the bus.
-      const files: Record<string, Uint8Array> = { "media/one.glb": ONE, "media/two.glb": TWO };
-      vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(new Uint8Array(files[url]!))));
-      const live = new Set<string>();
-      const registerMediaSource = vi.fn<LoomBackend["registerMediaSource"]>((id) => { live.add(id); return () => live.delete(id); });
-      const backend = { registerMediaSource } as unknown as LoomBackend;
-      const hook = renderHook(() =>
-        useMeshSources(runtime, backend, useSyncExternalStore(runtime.bus.store.subscribe, () => runtime.flattened.current().graph)),
-      );
-      // The loader feeds a node only once it is sized for the file: both fed is both sized.
-      await waitFor(() => expect([...live].sort()).toEqual([
-        meshSourceIdsFor(flatA).points, meshSourceIdsFor(flatA).indices, meshSourceIdsFor(flatB).points, meshSourceIdsFor(flatB).indices,
-      ].sort()), { timeout: 5000 });
-      expect(hook.result.current.diagnostics).toEqual([]);
-      hook.unmount();
+      await measure(fixture);
 
       const document = runtime.bus.store.getGraph();
       const render = async (scenes: string): Promise<Uint8Array> => {

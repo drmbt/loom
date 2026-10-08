@@ -50,6 +50,11 @@ export function enteredThrough(flatId: NodeId): { readonly instance: NodeId; rea
   return { instance: flatId.slice(0, at), rest: flatId.slice(at + 1) };
 }
 
+/** A flattened node belongs to this node or one of its descendant instances. */
+export function isWithinInstance(flatId: NodeId, instanceId: NodeId): boolean {
+  return flatId === instanceId || flatId.startsWith(`${instanceId}${COMPONENT_ID_SEPARATOR}`);
+}
+
 /**
  * The inverse: the id a node of that instance has inside its definition, or undefined when
  * `flatId` is not a node of that instance (a root node, another instance's, or one nested
@@ -100,7 +105,7 @@ export function parseNodePath(text: string): NodePath | undefined {
   let up = 0;
   while (segments[up] === NODE_PATH_UP) up += 1;
   const names = segments.slice(up);
-  if (names.length === 0 || names.some((name) => name === "" || name === NODE_PATH_UP)) return undefined;
+  if (names.length === 0 || names.some((name) => name === "" || name === "." || name === NODE_PATH_UP)) return undefined;
   return { up, names };
 }
 

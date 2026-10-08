@@ -5,6 +5,12 @@ import type { ComponentId, EdgeId, NodeId, PortId } from "../types/ids.ts";
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import { boundaryTypeFor } from "../../nodes/definitions/component-io.ts";
 import { arePortsCompatible } from "../graph/port-compat.ts";
+import { compareEdgeOrder, edgeOrderKey, type OrderableEdge } from "../graph/edge-order.ts";
+import { readComponentInstance } from "./instance.ts";
+import { toInstance, type InstancePath } from "./addressing.ts";
+import type { ComponentRegistryView } from "./registry.ts";
+import { detectComponentRecursion, describeRecursion } from "./recursion.ts";
+import { liveSourceReferenceTokens } from "../graph/source-references.ts";
 
 /**
  * Save selection as a component (T129, §V79).
@@ -24,6 +30,8 @@ export interface SelectionWiring {
   externalId: PortId;
   /** The endpoint OUTSIDE the selection that reconnects to the instance. */
   outer: { nodeId: NodeId; portId: PortId };
+  /** Retain its slot at the original consumer, including mixed internal/external inputs. */
+  order?: number;
 }
 
 export interface ComponentFromSelection {
@@ -34,6 +42,8 @@ export interface ComponentFromSelection {
   outputWiring: readonly SelectionWiring[];
   /** Edges the parent graph loses: everything with at least one end inside. */
   removedEdgeIds: readonly EdgeId[];
+  /** Original variadic input order, materialized before crossing edges receive new IDs. */
+  edgeOrders: Readonly<Record<EdgeId, number>>;
   /** Where to put the instance node: the centre of what it replaces. */
   position: { x: number; y: number };
   diagnostics: readonly RuntimeDiagnostic[];
@@ -47,6 +57,8 @@ export interface SaveSelectionInput {
   name: string;
   description?: string;
   nodes: NodeRegistryView;
+  /** Needed only when selected instances have input wires crossing the selection. */
+  components?: Pick<ComponentRegistryView, "get" | "graphOf">;
   /**
    * Author-chosen SOCKET NAMES, keyed by the internal endpoint that crosses the boundary
    * (`"<nodeId>.<portId>"`) — `{ "matte.input": "depth" }` (T1194).
@@ -82,6 +94,99 @@ function uniqueId(taken: Set<PortId>, preferred: PortId): PortId {
   return id;
 }
 
+/** Fixed legacy exposures can merge outer wires with hidden variadic feeds. */
+function fixedInputOrderProblems(input: SaveSelectionInput, inside: ReadonlySet<NodeId>): RuntimeDiagnostic[] {
+  const crossings = Object.values(input.graph.edges).filter(edge => inside.has(edge.target.nodeId) && !inside.has(edge.source.nodeId) &&
+    readComponentInstance(input.graph.nodes[edge.target.nodeId]!) !== null);
+  if (crossings.length === 0) return [];
+  const diagnostics: RuntimeDiagnostic[] = [];
+  const refuse = (nodeId: NodeId, message: string, suggestion = "Give the mixed inputs distinct Order values, or route the input through an In boundary, before saving the selection."): void => {
+    diagnostics.push({ severity: "error", code: "component.selection.inputOrder", nodeId, message, suggestion });
+  };
+  const components = input.components;
+  if (components === undefined) {
+    refuse(crossings[0]!.target.nodeId, "Cannot check the selected component's internal input order without its catalogue.", "Pass the component catalogue to the selection builder.");
+    return diagnostics;
+  }
+  const selectedGraph = { ...input.graph, nodes: Object.fromEntries(crossings.map(edge => [edge.target.nodeId, input.graph.nodes[edge.target.nodeId]!])) };
+  const recursion = detectComponentRecursion({ componentId: null, graph: selectedGraph, source: components });
+  if (recursion !== null) {
+    refuse(crossings[0]!.target.nodeId, describeRecursion(recursion), "Repair the recursive component before saving the selection.");
+    return diagnostics;
+  }
+  type Feed = GraphEdge & { crossing: boolean };
+  const edgeIndexes = new Map<GraphDocument, Map<NodeId, Map<PortId, GraphEdge[]>>>();
+  const feedsAt = (graph: GraphDocument, path: InstancePath, nodeId: NodeId, portId: PortId): Feed[] => {
+    let index = edgeIndexes.get(graph);
+    if (index === undefined) {
+      index = new Map();
+      edgeIndexes.set(graph, index);
+      for (const edge of Object.values(graph.edges)) {
+        const ports = index.get(edge.target.nodeId) ?? new Map<PortId, GraphEdge[]>();
+        index.set(edge.target.nodeId, ports);
+        const edges = ports.get(edge.target.portId) ?? [];
+        ports.set(edge.target.portId, edges);
+        edges.push(edge);
+      }
+    }
+    return (index.get(nodeId)?.get(portId) ?? []).map(edge => ({ ...edge,
+      id: toInstance(path, edge.id),
+      source: { ...edge.source, nodeId: toInstance(path, edge.source.nodeId) },
+      target: { ...edge.target, nodeId: toInstance(path, edge.target.nodeId) },
+      crossing: path.length === 0 && inside.has(nodeId) && !inside.has(edge.source.nodeId),
+    }));
+  };
+  const checked = new Set<EdgeId>();
+  const walk = (graph: GraphDocument, path: InstancePath, nodeId: NodeId, portId: PortId, carried: ReadonlyMap<PortId, readonly Feed[]>, owner: NodeId): void => {
+    const node = graph.nodes[nodeId];
+    if (node === undefined) {
+      refuse(owner, `Cannot resolve internal input "${toInstance(path, nodeId)}.${portId}".`);
+      return;
+    }
+    const instance = readComponentInstance(node);
+    if (instance !== null) {
+      const definition = components.get(instance.componentId, instance.version);
+      const exposed = definition?.inputs.find(port => port.externalId === portId);
+      if (definition === undefined || exposed === undefined) {
+        refuse(owner, `Cannot resolve exposed input "${toInstance(path, nodeId)}.${portId}" from its registered component.`);
+        return;
+      }
+      // A selected whole input is exclusive. A deeper one can still carry a fixed ancestor's feeds.
+      if (path.length === 0 && exposed.variadic === true) return;
+      const forwarded = new Map<NodeId, Map<PortId, Feed[]>>();
+      for (const port of definition.inputs) {
+        const feeds = [...(carried.get(port.externalId) ?? []), ...feedsAt(graph, path, nodeId, port.externalId)];
+        const ports = forwarded.get(port.nodeId) ?? new Map<PortId, Feed[]>();
+        forwarded.set(port.nodeId, ports);
+        ports.set(port.portId, [...(ports.get(port.portId) ?? []), ...feeds]);
+      }
+      walk(definition.graph, [...path, nodeId], exposed.nodeId, exposed.portId, forwarded.get(exposed.nodeId) ?? new Map(), owner);
+      return;
+    }
+    // An In boundary owns its outgoing slot order; an incoming single wire cannot reorder it.
+    if (input.nodes.port(node.type, portId, "input")?.variadic !== true) return;
+    const flatId = toInstance(path, nodeId);
+    const feeds = [...(carried.get(portId) ?? []), ...feedsAt(graph, path, nodeId, portId)].map(feed => ({ ...feed, target: { nodeId: flatId, portId } }));
+    const wires = Object.fromEntries(feeds.map(feed => [feed.id, feed]));
+    const peers: OrderableEdge[] = [...feeds];
+    for (const spec of input.nodes.get(node.type)?.sourceReferences ?? []) {
+      if (spec.input !== portId) continue;
+      liveSourceReferenceTokens(spec, { ...node, id: flatId }, wires).forEach((_name, index) => {
+        peers.push({ id: spec.list === true ? `ref:${flatId}:${spec.parameter}:${index}` : `ref:${flatId}`,
+          ...(spec.list === true ? { order: index } : {}) });
+      });
+    }
+    for (const feed of feeds) {
+      if (!feed.crossing || checked.has(feed.id)) continue;
+      checked.add(feed.id);
+      const peer = peers.find(other => other.id !== feed.id && edgeOrderKey(other) === edgeOrderKey(feed));
+      if (peer !== undefined) refuse(owner, `Cannot save the selection: "${toInstance(path, nodeId)}.${portId}" orders "${feed.id}" and "${peer.id}" by their IDs, which wrapping would change.`);
+    }
+  };
+  for (const edge of crossings) walk(input.graph, [], edge.target.nodeId, edge.target.portId, new Map(), edge.target.nodeId);
+  return diagnostics;
+}
+
 export function buildComponentFromSelection(input: SaveSelectionInput): ComponentFromSelection {
   const diagnostics: RuntimeDiagnostic[] = [];
   /** The author's name for the socket this endpoint crosses on, else the port id (T1194). */
@@ -112,8 +217,40 @@ export function buildComponentFromSelection(input: SaveSelectionInput): Componen
     // keeping them means a diagnostic path still names something the author recognises.
     nodes[nodeId] = node;
   }
+  diagnostics.push(...fixedInputOrderProblems(input, inside));
 
   const edges: Record<EdgeId, GraphEdge> = {};
+  // An absent or tied order is resolved by edge ID. Reminting a crossing edge would
+  // change that decision, so preserve the ORIGINAL total order for the whole input,
+  // including peers left outside the selection and feeds that move inside it.
+  const inputsByNode = new Map<NodeId, Map<PortId, { edges: GraphEdge[]; crossed: boolean }>>();
+  for (const edge of Object.values(input.graph.edges)) {
+    const target = input.graph.nodes[edge.target.nodeId];
+    if (target === undefined || input.nodes.port(target.type, edge.target.portId, "input")?.variadic !== true) continue;
+    let ports = inputsByNode.get(target.id);
+    if (ports === undefined) {
+      ports = new Map();
+      inputsByNode.set(target.id, ports);
+    }
+    let group = ports.get(edge.target.portId);
+    if (group === undefined) {
+      group = { edges: [], crossed: false };
+      ports.set(edge.target.portId, group);
+    }
+    group.edges.push(edge);
+    group.crossed ||= inside.has(edge.source.nodeId) !== inside.has(edge.target.nodeId);
+  }
+  const edgeOrders: Record<EdgeId, number> = {};
+  for (const ports of inputsByNode.values()) {
+    for (const group of ports.values()) {
+      if (!group.crossed || group.edges.length < 2) continue;
+      const declared = group.edges.map(edgeOrderKey);
+      // Distinct sort keys already survive reminting. Keep their values, which can
+      // also position a component's incoming edge relative to a fixed internal feed.
+      if (new Set(declared).size === declared.length) continue;
+      group.edges.sort(compareEdgeOrder).forEach((edge, index) => { edgeOrders[edge.id] = index; });
+    }
+  }
   const removedEdgeIds: EdgeId[] = [];
   const inputs: ExposedPort[] = [];
   const outputs: ExposedPort[] = [];
@@ -159,8 +296,10 @@ export function buildComponentFromSelection(input: SaveSelectionInput): Componen
   };
 
   for (const edgeId of Object.keys(input.graph.edges).sort()) {
-    const edge = input.graph.edges[edgeId];
-    if (edge === undefined) continue;
+    const original = input.graph.edges[edgeId];
+    if (original === undefined) continue;
+    const order = edgeOrders[edgeId];
+    const edge = order === undefined ? original : { ...original, order };
     const sourceInside = inside.has(edge.source.nodeId);
     const targetInside = inside.has(edge.target.nodeId);
     if (!sourceInside && !targetInside) continue;
@@ -192,6 +331,7 @@ export function buildComponentFromSelection(input: SaveSelectionInput): Componen
           id: feedId,
           source: { nodeId: standing.nodeId, portId: "out" },
           target: { ...edge.target },
+          ...(edge.order === undefined ? {} : { order: edge.order }),
         };
         continue;
       }
@@ -218,10 +358,11 @@ export function buildComponentFromSelection(input: SaveSelectionInput): Componen
           id: feedId,
           source: { nodeId: boundaryId, portId: "out" },
           target: { ...edge.target },
+          ...(edge.order === undefined ? {} : { order: edge.order }),
         };
         // No exposure row: the register-time derivation mints the socket from the In
         // node itself, named by its label — one mapping, not two (§V109).
-        inputWiring.push({ externalId: name, outer: { ...edge.source } });
+        inputWiring.push({ externalId: name, outer: { ...edge.source }, ...(edge.order === undefined ? {} : { order: edge.order }) });
         continue;
       }
 
@@ -233,7 +374,7 @@ export function buildComponentFromSelection(input: SaveSelectionInput): Componen
         nodeId: edge.target.nodeId,
         portId: edge.target.portId,
       });
-      inputWiring.push({ externalId, outer: { ...edge.source } });
+      inputWiring.push({ externalId, outer: { ...edge.source }, ...(edge.order === undefined ? {} : { order: edge.order }) });
       continue;
     }
 
@@ -251,6 +392,7 @@ export function buildComponentFromSelection(input: SaveSelectionInput): Componen
       outputWiring.push({
         externalId: (nodes[standingOut] as GraphNode).label ?? standingOut,
         outer: { ...edge.target },
+        ...(edge.order === undefined ? {} : { order: edge.order }),
       });
       continue;
     }
@@ -276,7 +418,7 @@ export function buildComponentFromSelection(input: SaveSelectionInput): Componen
         source: { ...edge.source },
         target: { nodeId: boundaryId, portId: "in" },
       };
-      outputWiring.push({ externalId: name, outer: { ...edge.target } });
+      outputWiring.push({ externalId: name, outer: { ...edge.target }, ...(edge.order === undefined ? {} : { order: edge.order }) });
       continue;
     }
 
@@ -291,7 +433,7 @@ export function buildComponentFromSelection(input: SaveSelectionInput): Componen
         portId: edge.source.portId,
       });
     }
-    outputWiring.push({ externalId, outer: { ...edge.target } });
+    outputWiring.push({ externalId, outer: { ...edge.target }, ...(edge.order === undefined ? {} : { order: edge.order }) });
   }
 
   if (inside.size === 0) {
@@ -330,6 +472,7 @@ export function buildComponentFromSelection(input: SaveSelectionInput): Componen
     inputWiring,
     outputWiring,
     removedEdgeIds,
+    edgeOrders,
     position: { x: Math.round(x / count), y: Math.round(y / count) },
     diagnostics,
   };

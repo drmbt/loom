@@ -36,6 +36,13 @@ export function parseInternalParameterPath(path: string): { nodeId: NodeId; key:
   return { nodeId: path.slice(0, slash), key: path.slice(slash + 1) };
 }
 
+/** An override's full descendant address: `inner/mesh/vertices` names `inner/mesh`, key `vertices`. */
+export function parseDescendantParameterPath(path: string): { nodeId: NodeId; key: string } | null {
+  const slash = path.lastIndexOf("/");
+  if (slash <= 0 || slash === path.length - 1) return null;
+  return { nodeId: path.slice(0, slash), key: path.slice(slash + 1) };
+}
+
 function readRecord(value: unknown): Record<string, ParameterValue> | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   return value as Record<string, ParameterValue>;

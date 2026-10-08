@@ -87,6 +87,77 @@ const threeProjectors = (projectors: string): GraphNode[] => [
 ];
 
 describe("a path names one copy of a component's node (VN35)", () => {
+  it("resolves a single source path whose target label contains spaces", () => {
+    const cameraRig: GraphComponentDefinition = {
+      ...projector, componentId: "cameraRig", name: "Camera Rig",
+      graph: graphOf([testNode("cam", "camera", { label: "Camera One" })]),
+      outputs: [{ externalId: "out", label: "Out", nodeId: "cam", portId: "out" }],
+    };
+    const { bound, synthesized } = flatten([cameraRig], [
+      instance("a", "cameraRig", "rig_a"),
+      testNode("shot", "render", { label: "render_stage", parameters: { scenes: "", lights: "", camera: "rig_a/Camera One" } }),
+    ]);
+    expect(synthesized.diagnostics).toEqual([]);
+    expect(bound("shot", "camera")).toEqual(["a/cam"]);
+  });
+
+  it("resolves published expressions in the scope where the instance page was authored", () => {
+    const reader: GraphComponentDefinition = {
+      componentId: "reader", version: 1, name: "Reader",
+      graph: graphOf([testNode("value", "constant", { label: "constant_value" })]),
+      inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "value", portId: "out" }],
+      parameters: [{ key: "gain", definition: { type: "number", label: "Gain", default: 0 }, targets: [{ nodeId: "value", key: "value" }] }],
+    };
+    const { flattened } = flatten([projector, reader], [
+      ...threeProjectors(""),
+      { ...instance("reader", "reader", "reader_a"), parameters: { gain: expressionSlot("op('projector_right/projector_beam').par.brightness", 0) } },
+    ]);
+    const slot = flattened.graph.nodes["reader/value"]!.parameters.value as ParameterSlot;
+    expect(slot.bindings.expression).toEqual({ kind: "expression", source: `op('${flattened.graph.nodes["right/beam"]!.label}').par.brightness` });
+  });
+
+  it("keeps a nested instance's own published expression in its enclosing definition's scope", () => {
+    const reader: GraphComponentDefinition = {
+      componentId: "reader", version: 1, name: "Reader",
+      graph: graphOf([testNode("value", "constant", { label: "constant_value" })]),
+      inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "value", portId: "out" }],
+      parameters: [{ key: "gain", definition: { type: "number", label: "Gain", default: 0 }, targets: [{ nodeId: "value", key: "value" }] }],
+    };
+    const outer: GraphComponentDefinition = {
+      componentId: "outer", version: 1, name: "Outer",
+      graph: graphOf([
+        instance("lamp", "projector", "projector_local"),
+        { ...instance("reader", "reader", "reader_inner"), parameters: { gain: expressionSlot("op('projector_local/projector_beam').par.brightness", 0) } },
+      ]), inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "reader", portId: "out" }], parameters: [],
+    };
+    const { flattened } = flatten([projector, reader, outer], [instance("a", "outer", "outer_a"), instance("b", "outer", "outer_b")]);
+    for (const copy of ["a", "b"]) {
+      const slot = flattened.graph.nodes[`${copy}/reader/value`]!.parameters.value as ParameterSlot;
+      expect(slot.bindings.expression).toEqual({ kind: "expression", source: `op('${flattened.graph.nodes[`${copy}/lamp/beam`]!.label}').par.brightness` });
+    }
+  });
+
+  it("keeps a parent-bound source path in its root authoring scope", () => {
+    const cameraRig: GraphComponentDefinition = {
+      ...projector, componentId: "cameraRig", name: "Camera Rig",
+      graph: graphOf([testNode("cam", "camera", { label: "camera_stage" })]),
+      outputs: [{ externalId: "out", label: "Out", nodeId: "cam", portId: "out" }],
+    };
+    const reader: GraphComponentDefinition = {
+      componentId: "reader", version: 1, name: "Reader",
+      graph: graphOf([testNode("shot", "render", { label: "render_reader", parameters: { scenes: "", lights: "", camera: {
+        mode: "bind", bindings: { static: { kind: "static", value: "" }, bind: { kind: "bind", ref: "parent.camera" } },
+      } } })]), inputs: [], outputs: [{ externalId: "out", label: "Out", nodeId: "shot", portId: "out" }],
+      parameters: [{ key: "camera", definition: { type: "string", label: "Camera", default: "" }, targets: [] }],
+    };
+    const { synthesized, bound } = flatten([cameraRig, reader], [
+      instance("camera", "cameraRig", "rig_b"),
+      { ...instance("reader", "reader", "reader_a"), parameters: { camera: "rig_b/camera_stage" } },
+    ]);
+    expect(synthesized.diagnostics).toEqual([]);
+    expect(bound("reader/shot", "camera")).toEqual(["camera/cam"]);
+  });
+
   it("binds three projectors in three instances, one each, in list order", () => {
     const { bound, synthesized } = flatten(
       [projector],

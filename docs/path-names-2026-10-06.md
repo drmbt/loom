@@ -34,6 +34,12 @@ all. No diagnostic is raised.
    - Flatten already knows every level's authored labels, every instance's label and its scope.
    - After the walk, each path reference on the flat graph is rewritten to the target's
      (unique) flat label.
+   - A projected parameter retains its authoring scope. A published expression written on
+     a root instance page resolves there even when its value fans out to an internal node;
+     a nested page's own expression resolves in that instance's enclosing definition.
+     Parent-bound source strings retain the same scope. Internal overrides use their target
+     node's scope. Single-value source references are resolved whole, so names with spaces
+     remain valid; only list-valued source parameters are split into tokens.
    - Every downstream reader stays unchanged: source-reference synthesis, the `op()` reader,
      liveness, channels, and the dependency walk over the flat graph.
    - A path that does not resolve is left as written and hits the existing refusals:
@@ -41,6 +47,11 @@ all. No diagnostic is raised.
      to §V108 with its reason.
    - Parsing and resolving a path go in `addressing.ts` (`parseNodePath`, `resolveNodePath`), so
      `flat-id-joiner.test.ts` stays green and there is still only one joiner.
+   - The patch gate validates a hypothetical draft using this same component projection.
+     The validator lives on `CommandContext`, so parameter commands, renames and graph
+     patches share it. A definition edit is projected into its linked instances without
+     changing the catalogue. A path that closes a parameter cycle is rejected atomically,
+     including dry runs; an unrelated edit can still repair a file carrying another cycle.
    - Covered: `op('…')` in expression bindings, and every `SOURCE_REFERENCE_PARAMETERS` entry
      (Render scenes/camera/lights/projectors, Light casters, Geometry material, Feedback source,
      the renderers' camera, Camera Blur, Window, Layer).
@@ -93,7 +104,7 @@ all. No diagnostic is raised.
 ## Out of scope (rows that already exist or follow)
 
 - `parent()` in expressions (VN36).
-- Nested override keys (VN33's codec).
+- Internal parameter writes use main's validated descendant API, including nested paths.
 - Paths in preset targets, panel boards, cue lists and Channel In.
 - The inspector's authored-graph `op()` read reaching into an instance. A bare name does not reach
   there today either, so this is not a regression. It's for stage 2 or a follow-up row.
@@ -115,7 +126,7 @@ all. No diagnostic is raised.
   - The label refusal.
   - The cross-scope warning firing for inward bare names and staying silent for outward ones.
 
-## Measured
+## Original VN35 measurements
 
 - **Shipped documents.** Every example and starter component, and every project under
   `projects/`.
@@ -125,3 +136,12 @@ all. No diagnostic is raised.
     its own change.
 - **Cost.** The pass adds about 0.15 ms to a flatten of stage-previz-8 (0.53 to 0.68 ms on an
   M-series Mac). Flatten runs once per document revision, not once per frame.
+
+## Landing validation
+
+The branch is ported onto main without #4's unchecked writer or nested-mesh refusal.
+Regression checks cover single paths with spaces, published and parent-bound scopes,
+command-time cycle rejection through parameter commands and definition sessions, renames,
+dry runs, and repair of unrelated nodes. A CPU check builds the three-projector fixture
+through the real app commands and verifies its distinct bindings, aims and colours. The
+Dawn pixel checks still require a real adapter and fail explicitly when it is unavailable.

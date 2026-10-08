@@ -2,13 +2,15 @@ import type { GraphEdge, GraphNode, ProjectDocument } from "../../domain/types/g
 import type { StoredParameter } from "../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../domain/types/schemas.ts";
 import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../examples/documents/builders.ts";
+import { bloomPyramidGraph } from "../../examples/bloom-pyramid.ts";
 import type { FurnaceSceneFacts } from "./scene-facts.ts";
 import { markerAt } from "./scene-facts.ts";
 import { RIG_ATTRIBUTES, rigKernel } from "./rig-kernel.ts";
 import { SPARK_ATTRIBUTES, sparksKernel } from "./sparks-kernel.ts";
 import { SKY_SURFACE_WGSL, plantSurfaceWgsl } from "./surface-material.ts";
 import { AIR_COMPOSITE_WGSL, KEY_DIRECTION, SCATTER_LIGHTS, atmosphereWgsl } from "./atmosphere.ts";
-import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL, GRADE_WGSL } from "./post.ts";
+import { BLOOM_DOWN_WGSL } from "../../nodes/shaders/bloom-pyramid.wgsl.ts";
+import { GRADE_WGSL } from "./post.ts";
 import { SHOP_ENVIRONMENT_WGSL } from "./environment.ts";
 import { DOF_WGSL, GTAO_WGSL, MOTION_BLUR_WGSL, SSR_WGSL } from "./screen-space.ts";
 import { shotPath } from "./camera-path.ts";
@@ -236,6 +238,12 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
           }),
   };
 
+  const bloom = bloomPyramidGraph({
+    ids: { bright: "bright", down: ["bloomDown1", "bloomDown2", "bloomDown3", "bloomDown4"], up: ["bloomUp0", "bloomUp1", "bloomUp2", "bloomUp3"] },
+    edgePrefix: "bloom",
+    layout: { bright: [-1200, 300], down: [-900, 300], up: [-600, 150], step: [0, 150] },
+    threshold: 2, knee: 1.5, firstClampLuma: 1, lower: 1,
+  });
   const nodes: GraphNode[] = [
     // ── Audio (a stand-in track until the song arrives) ──
     node("clip", "audioFileIn", [-4200, 1400], { file: options.audioUrl ?? "media/furnace/clankz3.wav", playMode: "timeline" }, { label: "audiofile_clip" }),
@@ -538,24 +546,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
       freeze: expressionSlot(`(${direction.energy} > 0.92) * (${HIT("kickCount")} > 0.9) * ${glitchBudget}`, 0),
     }, { label: "wgsl_glitch", resolution: { mode: "project" } }),
     node("history", "feedback", [900, 300], { source: "wgsl_glitch" }, { label: "feedback_history" }),
-    node("bright", "customWgsl", [-1200, 300], { source: BRIGHT_PASS_WGSL, threshold: 2, knee: 1.5 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }),
-    // The bloom PYRAMID (post.ts): four 13-tap downsamples, then tent upsamples back up,
-    // each adding its own level — a round glow at every width, never a stretched texel.
-    ...[1, 2, 3, 4].map((level) =>
-      node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, {
-        label: `wgsl_bloomdown${level}`,
-        // A scale is relative to the node's INPUT (compiler/resolution.ts): each level halves
-        // the one above, so the pyramid runs 1/4 … 1/32 of the frame (T1404b).
-        resolution: { mode: "scale", factor: 0.5 },
-      }),
-    ),
-    ...[0, 1, 2, 3].map((level) =>
-      node(`bloomUp${level}`, "customWgslMulti", [-600, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, {
-        label: `wgsl_bloomup${level}`,
-        // Doubles its input (the level below), landing back on its own level's size.
-        resolution: { mode: "scale", factor: 2 },
-      }),
-    ),
+    ...bloom.nodes,
     node("glow", "add", [-300, 0], { opacity: 0.35 }, { label: "add_glow", resolution: { mode: "project" } }),
     // Auto-exposure (T1378b): meter the frame's log-average luminance, adapt toward a key
     // like an eye does — faster when the scene brightens than when it darkens — and hand the
@@ -619,13 +610,7 @@ export function furnaceDocument(facts: FurnaceSceneFacts, options: FurnaceDocume
     edge("lens-shutter", ["lens", "out"], ["shutter", "input"]),
     edge("depth-shutter", ["shot", "depth"], ["shutter", "more"], 0),
     edge("shutter-bright", ["shutter", "out"], ["bright", "input"]),
-    ...[1, 2, 3, 4].map((level) =>
-      edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]),
-    ),
-    ...[0, 1, 2, 3].flatMap((level) => [
-      edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]),
-      edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0),
-    ]),
+    ...bloom.edges,
     // The bloom is the FRONT layer: Add's opacity scales in1, so it must be the glow, never the picture.
     edge("shutter-glow", ["shutter", "out"], ["glow", "in2"]),
     edge("sum-glow", ["bloomUp0", "out"], ["glow", "in1"]),

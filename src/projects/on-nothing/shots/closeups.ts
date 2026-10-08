@@ -3,7 +3,8 @@ import type { StoredParameter } from "../../../domain/types/parameters.ts";
 import { SCHEMA_VERSION } from "../../../domain/types/schemas.ts";
 import { LIMITS, edge, expressionSlot, graph, node as buildNode, settings } from "../../../examples/documents/builders.ts";
 import { kindOfType } from "../../../domain/graph/node-kinds.ts";
-import { BLOOM_DOWN_WGSL, BLOOM_UP_WGSL, BRIGHT_PASS_WGSL } from "../../furnace/post.ts";
+import { BLOOM_DOWN_WGSL, BRIGHT_PASS_WGSL } from "../../../nodes/shaders/bloom-pyramid.wgsl.ts";
+import { bloomPyramidGraph } from "../../../examples/bloom-pyramid.ts";
 import { GTAO_WGSL } from "../../furnace/screen-space.ts";
 import { ENVIRONMENT_HDRI_WGSL, ENVIRONMENT_WGSL, HEADLIGHT_COOKIE_WGSL, hazeLights, hazeWgsl } from "../atmosphere.ts";
 import { GLOSSY_SSR_WGSL } from "../reflections.ts";
@@ -508,17 +509,14 @@ export function closeupDocument(facts: OnNothingFacts, options: CloseupOptions):
     tint: [0.92, 0.98, 1, 1],
   }, [-1200, 0]);
   edges.push(edge("soft-streak", [shot === "sneaker" ? "hotSoftest" : "hotSoft", "out"], ["streak", "bright"]));
-  nodes.push(node("bright", "customWgsl", [-1300, 300], { source: BRIGHT_PASS_WGSL, threshold: 1.4, knee: 0.8 }, { label: "wgsl_bright", resolution: { mode: "scale", factor: 0.5 } }));
+  const bloom = bloomPyramidGraph({
+    ids: { bright: "bright", down: ["bloomDown1", "bloomDown2", "bloomDown3", "bloomDown4"], up: ["bloomUp0", "bloomUp1", "bloomUp2", "bloomUp3"] },
+    edgePrefix: "bloom", layout: { bright: [-1300, 300], down: [-900, 300], up: [-700, 150], step: [0, 150] },
+    threshold: 1.4, knee: 0.8, firstClampLuma: 1, lower: 1,
+  });
+  nodes.push(...bloom.nodes);
+  edges.push(...bloom.edges);
   edges.push(edge("scene-bright", scene, ["bright", "input"]));
-  for (const level of [1, 2, 3, 4]) {
-    nodes.push(node(`bloomDown${level}`, "customWgsl", [-900, 150 + level * 150], { source: BLOOM_DOWN_WGSL, clampLuma: level === 1 ? 1 : 0 }, { label: `wgsl_bloomdown${level}`, resolution: { mode: "scale", factor: 0.5 } }));
-    edges.push(edge(`bloom-down${level}`, [level === 1 ? "bright" : `bloomDown${level - 1}`, "out"], [`bloomDown${level}`, "input"]));
-  }
-  for (const level of [0, 1, 2, 3]) {
-    nodes.push(node(`bloomUp${level}`, "customWgslMulti", [-700, 150 + level * 150], { source: BLOOM_UP_WGSL, lower: 1 }, { label: `wgsl_bloomup${level}`, resolution: { mode: "scale", factor: 2 } }));
-    edges.push(edge(`bloom-up${level}-lower`, [level === 3 ? "bloomDown4" : `bloomUp${level + 1}`, "out"], [`bloomUp${level}`, "input"]));
-    edges.push(edge(`bloom-up${level}-own`, [level === 0 ? "bright" : `bloomDown${level}`, "out"], [`bloomUp${level}`, "more"], 0));
-  }
   pass("bloom", BLOOM_ADD_WGSL, { gain: look.bloom }, [["bloomUp0", "out"]], [-600, 0]);
 
   // ── Lens and grade (stock) ──

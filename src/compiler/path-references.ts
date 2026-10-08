@@ -41,6 +41,8 @@ export interface PathReferenceInput {
   readonly scopeOf: ReadonlyMap<NodeId, string>;
   /** Each flattened node's name as written in its own graph, before B41's uniquing. */
   readonly authoredOf: ReadonlyMap<NodeId, string>;
+  /** Scope where each parameter value was authored, retained through publication and parent binds. */
+  readonly parameterScopes: ReadonlyMap<NodeId, Readonly<Record<string, string>>>;
 }
 
 interface Crossing {
@@ -117,13 +119,14 @@ export function resolvePathReferences(input: PathReferenceInput): RuntimeDiagnos
     if (scope === undefined) continue;
     let parameters: Record<string, GraphNode["parameters"][string]> | undefined;
     const crossings = new Map<string, { crossing: Crossing; where: string[] }>();
+    const scopeFor = (key: string): string => input.parameterScopes.get(nodeId)?.[key] ?? scope;
     const note = (written: string, where: string): void => {
       const known = crossings.get(written);
       if (known !== undefined) {
         if (!known.where.includes(where)) known.where.push(where);
         return;
       }
-      const crossing = crossesInto(written, scope);
+      const crossing = crossesInto(written, scopeFor(where));
       if (crossing !== undefined) crossings.set(written, { crossing, where: [where] });
     };
     const write = (key: string, value: GraphNode["parameters"][string]): void => {
@@ -138,10 +141,9 @@ export function resolvePathReferences(input: PathReferenceInput): RuntimeDiagnos
         note(token, spec.parameter);
       }
       if (!isNodePath(stored)) continue;
-      const rewritten = stored
-        .split(/([\s,]+)/)
-        .map((piece) => resolved(piece.trim(), scope) ?? piece)
-        .join("");
+      const rewritten = spec.list === true
+        ? stored.split(/([\s,]+)/).map((piece) => resolved(piece.trim(), scopeFor(spec.parameter)) ?? piece).join("")
+        : resolved(stored.trim(), scopeFor(spec.parameter)) ?? stored;
       if (rewritten !== stored) write(spec.parameter, rewritten);
     }
 
@@ -152,7 +154,7 @@ export function resolvePathReferences(input: PathReferenceInput): RuntimeDiagnos
       if (binding?.kind !== "expression") continue;
       const source = binding.source.replace(OP_REFERENCE, (match, quote: string, written: string) => {
         if (stored.mode === "expression") note(written, key);
-        const label = resolved(written, scope);
+        const label = resolved(written, scopeFor(key));
         return label === undefined ? match : `op(${quote}${label}${quote})`;
       });
       if (source !== binding.source) {
