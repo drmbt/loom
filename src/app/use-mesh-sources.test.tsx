@@ -100,11 +100,14 @@ describe("mesh file source bindings", () => {
         expect(written.status).toBe("applied");
       }
       const definitionsBefore = JSON.stringify(runtime.components.all());
-      const hook = renderHook(() => {
+      const stateOf = () => instances.map(id => JSON.stringify(runtime.bus.store.getGraph().nodes[id]!.state));
+      const beforeMeasurement = stateOf();
+      const mountLoader = () => renderHook(() => {
         useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
         const compiled = useGraphCompile(runtime, TIER_B_CAPABILITIES);
         return useMeshSources(runtime, backend, compiled.flatGraph);
       });
+      let hook = mountLoader();
       await waitFor(() => {
         const flat = runtime.flattened.current().graph;
         for (const [index, owner] of instances.entries()) {
@@ -120,6 +123,24 @@ describe("mesh file source bindings", () => {
       });
       expect(hook.result.current.diagnostics).toEqual([]);
       expect(fetchFile).toHaveBeenCalledTimes(2);
+      // PR #4: each loader measurement is one undo step on its owning instance.
+      // Stop the loader while undoing so it cannot immediately measure again.
+      hook.unmount();
+      const measured = stateOf();
+      expect(measured.filter((state, index) => state !== beforeMeasurement[index])).toHaveLength(2);
+      expect((await runtime.bus.execute("graph.undo", {}, runtime.invocation)).status).toBe("applied");
+      expect(stateOf().filter((state, index) => state === beforeMeasurement[index])).toHaveLength(1);
+      expect((await runtime.bus.execute("graph.undo", {}, runtime.invocation)).status).toBe("applied");
+      expect(stateOf()).toEqual(beforeMeasurement);
+      expect(JSON.stringify(runtime.components.all())).toBe(definitionsBefore);
+      for (let step = 0; step < 2; step++) {
+        expect((await runtime.bus.execute("graph.redo", {}, runtime.invocation)).status).toBe("applied");
+      }
+      expect(stateOf()).toEqual(measured);
+      const beforeRemount = registerMediaSource.mock.calls.length;
+      hook = mountLoader();
+      await waitFor(() => expect(registerMediaSource).toHaveBeenCalledTimes(beforeRemount + 4));
+      expect(fetchFile).toHaveBeenCalledTimes(4);
       const firstFacts = runtime.flattened.current().graph.nodes[`${instances[0]}/${nested ? "inner/" : ""}mesh`]!.parameters;
       await act(async () => {
         const changed = await runtime.bus.execute("graph.applyPatch", { baseRevision: runtime.bus.store.getRevision(), operations: [
@@ -134,7 +155,7 @@ describe("mesh file source bindings", () => {
         expect(call?.[1].currentFrame()?.bytes).toEqual(movedMesh.points);
       });
       expect(runtime.flattened.current().graph.nodes[`${instances[0]}/${nested ? "inner/" : ""}mesh`]!.parameters).toEqual(firstFacts);
-      expect(fetchFile).toHaveBeenCalledTimes(3);
+      expect(fetchFile).toHaveBeenCalledTimes(5);
       expect(JSON.stringify(runtime.components.all())).toBe(definitionsBefore);
       hook.unmount();
       expect(unregister).toHaveBeenCalledTimes(registerMediaSource.mock.calls.length);
