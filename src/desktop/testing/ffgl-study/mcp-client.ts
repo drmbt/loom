@@ -10,7 +10,8 @@ export interface McpContent { readonly type: string; readonly text?: string; rea
 export interface McpToolResult { readonly content: readonly McpContent[]; readonly isError?: boolean }
 
 export const ARENA_MCP_SERVER = process.env["RESOLUME_MCP_SERVER"] ?? "/Applications/Resolume Arena/mcp/resolume_arena_mcp_server";
-const REFUSED_ACTIONS = new Set(["save", "save_as", "open", "new", "clear_clips"]);
+/** Composition-level actions that need a person's confirmation; the study never sends them. */
+const REFUSED_COMPOSITION_ACTIONS = new Set(["save", "save_as", "open", "new"]);
 
 export class McpClient {
   private child: ChildProcessWithoutNullStreams;
@@ -51,7 +52,8 @@ export class McpClient {
 
   /** Calls a tool; an MCP-level error becomes a thrown Error with the server's text. */
   async tool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
-    if (typeof args["action"] === "string" && REFUSED_ACTIONS.has(args["action"])) throw new Error(`The study never sends ${name}.${args["action"]}`);
+    if ((name === "composition" && REFUSED_COMPOSITION_ACTIONS.has(String(args["action"]))) || (name === "layer" && /^clear/.test(String(args["action"]))))
+      throw new Error(`The study never sends ${name}.${String(args["action"])}`);
     const result = (await this.request("tools/call", { name, arguments: args })) as McpToolResult;
     if (result.isError) throw new Error(`${name} ${JSON.stringify(args)}: ${result.content.map(c => c.text ?? "").join(" ")}`);
     return result;

@@ -67,6 +67,12 @@ export interface StudyResult {
   readonly costs: readonly StudyFrameCost[];
   /** Set by a backend that can capture only parts of a frame (Resolume's native-pixel crops). */
   readonly coverage?: readonly StudyRegion[];
+  /**
+   * What the plugin was actually given, where that differs from the run's input (Arena
+   * re-encodes a still image on import). Over `coverage` only. The harness re-runs the other
+   * backends on THIS input, so a comparison measures the plugin, not the import.
+   */
+  readonly inputSeen?: StudyImage;
 }
 
 /** A parameter as a host PRESENTS it (Resolume collapses an HSBA quad into one colour, truncates names). */

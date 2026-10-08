@@ -70,7 +70,7 @@ export interface StudyReport {
 
 /** Bounds for comparing a backend against native, per backend id. Exact unless a reason says otherwise. */
 export const PIXEL_BOUNDS: Readonly<Record<string, OracleBound>> = {
-  resolume: { tolerance: 1 / 255, reason: "Arena composites through its own GL pipeline and Syphon; one 8-bit quantum is the smallest disagreement rgba8 can show (TOLERANCE_CROSS_GPU)" },
+  resolume: { tolerance: 1 / 255, reason: "native un-premultiplied in 8 bits to match Arena's capture; rgb*255/a rounds once (TOLERANCE_CROSS_GPU, one quantum)" },
 };
 
 export async function runStudy(options: { backends: readonly string[]; cases?: readonly string[]; size: { width: number; height: number }; cost: boolean }): Promise<StudyReport> {
@@ -98,11 +98,27 @@ export async function runStudy(options: { backends: readonly string[]; cases?: r
         await a.dispose(); await b.dispose();
       }
       for (const study of cases) {
-        const a = records.find(r => r.caseId === study.id && r.backend === "native"), b = records.find(r => r.caseId === study.id && r.backend === other.id);
+        const b = records.find(r => r.caseId === study.id && r.backend === other.id);
+        let a = records.find(r => r.caseId === study.id && r.backend === "native");
+        // Arena altered the input (its still import): native re-runs on what Arena's plugin got.
+        if (b?.inputSeen && b.coverage) {
+          a = { ...(await runCase(native, study, options.size, 1, { image: b.inputSeen, coverage: b.coverage })), backend: "native(arena input)" };
+          records.push(a);
+        }
         const bound = PIXEL_BOUNDS[other.id] ?? { tolerance: 0, reason: "same maths, exact" };
-        // Arena shows the plugin's premultiplied output composited over its black composition.
+        // Measured (oracle run 2): Arena's composition capture shows the plugin's premultiplied
+        // output UN-premultiplied and opaque (native 93,0,156 a195 reads 122,0,203). So native's
+        // frame is compared the same way: rgb / a, opaque; a = 0 reads black.
         const overBlack = other.id === "resolume"
-          ? (image: StudyImage) => { const rgba = image.rgba.slice(); for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255; return { ...image, rgba }; }
+          ? (image: StudyImage) => {
+            const rgba = image.rgba.slice();
+            for (let i = 0; i < rgba.length; i += 4) {
+              const a = rgba[i + 3]!;
+              for (let k = 0; k < 3; k++) rgba[i + k] = a === 0 ? 0 : Math.min(255, Math.round((rgba[i + k]! * 255) / a));
+              rgba[i + 3] = 255;
+            }
+            return { ...image, rgba };
+          }
           : undefined;
         if (a && b) pixels.push(pixelParity(a, b, bound.tolerance, bound.reason, overBlack));
       }
@@ -122,9 +138,11 @@ export async function runStudy(options: { backends: readonly string[]; cases?: r
 
 export function writeReport(report: StudyReport, directory: string): void {
   mkdirSync(directory, { recursive: true });
-  for (const record of report.cases)
+  for (const record of report.cases) {
     record.frames.forEach((frame, i) => writeFileSync(join(directory, `${record.caseId}.${record.backend}.${i}.png`), encodePng(frame)));
-  const serialisable = { ...report, cases: report.cases.map(({ frames: _frames, ...rest }) => rest) };
+    if (record.inputSeen) writeFileSync(join(directory, `${record.caseId}.${record.backend}.input.png`), encodePng(record.inputSeen));
+  }
+  const serialisable = { ...report, cases: report.cases.map(({ frames: _frames, inputSeen: _input, ...rest }) => rest) };
   writeFileSync(join(directory, "report.json"), `${JSON.stringify(serialisable, null, 2)}\n`);
   writeFileSync(join(directory, "report.md"), markdown(report));
 }

@@ -31,7 +31,7 @@ const SAMPLE_POINTS: ReadonlyArray<readonly [number, number]> = [
   [0, 0], [0.5, 0], [1, 0], [0, 0.5], [0.5, 0.5], [1, 0.5], [0, 1], [0.5, 1], [1, 1]];
 const LINE = /^\s*(video\/(?:effect\d+|source)\/)(.+?): (.*?) \[(\w+)\](?: \(parameter: (\d+)\))?\s*$/;
 
-interface ArenaParameter { readonly path: string; readonly name: string; readonly kind: string; readonly value: string }
+interface ArenaParameter { readonly path: string; readonly name: string; readonly kind: string; readonly value: string; readonly min?: number; readonly max?: number }
 
 export function parseArenaParameters(text: string, prefix: string): ArenaParameter[] {
   const parameters: ArenaParameter[] = [];
@@ -41,7 +41,9 @@ export function parseArenaParameters(text: string, prefix: string): ArenaParamet
     const name = match[2]!;
     // Arena's own per-effect Opacity mixer is not a plugin parameter.
     if (prefix.startsWith("video/effect") && name === "Opacity") continue;
-    parameters.push({ path: `${match[1]}${name}`, name, kind: match[4]!, value: match[3]! });
+    const range = /\((-?[\d.]+)-(-?[\d.]+)\)/.exec(match[3]!);
+    parameters.push({ path: `${match[1]}${name}`, name, kind: match[4]!, value: match[3]!,
+      ...(range ? { min: Number(range[1]), max: Number(range[2]) } : {}) });
   }
   return parameters;
 }
@@ -54,7 +56,7 @@ function controlOf(parameter: ArenaParameter): StudyControl {
     case "event": return { label: parameter.name, kind: "pulse" };
     case "choice": return { label: parameter.name, kind: "menu", ...(options ? { options: Number(options[1]) } : {}) };
     case "color": return { label: parameter.name, kind: "color" };
-    case "text": return { label: parameter.name, kind: "text" };
+    case "text": case "string": return { label: parameter.name, kind: "text" };
     default: return { label: parameter.name, kind: "other" };
   }
 }
@@ -128,6 +130,14 @@ export function createResolumeBackend(options: { composition?: string; settleMs?
           await guard(mcp);
           const frames: StudyImage[] = [];
           let coverage: StudyRegion[] = [];
+          // What Arena feeds the plugin: the same clip with the effect bypassed.
+          let inputSeen: StudyImage | undefined;
+          if (names.effect) {
+            await mcp.tool("effect", { action: "bypass", target: "clip", ...where, offset: 2, bypassed: true });
+            await wait(settleMs);
+            inputSeen = (await capture()).frame;
+            await mcp.tool("effect", { action: "bypass", target: "clip", ...where, offset: 2, bypassed: false });
+          }
           for (let i = 0; i < run.steps.length; i++) {
             const step = run.steps[i]!;
             if (step.input && i > 0) throw new Error("The Resolume oracle cannot change its input mid-run");
@@ -135,14 +145,18 @@ export function createResolumeBackend(options: { composition?: string; settleMs?
               const parameter = parameters.find(p => p.name === name.slice(0, 16) || p.name === name);
               if (!parameter) throw new Error(`Arena shows no parameter ${name} on ${plugin}`);
               if (parameter.kind === "color") throw new Error(`Colour writes to Arena are not mapped yet (${name})`);
+              // The study speaks FFGL wire values (normalised 0..1); Arena's API takes the value
+              // in the range the plugin declares (Figlet's Speed is -1..1, Morph 0..10).
+              const shown = parameter.kind === "range" && typeof value === "number" && parameter.min !== undefined && parameter.max !== undefined
+                ? parameter.min + value * (parameter.max - parameter.min) : value;
               await mcp.tool("parameter", parameter.kind === "choice"
-                ? { action: "set", parameter: parameter.path, choice_index: Number(value), ...where }
-                : { action: "set", parameter: parameter.path, value, ...where });
+                ? { action: "set", target: "clip", parameter: parameter.path, choice_index: Number(value), ...where }
+                : { action: "set", target: "clip", parameter: parameter.path, value: shown, ...where });
             }
             for (const name of step.pulses ?? []) {
               const parameter = parameters.find(p => p.name === name);
               if (!parameter) throw new Error(`Arena shows no event ${name} on ${plugin}`);
-              await mcp.tool("parameter", { action: "set", parameter: parameter.path, value: true, ...where });
+              await mcp.tool("parameter", { action: "set", target: "clip", parameter: parameter.path, value: true, ...where });
             }
             await wait(settleMs);
             if (run.capture === "each" || i === run.steps.length - 1) {
@@ -150,7 +164,8 @@ export function createResolumeBackend(options: { composition?: string; settleMs?
               frames.push(captured.frame); coverage = captured.coverage;
             }
           }
-          return { frames, costs: frames.map(() => ({ cpuMs: Number.NaN, hops: ["Arena clip -> effect -> layer -> composition", "monitor.inspect PNG crop"] })), coverage };
+          return { frames, costs: frames.map(() => ({ cpuMs: Number.NaN, hops: ["Arena clip -> effect -> layer -> composition", "monitor.inspect PNG crop"] })), coverage,
+            ...(inputSeen ? { inputSeen } : {}) };
         },
         async dispose() {
           await guard(mcp);
