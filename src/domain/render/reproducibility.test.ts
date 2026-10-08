@@ -82,6 +82,8 @@ describe("T645 — every registered node type is classified, or this fails (§V4
       "channelIn:async-cached",
       // T385/T715: inference, whose latency is unbounded rather than one frame.
       "depth:async-cached",
+      // VN85: the native FFGL host — a live frame shows the latest plugin result.
+      "ffgl:async-cached",
       // T957: the person matte. Async-cached with the strongest claim of the three model
       // nodes — MODNet is smoothed by a temporal EMA held in the WORKER, so what it
       // publishes depends on the sequence of frames that reached it, not on this one.
@@ -140,7 +142,7 @@ describe("SETTLED_BY_EXPORT is answered for every async-cached node, in both dir
     .sort();
 
   it("holds the four the export path actually settles, named not counted", () => {
-    expect([...SETTLED_BY_EXPORT].sort()).toEqual(["depth", "matte", "personMask", "pose"]);
+    expect([...SETTLED_BY_EXPORT].sort()).toEqual(["depth", "ffgl", "matte", "personMask", "pose"]);
   });
 
   it("leaves no async-cached node unanswered", () => {

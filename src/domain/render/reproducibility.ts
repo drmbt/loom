@@ -170,6 +170,11 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // MACHINES (or two OS versions) given the same input may cut differently. That is a
   // portability fact, not a scheduling one, and the node's own description carries it.
   personMask: "async-cached",
+  // VN85. The native FFGL host: a live frame publishes the latest native result (one frame
+  // or more late), so async-cached; every non-realtime mode settles each frame before it is
+  // read, and the host gives the plugin the frame's time as its clock (with rand and
+  // random_device seeded), so a take replays bit-for-bit on the same machine and plugin.
+  ffgl: "async-cached",
 
   /*
    * PURE — a function of the frame and the document, and the reason the other four are
@@ -471,6 +476,10 @@ export const SETTLED_BY_EXPORT: ReadonlySet<string> = new Set([
   "pose",
   "matte",
   "personMask",
+  // VN85: the FFGL node rides vision.settle (use-vision-bridge.ts), so a take waits for each
+  // plugin result. The take note's "runs a model" wording fits it loosely (a plugin, not a
+  // model; same one-frame lag, same per-machine caveat).
+  "ffgl",
 ]);
 
 /**
