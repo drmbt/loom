@@ -8,6 +8,7 @@ export {
   functionSignature,
   nearestSpelling,
   parseExpression,
+  PARENT_FUNCTION,
   scopeFromFrame,
   type EvaluateResult,
   type ExpressionAst,
@@ -21,3 +22,4 @@ export {
   type ReferenceFailureKind,
   type SpelledLike,
 } from "./evaluate.ts";
+export { formatParentRead, parentReadsOf, rewriteParentReads, type ParentRead } from "./parent-reads.ts";

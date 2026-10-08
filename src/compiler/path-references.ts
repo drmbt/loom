@@ -65,11 +65,11 @@ export function resolvePathReferences(input: PathReferenceInput): RuntimeDiagnos
   let carriers: Map<string, number> | undefined;
 
   /** The flattening's own label for what `written` names from `scope`, or undefined to leave it as written. */
-  const resolved = (written: string, scope: string): string | undefined => {
+  const resolved = (written: string, scope: string, instancePages = false): string | undefined => {
     if (!isNodePath(written)) return undefined;
     const path = parseNodePath(written);
     if (path === undefined) return undefined;
-    const target = resolveNodePath(path, scope, scopes);
+    const target = resolveNodePath(path, scope, scopes, { instancePages });
     return target.ok ? nodes[target.nodeId]?.label : undefined;
   };
 
@@ -154,7 +154,7 @@ export function resolvePathReferences(input: PathReferenceInput): RuntimeDiagnos
       if (binding?.kind !== "expression") continue;
       const source = binding.source.replace(OP_REFERENCE, (match, quote: string, written: string) => {
         if (stored.mode === "expression") note(written, key);
-        const label = resolved(written, scopeFor(key));
+        const label = resolved(written, scopeFor(key), true);
         return label === undefined ? match : `op(${quote}${label}${quote})`;
       });
       if (source !== binding.source) {

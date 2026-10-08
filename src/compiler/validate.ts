@@ -8,14 +8,16 @@ import { arePortsCompatible, describePortType } from "../domain/graph/port-compa
 import { resolveParameterSchema, effectiveParameterSchema, type ParameterMapBinding } from "../domain/parameters/resolve.ts";
 import {
   NO_INSTANCES,
+  NO_PAGES,
   parameterReadOptions,
   type FlatteningReads,
   type InstanceChannelSources,
+  type InstancePages,
 } from "../domain/parameters/node-references.ts";
 import { NO_MORPHS } from "../domain/presets/morph-index.ts";
 import type { ParameterReadOptions, ResolveParametersOptions } from "../domain/parameters/resolve.ts";
 import { bindCycleDiagnostics } from "../domain/parameters/bind-cycles.ts";
-import { channelDependenciesOf, referenceCycleDiagnostics } from "../domain/graph/reference-cycles.ts";
+import { channelDependenciesOf, referenceCycleDiagnostics, referenceGraphWithPages } from "../domain/graph/reference-cycles.ts";
 import { composedParameterReadDiagnostics } from "../domain/graph/composed-parameter-reads.ts";
 import { undeclaredKeys, undeclaredParameter } from "../domain/parameters/validate.ts";
 import type { ResolvedParameters } from "../domain/parameters/resolve.ts";
@@ -47,6 +49,8 @@ export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "chan
    * here, so a `compileGraph` caller cannot forget it.
    */
   readonly instances?: InstanceChannelSources | undefined;
+  /** VN36: and the instance pages `op('<instance>').par.<key>` reads, by the same rule. */
+  readonly instancePages?: InstancePages | undefined;
 };
 
 /**
@@ -56,7 +60,11 @@ export type ParameterResolution = Pick<ResolveParametersOptions, "frame" | "chan
  * reads nothing fading and no instance — said here, once, for the three compiler readers.
  */
 export function flatteningReadsOf(resolution: ParameterResolution): FlatteningReads {
-  return { morphs: resolution.morphs ?? NO_MORPHS, instanceChannels: resolution.instances ?? NO_INSTANCES };
+  return {
+    morphs: resolution.morphs ?? NO_MORPHS,
+    instanceChannels: resolution.instances ?? NO_INSTANCES,
+    instancePages: resolution.instancePages ?? NO_PAGES,
+  };
 }
 
 export interface ResolvedNode {
@@ -227,7 +235,8 @@ export function validateGraph(
    * cycle spans NODES, so unlike a bind cycle it has no per-node home in
    * `resolveNodeParameters`. Reported once for the graph, before any resolution runs.
    */
-  diagnostics.push(...referenceCycleDiagnostics(graph, (node) => channelDependenciesOf(registry.get(node.type))));
+  const referenceGraph = referenceGraphWithPages(graph, [...(options.instancePages ?? NO_PAGES).values()].map(page => page.node));
+  diagnostics.push(...referenceCycleDiagnostics(referenceGraph, (node) => channelDependenciesOf(registry.get(node.type))));
   // §T1674b: a read of a parameter that is not what its name says (a framed camera's Eye).
   diagnostics.push(...composedParameterReadDiagnostics(graph, (node) => registry.get(node.type)?.parameterChannels));
 

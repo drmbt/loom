@@ -115,6 +115,35 @@ export interface InstanceChannelSource {
 export type InstanceChannelSources = ReadonlyMap<string, readonly InstanceChannelSource[]>;
 
 /**
+ * VN36 — ONE COMPONENT INSTANCE'S PUBLISHED PAGE, as a node a `.par` read can resolve.
+ *
+ * `op('rig1').par.gain` names an instance, and flattening DELETES the instance, so the flat
+ * graph `op()` resolves against has nothing called `rig1`. T1485b answered that for `.chan`
+ * (its exposed value outputs); this answers it for `.par`. The page is the instance as the
+ * flattener resolved it (`FlattenedGraph.instanceNodes`: its own stored slots, `parent.`
+ * binds already read where their scope is) and its published schema, which is what a read
+ * of it resolves against, per frame, through the same `targetOf` as any node — so an
+ * animated knob is evaluated once, at its publisher, and the reader gets a number.
+ *
+ * It is how `parent(n).par.key` reads: the flattener rewrites the read to
+ * `op('<the n-th enclosing instance>').par.key` (`compiler/parent-references.ts`).
+ *
+ * ⚠ A STAGE-1 BRIDGE (COMP-model proposal 01 §4). Once a component is a folder of real
+ * document nodes (stage 2) and linked instances are linked folders (stage 3), the COMP is a
+ * node in the flat graph and `nodeIdNamed` finds it; this map retires with dissolved
+ * instances.
+ */
+export interface InstancePage {
+  /** The instance node as flattened: id is its flat id, parameters its page. */
+  readonly node: GraphNode;
+  /** Its published page as a schema (`publishedSchema`). */
+  readonly schema: ParameterSchema;
+}
+
+/** Instance LABEL → its page. First-wins in flat-id order, as `nodeNames` is. */
+export type InstancePages = ReadonlyMap<string, InstancePage>;
+
+/**
  * The channel names `op('<instance>').chan.` can complete to: the union of what the
  * instance's publishers carry right now, MINUS every name two of them carry — the reader
  * refuses those by name (§V150: the menu may not offer what the reader rejects).
@@ -273,6 +302,8 @@ export interface NodeReferenceOptions {
    * instance's channels are unreadable, as they were before.
    */
   readonly instances?: InstanceChannelSources | undefined;
+  /** VN36: the dissolved instances `op('<instance>').par.<key>` can name (`InstancePages`). */
+  readonly pages?: InstancePages | undefined;
   /**
    * §T1674b: the channels a node's definition composes from its own parameters. Asked
    * BEFORE the channel resolver: they need none.
@@ -494,6 +525,8 @@ export interface FlatteningReads {
   readonly morphs: ParameterMorphs;
   /** T1485b: the component instances `op('<instance>').chan.<c>` can name. */
   readonly instanceChannels: InstanceChannelSources;
+  /** VN36: the component instances `op('<instance>').par.<key>` (and so `parent()`) can name. */
+  readonly instancePages: InstancePages;
   /**
    * T1668b — THE SAME OBJECT FOR TWO FLATTENINGS THAT DIFFER IN VALUES ONLY, where the
    * producer can say so (the app's one flattening, `flattened-graph.ts`, which asks
@@ -508,11 +541,14 @@ export interface FlatteningReads {
 /** No component instance to name. One object, so "none" is an identity check. */
 export const NO_INSTANCES: InstanceChannelSources = new Map();
 
+/** No instance page to read (VN36). One object, so "none" is an identity check. */
+export const NO_PAGES: InstancePages = new Map();
+
 /**
  * A read with no flattening behind it: nothing fading, no instance to name. A caller that
  * has none says so with this, by name — there is no omitted field for it to forget.
  */
-export const NO_FLATTENING: FlatteningReads = { morphs: NO_MORPHS, instanceChannels: NO_INSTANCES };
+export const NO_FLATTENING: FlatteningReads = { morphs: NO_MORPHS, instanceChannels: NO_INSTANCES, instancePages: NO_PAGES };
 
 /**
  * §T1551b — THE LIVE READ WORLD: what every CPU reader outside the plan resolves with — the
@@ -588,7 +624,7 @@ export interface ParameterReadContext {
  * `parameter-read-context.test.ts` holds that no product file builds a reader any other way.
  */
 export function parameterReadOptions(context: ParameterReadContext): ParameterReadOptions {
-  const { morphs, instanceChannels } = context.flattening;
+  const { morphs, instanceChannels, instancePages } = context.flattening;
   const base = {
     ...(context.channels === undefined ? {} : { channels: context.channels }),
     ...(context.frame === undefined ? {} : { frame: context.frame }),
@@ -611,6 +647,7 @@ export function parameterReadOptions(context: ParameterReadContext): ParameterRe
       },
       base,
       instances: instanceChannels,
+      pages: instancePages,
       declaredChannelsOf: (node) => context.registry.get(node.type)?.parameterChannels,
     }),
     ...base,
@@ -833,7 +870,9 @@ function readerWithin(
       };
     }
 
-    const targetId = nodeIdNamed(scope, options.graph, name);
+    // VN36: a name no flat node carries may be a dissolved instance, read through its page.
+    const page = nodeIdNamed(scope, options.graph, name) === undefined ? options.pages?.get(name) : undefined;
+    const targetId = page?.node.id ?? nodeIdNamed(scope, options.graph, name);
     if (targetId === undefined) {
       return { ok: false, kind: "node", reason: `${reference}: there is no node named "${name}"` };
     }
@@ -850,11 +889,11 @@ function readerWithin(
         reason: `${reference}: that reference is a cycle (${ringText([...visited, readKey(targetId, key)])})`,
       };
     }
-    const target = options.graph.nodes[targetId];
+    const target = page?.node ?? options.graph.nodes[targetId];
     if (target === undefined) {
       return { ok: false, kind: "node", reason: `${reference}: there is no node named "${name}"` };
     }
-    const schema = options.schemaOf(target);
+    const schema = page?.schema ?? options.schemaOf(target);
     if (schema === undefined) {
       return { ok: false, kind: "unknownType", reason: `${reference}: "${name}" has an unknown node type` };
     }

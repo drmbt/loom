@@ -140,7 +140,7 @@ export function ControlsPane({ graph, registry, bus, invocation, phone, midi, ch
     // Authored and no fade, on purpose: the pane lists authored widgets (none inside a component, §T1143), and mid-morph a control shows its document value (§T1525b).
     // §T1559b: the instances `op('<instance>').chan.<c>` can name are the flattening's, off the bus's read scope — the value graph reads them, so the display must.
     return resolveParameters(node, definition, parameterReadOptions({ graph: authoredGraph(current), registry, channels,
-      frame, flattening: { morphs: NO_MORPHS, instanceChannels: bus.readScope().flattening.instanceChannels } })).values;
+      frame, flattening: { morphs: NO_MORPHS, instanceChannels: bus.readScope().flattening.instanceChannels, instancePages: bus.readScope().flattening.instancePages } })).values;
   } }), [bus, registry, channels, latestFrame]);
 
   const apply = (operations: GraphPatchOperation[], label: string): void => {

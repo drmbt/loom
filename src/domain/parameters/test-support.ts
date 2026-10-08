@@ -1,6 +1,6 @@
 import type { FrameEvaluationInput } from "../types/frame.ts";
 import { authoredGraph, type GraphDocument } from "../types/graph.ts";
-import { NO_INSTANCES, parameterReadOptions, type InstanceChannelSources, type ParameterReadContext } from "./node-references.ts";
+import { NO_INSTANCES, NO_PAGES, parameterReadOptions, type InstanceChannelSources, type InstancePages, type ParameterReadContext } from "./node-references.ts";
 import { NO_MORPHS, type ChannelResolver, type ParameterMorphs, type ParameterReadOptions } from "./resolve.ts";
 
 const EMPTY_GRAPH: GraphDocument = { revision: 0, nodes: {}, edges: {}, groups: {} };
@@ -14,6 +14,8 @@ export interface TestReadContext {
   readonly channels?: ChannelResolver | undefined;
   readonly morphs?: ParameterMorphs;
   readonly instances?: InstanceChannelSources;
+  /** VN36: the instance pages `op('<instance>').par` reads. */
+  readonly pages?: InstancePages;
 }
 
 /**
@@ -30,6 +32,6 @@ export function testRead(context: TestReadContext = {}): ParameterReadOptions {
     registry: context.registry ?? NO_TYPES,
     frame: context.frame,
     channels: context.channels,
-    flattening: { morphs: context.morphs ?? NO_MORPHS, instanceChannels: context.instances ?? NO_INSTANCES },
+    flattening: { morphs: context.morphs ?? NO_MORPHS, instanceChannels: context.instances ?? NO_INSTANCES, instancePages: context.pages ?? NO_PAGES },
   });
 }

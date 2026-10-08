@@ -146,7 +146,7 @@ export type PathResolution =
   | { readonly ok: false; readonly reason: string };
 
 /** Walks `path` from the graph `from`, name by name. Each refusal says where the walk stopped. */
-export function resolveNodePath(path: NodePath, from: string, scopes: NameScopes): PathResolution {
+export function resolveNodePath(path: NodePath, from: string, scopes: NameScopes, options: { readonly instancePages?: boolean } = {}): PathResolution {
   let at = scopes.get(from);
   for (let climb = 0; climb < path.up; climb += 1) {
     if (at?.parent === undefined) return { ok: false, reason: "it climbs above the document's root" };
@@ -161,6 +161,7 @@ export function resolveNodePath(path: NodePath, from: string, scopes: NameScopes
     }
     if (last) {
       if ("node" in entry) return { ok: true, nodeId: entry.node };
+      if (options.instancePages === true) return { ok: true, nodeId: entry.scope };
       return { ok: false, reason: `"${name}" is a component instance; name a node inside it` };
     }
     if (!("scope" in entry)) return { ok: false, reason: `"${name}" is not a component instance, so nothing is inside it` };

@@ -18,10 +18,11 @@ import { authoredGraph, type FlatGraph, type GraphDocument, type ProjectSettings
 import type { ChannelResolver } from "../parameters/resolve.ts";
 import { NO_FLATTENING, type FlatteningReads, type ParameterReadContext } from "../parameters/node-references.ts";
 import type { Revision } from "../types/ids.ts";
+import type { GraphComponentDefinition } from "../types/components.ts";
 import { isComponentInstance } from "../components/instance.ts";
 import { isNodePath } from "../components/addressing.ts";
 import { keyReads } from "../graph/parameter-dependencies.ts";
-import { channelDependenciesOf, referenceCyclesThrough } from "../graph/reference-cycles.ts";
+import { channelDependenciesOf, referenceCycleDiagnostics, referenceCyclesThrough } from "../graph/reference-cycles.ts";
 import type { IdFactory } from "../graph/ids.ts";
 import type { GraphStore, GraphStoreView, HistoryOutcome } from "../graph/store.ts";
 import { createCapabilityGrantStore, type CapabilityGrantStore } from "./grants.ts";
@@ -149,8 +150,14 @@ export interface SessionScope {
   readonly instancePath: () => InstancePath | undefined;
 }
 
-export interface ReferenceCycleHost { readonly componentId: string; readonly version: number }
-export type ReferenceCycleValidator = (graph: GraphDocument, nodeId: string, host?: ReferenceCycleHost) => RuntimeDiagnostic[];
+export interface ReferenceCycleHost {
+  readonly componentId: string;
+  readonly version: number;
+  /** Definition-only edits project their proposed published schema without registering it. */
+  readonly definition?: GraphComponentDefinition;
+}
+/** A null node target checks the definition's whole affected instance subtree. */
+export type ReferenceCycleValidator = (graph: GraphDocument, nodeId: string | null, host?: ReferenceCycleHost) => RuntimeDiagnostic[];
 
 /** `CommandContext.session`: what a handler on a session bus can ask of where it runs. */
 export interface CommandSession {
@@ -192,7 +199,7 @@ export interface CommandContext {
    */
   readonly holds: (capability: CapabilityClass) => boolean;
   /** Scoped validation shared by every command that applies a graph patch. */
-  readonly referenceCycles: (graph: GraphDocument, nodeId: string) => RuntimeDiagnostic[];
+  readonly referenceCycles: ReferenceCycleValidator;
   /**
    * THE channel resolver the running app is resolving `driven` parameters through, or
    * `undefined` when no app is attached (T593, B121, B8, §V61, §V109).
@@ -732,11 +739,12 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
       if (validateReferenceCycles !== undefined) return validateReferenceCycles(graph, nodeId, host);
       if (parent !== undefined) return parent.referenceCycles(graph, nodeId, host);
       if (Object.values(graph.nodes).some(isComponentInstance) && Object.values(graph.nodes).some(node => keyReads(node.parameters).some(read => read.node !== null && isNodePath(read.node)))) {
-        return [{ severity: "error", code: "parameter.referenceProjection.missing", nodeId,
+        return [{ severity: "error", code: "parameter.referenceProjection.missing", ...(nodeId === null ? {} : { nodeId }),
           message: "Path reference cycle validation requires the component-aware graph projection.",
           suggestion: "Attach the composition root's reference cycle validator before editing component paths." }];
       }
-      return referenceCyclesThrough(graph, nodeId, node => channelDependenciesOf(registry.get(node.type)));
+      const channels = (node: GraphDocument["nodes"][string]) => channelDependenciesOf(registry.get(node.type));
+      return nodeId === null ? referenceCycleDiagnostics(graph, channels) : referenceCyclesThrough(graph, nodeId, channels);
     },
 
     attachFrame(read: () => FrameEvaluationInput | undefined): void {
@@ -932,7 +940,7 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
         // T1497b: likewise read AT INVOCATION — the frame on screen when the command ran.
         frameClock: readFrameClock?.() ?? undefined,
         readScope: () => readScopeOver(graph),
-        referenceCycles: (draft, nodeId) => bus.referenceCycles(draft, nodeId, options.referenceHost),
+        referenceCycles: (draft, nodeId, host) => bus.referenceCycles(draft, nodeId, host ?? options.referenceHost),
         holds: (capability: CapabilityClass): boolean => grants.has(context.actor, capability),
         applySettings: (request: ApplySettingsRequest): AppliedInfo =>
           store.internals.applySettings({

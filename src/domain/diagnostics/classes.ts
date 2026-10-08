@@ -145,6 +145,8 @@ export const DIAGNOSTIC_CLASSES: Readonly<Record<string, DiagnosticClassRow>> = 
   "compiler/port-incompatible": { class: "never" },
   "compiler/port-missing": { class: "never" },
   "compiler/port-occupied": { class: "never" },
+  "compiler/parent-reference-no-parent": { class: "never" },
+  "compiler/parent-reference-unknown-key": { class: "never" },
   "compiler/reference-cross-scope": { class: "advice" },
   "compiler/resolution-clamped": { class: "degraded" },
   "compiler/resolution-custom": { class: "degraded" },

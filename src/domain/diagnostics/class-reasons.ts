@@ -94,6 +94,8 @@ export const DIAGNOSTIC_CLASS_REASONS: Readonly<Record<string, string>> = {
   "compiler/port-incompatible": "two port types with no conversion between them",
   "compiler/port-missing": "an edge on a port the type does not declare",
   "compiler/port-occupied": "a second wire into a single input is ignored",
+  "compiler/parent-reference-no-parent": "a parent() read with no component around the node to reach",
+  "compiler/parent-reference-unknown-key": "a parent() read of a key the component does not publish",
   "compiler/reference-cross-scope": "a bare name that reaches into an instance binds as stored; a path says which copy",
   "compiler/resolution-clamped": "scaled down to the limit in force",
   "compiler/resolution-custom": "the project resolution stands in for a custom policy",
