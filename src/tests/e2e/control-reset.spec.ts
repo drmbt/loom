@@ -40,6 +40,7 @@ async function openPhoneDesk(page: Page): Promise<Locator> {
 /** The document as a save writes it: its revision counts every patch that went out. */
 async function saved(page: Page): Promise<{ revision: number; heat: Record<string, unknown> }> {
   const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-save").click();
   const download = await downloading;
   const path = join(await mkdtemp(join(tmpdir(), "loom-control-reset-")), download.suggestedFilename());

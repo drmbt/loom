@@ -92,6 +92,40 @@ it.each(["success", "failure", "cancel", "unavailable"] as const)("owns canvas c
   });
 });
 
+it("VN71: renders a range past 10 000 frames (the old timeline limit), and refuses only past one day at the project rate", async () => {
+  const { bus } = createHarness();
+  let current = 0;
+  const seeks: number[] = [];
+  transportHolderFor(bus).current = {
+    isPlaying: () => false, togglePlay() {}, resetAbsoluteClock() {}, resetState() {},
+    seek: (frame: number) => { seeks.push(frame); current = frame; return frame; },
+    stepOnce: () => frameInputs(++current),
+  } as never;
+  const take = (frameRange: { start: number; end: number }) => {
+    const view = renderHook(() => useRenderRange({
+      createCapture: unusedCapture, bus, exports: fakeExports(), compiled: COMPILED, graph: graphWith("timeline"),
+      registry: REGISTRY, settings: { ...SETTINGS, fps: 60, frameRange }, latestFrame: () => frameInputs(current),
+      name: () => "test", write: async () => ({ kind: "cancelled" }), loadEncoder: async () => fakeEncoder(),
+    }));
+    return view;
+  };
+  // Three minutes and a bit at 60 fps: the piece T1687b could not hold.
+  const long = take({ start: 10_998, end: 11_000 });
+  let result: unknown;
+  await act(async () => { result = await renderRangeHolderFor(bus).current!.render(); });
+  expect(result).toMatchObject({ kind: "rendered", frames: 3 });
+  expect(seeks).toEqual([10_998]);
+  long.unmount();
+
+  const day = 86_400 * 60;
+  take({ start: 0, end: day });
+  await act(async () => { result = await renderRangeHolderFor(bus).current!.render(); });
+  expect(result).toMatchObject({
+    kind: "refused",
+    diagnostic: { code: "export.renderRangeOutsideTimeline", message: expect.stringContaining("one day at 60 fps") as unknown },
+  });
+});
+
 it("refuses odd render dimensions before audio preparation or capture allocation", async () => {
   const { bus } = createHarness();
   const createCapture = vi.fn(unusedCapture);

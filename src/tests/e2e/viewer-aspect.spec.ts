@@ -191,3 +191,37 @@ test("the viewer letterboxes the project's aspect instead of stretching to the p
     Math.abs(portrait.box.width / portrait.box.height - PORTRAIT.width / PORTRAIT.height),
   ).toBeLessThan(ASPECT_TOLERANCE);
 });
+
+for (const width of [360, 300, 240]) {
+  test(`the viewer footer stays one line while probing a ${width}px pane`, async ({ page }) => {
+    await openApp(page);
+    await buildPicture(page);
+    const readout = page.getByTestId("viewer-readout");
+    const canvas = page.getByTestId("viewer-canvas");
+    const surface = page.getByTestId("viewer-surface");
+
+    await readout.evaluate((element, paneWidth) => {
+      const viewer = element.closest<HTMLElement>('[data-keymap-context="viewer"]');
+      if (viewer === null) throw new Error("the readout has no viewer pane");
+      viewer.style.width = `${paneWidth}px`;
+      viewer.style.boxSizing = "border-box";
+    }, width);
+    // Changing pane width may resize the picture; the probe must not do so afterwards.
+    await expect(readout.locator("dd")).toHaveCount(1);
+    const baseline = await readout.boundingBox();
+    const picture = await canvas.boundingBox();
+    const frame = await surface.boundingBox();
+    if (baseline === null || picture === null || frame === null) throw new Error("viewer not laid out");
+
+    for (const fraction of [0.01, 0.5, 0.99]) {
+      await page.mouse.move(picture.x + picture.width * fraction, picture.y + picture.height * fraction);
+      await expect(readout.locator("dd")).toHaveCount(3);
+      const measured = await readout.boundingBox();
+      const after = await surface.boundingBox();
+      if (measured === null || after === null) throw new Error("viewer not laid out after probing");
+      expect(Math.abs(measured.height - baseline.height), `footer at ${width}px`).toBeLessThan(1);
+      expect(Math.abs(after.height - frame.height), `picture frame at ${width}px`).toBeLessThan(1);
+      expect(await readout.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    }
+  });
+}

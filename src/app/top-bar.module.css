@@ -158,3 +158,21 @@
   gap: var(--space-2);
   flex: 0 0 auto;
 }
+
+/* File rows use the same compact, left-aligned hit areas as contextual menus. */
+.fileMenu[role="menu"] { min-width: 200px; padding: var(--space-1); }
+.fileMenuRows { display: grid; }
+.fileMenu [role="menuitem"] {
+  justify-content: flex-start;
+  text-align: left;
+  border: 0;
+  outline: none;
+  width: 100%;
+  color: var(--text);
+  font-size: var(--fs-ui);
+  padding: 0 var(--space-3);
+}
+.fileMenu [role="menuitem"]:hover:not(:disabled),
+.fileMenu [role="menuitem"]:focus:not(:disabled) { background: var(--bg-active); color: var(--text); }
+.fileMenu [role="menuitem"]:disabled { color: var(--text-dim); }
+.fileMenuSeparator { height: var(--hairline); margin: var(--space-1) var(--space-3); border: 0; background: var(--line); }

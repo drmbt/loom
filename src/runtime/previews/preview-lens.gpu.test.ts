@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { compileGraph } from "../../compiler/index.ts";
+import { floatMapSourceIdFor } from "../../nodes/definitions/float-map-in.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import type { GraphDocument, ProjectSettings } from "../../domain/types/graph.ts";
@@ -151,14 +152,23 @@ async function readTexture(
 }
 
 describe("B118 — a pushed lens value reaches the preview pixel without a rebuild", () => {
-  it("masks G and B by VALUE PUSH alone: same program object, different picture", async () => {
+  it.each(["rgba16float", "r32float"] as const)("%s previews and masks G and B by VALUE PUSH alone", async format => {
     if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
 
     const registry = createNodeRegistry(allNodeDefinitions).view();
-    const plan = compileGraph({ graph: solidThroughOutput(), settings: SETTINGS, registry, capabilities: CAPS });
+    const graph = solidThroughOutput();
+    if (format === "r32float") {
+      graph.nodes["solid"]!.type = "floatMapIn";
+      graph.nodes["solid"]!.parameters = { interpretation: "raw" };
+      delete graph.nodes["out"];
+      graph.edges = {};
+    }
+    const plan = compileGraph({ graph, settings: SETTINGS, registry, capabilities: CAPS,
+      sinks: [{ nodeId: format === "r32float" ? "solid" : "out", portId: "out", kind: "readback" }],
+    });
     expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
-    const output = plan.outputs.find((entry) => entry.nodeId === "out");
-    if (output === undefined) throw new Error("the Output node materialized no target");
+    const output = plan.outputs.find((entry) => entry.nodeId === (format === "r32float" ? "solid" : "out"));
+    if (output === undefined) throw new Error("the preview source materialized no target");
 
     let captured: { gpu: { gpu: unknown } } | undefined;
     const base = nodeGpuHost();
@@ -174,12 +184,21 @@ describe("B118 — a pushed lens value reaches the preview pixel without a rebui
     });
     const errors: string[] = [];
     backend.onDiagnostic((diagnostic) => {
-      if (diagnostic.severity === "error") errors.push(`${diagnostic.code}: ${diagnostic.message}`);
+      if (diagnostic.severity !== "info") errors.push(`${diagnostic.code}: ${diagnostic.message}`);
     });
     try {
       await backend.initialize({});
       const device = captured?.gpu.gpu as GPUDevice;
       const compiled = await backend.compile(plan);
+      if (format === "r32float") {
+        expect(device.features.has("float32-filterable")).toBe(false);
+        const values = new Float32Array(SIZE * SIZE).fill(DISPLAY_GREY);
+        values[0] = 0;
+        values[values.length - 1] = 1;
+        backend.registerMediaSource(floatMapSourceIdFor("solid"), {
+          currentFrame: () => ({ frameId: 1, bytes: new Uint8Array(values.buffer) }), ended: true,
+        });
+      }
       backend.render(compiled, {
         frame: { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "offline", randomSeed: 7 },
         pointer: { x: 0, y: 0, buttons: 0 },
@@ -188,8 +207,9 @@ describe("B118 — a pushed lens value reaches the preview pixel without a rebui
 
       const previewCanvas = stubCanvas(device, SIZE, SIZE);
       const handle = backend.previewHost(previewCanvas as never);
+      const encodedByte = format === "r32float" ? 188 : ENCODED_BYTE;
       const request: PreviewRequest = {
-        ref: { nodeId: "out", portId: output.portId },
+        ref: { nodeId: output.nodeId, portId: output.portId },
         source: { resourceId: output.resourceId, size: output.size, format: output.format, space: output.space },
         rect: { x: 0, y: 0, width: SIZE, height: SIZE },
         area: { width: SIZE, height: SIZE },
@@ -227,7 +247,15 @@ describe("B118 — a pushed lens value reaches the preview pixel without a rebui
 
       // The default lens: display 0.5 grey, byte-exact.
       handle.presentPreviews(command());
-      expect(await centre()).toEqual([ENCODED_BYTE, ENCODED_BYTE, ENCODED_BYTE, 255]);
+      expect(errors).toEqual([]);
+      expect(await centre()).toEqual([encodedByte, encodedByte, encodedByte, 255]);
+      if (format === "r32float") {
+        const texture = previewCanvas.texture();
+        if (texture === undefined) throw new Error("the scalar preview surface was not configured");
+        const bytes = await readTexture(device, texture, SIZE, SIZE);
+        expect([...bytes.subarray(0, 4)]).toEqual([0, 0, 0, 255]);
+        expect([...bytes.subarray(bytes.length - 4)]).toEqual([255, 255, 255, 255]);
+      }
 
       // The push. NO setPreviewProgram call happens here — the same program object the
       // host already holds must show a different picture, or the lens controls are dead.
@@ -239,8 +267,22 @@ describe("B118 — a pushed lens value reaches the preview pixel without a rebui
           },
         ]),
       );
-      expect(await centre()).toEqual([0, 0, ENCODED_BYTE, 255]); // BGRA: red survives, G/B exactly zero
+      expect(await centre()).toEqual([0, 0, encodedByte, 255]); // BGRA: red survives, G/B exactly zero
 
+      if (format === "r32float") {
+        // Grayscale is a display choice; channel isolation still inspects the real
+        // r32float channels (r, 0, 0, 1), rather than fabricated G/B values.
+        for (const channel of ["r", "g", "b", "a"] as const) {
+          const isolated = { ...request, view: { ...DEFAULT_PREVIEW_VIEW, mode: "channel" as const, channel } };
+          handle.setPreviewProgram(buildPreviewProgram(
+            [{ ref: isolated.ref, request: isolated, tileSize: [SIZE, SIZE] }],
+            createTileAtlas({ capacity: 4 }),
+          ));
+          handle.presentPreviews(command([{ passId, values: previewUniforms(isolated.view) }]));
+          const value = channel === "r" ? encodedByte : channel === "a" ? 255 : 0;
+          expect(await centre(), channel).toEqual([value, value, value, 255]);
+        }
+      }
       expect(errors).toEqual([]);
     } finally {
       backend.dispose();

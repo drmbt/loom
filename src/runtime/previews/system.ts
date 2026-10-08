@@ -98,6 +98,7 @@ interface ProgramInput {
   readonly height: number;
   readonly mode: PreviewRequest["view"]["mode"];
   readonly space: PreviewRequest["source"]["space"];
+  readonly format: PreviewRequest["source"]["format"];
   readonly resourceId: string;
   readonly synthesis: PreviewRequest["synthesis"];
 }
@@ -109,6 +110,7 @@ function programInput(entry: AllocatedPreview): ProgramInput {
     height: entry.tileSize[1],
     mode: entry.request.view.mode,
     space: entry.request.source.space,
+    format: entry.request.source.format,
     resourceId: entry.request.source.resourceId,
     synthesis: entry.request.synthesis,
   };
@@ -126,6 +128,7 @@ function sameProgramInputs(a: ReadonlyArray<ProgramInput>, b: ReadonlyArray<Prog
       x.height !== y.height ||
       x.mode !== y.mode ||
       x.space !== y.space ||
+      x.format !== y.format ||
       x.resourceId !== y.resourceId ||
       x.synthesis !== y.synthesis
     ) {

@@ -1375,6 +1375,19 @@ describe("the shipped corpus is reachable over MCP (T1211, T1162)", () => {
     return JSON.parse(content?.text ?? "{}") as { status: string; data: Record<string, unknown> };
   };
 
+  it("teaches network authoring to a client without repository instructions", async () => {
+    const harness = await bridgedServer();
+    const instructions = String((await harness.request("initialize", {}, 1)).result?.["instructions"]);
+    expect(instructions).toContain("author a Loom network through the published tools");
+    expect(instructions).toContain("custom WGSL and point kernels belong inside the network");
+    expect(instructions).toContain("unless the user explicitly requests Loom development");
+    expect(instructions).toContain("save and reopen the network");
+
+    const tools = (await harness.request("tools/list", {}, 2)).result?.["tools"] as Array<Record<string, unknown>>;
+    const catalogue = tools.find((tool) => tool["name"] === "list_node_definitions");
+    expect(catalogue?.["description"]).toContain("author a Loom network through the published tools");
+  });
+
   it("says the catalogue exists, in the one text a stdio client always reads", async () => {
     const harness = await bridgedServer();
     const instructions = String((await harness.request("initialize", {}, 1)).result?.["instructions"]);

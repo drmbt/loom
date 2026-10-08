@@ -20,8 +20,8 @@ import type { EmittedWgsl } from "../backend/wgsl.ts";
  * values already. Defaulting it would let a caller that never heard of §V57 re-encode an
  * encoded picture and see a plausible, wrong image — B47's exact failure.
  */
-export function previewShader(mode: PreviewModeKind, space: ColorSpace): EmittedWgsl {
-  return previewShaderSource(mode, space);
+export function previewShader(mode: PreviewModeKind, space: ColorSpace, scalar = false): EmittedWgsl {
+  return previewShaderSource(mode, space, scalar);
 }
 
 /** WGSL binding names the preview passes declare. The plan descriptor names them by string. */

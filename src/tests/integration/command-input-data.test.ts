@@ -91,7 +91,7 @@ for (const register of [
 ] as ReadonlyArray<(target: typeof bus) => unknown>) {
   register(bus);
 }
-registerResetFeedbackCommand(bus, { backend: () => undefined, compiled: () => null });
+registerResetFeedbackCommand(bus, { backend: () => undefined, compiled: () => null, resetState: () => { throw new Error("No backend in this schema-only fixture."); } });
 
 /** The issues the command's schema finds in `input`, as sentences; null when nothing registers it. */
 function problems(command: string, input: unknown): string[] | null {

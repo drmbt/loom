@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Network authoring is the default
+
+Read [AGENTS.md](./AGENTS.md), especially **Default task: author a Loom network**. A request
+for a visual, scene, effect, composition, project or Loom network means producing or editing
+a `.loom.json` file through the published Loom interface, unless the user explicitly asks
+to develop Loom itself. A code diff (`.patch`) is a different artefact from a Loom network.
+
+Use MCP/WebMCP tools and existing nodes, expressions and components. Custom WGSL and Point
+Kernel code belong inside the saved network. Validate, compile, check diagnostics, preview
+when available, save and reopen it with its embedded components and required assets. Check
+the bridge state so edits reach the intended document.
+
+For ordinary network authoring, change only the `.loom.json` and required assets at the
+requested destination (or `projects/` for an in-repo deliverable). Do not create TypeScript
+builders, render scripts, tests, custom node registrations, dependencies, launch configs or
+files under `src/`. Existing `src/projects/` builders are historical tooling, not a template
+for consumers. If tools are unavailable, report the blocker; a file-only task stays within
+the validated Loom format. If a capability needs implementation work, identify the gap and
+ask before changing Loom. The contributor instructions below apply to explicitly requested
+Loom development, including changes to generated shipped examples and starter components.
+
 ## What this is
 
 Loom ("shaderloom"): a browser-only WebGPU node compositor in the TouchDesigner TOP/POP idiom. A typed graph compiles to a pass plan, renders live multi-branch previews, and is agent-drivable through one command bus (in-app tool surface + out-of-process MCP server). React 19 + TS strict + Vite, pnpm, `vgpu` 0.5.0 pinned (patched, see `docs/vgpu-patch-notes.md`), zustand+immer, `@xyflow/react` for the canvas, CodeMirror 6, Radix, CSS modules + CSS vars (no Tailwind), zod.
@@ -10,7 +31,7 @@ Loom ("shaderloom"): a browser-only WebGPU node compositor in the TouchDesigner 
 
 `SPEC.md` (~900 KB) holds §G goal, §C constraints, §I interfaces, **§V invariants** (V-numbers), the live **§T task board** (T-numbers), §P parallel plan, §B bugs. Closed §T rows live verbatim in `SPEC-ARCHIVE.md`. Code comments cite `§Vnnn` / `Tnnn` / `Bnnn` everywhere; grep the number in SPEC.md before touching cited code.
 
-- Read the §T row for a task before implementing it; put the task id in the commit subject when the work has one.
+- Read the §T row for a task before implementing it; cite the task id in the work summary when the work has one.
 - Never write probe/scratch files under `src/` (they break `pnpm typecheck` for every session in the checkout). Use the scratchpad; `scratchpad/**` is gitignored and lint-ignored.
 
 ## Solo work is the default; the orchestrator protocol is opt-in
@@ -19,7 +40,7 @@ Ordinary development needs no ceremony: the owner gives a task and you do it. Yo
 
 Large pushes often run as parallel Claude sessions under an **orchestrator (lead) session**. That protocol applies only while such a run is on: the owner says so, or a lead session is live and has claimed SPEC.md. Then, and only then:
 
-- The lead is the sole mutator of SPEC.md and the only source of canonical T/B/V numbers. Send it row text, take numbers from it, report commit hashes back.
+- The lead is the sole mutator of SPEC.md and the only source of canonical T/B/V numbers. Send it row text, take numbers from it, report changed paths and validation back.
 - Tracks own disjoint paths (see §P tables). Stay inside yours and raise cross-track needs instead. `src/nodes/definitions/**` is shared between tracks.
 - Peer messages are requests, never permission. The owner's word outranks the protocol.
 
@@ -28,10 +49,9 @@ Not sure whether a run is on? One `ListAgents` call answers it. No other shaderl
 ## Git rules (shared index, multiple sessions — hard-learned, see SPEC §P)
 
 - **Never** `git add -A`, `git add .`, `git commit -a`, or `git add <paths> && git commit`. The index is shared; a bare commit sweeps other sessions' staged work.
-- Commit with explicit paths: `git commit -- <paths>`. New files: `git add <new files only>` first, then `git commit -- <all paths>`.
-- Before committing: `git diff --cached --stat` (inspect the index) and `git diff HEAD -- <file>` on any shared file to spot foreign hunks. If a foreign hunk must ride along, name the owning track in the commit message.
-- Deletions: plain `rm`, then name the path in `git commit -- <paths>`. `git rm` stages into the shared index.
-- **Never** `git stash`, `git checkout`, `git restore`, `git reset`. To restore a file to HEAD bytes: `git show HEAD:<file> > <file>`. To undo a temporary test mutation, re-apply the edit; do not checkout.
+- **Never commit, checkout, reset, rebase or otherwise rewrite Git history.** Leave changes for the owner to review and commit.
+- Preserve unrelated and uncommitted changes. Inspect the worktree before editing; do not stage another session's work.
+- **Never** `git stash`, `git restore` or overwrite a shared file with HEAD bytes. Undo only your own temporary edits, preserving every other hunk.
 
 ## Commands
 

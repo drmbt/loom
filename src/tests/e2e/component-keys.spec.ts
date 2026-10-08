@@ -49,6 +49,7 @@ async function addNoise(page: Page): Promise<string> {
 
 async function openExample(page: Page, file: string): Promise<void> {
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles(file);
 }
@@ -140,6 +141,7 @@ test("Bloom Pyramid is placed from the library, tuned and reopened with its edit
   expect(change.after).not.toBe(change.before);
 
   const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-save").click();
   const savedPath = await (await downloading).path();
   if (savedPath === null) throw new Error("Saved project has no local download");

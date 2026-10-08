@@ -366,16 +366,29 @@ export function projectRange(settings: Pick<ProjectSettings, "frameRange">): Fra
 }
 
 /**
- * How far the transport will replay before it refuses (§V170), and therefore the largest
- * out point a range may have.
+ * DEPRECATED (VN71/T1687b): nothing in the transport reads this any more.
  *
- * 10 000 frames is ~2.8 minutes of 60 fps material — past anything someone scrubs to by
- * hand, and low enough that a mistyped `1e9` reports instead of hanging the browser. It
- * lives in the domain rather than beside the seek command because the RANGE is bounded by
- * it too: a project whose out point a seek would refuse is a project that cannot loop and
- * cannot render, and two copies of that number is how those quietly stop agreeing.
+ * It was how far a seek would replay (§V170: a seek replayed from frame zero so a feedback
+ * graph had its true state at the target), and through T454 it also capped the frame range,
+ * which cut a three-minute piece at 60 fps (10 800 frames) off the timeline. Now a seek
+ * JUMPS: it renders the target frame and leaves temporal state as it is, as TouchDesigner
+ * does. Feedback carries on from what it holds, and `runtime.resetFeedback` is how to start
+ * over. The range has its own cap, `RANGE_DAY_SECONDS`.
+ *
+ * Kept only because `src/projects/sentinel-bot/document.ts` still clamps its range to it.
+ * That clamp is now unnecessary (follow-up for upstream: drop it, then this).
  */
 export const SEEK_FRAME_LIMIT = 10_000;
+
+/**
+ * The RANGE cap (VN71/T1687b): one SMPTE day, 24:00:00:00, in seconds. The out point may be
+ * at most `RANGE_DAY_SECONDS * fps - 1` at the project's rate (`frameRangeLimit`).
+ *
+ * A sanity cap, not a cost: a seek renders one frame at any distance, and a render steps its
+ * range in order. It is here so a mistyped `1e9` reports instead of becoming a range nobody
+ * meant, and one day is the longest span a timecode can name.
+ */
+export const RANGE_DAY_SECONDS = 86_400;
 
 /** Frames in the range, inclusive of both ends. */
 export function frameRangeLength(range: FrameRange): number {

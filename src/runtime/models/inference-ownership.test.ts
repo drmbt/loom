@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createWorkerCore, MODEL_PLANS, type InferenceSessionLike } from "./inference-worker-core.ts";
 import type { InferenceResponse, WorkerLike } from "./inference-protocol.ts";
 import { createWorkerRunner } from "./worker-runner.ts";
-import { MATTE_RVM } from "./model-catalogue.ts";
+import { DEPTH_ACCURATE, MATTE_RVM } from "./model-catalogue.ts";
 
 /** Exercise the real runner/protocol/core together without model weights or a GPU. */
 function harness(modelId: string, smoothing: number, session: InferenceSessionLike) {
@@ -176,6 +176,136 @@ describe("temporal inference state belongs to a node, not shared model weights",
 });
 
 describe("inference results own transferable storage", () => {
+  it("packs BiRefNet input with ImageNet RGB normalization and dynamic dimensions", () => {
+    const plan = MODEL_PLANS["birefnet-lite-dynamic"]!;
+    const packed = plan.pack(new Float32Array([
+      0, 0.5, 1, 0.25, 1, 0.25, 0, 1,
+      0.5, 1, 0.25, 0, 0.25, 0, 0.5, 0.5,
+    ]), 2);
+    expect(plan.tensorType).toBe("float32");
+    expect(packed).toBeInstanceOf(Float32Array);
+    expect(packed).toEqual(new Float32Array([
+      (0 - 0.485) / 0.229, (1 - 0.485) / 0.229, (0.5 - 0.485) / 0.229, (0.25 - 0.485) / 0.229,
+      (0.5 - 0.456) / 0.224, (0.25 - 0.456) / 0.224, (1 - 0.456) / 0.224, (0 - 0.456) / 0.224,
+      (1 - 0.406) / 0.225, (0 - 0.406) / 0.225, (0.25 - 0.406) / 0.225, (0.5 - 0.406) / 0.225,
+    ]));
+    for (const side of [1024, 1536]) expect(plan.dims(side)).toEqual([1, 3, side, side]);
+  });
+
+  it("decodes BiRefNet logits once for encoded and native float32 masks without modifying the model tensor", async () => {
+    const storage = new Float32Array([42, -Math.log(9), 0, Math.log(9), -100, 100, 1, 43]);
+    const output = storage.subarray(1, 7);
+    const before = storage.slice();
+    const feedsSeen: number[][] = [];
+    const test = harness("birefnet-lite-dynamic", 1, {
+      inputNames: ["input_image"], outputNames: ["output_image"],
+      run: async feeds => {
+        feedsSeen.push([...(feeds.input_image as { dims: readonly number[] }).dims]);
+        return { output_image: { data: output, dims: [1, 1, 2, 3] } };
+      },
+    });
+    try {
+      const captured = await test.runner.runRaw("mask1", new Float32Array(16).buffer);
+      const encoded = new Float32Array(captured.bytes.buffer, captured.bytes.byteOffset, captured.bytes.byteLength / 4);
+      expect(encoded[0]).toBeCloseTo(0.1, 7);
+      expect(encoded[1]).toBe(0.5);
+      expect(encoded[2]).toBeCloseTo(0.9, 7);
+      expect(encoded[3]).toBe(new Float32Array([1 / (1 + Math.exp(100))])[0]);
+      expect(encoded[4]).toBe(1);
+      expect(encoded[5]).toBeCloseTo(1 / (1 + Math.exp(-1)), 7);
+      expect(captured.raw.values).toEqual(encoded);
+      expect([captured.raw.width, captured.raw.height]).toEqual([3, 2]);
+      expect(encoded.buffer.byteLength).toBe(6 * 4);
+      expect(captured.raw.values.buffer.byteLength).toBe(6 * 4);
+      expect(encoded.buffer).not.toBe(captured.raw.values.buffer);
+      expect(encoded.buffer).not.toBe(output.buffer);
+      expect(captured.raw.values.buffer).not.toBe(output.buffer);
+      expect(storage).toEqual(before);
+      // Reusing the same native tensor must not apply sigmoid to previous probabilities.
+      test.target.side = 4;
+      const next = await test.run("mask1");
+      expect(new Float32Array(next.buffer)).toEqual(encoded);
+      expect(feedsSeen).toEqual([[1, 3, 2, 2], [1, 3, 4, 4]]);
+      expect(test.createSession).toHaveBeenCalledTimes(1);
+      expect(test.transferredResults.every(buffer => buffer.byteLength === 0)).toBe(true);
+      captured.raw.values.fill(0);
+      expect(new Float32Array(next.buffer)).toEqual(encoded);
+      expect(storage).toEqual(before);
+    } finally { test.runner.dispose(); }
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])("rejects non-finite BiRefNet logits (%s) before publishing a mask", async value => {
+    const output = new Float32Array([0, value, 0, 0]);
+    const test = harness("birefnet-lite-dynamic", 1, {
+      inputNames: ["input_image"], outputNames: ["output_image"],
+      run: async () => ({ output_image: { data: output, dims: [1, 1, 2, 2] } }),
+    });
+    try {
+      await expect(test.runner.runRaw("mask1", new Float32Array(16).buffer)).rejects.toThrow(/BiRefNet returned a non-finite logit at sample 1/);
+      expect(test.transferredResults).toHaveLength(0);
+      expect(output.byteLength).toBe(16);
+      expect(output[1]).toBe(value);
+    } finally { test.runner.dispose(); }
+  });
+
+  it("preserves native ORMBG probabilities without applying BiRefNet decoding", async () => {
+    const output = new Float32Array([0.1, 0.5, 0.9, 1]);
+    const test = harness("ormbg-quantized", 1, {
+      inputNames: ["input"], outputNames: ["alphas"],
+      run: async () => ({ alphas: { data: output, dims: [1, 1, 2, 2] } }),
+    });
+    try {
+      const captured = await test.runner.runRaw("mask1", new Float32Array(16).buffer);
+      expect(captured.raw.values).toEqual(output);
+      expect(new Float32Array(captured.bytes.buffer)).toEqual(output);
+      expect(output.byteLength).toBe(16);
+    } finally { test.runner.dispose(); }
+  });
+
+  it("transfers independent native float32 depth without detaching the model tensor", async () => {
+    const output = new Float32Array([-3.125, -17.5, 40, 99.75]);
+    const transfers: Transferable[][] = [];
+    const results: Extract<InferenceResponse, { kind: "result" }>[] = [];
+    let deliver: ((event: { data: InferenceResponse }) => void) | undefined;
+    const core = createWorkerCore({
+      isolated: true,
+      createSession: async () => ({ inputNames: ["pixel_values"], outputNames: ["predicted_depth"],
+        run: async () => ({ predicted_depth: { data: output, dims: [1, 2, 2] } }) }),
+      createTensor: () => ({}),
+      post: (data, transfer) => {
+        if (deliver === undefined) throw new Error("Worker listener not installed");
+        if (data.kind === "result") { results.push(data); transfers.push(transfer ?? []); }
+        deliver({ data: structuredClone(data, transfer === undefined ? {} : { transfer }) });
+      },
+    });
+    const runner = createWorkerRunner({
+      worker: { postMessage: request => { void core.handle(request); },
+        addEventListener: (type: string, listener: unknown) => { if (type === "message") deliver = listener as typeof deliver; },
+        terminate: () => undefined },
+      describe: () => ({ modelId: DEPTH_ACCURATE.id, nodeType: "depth", width: 4, height: 2,
+        side: 2, sourceWidth: 4, sourceHeight: 2, providers: ["wasm"], ratio: 0, smoothing: 1 }),
+      weightsFor: async () => new ArrayBuffer(4),
+    });
+    try {
+      const captured = await runner.runRaw("depth1", new Float32Array(16).buffer);
+      expect([...captured.raw.values]).toEqual([-3.125, -17.5, 40, 99.75]);
+      expect([captured.raw.width, captured.raw.height]).toEqual([2, 2]);
+      expect(output.byteLength).toBe(16);
+      expect([...output]).toEqual([...captured.raw.values]);
+      expect(results[0]!.raw!.bytes.byteLength).toBe(0);
+      expect(results[0]!.bytes.byteLength).toBe(0);
+      expect(transfers[0]).toEqual([results[0]!.bytes, results[0]!.raw!.bytes]);
+      // A later ordinary run reuses that same model-owned tensor and sends no raw copy.
+      const ordinary = await runner.run("depth1", new Float32Array(16).buffer);
+      expect(ordinary.byteLength).toBe(4 * 2 * 4);
+      expect(results[1]!.raw).toBeUndefined();
+      expect(transfers[1]).toEqual([results[1]!.bytes]);
+      expect(output.byteLength).toBe(16);
+      captured.raw.values.fill(0);
+      expect([...output]).toEqual([-3.125, -17.5, 40, 99.75]);
+    } finally { runner.dispose(); }
+  });
+
   it("rejects an aliased encoder before smoothing changes model output or retained history", async () => {
     const model = "modnet-photographic";
     const encode = vi.spyOn(MODEL_PLANS[model]!, "encode");

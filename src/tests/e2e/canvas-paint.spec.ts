@@ -183,6 +183,7 @@ async function documentOf(levels: number, signals = 0): Promise<{ path: string; 
 async function openDocument(page: Page, path: string): Promise<void> {
   await openApp(page);
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles(path);
   await expect(page.locator('.react-flow__node[data-id]').first()).toBeAttached({ timeout: 60_000 });

@@ -151,6 +151,7 @@ describe("v3 → tree migration reproduces the flat arrangement (T404)", () => {
       "problems",
       "performance",
       "agent",
+      "timeline",
       "controls",
       "terminal",
     ]);
@@ -319,7 +320,7 @@ describe("the projection goes NULL the moment the tree stops being flat (V385)",
     const moved = moveTab(flat, allTabs(flat).find((tab) => tab.role === "problems")!.key, "leaf-right");
     const projected = shellLayoutFromTree(moved);
     expect(projected?.zones.right).toEqual(["viewer", "problems"]);
-    expect(projected?.zones.bottom).toEqual(["examples", "shader", "performance", "agent", "controls", "terminal"]);
+    expect(projected?.zones.bottom).toEqual(["examples", "shader", "performance", "agent", "timeline", "controls", "terminal"]);
   });
 
   it("T927's default was structural — v3 could not hold it, and V385 CLEARED the record", () => {
@@ -472,6 +473,7 @@ describe("the split/close algebra", () => {
         "problems",
         "performance",
         "agent",
+        "timeline",
         "controls",
         "terminal",
       ]);
@@ -553,6 +555,7 @@ describe("the split/close algebra", () => {
         "examples",
         "performance",
         "agent",
+        "timeline",
         "controls",
         "terminal",
       ]);
@@ -568,6 +571,7 @@ describe("the split/close algebra", () => {
         "shader",
         "problems",
         "performance",
+        "timeline",
         "controls",
         "terminal",
       ]);

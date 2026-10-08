@@ -60,6 +60,7 @@ test("Shift+F frames the interior once the canvas is inside a component (T1195)"
   await expect(page.getByTestId("graph-canvas")).toBeVisible();
 
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles("examples/E51-Chorus.loom.json");
   const wall = page.locator('.react-flow__node[data-id="wall"]');
@@ -150,6 +151,7 @@ test("diving frames the interior with no key pressed (T1195b)", async ({ page })
   await expect(page.getByTestId("graph-canvas")).toBeVisible();
 
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles("examples/E51-Chorus.loom.json");
   const wall = page.locator('.react-flow__node[data-id="wall"]');

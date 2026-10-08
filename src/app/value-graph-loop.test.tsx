@@ -9,6 +9,7 @@ import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { App } from "./app.tsx";
 import { createAppRuntime } from "./app-runtime.ts";
+import { transportHolderFor } from "./transport-commands.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import type { GpuStatus } from "./gpu-status.ts";
 import { useFrameLoop } from "./use-frame-loop.ts";
@@ -280,14 +281,18 @@ describe("the frame seam advances channels before it resolves them", () => {
     runtime.dispose();
   });
 
-  it("clears value state on a seek, beside the GPU's temporal history (§V181, §V170)", async () => {
+  it("a seek carries value state on (VN71, §V170 as amended); resetState clears it, beside the GPU's history (§V181)", async () => {
     const { calls, runtime } = harness();
     await act(async () => {});
     await act(async () => {
       await runtime.bus.execute("transport.seek", { frameIndex: 0 }, runtime.invocation);
     });
-    // A replay that starts from a state belonging to a different history is a scrub that
-    // looks like it works and is a lie; the CPU half of that rule is this call.
+    // A seek jumps, as TouchDesigner's does: a Lag carries on from where it was.
+    expect(calls).not.toContain("reset");
+    // The callers that owe a fresh start (a load, a take) clear the CPU half with the GPU's.
+    await act(async () => {
+      transportHolderFor(runtime.bus).current?.resetState();
+    });
     expect(calls).toContain("reset");
     runtime.dispose();
   });

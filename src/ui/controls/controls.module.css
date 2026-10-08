@@ -106,8 +106,16 @@
   and the pointer capture never sees the moves.
 */
 .labelDraggable {
-  cursor: ew-resize;
   touch-action: none;
+}
+/* Plain dragging adjusts values; Ctrl/Cmd dragging carries a reference. */
+.labelText[draggable="true"] {
+  cursor: ew-resize;
+}
+/* VN63: a row a dragged parameter can be dropped on, while the drag is over it. */
+.row[data-drop-target] {
+  outline: 1px dashed var(--signal);
+  outline-offset: -1px;
 }
 
 .descriptionLegacy {

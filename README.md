@@ -45,6 +45,54 @@ Desktop checks: `pnpm desktop:check` (unit/ownership) and `pnpm desktop:test`
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
 
+## Photo projection mapping
+
+Choose **File → Map from photo…**, also available under **Settings → Output**. Photograph the stationary object from beside
+the projector lens and choose the image. Load matching saved depth and mask files in
+the dialog to create a network immediately, or run Depth and Mask independently. Model
+downloads start only from those buttons and are cached locally. The mask also supports
+manual erase/restore painting and stroke undo.
+Turn off **Use surface mask** to map the full frame with depth alone. This requires
+no mask generation or saved mask file. A nearly empty mask reports its coverage so
+you can choose full-frame mapping or restore the surface with the brush.
+
+**Detail** controls sit above each map preview: depth offers native inputs up to
+1288 × 1288, and the BiRefNet background-removal mask offers 1024 or 1536. Larger
+sizes use more time and memory. Rerun an older mask to use the new surface model;
+existing maps remain reusable. Oversized photos fit within the project's resolution
+limit without cropping the frame or changing the original asset.
+
+Save each prepared map as a `.loomf32` file, then create the mapping network. Raw depth
+remains float32 at the model's native resolution; normalization and registration are
+stored separately. Float Map In loads numerical values without an image decoder or
+sRGB conversion. Keep the external maps and original photo beside the `.loom.json`;
+another browser profile can relink those files through the existing asset fields.
+
+The network uses Custom WGSL, Mask, Grid Warp, Corner Pin and Window Out. Its wired main
+Output shows the effect without a projector; **Preview on reference photo** adds a
+separate composite over the photo. Choose the projector display on Window Out and use
+its mapping controls to align the silhouette.
+The preview's `level_reference` dims only the reference photograph to keep projected
+colours visible on bright surfaces; its Brightness control adjusts that balance.
+**Preview light** adjusts the effect's Screen opacity while keeping the building
+visible; Window Out continues to receive full-strength effects. When using a separate
+night photo, **Check framing and alignment** shows cropped edges or borders and offers
+a reference overlay for comparing rooflines and windows. Preparation shows measured
+download progress, processing stages and elapsed time inside the active map preview.
+The five starting looks are **Neon contours**, **Prismatic sweep**, **Chromatic relief**,
+**Surface trace**, and **Depth reveal**. Each moves and evolves over time. Surface trace
+follows the actual mask boundary; Depth reveal makes the relative depth bands easy to
+read against the photo. The Custom WGSL node exposes speed, palette shift, glow,
+evolution, outline width and edge glow controls, alongside the editable shader.
+The looks also recover architectural edges from the reference: neon engraving, liquid
+stained-glass ribbons, brushed copper highlights, electric blueprint linework and a
+faceted depth atlas. **Architecture Detail** adjusts this photographic detail without
+mixing the original photo into projector output; **Fine Detail** adjusts smaller patterns.
+Create from saved maps to use the latest templates; each network stores its own shader.
+On a prepared Float Map In, **Prepare / rerun…** opens the saved preparation. Rerunning
+depth preserves mask edits and calibration; rerunning the mask deliberately replaces
+its edits. Photo or depth-detail changes mark the corresponding map out of date.
+
 ## The local helper
 
 A browser tab cannot receive or send UDP, cannot open TCP to a laser DAC, cannot run the
@@ -175,6 +223,22 @@ Both talk to `127.0.0.1` only, and neither takes a host argument.
 ## MCP
 
 Loom exposes its tools over stdio for desktop clients and through WebMCP in supported browsers.
+
+### Creating networks with an agent
+
+Ask an agent to author a **Loom network** and deliver a `.loom.json` file. Use the published
+MCP/WebMCP tools to discover nodes and examples, edit the intended document, validate,
+compile, inspect diagnostics, preview and save. Reopen the saved file to verify its embedded
+components and required media assets. The bridge state says whether tools reach your live
+tab or the helper's headless document.
+
+Custom shader and point-kernel code lives inside the network in Custom WGSL and Point
+Kernel nodes. Making a new visual does not require adding TypeScript, a project builder,
+a renderer or a custom node type to this repository. Agents should change only the network
+and required assets by default; implementation changes require an explicit request to
+develop Loom. If a tool or capability is missing, report it before changing the application.
+See [AGENTS.md](./AGENTS.md) and [CLAUDE.md](./CLAUDE.md) for the authoring rules. A `.patch`
+code diff is a separate artefact from a `.loom.json` network.
 
 ### Claude
 

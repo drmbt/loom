@@ -4,6 +4,36 @@
 
 These instructions apply to the entire repository. `SPEC.md` is the authoritative product and architecture contract; read the relevant section before changing behavior.
 
+## Default task: author a Loom network
+
+Requests to create or change a visual, scene, effect, composition, project or Loom network
+are **network authoring** unless the user explicitly asks to develop Loom itself. The
+deliverable is a `.loom.json` file, plus any required media assets. A code diff (`.patch`)
+is a separate artefact; do not confuse it with a Loom network.
+
+- Use the published Loom tools (MCP/WebMCP) and existing nodes, parameter expressions,
+  components, Custom WGSL nodes and Point Kernel nodes. Store custom WGSL and kernels
+  inside the network; they do not need TypeScript modules or custom node registrations.
+- Discover the available tools, node definitions and worked examples before authoring.
+  Inspect the current document and bridge state; verify that edits reach the intended
+  network. Validate, compile, inspect diagnostics, preview when available, and save through
+  the published interface. Reopen the saved file to check embedded components and assets.
+- Keep ordinary user networks at the user's requested destination, or under `projects/`
+  when they request an in-repo deliverable. Change only the network and required assets;
+  do not add project builders, render scripts, tests, dependencies, launch configuration,
+  or files under `src/projects/` or elsewhere in `src/` for a network request.
+- If the published interface is unavailable, report the specific blocker. A file-only task
+  may edit `.loom.json` using the existing versioned format and validation path; keep the
+  work within the network and assets. Do not substitute repository code for missing tools.
+- If a capability is genuinely missing or broken, identify it and ask before changing
+  Loom's implementation. A request for a visual does not authorize engine development.
+
+The non-negotiables below apply to both workflows. The implementation and validation rules
+apply when the user explicitly requests Loom development. Existing TypeScript-built
+projects are historical tooling, not the default authoring
+workflow. Shipped examples and starter components remain generated executable
+specifications with the source/regeneration rules below; change them only when requested.
+
 ## Non-negotiables
 
 - Never commit, checkout, reset, rebase, or otherwise rewrite Git history.

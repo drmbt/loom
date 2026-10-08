@@ -31,7 +31,7 @@ describe("§B288 — runtime.resetFeedback", () => {
     const cleared: Array<readonly string[] | undefined> = [];
     const backend = { resetTemporalHistory: (ids?: readonly string[]) => cleared.push(ids) } as unknown as LoomBackend;
     const compiled = { feedback: [{ nodeId: "two/fb", resourceId: "pair:two/fb" }], resources: [] } as unknown as CompiledGraph;
-    registerResetFeedbackCommand(bus, { backend: () => backend, compiled: () => compiled });
+    registerResetFeedbackCommand(bus, { backend: () => backend, compiled: () => compiled, resetState: () => backend.resetTemporalHistory(undefined, { buffers: true }) });
 
     const asked = await bus.execute("runtime.resetFeedback", { nodeIds: ["two/fb"] }, dry);
     expect(asked.status).toBe("validated");

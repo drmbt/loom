@@ -19,7 +19,7 @@ import type { InferenceNodeType, InferenceRequest, InferenceResponse } from "./i
 export interface InferenceSessionLike {
   readonly inputNames: readonly string[];
   readonly outputNames: readonly string[];
-  run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array }>>;
+  run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array; dims?: readonly number[] }>>;
 }
 
 export interface WorkerCoreOptions {
@@ -105,6 +105,9 @@ interface Packing {
 export interface ModelPlan extends Packing {
   /** The output the node PUBLISHES, by name (§V861). Never an index. */
   readonly picture: string;
+  /** Model-specific output decoding before encoding and native preparation capture.
+   * A decoder owns its result and never mutates the runtime's model tensor. */
+  readonly decodeOutput?: (output: Float32Array) => Float32Array;
   /**
    * The recurrent loop: OUTPUT name → the INPUT name it becomes on the next run.
    *
@@ -158,6 +161,40 @@ const MODNET_PACKING: Packing = {
  * still be a row rather than a branch.
  */
 export const MODEL_PLANS: Readonly<Record<string, ModelPlan>> = {
+  "birefnet-lite-dynamic": {
+    // The pinned reference uses ImageNet-normalized RGB and dynamic spatial dimensions.
+    ...DEPTH_PACKING,
+    picture: "output_image",
+    smoothing: 1,
+    decodeOutput: (output) => {
+      // The ONNX picture is logits. Decode exactly once for BOTH published pixels and
+      // native preparation; applying sigmoid only in encode would persist wrong masks.
+      const probabilities = new Float32Array(output.length);
+      for (let i = 0; i < output.length; i += 1) {
+        const logit = output[i]!;
+        if (!Number.isFinite(logit)) throw new Error(`BiRefNet returned a non-finite logit at sample ${i}.`);
+        probabilities[i] = 1 / (1 + Math.exp(-logit));
+      }
+      return probabilities;
+    },
+    encode: (output) => new Uint8Array(Float32Array.from(output).buffer),
+  },
+  "ormbg-quantized": {
+    // The pinned processor rescales RGB to [0,1], without ImageNet normalization.
+    tensorType: "float32",
+    pack: (texels, side) => {
+      const pixels = side * side;
+      const packed = new Float32Array(3 * pixels);
+      for (let i = 0; i < pixels; i += 1) {
+        for (let c = 0; c < 3; c += 1) packed[c * pixels + i] = texels[4 * i + c]!;
+      }
+      return packed;
+    },
+    dims: () => [1, 3, 1024, 1024],
+    picture: "alphas",
+    smoothing: 1,
+    encode: (output) => new Uint8Array(Float32Array.from(output).buffer),
+  },
   "depth-anything-v2-small": { ...DEPTH_PACKING, picture: "predicted_depth", smoothing: 1 },
   "depth-anything-v2-small-q4f16": { ...DEPTH_PACKING, picture: "predicted_depth", smoothing: 1 },
   "movenet-lightning": { ...POSE_PACKING, picture: "keypoints", smoothing: 1 },
@@ -393,13 +430,14 @@ export function createWorkerCore(options: WorkerCoreOptions) {
         const millis = now() - started;
 
         /* §V861 — BY NAME. The one line this whole task exists for; see MODEL_PLANS. */
-        const data = outputs[plan.picture]?.data;
-        if (data === undefined) {
+        const modelData = outputs[plan.picture]?.data;
+        if (modelData === undefined) {
           throw new Error(
             `the model returned no "${plan.picture}" — it declares ` +
               `[${session.outputNames.join(", ")}]`,
           );
         }
+        const data = plan.decodeOutput === undefined ? modelData : plan.decodeOutput(modelData);
 
         if (plan.feedback !== undefined) {
           const tensors: Record<string, unknown> = {};
@@ -426,7 +464,7 @@ export function createWorkerCore(options: WorkerCoreOptions) {
         // Validate ownership before smoothing can mutate the encoder's storage or
         // replace retained history. An invalid encoder must leave both untouched.
         const buffer = bytes.buffer;
-        if (!(buffer instanceof ArrayBuffer) || bytes.byteOffset !== 0 || bytes.byteLength !== buffer.byteLength || buffer === data.buffer) {
+        if (!(buffer instanceof ArrayBuffer) || bytes.byteOffset !== 0 || bytes.byteLength !== buffer.byteLength || buffer === data.buffer || buffer === modelData.buffer) {
           throw new Error(`inference encoder for "${request.modelId}" must return an owned exact ArrayBuffer`);
         }
         if (request.nodeType === "matte" && request.smoothing < 1) {
@@ -442,6 +480,17 @@ export function createWorkerCore(options: WorkerCoreOptions) {
         // Every encoder owns a fresh exact buffer. Smoothing retains a separate copy
         // above, so transferring this result detaches neither model nor temporal state.
         // A copy here would allocate and move another 8.3 MB for a 1080p result.
+        let raw: { bytes: ArrayBuffer; width: number; height: number } | undefined;
+        if (request.captureRaw === true) {
+          const shape = outputs[plan.picture]!.dims;
+          if (shape === undefined || shape.length < 2) throw new Error("Raw preparation requires the model output's native dimensions.");
+          const width = shape[shape.length - 1]!;
+          const height = shape[shape.length - 2]!;
+          if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || data.length !== width * height) {
+            throw new Error("Raw preparation requires a single-channel model output with matching dimensions.");
+          }
+          raw = { bytes: Float32Array.from(data).buffer, width, height };
+        }
         options.post(
           {
             kind: "result",
@@ -450,8 +499,9 @@ export function createWorkerCore(options: WorkerCoreOptions) {
             backend,
             millis,
             isolated: options.isolated,
+            ...(raw === undefined ? {} : { raw }),
           },
-          [buffer],
+          raw === undefined ? [buffer] : [buffer, raw.bytes],
         );
       } catch (error) {
         const raw = error instanceof Error ? error.message : String(error);

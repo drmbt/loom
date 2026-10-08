@@ -121,6 +121,17 @@ describe("MCP connection (T290)", () => {
 });
 
 describe("WebMCP registration (T290)", () => {
+  it("publishes the network authoring scope to browser agents", () => {
+    const { surface } = harness();
+    const provided: Array<{ tools: Array<{ name: string; description: string }> }> = [];
+    const host = { document: { modelContext: { provideContext: (ctx: never) => provided.push(ctx) } } };
+    registerWebMcp(surface, { host });
+
+    const catalogue = provided[0]?.tools.find((tool) => tool.name === "list_node_definitions");
+    expect(catalogue?.description).toContain("author a Loom network through the published tools");
+    expect(catalogue?.description).toContain("unless the user explicitly requests Loom development");
+  });
+
   it("publishes every tool to a provideContext host; absent host registers nothing", async () => {
     const { surface, store } = harness();
     const provided: Array<{ tools: Array<{ name: string; execute: (args: unknown) => Promise<unknown> }> }> = [];

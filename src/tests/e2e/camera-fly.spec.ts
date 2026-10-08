@@ -47,6 +47,7 @@ async function open(page: Page, slug: string, nodes: GraphNode[], wires: Readonl
   const file = buildProjectFile({ document: project, now: () => project.updatedAt });
   await openApp(page);
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles({ name: `${slug}.loom.json`, mimeType: "application/json", buffer: Buffer.from(file.text) });
   await expect(page.locator(".react-flow__node")).toHaveCount(nodes.length);
@@ -345,6 +346,7 @@ test("a key held in a text field does not fly the camera", async ({ page }) => {
 /** The camera's parameters as the SAVED FILE holds them: the document, through the app's own save. */
 async function savedParameters(page: Page, nodeId: string): Promise<Record<string, unknown>> {
   const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-save").click();
   const path = await (await download).path();
   if (path === null) throw new Error("the saved project has no local download");

@@ -152,6 +152,7 @@ test("restoring a Screen In project never restores permission or opens the picke
   await section.getByRole("button", { name: "Share tab/window", exact: true }).click();
   await expect(section.locator("[data-screen-status]")).toHaveAttribute("data-screen-status", "sharing");
   const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-save").click();
   const path = await (await downloaded).path();
   if (path === null) throw new Error("Saved Screen In project has no downloaded bytes.");
@@ -163,6 +164,7 @@ test("restoring a Screen In project never restores permission or opens the picke
   await expect(page.getByTestId("graph-canvas")).toBeVisible();
   expect((await snapshot(page)).calls).toHaveLength(0);
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles({ name: "screen.loom.json", mimeType: "application/json", buffer: bytes });
   await expect(page.locator(`.react-flow__node[data-id="${id}"]`)).toBeVisible();

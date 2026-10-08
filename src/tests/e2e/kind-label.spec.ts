@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { openApp } from "./app.ts";
 
+// v17-allow-dynamic-color: pixel regression injects distinct status and component strip probes.
+
 /**
  * A NODE'S KIND STAYS LEGIBLE AT LOW ZOOM, IN A BROWSER THAT LAYS THINGS OUT (T1597b),
  * AND IT NEITHER COVERS WHAT THE NODE SHOWS NOR IS COVERED BY IT (B258).
@@ -26,7 +28,7 @@ import { openApp } from "./app.ts";
  * no node's box (§V389). `kind-label.test.tsx` holds the logic and the cost in writes;
  * this holds what a person would see, measured off the real page.
  *
- * Headless is enough: no pixel is read, and the header chrome renders without a GPU.
+ * Headless is enough: the header chrome, including its colour strip, renders without a GPU.
  *
  * ## What "on top" is asked of, and the one thing it cannot be asked
  *
@@ -96,7 +98,7 @@ interface LabelGeometry {
   readonly withRest: number;
   /** [min, max] height of a label on screen, CSS px. */
   readonly height: readonly [number, number];
-  /** The furthest any DRAWN part of a label reaches past its own node's left or right edge, CSS px. */
+  /** The furthest any DRAWN part of a label reaches past its own node's left or right edge, CSS px. Not an instance's (VNB15). */
   readonly furthestBeyondOwnWidth: number;
   /** The furthest any drawn part reaches BELOW the line under its own node's header, CSS px (B258). */
   readonly furthestBelowHeaderLine: number;
@@ -167,8 +169,18 @@ const measure = (page: Page): Promise<LabelGeometry> =>
           inASlot: slots.some((slot) => overlap(box, slot)),
           rest: rest !== undefined && getComputedStyle(rest).display !== "none",
           word: label.firstElementChild?.textContent ?? "",
+          instance: clipBox.dataset["instance"] !== undefined,
         };
       });
+    /*
+     * VNB15 — by the owner's ruling of 2026-10-07 (option (b)), a COMPONENT INSTANCE's label
+     * is not clipped at its node's edge: its kind is its component's whole name, which the
+     * clip cut to `sta` on the stage previz. It runs on as far as the next node in its row.
+     * So an instance is exempt from ONE claim, staying inside its own width; it is held to
+     * every other one below like any node: on no other node, no picture, no other label.
+     * `component-name-labels.spec.ts` holds that it reads whole where its row has room.
+     */
+    const plain = drawn.filter((each) => !each.instance);
     let overlappingPairs = 0;
     for (let a = 0; a < drawn.length; a += 1) {
       for (let b = a + 1; b < drawn.length; b += 1) {
@@ -182,7 +194,7 @@ const measure = (page: Page): Promise<LabelGeometry> =>
       shown: drawn.length,
       withRest: drawn.filter((each) => each.rest).length,
       height: [Math.min(...heights), Math.max(...heights)] as const,
-      furthestBeyondOwnWidth: Math.max(0, ...drawn.map((each) => each.beyondWidth)),
+      furthestBeyondOwnWidth: Math.max(0, ...plain.map((each) => each.beyondWidth)),
       furthestBelowHeaderLine: Math.max(0, ...drawn.map((each) => each.belowHeaderLine)),
       furthestAboveOwnNode: Math.max(0, ...drawn.map((each) => each.aboveNode)),
       overlappingPairs,
@@ -248,6 +260,70 @@ test.describe("T1597b — the label, on the dense example", () => {
     // And the words are KINDS, from the node's type: this example names almost nothing for
     // its kind yet, and reads `kernel`, `geometry`, `wgsl` all the same.
     expect(at15.firstWords).toEqual(expect.arrayContaining(["geometry", "kernel", "light", "material", "wgsl"]));
+  });
+
+  test("the growing label retains the node's colour strip and component identity at every zoom", async ({ page }) => {
+    for (const zoom of [0.35, 0.6, 0.15]) {
+      await zoomTo(page, zoom);
+      // Pick a visible part of a plate, before its right-edge fade. Endpoint colours make its strip
+      // distinguishable from text, family tint and the normal status palette.
+      const probeId = await page.evaluate(() => {
+        const pane = document.querySelector('[data-testid="graph-canvas"]')!.getBoundingClientRect();
+        const label = [...document.querySelectorAll<HTMLElement>('[data-testid^="node-kind-label-"]')].find((candidate) => {
+          const box = candidate.getBoundingClientRect();
+          const clip = candidate.parentElement!.getBoundingClientRect();
+          const right = Math.min(box.right, clip.right);
+          return box.left > pane.left + 8 && box.top > pane.top + 8
+            && right < pane.right - 8 && box.bottom < pane.bottom - 8
+            && right - box.left >= 20;
+        });
+        if (label === undefined) throw new Error("no kind label has a visible colour-strip probe");
+        const node = label.parentElement!.parentElement!;
+        node.removeAttribute("data-component");
+        node.style.setProperty("--status-color", "rgb(0, 255, 255)");
+        node.style.setProperty("--component", "rgb(255, 128, 0)");
+        return label.dataset["testid"]!;
+      });
+      const label = page.getByTestId(probeId);
+      const before = await label.boundingBox();
+      if (before === null) throw new Error("the colour-strip probe has no box");
+      expect(await label.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe("none");
+      const width = Math.min(12, before.width - 6);
+
+      const colourPixels = async (component: boolean): Promise<number> => {
+        const box = await label.boundingBox();
+        if (box === null) throw new Error("the colour-strip probe has no box");
+        const shot = await page.screenshot({ clip: { x: box.x + 3, y: box.y, width, height: 3 } });
+        return page.evaluate(async ({ base64, component }) => {
+          const image = new Image();
+          image.src = `data:image/png;base64,${base64}`;
+          await image.decode();
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          const context = canvas.getContext("2d", { willReadFrequently: true });
+          if (context === null) throw new Error("the screenshot decoder has no 2D context");
+          context.drawImage(image, 0, 0);
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          let count = 0;
+          for (let offset = 0; offset < pixels.length; offset += 4) {
+            const r = pixels[offset]!;
+            const g = pixels[offset + 1]!;
+            const b = pixels[offset + 2]!;
+            // Fractional layout can split a one-pixel hairline over two raster rows.
+            if (component ? r > b + 80 && r > g + 30 : g > r + 80 && b > r + 80) count += 1;
+          }
+          return count;
+        }, { base64: shot.toString("base64"), component });
+      };
+
+      expect(await colourPixels(false), `status strip at ${String(zoom)}`).toBeGreaterThan(width * 0.6);
+      await label.evaluate((element) => element.parentElement!.parentElement!.setAttribute("data-component", "true"));
+      expect(await colourPixels(true), `component strip at ${String(zoom)}`).toBeGreaterThan(width * 0.6);
+      const after = await label.boundingBox();
+      expect(after?.width).toBeCloseTo(before.width, 4);
+      expect(after?.height).toBeCloseTo(before.height, 4);
+    }
   });
 
   /**

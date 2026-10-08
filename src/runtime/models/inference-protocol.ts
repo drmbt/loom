@@ -115,6 +115,8 @@ export type InferenceRequest =
        * plan table, so "what does this model want" has one answer.
        */
       readonly smoothing: number;
+      /** Explicit preparation capture; ordinary live runs transfer only encoded output. */
+      readonly captureRaw?: boolean;
     };
 
 export type InferenceResponse =
@@ -136,6 +138,12 @@ export type InferenceResponse =
       readonly kind: "result";
       readonly requestId: number;
       readonly bytes: ArrayBuffer;
+      /** Native float32 model output before normalization or output-size resampling. */
+      readonly raw?: {
+        readonly bytes: ArrayBuffer;
+        readonly width: number;
+        readonly height: number;
+      };
       /** The provider this result came off. Same measurement, carried per run. */
       readonly backend: string;
       /** Wall time this inference took, ms. Telemetry only; never a render clock. */

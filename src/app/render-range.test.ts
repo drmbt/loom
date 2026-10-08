@@ -62,6 +62,10 @@ function fakeTransport(): RangeTransport & { readonly rendered: number[]; playin
     resetAbsoluteClock: () => {
       rendered.push(-1);
     },
+    // VN71: the take's clear — recorded so a test can pin that it precedes the first frame.
+    resetState: () => {
+      rendered.push(-2);
+    },
     seek: (frameIndex: number) => {
       state.current = frameIndex;
       rendered.push(frameIndex);
@@ -147,7 +151,7 @@ describe("renderFrameRange covers exactly the range (T433)", () => {
     });
 
     expect(encoder.encoded).toEqual([0, 1, 2, 3, 4]);
-    expect(transport.rendered).toEqual([-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(transport.rendered).toEqual([-1, -2, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(settled).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(capturedSourceFrames).toEqual([0, 2, 4, 6, 8]);
     expect(result.report).toMatchObject({ frames: 5, firstFrameIndex: 0, lastFrameIndex: 4, contiguous: true });
@@ -191,7 +195,7 @@ describe("renderFrameRange covers exactly the range (T433)", () => {
     expect(encoder.encoded).toEqual([7]);
   });
 
-  it("replays to the in point with cooperative progress, preserving its real state (§V170)", async () => {
+  it("starts at the in point over cleared state, with no replay from zero (VN71, §V170 as amended)", async () => {
     const transport = fakeTransport();
     const preRoll: Array<readonly [number, number]> = [];
     const yieldControl = vi.fn(async () => undefined);
@@ -206,12 +210,82 @@ describe("renderFrameRange covers exactly the range (T433)", () => {
       onPreRollProgress: (completed, total) => preRoll.push([completed, total]),
       yieldControl,
     });
-    // T467 first, then canonical seek(0), then visible/cancellable replay to the in point.
-    // Every temporal frame still exists; only the old synchronous page freeze is removed.
-    expect(transport.rendered[0]).toBe(-1); // the fake records resetAbsoluteClock as -1
-    expect(transport.rendered.slice(1, 5)).toEqual([0, 1, 2, 3]);
+    // T467's clock first, then the clear, then the in point itself: frames 0..2 are not
+    // played, because a take does not owe the play-through's history unless it asks for a
+    // pre-roll — it owes the same file every time, which the clear gives it.
+    expect(transport.rendered).toEqual([-1, -2, 3, 4, 5]);
+    expect(preRoll).toEqual([]);
+    expect(yieldControl).not.toHaveBeenCalled();
+  });
+
+  it("VN71: a take clears temporal state and starts AT its in point — no replay from zero — abstime counting from there", async () => {
+    const transport = fakeTransport();
+    const absoluteAt: Array<number | undefined> = [];
+    const preRoll: Array<readonly [number, number]> = [];
+    const encoder = fakeEncoder();
+    await renderFrameRange({
+      api: fakeExports(),
+      ref: { nodeId: "out", portId: "out" },
+      range: { start: 50_000, end: 50_002 },
+      timelineFps: 60,
+      outputFps: 60,
+      transport: {
+        ...transport,
+        resetAbsoluteClock: (at) => {
+          absoluteAt.push(at);
+        },
+      },
+      encoder,
+      onPreRollProgress: (completed, total) => preRoll.push([completed, total]),
+    });
+    // Cleared (-2), then one seek, to the in point: 50 000 frames from zero are not played.
+    expect(transport.rendered).toEqual([-2, 50_000, 50_001, 50_002]);
+    expect(encoder.encoded).toEqual([50_000, 50_001, 50_002]);
+    expect(preRoll).toEqual([]);
+    expect(absoluteAt).toEqual([50_000]);
+  });
+
+  it("VN71: a pre-roll plays that many frames before the in point, unrecorded, from cleared state", async () => {
+    const transport = fakeTransport();
+    const absoluteAt: Array<number | undefined> = [];
+    const preRoll: Array<readonly [number, number]> = [];
+    const encoder = fakeEncoder();
+    await renderFrameRange({
+      api: fakeExports(),
+      ref: { nodeId: "out", portId: "out" },
+      range: { start: 10, end: 11 },
+      timelineFps: 60,
+      outputFps: 60,
+      preRollFrames: 3,
+      transport: {
+        ...transport,
+        resetAbsoluteClock: (at) => {
+          absoluteAt.push(at);
+        },
+      },
+      encoder,
+      onPreRollProgress: (completed, total) => preRoll.push([completed, total]),
+    });
+    expect(transport.rendered).toEqual([-2, 7, 8, 9, 10, 11]);
+    expect(encoder.encoded).toEqual([10, 11]);
     expect(preRoll).toEqual([[1, 3], [2, 3], [3, 3]]);
-    expect(yieldControl).toHaveBeenCalledOnce();
+    // The count starts at the entry, so the in point carries 10 whatever the pre-roll.
+    expect(absoluteAt).toEqual([7]);
+  });
+
+  it("VN71: a pre-roll longer than the in point starts at frame 0", async () => {
+    const transport = fakeTransport();
+    await renderFrameRange({
+      api: fakeExports(),
+      ref: { nodeId: "out", portId: "out" },
+      range: { start: 2, end: 2 },
+      timelineFps: 60,
+      outputFps: 60,
+      preRollFrames: 30,
+      transport,
+      encoder: fakeEncoder(),
+    });
+    expect(transport.rendered).toEqual([-1, -2, 0, 1, 2]);
   });
 
   it("pauses a running loop during capture, then restores playback", async () => {
@@ -241,7 +315,7 @@ describe("renderFrameRange covers exactly the range (T433)", () => {
       transport, encoder: fakeEncoder(), signal: controller.signal,
       onProgress: progress => { if (progress.completedFrames === 1) controller.abort(); },
     })).rejects.toThrow("cancelled");
-    expect(transport.rendered).toEqual([-1, 0]);
+    expect(transport.rendered).toEqual([-1, -2, 0]);
     expect(transport.isPlaying()).toBe(false);
     expect(transport.latestFrame()?.frame.frameIndex).toBe(0);
   });
@@ -451,10 +525,12 @@ describe("§T1537b — a take installs each frame's structure before stepping it
     await renderFrameRange({
       api: fakeExports(),
       ref: { nodeId: "out", portId: "out" },
-      // A 30 fps take of a 60 fps timeline from output frame 1: a pre-roll (0, 1), and a tail.
+      // A 30 fps take of a 60 fps timeline from output frame 1 (project frame 2), with a
+      // two-frame pre-roll (0, 1), and a tail.
       range: { start: 1, end: 2 },
       timelineFps: 60,
       outputFps: 30,
+      preRollFrames: 2,
       transport: {
         ...transport,
         seek: (frameIndex) => {

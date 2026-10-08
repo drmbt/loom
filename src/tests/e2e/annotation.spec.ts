@@ -193,6 +193,7 @@ interface SavedNode {
  */
 async function saveProject(page: Page, testInfo: TestInfo): Promise<{ path: string; nodes: Record<string, SavedNode> }> {
   const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-save").click();
   const download = await downloadPromise;
   const directory = await mkdtemp(join(tmpdir(), "shaderloom-annotation-"));
@@ -378,6 +379,7 @@ test("title, body, colour and size survive save → reload → open", async ({ p
   await expect(page.getByTestId("graph-canvas")).toBeVisible();
   await expect(page.locator(".react-flow__node")).toHaveCount(0);
   const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooserPromise).setFiles(savedPath);
   await expect(page.locator(".react-flow__node")).toHaveCount(2);

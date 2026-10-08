@@ -1,5 +1,9 @@
 import { createRenderCanvasCapture } from "./render-canvas-capture.ts";
 import { ControlsPane } from "@editor/controls/controls-pane.tsx";
+import { TimelinePane } from "@editor/timeline/timeline-pane.tsx";
+import { timelineShows } from "@editor/timeline/timeline-model.ts";
+import { createParameterDragService } from "@editor/parameter-drag/parameter-drag-service.ts";
+import { ParameterDragContext } from "@ui/controls/parameter-drag-context.ts";
 import { ContextMenuHost } from "@editor/menus/index.ts";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { scopeFromFrame } from "@domain/expressions/index.ts";
@@ -21,7 +25,8 @@ import { ComponentLibrary, ExampleLibrary, useDocumentDirty } from "@editor/libr
 import type { ExampleProject } from "@editor/library/example-catalogue.ts";
 import { CommandPalette } from "@editor/palette/index.ts";
 import { ProblemsPanel, type ProblemAction } from "@editor/shader-editor/index.ts";
-import { Button, ErrorBoundary } from "@ui/index.ts";
+import { Button, ErrorBoundary, PopoverRoot, PopoverTrigger, PopoverContent } from "@ui/index.ts";
+import topBarStyles from "./top-bar.module.css";
 import { UnsavedChangesDialog } from "@ui/primitives/unsaved-changes-dialog.tsx";
 import { AppRuntimeContext } from "./app-context.ts";
 import { usePerDocument } from "./use-per-document.ts";
@@ -114,6 +119,8 @@ import { useProject } from "./use-project.ts";
 import { useRenderRange } from "./use-render-range.ts";
 import type { RenderJobSettings } from "./use-render-range.ts";
 import { RenderVideoDialog } from "./render-video-dialog.tsx";
+import { PhotoMappingHost } from "./photo-mapping-host.tsx";
+import { useFloatMapSources } from "./use-float-map-sources.ts";
 // T949: the ONE synchronous answer to "is a take running", read per frame by the OSC pump.
 import { renderRangeHolderFor } from "./render-range.ts";
 
@@ -370,6 +377,12 @@ export function App({
     if (result.diagnostics.length === 0) return;
     setRejection(result.diagnostics);
   }, []);
+
+  // VN63: a parameter's name drags a reference; a drop on another parameter pastes it.
+  const parameterDrag = useMemo(
+    () => createParameterDragService({ bus: runtime.bus, invocation: runtime.invocation, onRefused: setRejection }),
+    [runtime],
+  );
 
   const onKeyDispatch = useCallback(
     (dispatch: KeymapDispatch) => {
@@ -860,6 +873,7 @@ export function App({
   const mediaControls = useMemo(() => createMediaControlRegistry(), []);
   useMediaCommands(runtime.bus, mediaControls);
   const fileReferences = useFileReferences(compile.flatGraph);
+  const floatMaps = useFloatMapSources(backend, fileReferences.graph, compile.compiled);
   // T1519b: a file arriving (open, import, paste) that does not open in this browser.
   const unopenedFiles = useArrivingFiles(runtime);
   const fileGraphRef = useRef(fileReferences.graph);
@@ -1458,6 +1472,7 @@ export function App({
       return createRenderCanvasCapture(backend, output);
     },
     beforeRender: async () => {
+      await floatMaps.settle();
       await Promise.all([nativeOutputs.suspend(), drainNativeViewerOutputs(backend ?? null), vision.prepareForRender()]);
       return depth.prepareForRender();
     },
@@ -1521,6 +1536,7 @@ export function App({
       { id: "valueGraph", read: () => valueGraph.diagnostics },
       { id: "media", read: () => media.diagnostics, clear: () => media.clearDiagnostics() },
       { id: "fileReferences", read: () => fileReferences.diagnostics },
+      { id: "floatMaps", read: () => floatMaps.diagnostics },
       { id: "screenCapture", read: () => screenCapture.diagnostics },
       { id: "meshes", read: () => meshes.diagnostics },
       { id: "nativeInputs", read: () => nativeInputs.diagnostics },
@@ -2035,6 +2051,7 @@ export function App({
             onNew={project.create}
             onOpen={project.open}
             onSave={project.save}
+            onMapPhoto={() => { void runtime.bus.execute("photoMapping.prepare", {}, runtime.invocation); }}
             onSettings={openSettings}
             onHelp={openHelp}
           />
@@ -2114,6 +2131,7 @@ export function App({
             ■ LASER E-STOP
           </button>
         ) : null}
+        <ParameterDragContext.Provider value={parameterDrag}>
         <AppShell
           {...(storage === undefined ? {} : { storage })}
           {...(openPaneWindow === undefined ? {} : { openPaneWindow })}
@@ -2372,6 +2390,16 @@ export function App({
           performance={performancePane}
           agent={agentPane}
           terminal={terminalPane}
+          timeline={
+            <ErrorBoundary name="Timeline">
+              {/* VN62: lanes of every automation node; writes through the bus, seeks through transport.seek. */}
+              <LiveGraph store={runtime.bus.store} registry={runtime.registry} shows={timelineShows}>{(liveGraph) => (
+                <TimelinePane graph={liveGraph} bus={runtime.bus} invocation={runtime.invocation} selection={selection}
+                  latestFrame={frameLoop.latestFrame} fps={projectFps(runtime.settings)} range={frameRange}
+                  playing={frameLoop.playing} onSeek={onSeek} registry={runtime.registry} />
+              )}</LiveGraph>
+            </ErrorBoundary>
+          }
           controls={
             <ErrorBoundary name="Controls">
               {/* T1619b: the control menu (Reset, Set as default) is mounted HERE for the Controls
@@ -2387,6 +2415,7 @@ export function App({
             </ErrorBoundary>
           }
         />
+        </ParameterDragContext.Provider>
         {/* T359/§V307: opened by `ui.openSettings`, never by a flag set from here. The
             host owns the open state; the top bar, `mod+,` and the palette all execute the
             one command. */}
@@ -2394,7 +2423,9 @@ export function App({
           bus={runtime.bus}
           settings={runtime.settings}
           onChange={onSettingsChange}
+          onPreparePhoto={() => { void runtime.bus.execute("photoMapping.prepare", {}, runtime.invocation); }}
         />
+        <PhotoMappingHost runtime={runtime} />
         <RenderVideoDialog
           open={renderVideoOpen}
           onOpenChange={(next) => {
@@ -2448,7 +2479,7 @@ export function App({
 }
 
 /**
- * Open / Save in the top bar.
+ * File actions in the top bar.
  *
  * Buttons, not handlers: each one executes the bus command the keymap already names, so
  * the button and mod+s cannot drift apart and the palette lists the same two (§V29,
@@ -2459,6 +2490,7 @@ function ProjectActions({
   onNew,
   onOpen,
   onSave,
+  onMapPhoto,
   onSettings,
   onHelp,
 }: {
@@ -2466,20 +2498,35 @@ function ProjectActions({
   onNew: () => void;
   onOpen: () => void;
   onSave: () => void;
+  onMapPhoto: () => void;
   onSettings: () => void;
   onHelp: () => void;
 }) {
+  const [fileOpen, setFileOpen] = useState(false);
+  const choose = (action: () => void): void => { setFileOpen(false); action(); };
   return (
     <>
-      <Button aria-label="New project" onClick={onNew} disabled={busy} data-testid="project-new">
-        new
-      </Button>
-      <Button aria-label="Open project" onClick={onOpen} disabled={busy} data-testid="project-open">
-        open
-      </Button>
-      <Button aria-label="Save project" onClick={onSave} disabled={busy} data-testid="project-save">
-        save
-      </Button>
+      <PopoverRoot open={fileOpen} onOpenChange={setFileOpen}>
+        <PopoverTrigger asChild><Button aria-label="File" aria-haspopup="menu" disabled={busy}
+          onKeyDown={event => { if (event.key === "ArrowDown") { event.preventDefault(); setFileOpen(true); } }}>file</Button></PopoverTrigger>
+        <PopoverContent align="start" role="menu" aria-label="File actions" className={topBarStyles.fileMenu} onKeyDown={event => {
+          const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')];
+          if (items.length === 0) return;
+          const current = items.indexOf(document.activeElement as HTMLButtonElement);
+          const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+            : event.key === "ArrowDown" ? (current + 1) % items.length
+              : event.key === "ArrowUp" ? (current - 1 + items.length) % items.length : null;
+          if (next !== null) { event.preventDefault(); items[next]?.focus(); }
+        }}>
+          <div className={topBarStyles.fileMenuRows}>
+            <Button role="menuitem" aria-label="New project" onClick={() => choose(onNew)} disabled={busy} data-testid="project-new">New project</Button>
+            <Button role="menuitem" aria-label="Open project" onClick={() => choose(onOpen)} disabled={busy} data-testid="project-open">Open project…</Button>
+            <Button role="menuitem" aria-label="Save project" onClick={() => choose(onSave)} disabled={busy} data-testid="project-save">Save project</Button>
+            <hr className={topBarStyles.fileMenuSeparator} />
+            <Button role="menuitem" onClick={() => choose(onMapPhoto)} disabled={busy}>Map from photo…</Button>
+          </div>
+        </PopoverContent>
+      </PopoverRoot>
       <Button
         aria-label="Project settings"
         onClick={onSettings}
