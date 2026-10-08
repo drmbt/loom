@@ -82,3 +82,35 @@ describe("stage-previz-11: the quad multiview", () => {
     expect(compiled({}, true).passes.filter((pass) => "nodeId" in pass && String(pass.nodeId).startsWith("hazeRender/")).length).toBe(single);
   });
 });
+
+/**
+ * VN83 — stage-previz-12: a dual view (front over a stage-right profile, full-width strips), and
+ * each layout a Layer on a black base, so only the one switched on cooks: Single, Dual, Quad.
+ */
+describe("stage-previz-12: one layout cooks at a time", () => {
+  const system12 = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
+  const loaded12 = loadProject(readFileSync("projects/stage-previz/stage-previz-12.loom.json", "utf8"), { nodes: system12.nodes, components: system12.components });
+  if (!loaded12.ok) throw new Error(`stage-previz-12 did not load: ${loaded12.reason}`);
+  const doc12 = loaded12.document;
+  const LAYERS = ["layerSingle", "layerDual", "layerQuad"] as const;
+  /** What cooks with only `on` switched on, by the top-level node each pass belongs to. */
+  const cooking = (on: (typeof LAYERS)[number]) => {
+    const nodes = { ...doc12.graph.nodes };
+    for (const id of LAYERS) nodes[id] = { ...nodes[id]!, ui: { ...nodes[id]!.ui, bypassed: id !== on } };
+    const plan = compileGraph({ graph: { ...doc12.graph, nodes }, settings: doc12.settings, registry: system12.nodes, capabilities: TIER_B_CAPABILITIES, components: system12.components.view(), resolution: { channels: () => undefined } });
+    if (!plan.ok) throw new Error("stage-previz-12 did not compile");
+    return [...new Set(plan.passes.map((pass) => ("nodeId" in pass ? String(pass.nodeId).split("/")[0]! : "")).filter((id) => /^(hazeRender|view_|strip_|quad|dual)$|^(view|strip)_/.test(id)))].sort();
+  };
+
+  it("opens on Single, the other two off", () => {
+    expect(LAYERS.map((id) => doc12.graph.nodes[id]!.ui?.bypassed === true)).toEqual([false, true, true]);
+  });
+
+  it.each([
+    ["layerSingle", ["hazeRender"]],
+    ["layerDual", ["dual", "strip_front", "strip_side"]],
+    ["layerQuad", ["quad", "view_angled", "view_profile", "view_tight", "view_wide"]],
+  ] as const)("%s on alone cooks only its own views", (on, expected) => {
+    expect(cooking(on)).toEqual([...expected]);
+  });
+});

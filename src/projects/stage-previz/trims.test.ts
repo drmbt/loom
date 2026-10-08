@@ -65,6 +65,9 @@ const SESSIONS: readonly Session[] = [
   {
     file: "stage-previz-11", scrimZ: -2.6816, deckTop: 1.9812, openTrim: 22.5833, scrimTop: 8.5598,
     presets: { ds74_plot: { trim: 22.5833, half: 42.9208 / 2 * FT }, ds74_fill: { trim: 22.5833, half: 15 * FT } },
+  },  {
+    file: "stage-previz-12", scrimZ: -2.6816, deckTop: 1.9812, openTrim: 22.5833, scrimTop: 8.5598,
+    presets: { ds74_plot: { trim: 22.5833, half: 42.9208 / 2 * FT }, ds74_fill: { trim: 22.5833, half: 15 * FT } },
   },
 ];
 
