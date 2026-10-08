@@ -274,7 +274,7 @@ async function settledScroll(page: Page): Promise<number> {
 const kindAt = (page: Page, point: Point): Promise<string> =>
   page.evaluate(({ x, y }) => {
     const hit = document.elementFromPoint(x, y);
-    for (const kind of [".track", ".pad", "button.ctl", "#rail", "#pager", "#tabs"]) if (hit?.closest(kind)) return kind;
+    for (const kind of [".track", ".pad", "button.ctl", "#rail", "#tabs"]) if (hit?.closest(kind)) return kind;
     return hit === null ? "nothing" : hit.tagName.toLowerCase();
   }, point);
 
@@ -284,7 +284,7 @@ const kindAt = (page: Page, point: Point): Promise<string> =>
  */
 const lowestSlider = (page: Page, along: number): Promise<Point | null> =>
   page.evaluate((share) => {
-    const floor = Math.min(...["#tabs", "#pager"].map((id) => document.querySelector<HTMLElement>(id)).map((bar) => (bar === null || bar.hidden ? window.innerHeight : bar.getBoundingClientRect().top)));
+    const floor = document.querySelector<HTMLElement>("#tabs")!.getBoundingClientRect().top;
     let best: { x: number; y: number } | null = null;
     for (const track of document.querySelectorAll<HTMLElement>(".track")) {
       const box = track.getBoundingClientRect();
@@ -397,11 +397,51 @@ function landingOn(mode: TouchMode, track: Point & { width: number }, value: num
   return { x: mode.knob ? knob - 20 : knob - track.width / 4, y: track.y };
 }
 
+test("a default-mode slider knob survives initial vertical drift before a horizontal touch drag", async ({ browser }) => {
+  const stage = await tallStage();
+  const phone = await openPhone(browser, stage.url, { width: 390, height: 664 });
+  try {
+    await expect(phone.page.locator("#touchMode")).toHaveValue("knob");
+    const selector = `[role=slider][aria-label="${sliderCaption(3)}"]`;
+    const slider = phone.page.locator(selector);
+    await expect(slider).toBeVisible();
+    const at = await center(phone.page, `${selector} .grip`);
+    expect(await phone.page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.classList.contains("grip"), at)).toBe(true);
+    await slider.evaluate((track) => {
+      track.setAttribute("data-cancelled", "0");
+      track.addEventListener("pointercancel", () => track.setAttribute("data-cancelled", "1"));
+    });
+    const before = await scrollTop(phone.page);
+    const touch = finger(phone.cdp);
+    await touch.down(at);
+    await phone.page.waitForTimeout(60);
+    expect(stage.writes, "touch-down still writes nothing").toEqual([]);
+    // Android/Chrome used to claim this small vertical lead and cancel the slider entirely.
+    await touch.travel(10, -18, 2);
+    expect(stage.writes, "a vertical lead has not taken the horizontal slider").toEqual([]);
+    await touch.travel(80, 0, 8);
+    await expect.poll(() => stage.writes.length).toBeGreaterThan(0);
+    await touch.up();
+    await expect.poll(() => stage.writes.at(-1)?.phase).toBe("commit");
+    await stage.settled();
+    const value = stage.node(sliderName(3)).parameters["value"] as number;
+    expect(value).toBeGreaterThan(0.5);
+    await expect(slider).toHaveAttribute("aria-valuenow", String(value));
+    await expect(slider).toHaveAttribute("data-cancelled", "0");
+    expect(await scrollTop(phone.page), "the knob owns this gesture, so it cannot scroll the board").toBe(before);
+    expect(stage.refused).toEqual([]);
+    expect(phone.errors).toEqual([]);
+  } finally {
+    await phone.context.close();
+    stage.close();
+  }
+});
+
 for (const mode of TOUCH_MODES) {
   test.describe(`§T1647b the phone page under a real touch — a board three screens tall, Touch mode ${mode.letter}`, () => {
     const VIEWPORT = { width: 390, height: 664 };
 
-    test("flicked through from top to bottom touching only sliders, the page scrolls and NOTHING is written", async ({ browser }) => {
+    test("flicked through from top to bottom touching slider tracks, the page scrolls and NOTHING is written", async ({ browser }) => {
       const stage = await tallStage();
       const phone = await openPhone(browser, stage.url, VIEWPORT, { mode: mode.key });
       try {
@@ -411,13 +451,12 @@ for (const mode of TOUCH_MODES) {
         const end = await scrollEnd(phone.page);
         expect(end).toBeGreaterThanOrEqual(2 * VIEWPORT.height);
 
-        // Every way a thumb starts a scroll, in turn: fast or hesitant, beside the knob or on
-        // it (every slider shows 0.5, so its knob is the middle), at once or after a pause
-        // long enough to count as a rest.
+        // Fast or hesitant, at once or after a rest. K reserves the drawn knob for dragging,
+        // so scrolling starts on the bare track. The other modes permit the whole track.
         const visited = new Set<number>();
         for (let flick = 0; flick < 30 && !(await atEnd(phone.page, end)); flick += 1) {
           const before = await scrollTop(phone.page);
-          await flickFromSlider(phone, 260, { hesitant: flick % 2 === 0, along: flick % 4 < 2 ? 0.3 : 0.5, pause: flick % 3 === 2 ? 300 : 0 });
+          await flickFromSlider(phone, 260, { hesitant: flick % 2 === 0, along: mode.knob || flick % 4 < 2 ? 0.3 : 0.5, pause: flick % 3 === 2 ? 300 : 0 });
           const after = await scrollTop(phone.page);
           expect(after, `flick ${String(flick + 1)} must move the page`).toBeGreaterThan(before);
           visited.add(after);
@@ -436,7 +475,7 @@ for (const mode of TOUCH_MODES) {
               if (box.top >= 8) return { x: box.left + box.width * along, y: box.top + box.height / 2 };
             }
             return null;
-          }, flick % 2 === 0 ? 0.7 : 0.5);
+          }, mode.knob || flick % 2 === 0 ? 0.7 : 0.5);
           if (start === null) throw new Error("no slider in view to flick from");
           expect(await kindAt(phone.page, start)).toBe(".track");
           await touch.down(start);
@@ -901,14 +940,12 @@ test.describe("§T1607b the phone page under a real touch — a board three scre
  * taller than a small phone's screen. Lights is every slider the board's full width — nowhere
  * to scroll from but a slider. Robot and Scene are inset, a bare strip beside the controls:
  * what the project did after the owner, on a real phone, found it "still pretty hard to not
- * screw with the sliders when scrolling on mobile". Either way a flick that STARTS on a slider
- * must scroll and write nothing: that is what this holds.
+ * screw with the sliders when scrolling on mobile". A flick starting on a bare slider track
+ * must scroll and write nothing; the drawn knob is reserved for dragging.
  */
 test.describe("§T1607b the phone page under a real touch — a project's Panels, frozen", () => {
   const VIEWPORT = { width: 375, height: 600 };
   const tabNames = (page: Page): Promise<string[]> => page.locator("#tabs [role=tab]").allTextContents();
-  const pageNames = (page: Page): Promise<string[]> => page.locator("#pager [role=tab]").allTextContents();
-  const chosenPage = (page: Page): Promise<string[]> => page.locator("#pager [aria-selected=true]").allTextContents();
   const shownCells = (page: Page): Promise<number> => page.locator("section.panel:not([hidden]) .board > :not([hidden])").count();
 
   test("each tab scrolls from a flick that starts on a slider — full width or inset — and nothing is written", async ({ browser }) => {
@@ -947,57 +984,40 @@ test.describe("§T1607b the phone page under a real touch — a project's Panels
     }
   });
 
-  test("pages switch and remember: the Scene Panel's sections, each Panel's place, and the choice on the next visit", async ({ browser }) => {
+  test("only Panel tabs navigate the whole board and remember each Panel's scroll position", async ({ browser }) => {
     const stage = await frozenStage();
     const phone = await openPhone(browser, stage.url, VIEWPORT);
     try {
       const tab = (name: string) => phone.page.locator("#tabs [role=tab]", { hasText: name });
-      const chip = (name: string) => phone.page.locator("#pager [role=tab]", { hasText: name });
+      await phone.page.evaluate(() => localStorage.setItem("loom.phone.page", JSON.stringify({ "panel:Scene": "Camera" })));
+      await phone.page.reload();
       await tab("Scene").tap();
-      // Two labels with controls under them: All, and a page for each.
-      await expect(phone.page.locator("#pager")).toBeVisible();
-      expect(await pageNames(phone.page)).toEqual(["All", "Scene", "Camera"]);
-      expect(await chosenPage(phone.page)).toEqual(["All"]);
-      // All of the Panel's board: its two labels and every member under them.
+      await expect(phone.page.locator("[role=tablist]")).toHaveCount(1);
+      await expect(phone.page.locator("#pager")).toHaveCount(0);
       const whole = frozenBoard("Scene").items.length;
       expect(whole).toBe(16);
       expect(await shownCells(phone.page)).toBe(whole);
+      await expect(phone.page.locator("section.panel:not([hidden]) .board > .label")).toHaveText(["Scene", "Camera"]);
+      expect(await scrollTop(phone.page)).toBe(0);
 
-      await chip("Camera").tap();
-      expect(await chosenPage(phone.page)).toEqual(["Camera"]);
-      // Its label, a slider, a toggle and the pad — and nothing of the Scene section.
-      expect(await shownCells(phone.page)).toBe(4);
-      await expect(phone.page.locator("section.panel:not([hidden]) .board > .label:not([hidden])")).toHaveText("Camera");
-      await expect(phone.page.locator(".pad")).toBeVisible();
-      await expect(phone.page.getByRole("slider")).toHaveCount(1);
-
-      // Another Panel has no sections and so no pager; scroll it to its end and leave.
       await tab("Robot").tap();
-      await expect(phone.page.locator("#pager")).toBeHidden();
       const end = await scrollEnd(phone.page);
       expect(end).toBeGreaterThan(0);
       await flickToEnd(phone, end);
       const left = await scrollTop(phone.page);
       expect(left).toBeGreaterThanOrEqual(end - 1);
 
-      // Back on Scene: its page is still Camera, at the top where it was left.
       await tab("Scene").tap();
-      expect(await chosenPage(phone.page)).toEqual(["Camera"]);
-      expect(await shownCells(phone.page)).toBe(4);
+      expect(await shownCells(phone.page)).toBe(whole);
       expect(await scrollTop(phone.page)).toBe(0);
-      // And Robot is where the finger left it.
       await tab("Robot").tap();
       expect(await scrollTop(phone.page)).toBe(left);
 
-      // The next visit (a reload): the tab last shown, and Scene's page, are the phone's own memory.
       await tab("Scene").tap();
       await phone.page.reload();
       await expect(phone.page.locator("#tabs [aria-selected=true]")).toHaveText("Scene");
-      expect(await chosenPage(phone.page)).toEqual(["Camera"]);
-      expect(await shownCells(phone.page)).toBe(4);
-      await chip("All").tap();
       expect(await shownCells(phone.page)).toBe(whole);
-
+      await expect(phone.page.locator("[role=tablist]")).toHaveCount(1);
       expect(stage.writes).toEqual([]);
       expect(phone.errors).toEqual([]);
     } finally {
@@ -1158,7 +1178,7 @@ test.describe("§B269 the phone page — a board of narrow columns is never crus
       // THE FOOT: scrolled as far as the page goes, the lowest thing on the board is above the bars fixed below it.
       window.scrollTo(0, document.documentElement.scrollHeight);
       const lowest = Math.max(...[...board.children].filter(showing).map((cell) => cell.getBoundingClientRect().bottom));
-      const bars = [...document.querySelectorAll<HTMLElement>("#tabs, #pager")].filter(showing).map((bar) => bar.getBoundingClientRect().top);
+      const bars = [...document.querySelectorAll<HTMLElement>("#tabs")].filter(showing).map((bar) => bar.getBoundingClientRect().top);
       const under = Math.max(0, Math.round(lowest - Math.min(...bars)));
       window.scrollTo(0, 0);
       return { low, short, shared, cut, unnamed, sideways, under };

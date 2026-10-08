@@ -15,12 +15,21 @@ interface Presented {
   disposed: boolean;
 }
 
-function setup(outputId: string | undefined, options: { readonly hideCursor?: boolean } = {}) {
+function setup(outputId: string | undefined, options: {
+  readonly hideCursor?: boolean;
+  readonly fullscreen?: boolean;
+  readonly requestFullscreen?: (doc: Document, options: FullscreenOptions | undefined) => Promise<void>;
+} = {}) {
   const frame = document.createElement("iframe");
   document.body.appendChild(frame);
   const child = frame.contentWindow as Window;
+  Object.defineProperty(child.document, "fullscreenElement", { value: null, writable: true, configurable: true });
+  if (options.requestFullscreen !== undefined) {
+    child.document.documentElement.requestFullscreen = (params) => options.requestFullscreen!(child.document, params);
+  }
   const presented: Presented[] = [];
   const closed: string[] = [];
+  const fullscreenChanges: string[] = [];
   let requested: { name: string; features: string } | undefined;
   const handle = openPerformWindow(
     {
@@ -50,13 +59,14 @@ function setup(outputId: string | undefined, options: { readonly hideCursor?: bo
       title: "Loom — win1",
       features: "popup=yes,width=960,height=540",
       outputId,
-      fullscreen: true,
+      fullscreen: options.fullscreen ?? true,
       hideCursor: options.hideCursor ?? true,
       onClosed: (id) => closed.push(id),
+      onFullscreenChanged: (id) => fullscreenChanges.push(id),
       onMappingKey: () => false,
     },
   );
-  return { frame, child, handle, presented, closed, requested: () => requested };
+  return { frame, child, handle, presented, closed, fullscreenChanges, requested: () => requested };
 }
 
 afterEach(() => {
@@ -71,7 +81,9 @@ describe("a perform window", () => {
     expect(presented).toHaveLength(1);
     const canvas = presented[0]!.canvas as unknown as HTMLCanvasElement;
     expect(canvas.ownerDocument).toBe(child.document);
-    expect(child.document.body.children).toHaveLength(1);
+    expect(child.document.body.querySelectorAll("canvas")).toHaveLength(1);
+    expect(handle!.fullscreenMessage).toBe("Fullscreen is unavailable in this browser.");
+    expect(child.document.body.querySelector<HTMLButtonElement>("[data-perform-fullscreen-notice]")?.disabled).toBe(true);
     expect(presented[0]!.options).toEqual({ outputId: "target:win1:$target", label: "perform:win1", sizing: "source" });
     expect(child.document.body.style.cursor).toBe("none");
   });
@@ -108,6 +120,78 @@ describe("a perform window", () => {
     expect(child.document.body.style.cursor).toBe("none");
   });
 
+  it("requests HTML fullscreen on open rather than relying on popup features", async () => {
+    const requests: Array<{ doc: Document; options: FullscreenOptions | undefined }> = [];
+    const { child, handle } = setup("t", { requestFullscreen: (doc, options) => {
+      requests.push({ doc, options });
+      Object.defineProperty(doc, "fullscreenElement", { value: doc.documentElement, configurable: true });
+      return Promise.resolve();
+    } });
+    expect(requests).toEqual([{ doc: child.document, options: { navigationUI: "hide" } }]);
+    await Promise.resolve();
+    expect(handle!.fullscreenMessage).toBeNull();
+    expect(child.document.querySelector("[data-perform-fullscreen-notice]")).toBeNull();
+  });
+
+  it("does not request fullscreen when that setting is off", () => {
+    let requests = 0;
+    const { handle } = setup("t", { fullscreen: false, requestFullscreen: () => {
+      requests += 1;
+      return Promise.resolve();
+    } });
+    expect(requests).toBe(0);
+    expect(handle!.fullscreenMessage).toBeNull();
+  });
+
+  it("reports a refused automatic request and retries from a child click", async () => {
+    let requests = 0;
+    const { child, handle, fullscreenChanges } = setup("t", { requestFullscreen: (doc) => {
+      requests += 1;
+      if (requests === 1) return Promise.reject(new TypeError("Permissions check failed"));
+      Object.defineProperty(doc, "fullscreenElement", { value: doc.documentElement, configurable: true });
+      return Promise.resolve();
+    } });
+    await Promise.resolve();
+    expect(handle!.fullscreenMessage).toContain("Permissions check failed");
+    expect(fullscreenChanges).toContain("win1");
+    const notice = child.document.querySelector<HTMLButtonElement>("[data-perform-fullscreen-notice]");
+    expect(notice?.getAttribute("aria-label")).toBe("Enter fullscreen");
+    notice!.click();
+    await Promise.resolve();
+    expect(requests).toBe(2);
+    expect(handle!.fullscreenMessage).toBeNull();
+    expect(child.document.querySelector("[data-perform-fullscreen-notice]")).toBeNull();
+  });
+
+  it("does not report a late fullscreen failure after the window closes", async () => {
+    let reject: (reason: Error) => void = () => { throw new Error("no pending request"); };
+    const { child, handle, fullscreenChanges } = setup("t", { requestFullscreen: () => new Promise((_resolve, onRejected) => { reject = onRejected; }) });
+    const doc = child.document;
+    handle!.close();
+    reject(new Error("closed"));
+    await Promise.resolve();
+    expect(fullscreenChanges).toEqual([]);
+    expect(doc.querySelector("[data-perform-fullscreen-notice]")).toBeNull();
+  });
+
+  it("ignores an old refusal after a later child request succeeds", async () => {
+    let requests = 0;
+    let rejectInitial: (reason: Error) => void = () => { throw new Error("no initial request"); };
+    const { child, handle } = setup("t", { requestFullscreen: (doc) => {
+      requests += 1;
+      if (requests === 1) return new Promise((_resolve, reject) => { rejectInitial = reject; });
+      Object.defineProperty(doc, "fullscreenElement", { value: doc.documentElement, configurable: true });
+      return Promise.resolve();
+    } });
+    child.document.body.click();
+    await Promise.resolve();
+    expect(requests).toBe(2);
+    rejectInitial(new Error("old permission refusal"));
+    await Promise.resolve();
+    expect(handle!.fullscreenMessage).toBeNull();
+    expect(child.document.querySelector("[data-perform-fullscreen-notice]")).toBeNull();
+  });
+
   it("§T1536b: a double click on the mapping layer is a mapping gesture, never a fullscreen toggle", () => {
     const { child } = setup("t");
     const doc = child.document;
@@ -134,7 +218,7 @@ describe("a perform window", () => {
   it("returns null when the browser blocks the popup", () => {
     const handle = openPerformWindow(
       { open: () => null, present: () => { throw new Error("must not present"); }, parent: window },
-      { nodeId: "w", name: "loom-perform-77", title: "", features: "", outputId: "t", fullscreen: false, hideCursor: false, onClosed: () => {}, onMappingKey: () => false },
+      { nodeId: "w", name: "loom-perform-77", title: "", features: "", outputId: "t", fullscreen: false, hideCursor: false, onClosed: () => {}, onFullscreenChanged: () => {}, onMappingKey: () => false },
     );
     expect(handle).toBeNull();
   });

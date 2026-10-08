@@ -1,4 +1,4 @@
-import type { FlatGraph } from "../types/graph.ts";
+import type { FlatGraph, GraphNode } from "../types/graph.ts";
 import type { NodeId, PortId } from "../types/ids.ts";
 import type { AudioFeatures, FrameEvaluationInput } from "../types/frame.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
@@ -221,13 +221,21 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
          * from, and it is ordered after them like any other, or a reader whose id sorts
          * first reads a bag that is not published yet. The instances are the flattening's
          * own, so they are as fixed as the graph this memo is keyed on.
+         *
+         * VN36: `op('<instance>').par.<key>` (what `parent()` becomes) names no node either.
+         * The read is of the instance's PAGE, which the walk follows like any node's
+         * parameter, so a page knob reading `op('lfo1').chan.value` orders its readers after
+         * `lfo1`. Without it the reader evaluates before the LFO and lags a frame.
          */
         const named = nodeNames(graph);
+        const pages = new Map<NodeId, GraphNode>();
+        for (const page of flattening.instancePages.values()) pages.set(page.node.id, page.node);
+        const nodeOf = (id: NodeId): GraphNode | undefined => graph.nodes[id] ?? pages.get(id);
         const readsByNode = new Map<NodeId, readonly KeyRead[]>();
         const readsOf = (owner: NodeId): readonly KeyRead[] => {
           const known = readsByNode.get(owner);
           if (known !== undefined) return known;
-          const reads = keyReads(graph.nodes[owner]?.parameters ?? {});
+          const reads = keyReads(nodeOf(owner)?.parameters ?? {});
           readsByNode.set(owner, reads);
           return reads;
         };
@@ -245,7 +253,7 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
             const id = `${owner}\u0000${key ?? ""}`;
             if (visited.has(id) || visited.has(`${owner}\u0000`)) continue;
             visited.add(id);
-            const ownerNode = graph.nodes[owner];
+            const ownerNode = nodeOf(owner);
             if (ownerNode === undefined) continue;
             // A legacy `driven` slot names a channel outright.
             for (const driven of bindingTargets(ownerNode.parameters)) {
@@ -256,7 +264,7 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
             }
             for (const read of readsOf(owner)) {
               if (key !== null && read.from !== key) continue;
-              const instance = read.node === null ? undefined : flattening.instanceChannels.get(read.node);
+              const instance = read.node === null || read.kind !== "channel" ? undefined : flattening.instanceChannels.get(read.node);
               if (instance !== undefined) {
                 for (const source of instance) {
                   const publisher = named.get(source.publisher);
@@ -264,8 +272,11 @@ export function createValueGraphSession(registry: NodeRegistryView): ValueGraphS
                 }
                 continue;
               }
-              const to = read.node === null ? owner : named.get(read.node);
-              const toNode = to === undefined ? undefined : graph.nodes[to];
+              const to =
+                read.node === null
+                  ? owner
+                  : (named.get(read.node) ?? (read.kind === "parameter" ? flattening.instancePages.get(read.node)?.node.id : undefined));
+              const toNode = to === undefined ? undefined : nodeOf(to);
               if (to === undefined || toNode === undefined) continue;
               if (read.kind === "parameter") {
                 pending.push([to, read.key]);

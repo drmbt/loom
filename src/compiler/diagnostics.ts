@@ -55,6 +55,19 @@ export const CompilerDiagnosticCode = {
   /** T350: a source reference AND a wired input on the same loop — one truth. */
   sourceReferenceAmbiguous: "compiler/source-reference-ambiguous",
   /**
+   * VN35: a BARE name (`op()` or a source reference) that reaches into a component instance
+   * the referring node is not in. It binds, first-wins, as it always has; the path that
+   * names the intended copy is the fix (proposal 01 §2.2).
+   */
+  referenceCrossScope: "compiler/reference-cross-scope",
+  /**
+   * VN36: a `parent()` read with no component to reach: on a root node, past the outermost
+   * component, or naming an instance with no name. The parameter keeps its static (§V108).
+   */
+  parentReferenceNoParent: "compiler/parent-reference-no-parent",
+  /** VN36: a `parent()` read of a key the component's page does not publish (§V81). */
+  parentReferenceUnknownKey: "compiler/parent-reference-unknown-key",
+  /**
    * T546: more than one renderer frames itself with this camera, so "what the renderer
    * sees" has no single answer and the preview shows the stock reference scene. INFO, not
    * a warning: sharing one camera between renderers is a normal thing to do, and the only

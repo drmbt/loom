@@ -128,7 +128,7 @@ function harness(opened: Opened) {
       const session = createValueGraphSession(opened.registry);
       const evaluated = session.evaluate(flattened.graph, ZERO_FRAME, {
         pointer: { x: 0, y: 0, buttons: 0 },
-        flattening: { morphs: NO_MORPHS, instanceChannels: flattened.instanceChannels },
+        flattening: { morphs: NO_MORPHS, instanceChannels: flattened.instanceChannels, instancePages: flattened.instancePages },
       });
       zero = { flattened, resolver: evaluated.resolver };
     }

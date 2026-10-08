@@ -6,7 +6,6 @@ import {
   PHONE_EXPIRED_SENTENCE,
   PHONE_NAME_STORAGE_KEY,
   PHONE_PAGE_LOGIC,
-  PHONE_PAGE_STORAGE_KEY,
   PHONE_TAB_STORAGE_KEY,
   PHONE_TRIAL_STORAGE_KEY,
   phonePageHtml,
@@ -2096,34 +2095,14 @@ describe("B269 phone page — a board of narrow columns is never crushed or clip
   });
 });
 
-describe("T1607b phone page — the gesture and paging rules, as the phone runs them", () => {
-  interface Cell {
-    readonly label: string | null;
-    readonly x: number;
-    readonly y: number;
-    readonly w: number;
-    readonly h: number;
-  }
-  interface PageBox {
-    readonly name: string;
-    readonly x: number;
-    readonly y: number;
-    readonly w: number;
-    readonly h: number;
-    readonly cells: readonly number[];
-  }
+describe("T1607b phone page — the gesture rules, as the phone runs them", () => {
   interface Logic {
     readonly SLOP: number;
     claims(axes: "x" | "xy", dx: number, dy: number): boolean;
     nudge(value: number, travel: number, length: number, min: number, max: number): number;
     settle(value: number, step: number, min: number, max: number): number;
-    pagesOf(cells: readonly Cell[]): PageBox[];
   }
-  const logic = runInNewContext(`${PHONE_PAGE_LOGIC}; ({ SLOP: SLOP, claims: claims, nudge: nudge, settle: settle, pagesOf: pagesOf })`) as Logic;
-  /** Pages as plain data of this realm (the functions ran in another). */
-  const pagesOf = (cells: readonly Cell[]): PageBox[] => JSON.parse(JSON.stringify(logic.pagesOf(cells))) as PageBox[];
-  const label = (name: string, x: number, y: number, w: number): Cell => ({ label: name, x, y, w, h: 1 });
-  const control = (x: number, y: number, w: number, h = 1): Cell => ({ label: null, x, y, w, h });
+  const logic = runInNewContext(`${PHONE_PAGE_LOGIC}; ({ SLOP: SLOP, claims: claims, nudge: nudge, settle: settle })`) as Logic;
 
   /*
    * A browser decides a touch is a scroll once it has moved about 8 px (Android) or 10 px
@@ -2174,61 +2153,7 @@ describe("T1607b phone page — the gesture and paging rules, as the phone runs 
     expect(logic.settle(0.30000000000000004, 0, 0, 1)).toBe(0.3);
   });
 
-  /*
-   * sentinel-bot's first board, in small: three columns of sections on twelve cells, one
-   * column holding a second label lower down, and a master fader above every label.
-   */
-  const DESK: readonly Cell[] = [
-    control(0, 0, 12), // 0  master: under no label
-    label("Robot", 0, 1, 4), // 1
-    control(0, 2, 4), // 2
-    control(0, 3, 4), // 3
-    label("Scene", 4, 1, 4), // 4
-    control(4, 2, 4), // 5
-    label("Camera", 4, 3, 4), // 6
-    control(4, 4, 4), // 7
-    control(4, 5, 3, 3), // 8  the pad
-    label("Lights", 8, 1, 4), // 9
-    control(8, 2, 4), // 10
-    control(8, 3, 4), // 11
-  ];
 
-  it("a board's pages are its labelled sections: each control under the nearest label above it, each page the box round one section", () => {
-    expect(pagesOf(DESK)).toEqual([
-      { name: "Robot", x: 0, y: 1, w: 4, h: 3, cells: [1, 2, 3] },
-      { name: "Scene", x: 4, y: 1, w: 4, h: 2, cells: [4, 5] },
-      { name: "Camera", x: 4, y: 3, w: 4, h: 5, cells: [6, 7, 8] },
-      { name: "Lights", x: 8, y: 1, w: 4, h: 3, cells: [9, 10, 11] },
-    ]);
-  });
-
-  it("sections stacked down one column page the same way; a control beside a label, or above every label, is on no page", () => {
-    const stacked = [label("Scene", 0, 0, 8), control(0, 1, 8), label("Camera", 0, 2, 8), control(0, 3, 8), control(2, 4, 4, 3)];
-    expect(pagesOf(stacked).map((page) => [page.name, page.y, page.h, page.cells])).toEqual([
-      ["Scene", 0, 2, [0, 1]],
-      ["Camera", 2, 5, [2, 3, 4]],
-    ]);
-    const beside = [label("A", 0, 0, 2), control(2, 0, 4), control(0, 1, 2), label("B", 0, 2, 2), control(0, 3, 2)];
-    expect(pagesOf(beside).map((page) => page.cells)).toEqual([
-      [0, 2],
-      [3, 4],
-    ]);
-  });
-
-  it("a control under two labels side by side goes with the one it overlaps most; a page grows to hold what is its own", () => {
-    const cells = [label("Left", 0, 0, 4), label("Right", 4, 0, 4), control(0, 1, 4), control(3, 2, 5)];
-    expect(pagesOf(cells)).toEqual([
-      { name: "Left", x: 0, y: 0, w: 4, h: 2, cells: [0, 2] },
-      { name: "Right", x: 3, y: 0, w: 5, h: 3, cells: [1, 3] },
-    ]);
-  });
-
-  it("a board with fewer than two sections has no pages: one label, labels with nothing under them, or none", () => {
-    expect(pagesOf([label("Look", 0, 0, 8), control(0, 1, 4), control(4, 1, 4)])).toEqual([]);
-    expect(pagesOf([label("Look", 0, 0, 8), control(0, 1, 8), label("Notes", 0, 2, 8)])).toEqual([]);
-    expect(pagesOf([control(0, 0, 8), control(0, 1, 8)])).toEqual([]);
-    expect(pagesOf([label("", 0, 0, 8), control(0, 1, 8), label("", 0, 2, 8), control(0, 3, 8)])).toEqual([]);
-  });
 });
 
 describe("T1607b phone page — a touch that lands on a control is not yet the control's", () => {
@@ -2365,7 +2290,7 @@ describe("T1607b phone page — a touch that lands on a control is not yet the c
   });
 });
 
-describe("T1607b phone page — pages of a board, and the scroll rail", () => {
+describe("T1607b phone page — a labelled board and the scroll rail", () => {
   type Page = ReturnType<typeof openPage>;
   const slider = (handle: string, caption: string) => ({ kind: "slider", handle, caption, value: 0.5, min: 0, max: 1, step: 0 }) as const;
   /** sentinel-bot's first board in small: sections drawn as columns, and a second label lower in one. */
@@ -2399,14 +2324,6 @@ describe("T1607b phone page — pages of a board, and the scroll rail", () => {
       { title: "Plain", rows: [{ kind: "widgets", widgets: [slider("h-dim", "Dim")] }] },
     ],
   };
-  const pager = (page: Page): HTMLElement => page.camera("pager");
-  const chips = (page: Page): string[] => [...pager(page).querySelectorAll("[role=tab]")].map((chip) => chip.textContent ?? "");
-  const chosen = (page: Page): string[] => [...pager(page).querySelectorAll("[aria-selected=true]")].map((chip) => chip.textContent ?? "");
-  const choose = (page: Page, name: string): void => {
-    const chip = [...pager(page).querySelectorAll<HTMLElement>("[role=tab]")].find((each) => each.textContent === name);
-    if (chip === undefined) throw new Error(`no page "${name}"`);
-    chip.click();
-  };
   const tab = (page: Page, name: string): void => {
     const found = [...page.doc.querySelectorAll<HTMLElement>("#tabs [role=tab]")].find((each) => each.textContent === name);
     if (found === undefined) throw new Error(`no tab "${name}"`);
@@ -2424,99 +2341,44 @@ describe("T1607b phone page — pages of a board, and the scroll rail", () => {
     };
   };
 
-  it("a board with labelled sections gets a pager above the tabs: All — the board as its owner drew it — and a page per label", () => {
+  it("a labelled board keeps every section in its authored grid and offers only Panel tabs", () => {
     const page = openPage();
     page.snapshot(DESK);
-    expect(pager(page).hidden).toBe(false);
-    expect(pager(page).getAttribute("role")).toBe("tablist");
-    expect(chips(page)).toEqual(["All", "Robot", "Scene", "Camera", "Lights"]);
-    expect(chosen(page)).toEqual(["All"]);
-    expect(page.doc.body.classList.contains("paged")).toBe(true);
+    expect(page.doc.querySelector("#pager")).toBeNull();
+    expect([...page.doc.querySelectorAll("[role=tablist]")].map((bar) => bar.id)).toEqual(["tabs"]);
+    expect([...page.doc.querySelectorAll("#tabs [role=tab]")].map((button) => button.textContent)).toEqual(["Sentinel", "Plain", "Camera"]);
     expect(drawn(page).columns).toBe("12");
     expect(drawn(page).cells).toHaveLength(10);
     expect(drawn(page).cells[7]).toEqual(["View", "5 / span 3", "6 / span 3"]);
+    tab(page, "Plain");
+    tab(page, "Camera");
+    tab(page, "Sentinel");
+    expect(drawn(page).cells).toHaveLength(10);
   });
 
-  it("a page shows its section and nothing else, moved to the top-left, on a grid of ITS columns — so its controls fill the phone's width", () => {
-    const page = openPage();
+  it("old section-page storage cannot hide sections on the whole board", () => {
+    const page = openPage({ storage: { "loom.phone.page": JSON.stringify({ "panel:Sentinel": "Lights" }) } });
     page.snapshot(DESK);
-    choose(page, "Camera");
-    expect(chosen(page)).toEqual(["Camera"]);
-    expect(drawn(page)).toEqual({
-      columns: "4",
-      cells: [
-        ["Camera", "1 / span 4", "1 / span 1"],
-        ["Cuts", "1 / span 4", "2 / span 1"],
-        ["View", "1 / span 3", "3 / span 3"],
-      ],
-    });
-    choose(page, "Lights");
-    expect(drawn(page).cells.map((cell) => cell[0])).toEqual(["Lights", "Glow"]);
-    // All is the whole board again, each control back at its own rect.
-    choose(page, "All");
     expect(drawn(page).columns).toBe("12");
-    expect(drawn(page).cells[7]).toEqual(["View", "5 / span 3", "6 / span 3"]);
-    expect(drawn(page).cells[0]).toEqual(["Master", "1 / span 12", "1 / span 1"]);
+    expect(drawn(page).cells).toHaveLength(10);
+    expect(drawn(page).cells.map((cell) => cell[0])).toContain("Speed");
+    expect(drawn(page).cells.map((cell) => cell[0])).toContain("Glow");
   });
 
-  it("the controls on a page are the same live controls: one still drags, and a redraw of the board keeps the page", async () => {
+  it("the board's controls still drag and a changed shape keeps all sections", async () => {
     const page = openPage();
     page.snapshot(DESK);
-    choose(page, "Robot");
     const speed = track(page, "Speed");
-    grab(page, speed, 88); // on its knob: Speed shows 0.5
+    grab(page, speed, 88);
     page.pointer("pointermove", speed, 140);
     page.pointer("pointerup", speed, 140);
     await page.drain();
     expect(page.posts.at(-1)?.set).toEqual({ handle: "h-speed", values: { value: 0.7 }, phase: "commit" });
-    // The desk adds a control to another section: a new shape, the same page.
     const board = DESK.panels[0]!.board!;
     const spark = { kind: "widget", rect: { x: 8, y: 3, w: 4, h: 1 }, widget: slider("h-spark", "Spark") } as const;
     page.snapshot({ seq: 4, panels: [{ ...DESK.panels[0]!, board: { ...board, items: [...board.items, spark] } }, DESK.panels[1]!] });
-    expect(chosen(page)).toEqual(["Robot"]);
-    expect(drawn(page).cells.map((cell) => cell[0])).toEqual(["Robot", "Speed"]);
-  });
-
-  it("the pager belongs to the shown Panel: a Panel without sections, and the Camera tab, show none", () => {
-    const page = openPage();
-    page.snapshot(DESK);
-    choose(page, "Scene");
-    tab(page, "Plain");
-    expect(pager(page).hidden).toBe(true);
-    expect(chips(page)).toEqual([]);
-    expect(page.doc.body.classList.contains("paged")).toBe(false);
-    tab(page, "Camera");
-    expect(pager(page).hidden).toBe(true);
-    // Back on the Panel: its page is the one it was left on.
-    tab(page, "Sentinel");
-    expect(chosen(page)).toEqual(["Scene"]);
-    expect(drawn(page).cells.map((cell) => cell[0])).toEqual(["Scene", "Bore"]);
-  });
-
-  it("the phone remembers each Panel's page; a section that is gone shows All without forgetting the choice", () => {
-    const first = openPage();
-    first.snapshot(DESK);
-    choose(first, "Lights");
-    const kept = first.win.localStorage.getItem(PHONE_PAGE_STORAGE_KEY);
-    expect(JSON.parse(kept ?? "null")).toEqual({ "panel:Sentinel": "Lights" });
-
-    const again = openPage({ storage: { [PHONE_PAGE_STORAGE_KEY]: kept! } });
-    again.snapshot(DESK);
-    expect(chosen(again)).toEqual(["Lights"]);
-    expect(drawn(again).cells.map((cell) => cell[0])).toEqual(["Lights", "Glow"]);
-    // Choosing All forgets it.
-    choose(again, "All");
-    expect(JSON.parse(again.win.localStorage.getItem(PHONE_PAGE_STORAGE_KEY) ?? "null")).toEqual({});
-
-    const gone = openPage({ storage: { [PHONE_PAGE_STORAGE_KEY]: JSON.stringify({ "panel:Sentinel": "Encore" }) } });
-    gone.snapshot(DESK);
-    expect(chosen(gone)).toEqual(["All"]);
-    expect(drawn(gone).cells).toHaveLength(10);
-    expect(JSON.parse(gone.win.localStorage.getItem(PHONE_PAGE_STORAGE_KEY) ?? "null")).toEqual({ "panel:Sentinel": "Encore" });
-    // Storage that holds something else entirely is not a page: the board, whole.
-    const junk = openPage({ storage: { [PHONE_PAGE_STORAGE_KEY]: "[1,2" } });
-    junk.snapshot(DESK);
-    expect(chosen(junk)).toEqual(["All"]);
+    expect(drawn(page).cells).toHaveLength(11);
+    expect(drawn(page).cells.map((cell) => cell[0])).toContain("Spark");
   });
 
   /*
@@ -2534,15 +2396,11 @@ describe("T1607b phone page — pages of a board, and the scroll rail", () => {
     const rail = page.camera("rail");
     const railed = (): boolean[] => [!rail.hidden, page.doc.body.classList.contains("railed")];
     expect(rail.getAttribute("aria-hidden")).toBe("true");
-    page.snapshot(DESK); // All: the pad is on it, and it is three screens tall
+    page.snapshot(DESK); // The pad is on the board, and it is three screens tall
     expect(railed()).toEqual([true, true]);
     // The thumb says where the page is: the first third of it.
     const thumb = rail.querySelector<HTMLElement>(".railthumb")!;
     expect([thumb.style.top, parseFloat(thumb.style.height).toFixed(1)]).toEqual(["0%", "33.3"]);
-    choose(page, "Lights"); // no pad on this page: every control lets a scroll through
-    expect(railed()).toEqual([false, false]);
-    choose(page, "Camera"); // the pad's own page
-    expect(railed()).toEqual([true, true]);
     tab(page, "Plain");
     expect(railed()).toEqual([false, false]);
     tab(page, "Sentinel");
@@ -2777,6 +2635,8 @@ describe("T1647b phone page — the Touch trial", () => {
       // Drawn: as wide as it is to a finger, at the value.
       const drawn = page.win.getComputedStyle(grip);
       expect([drawn.display, drawn.width, grip.style.getPropertyValue("--at")]).toEqual(["block", `${String(rules.GRIP)}px`, "25%"]);
+      expect([drawn.pointerEvents, drawn.touchAction]).toEqual(["auto", "none"]);
+      expect(page.win.getComputedStyle(bloom).touchAction).toBe("pan-y");
       // ...by the very rule that says where it is hit (knobAt): on the value, whole inside the track.
       const half = `${String(rules.GRIP / 2)}px`;
       expect(page.doc.querySelector("style")?.textContent).toContain(`left: clamp(${half}, var(--at), calc(100% - ${half}));`);
@@ -3011,14 +2871,11 @@ describe("T1647b phone page — the Touch trial", () => {
       ]);
     });
 
-    it("the tab bar and the pager answer in Scroll as in Play, and getting around does not change the mode", () => {
+    it("the tab bar answers in Scroll as in Play, and getting around does not change the mode", () => {
       const page = openPage({ touch: "lock" });
       page.snapshot(LOCKED);
       lock(page).click();
-      const chip = (name: string): HTMLElement => [...page.doc.querySelectorAll<HTMLElement>("#pager [role=tab]")].find((each) => each.textContent === name)!;
       const tab = (name: string): HTMLElement => [...page.doc.querySelectorAll<HTMLElement>("#tabs [role=tab]")].find((each) => each.textContent === name)!;
-      chip("Hits").click();
-      expect([...page.doc.querySelectorAll("#pager [aria-selected=true]")].map((each) => each.textContent)).toEqual(["Hits"]);
       tab("Other").click();
       expect([...page.doc.querySelectorAll("#tabs [aria-selected=true]")].map((each) => each.textContent)).toEqual(["Other"]);
       tab("Stage").click();

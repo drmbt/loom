@@ -55,6 +55,7 @@ test("a project saves to a file and reloads with its nodes, edges and parameters
   await expect(seed).toHaveValue("42");
 
   const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-save").click();
   const download = await downloadPromise;
 
@@ -78,6 +79,7 @@ test("a project saves to a file and reloads with its nodes, edges and parameters
   await expect(page.locator(".react-flow__node")).toHaveCount(0);
 
   const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooserPromise).setFiles(savedPath);
 
@@ -110,6 +112,7 @@ test("opening a malformed file reports it and leaves the open project alone (§V
   await writeFile(badPath, "{ this is not json", "utf8");
 
   const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   // T469: opening over a dirty project asks first — a deliberate guard this spec
   // predates. Discarding is the point here: the malformed file must then leave the

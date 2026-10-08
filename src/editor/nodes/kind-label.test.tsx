@@ -7,7 +7,11 @@ import {
   KIND_LABEL_TIER_ATTRIBUTE,
   KIND_LABEL_ZOOM,
   KIND_LABEL_ZOOM_PROPERTY,
+  INSTANCE_REACH_ATTRIBUTE,
+  INSTANCE_REACH_PROPERTY,
+  KIND_LABEL_REACH_PX,
   createKindLabelRegistry,
+  instanceReach,
   kindLabelParts,
   kindLabelTier,
 } from "./kind-label.ts";
@@ -254,5 +258,80 @@ describe("the registry: who is told the zoom, and when", () => {
     expect(one.root.getAttribute(KIND_LABEL_TIER_ATTRIBUTE)).toBe("kind");
     expect(two.root.hasAttribute(KIND_LABEL_TIER_ATTRIBUTE)).toBe(false);
     expect(two.zoomOf(two.labels[0] as HTMLElement)).toBe("");
+  });
+});
+
+/**
+ * VNB15 (owner's ruling, 2026-10-07, option (b)) — A COMPONENT INSTANCE'S LABEL REACHES PAST
+ * ITS NODE AS FAR AS THE NEXT NODE IN ITS ROW. The answer is a fact of the layout, in graph
+ * px: no zoom changes it, and only a layout change recomputes it. The drawing (whole where
+ * there is room, cut at the neighbour, no overlap) is `component-name-labels.spec.ts`.
+ */
+describe("instanceReach: how far an instance's label may run past its node", () => {
+  const box = (nodeId: string, x: number, y: number, width = 178, height = 120) => ({ nodeId, x, y, width, height });
+  const instance = box("audio", 0, 0);
+
+  it("is the gap to the nearest node to its right in its row", () => {
+    expect(instanceReach(instance, [instance, box("near", 220, 10), box("far", 600, 0)])).toBe(42);
+  });
+
+  it("is unbounded with nothing to its right in its row, and 0 against a node that overlaps it", () => {
+    expect(instanceReach(instance, [instance, box("left", -300, 0)])).toBe(Infinity);
+    expect(instanceReach(instance, [instance, box("over", 150, 0)])).toBe(0);
+  });
+
+  it("counts a node out of the row only when neither it nor its own label can reach the band", () => {
+    // 30 px lower its body is under the line the label stands on, but ITS label rises into the band.
+    expect(instanceReach(instance, [instance, box("lower", 220, 30)])).toBe(42);
+    // A whole label's reach lower, nothing of it can.
+    expect(instanceReach(instance, [instance, box("below", 220, KIND_LABEL_REACH_PX)])).toBe(Infinity);
+    // Its body is above the band, but its LABEL can rise from its header line into it.
+    expect(instanceReach(instance, [instance, box("above", 300, -KIND_LABEL_REACH_PX + 10, 178, 20)])).toBe(122);
+  });
+});
+
+describe("the registry: an instance's reach comes from the layout, never from the zoom", () => {
+  it("writes the reach on the instance's own clip at a layout change, and nothing on a zoom", () => {
+    const registry = createKindLabelRegistry();
+    const clip = document.createElement("span");
+    const writes = vi.spyOn(clip.style, "setProperty");
+    registry.registerInstance(clip, "audio");
+    registry.layout([
+      { nodeId: "audio", x: 0, y: 0, width: 178, height: 120 },
+      { nodeId: "next", x: 230, y: 0, width: 178, height: 120 },
+    ]);
+    expect(clip.style.getPropertyValue(INSTANCE_REACH_PROPERTY)).toBe("52px");
+    expect(clip.hasAttribute(INSTANCE_REACH_ATTRIBUTE)).toBe(true);
+    const after = writes.mock.calls.length;
+    for (const zoom of [0.6, 0.3, 0.15, 0.1]) registry.apply(zoom);
+    expect(writes.mock.calls.length).toBe(after);
+    // The same layout again writes nothing; a moved neighbour writes once.
+    registry.layout([
+      { nodeId: "audio", x: 0, y: 0, width: 178, height: 120 },
+      { nodeId: "next", x: 230, y: 0, width: 178, height: 120 },
+    ]);
+    expect(writes.mock.calls.length).toBe(after);
+    registry.layout([
+      { nodeId: "audio", x: 0, y: 0, width: 178, height: 120 },
+      { nodeId: "next", x: 400, y: 0, width: 178, height: 120 },
+    ]);
+    expect(clip.style.getPropertyValue(INSTANCE_REACH_PROPERTY)).toBe("222px");
+    // The neighbour leaves its row: the label runs on uncapped.
+    registry.layout([
+      { nodeId: "audio", x: 0, y: 0, width: 178, height: 120 },
+      { nodeId: "next", x: 400, y: 500, width: 178, height: 120 },
+    ]);
+    expect(clip.hasAttribute(INSTANCE_REACH_ATTRIBUTE)).toBe(false);
+  });
+
+  it("answers a clip that joins after the layout from the layout it already has", () => {
+    const registry = createKindLabelRegistry();
+    registry.layout([
+      { nodeId: "audio", x: 0, y: 0, width: 178, height: 120 },
+      { nodeId: "next", x: 200, y: 0, width: 178, height: 120 },
+    ]);
+    const clip = document.createElement("span");
+    registry.registerInstance(clip, "audio");
+    expect(clip.style.getPropertyValue(INSTANCE_REACH_PROPERTY)).toBe("22px");
   });
 });

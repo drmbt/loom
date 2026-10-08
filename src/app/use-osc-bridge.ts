@@ -342,7 +342,7 @@ export function useOscBridge(options: OscBridgeOptions = {}): OscBridgeBinding {
        */
       const settledOptions =
         flattening.morphs.activeAt(frame)
-          ? parameterReadOptions({ graph, registry, frame, channels, flattening: { morphs: NO_MORPHS, instanceChannels: flattening.instanceChannels } })
+          ? parameterReadOptions({ graph, registry, frame, channels, flattening: { morphs: NO_MORPHS, instanceChannels: flattening.instanceChannels, instancePages: flattening.instancePages } })
           : null;
 
       /*

@@ -269,11 +269,11 @@ const ENERGY = "op('constant_energy').chan.value";
 const LIFT = "op('constant_lift').chan.value";
 // The long view (director.ts): where this passage stands among the last minute's, and which bar the track is in.
 const INTENSITY = "op('lag_intensity').chan.level";
-const BAR = "op('audiofile_track').chan.bar";
-const BEAT = "floor(op('audiofile_track').chan.beat)";
+const BAR = "op('select_audio').chan.bar";
+const BEAT = "floor(op('select_audio').chan.beat)";
 // The tunnel's lamp chase (tunnel.ts, CHASE): where it is (the beat's count and how far through the beat) and how
 // much of it: the top of the track, by the panel's Lamp chase. In a kernel or a material these are `chasing`.
-const CHASE_AT = "(op('audiofile_track').chan.beat + op('audiofile_track').chan.beatPhase)";
+const CHASE_AT = "(op('select_audio').chan.beat + op('select_audio').chan.beatPhase)";
 // The moves, eased: how much it is attacking, and how tight a corkscrew it walks.
 const ATTACK = "op('lag_attack').chan.value";
 const SPIRAL = "op('lag_spiral').chan.value";
@@ -881,12 +881,15 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   });
   const nodes: GraphNode[] = [
     // ── The track, and the lanes the piece listens to ──
-    node("audiofile_track", "audioFileIn", [-3600, 600], {
+    node("audiofile_track", "audioFileIn", [-3900, 600], {
       file: track.file, playMode: "timeline", play: true, speed: 1, cue: false, cuePoint: 0,
       trimStart: 0, trimEnd: 0, extend: "loop", volume: 1, monitor: true,
       tempoMode: "declared", bpm: track.bpm, beatsPerBar: track.beatsPerBar,
       beatOffset: track.beatOffset,
     }, { label: "audiofile_track" }),
+    // The value-channel Null: * preserves the complete bag. Swap the source on this one wire;
+    // every audio lane and beat/bar expression addresses the stable tap below.
+    node("select_audio", "valueSelect", [-3600, 600], { channels: "*" }, { label: "select_audio" }),
     node("select_levels", "valueSelect", [-3300, 500], { channels: "level low high" }, { label: "select_levels" }),
     node("lag_smooth", "valueLag", [-3000, 500], { lag: 0.02, releaseRatio: 4 }, { label: "lag_smooth" }),
     node("normalize_levels", "valueNormalize", [-2700, 500], { window: 16 }, { label: "normalize_levels" }),
@@ -1389,17 +1392,18 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
   ];
 
   const edges: GraphEdge[] = [
-    edge("clip-levels", ["audiofile_track", "out"], ["select_levels", "in"]),
+    edge("track-audio", ["audiofile_track", "out"], ["select_audio", "in"]),
+    edge("clip-levels", ["select_audio", "out"], ["select_levels", "in"]),
     edge("levels-smooth", ["select_levels", "out"], ["lag_smooth", "in"]),
     edge("smooth-rank", ["lag_smooth", "out"], ["normalize_levels", "in"]),
     edge("rank-levels", ["normalize_levels", "out"], ["lag_levels", "in"]),
-    edge("clip-hits", ["audiofile_track", "out"], ["select_hits", "in"]),
+    edge("clip-hits", ["select_audio", "out"], ["select_hits", "in"]),
     edge("hits-lag", ["select_hits", "out"], ["lag_hits", "in"]),
     edge("hits-rate", ["select_hits", "out"], ["rate_hits", "in"]),
     edge("rate-busy", ["rate_hits", "out"], ["expression_busy", "in"]),
     edge("busy-only", ["expression_busy", "out"], ["select_busy", "in"]),
     edge("busy-ease", ["select_busy", "out"], ["lag_busy", "in"]),
-    edge("clip-bar", ["audiofile_track", "out"], ["select_bar", "in"]),
+    edge("clip-bar", ["select_audio", "out"], ["select_bar", "in"]),
     ...["select_bar", "lag_busy", "lag_intensity"].map((source, index) => edge(`cut-${source}`, [source, "out"], ["expression_cut", "in"], index)),
     edge("cut-want", ["expression_cut", "out"], ["select_want", "in"]),
     edge("want-count", ["select_want", "out"], ["count_cuts", "in"]),
@@ -1416,7 +1420,7 @@ export function sentinelDocument(facts: KitFacts, options: SentinelDocumentOptio
     edge("swim-ease", ["constant_swim", "out"], ["lag_swim", "in"]),
     edge("hue-ease", ["constant_hue", "out"], ["lag_hue", "in"]),
     edge("rush-ease", ["constant_rush", "out"], ["lag_rush", "in"]),
-    edge("clip-kick", ["audiofile_track", "out"], ["select_kick", "in"]),
+    edge("clip-kick", ["select_audio", "out"], ["select_kick", "in"]),
     edge("kick-count", ["select_kick", "out"], ["count_kick", "in"]),
     edge("rate-ease", ["constant_rate", "out"], ["lag_rate", "in"]),
     edge("ease-travel", ["lag_rate", "out"], ["speed_travel", "in"]),

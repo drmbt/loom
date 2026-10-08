@@ -3,7 +3,8 @@ import type { GraphDocument, GraphNode } from "../types/graph.ts";
 import type { NodeId } from "../types/ids.ts";
 import type { ParameterDefinition, ParameterSchema, StoredParameter } from "../types/parameters.ts";
 import { numericRangeOf } from "../parameters/expression-range.ts";
-import { isParameterSlot, parseComponentKey, storedStaticValue, withBinding } from "../parameters/slots.ts";
+import { formatParentRead, parentReadsOf, rewriteParentReads, type ParentRead } from "../expressions/index.ts";
+import { componentNamesFor, isParameterSlot, parseComponentKey, storedStaticValue, withBinding } from "../parameters/slots.ts";
 import type { AppliedInstance } from "./apply-instance.ts";
 import { PARENT_BINDINGS_STATE_KEY, internalParameterPath, parseInternalParameterPath, readComponentInstance, readParentBindings } from "./instance.ts";
 import { buildParentScope, formatParentReference, parentBindResolver, parentScopeDrivers, parseParentReference } from "./parent-scope.ts";
@@ -57,6 +58,12 @@ import { publishedSchema } from "./published-page.ts";
  * fallback), a sibling bind takes whatever its sibling carries, and inside a component edit
  * session an outer published knob that drove a page key drives the copies instead
  * (`MovedOuterTarget`; a one-hop read of that key becomes `parent.<outer key>`).
+ *
+ * A `parent()` read in an EXPRESSION inside the definition (VN36) follows the same rule:
+ * `parent(n)` past the instance loses one hop, and `parent().par.k` becomes what the page key
+ * is from the copies' level — its carried source re-aimed as a `parent()` read, the instance's
+ * own expression for it inlined, or its value. One the copies cannot read the same way is
+ * said (`inexact`) and the copy holds its static.
  *
  * Nested instances inside the definition stay instances: their pages are written by the
  * rules above and keep driving their own internals. A ref inside a NESTED definition that
@@ -150,6 +157,14 @@ type Carry =
   | { readonly kind: "slot"; readonly slot: StoredParameter }
   | { readonly kind: "legacy"; readonly ref: string }
   | { readonly kind: "outer"; readonly keys: readonly string[] };
+
+/** VN36: the furthest `parent(n)` an active expression slot reads, or 0. */
+function expressionParentHops(stored: StoredParameter | undefined): number {
+  if (!isParameterSlot(stored) || stored.mode !== "expression") return 0;
+  const binding = stored.bindings.expression;
+  if (binding?.kind !== "expression") return 0;
+  return Math.max(0, ...parentReadsOf(binding.source).map((read) => read.hops));
+}
 
 /** The ref of a `bind`-mode slot reading `parent.*`, or undefined. */
 function parentBindRef(stored: StoredParameter | undefined): string | undefined {
@@ -254,6 +269,54 @@ export function detachedValues(input: DetachedValuesInput): DetachedValues {
   const carriedRef = (carry: Exclude<Carry, { kind: "slot" }>): string =>
     carry.kind === "legacy" ? carry.ref : formatParentReference({ hops: 1, key: carry.keys[carry.keys.length - 1] as string });
 
+  /**
+   * VN36 — what one `parent()` read in a copied node becomes, from the level the copies land
+   * at (the instance's own), or undefined when no expression there reads the same number.
+   * Past the instance, one `parent` fewer, as a bind loses one `parent.`. One hop read the
+   * instance's page, which is gone: a page key set from outside re-aims at that source, the
+   * instance's own expression for it is inlined (it was written at this very level), and a
+   * value is written as one.
+   */
+  const pageRead = (read: ParentRead): string | undefined => {
+    if (read.hops > 1) return formatParentRead({ ...read, hops: read.hops - 1 });
+    const definitionOfKey = schema[read.key];
+    if (definitionOfKey === undefined) return undefined;
+    const carry = carriedByKey.get(read.key);
+    if (carry !== undefined) {
+      const reference = parseParentReference(carry.kind === "slot" ? (parentBindRef(carry.slot) ?? "") : carriedRef(carry));
+      return reference === null ? undefined : formatParentRead({ hops: reference.hops, key: reference.key, component: read.component });
+    }
+    const own = instance.parameters[read.key];
+    if (isParameterSlot(own) && own.mode === "expression" && own.bindings.expression?.kind === "expression") {
+      return read.component === undefined ? `(${own.bindings.expression.source})` : undefined;
+    }
+    const value = page.values[read.key];
+    const components = componentNamesFor(definitionOfKey);
+    const number =
+      read.component === undefined
+        ? value
+        : Array.isArray(value) && components !== null
+          ? (value as readonly unknown[])[components.indexOf(read.component)]
+          : undefined;
+    if (typeof number === "boolean") return number ? "1" : "0";
+    return typeof number === "number" && Number.isFinite(number) ? `(${number})` : undefined;
+  };
+
+  // VN36: the reads no copy can make, said NOW — `inexact` is read before any copy is made.
+  for (const internalId of Object.keys(definition.graph.nodes).sort()) {
+    const internal = definition.graph.nodes[internalId] as GraphNode;
+    const fannedHere = new Set((byNode.get(internalId) ?? []).map(([key]) => key));
+    for (const key of Object.keys(internal.parameters).sort()) {
+      const stored = internal.parameters[key];
+      if (fannedHere.has(key) || !isParameterSlot(stored) || stored.mode !== "expression") continue;
+      const binding = stored.bindings.expression;
+      if (binding?.kind !== "expression") continue;
+      const unreadable = parentReadsOf(binding.source).find((read) => pageRead(read) === undefined);
+      if (unreadable === undefined) continue;
+      inexact.push(`"${look}"'s ${internal.label ?? internalId}.${key} reads ${formatParentRead(unreadable)}, which the copies cannot read the same way; they hold its static value`);
+    }
+  }
+
   const copy = (internalId: NodeId, node: GraphNode): { node: GraphNode; baked: number; moved: MovedOuterTarget[] } => {
     let baked = 0;
     const moved: MovedOuterTarget[] = [];
@@ -307,6 +370,31 @@ export function detachedValues(input: DetachedValuesInput): DetachedValues {
       const retained = storedStaticValue(stored);
       if (retained === undefined) delete parameters[key];
       else parameters[key] = retained;
+    }
+
+    // VN36: `parent()` reads in the copy's own expressions, rewritten for where the copies land.
+    for (const key of Object.keys(parameters).sort()) {
+      const stored = parameters[key];
+      if (!isParameterSlot(stored) || stored.mode !== "expression" || fannedKeys.has(key)) continue;
+      const binding = stored.bindings.expression;
+      if (binding?.kind !== "expression" || parentReadsOf(binding.source).length === 0) continue;
+      let unreadable: string | undefined;
+      let fromPage = false;
+      const source = rewriteParentReads(binding.source, (read) => {
+        fromPage ||= read.hops === 1;
+        const rewritten = pageRead(read);
+        if (rewritten === undefined) unreadable ??= formatParentRead(read);
+        return rewritten;
+      });
+      if (unreadable !== undefined) {
+        // Said up front (below `pageRead`): the command reads `inexact` before it copies.
+        const retained = storedStaticValue(stored);
+        if (retained === undefined) delete parameters[key];
+        else parameters[key] = retained;
+        continue;
+      }
+      parameters[key] = withBinding(stored, { kind: "expression", source });
+      if (fromPage) baked += 1;
     }
 
     // Legacy `state.parentBindings` (§V81), after the slots, as flattening orders them.
@@ -372,6 +460,8 @@ export function nestedParentReads(
         ...Object.values(readParentBindings(node)),
       ];
       if (refs.some((ref) => ref !== undefined && (parseParentReference(ref)?.hops ?? 0) > depth)) return true;
+      // VN36: and a `parent(n)` read in an expression, by the same count.
+      if (Object.values(node.parameters).some((stored) => expressionParentHops(stored) > depth)) return true;
       const nested = readComponentInstance(node) === null ? undefined : definitionOf(node);
       return nested !== undefined && readsPast(nested.graph, depth + 1);
     });

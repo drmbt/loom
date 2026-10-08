@@ -310,7 +310,15 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
     }),
   });
   const compileHolder = registerCompileCommand(bus);
-  registerResetFeedbackCommand(bus, { backend: () => backend, compiled: () => compiled });
+  registerResetFeedbackCommand(bus, {
+    backend: () => backend,
+    compiled: () => compiled,
+    // This surface has no CPU ValueGraphSession; the backend owns all its temporal state.
+    resetState: () => {
+      if (backend === undefined) throw new Error("No GPU backend is attached.");
+      backend.resetTemporalHistory(undefined, { buffers: true, silent: true });
+    },
+  });
 
   // T334 (§V38): export — pixels and readbacks leaving the process — is granted only
   // when the INVOCATION carried --grant-export. Default-OFF fails loudly (the refusal

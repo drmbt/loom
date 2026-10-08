@@ -27,6 +27,14 @@ import type { NumericSpec } from "./types.ts";
  * decade either side. Putting the rung PICKER on the label as well is the remaining piece
  * of TD parity and is deliberately not attempted here.
  *
+ * ## Behind a hold (VN63)
+ *
+ * TouchDesigner opens this ladder with a HOLD on the name; a drag of the name that moves at
+ * once is a parameter REFERENCE there, and now here too (Vincent, 2026-10-07). So the
+ * gesture below runs only after `LADDER_HOLD_MS` of a still press (`control-row.tsx`), and
+ * a press that moves at once becomes the browser's drag carrying the reference
+ * (`parameter-drag-context.ts`). The maths in this module is unchanged.
+ *
  * ## Additive, not proportional — and why
  *
  * A drag on the name applies THE SAME DRAG to every eligible channel: `[2, 3]` dragged by

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createValueGraphSession } from "../domain/channels/value-graph.ts";
 import { graphChannelResolver } from "../domain/channels/graph-channels.ts";
 import { createComponentSystem } from "../domain/components/index.ts";
-import { NO_INSTANCES } from "../domain/parameters/node-references.ts";
+import { NO_INSTANCES, NO_PAGES } from "../domain/parameters/node-references.ts";
 import { effectiveParameterSchema } from "../domain/parameters/resolve.ts";
 import { buildMorphIndex } from "../domain/presets/morph-index.ts";
 import { loadProject } from "../domain/project/index.ts";
@@ -137,7 +137,7 @@ function sentinel(): Animated {
     request: { graph, settings: built.settings, registry, capabilities: TIER_B_CAPABILITIES },
     resolutionAt: (frameIndex) => {
       const frame = frameAt(frameIndex);
-      const evaluated = session.evaluate(logical, frame, { pointer: { x: 0, y: 0, buttons: 0 } as never, flattening: { morphs, instanceChannels: NO_INSTANCES } });
+      const evaluated = session.evaluate(logical, frame, { pointer: { x: 0, y: 0, buttons: 0 } as never, flattening: { morphs, instanceChannels: NO_INSTANCES, instancePages: NO_PAGES } });
       return { frame, channels: evaluated.resolver };
     },
   };

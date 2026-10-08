@@ -54,6 +54,8 @@ export interface WorkerRunTarget {
   readonly ratio: number;
   /** The temporal EMA's blend toward the new frame; 1 disables it (§T957's alpha). */
   readonly smoothing: number;
+  /** Preserve native float32 output for explicit preparation, independently of encoding. */
+  readonly captureRaw?: boolean;
 }
 
 /** What a completed run turned out to have used. Measured, never echoed (§V672). */
@@ -84,19 +86,27 @@ export interface WorkerRunnerOptions {
 
 export interface WorkerRunner {
   run(nodeId: string, texels: ArrayBuffer): Promise<Uint8Array>;
+  runRaw(nodeId: string, texels: ArrayBuffer): Promise<{
+    readonly bytes: Uint8Array;
+    readonly raw: { readonly values: Float32Array; readonly width: number; readonly height: number };
+  }>;
   /** All inference nodes still in the graph, including temporarily unused nodes. */
   retainNodes(nodeIds: readonly string[]): void;
   dispose(): void;
 }
 
 export function createWorkerRunner(options: WorkerRunnerOptions): WorkerRunner {
+  type CompletedRun = {
+    readonly bytes: Uint8Array;
+    readonly raw?: Extract<InferenceResponse, { kind: "result" }>["raw"];
+  };
   let nextId = 1;
   // A terminated worker cannot accept another request. Reset creates a new runner.
   let stopped: Error | undefined;
   const streams = new Map<string, object>();
   const pending = new Map<
     number,
-    { nodeId: string; request?: Extract<InferenceRequest, { kind: "run" }>; resolve(bytes: Uint8Array): void; reject(error: Error): void }
+    { nodeId: string; request?: Extract<InferenceRequest, { kind: "run" }>; resolve(result: CompletedRun): void; reject(error: Error): void }
   >();
   const loads = new Map<string, Promise<void>>();
   const loadWaiters = new Map<string, { resolve(): void; reject(error: Error): void }>();
@@ -118,7 +128,7 @@ export function createWorkerRunner(options: WorkerRunnerOptions): WorkerRunner {
           isolated: message.isolated,
         });
       }
-      waiter?.resolve(new Uint8Array(message.bytes));
+      waiter?.resolve({ bytes: new Uint8Array(message.bytes), ...(message.raw === undefined ? {} : { raw: message.raw }) });
       return;
     }
     // An error carrying a request id belongs to that inference; one without belongs to a
@@ -169,55 +179,70 @@ export function createWorkerRunner(options: WorkerRunnerOptions): WorkerRunner {
     return started;
   };
 
+  const run = async (nodeId: string, texels: ArrayBuffer, captureRaw?: boolean): Promise<CompletedRun> => {
+    if (stopped !== undefined) throw stopped;
+    const target = options.describe(nodeId);
+    if (target === undefined) throw new Error(`no inference target for "${nodeId}"`);
+    const sessionKey = sessionKeyFor(target.modelId, target.providers);
+    let stream = streams.get(nodeId);
+    if (stream === undefined) {
+      stream = {};
+      streams.set(nodeId, stream);
+    }
+    const requestId = nextId++;
+    const request: InferenceRequest = {
+      kind: "run",
+      requestId,
+      sessionKey,
+      nodeId,
+      nodeType: target.nodeType,
+      texels,
+      width: target.width,
+      height: target.height,
+      side: target.side,
+      sourceWidth: target.sourceWidth,
+      sourceHeight: target.sourceHeight,
+      // T1040: the worker's plan table is keyed by MODEL, not node type — two matte
+      // artefacts no longer share an IO shape.
+      modelId: target.modelId,
+      ratio: target.ratio,
+      smoothing: target.smoothing,
+      ...((captureRaw ?? target.captureRaw) === true ? { captureRaw: true } : {}),
+    };
+    const settled = new Promise<CompletedRun>((resolve, reject) => {
+      pending.set(requestId, { nodeId, request, resolve, reject });
+    });
+    // Track the caller before loading so deletion can reject a stalled acquisition.
+    void ensureLoaded(target.modelId, sessionKey, target.providers).then(() => {
+      if (stopped !== undefined) throw stopped;
+      if (streams.get(nodeId) !== stream) throw new Error(`inference node "${nodeId}" was retired`);
+      const waiter = pending.get(requestId);
+      const queued = waiter?.request;
+      if (queued === undefined) throw new Error(`inference request ${requestId} is not pending`);
+      // Keep queued pixels only in pending, so deletion during loading drops them.
+      delete waiter!.request;
+      options.worker.postMessage(queued, [queued.texels]);
+    }).catch(error => {
+      const waiter = pending.get(requestId);
+      pending.delete(requestId);
+      waiter?.reject(error instanceof Error ? error : new Error(String(error)));
+    });
+    return settled;
+  };
+
   return {
     async run(nodeId, texels) {
-      if (stopped !== undefined) throw stopped;
-      const target = options.describe(nodeId);
-      if (target === undefined) throw new Error(`no inference target for "${nodeId}"`);
-      const sessionKey = sessionKeyFor(target.modelId, target.providers);
-      let stream = streams.get(nodeId);
-      if (stream === undefined) {
-        stream = {};
-        streams.set(nodeId, stream);
+      return (await run(nodeId, texels)).bytes;
+    },
+    async runRaw(nodeId, texels) {
+      const completed = await run(nodeId, texels, true);
+      const raw = completed.raw;
+      if (raw === undefined) throw new Error(`inference worker returned no raw output for "${nodeId}"`);
+      if (!Number.isSafeInteger(raw.width) || raw.width <= 0 || !Number.isSafeInteger(raw.height) || raw.height <= 0 ||
+        raw.bytes.byteLength !== raw.width * raw.height * Float32Array.BYTES_PER_ELEMENT) {
+        throw new Error(`inference worker returned invalid raw output dimensions for "${nodeId}"`);
       }
-      const requestId = nextId++;
-      const request: InferenceRequest = {
-        kind: "run",
-        requestId,
-        sessionKey,
-        nodeId,
-        nodeType: target.nodeType,
-        texels,
-        width: target.width,
-        height: target.height,
-        side: target.side,
-        sourceWidth: target.sourceWidth,
-        sourceHeight: target.sourceHeight,
-        // T1040: the worker's plan table is keyed by MODEL, not node type — two matte
-        // artefacts no longer share an IO shape.
-        modelId: target.modelId,
-        ratio: target.ratio,
-        smoothing: target.smoothing,
-      };
-      const settled = new Promise<Uint8Array>((resolve, reject) => {
-        pending.set(requestId, { nodeId, request, resolve, reject });
-      });
-      // Track the caller before loading so deletion can reject a stalled acquisition.
-      void ensureLoaded(target.modelId, sessionKey, target.providers).then(() => {
-        if (stopped !== undefined) throw stopped;
-        if (streams.get(nodeId) !== stream) throw new Error(`inference node "${nodeId}" was retired`);
-        const waiter = pending.get(requestId);
-        const queued = waiter?.request;
-        if (queued === undefined) throw new Error(`inference request ${requestId} is not pending`);
-        // Keep queued pixels only in pending, so deletion during loading drops them.
-        delete waiter!.request;
-        options.worker.postMessage(queued, [queued.texels]);
-      }).catch(error => {
-        const waiter = pending.get(requestId);
-        pending.delete(requestId);
-        waiter?.reject(error instanceof Error ? error : new Error(String(error)));
-      });
-      return settled;
+      return { bytes: completed.bytes, raw: { values: new Float32Array(raw.bytes), width: raw.width, height: raw.height } };
     },
     retainNodes(nodeIds) {
       if (stopped !== undefined) return;

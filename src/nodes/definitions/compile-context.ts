@@ -37,6 +37,8 @@ export interface NodeCompileInputs {
       {
         readonly resource: string;
         readonly sampler: string;
+        /** Resolved texture format, needed to bind numerical float maps without filtering. */
+        readonly format?: TextureFormat;
         /**
          * Producing node/port, when the compiler supplies it (T122). Pointset consumers
          * derive per-attribute buffer ids from the producer's node id — a pointset edge
@@ -120,6 +122,7 @@ interface CompilerContextShape {
       ReadonlyArray<{
         resourceId: string;
         sampler: string;
+        format?: TextureFormat;
         sourceNodeId?: string;
         sourcePortId?: string;
         pointset?: { pairs: Readonly<Record<string, PointsetAttributeRef>>; capacity: number; topology?: string; count?: { buffer: string }; bounds?: PointsetBounds };
@@ -148,6 +151,7 @@ export function readCompileInputs(context: NodeCompileContext): NodeCompileInput
     const adapted = bindings.map((binding) => ({
       resource: binding.resourceId,
       sampler: binding.sampler ?? raw.sampler ?? "",
+      ...(binding.format === undefined ? {} : { format: binding.format }),
       ...(binding.sourceNodeId === undefined
         ? {}
         : { source: { nodeId: binding.sourceNodeId, portId: binding.sourcePortId ?? "out" } }),

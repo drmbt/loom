@@ -40,12 +40,14 @@ test("canvas capture preserves temporal stepping, MP4 audio, and cancellation wi
       mode: "offline" as const, randomSeed: 75 }, pointer: { x: 0, y: 0, buttons: 0 }, resolution: [width, height] as const });
     const step = () => { rendered.push(current); backend.render(plan, at()); return at(); };
     const transport = { isPlaying: () => false, togglePlay() {}, resetAbsoluteClock() {},
-      seek(index: number) { current = index; backend.resetTemporalHistory(); step(); return current; },
+      resetState() { backend.resetTemporalHistory(undefined, { buffers: true }); },
+      seek(index: number) { current = index; step(); return current; },
       stepOnce() { current++; return step(); }, latestFrame: at };
     // Establish the actual feedback graph's pixel oracle through the old readback seam.
     // Its composite samples retained history, so its marker is not the generator's
     // current index. The capture path must preserve that temporal result exactly.
     const expectedSequence: number[] = [];
+    transport.resetState();
     transport.seek(0);
     for (let index = 0; index < 24; index++) {
       if (index > 0) transport.stepOnce();

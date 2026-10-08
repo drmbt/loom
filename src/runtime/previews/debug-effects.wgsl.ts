@@ -37,7 +37,7 @@ import { ALPHA_DISPLAY_WGSL } from "../backend/alpha-display.wgsl.ts";
  *
  * `mask` leads so the `vec4f` sits at offset 0 and the block needs no explicit padding.
  */
-export const PREVIEW_PARAMS_WGSL = wgsl`struct PreviewParams {
+const PREVIEW_UNIFORMS_WGSL = wgsl`struct PreviewParams {
   mask: vec4f,
   exposure: f32,
   channel: f32,
@@ -45,21 +45,28 @@ export const PREVIEW_PARAMS_WGSL = wgsl`struct PreviewParams {
   tonemap: f32,
   signedScale: f32,
 };
-@group(0) @binding(0) var<uniform> params: PreviewParams;
+@group(0) @binding(0) var<uniform> params: PreviewParams;`;
+export const PREVIEW_PARAMS_WGSL = wgsl`${PREVIEW_UNIFORMS_WGSL}
 @group(0) @binding(1) var previewSampler: sampler;
 @group(0) @binding(2) var previewTexture: texture_2d<f32>;`;
 
 /** Helpers every mode shares. Kept in one place so "what exposure means" has one definition. */
-export function previewCommonWgsl(space: ColorSpace): EmittedWgsl {
+export function previewCommonWgsl(space: ColorSpace, scalar = false, showScalar = false): EmittedWgsl {
   // T375/B47 (§V57): the ONE place a preview reads its source, and the ONE place the
   // texture's DECLARED space is honoured. A tile always ends display-encoded (the tile is
   // a display), so a source that is already encoded must be brought back to linear before
   // the lens touches it — exposure and a tonemap on sRGB values are arithmetic on the
   // wrong numbers, and re-encoding an encoded picture is what made the Output node's
   // preview 187 where 127 was right. `data` is untouched (§V56).
-  const decode = space === "encoded" ? "decodeDisplay(raw.rgb)" : "raw.rgb";
+  const colour = showScalar ? "vec3f(raw.r)" : "raw.rgb";
+  const decode = space === "encoded" ? `decodeDisplay(${colour})` : colour;
+  const sample = scalar
+    ? `let dimensions = vec2i(textureDimensions(previewTexture));
+  let coordinate = clamp(vec2i(uv * vec2f(dimensions)), vec2i(0), dimensions - vec2i(1));
+  let raw = textureLoad(previewTexture, coordinate, 0);`
+    : "let raw = textureSampleLevel(previewTexture, previewSampler, uv, 0.0);";
   return wgsl`fn sourceTexel(uv: vec2f) -> vec4f {
-  let raw = textureSampleLevel(previewTexture, previewSampler, uv, 0.0);
+  ${sample}
   return vec4f(${decode}, raw.a);
 }
 
@@ -100,10 +107,12 @@ fn stripe(position: vec2f, period: f32) -> f32 {
 }`;
 }
 
-function prelude(space: ColorSpace): EmittedWgsl {
-  return wgsl`${PREVIEW_PARAMS_WGSL}
+function prelude(space: ColorSpace, scalar: boolean, showScalar: boolean): EmittedWgsl {
+  const bindings = scalar ? wgsl`${PREVIEW_UNIFORMS_WGSL}
+@group(0) @binding(2) var previewTexture: texture_2d<f32>;` : PREVIEW_PARAMS_WGSL;
+  return wgsl`${bindings}
 
-${previewCommonWgsl(space)}`;
+${previewCommonWgsl(space, scalar, showScalar)}`;
 }
 
 /** Normal colour: grade linear RGB, composite bounded coverage, then display encode. */
@@ -274,6 +283,8 @@ const BODIES: Readonly<Record<PreviewModeKind, (prefix: string) => EmittedWgsl>>
   signed: signedShader,
 };
 
-export function previewShaderSource(mode: PreviewModeKind, space: ColorSpace): EmittedWgsl {
-  return BODIES[mode](prelude(space));
+export function previewShaderSource(mode: PreviewModeKind, space: ColorSpace, scalar = false): EmittedWgsl {
+  // Ordinary display lenses show scalar data as grayscale. Channel inspection remains
+  // literal: an r32 texture's G/B are zero and A is one, as the hardware publishes them.
+  return BODIES[mode](prelude(space, scalar, scalar && mode !== "channel" && mode !== "signed"));
 }

@@ -38,6 +38,18 @@ export type ExpressionAst =
    * parameter resolver turns into the §V108 fallback rather than an error wall.
    */
   | { kind: "opRef"; name: string; path: readonly string[] }
+  /**
+   * VN36 — `parent().par.gain`, `parent(2).par.tint.r`: a published parameter of the
+   * component `hops` levels out (§V81). `path` is always `["par", key]` or
+   * `["par", key, component]`; the parser refuses every other shape. `at`/`end` are its span
+   * in the TRIMMED source, a pure function of the text like the rest of the tree (the parse
+   * memo shares it), and they are what lets the flattener rewrite the read in place.
+   *
+   * Nothing evaluates one: the flattener rewrites it to an `op()` read of the instance it
+   * names (`parent-reads.ts`), and one that reaches the evaluator was never inside a
+   * component.
+   */
+  | { kind: "parentRef"; hops: number; path: readonly string[]; at: number; end: number }
   /** A whitelisted function call (T370). Arity is checked at PARSE time; see `FUNCTIONS`. */
   | { kind: "call"; name: string; args: readonly ExpressionAst[] }
   | { kind: "unary"; operator: "-" | "+"; operand: ExpressionAst }
@@ -666,6 +678,7 @@ function parsePrimary(cursor: Cursor): ExpressionAst {
     const next = peek(cursor);
     if (next !== undefined && next.kind === "paren" && next.value === "(") {
       if (token.value === "op") return parseOpReference(cursor);
+      if (token.value === PARENT_FUNCTION) return parseParentReference(cursor, token.at);
       return parseCall(cursor, token.value);
     }
     return { kind: "variable", name: token.value };
@@ -852,6 +865,57 @@ function parseOpReference(cursor: Cursor): ExpressionAst {
   return { kind: "opRef", name: name.value, path };
 }
 
+/** VN36: the one name `parent(` is spelled with. A bare `parent` stays a variable name. */
+export const PARENT_FUNCTION = "parent";
+
+/**
+ * `parent(n).par.key[.component]` — the cursor stands ON the opening paren (VN36, §V81).
+ *
+ * Stricter than `op()` on purpose. `op()` takes any member path and leaves the reader to
+ * refuse one it cannot read, because the target's type decides what it has. A component's
+ * page has parameters and nothing else (a component's channels are read through
+ * `op('<instance>').chan`), so every other shape is known wrong while the author is still
+ * typing, and is refused here with the form to write.
+ */
+function parseParentReference(cursor: Cursor, at: number): ExpressionAst {
+  cursor.index += 1; // consume "("
+  let hops = 1;
+  const count = peek(cursor);
+  if (count !== undefined && count.kind === "number") {
+    if (!Number.isInteger(count.value) || count.value < 1) {
+      fail("syntax", `parent() counts components outward from 1: parent(1) is the one this node is in, not parent(${count.value})`);
+    }
+    hops = count.value;
+    cursor.index += 1;
+  }
+  const closing = peek(cursor);
+  if (closing === undefined || closing.kind !== "paren" || closing.value !== ")") {
+    fail("syntax", "parent() takes nothing, or how many components out as a whole number: parent(), parent(2)");
+  }
+  cursor.index += 1;
+
+  const path: string[] = [];
+  let end = closing.end;
+  for (;;) {
+    const dot = peek(cursor);
+    if (dot === undefined || dot.kind !== "dot") break;
+    cursor.index += 1;
+    const member = peek(cursor);
+    if (member === undefined || member.kind !== "identifier") fail("syntax", "expected a member name after \".\"");
+    cursor.index += 1;
+    path.push(member.value);
+    end = member.end;
+  }
+  const shape = "parent().par.<parameter>, or one component of it, as parent().par.color.r";
+  if (path[0] !== "par") {
+    fail("syntax", path.length === 0 ? `parent() must read a parameter: ${shape}` : `parent() reads parameters only (.par), not .${path[0]}`, {
+      suggestion: `Write ${shape}. A component's channels are read as op('<instance>').chan.<channel>.`,
+    });
+  }
+  if (path.length < 2 || path.length > 3) fail("syntax", `name one parameter: ${shape}`);
+  return { kind: "parentRef", hops, path, at, end };
+}
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
  * THE PARSE MEMO (T1172) — KEYED BY THE SOURCE TEXT, SO IT CANNOT OUTLIVE AN EDIT
@@ -972,6 +1036,13 @@ function evaluateNode(
       if (!read.ok) fail(`reference.${read.kind ?? "unreadable"}`, read.reason, { suggestion: read.suggestion });
       return read.value;
     }
+    case "parentRef":
+      // VN36: the flattener rewrites every one inside a component to an `op()` read of the
+      // instance it names, so one that gets here is outside any. A number here would be one
+      // that looks like an answer.
+      return fail("reference.unreadable", `parent() reads a published parameter of the component a node is in, and this expression is not inside one`, {
+        suggestion: "Use parent() in a node inside a component, or read the parameter with op('<name>').par.<key>.",
+      });
     case "call": {
       const spec = FUNCTIONS[ast.name];
       // Unreachable through `parseExpression`, which refuses both cases. Reachable

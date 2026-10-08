@@ -5,6 +5,7 @@ import type { CompiledGraph } from "../compiler/types.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import { z } from "zod";
 import { nodeIdsInput } from "@domain/commands/input-schema.ts";
+import { transportHolderFor } from "./transport-commands.ts";
 
 /**
  * `runtime.resetFeedback`, REGISTERED (T292's enumeration found it missing — the
@@ -43,6 +44,8 @@ export function registerResetFeedbackCommand(
   sources: {
     backend: () => LoomBackend | undefined;
     compiled: () => CompiledGraph | null;
+    /** Clear all state owned by this surface, including CPU history and simulation buffers. */
+    resetState: () => void;
   },
 ): void {
   // T531 (§V467): ask the BUS, not a ref — the guard is scoped to the thing being
@@ -52,7 +55,7 @@ export function registerResetFeedbackCommand(
       name: "runtime.resetFeedback",
       inSession: "instance",
       inputSchema: RESET_FEEDBACK_INPUT,
-      description: "Clear temporal (feedback) history — one node's pair, or all of them.",
+      description: "Clear a node's feedback history, or all temporal state when no nodes are specified.",
       handler: (input, context) => {
         const backend = sources.backend();
         const feedback = sources.compiled()?.feedback ?? [];
@@ -99,9 +102,8 @@ export function registerResetFeedbackCommand(
         const cleared = pairs.length + (scoped ? ringIds.length : rings.length);
         // §V36 (§B288): a dry run says what WOULD be cleared. A reset has no rollback.
         if (context.dryRun) return { status: "validated", output: { cleared }, diagnostics: [] };
-        backend.resetTemporalHistory(
-          scoped ? [...pairs.map((pair) => pair.resourceId), ...ringIds] : undefined,
-        );
+        if (scoped) backend.resetTemporalHistory([...pairs.map((pair) => pair.resourceId), ...ringIds]);
+        else sources.resetState();
         return { status: "applied", output: { cleared }, diagnostics: [] };
       },
       rejectionOutput: () => ({ cleared: 0 }),
@@ -133,6 +135,11 @@ export function useRuntimeCommands(inputs: {
     registerResetFeedbackCommand(inputs.bus, {
       backend: () => backendRef.current,
       compiled: () => compiledRef.current,
+      resetState: () => {
+        const transport = transportHolderFor(inputs.bus).current;
+        if (transport === null) throw new Error("No transport is attached; temporal state cannot be reset.");
+        transport.resetState();
+      },
     });
   }, [inputs.bus]);
 }

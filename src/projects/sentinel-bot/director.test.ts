@@ -25,6 +25,16 @@ function read(source: string, scope: Record<string, number>): number {
 }
 
 describe("the sentinel's file", () => {
+  it("routes every audio lane and expression through one replaceable all-channel tap", () => {
+    const { graph } = sentinelDocument(KIT_FIXTURE);
+    expect(graph.nodes["select_audio"]).toMatchObject({ type: "valueSelect", label: "select_audio", parameters: { channels: "*" } });
+    const outgoing = Object.values(graph.edges).filter(edge => edge.source.nodeId === "audiofile_track");
+    expect(outgoing).toEqual([expect.objectContaining({ source: { nodeId: "audiofile_track", portId: "out" }, target: { nodeId: "select_audio", portId: "in" } })]);
+    expect(Object.values(graph.edges).filter(edge => edge.source.nodeId === "select_audio").map(edge => edge.target.nodeId).sort())
+      .toEqual(["select_bar", "select_hits", "select_kick", "select_levels"]);
+    expect(JSON.stringify(Object.values(graph.nodes).map(node => node.parameters))).not.toContain("op('audiofile_track')");
+    expect(JSON.stringify(Object.values(graph.nodes).map(node => node.parameters))).toContain("op('select_audio').chan.beatPhase");
+  });
   it("lays no node of its canvas on top of another, in either tier", () => {
     // It did: 67 pairs, written 150 across and 125 down where a node is 178 by 148 or more, so a tile's own
     // sentence (what frames a Render, why a camera has no gizmo) was under its neighbour. The boxes are the
@@ -385,7 +395,7 @@ async function run(follow: boolean, heard: boolean, pump?: number): Promise<Run>
     energy.push(read("constant_energy:value"));
     lift.push(read("constant_lift:value"));
     intensity.push(read("lag_intensity:level"));
-    bar.push(read("audiofile_track:bar"));
+    bar.push(read("select_audio:bar"));
     swimAsked.push(read("constant_swim:value"));
     swim.push(read("lag_swim:value"));
     perch.push(read("constant_perch:value"));

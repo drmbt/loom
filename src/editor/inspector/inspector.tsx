@@ -58,6 +58,7 @@ import type { ComponentRegistryView } from "@domain/components/index.ts";
 import { resolveParameters } from "./parameter-resolver.ts";
 import {
   NO_INSTANCES,
+  NO_PAGES,
   parameterReadOptions,
   nodeReferenceMembers,
   nodeReferenceNames,
@@ -664,7 +665,13 @@ export function Inspector({
        * reads here as it does in the plan (T1485b). No `instanceChannels` (a test mount
        * with no value graph): no instance to name.
        */
-      flattening: { morphs: NO_MORPHS, instanceChannels: instanceChannels?.() ?? NO_INSTANCES },
+      // VN36: and the pages of the instances it is inside, so a `parent()` read (rewritten to
+      // `op('<instance>').par.<key>` on the flat node) reads here as it does in the plan.
+      flattening: {
+        morphs: NO_MORPHS,
+        instanceChannels: instanceChannels?.() ?? NO_INSTANCES,
+        instancePages: instanceParameters?.bus.readScope().flattening.instancePages ?? NO_PAGES,
+      },
     });
   const readOptions = readOptionsAt();
 

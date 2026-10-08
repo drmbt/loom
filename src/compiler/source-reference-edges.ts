@@ -1,3 +1,4 @@
+import { isNodePath } from "../domain/components/addressing.ts";
 import { nodeNames } from "../domain/graph/names.ts";
 import { liveSourceReferenceTokens, sourceReferencesOf } from "../domain/graph/source-references.ts";
 import type { RuntimeDiagnostic } from "../domain/types/diagnostics.ts";
@@ -81,12 +82,21 @@ export function synthesizeSourceReferenceEdges<G extends GraphDocument>(
           // §V369: a dangling name is an ERROR that names the name — never a quietly
           // smaller scene. An empty render because every name dangled is the failure
           // this refusal exists to make impossible.
+          // VN35: the flattening rewrote every path that resolves, so a path here reaches nothing.
+          const path = isNodePath(name);
           diagnostics.push(
             compilerDiagnostic(
               "error",
               CompilerDiagnosticCode.sourceReferenceMissing,
-              `Node "${nodeId}" (${node.type}) names ${spec.parameter} "${name}", which no node in the document is called.`,
-              { nodeId, suggestion: "Name an existing node, or rename the intended one to match." },
+              path
+                ? `Node "${nodeId}" (${node.type}) names ${spec.parameter} "${name}", a path that reaches no node.`
+                : `Node "${nodeId}" (${node.type}) names ${spec.parameter} "${name}", which no node in the document is called.`,
+              {
+                nodeId,
+                suggestion: path
+                  ? "A path walks node names from the referring node's own graph: instance/node into a component instance, ../node out of one."
+                  : "Name an existing node, or rename the intended one to match.",
+              },
             ),
           );
           return;

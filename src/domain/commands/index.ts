@@ -1,7 +1,7 @@
 import type { NodeRegistryView } from "../../nodes/registry/registry.ts";
 import type { SystemClipboard } from "./loom-clipboard.ts";
 import { createGraphStore, type GraphStore, type GraphStoreOptions } from "../graph/store.ts";
-import { createCommandBus, type LoomBus, type SessionScope } from "./bus.ts";
+import { createCommandBus, type LoomBus, type ReferenceCycleHost, type SessionScope } from "./bus.ts";
 import { registerEditorCommands } from "./editor-commands.ts";
 import { registerLayoutCommands } from "./layout-commands.ts";
 import { registerGraphCommands } from "./graph-commands.ts";
@@ -16,6 +16,7 @@ import { registerPresetDeleteCommand } from "../presets/delete-command.ts";
 import { registerPresetMoveCommand } from "../presets/move-command.ts";
 import { registerGridWarpCommands } from "./grid-warp-commands.ts";
 import { registerControlDefaultCommands } from "./control-default-commands.ts";
+import { registerPhotoMappingCommands } from "./photo-mapping-commands.ts";
 
 export {
   CapabilityDeniedError,
@@ -118,6 +119,8 @@ export interface DomainBusOptions extends GraphStoreOptions {
   parent?: LoomBus | undefined;
   /** §T1695b: what the session edits and through which instance. */
   scope?: SessionScope | undefined;
+  /** The component definition edited by a session, for hypothetical reference validation. */
+  referenceHost?: ReferenceCycleHost;
 }
 
 /**
@@ -126,7 +129,7 @@ export interface DomainBusOptions extends GraphStoreOptions {
  * returned bus rather than building their own (§V29, §V39).
  */
 export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus; store: GraphStore } {
-  const { registry, store: providedStore, grants, clipboard, systemClipboard, parent, scope, ...storeOptions } = options;
+  const { registry, store: providedStore, grants, clipboard, systemClipboard, parent, scope, referenceHost, ...storeOptions } = options;
   const store = providedStore ?? createGraphStore(storeOptions);
   const bus = createCommandBus({
     store,
@@ -134,6 +137,7 @@ export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus;
     ...(grants === undefined ? {} : { grants }),
     ...(parent === undefined ? {} : { parent }),
     ...(scope === undefined ? {} : { scope }),
+    ...(referenceHost === undefined ? {} : { referenceHost }),
   });
   registerGraphCommands(bus);
   registerNodeOutputCommands(bus);
@@ -161,6 +165,7 @@ export function createDomainBus(options: DomainBusOptions = {}): { bus: LoomBus;
   // T1619b: a control back to its default, and its value made the default: document edits
   // a phone's vetted write reaches too, so every bus has them.
   registerControlDefaultCommands(bus);
+  registerPhotoMappingCommands(bus);
   return { bus, store };
 }
 export { LOOM_CLIPBOARD_TYPE, decodeLoomClipboard, encodeLoomClipboard } from "./loom-clipboard.ts";

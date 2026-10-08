@@ -102,6 +102,26 @@ export const DEPTH_LIVE: ModelDescriptor = {
  */
 export const DEPTH_MODELS: readonly ModelDescriptor[] = [DEPTH_ACCURATE, DEPTH_LIVE];
 
+/** Photo surface selection. Artifact, signature and preprocessing verified 2026-10-08. */
+export const PHOTO_MASK_PERSON: ModelDescriptor = {
+  id: "ormbg-quantized",
+  label: "ORMBG person mask",
+  url: "https://huggingface.co/onnx-community/ormbg-ONNX/resolve/034e2d884afbab897e10e78fc5bb566b29533fd6/onnx/model_quantized.onnx",
+  bytes: 44_315_205,
+  sha256: "ffbcae62a7b675d616e64cb392ee028786c4cf74f83596590fba13733ef00171",
+  license: "Apache-2.0",
+};
+
+/** Dynamic BiRefNet Lite; native 1024/1536 inference verified on facades, 2026-10-08. */
+export const PHOTO_MASK: ModelDescriptor = {
+  id: "birefnet-lite-dynamic",
+  label: "BiRefNet surface mask",
+  url: "https://huggingface.co/senty-au/BiRefNet_lite-ONNX-dynamic/resolve/173d635935b93839608b9b9039da8d1d212471e9/onnx/model.onnx",
+  bytes: 180_839_545,
+  sha256: "1e0da42f0fde010e32e938bad388457ecefe35806fde9d923421997861ae9391",
+  license: "MIT",
+};
+
 /**
  * MoveNet SinglePose Lightning (T743) — the pose weights, pinned the same way.
  *
@@ -415,7 +435,7 @@ export function isMediaPipeMatte(modelId: string): boolean {
   return modelId === MATTE_MEDIAPIPE.id;
 }
 
-export const ALL_MODELS: readonly ModelDescriptor[] = [...DEPTH_MODELS, ...POSE_MODELS, ...MATTE_MODELS];
+export const ALL_MODELS: readonly ModelDescriptor[] = [...DEPTH_MODELS, ...POSE_MODELS, ...MATTE_MODELS, PHOTO_MASK_PERSON, PHOTO_MASK];
 
 export function modelById(id: string): ModelDescriptor | undefined {
   return ALL_MODELS.find((model) => model.id === id);

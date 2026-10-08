@@ -35,6 +35,7 @@ test("diving into a component keeps every interior preview live (T1051)", async 
   await expect(page.getByTestId("graph-canvas")).toBeVisible();
 
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles("examples/E51-Chorus.loom.json");
   await expect(page.locator('.react-flow__node[data-id="wall"]')).toBeVisible();
@@ -104,6 +105,7 @@ test("a component's interior POINTSET previews light, and so does the instance's
   await expect(page.getByTestId("graph-canvas")).toBeVisible();
 
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles("examples/E47-Hologram.loom.json");
   await expect(page.locator('.react-flow__node[data-id="holo"]')).toBeVisible();

@@ -262,6 +262,27 @@
 }
 
 /*
+  VNB15 (owner's ruling, 2026-10-07) — AN INSTANCE'S KIND IS ITS COMPONENT'S NAME, AND IT
+  GIVES WAY LAST. For `depthpoints_frontwall_left` the rule above read `dep…_frontwall_left`,
+  the component's name cut to the three letters that the reported stage previz showed for
+  three different components. Here the two parts swap roles: the ROLE gives way first, down
+  to the same 3.4em floor the kind had, and only then is the kind cut.
+*/
+.nameInParts[data-instance] .restKind {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.nameInParts[data-instance] .restRole {
+  flex: 0 1000 max-content;
+  width: 3.4em;
+  min-width: auto;
+  overflow: clip;
+}
+
+/*
   T416 — the node's TYPE, beside its name and behind it in every way that reads.
   Dimmed, smaller, unbolded, lowercase: the name is the heading and this is the caption.
 
@@ -356,6 +377,36 @@
   display: block;
 }
 
+/*
+  VNB15 (owner's ruling, 2026-10-07, option (b)) — AN INSTANCE'S LABEL REACHES PAST ITS
+  NODE'S EDGE, AS FAR AS THE NEXT NODE IN ITS ROW. This reverses the clip described above,
+  for component instances only. An instance's kind is its component's whole name: on the
+  reported stage previz, fitted at 14 %, stagecamera1, stagefeeds1 and stageset1 all read
+  `sta`. Unclipped (option (a)), E79's audioanalysis1 ran over the next row's labels.
+
+  So the clip's right edge moves out by `--instance-reach`, the gap to the nearest node to
+  the right in the label's row, in GRAPH px: written on this element from the layout by
+  `kind-label.ts` (`instanceReach`), never on an ancestor and never per zoom step. With no
+  node to its right (no `data-reach`) the label runs on uncapped. Cut at a neighbour it is
+  cut hard, without the fade: the fade is an eighth of the box, which here is not the
+  node's width. The label takes the pointer, so its hover gives the whole name (`title`);
+  a press on it is still a press on its node. The rule under the header and the zoom
+  written on the label are unchanged.
+*/
+.kindLabelClip[data-instance] {
+  overflow: visible;
+  mask-image: none;
+}
+
+.kindLabelClip[data-instance][data-reach] {
+  right: calc(-1 * var(--instance-reach, 0px));
+  overflow: hidden;
+}
+
+.kindLabelClip[data-instance] .kindLabel {
+  pointer-events: auto;
+}
+
 .kindLabel {
   display: flex;
   position: absolute;
@@ -364,6 +415,9 @@
   padding: 0 var(--space-2) 0 var(--space-1);
   border-radius: var(--radius) var(--radius) 0 0;
   background: var(--node-surface, var(--bg-raise));
+  /* The plate grows above the node's edge: carry its status strip onto that new edge
+     without changing the label's box. Its inverse zoom keeps the strip legible too. */
+  box-shadow: inset 0 var(--hairline) 0 var(--status-color);
   color: var(--text);
   font-size: var(--fs-meta);
   line-height: var(--kind-label-height);
@@ -863,6 +917,11 @@
  */
 .node[data-component] {
   border-top: 2px solid var(--component);
+}
+
+/* The expanded label carries the same distinct, thicker component edge as its node. */
+.node[data-component] .kindLabel {
+  box-shadow: inset 0 2px 0 var(--component);
 }
 
 .node[data-component] {

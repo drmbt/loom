@@ -293,6 +293,8 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   presets: "none",
   // T1500b: a cue list writes the document through the bus; nothing leaves the process.
   cueList: "none",
+  // VN61: publishes channels; nothing leaves the process.
+  automation: "none",
   valueBeat: "none",
   valueSelect: "none",
   audioPattern: "none",
@@ -325,6 +327,8 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   analyze: "none",
   // Media files and model nodes: a decode and a worker round trip, both inside the page.
   movieFileIn: "none",
+  // Saved scalar numerical assets are decoded inside this process.
+  floatMapIn: "none",
   audioFileIn: "none",
   depth: "none",
   pose: "none",

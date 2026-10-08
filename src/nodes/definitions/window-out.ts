@@ -109,7 +109,7 @@ export const windowOutNode: NodeDefinition = {
       type: "boolean",
       label: "Fullscreen",
       default: true,
-      description: "Open the window fullscreen on its screen.",
+      description: "Request fullscreen on opening. If the browser refuses, enter fullscreen from the window.",
     },
     hideCursor: {
       type: "boolean",

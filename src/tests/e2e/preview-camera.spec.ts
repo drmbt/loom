@@ -48,6 +48,7 @@ async function open(page: Page, slug: string, nodes: GraphNode[], wires: Readonl
   const file = buildProjectFile({ document: project, now: () => project.updatedAt });
   await openApp(page);
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles({ name: `${slug}.loom.json`, mimeType: "application/json", buffer: Buffer.from(file.text) });
   await expect(page.locator(".react-flow__node")).toHaveCount(nodes.length);

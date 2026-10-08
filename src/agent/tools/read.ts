@@ -16,6 +16,7 @@ import {
   getNodeDefinitionInput,
   getNodeInput,
   listNodeDefinitionsInput,
+  NETWORK_AUTHORING,
 } from "../schemas.ts";
 import type {
   EmptyInput,
@@ -368,7 +369,7 @@ export const listNodeDefinitions: AgentTool<
   // start guessing which of 100+ types combine. §T1209's lesson: naming the other tool at
   // the point of the question beats hoping the caller remembers it exists.
   description:
-    "The node catalogue: every type that can be added, with its ports and parameter keys. It says what the PARTS are, not how they combine — call list_examples for shipped graphs that already wire them together.",
+    "The node catalogue: every type that can be added, with its ports and parameter keys. It says what the PARTS are, not how they combine — call list_examples for shipped graphs that already wire them together. " + NETWORK_AUTHORING,
   kind: "read",
   inputSchema: listNodeDefinitionsInput,
   requires: {},

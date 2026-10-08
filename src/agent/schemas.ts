@@ -71,6 +71,17 @@ export const PARAMETER_MODES =
   "`map` a per-point attribute on a points input; " +
   "`driven` is RETIRED and refused here — a channel read is an expression, `op('lfo1').chan.value`.";
 
+/** Default authoring scope, shared by MCP initialization and every transport's catalogue. */
+export const NETWORK_AUTHORING =
+  "For a visual, scene, effect, composition or project request, author a Loom network through " +
+  "the published tools and deliver a saved `.loom.json` file with its components and required assets. " +
+  "Use existing nodes, expressions and components; custom WGSL and point kernels belong inside " +
+  "the network. Do not create project-specific TypeScript builders, render scripts, custom node " +
+  "registrations or engine changes unless the user explicitly requests Loom development. " +
+  "If a tool or capability is missing, report the blocker and ask before changing Loom's implementation. " +
+  "Validate, compile, inspect diagnostics, preview when available, save and reopen the network. " +
+  "A code diff (`.patch`) is a separate artefact from a Loom network (`.loom.json`).";
+
 /**
  * T1593b — HOW A NODE IS NAMED, in the one place an agent reads it.
  *

@@ -4,7 +4,8 @@ import type { LoomBus } from "@domain/commands/bus.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import type { FrameRange, ProjectSettings } from "@domain/types/graph.ts";
-import { SEEK_FRAME_LIMIT, projectFps, projectRange } from "@domain/types/graph.ts";
+import { projectFps, projectRange } from "@domain/types/graph.ts";
+import { frameRangeLimit, rangeLimitSentence } from "@domain/transport/range-limit.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { nonReproducibleRenderWarning } from "@domain/render/reproducibility.ts";
@@ -91,6 +92,12 @@ export interface RenderJobSettings {
   readonly resolution: ProjectSettings["outputResolution"];
   readonly outputFps: number;
   readonly range: FrameRange;
+  /**
+   * VN71: project frames played before the in point and not recorded (`renderFrameRange`).
+   * Absent is 0: the take starts at its in point from cleared state, and nothing pre-rolls
+   * unless the user asks for it.
+   */
+  readonly preRollFrames?: number | undefined;
 }
 
 export interface UseRenderRangeInputs {
@@ -325,10 +332,13 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
         const timelineFps = projectFps(live.settings);
         const renderFps = liveRenderSettings.outputFps;
         const sourceRange = sourceRangeForOutputRange(liveRange, timelineFps, renderFps);
-        if (sourceRange.end > SEEK_FRAME_LIMIT) {
+        // VN71: the range cap is one day at the project rate, a sanity cap and not a cost —
+        // a take steps in → out, so its length is what it costs, and the replay budget a
+        // scrub answers to is no business of a render's.
+        if (sourceRange.end > frameRangeLimit(timelineFps)) {
           return refuse(
             "export.renderRangeOutsideTimeline",
-            `The selected output range needs project frame ${String(sourceRange.end)}, beyond the timeline limit ${String(SEEK_FRAME_LIMIT)}.`,
+            `The selected output range needs project frame ${String(sourceRange.end)}. ${rangeLimitSentence(sourceRange.end, timelineFps)}`,
           );
         }
         const liveAudioRequirement = live.audioRequirement?.() ?? { kind: "none" };
@@ -510,6 +520,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
             signal: controller.signal,
             onProgress,
             onPreRollProgress,
+            preRollFrames: liveRenderSettings.preRollFrames ?? 0,
             yieldControl: yieldToBrowser,
             ...(live.onFrameRendered === undefined ? {} : { onFrameRendered: live.onFrameRendered }),
             transport: {
@@ -519,6 +530,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
               stepOnce: transport.stepOnce,
               latestFrame: live.latestFrame,
               resetAbsoluteClock: transport.resetAbsoluteClock,
+              resetState: transport.resetState,
               ...(transport.prepareFrame === undefined ? {} : { prepareFrame: transport.prepareFrame }),
             },
           });

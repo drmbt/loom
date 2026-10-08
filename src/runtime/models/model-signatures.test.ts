@@ -96,6 +96,8 @@ describe("§V742 — every packer conforms to the model's own declared input", (
  */
 const MODEL_DIR = process.env["SHADERLOOM_MODEL_DIR"];
 const FILES: Readonly<Record<string, string>> = {
+  "ormbg-quantized": "ormbg.onnx",
+  "birefnet-lite-dynamic": "photo-mask.onnx",
   "depth-anything-v2-small": "depth.onnx",
   "depth-anything-v2-small-q4f16": "depth-q4f16.onnx",
   "modnet-photographic": "matte.onnx",

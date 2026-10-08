@@ -50,6 +50,7 @@ const SHARED_NODE_IDS = ["alembic", "out", "palette"] as const;
 
 async function openProject(page: Page, file: string): Promise<void> {
   const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByTestId("project-open").click();
   await (await chooser).setFiles(file);
   // The document is on screen once its nodes are: all five carry the same three ids, so

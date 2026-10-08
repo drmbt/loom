@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("development timing cleanup preserves custom entries and recorded DevTools events", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("project-open")).toBeVisible();
+  await expect(page.getByRole("button", { name: "File", exact: true })).toBeVisible();
   // Exercise the installed React build, not only a fabricated tag. A dependency
   // upgrade that changes its track metadata must not silently bypass retention.
   await expect.poll(() => page.evaluate(() => performance.getEntriesByType("measure").length)).toBe(0);

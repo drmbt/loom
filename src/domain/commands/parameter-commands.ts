@@ -451,7 +451,7 @@ function capture(
    * inspector's row shows the document's (destination) value mid-fade by design (T1525b).
    */
   const scope = context.readScope();
-  const read = parameterReadOptions({ ...scope, flattening: { morphs: NO_MORPHS, instanceChannels: scope.flattening.instanceChannels } });
+  const read = parameterReadOptions({ ...scope, flattening: { morphs: NO_MORPHS, instanceChannels: scope.flattening.instanceChannels, instancePages: scope.flattening.instancePages } });
   /*
    * T1008 — a COMPONENT key copies what the channel row SHOWS. Resolving the dotted
    * key against its derived scalar definition would fall back to the compound's

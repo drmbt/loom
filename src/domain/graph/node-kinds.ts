@@ -125,6 +125,7 @@ export const NODE_KINDS: Readonly<Record<string, string>> = {
   rectangle: "rectangle",
   text: "text",
   matte: "matte",
+  floatMapIn: "floatmap",
   personMask: "personmask",
 
   // shaders: one family, the multi-input form is a variant of the same thing
@@ -261,6 +262,8 @@ export const NODE_KINDS: Readonly<Record<string, string>> = {
   panel: "panel",
   presets: "presets",
   cueList: "cuelist",
+  // VN61: keyframed lanes, each a channel (`automation_score`).
+  automation: "automation",
 
   // scene
   camera: "camera",

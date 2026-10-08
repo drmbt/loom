@@ -268,13 +268,14 @@ const desk = () =>
 /**
  * T1518b — ON THE CANVAS THE BOARD IS SMALL, AND SAYS WHAT FITS. The owner's screenshot of
  * E81: the 2-cell toggle read "I.. Off" and the pad "To… 0..". Here the same board, on the
- * same 178px node: each control shows its WHOLE caption and gives up its value where there
- * is no room for both — and the Controls tab, with 52px cells, still shows everything.
+ * same 178px node. VNB9: where there is no room for both, the CAPTION gives way and the value
+ * stays (a toggle drops On/Off, its switch still says the state) — and the Controls tab,
+ * with 52px cells, still shows everything.
  */
-describe("T1518b — a small board cell keeps its caption and drops its value", () => {
+describe("VNB9 — a small board cell keeps its value and cuts its caption", () => {
   const item = (root: HTMLElement, key: string) => root.querySelector(`[data-board-item="${key}"]`) as HTMLElement;
 
-  it("the canvas toggle is its caption and its switch — no On/Off; the pad its caption alone", async () => {
+  it("the canvas toggle is its caption and its switch — no On/Off; the pad keeps its numbers", async () => {
     const { runtime, ids } = await desk();
     const view = render(<OnCanvas runtime={runtime} nodeId={ids["$panel"]!} />);
     const body = view.container.querySelector("[data-panel-body]") as HTMLElement;
@@ -294,8 +295,8 @@ describe("T1518b — a small board cell keeps its caption and drops its value", 
     expect(within(item(body, "member:invert")).getByRole("switch").getAttribute("aria-checked")).toBe("true");
 
     const pad = item(body, "member:warp");
-    expect(pad.getAttribute("data-caption-fit")).toBe("whole");
-    expect(pad.textContent).toBe("Top-right pin");
+    expect(pad.getAttribute("data-caption-fit")).toBe("cut");
+    expect(pad.textContent).toBe("Top-right pin0.82, 0.78");
     // A control with room for both keeps both: the 5-cell slider and the 3-cell button.
     expect(item(body, "member:heat").textContent).toBe("Heat1.00");
     expect(item(body, "member:flash").textContent).toBe("Next hue×0");

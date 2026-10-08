@@ -18,6 +18,11 @@ import { authoredGraph, type FlatGraph, type GraphDocument, type ProjectSettings
 import type { ChannelResolver } from "../parameters/resolve.ts";
 import { NO_FLATTENING, type FlatteningReads, type ParameterReadContext } from "../parameters/node-references.ts";
 import type { Revision } from "../types/ids.ts";
+import type { GraphComponentDefinition } from "../types/components.ts";
+import { isComponentInstance } from "../components/instance.ts";
+import { isNodePath } from "../components/addressing.ts";
+import { keyReads } from "../graph/parameter-dependencies.ts";
+import { channelDependenciesOf, referenceCycleDiagnostics, referenceCyclesThrough } from "../graph/reference-cycles.ts";
 import type { IdFactory } from "../graph/ids.ts";
 import type { GraphStore, GraphStoreView, HistoryOutcome } from "../graph/store.ts";
 import { createCapabilityGrantStore, type CapabilityGrantStore } from "./grants.ts";
@@ -145,6 +150,15 @@ export interface SessionScope {
   readonly instancePath: () => InstancePath | undefined;
 }
 
+export interface ReferenceCycleHost {
+  readonly componentId: string;
+  readonly version: number;
+  /** Definition-only edits project their proposed published schema without registering it. */
+  readonly definition?: GraphComponentDefinition;
+}
+/** A null node target checks the definition's whole affected instance subtree. */
+export type ReferenceCycleValidator = (graph: GraphDocument, nodeId: string | null, host?: ReferenceCycleHost) => RuntimeDiagnostic[];
+
 /** `CommandContext.session`: what a handler on a session bus can ask of where it runs. */
 export interface CommandSession {
   readonly instancePath: () => InstancePath | undefined;
@@ -184,6 +198,8 @@ export interface CommandContext {
    * does not want.
    */
   readonly holds: (capability: CapabilityClass) => boolean;
+  /** Scoped validation shared by every command that applies a graph patch. */
+  readonly referenceCycles: ReferenceCycleValidator;
   /**
    * THE channel resolver the running app is resolving `driven` parameters through, or
    * `undefined` when no app is attached (T593, B121, B8, §V61, §V109).
@@ -447,6 +463,13 @@ export interface LoomBus extends AppCommandBus {
   >(
     registration: Omit<CommandRegistration<TName>, "inputSchema"> & { readonly inputSchema: S } & InputKeysCovered<TName, S>,
   ) => void;
+  /** Explicitly refresh an owned command's schema and handler, preserving its session and capability contract. */
+  replaceCommand: <
+    TName extends CommandName,
+    S extends CommandRegistration<TName>["inputSchema"] = CommandRegistration<TName>["inputSchema"],
+  >(
+    registration: Omit<CommandRegistration<TName>, "inputSchema"> & { readonly inputSchema: S } & InputKeysCovered<TName, S>,
+  ) => void;
   registerQuery: <TName extends QueryName>(registration: QueryRegistration<TName>) => void;
   /**
    * Whether `execute(name)` has a command to run: one registered here, or (§T1695b) one a
@@ -542,6 +565,9 @@ export interface LoomBus extends AppCommandBus {
   attachFlattenedGraph: (read: () => (FlatteningReads & { readonly graph: FlatGraph }) | undefined) => void;
   /** The flattened document, or undefined when nothing has attached one. */
   readonly flattenedGraph: () => FlatGraph | undefined;
+  /** The composition root supplies the same component projection used by the compiler. */
+  attachReferenceCycleValidator: (validate: ReferenceCycleValidator) => void;
+  readonly referenceCycles: ReferenceCycleValidator;
   /** Read-only document access for the UI. Mutation stays behind `execute` (§V29). */
   readonly store: GraphStoreView;
   readonly registry: NodeRegistryView;
@@ -559,6 +585,7 @@ export interface CommandBusOptions {
   parent?: LoomBus | undefined;
   /** §T1695b: what the session edits and through which instance. Only read with a `parent`. */
   scope?: SessionScope | undefined;
+  referenceHost?: ReferenceCycleHost;
 }
 
 /** The code of the refusal a session issues for an `instance` command with no instance in view. */
@@ -659,6 +686,50 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
     return schema !== undefined && !isAnyInput(schema) && stringLeavesOf(schema).some((leaf) => leaf.kind === "node");
   };
 
+  /** Validate before publishing either a new registration or an explicit refresh. */
+  function storedCommand<TName extends CommandName>(registration: CommandRegistration<TName>): StoredCommand {
+    if (registration.inputSchema === undefined || registration.inputSchema === null) {
+      // The type already requires it; this is for a caller that cast its way past.
+      throw new Error(`Command "${registration.name}" is registered without an inputSchema (§T1556b).`);
+    }
+    if (registration.inSession === undefined || registration.inSession === null) {
+      // Likewise required by the type.
+      throw new Error(`Command "${registration.name}" is registered without saying what it means inside a component session (inSession, §T1695b).`);
+    }
+    if (registration.inSession === "instance" && registration.rejectionOutput === undefined) {
+      // A session refuses it when no instance is in view, and a pulse relays that sentence:
+      // a refusal that can only be thrown would reach the user as "command failed".
+      throw new Error(`Command "${registration.name}" is declared "instance" and has no rejectionOutput to answer a session's refusal with (§T1695b).`);
+    }
+    if (registration.inSession === "instance") {
+      // Its addresses are rewritten from its schema, so the schema has to say which strings
+      // they are. An undeclared one would reach the project as the definition's bare id:
+      // the wrong node, or none, and nothing said.
+      const leaves = isAnyInput(registration.inputSchema) ? [] : stringLeavesOf(registration.inputSchema);
+      const undeclared = leaves.filter((leaf) => leaf.kind === "unmarked").map((leaf) => leaf.path);
+      if (undeclared.length > 0 || !leaves.some((leaf) => leaf.kind === "node")) {
+        throw new Error(
+          `Command "${registration.name}" is declared "instance", so every string of its input is a node address (nodeIdInput, nodeIdsInput) or a canvas id, and at least one is an address${undeclared.length > 0 ? `; undeclared: ${undeclared.join(", ")}` : ""} (§T1695b).`,
+        );
+      }
+    }
+    if (inherits(registration.name)) {
+      // The double registration §T969(b) and §T1195 grew, refused where it would start.
+      throw new Error(
+        `Command "${registration.name}" is inherited from the parent bus (declared "${String(parent?.inSessionOf(registration.name))}"); a session bus does not register its own (§T1695b).`,
+      );
+    }
+    return {
+      name: registration.name,
+      inputSchema: registration.inputSchema as StoredCommand["inputSchema"],
+      inSession: registration.inSession,
+      handler: registration.handler as StoredCommand["handler"],
+      requiredCapabilities: registration.requiredCapabilities ?? [],
+      description: registration.description,
+      rejectionOutput: registration.rejectionOutput as StoredCommand["rejectionOutput"],
+    };
+  }
+
   /** The bus's own refusal, answered as the registration can answer it (see `LoomBus.refuse`). */
   function refusal<TName extends CommandName>(
     registration: StoredCommand,
@@ -681,6 +752,7 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
   }
   /** T593: null until a composition root attaches one. Null means "no app", not "empty". */
   let readChannels: (() => ChannelResolver | undefined) | null = null;
+  let validateReferenceCycles: ReferenceCycleValidator | undefined;
   /** T615: likewise — null is "no app", and a handler falls back to the document. */
   let readFlattened: (() => (FlatteningReads & { readonly graph: FlatGraph }) | undefined) | null = null;
   /** T1497b: likewise — null is "no app", and a morph commits as a cut. */
@@ -713,6 +785,18 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
       readFlattened = read;
     },
     flattenedGraph: () => readFlattened?.()?.graph ?? undefined,
+    attachReferenceCycleValidator(validate): void { validateReferenceCycles = validate; },
+    referenceCycles(graph, nodeId, host): RuntimeDiagnostic[] {
+      if (validateReferenceCycles !== undefined) return validateReferenceCycles(graph, nodeId, host);
+      if (parent !== undefined) return parent.referenceCycles(graph, nodeId, host);
+      if (Object.values(graph.nodes).some(isComponentInstance) && Object.values(graph.nodes).some(node => keyReads(node.parameters).some(read => read.node !== null && isNodePath(read.node)))) {
+        return [{ severity: "error", code: "parameter.referenceProjection.missing", ...(nodeId === null ? {} : { nodeId }),
+          message: "Path reference cycle validation requires the component-aware graph projection.",
+          suggestion: "Attach the composition root's reference cycle validator before editing component paths." }];
+      }
+      const channels = (node: GraphDocument["nodes"][string]) => channelDependenciesOf(registry.get(node.type));
+      return nodeId === null ? referenceCycleDiagnostics(graph, channels) : referenceCyclesThrough(graph, nodeId, channels);
+    },
 
     attachFrame(read: () => FrameEvaluationInput | undefined): void {
       readFrame = read;
@@ -728,46 +812,30 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
       if (commands.has(registration.name)) {
         throw new Error(`Command "${registration.name}" is already registered.`);
       }
-      if (registration.inputSchema === undefined || registration.inputSchema === null) {
-        // The type already requires it; this is for a caller that cast its way past.
-        throw new Error(`Command "${registration.name}" is registered without an inputSchema (§T1556b).`);
+      commands.set(registration.name, storedCommand(registration));
+    },
+
+    replaceCommand<TName extends CommandName>(registration: CommandRegistration<TName>): void {
+      const previous = commands.get(registration.name);
+      if (previous === undefined) {
+        throw new Error(`Command "${registration.name}" is not owned by this bus and cannot be replaced.`);
       }
-      if (registration.inSession === undefined || registration.inSession === null) {
-        // Likewise required by the type.
-        throw new Error(`Command "${registration.name}" is registered without saying what it means inside a component session (inSession, §T1695b).`);
+      const replacement = storedCommand(registration);
+      const previousSession = previous.inSession;
+      const nextSession = replacement.inSession;
+      const sameSession = typeof previousSession === "string" && typeof nextSession === "string"
+        ? previousSession === nextSession
+        : typeof previousSession === "object" && typeof nextSession === "object"
+          && previousSession.definition === nextSession.definition && previousSession.handsUp === nextSession.handsUp;
+      if (!sameSession) {
+        throw new Error(`Command "${registration.name}" cannot change its inSession declaration when replaced.`);
       }
-      if (registration.inSession === "instance" && registration.rejectionOutput === undefined) {
-        // A session refuses it when no instance is in view, and a pulse relays that sentence:
-        // a refusal that can only be thrown would reach the user as "command failed".
-        throw new Error(`Command "${registration.name}" is declared "instance" and has no rejectionOutput to answer a session's refusal with (§T1695b).`);
+      const previousCapabilities = new Set(previous.requiredCapabilities);
+      const nextCapabilities = new Set(replacement.requiredCapabilities);
+      if (previousCapabilities.size !== nextCapabilities.size || [...previousCapabilities].some(capability => !nextCapabilities.has(capability))) {
+        throw new Error(`Command "${registration.name}" cannot change its requiredCapabilities when replaced.`);
       }
-      if (registration.inSession === "instance") {
-        // Its addresses are rewritten from its schema, so the schema has to say which strings
-        // they are. An undeclared one would reach the project as the definition's bare id:
-        // the wrong node, or none, and nothing said.
-        const leaves = isAnyInput(registration.inputSchema) ? [] : stringLeavesOf(registration.inputSchema);
-        const undeclared = leaves.filter((leaf) => leaf.kind === "unmarked").map((leaf) => leaf.path);
-        if (undeclared.length > 0 || !leaves.some((leaf) => leaf.kind === "node")) {
-          throw new Error(
-            `Command "${registration.name}" is declared "instance", so every string of its input is a node address (nodeIdInput, nodeIdsInput) or a canvas id, and at least one is an address${undeclared.length > 0 ? `; undeclared: ${undeclared.join(", ")}` : ""} (§T1695b).`,
-          );
-        }
-      }
-      if (inherits(registration.name)) {
-        // The double registration §T969(b) and §T1195 grew, refused where it would start.
-        throw new Error(
-          `Command "${registration.name}" is inherited from the parent bus (declared "${String(parent?.inSessionOf(registration.name))}"); a session bus does not register its own (§T1695b).`,
-        );
-      }
-      commands.set(registration.name, {
-        name: registration.name,
-        inputSchema: registration.inputSchema as StoredCommand["inputSchema"],
-        inSession: registration.inSession,
-        handler: registration.handler as StoredCommand["handler"],
-        requiredCapabilities: registration.requiredCapabilities ?? [],
-        description: registration.description,
-        rejectionOutput: registration.rejectionOutput as StoredCommand["rejectionOutput"],
-      });
+      commands.set(registration.name, replacement);
     },
 
     registerQuery<TName extends QueryName>(registration: QueryRegistration<TName>): void {
@@ -907,6 +975,7 @@ export function createCommandBus(options: CommandBusOptions = {}): LoomBus {
         // T1497b: likewise read AT INVOCATION — the frame on screen when the command ran.
         frameClock: readFrameClock?.() ?? undefined,
         readScope: () => readScopeOver(graph),
+        referenceCycles: (draft, nodeId, host) => bus.referenceCycles(draft, nodeId, host ?? options.referenceHost),
         holds: (capability: CapabilityClass): boolean => grants.has(context.actor, capability),
         applySettings: (request: ApplySettingsRequest): AppliedInfo =>
           store.internals.applySettings({

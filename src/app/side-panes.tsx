@@ -1628,30 +1628,30 @@ export function ViewerPane({
         and the `viewer-readout` id the probe tests read — they were two elements only
         because they were two rows.
       */}
-      <dl className={styles.readout} aria-label="Resolved output" data-testid="viewer-readout">
-        <dt className={styles.rowNameHidden}>size</dt>
-        <dd className={styles.rowValue}>
-          {selected === null
-            ? "—"
-            : `${selected.size[0]} × ${selected.size[1]} · ${selected.format}`}
-        </dd>
+      <div className={styles.readoutFooter}>
+        <dl className={styles.readout} aria-label="Resolved output" data-testid="viewer-readout">
+          <dt className={styles.rowNameHidden}>size</dt>
+          <dd
+            className={styles.rowValue}
+            title={selected === null ? undefined : `${selected.size[0]} × ${selected.size[1]} · ${selected.format}`}
+          >
+            {selected === null
+              ? "—"
+              : `${selected.size[0]} × ${selected.size[1]} · ${selected.format}`}
+          </dd>
+          {probeFacts === null ? null : (
+            <>
+              <dt className={styles.rowNameHidden}>pixel</dt>
+              <dd className={cx(styles.rowValue, styles.readoutPixel)}>{probeFacts.at}</dd>
+              <dt className={styles.rowNameHidden}>value</dt>
+              <dd className={styles.rowValue} title={probeFacts.value}>{probeFacts.value}</dd>
+            </>
+          )}
+        </dl>
         {cameraNote === null ? null : (
-          <>
-            <dt className={styles.rowNameHidden}>camera</dt>
-            <dd className={styles.readoutNote} data-testid="viewer-camera-note">
-              {cameraNote}
-            </dd>
-          </>
+          <p className={styles.readoutNote} data-testid="viewer-camera-note">{cameraNote}</p>
         )}
-        {probeFacts === null ? null : (
-          <>
-            <dt className={styles.rowNameHidden}>pixel</dt>
-            <dd className={styles.rowValue}>{probeFacts.at}</dd>
-            <dt className={styles.rowNameHidden}>value</dt>
-            <dd className={styles.rowValue}>{probeFacts.value}</dd>
-          </>
-        )}
-      </dl>
+      </div>
     </div>
   );
 }

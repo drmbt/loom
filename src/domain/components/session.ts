@@ -155,6 +155,7 @@ export function openComponentSession(options: ComponentSessionOptions): Componen
   const { bus } = createDomainBus({
     store,
     registry: options.nodes,
+    referenceHost: { componentId: options.componentId, version: options.version },
     ...(options.parent === undefined
       ? {}
       : {

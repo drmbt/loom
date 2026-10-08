@@ -1,8 +1,9 @@
-import { useRef } from "react";
-import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { useContext, useRef, useState } from "react";
+import type { DragEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { cx } from "../cx.ts";
 import { DRAG_THRESHOLD_PX, dragModifierFrom } from "./drag-math.ts";
 import type { LabelDragHandlers } from "./label-drag.ts";
+import { ParameterDragContext, carriesParameter, nodeIdOf, readParameterDrag, writeParameterDrag } from "./parameter-drag-context.ts";
 import { ParameterSources } from "./parameter-sources.tsx";
 import type { ParameterSourceView } from "./parameter-sources.tsx";
 import styles from "./controls.module.css";
@@ -86,6 +87,11 @@ export interface ControlRowProps {
    * click exactly as it is in `NumberField`. Absent = the label is what it always was.
    */
   labelDrag?: LabelDragHandlers | undefined;
+  /**
+   * VN63 — the parameter this row edits. With a `ParameterDragContext` provider above, it
+   * makes the name a reference-drag source and the row a drop target for one.
+   */
+  parameterKey?: string | undefined;
   expanded?: boolean;
   /** Rendered full width beneath the row when `expanded` — the mode panel. */
   expansion?: ReactNode;
@@ -131,7 +137,7 @@ interface LabelDragState {
  * §V20: the press is the control's. Nothing above may read it as a pan, a node drag or a
  * selection — hence `stopPropagation` and the `nodrag` class the label already carries.
  */
-function useLabelDragGesture(labelDrag: LabelDragHandlers | undefined) {
+function useLabelDragGesture(labelDrag: LabelDragHandlers | undefined, referenceEnabled: boolean) {
   const dragRef = useRef<LabelDragState | null>(null);
   /** Set by a drag that actually moved, so the click it is followed by does not toggle. */
   const suppressClickRef = useRef(false);
@@ -167,7 +173,7 @@ function useLabelDragGesture(labelDrag: LabelDragHandlers | undefined) {
   const props = {
     onPointerDown: (event: ReactPointerEvent<HTMLElement>): void => {
       event.stopPropagation();
-      if (event.button !== 0) return;
+      if (event.button !== 0 || (referenceEnabled && (event.ctrlKey || event.metaKey))) return;
       const target = event.currentTarget;
       if (typeof target.setPointerCapture === "function") {
         target.setPointerCapture(event.pointerId);
@@ -210,6 +216,54 @@ function useLabelDragGesture(labelDrag: LabelDragHandlers | undefined) {
   return { props, consumeClick };
 }
 
+/**
+ * VN63 — the NAME as the source of a reference drag, and the ROW as a drop target for one.
+ * Both need the parameter's key (stamped on the row) and its node (the closest
+ * `[data-node-id]`, which the inspector already sets), plus the service a provider gives;
+ * without all three the name is not draggable and the row ignores drags.
+ */
+function useParameterDrag(parameterKey: string | undefined) {
+  const service = useContext(ParameterDragContext);
+  const [dropping, setDropping] = useState(false);
+  if (service === null || parameterKey === undefined) return { source: {}, target: {}, dropping: false };
+  const source = {
+    draggable: true,
+    onDragStart: (event: DragEvent<HTMLElement>): void => {
+      event.stopPropagation();
+      const nodeId = nodeIdOf(event.currentTarget);
+      const text = nodeId === null ? null : service.referenceText({ nodeId, key: parameterKey });
+      // Plain dragging remains value adjustment; Ctrl/Cmd dragging carries a reference.
+      if ((!event.ctrlKey && !event.metaKey) || nodeId === null || text === null) {
+        event.preventDefault();
+        return;
+      }
+      writeParameterDrag(event.dataTransfer, { nodeId, key: parameterKey }, text);
+    },
+  };
+  const target = {
+    "data-parameter-key": parameterKey,
+    onDragOver: (event: DragEvent<HTMLElement>): void => {
+      if (!carriesParameter(event.dataTransfer)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "link";
+      if (!dropping) setDropping(true);
+    },
+    onDragLeave: (): void => setDropping(false),
+    onDrop: (event: DragEvent<HTMLElement>): void => {
+      setDropping(false);
+      const dragged = readParameterDrag(event.dataTransfer);
+      const nodeId = nodeIdOf(event.currentTarget);
+      if (dragged === null || nodeId === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      // A parameter dropped on itself would read itself: ignored, not refused.
+      if (dragged.nodeId === nodeId && dragged.key === parameterKey) return;
+      service.dropOnParameter({ nodeId, key: parameterKey }, dragged);
+    },
+  };
+  return { source, target, dropping };
+}
+
 export function ControlRow({
   label,
   hint,
@@ -226,17 +280,21 @@ export function ControlRow({
   onToggleModes,
   labelHint = null,
   labelDrag,
+  parameterKey,
   expanded = false,
   expansion,
   children,
 }: ControlRowProps) {
-  const { props: dragProps, consumeClick } = useLabelDragGesture(labelDrag);
+  const service = useContext(ParameterDragContext);
+  const referenceEnabled = service !== null && parameterKey !== undefined;
+  const { props: dragProps, consumeClick } = useLabelDragGesture(labelDrag, referenceEnabled);
+  const reference = useParameterDrag(parameterKey);
   const compact = variant === "node";
   // Node-embedded controls stay bare: the inspector is where the full set lives.
   const hasDescription = !compact && description !== undefined && description !== "";
   // One string on the label carries both (§V90): a parameter that is inactive AND
   // documented must not sprout a second hover target.
-  const help = [description, inactive, labelHint].filter(
+  const help = [description, inactive, labelHint, referenceEnabled ? "Ctrl/Cmd-drag the name to reference this parameter." : null].filter(
     (part) => part !== undefined && part !== null && part !== "",
   );
   const hasHelp = !compact && help.length > 0;
@@ -254,6 +312,8 @@ export function ControlRow({
         inactive !== null && styles.rowInactive,
       )}
       data-inactive={inactive === null ? undefined : true}
+      data-drop-target={reference.dropping ? "" : undefined}
+      {...reference.target}
     >
       {/*
         A row that can disclose modes is NOT a `<label>`: the name is a button, and a
@@ -285,6 +345,7 @@ export function ControlRow({
             )}
             {...describedProps}
             {...dragProps}
+            {...reference.source}
           >
             {label}
           </span>
@@ -302,6 +363,7 @@ export function ControlRow({
             {...describedProps}
             onPointerDown={(event) => event.stopPropagation()}
             {...dragProps}
+            {...reference.source}
             onClick={() => {
               // A drag that moved is not a click, so it must not also toggle the panel.
               if (consumeClick()) return;

@@ -62,9 +62,9 @@ export function physicalSize(screen: ScreenInfo): readonly [number, number] {
 
 /**
  * The `window.open` features that place a popup on `screen`, filling its usable area.
- * `fullscreen` asks Chrome for a fullscreen popup, which it grants only with the
- * window-management permission and a user gesture; elsewhere it is ignored and the window
- * offers a click to go fullscreen instead.
+ * `fullscreen` carries the desktop host's startup setting. Ordinary browsers may ignore
+ * that feature; `openPerformWindow` makes the actual HTML fullscreen request and reports
+ * a refusal. Screen permission controls placement, not permission to enter fullscreen.
  */
 export function placementFeatures(screen: ScreenInfo | undefined, options: { readonly fullscreen: boolean }): string {
   const parts = ["popup=yes"];

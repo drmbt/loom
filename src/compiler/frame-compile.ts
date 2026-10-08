@@ -336,13 +336,15 @@ function frameCompilerOver(
     const morphs = resolution.morphs ?? retained.morphs;
     // T1485b: the instances the BASE compile read through, by the same precedence.
     const instances = resolution.instances ?? retained.instances;
+    // VN36: and the instance pages, the same way.
+    const instancePages = resolution.instancePages ?? retained.instancePages;
     // The same reader `validateGraph` builds (§V939).
     const reader = parameterReadOptions({
       graph: retained.graph,
       registry: request.registry,
       frame: resolution.frame,
       channels: resolution.channels,
-      flattening: flatteningReadsOf({ morphs, instances }),
+      flattening: flatteningReadsOf({ morphs, instances, instancePages }),
     });
     // Per-frame resolution diagnostics (a clamped expression, an unattached channel) are
     // dropped, exactly as the full per-frame compile's were by its one consumer.
@@ -376,7 +378,7 @@ function frameCompilerOver(
       const sceneMoved = bindingsReadScene(record.context.inputs, recompiled);
       if (frameValues === undefined && !sceneMoved) continue;
       // T1421b: the probe moves with the frame, exactly as the full compile's does.
-      const probe = timeProbeFor(record.node, record.definition, retained.graph, request.registry, { ...resolution, morphs, ...(instances === undefined ? {} : { instances }) }, retained.request.settings);
+      const probe = timeProbeFor(record.node, record.definition, retained.graph, request.registry, { ...resolution, morphs, ...(instances === undefined ? {} : { instances }), ...(instancePages === undefined ? {} : { instancePages }) }, retained.request.settings);
       const context: CompilerNodeContext = {
         ...record.context,
         ...(frameValues === undefined ? {} : frameValues),
@@ -692,18 +694,24 @@ export function rebaseOnValues(previous: CompileGraphResult, request: CompileReq
   const graph: FlatGraph = { ...retained.graph, nodes };
   const morphs = request.resolution?.morphs ?? request.flattened?.morphs ?? retained.morphs;
   const instances = request.resolution?.instances ?? request.flattened?.instanceChannels;
+  const instancePages = request.resolution?.instancePages ?? request.flattened?.instancePages;
   const records = new Map(retained.nodes);
   for (const id of moved) {
     const record = records.get(id);
     if (record !== undefined) records.set(id, { ...record, node: nodes[id] as GraphNode });
   }
-  const staged: RetainedCompile = { ...retained, request, graph, nodes: records, morphs, instances };
+  const staged: RetainedCompile = { ...retained, request, graph, nodes: records, morphs, instances, instancePages };
 
   const rerun = new Set<NodeId>([...linked].filter((id) => records.has(id)));
   const compiler = frameCompilerOver(request, { compiled: base, retained: staged }, rerun);
   if (!compiler.uniformOnly) return compiler.reason ?? "A node that reads the value animates a structural parameter.";
   const capture: RerunCapture = { contexts: new Map(), scene: null, said: new Map() };
-  const reading: ParameterResolution = { ...(request.resolution ?? {}), morphs, ...(instances === undefined ? {} : { instances }) };
+  const reading: ParameterResolution = {
+    ...(request.resolution ?? {}),
+    morphs,
+    ...(instances === undefined ? {} : { instances }),
+    ...(instancePages === undefined ? {} : { instancePages }),
+  };
   const spliced = compiler.compileFrame(reading, capture);
   if (spliced === null) return compiler.reason ?? "A re-run node could not be proven structure-preserving.";
   for (const id of capture.contexts.keys()) {

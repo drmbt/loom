@@ -148,6 +148,8 @@ export interface AppShellProps {
   terminal?: ReactNode;
   /** T1388b: live controls (a Panel's widgets). */
   controls?: ReactNode;
+  /** VN62: automation lanes over the playhead. */
+  timeline?: ReactNode;
   problemCount?: number;
   /**
    * Layout store override. Defaults to `localStorage` (V18); pass `null` to run
@@ -212,6 +214,7 @@ export function AppShell({
   agent,
   terminal,
   controls,
+  timeline,
   problemCount = 0,
   storage,
   openPaneWindow,
@@ -461,11 +464,13 @@ export function AppShell({
       agent: agent ?? <PaneEmpty label="No agent connected" />,
       terminal: terminal ?? <PaneEmpty label="No terminal" />,
       controls: controls ?? <PaneEmpty label="No controls" />,
+      timeline: timeline ?? <PaneEmpty label="No timeline" />,
     }),
     [
       agent,
       terminal,
       controls,
+      timeline,
       componentLibrary,
       exampleLibrary,
       graphCanvas,

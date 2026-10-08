@@ -44,7 +44,9 @@ export type PaneId =
   /** T1263: a shell from the local helper, last in the bottom dock. Spawns only when its pane is shown. */
   | "terminal"
   /** T1388b: live controls — a Panel's widgets as a performance surface. */
-  | "controls";
+  | "controls"
+  /** VN62: automation lanes over the playhead — a curve editor and the lane list. */
+  | "timeline";
 
 export const PANE_IDS: readonly PaneId[] = [
   "library",
@@ -59,6 +61,7 @@ export const PANE_IDS: readonly PaneId[] = [
   "agent",
   "terminal",
   "controls",
+  "timeline",
 ];
 
 /** Tab label and accessible name. Lower case, like the rest of the shell's chrome. */
@@ -75,6 +78,7 @@ export const PANE_TITLES: Readonly<Record<PaneId, string>> = {
   agent: "agent",
   terminal: "terminal",
   controls: "controls",
+  timeline: "timeline",
 };
 
 /** Where a pane goes when the stored arrangement does not mention it (a new pane). */
@@ -97,6 +101,7 @@ export const PANE_HOME: Readonly<Record<PaneId, DockZone>> = {
   agent: "bottom",
   terminal: "bottom",
   controls: "bottom",
+  timeline: "bottom",
 };
 
 export interface ShellLayout {
@@ -151,7 +156,7 @@ export const DEFAULT_SHELL_LAYOUT: ShellLayout = {
     // `DEFAULT_PANE_TREE` (T1123). Kept in step with the tree so the flat model's
     // SKELETON_TREE (what a restored baseline dock is built from, T936) and the v3
     // migration fallback cannot hand back an arrangement the tree default abandoned.
-    bottom: ["examples", "shader", "problems", "performance", "agent", "controls", "terminal"],
+    bottom: ["examples", "shader", "problems", "performance", "agent", "timeline", "controls", "terminal"],
   },
   active: {
     left: "library",

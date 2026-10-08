@@ -680,6 +680,16 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
   const requireHostDefinition = (): GraphComponentDefinition | undefined =>
     host === null ? undefined : components.get(host.componentId, host.version);
 
+  /** A changed published schema can activate a previously unresolved parent/page read. */
+  const publicationCycles = (context: CommandContext, next: GraphComponentDefinition): RuntimeDiagnostic[] => {
+    const before = components.get(next.componentId, next.version);
+    if (before === undefined || JSON.stringify(before.parameters) === JSON.stringify(next.parameters)) return [];
+    const prior = context.referenceCycles(before.graph, null, { componentId: before.componentId, version: before.version, definition: before });
+    const known = new Set(prior.filter(d => d.code === "parameter.referenceCycle").map(d => d.message));
+    return context.referenceCycles(next.graph, null, { componentId: next.componentId, version: next.version, definition: next })
+      .filter(d => d.code !== "parameter.referenceCycle" || !known.has(d.message));
+  };
+
   /**
    * Registers a re-authored definition unless this was a dry run (§V36). `undoGroupId`: the
    * graph step this re-registration belongs to, so undo restores it too (§T1545b).
@@ -690,7 +700,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
     diagnostics: RuntimeDiagnostic[],
     undoGroupId?: string,
   ): boolean => {
-    const problems = components.validate(next);
+    const problems = [...components.validate(next), ...publicationCycles(context, next)];
     diagnostics.push(...problems);
     if (problems.some((diagnostic) => diagnostic.severity === "error")) return false;
     if (!context.dryRun) {
@@ -715,7 +725,7 @@ export function registerComponentCommands(bus: LoomBus, options: ComponentComman
     next: GraphComponentDefinition,
     diagnostics: RuntimeDiagnostic[],
   ): CommandOutcome<ComponentEditOutput> => {
-    const problems = components.validate(next);
+    const problems = [...components.validate(next), ...publicationCycles(context, next)];
     diagnostics.push(...problems);
     const failed = problems.some((diagnostic) => diagnostic.severity === "error");
     const current = requireHostDefinition();

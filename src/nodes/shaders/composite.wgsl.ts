@@ -220,7 +220,22 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  * changes approximately never, and `alpha` keeps the text it has always had so upgrading
  * moves no existing project's pixels OR its structural key.
  */
-const maskShader = (carveColour: boolean) => wgsl`${WGSL_CHANNEL}
+// r32float cannot use a filtering sampler on the baseline WebGPU tier. Interpolate
+// explicitly with the same pixel centres and clamp-to-edge addressing as the sampler.
+const MASK_UNFILTERED_SAMPLE = `fn maskField(uv: vec2f) -> vec4f {
+  let dimensions = vec2i(textureDimensions(maskTexture));
+  let coordinate = uv * vec2f(dimensions) - vec2f(0.5);
+  let lower = vec2i(floor(coordinate));
+  let fraction = fract(coordinate);
+  let maximum = dimensions - vec2i(1);
+  let a = textureLoad(maskTexture, clamp(lower, vec2i(0), maximum), 0);
+  let b = textureLoad(maskTexture, clamp(lower + vec2i(1, 0), vec2i(0), maximum), 0);
+  let c = textureLoad(maskTexture, clamp(lower + vec2i(0, 1), vec2i(0), maximum), 0);
+  let d = textureLoad(maskTexture, clamp(lower + vec2i(1, 1), vec2i(0), maximum), 0);
+  return mix(mix(a, b, fraction.x), mix(c, d, fraction.x), fraction.y);
+}`;
+
+const maskShader = (carveColour: boolean, unfiltered = false) => wgsl`${WGSL_CHANNEL}
 
 struct Params {
   channel: f32,
@@ -230,11 +245,11 @@ struct Params {
 @group(0) @binding(1) var inputSampler: sampler;
 @group(0) @binding(2) var inputTexture: texture_2d<f32>;
 @group(0) @binding(3) var maskTexture: texture_2d<f32>;
-
+${unfiltered ? `${MASK_UNFILTERED_SAMPLE}\n` : ""}
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let source = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
-  let field = textureSampleLevel(maskTexture, inputSampler, uv, 0.0);
+  let field = ${unfiltered ? "maskField(uv)" : "textureSampleLevel(maskTexture, inputSampler, uv, 0.0)"};
   let raw = clamp(channelValue(field, params.channel), 0.0, 1.0);
   let coverage = mix(raw, 1.0 - raw, clamp(params.invert, 0.0, 1.0));
   return vec4f(source.rgb${carveColour ? " * coverage" : ""}, source.a * coverage);
@@ -245,6 +260,9 @@ export const MASK_FRAGMENT_WGSL = maskShader(false);
 
 /** Coverage into colour AND alpha — a carve you can see in an RGB view (B189). */
 export const MASK_COLOUR_FRAGMENT_WGSL = maskShader(true);
+
+const MASK_FLOAT_FRAGMENT_WGSL = maskShader(false, true);
+const MASK_FLOAT_COLOUR_FRAGMENT_WGSL = maskShader(true, true);
 
 /** The two modes, as the parameter spells them. */
 export const MASK_APPLY_OPTIONS = [
@@ -258,6 +276,7 @@ export function isMaskApply(value: unknown): value is MaskApply {
   return MASK_APPLY_OPTIONS.some((option) => option.value === value);
 }
 
-export function maskShaderFor(apply: MaskApply): EmittedWgsl {
+export function maskShaderFor(apply: MaskApply, unfiltered = false): EmittedWgsl {
+  if (unfiltered) return apply === "colour" ? MASK_FLOAT_COLOUR_FRAGMENT_WGSL : MASK_FLOAT_FRAGMENT_WGSL;
   return apply === "colour" ? MASK_COLOUR_FRAGMENT_WGSL : MASK_FRAGMENT_WGSL;
 }

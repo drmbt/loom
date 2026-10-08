@@ -1246,6 +1246,7 @@ const LEDGER: Readonly<Record<string, Row>> = {
   "presets.presets": noPass(VALUE_NODE),
   "presets.morphs": noPass(VALUE_NODE),
   "cueList.cues": noPass(VALUE_NODE),
+  "automation.lanes": noPass(VALUE_NODE),
   "midiIn.mapping": noPass(VALUE_NODE),
   "valueExpression.in": noPass(VALUE_NODE),
 };
