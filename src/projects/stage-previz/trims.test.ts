@@ -10,18 +10,18 @@ import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 
 /**
- * VN78 — stage-previz-9: the truss trims and the four presets, read back where the session's
- * consumers read them: each haze beam's uniforms carry its projector's lens, aim, roll, throw
- * and keystone as the compile resolved them, and the image's corners are cast through
- * `projectorMatrix` onto the surface they land on.
+ * VN78, VN79 — the truss trims and the presets of stage-previz-9 and -10, read back where the
+ * session's consumers read them: each haze beam's uniforms carry its projector's lens, aim,
+ * roll, throw and keystone as the compile resolved them, and the image's corners are cast
+ * through `projectorMatrix` onto the surface they land on.
  *
- * Model facts (glTF metres, the committed GLB): the scrim's flat part is 36' wide at z −4.35;
- * the deck's top is 1.8572, 48' wide, its front edge at z 4.7536.
+ * Model facts (glTF metres, from each session's GLB): -9 is on the first export (`stage.glb`):
+ * the scrim's flat part 36' wide at z −4.35, the deck's top 1.8572, trims in feet off the venue
+ * floor. -10 is on layout revision 2 (`stage-r2.glb`): the scrim's straight face 30' wide at
+ * z −2.6816, the deck's top 1.9812, trims in feet above the house deck. Both decks are 48'
+ * wide with their front edge at z 4.7536.
  */
 const FT = 0.3048;
-const SCRIM_Z = -4.35;
-const SCRIM_HALF = 18 * FT;
-const DECK_TOP = 1.8572;
 const DECK_HALF = 24 * FT;
 const DECK_FRONT = 4.7536;
 /** The matrices are float32 (camera.ts): a corner cast back through one lands within a millimetre. */
@@ -40,15 +40,35 @@ interface Beam {
   readonly keystoneV: number;
 }
 
-const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
-const loaded = loadProject(readFileSync("projects/stage-previz/stage-previz-9.loom.json", "utf8"), { nodes: system.nodes, components: system.components });
-if (!loaded.ok) throw new Error(`stage-previz-9 did not load: ${loaded.reason}`);
-const document = loaded.document;
-const bank = Object.values(document.graph.nodes).find((entry) => entry.type === "presets")!;
-const presets = (JSON.parse(String(bank.parameters["presets"])) as { presets: Array<{ name: string; values: Record<string, Record<string, number | boolean>> }> }).presets;
+interface Session {
+  readonly file: string;
+  readonly scrimZ: number;
+  readonly scrimHalf: number;
+  readonly deckTop: number;
+  /** Each preset by name, with the trim (feet) its faders hold. */
+  readonly presets: Readonly<Record<string, number>>;
+  /** Where the faders open. */
+  readonly openTrim: number;
+}
+const SESSIONS: readonly Session[] = [
+  { file: "stage-previz-9", scrimZ: -4.35, scrimHalf: 18 * FT, deckTop: 1.8572, presets: { ds37_21ft: 21, ds74_21ft: 21, ds37_26ft: 26, ds74_26ft: 26 }, openTrim: 21 },
+  { file: "stage-previz-10", scrimZ: -2.6816, scrimHalf: 15 * FT, deckTop: 1.9812, presets: { ds37: 22.5833, ds74: 22.5833 }, openTrim: 22.5833 },
+];
+
+/** Each session in a component system of its own: -9 and -10 define components under the same ids. */
+function open(session: Session) {
+  const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
+  const loaded = loadProject(readFileSync(`projects/stage-previz/${session.file}.loom.json`, "utf8"), { nodes: system.nodes, components: system.components });
+  if (!loaded.ok) throw new Error(`${session.file} did not load: ${loaded.reason}`);
+  const document = loaded.document;
+  const bank = Object.values(document.graph.nodes).find((entry) => entry.type === "presets")!;
+  const presets = (JSON.parse(String(bank.parameters["presets"])) as { presets: Array<{ name: string; values: Record<string, Record<string, number | boolean>> }> }).presets;
+  return { system, document, bank, presets };
+}
 
 /** Every fader at a preset's value (a channel is `<name>:<role>`), any override on top. */
-function beams(preset: string, overrides: Readonly<Record<string, number>> = {}): { readonly SR: Beam; readonly SL: Beam; readonly DS: Beam } {
+function beams(opened: ReturnType<typeof open>, preset: string, overrides: Readonly<Record<string, number>> = {}): { readonly SR: Beam; readonly SL: Beam; readonly DS: Beam } {
+  const { system, document, presets } = opened;
   const values: Record<string, number> = {};
   for (const [label, value] of Object.entries(presets.find((entry) => entry.name === preset)!.values)) {
     values[label.replace(/^(slider|toggle)_/, "")] = Number(value["value"] ?? (value["on"] === true ? 1 : 0));
@@ -56,7 +76,7 @@ function beams(preset: string, overrides: Readonly<Record<string, number>> = {})
   Object.assign(values, overrides);
   const channels: ChannelResolver = (name, context) => (context.definition.type === "number" ? values[name.split(":")[1] ?? name] : undefined);
   const plan = compileGraph({ graph: document.graph, settings: document.settings, registry: system.nodes, capabilities: TIER_B_CAPABILITIES, components: system.components.view(), resolution: { channels } });
-  if (!plan.ok) throw new Error("stage-previz-9 did not compile");
+  if (!plan.ok) throw new Error(`${document.name} did not compile`);
   const found = plan.passes.map((pass) => (pass as { uniforms?: Partial<Beam> }).uniforms).filter((uniforms): uniforms is Beam => uniforms?.lensAim !== undefined);
   const which = (test: (x: number) => boolean) => {
     const beam = found.find((entry) => test(entry.lens[0]));
@@ -106,40 +126,43 @@ function corner(beam: Beam, u: number, v: number, axis: 0 | 1 | 2, value: number
 const corners = (beam: Beam, axis: 0 | 1 | 2, value: number) =>
   ({ topLeft: corner(beam, -1, 1, axis, value), topRight: corner(beam, 1, 1, axis, value), bottomRight: corner(beam, 1, -1, axis, value), bottomLeft: corner(beam, -1, -1, axis, value) });
 
-describe("stage-previz-9: the trims and the presets", () => {
-  it("holds four presets, a 0.37 and a 0.74 DS lens at each of the two trims, every one on live input", () => {
-    expect(presets.map((preset) => preset.name)).toEqual(["ds37_21ft", "ds74_21ft", "ds37_26ft", "ds74_26ft"]);
-    for (const preset of presets) {
-      const [lens, trim] = /^ds(\d+)_(\d+)ft$/.exec(preset.name)!.slice(1).map(Number);
+describe.each(SESSIONS)("$file: the trims and the presets", (session) => {
+  const opened = open(session);
+  const names = Object.keys(session.presets);
+
+  it("holds a 0.37 and a 0.74 DS lens at each trim, every one on live input", () => {
+    expect(opened.presets.map((preset) => preset.name)).toEqual(names);
+    for (const preset of opened.presets) {
       expect(preset.values["slider_source"]).toEqual({ value: 0 });
-      expect(preset.values["slider_dsThrow"]).toEqual({ value: lens! / 100 });
-      expect(preset.values["slider_trussTrim"]).toEqual({ value: trim });
-      expect(preset.values["slider_dsTrim"]).toEqual({ value: trim });
+      expect(preset.values["slider_dsThrow"]).toEqual({ value: preset.name.startsWith("ds37") ? 0.37 : 0.74 });
+      expect(preset.values["slider_trussTrim"]).toEqual({ value: session.presets[preset.name] });
+      expect(preset.values["slider_dsTrim"]).toEqual({ value: session.presets[preset.name] });
     }
   });
 
-  it.each(presets.map((preset) => preset.name))("%s: the DS image fills the scrim's width, level and square", (name) => {
-    const { DS } = beams(name);
-    const c = corners(DS, 2, SCRIM_Z);
-    for (const point of Object.values(c)) expect(Math.abs(Math.abs(point[0]) - SCRIM_HALF)).toBeLessThan(MM);
+  it.each(names)("%s: the DS image fills the scrim's width, level and square", (name) => {
+    const { DS } = beams(opened, name);
+    const c = corners(DS, 2, session.scrimZ);
+    for (const point of Object.values(c)) expect(Math.abs(Math.abs(point[0]) - session.scrimHalf)).toBeLessThan(MM);
     expect(Math.abs(c.topLeft[1] - c.topRight[1])).toBeLessThan(MM);
     expect(Math.abs(c.bottomLeft[1] - c.bottomRight[1])).toBeLessThan(MM);
   });
 
-  it.each([21, 26])("%i': the 0.37 and the 0.74 cover the scrim the same: the same top edge, both past the scrim's foot", (trim) => {
-    const wide = corners(beams(`ds37_${trim}ft`).DS, 2, SCRIM_Z);
-    const long = corners(beams(`ds74_${trim}ft`).DS, 2, SCRIM_Z);
+  it.each([...new Set(Object.values(session.presets))])("%s': the 0.37 and the 0.74 cover the scrim the same: the same top edge, both past the scrim's foot", (trim) => {
+    const at = (lens: string) => names.find((name) => name.startsWith(lens) && session.presets[name] === trim)!;
+    const wide = corners(beams(opened, at("ds37")).DS, 2, session.scrimZ);
+    const long = corners(beams(opened, at("ds74")).DS, 2, session.scrimZ);
     expect(Math.abs(wide.topLeft[1] - long.topLeft[1])).toBeLessThan(MM);
-    // the scrim's visible foot is the riser's top (layout.py RISER_TOP, 1.4 + 7'7")
-    const riserTop = 1.4 + (7 + 7 / 12) * FT;
+    // the scrim's visible foot is the riser's top: 7'7" over the house deck (1.4, then 5'0")
+    const riserTop = (session.file === "stage-previz-9" ? 1.4 : 5 * FT) + (7 + 7 / 12) * FT;
     expect(wide.bottomLeft[1]).toBeLessThan(riserTop);
     expect(long.bottomLeft[1]).toBeLessThan(riserTop);
   });
 
-  it.each(presets.map((preset) => preset.name))("%s: each side image is square on the deck and runs off neither side nor the front", (name) => {
-    const both = beams(name);
+  it.each(names)("%s: each side image is square on the deck and runs off neither side nor the front", (name) => {
+    const both = beams(opened, name);
     for (const [side, beam] of [["SR", both.SR], ["SL", both.SL]] as const) {
-      const c = corners(beam, 1, DECK_TOP);
+      const c = corners(beam, 1, session.deckTop);
       const xs = Object.values(c).map((point) => point[0]);
       const zs = Object.values(c).map((point) => point[2]);
       // the far edge on the opposite deck edge
@@ -152,27 +175,38 @@ describe("stage-previz-9: the trims and the presets", () => {
     }
     // together they fill the width: each far edge is on the opposite deck edge (above), and
     // stage right's near edge lies left of stage left's, so no gap opens between them
-    const reach = (beam: Beam) => Object.values(corners(beam, 1, DECK_TOP)).map((point) => point[0]);
+    const reach = (beam: Beam) => Object.values(corners(beam, 1, session.deckTop)).map((point) => point[0]);
     expect(Math.min(...reach(both.SR))).toBeLessThanOrEqual(Math.max(...reach(both.SL)));
   });
 
   it("Truss trim carries the side lenses and nothing of the DS; DS truss trim carries the DS lens and nothing of the sides", () => {
-    const at21 = beams("ds37_21ft");
-    const frame = beams("ds37_21ft", { trussTrim: 26 });
-    const ds = beams("ds37_21ft", { dsTrim: 26 });
-    expect(frame.SR.lens[1] - at21.SR.lens[1]).toBeCloseTo(5 * FT, 4);
-    expect(frame.SL.lens[1] - at21.SL.lens[1]).toBeCloseTo(5 * FT, 4);
-    expect(frame.DS.lens).toEqual(at21.DS.lens);
-    expect(ds.DS.lens[1] - at21.DS.lens[1]).toBeCloseTo(5 * FT, 4);
-    expect(ds.DS.lensAim[1] - at21.DS.lensAim[1]).toBeCloseTo(5 * FT, 4);
-    expect(ds.SR.lens).toEqual(at21.SR.lens);
+    const first = names[0]!;
+    const base = beams(opened, first);
+    const frame = beams(opened, first, { trussTrim: session.presets[first]! + 5 });
+    const ds = beams(opened, first, { dsTrim: session.presets[first]! + 5 });
+    expect(frame.SR.lens[1] - base.SR.lens[1]).toBeCloseTo(5 * FT, 4);
+    expect(frame.SL.lens[1] - base.SL.lens[1]).toBeCloseTo(5 * FT, 4);
+    expect(frame.DS.lens).toEqual(base.DS.lens);
+    expect(ds.DS.lens[1] - base.DS.lens[1]).toBeCloseTo(5 * FT, 4);
+    expect(ds.DS.lensAim[1] - base.DS.lensAim[1]).toBeCloseTo(5 * FT, 4);
+    expect(ds.SR.lens).toEqual(base.SR.lens);
   });
 
-  it("opens on the first preset, Source on live, both trims at 21'", () => {
-    const value = (label: string) => Object.values(document.graph.nodes).find((entry) => entry.label === label)!.parameters["value"];
-    expect(bank.parameters["current"]).toBe("ds37_21ft");
+  it("opens on the first preset, Source on live, both trims where the presets put them", () => {
+    const value = (label: string) => Object.values(opened.document.graph.nodes).find((entry) => entry.label === label)!.parameters["value"];
+    expect(opened.bank.parameters["current"]).toBe(names[0]);
     expect(value("slider_source")).toBe(0);
-    expect(value("slider_trussTrim")).toBe(21);
-    expect(value("slider_dsTrim")).toBe(21);
+    expect(value("slider_trussTrim")).toBe(session.openTrim);
+    expect(value("slider_dsTrim")).toBe(session.openTrim);
+  });
+});
+
+describe("stage-previz-10: the trims are measured from the house deck", () => {
+  it("at the plot's 22'-7\", the frame's projectors hang where layout revision 2 puts them", () => {
+    const opened = open(SESSIONS[1]!);
+    const { SR, DS } = beams(opened, "ds74", { dsOffset: 0, dsTilt: 0 });
+    // layout.py: the side lens 20'-5" over the house deck, the DS lens 19'-8" at zero tilt (5'0" house deck)
+    expect(SR.lens[1]).toBeCloseTo(5 * FT + (20 + 5 / 12) * FT, 3);
+    expect(DS.lens[1]).toBeCloseTo(5 * FT + (19 + 8 / 12) * FT, 3);
   });
 });

@@ -7,12 +7,23 @@ pixel lines (a rack in front of the riser, hung trusses behind the scrim), the u
 projectors, and stand-ins for the talent. It exports one GLB that the Loom session
 (`src/projects/stage-previz/`) reads.
 
-Dimensions: the grated decks, strobe grid and pixel-line rows come from the tour's Vectorworks
-sheets (Top Plan - Strobes, Front - Pixel Lines, Front Elevation) and are noted where read off a
-drawing rather than dimensioned; the rest is scaled from the 4' x 8' decks (12 across, 48'; 4
-deep, 32'). The fixture list: ACME Pixel Line IP x63, GLP JDC Burst 1 x38, Robe iForte FS x3,
-Barco UDX-4K40 x3. Everything lives in `layout.py`. Change it there and rebuild; `upgrade.ts`
-(below) brings a saved session along.
+Dimensions: `layout.py` is at **revision 2** (2026-10-08, VN79): the tour's dimensioned Front
+Elevation and top plan. Heights are the elevation's dimensions above the house deck (5'0" here,
+"may be different in each venue"), plan positions the plan's dimensions from the stage's
+downstage edge; what the drawings draw but do not dimension (the hung pixel rows above 16'-11",
+the projectors' lens heights, the scrim's swags) is read at their scale and noted where it is
+set. The house deck is 60' x 40', the grated stage deck 48' x 16', the riser 32' x 8' with a
+stair each side, the scrim flush against the riser's upstage face, hanging 23'-1" from a truss
+at 22'-7" that it shares the trim with a front truss (the side projectors) 8' from the edge and
+the DS projector's 8' truss 6'-4" downstage of it. The fixture list: ACME Pixel Line IP x63,
+GLP JDC Burst 1 x38, Robe iForte FS x3 (not modelled), Barco UDX-4K40 x3. Change `layout.py` and
+rebuild; `upgrade.ts` (below) brings a saved session along.
+
+**Two exports are committed.** `public/media/stage-previz/stage.glb` (and `fx-pixel-map.png`) is
+the first export, from the estimates revision 2 replaced: the base session, `-7`, `-8` and `-9`
+are on it. `stage-r2.glb` (and `fx-pixel-map-r2.png`, with `fx-pixel-map-r2.{png,svg,csv}` beside
+the sessions) is revision 2: `-10` is on it. The pixel map moved with the pixel rows, so a
+Resolume composition laid out on `fx-pixel-map.png` needs `fx-pixel-map-r2.png` for `-10`.
 
 ## Run
 
@@ -23,11 +34,16 @@ $B --background --factory-startup --python tools/blender/stage-previz/build.py -
 node --import ./src/tooling/alias-hooks.ts src/projects/stage-previz/build.ts
 ```
 
+`layout.py` now builds revision 2, which ships as `stage-r2.glb`, not over `stage.glb`: build it to
+`renders/stage-previz-r2/` and copy `stage.glb` → `public/media/stage-previz/stage-r2.glb` and the
+three `fx-pixel-map.*` → `fx-pixel-map-r2.*` (the PNG to `public/media/stage-previz/` too). `build.ts`
+and `upgrade.ts` still name `stage.glb`.
+
 The first command takes about 5 s. The second copies the GLB to
 `public/media/stage-previz/stage.glb` and writes `projects/stage-previz/stage-previz.loom.json`
 (a file already there is kept unless you pass `--force`).
 
-## The four sessions
+## The sessions
 
 | File | What it is |
 | --- | --- |
@@ -35,6 +51,7 @@ The first command takes about 5 s. The second copies the GLB to
 | `stage-previz-7.loom.json` | A session saved from the app: its owner's fader values, Syphon servers, presets, a cue list and nodes of their own. `upgrade.ts` keeps it up to date. |
 | `stage-previz-8.loom.json` | A session saved from the app, repackaged there into six components. `upgrade.ts` cannot reach inside components and refuses it, so what a new export changes (the deck height the low fog sits on) is edited inside its components, in the app. |
 | `stage-previz-9.loom.json` | `-8` as its owner last saved it (Syphon servers, a Bloom Pyramid component), with the trussing on two faders, in FEET OFF THE VENUE FLOOR (the model's y = 0): **Truss trim** (the frame's bottom chord; the frame, its pipes, the side projectors, and the scrim and kabuki, which hang from it and lengthen or shorten to the house deck) and **DS truss trim** (the DS projector's own 4' truss, which carries its body, lens and aim). Both open at 21'. Four presets, every one on live input: `ds37_21ft`, `ds74_21ft`, `ds37_26ft`, `ds74_26ft` — the DS image 36' wide on the scrim, level and square, the 0.74 slid downstage to match the 0.37's coverage, and the side images re-solved at each trim to fill the deck's width, square, inside its sides and front. `src/projects/stage-previz/trims.test.ts` reads each preset back through the compile. Its trims live inside its components, as `-8`'s rig does, so `upgrade.ts` refuses it too. |
+| `stage-previz-10.loom.json` | `-9` again on layout revision 2 (`stage-r2.glb`): the owner's latest save of `-8`, every parameter the generator derives from the GLB moved onto the new export (none had been edited by hand), then the trims and presets. The trims are in FEET ABOVE THE HOUSE DECK and open at the plot's 22'-7". Two presets, both on live input: `ds37` and `ds74`, the DS image filling the scrim's 30' straight face, level and square (the 0.37 from 22' upstage of where the plot hangs its truss, over the riser's front, its top 1'-2" over the scrim's; the 0.74 from 8' upstage, matched to it), the side images filling the downstage strip, square, from where the plot hangs them. `trims.test.ts` reads both back. |
 
 After a change to the source or a new export, regenerate the base session, and bring a saved
 one along, against the committed GLB (which is read where it is and not rewritten):
