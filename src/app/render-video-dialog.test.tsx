@@ -67,7 +67,7 @@ it("edits take-local settings without mutating the project and starts a supporte
   );
 
   expect(screen.getByText("600 frames · 10.00 s · video only")).toBeTruthy();
-  expect(screen.getByText("Soundtrack: one locked Audio File In · mono AAC · 48 kHz")).toBeTruthy();
+  expect(screen.getByText("Soundtrack: one locked Audio File In · stereo AAC · 48 kHz")).toBeTruthy();
   expect(screen.getByText(/H.264 ready/)).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "4K UHD" }));
@@ -81,7 +81,7 @@ it("edits take-local settings without mutating the project and starts a supporte
   fireEvent.keyDown(rangeIn, { key: "Enter" });
   expect(setRenderSettings).toHaveBeenCalledWith({ range: { start: 12, end: 599 } });
 
-  fireEvent.click(screen.getByRole("button", { name: "Render MP4" }));
+  fireEvent.click(screen.getByRole("button", { name: "Render video" }));
   expect(onRender).toHaveBeenCalledOnce();
 });
 
@@ -112,7 +112,7 @@ it("shows a settled cancellation state while cleanup finishes", () => {
   expect((screen.getByRole("button", { name: "Cancelling…" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
-it("describes an enabled soundtrack as mono AAC instead of video only", () => {
+it("describes an enabled soundtrack as stereo AAC instead of video only", () => {
   render(
     <RenderVideoDialog
       open
@@ -126,9 +126,9 @@ it("describes an enabled soundtrack as mono AAC instead of video only", () => {
     />,
   );
 
-  expect(screen.getByText("600 frames · 10.00 s · video + mono AAC")).toBeTruthy();
-  expect(screen.getByText("AAC ready (mp4a.40.2 · mono · 48 kHz)")).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Render MP4" }) as HTMLButtonElement).disabled).toBe(false);
+  expect(screen.getByText("600 frames · 10.00 s · video + stereo AAC")).toBeTruthy();
+  expect(screen.getByText("AAC ready (mp4a.40.2 · stereo · 48 kHz)")).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Render video" }) as HTMLButtonElement).disabled).toBe(false);
 });
 
 it("shows exact progress and exposes cancellation while a render runs", () => {
@@ -170,12 +170,12 @@ it.each([
   ],
   [
     { stage: "finalizing", completedFrames: 600, totalFrames: 600, frameIndex: 599 },
-    "Finalizing MP4…",
+    "Finalizing movie…",
     null,
   ],
   [
     { stage: "saving", completedFrames: 600, totalFrames: 600, frameIndex: 599 },
-    "Saving MP4…",
+    "Saving movie…",
     null,
   ],
 ] as const)("shows post-capture progress for %s", (progress, label, valueNow) => {
@@ -214,7 +214,7 @@ it("blocks render when H.264 preflight refuses the selected size and rate", () =
   );
 
   expect(screen.getByText(/H.264 unavailable/)).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Render MP4" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Render video" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 it("blocks a soundtrack source that cannot be reproduced offline", () => {
@@ -231,7 +231,7 @@ it("blocks a soundtrack source that cannot be reproduced offline", () => {
   );
 
   expect(screen.getByText(/Audio unavailable: Audio File In must be Locked to Timeline/)).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Render MP4" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Render video" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 
@@ -250,7 +250,37 @@ it("allows video only when an excluded soundtrack is invalid and exposes the aud
   const setIncludeAudio=vi.fn();
   render(<RenderVideoDialog open onOpenChange={vi.fn()} settings={SETTINGS} session={session({includeAudio:false,setIncludeAudio,audioRequirement:{kind:"invalid",reason:"Microphone input cannot be replayed."}})} onRender={vi.fn()} />);
   expect(screen.getByText("600 frames · 10.00 s · video only")).toBeTruthy();
-  expect((screen.getByRole("button",{name:"Render MP4"}) as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByRole("button",{name:"Render video"}) as HTMLButtonElement).disabled).toBe(false);
   fireEvent.click(screen.getByRole("switch",{name:"Include audio"}));
   expect(setIncludeAudio).toHaveBeenCalledWith(true);
+});
+
+it("VN104 — labels the file from the in point by default, and takes a typed start timecode", () => {
+  const setRenderSettings = vi.fn();
+  render(
+    <RenderVideoDialog open onOpenChange={vi.fn()} settings={SETTINGS} onRender={vi.fn()}
+      session={session({ setRenderSettings, renderSettings: { resolution: SETTINGS.outputResolution, outputFps: 60, range: { start: 120, end: 599 } } })} />,
+  );
+  expect(screen.getByText("File starts at 00:00:02:00 (00:00:00:00 + in point)")).toBeTruthy();
+  const field = screen.getByRole("textbox", { name: "Start timecode" });
+  fireEvent.change(field, { target: { value: " 01:00:00:00 " } });
+  fireEvent.blur(field);
+  expect(setRenderSettings).toHaveBeenCalledWith({ startTimecode: "01:00:00:00" });
+});
+
+it("VN104 — counts a 29.97 start drop-frame, and refuses to render a start it cannot parse", () => {
+  const ntsc = { resolution: SETTINGS.outputResolution, outputFps: 30000 / 1001, range: { start: 0, end: 599 } };
+  const { unmount } = render(
+    <RenderVideoDialog open onOpenChange={vi.fn()} settings={SETTINGS} onRender={vi.fn()}
+      session={session({ renderSettings: { ...ntsc, startTimecode: "01:00:00;02" } })} />,
+  );
+  expect(screen.getByText("File starts at 01:00:00;02 · drop-frame")).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Render video" }) as HTMLButtonElement).disabled).toBe(false);
+  unmount();
+  render(
+    <RenderVideoDialog open onOpenChange={vi.fn()} settings={SETTINGS} onRender={vi.fn()}
+      session={session({ renderSettings: { resolution: SETTINGS.outputResolution, outputFps: 60, range: { start: 0, end: 599 }, startTimecode: "01:00:00;00" } })} />,
+  );
+  expect(screen.getByRole("alert").textContent).toMatch(/^Start timecode: 60 fps has no drop-frame timecode/);
+  expect((screen.getByRole("button", { name: "Render video" }) as HTMLButtonElement).disabled).toBe(true);
 });
