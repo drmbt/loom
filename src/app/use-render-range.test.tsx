@@ -126,6 +126,34 @@ it("VN71: renders a range past 10 000 frames (the old timeline limit), and refus
   });
 });
 
+it("VNB19: prepareMedia(frame, fps) is awaited after the transport's prepareFrame and before the step that renders that frame", async () => {
+  const { bus } = createHarness();
+  let current = 0;
+  const log: string[] = [];
+  transportHolderFor(bus).current = {
+    isPlaying: () => false, togglePlay() {}, resetAbsoluteClock() {}, resetState() {},
+    seek: (frame: number) => { log.push(`seek ${frame}`); current = frame; return frame; },
+    stepOnce: () => { log.push(`step ${current + 1}`); return frameInputs(++current); },
+    prepareFrame: async (frame: number) => { log.push(`plan ${frame}`); },
+  } as never;
+  renderHook(() => useRenderRange({
+    createCapture: unusedCapture, bus, exports: fakeExports(), compiled: COMPILED, graph: graphWith("timeline"),
+    registry: REGISTRY, settings: { ...SETTINGS, fps: 25, frameRange: { start: 4, end: 6 } }, latestFrame: () => frameInputs(current),
+    name: () => "test", write: async () => ({ kind: "cancelled" }), loadEncoder: async () => fakeEncoder(),
+    prepareMedia: async (frame: number, fps: number) => {
+      // A real seek resolves later: anything that ran ahead of it would show up in the log first.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      log.push(`media ${frame}@${fps}`);
+    },
+  }));
+  await act(async () => { await renderRangeHolderFor(bus).current!.render(); });
+  expect(log).toEqual([
+    "plan 4", "media 4@25", "seek 4",
+    "plan 5", "media 5@25", "step 5",
+    "plan 6", "media 6@25", "step 6",
+  ]);
+});
+
 it("refuses odd render dimensions before audio preparation or capture allocation", async () => {
   const { bus } = createHarness();
   const createCapture = vi.fn(unusedCapture);

@@ -1239,6 +1239,18 @@ const LEDGER: Readonly<Record<string, Row>> = {
   "render.environmentTaps": literal("the specular cone's tap count is a loop bound and a divisor.", { build: (count) => scene({ environment: true, render: { environmentTaps: count } }) }),
   "render.environmentTaps/prefiltered": flat("the prefiltered environment takes no taps.", { build: (count) => scene({ environment: true, render: { environmentFilter: "prefiltered", environmentTaps: count } }) }),
   "feedback.source": notACount("one node's name."),
+  "clipTrack.track": flat("VN101: the regions are read per frame by the app's player, never by the compiler; the pass is Movie File In's fitted blit, one text at every region count.", {
+    build: (count) => ({
+      graph: graphOf([
+        mk("cliptrack_subject", "clipTrack", { track: JSON.stringify({ version: 1, id: "t", name: "t", regions: Array.from({ length: count }, (_, index) => ({
+          id: `r${index}`, media: `blob:${index}`, sourceIn: 0, sourceOut: 240_000, timelineStart: index * 240_000, length: 240_000,
+        })) }) }),
+        mk("output_main", "output"),
+      ], [["cliptrack_subject", "out", "output_main", "input"]]),
+      subject: "cliptrack_subject",
+      drivers: [],
+    }),
+  }),
 
   /* value nodes */
   "panel.controls": noPass(VALUE_NODE),

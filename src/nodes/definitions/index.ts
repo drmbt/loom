@@ -50,6 +50,7 @@ import { controlNodeDefinitions } from "./controls.ts";
 import { presetsNode } from "./presets.ts";
 import { cueListNode } from "./cue-list.ts";
 import { automationNode } from "./automation.ts";
+import { clipTrackNode } from "./clip-track.ts";
 export { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
 export { cameraNode, geometryNode, lightNode, renderNode, sceneNodeDefinitions } from "./scene.ts";
 import { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
@@ -127,6 +128,7 @@ export { midiInNode } from "./midi.ts";
 export { presetsNode } from "./presets.ts";
 export { cueListNode } from "./cue-list.ts";
 export { automationNode, AUTOMATION_NODE_TYPE } from "./automation.ts";
+export { clipTrackNode, CLIP_TRACK_NODE_TYPE } from "./clip-track.ts";
 export { oscInNode, oscOutNode } from "./osc.ts";
 export {
   annotateNode,
@@ -320,6 +322,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   cueListNode,
   // VN61: keyframed lanes over the playhead, each published as a channel.
   automationNode,
+  // VN101: regions of media on the timeline, one texture per track.
+  clipTrackNode,
   audioInNode,
   audioFileInNode,
   audioPatternNode,

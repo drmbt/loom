@@ -327,6 +327,8 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   analyze: "none",
   // Media files and model nodes: a decode and a worker round trip, both inside the page.
   movieFileIn: "none",
+  // VN101: a pool of decodes inside the page; nothing leaves the process.
+  clipTrack: "none",
   // Saved scalar numerical assets are decoded inside this process.
   floatMapIn: "none",
   audioFileIn: "none",

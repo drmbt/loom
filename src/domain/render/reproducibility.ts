@@ -425,6 +425,9 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   // Classifying them `external-live` here would condemn the locked case, which is the one
   // configuration in the whole catalogue that was built specifically to reproduce.
   movieFileIn: "pure",
+  // VN101: regions are timeline-anchored by construction (`sourceTimeAt` is f(frame)), and a
+  // take pre-seeks each frame (VNB19's seam), so a track reproduces.
+  clipTrack: "pure",
   // A saved float map is fixed data; preparation never runs during rendering.
   floatMapIn: "pure",
   audioFileIn: "pure",

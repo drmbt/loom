@@ -119,6 +119,13 @@ export interface UseRenderRangeInputs {
    * node supplies nothing and the loop is unchanged.
    */
   readonly onFrameRendered?: ((frameIndex: number) => Promise<void>) | undefined;
+  /**
+   * VNB19: awaited after the transport's own `prepareFrame` and BEFORE the step that renders
+   * `frameIndex` (timeline frames at the project `fps`), so a timeline-locked movie has
+   * sought to and presented that frame's picture before it is uploaded. A take only; live
+   * stepping never waits on a seek.
+   */
+  readonly prepareMedia?: ((frameIndex: number, fps: number) => Promise<void>) | undefined;
   /** Await preparation before replay; an optional cleanup releases its export ownership. */
   readonly beforeRender?: (() => Promise<void | (() => void)>) | undefined;
   /** Mutes only speaker monitoring for every take; returned cleanup restores it. */
@@ -531,7 +538,12 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
               latestFrame: live.latestFrame,
               resetAbsoluteClock: transport.resetAbsoluteClock,
               resetState: transport.resetState,
-              ...(transport.prepareFrame === undefined ? {} : { prepareFrame: transport.prepareFrame }),
+              ...(transport.prepareFrame === undefined && live.prepareMedia === undefined ? {} : {
+                prepareFrame: async (frameIndex: number) => {
+                  await transport.prepareFrame?.(frameIndex);
+                  await live.prepareMedia?.(frameIndex, timelineFps);
+                },
+              }),
             },
           });
           disposeRendered = rendered.dispose ?? null;
