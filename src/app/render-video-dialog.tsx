@@ -122,7 +122,7 @@ export function RenderVideoDialog({
       <DialogContent data-testid="render-video-dialog" aria-describedby="render-video-description">
         <DialogTitle>Render video</DialogTitle>
         <DialogDescription id="render-video-description">
-          Exact-frame H.264 QuickTime (.mov) with start timecode · slower than real time
+          Exact-frame H.264 MOV · timecode · slower than real time
         </DialogDescription>
 
         <div className={styles.body}>
