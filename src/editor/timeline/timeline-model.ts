@@ -92,13 +92,15 @@ export function timelineReadout(frame: number, fps: number, range: FrameRange): 
  * Which value-only revisions the timeline re-renders for (`LiveGraph`'s `shows`): a write
  * to an automation node (its lanes), or to a node holding an expression slot (a reference
  * to a lane may have appeared or gone, and the list's counts are derived from those).
- * Everything else, a slider drag on an unrelated node, leaves the pane alone.
+ * VN64: and a write to a movie or audio file node, whose file and transport place the
+ * reference waveform. Everything else, a slider drag on an unrelated node, leaves the pane alone.
  */
 export function timelineShows(written: readonly NodeId[], graph: GraphDocument): boolean {
   return written.some((nodeId) => {
     const node = graph.nodes[nodeId];
     if (node === undefined) return false;
     if (node.type === AUTOMATION_NODE_TYPE) return true;
+    if (node.type === "movieFileIn" || node.type === "audioFileIn") return true;
     return Object.values(node.parameters).some((stored) => isParameterSlot(stored) && stored.bindings.expression !== undefined);
   });
 }

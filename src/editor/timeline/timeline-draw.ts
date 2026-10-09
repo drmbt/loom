@@ -3,6 +3,7 @@ import { rulerMarks, rulerStep, type RulerStep } from "@domain/time/ruler.ts";
 import { TICKS_PER_SECOND, ticksToFrames, type FrameRate } from "@domain/time/ticks.ts";
 import { formatTimecode, ticksToTimecode, supportsDropFrame } from "@domain/time/timecode.ts";
 import type { KeyRef } from "./timeline-edits.ts";
+import { peakColumn, type WaveformPeaks } from "./waveform-peaks.ts";
 import type { Rect } from "./timeline-hit.ts";
 import { displayValue, sampleColumns, tickToX, valueToY, type TimelineView, type ValueMode } from "./timeline-view.ts";
 
@@ -40,6 +41,51 @@ export interface DrawState {
   readonly box: Rect | null;
   /** Label the ruler in frames rather than timecode. */
   readonly frameLabels: boolean;
+  /** VN64: the reference media's waveform, drawn under the lanes. */
+  readonly waveform?: DrawWaveform | null;
+}
+
+export interface DrawWaveform {
+  readonly peaks: WaveformPeaks;
+  /** Where in the media (seconds) the timeline is at these ticks; null where the media is not showing. */
+  readonly mediaSecondsAt: (ticks: number) => number | null;
+}
+
+/**
+ * The waveform, one column per CSS pixel, centred in the curve area: min/max extremes of the
+ * bins under the column, coloured by the column's band mix (ltc-lab's look: low = the X
+ * axis red, mid = the Y green, high = the Z blue, added at their weights) and made more
+ * opaque the louder it is, so silence stays a faint line and the curves stay readable over it.
+ */
+export function paintWaveform(context: CanvasRenderingContext2D, canvas: Element, view: TimelineView, width: number, height: number, waveform: DrawWaveform): void {
+  // The three band colours are tokens; a column's mix is the three ADDED ("lighter") at
+  // their weights, so no colour is ever written here, only derived from the palette.
+  const bands = [tokenColour(canvas, "axis-x"), tokenColour(canvas, "axis-y"), tokenColour(canvas, "axis-z")] as const;
+  const centre = height / 2;
+  const reach = height * 0.45;
+  const previous = { alpha: context.globalAlpha, composite: context.globalCompositeOperation };
+  context.globalCompositeOperation = "lighter";
+  for (let x = 0; x < width; x += 1) {
+    const from = waveform.mediaSecondsAt(view.startTicks + x * view.ticksPerPixel);
+    const to = waveform.mediaSecondsAt(view.startTicks + (x + 1) * view.ticksPerPixel);
+    if (from === null || to === null) continue;
+    const column = peakColumn(waveform.peaks, from, to);
+    if (column === null) continue;
+    const sum = column.lowWeight + column.midWeight + column.highWeight;
+    const weights = sum > 0 ? [column.lowWeight / sum, column.midWeight / sum, column.highWeight / sum] : [1 / 3, 1 / 3, 1 / 3];
+    const amplitude = Math.min(1, Math.max(Math.abs(column.min), Math.abs(column.max)));
+    const opacity = 0.25 + 0.45 * amplitude;
+    const y0 = centre - column.max * reach;
+    const y1 = centre - column.min * reach;
+    for (let band = 0; band < 3; band += 1) {
+      if (weights[band]! <= 0) continue;
+      context.globalAlpha = opacity * weights[band]!;
+      context.fillStyle = bands[band]!;
+      context.fillRect(x, y0, 1, Math.max(1, y1 - y0));
+    }
+  }
+  context.globalAlpha = previous.alpha;
+  context.globalCompositeOperation = previous.composite;
 }
 
 /** `--<name>` from the element's computed style, falling back to `--signal` for a name that is not a token. */
@@ -136,6 +182,7 @@ export function paintTimeline(canvas: HTMLCanvasElement, state: DrawState): void
   context.rect(0, RULER_HEIGHT, width, curveHeight);
   context.clip();
   context.translate(0, RULER_HEIGHT);
+  if (state.waveform !== undefined && state.waveform !== null) paintWaveform(context, canvas, view, width, curveHeight, state.waveform);
   // The 0 and 1 lines of the normalized view.
   if (state.mode === "normalized") {
     context.strokeStyle = colour("line");

@@ -48,6 +48,9 @@ import { DopeStrip } from "./dope-strip.tsx";
 import { KeyTable } from "./key-table.tsx";
 import { automationNodes, currentAutomationNode, laneReferenceCounts, lanesStored, type AutomationNodeView } from "./timeline-model.ts";
 import { TimelineStatus } from "./timeline-status.tsx";
+import { ReferenceControls } from "./reference-controls.tsx";
+import { useReferenceMedia } from "./use-reference-media.ts";
+import type { WaveformPeaks } from "./waveform-peaks.ts";
 import {
   DEFAULT_VIEW,
   displayValue,
@@ -99,6 +102,8 @@ export interface TimelinePaneProps {
   readonly editor?: ParameterEditor;
   /** VN63: reads a dropped parameter's definition (its min/max). Absent = the lane list takes no drops. */
   readonly registry?: NodeRegistryView;
+  /** VN64: injected in tests, the reference waveform's loader. Absent: decode the file. */
+  readonly loadPeaks?: (file: string) => Promise<WaveformPeaks>;
 }
 
 type Drag =
@@ -138,6 +143,8 @@ export function TimelinePane(props: TimelinePaneProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const paneRef = useRef<HTMLDivElement | null>(null);
   const keymapPane = useKeymapPane("global", paneRef);
+  const referenceMedia = useReferenceMedia({ graph, bus, invocation, fps, range, ...(props.loadPeaks === undefined ? {} : { loadPeaks: props.loadPeaks }) });
+  const waveform = referenceMedia.waveform;
 
   const nodes = useMemo(() => automationNodes(graph), [graph]);
   const current = currentAutomationNode(nodes, selection[selection.length - 1] ?? null, lastTouched);
@@ -189,8 +196,9 @@ export function TimelinePane(props: TimelinePaneProps) {
       marquee: marqueeRect,
       box,
       frameLabels: false,
+      waveform,
     });
-  }, [box, keys, marqueeRect, mode, range.end, range.start, rate, shown, view]);
+  }, [box, keys, marqueeRect, mode, range.end, range.start, rate, shown, view, waveform]);
 
   useLayoutEffect(() => paint(), [paint, frame]);
   // Smooth while playing: one repaint per display frame, and none while paused.
@@ -576,6 +584,8 @@ export function TimelinePane(props: TimelinePaneProps) {
       onPointerDown={keymapPane.onPointerDown}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
+      onDragOver={referenceMedia.onDragOver}
+      onDrop={referenceMedia.onDrop}
       data-timeline-pane=""
     >
       <LaneList
@@ -599,6 +609,8 @@ export function TimelinePane(props: TimelinePaneProps) {
           <TimelineStatus frame={frame} fps={fps} range={range} />
           <span className={styles.spacer} />
           {notice !== null && <span className={styles.notice}>{notice}</span>}
+          {referenceMedia.notice !== null && <span className={styles.notice} data-timeline-reference-notice="">{referenceMedia.notice}</span>}
+          <ReferenceControls media={referenceMedia} />
           <label className={styles.option}>
             snap
             <select value={snap} onChange={(event) => setSnap(event.target.value as SnapMode)} aria-label="snap">
