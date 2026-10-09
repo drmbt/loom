@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { avcCodecString, mp4StreamParts, muxMp4, sampleDurationFor, timescaleFor } from "./mp4-muxer.ts";
-import type { Mp4AudioTrack, Mp4Sample } from "./mp4-muxer.ts";
+import type { Mp4AudioTrack, Mp4Sample, Mp4TimecodeTrack } from "./mp4-muxer.ts";
 
 /**
  * The muxer is checked by walking the box tree back out of the bytes. Every assertion here is
@@ -334,5 +334,85 @@ describe("mp4 muxing", () => {
       },
     });
     expect(parts.moov.byteLength).toBeGreaterThan(audioSamples.length * 4);
+  });
+});
+
+/**
+ * VN104 — the start timecode. A reader finds it by following the VIDEO track's `tref`/`tmcd`
+ * to a `tmcd` track and reading that track's one sample, a frame count. These tests read it
+ * back that way: from the bytes the chunk offset points at, not from the input.
+ */
+describe("mp4 timecode track", () => {
+  const fps = 30;
+  const timescale = timescaleFor(fps);
+  const duration = sampleDurationFor(fps);
+  // 01:00:00;02 at 29.97 drop-frame is frame 107 892 + 2 = 107 894.
+  const timecode: Mp4TimecodeTrack = { startFrame: 107_894, dropFrame: true, framesPerSecond: 30, timescale, frameDuration: duration };
+
+  function readTimecode(file: Uint8Array): { trackId: number; startFrame: number; flags: number; framesPerSecond: number } {
+    const [video, ...others] = tracks(file);
+    const tref = boxes(video!.payload).find((candidate) => candidate.type === "tref");
+    if (tref === undefined) throw new Error("the video track has no tref");
+    const reference = find(tref.payload, ["tmcd"]);
+    const trackId = new DataView(reference.payload.buffer, reference.payload.byteOffset).getUint32(0);
+    const target = others.find((trak) => {
+      const tkhd = find(trak.payload, ["tkhd"]);
+      return new DataView(tkhd.payload.buffer, tkhd.payload.byteOffset).getUint32(12) === trackId;
+    });
+    if (target === undefined) throw new Error(`no track ${String(trackId)}`);
+    const hdlr = find(target.payload, ["mdia", "hdlr"]);
+    expect(String.fromCharCode(...hdlr.payload.subarray(8, 12))).toBe("tmcd");
+    const stbl = ["mdia", "minf", "stbl"];
+    const stsd = find(target.payload, [...stbl, "stsd"]);
+    const entry = boxes(stsd.payload, 8)[0]!;
+    expect(entry.type).toBe("tmcd");
+    const entryView = new DataView(entry.payload.buffer, entry.payload.byteOffset, entry.payload.byteLength);
+    const stco = find(target.payload, [...stbl, "stco"]);
+    const offset = new DataView(stco.payload.buffer, stco.payload.byteOffset).getUint32(8);
+    return {
+      trackId,
+      startFrame: new DataView(file.buffer, file.byteOffset).getUint32(offset),
+      flags: entryView.getUint32(12),
+      framesPerSecond: entryView.getUint8(24),
+    };
+  }
+
+  it("links the video to a tmcd track whose one sample is the start frame count", () => {
+    const file = muxMp4({ width: 64, height: 64, timescale, samples: samples(3, duration), codecDescription: DESCRIPTION, timecode });
+    expect(readTimecode(file)).toEqual({ trackId: 2, startFrame: 107_894, flags: 0x3, framesPerSecond: 30 });
+  });
+
+  it("numbers the timecode track after the audio and finds its sample after the audio bytes", () => {
+    const file = muxMp4({
+      width: 64, height: 64, timescale, samples: samples(3, duration), codecDescription: DESCRIPTION,
+      audio: audioTrack(2), timecode: { ...timecode, dropFrame: false, startFrame: 90_000 },
+    });
+    expect(readTimecode(file)).toEqual({ trackId: 3, startFrame: 90_000, flags: 0x2, framesPerSecond: 30 });
+    const mvhd = find(file, ["moov", "mvhd"]);
+    expect(new DataView(mvhd.payload.buffer, mvhd.payload.byteOffset, mvhd.payload.byteLength).getUint32(96)).toBe(4);
+  });
+
+  it("streams the same layout: the mdat size counts the 4-byte timecode sample", () => {
+    const parts = mp4StreamParts({ width: 64, height: 64, timescale, samples: [{ byteLength: 100, keyFrame: true, duration }], codecDescription: DESCRIPTION, timecode });
+    const mdat = new DataView(parts.mdatHeader.buffer, parts.mdatHeader.byteOffset, parts.mdatHeader.byteLength);
+    expect(mdat.getBigUint64(8)).toBe(BigInt(16 + 100 + 4));
+    const tmcd = tracks(parts.moov)[1]!;
+    const stco = find(tmcd.payload, ["mdia", "minf", "stbl", "stco"]);
+    expect(new DataView(stco.payload.buffer, stco.payload.byteOffset).getUint32(8)).toBe(parts.ftyp.length + 16 + 100);
+  });
+
+  it("writes no tref and no timecode track when no timecode is asked for", () => {
+    const file = muxMp4({ width: 64, height: 64, timescale, samples: samples(3, duration), codecDescription: DESCRIPTION });
+    expect(tracks(file)).toHaveLength(1);
+    expect(boxes(tracks(file)[0]!.payload).map((candidate) => candidate.type)).not.toContain("tref");
+  });
+
+  it("brands a mov as QuickTime and an mp4 as ISO", () => {
+    const brand = (container: "mov" | "mp4"): string => {
+      const file = muxMp4({ width: 64, height: 64, timescale, samples: samples(1, duration), codecDescription: DESCRIPTION, container });
+      return String.fromCharCode(...find(file, ["ftyp"]).payload.subarray(0, 4));
+    };
+    expect(brand("mov")).toBe("qt  ");
+    expect(brand("mp4")).toBe("isom");
   });
 });

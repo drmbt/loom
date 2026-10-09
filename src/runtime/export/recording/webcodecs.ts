@@ -1,6 +1,8 @@
 import { ExportDiagnosticCode, ExportError, exportDiagnostic } from "../types.ts";
-import { avcCodecString, mp4FileTypeBox, mp4StreamParts, sampleDurationFor, timescaleFor } from "./mp4-muxer.ts";
-import type { Mp4AudioSample, Mp4AudioTrack, Mp4Sample } from "./mp4-muxer.ts";
+import { avcCodecString, mp4FileTypeBox, mp4StreamParts, sampleDurationFor, timecodeSampleBytes, timescaleFor } from "./mp4-muxer.ts";
+import type { Mp4AudioSample, Mp4AudioTrack, Mp4Container, Mp4Sample } from "./mp4-muxer.ts";
+import { timecodeTrackFor } from "./start-timecode.ts";
+import type { ExportStartTimecode } from "./start-timecode.ts";
 import { createMediaSpool } from "./media-spool.ts";
 import type { MediaSpool, MediaSpoolMode } from "./media-spool.ts";
 import type { CapturedVideoFrame, EncodedVideo, EncoderConfig, EncoderFinishProgress, EncoderFrame, EncoderFrameTiming, VideoEncoderSink } from "./types.ts";
@@ -41,6 +43,10 @@ export interface WebCodecsEncoderOptions {
   readonly onSpoolProgress?: ((writtenBytes: number) => void) | undefined;
   readonly yieldControl?: (() => Promise<void>) | undefined;
   readonly signal?: AbortSignal | undefined;
+  /** VN104 — the file's start timecode, written as a `tmcd` track the video references. */
+  readonly timecode?: Pick<ExportStartTimecode, "frame" | "dropFrame"> | undefined;
+  /** VN104 — `mov` (QuickTime) or `mp4`. Default `mp4`. */
+  readonly container?: Mp4Container | undefined;
 }
 
 // Match encoder backpressure cadence: one browser turn per 32 AAC packets is about
@@ -263,7 +269,7 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
       if (!isWebCodecsAvailable()) throw unavailable("VideoEncoder is not defined in this context.");
       config = next;
       try {
-        spool = await createMediaSpool(options.spool ?? "opfs", mp4FileTypeBox());
+        spool = await createMediaSpool(options.spool ?? "opfs", mp4FileTypeBox(options.container));
       } catch (error) {
         throw unavailable(error instanceof Error ? error.message : String(error));
       }
@@ -368,6 +374,13 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
         : await encodeAudioTrack(await options.audio(), options.audioBitrate);
       if (failure) throw failure;
       throwIfCancelled(options.signal);
+      // The timecode sample follows the audio in `mdat`, where the muxer's offsets expect it.
+      const timecode = options.timecode === undefined ? undefined : timecodeTrackFor(options.timecode, config.fps);
+      if (timecode !== undefined) {
+        writePacket(timecodeSampleBytes(timecode));
+        await awaitWithCancellation(() => writeChain, options.signal);
+        if (failure) throw failure;
+      }
       options.onFinishProgress?.({ stage: "finalizing" });
       await options.yieldControl?.();
       throwIfCancelled(options.signal);
@@ -378,6 +391,8 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
         samples,
         codecDescription: description,
         ...(audio === undefined ? {} : { audio }),
+        ...(timecode === undefined ? {} : { timecode }),
+        ...(options.container === undefined ? {} : { container: options.container }),
       };
       const target = spool;
       if (target === null) throw unavailable("the disk spool was closed before MP4 finalization.");
@@ -386,10 +401,11 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
       const stored = await target.finish(mp4StreamParts(muxInput));
       throwIfCancelled(options.signal);
       spool = null;
+      const containerMime = options.container === "mov" ? "video/quicktime" : "video/mp4";
       return {
         mimeType: audio === undefined
-          ? `video/mp4; codecs="${avcCodecString(description)}"`
-          : `video/mp4; codecs="${avcCodecString(description)}, mp4a.40.2"`,
+          ? `${containerMime}; codecs="${avcCodecString(description)}"`
+          : `${containerMime}; codecs="${avcCodecString(description)}, mp4a.40.2"`,
         bytes: stored.file,
         dispose: stored.dispose,
         frameCount: samples.length,

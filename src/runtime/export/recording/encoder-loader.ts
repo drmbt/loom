@@ -1,6 +1,8 @@
 import type { CapturedVideoFrame, EncoderFrameTiming, VideoEncoderSink } from "./types.ts";
 import type { AudioPcmProvider, EncoderConfig, EncoderFinishProgress } from "./types.ts";
 import type { MediaSpoolMode } from "./media-spool.ts";
+import type { Mp4Container } from "./mp4-muxer.ts";
+import type { ExportStartTimecode } from "./start-timecode.ts";
 
 /**
  * The WebCodecs/headless boundary, in one file.
@@ -42,6 +44,10 @@ export interface LoadEncoderOptions {
   readonly yieldControl?: (() => Promise<void>) | undefined;
   /** Cancels queued video flush, soundtrack encoding, or MP4 finalization. */
   readonly signal?: AbortSignal | undefined;
+  /** VN104 — the file's start timecode (a QuickTime `tmcd` track). */
+  readonly timecode?: Pick<ExportStartTimecode, "frame" | "dropFrame"> | undefined;
+  /** VN104 — `mov` (QuickTime) or `mp4`. Default `mp4`. */
+  readonly container?: Mp4Container | undefined;
 }
 
 export interface VideoEncoderSupport {
