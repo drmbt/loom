@@ -272,36 +272,17 @@ export interface MediaTransportContext {
 }
 
 /**
- * A node's transport, resolved through the ONE parameter read path (§V61, §V107).
- *
- * Every transport parameter therefore takes every mode: an expression on `speed`, a
- * `cuePoint` bound to a sibling, a `trimStart` driven by an audio channel. Nothing here
- * knows about modes — that is the whole reason it calls `resolveParameters` rather than
- * reading `node.parameters` directly, which is what a bespoke transport widget would have
- * had to do.
+ * One node's parameters resolved for a frame through the ONE read path (§V61, §V837's
+ * factory), or null when the node or its definition is gone. The movie runner reads its
+ * transport through this; the clip track (VN101) reads its regions and tempo through it, so
+ * an expression on a Clip Track's Tempo reaches the player exactly as one on a movie's
+ * speed does.
  */
-export function createMediaTransportRunner(
+export function nodeParameterReader(
   nodeId: NodeId,
   context: MediaTransportContext,
-): MediaTransportRunner {
-  const clock: MediaClock = createMediaClock();
-  let lastDuration = 0;
-  let previous: { transport: MediaTransportValues; head: MediaPlayhead; time: number; mode: FrameEvaluationInput["mode"] } | null = null;
-  let cuePending = false;
-  // §T1549b — the timeline lock's correction state: the whole-percent rate step in force,
-  // when it was last changed (seconds of delivered frames), whether a resync seek is armed,
-  // and (B242) the position the element was last put at or last seen frozen at, which it
-  // must play past to arm, and the previous locked frame's playhead and element reading.
-  let lockStep = 0;
-  let lockStepAt = -Infinity;
-  let resyncArmed = false;
-  let settleFrom = 0;
-  let lastLocked: { head: number; element: number } | null = null;
-  let runSeconds = 0;
-
-  const readAll = (
-    frame?: FrameEvaluationInput,
-  ): ((key: string) => ParameterValue | undefined) | null => {
+): (frame?: FrameEvaluationInput) => ((key: string) => ParameterValue | undefined) | null {
+  return (frame) => {
     const node = context.graph().nodes[nodeId];
     if (node === undefined) return null;
     const definition = context.registry.get(node.type);
@@ -330,6 +311,37 @@ export function createMediaTransportRunner(
     }));
     return (key) => resolved.get(key)?.value;
   };
+}
+
+/**
+ * A node's transport, resolved through the ONE parameter read path (§V61, §V107).
+ *
+ * Every transport parameter therefore takes every mode: an expression on `speed`, a
+ * `cuePoint` bound to a sibling, a `trimStart` driven by an audio channel. Nothing here
+ * knows about modes — that is the whole reason it calls `resolveParameters` rather than
+ * reading `node.parameters` directly, which is what a bespoke transport widget would have
+ * had to do.
+ */
+export function createMediaTransportRunner(
+  nodeId: NodeId,
+  context: MediaTransportContext,
+): MediaTransportRunner {
+  const clock: MediaClock = createMediaClock();
+  let lastDuration = 0;
+  let previous: { transport: MediaTransportValues; head: MediaPlayhead; time: number; mode: FrameEvaluationInput["mode"] } | null = null;
+  let cuePending = false;
+  // §T1549b — the timeline lock's correction state: the whole-percent rate step in force,
+  // when it was last changed (seconds of delivered frames), whether a resync seek is armed,
+  // and (B242) the position the element was last put at or last seen frozen at, which it
+  // must play past to arm, and the previous locked frame's playhead and element reading.
+  let lockStep = 0;
+  let lockStepAt = -Infinity;
+  let resyncArmed = false;
+  let settleFrom = 0;
+  let lastLocked: { head: number; element: number } | null = null;
+  let runSeconds = 0;
+
+  const readAll = nodeParameterReader(nodeId, context);
 
   return {
     step(frame, duration, elementSeconds) {

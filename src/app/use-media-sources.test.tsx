@@ -1552,6 +1552,61 @@ describe("VNB19 — a timeline-locked movie in a take shows each frame's own pic
   });
 });
 
+describe("VN101 — a Clip Track node is played by the media hook", () => {
+  const track = JSON.stringify({
+    version: 1, id: "t", name: "t",
+    regions: [{ id: "a", media: "blob:a", sourceIn: 240_000, sourceOut: 480_000, timelineStart: 0, length: 720_000 }],
+  });
+
+  it("registers under the compiler's key, opens the region under the playhead and puts it on its source time", async () => {
+    const runtime = newRuntime();
+    const { backend, registered } = fakeBackend();
+    const opened: string[] = [];
+    const element = decodingElement();
+    let wiring: MediaWiring | null = null;
+    await act(async () => {
+      render(
+        <Harness runtime={runtime} backend={backend}
+          environment={{
+            openStill: () => Promise.reject(new Error("x")),
+            openFile: (url) => { opened.push(url); return Promise.resolve(element as unknown as MediaElement); },
+            openCamera: () => Promise.reject(new Error("x")),
+          }}
+          graph={graphWith({ cliptrack_a: { type: "clipTrack", parameters: { track } } })}
+          onWiring={(value) => { wiring = value; }} />,
+      );
+    });
+    expect(registered.has(mediaSourceIdFor("cliptrack_a"))).toBe(true);
+    const media = wiring as unknown as MediaWiring;
+    // A take's frame: prepare opens region a and pre-seeks it, 0.5 s into a 1 s..2 s loop.
+    await act(() => media.prepareFrame(15, 30));
+    expect(opened).toEqual(["blob:a"]);
+    expect(element.presented).toBe(1.5);
+    // Second 2.5 of the timeline is the loop's second lap, 0.5 s in again.
+    await act(() => media.prepareFrame(75, 30));
+    expect(element.presented).toBe(1.5);
+    act(() => media.sync({ timeSeconds: 2.5, deltaSeconds: 1 / 30, frameIndex: 75, mode: "offline", randomSeed: 1, fps: 30 }));
+    expect(element.currentTime).toBe(1.5);
+  });
+
+  it("names regions that do not parse, on the node", async () => {
+    const runtime = newRuntime();
+    const { backend } = fakeBackend();
+    let wiring: MediaWiring | null = null;
+    let messages: readonly string[] = [];
+    await act(async () => {
+      render(
+        <Harness runtime={runtime} backend={backend}
+          environment={{ openStill: () => Promise.reject(new Error("x")), openFile: () => Promise.reject(new Error("x")), openCamera: () => Promise.reject(new Error("x")) }}
+          graph={graphWith({ cliptrack_a: { type: "clipTrack", parameters: { track: "{ not json" } } })}
+          onWiring={(value) => { wiring = value; }} onDiagnostics={(value) => { messages = value; }} />,
+      );
+    });
+    act(() => (wiring as unknown as MediaWiring).sync({ timeSeconds: 0, deltaSeconds: 1 / 30, frameIndex: 0, mode: "realtime", randomSeed: 1, fps: 30 }));
+    await waitFor(() => expect(messages.some((message) => /regions of "cliptrack_a" do not parse/.test(message))).toBe(true));
+  });
+});
+
 describe("a video media source only reports a new frame when there is one", () => {
   it("offers nothing before the first decoded frame", () => {
     const element = fakeElement();
