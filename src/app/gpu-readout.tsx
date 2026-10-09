@@ -2,25 +2,26 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { TelemetrySource } from "@runtime/telemetry/index.ts";
 import { formatMs } from "./format-metrics.ts";
 
-/**
- * The header's GPU-ms number, live (B172, §V16, §V86).
- *
- * `TopBar` has taken a `gpuMs` prop since it was written and NOTHING ever passed one, so
- * the readout beside `fps` showed an em dash on every machine forever — the same shape as
- * the bug this landed with (a hub that was constructed and never fed), on the surface a
- * user looks at first. It is a component rather than a prop because the value changes at
- * the hub's <= 10 Hz tick: subscribing here keeps `app.tsx` off that clock, which is the
- * §V16 rule the `timeline` slot already follows.
- *
- * §V86 holds: `frame.gpuMs` is null until a span exists, and null renders as the dash it
- * always was. A device with no `timestamp-query`, or a plan whose spans have not come
- * back yet, reads as absent — never as `0.00 ms`, which would claim the frame was free.
+/** Live header timing from the telemetry hub, at its <= 10 Hz tick (§V16).
+ * GPU uses the measured frame span; CPU uses the measured pass-encode sum.
+ * Missing measurements stay absent, and neither value substitutes for the other (§V86).
  */
-export function GpuMsReadout({ telemetry }: { telemetry: TelemetrySource }) {
-  const gpuMs = useSyncExternalStore(
+export function FrameMsReadout({ telemetry, metric = "gpu" }: { telemetry: TelemetrySource; metric?: "gpu" | "cpu" }) {
+  const read = useCallback(() => {
+    const snapshot = telemetry.snapshot();
+    if (metric === "gpu") return snapshot.frame.gpuMs;
+    if (!snapshot.cpuTimingAvailable || snapshot.categories.length === 0) return null;
+    let total = 0;
+    for (const row of snapshot.categories) {
+      if (row.cpu.availability !== "measured" || row.cpu.ms === null) return null;
+      total += row.cpu.ms;
+    }
+    return total;
+  }, [metric, telemetry]);
+  const ms = useSyncExternalStore(
     useCallback((listener: () => void) => telemetry.subscribe(listener), [telemetry]),
-    useCallback(() => telemetry.snapshot().frame.gpuMs, [telemetry]),
-    useCallback(() => telemetry.snapshot().frame.gpuMs, [telemetry]),
+    read,
+    read,
   );
-  return <>{formatMs(gpuMs)}</>;
+  return <>{formatMs(ms)}</>;
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import type { FrameRange } from "@domain/types/graph.ts";
 import { frameRangeLength, projectFps } from "@domain/types/graph.ts";
@@ -81,6 +81,8 @@ export interface TimelineScrubberProps {
   readonly playing?: boolean | undefined;
   /** The timeline's frame rate, which is the speed the compositor runs the playhead at (T1259). */
   readonly fps?: number | undefined;
+  /** Groups the current frame with this strip's editable out point and elapsed time. */
+  readonly readout?: (endPoint: ReactNode) => ReactNode;
   readonly intervalMs?: number;
 }
 
@@ -91,6 +93,7 @@ export function TimelineScrubber({
   onChangeRange,
   playing = false,
   fps,
+  readout,
   intervalMs = SCRUBBER_INTERVAL_MS,
 }: TimelineScrubberProps) {
   /**
@@ -274,6 +277,26 @@ export function TimelineScrubber({
     [cancelLiveSeek, fractionAt, onSeek, range],
   );
 
+  const endPoint = (
+    <RangeEnd
+      label="Out point"
+      value={range.end}
+      onCommit={
+        onChangeRange === undefined
+          ? undefined
+          : (next) => {
+              // VN71: past the range cap (one day at the project rate) the out point lands
+              // ON the cap, and the field says why until the next commit.
+              const limit = frameRangeLimit(rate);
+              setOutNote(next > limit ? rangeLimitSentence(next, rate) : null);
+              const end = Math.min(next, limit);
+              if (end > range.start) onChangeRange({ start: range.start, end });
+            }
+      }
+      note={outNote}
+    />
+  );
+
   const shownFrame = frameIndex;
   const seekable = onSeek !== undefined;
 
@@ -331,23 +354,7 @@ export function TimelineScrubber({
         </div>
       </Tooltip>
 
-      <RangeEnd
-        label="Out point"
-        value={range.end}
-        onCommit={
-          onChangeRange === undefined
-            ? undefined
-            : (next) => {
-                // VN71: past the range cap (one day at the project rate) the out point lands
-                // ON the cap, and the field says why until the next commit.
-                const limit = frameRangeLimit(rate);
-                setOutNote(next > limit ? rangeLimitSentence(next, rate) : null);
-                const end = Math.min(next, limit);
-                if (end > range.start) onChangeRange({ start: range.start, end });
-              }
-        }
-        note={outNote}
-      />
+      {readout === undefined ? endPoint : readout(endPoint)}
     </div>
   );
 }

@@ -379,21 +379,21 @@ export function NodePreviewSlot({ nodeId, runtime, bounds, views, orbits, orbita
       // `nowheel` ONLY while adjustable: in home mode the wheel must reach the canvas and
       // zoom the graph exactly as it does today (§V461 — the mode has to turn OFF).
       //
-      // T1246 (B195): `nodrag`/`nopan` live HERE too, on the tile that owns a gesture, not
-      // unconditionally on the wrapper in `node-view.tsx`. ORBITABLE is the condition for
-      // both, not adjustable: alt+press reaches the camera straight from home (T675), and
-      // React Flow's node-drag filter reads the class at the press, so a tile that only
-      // opted out once adjustable would have started a node drag under the same press
-      // that entered the mode. A tile with no camera opts out of nothing — it is the
-      // node's body, drags the node and pans the canvas like the header, which at max
-      // zoom is the only thing under the pointer.
+      // Camera controls own drags only while adjustable. In home mode this picture is
+      // the node's body and must drag it, even if the picture can also offer a camera.
+      // Alt entry is guarded at mousedown capture below, before React Flow's native
+      // drag listener, so it does not depend on the mode's classes updating first.
       className={cx(
         styles.inspectHost,
-        adjustable ? "nowheel" : undefined,
-        orbitable ? "nodrag nopan" : undefined,
+        adjustable ? "nowheel nodrag nopan" : undefined,
       )}
       data-inspect={orbitable ? mode : undefined}
       style={adjustable ? { cursor: "grab", touchAction: "none" } : undefined}
+      onMouseDownCapture={(event) => {
+        if (event.button === 0 && orbitable && orbits !== undefined && (adjustable || event.altKey)) {
+          event.stopPropagation();
+        }
+      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

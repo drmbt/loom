@@ -60,11 +60,11 @@ import type { OpenPaneWindow } from "./pane-window.tsx";
 import { NoticeStrip } from "./notices.tsx";
 import type { Notice } from "./notices.tsx";
 import { InspectorPane, LibraryPane, ViewerPane } from "./side-panes.tsx";
-import { TimelineReadout } from "./timeline-readout.tsx";
+import { TimelineMetrics, TimelineReadout } from "./timeline-readout.tsx";
 import { frameClockVerdict } from "@runtime/telemetry/frame-clock.ts";
 import { TimelineScrubber } from "./timeline-scrubber.tsx";
 import { TopBar } from "./top-bar.tsx";
-import { GpuMsReadout } from "./gpu-readout.tsx";
+import { FrameMsReadout } from "./gpu-readout.tsx";
 import { useAgentSurface } from "./use-agent-surface.ts";
 import { useMcpTransports } from "./use-mcp-transports.ts";
 import { useAgentPorts } from "./agent-ports.ts";
@@ -2006,7 +2006,8 @@ export function App({
         projectName={project.fileName ?? runtime.project.name}
         // B172: the header's GPU number, subscribed to the hub on its own <= 10 Hz
         // tick (§V16). Nothing had ever passed `gpuMs`, so this read "—" forever.
-        gpuMetric={<GpuMsReadout telemetry={runtime.telemetry} />}
+        gpuMetric={<FrameMsReadout telemetry={runtime.telemetry} />}
+        cpuMetric={<FrameMsReadout telemetry={runtime.telemetry} metric="cpu" />}
         playing={frameLoop.playing}
         onPlayPause={onPlayPause}
         onStep={onStepFrame}
@@ -2021,17 +2022,14 @@ export function App({
             onChangeRange={onChangeRange}
             playing={frameLoop.playing}
             fps={projectFps(runtime.settings)}
+            readout={endPoint => <TimelineReadout latestFrame={frameLoop.latestFrame} onSeek={onSeek} endPoint={endPoint} />}
           />
         }
         onRenderRange={onRenderRange}
         rendering={renderRange.rendering}
         renderFrames={renderRange.frames}
-        onToggleAudioTrack={onToggleAudioTrack}
-        onSaveAudioTrack={onSaveAudioTrack}
-        recordingAudioTrack={audioTrack.recording}
-        audioTrackFrames={audioTrack.frames}
-        timeline={
-          <TimelineReadout
+        performance={
+          <TimelineMetrics
             latestFrame={frameLoop.latestFrame}
             frameClock={() =>
               frameClockVerdict({
@@ -2042,7 +2040,6 @@ export function App({
                 now: typeof performance === "undefined" ? Date.now() : performance.now(),
               })
             }
-            onSeek={onSeek}
           />
         }
         trailing={
@@ -2054,6 +2051,10 @@ export function App({
             onMapPhoto={() => { void runtime.bus.execute("photoMapping.prepare", {}, runtime.invocation); }}
             onSettings={openSettings}
             onHelp={openHelp}
+            onToggleAudioTrack={onToggleAudioTrack}
+            onSaveAudioTrack={onSaveAudioTrack}
+            recordingAudioTrack={audioTrack.recording}
+            audioTrackFrames={audioTrack.frames}
           />
         }
       />
@@ -2493,6 +2494,10 @@ function ProjectActions({
   onMapPhoto,
   onSettings,
   onHelp,
+  onToggleAudioTrack,
+  onSaveAudioTrack,
+  recordingAudioTrack,
+  audioTrackFrames,
 }: {
   busy: boolean;
   onNew: () => void;
@@ -2501,6 +2506,10 @@ function ProjectActions({
   onMapPhoto: () => void;
   onSettings: () => void;
   onHelp: () => void;
+  onToggleAudioTrack: () => void;
+  onSaveAudioTrack: () => void;
+  recordingAudioTrack: boolean;
+  audioTrackFrames: number;
 }) {
   const [fileOpen, setFileOpen] = useState(false);
   const choose = (action: () => void): void => { setFileOpen(false); action(); };
@@ -2524,6 +2533,13 @@ function ProjectActions({
             <Button role="menuitem" aria-label="Save project" onClick={() => choose(onSave)} disabled={busy} data-testid="project-save">Save project</Button>
             <hr className={topBarStyles.fileMenuSeparator} />
             <Button role="menuitem" onClick={() => choose(onMapPhoto)} disabled={busy}>Map from photo…</Button>
+            <hr className={topBarStyles.fileMenuSeparator} />
+            <Button role="menuitem" onClick={() => choose(onToggleAudioTrack)} disabled={busy}>
+              {recordingAudioTrack ? "Stop recording audio features" : "Record audio features to a track"}
+            </Button>
+            <Button role="menuitem" onClick={() => choose(onSaveAudioTrack)} disabled={busy || audioTrackFrames === 0}>
+              Save audio feature track ({audioTrackFrames} frames)
+            </Button>
           </div>
         </PopoverContent>
       </PopoverRoot>

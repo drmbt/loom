@@ -8,6 +8,7 @@ import type { FrameInputs } from "@domain/types/backend.ts";
 import { DEFAULT_FRAME_RANGE } from "@domain/types/graph.ts";
 import { frameAtFraction, fractionOfRange } from "./scrubber-math.ts";
 import { TimelineScrubber } from "./timeline-scrubber.tsx";
+import { TimelineReadout } from "./timeline-readout.tsx";
 
 /**
  * The header timeline (T433).
@@ -390,6 +391,29 @@ describe("the playhead is a compositor animation, touched only on events (T1259)
 });
 
 describe("the range's ends are ONE value with three meanings (T433)", () => {
+  it("pairs the current frame before the out point while keeping seek and range edits independent", () => {
+    const latestFrame = () => frameAt(116);
+    const seek = vi.fn();
+    const changeRange = vi.fn();
+    mount(<TimelineScrubber latestFrame={latestFrame} range={RANGE} onSeek={seek} onChangeRange={changeRange}
+      readout={endPoint => <TimelineReadout latestFrame={latestFrame} onSeek={seek} endPoint={endPoint} />} />);
+    const current = screen.getByRole("textbox", { name: "Frame" });
+    const end = screen.getByRole("textbox", { name: "Out point" });
+    const pair = screen.getByRole("group", { name: "Frame position" });
+    expect(pair.contains(current)).toBe(true);
+    expect(pair.contains(end)).toBe(true);
+    expect(current.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((current as HTMLInputElement).value).toBe("116");
+    expect((end as HTMLInputElement).value).toBe("599");
+    fireEvent.change(current, { target: { value: "120" } });
+    fireEvent.keyDown(current, { key: "Enter" });
+    expect(seek).toHaveBeenCalledWith(120);
+    expect(changeRange).not.toHaveBeenCalled();
+    fireEvent.change(end, { target: { value: "900" } });
+    fireEvent.keyDown(end, { key: "Enter" });
+    expect(changeRange).toHaveBeenCalledWith({ start: RANGE.start, end: 900 });
+    expect(seek).toHaveBeenCalledTimes(1);
+  });
   it("writes the whole range when the out point is committed, keeping the in point", () => {
     const onChangeRange = vi.fn();
     mount(

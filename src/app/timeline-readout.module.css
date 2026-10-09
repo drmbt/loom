@@ -2,9 +2,40 @@
 .readout {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  min-width: 0;
+  gap: var(--space-2);
+  flex: 0 0 auto;
 }
+
+.frameRange {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+  height: var(--control-h);
+  padding: 0 var(--space-1);
+  border: var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.frameRange:hover { border-color: var(--line-hot); }
+.frameRange input {
+  width: calc(8ch + 2 * var(--space-2));
+  height: calc(var(--control-h) - 2px);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg-void);
+  font-size: var(--fs-meta);
+}
+.frameRange > input { text-align: left; }
+.frameRange input:focus-visible { outline-offset: -2px; }
+.frameRange[data-editable="false"] { border-color: transparent; background: transparent; }
+.frameRange[data-grouped="true"] { height: calc(var(--control-h) - 2px); border: 0; background: transparent; }
+.separator { color: var(--text-dim); }
 
 .field {
   display: flex;
@@ -29,27 +60,22 @@
  * `time` is `${seconds.toFixed(2)}s`, so it GAINS A CHARACTER at 10 s and again at 100 s
  * and 1000 s. Under `5ch` the field grew as the timeline ran and everything to its right
  * slid over, which is half of the owner's "the timeline is now jumping around like crazy"
- * — `tabular-nums` cannot help with a string that got longer. 8ch holds `3600.00s`, an
- * hour of timeline, and `readout-stability.test.ts` derives that from the same format
+ * — `tabular-nums` cannot help with a string that got longer. 9ch holds `86399.99s`, a
+ * full day of timeline, and `readout-stability.test.ts` derives that from the same format
  * string this renders.
  */
 .value {
-  color: var(--text);
+  color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: var(--fs-meta);
   font-variant-numeric: tabular-nums;
-  min-width: 8ch;
+  min-width: 9ch;
   text-align: right;
 }
 
 /*
- * T1300 — the realtime indicator. A dot and a word, permanently present.
- *
- * The dot answers one question: realtime or not. Green is yes. Everything else is no, and
- * the hue says whose fault — red when the MACHINE is missing the rate (the state the owner
- * wants to be unmissable), amber when the BROWSER suspended the clock (a hidden window; for
- * an automation-driven session this is expected and nothing is broken, §V560), dim when the
- * transport is stopped and there is no rate to judge.
+ * Clock health stays a fixed dot beside FPS. Play/pause already carries transport state;
+ * the tooltip and accessible name retain the realtime / behind / throttled judgement.
  */
 .clock {
   display: inline-flex;
@@ -77,27 +103,20 @@
   background: var(--warn);
 }
 
-/*
- * T1300/T1010B — a reserved box, for the same reason `.value` has one: the word CHANGES
- * LENGTH (`Behind` is 6 characters, `Throttled` is 9), and this field sits at the end of a
- * flex row, so an unreserved one shoves the row every time the reading changes. The old
- * conditional notice did worse — it was absent entirely until something went wrong, so the
- * layout moved at exactly the moment someone was reading it.
- *
- * Monospace is what makes `ch` an honest unit here: `readout-stability.test.ts` compares
- * this reservation against the longest word `frame-clock-indicator.ts` can render, and that
- * comparison only holds if one character is one `ch`.
- */
-.clockWord {
+/* The status is a fixed dot; its full reading remains accessible and in the tooltip. */
+.fps {
+  min-width: 5ch;
   color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--fs-meta);
-  min-width: 9ch;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* Editable, so it reads as a field rather than as a label (§V19: focus ring, tab order). */
 .input {
-  width: 6ch;
+  width: calc(10ch + 2 * var(--space-2) + 2px);
+  flex: 0 0 auto;
   height: var(--control-h);
   padding: 0 var(--space-2);
   border: var(--border-hairline);

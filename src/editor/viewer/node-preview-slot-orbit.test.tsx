@@ -333,20 +333,34 @@ describe("the preview inspection mode (T656)", () => {
     expect(canvasWheel).toHaveBeenCalledTimes(1);
   });
 
-  /*
-   * T1246 (B195): `nodrag`/`nopan` iff orbitable — and from HOME, not from adjustable.
-   * React Flow reads the class at the press, and alt+press enters the camera from home,
-   * so a tile that opted out only once adjustable would have started a node drag under
-   * the very press that entered the mode. A tile with no camera is the node's body: at
-   * max zoom it is the only thing under the pointer, and it must drag the node and pan
-   * the canvas like the header. Both directions are asserted because both have been the
-   * bug: the wrapper used to opt EVERY tile out, and the slot used to opt out none.
-   */
-  it("an ORBITABLE slot owns the press from home", () => {
+  it("an orbitable slot leaves ordinary presses to the node in HOME", () => {
     const { slot } = mount(true);
     expect(slot.getAttribute("data-inspect")).toBe("home");
+    expect(slot.classList.contains("nodrag")).toBe(false);
+    expect(slot.classList.contains("nopan")).toBe(false);
+    const nodePress = vi.fn();
+    slot.parentElement?.addEventListener("mousedown", nodePress);
+    fireEvent.mouseDown(slot, { button: 0 });
+    expect(nodePress).toHaveBeenCalledOnce();
+  });
+
+  it("camera presses stay out of React Flow, including Alt entry directly from HOME", () => {
+    const { slot, orbits } = mount(true);
+    const nodePress = vi.fn();
+    slot.parentElement?.addEventListener("mousedown", nodePress);
+    // React Flow's native mousedown listener must never see the camera's press,
+    // including one whose pointerdown has not yet committed the mode's classes.
+    fireEvent.mouseDown(slot, { button: 0, altKey: true });
+    expect(nodePress).not.toHaveBeenCalled();
+    act(() => orbits.setMode(NODE, "adjustable"));
     expect(slot.classList.contains("nodrag")).toBe(true);
     expect(slot.classList.contains("nopan")).toBe(true);
+    fireEvent.mouseDown(slot, { button: 0 });
+    expect(nodePress).not.toHaveBeenCalled();
+    act(() => orbits.setMode(NODE, "home"));
+    expect(slot.classList.contains("nodrag")).toBe(false);
+    fireEvent.mouseDown(slot, { button: 0 });
+    expect(nodePress).toHaveBeenCalledOnce();
   });
 
   it("a NON-orbitable slot leaves the press to the node", () => {

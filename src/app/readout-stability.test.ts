@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FRAME_CLOCK_WORDS } from "./frame-clock-indicator.ts";
 import { formatFps, formatMs } from "./format-metrics.ts";
 
 /**
@@ -80,16 +79,16 @@ describe("the top bar's metrics sit in fixed boxes", () => {
 });
 
 describe("the timeline readout's fields sit in fixed boxes", () => {
-  it("reserves enough for an hour of timeline, which gains two characters on the way", () => {
+  it("reserves enough for a full day of timeline", () => {
     // `${timeSeconds.toFixed(2)}s` — the exact expression `timeline-readout.tsx` renders.
     // It is 5 characters at 1.20s and 8 at 3600.00s, so a reservation sized to the short
     // form guarantees a shove at 10 s and again at 100 s.
     const atStart = `${(1.2).toFixed(2)}s`;
-    const atAnHour = `${(3600).toFixed(2)}s`;
+    const atADay = `${(86399.99).toFixed(2)}s`;
     expect(atStart.length).toBe(5);
-    expect(atAnHour.length).toBe(8);
+    expect(atADay.length).toBe(9);
     expect(reservedCh("timeline-readout.module.css", "value")).toBeGreaterThanOrEqual(
-      atAnHour.length,
+      atADay.length,
     );
   });
 
@@ -98,25 +97,10 @@ describe("the timeline readout's fields sit in fixed boxes", () => {
     expect(tabular("timeline-readout.module.css", "input")).toBe(true);
   });
 
-  /**
-   * T1300 — the realtime indicator is the newest member of the same row, and it arrived as
-   * the WORST version of this bug: the old frame-clock notice was conditional, so it did
-   * not merely resize the row, it appeared in it. It is now permanent and its word changes
-   * length (`Behind` is 6, `Throttled` is 9), which is the same reservation problem `.value`
-   * already solved — so it is asserted the same way, against the words the product can
-   * actually render rather than against a number typed twice.
-   */
-  it("reserves at least the longest word the frame-clock indicator can render", () => {
-    const longest = Math.max(...Object.values(FRAME_CLOCK_WORDS).map((word) => word.length));
-    expect(longest).toBe("Throttled".length);
-    expect(reservedCh("timeline-readout.module.css", "clockWord")).toBeGreaterThanOrEqual(longest);
-  });
-
-  it("renders that word in a monospace face, which is what makes `ch` an honest unit here", () => {
-    // A `ch` is the advance of "0". In a proportional face a nine-character word is not
-    // nine `ch` wide, and the reservation above would be measuring nothing.
+  it("uses a fixed dot for clock health, without a changing status word", () => {
     const css = readFileSync(join(HERE, "timeline-readout.module.css"), "utf8");
-    const rule = /\.clockWord\s*\{([^}]*)\}/.exec(css);
-    expect(rule?.[1]).toMatch(/font-family:\s*var\(--font-mono\)/);
+    const rule = /\.dot\s*\{([^}]*)\}/.exec(css);
+    expect(rule?.[1]).toMatch(/width:\s*6px/);
+    expect(rule?.[1]).toMatch(/flex:\s*0 0 auto/);
   });
 });
