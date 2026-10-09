@@ -99,7 +99,9 @@ export type {
 
 export { avcCodecString, muxMp4, sampleDurationFor, timescaleFor } from "./recording/mp4-muxer.ts";
 export type { Mp4AudioSample, Mp4AudioTrack, Mp4Container, Mp4MuxInput, Mp4Sample, Mp4TimecodeTrack } from "./recording/mp4-muxer.ts";
-export { defaultStartTimecode, parseStartTimecode, projectStartTimecodeFrame, timecodeTrackFor } from "./recording/start-timecode.ts";
+export { defaultStartTimecode, parseStartTimecode, referenceStartTimecode, resolveStartTimecode, timecodeTrackFor } from "./recording/start-timecode.ts";
+export { RENDER_CONTAINER, renderContainerFile } from "./recording/render-container.ts";
+export type { RenderContainerFile } from "./recording/render-container.ts";
 export type { ExportStartTimecode } from "./recording/start-timecode.ts";
 
 export { isRecordingAvailable, loadVideoEncoder, probeAudioEncoderSupport, probeVideoEncoderSupport } from "./recording/encoder-loader.ts";

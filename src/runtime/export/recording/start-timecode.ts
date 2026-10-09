@@ -6,8 +6,8 @@ import type { Mp4TimecodeTrack } from "./mp4-muxer.ts";
 /**
  * VN104 — the start timecode a render writes into its file.
  *
- * A render's file is labelled from its first frame: the project's start timecode plus the in
- * point's offset, counted at the OUTPUT rate (the rate the file's frames are counted in).
+ * A render's file is labelled from its first frame (`resolveStartTimecode` decides from
+ * what), counted at the OUTPUT rate (the rate the file's frames are counted in).
  * Labels are parsed and produced by `src/domain/time/timecode.ts`, the one SMPTE
  * implementation, so drop-frame at 29.97 / 59.94 is the same arithmetic the timeline uses.
  */
@@ -23,22 +23,42 @@ export interface ExportStartTimecode {
 }
 
 /**
- * THE SEAM FOR VN72. The project has no start timecode yet, so a project starts at frame 0
- * (00:00:00:00). When VN72 adds one, its frame count at the output rate is the one argument
- * that changes here; nothing else in the export path names a project start.
+ * The default start label for a take: 00:00:00:00 plus the in point, in output frames.
+ * Drop-frame by default where the rate has it (29.97, 59.94), as NTSC deliverables are.
  */
-export function projectStartTimecodeFrame(): number {
-  return 0;
+export function defaultStartTimecode(inPointFrame: number, outputFps: number): string {
+  const rate = rateOf(outputFps);
+  return formatTimecode(frameToTimecode(Math.max(0, Math.round(inPointFrame)), rate, supportsDropFrame(rate)));
 }
 
 /**
- * The default start label for a take: the project start plus the in point, in output frames.
- * Drop-frame by default where the rate has it (29.97, 59.94), as NTSC deliverables are.
+ * TODO(VN72): the project's start timecode lives on the timeline's REFERENCE node (a start-TC
+ * parameter on its movie / audio-file reference; Vincent's ruling, 2026-10-08). Until VN72
+ * adds that parameter there is nothing to read, so this answers `undefined`. When it lands,
+ * give it the graph, the in point and the output rate, and return the reference's start
+ * label plus the in point's offset, as text at the output rate.
  */
-export function defaultStartTimecode(inPointFrame: number, outputFps: number, projectStartFrame = projectStartTimecodeFrame()): string {
-  const rate = rateOf(outputFps);
-  const frame = Math.max(0, Math.round(projectStartFrame + inPointFrame));
-  return formatTimecode(frameToTimecode(frame, rate, supportsDropFrame(rate)));
+export function referenceStartTimecode(): string | undefined {
+  return undefined;
+}
+
+/**
+ * THE ONE SEAM for a take's start timecode, in priority order:
+ *   1. the render dialog's "Start timecode" field, when the user typed one;
+ *   2. the timeline reference node's start timecode (VN72, `referenceStartTimecode`);
+ *   3. 00:00:00:00 plus the in point's offset (`defaultStartTimecode`).
+ * Returns the resolved start, or the parse error of whichever text it came from.
+ */
+export function resolveStartTimecode(
+  dialogText: string | undefined,
+  inPointFrame: number,
+  outputFps: number,
+): ExportStartTimecode | { readonly error: string } {
+  const typed = dialogText?.trim();
+  const text = typed !== undefined && typed !== ""
+    ? typed
+    : referenceStartTimecode() ?? defaultStartTimecode(inPointFrame, outputFps);
+  return parseStartTimecode(text, outputFps);
 }
 
 /**

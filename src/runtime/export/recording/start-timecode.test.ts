@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultStartTimecode, parseStartTimecode, timecodeTrackFor } from "./start-timecode.ts";
+import { defaultStartTimecode, parseStartTimecode, resolveStartTimecode, timecodeTrackFor } from "./start-timecode.ts";
 
 const NTSC = 30000 / 1001;
 
@@ -12,8 +12,11 @@ describe("export start timecode (VN104)", () => {
     expect(defaultStartTimecode(1800, NTSC)).toBe("00:01:00;02");
   });
 
-  it("takes the project start through the one seam VN72 will fill", () => {
-    expect(defaultStartTimecode(10, 30, 30 * 3600)).toBe("01:00:00:10");
+  it("resolves the dialog's text first, else the in point's default", () => {
+    expect(resolveStartTimecode("01:00:00:00", 90, 30)).toMatchObject({ frame: 108_000, label: "01:00:00:00" });
+    expect(resolveStartTimecode("  ", 90, 30)).toMatchObject({ frame: 90, label: "00:00:03:00" });
+    expect(resolveStartTimecode(undefined, 1800, NTSC)).toMatchObject({ frame: 1800, dropFrame: true, label: "00:01:00;02" });
+    expect(resolveStartTimecode("nope", 0, 30)).toHaveProperty("error");
   });
 
   it("parses drop-frame labels to their frame count, not their digits", () => {
