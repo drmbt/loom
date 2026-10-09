@@ -107,6 +107,33 @@ export interface Mp4MuxInput {
   readonly codecDescription: Uint8Array;
   /** Optional AAC-LC track. Samples are interleaved at chunk granularity after video. */
   readonly audio?: Mp4AudioTrack;
+  /** VN104 — optional start timecode, written as a QuickTime `tmcd` track the video references. */
+  readonly timecode?: Mp4TimecodeTrack;
+  /** VN104 — `mov` writes a QuickTime `ftyp` (brand `qt  `); the box tree is the same. Default `mp4`. */
+  readonly container?: Mp4Container;
+}
+
+export type Mp4Container = "mp4" | "mov";
+
+/**
+ * VN104 — a QuickTime timecode track: one 4-byte sample holding the FRAME COUNT of the first
+ * video frame, counted from 00:00:00:00 at `framesPerSecond` (the nominal rate: 30 at 29.97).
+ * With `dropFrame`, a reader turns that count back into a drop-frame label, so the count is
+ * `timecodeToFrame(label)`, never the label's digits read as if non-drop.
+ *
+ * `timescale` / `frameDuration` are the video track's, so the two tracks agree on a frame.
+ */
+export interface Mp4TimecodeTrack {
+  readonly startFrame: number;
+  readonly framesPerSecond: number;
+  readonly dropFrame: boolean;
+  readonly timescale: number;
+  readonly frameDuration: number;
+}
+
+/** The single 4-byte `tmcd` sample: the start frame count, big-endian. */
+export function timecodeSampleBytes(timecode: Mp4TimecodeTrack): Uint8Array {
+  return u32(timecode.startFrame);
 }
 
 const MOVIE_TIMESCALE = 1000;
@@ -120,8 +147,11 @@ export function sampleDurationFor(fps: number): number {
   return Math.round(timescaleFor(fps) / fps);
 }
 
-export function mp4FileTypeBox(): Uint8Array {
-  return box("ftyp", ascii("isom"), u32(0x200), ascii("isom"), ascii("iso2"), ascii("avc1"), ascii("mp41"));
+export function mp4FileTypeBox(container: Mp4Container = "mp4"): Uint8Array {
+  // QuickTime: major brand `qt  `, minor version 0x20050300 as Apple's own writers use.
+  return container === "mov"
+    ? box("ftyp", ascii("qt  "), u32(0x20050300), ascii("qt  "))
+    : box("ftyp", ascii("isom"), u32(0x200), ascii("isom"), ascii("iso2"), ascii("avc1"), ascii("mp41"));
 }
 
 function durationRuns(samples: ReadonlyArray<{ readonly duration: number }>): Uint8Array {
@@ -282,6 +312,83 @@ function audioTrackBox(audio: Mp4AudioTrack, chunkOffset: number, movieDuration:
     : box("trak", tkhd, edit, box("mdia", mdhd, hdlr, minf));
 }
 
+/**
+ * VN104 — the QuickTime timecode track (`tmcd`), laid out as FFmpeg's mov/mp4 writer lays it
+ * out, which is what ffprobe, Resolve, Premiere and QuickTime read a file's start timecode
+ * from. The video track points at it with `tref`/`tmcd`; without that reference readers still
+ * see a data track but do not attach its timecode to the video.
+ */
+function timecodeTrackBox(timecode: Mp4TimecodeTrack, trackId: number, chunkOffset: number, mediaDuration: number, movieDuration: number): Uint8Array {
+  const { framesPerSecond, timescale, frameDuration } = timecode;
+  if (!Number.isInteger(framesPerSecond) || framesPerSecond <= 0 || framesPerSecond > 255) {
+    throw new Error(`A timecode track counts 1..255 frames a second; got ${String(framesPerSecond)}.`);
+  }
+  if (!Number.isSafeInteger(timecode.startFrame) || timecode.startFrame < 0 || timecode.startFrame > 0xffff_ffff) {
+    throw new Error(`A start timecode is a whole frame count ≥ 0; got ${String(timecode.startFrame)}.`);
+  }
+  // Flags: bit 0 drop-frame, bit 1 "wraps at 24 hours" (every SMPTE reader assumes it).
+  const flags = (timecode.dropFrame ? 0x1 : 0) | 0x2;
+  const tmcdEntry = box(
+    "tmcd",
+    new Uint8Array(6), // reserved
+    u16(1), // data_reference_index
+    u32(0), // reserved
+    u32(flags),
+    u32(timescale),
+    u32(frameDuration),
+    u8(framesPerSecond),
+    u8(0, 0, 0), // reserved, padded as FFmpeg pads it
+  );
+  const stsd = fullBox("stsd", 0, 0, u32(1), tmcdEntry);
+  const stts = fullBox("stts", 0, 0, u32(1), u32(1), u32(mediaDuration));
+  const stsc = fullBox("stsc", 0, 0, u32(1), u32(1), u32(1), u32(1));
+  const stsz = fullBox("stsz", 0, 0, u32(4), u32(1));
+  const stbl = box("stbl", stsd, stts, stsc, stsz, chunkOffsetBox(chunkOffset));
+  const dref = fullBox("dref", 0, 0, u32(1), fullBox("url ", 0, 1));
+  // Base media header (`gmhd`) carrying the timecode media information (`tcmi`): how a
+  // QuickTime player would draw the timecode if the track were shown. Required by Apple's
+  // readers to recognise the track as timecode.
+  const gmin = fullBox("gmin", 0, 0, u16(0x40), u16(0x8000), u16(0x8000), u16(0x8000), u16(0), u16(0));
+  const fontName = ascii("Lucida Grande");
+  const tcmi = fullBox(
+    "tcmi",
+    0,
+    0,
+    u16(0), // text font
+    u16(0), // text face
+    u16(12), // text size
+    u16(0), // reserved
+    u16(0xffff), u16(0xffff), u16(0xffff), // text colour
+    u16(0), u16(0), u16(0), // background colour
+    u8(fontName.length),
+    fontName,
+  );
+  const gmhd = box("gmhd", gmin, box("tmcd", tcmi));
+  const minf = box("minf", gmhd, box("dinf", dref), stbl);
+  const hdlr = fullBox("hdlr", 0, 0, u32(0), ascii("tmcd"), u32(0), u32(0), u32(0), ascii("Loom timecode\0"));
+  const mdhd = fullBox("mdhd", 0, 0, u32(0), u32(0), u32(timescale), u32(mediaDuration), u16(0x55c4), u16(0));
+  const tkhd = fullBox(
+    "tkhd",
+    0,
+    0x000002, // in movie, NOT enabled: a timecode track is metadata, never presented
+    u32(0),
+    u32(0),
+    u32(trackId),
+    u32(0),
+    u32(movieDuration),
+    u32(0),
+    u32(0),
+    u16(0),
+    u16(0),
+    u16(0),
+    u16(0),
+    UNITY_MATRIX,
+    u32(0),
+    u32(0),
+  );
+  return box("trak", tkhd, box("mdia", mdhd, hdlr, minf));
+}
+
 export interface Mp4StreamParts {
   readonly ftyp: Uint8Array;
   readonly mdatHeader: Uint8Array;
@@ -291,6 +398,8 @@ export interface Mp4StreamParts {
 interface StreamedMediaLengths {
   readonly video: number;
   readonly audio: number;
+  /** The timecode sample, written to the spool after the audio (4 bytes, or 0). */
+  readonly timecode: number;
 }
 
 export function muxMp4(input: Mp4MuxInput): Uint8Array {
@@ -301,7 +410,8 @@ export function muxMp4(input: Mp4MuxInput): Uint8Array {
 export function mp4StreamParts(input: Mp4MuxInput): Mp4StreamParts {
   const video = input.samples.reduce((total, sample) => total + sampleSize(sample), 0);
   const audio = input.audio?.samples.reduce((total, sample) => total + sampleSize(sample), 0) ?? 0;
-  return buildMp4(input, { video, audio }) as Mp4StreamParts;
+  const timecode = input.timecode === undefined ? 0 : timecodeSampleBytes(input.timecode).length;
+  return buildMp4(input, { video, audio, timecode }) as Mp4StreamParts;
 }
 
 function buildMp4(input: Mp4MuxInput, streamed: StreamedMediaLengths | null): Uint8Array | Mp4StreamParts {
@@ -343,7 +453,7 @@ function buildMp4(input: Mp4MuxInput, streamed: StreamedMediaLengths | null): Ui
     : 0;
   const movieDuration = Math.max(videoMovieDuration, audioMovieDuration);
 
-  const ftyp = mp4FileTypeBox();
+  const ftyp = mp4FileTypeBox(input.container);
   const videoBytes = streamed === null
     ? concat(samples.map((sample) => {
       if (sample.bytes === undefined) throw new Error("In-memory MP4 samples must carry bytes.");
@@ -356,7 +466,8 @@ function buildMp4(input: Mp4MuxInput, streamed: StreamedMediaLengths | null): Ui
       return sample.bytes;
     }))
     : new Uint8Array(0);
-  const mediaBytes = streamed === null ? concat([videoBytes, audioBytes]) : new Uint8Array(0);
+  const timecodeBytes = streamed === null && input.timecode ? timecodeSampleBytes(input.timecode) : new Uint8Array(0);
+  const mediaBytes = streamed === null ? concat([videoBytes, audioBytes, timecodeBytes]) : new Uint8Array(0);
   const mdat = streamed === null ? box("mdat", mediaBytes) : null;
   // Samples are written back to back in one chunk, so the chunk offset is simply where
   // `mdat`'s payload starts.
@@ -443,9 +554,20 @@ function buildMp4(input: Mp4MuxInput, streamed: StreamedMediaLengths | null): Ui
     u32(input.width << 16),
     u32(input.height << 16),
   );
-  const trak = box("trak", tkhd, mdia);
+  const timecodeTrackId = input.audio ? 3 : 2;
+  const tref = input.timecode ? [box("tref", box("tmcd", u32(timecodeTrackId)))] : [];
+  const trak = box("trak", tkhd, ...tref, mdia);
   const audioTrak = input.audio
     ? audioTrackBox(input.audio, chunkOffset + (streamed?.video ?? videoBytes.length), audioMovieDuration)
+    : undefined;
+  const timecodeTrak = input.timecode
+    ? timecodeTrackBox(
+      input.timecode,
+      timecodeTrackId,
+      chunkOffset + (streamed?.video ?? videoBytes.length) + (streamed?.audio ?? audioBytes.length),
+      Math.round((mediaDuration * input.timecode.timescale) / timescale),
+      videoMovieDuration,
+    )
     : undefined;
 
   const mvhd = fullBox(
@@ -463,12 +585,12 @@ function buildMp4(input: Mp4MuxInput, streamed: StreamedMediaLengths | null): Ui
     u32(0), // reserved
     UNITY_MATRIX,
     new Uint8Array(24), // pre_defined
-    u32(input.audio ? 3 : 2), // next_track_ID
+    u32(2 + (input.audio ? 1 : 0) + (input.timecode ? 1 : 0)), // next_track_ID
   );
-  const moov = audioTrak ? box("moov", mvhd, trak, audioTrak) : box("moov", mvhd, trak);
+  const moov = box("moov", mvhd, trak, ...(audioTrak ? [audioTrak] : []), ...(timecodeTrak ? [timecodeTrak] : []));
 
   if (streamed !== null) {
-    const mdatSize = 16 + streamed.video + streamed.audio;
+    const mdatSize = 16 + streamed.video + streamed.audio + streamed.timecode;
     return { ftyp, mdatHeader: concat([u32(1), ascii("mdat"), u64(mdatSize)]), moov };
   }
   return concat([ftyp, mdat as Uint8Array, moov]);

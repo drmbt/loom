@@ -1,6 +1,8 @@
 import { ExportDiagnosticCode, ExportError, exportDiagnostic } from "../types.ts";
-import { avcCodecString, mp4FileTypeBox, mp4StreamParts, sampleDurationFor, timescaleFor } from "./mp4-muxer.ts";
-import type { Mp4AudioSample, Mp4AudioTrack, Mp4Sample } from "./mp4-muxer.ts";
+import { avcCodecString, mp4FileTypeBox, mp4StreamParts, sampleDurationFor, timecodeSampleBytes, timescaleFor } from "./mp4-muxer.ts";
+import type { Mp4AudioSample, Mp4AudioTrack, Mp4Container, Mp4Sample } from "./mp4-muxer.ts";
+import { timecodeTrackFor } from "./start-timecode.ts";
+import type { ExportStartTimecode } from "./start-timecode.ts";
 import { createMediaSpool } from "./media-spool.ts";
 import type { MediaSpool, MediaSpoolMode } from "./media-spool.ts";
 import type { CapturedVideoFrame, EncodedVideo, EncoderConfig, EncoderFinishProgress, EncoderFrame, EncoderFrameTiming, VideoEncoderSink } from "./types.ts";
@@ -41,6 +43,10 @@ export interface WebCodecsEncoderOptions {
   readonly onSpoolProgress?: ((writtenBytes: number) => void) | undefined;
   readonly yieldControl?: (() => Promise<void>) | undefined;
   readonly signal?: AbortSignal | undefined;
+  /** VN104 — the file's start timecode, written as a `tmcd` track the video references. */
+  readonly timecode?: Pick<ExportStartTimecode, "frame" | "dropFrame"> | undefined;
+  /** VN104 — `mov` (QuickTime) or `mp4`. Default `mp4`. */
+  readonly container?: Mp4Container | undefined;
 }
 
 // Match encoder backpressure cadence: one browser turn per 32 AAC packets is about
@@ -100,7 +106,7 @@ export interface WebCodecsSupport {
 
 export async function probeWebCodecsAudioEncoder(
   sampleRate = 48_000,
-  channelCount = 1,
+  channelCount = 2,
   bitrate = 192_000,
 ): Promise<WebCodecsSupport> {
   const codec = "mp4a.40.2";
@@ -263,7 +269,7 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
       if (!isWebCodecsAvailable()) throw unavailable("VideoEncoder is not defined in this context.");
       config = next;
       try {
-        spool = await createMediaSpool(options.spool ?? "opfs", mp4FileTypeBox());
+        spool = await createMediaSpool(options.spool ?? "opfs", mp4FileTypeBox(options.container));
       } catch (error) {
         throw unavailable(error instanceof Error ? error.message : String(error));
       }
@@ -368,6 +374,13 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
         : await encodeAudioTrack(await options.audio(), options.audioBitrate);
       if (failure) throw failure;
       throwIfCancelled(options.signal);
+      // The timecode sample follows the audio in `mdat`, where the muxer's offsets expect it.
+      const timecode = options.timecode === undefined ? undefined : timecodeTrackFor(options.timecode, config.fps);
+      if (timecode !== undefined) {
+        writePacket(timecodeSampleBytes(timecode));
+        await awaitWithCancellation(() => writeChain, options.signal);
+        if (failure) throw failure;
+      }
       options.onFinishProgress?.({ stage: "finalizing" });
       await options.yieldControl?.();
       throwIfCancelled(options.signal);
@@ -378,6 +391,8 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
         samples,
         codecDescription: description,
         ...(audio === undefined ? {} : { audio }),
+        ...(timecode === undefined ? {} : { timecode }),
+        ...(options.container === undefined ? {} : { container: options.container }),
       };
       const target = spool;
       if (target === null) throw unavailable("the disk spool was closed before MP4 finalization.");
@@ -386,10 +401,11 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
       const stored = await target.finish(mp4StreamParts(muxInput));
       throwIfCancelled(options.signal);
       spool = null;
+      const containerMime = options.container === "mov" ? "video/quicktime" : "video/mp4";
       return {
         mimeType: audio === undefined
-          ? `video/mp4; codecs="${avcCodecString(description)}"`
-          : `video/mp4; codecs="${avcCodecString(description)}, mp4a.40.2"`,
+          ? `${containerMime}; codecs="${avcCodecString(description)}"`
+          : `${containerMime}; codecs="${avcCodecString(description)}, mp4a.40.2"`,
         bytes: stored.file,
         dispose: stored.dispose,
         frameCount: samples.length,
@@ -434,9 +450,10 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     ) {
       throw unavailable("AudioEncoder, AudioDecoder, and AudioData are required for synchronized AAC export.");
     }
-    if (pcm.channelCount !== 1) {
-      throw unavailable(`offline audio supplied ${String(pcm.channelCount)} channels; only mono is implemented.`);
+    if (pcm.channelCount !== 1 && pcm.channelCount !== 2) {
+      throw unavailable(`offline audio supplied ${String(pcm.channelCount)} channels; mono and stereo are implemented.`);
     }
+    const channelCount = pcm.channelCount;
     const encoderConfig: AudioEncoderConfig = {
       codec: "mp4a.40.2",
       sampleRate: pcm.sampleRate,
@@ -445,7 +462,7 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     };
     const support = await AudioEncoder.isConfigSupported(encoderConfig);
     if (support.supported !== true) {
-      throw unavailable(`no AAC-LC encoder for ${String(pcm.sampleRate)} Hz mono audio.`);
+      throw unavailable(`no AAC-LC encoder for ${String(pcm.sampleRate)} Hz ${channelCount === 2 ? "stereo" : "mono"} audio.`);
     }
 
     const primingFrames = await measureAacPriming(encoderConfig);
@@ -473,7 +490,7 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     audioEncoder.configure(encoderConfig);
 
     const packetFrames = 1024;
-    const totalFrames = "samples" in pcm ? pcm.samples.length : pcm.totalFrames;
+    const totalFrames = "samples" in pcm ? pcm.samples.length / channelCount : pcm.totalFrames;
     options.onFinishProgress?.({ stage: "audio", completedFrames: 0, totalFrames });
     await options.yieldControl?.();
     throwIfCancelled(options.signal);
@@ -481,16 +498,17 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     for (let offset = 0; offset < totalFrames; offset += packetFrames) {
       throwIfCancelled(options.signal);
       const numberOfFrames = Math.min(packetFrames, totalFrames - offset);
-      const data = "samples" in pcm
-        ? pcm.samples.slice(offset, offset + numberOfFrames)
+      const interleaved = "samples" in pcm
+        ? pcm.samples.subarray(offset * channelCount, (offset + numberOfFrames) * channelCount)
         : pcm.readFrames(offset, numberOfFrames);
+      const data = planarOf(interleaved, numberOfFrames, channelCount);
       const audio = new AudioData({
         format: "f32-planar",
         sampleRate: pcm.sampleRate,
         numberOfFrames,
         numberOfChannels: pcm.channelCount,
         timestamp: Math.round((offset * 1_000_000) / pcm.sampleRate),
-        data: new Float32Array(data),
+        data,
       });
       try {
         audioEncoder.encode(audio);
@@ -569,12 +587,13 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
       },
     });
     audioEncoder.configure(config);
-    const calibration = new Float32Array(1024);
-    calibration[0] = 1;
+    // Planar: the impulse is at frame 0 of every channel; channel 0 is the one measured.
+    const calibration = new Float32Array(1024 * config.numberOfChannels);
+    for (let channel = 0; channel < config.numberOfChannels; channel += 1) calibration[channel * 1024] = 1;
     const audio = new AudioData({
       format: "f32-planar",
       sampleRate: config.sampleRate,
-      numberOfFrames: calibration.length,
+      numberOfFrames: 1024,
       numberOfChannels: config.numberOfChannels,
       timestamp: 0,
       data: calibration,
@@ -597,7 +616,7 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     audioDecoder = new AudioDecoder({
       output: (decoded) => {
         const plane = new Float32Array(decoded.numberOfFrames);
-        decoded.copyTo(plane, { planeIndex: 0 });
+        decoded.copyTo(plane, { planeIndex: 0, format: "f32-planar" });
         for (let index = 0; index < plane.length; index += 1) {
           const magnitude = Math.abs(plane[index] as number);
           if (magnitude > maximum) {
@@ -623,6 +642,23 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     }
     return maximumIndex;
   }
+}
+
+/**
+ * VN104 — PCM providers hand over INTERLEAVED frames (L R L R …); `AudioData` is given
+ * `f32-planar` (all of L, then all of R). Mono is a copy. Exported for its test.
+ */
+export function planarOf(interleaved: Float32Array, frames: number, channels: number): Float32Array<ArrayBuffer> {
+  if (interleaved.length !== frames * channels) {
+    throw new RangeError(`Expected ${String(frames * channels)} interleaved samples; got ${String(interleaved.length)}.`);
+  }
+  const planar = new Float32Array(frames * channels);
+  for (let frame = 0; frame < frames; frame += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      planar[channel * frames + frame] = interleaved[frame * channels + channel] as number;
+    }
+  }
+  return planar;
 }
 
 function toBytes(source: AllowSharedBufferSource): Uint8Array {

@@ -223,7 +223,7 @@ it("offers the selected render dimensions in the destination filename", async ()
   await act(async () => {
     await view.result.current.prepareDestination();
   });
-  expect(suggestedName).toBe("take.2x2.0-2.mp4");
+  expect(suggestedName).toBe("take.2x2.0-2.mov");
 });
 
 it("reports throughput from only the latest 32 completed output frames", async () => {
@@ -818,7 +818,7 @@ describe("T586 — a take over free-run media reports itself, and a locked one d
     // NOT a refusal: the owner approved free run, and forcing the lock or cancelling the
     // take would both hand back something other than what they asked for.
     expect((result as unknown as { status: string }).status).toBe("applied");
-    expect(saved.fileName).toBe("take.2x2.0-2.mp4");
+    expect(saved.fileName).toBe("take.2x2.0-2.mov");
   });
 
   it("the SAME document with the lock opted in renders silently", async () => {
@@ -852,7 +852,7 @@ describe("T586 — a take over free-run media reports itself, and a locked one d
     // Same ruling as T586's: the take PROCEEDS. Refusing would hand back nothing at all for
     // a document whose only content is the camera the user pointed at something.
     expect((result as unknown as { status: string }).status).toBe("applied");
-    expect(saved.fileName).toBe("take.2x2.0-2.mp4");
+    expect(saved.fileName).toBe("take.2x2.0-2.mov");
   });
 
   /**
