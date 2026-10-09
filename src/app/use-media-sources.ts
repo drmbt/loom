@@ -18,8 +18,10 @@ import type { PhoneCameraOpener } from "./use-phone-cameras.ts";
 import {
   createMediaTransportRunner,
   playableMedia,
+  seekAndPresent,
   type MediaTransportRunner,
   type PlayableMedia,
+  type PresentableMedia,
 } from "./media-playback.ts";
 import { createMovieAudioPlayback, movieLoopOf, type MovieAudioPlayback } from "./movie-audio-playback.ts";
 import { appMovieAudioOutput } from "./app-audio-context.ts";
@@ -396,6 +398,16 @@ export interface MediaWiring {
    * notices, and an element left running would drift arbitrarily far while nothing moved.
    */
   setRunning(running: boolean): void;
+  /**
+   * VNB19 — A TAKE'S FRAME, MADE EXACT BEFORE IT IS RENDERED. Pauses every timeline-locked
+   * movie on where frame `frameIndex` (at `fps`) puts it and resolves once each has
+   * presented that decoded frame (`seekAndPresent`). The render range awaits it after
+   * `prepareFrame` and before the step; the step then finds no drift and seeks nothing, so
+   * the frame it uploads is the frame's own. Without it the step's seek lands after the
+   * render, and every take was a frame late (more while the decoder caught up). Live
+   * stepping never calls this: awaiting a seek would stall play.
+   */
+  prepareFrame(frameIndex: number, fps: number): Promise<void>;
   /** Silence movie monitoring for an export, including exports using realtime frames. */
   muteMonitorForRender(): () => void;
   /**
@@ -486,6 +498,8 @@ export function useMediaSources(
     new Map<NodeId, {
       runner: MediaTransportRunner;
       audio: MovieAudioPlayback;
+      /** VNB19: the element a take pre-seeks (`prepareFrame`). Under the lock it is the one shown. */
+      element: PresentableMedia;
       partner: () => void;
       release: () => void;
     }>(),
@@ -849,7 +863,9 @@ export function useMediaSources(
               const dropped = audio.releasePartner();
               if (dropped !== null) unload(dropped);
             };
-            livePlayers.set(request.nodeId, { runner, audio, partner, release: dropPartner });
+            livePlayers.set(request.nodeId, {
+              runner, audio, partner, release: dropPartner, element: playable as PresentableMedia,
+            });
             playerOpened.push(request.nodeId);
             const release = controls?.register(request.nodeId, {
               cue: () => runner.cue(),
@@ -961,6 +977,19 @@ export function useMediaSources(
     }
   }, []);
 
+  const prepareFrame = useCallback(async (frameIndex: number, fps: number) => {
+    if (!(fps > 0) || !Number.isFinite(frameIndex)) return;
+    const frame: FrameEvaluationInput = {
+      timeSeconds: frameIndex / fps, deltaSeconds: 1 / fps, frameIndex, mode: "offline", randomSeed: 0, fps,
+    };
+    const waits: Promise<void>[] = [];
+    for (const { runner, audio, element } of playersRef.current.values()) {
+      const target = runner.target(frame, audio.duration());
+      if (target !== null) waits.push(seekAndPresent(element, target));
+    }
+    await Promise.all(waits);
+  }, []);
+
   const setRunning = useCallback((running: boolean) => {
     runningRef.current = running;
     if (running) return;
@@ -1025,5 +1054,5 @@ export function useMediaSources(
     setPlaybackDiagnostics([]);
   }, []);
   const allDiagnostics = useMemo(() => [...diagnostics, ...playbackDiagnostics], [diagnostics, playbackDiagnostics]);
-  return { diagnostics: allDiagnostics, clearDiagnostics, sync, setRunning, muteMonitorForRender, cameraStatus };
+  return { diagnostics: allDiagnostics, clearDiagnostics, sync, prepareFrame, setRunning, muteMonitorForRender, cameraStatus };
 }

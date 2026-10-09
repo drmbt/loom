@@ -1456,6 +1456,102 @@ describe("media sources reach the backend (T264)", () => {
  * §V136 — the frame id is what stops a 30 fps video uploading 60 times a second, so it
  * advances on DECODE and on nothing else.
  */
+/**
+ * VNB19 — a `<video>` whose seek is ASYNCHRONOUS, as a browser's is: `currentTime` reads the
+ * new target at once, but the picture the backend would upload (`presented`) changes only
+ * when the decoder finishes — a task later, with `seeked` and then a presented-frame
+ * callback. That lag is the bug's whole mechanism, so the stand-in models exactly it.
+ */
+function decodingElement(duration = 12) {
+  const listeners = new Map<string, Set<() => void>>();
+  const frameCallbacks: Array<() => void> = [];
+  let target = 0;
+  const element = {
+    videoWidth: 64, videoHeight: 36, duration, playbackRate: 1, paused: true, muted: true, volume: 1, loop: false,
+    readyState: 4, seeking: false, presented: 0,
+    get currentTime() { return target; },
+    set currentTime(value: number) {
+      target = value;
+      element.seeking = true;
+      setTimeout(() => {
+        element.presented = value;
+        element.seeking = false;
+        for (const listener of [...(listeners.get("seeked") ?? [])]) listener();
+        for (const callback of frameCallbacks.splice(0)) callback();
+      }, 0);
+    },
+    addEventListener(type: string, listener: () => void) {
+      const set = listeners.get(type) ?? new Set();
+      set.add(listener);
+      listeners.set(type, set);
+    },
+    removeEventListener(type: string, listener: () => void) { listeners.get(type)?.delete(listener); },
+    requestVideoFrameCallback(callback: () => void) { frameCallbacks.push(callback); return frameCallbacks.length; },
+    cancelVideoFrameCallback() {},
+    play() { element.paused = false; },
+    pause() { element.paused = true; },
+  };
+  return element;
+}
+
+describe("VNB19 — a timeline-locked movie in a take shows each frame's own picture", () => {
+  const fps = 30;
+  async function take(withPrepare: boolean): Promise<number[]> {
+    const runtime = newRuntime();
+    const { backend, registered } = fakeBackend();
+    const element = decodingElement();
+    let wiring: MediaWiring | null = null;
+    const environment: MediaEnvironment = {
+      openStill: () => Promise.reject(new Error("no still in this test")),
+      openFile: () => Promise.resolve(element as unknown as MediaElement),
+      openCamera: () => Promise.reject(new Error("not used")),
+    };
+    await act(async () => {
+      render(
+        <Harness runtime={runtime} backend={backend} environment={environment}
+          graph={graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip", playMode: "timeline" } } })}
+          onWiring={(value) => { wiring = value; }} />,
+      );
+    });
+    await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
+    const media = wiring as unknown as MediaWiring;
+    const rendered: number[] = [];
+    // render-range's order: prepareFrame (+ prepareMedia), then the step, then the upload.
+    for (let frameIndex = 1; frameIndex <= 6; frameIndex++) {
+      if (withPrepare) await act(() => media.prepareFrame(frameIndex, fps));
+      act(() => media.sync({ timeSeconds: frameIndex / fps, deltaSeconds: 1 / fps, frameIndex, mode: "offline", randomSeed: 1, fps }));
+      rendered.push(Math.round(element.presented * fps));
+      // The next frame of the take comes after the encoder: the decoder has had its turn.
+      await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+    }
+    cleanup();
+    return rendered;
+  }
+
+  it("with prepareFrame every frame lands on its exact source frame; without it each lands a frame late", async () => {
+    expect(await take(true)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(await take(false)).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it("free run has no frame-derived target, so a take does not seek it", async () => {
+    const runtime = newRuntime();
+    const { backend, registered } = fakeBackend();
+    const element = decodingElement();
+    let wiring: MediaWiring | null = null;
+    await act(async () => {
+      render(
+        <Harness runtime={runtime} backend={backend}
+          environment={{ openStill: () => Promise.reject(new Error("x")), openFile: () => Promise.resolve(element as unknown as MediaElement), openCamera: () => Promise.reject(new Error("x")) }}
+          graph={graphWith({ movie: { type: "movieFileIn", parameters: { file: "blob:clip", playMode: "freeRun" } } })}
+          onWiring={(value) => { wiring = value; }} />,
+      );
+    });
+    await waitFor(() => expect(registered.has(mediaSourceIdFor("movie"))).toBe(true));
+    await act(() => (wiring as unknown as MediaWiring).prepareFrame(90, fps));
+    expect(element.currentTime).toBe(0);
+  });
+});
+
 describe("a video media source only reports a new frame when there is one", () => {
   it("offers nothing before the first decoded frame", () => {
     const element = fakeElement();
