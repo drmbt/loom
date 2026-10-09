@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { platform } from "node:os";
 import { FfmpegMissingError, transcodeMedia, type TranscodeEvent } from "./transcode-media.ts";
 
 /**
@@ -42,7 +43,7 @@ describe.skipIf(!HAVE_FFMPEG)("VN103 transcode tool (needs ffmpeg on PATH)", () 
     const cache = join(dir, "cache");
     const events: TranscodeEvent[] = [];
     const sources = ["red-dxt1.mov", "blue-alpha.mov", "green.mp4", "red-copy.mov"].map((name) => join(dir, name));
-    const result = await transcodeMedia(sources, { cacheDir: cache, jobs: 2, onEvent: (event) => events.push(event) });
+    const result = await transcodeMedia(sources, { cacheDir: cache, jobs: 2, alpha: "vp9", onEvent: (event) => events.push(event) });
     expect(result.errors).toEqual({});
 
     const dxv = result.entries[join(dir, "red-dxt1.mov")];
@@ -74,10 +75,22 @@ describe.skipIf(!HAVE_FFMPEG)("VN103 transcode tool (needs ffmpeg on PATH)", () 
 
     // A second run encodes nothing: every proxy is found by its content hash.
     const again: TranscodeEvent[] = [];
-    await transcodeMedia(sources, { cacheDir: cache, onEvent: (event) => again.push(event) });
+    await transcodeMedia(sources, { cacheDir: cache, alpha: "vp9", onEvent: (event) => again.push(event) });
     expect(again.filter((event) => event.type === "done")).toHaveLength(0);
     expect(again.filter((event) => event.type === "decided" && event.cached)).toHaveLength(3);
   }, 60_000);
+
+  // The macOS default: VideoToolbox HEVC with alpha. FFmpeg 9's own HEVC decoder reads the
+  // alpha layer back, so the pixel is checked the same way as the VP9 one.
+  it.skipIf(platform() !== "darwin" || spawnSync("ffmpeg", ["-hide_banner", "-encoders"]).stdout.toString().indexOf("hevc_videotoolbox") < 0)(
+    "on macOS, alpha defaults to HEVC with alpha in a .mov, and the alpha survives", async () => {
+      const result = await transcodeMedia([join(dir, "blue-alpha.mov")], { cacheDir: join(dir, "hevc") });
+      const entry = result.entries[join(dir, "blue-alpha.mov")];
+      expect(entry?.proxy).toMatch(/-r1-hevcalpha\.mov$/);
+      const pixel = centrePixel(entry?.proxy ?? "");
+      expect(Math.abs((pixel[3] ?? 0) - 128)).toBeLessThanOrEqual(4);
+      expect(pixel[2]).toBeGreaterThan(200);
+    }, 60_000);
 
   it("a file ffprobe cannot read is reported by name; the rest carry on", async () => {
     const result = await transcodeMedia([join(dir, "missing.mov"), join(dir, "green.mp4")], { cacheDir: join(dir, "cache2") });

@@ -39,6 +39,14 @@ describe("VN103 plan: what Chromium plays, and what the rest becomes", () => {
     expect(decide(media("dxv", "rgba", { dxvTag: null }))).toMatchObject({ action: "proxy", kind: "vp9alpha" });
   });
 
+  it("alpha goes to HEVC (.mov, VideoToolbox) when asked, opaque stays H.264 either way", () => {
+    expect(decide(media("dxv", "rgba", { dxvTag: "DXT5" }), "hevc")).toMatchObject({ kind: "hevcalpha", alpha: true });
+    expect(decide(media("dxv", "rgba", { dxvTag: "DXT1" }), "hevc")).toMatchObject({ kind: "h264" });
+    expect(proxyFileName("b".repeat(64), "hevcalpha")).toBe(`${"b".repeat(32)}-r1-hevcalpha.mov`);
+    expect(proxyArgs("/in.mov", "/out.mov", "hevcalpha", false))
+      .toEqual(expect.arrayContaining(["hevc_videotoolbox", "bgra", "-alpha_quality", "hvc1", "-an"]));
+  });
+
   it("HAP: the fourcc decides alpha (Hap1/HapY opaque; Hap5/HapM/HapA alpha)", () => {
     expect(decide(media("hap", "rgb0", {}, "Hap1"))).toMatchObject({ kind: "h264" });
     expect(decide(media("hap", "rgba", {}, "HapY"))).toMatchObject({ kind: "h264" });

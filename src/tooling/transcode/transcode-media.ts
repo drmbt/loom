@@ -13,6 +13,7 @@ import {
   progressSeconds,
   proxyArgs,
   proxyFileName,
+  type AlphaCodec,
   type Manifest,
   type ManifestEntry,
   type ProbedMedia,
@@ -23,10 +24,11 @@ import {
  * import calls it later through the local helper).
  *
  *   node --import ./src/tooling/alias-hooks.ts src/tooling/transcode/transcode-media.ts \
- *     [--cache <dir>] [--jobs <n>] [--ffmpeg <path>] [--ffprobe <path>] [--dry-run] <file>…
+ *     [--cache <dir>] [--jobs <n>] [--ffmpeg <path>] [--ffprobe <path>] [--alpha auto|hevc|vp9] [--dry-run] <file>…
  *
  * Every file is probed; what Chromium plays is left alone; DXV, HAP, ProRes, QuickTime
- * Animation and the rest become H.264 MP4 (opaque) or VP9 WebM with alpha (`plan.ts`).
+ * Animation and the rest become H.264 MP4 (opaque), or HEVC-with-alpha `.mov` (macOS,
+ * VideoToolbox) / VP9 WebM with alpha (elsewhere) when the source has alpha (`plan.ts`).
  *
  * ## Where the proxies go: one cache folder, keyed by content
  *
@@ -53,6 +55,11 @@ export interface TranscodeOptions {
   readonly jobs?: number;
   readonly ffmpeg?: string;
   readonly ffprobe?: string;
+  /**
+   * Which codec carries alpha. `auto` (the default): HEVC through VideoToolbox when ffmpeg
+   * has `hevc_videotoolbox` on macOS, else VP9.
+   */
+  readonly alpha?: AlphaCodec | "auto";
   /** Probe and decide, encode nothing. */
   readonly dryRun?: boolean;
   readonly onEvent?: (event: TranscodeEvent) => void;
@@ -126,6 +133,13 @@ export async function checkFfmpeg(ffmpeg = "ffmpeg", ffprobe = "ffprobe"): Promi
   await run("ffprobe", ffprobe, ["-hide_banner", "-version"]);
 }
 
+/** HEVC with alpha when this is macOS and ffmpeg was built with VideoToolbox; VP9 otherwise. */
+export async function preferredAlphaCodec(ffmpeg = "ffmpeg"): Promise<AlphaCodec> {
+  if (platform() !== "darwin") return "vp9";
+  const encoders = await run("ffmpeg", ffmpeg, ["-hide_banner", "-encoders"]);
+  return /\bhevc_videotoolbox\b/.test(encoders.stdout) ? "hevc" : "vp9";
+}
+
 /** Probe one file: streams and format, plus the first DXV packet's tag when it is DXV. */
 export async function probeMedia(path: string, ffprobe = "ffprobe"): Promise<ProbedMedia> {
   const probe = await run("ffprobe", ffprobe, ["-v", "error", "-show_streams", "-show_format", "-of", "json", path]);
@@ -170,6 +184,7 @@ export async function transcodeMedia(paths: readonly string[], options: Transcod
   const ffmpeg = options.ffmpeg ?? "ffmpeg";
   const ffprobe = options.ffprobe ?? "ffprobe";
   await checkFfmpeg(ffmpeg, ffprobe);
+  const alphaCodec = options.alpha === undefined || options.alpha === "auto" ? await preferredAlphaCodec(ffmpeg) : options.alpha;
   const cacheDir = resolve(options.cacheDir ?? defaultProxyCacheDir());
   mkdirSync(cacheDir, { recursive: true });
   const manifestPath = join(cacheDir, "manifest.json");
@@ -195,7 +210,7 @@ export async function transcodeMedia(paths: readonly string[], options: Transcod
       const hash = known !== undefined && known.size === stat.size && known.mtimeMs === stat.mtimeMs
         ? known.hash : await hashFile(source);
       const media = await probeMedia(source, ffprobe);
-      const decision = decide(media);
+      const decision = decide(media, alphaCodec);
       const base = {
         size: stat.size, mtimeMs: stat.mtimeMs, hash, reason: decision.reason,
         codec: media.video === null ? "audio" : media.dxvTag === null ? media.video.codecName : `${media.video.codecName}/${media.dxvTag}`,
@@ -222,7 +237,7 @@ export async function transcodeMedia(paths: readonly string[], options: Transcod
       emit({ type: "decided", source, entry: planned, cached: false });
       if (options.dryRun === true) return;
       const encode = (async () => {
-        const partial = `${proxy}.partial${decision.kind === "h264" ? ".mp4" : ".webm"}`;
+        const partial = `${proxy}.partial${decision.kind === "h264" ? ".mp4" : decision.kind === "hevcalpha" ? ".mov" : ".webm"}`;
         const started = performance.now();
         let buffer = "";
         const result = await run("ffmpeg", ffmpeg, proxyArgs(source, partial, decision.kind, media.hasAudio), (chunk) => {
@@ -277,6 +292,11 @@ function parseArgs(argv: readonly string[]): { paths: string[]; options: Transco
     else if (arg === "--ffmpeg") options.ffmpeg = value();
     else if (arg === "--ffprobe") options.ffprobe = value();
     else if (arg === "--dry-run") options.dryRun = true;
+    else if (arg === "--alpha") {
+      const codec = value();
+      if (codec !== "hevc" && codec !== "vp9" && codec !== "auto") throw new Error("--alpha takes hevc, vp9 or auto");
+      options.alpha = codec;
+    }
     else if (arg === "--help" || arg === "-h") return "usage";
     else paths.push(arg);
   }
@@ -284,9 +304,15 @@ function parseArgs(argv: readonly string[]): { paths: string[]; options: Transco
 }
 
 async function main(argv: readonly string[]): Promise<number> {
-  const parsed = parseArgs(argv);
+  let parsed: ReturnType<typeof parseArgs>;
+  try {
+    parsed = parseArgs(argv);
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
   if (typeof parsed === "string" || parsed.paths.length === 0) {
-    process.stdout.write("usage: transcode-media.ts [--cache <dir>] [--jobs <n>] [--ffmpeg <path>] [--ffprobe <path>] [--dry-run] <file>…\n");
+    process.stdout.write("usage: transcode-media.ts [--cache <dir>] [--jobs <n>] [--ffmpeg <path>] [--ffprobe <path>] [--alpha auto|hevc|vp9] [--dry-run] <file>…\n");
     return typeof parsed === "string" ? 0 : 2;
   }
   const lastShown = new Map<string, number>();
@@ -297,7 +323,7 @@ async function main(argv: readonly string[]): Promise<number> {
         const name = basename(event.source);
         if (event.type === "decided") {
           const what = event.entry.decision === "proxy"
-            ? `${event.cached ? "cached" : "proxy"} ${event.entry.alpha ? "VP9+alpha" : "H.264"}` : event.entry.decision;
+            ? `${event.cached ? "cached" : "proxy"} ${basename(event.entry.proxy ?? "").replace(/^.*-r\d+-|\..*$/g, "")}` : event.entry.decision;
           process.stdout.write(`${name}: ${what} (${event.entry.reason})\n`);
         } else if (event.type === "progress") {
           const percent = Math.floor(event.fraction * 10) * 10;

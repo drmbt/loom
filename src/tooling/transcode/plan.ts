@@ -8,8 +8,13 @@
  * and Chromium decodes none of them. Those become PROXIES:
  *
  *  - opaque sources → H.264 in MP4 (yuv420p, every Chromium build decodes it in hardware);
- *  - sources with alpha → VP9 in WebM with an alpha plane (the one Chromium codec that
- *    carries alpha through a `<video>` element).
+ *  - sources with alpha, on macOS → HEVC with alpha in a QuickTime `.mov` (`hvc1`), encoded on
+ *    the GPU by VideoToolbox: measured 2026-10-08 on an M5 Max at ~7× VP9's speed (3840² DXT5:
+ *    7.8 s against 53.6 s for 9.9 s of media) at a similar size, and Electron 45's Chromium
+ *    (155) decodes its alpha through a `<video>` element (a half-alpha probe read back 127
+ *    from a canvas). The `.mov` matters: the same stream remuxed to `.mp4` refused to play;
+ *  - sources with alpha elsewhere, or where VideoToolbox is missing → VP9 in WebM with an
+ *    alpha plane, which every Chromium decodes with alpha.
  *
  * ## Alpha is read from the CODEC, not from the decoder's pixel format
  *
@@ -45,7 +50,10 @@ export interface ProbedMedia {
   readonly dxvTag: string | null;
 }
 
-export type ProxyKind = "h264" | "vp9alpha";
+export type ProxyKind = "h264" | "vp9alpha" | "hevcalpha";
+
+/** Which codec carries alpha: HEVC through VideoToolbox (macOS), or VP9 (everywhere). */
+export type AlphaCodec = "hevc" | "vp9";
 
 export type Decision =
   | { readonly action: "keep"; readonly reason: string }
@@ -104,7 +112,7 @@ export function sourceHasAlpha(media: ProbedMedia): boolean {
 }
 
 /** Keep, proxy (and as what), or refuse, for one probed file. */
-export function decide(media: ProbedMedia): Decision {
+export function decide(media: ProbedMedia, alphaCodec: AlphaCodec = "vp9"): Decision {
   const video = media.video;
   if (video === null) {
     return media.hasAudio
@@ -127,13 +135,13 @@ export function decide(media: ProbedMedia): Decision {
     : video.codecName === "hap" ? `HAP ${video.codecTag}`
     : `${video.codecName} ${video.pixFmt}`;
   return alpha
-    ? { action: "proxy", kind: "vp9alpha", alpha, reason: `${what} has alpha; Chromium cannot decode it` }
+    ? { action: "proxy", kind: alphaCodec === "hevc" ? "hevcalpha" : "vp9alpha", alpha, reason: `${what} has alpha; Chromium cannot decode it` }
     : { action: "proxy", kind: "h264", alpha, reason: `${what} is opaque; Chromium cannot decode it` };
 }
 
 /** The proxy's file name in the cache: content hash, recipe, kind. */
 export function proxyFileName(contentHash: string, kind: ProxyKind): string {
-  const ext = kind === "h264" ? "mp4" : "webm";
+  const ext = kind === "h264" ? "mp4" : kind === "hevcalpha" ? "mov" : "webm";
   return `${contentHash.slice(0, 32)}-r${PROXY_RECIPE_VERSION}-${kind}.${ext}`;
 }
 
@@ -144,7 +152,9 @@ export function proxyFileName(contentHash: string, kind: ProxyKind): string {
  * H.264: CRF 18, `veryfast`, yuv420p, even dimensions (4:2:0 needs them), `+faststart` so a
  * `<video>` seeks before the whole file has loaded, a keyframe every second so a seek lands
  * quickly. VP9 alpha: `yuva420p`, constant quality 30, `row-mt`, `good` at speed 4 (realtime
- * deadline visibly bands gradients). Audio, when present, rides along as AAC / Opus.
+ * deadline visibly bands gradients). HEVC alpha: VideoToolbox, hardware only, `bgra` in
+ * with `alpha_quality` 0.75, `hvc1` tag, `.mov`. Audio, when present, rides along as AAC /
+ * Opus.
  */
 export function proxyArgs(source: string, output: string, kind: ProxyKind, hasAudio: boolean): string[] {
   const common = ["-hide_banner", "-nostdin", "-y", "-v", "error", "-progress", "pipe:1", "-nostats", "-i", source,
@@ -152,6 +162,11 @@ export function proxyArgs(source: string, output: string, kind: ProxyKind, hasAu
   if (kind === "h264") {
     return [...common, "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
       "-force_key_frames", "expr:gte(t,n_forced*1)", "-movflags", "+faststart",
+      ...(hasAudio ? ["-c:a", "aac", "-b:a", "192k"] : ["-an"]), output];
+  }
+  if (kind === "hevcalpha") {
+    return [...common, "-c:v", "hevc_videotoolbox", "-allow_sw", "0", "-pix_fmt", "bgra", "-alpha_quality", "0.75",
+      "-q:v", "65", "-g", "60", "-tag:v", "hvc1", "-movflags", "+faststart",
       ...(hasAudio ? ["-c:a", "aac", "-b:a", "192k"] : ["-an"]), output];
   }
   return [...common, "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "30",
