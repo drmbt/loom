@@ -328,6 +328,8 @@ export const DIAGNOSTIC_CLASS_REASONS: Readonly<Record<string, string>> = {
   "mcp/export-ungranted": "the MCP server's own state",
   "mcp/no-gpu": "the MCP server's own state",
   "media.connecting": "this session's device, helper or file",
+  "media.drop.transcodeFirst": "a file dropped on the canvas or the timeline, refused before anything was made",
+  "media.drop.unsupported": "a file dropped on the canvas or the timeline, refused before anything was made",
   "media.notLoaded": "this session's device, helper or file",
   "media.playback": "this session's device, helper or file",
   "media.screenCapture": "this session's device, helper or file",

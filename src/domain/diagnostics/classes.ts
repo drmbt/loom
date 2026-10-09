@@ -379,6 +379,8 @@ export const DIAGNOSTIC_CLASSES: Readonly<Record<string, DiagnosticClassRow>> = 
   "mcp/export-ungranted": { class: "act" },
   "mcp/no-gpu": { class: "act" },
   "media.connecting": { class: "elsewhereHost" },
+  "media.drop.transcodeFirst": { class: "act" },
+  "media.drop.unsupported": { class: "act" },
   "media.notLoaded": { class: "elsewhereHost" },
   "media.playback": { class: "elsewhereHost" },
   "media.screenCapture": { class: "elsewhereHost" },
