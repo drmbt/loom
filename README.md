@@ -9,354 +9,86 @@
   <a href="https://laubsauger.github.io/loom/">Open Loom</a>
 </p>
 
+Build visuals with nodes, WGSL shaders and GPU point kernels. Drive parameters with
+audio, MIDI, OSC or expressions, then export stills and MP4s or send the result to a
+projector. Save your work as a `.loom.json` project and reuse parts as components.
+
 <a href="./docs/loom-editor.png">
   <img src="./docs/loom-editor.png" alt="The Loom editor showing a node graph, WGSL shader, inspector, and live output">
 </a>
 
-<sub>Click the screenshot for the full-size view.</sub>
+## What you can build
 
-## Run
+- Video effects with feedback loops, frame caches, depth and pose inference.
+- Custom WGSL shaders with typed controls generated from `struct Params`.
+- GPU point systems rendered as points, instances or meshes.
+- 3D scenes with cameras, lights, shadows and materials.
+- Audio-reactive visuals and controller-driven compositions.
+- Reusable components, multiple output views and saved workspace layouts.
 
-The hosted build has everything that runs in the browser. Anything needing a helper
-process on your machine — OSC, a laser DAC, the native Person Mask, a shell in a pane,
-the stdio MCP bridge — works only from a local clone. Nodes and panes that need one stay
-visible either way and say what they are waiting for.
+Browse the [examples](./examples/README.md) for working networks. Loom's core GPU
+runtime uses [vGPU](https://vgpu.sh/) by Vercel Labs.
 
-Requires Node.js 22.12+, pnpm 9.15.4, and a WebGPU browser.
+## Run locally
+
+Requires Node.js 22.12+, pnpm 9.15.4 and a browser with WebGPU.
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-For the Electron app, run `pnpm desktop:dev`. The lockfile pins the tested runtime;
-its official installer downloads the binary on first use. macOS Apple Silicon
-supports **Syphon In / Out** using the same graph runtime. Building the native
-adapters requires Xcode and its macOS SDK. See [desktop setup and validation](src/desktop/README.md).
-**NDI In / Out** and native Python inference for Person Mask also run there, each behind an
-explicit opt-in the desktop README covers — a separately supplied NDI SDK path, and a Python
-3.11+ interpreter with no packages or models installed for you. Windows native transport
-(Spout) is node wiring only; the transport itself is not implemented.
+The [hosted app](https://laubsauger.github.io/loom/) runs browser features.
+Local device connections, terminal panes and desktop MCP clients need a local clone
+and the helper below.
 
-Desktop checks: `pnpm desktop:check` (unit/ownership) and `pnpm desktop:test`
-(actual app/GPU integration; macOS native checks require Apple Silicon).
-
-```bash
-pnpm lint && pnpm typecheck && pnpm test && pnpm build
-```
+For the Electron app, run `pnpm desktop:dev`. macOS Apple Silicon supports Syphon
+and NDI; native setup requires Xcode, and NDI needs a separately supplied SDK.
+Windows Spout transport is not implemented. See the [desktop guide](./src/desktop/README.md).
 
 ## Photo projection mapping
 
-Choose **File → Map from photo…**, also available under **Settings → Output**. Photograph the stationary object from beside
-the projector lens and choose the image. Load matching saved depth and mask files in
-the dialog to create a network immediately, or run Depth and Mask independently. Model
-downloads start only from those buttons and are cached locally. The mask also supports
-manual erase/restore painting and stroke undo.
-Turn off **Use surface mask** to map the full frame with depth alone. This requires
-no mask generation or saved mask file. A nearly empty mask reports its coverage so
-you can choose full-frame mapping or restore the surface with the brush.
+Choose **File → Map from photo…**. Prepare or reuse float32 depth and an optional
+surface mask, preview animated effects on the reference photo or a night shot, then
+create an editable mapping network. Align projector output with Grid Warp and Corner Pin.
 
-**Detail** controls sit above each map preview: depth offers native inputs up to
-1288 × 1288, and mask refinement offers 1024 or 1536. **Facade surfaces** keeps walls
-and excludes sky, dark openings and optionally blue reflective glass. Adjust **Opening
-cutoff** and inspect the red exclusion overlay before saving; shaded walls or blue paint
-may need brush corrections. Its bundled 11.5 MB TopFormer model runs at 512 input with
-a native 64 × 64 semantic envelope; reference-photo refinement supplies the finer detail.
-**Background removal** retains the separate BiRefNet option with native 1024/1536 inputs.
-Larger sizes use more time and memory. Changing settings requires an explicit mask rerun;
-existing saved maps remain reusable. Oversized photos fit within the project's resolution
-limit without cropping the frame or changing the original asset.
+![Photo mapping with a reference image, animated preview, depth and surface mask](./docs/photo-mapping.jpg)
 
-Save each prepared map as a `.loomf32` file, then create the mapping network. Raw depth
-remains float32 at the model's native resolution; normalization and registration are
-stored separately. Float Map In loads numerical values without an image decoder or
-sRGB conversion. Keep the external maps and original photo beside the `.loom.json`;
-another browser profile can relink those files through the existing asset fields.
+[Photo mapping guide](./docs/photo-mapping.md)
 
-The network uses Custom WGSL, Mask, Grid Warp, Corner Pin and Window Out. Its wired main
-Output shows the effect without a projector; **Preview on reference photo** adds a
-separate composite over the photo. Choose the projector display on Window Out and use
-its mapping controls to align the silhouette.
-The preview's `level_reference` dims only the reference photograph to keep projected
-colours visible on bright surfaces; its Brightness control adjusts that balance.
-**Preview light** adjusts the effect's Screen opacity while keeping the building
-visible; Window Out continues to receive full-strength effects. When using a separate
-night photo, **Check framing and alignment** shows cropped edges or borders and offers
-a reference overlay for comparing rooflines and windows. Preparation shows measured
-download progress, processing stages and elapsed time inside the active map preview.
-The five starting looks are **Neon contours**, **Prismatic sweep**, **Chromatic relief**,
-**Surface trace**, and **Depth reveal**. Each moves and evolves over time. Surface trace
-follows the actual mask boundary; Depth reveal makes the relative depth bands easy to
-read against the photo. The Custom WGSL node exposes speed, palette shift, glow,
-evolution, outline width and edge glow controls, alongside the editable shader.
-The looks use relative depth for contours, colour planes, grazing relief lighting,
-local occlusion and scanning reveals, with reference-photo edges recovering finer
-architectural features. **Depth Strength** adjusts relief and shadows; **Architecture
-Detail** adjusts photographic linework without mixing the original photo into projector
-output, and **Fine Detail** adjusts contour and highlight detail. Relative depth is an
-approximation rather than measured geometry, so smooth or inaccurate depth limits relief.
-Create from saved maps to use the latest templates; each network stores its own shader.
-On a prepared Float Map In, **Prepare / rerun…** opens the saved preparation. Rerunning
-depth preserves mask edits and calibration; rerunning the mask deliberately replaces
-its edits. Photo or depth-detail changes mark the corresponding map out of date.
+## Connect devices
 
-## The local helper
+Run the helper and enter its pairing code under **agent → Connections** in your local
+Loom tab. MIDI works directly through the browser; OSC, lasers and native Person Mask
+use the helper.
 
-A browser tab cannot receive or send UDP, cannot open TCP to a laser DAC, cannot run the
-Apple Vision worker, cannot spawn a shell, and cannot speak stdio MCP. One local process —
-**the helper** — does all five, behind a single pairing code you enter once in the agent
-panel's **Connections** section. There is no second code and no second panel.
+| Command | Enables |
+| --- | --- |
+| `pnpm helper` | Device connections and the MCP server |
+| `pnpm helper --terminal` | Terminal panes running a local shell |
+| `pnpm helper --grant-export` | Agent access to rendered pixels and readbacks |
+| `pnpm helper --all` | Device, terminal and pixel access |
+| `pnpm helper --devices-only` | Device connections without the MCP server |
+| `pnpm helper --phone` | A phone control panel on your local network |
 
-```bash
-pnpm helper                  # device bridge + agent server. No shells, no pixels.
-pnpm helper --terminal       # …and terminal panes can open a shell
-pnpm helper --grant-export   # …and an attached agent may read pixels and readbacks
-pnpm helper --all            # every door above, in one flag
-pnpm helper --devices-only   # OSC, laser and Person Mask only — no agent server at all
-pnpm helper --phone          # …and the editor may open a phone door on your wifi (not in --all)
-```
+Shell and pixel access require their flags when you start the helper. Phone access
+is separate from `--all`.
 
-`--all` is the one to remember. It is **not the default, and that is deliberate**:
-`--terminal` hands whoever pairs a shell running as you, and `--grant-export` lets an
-attached agent read rendered pixels and readback buffers. Those are grants, not
-conveniences, and switching them on for a bare `pnpm helper` would quietly widen what that
-command means for everyone who already has it in a script. So the one-command form stays an
-affirmative act — and it **prints what it opened** before any door opens, because a grant
-you cannot see is a grant you cannot revoke.
+[Helper, MIDI and OSC setup](./docs/connections.md)
 
-`pnpm helper --all` and `pnpm helper --devices-only` contradict each other, one adding every
-door and the other removing all but one. The helper **refuses the pair by name** and starts
-nothing, rather than letting flag order pick a winner.
+## Work with an agent
 
-`pnpm helper --phone` is the one door `--all` leaves out, because it is the one that listens
-on your network rather than on this machine. The flag only arms it: nothing listens until
-the paired editor opens it, on this machine's LAN address over HTTPS with a self-signed
-certificate (made with `openssl`, kept in `~/.loom/phone-door/` so a phone accepts it once),
-behind a QR code whose token dies when the door closes. A phone holding it can move the
-controls the editor published and nothing else. The door closes when the editor closes it
-or goes away.
+MCP lets a desktop agent edit networks, shaders and parameters. WebMCP exposes the
+same tools to supported browser agents. Changes appear in the editor and remain
+undoable; connect MCP to your local tab to work on the visible project.
 
-## Terminal
+[Agent setup](./docs/agents.md)
 
-A pane can hold a real shell, so an editor session does not mean juggling windows. **One
-shell per pane**, started in the directory the helper was started from, running as you.
+## Development
 
-It is **opt-in per helper launch** — `pnpm helper --terminal`, or `pnpm helper --all` — and
-nothing inside the page or on the wire can turn it on. This door is not like the other
-three: a UDP socket or a segmentation mask is one capability, while a shell is every
-capability you have. So the helper builds it only when the person who started the process
-said so on its own command line, it accepts loopback pages only, and it prints one line at
-startup naming the shell, the directory and the user it will run as.
+The app uses TypeScript, React, CSS Modules and a WebGPU runtime. See the
+[spec](./SPEC.md) for the architecture and project format.
 
-Closing a pane **kills** its shell. Restoring a saved layout opens a fresh one rather than
-re-attaching — a session nobody can see is a session nobody should be able to reach — and
-every shell dies with the helper. A pane with no shell to show says which of the two reasons
-applies (no helper paired, or one paired that was started without the flag) and names the
-command to fix it.
-
-## MIDI
-
-A **MIDI In** node reads a controller as channels: learn a control in the inspector's MIDI
-section (arm a row, move the knob) and it publishes under the name you give it, so
-`midi1:cutoff` drives any parameter — including a shader's own reflected `struct Params`
-fields. It reads 7-bit Control Change and 14-bit pitch bend; notes, velocity, MIDI clock,
-14-bit CC pairs and SysEx are not read.
-
-Access is asked for on a button press, never on page load. With no Web MIDI (Safari has
-none at any version), a refused permission, or nothing plugged in, the node still publishes
-every learned channel at its rest value, so the document loads and renders — and the MIDI
-section says which of those it is.
-
-### Testing it without a controller
-
-`tools/midi-sender.html` is a dev-only page with knobs, pads and a pitch-bend slider that
-sends real MIDI through Web MIDI. It is served by the dev server (`pnpm dev`, then open
-`/tools/midi-sender.html`) and is not part of a production build.
-
-It needs a **virtual MIDI port**, because a browser's MIDI output goes to the operating
-system rather than back to the same page:
-
-- **macOS** — nothing to install. *Audio MIDI Setup → Window → Show MIDI Studio*,
-  double-click **IAC Driver**, tick *Device is online*.
-- **Windows** — install **loopMIDI** (free) and add a port.
-- **Linux** — `sudo modprobe snd-virmidi` for ALSA virtual ports.
-
-Then send from one tab and learn in the other. The page repeats these instructions itself.
-
-## OSC
-
-An **OSC In** node reads OSC as channels and an **OSC Out** node sends them back out, so a
-patch can sit in the middle of a studio chain rather than at the end of one.
-
-Both need [the local helper](#the-local-helper), because a browser page cannot receive or
-send UDP. Every form of it opens the device bridge and none of the extra flags are needed
-for OSC, so if you are already running the helper for an agent it is already running for
-these nodes, on the same pairing code.
-
-**Everything else is on the node itself.** On *OSC In*, set **Port** and list the channel
-names you want in **Controls** (`cutoff pan`); each name grows its own **Address** and
-**Rest** parameter. `osc1:cutoff` then drives any parameter, including a shader's own
-reflected `struct Params` fields. Values arrive exactly as sent — unlike a 7-bit MIDI CC an
-OSC argument has no declared full scale, so nothing is normalised for you. A message with
-several arguments addresses by index: `/pad/xy` publishes `/pad/xy/0` and `/pad/xy/1`.
-
-On *OSC Out*, set **Host** and **Port**. **There is no default destination** — an
-unconfigured node sends nothing — and broadcast (`x.x.x.255`) and multicast addresses are
-refused by name, because a lighting network is a network. One channel called `value` sends
-`/address`; several send `/address/name` each.
-
-Two limits, stated rather than discovered:
-
-- **The helper listens on `127.0.0.1` only**, so a sender on another machine (a phone
-  running TouchOSC) cannot reach it yet. Widening that is a deliberate decision with its own
-  security argument to make.
-- **OSC rides UDP, so a send can only ever be reported as *sent*, never as *arrived*.**
-  Nothing in the app will tell you a message was delivered, because nothing can know.
-
-With no helper running — which includes the hosted build — every OSC In control still
-publishes its Rest value, so the document loads and renders, and the problems pane says
-which node needs what.
-
-### Testing it without hardware
-
-```bash
-node tools/osc-send.mjs 9000 /synth/cutoff 0.7     # one message
-node tools/osc-send.mjs --sweep 9000 /synth/cutoff # 0 → 1 → 0 at 60 Hz
-node tools/osc-listen.mjs 9001                     # watch what OSC Out sends
-```
-
-Both talk to `127.0.0.1` only, and neither takes a host argument.
-
-## MCP
-
-Loom exposes its tools over stdio for desktop clients and through WebMCP in supported browsers.
-
-### Creating networks with an agent
-
-Ask an agent to author a **Loom network** and deliver a `.loom.json` file. Use the published
-MCP/WebMCP tools to discover nodes and examples, edit the intended document, validate,
-compile, inspect diagnostics, preview and save. Reopen the saved file to verify its embedded
-components and required media assets. The bridge state says whether tools reach your live
-tab or the helper's headless document.
-
-Custom shader and point-kernel code lives inside the network in Custom WGSL and Point
-Kernel nodes. Making a new visual does not require adding TypeScript, a project builder,
-a renderer or a custom node type to this repository. Agents should change only the network
-and required assets by default; implementation changes require an explicit request to
-develop Loom. If a tool or capability is missing, report it before changing the application.
-See [AGENTS.md](./AGENTS.md) and [CLAUDE.md](./CLAUDE.md) for the authoring rules. A `.patch`
-code diff is a separate artefact from a `.loom.json` network.
-
-### Claude
-
-Use this as `.mcp.json` with Claude Code, or merge the `mcpServers` block into your Claude
-Desktop config. The **agent → Agents** help tab generates this for you with the paths already
-filled in, which is the least error-prone way to get it:
-
-```json
-{
-  "mcpServers": {
-    "loom": {
-      "type": "stdio",
-      "command": "node",
-      "args": [
-        "--import",
-        "/ABSOLUTE/PATH/TO/loom/src/tooling/alias-hooks.ts",
-        "/ABSOLUTE/PATH/TO/loom/src/mcp/serve.ts"
-      ]
-    }
-  }
-}
-```
-
-Spawn `node` directly rather than going through pnpm. `pnpm run <script>` prints a startup
-banner **on stdout**, which is the same stream MCP speaks JSON-RPC over, so a pnpm-wrapped
-server prefixes the protocol with two non-JSON lines (B178). An existing pnpm config keeps
-working today, but it is working around that banner rather than avoiding it.
-
-Restart Claude, then ask it to call `bridge_status` and show the current pairing code.
-
-### Pair once, not once per chat
-
-**Run the helper yourself and leave it up**, and every client attaches to that one instead of
-starting its own:
-
-```bash
-pnpm helper --grant-export   # …or pnpm helper --all, which includes it
-```
-
-`--grant-export` is what enables the pixel and readback tools — `render_preview`,
-`describe_output`, `read_points`. It is **off by default and can only be granted by the
-invocation** (T334); nothing on the wire can turn it on, which is why an agent that was not
-given it reports that it can compile and validate but never see a frame. **A helper started
-without it refuses pixels for every client that attaches to it**, so pass it here rather than
-discovering it later.
-
-Two of those three also work **against the tab you are looking at**, and they are the two you
-want while iterating on a look: once you pair a tab (below), `render_preview` and
-`describe_output` answer from the live document, at preview-tile size (384px on the longest
-edge). That is a smaller capability than export — a named output at the size already on your
-screen — and it needs **both** halves of the consent: the flag above, typed by you outside the
-page, and the pairing code, typed by you into the page. `read_points` and full-resolution
-readback stay `export`, which no browser tab can hold; they answer from the helper's own
-headless document, and from the app you use the export and record controls instead (T1220).
-
-A second instance that finds the port already taken **stops being a server and becomes a
-client of the incumbent**, forwarding `tools/list` and `tools/call` over loopback — so two
-Claude processes drive the same live tab rather than racing for it. The proxy authenticates
-with a token from a `0600` file in `~/.loom`, never with the pairing code.
-
-That is why this is worth doing: **the pairing code belongs to the running helper, so a
-long-lived helper means you pair a tab once and it stays paired across every new chat.** Let
-each client spawn its own and you get a fresh code every time.
-
-A proxy whose incumbent goes away **refuses** rather than falling back to its own headless
-copy of the project, so a dead helper is an honest error rather than a second agent quietly
-editing a different document.
-
-To drive the visible editor:
-
-1. Run `pnpm dev` and open the local Loom URL.
-2. Open the **agent** pane and find **Connections**.
-3. Enter the pairing code from `bridge_status`.
-
-Until the tab is attached, the MCP server works on its own headless document. The bridge accepts local Loom tabs only, not the GitHub Pages site. A config that spawns its own server needs `--grant-export` in its `args` for the same reason as above.
-
-The script was called `mcp:serve` until it was renamed to `helper`; the old name still works
-as an alias, so an existing config keeps running.
-
-[Claude MCP docs](https://code.claude.com/docs/en/mcp)
-
-### WebMCP
-
-1. Enable `chrome://flags/#enable-webmcp-testing` and relaunch Chrome.
-2. Open Loom with a WebMCP-capable browser agent or extension.
-3. Check **agent → Connections**. Loom registers its tools automatically; there is no pairing code.
-
-[Chrome WebMCP setup](https://developer.chrome.com/docs/ai/webmcp)
-
-## Deploy
-
-Deployment is manual. Once the changes are on `main`:
-
-```bash
-pnpm deploy
-```
-
-## What is in it
-
-- Write WGSL in the node editor. Fields in `struct Params` become typed controls automatically, including colour pickers. Those controls can be driven by the graph or published from a component.
-- Build feedback loops, frame caches and slit scans. Pause, step or scrub them on the same frame clock used for MP4 rendering.
-- Feed microphone or audio files into level, four frequency bands and onset. LFOs, expressions, envelopes and beat patterns plug into the same parameter system.
-- Run custom point kernels on the GPU with named attributes, spawn and kill, compaction, fields, rays and indirect drawing. Render the result as points, instances or meshes.
-- Build 3D scenes with cameras, lights, projectors, shadows, ambient occlusion, environment maps and unlit, Phong, PBR or glass materials.
-- Bring in stills, video and webcams. Run depth and pose inference in the browser, then use the results in texture and point graphs.
-- Turn a selection into a versioned component, then publish the controls its instances should expose.
-- Preview any branch, pop panes into their own windows, save layouts, export stills or render a frame range to MP4.
-- Keep a shell in a pane, when the local helper is started with the flag that opts into it.
-- Drive the open document from the UI, MCP or WebMCP through the same command surface. Changes remain visible and undoable.
-- Save versioned `.loom.json` projects, with autosave recovery if the tab disappears.
-
-Loom's core GPU runtime is built on [vGPU](https://vgpu.sh/) by Vercel Labs.
-
-[Spec](./SPEC.md) · [Examples](./examples/README.md)
+Build with `pnpm build`. Run `pnpm lint`, `pnpm typecheck` and tests for the affected
+feature before submitting changes. Maintainers publish the hosted build from `main`
+with `pnpm deploy`.
