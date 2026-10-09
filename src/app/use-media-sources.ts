@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { FrameEvaluationInput } from "@domain/types/frame.ts";
+import { frameFromClock, type FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { FlatGraph, GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
@@ -979,9 +979,9 @@ export function useMediaSources(
 
   const prepareFrame = useCallback(async (frameIndex: number, fps: number) => {
     if (!(fps > 0) || !Number.isFinite(frameIndex)) return;
-    const frame: FrameEvaluationInput = {
+    const frame: FrameEvaluationInput = frameFromClock({
       timeSeconds: frameIndex / fps, deltaSeconds: 1 / fps, frameIndex, mode: "offline", randomSeed: 0, fps,
-    };
+    });
     const waits: Promise<void>[] = [];
     for (const { runner, audio, element } of playersRef.current.values()) {
       const target = runner.target(frame, audio.duration());
