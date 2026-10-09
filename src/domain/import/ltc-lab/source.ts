@@ -112,6 +112,21 @@ export function sourceFromJson(project: unknown, tour?: unknown): SourceRead {
 
 const utf8 = new TextDecoder("utf-8");
 
+/**
+ * ltc-lab keeps a show as `<root>/data/<slug>/project.json` beside `<root>/tours/<slug>.json`
+ * (the tour carries `audioDir`). The tour file for a project path, or null when the path
+ * is not laid out that way. String work only, `/`-separated, so it runs anywhere.
+ */
+export function ltcLabTourPathFor(projectPath: string): string | null {
+  const match = /^(.*)\/data\/([^/]+)\/project\.json$/.exec(projectPath);
+  return match === null ? null : `${match[1]}/tours/${match[2]}.json`;
+}
+
+/** Where ltc-lab finds a track's audio: the tour's audioDir joined with the file name. */
+export function ltcLabAudioPath(audioDir: string, fileName: string): string {
+  return `${audioDir.replace(/\/+$/, "")}/${fileName}`;
+}
+
 export const PROJECT_ENTRY = "project.json";
 export const TOUR_ENTRY = "tour.json";
 export const MANIFEST_ENTRY = "manifest.json";

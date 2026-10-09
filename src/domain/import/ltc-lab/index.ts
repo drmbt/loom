@@ -4,7 +4,7 @@
  * `lane-eval.ts`). Pure and headless; the caller applies the plan.
  */
 export { bytesReader, readUstar, scanUstar, writeUstar, type RangeReader, type TarEntry, type TarListing } from "./tar.ts";
-export { listLtcLabTracks, parseLtcProject, sourceFromJson, sourceFromTar, type LtcLabSource, type LtcTrackSummary, type SourceRead } from "./source.ts";
+export { listLtcLabTracks, ltcLabAudioPath, ltcLabTourPathFor, parseLtcProject, sourceFromJson, sourceFromTar, type LtcLabSource, type LtcTrackSummary, type SourceRead } from "./source.ts";
 export {
   planLtcLabImport,
   type ImportedCue,

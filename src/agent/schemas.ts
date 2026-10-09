@@ -397,6 +397,26 @@ export const importComponentInput = componentImportInputSchema
   .extend({ text: z.string().min(1), dryRun })
   .strict();
 
+/**
+ * VN100: one ltc-lab track into the document. Exactly ONE source: `path` (read by the local
+ * helper only), `tarBase64` (a .ltcshow.tar's bytes), or `projectJson` (+ `tourJson`).
+ * Without `trackId` it lists the show's tracks and changes nothing.
+ */
+export const importLtcLabInput = z
+  .object({
+    trackId: z.string().min(1).optional(),
+    path: z.string().min(1).optional(),
+    tarBase64: z.string().min(1).optional(),
+    projectJson: z.string().min(1).optional(),
+    tourJson: z.string().min(1).optional(),
+    /** Set the project's fps and frame range to the show's (default true). */
+    setProjectSettings: z.boolean().optional(),
+    position: z.object({ x: z.number().finite(), y: z.number().finite() }).strict().optional(),
+    baseRevision,
+    dryRun,
+  })
+  .strict();
+
 /** §T1556b: the command's schema; the tool itself picks `destination` (text). */
 export const exportComponentInput = componentExportInputSchema.omit({ destination: true }).strict();
 
@@ -473,6 +493,7 @@ export type DisconnectPortsInput = z.infer<typeof disconnectPortsInput>;
 export type SetParametersInput = z.infer<typeof setParametersInput>;
 export type SetShaderSourceInput = z.infer<typeof setShaderSourceInput>;
 export type AttachAssetInput = z.infer<typeof attachAssetInput>;
+export type ImportLtcLabInput = z.infer<typeof importLtcLabInput>;
 export type SetOutputInput = z.infer<typeof setOutputInput>;
 export type ResetFeedbackInput = z.infer<typeof resetFeedbackInput>;
 export type HistoryInput = z.infer<typeof historyInput>;
