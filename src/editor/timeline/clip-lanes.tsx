@@ -78,7 +78,8 @@ export function ClipLanes(props: ClipLanesProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drag = useRef<ClipDrag | null>(null);
   const [selected, setSelected] = useState<{ nodeId: NodeId; regionId: string } | null>(null);
-  const [dragging, setDragging] = useState(false);
+  /** The popover opens on a click that did not drag, and closes on the next press. */
+  const [popover, setPopover] = useState(false);
   const minLength = ticksPerFrame(rate);
 
   useLayoutEffect(() => {
@@ -113,6 +114,7 @@ export function ClipLanes(props: ClipLanesProps) {
     const { x, y } = local(event);
     const hit = clipHit(view, rows, x, y);
     if (hit === null) return;
+    setPopover(false);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     if (hit.kind === "ruler") {
       drag.current = null;
@@ -126,7 +128,10 @@ export function ClipLanes(props: ClipLanesProps) {
     }
     const row = rows[hit.row]!;
     setSelected({ nodeId: row.id, regionId: hit.region.id });
-    if (row.track === null || !row.editable) return;
+    if (row.track === null || !row.editable) {
+      setPopover(true);
+      return;
+    }
     drag.current = {
       nodeId: row.id, regionId: hit.region.id, part: hit.part, origin: row.track, last: row.track, tempo: row.tempo,
       grab: xToTick(view, x) - hit.region.timelineStart, x, moved: false,
@@ -143,7 +148,6 @@ export function ClipLanes(props: ClipLanesProps) {
     const current = drag.current;
     if (current === null) return;
     if (!current.moved && Math.abs(x - current.x) < 3) return;
-    if (!current.moved) setDragging(true);
     current.moved = true;
     const at = xToTick(view, x);
     let next: ClipTrack;
@@ -160,8 +164,11 @@ export function ClipLanes(props: ClipLanesProps) {
     const current = drag.current;
     drag.current = null;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
-    if (current === null || !current.moved) return;
-    setDragging(false);
+    if (current === null) return;
+    if (!current.moved) {
+      setPopover(true);
+      return;
+    }
     // Close the gesture with the last track it wrote: one transaction, one undo step.
     write(current.nodeId, current.last, "commit", current.origin);
   };
@@ -268,7 +275,7 @@ export function ClipLanes(props: ClipLanesProps) {
         onPointerUp={onPointerUp}
         onContextMenu={(event) => event.preventDefault()}
       />
-      {selectedRow !== undefined && selectedRegion !== undefined && !dragging && (
+      {selectedRow !== undefined && selectedRegion !== undefined && popover && (
         <RegionPopover
           key={`${selectedRow.id} ${selectedRegion.id}`}
           region={selectedRegion}
@@ -281,7 +288,7 @@ export function ClipLanes(props: ClipLanesProps) {
             write(selectedRow.id, deleteRegion(selectedRow.track, selectedRegion.id), "commit");
             setSelected(null);
           }}
-          onClose={() => setSelected(null)}
+          onClose={() => setPopover(false)}
         />
       )}
     </div>

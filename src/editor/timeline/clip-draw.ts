@@ -125,13 +125,17 @@ export function paintClipLanes(canvas: HTMLCanvasElement, state: ClipDrawState):
       context.fillText(`${row.name ?? row.id}: ${row.error ?? "unreadable"}`, 4, top + CLIP_ROW_HEIGHT / 2);
       return;
     }
+    // The track's name, where no block covers it (a block's own caption wins there).
+    const name = row.name ?? row.id;
+    const nameEnd = 8 + context.measureText(name).width;
+    const covered = row.track.regions.some((region) => tickToX(view, region.timelineStart) < nameEnd && tickToX(view, regionEnd(region)) > 0);
+    if (!covered) {
+      context.fillStyle = colour("text-dim");
+      context.fillText(name, 4, top + CLIP_ROW_HEIGHT / 2);
+    }
     for (const region of row.track.regions) {
       paintRegion(context, canvas, view, width, top, region, row.tempo, state.selected?.nodeId === row.id && state.selected.regionId === region.id);
     }
-    context.fillStyle = colour("text-dim");
-    context.globalAlpha = 0.8;
-    context.fillText(row.name ?? row.id, 4, top + 6);
-    context.globalAlpha = 1;
   });
 
   if (state.playheadTicks !== null) {
