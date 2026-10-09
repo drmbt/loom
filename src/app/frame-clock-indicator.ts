@@ -17,11 +17,8 @@ import type { FrameClockVerdict } from "@runtime/telemetry/frame-clock.ts";
  *
  * ## Why this is a module and not four lines inside the .tsx
  *
- * The reserved width has to be derived from the WIDEST WORD THIS CAN RENDER, and the gate
- * that derives it (`readout-stability.test.ts`) runs headless — it cannot import a `.tsx`.
- * So the words live here, in the one place both the component and the gate read. The
- * descriptions live here for a second reason: §V90's copy guard scans rendered `.tsx`, and
- * prose belongs in `.ts` logic.
+ * Words and descriptions share one model with the indicator's state. Browser checks
+ * verify that changing state leaves the surrounding readouts in place.
  *
  * ## What the dot means, and what it deliberately does NOT say
  *
@@ -46,9 +43,8 @@ export interface FrameClockIndicator {
 }
 
 /**
- * Every word the indicator can render. `readout-stability.test.ts` sizes the reserved box
- * from the longest of these, so adding a longer one fails that gate rather than shoving
- * the readout's neighbours sideways.
+ * Every word the indicator can render. Allow space for the longest word so state changes
+ * do not push neighbouring readouts sideways.
  */
 export const FRAME_CLOCK_WORDS: Readonly<Record<FrameClockIndicatorState, string>> = {
   realtime: "Realtime",

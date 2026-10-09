@@ -61,8 +61,7 @@
  * and 1000 s. Under `5ch` the field grew as the timeline ran and everything to its right
  * slid over, which is half of the owner's "the timeline is now jumping around like crazy"
  * — `tabular-nums` cannot help with a string that got longer. 9ch holds `86399.99s`, a
- * full day of timeline, and `readout-stability.test.ts` derives that from the same format
- * string this renders.
+ * full day of timeline. Browser checks verify that the readout fits and stays in place.
  */
 .value {
   color: var(--text-dim);

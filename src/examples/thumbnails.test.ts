@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXAMPLES_DIR, listExamples } from "./catalogue.ts";
@@ -26,14 +26,8 @@ describe("every shipped example has a thumbnail (T847)", () => {
     expect(looms.length).toBeGreaterThan(30);
   });
 
-  it.each(looms.map((loom) => loom.fileName))("%s has a thumbs/<stem>.png", (fileName) => {
-    const path = join(thumbsDir, `${thumbnailStem(fileName)}.png`);
-    expect(existsSync(path), `missing thumbnail: ${path} — run build-thumbnails.ts`).toBe(true);
-  });
-
   it.each(looms.map((loom) => loom.fileName))("%s's thumbnail is a real, non-empty PNG", (fileName) => {
     const path = join(thumbsDir, `${thumbnailStem(fileName)}.png`);
-    if (!existsSync(path)) return; // the existence gate above already fails, loudly
     const bytes = readFileSync(path);
     // A real file with pixels in it, not a zero-byte stub a half-finished run left behind.
     expect(statSync(path).size).toBeGreaterThan(0);

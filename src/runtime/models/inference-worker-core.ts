@@ -161,6 +161,48 @@ const MODNET_PACKING: Packing = {
  * still be a row rather than a branch.
  */
 export const MODEL_PLANS: Readonly<Record<string, ModelPlan>> = {
+  "topformer-ade20k": {
+    // ADE20K semantic building envelope for photograph preparation. The artifact
+    // takes fixed ImageNet-normalized RGB and returns 150 native logit planes.
+    ...DEPTH_PACKING,
+    dims: (side) => {
+      if (side !== 512) throw new Error(`TopFormer requires a 512-square input; received ${side}.`);
+      return [1, 3, 512, 512];
+    },
+    picture: "output",
+    smoothing: 1,
+    decodeOutput: (output) => {
+      const classes = 150;
+      if (output.length === 0 || output.length % classes !== 0) {
+        throw new Error("TopFormer requires 150 non-empty ADE20K logit planes.");
+      }
+      const pixels = output.length / classes;
+      const probabilities = new Float32Array(pixels);
+      // Zero-based ADE20K labels: wall, building, house, column and clock.
+      // Sky, window and door have separate classes and contribute no confidence.
+      const envelope = new Set([0, 1, 25, 42, 148]);
+      for (let i = 0; i < pixels; i += 1) {
+        let maximum = Number.NEGATIVE_INFINITY;
+        for (let c = 0; c < classes; c += 1) {
+          const sample = c * pixels + i;
+          const logit = output[sample]!;
+          if (!Number.isFinite(logit)) throw new Error(`TopFormer returned a non-finite logit at sample ${sample}.`);
+          maximum = Math.max(maximum, logit);
+        }
+        let total = 0;
+        let building = 0;
+        for (let c = 0; c < classes; c += 1) {
+          const probability = Math.exp(output[c * pixels + i]! - maximum);
+          total += probability;
+          if (envelope.has(c)) building += probability;
+        }
+        probabilities[i] = building / total;
+      }
+      return probabilities;
+    },
+    // Keep native output resolution and independent transferable float32 storage.
+    encode: (output) => new Uint8Array(Float32Array.from(output).buffer),
+  },
   "birefnet-lite-dynamic": {
     // The pinned reference uses ImageNet-normalized RGB and dynamic spatial dimensions.
     ...DEPTH_PACKING,

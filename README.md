@@ -57,9 +57,14 @@ no mask generation or saved mask file. A nearly empty mask reports its coverage 
 you can choose full-frame mapping or restore the surface with the brush.
 
 **Detail** controls sit above each map preview: depth offers native inputs up to
-1288 × 1288, and the BiRefNet background-removal mask offers 1024 or 1536. Larger
-sizes use more time and memory. Rerun an older mask to use the new surface model;
-existing maps remain reusable. Oversized photos fit within the project's resolution
+1288 × 1288, and mask refinement offers 1024 or 1536. **Facade surfaces** keeps walls
+and excludes sky, dark openings and optionally blue reflective glass. Adjust **Opening
+cutoff** and inspect the red exclusion overlay before saving; shaded walls or blue paint
+may need brush corrections. Its bundled 11.5 MB TopFormer model runs at 512 input with
+a native 64 × 64 semantic envelope; reference-photo refinement supplies the finer detail.
+**Background removal** retains the separate BiRefNet option with native 1024/1536 inputs.
+Larger sizes use more time and memory. Changing settings requires an explicit mask rerun;
+existing saved maps remain reusable. Oversized photos fit within the project's resolution
 limit without cropping the frame or changing the original asset.
 
 Save each prepared map as a `.loomf32` file, then create the mapping network. Raw depth
@@ -84,10 +89,12 @@ The five starting looks are **Neon contours**, **Prismatic sweep**, **Chromatic 
 follows the actual mask boundary; Depth reveal makes the relative depth bands easy to
 read against the photo. The Custom WGSL node exposes speed, palette shift, glow,
 evolution, outline width and edge glow controls, alongside the editable shader.
-The looks also recover architectural edges from the reference: neon engraving, liquid
-stained-glass ribbons, brushed copper highlights, electric blueprint linework and a
-faceted depth atlas. **Architecture Detail** adjusts this photographic detail without
-mixing the original photo into projector output; **Fine Detail** adjusts smaller patterns.
+The looks use relative depth for contours, colour planes, grazing relief lighting,
+local occlusion and scanning reveals, with reference-photo edges recovering finer
+architectural features. **Depth Strength** adjusts relief and shadows; **Architecture
+Detail** adjusts photographic linework without mixing the original photo into projector
+output, and **Fine Detail** adjusts contour and highlight detail. Relative depth is an
+approximation rather than measured geometry, so smooth or inaccurate depth limits relief.
 Create from saved maps to use the latest templates; each network stores its own shader.
 On a prepared Float Map In, **Prepare / rerun…** opens the saved preparation. Rerunning
 depth preserves mask edits and calibration; rerunning the mask deliberately replaces

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decodeFloatMap, encodeFloatMap, type FloatMap } from "./float-map.ts";
-import { makePreparedMap, paintMaskStroke, preparedMetadata, rasterizeFloatMap, type PreparedMapMetadata } from "./prepared-map.ts";
+import { beginMaskStroke, makePreparedMap, paintMaskStroke, preparedMetadata, rasterizeFloatMap, type PreparedMapMetadata } from "./prepared-map.ts";
 
 function input(kind: "depth" | "mask" = "depth", width = 6, height = 6): Omit<PreparedMapMetadata, "version" | "range"> {
   return {
@@ -97,6 +97,26 @@ describe("prepared maps", () => {
     expect(painted.values[17]).toBe(1);
     expect(erased.values[16]).toBe(1);
     expect(decodeFloatMap(encodeFloatMap(erased)).values).toEqual(erased.values);
+  });
+
+  it("owns one continuous gesture without altering undo snapshots and seals it on completion", () => {
+    const original = makePreparedMap(new Float32Array(49).fill(0.123456789), 7, 7, input("mask"));
+    const originalBits = new Uint32Array(original.values.buffer).slice();
+    const stroke = beginMaskStroke(original);
+    const draft = stroke.paint({ x: 1, y: 1 }, { x: 5, y: 1 }, 0.6, 1);
+    const continued = stroke.paint({ x: 5, y: 1 }, { x: 5, y: 5 }, 0.6, 0);
+    expect(continued.values).toBe(draft.values);
+    expect(new Uint32Array(original.values.buffer)).toEqual(originalBits);
+    const finished = stroke.finish();
+    expect(finished.values[8]).toBe(1);
+    expect(finished.values[40]).toBe(0);
+    expect(Object.is(finished.values[48], original.values[48])).toBe(true);
+    expect(decodeFloatMap(encodeFloatMap(finished)).values).toEqual(finished.values);
+    expect(() => stroke.paint({ x: 0, y: 0 }, { x: 0, y: 0 }, 1, 0)).toThrow(/already finished/);
+    expect(() => stroke.finish()).toThrow(/already finished/);
+    const next = beginMaskStroke(finished);
+    next.paint({ x: 1, y: 1 }, { x: 1, y: 1 }, 0.6, 0);
+    expect(finished.values[8]).toBe(1);
   });
 
   it("clips brushes to the map and fills diagonal strokes without gaps", () => {

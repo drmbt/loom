@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { createHash, webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEPTH_ACCURATE, PHOTO_MASK } from "@runtime/models/model-catalogue.ts";
+import { DEPTH_ACCURATE, PHOTO_FACADE, PHOTO_MASK } from "@runtime/models/model-catalogue.ts";
 import type { WorkerRunner, WorkerRunnerOptions } from "@runtime/models/worker-runner.ts";
 import type { createModelAcquisition } from "@runtime/models/model-acquisition.ts";
-import { decodeFloatMap } from "@runtime/media/float-map.ts";
+import { decodeFloatMap, encodeFloatMap } from "@runtime/media/float-map.ts";
+import { FACADE_MASK_DEFAULTS, facadeMaskSettings } from "@runtime/media/facade-mask.ts";
 import { preparedMetadata } from "@runtime/media/prepared-map.ts";
 import { createFileReference, parseFileReference } from "@domain/media/file-reference.ts";
 import { createPhotoPreparer, decodePreparationPhoto, savePreparedMap, type PreparationPhoto } from "./photo-preparation.ts";
@@ -181,6 +182,51 @@ describe("photo preparation sessions", () => {
     preparer.dispose();
   });
 
+  it.each([1024, 1536])("refines the native facade envelope to %i while recording the fixed 512 model input", async detailSide => {
+    const values = new Float32Array(64 * 64).fill(0.8123456);
+    const fake = runnerWith({ bytes: new Uint8Array(), raw: { width: 64, height: 64, values } });
+    let requestedTarget: ReturnType<WorkerRunnerOptions["describe"]>;
+    const originalRun = fake.runner.runRaw.getMockImplementation()!;
+    fake.runner.runRaw.mockImplementation(async (id, bytes) => { requestedTarget = fake.options().describe(id); return originalRun(id, bytes); });
+    const preparer = createPhotoPreparer(() => {});
+    const reference = photograph();
+    const settings = { darkCutoff: 0.031, feather: 0.021, excludeBlueGlass: false };
+    const map = await preparer.run("mask", reference, 266, detailSide, settings);
+    expect(mocks.acquire).toHaveBeenCalledWith(PHOTO_FACADE);
+    expect(requestedTarget).toMatchObject({ modelId: PHOTO_FACADE.id, nodeType: "matte", side: 512,
+      width: 512, height: 512, sourceWidth: 4, sourceHeight: 2, providers: ["wasm"], smoothing: 1 });
+    expect([map.width, map.height, map.values.length]).toEqual([detailSide, detailSide, detailSide * detailSide]);
+    expect(map.values).toBeInstanceOf(Float32Array);
+    expect(map.values[0]).toBe(values[0]);
+    expect(values).toEqual(new Float32Array(64 * 64).fill(0.8123456));
+    expect(preparedMetadata(map)).toMatchObject({ kind: "mask", inputSide: 512, registration: "stretch",
+      source: { sha256: reference.sha256, width: 4, height: 2 }, model: { id: "facade-surfaces-v1", url: PHOTO_FACADE.url } });
+    const reopened = decodeFloatMap(encodeFloatMap(map));
+    expect(facadeMaskSettings(reopened)).toEqual({ version: 1, detailSide,
+      envelopeWidth: 64, envelopeHeight: 64, ...settings });
+    expect(new Uint32Array(reopened.values.buffer)).toEqual(new Uint32Array(map.values.buffer));
+    expect(preparedMetadata(reopened)).toEqual(preparedMetadata(map));
+    preparer.dispose();
+  });
+
+  it("rejects a facade recipe used for depth before acquiring or running a model", async () => {
+    const fake = runnerWith();
+    const preparer = createPhotoPreparer(() => {});
+    await expect(preparer.run("depth", photograph(), 266, 1024, FACADE_MASK_DEFAULTS)).rejects.toThrow("Facade settings apply only to masks");
+    expect(fake.runner.runRaw).not.toHaveBeenCalled();
+    expect(mocks.acquire).not.toHaveBeenCalled();
+    preparer.dispose();
+  });
+
+  it("rejects invalid facade refinement settings without publishing a substitute map", async () => {
+    const fake = runnerWith({ bytes: new Uint8Array(), raw: { width: 64, height: 64, values: new Float32Array(64 * 64).fill(1) } });
+    const preparer = createPhotoPreparer(() => {});
+    await expect(preparer.run("mask", photograph(), 266, 1024, { ...FACADE_MASK_DEFAULTS, darkCutoff: NaN }))
+      .rejects.toThrow("Invalid facade mask: darkCutoff");
+    expect(fake.runner.retainNodes).toHaveBeenCalledWith([]);
+    preparer.dispose();
+  });
+
   it("refuses unsupported sizes before acquiring weights and unavailable caching", async () => {
     const fake = runnerWith();
     const preparer = createPhotoPreparer(() => {});
@@ -203,7 +249,7 @@ describe("photo preparation sessions", () => {
     finish(rawResult());
     await rejected;
     expect(fake.runner.dispose).toHaveBeenCalledTimes(1);
-    expect(mocks.cancel.mock.calls.map(call => call[0])).toEqual([DEPTH_ACCURATE.id, PHOTO_MASK.id]);
+    expect(mocks.cancel.mock.calls.map(call => call[0])).toEqual([DEPTH_ACCURATE.id, PHOTO_MASK.id, PHOTO_FACADE.id]);
     await expect(preparer.run("depth", photograph(), 266)).rejects.toThrow("Photo preparation was closed");
   });
 

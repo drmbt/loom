@@ -1,4 +1,4 @@
-import { DEPTH_ACCURATE, PHOTO_MASK } from "@runtime/models/model-catalogue.ts";
+import { DEPTH_ACCURATE, PHOTO_MASK, PHOTO_FACADE } from "@runtime/models/model-catalogue.ts";
 import { supportsPhotoDepthSize, supportsPhotoMaskSize } from "@domain/media/preparation-sizes.ts";
 import { createModelAcquisition, progressText, type ModelDescriptor } from "@runtime/models/model-acquisition.ts";
 import { cacheModelStore } from "@runtime/models/cache-model-store.ts";
@@ -6,8 +6,10 @@ import { createWorkerRunner, type WorkerRunTarget } from "@runtime/models/worker
 import type { WorkerLike } from "@runtime/models/inference-protocol.ts";
 import { occOf } from "@runtime/models/depth-runner.ts";
 import { makePreparedMap } from "@runtime/media/prepared-map.ts";
+import { refineFacadeMask, type FacadeMaskSettings } from "@runtime/media/facade-mask.ts";
 import { encodeFloatMap, FLOAT_MAP_EXTENSION, FLOAT_MAP_MIME_TYPE, type FloatMap } from "@runtime/media/float-map.ts";
 import { retainedFiles, type RetainedFileHandle } from "@ui/files/retained-files.ts";
+import bundledFacadeUrl from "../runtime/models/assets/topformer-ade20k.onnx?url";
 
 export interface PreparationPhoto {
   readonly bitmap: ImageBitmap;
@@ -59,10 +61,12 @@ function photoTexels(photo: PreparationPhoto, side: number, letterbox: boolean):
 export function createPhotoPreparer(onProgress: (progress: PreparationProgress) => void) {
   const store = cacheModelStore();
   if (store === null) throw new Error("Model caching is unavailable in this browser context.");
-  const descriptors = new Map<string, ModelDescriptor>([DEPTH_ACCURATE, PHOTO_MASK].map(model => [model.id, model]));
+  const descriptors = new Map<string, ModelDescriptor>([DEPTH_ACCURATE, PHOTO_MASK, PHOTO_FACADE].map(model => [model.id, model]));
   const acquisition = createModelAcquisition({
     store,
-    fetch: (url, options) => fetch(url, { signal: options.signal }),
+    // TopFormer's upstream download rejects browser Fetch Metadata. This exact,
+    // hash-verified asset is served with Loom, not selected after a failed request.
+    fetch: (url, options) => fetch(options.descriptor.id === PHOTO_FACADE.id ? bundledFacadeUrl : url, { signal: options.signal }),
     onStateChange: (id, state) => {
       if (state.kind === "downloading") onProgress({ phase: "downloading",
         message: `${descriptors.get(id)!.label} · ${progressText(state.received, state.total)}`,
@@ -81,13 +85,15 @@ export function createPhotoPreparer(onProgress: (progress: PreparationProgress) 
     message: `${measurement.backend} · ${Math.round(measurement.millis)} ms · preparing float32 output` }) });
   let disposed = false;
   return {
-    async run(kind: "depth" | "mask", photo: PreparationPhoto, depthSide: number, maskSide = 1024): Promise<FloatMap> {
+    async run(kind: "depth" | "mask", photo: PreparationPhoto, depthSide: number, maskSide = 1024, facade?: FacadeMaskSettings): Promise<FloatMap> {
       if (disposed) throw new Error("Photo preparation was closed.");
-      const descriptor = kind === "depth" ? DEPTH_ACCURATE : PHOTO_MASK;
-      const side = kind === "depth" ? depthSide : maskSide;
-      if (kind === "depth" ? !supportsPhotoDepthSize(side) : !supportsPhotoMaskSize(side)) {
+      if (kind === "depth" && facade !== undefined) throw new Error("Facade settings apply only to masks.");
+      const descriptor = kind === "depth" ? DEPTH_ACCURATE : facade === undefined ? PHOTO_MASK : PHOTO_FACADE;
+      const detailSide = kind === "depth" ? depthSide : maskSide;
+      if (kind === "depth" ? !supportsPhotoDepthSize(detailSide) : !supportsPhotoMaskSize(detailSide)) {
         throw new Error(`Unsupported ${kind} input size.`);
       }
+      const side = facade === undefined ? detailSide : 512;
       const nodeId = crypto.randomUUID();
       targets.set(nodeId, { modelId: descriptor.id, nodeType: kind === "depth" ? "depth" : "matte",
         width: side, height: side, side, sourceWidth: photo.bitmap.width, sourceHeight: photo.bitmap.height,
@@ -98,10 +104,14 @@ export function createPhotoPreparer(onProgress: (progress: PreparationProgress) 
         onProgress({ phase: "processing", message: `Processing ${kind} · ${side} × ${side}` });
         const { raw } = await runner.runRaw(nodeId, texels.buffer as ArrayBuffer);
         if (disposed) throw new Error("Photo preparation was closed.");
-        return makePreparedMap(raw.values, raw.width, raw.height, { kind,
+        const map = makePreparedMap(raw.values, raw.width, raw.height, { kind,
           source: { sha256: photo.sha256, width: photo.bitmap.width, height: photo.bitmap.height },
           model: { id: descriptor.id, url: descriptor.url }, inputSide: side,
           registration: kind === "depth" ? "letterbox" : "stretch" });
+        if (facade === undefined) return map;
+        onProgress({ phase: "finishing", message: "Refining walls, openings and reflective glass…" });
+        return refineFacadeMask(map, { width: detailSide, height: detailSide,
+          texels: photoTexels(photo, detailSide, false) }, facade);
       } finally {
         targets.delete(nodeId);
         runner.retainNodes([...targets.keys()]);

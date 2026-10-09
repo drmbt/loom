@@ -12,7 +12,7 @@ import type { FlatGraph, GraphDocument } from "../domain/types/graph.ts";
 import type { ParameterValue } from "../domain/types/parameters.ts";
 import { createNodeRegistry, type NodeRegistryView } from "../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../nodes/definitions/index.ts";
-import { listExamples, listStarterComponentFiles } from "./catalogue.ts";
+import { listExamples, listStarterComponentFiles, type ExampleFile } from "./catalogue.ts";
 import { requireExample } from "./runner.ts";
 import { ANALYSIS_COMPONENT_ID, analysisComponentDefinition } from "../tests/fixtures/analysis-component.ts";
 import { expressionSlot } from "./documents/builders.ts";
@@ -398,7 +398,12 @@ interface Sweep {
   readonly motion: Map<string, Motion>;
 }
 
-const SWEEP: Sweep[] = [...listExamples(), ...listStarterComponentFiles()].map((file) => {
+// Discovery stays eager so Vitest can name each file; evaluation starts in selected tests.
+const files = [...listExamples(), ...listStarterComponentFiles()];
+const prepared = new Map<ExampleFile, ReturnType<typeof prepareMotionGraph>>();
+const sweeps = new Map<ExampleFile, Sweep>();
+
+function prepareMotionGraph(file: ExampleFile) {
   const { document, result } = requireExample(file);
   const registry = result.nodes;
   const components = result.components;
@@ -406,11 +411,28 @@ const SWEEP: Sweep[] = [...listExamples(), ...listStarterComponentFiles()].map((
     throw new Error(`${file.fileName}: the runner returned no registry — nothing can be evaluated`);
   }
   const flattened = flattenComponents({ graph: document.graph, registry, components });
-  return {
+  return { registry, flattened, randomSeed: document.settings.randomSeed };
+}
+
+function motionGraphOf(file: ExampleFile): ReturnType<typeof prepareMotionGraph> {
+  const cached = prepared.get(file);
+  if (cached !== undefined) return cached;
+  const graph = prepareMotionGraph(file);
+  prepared.set(file, graph);
+  return graph;
+}
+
+function sweepOf(file: ExampleFile): Sweep {
+  const cached = sweeps.get(file);
+  if (cached !== undefined) return cached;
+  const { registry, flattened, randomSeed } = motionGraphOf(file);
+  const sweep = {
     fileName: file.fileName,
-    motion: motionOf(flattened.graph, registry, document.settings.randomSeed, flattened),
+    motion: motionOf(flattened.graph, registry, randomSeed, flattened),
   };
-});
+  sweeps.set(file, sweep);
+  return sweep;
+}
 
 const stillIn = (sweep: Sweep): string[] =>
   [...sweep.motion]
@@ -511,8 +533,13 @@ describe("T1145 — every driven channel in every shipped document actually move
    * equalities — this file is not the place a new example gets registered.
    */
   it("sweeps a real inventory of documents and driven channels", () => {
-    expect(SWEEP.length).toBeGreaterThan(40);
-    const channels = SWEEP.reduce((count, sweep) => count + sweep.motion.size, 0);
+    expect(files.length).toBeGreaterThan(40);
+    // Inventory counts the same distinct addresses as motionOf without stepping frames.
+    const channels = files.reduce((count, file) => {
+      const { flattened } = motionGraphOf(file);
+      const addresses = new Set(channelReads(flattened.graph).map((read) => `${read.name}.${read.key}`));
+      return count + addresses.size;
+    }, 0);
     expect(channels).toBeGreaterThan(70);
   });
 
@@ -522,7 +549,7 @@ describe("T1145 — every driven channel in every shipped document actually move
    * outlive whoever wrote it.
    */
   it("declares exactly the channels that hold still — no more, no fewer", () => {
-    expect(SWEEP.flatMap(stillIn).sort()).toEqual(Object.keys(DELIBERATELY_STILL).sort());
+    expect(files.map(sweepOf).flatMap(stillIn).sort()).toEqual(Object.keys(DELIBERATELY_STILL).sort());
   });
 
   /**
@@ -531,9 +558,10 @@ describe("T1145 — every driven channel in every shipped document actually move
    * Per example, because the failure is per example and a single flat list would name the
    * catalogue rather than the file somebody has to open.
    */
-  it.each(SWEEP.map((sweep) => [sweep.fileName, sweep] as const))(
+  it.each(files.map((file) => [file.fileName, file] as const))(
     "%s — every driven channel varies over the horizon",
-    (fileName, sweep) => {
+    (fileName, file) => {
+      const sweep = sweepOf(file);
       const dead = [...sweep.motion]
         .filter(([key, motion]) => motion.distinct <= 1 && DELIBERATELY_STILL[`${fileName} ${key}`] === undefined)
         .map(([key, motion]) =>

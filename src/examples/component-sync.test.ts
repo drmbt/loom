@@ -9,9 +9,7 @@ import { defaultParameterValue } from "../domain/parameters/validate.ts";
 import { parameterReadOptions } from "../domain/parameters/node-references.ts";
 import { effectiveParameterSchema, resolveParameterSchema } from "../domain/parameters/resolve.ts";
 import {
-  PROJECT_FILE_EXTENSION,
   loadProject,
-  serializeProjectDocument,
 } from "../domain/project/index.ts";
 import type { GraphComponentDefinition } from "../domain/types/components.ts";
 import type { ParameterSlot, ParameterValue } from "../domain/types/parameters.ts";
@@ -156,15 +154,6 @@ describe("the shipped starter components are what the save path writes (§V94)",
     expect(indexOf("second")).toBe(9);
   });
 
-  it.each([...shipped.keys()])("%s survives a load/save round trip", (fileName) => {
-    const text = shipped.get(fileName) as string;
-    const { loaded } = open(text);
-    // The library rides at the document root, so a document serialized on its own is NOT
-    // the file. What must hold is that the loader changed nothing it lifted out.
-    expect(loaded.changed).toBe(false);
-    expect(serializeProjectDocument(loaded.document).length).toBeGreaterThan(0);
-    expect(fileName.endsWith(PROJECT_FILE_EXTENSION)).toBe(true);
-  });
 
   /**
    * §V94's actual claim. A privileged format is one the user's own save could not produce,

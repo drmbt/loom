@@ -9,6 +9,9 @@ import { createFileReference } from "@domain/media/file-reference.ts";
 import type { CommandInputSchema } from "@domain/commands/input-schema.ts";
 import { encodeFloatMap, type FloatMap } from "@runtime/media/float-map.ts";
 import { makePreparedMap, preparedMetadata } from "@runtime/media/prepared-map.ts";
+import { FACADE_MASK_DEFAULTS, facadeMaskSettings, type FacadeMaskSettings } from "@runtime/media/facade-mask.ts";
+import { linearToSrgb, srgbToLinear } from "@runtime/export/pixel-format.ts";
+import { PHOTO_FACADE, PHOTO_MASK, PHOTO_MASK_PERSON } from "@runtime/models/model-catalogue.ts";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { createAppRuntime, type AppRuntime } from "./app-runtime.ts";
 import { PHOTO_MAPPING_SHADER } from "./photo-mapping-effects.ts";
@@ -39,6 +42,15 @@ function map(kind: "depth" | "mask", side = kind === "depth" ? 518 : 1024): Floa
       registration: kind === "depth" ? "letterbox" : "stretch" });
 }
 
+function facadeMap(detailSide = 1024, settings: FacadeMaskSettings = FACADE_MASK_DEFAULTS, source = photo): FloatMap {
+  const prepared = makePreparedMap(new Float32Array(detailSide * 4).fill(1), detailSide, 4, {
+    kind: "mask", source: { sha256: source.sha256, width: source.bitmap.width, height: source.bitmap.height },
+    model: { id: "facade-surfaces-v1", url: PHOTO_FACADE.url }, inputSide: 512, registration: "stretch",
+  });
+  return { ...prepared, metadata: { ...prepared.metadata, facade: { version: 1, detailSide,
+    envelopeWidth: 64, envelopeHeight: 64, ...settings } } };
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   installDomStubs();
@@ -48,8 +60,8 @@ beforeEach(() => {
   nightPhoto = { bitmap: { width: 4, height: 2, close: vi.fn() } as unknown as ImageBitmap, sha256: "b".repeat(64), name: "night.png" };
   mocks.decode.mockImplementation(async (url: string) => url.includes(encodeURIComponent(nightRef)) ? nightPhoto : photo);
   mocks.create.mockReturnValue({ run: mocks.run, dispose: mocks.dispose });
-  mocks.run.mockImplementation(async (kind: "depth" | "mask", _photo: PreparationPhoto, side: number, maskSide?: number) =>
-    map(kind, kind === "depth" ? side : maskSide));
+  mocks.run.mockImplementation(async (kind: "depth" | "mask", reference: PreparationPhoto, side: number, maskSide?: number, facade?: FacadeMaskSettings) =>
+    facade === undefined ? map(kind, kind === "depth" ? side : maskSide) : facadeMap(maskSide, facade, reference));
   let saved = 0;
   mocks.save.mockImplementation(async (prepared: FloatMap) => {
     const reference = createFileReference(`${preparedMetadata(prepared).kind}-saved-${++saved}`, "binary", "prepared.loom-f32");
@@ -209,7 +221,7 @@ describe("reusable photo preparation host", () => {
     expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
   });
 
-  it("shows native depth and mask detail controls above their previews without running inference", async () => {
+  it("defaults to facade masks and requests independent refinement detail only on demand", async () => {
     const target = runtime(); await open(target);
     const depthDetail = screen.getByRole("combobox", { name: "Detail" });
     const maskDetail = screen.getByRole("combobox", { name: "Mask detail" });
@@ -219,13 +231,127 @@ describe("reusable photo preparation host", () => {
     expect(depthDetail.closest("details")).toBeNull(); expect(maskDetail.closest("details")).toBeNull();
     expect(depthDetail.compareDocumentPosition(screen.getByTestId("depth-preview-frame")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(maskDetail.compareDocumentPosition(screen.getByTestId("mask-preview-frame")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText(/BiRefNet surface mask · 172\.5 MB/)).toBeDefined();
+    expect((screen.getByRole("combobox", { name: "Mask method" }) as HTMLSelectElement).value).toBe("facade");
+    expect(screen.getByText(`${PHOTO_FACADE.label} · ${(PHOTO_FACADE.bytes / 1024 / 1024).toFixed(1)} MB · 512 input / 64 scene mask`)).toBeDefined();
+    const cutoff = screen.getByRole("slider", { name: /^Opening cutoff/ }) as HTMLInputElement;
+    expect([cutoff.value, cutoff.min, cutoff.max]).toEqual(["14", "0", "50"]);
+    expect(screen.getByRole("switch", { name: "Exclude blue glass" }).getAttribute("aria-checked")).toBe("true");
     await choosePhoto();
     fireEvent.change(depthDetail, { target: { value: "1288" } });
     fireEvent.change(maskDetail, { target: { value: "1536" } });
     expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled();
     await click("Run depth"); await click("Run mask");
-    expect(mocks.run.mock.calls).toEqual([["depth", photo, 1288], ["mask", photo, 1288, 1536]]);
+    expect(mocks.run.mock.calls).toEqual([["depth", photo, 1288], ["mask", photo, 1288, 1536, FACADE_MASK_DEFAULTS]]);
+    await click("Save mask…");
+    const saved = mocks.save.mock.calls[0]![0] as FloatMap;
+    expect(preparedMetadata(saved)).toMatchObject({ inputSide: 512, source: { sha256, width: 4, height: 2 },
+      model: { id: "facade-surfaces-v1", url: PHOTO_FACADE.url } });
+    expect(facadeMaskSettings(saved)).toEqual({ version: 1, detailSide: 1536, envelopeWidth: 64, envelopeHeight: 64, ...FACADE_MASK_DEFAULTS });
+    expect(saved.values).toBeInstanceOf(Float32Array);
+    expect(Math.max(saved.width, saved.height)).toBe(1536);
+    expect(screen.getByText("Red is excluded · drag to erase or restore")).toBeDefined();
+  });
+
+  it.each(["opening cutoff", "blue glass"] as const)("invalidates only a saved facade recipe after changing %s without automatic inference", async setting => {
+    maps.set(maskRef, facadeMap());
+    const originalBytes = encodeFloatMap(maps.get(maskRef)!).slice();
+    const target = runtime(); await open(target); await choosePhoto();
+    await chooseMap("depth"); await screen.findByRole("button", { name: "Save depth again…" });
+    await chooseMap("mask"); await screen.findByRole("button", { name: "Save mask again…" });
+    const changed = setting === "opening cutoff" ? { ...FACADE_MASK_DEFAULTS, darkCutoff: srgbToLinear(0.25) }
+      : { ...FACADE_MASK_DEFAULTS, excludeBlueGlass: false };
+    if (setting === "opening cutoff") fireEvent.change(screen.getByRole("slider", { name: /^Opening cutoff/ }), { target: { value: "25" } });
+    else fireEvent.click(screen.getByRole("switch", { name: "Exclude blue glass" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/Mask out of date/i);
+    expect((screen.getByRole("button", { name: "Save mask…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Save depth again…" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Create mapping network" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+    expect(encodeFloatMap(maps.get(maskRef)!)).toEqual(originalBytes);
+    await click("Rerun mask");
+    expect(mocks.run.mock.calls).toEqual([["mask", photo, 518, 1024, changed]]);
+    expect((screen.getByRole("button", { name: "Create mapping network" }) as HTMLButtonElement).disabled).toBe(true);
+    await click("Save mask…");
+    expect(facadeMaskSettings(mocks.save.mock.calls[0]![0])).toMatchObject(changed);
+    expect((screen.getByRole("button", { name: "Create mapping network" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("restores a saved facade recipe and refinement detail despite its 512 model input", async () => {
+    const settings = { darkCutoff: srgbToLinear(0.23), feather: 0.025, excludeBlueGlass: false };
+    maps.set(maskRef, facadeMap(1536, settings));
+    const originalBytes = encodeFloatMap(maps.get(maskRef)!).slice();
+    const target = runtime(); await open(target); await choosePhoto();
+    await chooseMap("depth"); await screen.findByRole("button", { name: "Save depth again…" });
+    await chooseMap("mask"); await screen.findByRole("button", { name: "Save mask again…" });
+    expect((screen.getByRole("combobox", { name: "Mask method" }) as HTMLSelectElement).value).toBe("facade");
+    expect((screen.getByRole("combobox", { name: "Mask detail" }) as HTMLSelectElement).value).toBe("1536");
+    expect((screen.getByRole("slider", { name: /^Opening cutoff/ }) as HTMLInputElement).value)
+      .toBe(String(Math.round(linearToSrgb(settings.darkCutoff) * 100)));
+    expect(screen.getByRole("switch", { name: "Exclude blue glass" }).getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByRole("button", { name: "Create mapping network" }) as HTMLButtonElement).disabled).toBe(false);
+    await click("Create mapping network");
+    expect(Object.values(target.bus.store.getGraph().nodes).find(node => node.type === "floatMapIn" && node.parameters.interpretation === "mask")?.parameters.file).toBe(maskRef);
+    expect(preparedMetadata(maps.get(maskRef)!).inputSide).toBe(512);
+    expect(encodeFloatMap(maps.get(maskRef)!)).toEqual(originalBytes);
+    expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("uses the explicit background method with four run arguments", async () => {
+    const target = runtime(); await open(target); await choosePhoto();
+    fireEvent.change(screen.getByRole("combobox", { name: "Mask method" }), { target: { value: "background" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Mask detail" }), { target: { value: "1536" } });
+    expect(screen.queryByRole("slider", { name: /^Opening cutoff/ })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Exclude blue glass" })).toBeNull();
+    expect(mocks.run).not.toHaveBeenCalled();
+    await click("Run mask"); await click("Save mask…");
+    expect(mocks.run.mock.calls).toEqual([["mask", photo, 518, 1536]]);
+    expect(preparedMetadata(mocks.save.mock.calls[0]![0]).inputSide).toBe(1536);
+    expect(facadeMaskSettings(mocks.save.mock.calls[0]![0])).toBeUndefined();
+  });
+
+  it("retains the imported facade feather and exclusions on an explicit rerun", async () => {
+    const settings = { darkCutoff: 0.047, feather: 0.025, excludeBlueGlass: false };
+    maps.set(maskRef, facadeMap(1536, settings));
+    const target = runtime(); await open(target); await choosePhoto();
+    await chooseMap("mask"); await screen.findByRole("button", { name: "Save mask again…" });
+    expect(mocks.run).not.toHaveBeenCalled();
+    await click("Rerun mask");
+    expect(mocks.run.mock.calls).toEqual([["mask", photo, 518, 1536, settings]]);
+    await click("Save mask…");
+    expect(facadeMaskSettings(mocks.save.mock.calls[0]![0])).toMatchObject({ ...settings, detailSide: 1536 });
+  });
+
+  it("marks excluded facade samples with a red tint while preserving included photo samples and saved values", async () => {
+    const prepared = facadeMap();
+    prepared.values[0] = 0;
+    maps.set(maskRef, prepared);
+    const originalBytes = encodeFloatMap(prepared).slice();
+    const paint = vi.fn();
+    vi.mocked(HTMLCanvasElement.prototype.getContext).mockImplementation((() => ({
+      drawImage: vi.fn(), putImageData: paint, clearRect: vi.fn(), fillRect: vi.fn(),
+      getImageData: (_x: number, _y: number, width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4).fill(128) }),
+      createImageData: (width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+    })) as unknown as typeof HTMLCanvasElement.prototype.getContext);
+    const target = runtime(); await open(target); await choosePhoto();
+    await chooseMap("mask"); await screen.findByRole("button", { name: "Save mask again…" });
+    const image = paint.mock.calls.at(-1)![0] as ImageData;
+    expect(image.data[0]).toBeGreaterThan(image.data[1]!);
+    expect(image.data[0]).toBeGreaterThan(image.data[2]!);
+    expect(image.data[0]).toBeGreaterThan(128);
+    expect([...image.data.slice(4, 8)]).toEqual([128, 128, 128, 128]);
+    expect(screen.getByText("Red is excluded · drag to erase or restore")).toBeDefined();
+    expect(encodeFloatMap(prepared)).toEqual(originalBytes);
+    expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("rejects a recognized facade mask with a missing recipe instead of reusing it as a background mask", async () => {
+    const invalid = facadeMap();
+    maps.set(maskRef, { ...invalid, metadata: { preparation: invalid.metadata!.preparation! } });
+    const target = runtime(); await open(target); await choosePhoto();
+    await chooseMap("mask");
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/Invalid facade mask.*metadata/i));
+    expect((screen.getByRole("button", { name: "Save mask…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
   });
 
   it("invalidates only the changed mask detail and requires a fresh save after rerunning", async () => {
@@ -269,12 +395,15 @@ describe("reusable photo preparation host", () => {
     expect(mocks.save.mock.calls.map(call => preparedMetadata(call[0]).kind)).toEqual(["depth"]);
   });
 
-  it("adopts an imported 1536 mask and creates the network without inference or resaving", async () => {
-    maps.set(maskRef, map("mask", 1536));
+  it.each(["mask", PHOTO_MASK_PERSON.id, PHOTO_MASK.id])("adopts an imported legacy %s mask as background removal without inference or resaving", async modelId => {
+    const prepared = map("mask", 1536);
+    const metadata = preparedMetadata(prepared);
+    maps.set(maskRef, { ...prepared, metadata: { preparation: { ...metadata, model: { ...metadata.model, id: modelId } } } });
     const target = runtime(); await open(target); await choosePhoto();
     await chooseMap("depth"); await screen.findByRole("button", { name: "Save depth again…" });
     await chooseMap("mask"); await screen.findByRole("button", { name: "Save mask again…" });
     expect((screen.getByRole("combobox", { name: "Mask detail" }) as HTMLSelectElement).value).toBe("1536");
+    expect((screen.getByRole("combobox", { name: "Mask method" }) as HTMLSelectElement).value).toBe("background");
     expect((screen.getByRole("button", { name: "Create mapping network" }) as HTMLButtonElement).disabled).toBe(false);
     await click("Create mapping network");
     const graph = target.bus.store.getGraph();
@@ -839,6 +968,38 @@ describe("reusable photo preparation host", () => {
     await click("Run depth");
     await screen.findByRole("button", { name: "Rerun depth" });
     expect((screen.getByRole("button", { name: "Save depth…" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("paints native high-resolution samples despite a smaller display and preserves radius edits and undo", async () => {
+    vi.stubGlobal("PointerEvent", MouseEvent);
+    const prepared = makePreparedMap(new Float32Array(1536 * 1536).fill(0.75), 1536, 1536, {
+      kind: "mask", source: { sha256, width: 4, height: 2 },
+      model: { id: "manual", url: "loom:manual-mask" }, inputSide: 1536, registration: "stretch",
+    });
+    maps.set(maskRef, prepared);
+    const target = runtime(); await open(target); await choosePhoto();
+    await chooseMap("mask"); await screen.findByRole("button", { name: "Save mask again…" });
+    const canvas = screen.getByRole("img", { name: "Surface mask editor" }) as HTMLCanvasElement;
+    expect(canvas.width * canvas.height).toBeLessThan(prepared.values.length);
+    fireEvent.change(screen.getByRole("slider", { name: /^Radius/ }), { target: { value: "5" } });
+    await click("Save mask again…");
+    const loaded = mocks.save.mock.calls[0]![0] as FloatMap;
+    expect(loaded.values.every(value => Object.is(value, 0.75))).toBe(true);
+    await act(async () => {
+      fireEvent.pointerDown(canvas, { clientX: 512, clientY: 384, pointerId: 1 });
+      fireEvent.pointerMove(canvas, { clientX: 600, clientY: 384, pointerId: 1 });
+      fireEvent.pointerCancel(canvas, { pointerId: 1 });
+    });
+    await click("Save mask…");
+    const saved = mocks.save.mock.calls[1]![0] as FloatMap;
+    expect([saved.width, saved.height]).toEqual([1536, 1536]);
+    expect(saved.values[768 * 1536 + 768]).toBe(0);
+    expect(saved.values[768 * 1536 + 900]).toBe(0);
+    expect(saved.values[0]).toBe(0.75);
+    expect(prepared.values[768 * 1536 + 768]).toBe(0.75);
+    await click("Undo stroke"); await click("Save mask…");
+    expect(mocks.save.mock.calls[2]![0]).toBe(loaded);
+    expect(mocks.run).not.toHaveBeenCalled();
   });
 
   it("undoes an entire manual mask stroke before saving without invoking inference", async () => {

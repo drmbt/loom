@@ -22,6 +22,9 @@ function maps(source: PreparationPhoto) {
   return { depth: makePreparedMap(values, 64, 64, { ...metadata, kind: "depth" }),
     mask: makePreparedMap(coverage, 64, 64, { ...metadata, kind: "mask" }) };
 }
+function previewMaps(prepared: { depth: ReturnType<typeof makePreparedMap> | null; mask: ReturnType<typeof makePreparedMap> | null }) {
+  return { readMaps: () => prepared };
+}
 function context() {
   const frames: Uint8ClampedArray[] = [];
   return { drawImage: vi.fn(), clearRect: vi.fn(), fillRect: vi.fn(), fillStyle: "", frames,
@@ -50,13 +53,13 @@ describe("photo mapping dialog preview", () => {
   it("changes preview light without changing the photograph or float maps and replaces its animation", () => {
     const source = photo(); const night = photo("night.png"); const prepared = maps(source);
     const originalDepth = prepared.depth.values.slice(); const originalMask = prepared.mask.values.slice();
-    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={night} {...prepared} matching previewOpacity={0} />);
+    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={night} {...previewMaps(prepared)} matching previewOpacity={0} />);
     const [previousId, previousFrame] = [...callbacks.entries()][0]!;
     expect(contexts[0]!.drawImage.mock.calls[0]![0]).toBe(night.bitmap);
     for (const overlay of [contexts[1]!.frames[0]!, contexts[2]!.frames[0]!]) {
       expect(overlay.filter((_value, index) => index % 4 === 3).every(alpha => alpha === 0)).toBe(true);
     }
-    rerender(<PhotoMappingPreview photo={source} previewPhoto={night} {...prepared} matching previewOpacity={1} />);
+    rerender(<PhotoMappingPreview photo={source} previewPhoto={night} {...previewMaps(prepared)} matching previewOpacity={1} />);
     expect(cancelAnimationFrame).toHaveBeenCalledWith(previousId);
     expect(callbacks.has(previousId)).toBe(false);
     expect(callbacks.size).toBe(1);
@@ -76,7 +79,7 @@ describe("photo mapping dialog preview", () => {
   it("previews explicitly chosen full-frame coverage without a mask file", () => {
     const source = photo(); const night = photo("night.png"); const prepared = maps(source);
     const original = prepared.depth.values.slice();
-    render(<PhotoMappingPreview photo={source} previewPhoto={night} depth={prepared.depth} mask={null} fullFrame matching />);
+    render(<PhotoMappingPreview photo={source} previewPhoto={night} {...previewMaps({ depth: prepared.depth, mask: null })} fullFrame matching />);
     expect(screen.getByRole("img", { name: "Animated mapping preview" })).toBeDefined();
     expect(contexts[0]!.drawImage.mock.calls[0]![0]).toBe(night.bitmap);
     const fill = contexts[1]!.frames[0]!;
@@ -89,7 +92,7 @@ describe("photo mapping dialog preview", () => {
     const source = photo(); const prepared = maps(source);
     const originalDepth = prepared.depth.values.slice();
     const originalMask = prepared.mask.values.slice();
-    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={null} {...prepared} matching />);
+    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={null} {...previewMaps(prepared)} matching />);
     const outline = contexts[2]!.frames[0]!;
     for (const [x, y] of [[32, 7], [27, 28], [42, 17]]) expect(outline[4 * (y! * 64 + x!) + 3]).toBeGreaterThan(0);
     for (const [x, y] of [[0, 0], [1, 32], [37, 28], [16, 32]]) expect(outline[4 * (y! * 64 + x!) + 3]).toBe(0);
@@ -98,14 +101,14 @@ describe("photo mapping dialog preview", () => {
     expect(prepared.depth.values).toEqual(originalDepth);
     expect(prepared.mask.values).toEqual(originalMask);
     const wide = photo("wide.png", 1920, 960);
-    rerender(<PhotoMappingPreview photo={wide} previewPhoto={null} depth={null} mask={maps(wide).mask} matching />);
+    rerender(<PhotoMappingPreview photo={wide} previewPhoto={null} {...previewMaps({ depth: null, mask: maps(wide).mask })} matching />);
     const canvas = screen.getByRole("img", { name: "Animated mapping preview" }) as HTMLCanvasElement;
     expect([canvas.width, canvas.height]).toEqual([480, 240]);
   });
 
   it("animates boundary colour and cancels its frame and media listener when closed", () => {
     const source = photo(); const prepared = maps(source);
-    const { unmount } = render(<PhotoMappingPreview photo={source} previewPhoto={null} {...prepared} matching />);
+    const { unmount } = render(<PhotoMappingPreview photo={source} previewPhoto={null} {...previewMaps(prepared)} matching />);
     expect(screen.getByRole("img", { name: "Animated mapping preview" })).toBeDefined();
     expect(contexts[0]!.drawImage.mock.calls[0]![0]).toBe(source.bitmap);
     const initial = contexts[2]!.frames[0]!.slice();
@@ -123,12 +126,12 @@ describe("photo mapping dialog preview", () => {
   it("uses the separate night bitmap and redraws when the background or mask changes", () => {
     const source = photo(); const night = photo("night.png"); const prepared = maps(source);
     const original = prepared.mask.values.slice();
-    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={night} {...prepared} matching />);
+    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={night} {...previewMaps(prepared)} matching />);
     expect(contexts[0]!.drawImage.mock.calls[0]![0]).toBe(night.bitmap);
     expect(contexts[0]!.fillRect).not.toHaveBeenCalled();
     const editedValues = prepared.mask.values.slice(); editedValues[28 * 64 + 37] = 1;
     const edited = { ...prepared.mask, values: editedValues };
-    rerender(<PhotoMappingPreview photo={source} previewPhoto={null} depth={prepared.depth} mask={edited} matching />);
+    rerender(<PhotoMappingPreview photo={source} previewPhoto={null} {...previewMaps({ depth: prepared.depth, mask: edited })} matching />);
     expect(contexts[3]!.drawImage.mock.calls[0]![0]).toBe(source.bitmap);
     expect(contexts[4]!.frames[0]![4 * (28 * 64 + 37) + 3]).toBeGreaterThan(0);
     expect(prepared.mask.values).toEqual(original);
@@ -144,7 +147,7 @@ describe("photo mapping dialog preview", () => {
   ])("accepts the uploaded day/night dimensions despite rounded resize pixels: %j", ({ reference, preview }) => {
     const source = photo("day.png", reference[0]!, reference[1]!);
     const night = photo("night.png", preview[0]!, preview[1]!);
-    render(<PhotoMappingPreview photo={source} previewPhoto={night} {...maps(source)} matching />);
+    render(<PhotoMappingPreview photo={source} previewPhoto={night} {...previewMaps(maps(source))} matching />);
     expect(screen.getByRole("img", { name: "Animated mapping preview" })).toBeDefined();
     expect(screen.queryByText(/matching aspect and framing/)).toBeNull();
     expect(contexts[0]!.drawImage.mock.calls[0]![0]).toBe(night.bitmap);
@@ -159,7 +162,7 @@ describe("photo mapping dialog preview", () => {
   ])("draws the selected $fit framing without changing mask registration", ({ fit, rectangle }) => {
     const source = photo(); const night = photo("wide-night.png", 64, 32); const prepared = maps(source);
     const original = prepared.mask.values.slice();
-    render(<PhotoMappingPreview photo={source} previewPhoto={night} {...prepared} matching previewFit={fit} />);
+    render(<PhotoMappingPreview photo={source} previewPhoto={night} {...previewMaps(prepared)} matching previewFit={fit} />);
     expect(contexts[0]!.drawImage.mock.calls[0]).toEqual([night.bitmap, ...rectangle]);
     expect(contexts[0]!.fillRect).not.toHaveBeenCalled();
     expect(prepared.mask.values).toEqual(original);
@@ -168,24 +171,24 @@ describe("photo mapping dialog preview", () => {
 
   it("protects stale maps while allowing a differently framed preview photo", () => {
     const source = photo(); const prepared = maps(source);
-    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={null} {...prepared} matching={false} />);
+    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={null} {...previewMaps(prepared)} matching={false} />);
     expect(screen.getByText(/maps that match/)).toBeDefined();
     expect(screen.queryByRole("img")).toBeNull();
     expect(contexts).toHaveLength(0);
-    rerender(<PhotoMappingPreview photo={source} previewPhoto={photo("cropped.png", 64, 32)} {...prepared} matching />);
+    rerender(<PhotoMappingPreview photo={source} previewPhoto={photo("cropped.png", 64, 32)} {...previewMaps(prepared)} matching />);
     expect(screen.getByRole("img", { name: "Animated mapping preview" })).toBeDefined();
     expect(callbacks.size).toBe(1);
-    rerender(<PhotoMappingPreview photo={null} previewPhoto={null} depth={null} mask={null} matching={false} />);
+    rerender(<PhotoMappingPreview photo={null} previewPhoto={null} {...previewMaps({ depth: null, mask: null })} matching={false} />);
     expect(screen.getByText(/Choose a reference photo/)).toBeDefined();
     expect(callbacks.size).toBe(0);
-    rerender(<PhotoMappingPreview photo={source} previewPhoto={null} depth={null} mask={null} matching />);
+    rerender(<PhotoMappingPreview photo={source} previewPhoto={null} {...previewMaps({ depth: null, mask: null })} matching />);
     expect(screen.getByText(/Prepare or open a mask/)).toBeDefined();
   });
 
   it("renders the mask alone and honours reduced motion, including preference changes", () => {
     reduced = true;
     const source = photo(); const prepared = maps(source);
-    render(<PhotoMappingPreview photo={source} previewPhoto={null} depth={null} mask={prepared.mask} matching />);
+    render(<PhotoMappingPreview photo={source} previewPhoto={null} {...previewMaps({ depth: null, mask: prepared.mask })} matching />);
     expect(contexts[2]!.frames).toHaveLength(1);
     expect(callbacks.size).toBe(0);
     act(() => motionListeners.forEach(listener => listener({ matches: false } as MediaQueryListEvent)));
@@ -197,16 +200,16 @@ describe("photo mapping dialog preview", () => {
   it("reports missing canvas support and malformed maps explicitly", () => {
     const source = photo(); const prepared = maps(source);
     vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValueOnce(null);
-    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={null} {...prepared} matching />);
+    const { rerender } = render(<PhotoMappingPreview photo={source} previewPhoto={null} {...previewMaps(prepared)} matching />);
     expect(screen.getByRole("alert").textContent).toMatch(/requires a 2D canvas/);
     expect(callbacks.size).toBe(0);
-    rerender(<PhotoMappingPreview photo={source} previewPhoto={null} depth={prepared.depth}
-      mask={{ ...prepared.mask, values: new Float32Array(1) }} matching />);
+    rerender(<PhotoMappingPreview photo={source} previewPhoto={null}
+      {...previewMaps({ depth: prepared.depth, mask: { ...prepared.mask, values: new Float32Array(1) } })} matching />);
     expect(screen.getByRole("alert").textContent).toMatch(/sample count/);
     expect(callbacks.size).toBe(0);
     const invalidDepth = prepared.depth.values.slice(); invalidDepth[0] = Number.NaN;
     rerender(<PhotoMappingPreview photo={source} previewPhoto={null}
-      depth={{ ...prepared.depth, values: invalidDepth }} mask={prepared.mask} matching />);
+      {...previewMaps({ depth: { ...prepared.depth, values: invalidDepth }, mask: prepared.mask })} matching />);
     expect(screen.getByRole("alert").textContent).toMatch(/sample must be finite/);
     expect(Number.isNaN(invalidDepth[0])).toBe(true);
     expect(callbacks.size).toBe(0);

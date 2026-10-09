@@ -121,9 +121,8 @@
  * tracked the number, and the tier chip beside it moved ten times a second — the owner's
  * "jumping around like crazy".
  *
- * 9ch is `formatMs` at its widest plausible reading (`999.99 ms`), and
- * `readout-stability.test.ts` derives that number from the formatter rather than trusting
- * this comment: change the format and the gate fails.
+ * 9ch holds `formatMs` at its widest plausible reading (`999.99 ms`). Browser checks
+ * verify that readout changes leave their neighbours in place.
  */
 .metricValue {
   min-width: 9ch;

@@ -7,7 +7,9 @@ import { storedStaticValue } from "@domain/parameters/slots.ts";
 import { selectCreatedNodes } from "@editor/selection/select-created.ts";
 import { parseFileReference } from "@domain/media/file-reference.ts";
 import { PHOTO_DEPTH_INPUT_SIDES, PHOTO_MASK_INPUT_SIDES, supportsPhotoMaskSize } from "@domain/media/preparation-sizes.ts";
-import { PHOTO_MASK } from "@runtime/models/model-catalogue.ts";
+import { PHOTO_MASK, PHOTO_FACADE } from "@runtime/models/model-catalogue.ts";
+import { FACADE_MASK_DEFAULTS, facadeMaskSettings, type FacadeMaskSettings } from "@runtime/media/facade-mask.ts";
+import { linearToSrgb, srgbToLinear } from "@runtime/export/pixel-format.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { AssetField } from "@ui/controls/curve-field.tsx";
 import { Button } from "@ui/primitives/button.tsx";
@@ -16,7 +18,7 @@ import { navigationHolderFor } from "./component-navigation.ts";
 import { DialogRoot, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@ui/primitives/dialog.tsx";
 import { retainedFiles } from "@ui/files/retained-files.ts";
 import { decodeFloatMap, type FloatMap } from "@runtime/media/float-map.ts";
-import { makePreparedMap, paintMaskStroke, preparedMetadata, rasterizeFloatMap } from "@runtime/media/prepared-map.ts";
+import { makePreparedMap, beginMaskStroke, preparedMetadata, rasterizeFloatMap } from "@runtime/media/prepared-map.ts";
 import type { AppRuntime } from "./app-runtime.ts";
 import { createPhotoPreparer, decodePreparationPhoto, savePreparedMap, type PreparationPhoto, type PreparationProgress } from "./photo-preparation.ts";
 import { floatMapPhotoUrlFor } from "./use-float-map-sources.ts";
@@ -99,6 +101,31 @@ function useFileUrls(references: readonly string[]): readonly string[] {
     : files.snapshot(reference).kind === "ready" ? (files.snapshot(reference) as { url: string }).url : "");
 }
 
+function drawMaskEditor(target: HTMLCanvasElement, photo: PreparationPhoto, mask: FloatMap | null): void {
+  const width = mask?.width ?? photo.bitmap.width;
+  const height = mask?.height ?? photo.bitmap.height;
+  const scale = Math.min(1, 768 / width, 768 / height);
+  target.width = Math.max(1, Math.round(width * scale));
+  target.height = Math.max(1, Math.round(height * scale));
+  const context = target.getContext("2d", { willReadFrequently: true });
+  if (context === null) return;
+  context.drawImage(photo.bitmap, 0, 0, target.width, target.height);
+  if (mask !== null) {
+    const image = context.getImageData(0, 0, target.width, target.height);
+    // Display sampling only. Painting and saving keep the full native float32 map.
+    for (let y = 0; y < target.height; y++) for (let x = 0; x < target.width; x++) {
+      const i = y * target.width + x;
+      const mx = Math.min(mask.width - 1, Math.floor((x + 0.5) / target.width * mask.width));
+      const my = Math.min(mask.height - 1, Math.floor((y + 0.5) / target.height * mask.height));
+      const excluded = (1 - mask.values[my * mask.width + mx]!) * 0.6;
+      image.data[4 * i] = image.data[4 * i]! * (1 - excluded) + 230 * excluded;
+      image.data[4 * i + 1] = image.data[4 * i + 1]! * (1 - excluded) + 65 * excluded;
+      image.data[4 * i + 2] = image.data[4 * i + 2]! * (1 - excluded) + 70 * excluded;
+    }
+    context.putImageData(image, 0, 0);
+  }
+}
+
 interface MapJob {
   readonly kind: "depth" | "mask";
   readonly progress: PreparationProgress;
@@ -145,8 +172,11 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
   const [photo, setPhoto] = useState<PreparationPhoto | null>(null);
   const [depth, setDepth] = useState<FloatMap | null>(null);
   const [mask, setMask] = useState<FloatMap | null>(null);
+  const readPreviewMaps = useCallback(() => ({ depth, mask }), [depth, mask]);
   const [side, setSide] = useState(initial.inputSide);
   const [maskSide, setMaskSide] = useState(1024);
+  const [maskMethod, setMaskMethod] = useState<"facade" | "background">("facade");
+  const [facadeSettings, setFacadeSettings] = useState<FacadeMaskSettings>(FACADE_MASK_DEFAULTS);
   const [useMask, setUseMask] = useState(initial.useMask ?? true);
   const [mode, setMode] = useState(initial.mode ?? 0);
   const [previz, setPreviz] = useState(initial.previz ?? true);
@@ -160,7 +190,7 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
   const [history, setHistory] = useState<readonly FloatMap[]>([]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const preview = useRef<HTMLCanvasElement>(null);
-  const stroke = useRef<{ x: number; y: number } | null>(null);
+  const stroke = useRef<{ point: { x: number; y: number }; editor: ReturnType<typeof beginMaskStroke> } | null>(null);
   const maskRefLive = useRef(mask);
   maskRefLive.current = mask;
   const preparer = useRef<ReturnType<typeof createPhotoPreparer> | null>(null);
@@ -203,13 +233,16 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
         if (!response.ok) throw new Error(`Saved ${kind} could not be opened (${response.status}).`);
         const map = decodeFloatMap(await response.arrayBuffer());
         if (preparedMetadata(map).kind !== kind) throw new Error(`Choose a prepared ${kind} map.`);
+        const facade = kind === "mask" ? facadeMaskSettings(map) : undefined;
         rasterizeFloatMap(map, kind, 1, 1);
         if (!abort.signal.aborted && loadVersions.current[kind] === version) {
           if (kind === "depth") { setDepth(map); setSide(preparedMetadata(map).inputSide); }
           else {
             setMask(map);
-            const loadedSide = preparedMetadata(map).inputSide;
+            const loadedSide = facade?.detailSide ?? preparedMetadata(map).inputSide;
             if (supportsPhotoMaskSize(loadedSide)) setMaskSide(loadedSide);
+            setMaskMethod(facade === undefined ? "background" : "facade");
+            if (facade !== undefined) setFacadeSettings({ darkCutoff: facade.darkCutoff, feather: facade.feather, excludeBlueGlass: facade.excludeBlueGlass });
           }
           setStatus(`Existing ${kind} opened · ${map.width} × ${map.height} · float32. Ready to reuse with its reference photo.`);
         }
@@ -221,20 +254,7 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
   useEffect(() => loadMap(maskUrl, "mask"), [maskUrl, maskPick, loadMap]);
 
   useEffect(() => {
-    const target = canvas.current;
-    if (target === null || photo === null) return;
-    target.width = mask?.width ?? Math.min(photo.bitmap.width, 1024);
-    target.height = mask?.height ?? Math.min(photo.bitmap.height, 1024);
-    const context = target.getContext("2d", { willReadFrequently: true });
-    if (context === null) return;
-    context.drawImage(photo.bitmap, 0, 0, target.width, target.height);
-    if (mask !== null) {
-      const image = context.getImageData(0, 0, target.width, target.height);
-      for (let i = 0; i < mask.values.length; i++) {
-        for (let c = 0; c < 3; c++) image.data[4 * i + c] = image.data[4 * i + c]! * mask.values[i]!;
-      }
-      context.putImageData(image, 0, 0);
-    }
+    if (canvas.current !== null && photo !== null) drawMaskEditor(canvas.current, photo, mask);
   }, [photo, mask]);
 
   useEffect(() => {
@@ -264,6 +284,7 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
         if (live.current) { setStatus(progress.message); setJob(current => current === null ? null : { ...current, progress }); }
       });
       const map = kind === "depth" ? await preparer.current.run(kind, photo, side)
+        : maskMethod === "facade" ? await preparer.current.run(kind, photo, side, maskSide, facadeSettings)
         : await preparer.current.run(kind, photo, side, maskSide);
       if (!live.current) return;
       if (kind === "depth") { setDepth(map); setSavedDepth(""); }
@@ -289,16 +310,26 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
     finally { if (live.current) { setBusy(false); setJob(null); } }
   };
 
-  const matches = (map: FloatMap | null) => photo !== null && map !== null && preparedMetadata(map).source.sha256 === photo.sha256 &&
-    preparedMetadata(map).source.width === photo.bitmap.width && preparedMetadata(map).source.height === photo.bitmap.height &&
-    (preparedMetadata(map).kind === "depth" ? preparedMetadata(map).inputSide === side
-      : preparedMetadata(map).inputSide === maskSide);
+  const matches = (map: FloatMap | null) => {
+    if (photo === null || map === null) return false;
+    const metadata = preparedMetadata(map);
+    if (metadata.source.sha256 !== photo.sha256 || metadata.source.width !== photo.bitmap.width || metadata.source.height !== photo.bitmap.height) return false;
+    if (metadata.kind === "depth") return metadata.inputSide === side;
+    const facade = facadeMaskSettings(map);
+    if (facade !== undefined) return maskMethod === "facade" && facade.detailSide === maskSide
+      && facade.darkCutoff === facadeSettings.darkCutoff && facade.feather === facadeSettings.feather && facade.excludeBlueGlass === facadeSettings.excludeBlueGlass;
+    return (maskMethod === "background" || metadata.model.id === "manual") && metadata.inputSide === maskSide;
+  };
   const depthReady = savedDepth !== "" && matches(depth);
   const maskReady = savedMask !== "" && matches(mask);
   const needsDepth = !existing || initial.depthId !== undefined;
   const needsMask = existing ? initial.maskId !== undefined : useMask;
-  const maskCoverage = useMemo(() => mask === null ? null
-    : mask.values.reduce((covered, value) => covered + (value >= 0.5 ? 1 : 0), 0) / mask.values.length, [mask]);
+  const maskCoverage = useMemo(() => {
+    if (mask === null) return null;
+    let covered = 0;
+    for (let i = 0; i < mask.values.length; i++) if (mask.values[i]! >= 0.5) covered++;
+    return covered / mask.values.length;
+  }, [mask]);
   const previewFramingMatches = photo !== null && previewPhoto !== null && hasMatchingPhotoAspect(photo.bitmap, previewPhoto.bitmap);
   const previewReady = previewPhotoRef === "" || previewPhoto !== null;
   const canApply = photo !== null && (!needsDepth || depthReady) && (!needsMask || maskReady) && (!previz || previewReady);
@@ -404,10 +435,26 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
     const bounds = event.currentTarget.getBoundingClientRect();
     const next = { x: (event.clientX - bounds.left) / bounds.width * current.width,
       y: (event.clientY - bounds.top) / bounds.height * current.height };
-    if (first) { loadVersions.current.mask++; event.currentTarget.setPointerCapture(event.pointerId); setHistory(previous => [...previous.slice(-19), current]); }
-    const painted = paintMaskStroke(current, stroke.current ?? next, next, radius, brush);
+    if (first) {
+      if (stroke.current !== null) return;
+      loadVersions.current.mask++;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setHistory(previous => [...previous.slice(-19), current]);
+      stroke.current = { point: next, editor: beginMaskStroke(current) };
+      setSavedMask("");
+    }
+    const active = stroke.current!;
+    const painted = active.editor.paint(active.point, next, radius, brush);
+    active.point = next;
+    if (photo !== null) drawMaskEditor(event.currentTarget, photo, painted);
+  };
+
+  const finishStroke = () => {
+    if (stroke.current === null) return;
+    const painted = stroke.current.editor.finish();
+    stroke.current = null;
     maskRefLive.current = painted;
-    setMask(painted); setSavedMask(""); stroke.current = next;
+    setMask(painted);
   };
 
   return <DialogRoot open onOpenChange={open => { if (!open) close(); }}>
@@ -444,7 +491,7 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
         <div className={styles.photoFrame} data-testid="preview-photo-frame" style={photoFrameStyle}>
           {photo === null ? <span className={styles.placeholder}>Preview your photo and animated outline here</span>
             : (!needsMask || (mask !== null && matches(mask))) && (depth === null || matches(depth)) && previewReady
-              ? <PhotoMappingPreview photo={photo} previewPhoto={previewPhoto} previewFit={previewFit} previewOpacity={previewOpacity} depth={depth} mask={mask} fullFrame={!needsMask} matching />
+              ? <PhotoMappingPreview photo={photo} previewPhoto={previewPhoto} previewFit={previewFit} previewOpacity={previewOpacity} readMaps={readPreviewMaps} fullFrame={!needsMask} matching />
               : <img src={previewPhotoUrl || photoUrl} alt="Preview photo" style={{ objectFit: previewPhotoRef === "" ? "fill" : previewFit === "fill" ? "cover" : previewFit === "fit" ? "contain" : "fill" }} />}
           {comparison > 0 && photo !== null && previewPhoto !== null ? <img src={photoUrl} alt="Reference alignment overlay" className={styles.referenceOverlay} style={{ opacity: comparison / 100 }} /> : null}
         </div>
@@ -520,7 +567,7 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
           <label>Mask detail <select value={maskSide} disabled={busy || !needsMask} onChange={event => { setMaskSide(Number(event.target.value)); setSavedMask(""); }}>
             {PHOTO_MASK_INPUT_SIDES.map(size => <option key={size} value={size}>{size} × {size}</option>)}
           </select></label>
-          <p className={styles.hint}>{needsMask ? "Remove background and sky; larger sizes use more memory" : "Full frame · no mask file needed"}</p>
+          <p className={styles.hint}>{needsMask ? maskMethod === "facade" ? "Keep walls; exclude sky, openings and reflective glass" : "Select the object and remove its background" : "Full frame · no mask file needed"}</p>
           <div className={styles.actions}>
             <Button size="md" variant={mask === null ? "outline" : "ghost"} className={mask === null ? styles.nextButton : undefined}
               disabled={photo === null || busy || !needsMask} onClick={() => void run("mask")}>{mask === null ? "Run mask" : "Rerun mask"}</Button>
@@ -541,11 +588,22 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
               <canvas ref={canvas} role="img" aria-label={mask === null ? "Reference photo preview" : "Surface mask editor"}
                 className={`${styles.preview} ${photo === null ? styles.emptyCanvas : ""} ${mask !== null ? styles.editable : ""}`}
                 onPointerDown={event => paint(event, true)} onPointerMove={event => paint(event, false)}
-                onPointerUp={() => { stroke.current = null; }} onPointerCancel={() => { stroke.current = null; }} />
+                onPointerUp={finishStroke} onPointerCancel={finishStroke} onLostPointerCapture={finishStroke} />
               {photo === null ? <span className={styles.placeholder}>Choose a photo to see its surface</span> : null}
             </div>{job?.kind === "mask" ? <MapProgress job={job} /> : null}</div>
-            <figcaption className={styles.previewCaption}>{mask === null ? "Reference photo before masking" : "Drag on the preview to erase or restore"}</figcaption>
+            <figcaption className={styles.previewCaption}>{mask === null ? "Reference photo before masking" : "Red is excluded · drag to erase or restore"}</figcaption>
           </figure>
+          <label>Mask method <select value={maskMethod} disabled={busy || !needsMask} onChange={event => { setMaskMethod(event.target.value as "facade" | "background"); setSavedMask(""); }}>
+            <option value="facade">Facade walls and openings</option><option value="background">Object background removal</option>
+          </select></label>
+          {maskMethod === "facade" ? <div className={styles.brushTools}>
+            <label>Opening cutoff <input type="range" min={0} max={50} step={1} value={Math.round(linearToSrgb(facadeSettings.darkCutoff) * 100)}
+              disabled={busy || !needsMask} onChange={event => { setFacadeSettings(previous => ({ ...previous, darkCutoff: srgbToLinear(Number(event.target.value) / 100) })); setSavedMask(""); }} /><output>{Math.round(linearToSrgb(facadeSettings.darkCutoff) * 100)}%</output></label>
+            <label>Exclude blue glass <BooleanField label="Exclude blue glass" value={facadeSettings.excludeBlueGlass} disabled={busy || !needsMask}
+              onChange={excludeBlueGlass => { setFacadeSettings(previous => ({ ...previous, excludeBlueGlass })); setSavedMask(""); }} /></label>
+            <p className={styles.hint}>Check shaded walls and painted glass; restore with the brush</p>
+            <p className={styles.hint}>Change exclusions, then rerun mask; depth stays saved</p>
+          </div> : null}
           {mask === null ? <p className={styles.hint}>Load a saved .loomf32 mask, generate one, or paint</p> : <div className={styles.brushTools}>
             <label>Brush <select value={brush} disabled={busy || !needsMask} onChange={event => setBrush(Number(event.target.value) as 0 | 1)}><option value={0}>Erase</option><option value={1}>Restore</option></select></label>
             <label>Radius <input type="range" min={1} max={100} value={radius} disabled={busy || !needsMask} onChange={event => setRadius(Number(event.target.value))} /><span>{radius} px</span></label>
@@ -560,7 +618,8 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
               sha256: photo.sha256, width: photo.bitmap.width, height: photo.bitmap.height }, model: { id: "manual", url: "loom:manual-mask" },
               inputSide: maskSide, registration: "stretch" })); setSavedMask(""); setHistory([]);
           }}>Start manual mask</Button><span>Paint it yourself</span></div>
-          <p className={styles.model}>{PHOTO_MASK.label} · {(PHOTO_MASK.bytes / 1024 / 1024).toFixed(1)} MB · cached after first run</p>
+          <p className={styles.model}>{maskMethod === "facade" ? `${PHOTO_FACADE.label} · ${(PHOTO_FACADE.bytes / 1024 / 1024).toFixed(1)} MB · 512 input / 64 scene mask` : `${PHOTO_MASK.label} · ${(PHOTO_MASK.bytes / 1024 / 1024).toFixed(1)} MB · cached after first run`}</p>
+          {maskMethod === "facade" ? <p className={styles.hint}>Photo refinement adds detail at the selected resolution</p> : null}
           <p className={styles.hint}>Rerun mask replaces brush edits</p>
           {needsMask && maskCoverage !== null && maskCoverage < 0.01 ? <div role="alert" className={styles.warning}>
             <p>Mask covers less than 1% of the photo</p>
@@ -577,11 +636,11 @@ function PhotoMappingEditor({ runtime, initial, close }: { runtime: AppRuntime; 
         <option value={3}>Surface trace</option><option value={4}>Depth reveal</option>
         </select></label> : null}
         {!existing ? <p className={styles.hint}>{[
-          "Fine neon engraving follows windows and flowing contours",
-          "Liquid stained glass with spectral ribbons and fine seams",
-          "Brushed copper relief with grazing lights and cyan rims",
-          "Blueprint architecture, mask boundary and moving scans",
-          "Faceted depth bands, relief detail and scanning light",
+          "Animated depth contours pick out ledges and architectural edges",
+          "Colour sweeps through depth planes, revealing protrusions and recesses",
+          "Grazing gold and cyan lights reveal depth relief and local shadows",
+          "Depth scans follow architecture and the mask boundary, including openings",
+          "Layered depth bands reveal recesses, highlights and occlusion",
         ][mode]}</p> : null}
         {!existing ? <label>Preview on reference photo <BooleanField label="Preview on reference photo" value={previz} onChange={setPreviz} disabled={busy} /></label> : null}
         {!existing && previz ? <p className={styles.hint}>Preview dims the reference so projected light stays clear</p> : null}

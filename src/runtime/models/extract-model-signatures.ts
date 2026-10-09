@@ -20,6 +20,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const FILES: ReadonlyArray<readonly [string, string]> = [
+  ["topformer-ade20k", "topformer.onnx"],
   ["birefnet-lite-dynamic", "photo-mask.onnx"],
   ["ormbg-quantized", "ormbg.onnx"],
   ["depth-anything-v2-small", "depth.onnx"],

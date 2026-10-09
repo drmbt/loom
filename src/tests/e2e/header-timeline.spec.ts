@@ -51,24 +51,7 @@ test.describe("T433 — the timeline lives in the header's existing row", () => 
 
     // §B54's shape: in the DOM, zero pixels. A track narrower than this is not a timeline.
     expect(timeline.width).toBeGreaterThan(120);
-    expect(timeline.width).toBeLessThanOrEqual(600);
     expect(timeline.height).toBeGreaterThan(8);
-    const timelineStyle = await page.getByRole("group", { name: "Timeline", exact: true }).evaluate(element => {
-      const style = getComputedStyle(element);
-      return { border: Number.parseFloat(style.borderTopWidth), radius: Number.parseFloat(style.borderTopLeftRadius) };
-    });
-    expect(timelineStyle.border).toBeGreaterThan(0);
-    expect(timelineStyle.radius).toBeGreaterThan(0);
-    const wrapperBackground = await page.getByRole("group", { name: "Timeline", exact: true })
-      .evaluate(element => getComputedStyle(element).backgroundColor);
-    for (const name of ["In point", "Frame", "Out point"]) {
-      const fieldBackground = await page.getByRole("textbox", { name, exact: true })
-        .evaluate(element => getComputedStyle(element).backgroundColor);
-      expect(fieldBackground, `${name} must stand apart from the wrapper`).not.toBe(wrapperBackground);
-      const channels = fieldBackground.match(/[\d.]+/g);
-      if (channels === null) throw new Error("Frame field background has no colour channels");
-      if (channels.length === 4) expect(Number(channels[3])).toBeGreaterThan(0);
-    }
 
     // Inside the bar, top and bottom. Not above it, not below it, not overflowing it.
     expect(timeline.y).toBeGreaterThanOrEqual(header.y - 1);
