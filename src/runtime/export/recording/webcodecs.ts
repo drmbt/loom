@@ -106,7 +106,7 @@ export interface WebCodecsSupport {
 
 export async function probeWebCodecsAudioEncoder(
   sampleRate = 48_000,
-  channelCount = 1,
+  channelCount = 2,
   bitrate = 192_000,
 ): Promise<WebCodecsSupport> {
   const codec = "mp4a.40.2";
@@ -450,9 +450,10 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     ) {
       throw unavailable("AudioEncoder, AudioDecoder, and AudioData are required for synchronized AAC export.");
     }
-    if (pcm.channelCount !== 1) {
-      throw unavailable(`offline audio supplied ${String(pcm.channelCount)} channels; only mono is implemented.`);
+    if (pcm.channelCount !== 1 && pcm.channelCount !== 2) {
+      throw unavailable(`offline audio supplied ${String(pcm.channelCount)} channels; mono and stereo are implemented.`);
     }
+    const channelCount = pcm.channelCount;
     const encoderConfig: AudioEncoderConfig = {
       codec: "mp4a.40.2",
       sampleRate: pcm.sampleRate,
@@ -461,7 +462,7 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     };
     const support = await AudioEncoder.isConfigSupported(encoderConfig);
     if (support.supported !== true) {
-      throw unavailable(`no AAC-LC encoder for ${String(pcm.sampleRate)} Hz mono audio.`);
+      throw unavailable(`no AAC-LC encoder for ${String(pcm.sampleRate)} Hz ${channelCount === 2 ? "stereo" : "mono"} audio.`);
     }
 
     const primingFrames = await measureAacPriming(encoderConfig);
@@ -489,7 +490,7 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     audioEncoder.configure(encoderConfig);
 
     const packetFrames = 1024;
-    const totalFrames = "samples" in pcm ? pcm.samples.length : pcm.totalFrames;
+    const totalFrames = "samples" in pcm ? pcm.samples.length / channelCount : pcm.totalFrames;
     options.onFinishProgress?.({ stage: "audio", completedFrames: 0, totalFrames });
     await options.yieldControl?.();
     throwIfCancelled(options.signal);
@@ -497,16 +498,17 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     for (let offset = 0; offset < totalFrames; offset += packetFrames) {
       throwIfCancelled(options.signal);
       const numberOfFrames = Math.min(packetFrames, totalFrames - offset);
-      const data = "samples" in pcm
-        ? pcm.samples.slice(offset, offset + numberOfFrames)
+      const interleaved = "samples" in pcm
+        ? pcm.samples.subarray(offset * channelCount, (offset + numberOfFrames) * channelCount)
         : pcm.readFrames(offset, numberOfFrames);
+      const data = planarOf(interleaved, numberOfFrames, channelCount);
       const audio = new AudioData({
         format: "f32-planar",
         sampleRate: pcm.sampleRate,
         numberOfFrames,
         numberOfChannels: pcm.channelCount,
         timestamp: Math.round((offset * 1_000_000) / pcm.sampleRate),
-        data: new Float32Array(data),
+        data,
       });
       try {
         audioEncoder.encode(audio);
@@ -585,12 +587,13 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
       },
     });
     audioEncoder.configure(config);
-    const calibration = new Float32Array(1024);
-    calibration[0] = 1;
+    // Planar: the impulse is at frame 0 of every channel; channel 0 is the one measured.
+    const calibration = new Float32Array(1024 * config.numberOfChannels);
+    for (let channel = 0; channel < config.numberOfChannels; channel += 1) calibration[channel * 1024] = 1;
     const audio = new AudioData({
       format: "f32-planar",
       sampleRate: config.sampleRate,
-      numberOfFrames: calibration.length,
+      numberOfFrames: 1024,
       numberOfChannels: config.numberOfChannels,
       timestamp: 0,
       data: calibration,
@@ -613,7 +616,7 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     audioDecoder = new AudioDecoder({
       output: (decoded) => {
         const plane = new Float32Array(decoded.numberOfFrames);
-        decoded.copyTo(plane, { planeIndex: 0 });
+        decoded.copyTo(plane, { planeIndex: 0, format: "f32-planar" });
         for (let index = 0; index < plane.length; index += 1) {
           const magnitude = Math.abs(plane[index] as number);
           if (magnitude > maximum) {
@@ -639,6 +642,23 @@ export function createWebCodecsEncoder(options: WebCodecsEncoderOptions = {}): V
     }
     return maximumIndex;
   }
+}
+
+/**
+ * VN104 — PCM providers hand over INTERLEAVED frames (L R L R …); `AudioData` is given
+ * `f32-planar` (all of L, then all of R). Mono is a copy. Exported for its test.
+ */
+export function planarOf(interleaved: Float32Array, frames: number, channels: number): Float32Array<ArrayBuffer> {
+  if (interleaved.length !== frames * channels) {
+    throw new RangeError(`Expected ${String(frames * channels)} interleaved samples; got ${String(interleaved.length)}.`);
+  }
+  const planar = new Float32Array(frames * channels);
+  for (let frame = 0; frame < frames; frame += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      planar[channel * frames + frame] = interleaved[frame * channels + channel] as number;
+    }
+  }
+  return planar;
 }
 
 function toBytes(source: AllowSharedBufferSource): Uint8Array {
