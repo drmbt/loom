@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { openApp } from "./app.ts";
 
-// v17-allow-dynamic-color: pixel regression injects distinct status and component strip probes.
+// v17-allow-dynamic-color: pixel regression injects distinct type and component strip probes.
 
 /**
  * A NODE'S KIND STAYS LEGIBLE AT LOW ZOOM, IN A BROWSER THAT LAYS THINGS OUT (T1597b),
@@ -262,6 +262,43 @@ test.describe("T1597b — the label, on the dense example", () => {
     expect(at15.firstWords).toEqual(expect.arrayContaining(["geometry", "kernel", "light", "material", "wgsl"]));
   });
 
+  test("the dot, top edge and zoomed-out label use data-type colours in every status", async ({ page }) => {
+    const kinds = new Set<string>();
+    for (const zoom of [1, 0.35, 0.15]) {
+      await zoomTo(page, zoom);
+      const readings = await page.evaluate(() => {
+        const results = [];
+        for (const node of document.querySelectorAll<HTMLElement>('[data-family]')) {
+          const port = node.querySelector('.react-flow__handle.source') ?? node.querySelector('.react-flow__handle.target');
+          const dot = node.querySelector('[data-testid^="node-type-dot-"]');
+          const label = node.querySelector('[data-testid^="node-kind-label-"]');
+          if (port === null || dot === null || label === null) continue;
+          const expected = getComputedStyle(port).backgroundColor;
+          for (const status of ["valid", "error", "compiling"]) {
+            node.dataset["status"] = status;
+            node.style.setProperty("--status-color", status === "valid" ? "var(--ok)" : status === "error" ? "var(--error)" : "var(--signal)");
+            results.push({
+              kind: port.closest('li[data-kind]')!.getAttribute('data-kind')!, status,
+              expected, dot: getComputedStyle(dot).backgroundColor,
+              edge: getComputedStyle(node, "::before").backgroundColor,
+              label: getComputedStyle(label).boxShadow,
+              component: node.hasAttribute('data-component'),
+            });
+          }
+        }
+        return results;
+      });
+      expect(readings.length).toBeGreaterThan(10);
+      for (const reading of readings) {
+        kinds.add(reading.kind);
+        expect(reading.dot, `${reading.kind} dot in ${reading.status}`).toBe(reading.expected);
+        expect(reading.edge, `${reading.kind} edge in ${reading.status}`).toBe(reading.expected);
+        if (!reading.component) expect(reading.label, `${reading.kind} label at ${zoom}`).toContain(reading.expected);
+      }
+    }
+    expect([...kinds]).toEqual(expect.arrayContaining(["texture2d", "pointset", "scene", "material", "camera", "light", "value"]));
+  });
+
   test("the growing label retains the node's colour strip and component identity at every zoom", async ({ page }) => {
     for (const zoom of [0.35, 0.6, 0.15]) {
       await zoomTo(page, zoom);
@@ -271,6 +308,8 @@ test.describe("T1597b — the label, on the dense example", () => {
         const pane = document.querySelector('[data-testid="graph-canvas"]')!.getBoundingClientRect();
         const label = [...document.querySelectorAll<HTMLElement>('[data-testid^="node-kind-label-"]')].find((candidate) => {
           const box = candidate.getBoundingClientRect();
+          // Start with an ordinary label; component labels intentionally take clicks.
+          if (candidate.parentElement!.hasAttribute("data-instance")) return false;
           const clip = candidate.parentElement!.getBoundingClientRect();
           const right = Math.min(box.right, clip.right);
           return box.left > pane.left + 8 && box.top > pane.top + 8
@@ -280,7 +319,7 @@ test.describe("T1597b — the label, on the dense example", () => {
         if (label === undefined) throw new Error("no kind label has a visible colour-strip probe");
         const node = label.parentElement!.parentElement!;
         node.removeAttribute("data-component");
-        node.style.setProperty("--status-color", "rgb(0, 255, 255)");
+        node.style.setProperty("--node-accent", "rgb(0, 255, 255)");
         node.style.setProperty("--component", "rgb(255, 128, 0)");
         return label.dataset["testid"]!;
       });
@@ -317,7 +356,7 @@ test.describe("T1597b — the label, on the dense example", () => {
         }, { base64: shot.toString("base64"), component });
       };
 
-      expect(await colourPixels(false), `status strip at ${String(zoom)}`).toBeGreaterThan(width * 0.6);
+      expect(await colourPixels(false), `type strip at ${String(zoom)}`).toBeGreaterThan(width * 0.6);
       await label.evaluate((element) => element.parentElement!.parentElement!.setAttribute("data-component", "true"));
       expect(await colourPixels(true), `component strip at ${String(zoom)}`).toBeGreaterThan(width * 0.6);
       const after = await label.boundingBox();
