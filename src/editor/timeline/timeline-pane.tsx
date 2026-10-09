@@ -47,7 +47,10 @@ import {
 import { hitBox, hitTest, marquee, selectionBox, type BoxPart, type Rect } from "./timeline-hit.ts";
 import { DopeStrip } from "./dope-strip.tsx";
 import { KeyTable } from "./key-table.tsx";
-import { automationNodes, currentAutomationNode, laneReferenceCounts, lanesStored, type AutomationNodeView } from "./timeline-model.ts";
+import { automationNodes, clipTrackViews, currentAutomationNode, laneReferenceCounts, lanesStored, type AutomationNodeView } from "./timeline-model.ts";
+import { ClipLanes } from "./clip-lanes.tsx";
+import { TimelineImport } from "./timeline-import.tsx";
+import { CLIP_TRACK_NODE_TYPE } from "@nodes/definitions/clip-track.ts";
 import { TimelineStatus } from "./timeline-status.tsx";
 import { ReferenceControls } from "./reference-controls.tsx";
 import { useReferenceMedia } from "./use-reference-media.ts";
@@ -106,6 +109,8 @@ export interface TimelinePaneProps {
   readonly registry?: NodeRegistryView;
   /** VN64: injected in tests, the reference waveform's loader. Absent: decode the file. */
   readonly loadPeaks?: (file: string) => Promise<WaveformPeaks>;
+  /** VN106: injected in tests, a dropped video's duration in seconds. */
+  readonly probeDuration?: (file: File) => Promise<number>;
 }
 
 type Drag =
@@ -154,6 +159,8 @@ export function TimelinePane(props: TimelinePaneProps) {
   const grid = useMemo(() => beatGridOf(graph, referenceMedia.reference), [graph, referenceMedia.reference]);
 
   const nodes = useMemo(() => automationNodes(graph), [graph]);
+  // VN106: the clip tracks, drawn above the lanes.
+  const clipRows = useMemo(() => clipTrackViews(graph), [graph]);
   const current = currentAutomationNode(nodes, selection[selection.length - 1] ?? null, lastTouched);
   const currentId = current?.id ?? null;
   const keys = useMemo(() => keySelection.nodeId === currentId ? keySelection.refs : [], [keySelection, currentId]);
@@ -285,6 +292,14 @@ export function TimelinePane(props: TimelinePaneProps) {
     const created = result.output.status === "applied" ? result.output.createdIds["$automation"] : undefined;
     if (created !== undefined) setLastTouched(created);
   }, [applyOperations, commitOnce, current, document, rate]);
+
+  /** VN106: "+ track" — a new Clip Track node, right of everything, in ONE patch. */
+  const onAddClipTrack = useCallback(async () => {
+    const positions = Object.values(graph.nodes).map((node) => node.position);
+    const position = positions.length === 0 ? { x: 0, y: 0 } : { x: Math.max(...positions.map((each) => each.x)) + 320, y: Math.min(...positions.map((each) => each.y)) };
+    const result = await applyOperations([{ op: "addNode", ref: "$clipTrack", type: CLIP_TRACK_NODE_TYPE, position } as GraphPatchOperation], "Add clip track");
+    if (result.output.status !== "applied") setNotice(result.diagnostics[0]?.message ?? "The clip track was refused.");
+  }, [applyOperations, graph]);
 
   const onRename = useCallback(
     (nodeId: NodeId, laneId: string, name: string): string | null => {
@@ -619,6 +634,10 @@ export function TimelinePane(props: TimelinePaneProps) {
           {notice !== null && <span className={styles.notice}>{notice}</span>}
           {referenceMedia.notice !== null && <span className={styles.notice} data-timeline-reference-notice="">{referenceMedia.notice}</span>}
           <ReferenceControls media={referenceMedia} />
+          <button type="button" className={styles.toggle} onClick={() => void onAddClipTrack()} title="A new clip track: regions of video above the lanes" data-add-clip-track="">
+            + track
+          </button>
+          <TimelineImport graph={graph} bus={bus} invocation={invocation} onNotice={setNotice} />
           <label className={styles.option}>
             snap
             <select value={snap} onChange={(event) => setSnap(event.target.value as SnapMode)} aria-label="snap">
@@ -647,6 +666,22 @@ export function TimelinePane(props: TimelinePaneProps) {
         </div>
         <div className={styles.body}>
         <div className={styles.curve}>
+        {clipRows.length > 0 && (
+          <ClipLanes
+            graph={graph}
+            rows={clipRows}
+            view={view}
+            rate={rate}
+            snap={snap}
+            grid={grid}
+            playheadTicks={() => playhead.current}
+            editor={ownEditor}
+            onSeek={onSeek}
+            onNotice={setNotice}
+            frame={frame}
+            {...(props.probeDuration === undefined ? {} : { probeDuration: props.probeDuration })}
+          />
+        )}
         <DopeStrip
           graph={graph}
           nodes={nodes}
@@ -680,7 +715,7 @@ export function TimelinePane(props: TimelinePaneProps) {
           </div>
         )}
         </div>
-        {current === null && <div className={styles.empty}>no lanes — + adds one</div>}
+        {current === null && clipRows.length === 0 && <div className={styles.empty}>no lanes — + adds one</div>}
       </div>
     </div>
   );

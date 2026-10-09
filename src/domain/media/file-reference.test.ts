@@ -26,3 +26,23 @@ describe("retained file identities", () => {
     expect(collectFileReferences([graph, graph])).toEqual([parseFileReference(file)]);
   });
 });
+
+describe("VN106: references inside a JSON-valued parameter", () => {
+  const media = createFileReference("clip-a", "video", "a.mp4");
+  const node = (id: string, type: string, parameters: Record<string, unknown>) =>
+    ({ id, type, definitionVersion: 1, position: { x: 0, y: 0 }, parameters });
+  it("lists a clip track region's retained media", () => {
+    const track = JSON.stringify({ version: 1, id: "t", name: "t", regions: [{ id: "r1", media, sourceIn: 0, sourceOut: 240000, timelineStart: 0, length: 240000 }] }, null, 2);
+    const graph = { nodes: { clip: node("clip", "clipTrack", { track }) } } as unknown as GraphDocument;
+    expect(collectFileReferences([graph])).toEqual([parseFileReference(media)]);
+  });
+  it("does not turn free text that mentions a reference into an asset", () => {
+    const graph = { nodes: {
+      note: node("note", "annotate", { text: `drop ${media} here` }),
+      expr: node("expr", "constant", { value: { mode: "expression", bindings: { expression: { kind: "expression", source: `"${media}"` } } } }),
+      list: node("list", "x", { text: JSON.stringify([media]) }),
+      bad: node("bad", "x", { text: '{"media": "loom-file:broken"}' }),
+    } } as unknown as GraphDocument;
+    expect(collectFileReferences([graph])).toEqual([]);
+  });
+});
