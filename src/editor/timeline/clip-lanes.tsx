@@ -31,7 +31,8 @@ import { videoDurationSeconds } from "./video-duration.ts";
  *    fades and the source in/out, or deletes it;
  *  - the ruler: click or drag to seek;
  *  - drop a video file on a lane: a region at the drop time, as long as the media, with
- *    the file retained the way media-drop retains it.
+ *    the file retained the way media-drop retains it; dropped ON a region, the file
+ *    RELINKS that region (an imported offline clip, a transcoded proxy) and keeps its timing.
  * Snapping is the pane's snap mode (frames, seconds, bar, beat, 1/8, 1/16).
  *
  * WRITES. A region never overlaps its neighbours: a move or trim clamps against them. Every
@@ -167,7 +168,7 @@ export function ClipLanes(props: ClipLanesProps) {
 
   // ── Media dropped on a lane ──────────────────────────────────────────────────────────
 
-  const dropMedia = async (nodeId: NodeId, atTicks: number, captured: readonly CapturedFile[]): Promise<void> => {
+  const dropMedia = async (nodeId: NodeId, atTicks: number, captured: readonly CapturedFile[], onto: string | null): Promise<void> => {
     const resolved = await resolveDroppedMedia(captured, {
       files: typeof indexedDB === "undefined" ? null : retainedFiles(),
       createObjectURL: (file) => URL.createObjectURL(file),
@@ -178,6 +179,15 @@ export function ClipLanes(props: ClipLanesProps) {
     let track = row?.track ?? null;
     if (row === undefined || track === null || !row.editable) {
       props.onNotice(row?.error ?? "This clip track's regions are not editable here.");
+      return;
+    }
+    // Onto a region: RELINK it (an offline import, a moved file, a proxy) and keep its timing.
+    const target = onto === null ? undefined : track.regions.find((region) => region.id === onto);
+    const firstVideo = resolved.media.find((media) => media.kind === "video");
+    if (target !== undefined && firstVideo !== undefined) {
+      if (resolved.media.length > 1) notices.push(`A region takes one file; it took "${firstVideo.name}".`);
+      props.onNotice(notices.length === 0 ? null : notices.join(" "));
+      write(nodeId, setRegionFields(track, target.id, { media: firstVideo.reference }), "commit");
       return;
     }
     const probe = props.probeDuration ?? videoDurationSeconds;
@@ -233,7 +243,7 @@ export function ClipLanes(props: ClipLanesProps) {
     if (captured.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
-    void dropMedia(rows[hit.row]!.id, snapTicks(xToTick(view, x), snap, rate, grid), captured);
+    void dropMedia(rows[hit.row]!.id, snapTicks(xToTick(view, x), snap, rate, grid), captured, hit.kind === "region" ? hit.region.id : null);
   };
 
   // ── The selected region's popover ────────────────────────────────────────────────────

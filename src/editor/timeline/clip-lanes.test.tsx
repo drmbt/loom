@@ -206,4 +206,21 @@ describe("VN106 — clip tracks in the timeline pane", () => {
     await undo(runtime);
     expect(regionsOf(runtime, clipId)).toHaveLength(2);
   });
+
+  it("a video dropped ON an offline region relinks it and keeps its timing", async () => {
+    const { runtime, clipId } = await runtimeWith();
+    const { view } = await mount(runtime, async () => 9);
+    const lanes = view.container.querySelector<HTMLElement>("[data-clip-lanes]")!;
+    URL.createObjectURL = () => "blob:proxy";
+    const proxy = new File([new Uint8Array(16)], "b-proxy.mp4", { type: "video/mp4" });
+    await act(async () => {
+      const event = new MouseEvent("drop", { bubbles: true, cancelable: true, clientX: 500, clientY: ROW });
+      Object.defineProperty(event, "dataTransfer", { value: { types: ["Files"], files: [proxy], items: [] } });
+      lanes.dispatchEvent(event);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await settle();
+    expect(regionsOf(runtime, clipId)[1]).toMatchObject({ id: "b", media: "blob:proxy#b-proxy.mp4", timelineStart: 4 * S, length: 2 * S, sourceOut: 2 * S });
+    expect(regionsOf(runtime, clipId)).toHaveLength(2);
+  });
 });

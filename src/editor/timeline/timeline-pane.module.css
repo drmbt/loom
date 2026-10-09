@@ -277,3 +277,34 @@
   background: var(--bg-sunken);
   border: var(--border-hairline);
 }
+/* VN106: the importers' preview. */
+.importDialog {
+  position: absolute;
+  z-index: 3;
+  top: calc(var(--control-h) + var(--space-3));
+  right: var(--space-2);
+  width: min(460px, calc(100% - 2 * var(--space-2)));
+  max-height: 70%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: var(--bg-raise);
+  border: var(--border-hairline);
+  border-radius: var(--radius);
+}
+.importTitle {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.importLine {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-micro);
+}
+.importActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

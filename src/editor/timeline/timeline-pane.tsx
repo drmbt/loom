@@ -49,6 +49,7 @@ import { DopeStrip } from "./dope-strip.tsx";
 import { KeyTable } from "./key-table.tsx";
 import { automationNodes, clipTrackViews, currentAutomationNode, laneReferenceCounts, lanesStored, type AutomationNodeView } from "./timeline-model.ts";
 import { ClipLanes } from "./clip-lanes.tsx";
+import { TimelineImport } from "./timeline-import.tsx";
 import { CLIP_TRACK_NODE_TYPE } from "@nodes/definitions/clip-track.ts";
 import { TimelineStatus } from "./timeline-status.tsx";
 import { ReferenceControls } from "./reference-controls.tsx";
@@ -636,6 +637,7 @@ export function TimelinePane(props: TimelinePaneProps) {
           <button type="button" className={styles.toggle} onClick={() => void onAddClipTrack()} title="A new clip track: regions of video above the lanes" data-add-clip-track="">
             + track
           </button>
+          <TimelineImport graph={graph} bus={bus} invocation={invocation} onNotice={setNotice} />
           <label className={styles.option}>
             snap
             <select value={snap} onChange={(event) => setSnap(event.target.value as SnapMode)} aria-label="snap">
