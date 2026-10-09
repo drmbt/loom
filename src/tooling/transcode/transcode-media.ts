@@ -100,7 +100,7 @@ export function defaultProxyCacheDir(): string {
 }
 
 interface Run {
-  readonly code: number | null;
+  readonly exitCode: number | null;
   readonly stdout: string;
   readonly stderr: string;
 }
@@ -123,7 +123,7 @@ function run(tool: string, command: string, args: readonly string[], onStdout?: 
     child.on("error", (error: NodeJS.ErrnoException) => {
       reject(error.code === "ENOENT" ? new FfmpegMissingError(tool, command) : error);
     });
-    child.on("close", (code) => resolvePromise({ code, stdout, stderr }));
+    child.on("close", (exitCode) => resolvePromise({ exitCode, stdout, stderr }));
   });
 }
 
@@ -143,7 +143,7 @@ export async function preferredAlphaCodec(ffmpeg = "ffmpeg"): Promise<AlphaCodec
 /** Probe one file: streams and format, plus the first DXV packet's tag when it is DXV. */
 export async function probeMedia(path: string, ffprobe = "ffprobe"): Promise<ProbedMedia> {
   const probe = await run("ffprobe", ffprobe, ["-v", "error", "-show_streams", "-show_format", "-of", "json", path]);
-  if (probe.code !== 0) throw new Error(`ffprobe could not read the file: ${probe.stderr.trim() || `exit ${String(probe.code)}`}`);
+  if (probe.exitCode !== 0) throw new Error(`ffprobe could not read the file: ${probe.stderr.trim() || `exit ${String(probe.exitCode)}`}`);
   const first = parseProbe(probe.stdout, null);
   if (first.video?.codecName !== "dxv") return first;
   const packet = await run("ffprobe", ffprobe,
@@ -251,9 +251,9 @@ export async function transcodeMedia(paths: readonly string[], options: Transcod
             }
           }
         });
-        if (result.code !== 0) {
+        if (result.exitCode !== 0) {
           rmSync(partial, { force: true });
-          throw new Error(`ffmpeg failed (exit ${String(result.code)}): ${result.stderr.trim().split("\n").slice(-3).join(" | ")}`);
+          throw new Error(`ffmpeg failed (exit ${String(result.exitCode)}): ${result.stderr.trim().split("\n").slice(-3).join(" | ")}`);
         }
         renameSync(partial, proxy);
         const entry: ManifestEntry = { ...planned, encodeSeconds: (performance.now() - started) / 1000 };
