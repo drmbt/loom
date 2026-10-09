@@ -45,7 +45,7 @@ export function collectFileReferences(graphs: readonly GraphDocument[]): AssetRe
     if (insideJson) {
       // A malformed reference inside a JSON text is that document's problem (its own
       // parser reports it), not a reason to fail the whole save.
-      let reference: AssetReference | null = null;
+      let reference: AssetReference | null;
       try {
         reference = parseFileReference(value);
       } catch {

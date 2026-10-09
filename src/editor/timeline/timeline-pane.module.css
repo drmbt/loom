@@ -237,3 +237,43 @@
   outline: 1px dashed var(--signal);
   outline-offset: -1px;
 }
+/* VN106: clip tracks above the lanes, and a selected region's popover. */
+.clipLanes {
+  position: relative;
+  flex: 0 0 auto;
+  border-bottom: var(--border-hairline);
+}
+.clipCanvas {
+  display: block;
+  width: 100%;
+  touch-action: none;
+}
+.popover {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  max-width: 300px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-raise);
+  border: var(--border-hairline);
+  border-radius: var(--radius);
+  font-size: var(--fs-micro);
+}
+.popoverField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-dim);
+}
+.popoverInput {
+  width: 5em;
+  height: var(--control-h);
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--bg-sunken);
+  border: var(--border-hairline);
+}
