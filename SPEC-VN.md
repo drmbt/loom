@@ -267,6 +267,41 @@ Not carried over from ltc-lab, as show-player concerns: stems (demucs), lyrics (
 Resolume column/BPM cue actions, the performance view and the `/monitor` page. Revisit if Loom becomes the show
 player.
 
+## Arrangement roadmap: ltc-lab tracks, Resolume clips, timecode export (filed 2026-10-08)
+
+Vincent's goal: import a track from ltc-lab (audio, waveform, beat grid, markers, lanes) into the timeline; import clips from Resolume as REGIONS on lanes stacked above the keyframe editor; trim, loop (Resolume playback options: loop, bounce, play once, speed, direction, BPM sync) and drag them like Ableton clips over the gridded audio; export one media file driven by timecode.
+
+**Research, 2026-10-08.**
+- **Loom today:** the timeline (VN61–VN63) is on main. There is no clip/region/track concept. BPM exists as a declared tempo on Audio In / Audio File In (`bpm`, `beat`, `beatPhase`, `bar`, `barPhase` channels; T1228) plus an offline estimator (T1229). There is no project BPM, no beat names in expressions and no grid on the ruler.
+- **Video and export:** video plays through `<video>`, so only what Chromium decodes. Export is H.264 MP4 (WebCodecs) with mono AAC from one audio source.
+- **File drop:** the canvas refuses every file except `.loom.json` (`graph-pane.tsx:1050-1105`), and the timeline takes only parameter drags.
+- **ltc-lab:** `.ltcshow.tar` (`GET /api/package/export?caches=1&stems=1&media=1`) is one self-contained file. Inside: `project.json` with tracks, `startTC`, lanes (seconds + normalized bezier, the same model as Loom's), markers with cue actions, the grid `{bpm, anchor, beatsPerBar}` and songs; `cache/waveforms` (50 bins/s, min/max plus four bands); the stems; and the audio. Its XML export is lossy, so don't use it.
+- **Resolume (.avc XML):**
+  - `Clip/PreloadData/VideoFile@value`;
+  - `Clip/Params/ParamChoice[@name="TransportType"]` (0 Timeline, 1 BPM Sync, 2/3 SMPTE);
+  - under `Clip/Transport/Params/ParamRange[@name="Position"]`: `Speed`, `BPM`, `TempoSynced`, `PlayMode` (0 loop, 1 bounce, 2 random, 3 once+clear, 4 once+hold), `PlayDirection`, `BeatLoop`, `Beats_d@numManualBeats`, `ValueRange name="startStop"` (in/out in ms), and `PhaseSourceSMPTE` `Offset` (ms).
+  - Defaults are omitted.
+  - The Tinashe comp's media: 228 of 257 files are DXV3, 12 ProRes, 6 HAP.
+- **DXV3:** Resolume-only GPU decode. FFmpeg (LGPL `dxv` decoder; 9.0.2 is installed via Homebrew) decodes every variant on the CPU, and encodes DXT1 only. Every DXV3 frame is BC1/BC3/BC4 blocks, which Apple Silicon and WebGPU (`texture-compression-bc`) sample natively, so a direct GPU path is feasible but new.
+
+id|status|piece|needs
+VN99|.|**Drop media files onto the canvas and the timeline.** Dropping a video or audio file on the canvas creates a `movieFileIn` / `audioFileIn` at the drop point, with its file retained as the picker does (`DataTransferItem.getAsFileSystemHandle()` → `retainedFiles().remember`; a `blob:` fallback), in one undoable patch. Today the canvas refuses it (`graph-pane.tsx:1050-1062`). Dropping on the timeline makes it the reference media (VN64). Several files at once create several nodes, laid out. Unsupported formats (DXV, HAP, ProRes) are refused by name with "transcode first" (VN103). Small.|none
+VN100|.|**Import an ltc-lab track.** Read a `.ltcshow.tar` (or a `project.json` plus `audioDir`) and build the Loom side:
+- the track's audio as a timeline-locked `audioFileIn` with its declared tempo from the grid (`bpm`, `beatOffset` = anchor, `beatsPerBar`);
+- the waveform cache drawn by VN64;
+- manual lanes → automation lanes (seconds → ticks, the same normalized bezier, min/max kept; Resolume OSC addresses become lane names/notes, not references);
+- generated lanes (onsets, level, figure) baked to keys;
+- markers → a timeline cue list (VN67);
+- `startTC` → the project's start timecode (VN72);
+- songs, cue actions, stems, autoColumn/autoBpm reported as not imported, by name.
+As a command or agent tool plus a file drop. Read-only against ltc-lab. Medium.|VN64 for drawing
+VN101|.|**Regions: clip tracks above the keyframe lanes (model and evaluation).** A region is `{id, media, sourceIn, sourceOut, timelineStart, length, playMode: loop / bounce / onceHold / onceClear, speed, direction, bpmSync?: {beats}, fadeIn, fadeOut}`, in ticks (the time model above). Region length is independent of source length (Ableton-style); the source time inside a region is a pure function of the playhead: loop = mod, bounce = triangle fold, once = clamp or blank, BPM sync scales the rate to `(out − in) / (beats × 60 / bpm)` from the grid tempo. Tracks stack, and each track outputs a texture; a `clipTrack` node (or a family) feeds Loom's Layer stack. Playback drives a pool of media elements with pre-roll before cuts; frame-exact under render. No UI here (VN106). Medium–large.|VN61
+VN102|.|**Import Resolume clips as regions.** Parse a `.avc` composition: each file-backed clip → a region with media path, in/out (`startStop`), PlayMode, Speed, PlayDirection, BPM sync beats, and layer → track. Defaults filled where the XML omits them. Random mode, BeatLoop, autopilot and generator/router/feedback clips are reported as not imported. The Arena MCP is for verification only, never writes. Medium.|VN101, VN103
+VN103|.|**Transcode DXV / HAP / ProRes on import.** The user's ffmpeg (CLI, via the desktop app / local helper / a tool script) turns unplayable media into proxies Chromium plays: H.264, or VP9 WebM with alpha. Cached by content hash beside the source or in a cache folder, with the original path kept on the node. Report ffmpeg missing and progress. Small–medium.|none
+VN104|.|**Export one media file driven by timecode.** The render writes a start timecode (a QuickTime `tmcd` track / MP4 timecode) from the project's start TC, so Resolume's SMPTE transport places it. The soundtrack is the timeline's mixed audio in stereo, not one mono source. Optionally a DXV (DXT1, Normal Quality) output through ffmpeg. Medium.|VN72 for start TC
+VN105|.|**Play DXV directly on the GPU (later).** Demux `.mov`, port FFmpeg's DXV unpackers (LZF and the DXV3 opcode scheme) to WASM/TS, upload BC1/BC3/BC4 blocks as compressed textures, YCoCg → RGB in WGSL. Validate against ffmpeg-decoded frames. Medium–large; only if transcoding isn't enough.|VN103
+VN106|.|**Regions in the timeline editor.** Clip tracks drawn above the lanes. Trim edges, extend to loop, move with snapping to the beat grid (VN68), per-region playback options in place, thumbnails and the waveform beneath. Every edit through the bus, one undo per gesture. Medium–large.|VN101, VN64, VN68
+
 ## FFGL plugins inside Loom (filed 2026-10-08, parked: "let's not build this yet")
 
 Running Vincent's Resolume FFGL plugins (`~/Documents/GitHub/drmbt-custom-fx`) inside Loom. This is FFGL→Loom, the reverse of VN21 / `drmbt-custom-fx/docs/loom-ffgl-feasibility.md` (Loom→FFGL export, `experiments/loom-native`); cross-referenced, not merged. Source: session "Loom custom code node support", 2026-10-08.
