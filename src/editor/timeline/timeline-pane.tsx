@@ -39,6 +39,7 @@ import {
   setLaneProps,
   snapTicks,
   stepKey,
+  BEAT_SNAP_MODES,
   type KeyClipboard,
   type KeyRef,
   type SnapMode,
@@ -50,6 +51,7 @@ import { automationNodes, currentAutomationNode, laneReferenceCounts, lanesStore
 import { TimelineStatus } from "./timeline-status.tsx";
 import { ReferenceControls } from "./reference-controls.tsx";
 import { useReferenceMedia } from "./use-reference-media.ts";
+import { beatGridOf } from "./beat-grid.ts";
 import type { WaveformPeaks } from "./waveform-peaks.ts";
 import {
   DEFAULT_VIEW,
@@ -117,6 +119,9 @@ type Drag =
 
 const SAMPLE_MS = 100;
 
+/** The snap menu's words for the beat divisions. */
+const BEAT_SNAP_LABELS: Readonly<Record<(typeof BEAT_SNAP_MODES)[number], string>> = { bars: "bar", beats: "beat", eighths: "1/8", sixteenths: "1/16" };
+
 export function TimelinePane(props: TimelinePaneProps) {
   const { graph, bus, invocation, selection, latestFrame, fps, range, playing = false, onSeek } = props;
   const rate = useMemo(() => rateOf(fps), [fps]);
@@ -145,6 +150,8 @@ export function TimelinePane(props: TimelinePaneProps) {
   const keymapPane = useKeymapPane("global", paneRef);
   const referenceMedia = useReferenceMedia({ graph, bus, invocation, fps, range, ...(props.loadPeaks === undefined ? {} : { loadPeaks: props.loadPeaks }) });
   const waveform = referenceMedia.waveform;
+  // VN68: the reference track's declared beat clock, drawn on the ruler and snapped to.
+  const grid = useMemo(() => beatGridOf(graph, referenceMedia.reference), [graph, referenceMedia.reference]);
 
   const nodes = useMemo(() => automationNodes(graph), [graph]);
   const current = currentAutomationNode(nodes, selection[selection.length - 1] ?? null, lastTouched);
@@ -197,8 +204,9 @@ export function TimelinePane(props: TimelinePaneProps) {
       box,
       frameLabels: false,
       waveform,
+      grid,
     });
-  }, [box, keys, marqueeRect, mode, range.end, range.start, rate, shown, view, waveform]);
+  }, [box, grid, keys, marqueeRect, mode, range.end, range.start, rate, shown, view, waveform]);
 
   useLayoutEffect(() => paint(), [paint, frame]);
   // Smooth while playing: one repaint per display frame, and none while paused.
@@ -360,7 +368,7 @@ export function TimelinePane(props: TimelinePaneProps) {
       return;
     }
     if (current === null || document === null) return;
-    const t = snapTicks(xToTick(view, x), snap, rate);
+    const t = snapTicks(xToTick(view, x), snap, rate, grid);
     if (event.altKey && (event.ctrlKey || event.metaKey)) {
       const inserted = insertKeyOnAllLanes(document, t);
       commitOnce(inserted.document);
@@ -444,7 +452,7 @@ export function TimelinePane(props: TimelinePaneProps) {
       if (part === "left" || part === "right") {
         const edge = xToTick(view, part === "left" ? from.x0 : from.x1);
         const pivot = current_.pivotTicks ?? xToTick(view, part === "left" ? from.x1 : from.x0);
-        const sx = (snapTicks(xToTick(view, x), snap, rate) - pivot) / (edge - pivot);
+        const sx = (snapTicks(xToTick(view, x), snap, rate, grid) - pivot) / (edge - pivot);
         if (Number.isFinite(sx) && sx > 0) next = scaleKeys(current_.origin, current_.selection, pivot, 0, sx, 1);
       } else {
         const valueAt = (pixel: number): number => storedValue(firstLane, yToValue(view, curveHeight(), pixel), mode);
@@ -476,7 +484,7 @@ export function TimelinePane(props: TimelinePaneProps) {
     // Shift locks to time, Shift+Ctrl to value (Keyframer's axis lock).
     if (event.shiftKey && (event.ctrlKey || event.metaKey)) dx = 0;
     else if (event.shiftKey) dy = 0;
-    const dt = snapTicks(dx * view.ticksPerPixel, snap, rate);
+    const dt = snapTicks(dx * view.ticksPerPixel, snap, rate, grid, true);
     const firstLane = current_.origin.lanes.find((lane) => current_.selection.some((ref) => ref.lane === lane.id));
     const dv = firstLane === undefined ? 0 : storedDelta(firstLane, -dy * ((view.valueHigh - view.valueLow) / curveHeight()), mode);
     const next = moveKeys(current_.origin, current_.selection, dt, dv).document;
@@ -545,7 +553,7 @@ export function TimelinePane(props: TimelinePaneProps) {
     }
     if (mod && key === "v") {
       if (clipboard.current !== null) {
-        const at = snapTicks(hoverTicks.current ?? playheadOrZero(), snap, rate);
+        const at = snapTicks(hoverTicks.current ?? playheadOrZero(), snap, rate, grid);
         const pasted = pasteKeys(document, clipboard.current, at, keys[0]?.lane ?? document.lanes[0]?.id ?? null);
         commitOnce(pasted.document);
         setKeys(pasted.refs);
@@ -616,6 +624,11 @@ export function TimelinePane(props: TimelinePaneProps) {
             <select value={snap} onChange={(event) => setSnap(event.target.value as SnapMode)} aria-label="snap">
               <option value="frames">frames</option>
               <option value="seconds">seconds</option>
+              {BEAT_SNAP_MODES.map((division) => (
+                <option key={division} value={division} disabled={grid === null} title={grid === null ? "Declare a tempo on the reference track" : undefined}>
+                  {BEAT_SNAP_LABELS[division]}
+                </option>
+              ))}
               <option value="off">off</option>
             </select>
           </label>
@@ -640,6 +653,7 @@ export function TimelinePane(props: TimelinePaneProps) {
           view={view}
           rate={rate}
           snap={snap}
+          grid={grid}
           playheadTicks={() => playhead.current}
           bus={bus}
           invocation={invocation}

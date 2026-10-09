@@ -4,6 +4,7 @@ import { TICKS_PER_SECOND, ticksToFrames, type FrameRate } from "@domain/time/ti
 import { formatTimecode, ticksToTimecode, supportsDropFrame } from "@domain/time/timecode.ts";
 import type { KeyRef } from "./timeline-edits.ts";
 import { peakColumn, type WaveformPeaks } from "./waveform-peaks.ts";
+import { beatsAt, tickOfBeat, type BeatGrid } from "./beat-grid.ts";
 import type { Rect } from "./timeline-hit.ts";
 import { displayValue, sampleColumns, tickToX, valueToY, type TimelineView, type ValueMode } from "./timeline-view.ts";
 
@@ -43,6 +44,38 @@ export interface DrawState {
   readonly frameLabels: boolean;
   /** VN64: the reference media's waveform, drawn under the lanes. */
   readonly waveform?: DrawWaveform | null;
+  /** VN68: the reference track's declared beat grid. */
+  readonly grid?: BeatGrid | null;
+}
+
+/** The closest two grid lines may be drawn, in CSS px: denser than this they are noise. */
+export const MIN_GRID_SPACING = 6;
+/** Bar numbers need this much room. */
+export const MIN_BAR_LABEL_SPACING = 28;
+
+export interface GridLine {
+  readonly x: number;
+  /** 1-based bar number when this line is a bar's first beat, else null. */
+  readonly bar: number | null;
+}
+
+/**
+ * The beat and bar lines across `width` px of this view: every beat when beats are at least
+ * `MIN_GRID_SPACING` apart, else every bar when bars are, else none. Bar one is the beat
+ * the node counts as beat 0.
+ */
+export function gridLines(grid: BeatGrid, view: TimelineView, width: number): GridLine[] {
+  const beatSpacing = 1 / (grid.beatsPerTick * view.ticksPerPixel);
+  const step = beatSpacing >= MIN_GRID_SPACING ? 1 : beatSpacing * grid.beatsPerBar >= MIN_GRID_SPACING ? grid.beatsPerBar : 0;
+  if (step === 0) return [];
+  const first = Math.ceil(beatsAt(grid, view.startTicks) / step) * step;
+  const last = beatsAt(grid, view.startTicks + width * view.ticksPerPixel);
+  const lines: GridLine[] = [];
+  for (let beat = first; beat <= last; beat += step) {
+    const isBar = Math.abs(beat / grid.beatsPerBar - Math.round(beat / grid.beatsPerBar)) < 1e-9;
+    lines.push({ x: tickToX(view, tickOfBeat(grid, beat)), bar: isBar ? Math.round(beat / grid.beatsPerBar) + 1 : null });
+  }
+  return lines;
 }
 
 export interface DrawWaveform {
@@ -170,6 +203,17 @@ export function paintTimeline(canvas: HTMLCanvasElement, state: DrawState): void
     context.stroke();
     context.fillText(formatMinSec(mark), x + 3, RULER_TOP + RULER_BOTTOM / 2);
   }
+  // VN68: the beat grid's marks on the ruler, a bar taller than a beat.
+  if (state.grid !== undefined && state.grid !== null) {
+    context.strokeStyle = colour("text-dim");
+    for (const line of gridLines(state.grid, view, width)) {
+      const x = Math.round(line.x) + 0.5;
+      context.beginPath();
+      context.moveTo(x, RULER_HEIGHT - (line.bar === null ? 3 : 7));
+      context.lineTo(x, RULER_HEIGHT);
+      context.stroke();
+    }
+  }
   context.strokeStyle = colour("line");
   context.beginPath();
   context.moveTo(0, RULER_HEIGHT - 0.5);
@@ -183,6 +227,25 @@ export function paintTimeline(canvas: HTMLCanvasElement, state: DrawState): void
   context.clip();
   context.translate(0, RULER_HEIGHT);
   if (state.waveform !== undefined && state.waveform !== null) paintWaveform(context, canvas, view, width, curveHeight, state.waveform);
+  if (state.grid !== undefined && state.grid !== null) {
+    const lines = gridLines(state.grid, view, width);
+    const barSpacing = state.grid.beatsPerBar / (state.grid.beatsPerTick * view.ticksPerPixel);
+    context.lineWidth = 1;
+    for (const line of lines) {
+      const x = Math.round(line.x) + 0.5;
+      context.globalAlpha = line.bar === null ? 0.35 : 0.7;
+      context.strokeStyle = colour(line.bar === null ? "line" : "text-dim");
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, curveHeight);
+      context.stroke();
+      if (line.bar !== null && barSpacing >= MIN_BAR_LABEL_SPACING) {
+        context.fillStyle = colour("text-dim");
+        context.fillText(String(line.bar), x + 3, 8);
+      }
+    }
+    context.globalAlpha = 1;
+  }
   // The 0 and 1 lines of the normalized view.
   if (state.mode === "normalized") {
     context.strokeStyle = colour("line");
