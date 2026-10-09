@@ -175,15 +175,17 @@ describe("dropping a component file on the canvas (T1395b)", () => {
     const prevented = !(await drop(
       surface,
       new File(['{"componentLibrary": '], "broken.loom.json"),
-      new File(["\u0089PNG"], "picture.png"),
+      // VN99: a still now becomes a Movie File In (media-file-drop.test.tsx); a file that is
+      // neither media nor a component is still refused, by name.
+      new File(["just text"], "notes.txt", { type: "text/plain" }),
     ));
 
     // The browser's default for a dropped file is to navigate to it — which closes the project.
     expect(prevented).toBe(true);
     expect(runtime.bus.store.getGraph()).toBe(graphBefore);
     expect(refusals.flatMap((each) => each.diagnostics.map((d) => d.code))).toEqual([
+      "media.drop.unsupported",
       "component.import.malformed",
-      "component.import.notAComponent",
     ]);
   });
 });
