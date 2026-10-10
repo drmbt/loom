@@ -1496,6 +1496,8 @@ export function App({
       await depth.settle(frameIndex);
       await vision.settle(frameIndex);
     },
+    // VNB19: a timeline-locked movie has presented each frame's picture before the step renders it.
+    prepareMedia: media.prepareFrame,
   });
   prepareRenderDestinationRef.current = renderRange.prepareDestination;
 

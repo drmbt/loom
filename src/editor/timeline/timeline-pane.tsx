@@ -39,6 +39,7 @@ import {
   setLaneProps,
   snapTicks,
   stepKey,
+  BEAT_SNAP_MODES,
   type KeyClipboard,
   type KeyRef,
   type SnapMode,
@@ -46,8 +47,15 @@ import {
 import { hitBox, hitTest, marquee, selectionBox, type BoxPart, type Rect } from "./timeline-hit.ts";
 import { DopeStrip } from "./dope-strip.tsx";
 import { KeyTable } from "./key-table.tsx";
-import { automationNodes, currentAutomationNode, laneReferenceCounts, lanesStored, type AutomationNodeView } from "./timeline-model.ts";
+import { automationNodes, clipTrackViews, currentAutomationNode, laneReferenceCounts, lanesStored, type AutomationNodeView } from "./timeline-model.ts";
+import { ClipLanes } from "./clip-lanes.tsx";
+import { TimelineImport } from "./timeline-import.tsx";
+import { CLIP_TRACK_NODE_TYPE } from "@nodes/definitions/clip-track.ts";
 import { TimelineStatus } from "./timeline-status.tsx";
+import { ReferenceControls } from "./reference-controls.tsx";
+import { useReferenceMedia } from "./use-reference-media.ts";
+import { beatGridOf } from "./beat-grid.ts";
+import type { WaveformPeaks } from "./waveform-peaks.ts";
 import {
   DEFAULT_VIEW,
   displayValue,
@@ -99,6 +107,10 @@ export interface TimelinePaneProps {
   readonly editor?: ParameterEditor;
   /** VN63: reads a dropped parameter's definition (its min/max). Absent = the lane list takes no drops. */
   readonly registry?: NodeRegistryView;
+  /** VN64: injected in tests, the reference waveform's loader. Absent: decode the file. */
+  readonly loadPeaks?: (file: string) => Promise<WaveformPeaks>;
+  /** VN106: injected in tests, a dropped video's duration in seconds. */
+  readonly probeDuration?: (file: File) => Promise<number>;
 }
 
 type Drag =
@@ -111,6 +123,9 @@ type Drag =
   | { kind: "seek" };
 
 const SAMPLE_MS = 100;
+
+/** The snap menu's words for the beat divisions. */
+const BEAT_SNAP_LABELS: Readonly<Record<(typeof BEAT_SNAP_MODES)[number], string>> = { bars: "bar", beats: "beat", eighths: "1/8", sixteenths: "1/16" };
 
 export function TimelinePane(props: TimelinePaneProps) {
   const { graph, bus, invocation, selection, latestFrame, fps, range, playing = false, onSeek } = props;
@@ -138,8 +153,14 @@ export function TimelinePane(props: TimelinePaneProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const paneRef = useRef<HTMLDivElement | null>(null);
   const keymapPane = useKeymapPane("global", paneRef);
+  const referenceMedia = useReferenceMedia({ graph, bus, invocation, fps, range, ...(props.loadPeaks === undefined ? {} : { loadPeaks: props.loadPeaks }) });
+  const waveform = referenceMedia.waveform;
+  // VN68: the reference track's declared beat clock, drawn on the ruler and snapped to.
+  const grid = useMemo(() => beatGridOf(graph, referenceMedia.reference), [graph, referenceMedia.reference]);
 
   const nodes = useMemo(() => automationNodes(graph), [graph]);
+  // VN106: the clip tracks, drawn above the lanes.
+  const clipRows = useMemo(() => clipTrackViews(graph), [graph]);
   const current = currentAutomationNode(nodes, selection[selection.length - 1] ?? null, lastTouched);
   const currentId = current?.id ?? null;
   const keys = useMemo(() => keySelection.nodeId === currentId ? keySelection.refs : [], [keySelection, currentId]);
@@ -189,8 +210,10 @@ export function TimelinePane(props: TimelinePaneProps) {
       marquee: marqueeRect,
       box,
       frameLabels: false,
+      waveform,
+      grid,
     });
-  }, [box, keys, marqueeRect, mode, range.end, range.start, rate, shown, view]);
+  }, [box, grid, keys, marqueeRect, mode, range.end, range.start, rate, shown, view, waveform]);
 
   useLayoutEffect(() => paint(), [paint, frame]);
   // Smooth while playing: one repaint per display frame, and none while paused.
@@ -269,6 +292,14 @@ export function TimelinePane(props: TimelinePaneProps) {
     const created = result.output.status === "applied" ? result.output.createdIds["$automation"] : undefined;
     if (created !== undefined) setLastTouched(created);
   }, [applyOperations, commitOnce, current, document, rate]);
+
+  /** VN106: "+ track" — a new Clip Track node, right of everything, in ONE patch. */
+  const onAddClipTrack = useCallback(async () => {
+    const positions = Object.values(graph.nodes).map((node) => node.position);
+    const position = positions.length === 0 ? { x: 0, y: 0 } : { x: Math.max(...positions.map((each) => each.x)) + 320, y: Math.min(...positions.map((each) => each.y)) };
+    const result = await applyOperations([{ op: "addNode", ref: "$clipTrack", type: CLIP_TRACK_NODE_TYPE, position } as GraphPatchOperation], "Add clip track");
+    if (result.output.status !== "applied") setNotice(result.diagnostics[0]?.message ?? "The clip track was refused.");
+  }, [applyOperations, graph]);
 
   const onRename = useCallback(
     (nodeId: NodeId, laneId: string, name: string): string | null => {
@@ -352,7 +383,7 @@ export function TimelinePane(props: TimelinePaneProps) {
       return;
     }
     if (current === null || document === null) return;
-    const t = snapTicks(xToTick(view, x), snap, rate);
+    const t = snapTicks(xToTick(view, x), snap, rate, grid);
     if (event.altKey && (event.ctrlKey || event.metaKey)) {
       const inserted = insertKeyOnAllLanes(document, t);
       commitOnce(inserted.document);
@@ -436,7 +467,7 @@ export function TimelinePane(props: TimelinePaneProps) {
       if (part === "left" || part === "right") {
         const edge = xToTick(view, part === "left" ? from.x0 : from.x1);
         const pivot = current_.pivotTicks ?? xToTick(view, part === "left" ? from.x1 : from.x0);
-        const sx = (snapTicks(xToTick(view, x), snap, rate) - pivot) / (edge - pivot);
+        const sx = (snapTicks(xToTick(view, x), snap, rate, grid) - pivot) / (edge - pivot);
         if (Number.isFinite(sx) && sx > 0) next = scaleKeys(current_.origin, current_.selection, pivot, 0, sx, 1);
       } else {
         const valueAt = (pixel: number): number => storedValue(firstLane, yToValue(view, curveHeight(), pixel), mode);
@@ -468,7 +499,7 @@ export function TimelinePane(props: TimelinePaneProps) {
     // Shift locks to time, Shift+Ctrl to value (Keyframer's axis lock).
     if (event.shiftKey && (event.ctrlKey || event.metaKey)) dx = 0;
     else if (event.shiftKey) dy = 0;
-    const dt = snapTicks(dx * view.ticksPerPixel, snap, rate);
+    const dt = snapTicks(dx * view.ticksPerPixel, snap, rate, grid, true);
     const firstLane = current_.origin.lanes.find((lane) => current_.selection.some((ref) => ref.lane === lane.id));
     const dv = firstLane === undefined ? 0 : storedDelta(firstLane, -dy * ((view.valueHigh - view.valueLow) / curveHeight()), mode);
     const next = moveKeys(current_.origin, current_.selection, dt, dv).document;
@@ -537,7 +568,7 @@ export function TimelinePane(props: TimelinePaneProps) {
     }
     if (mod && key === "v") {
       if (clipboard.current !== null) {
-        const at = snapTicks(hoverTicks.current ?? playheadOrZero(), snap, rate);
+        const at = snapTicks(hoverTicks.current ?? playheadOrZero(), snap, rate, grid);
         const pasted = pasteKeys(document, clipboard.current, at, keys[0]?.lane ?? document.lanes[0]?.id ?? null);
         commitOnce(pasted.document);
         setKeys(pasted.refs);
@@ -576,6 +607,8 @@ export function TimelinePane(props: TimelinePaneProps) {
       onPointerDown={keymapPane.onPointerDown}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
+      onDragOver={referenceMedia.onDragOver}
+      onDrop={referenceMedia.onDrop}
       data-timeline-pane=""
     >
       <LaneList
@@ -599,11 +632,22 @@ export function TimelinePane(props: TimelinePaneProps) {
           <TimelineStatus frame={frame} fps={fps} range={range} />
           <span className={styles.spacer} />
           {notice !== null && <span className={styles.notice}>{notice}</span>}
+          {referenceMedia.notice !== null && <span className={styles.notice} data-timeline-reference-notice="">{referenceMedia.notice}</span>}
+          <ReferenceControls media={referenceMedia} />
+          <button type="button" className={styles.toggle} onClick={() => void onAddClipTrack()} title="A new clip track: regions of video above the lanes" data-add-clip-track="">
+            + track
+          </button>
+          <TimelineImport graph={graph} bus={bus} invocation={invocation} onNotice={setNotice} />
           <label className={styles.option}>
             snap
             <select value={snap} onChange={(event) => setSnap(event.target.value as SnapMode)} aria-label="snap">
               <option value="frames">frames</option>
               <option value="seconds">seconds</option>
+              {BEAT_SNAP_MODES.map((division) => (
+                <option key={division} value={division} disabled={grid === null} title={grid === null ? "Declare a tempo on the reference track" : undefined}>
+                  {BEAT_SNAP_LABELS[division]}
+                </option>
+              ))}
               <option value="off">off</option>
             </select>
           </label>
@@ -622,12 +666,29 @@ export function TimelinePane(props: TimelinePaneProps) {
         </div>
         <div className={styles.body}>
         <div className={styles.curve}>
+        {clipRows.length > 0 && (
+          <ClipLanes
+            graph={graph}
+            rows={clipRows}
+            view={view}
+            rate={rate}
+            snap={snap}
+            grid={grid}
+            playheadTicks={() => playhead.current}
+            editor={ownEditor}
+            onSeek={onSeek}
+            onNotice={setNotice}
+            frame={frame}
+            {...(props.probeDuration === undefined ? {} : { probeDuration: props.probeDuration })}
+          />
+        )}
         <DopeStrip
           graph={graph}
           nodes={nodes}
           view={view}
           rate={rate}
           snap={snap}
+          grid={grid}
           playheadTicks={() => playhead.current}
           bus={bus}
           invocation={invocation}
@@ -654,7 +715,7 @@ export function TimelinePane(props: TimelinePaneProps) {
           </div>
         )}
         </div>
-        {current === null && <div className={styles.empty}>no lanes — + adds one</div>}
+        {current === null && clipRows.length === 0 && <div className={styles.empty}>no lanes — + adds one</div>}
       </div>
     </div>
   );

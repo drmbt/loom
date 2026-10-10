@@ -241,6 +241,15 @@ export interface MediaTransportRunner {
    * and say nothing. `null` is the answer where there is no element to follow.
    */
   step(frame: FrameEvaluationInput, duration: number, elementSeconds: number | null): MediaSteppedTransport | null;
+  /**
+   * VNB19 — where a TIMELINE-LOCKED element must be at `frame`, in media seconds, without
+   * stepping the runner: the lock's playhead is `f(frame)` (§V436), so it can be asked ahead
+   * of the step that renders the frame. Null in free run (its position is integrated, not a
+   * function of the frame) and for a node that is gone. A take pre-seeks to this and waits
+   * for the decoded frame (`seekAndPresent`) before the step, so the step finds no drift.
+   * Channels are the last evaluated frame's: the value graph for `frame` has not run yet.
+   */
+  target(frame: FrameEvaluationInput, duration: number): number | null;
   /** A cue PULSE (free-run only): land on the cue point and carry on from there. */
   cue(): void;
   reset(): void;
@@ -260,6 +269,48 @@ export interface MediaTransportContext {
    * resolving without it (§V272). A door with no flattening passes `() => NO_FLATTENING`.
    */
   readonly flattening: () => FlatteningReads;
+}
+
+/**
+ * One node's parameters resolved for a frame through the ONE read path (§V61, §V837's
+ * factory), or null when the node or its definition is gone. The movie runner reads its
+ * transport through this; the clip track (VN101) reads its regions and tempo through it, so
+ * an expression on a Clip Track's Tempo reaches the player exactly as one on a movie's
+ * speed does.
+ */
+export function nodeParameterReader(
+  nodeId: NodeId,
+  context: MediaTransportContext,
+): (frame?: FrameEvaluationInput) => ((key: string) => ParameterValue | undefined) | null {
+  return (frame) => {
+    const node = context.graph().nodes[nodeId];
+    if (node === undefined) return null;
+    const definition = context.registry.get(node.type);
+    if (definition === undefined) return null;
+    /**
+     * ⚑ T1155 — §V837's ONE FACTORY, and this call site is why it exists.
+     *
+     * These options used to be `{ frame, channels }` spelled out here, with NO `nodes`
+     * reader — and `op('sun1').chan.high` is read INSIDE that reader, never off
+     * `channels`. So every expression on a transport parameter failed with "this context
+     * has no channel resolver", fell back to §V108's retained static, and froze there:
+     * the docblock above has promised "a `cuePoint` bound to a sibling, a `trimStart`
+     * driven by an audio channel" since T493 and NOT ONE OF THEM HAS EVER WORKED.
+     *
+     * §B8's shape, and §V837 already names it as having recurred four times (§T593, the
+     * inspector §T1000, the OSC pump §T1001, §B46). This was the fifth, and it was found
+     * by E56, whose whole picture is a driven `cuePoint`: the file loaded, the element
+     * reached readyState 4, and `currentTime` sat at the retained 3.42 forever.
+     */
+    const resolved = resolveParameters(node, definition, parameterReadOptions({
+      graph: context.graph(),
+      registry: context.registry,
+      frame,
+      channels: context.channels(),
+      flattening: context.flattening(),
+    }));
+    return (key) => resolved.get(key)?.value;
+  };
 }
 
 /**
@@ -290,37 +341,7 @@ export function createMediaTransportRunner(
   let lastLocked: { head: number; element: number } | null = null;
   let runSeconds = 0;
 
-  const readAll = (
-    frame?: FrameEvaluationInput,
-  ): ((key: string) => ParameterValue | undefined) | null => {
-    const node = context.graph().nodes[nodeId];
-    if (node === undefined) return null;
-    const definition = context.registry.get(node.type);
-    if (definition === undefined) return null;
-    /**
-     * ⚑ T1155 — §V837's ONE FACTORY, and this call site is why it exists.
-     *
-     * These options used to be `{ frame, channels }` spelled out here, with NO `nodes`
-     * reader — and `op('sun1').chan.high` is read INSIDE that reader, never off
-     * `channels`. So every expression on a transport parameter failed with "this context
-     * has no channel resolver", fell back to §V108's retained static, and froze there:
-     * the docblock above has promised "a `cuePoint` bound to a sibling, a `trimStart`
-     * driven by an audio channel" since T493 and NOT ONE OF THEM HAS EVER WORKED.
-     *
-     * §B8's shape, and §V837 already names it as having recurred four times (§T593, the
-     * inspector §T1000, the OSC pump §T1001, §B46). This was the fifth, and it was found
-     * by E56, whose whole picture is a driven `cuePoint`: the file loaded, the element
-     * reached readyState 4, and `currentTime` sat at the retained 3.42 forever.
-     */
-    const resolved = resolveParameters(node, definition, parameterReadOptions({
-      graph: context.graph(),
-      registry: context.registry,
-      frame,
-      channels: context.channels(),
-      flattening: context.flattening(),
-    }));
-    return (key) => resolved.get(key)?.value;
-  };
+  const readAll = nodeParameterReader(nodeId, context);
 
   return {
     step(frame, duration, elementSeconds) {
@@ -438,6 +459,13 @@ export function createMediaTransportRunner(
       cuePending = false;
       return { transport, head, continuous, lap, correction: locked ? lockStep / 100 : 0, read };
     },
+    target(frame, duration) {
+      const read = readAll(frame);
+      if (read === null) return null;
+      const transport = mediaTransportFrom(read);
+      if (transport.playMode === "freeRun") return null;
+      return mediaPlayhead(transport, frame.timeSeconds, duration).position;
+    },
     cue() {
       const read = readAll();
       if (read === null) return;
@@ -477,6 +505,58 @@ export function playableMedia(element: unknown): PlayableMedia | null {
   if (typeof candidate.currentTime !== "number") return null;
   if (typeof candidate.play !== "function" || typeof candidate.pause !== "function") return null;
   return candidate as PlayableMedia;
+}
+
+/** What `seekAndPresent` touches: a playable element that reports seeks and decoded frames. */
+export interface PresentableMedia extends PlayableMedia {
+  readonly seeking?: boolean;
+  readonly readyState?: number;
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+  requestVideoFrameCallback?(callback: () => void): number;
+}
+
+/** How long a take waits for one seek to present its frame before it renders anyway. */
+export const PRESENT_TIMEOUT_MS = 5_000;
+
+/**
+ * VNB19 — PAUSE, SEEK, AND WAIT UNTIL THE FRAME IS THERE. A take renders the instant its
+ * step returns, and an element told to seek in that step still shows the frame it was on:
+ * the upload is a frame late (or several, while the decoder catches up). So before the step,
+ * the element is paused on its target and this resolves once the browser has finished the
+ * seek (`seeked`) AND presented the decoded frame (`requestVideoFrameCallback`, which is
+ * also what advances the media source's frame id, so the backend uploads it). Already there
+ * and not seeking: resolves at once. Never rejects; a seek that never completes resolves
+ * after `timeoutMs` and the take renders what is there rather than hanging.
+ */
+export function seekAndPresent(
+  element: PresentableMedia,
+  seconds: number,
+  timeoutMs: number = PRESENT_TIMEOUT_MS,
+  schedule: (callback: () => void, ms: number) => unknown = setTimeout,
+): Promise<void> {
+  if (!element.paused) element.pause();
+  if (!Number.isFinite(seconds)) return Promise.resolve();
+  if (Math.abs(element.currentTime - seconds) <= POSITION_PRECISION_SECONDS && element.seeking !== true) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      element.removeEventListener("seeked", onSeeked);
+      resolve();
+    };
+    const onSeeked = () => {
+      element.removeEventListener("seeked", onSeeked);
+      if (element.requestVideoFrameCallback !== undefined) element.requestVideoFrameCallback(done);
+      else done();
+    };
+    element.addEventListener("seeked", onSeeked);
+    schedule(done, timeoutMs);
+    element.currentTime = seconds;
+  });
 }
 
 /** A media element's length in seconds, or 0 while the browser does not know it yet. */

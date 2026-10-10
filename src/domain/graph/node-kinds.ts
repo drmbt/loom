@@ -264,6 +264,8 @@ export const NODE_KINDS: Readonly<Record<string, string>> = {
   cueList: "cuelist",
   // VN61: keyframed lanes, each a channel (`automation_score`).
   automation: "automation",
+  // VN101: regions of media on the timeline (`cliptrack_vocals`); rule 4, a compound kept whole.
+  clipTrack: "cliptrack",
 
   // scene
   camera: "camera",

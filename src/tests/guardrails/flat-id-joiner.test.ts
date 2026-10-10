@@ -73,6 +73,8 @@ const NOT_A_NODE_PATH: Readonly<Record<string, string>> = {
   "src/domain/audio/analysis/stft.ts": "two sizes in an error message",
   "src/domain/components/instance.ts": "an instance's internal PARAMETER path, `<node>/<key>`",
   "src/domain/components/save-selection.ts": "a node and one of its ports, as a map key",
+  "src/domain/import/ltc-lab/source.ts": "an ltc-lab show's file and archive paths",
+  "src/domain/import/ltc-lab/tar.ts": "a tar entry's path (ustar prefix/name)",
   "src/domain/media/file-reference.ts": "a retained file's URI",
   "src/domain/media/picture-file.ts": "a file path",
   "src/domain/mesh/glb.ts": "an accessor's types in an error message",

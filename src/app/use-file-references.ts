@@ -5,6 +5,8 @@ import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { AssetReference, FlatGraph, GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import { retainedFiles } from "@ui/files/retained-files.ts";
+import { parseClipTrack, serializeClipTrack } from "@domain/regions/model.ts";
+import { CLIP_TRACK_NODE_TYPE } from "@nodes/definitions/clip-track.ts";
 
 interface FileParameter {
   readonly nodeId: NodeId;
@@ -14,7 +16,27 @@ interface FileParameter {
   readonly invalid?: string;
 }
 
+/**
+ * VN106 — a Clip Track's regions are ONE JSON text, so a region's retained `loom-file:`
+ * media sits inside it rather than being the whole parameter. Each region holding one is
+ * resolved through the same broker and leases as a movie's `file`, and the IO view's track
+ * text carries the session URL in its place (or "" until it opens, which the player reads
+ * as "no media yet"). The stored document is never touched.
+ */
+interface RegionFile {
+  readonly regionId: string;
+  readonly uri: string;
+  readonly reference: AssetReference | null;
+  readonly invalid?: string;
+}
+interface TrackFiles {
+  readonly nodeId: NodeId;
+  readonly key: string;
+  readonly regions: readonly RegionFile[];
+}
+
 const NO_FILES: readonly FileParameter[] = [];
+const NO_TRACKS: readonly TrackFiles[] = [];
 const NO_REFERENCES: readonly string[] = [];
 const NO_DIAGNOSTICS: readonly RuntimeDiagnostic[] = [];
 
@@ -41,6 +63,30 @@ function fileParameters(graph: GraphDocument): readonly FileParameter[] {
   return files ?? NO_FILES;
 }
 
+/** VN106: the clip tracks whose regions hold retained references. */
+function trackFiles(graph: GraphDocument): readonly TrackFiles[] {
+  let tracks: TrackFiles[] | undefined;
+  for (const nodeId in graph.nodes) {
+    const node = graph.nodes[nodeId]!;
+    if (node.type !== CLIP_TRACK_NODE_TYPE) continue;
+    const text = storedStaticValue(node.parameters["track"]);
+    if (typeof text !== "string" || !text.includes("loom-file:")) continue;
+    const parsed = parseClipTrack(text);
+    if (!parsed.ok) continue;
+    const regions: RegionFile[] = [];
+    for (const region of parsed.track.regions) {
+      if (!region.media.startsWith("loom-file:")) continue;
+      try {
+        regions.push({ regionId: region.id, uri: region.media, reference: parseFileReference(region.media) });
+      } catch (error) {
+        regions.push({ regionId: region.id, uri: region.media, reference: null, invalid: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    if (regions.length > 0) (tracks ??= []).push({ nodeId: node.id, key: "track", regions });
+  }
+  return tracks ?? NO_TRACKS;
+}
+
 export interface FileReferenceWiring {
   readonly graph: FlatGraph;
   readonly diagnostics: readonly RuntimeDiagnostic[];
@@ -50,16 +96,20 @@ export interface FileReferenceWiring {
 export function useFileReferences(graph: FlatGraph): FileReferenceWiring {
   const broker = useMemo(() => retainedFiles(), []);
   const files = useMemo(() => fileParameters(graph), [graph]);
+  const tracks = useMemo(() => trackFiles(graph), [graph]);
   // A parameter edit must not release/reopen unchanged files. Multiple flattened nodes
   // can share one retained handle; each hook owns one lease per canonical reference.
   const signature = useMemo(() => {
-    if (files.length === 0) return "";
+    if (files.length === 0 && tracks.length === 0) return "";
     const unique = new Set<string>();
     for (const file of files) {
       if (file.reference !== null) unique.add(referenceKey(file.reference));
     }
+    for (const track of tracks) {
+      for (const region of track.regions) if (region.reference !== null) unique.add(referenceKey(region.reference));
+    }
     return unique.size === 0 ? "" : JSON.stringify([...unique].sort());
-  }, [files]);
+  }, [files, tracks]);
   const references = useMemo(() => {
     if (signature === "") return NO_REFERENCES;
     return JSON.parse(signature) as string[];
@@ -93,7 +143,7 @@ export function useFileReferences(graph: FlatGraph): FileReferenceWiring {
   return useMemo(() => {
     // Broker snapshots are external state; this revision invalidates the cached IO view.
     void revision;
-    if (files.length === 0) return { graph, diagnostics: NO_DIAGNOSTICS };
+    if (files.length === 0 && tracks.length === 0) return { graph, diagnostics: NO_DIAGNOSTICS };
     const nodes = { ...graph.nodes };
     const diagnostics: RuntimeDiagnostic[] = [];
     for (const file of files) {
@@ -124,6 +174,36 @@ export function useFileReferences(graph: FlatGraph): FileReferenceWiring {
             : `Choose Relink for ${field}.`,
       });
     }
+    for (const track of tracks) {
+      const node = nodes[track.nodeId]!;
+      const stored = node.parameters[track.key];
+      const parsed = parseClipTrack(storedStaticValue(stored));
+      if (!parsed.ok) continue;
+      const urls = new Map<string, string>();
+      for (const region of track.regions) {
+        const status = region.reference === null ? null : broker.snapshot(referenceKey(region.reference));
+        urls.set(region.regionId, status?.kind === "ready" ? status.url : "");
+        if (status?.kind === "ready") continue;
+        const name = region.reference?.name ?? region.uri;
+        const label = graph.nodes[track.nodeId]!.label ?? track.nodeId;
+        const detail = region.invalid ?? (status !== null && "message" in status ? status.message : status?.kind);
+        diagnostics.push({
+          severity: status?.kind === "pending" ? "info" : status?.kind === "error" || region.invalid !== undefined ? "error" : "warning",
+          code: region.invalid !== undefined ? "asset.reference.invalid" : `asset.reference.${status!.kind}`,
+          message: `File "${name}" of region "${region.regionId}" on "${label}" (${track.nodeId}): ${detail}.`,
+          nodeId: track.nodeId,
+          suggestion: status?.kind === "pending" ? "Wait for the retained file to open." : "Drop the file on the region's clip track again.",
+        });
+      }
+      const text = serializeClipTrack({
+        ...parsed.track,
+        regions: parsed.track.regions.map((region) => (urls.has(region.id) ? { ...region, media: urls.get(region.id)! } : region)),
+      });
+      const value = isParameterSlot(stored)
+        ? { ...stored, bindings: { ...stored.bindings, static: { kind: "static" as const, value: text } } }
+        : text;
+      nodes[track.nodeId] = { ...node, parameters: { ...node.parameters, [track.key]: value } };
+    }
     return { graph: { ...graph, nodes }, diagnostics };
-  }, [broker, files, graph, revision]);
+  }, [broker, files, graph, revision, tracks]);
 }

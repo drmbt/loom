@@ -56,7 +56,7 @@ export interface EncodedVideo {
   readonly durationSeconds: number;
 }
 
-/** Interleaved float PCM. Offline export currently supplies one fixed-rate mono channel. */
+/** Interleaved float PCM (L R L R …). Offline export supplies stereo at 48 kHz (VN104). */
 export interface AudioPcmTrack {
   readonly sampleRate: number;
   readonly channelCount: number;

@@ -20,6 +20,7 @@ import type { ProjectSettings } from "../domain/types/graph.ts";
 import { createVgpuBackend } from "../runtime/backend/vgpu/vgpu-backend.ts";
 import { nodeGpuHost, probeDawn } from "../runtime/backend/vgpu/node-gpu-host.ts";
 import { createAgentPorts } from "../runtime/export/agent-ports.ts";
+import { ltcLabLocalFiles } from "./local-files.ts";
 import { createNodeLibraryCatalogue } from "../examples/catalogue.ts";
 import { createMcpConnection, type McpConnection } from "./server.ts";
 import { createBridgeHost, type BridgeStatus } from "./bridge-host.ts";
@@ -232,6 +233,8 @@ export function createHeadlessMcpServer(options: HeadlessMcpServerOptions): Head
    * table, so the two surfaces cannot describe one file differently.
    */
   ports["library"] = createNodeLibraryCatalogue();
+  // VN100: the helper's read-only, ltc-lab-scoped file port (`import_ltc_lab` with a path).
+  ports["localFiles"] = ltcLabLocalFiles();
   const surface = createAgentToolSurface({
     bus,
     actor: { kind: "agent", id: "mcp", label: "MCP client" },

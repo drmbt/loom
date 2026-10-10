@@ -1,12 +1,18 @@
 import { afterEach, expect, it, vi } from "vitest";
 
-import { createWebCodecsEncoder, h264CodecFor } from "./webcodecs.ts";
+import { createWebCodecsEncoder, h264CodecFor, planarOf } from "./webcodecs.ts";
 
 afterEach(() => vi.unstubAllGlobals());
 
 it("selects an H.264 level that can describe the requested production size class", () => {
   expect(h264CodecFor({ width: 1920, height: 1080, fps: 60 })).toBe("avc1.42002a");
   expect(h264CodecFor({ width: 3840, height: 2160, fps: 60 })).toBe("avc1.640034");
+});
+
+it("turns interleaved stereo into the planar layout AudioData is given (VN104)", () => {
+  expect(Array.from(planarOf(Float32Array.from([1, -1, 2, -2, 3, -3]), 3, 2))).toEqual([1, 2, 3, -1, -2, -3]);
+  expect(Array.from(planarOf(Float32Array.from([1, 2]), 2, 1))).toEqual([1, 2]);
+  expect(() => planarOf(new Float32Array(3), 2, 2)).toThrow(RangeError);
 });
 
 it("encodes only explicitly configured captured VideoFrames and always closes them", async () => {

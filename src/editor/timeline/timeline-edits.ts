@@ -13,6 +13,7 @@ import {
   type Interpolation,
 } from "@domain/automation/model.ts";
 import { evaluateNormalized, resolveLane } from "@domain/automation/evaluate.ts";
+import { snapDeltaToGrid, snapToGrid, type BeatDivision, type BeatGrid } from "./beat-grid.ts";
 import { snapTicksToFrame, TICKS_PER_SECOND, type FrameRate } from "@domain/time/ticks.ts";
 
 /**
@@ -61,10 +62,26 @@ const mapLanes = (document: AutomationDocument, map: (lane: AutomationLane) => A
   lanes: document.lanes.map(map),
 });
 
-/** Snapping while editing (storage stays ticks; VN61). Markers join in VN67, beats in VN68. */
-export type SnapMode = "off" | "frames" | "seconds";
+/**
+ * Snapping while editing (storage stays ticks; VN61). Markers join in VN67. VN68: bars,
+ * beats, eighths and sixteenths of the reference track's declared tempo (`beat-grid.ts`);
+ * with no grid a beat mode leaves the time unsnapped rather than guessing a tempo.
+ */
+export type SnapMode = "off" | "frames" | "seconds" | BeatDivision;
 
-export function snapTicks(ticks: number, mode: SnapMode, rate: FrameRate): number {
+export const BEAT_SNAP_MODES: readonly BeatDivision[] = ["bars", "beats", "eighths", "sixteenths"];
+
+const isBeatMode = (mode: SnapMode): mode is BeatDivision => (BEAT_SNAP_MODES as readonly string[]).includes(mode);
+
+/**
+ * A time snapped: a POSITION (`delta` false, the default) lands on the nearest line; a
+ * DELTA (a drag's offset) becomes a whole number of steps, so a key on the grid stays on it.
+ */
+export function snapTicks(ticks: number, mode: SnapMode, rate: FrameRate, grid: BeatGrid | null = null, delta = false): number {
+  if (isBeatMode(mode)) {
+    if (grid === null) return Math.round(ticks);
+    return delta ? snapDeltaToGrid(ticks, grid, mode) : snapToGrid(ticks, grid, mode);
+  }
   if (mode === "frames") return snapTicksToFrame(ticks, rate);
   if (mode === "seconds") return Math.round(ticks / TICKS_PER_SECOND) * TICKS_PER_SECOND;
   return Math.round(ticks);

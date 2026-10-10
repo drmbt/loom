@@ -7,6 +7,8 @@ import type { FrameRange, GraphDocument, GraphNode } from "@domain/types/graph.t
 import type { NodeId } from "@domain/types/ids.ts";
 import type { StoredParameter } from "@domain/types/parameters.ts";
 import { AUTOMATION_NODE_TYPE } from "@nodes/definitions/automation.ts";
+import { CLIP_TRACK_NODE_TYPE } from "@nodes/definitions/clip-track.ts";
+import { parseClipTrack, type ClipTrack } from "@domain/regions/model.ts";
 
 /**
  * VN62 — WHAT THE TIMELINE SHOWS, read from the document. Pure.
@@ -92,13 +94,17 @@ export function timelineReadout(frame: number, fps: number, range: FrameRange): 
  * Which value-only revisions the timeline re-renders for (`LiveGraph`'s `shows`): a write
  * to an automation node (its lanes), or to a node holding an expression slot (a reference
  * to a lane may have appeared or gone, and the list's counts are derived from those).
- * Everything else, a slider drag on an unrelated node, leaves the pane alone.
+ * VN64: and a write to a movie or audio file node, whose file and transport place the
+ * reference waveform. Everything else, a slider drag on an unrelated node, leaves the pane alone.
  */
 export function timelineShows(written: readonly NodeId[], graph: GraphDocument): boolean {
   return written.some((nodeId) => {
     const node = graph.nodes[nodeId];
     if (node === undefined) return false;
     if (node.type === AUTOMATION_NODE_TYPE) return true;
+    // VN106: a clip track's regions are drawn above the lanes.
+    if (node.type === CLIP_TRACK_NODE_TYPE) return true;
+    if (node.type === "movieFileIn" || node.type === "audioFileIn") return true;
     return Object.values(node.parameters).some((stored) => isParameterSlot(stored) && stored.bindings.expression !== undefined);
   });
 }
@@ -106,4 +112,40 @@ export function timelineShows(written: readonly NodeId[], graph: GraphDocument):
 /** The stored lanes parameter with new text, keeping a static slot's retained bindings. */
 export function lanesStored(stored: StoredParameter | undefined, text: string): StoredParameter {
   return isParameterSlot(stored) ? { ...stored, bindings: { ...stored.bindings, static: { kind: "static", value: text } } } : text;
+}
+
+/**
+ * VN106 — a Clip Track node as the timeline draws it: its regions parsed, why they do not
+ * parse, whether the timeline may write them (a static `track` text), and the tempo its
+ * BPM-synced regions play at (the node's own `tempo`, read as stored).
+ */
+export interface ClipTrackView {
+  readonly id: NodeId;
+  readonly name: string | null;
+  readonly track: ClipTrack | null;
+  readonly error: string | null;
+  readonly editable: boolean;
+  readonly tempo: number;
+}
+
+export function clipTrackView(node: GraphNode): ClipTrackView {
+  const stored = node.parameters["track"];
+  const parsed = parseClipTrack(storedStaticValue(stored));
+  const tempo = storedStaticValue(node.parameters["tempo"]);
+  return {
+    id: node.id,
+    name: node.label ?? null,
+    track: parsed.ok ? parsed.track : null,
+    error: parsed.ok ? null : parsed.reason,
+    editable: !isParameterSlot(stored) || stored.mode === "static",
+    tempo: typeof tempo === "number" && Number.isFinite(tempo) && tempo > 0 ? tempo : 120,
+  };
+}
+
+/** Every Clip Track node, by name (unnamed last, by id): the order their lanes stack in. */
+export function clipTrackViews(graph: GraphDocument): ClipTrackView[] {
+  return Object.values(graph.nodes)
+    .filter((node) => node.type === CLIP_TRACK_NODE_TYPE)
+    .map(clipTrackView)
+    .sort((a, b) => (a.name ?? "\uffff" + a.id).localeCompare(b.name ?? "\uffff" + b.id));
 }
