@@ -5,12 +5,12 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { runInNewContext } = require('node:vm');
-function harness({ ndi = false } = {}) {
+function harness({ ndi = false, ffgl = false } = {}) {
   let api, receive, handler = async name => name.endsWith('open') ? 'session' : { kind: 'sent' };
   const calls = [];
   const listeners = new Map();
   runInNewContext(readFileSync(join(__dirname, 'preload.cjs'), 'utf8'), {
-    process: { argv: ndi ? ['--loom-ndi-input'] : [] },
+    process: { argv: [...(ndi ? ['--loom-ndi-input'] : []), ...(ffgl ? ['--loom-ffgl'] : [])] },
     Event: class { constructor(type) { this.type = type; } },
     window: { addEventListener(name, callback) { listeners.set(name, callback); }, dispatchEvent(event) { listeners.get(event.type)?.(event); } },
     require: () => ({
@@ -164,4 +164,24 @@ test('concurrent polls are rejected and late delivery after close is released wi
   assert.equal(consumed, 0); assert.equal(h.released, 1);
   finish({ kind: 'sent' }); await poll;
   await assert.rejects(h.api.input.poll(id), /closed or unknown/);
+});
+
+test('VN85: the FFGL bridge exists only when main installed the host, and its results reach the session consumer', async () => {
+  assert.equal(harness().api.ffgl, undefined);
+  const h = harness({ ffgl: true });
+  let consumed = 0;
+  h.handle(async name => name === 'loom-ffgl-open' ? { session: 'session', plugin: { id: 'VGNP' } } : undefined);
+  const opened = await h.api.ffgl.open('session', 'VignettePlus', 1920, 1080, async () => { consumed++; });
+  assert.equal(opened.plugin.id, 'VGNP');
+  await h.api.ffgl.prepare('session', { time: 1, bpm: 120, barPhase: 0 });
+  assert.deepEqual(h.calls.map(call => call[0]), ['loom-ffgl-open', 'loom-ffgl-prepare']);
+  assert.deepEqual(h.calls[1].slice(1), ['session', { time: 1, bpm: 120, barPhase: 0 }]);
+  await h.deliver();
+  assert.equal(consumed, 1); assert.equal(h.closed, 1); assert.equal(h.released, 1);
+  // An FFGL session participates in the unload gate like every native session.
+  assert.equal(h.beforeunload().prevented, true);
+  await h.api.ffgl.close('session');
+  await assert.rejects(h.api.ffgl.prepare('session', { time: 1, bpm: 120, barPhase: 0 }), /closed or unknown/);
+  await h.api.input.prepareForUnload();
+  await assert.rejects(h.api.ffgl.open('other', 'VignettePlus', 8, 8, async () => {}), /retiring/);
 });

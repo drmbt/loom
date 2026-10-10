@@ -179,6 +179,8 @@ describe("core catalogue (T70, T40)", () => {
       "ndiOut",
       "spoutIn",
       "spoutOut",
+      // VN85: a Resolume FFGL plugin in the desktop's native host.
+      "ffgl",
       "mouse",
       "channelIn",
       "valueMath",

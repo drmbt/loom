@@ -117,6 +117,28 @@ export async function verifyDesktop({ executable, main, env, startupOnly = false
     assert.equal(preferences.contextIsolation, true);
     assert.equal(preferences.nodeIntegration, false);
 
+    // VN85 phase 2 gate: an ffgl node (VignettePlus) through the whole desktop path. Opt-in,
+    // because it needs the FFGL plugin folders; it returns before the export steps (VNB14).
+    if (env.LOOM_DESKTOP_FFGL_TEST === '1') {
+      const result = await page.evaluate(async () => {
+        const { verifyFfglGraph } = await import(window.loomDesktopFixtureModules.ffgl);
+        return verifyFfglGraph();
+      });
+      const [identity, dark] = result.frames;
+      assert.deepEqual(errors, []);
+      assert.equal(result.diagnostics.length, 0, JSON.stringify(result.diagnostics));
+      // Upright: the input's white top-left block is at the output's top left.
+      assert.deepEqual(identity.topLeft.slice(0, 3), [255, 255, 255]);
+      // Identity settings: out == in over the whole frame, measured. Exact is the claim.
+      assert.equal(identity.maxDiff, 0, `identity differs from the input by up to ${identity.maxDiff} (${identity.differing} components)`);
+      // Size 0 / Softness 0: transparent corners, unchanged centre.
+      for (const corner of dark.corners) assert.deepEqual(corner.slice(0, 3), [0, 0, 0]);
+      assert.equal(dark.maxDiff, 0, `dark centre differs from the input by up to ${dark.maxDiff}`);
+      // VN96, the one-frame lag: before the dark frame settled, its corners were the identity frame's.
+      assert.ok(dark.cornersBeforeSettle.every(corner => corner.slice(0, 3).some(value => value > 0)), JSON.stringify(dark.cornersBeforeSettle));
+      console.log('LOOM_DESKTOP_FFGL_PASS', JSON.stringify(result));
+      return;
+    }
     if (env.LOOM_DESKTOP_VISION_PHOTO) {
       const photo = `data:image/jpeg;base64,${(await readFile(env.LOOM_DESKTOP_VISION_PHOTO)).toString('base64')}`;
       await page.exposeFunction('visionVerifyCapture', async expected => {

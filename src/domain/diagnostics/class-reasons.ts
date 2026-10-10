@@ -679,6 +679,8 @@ export const DIAGNOSTIC_CLASS_REASONS: Readonly<Record<string, string>> = {
   "viewer.noOutput": "an editor command with nothing to act on",
   "viewer.noPane": "an editor command with nothing to act on",
   "vision.helper.absent": "this session's device, helper or file",
+  "ffgl.native.refused": "this session's desktop host or plugin folders",
+  "ffgl.native.starting": "this session's desktop host or plugin folders",
   "vision.native.refused": "this session's device, helper or file",
   "vision.native.retirement": "this session's device, helper or file",
   "vision.native.starting": "this session's device, helper or file",

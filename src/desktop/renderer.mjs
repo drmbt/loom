@@ -7,6 +7,8 @@ const fixtures = {
   output: 'src/desktop/testing/output-fixture.ts',
   input: 'src/desktop/testing/input-fixture.ts',
   vision: 'src/desktop/testing/vision-graph-fixture.ts',
+  // VN85: the ffgl node through the real page, compiler, backend and native host.
+  ffgl: 'src/desktop/testing/ffgl-graph-fixture.ts',
 };
 
 export function rendererBuildOptions(root, outDir, smoke) {

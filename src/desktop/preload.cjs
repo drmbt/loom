@@ -147,6 +147,39 @@ contextBridge.exposeInMainWorld('loomDesktop', {
     commitUnload: () => { unloadPrepared = true; },
     ...createInputBridge('loom-native-input'),
   },
+  // VN85: present only when main installed the native FFGL host (main passes --loom-ffgl).
+  ...(process.argv.includes('--loom-ffgl') ? { ffgl: {
+    list: () => ipcRenderer.invoke('loom-ffgl-list'),
+    describe: plugin => ipcRenderer.invoke('loom-ffgl-describe', plugin),
+    open: async (name, plugin, width, height, consume) => {
+      if (retiring) throw new Error('Native FFGL document is retiring');
+      if (typeof consume !== 'function') throw new Error('Native FFGL requires a frame consumer');
+      usedNativeInput = true;
+      const pending = ipcRenderer.invoke('loom-ffgl-open', name, plugin, width, height);
+      opening.add(pending);
+      let opened;
+      try { opened = await pending; } finally { opening.delete(pending); }
+      inputs.set(opened.session, { consume, closed: false, polling: false, consuming: false, error: null });
+      return opened;
+    },
+    prepare: async (id, frame) => {
+      const record = input(id);
+      await ipcRenderer.invoke('loom-ffgl-prepare', id, frame);
+      if (record.error) throw new Error(record.error);
+    },
+    status: async id => {
+      const record = input(id);
+      const result = await ipcRenderer.invoke('loom-ffgl-status', id);
+      if (record.error) throw new Error(record.error);
+      return result;
+    },
+    close: async id => {
+      const record = inputs.get(id);
+      if (record) record.closed = true;
+      try { return await ipcRenderer.invoke('loom-ffgl-close', id); }
+      finally { if (record) forget(id, record); }
+    },
+  } } : {}),
   ...(process.argv.includes('--loom-ndi-input') ? {
     ndiInput: createInputBridge('loom-ndi-input'), ndiOutput: createOutputBridge('loom-ndi-output'),
   } : {}),

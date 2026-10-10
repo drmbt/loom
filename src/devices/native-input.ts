@@ -24,10 +24,15 @@ export function desktopInputBridge(transport: NativeInputTransport = "syphon"): 
  * OpenGL, which every OpenGL publisher (Resolume, TouchDesigner, VDMX) draws into with a
  * bottom-left origin, and which Loom's own Syphon Out matches. NDI and Spout frames are top first.
  */
-export const BOTTOM_UP_TRANSPORTS: ReadonlySet<NativeInputTransport> = new Set<NativeInputTransport>(["syphon"]);
+export const BOTTOM_UP_TRANSPORTS: ReadonlySet<NativeFrameOrigin> = new Set<NativeFrameOrigin>(["syphon", "ffgl"]);
+/**
+ * Where a native frame comes from: a video transport, or the native FFGL host (VN85), whose
+ * plugins render with OpenGL's bottom-left origin into the output surface, as Syphon's do.
+ */
+export type NativeFrameOrigin = NativeInputTransport | "ffgl";
 
 /** A native frame as the backend takes it, its orientation set by its transport — the ONE place that rule lives. */
-export function nativeMediaFrame(transport: NativeInputTransport, image: VideoFrame, frameId: number): MediaSourceFrame {
+export function nativeMediaFrame(transport: NativeFrameOrigin, image: VideoFrame, frameId: number): MediaSourceFrame {
   return { image, frameId, ...(BOTTOM_UP_TRANSPORTS.has(transport) ? { flipY: true } : {}) };
 }
 

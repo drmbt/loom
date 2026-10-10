@@ -25,6 +25,19 @@ import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { DeviceClient } from "@devices/device-client.ts";
 import { DEVICE_HELPER_COMMAND, DEVICE_HELPER_NAME, DEVICE_HELPER_START } from "@devices/helper.ts";
 import { createNativeVisionSources, type NativeVisionTarget } from "./native-vision-sources.ts";
+import { z } from "zod";
+import type { LoomBus } from "@domain/commands/bus.ts";
+import type { InvocationContext } from "@domain/types/commands.ts";
+import { nodeIdsInput } from "@domain/commands/input-schema.ts";
+import { FFGL_EVENT_COMMAND, FFGL_INPUT_KEY, FFGL_RESULT_KEY, FFGL_TYPE_NAME } from "@nodes/definitions/ffgl.ts";
+import { createNativeFfglSources, type FfglTarget } from "./native-ffgl-sources.ts";
+
+declare module "@domain/types/commands.ts" {
+  interface CommandMap {
+    /** VN85: raise an FFGL event parameter (Recall, Keyframe, PaletteFlip …) on these nodes for their next frame. */
+    "runtime.ffglEvent": { input: { nodeIds: readonly string[]; event: number }; output: { raised: number } };
+  }
+}
 
 /**
  * T1029 — the Person Mask node's CPU half: Apple Vision over the device bridge,
@@ -187,6 +200,13 @@ export function useVisionBridge(options: {
   registry: NodeRegistryView;
   channels: LiveParameterReads["channels"];
   flattening: LiveParameterReads["flattening"];
+  /**
+   * VN85: the bus the FFGL node's event pulses fire through (`runtime.ffglEvent`) and its probed
+   * plugin table is stored through. Optional: without it an FFGL node still runs, on its
+   * plugin's defaults, and says so.
+   */
+  bus?: LoomBus;
+  invocation?: InvocationContext;
 }): {
   readonly diagnostics: readonly RuntimeDiagnostic[];
   observe(frame: FrameEvaluationInput): void;
@@ -207,8 +227,40 @@ export function useVisionBridge(options: {
   const nativeDiagnosticsRef = useRef<readonly RuntimeDiagnostic[]>([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Model history belongs to the document owner, not the persistent React mount.
   const native = useMemo(() => createNativeVisionSources(), [options.scope]);
+  /* VN85: the native FFGL host's nodes ride this hook's track/observe/settle/diagnostics, the
+     same loop the native Vision path uses. The manifest write and the event command need the bus. */
+  const busRef = useRef(options.bus);
+  busRef.current = options.bus;
+  const invocationRef = useRef(options.invocation);
+  invocationRef.current = options.invocation;
+  // Plugin instances belong to the document owner (`scope`), like native model history.
+  const ffgl = useMemo(() => createNativeFfglSources({
+    onManifest: (nodeId, manifest) => {
+      const bus = busRef.current, invocation = invocationRef.current;
+      if (!bus || !invocation) return;
+      void bus.execute("graph.applyPatch", { baseRevision: bus.store.getRevision(), label: "Load FFGL plugin",
+        operations: [{ op: "setParameters", nodeId, parameters: { manifest } }] }, invocation);
+    },
+  }), [options.scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const bus = options.bus;
+    if (bus === undefined || bus.hasCommand(FFGL_EVENT_COMMAND)) return;
+    bus.registerCommand({
+      name: FFGL_EVENT_COMMAND,
+      inSession: "instance",
+      // The event is the plugin's parameter INDEX: an instance command's strings may only be node addresses (§T1695b).
+      inputSchema: z.object({ nodeIds: nodeIdsInput, event: z.number().int().nonnegative() }).strict(),
+      description: "Raise an FFGL plugin's event parameter (an FFGL node's pulse) on the named nodes for their next frame.",
+      handler: (input, context) => ({
+        status: context.dryRun ? "validated" : "applied",
+        output: { raised: context.dryRun ? 0 : ffgl.fire(input.nodeIds, input.event) },
+        diagnostics: [],
+      }),
+      rejectionOutput: () => ({ raised: 0 }),
+    });
+  }, [options.bus, ffgl]);
   const refreshNative = useCallback(() => {
-    const next = native.diagnostics();
+    const next = [...native.diagnostics(), ...ffgl.diagnostics()];
     const prior = nativeDiagnosticsRef.current;
     // Compare before dispatch: even a React eager bailout allocates an update
     // and updater closure at frame rate, including when no native model exists.
@@ -217,12 +269,12 @@ export function useVisionBridge(options: {
       value.severity === next[index]?.severity && value.message === next[index]?.message)) return;
     nativeDiagnosticsRef.current = next;
     setNativeDiagnostics(next);
-  }, [native]);
+  }, [native, ffgl]);
   useEffect(() => {
-    const retire = () => native.dispose();
+    const retire = () => { native.dispose(); ffgl.dispose(); };
     window.addEventListener("loom-native-input-retire", retire);
-    return () => { window.removeEventListener("loom-native-input-retire", retire); native.dispose(); };
-  }, [native]);
+    return () => { window.removeEventListener("loom-native-input-retire", retire); native.dispose(); ffgl.dispose(); };
+  }, [native, ffgl]);
   const targetsRef = useRef<readonly VisionTarget[]>([]);
   const nativeTargetsRef = useRef<readonly NativeVisionTarget[]>([]);
   /* T1067 — through a REF, deliberately: the seam below memoises on its inputs, and a
@@ -247,6 +299,7 @@ export function useVisionBridge(options: {
   const readsRef = useRef<VisionParameterReads>(options);
   readsRef.current = options;
   const trackedGraphRef = useRef<FlatGraph | null>(null);
+  const ffglSizedRef = useRef<ReadonlyMap<string, readonly [number, number]>>(new Map());
   const unregisterRef = useRef(new Map<string, () => void>());
   const registeredOnRef = useRef<LoomBackend | null>(null);
 
@@ -282,6 +335,34 @@ export function useVisionBridge(options: {
       }),
     [client],
   );
+
+  /* VN85: every compiled FFGL node, with its result size, its input copy (when wired) and a
+     per-frame read of its parameters through the one read path (resolveParameters). */
+  const ffglTargets = useCallback((graph: FlatGraph, sized: ReadonlyMap<string, readonly [number, number]>): FfglTarget[] => {
+    const found: FfglTarget[] = [];
+    for (const nodeId of Object.keys(graph.nodes).sort()) {
+      const node = graph.nodes[nodeId];
+      if (node === undefined || node.type !== FFGL_TYPE_NAME) continue;
+      const size = sized.get(scratchResourceId(nodeId, FFGL_RESULT_KEY));
+      if (size === undefined) continue;
+      const input = scratchResourceId(nodeId, FFGL_INPUT_KEY);
+      const stored = node.parameters as Readonly<Record<string, unknown>>;
+      found.push({
+        nodeId, size, plugin: typeof stored["plugin"] === "string" ? stored["plugin"] : "",
+        manifest: typeof stored["manifest"] === "string" ? stored["manifest"] : "",
+        ...(sized.has(input) ? { inputResourceId: input } : {}),
+        read: (frame) => {
+          const reads = readsRef.current;
+          const resolved = resolveParameters(node, reads.registry.get(node.type),
+            parameterReadOptions({ graph, registry: reads.registry, frame, channels: reads.channels(), flattening: reads.flattening() }));
+          const bpm = resolved.get("bpm")?.value;
+          return { bpm: typeof bpm === "number" && bpm > 0 ? bpm : 120,
+            value: (key) => resolved.get(key)?.value as never };
+        },
+      });
+    }
+    return found;
+  }, []);
 
   const track = useCallback(
     (graph: FlatGraph, compiled: CompiledGraph | null) => {
@@ -370,9 +451,11 @@ export function useVisionBridge(options: {
       sources.track(targets.map(visionEntry));
       native.track(nativeTargets, attached);
       nativeTargetsRef.current = nativeTargets;
+      ffglSizedRef.current = sized;
+      ffgl.track(ffglTargets(graph, sized), attached);
       refreshNative();
     },
-    [client, sources, native, refreshNative],
+    [client, sources, native, ffgl, ffglTargets, refreshNative],
   );
 
   /**
@@ -406,27 +489,33 @@ export function useVisionBridge(options: {
   const observe = useCallback(
     (frame: FrameEvaluationInput) => {
       refreshIntervals(frame);
-      native.observe(frame); refreshNative();
+      native.observe(frame); ffgl.observe(frame); refreshNative();
       if (targetsRef.current.length === 0) return;
       // Between frames, exactly as analyze and the model seam do (§V184).
       queueMicrotask(() => sources.sample(frame.frameIndex, absTimeSecondsOf(frame)));
     },
-    [sources, native, refreshNative, refreshIntervals],
+    [sources, native, ffgl, refreshNative, refreshIntervals],
   );
 
   const settle = useCallback(
     async (frameIndex: number) => {
-      await native.settle(frameIndex); refreshNative();
+      await native.settle(frameIndex); await ffgl.settle(frameIndex); refreshNative();
       if (targetsRef.current.length === 0) return;
       await sources.settle(frameIndex);
     },
-    [sources, native, refreshNative],
+    [sources, native, ffgl, refreshNative],
   );
   const prepareForRender = useCallback(async () => {
     await native.drain();
     native.track(nativeTargetsRef.current, backendRef.current?.() ?? null);
+    // A render take opens fresh plugin instances: a feedback plugin's state starts clean.
+    await ffgl.drain();
+    const graph = trackedGraphRef.current;
+    if (graph) ffgl.track(ffglTargets(graph, ffglSizedRef.current), backendRef.current?.() ?? null);
+    // The take's explicit reset (VN71): its first frame starts every plugin clock afresh.
+    ffgl.restart();
     refreshNative();
-  }, [native, refreshNative]);
+  }, [native, ffgl, ffglTargets, refreshNative]);
 
   const resolver = useCallback<ChannelResolver>(
     (channel, context) => {

@@ -155,6 +155,8 @@ export const NODE_KINDS: Readonly<Record<string, string>> = {
   cameraBlur: "camerablur",
   depth: "depth",
   pose: "pose",
+  // VN85: a Resolume FFGL plugin in the desktop's native host.
+  ffgl: "ffgl",
 
   // colour
   level: "level",

@@ -496,6 +496,8 @@ export function App({
   // T1029: the Person Mask's CPU half — Apple Vision over the same shared client.
   const vision = useVisionBridge({
     scope: runtime.bus,
+    bus: runtime.bus,
+    invocation: runtime.invocation,
     deviceClient: osc.deviceClient,
     backend: () => backendRef.current,
     // T1067: the FLAT document, so a coverage spent inside a component resolves too.
