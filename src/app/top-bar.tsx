@@ -19,16 +19,6 @@ export interface TopBarProps {
    */
   onToggleLoop?: (() => void) | undefined;
   looping?: boolean;
-  /**
-   * T452: audio feature capture. Arming is a deliberate act the user takes, never
-   * always-on — so it needs a control, and this is where a user looks for "capture what
-   * is playing". Omitted, no button renders: a session with no audio to record must not
-   * grow a control that can only refuse.
-   */
-  onToggleAudioTrack?: (() => void) | undefined;
-  onSaveAudioTrack?: (() => void) | undefined;
-  recordingAudioTrack?: boolean;
-  audioTrackFrames?: number;
   /** Metrics arrive from the telemetry pipe, never from the document store (V16). */
   fps?: number | null;
   gpuMs?: number | null;
@@ -38,18 +28,17 @@ export interface TopBarProps {
    * app — the first latency number a user looks at, permanently absent. It cannot become
    * a prop of this component either: the number changes at the telemetry hub's <= 10 Hz
    * tick and `app.tsx` must not re-render at that rate, which is the same reason
-   * `timeline` is a slot. A component that subscribes to the hub itself goes here.
+   * `performance` is a slot. A component that subscribes to the hub itself goes here.
    */
   gpuMetric?: ReactNode;
+  cpuMetric?: ReactNode;
+  cpuMs?: number | null;
+  /** FPS and frame-clock health, sampled independently at <= 10 Hz (§V16). */
+  performance?: ReactNode;
   /**
-   * Frame / time / fps (T265). A slot rather than props: the readout samples the frame
-   * loop at its own <= 10 Hz tick, so it must own its state and re-render alone (§V16).
-   */
-  timeline?: ReactNode;
-  /**
-   * The timeline strip (T433), in the horizontal SLACK between the centred transport and
+   * The timeline strip (T433), in the horizontal slack between the transport and
    * the right-hand readouts — the header's one growable element and the reason this
-   * feature costs no height. A slot for the same §V16 reason `timeline` is one: it
+   * feature costs no height. A slot for the same §V16 reason `performance` is one: it
    * samples the frame loop on its own tick and must re-render alone.
    */
   scrubber?: ReactNode;
@@ -66,7 +55,7 @@ export interface TopBarProps {
 }
 
 /**
- * Top bar: transport, fps, GPU ms (§I.ui). The capability tier is NOT here (T1256): it
+ * Top bar: transport, timeline, fps and GPU/CPU timing (§I.ui). The capability tier is NOT here (T1256): it
  * is a fact about the device, read once, and it lives on the performance pane's GPU
  * block beside the rows that qualify it.
  * Every control is a real button with an accessible name and a tooltip, so the
@@ -84,14 +73,12 @@ export function TopBar({
   rendering = false,
   renderFrames = 0,
   scrubber,
-  onToggleAudioTrack,
-  onSaveAudioTrack,
-  recordingAudioTrack = false,
-  audioTrackFrames = 0,
   fps = null,
   gpuMs = null,
   gpuMetric,
-  timeline,
+  cpuMetric,
+  cpuMs = null,
+  performance,
   trailing,
 }: TopBarProps) {
   return (
@@ -104,6 +91,7 @@ export function TopBar({
       <div className={styles.transport} role="group" aria-label="Transport">
         <Tooltip label={playing ? "Pause" : "Play"}>
           <Button
+            className={styles.transportButton}
             aria-label={playing ? "Pause" : "Play"}
             aria-pressed={playing}
             onClick={onPlayPause ?? undefined}
@@ -115,14 +103,14 @@ export function TopBar({
           </Button>
         </Tooltip>
         <Tooltip label="Step one frame">
-          <Button aria-label="Step one frame" onClick={onStep ?? undefined} disabled={!onStep}>
+          <Button className={styles.transportButton} aria-label="Step one frame" onClick={onStep ?? undefined} disabled={!onStep}>
             <span className={styles.glyph} aria-hidden="true">
               ▶❙
             </span>
           </Button>
         </Tooltip>
         <Tooltip label="Reset time">
-          <Button aria-label="Reset time" onClick={onResetTime ?? undefined} disabled={!onResetTime}>
+          <Button className={styles.transportButton} aria-label="Reset time" onClick={onResetTime ?? undefined} disabled={!onResetTime}>
             <span className={styles.glyph} aria-hidden="true">
               ↺
             </span>
@@ -130,6 +118,7 @@ export function TopBar({
         </Tooltip>
         <Tooltip label={looping ? "Stop looping the range" : "Loop the timeline's range"}>
           <Button
+            className={styles.transportButton}
             aria-label="Loop the range"
             aria-pressed={looping}
             onClick={onToggleLoop ?? undefined}
@@ -140,66 +129,20 @@ export function TopBar({
             </span>
           </Button>
         </Tooltip>
-        {onToggleAudioTrack === undefined ? null : (
-          <Tooltip
-            label={
-              recordingAudioTrack
-                ? `Stop recording audio features — ${String(audioTrackFrames)} frames`
-                : "Record audio features to a track"
-            }
-          >
-            <Button
-              aria-label={recordingAudioTrack ? "Stop recording audio features" : "Record audio features"}
-              aria-pressed={recordingAudioTrack}
-              onClick={onToggleAudioTrack}
-            >
-              <span className={cx(styles.glyph, recordingAudioTrack && styles.dotLive)} aria-hidden="true">
-                ●
-              </span>
+        {onRenderRange === undefined || renderFrames === 0 ? null : (
+          <Tooltip label={rendering ? "Rendering the range…" : `Record / render output — ${String(renderFrames)} frames`}>
+            <Button className={styles.transportButton} aria-label="Record / render output" aria-pressed={rendering} onClick={onRenderRange} disabled={rendering}>
+              <span className={styles.glyph} aria-hidden="true">●</span>
             </Button>
           </Tooltip>
         )}
-        {onSaveAudioTrack === undefined || audioTrackFrames === 0 ? null : (
-          <Tooltip label={`Save the recorded track — ${String(audioTrackFrames)} frames`}>
-            <Button aria-label="Save audio track" onClick={onSaveAudioTrack}>
-              <span className={styles.glyph} aria-hidden="true">
-                ⤓
-              </span>
-            </Button>
-          </Tooltip>
-        )}
-        <span className={styles.state}>
-          <span className={cx(styles.dot, playing && styles.dotLive)} aria-hidden="true" />
-          {playing ? "live" : "idle"}
-        </span>
       </div>
 
-      {scrubber === undefined ? null : (
-        <div className={styles.timeline}>
-          {scrubber}
-          {/* Hidden, not disabled, when there is nothing to render (§V90, and the rule
-              T452's audio controls already follow): a graph with no Output cannot produce
-              a file, and a permanently greyed word in the densest strip in the app is one
-              more thing to read past. It appears the moment an Output node does. */}
-          {onRenderRange === undefined || renderFrames === 0 ? null : (
-            <Tooltip
-              label={
-                rendering
-                  ? "Rendering the range…"
-                  : `Render the range out — ${String(renderFrames)} frames`
-              }
-            >
-              <Button aria-label="Render the range" onClick={onRenderRange} disabled={rendering}>
-                <span className={styles.renderLabel}>{rendering ? "…" : "render"}</span>
-              </Button>
-            </Tooltip>
-          )}
-        </div>
-      )}
+      {scrubber === undefined ? null : <div className={styles.timeline}>{scrubber}</div>}
 
       <div className={styles.metrics}>
-        {timeline}
-        {timeline === undefined ? (
+        {performance}
+        {performance === undefined ? (
           <div className={styles.metric}>
             <span className={styles.metricLabel}>fps</span>
             <span className={styles.metricValue} aria-label="Frames per second">
@@ -211,6 +154,12 @@ export function TopBar({
           <span className={styles.metricLabel}>gpu</span>
           <span className={styles.metricValue} aria-label="GPU time per frame">
             {gpuMetric ?? formatMs(gpuMs)}
+          </span>
+        </div>
+        <div className={styles.metric} title="CPU pass-encode sum">
+          <span className={styles.metricLabel}>cpu</span>
+          <span className={styles.metricValue} aria-label="CPU encode time per frame">
+            {cpuMetric ?? formatMs(cpuMs)}
           </span>
         </div>
       </div>

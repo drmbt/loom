@@ -61,6 +61,13 @@ export interface ModelSignature {
 }
 
 export const MODEL_SIGNATURES: readonly ModelSignature[] = [
+  // Extracted from the hash-pinned TopFormer artifact; native logits are 150 × 64 × 64.
+  {
+    modelId: "topformer-ade20k",
+    input: { name: "input", type: "float32", shape: ["1", "3", "512", "512"] },
+    output: { name: "output", type: "float32" },
+    inputs: ["input"], outputs: ["output"],
+  },
   // Extracted from BiRefNet Lite at 173d635 on 2026-10-08; output_image is logits.
   {
     modelId: "birefnet-lite-dynamic",

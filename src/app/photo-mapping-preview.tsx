@@ -9,8 +9,8 @@ import { previewPhotoPlacement, type PreviewImageFit } from "./photo-preview-fra
 export interface PhotoMappingPreviewProps {
   readonly photo: PreparationPhoto | null;
   readonly previewPhoto: PreparationPhoto | null;
-  readonly depth: FloatMap | null;
-  readonly mask: FloatMap | null;
+  /** Keep native sample buffers out of React's development prop-detail serialization. */
+  readonly readMaps: () => { readonly depth: FloatMap | null; readonly mask: FloatMap | null };
   readonly matching: boolean;
   readonly previewFit?: PreviewImageFit;
   readonly fullFrame?: boolean;
@@ -44,7 +44,7 @@ function prepareMappingPreview(photo: PreparationPhoto, depth: FloatMap | null, 
   return { width, height, fill, boundary: Uint32Array.from(boundary), coverage };
 }
 
-function guidance({ photo, mask, matching, fullFrame = false }: PhotoMappingPreviewProps): string | null {
+function guidance({ photo, mask, matching, fullFrame = false }: Pick<PhotoMappingPreviewProps, "photo" | "matching" | "fullFrame"> & { mask: FloatMap | null }): string | null {
   if (photo === null) return "Choose a reference photo to see the live mapping preview.";
   if (mask === null && !fullFrame) return "Prepare or open a mask to preview its animated outline.";
   if (!matching) return "Use maps that match the reference photo for this preview.";
@@ -55,10 +55,11 @@ function guidance({ photo, mask, matching, fullFrame = false }: PhotoMappingPrev
 export function PhotoMappingPreview(props: PhotoMappingPreviewProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const message = guidance(props);
-  const { photo, previewPhoto, depth, mask, matching, previewFit = "stretch", fullFrame = false, previewOpacity = 0.35 } = props;
+  const { photo, previewPhoto, readMaps, matching, previewFit = "stretch", fullFrame = false, previewOpacity = 0.35 } = props;
+  const message = guidance({ photo, mask: readMaps().mask, matching, fullFrame });
   useEffect(() => {
-    if (photo === null || guidance({ photo, previewPhoto, depth, mask, matching, fullFrame }) !== null) return;
+    const { depth, mask } = readMaps();
+    if (photo === null || guidance({ photo, mask, matching, fullFrame }) !== null) return;
     const target = canvas.current;
     if (target === null) throw new Error("The mapping preview canvas was not mounted.");
     const context = target.getContext("2d");
@@ -120,7 +121,7 @@ export function PhotoMappingPreview(props: PhotoMappingPreviewProps) {
     if (!reduced) frame = requestAnimationFrame(animate);
     motion.addEventListener("change", changeMotion);
     return () => { stopped = true; cancelAnimationFrame(frame); motion.removeEventListener("change", changeMotion); };
-  }, [photo, previewPhoto, depth, mask, matching, previewFit, fullFrame, previewOpacity]);
+  }, [photo, previewPhoto, readMaps, matching, previewFit, fullFrame, previewOpacity]);
   if (message !== null) return <p>{message}</p>;
   return <figure style={{ margin: 0, width: "100%" }}>
     <canvas ref={canvas} role="img" aria-label="Animated mapping preview" hidden={error !== null}

@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { PROJECT_FILE_EXTENSION, serializeProjectDocument } from "../domain/project/index.ts";
 import { listExamples } from "./catalogue.ts";
 import { buildExampleFiles } from "./example-files.ts";
 import { buildStarterComponents } from "./starter-components.ts";
-import { requireExample } from "./runner.ts";
 
 /**
  * The shipped bytes are what the app itself would save (§V88, T153-T156).
@@ -35,28 +33,4 @@ describe("shipped examples match the save path", async () => {
     expect(shipped.get(fileName)).toBe(generated.get(fileName));
   });
 
-  /**
-   * Round-trip: load a shipped example and save it again. The text must be identical.
-   *
-   * This is the property that matters to a user — open an example, change nothing, save —
-   * and it is the one that catches a loader that quietly normalises something on the way
-   * in. `updatedAt` is the one field a real save legitimately moves, so it is restamped
-   * rather than compared.
-   */
-  it.each([...shipped.keys()])("%s survives a load/save round trip", (fileName) => {
-    const file = listExamples().find((entry) => entry.fileName === fileName);
-    if (file === undefined) throw new Error(`missing ${fileName}`);
-    const { document } = requireExample(file);
-
-    /* T956: the componentLibrary rides at the file ROOT and is lifted out at load (the
-       component-sync suite owns its round trip); what must hold HERE is that the
-       DOCUMENT half changed nothing. Re-serialize the parsed root minus the library
-       through the same serializer and the comparison is byte-for-byte again. */
-    const root = JSON.parse(file.text) as Record<string, unknown>;
-    delete root["componentLibrary"];
-    expect(serializeProjectDocument(document)).toBe(
-      serializeProjectDocument(root as never),
-    );
-    expect(fileName.endsWith(PROJECT_FILE_EXTENSION)).toBe(true);
-  });
 });

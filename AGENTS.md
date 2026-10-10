@@ -73,6 +73,14 @@ Starter components are authored in `src/examples/starter-components.ts` and rege
 - Run the narrowest relevant test while iterating, then validate the affected surface.
 - Use the repository commands, not bare `tsc` or an ad hoc test configuration.
 
+## Test scope and intent
+
+- Test observable behavior, data integrity, accessibility and material performance regressions.
+- Do not pin palette hexes, fonts, corner radii, CSS declaration spelling, class names or arbitrary visual dimensions. Review appearance visually unless a stable user-facing requirement warrants a focused layout check.
+- Do not add per-source-file test cases for editorial or styling policy. A scanner is not one distinct behavior per file.
+- Keep test discovery cheap: expensive compilation, rendering and motion sweeps belong inside selected test bodies, not module imports.
+- Reuse a loaded/compiled fixture when assertions share it; use independent runs only when independence is what the test proves.
+
 ## Validation
 
 For application or shared-library changes, run:
@@ -80,15 +88,15 @@ For application or shared-library changes, run:
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm test        # >2 min. Prefer the ladder below.
-pnpm test:gates  # ~15 s. The 63 gate files no selector can find. Not optional. Cap with `--maxWorkers=2` and no `--` before it.
+pnpm test        # Full suite only when explicitly requested; use the ladder below.
+pnpm test:gates  # Required for the structural triggers below. Derived inventory, not a fixed file count; cap with --maxWorkers=2.
 pnpm test:first-import  # every domain/compiler/runtime module as the first module of a fresh node (V1028)
 pnpm build
 ```
 
-**Tests follow the blast radius** (owner, 2026-10-05). Never run a directory-wide vitest (`src/examples`, `src/app`, …) or an every-example file (`runner.test.ts`, `examples.gpu.test.ts`, `catalogue-dawn.gpu.test.ts`, `cook-oracle.test.ts`) without a `-t` filter; run the examples that use what you changed. Run `pnpm test:gates` only when the change adds, moves or deletes files under `src/`, or changes a node definition's shape, a command, a factory, a shipped example or its `.md`, `package.json` or eslint config, and then once; a project-only edit under `src/projects/**` does not need it. **Scope your test runs.** Run `pnpm vitest run <paths>` for what you touched, then `pnpm test:gates` (~15 s) — those 57 files walk the source tree or the document set rather than importing what they check, so nothing else selects them (§V957) and they are what catch a factory you orphaned, a command you left uncovered, or two nodes drawn on top of each other in a shipped example. The list is derived rather than remembered: `gate-list.test.ts` fails when a tree-walking test is missing from the script (T1273). Do not run the full `pnpm test` unless the owner asks for it; after a change to a shared abstraction, a registry, a domain type, a generated artefact, or a file move, widen the scoped run to the directories the change reaches. Run anything heavy (GPU/Dawn tests, Playwright, `pnpm build`, `pnpm test:gates`, project render scripts, vitest over more than about twenty files) through `tools/heavy.sh <command…>`, a machine-wide queue with two slots that every session and worktree shares. `pnpm typecheck` always. `pnpm vitest related --run <changed files>` picks the first step off the module graph; it still cannot see the gates.
+**Tests follow the blast radius** (owner, 2026-10-05). Never run a directory-wide vitest (`src/examples`, `src/app`, …) or an every-example file (`runner.test.ts`, `examples.gpu.test.ts`, `catalogue-dawn.gpu.test.ts`, `cook-oracle.test.ts`) without a `-t` filter; run the examples that use what you changed. Run `pnpm test:gates` only when the change adds, moves or deletes files under `src/`, or changes a node definition's shape, a command, a factory, a shipped example or its `.md`, `package.json` or eslint config, and then once; a project-only edit under `src/projects/**` does not need it. **Scope your test runs.** Run `pnpm vitest run <paths>` for what you touched, then `pnpm test:gates` — these checks walk the source tree or the document set rather than importing what they check, so nothing else selects them (§V957) and they are what catch a factory you orphaned, a command you left uncovered, or two nodes drawn on top of each other in a shipped example. The list is derived rather than remembered: `gate-list.test.ts` fails when a tree-walking test is missing from the script (T1273). Do not run the full `pnpm test` unless the owner asks for it; after a change to a shared abstraction, a registry, a domain type, a generated artefact, or a file move, widen the scoped run to the directories the change reaches. Run anything heavy (GPU/Dawn tests, Playwright, `pnpm build`, `pnpm test:gates`, project render scripts, vitest over more than about twenty files) through `tools/heavy.sh <command…>`, a machine-wide queue with two slots that every session and worktree shares. `pnpm typecheck` always. `pnpm vitest related --run <changed files>` picks the first step off the module graph; it still cannot see the gates.
 
-Also run `pnpm test:headless` for backend, rendering, or WGSL changes and `pnpm test:e2e` for browser interaction changes when the environment supports them. Report commands that could not be run and why.
+For backend, rendering, or WGSL changes, run the relevant headless/GPU test files with a feature/example filter. For browser interaction changes, run the relevant Playwright spec files when the environment supports them. Do not turn either step into a whole-lane sweep. Report commands that could not be run and why.
 
 Playwright has two projects and neither opens a window (T1616b). `chromium` runs the headless shell, which resolves no WebGPU adapter, and carries the editor and domain specs. `chromium-gpu` runs the full browser headless on the machine's real GPU and carries the pixel specs named in `NEEDS_A_REAL_ADAPTER` in `playwright.config.ts`. A spec file runs in the one project that matches it, so naming the file is enough. Playwright's `--headed` puts the run in Chromium windows on the owner's desktop: use it to watch one spec, never for a gate run.
 

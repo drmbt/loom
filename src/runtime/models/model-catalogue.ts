@@ -122,6 +122,18 @@ export const PHOTO_MASK: ModelDescriptor = {
   license: "MIT",
 };
 
+/** ADE20K scene envelope. Preparation serves the hash-verified bundled artifact. */
+export const PHOTO_FACADE: ModelDescriptor = {
+  id: "topformer-ade20k",
+  label: "TopFormer facade surfaces",
+  url: "https://drive.usercontent.google.com/download?id=1WxvVEqQGn8S2q4uqpG9OZY2Alc5ZcBCa&export=download",
+  bytes: 12_099_327,
+  sha256: "1043feb52554d3db9ace3a2b46726d564ca629611f4c9d74a52a6d90aac0750c",
+  // The ONNX converter declares Apache-2.0; the original author notice includes
+  // Apache-2.0 and MIT text. Provenance and the full notice live in docs.
+  license: "Apache-2.0",
+};
+
 /**
  * MoveNet SinglePose Lightning (T743) — the pose weights, pinned the same way.
  *
@@ -435,7 +447,7 @@ export function isMediaPipeMatte(modelId: string): boolean {
   return modelId === MATTE_MEDIAPIPE.id;
 }
 
-export const ALL_MODELS: readonly ModelDescriptor[] = [...DEPTH_MODELS, ...POSE_MODELS, ...MATTE_MODELS, PHOTO_MASK_PERSON, PHOTO_MASK];
+export const ALL_MODELS: readonly ModelDescriptor[] = [...DEPTH_MODELS, ...POSE_MODELS, ...MATTE_MODELS, PHOTO_MASK_PERSON, PHOTO_MASK, PHOTO_FACADE];
 
 export function modelById(id: string): ModelDescriptor | undefined {
   return ALL_MODELS.find((model) => model.id === id);

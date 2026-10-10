@@ -155,13 +155,39 @@ export function rasterizeFloatMap(
 export function paintMaskStroke(
   map: FloatMap, from: { x: number; y: number }, to: { x: number; y: number }, radius: number, value: 0 | 1,
 ): FloatMap {
+  const stroke = beginMaskStroke(map);
+  stroke.paint(from, to, radius, value);
+  return stroke.finish();
+}
+
+/** One owned copy and validation per gesture; completed maps and undo snapshots stay untouched. */
+export function beginMaskStroke(map: FloatMap) {
   const metadata = preparedMetadata(map);
   if (metadata.kind !== "mask") invalid("painting requires a prepared mask");
   validateSamples(map, "mask");
+  const draft = { ...map, values: map.values.slice() };
+  let finished = false;
+  return {
+    paint(from: { x: number; y: number }, to: { x: number; y: number }, radius: number, value: 0 | 1): FloatMap {
+      if (finished) invalid("stroke is already finished");
+      paintMaskValues(draft, from, to, radius, value);
+      return draft;
+    },
+    finish(): FloatMap {
+      if (finished) invalid("stroke is already finished");
+      finished = true;
+      return draft;
+    },
+  };
+}
+
+function paintMaskValues(
+  map: FloatMap, from: { x: number; y: number }, to: { x: number; y: number }, radius: number, value: 0 | 1,
+): void {
   for (const coordinate of [from.x, from.y, to.x, to.y, radius]) finite(coordinate, "brush coordinate/radius");
   if (radius <= 0) invalid("brush radius must be positive");
   if (value !== 0 && value !== 1) invalid("brush value must be 0 or 1");
-  const values = map.values.slice();
+  const values = map.values;
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const length = Math.hypot(dx, dy);
@@ -178,5 +204,4 @@ export function paintMaskStroke(
       if (Math.hypot(x - from.x - along * ux, y - from.y - along * uy) <= radius) values[y * map.width + x] = value;
     }
   }
-  return { ...map, values };
 }

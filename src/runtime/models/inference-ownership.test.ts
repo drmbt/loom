@@ -176,6 +176,111 @@ describe("temporal inference state belongs to a node, not shared model weights",
 });
 
 describe("inference results own transferable storage", () => {
+  it("packs TopFormer with ImageNet RGB normalization and refuses non-native input sizes", () => {
+    const plan = MODEL_PLANS["topformer-ade20k"]!;
+    const texels = new Float32Array([0, 0.5, 1, 1]);
+    expect(plan.tensorType).toBe("float32");
+    expect(plan.pack(texels, 1)).toEqual(new Float32Array([
+      (0 - 0.485) / 0.229, (0.5 - 0.456) / 0.224, (1 - 0.406) / 0.225,
+    ]));
+    expect(plan.dims(512)).toEqual([1, 3, 512, 512]);
+    for (const side of [2, 256, 1024]) expect(() => plan.dims(side)).toThrow(/TopFormer requires a 512-square input/);
+  });
+
+  it("sums ADE20K architecture confidence while excluding sky, window and door probabilities", () => {
+    const plan = MODEL_PLANS["topformer-ade20k"]!;
+    const logits = new Float32Array(150 * 4).fill(-1000);
+    // Fractional confidence proves the decoder sums softmax probabilities rather
+    // than taking an argmax. Include all five retained architecture classes.
+    logits[0 * 4] = Math.log(2);
+    logits[1 * 4] = Math.log(3);
+    logits[2 * 4] = Math.log(5);
+    logits[25 * 4 + 1] = Math.log(2);
+    logits[42 * 4 + 1] = Math.log(3);
+    logits[8 * 4 + 1] = Math.log(5);
+    logits[148 * 4 + 2] = Math.log(3);
+    logits[14 * 4 + 2] = Math.log(7);
+    logits[2 * 4 + 3] = Math.log(2);
+    logits[8 * 4 + 3] = Math.log(3);
+    logits[14 * 4 + 3] = Math.log(5);
+    const before = logits.slice();
+    const probabilities = plan.decodeOutput!(logits);
+    expect([...probabilities]).toEqual([0.5, 0.5, new Float32Array([0.3])[0], 0]);
+    expect(probabilities.buffer).not.toBe(logits.buffer);
+    expect(logits).toEqual(before);
+  });
+
+  it("keeps stable native TopFormer confidence and transfers no model-owned storage", async () => {
+    const storage = new Float32Array(150 * 4 + 2).fill(-1000);
+    const output = storage.subarray(1, 150 * 4 + 1);
+    // Extreme finite logits must never overflow exp or turn the mask into NaNs.
+    for (const [pixel, label] of [0, 148, 2, 14].entries()) output[label * 4 + pixel] = 1000;
+    const before = storage.slice();
+    const feedsSeen: number[][] = [];
+    const test = harness("topformer-ade20k", 1, {
+      inputNames: ["input"], outputNames: ["output"],
+      run: async feeds => {
+        feedsSeen.push([...(feeds.input as { dims: readonly number[] }).dims]);
+        return { output: { data: output, dims: [1, 150, 2, 2] } };
+      },
+    });
+    test.target.side = 512;
+    try {
+      const captured = await test.runner.runRaw("mask1", new Float32Array(512 ** 2 * 4).buffer);
+      const encoded = new Float32Array(captured.bytes.buffer, captured.bytes.byteOffset, captured.bytes.byteLength / 4);
+      expect([...encoded]).toEqual([1, 1, 0, 0]);
+      expect(captured.raw.values).toEqual(encoded);
+      expect([captured.raw.width, captured.raw.height]).toEqual([2, 2]);
+      expect(encoded.buffer.byteLength).toBe(16);
+      expect(captured.raw.values.buffer.byteLength).toBe(16);
+      expect(encoded.buffer).not.toBe(captured.raw.values.buffer);
+      expect(encoded.buffer).not.toBe(output.buffer);
+      expect(captured.raw.values.buffer).not.toBe(output.buffer);
+      const next = await test.run("mask1");
+      expect(new Float32Array(next.buffer)).toEqual(encoded);
+      expect(feedsSeen).toEqual([[1, 3, 512, 512], [1, 3, 512, 512]]);
+      expect(test.createSession).toHaveBeenCalledTimes(1);
+      expect(test.transferredResults.every(buffer => buffer.byteLength === 0)).toBe(true);
+      captured.raw.values.fill(0);
+      expect(new Float32Array(next.buffer)).toEqual(encoded);
+      expect(storage).toEqual(before);
+    } finally { test.runner.dispose(); }
+  });
+
+  it.each([0, 149, 151])("rejects an invalid TopFormer logit plane length (%s)", length => {
+    expect(() => MODEL_PLANS["topformer-ade20k"]!.decodeOutput!(new Float32Array(length)))
+      .toThrow(/TopFormer requires 150 non-empty ADE20K logit planes/);
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])("rejects non-finite TopFormer logits (%s) before publishing a mask", async value => {
+    const output = new Float32Array(150 * 4);
+    output[149 * 4 + 1] = value;
+    const test = harness("topformer-ade20k", 1, {
+      inputNames: ["input"], outputNames: ["output"],
+      run: async () => ({ output: { data: output, dims: [1, 150, 2, 2] } }),
+    });
+    test.target.side = 512;
+    try {
+      await expect(test.runner.runRaw("mask1", new Float32Array(512 ** 2 * 4).buffer))
+        .rejects.toThrow(/TopFormer returned a non-finite logit at sample 597/);
+      expect(test.transferredResults).toHaveLength(0);
+      expect(output.byteLength).toBe(150 * 4 * 4);
+      expect(output[149 * 4 + 1]).toBe(value);
+    } finally { test.runner.dispose(); }
+  });
+
+  it("rejects a mismatched TopFormer worker input before executing the model", async () => {
+    const run = vi.fn(async () => ({ output: { data: new Float32Array(150 * 4), dims: [1, 150, 2, 2] } }));
+    const test = harness("topformer-ade20k", 1, {
+      inputNames: ["input"], outputNames: ["output"], run,
+    });
+    try {
+      await expect(test.run("mask1")).rejects.toThrow(/TopFormer requires a 512-square input; received 2/);
+      expect(run).not.toHaveBeenCalled();
+      expect(test.transferredResults).toHaveLength(0);
+    } finally { test.runner.dispose(); }
+  });
+
   it("packs BiRefNet input with ImageNet RGB normalization and dynamic dimensions", () => {
     const plan = MODEL_PLANS["birefnet-lite-dynamic"]!;
     const packed = plan.pack(new Float32Array([

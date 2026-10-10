@@ -297,6 +297,12 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
    * stands on the header band (B258), and the field being typed in is under it.
    */
   const kindLabel = definition === undefined || isEditingName ? null : kindLabelParts(node.label, kindOf(definition));
+  // Identity follows the node's primary product. A sink is identified by what it
+  // consumes; nodes with no typed ports (including unresolved definitions) are neutral.
+  const identityPort = definition?.outputs[0] ?? definition?.inputs[0];
+  const identityColor = identityPort === undefined ? "var(--port-unknown)" : portFamilyColor(identityPort.type.kind);
+  const identityLabel = identityPort === undefined ? "Unknown data type" : describePortType(identityPort.type);
+
   /**
    * The name AT REST, in the two parts it is made of, when it has both (ruled 2026-10-05).
    *
@@ -358,7 +364,7 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
         // the gesture: "the node got bigger" means "I can see the image better".
         data-sized={node.size !== undefined}
         data-agent={agent?.kind ?? "none"}
-        style={cssVars({ "--status-color": STATUS_TOKEN[status] })}
+        style={cssVars({ "--status-color": STATUS_TOKEN[status], "--node-accent": identityColor })}
         // T602: double-click ENTERS a component — TD's gesture, onto the same
         // `graph.diveIn` the keymap (`i`) and the context menu run (§V78). Only for
         // instances, so every other node keeps its plain double-click (the title's
@@ -409,11 +415,11 @@ export const NodeView = memo(function NodeView({ id, selected }: NodeProps<LoomN
         <header className={styles.title}>
           <span
             className={styles.dot}
-            data-testid={`node-status-${id}`}
+            data-testid={`node-type-dot-${id}`}
             data-status={status}
             role="img"
-            aria-label={`Status: ${STATUS_LABEL[status]}`}
-            title={STATUS_LABEL[status]}
+            aria-label={`${identityLabel}; Status: ${STATUS_LABEL[status]}`}
+            title={`${identityLabel}; Status: ${STATUS_LABEL[status]}`}
           />
           {/*
             A user-given label wins over the definition title; absence means "follow the

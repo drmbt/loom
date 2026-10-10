@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactElement } from "react";
+import type { ComponentProps, ReactElement } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
 import { TooltipProvider } from "@ui/primitives/tooltip.tsx";
 import type { FrameInputs } from "@domain/types/backend.ts";
 import { type FrameClockVerdict, frameClockVerdict } from "@runtime/telemetry/frame-clock.ts";
-import { TimelineReadout } from "./timeline-readout.tsx";
+import { TimelineReadout as PositionReadout, TimelineMetrics } from "./timeline-readout.tsx";
+
+/** Exercise position and performance together, as the header does in separate slots. */
+function TimelineReadout({ frameClock, ...props }: ComponentProps<typeof PositionReadout> & { frameClock: () => FrameClockVerdict }) {
+  return <><PositionReadout {...props} /><TimelineMetrics latestFrame={props.latestFrame} frameClock={frameClock} intervalMs={props.intervalMs ?? 100} /></>;
+}
 
 /**
  * T265 / §V169 — the readout shows the frame that was RENDERED.
@@ -217,7 +222,7 @@ describe("T1300 — the readout always shows the frame clock, and says whether i
       </TooltipProvider>,
     );
     const el = screen.getByTestId("frame-clock-notice");
-    return { word: el.textContent, state: el.getAttribute("data-state"), kind: el.getAttribute("data-kind") };
+    return { word: el.getAttribute("aria-label"), state: el.getAttribute("data-state"), kind: el.getAttribute("data-kind") };
   }
 
   it("reads Realtime, with the ok dot, when the clock is at the project rate", () => {
@@ -262,7 +267,8 @@ describe("T1300 — the readout always shows the frame clock, and says whether i
   it("is present before the first frame has been rendered, so the row cannot grow a field later", () => {
     cleanup();
     mount(<TimelineReadout latestFrame={() => null} frameClock={() => ({ kind: "paused", realtime: false })} />);
-    expect(screen.getByTestId("frame-clock-notice").textContent).toBe("Paused");
+    expect(screen.getByTestId("frame-clock-notice").getAttribute("aria-label")).toBe("Paused");
+    expect(screen.getByTestId("frame-clock-notice").textContent).toBe("");
   });
 
   it("carries the verdict's own remedy as the tooltip, so the guidance still has one home", async () => {

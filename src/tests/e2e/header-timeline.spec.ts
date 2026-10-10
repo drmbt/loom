@@ -14,13 +14,8 @@ import { APP_VIEWPORT } from "./app.ts";
  * `timeline-scrubber.test.tsx` carries the arithmetic and the commands; this carries the
  * pixels, and neither pretends to be the other.
  *
- * ## What this CANNOT show
- *
- * This spec's headless lane has no WebGPU adapter (see `app.ts`, §V895), so no frame is
- * ever rendered: the playhead does not move, and nothing about SEEKING, looping or
- * rendering the range out is observable here. Those need a device — which the
- * `chromium-gpu` lane now has (T1086; headless since T1616b). What is observable in this lane — and what
- * the owner's constraint is actually about — is where the strip is and how tall the bar is.
+ * This spec uses the real-adapter headless lane: playback and the render-dialog
+ * affordance need an installed backend, as well as painted layout boxes.
  */
 
 /** The header's fixed grid row. A timeline that needed a band of its own would change it. */
@@ -63,15 +58,31 @@ test.describe("T433 — the timeline lives in the header's existing row", () => 
     expect(timeline.y + timeline.height).toBeLessThanOrEqual(header.y + header.height + 1);
   });
 
-  test("it sits BETWEEN the transport and the readouts, on the same row", async ({ page }) => {
+  test("position sits beside the range, and performance follows the timeline", async ({ page }) => {
     await openShell(page);
     const transport = await box(page.getByRole("group", { name: "Transport" }));
     const timeline = await box(page.getByRole("group", { name: "Timeline", exact: true }));
     const frame = await box(page.getByRole("textbox", { name: "Frame", exact: true }));
 
-    // Left to right: transport, then the timeline, then the numeric readouts.
+    const out = await box(page.getByRole("textbox", { name: "Out point", exact: true }));
+    const fps = await box(page.getByLabel("Frames per second"));
+
+    // Left to right: transport, timeline, current / end, then performance.
     expect(timeline.x).toBeGreaterThanOrEqual(transport.x + transport.width - 1);
-    expect(frame.x).toBeGreaterThanOrEqual(timeline.x + timeline.width - 1);
+    expect(out.x).toBeGreaterThanOrEqual(frame.x + frame.width - 1);
+    expect(out.x + out.width).toBeLessThanOrEqual(timeline.x + timeline.width + 1);
+    const pair = page.getByRole("group", { name: "Frame position", exact: true });
+    await expect(pair.getByRole("textbox", { name: "Frame", exact: true })).toBeVisible();
+    await expect(pair.getByRole("textbox", { name: "Out point", exact: true })).toBeVisible();
+    await expect(pair).toContainText("/");
+    expect(out.x - frame.x - frame.width).toBeLessThan(20);
+    await page.getByRole("textbox", { name: "Frame", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("textbox", { name: "Out point", exact: true })).toBeFocused();
+    await page.getByRole("textbox", { name: "Out point", exact: true }).blur();
+    await pair.screenshot({ path: "/tmp/loom-frame-position-pair.png" });
+    await page.getByRole("group", { name: "Timeline", exact: true }).screenshot({ path: "/tmp/loom-timeline-block.png" });
+    expect(fps.x).toBeGreaterThanOrEqual(timeline.x + timeline.width - 1);
 
     // And all three share the row — vertical centres within a few pixels of each other.
     const centre = (rect: { y: number; height: number }): number => rect.y + rect.height / 2;
@@ -93,5 +104,65 @@ test.describe("T433 — the timeline lives in the header's existing row", () => 
     expect(header.height).toBe(TOPBAR_HEIGHT);
     // Still painted rather than collapsed to nothing.
     expect(narrow.width).toBeGreaterThan(80);
+    const controls = [page.getByRole("textbox", { name: "Frame", exact: true }), page.getByLabel("CPU encode time per frame"), page.getByRole("button", { name: "Help", exact: true })];
+    for (const control of controls) {
+      const rect = await box(control);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(header.x + header.width);
+    }
   });
+});
+
+test("play/pause keeps the transport, timeline and metrics in the same boxes", async ({ page }) => {
+  await openShell(page);
+  const toggle = page.getByRole("button", { name: /^(Play|Pause)$/ });
+  const names = ["Timeline", "Transport"];
+  const controls = [...names.map(name => page.getByRole("group", { name, exact: true })),
+    toggle, page.getByRole("textbox", { name: "Frame", exact: true }), page.getByLabel("Frames per second"),
+    page.getByLabel("GPU time per frame"), page.getByLabel("CPU encode time per frame")];
+  const before = await Promise.all(controls.map(box));
+  const original = await toggle.getAttribute("aria-label");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-label", original === "Play" ? "Pause" : "Play");
+  await expect(page.getByTestId("frame-clock-notice")).toHaveAttribute("data-kind", original === "Play" ? /live|running-behind/ : "paused");
+  const after = await Promise.all(controls.map(box));
+  for (let i = 0; i < before.length; i++) {
+    expect(after[i]?.x).toBeCloseTo(before[i]?.x ?? 0, 1);
+    expect(after[i]?.width).toBeCloseTo(before[i]?.width ?? 0, 1);
+  }
+});
+
+test("current and maximum frame fields fit seven digits without clipping", async ({ page }) => {
+  await openShell(page);
+  for (const name of ["Frame", "Out point"]) {
+    const field = page.getByRole("textbox", { name, exact: true });
+    await field.fill("5183999"); // Last frame of a day at 60 FPS, the existing range cap.
+    const fits = await field.evaluate(element => {
+      const input = element as HTMLInputElement;
+      const style = getComputedStyle(input);
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Cannot measure text width");
+      context.font = `${style.fontSize} ${style.fontFamily}`;
+      const content = input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      return content >= context.measureText(input.value).width;
+    });
+    expect(fits, `${name} clips a valid frame number`).toBe(true);
+    await field.press("Escape");
+  }
+});
+
+test("record in the transport opens the render dialog", async ({ page }) => {
+  await openShell(page);
+  const transport = page.getByRole("group", { name: "Transport", exact: true });
+  await transport.getByRole("button", { name: "Record / render output" }).click();
+  await expect(page.getByRole("dialog", { name: /Render/ })).toBeVisible();
+  await expect(transport.getByRole("button", { name: "Record audio features" })).toHaveCount(0);
+});
+
+test("audio feature capture lives in the File menu", async ({ page }) => {
+  await openShell(page);
+  await page.getByRole("button", { name: "File", exact: true }).click();
+  const menu = page.getByRole("menu", { name: "File actions" });
+  await expect(menu.getByRole("menuitem", { name: "Record audio features to a track" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Save audio feature track (0 frames)", exact: true })).toBeDisabled();
 });

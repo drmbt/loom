@@ -1,11 +1,12 @@
 import { expect, test, type Route } from "@playwright/test";
+import { DEPTH_ACCURATE, PHOTO_FACADE } from "@runtime/models/model-catalogue.ts";
 import { APP_VIEWPORT, openApp } from "./app.ts";
 
 test.use({ viewport: APP_VIEWPORT });
 
 test("Map from photo opens from File and reports an undecodable photograph", async ({ page }) => {
   const modelRequests: string[] = [];
-  page.on("request", request => { if (/\.onnx(?:\?|$)/.test(request.url())) modelRequests.push(request.url()); });
+  page.on("request", request => { if (request.resourceType() === "fetch" && (request.url() === PHOTO_FACADE.url || /\.onnx(?:\?|$)/.test(request.url()))) modelRequests.push(request.url()); });
   await openApp(page);
   await expect(page.getByRole("button", { name: "Map from photo", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "File", exact: true }).click();
@@ -25,7 +26,16 @@ test("Map from photo opens from File and reports an undecodable photograph", asy
   await expect(maskDetail.getByRole("option")).toHaveText(["1024 × 1024", "1536 × 1536"]);
   await depthDetail.selectOption("1288"); await maskDetail.selectOption("1536");
   await expect(depthDetail).toHaveValue("1288"); await expect(maskDetail).toHaveValue("1536");
+  const maskMethod = dialog.getByRole("combobox", { name: "Mask method", exact: true });
+  await expect(maskMethod).toHaveValue("facade");
+  await expect(maskMethod.getByRole("option")).toHaveText(["Facade walls and openings", "Object background removal"]);
+  await expect(dialog.getByText(/TopFormer facade surfaces · 11\.5 MB · 512 input \/ 64 scene mask/)).toBeVisible();
+  await expect(dialog.getByRole("slider", { name: "Opening cutoff" })).toHaveValue("14");
+  await expect(dialog.getByRole("switch", { name: "Exclude blue glass", exact: true })).toBeChecked();
+  await maskMethod.selectOption("background");
   await expect(dialog.getByText(/BiRefNet surface mask · 172\.5 MB/)).toBeVisible();
+  await expect(dialog.getByRole("slider", { name: "Opening cutoff" })).toHaveCount(0);
+  await maskMethod.selectOption("facade");
   await expect(dialog.getByRole("switch", { name: "Use surface mask", exact: true })).toBeChecked();
   const finish = dialog.getByRole("region", { name: "Create or update mapping" });
   const effect = finish.getByRole("combobox", { name: "First effect" });
@@ -59,23 +69,10 @@ test("File groups project actions and supports keyboard navigation", async ({ pa
   await expect(first).toBeFocused();
   await expect(menu.getByRole("menuitem", { name: "Open project", exact: true })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Save project", exact: true })).toBeVisible();
-  const rows = await menu.getByRole("menuitem").evaluateAll(elements => elements.map(element => {
-    const style = getComputedStyle(element);
-    const range = document.createRange(); range.selectNodeContents(element);
-    return { justifyContent: style.justifyContent, textAlign: style.textAlign,
-      rowLeft: element.getBoundingClientRect().left, labelLeft: range.getBoundingClientRect().left,
-      outlineStyle: style.outlineStyle };
-  }));
-  expect(rows).toHaveLength(4);
-  for (const row of rows) {
-    expect(row.textAlign).toBe("left"); expect(row.justifyContent).toBe("flex-start");
-    expect(row.labelLeft - row.rowLeft).toBeLessThan(24);
-    expect(row.outlineStyle).toBe("none");
-  }
-  expect(Math.max(...rows.map(row => row.labelLeft)) - Math.min(...rows.map(row => row.labelLeft))).toBeLessThan(1);
+  await expect(menu.getByRole("menuitem", { name: "Map from photo…", exact: true })).toBeVisible();
   await menu.screenshot({ path: "/tmp/loom-file-menu.png" });
   await first.press("End");
-  await expect(menu.getByRole("menuitem", { name: "Map from photo…", exact: true })).toBeFocused();
+  await expect(menu.getByRole("menuitem").and(page.locator(":enabled")).last()).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   await expect(file).toBeFocused();
@@ -83,7 +80,7 @@ test("File groups project actions and supports keyboard navigation", async ({ pa
 
 test("day and night photos stay visible together before map preparation at pixel-rounded resolutions", async ({ page }) => {
   const modelRequests: string[] = [];
-  page.on("request", request => { if (/\.onnx(?:\?|$)/.test(request.url())) modelRequests.push(request.url()); });
+  page.on("request", request => { if (request.resourceType() === "fetch" && (request.url() === PHOTO_FACADE.url || /\.onnx(?:\?|$)/.test(request.url()))) modelRequests.push(request.url()); });
   await openApp(page);
   const photos = await page.evaluate(() => ([[3000, 1688, [233, 222, 208]], [1672, 941, [16, 24, 40]]] as const).map(([width, height, color]) => {
     const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
@@ -143,7 +140,7 @@ test("day and night photos stay visible together before map preparation at pixel
 
 test("a manual photo mask starts without inference and explains unavailable durable saving", async ({ page }) => {
   const modelRequests: string[] = [];
-  page.on("request", request => { if (/\.onnx(?:\?|$)/.test(request.url())) modelRequests.push(request.url()); });
+  page.on("request", request => { if (request.resourceType() === "fetch" && (request.url() === PHOTO_FACADE.url || /\.onnx(?:\?|$)/.test(request.url()))) modelRequests.push(request.url()); });
   await openApp(page);
   const png = await page.evaluate(() => {
     const canvas = document.createElement("canvas"); canvas.width = 4; canvas.height = 2;
@@ -158,6 +155,12 @@ test("a manual photo mask starts without inference and explains unavailable dura
   await page.getByTestId("project-settings").getByRole("button", { name: "Map from photo…", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("group", { name: "Reference photo" }).locator('input[type="file"]').setInputFiles({ name: "sculpture.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  const maskMethod = dialog.getByRole("combobox", { name: "Mask method", exact: true });
+  await maskMethod.selectOption("background");
+  await expect(dialog.getByRole("button", { name: "Run mask", exact: true })).toBeEnabled();
+  await maskMethod.selectOption("facade");
+  await expect(dialog.getByRole("button", { name: "Run mask", exact: true })).toBeEnabled();
+  expect(modelRequests).toEqual([]);
   await expect(dialog.getByRole("button", { name: "Start manual mask", exact: true })).toBeEnabled();
   await dialog.getByRole("button", { name: "Start manual mask", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Save mask…", exact: true })).toBeEnabled();
@@ -208,6 +211,9 @@ test("a manual photo mask starts without inference and explains unavailable dura
   await expect(useMask).not.toBeChecked();
   await expect(dialog.getByText("Full frame · no mask file needed", { exact: true })).toBeVisible();
   await expect(maskDetail).toBeDisabled();
+  await expect(maskMethod).toBeDisabled();
+  await expect(dialog.getByRole("slider", { name: "Opening cutoff" })).toBeDisabled();
+  await expect(dialog.getByRole("switch", { name: "Exclude blue glass", exact: true })).toBeDisabled();
   await expect(dialog.getByRole("combobox", { name: "Brush", exact: true })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "Rerun mask", exact: true })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "Save mask…", exact: true })).toBeDisabled();
@@ -218,6 +224,7 @@ test("a manual photo mask starts without inference and explains unavailable dura
   await useMask.click();
   await expect(useMask).toBeChecked();
   await expect(maskDetail).toBeEnabled();
+  await expect(maskMethod).toBeEnabled();
   await expect(dialog.getByRole("button", { name: "Save mask…", exact: true })).toBeEnabled();
   expect(modelRequests).toEqual([]);
   await expect(page.locator(".react-flow__node")).toHaveCount(0);
@@ -225,7 +232,7 @@ test("a manual photo mask starts without inference and explains unavailable dura
 
 test("mismatched photos explain crop, borders and stretch and allow an unlit alignment comparison", async ({ page }) => {
   const modelRequests: string[] = [];
-  page.on("request", request => { if (/\.onnx(?:\?|$)/.test(request.url())) modelRequests.push(request.url()); });
+  page.on("request", request => { if (request.resourceType() === "fetch" && (request.url() === PHOTO_FACADE.url || /\.onnx(?:\?|$)/.test(request.url()))) modelRequests.push(request.url()); });
   await openApp(page);
   const photos = await page.evaluate(() => ([[300, 200], [240, 180]] as const).map(([width, height]) => {
     const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
@@ -297,7 +304,7 @@ test("mismatched photos explain crop, borders and stretch and allow an unlit ali
 
 test("depth preparation shows native progress while the real model request is pending and reports its failure", async ({ page }) => {
   let blockedModel: Route | undefined;
-  await page.route(/\.onnx(?:\?|$)/, route => { blockedModel = route; });
+  await page.route(DEPTH_ACCURATE.url, route => { blockedModel = route; });
   await openApp(page);
   const png = await page.evaluate(() => {
     const canvas = document.createElement("canvas"); canvas.width = 4; canvas.height = 2;
@@ -333,4 +340,58 @@ test("depth preparation shows native progress while the real model request is pe
   await expect(depthWell).toHaveAttribute("aria-busy", "false");
   await expect(dialog.getByRole("button", { name: "Run depth", exact: true })).toBeEnabled();
   await expect(page.locator(".react-flow__node")).toHaveCount(0);
+});
+
+test("high-resolution mask strokes and radius edits avoid long stalls and remain undoable", async ({ page }) => {
+  await openApp(page);
+  const png = await page.evaluate(() => {
+    const canvas = document.createElement("canvas"); canvas.width = canvas.height = 1536;
+    const context = canvas.getContext("2d");
+    if (context === null) throw new Error("Mask interaction fixture requires a canvas");
+    context.fillStyle = "rgb(128, 128, 128)";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png").split(",")[1]!;
+  });
+  await page.getByRole("button", { name: "File", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Map from photo…", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("group", { name: "Reference photo", exact: true }).locator('input[type="file"]').setInputFiles({
+    name: "high-resolution-mask.png", mimeType: "image/png", buffer: Buffer.from(png, "base64"),
+  });
+  await dialog.getByRole("combobox", { name: "Mask detail", exact: true }).selectOption("1536");
+  await dialog.getByRole("button", { name: "Start manual mask", exact: true }).click();
+  const editor = dialog.getByRole("img", { name: "Surface mask editor", exact: true });
+  await editor.scrollIntoViewIfNeeded();
+  const sample = () => editor.evaluate(element => {
+    const canvas = element as HTMLCanvasElement;
+    const context = canvas.getContext("2d");
+    if (context === null) throw new Error("Mask editor requires a canvas");
+    return [...context.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data];
+  });
+  const original = await sample();
+  const timings = await page.evaluateHandle(() => {
+    const durations: number[] = [];
+    const observer = new PerformanceObserver(list => { durations.push(...list.getEntries().map(entry => entry.duration)); });
+    observer.observe({ type: "longtask" });
+    return { durations, observer };
+  });
+  const bounds = await editor.boundingBox();
+  if (bounds === null) throw new Error("Mask editor must be reachable");
+  await page.mouse.move(bounds.x + bounds.width * 0.3, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width * 0.7, bounds.y + bounds.height / 2, { steps: 12 });
+  await page.mouse.up();
+  const erased = await sample();
+  expect(erased[0]).toBeGreaterThan(erased[1]!);
+  const radius = dialog.getByRole("slider", { name: /^Radius/ });
+  await radius.focus();
+  await radius.press("End"); await radius.press("Home");
+  await expect(radius).toHaveValue("1");
+  expect(await sample()).toEqual(erased);
+  await dialog.getByRole("button", { name: "Undo stroke", exact: true }).click();
+  expect(await sample()).toEqual(original);
+  const durations = await timings.evaluate(value => { value.observer.disconnect(); return value.durations; });
+  await timings.dispose();
+  // A half-second main-thread task is a visible input stall, not a frame-rate benchmark.
+  expect(durations.filter(duration => duration >= 500)).toEqual([]);
 });

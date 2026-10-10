@@ -377,6 +377,117 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     } finally { backend.dispose(); }
   }, 60_000);
 
+  it("anchors all five looks to non-affine depth features without painting a flat surface with UV patterns", async () => {
+    const width = 128;
+    const height = 96;
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    const diagnostics: unknown[] = [];
+    backend.onDiagnostic(diagnostic => diagnostics.push(diagnostic));
+    try {
+      const capabilities = await backend.initialize({});
+      const graph = document();
+      graph.nodes["multi"]!.parameters = { source: PHOTO_MAPPING_SHADER, photoAmount: 0, architectureDetail: 0, edgeGlow: 0 };
+      delete graph.nodes["multi"]!.format;
+      delete graph.nodes["mask"]!.format;
+      graph.nodes["coverage"] = { id: "coverage", type: "floatMapIn", definitionVersion: 1, label: "floatmap_surface",
+        position: { x: 0, y: 250 }, parameters: { interpretation: "raw" } };
+      graph.edges["effectDepth"]!.order = 0;
+      graph.edges["effectMask"] = { id: "effectMask", source: { nodeId: "coverage", portId: "out" },
+        target: { nodeId: "multi", portId: "more" }, order: 1 };
+      graph.edges["coverage"]!.source = { nodeId: "coverage", portId: "out" };
+      graph.edges["picture"]!.source = { nodeId: "multi", portId: "out" };
+      const plan = compileGraph({ graph, registry: createNodeRegistry(allNodeDefinitions).view(), capabilities,
+        settings: { ...DEFAULT_PROJECT_SETTINGS, outputResolution: { width, height }, workingFormat: "rgba16float" },
+        sinks: ["multi", "mask"].map(nodeId => ({ nodeId, portId: "out", kind: "readback" })),
+      });
+      expect(plan.ok, JSON.stringify(plan.diagnostics)).toBe(true);
+      const compiled = await backend.compile(plan);
+      const pass = plan.passes.find(entry => entry.kind === "effect" && entry.nodeId === "multi");
+      if (pass === undefined) throw new Error("Missing depth-feature effect pass");
+      const maps = [new Float32Array(width * height).fill(0.4),
+        new Float32Array(width * height), new Float32Array(width * height)];
+      const coverage = new Float32Array(width * height).fill(1);
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const raised = Math.max(0, 1 - ((x - 34) / 19) ** 2 - ((y - 48) / 23) ** 2);
+        const recessed = Math.max(0, 1 - ((x - 94) / 18) ** 2 - ((y - 46) / 21) ** 2);
+        maps[1]![y * width + x] = 0.4 + raised ** 2 * 0.36 - recessed ** 2 * 0.22;
+        maps[2]![y * width + x] = 0.4 - raised ** 3 * 0.23 + recessed ** 2 * 0.34;
+        if ((x - 64) ** 2 + (y - 48) ** 2 < 7 ** 2) coverage[y * width + x] = 0;
+      }
+      backend.registerMediaSource(floatMapSourceIdFor("coverage"), {
+        currentFrame: () => ({ frameId: 1, bytes: new Uint8Array(coverage.buffer) }), ended: true,
+      });
+      let frameId = 0;
+      async function render(values: Float32Array) {
+        backend.registerMediaSource(floatMapSourceIdFor("map"), {
+          currentFrame: () => ({ frameId: ++frameId, bytes: new Uint8Array(values.buffer) }), ended: true,
+        });
+        backend.render(compiled, { frame: { timeSeconds: 6, deltaSeconds: 1 / 30, frameIndex: 180, mode: "offline", randomSeed: 1 },
+          pointer: { x: 0, y: 0, buttons: 0 }, resolution: [width, height] });
+        const outputs: Float32Array[] = [];
+        for (const nodeId of ["multi", "mask"]) {
+          const output = plan.outputs.find(entry => entry.nodeId === nodeId && entry.portId === "out");
+          if (output === undefined) throw new Error(`Missing ${nodeId} depth-feature output`);
+          const image = await backend.readOutput(output.resourceId);
+          const view = new DataView(image.bytes.buffer, image.bytes.byteOffset, image.bytes.byteLength);
+          const pixel = new Float32Array(4);
+          const result = new Float32Array(width * height * 4);
+          for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+            readChannels(image.bytes, view, y * image.rowStride + x * 8, image.format, pixel);
+            result.set(pixel, (y * width + x) * 4);
+          }
+          outputs.push(result);
+        }
+        return outputs;
+      }
+      for (let mode = 0; mode < 5; mode++) {
+        backend.updateUniforms({ passId: pass.id, values: { mode } });
+        const [flat] = await render(maps[0]!);
+        // A featureless input must remain spatially uniform: motion can change a
+        // depth plane's light, but cannot invent liquid, grids or random UV tiles.
+        for (let y = 8; y < height - 8; y++) for (let x = 8; x < width - 8; x++) {
+          for (let channel = 0; channel < 3; channel++) {
+            expect(flat![(y * width + x) * 4 + channel], `Flat field mode ${mode}`).toBeCloseTo(flat![channel]!, 4);
+          }
+        }
+        const [first] = await render(maps[1]!);
+        const [second, clipped] = await render(maps[2]!);
+        const featureChange = [0, 0];
+        const featurePixels = [0, 0];
+        const changedPixels = [0, 0];
+        let outsideChange = 0;
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+          const offset = (y * width + x) * 4;
+          let change = 0;
+          for (let channel = 0; channel < 3; channel++) {
+            change += Math.abs(first![offset + channel]! - second![offset + channel]!);
+          }
+          const feature = ((x - 34) / 19) ** 2 + ((y - 48) / 23) ** 2 < 1 ? 0
+            : ((x - 94) / 18) ** 2 + ((y - 46) / 21) ** 2 < 1 ? 1 : -1;
+          if (feature >= 0) {
+            featureChange[feature]! += change / 3;
+            featurePixels[feature]!++;
+            if (change / 3 > 0.04) changedPixels[feature]!++;
+          }
+          // Includes the bounded 24-texel relief-shadow neighbourhood.
+          if (y < 12 || y > 82) outsideChange = Math.max(outsideChange, change);
+          for (let channel = 0; channel < 4; channel++) {
+            expect(Number.isFinite(second![offset + channel])).toBe(true);
+            expect(clipped![offset + channel]).toBeCloseTo(coverage[y * width + x]! * second![offset + channel]!, 3);
+          }
+        }
+        for (let feature = 0; feature < 2; feature++) {
+          expect(featureChange[feature]! / featurePixels[feature]!, `Depth feature ${feature} changes visibly, mode ${mode}`).toBeGreaterThan(0.055);
+          expect(changedPixels[feature], `Depth feature ${feature} changes across its surface, mode ${mode}`).toBeGreaterThan(featurePixels[feature]! * 0.35);
+        }
+        expect(outsideChange, `Depth changes stay near their features, mode ${mode}`).toBeLessThan(0.001);
+      }
+      backend.updateUniforms({ passId: pass.id, values: { mode: 2, depthStrength: 0 } });
+      expect((await render(maps[1]!))[0]!.every(Number.isFinite), "Zero relief strength remains finite").toBe(true);
+      expect(diagnostics).toEqual([]);
+    } finally { backend.dispose(); }
+  }, 60_000);
+
   it.each([0, 1, 2, 3, 4])("renders colourful, evolving photo-mapping effect %s through an unchanged scalar surface mask", async mode => {
     const width = 100;
     const height = 60;

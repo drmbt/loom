@@ -199,10 +199,10 @@ describe("node status states are distinct (doc §17.2)", () => {
       await publish(runtime, nodeId, { status });
 
       const node = container.querySelector("[data-testid^='node-']");
-      const dot = container.querySelector("[data-testid^='node-status-']");
+      const dot = container.querySelector("[data-testid^='node-type-dot-']");
       expect(node?.getAttribute("data-status")).toBe(status);
       const label = dot?.getAttribute("aria-label") ?? "";
-      expect(label).toBe(`Status: ${STATUS_LABEL[status]}`);
+      expect(label).toContain(`Status: ${STATUS_LABEL[status]}`);
       // Colour is never the only carrier of the state (§V19).
       seen.add(label);
       unmount();
@@ -1062,7 +1062,7 @@ describe("T924 — a metric-only re-render costs no forced layout", () => {
        * must still be zero.
        */
       await publish(runtime, nodeId, { status: "warning", warningCount: 1 });
-      expect(container.querySelector("[data-testid^='node-status-']")?.getAttribute("data-status")).toBe(
+      expect(container.querySelector("[data-testid^='node-type-dot-']")?.getAttribute("data-status")).toBe(
         "warning",
       );
       expect(reads.count).toBe(0);
@@ -1124,5 +1124,28 @@ describe("§V1026 — a value output is one socket", () => {
       expect(view.container.querySelectorAll("[data-channel]")).toHaveLength(0);
       cleanup();
     }
+  });
+});
+
+describe("node identity accents follow data type independently of runtime status", () => {
+  const registry = createNodeRegistry(allNodeDefinitions).view();
+  it.each([
+    ["noise", "texture2d"], ["pointGrid", "pointset"], ["pointKernel", "pointset"],
+    ["geometry", "scene"], ["materialPhong", "material"], ["camera", "camera"],
+    ["light", "light"], ["lfo", "value"], ["output", "texture2d"],
+  ])("keeps %s's %s accent through valid, warning and error states", async (type, kind) => {
+    const { container, runtime, nodeId } = mountNode(type, { graph: graphWith(type), registry });
+    const node = container.querySelector<HTMLElement>(`[data-testid="node-${nodeId}"]`);
+    const dot = screen.getByTestId(`node-type-dot-${nodeId}`);
+    for (const status of ["idle", "compiling", "valid", "warning", "error", "device-lost"] as const) {
+      await publish(runtime, nodeId, { status });
+      expect(node?.style.getPropertyValue("--node-accent")).toBe(`var(--port-${kind})`);
+      expect(dot.getAttribute("aria-label")).toContain(`Status: ${STATUS_LABEL[status]}`);
+    }
+  });
+
+  it("gives an unresolved definition a neutral accent", () => {
+    const { container, nodeId } = mountNode("not.installed", { graph: graphWith("not.installed") });
+    expect(container.querySelector<HTMLElement>(`[data-testid="node-${nodeId}"]`)?.style.getPropertyValue("--node-accent")).toBe("var(--port-unknown)");
   });
 });

@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -362,53 +359,5 @@ describe("T912 — the ladder opens from a visible affordance", () => {
       <NumberField label="Radius" value={0} spec={{ step: 1 }} disabled onChange={() => {}} />,
     );
     expect(screen.queryByRole("button", { name: "Radius drag magnitude" })).toBeNull();
-  });
-});
-
-/**
- * The popout's WIDTH, the other half of T912.
- *
- * ## Why this reads CSS instead of measuring the box
- *
- * jsdom applies no stylesheet and lays nothing out, so every `getBoundingClientRect` in
- * this file is 0×0 — a rendered assertion here would pass against a ladder stretched to
- * the full width of the input, which is precisely the defect. The honest thing this
- * environment can check is the DECLARATION that produced the width, and the declaration
- * is the whole bug: `min-width: 100%` made the popout *at least* as wide as the field, so
- * a panel of six short magnitudes rendered as a `<select>` over the input.
- *
- * The rendered comparison — popout narrower than the field, in a real browser with real
- * fonts — is `precision-swatch.spec.ts`.
- */
-const CSS = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "controls.module.css"),
-  "utf8",
-);
-
-function declarations(selector: string): string {
-  const match = new RegExp(`(^|\\})[^{}]*\\${selector}\\s*\\{([^}]*)\\}`, "m").exec(CSS);
-  if (match === null) throw new Error(`no \`${selector}\` rule in controls.module.css`);
-  return match[2] ?? "";
-}
-
-describe("T912 — the popout is sized to its content, not to the field", () => {
-  it("never claims a minimum width taken from the field", () => {
-    expect(
-      /min-width\s*:\s*100%/.test(declarations(".ladder")),
-      "`.ladder { min-width: 100% }` forces the popout to at least the input's width, " +
-        "which is what makes it read as that input's <select>",
-    ).toBe(false);
-  });
-
-  it("takes its width from the six rungs", () => {
-    expect(/width\s*:\s*max-content\s*;/.test(declarations(".ladder"))).toBe(true);
-  });
-
-  it("bounds the popout by the field rather than stretching to it", () => {
-    // `max-width` is a ceiling for a hypothetical long rung, NOT the minimum coming back
-    // under a different name — a rule with both is no better than the bug.
-    const rules = declarations(".ladder");
-    expect(/max-width\s*:\s*100%/.test(rules)).toBe(true);
-    expect(/min-width\s*:/.test(rules)).toBe(false);
   });
 });
