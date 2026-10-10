@@ -115,6 +115,20 @@ export function runExample(file: ExampleFile): RunExampleResult {
 
   // One flattening, read by the compile and by the document check after it.
   const flattened = flattenComponents({ graph: loaded.document.graph, registry, components: components.view() });
+  // Validate authored display targets as actual headless readbacks. A perform
+  // window remains app-owned; this merely compiles and renders its pure GPU pass.
+  // Without a display target, preserve the existing default sink selection.
+  const graphNodes = Object.values(flattened.graph.nodes);
+  const displays = graphNodes.filter(node => registry.get(node.type)?.sinkRole === "display");
+  const sinks = displays.length === 0 ? undefined : [
+    ...graphNodes.filter(node => {
+      const definition = registry.get(node.type);
+      return definition?.sink === true && definition.sinkRole !== "display";
+    }).map(node => ({ nodeId: node.id, kind: "output" as const })),
+    // No portId: display targets own the reserved $target resource rather than
+    // a declared output socket; an explicit $target socket would be invalid.
+    ...displays.map(node => ({ nodeId: node.id, kind: "readback" as const })),
+  ];
   const plan = compileGraph({
     graph: loaded.document.graph,
     settings: loaded.document.settings,
@@ -122,6 +136,7 @@ export function runExample(file: ExampleFile): RunExampleResult {
     capabilities: TIER_B_CAPABILITIES,
     components: components.view(),
     flattened,
+    ...(sinks === undefined ? {} : { sinks }),
   });
 
   return {

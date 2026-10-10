@@ -1,6 +1,44 @@
 import { SHARED_UNIFORMS_WGSL } from "@runtime/backend/shared-uniforms.ts";
 import { wgsl } from "@runtime/backend/wgsl.ts";
 
+export const PHOTO_MAPPING_EFFECTS = [
+  { id: 13, name: "Photo point cloud", description: "Real photo-coloured 3D points reveal relief through camera parallax; density, geometry and camera are separate nodes" },
+  { id: 10, name: "Grazing light · modular", description: "Warm directional light exposes depth relief and shadows; light, colour and grading are separate stages" },
+  { id: 11, name: "Contour engraving · modular", description: "Ivory depth engraving with independent bands, ink colour and exposure controls" },
+  { id: 12, name: "Depth slices · modular", description: "A moving depth band reveals the photograph; slicing, motion and compositing are separate stages" },
+  { id: 0, name: "Neon contours", description: "Animated depth contours pick out ledges and architectural edges" },
+  { id: 1, name: "Prismatic sweep", description: "Colour sweeps through depth planes, revealing protrusions and recesses" },
+  { id: 2, name: "Chromatic relief", description: "Grazing gold and cyan lights reveal depth relief and local shadows" },
+  { id: 3, name: "Surface trace", description: "Depth scans follow architecture and the mask boundary, including openings" },
+  { id: 4, name: "Depth reveal", description: "Layered depth bands reveal recesses, highlights and occlusion" },
+  { id: 5, name: "Moonlit stone", description: "Moving white grazing light reveals depth relief and architectural shadows" },
+  { id: 6, name: "Liquid strata", description: "Luminous ribbons flow along depth bands and catch surface details" },
+  { id: 7, name: "Depth constellation", description: "Registered points pulse through depth while tracing structural seams" },
+  { id: 8, name: "Thermal scan", description: "A moving depth scanner lights near and far planes with a warm spectral ramp" },
+  { id: 9, name: "Mapped video", description: "Video uses the same surface mask, Grid Warp and Corner Pin as every other effect" },
+] as const;
+
+/** Regular UV geometry: the switch sends this through the same mask and projector warps. */
+export const PHOTO_ALIGNMENT_SHADER = wgsl`
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let grid = uv * 10.0;
+  let cell = vec2i(floor(grid));
+  let checker = f32((cell.x + cell.y) % 2);
+  let aa = max(fwidth(grid), vec2f(0.004));
+  let distance = min(fract(grid), 1.0 - fract(grid));
+  let lines = 1.0 - smoothstep(aa.x, aa.x * 2.0, min(distance.x, distance.y));
+  var colour = mix(vec3f(0.07), vec3f(0.2), checker) + vec3f(lines * 0.55);
+  let center = abs(uv - 0.5);
+  colour = mix(colour, vec3f(1.0, 0.15, 0.1), 1.0 - smoothstep(0.002, 0.005, center.x));
+  colour = mix(colour, vec3f(0.1, 1.0, 0.25), 1.0 - smoothstep(0.002, 0.005, center.y));
+  let corners = step(0.92, max(abs(uv.x - 0.5), abs(uv.y - 0.5)) * 2.0);
+  let quadrant = vec3f(select(0.1, 1.0, uv.x > 0.5), select(0.1, 1.0, uv.y > 0.5), 0.6);
+  return vec4f(mix(colour, quadrant, corners), 1.0);
+}`;
+
 /** Stored inside each created network, editable with the existing Custom WGSL controls. */
 export const PHOTO_MAPPING_SHADER = wgsl`${SHARED_UNIFORMS_WGSL}
 struct Params {
@@ -19,6 +57,8 @@ struct Params {
   architectureDetail: f32, // @default 0.85  Reference-photo detail in projected lines and relief.
   fineDetail: f32, // @default 1  Scale of fine depth contours and architectural highlights.
   depthStrength: f32, // @default 1  Strength of relative-depth relief and shadows.
+  depthLow: f32, // @default 0  Far cutoff for relative-depth re-ranging.
+  depthHigh: f32, // @default 1  Near cutoff for relative-depth re-ranging.
 };
 @group(0) @binding(0) var inputSampler: sampler;
 @group(0) @binding(1) var inputTexture: texture_2d<f32>;
@@ -30,7 +70,8 @@ struct Params {
 fn depthAt(uv: vec2f) -> f32 {
   let dims = vec2i(textureDimensions(inputTexture1));
   let pixel = clamp(vec2i(uv * vec2f(dims)), vec2i(0), dims - vec2i(1));
-  return textureLoad(inputTexture1, pixel, 0).r;
+  let raw = textureLoad(inputTexture1, pixel, 0).r;
+  return clamp((raw - params.depthLow) / max(params.depthHigh - params.depthLow, 0.000001), 0.0, 1.0);
 }
 fn maskAt(uv: vec2f) -> f32 {
   if (any(uv < vec2f(0.0)) || any(uv >= vec2f(1.0))) { return 0.0; }
@@ -38,17 +79,21 @@ fn maskAt(uv: vec2f) -> f32 {
   let pixel = clamp(vec2i(uv * vec2f(dims)), vec2i(0), dims - vec2i(1));
   return textureLoad(inputTexture2, pixel, 0).r;
 }
+fn edgeMaskAt(uv: vec2f) -> f32 {
+  let halfPixel = 0.5 / vec2f(textureDimensions(inputTexture2));
+  return maskAt(clamp(uv, halfPixel, vec2f(1.0) - halfPixel));
+}
 fn surfaceEdge(uv: vec2f) -> f32 {
   let dims = vec2f(textureDimensions(inputTexture2));
   let offset = max(params.edgeWidth, 0.0) * min(dims.x, dims.y) / dims;
-  var inside = maskAt(uv + vec2f(offset.x, 0.0));
-  inside = min(inside, maskAt(uv - vec2f(offset.x, 0.0)));
-  inside = min(inside, maskAt(uv + vec2f(0.0, offset.y)));
-  inside = min(inside, maskAt(uv - vec2f(0.0, offset.y)));
-  inside = min(inside, maskAt(uv + offset * 0.7071));
-  inside = min(inside, maskAt(uv - offset * 0.7071));
-  inside = min(inside, maskAt(uv + vec2f(offset.x, -offset.y) * 0.7071));
-  inside = min(inside, maskAt(uv + vec2f(-offset.x, offset.y) * 0.7071));
+  var inside = edgeMaskAt(uv + vec2f(offset.x, 0.0));
+  inside = min(inside, edgeMaskAt(uv - vec2f(offset.x, 0.0)));
+  inside = min(inside, edgeMaskAt(uv + vec2f(0.0, offset.y)));
+  inside = min(inside, edgeMaskAt(uv - vec2f(0.0, offset.y)));
+  inside = min(inside, edgeMaskAt(uv + offset * 0.7071));
+  inside = min(inside, edgeMaskAt(uv - offset * 0.7071));
+  inside = min(inside, edgeMaskAt(uv + vec2f(offset.x, -offset.y) * 0.7071));
+  inside = min(inside, edgeMaskAt(uv + vec2f(-offset.x, offset.y) * 0.7071));
   return smoothstep(0.15, 0.75, maskAt(uv)) * (1.0 - smoothstep(0.15, 0.75, inside));
 }
 fn ramp(position: f32) -> vec3f {
@@ -172,7 +217,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     colour = vec3f(0.012, 0.055, 0.19) + blueprint * depth * (0.035 + featurePulse * 0.035)
       + blueprint * features * (0.4 + featurePulse * 0.65) * (0.8 + glow * 0.4)
       + vec3f(1.0, 0.51, 0.035) * scan * features * (0.9 + glow * 0.7);
-  } else {
+  } else if (params.mode < 4.5) {
     // Depth strata alternately expose near and far surfaces, with the transition
     // following the height field and its occluding ridges rather than tiled UVs.
     let plane = 0.5 + sin(phase * 0.23 + slow * 0.17) * 0.46;
@@ -187,6 +232,31 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
       + vec3f(0.65, 0.94, 1.0) * sweep * (0.55 + features * 0.4)
       + mix(vec3f(0.05, 0.65, 1.0), vec3f(1.0, 0.62, 0.08), reveal)
         * features * (0.55 + featurePulse * 0.35);
+  } else if (params.mode < 5.5) {
+    let light = normalize(vec3f(cos(phase * 0.19), sin(phase * 0.19), 0.28));
+    let shadow = visibility(uv, depth, light, strength);
+    let facing = max(dot(photoNormal, light), 0.0) * shadow;
+    colour = vec3f(0.08, 0.12, 0.2) * (0.2 + depth * 0.4)
+      + vec3f(0.68, 0.82, 1.0) * facing * 0.85
+      + vec3f(0.45, 0.8, 1.0) * features * featurePulse * 0.25;
+  } else if (params.mode < 6.5) {
+    let ribbon = depth * (5.0 + evolve * 0.6) - t * 0.4;
+    let crest = pow(0.5 + 0.5 * sin(ribbon * 6.2831853), 5.0);
+    colour = ramp(ribbon * 0.12 + palette) * (0.18 + crest * 0.7)
+      + ramp(depth + palette + 0.5) * (features * featurePulse * 0.55 + halo * 0.3);
+  } else if (params.mode < 7.5) {
+    let lattice = fract(uv * vec2f(64.0, 48.0)) - 0.5;
+    let dotLight = exp(-dot(lattice, lattice) * 70.0);
+    let pulse = 0.5 + 0.5 * sin(depth * 32.0 - phase);
+    colour = ramp(depth + palette) * (0.04 + dotLight * (0.2 + pulse * 0.75))
+      + vec3f(0.15, 0.8, 1.0) * features * (0.35 + pulse * 0.4);
+  } else if (params.mode < 8.5) {
+    let plane = 0.5 + sin(phase * 0.16) * 0.48;
+    let scan = exp(-pow((depth - plane) * 16.0, 2.0));
+    let thermal = mix(vec3f(0.04, 0.03, 0.3), vec3f(1.0, 0.18, 0.025), smoothstep(0.1, 0.7, depth));
+    colour = thermal * (0.4 + featurePulse * 0.25) + vec3f(1.0, 0.86, 0.2) * scan * (0.5 + features * 0.4);
+  } else {
+    return vec4f(textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * params.gain, 1.0);
   }
   // Window holes and concavities are independent of the depth model. Rim motion
   // follows their depth, and the existing downstream Mask clips the final light.

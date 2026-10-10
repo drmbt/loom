@@ -5,16 +5,16 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { runInNewContext } = require('node:vm');
-function harness({ ndi = false } = {}) {
+function harness({ ndi = false, video = true } = {}) {
   let api, receive, handler = async name => name.endsWith('open') ? 'session' : { kind: 'sent' };
   const calls = [];
   const listeners = new Map();
   runInNewContext(readFileSync(join(__dirname, 'preload.cjs'), 'utf8'), {
-    process: { argv: ndi ? ['--loom-ndi-input'] : [] },
+    process: { argv: [...(video ? ['--loom-native-video'] : []), ...(ndi ? ['--loom-ndi-input'] : [])] },
     Event: class { constructor(type) { this.type = type; } },
     window: { addEventListener(name, callback) { listeners.set(name, callback); }, dispatchEvent(event) { listeners.get(event.type)?.(event); } },
     require: () => ({
-      contextBridge: { exposeInMainWorld(_name, value) { assert.ok(receive); api = value; } },
+      contextBridge: { exposeInMainWorld(_name, value) { assert.equal(Boolean(receive), video); api = value; } },
       ipcRenderer: { invoke(...args) { calls.push(args); return handler(...args); } },
       sharedTexture: { setSharedTextureReceiver(callback) { receive = callback; } },
     }),
@@ -53,9 +53,9 @@ test('NDI capability is explicit and its sessions cannot be used through the Syp
   await h.api.ndiInput.close(ndi);
   assert.ok(h.calls.some(call => call[0] === 'loom-ndi-input-open'));
   assert.ok(h.calls.some(call => call[0] === 'loom-ndi-input-close'));
-  await h.api.input.prepareForUnload();
+  await h.api.lifecycle.prepareForUnload();
   assert.equal(h.beforeunload().prevented, true);
-  h.api.input.commitUnload();
+  h.api.lifecycle.commitUnload();
   assert.equal(h.beforeunload().prevented, false);
 });
 
@@ -72,10 +72,10 @@ test('active inputs block unload until explicit preparation and native-drain com
   assert.equal(h.beforeunload().prevented, false);
   await h.api.input.open('uuid', () => {});
   assert.equal(h.beforeunload().prevented, true);
-  await h.api.input.prepareForUnload();
+  await h.api.lifecycle.prepareForUnload();
   assert.equal(h.beforeunload().prevented, true);
   await assert.rejects(h.api.input.open('uuid', () => {}), /retiring/);
-  h.api.input.commitUnload();
+  h.api.lifecycle.commitUnload();
   assert.equal(h.beforeunload().prevented, false);
 });
 test('terminal poll result forgets the retired preload session without another IPC close', async () => {
@@ -94,7 +94,7 @@ test('unload preparation waits for an opening input and prevents new sessions', 
   const opening = h.api.input.open('uuid', () => {});
   assert.equal(h.beforeunload().prevented, true);
   let prepared = false;
-  const preparation = h.api.input.prepareForUnload().then(() => { prepared = true; });
+  const preparation = h.api.lifecycle.prepareForUnload().then(() => { prepared = true; });
   await Promise.resolve();
   assert.equal(prepared, false);
   await assert.rejects(h.api.input.open('another', () => {}), /retiring/);
@@ -108,7 +108,7 @@ test('denied NDI open during unload preserves its error but does not bypass or p
   const opening = h.api.ndiInput.open('Host (Feed)', () => {});
   const rejected = assert.rejects(opening, /NDI local-network access denied/);
   let prepared = false;
-  const preparation = h.api.input.prepareForUnload().then(() => { prepared = true; });
+  const preparation = h.api.lifecycle.prepareForUnload().then(() => { prepared = true; });
   await Promise.resolve();
   assert.equal(prepared, false);
   deny(new Error('NDI local-network access denied'));
@@ -116,7 +116,7 @@ test('denied NDI open during unload preserves its error but does not bypass or p
   await preparation;
   assert.equal(h.beforeunload().prevented, true, 'Preparation is not proof of native drainage');
   await assert.rejects(h.api.ndiInput.open('Host (Feed)', () => {}), /retiring/);
-  h.api.input.commitUnload();
+  h.api.lifecycle.commitUnload();
   assert.equal(h.beforeunload().prevented, false);
 });
 
@@ -128,12 +128,12 @@ test('NDI output is explicit, namespaced and participates in document unload', a
   assert.deepEqual(h.calls[0], ['loom-ndi-output-open', 'output', 1920, 1080, 'Test']);
   assert.equal(h.beforeunload().prevented, true);
   let prepared = false;
-  const preparing = h.api.input.prepareForUnload().then(() => { prepared = true; });
+  const preparing = h.api.lifecycle.prepareForUnload().then(() => { prepared = true; });
   await Promise.resolve(); assert.equal(prepared, false);
   finish(); await opened; await preparing;
   assert.equal(h.beforeunload().prevented, true);
   await assert.rejects(h.api.ndiOutput.open('new', 1920, 1080, 'New'), /retiring/);
-  h.api.input.commitUnload(); assert.equal(h.beforeunload().prevented, false);
+  h.api.lifecycle.commitUnload(); assert.equal(h.beforeunload().prevented, false);
 });
 test('pagehide releases a suspended consumer frame/import once, even when completion arrives later', async () => {
   const h = harness(); let finish;
@@ -164,4 +164,79 @@ test('concurrent polls are rejected and late delivery after close is released wi
   assert.equal(consumed, 0); assert.equal(h.released, 1);
   finish({ kind: 'sent' }); await poll;
   await assert.rejects(h.api.input.poll(id), /closed or unknown/);
+});
+
+test('preparation-only desktop exposes no video transport or shared-texture receiver', async () => {
+  const h = harness({ video: false, ndi: true });
+  for (const name of ['vision', 'nativeOutput', 'open', 'close', 'resize', 'status', 'ndiInput', 'ndiOutput'])
+    assert.equal(h.api[name], undefined);
+  assert.equal(h.api.input, undefined);
+  assert.equal(typeof h.api.lifecycle.prepareForUnload, 'function');
+  assert.equal(typeof h.api.lifecycle.commitUnload, 'function');
+  assert.equal(h.beforeunload().prevented, false);
+  h.handle(async () => ({ available: false, reason: 'Worker not installed' }));
+  assert.equal((await h.api.preparation.probe()).available, false);
+  assert.equal(h.calls[0][0], 'loom-preparation-probe');
+  assert.equal(h.beforeunload().prevented, false, 'A probe owns no worker');
+});
+
+test('static preparation routes bounded payload and status/cancel/close through its own IPC', async () => {
+  const h = harness({ video: false }), request = { rgba: new ArrayBuffer(4) };
+  h.handle(async name => name.endsWith('start') ? 'job1' : { kind: 'cancelled' });
+  const id = await h.api.preparation.start(request);
+  assert.deepEqual(h.calls[0], ['loom-preparation-start', request]);
+  assert.equal(h.beforeunload().prevented, true);
+  assert.equal((await h.api.preparation.status(id)).kind, 'cancelled');
+  await h.api.preparation.cancel(id);
+  await h.api.preparation.close(id);
+  assert.deepEqual(h.calls.map(call => call[0]), ['loom-preparation-start', 'loom-preparation-status',
+    'loom-preparation-cancel', 'loom-preparation-close']);
+  assert.throws(() => h.api.preparation.status(id), /closed or unknown/);
+  assert.throws(() => h.api.preparation.cancel(id), /closed or unknown/);
+  assert.equal(h.beforeunload().prevented, true, 'Only main retirement authorizes unload');
+  h.api.lifecycle.commitUnload(); assert.equal(h.beforeunload().prevented, false);
+});
+
+test('static unload awaits pending start then process retirement and refuses new starts', async () => {
+  const h = harness({ video: false }); let finishStart, finishClose;
+  h.handle(name => new Promise(resolve => {
+    if (name.endsWith('start')) finishStart = resolve;
+    else if (name.endsWith('close')) finishClose = resolve;
+    else throw new Error('Unexpected preparation method');
+  }));
+  const started = h.api.preparation.start({});
+  let prepared = false;
+  const preparing = h.api.lifecycle.prepareForUnload().then(() => { prepared = true; });
+  await Promise.resolve(); assert.equal(prepared, false);
+  await assert.rejects(h.api.preparation.start({}), /retiring/);
+  finishStart('job1'); await started;
+  await new Promise(resolve => require('node:timers').setImmediate(resolve));
+  assert.equal(typeof finishClose, 'function'); assert.equal(prepared, false);
+  const simultaneousClose = h.api.preparation.close('job1');
+  assert.equal(h.calls.filter(call => call[0] === 'loom-preparation-close').length, 1);
+  finishClose(); await simultaneousClose; await preparing;
+  assert.equal(h.beforeunload().prevented, true);
+  h.api.lifecycle.commitUnload(); assert.equal(h.beforeunload().prevented, false);
+});
+
+test('failed static close propagates and retains its job instead of authorizing unload', async () => {
+  const h = harness({ video: false });
+  h.handle(async name => { if (name.endsWith('start')) return 'job1'; throw new Error('Worker still alive'); });
+  await h.api.preparation.start({});
+  await assert.rejects(h.api.lifecycle.prepareForUnload(), /Worker still alive/);
+  assert.equal(h.beforeunload().prevented, true);
+  await assert.rejects(h.api.preparation.close('job1'), /Worker still alive/);
+  assert.equal(h.calls.filter(call => call[0] === 'loom-preparation-close').length, 1);
+});
+
+test('failed pending static start preserves its error while main retirement remains authoritative', async () => {
+  const h = harness({ video: false }); let deny;
+  h.handle(() => new Promise((_resolve, reject) => { deny = reject; }));
+  const started = h.api.preparation.start({});
+  const rejected = assert.rejects(started, /Preparation refused/);
+  const preparing = h.api.lifecycle.prepareForUnload();
+  deny(new Error('Preparation refused')); await rejected; await preparing;
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.beforeunload().prevented, true);
+  h.api.lifecycle.commitUnload(); assert.equal(h.beforeunload().prevented, false);
 });

@@ -102,6 +102,34 @@ export const DEPTH_LIVE: ModelDescriptor = {
  */
 export const DEPTH_MODELS: readonly ModelDescriptor[] = [DEPTH_ACCURATE, DEPTH_LIVE];
 
+/** Published Large artifacts, revision/length/SHA verified on 2026-10-09.
+ * Photo preparation owns their execution; existing live Depth choices stay stable. */
+const LARGE_REVISION = "1fa1591c7b080e98da9655827c3a33a3972a4a83";
+const largeWeights = (file: string): string =>
+  `https://huggingface.co/onnx-community/depth-anything-v2-large/resolve/${LARGE_REVISION}/onnx/${file}`;
+
+export const PHOTO_DEPTH_LARGE_FP16: ModelDescriptor = {
+  id: "depth-anything-v2-large-fp16",
+  label: "Depth Anything V2 Large FP16",
+  url: largeWeights("model_fp16.onnx"),
+  bytes: 668_656_405,
+  sha256: "8eefc7afb877b10d413c8e1024b012073c6e4f62735d39555b1083fee3aabf0a",
+  license: "CC-BY-NC-4.0",
+};
+
+export const PHOTO_DEPTH_LARGE_Q4F16: ModelDescriptor = {
+  id: "depth-anything-v2-large-q4f16",
+  label: "Depth Anything V2 Large 4-bit",
+  url: largeWeights("model_q4f16.onnx"),
+  bytes: 234_560_369,
+  sha256: "8d180bf55d92bdae8c1a15ea3f13ad18f4e7d2721037779f0ddd7b6dbe92fad8",
+  license: "CC-BY-NC-4.0",
+};
+
+export const PHOTO_DEPTH_MODELS: readonly ModelDescriptor[] = [
+  ...DEPTH_MODELS, PHOTO_DEPTH_LARGE_FP16, PHOTO_DEPTH_LARGE_Q4F16,
+];
+
 /** Photo surface selection. Artifact, signature and preprocessing verified 2026-10-08. */
 export const PHOTO_MASK_PERSON: ModelDescriptor = {
   id: "ormbg-quantized",
@@ -447,7 +475,7 @@ export function isMediaPipeMatte(modelId: string): boolean {
   return modelId === MATTE_MEDIAPIPE.id;
 }
 
-export const ALL_MODELS: readonly ModelDescriptor[] = [...DEPTH_MODELS, ...POSE_MODELS, ...MATTE_MODELS, PHOTO_MASK_PERSON, PHOTO_MASK, PHOTO_FACADE];
+export const ALL_MODELS: readonly ModelDescriptor[] = [...PHOTO_DEPTH_MODELS, ...POSE_MODELS, ...MATTE_MODELS, PHOTO_MASK_PERSON, PHOTO_MASK, PHOTO_FACADE];
 
 export function modelById(id: string): ModelDescriptor | undefined {
   return ALL_MODELS.find((model) => model.id === id);

@@ -1,7 +1,53 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import type { LoomBackend } from "@runtime/backend/index.ts";
-import { attachNativeOutput } from "./native-output.ts";
+import { attachNativeOutput, desktopOutputBridge, type DesktopOutputBridge } from "./native-output.ts";
+
+afterEach(() => { delete (window as Window & { loomDesktop?: unknown }).loomDesktop; });
+
+describe("explicit native output transport capability", () => {
+  const completeBridge = (): DesktopOutputBridge => ({ nativeOutput: true,
+    open: vi.fn(async () => {}), close: vi.fn(async () => {}), resize: vi.fn(async () => {}),
+    status: vi.fn(async () => ({ copied: 0, dropped: 0, error: null })) });
+  const install = (desktop: unknown) => { (window as Window & { loomDesktop?: unknown }).loomDesktop = desktop; };
+
+  it("does not advertise outputs in browser, preparation-only or lifecycle-only shells", () => {
+    for (const desktop of [undefined, {}, { preparation: {} }, { lifecycle: {} },
+      { preparation: {}, lifecycle: {}, nativeOutput: false }, { nativeOutput: "true" }]) {
+      install(desktop);
+      for (const transport of ["syphon", "ndi", "spout"] as const) expect(desktopOutputBridge(transport)).toBeUndefined();
+    }
+  });
+
+  it("returns complete marked bridges by identity for exactly their own transport", () => {
+    const syphon = completeBridge(), ndi = completeBridge(), spout = completeBridge();
+    install({ ...syphon, ndiOutput: ndi, spoutOutput: spout });
+    const desktop = (window as Window & { loomDesktop?: unknown }).loomDesktop;
+    expect(desktopOutputBridge()).toBe(desktop);
+    expect(desktopOutputBridge("ndi")).toBe(ndi);
+    expect(desktopOutputBridge("spout")).toBe(spout);
+    expect(syphon.open).not.toHaveBeenCalled();
+    expect(ndi.open).not.toHaveBeenCalled();
+    expect(spout.open).not.toHaveBeenCalled();
+  });
+
+  it("never substitutes a different native transport when the requested one is absent", () => {
+    const ndi = completeBridge();
+    install({ preparation: {}, lifecycle: {}, ndiOutput: ndi });
+    expect(desktopOutputBridge("syphon")).toBeUndefined();
+    expect(desktopOutputBridge("ndi")).toBe(ndi);
+    expect(desktopOutputBridge("spout")).toBeUndefined();
+    install({ ...completeBridge(), ndiOutput: { nativeOutput: false }, spoutOutput: {} });
+    expect(desktopOutputBridge("ndi")).toBeUndefined();
+    expect(desktopOutputBridge("spout")).toBeUndefined();
+  });
+
+  it.each(["syphon", "ndi", "spout"] as const)("rejects an incomplete advertised %s output", transport => {
+    const partial = { nativeOutput: true, open: vi.fn() };
+    install(transport === "syphon" ? partial : { [transport === "ndi" ? "ndiOutput" : "spoutOutput"]: partial });
+    expect(() => desktopOutputBridge(transport)).toThrow(new RegExp(`Invalid ${transport} native output bridge`));
+  });
+});
 
 describe("native output surface ownership", () => {
   function fixture() {

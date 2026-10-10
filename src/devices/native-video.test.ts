@@ -6,8 +6,9 @@ import { NATIVE_INPUT_TRANSPORTS, NATIVE_OUTPUT_TRANSPORTS } from "./native-vide
 import { EMISSION_PUMPS } from "@domain/render/emission-pumps.ts";
 
 afterEach(() => vi.unstubAllGlobals());
+const output = () => ({ nativeOutput: true, open: vi.fn(), close: vi.fn(), resize: vi.fn(), status: vi.fn() });
 it("Spout never substitutes the available Syphon or NDI bridges", () => {
-  const desktop = { input: {}, ndiInput: {}, nativeOutput: true, ndiOutput: {} };
+  const desktop = { input: {}, ndiInput: {}, ...output(), ndiOutput: output() };
   vi.stubGlobal("loomDesktop", desktop);
   expect(desktopInputBridge("spout")).toBeUndefined();
   expect(desktopOutputBridge("spout")).toBeUndefined();
@@ -17,7 +18,7 @@ it("Spout never substitutes the available Syphon or NDI bridges", () => {
   expect(desktopOutputBridge("ndi")).toBe(desktop.ndiOutput);
 });
 it("routes only to dedicated injected Spout capabilities", () => {
-  const desktop = { spoutInput: {}, spoutOutput: {} };
+  const desktop = { spoutInput: {}, spoutOutput: output() };
   vi.stubGlobal("loomDesktop", desktop);
   expect(desktopInputBridge("spout")).toBe(desktop.spoutInput);
   expect(desktopOutputBridge("spout")).toBe(desktop.spoutOutput);

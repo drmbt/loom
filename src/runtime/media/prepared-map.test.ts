@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { decodeFloatMap, encodeFloatMap, type FloatMap } from "./float-map.ts";
-import { beginMaskStroke, makePreparedMap, paintMaskStroke, preparedMetadata, rasterizeFloatMap, type PreparedMapMetadata } from "./prepared-map.ts";
+import { type FloatMap } from "./float-map.ts";
+import { decodeDepthExr, encodeDepthExr } from "./depth-exr.ts";
+import { beginMaskStroke, depthRecipeOf, makePreparedMap, paintMaskStroke, preparedMetadata, rasterizeFloatMap, withDepthRecipe,
+  type PreparedDepthMetadataV2, type PreparedMapMetadataV1 } from "./prepared-map.ts";
+import { DEFAULT_DEPTH_REFINEMENT, DEFAULT_PHOTO_DEPTH_RECIPE } from "../../domain/media/photo-depth-recipe.ts";
 
-function input(kind: "depth" | "mask" = "depth", width = 6, height = 6): Omit<PreparedMapMetadata, "version" | "range"> {
+function input(kind: "depth" | "mask" = "depth", width = 6, height = 6): Omit<PreparedMapMetadataV1, "version" | "range"> {
   return {
     kind, source: { sha256: "a".repeat(64), width, height },
     model: { id: "test-model-v1", url: "https://models.example/model.onnx" },
@@ -19,7 +22,7 @@ describe("prepared maps", () => {
     const values = new Float32Array([-0, 1, 1 + 2 ** -23, 1 + 2 ** -22, 2 ** -149, -17.75]);
     const bits = new Uint32Array(values.buffer).slice();
     const map = makePreparedMap(values, 3, 2, { ...input(), registration: "stretch" });
-    const reopened = decodeFloatMap(encodeFloatMap(map));
+    const reopened = decodeDepthExr(encodeDepthExr(map));
     expect(new Uint32Array(map.values.buffer)).toEqual(bits);
     expect(new Uint32Array(reopened.values.buffer)).toEqual(bits);
     expect(new Uint32Array(rasterizeFloatMap(reopened, "raw", 3, 2).buffer)).toEqual(bits);
@@ -96,7 +99,7 @@ describe("prepared maps", () => {
     expect(erased.values[17]).toBe(0);
     expect(painted.values[17]).toBe(1);
     expect(erased.values[16]).toBe(1);
-    expect(decodeFloatMap(encodeFloatMap(erased)).values).toEqual(erased.values);
+    expect(decodeDepthExr(encodeDepthExr(erased)).values).toEqual(erased.values);
   });
 
   it("owns one continuous gesture without altering undo snapshots and seals it on completion", () => {
@@ -111,7 +114,7 @@ describe("prepared maps", () => {
     expect(finished.values[8]).toBe(1);
     expect(finished.values[40]).toBe(0);
     expect(Object.is(finished.values[48], original.values[48])).toBe(true);
-    expect(decodeFloatMap(encodeFloatMap(finished)).values).toEqual(finished.values);
+    expect(decodeDepthExr(encodeDepthExr(finished)).values).toEqual(finished.values);
     expect(() => stroke.paint({ x: 0, y: 0 }, { x: 0, y: 0 }, 1, 0)).toThrow(/already finished/);
     expect(() => stroke.finish()).toThrow(/already finished/);
     const next = beginMaskStroke(finished);
@@ -183,5 +186,93 @@ describe("prepared maps", () => {
     expect(() => paintMaskStroke(map, { x: -Number.MAX_VALUE, y: 0 }, { x: Number.MAX_VALUE, y: 0 }, 1, 1)).toThrow(/brush length/);
     expect(() => paintMaskStroke(map, { x: 0, y: 0 }, { x: 0, y: 0 }, 1, 0.5 as 0)).toThrow(/brush value/);
     expect(map.values[0]).toBe(0.5);
+  });
+});
+
+describe("versioned depth preparation recipes", () => {
+  function native() {
+    const values = new Float32Array([-0, 1 + 2 ** -23, 2 ** -149, -17.75]);
+    return makePreparedMap(values, 2, 2, { ...input("depth", 2, 2), inputSide: 518, registration: "stretch",
+      model: { id: DEFAULT_PHOTO_DEPTH_RECIPE.modelId, url: "https://models.example/pinned/model.onnx" } });
+  }
+  const parent = { sha256: "b".repeat(64), width: 518, height: 518 };
+  const refinedRecipe = { ...DEFAULT_PHOTO_DEPTH_RECIPE, refinement: { ...DEFAULT_DEPTH_REFINEMENT } };
+
+  it("attaches and reopens a native recipe without changing any stored scalar bits", () => {
+    const legacy = native(), original = encodeDepthExr(legacy);
+    const attached = withDepthRecipe(legacy, DEFAULT_PHOTO_DEPTH_RECIPE);
+    const bits = new Uint32Array(legacy.values.buffer).slice();
+    expect(preparedMetadata(attached)).toMatchObject({ version: 2, semantics: "inverse-relative", stage: "native", parent: null,
+      recipe: DEFAULT_PHOTO_DEPTH_RECIPE, range: preparedMetadata(legacy).range });
+    const reopened = decodeDepthExr(encodeDepthExr(attached));
+    expect(depthRecipeOf(reopened)).toEqual(DEFAULT_PHOTO_DEPTH_RECIPE);
+    expect(preparedMetadata(reopened)).toEqual(preparedMetadata(attached));
+    expect(new Uint32Array(reopened.values.buffer)).toEqual(bits);
+    expect(new Uint32Array(rasterizeFloatMap(reopened, "raw", 2, 2).buffer)).toEqual(bits);
+    expect(encodeDepthExr(legacy)).toEqual(original);
+  });
+
+  it("reads strict version-one depth as its explicit legacy WASM recipe without rewriting metadata", () => {
+    const legacy = native(), before = encodeDepthExr(legacy);
+    const reopened = decodeDepthExr(before);
+    expect(preparedMetadata(reopened).version).toBe(1);
+    expect(depthRecipeOf(reopened)).toEqual(DEFAULT_PHOTO_DEPTH_RECIPE);
+    expect(encodeDepthExr(reopened)).toEqual(before);
+    expect(() => preparedMetadata(withMetadata(legacy, { recipe: DEFAULT_PHOTO_DEPTH_RECIPE }))).toThrow(/exactly/);
+    const mask = makePreparedMap(new Float32Array([1]), 1, 1, input("mask"));
+    expect(() => depthRecipeOf(mask)).toThrow(/depth map/);
+    expect(() => withDepthRecipe(mask, DEFAULT_PHOTO_DEPTH_RECIPE)).toThrow(/depth map/);
+  });
+
+  it.each([
+    { recipe: { ...DEFAULT_PHOTO_DEPTH_RECIPE, version: 2 } },
+    { recipe: { ...DEFAULT_PHOTO_DEPTH_RECIPE, unexpected: true } },
+    { recipe: { ...DEFAULT_PHOTO_DEPTH_RECIPE, modelId: "another-model" } },
+    { recipe: { ...DEFAULT_PHOTO_DEPTH_RECIPE, inputSide: 1036 } },
+    { recipe: refinedRecipe }, { parent }, { stage: "unknown" },
+    { stage: "refined" }, { semantics: "metric" },
+    { kind: "mask", range: { low: 0, high: 1 } },
+  ])("refuses mismatched native recipe or stage provenance: %j", patch => {
+    const map = withDepthRecipe(native(), DEFAULT_PHOTO_DEPTH_RECIPE);
+    expect(() => preparedMetadata(withMetadata(map, patch))).toThrow(/Invalid prepared map/);
+  });
+
+  it.each([
+    { registration: "letterbox" }, { parent: null },
+    { parent: { ...parent, sha256: "missing" } }, { parent: { ...parent, width: 0 } },
+    { parent: { ...parent, height: 1.5 } }, { parent: { ...parent, path: "parent.loom.exr" } },
+    { recipe: DEFAULT_PHOTO_DEPTH_RECIPE }, { stage: "native" },
+  ])("refuses incomplete refined parent or registration: %j", patch => {
+    const map = withDepthRecipe(native(), refinedRecipe, parent);
+    expect(() => preparedMetadata(withMetadata(map, patch))).toThrow(/Invalid prepared map/);
+  });
+
+  it("retains refined registration, parent and recipe while normalizing only the working depth copy", () => {
+    const map = makePreparedMap(new Float32Array([-2, 0, 2]), 3, 1, { ...input("depth", 3, 1), inputSide: 518,
+      registration: "stretch", model: { id: DEFAULT_PHOTO_DEPTH_RECIPE.modelId, url: "https://models.example/pinned/model.onnx" } });
+    const refined = withDepthRecipe(map, refinedRecipe, parent);
+    const original = encodeDepthExr(refined);
+    expect([...rasterizeFloatMap(refined, "depth", 3, 1)]).toEqual([0, 0.5, 1]);
+    expect([...rasterizeFloatMap(refined, "raw", 3, 1)]).toEqual([-2, 0, 2]);
+    const reopened = decodeDepthExr(original);
+    expect(preparedMetadata(reopened)).toMatchObject({ version: 2, stage: "refined", parent, recipe: refinedRecipe, registration: "stretch" });
+    expect(encodeDepthExr(refined)).toEqual(original);
+  });
+  it("rejects a refined payload whose dimensions misrepresent its recorded target", () => {
+    const map = withDepthRecipe(native(), refinedRecipe, parent);
+    expect(() => preparedMetadata({ ...map, width: 1, height: 4 })).toThrow(/refined dimensions/);
+    expect(() => withDepthRecipe(native(), { ...refinedRecipe, refinement: { ...DEFAULT_DEPTH_REFINEMENT, target: "4096" } }, parent)).toThrow(/refined dimensions/);
+  });
+
+  it.each(["relative-linear", "relative-log"] as const)("adapts future %s depth direction only in the working copy", semantics => {
+    const map = makePreparedMap(new Float32Array([10, 20, 30]), 3, 1, { ...input(), inputSide: 518,
+      registration: "stretch", model: { id: DEFAULT_PHOTO_DEPTH_RECIPE.modelId, url: "https://models.example/pinned/model.onnx" } });
+    const prepared = withDepthRecipe(map, DEFAULT_PHOTO_DEPTH_RECIPE, null, semantics);
+    const original = encodeDepthExr(prepared);
+    expect([...rasterizeFloatMap(prepared, "depth", 3, 1)]).toEqual([1, 0.5, 0]);
+    expect([...rasterizeFloatMap(prepared, "raw", 3, 1)]).toEqual([10, 20, 30]);
+    const reopened = decodeDepthExr(original);
+    expect((preparedMetadata(reopened) as PreparedDepthMetadataV2).semantics).toBe(semantics);
+    expect(encodeDepthExr(prepared)).toEqual(original);
   });
 });

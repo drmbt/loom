@@ -62,7 +62,7 @@ export function pngChunk(type: string, data: Uint8Array): Uint8Array {
 }
 
 /** zlib stream (RFC 1950) whose deflate payload is stored blocks only (RFC 1951 §3.2.4). */
-function zlibStored(raw: Uint8Array): Uint8Array {
+export function zlibStored(raw: Uint8Array): Uint8Array {
   const MAX_BLOCK = 0xffff;
   const blocks = Math.max(1, Math.ceil(raw.length / MAX_BLOCK));
   const out = new Uint8Array(2 + blocks * 5 + raw.length + 4);

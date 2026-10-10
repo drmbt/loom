@@ -15,6 +15,9 @@ function loadMain() {
     if (name === 'electron') return { app };
     if (name === 'node:path') return require(name);
     if (name === './policy.cjs') return { validateOrigin: () => 'http://127.0.0.1:5188', webPreferences: {} };
+    if (name === '../devices/native/marigold-executor.mjs') return { createMarigoldExecutor: () => ({}) };
+    if (name === './native-preparation.cjs') return { installNativePreparation: () => ({ diagnostics: () => [] }) };
+    if (name === '../devices/native/marigold-model-manifest.json') return {};
     if (name === './file-permissions.cjs' || name === './unload-gate.cjs') return {};
     throw new Error(`Unexpected startup dependency: ${name}`);
   };
@@ -66,7 +69,10 @@ async function permissionHost(platform = 'darwin') {
       if (name === 'electron') return electron;
       if (name === 'node:path') return require(name);
       if (name === './policy.cjs') return { validateOrigin: () => origin, webPreferences: {} };
-      if (name === './unload-gate.cjs') return {};
+      if (name === '../devices/native/marigold-executor.mjs') return { createMarigoldExecutor: () => ({}) };
+      if (name === './native-preparation.cjs') return { installNativePreparation: () => ({ diagnostics: () => [] }) };
+      if (name === '../devices/native/marigold-model-manifest.json') return {};
+      if (name === './unload-gate.cjs') return { installUnloadGate() {} };
       if (name === './file-permissions.cjs') return { installFilePermissions: () => ({
         snapshot: () => ['camera', 'microphone', 'speaker', 'ndi'].map(id => ({ id, decision: 'allowed' })),
       }) };

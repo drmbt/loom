@@ -523,17 +523,20 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   // T1349b — E79 Crucible (second cut): one halo torus, eight swarm grids of 24 hulls each
   // (one grid, many bodies), and two shard streams.
   "E79-Crucible.loom.json": "ac1ef142d3ab5092",
+  // E86: denser 768 × 512 relative-depth Carve and photo-colour Paint, with explicit
+  // photo-preparation defaults; existing exported kernels remain unchanged.
+  "E86-Photo-Mapping-Point-Cloud.loom.json": "13fa7484b36a3b02",
 };
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
 
 /**
  * T1583b: shipped Point Kernels whose dispatch reads its own pair — the ones with a region.
- * Counted off the plans when steps landed: 128 plain kernel dispatches ship, 67 of them
- * with state of their own and 61 pure processors; this file sees the 126 kernels that are
+ * Counted off the plans, including E86: 130 plain kernel dispatches ship, 68 of them
+ * with state of their own and 62 pure processors; this file sees the 128 kernels that are
  * in a document's own graph, which leaves out E47's (inside a component) and two regions.
  */
-const SHIPPED_STEP_REGIONS = 65;
+const SHIPPED_STEP_REGIONS = 66;
 
 describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
   const digests = new Map<string, string>();
@@ -572,8 +575,9 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
   it("covers exactly the looms that carry kernels — a shrinking gate is a passing gate", () => {
     expect([...digests.keys()].sort()).toEqual(Object.keys(FRAME_ZERO_DIGESTS).sort());
     // 63 existing kernels, 51 family kernels, two E75 core-occlusion kernels, and E79's
-    // ten (T1349b): the halo, six swarm grids, the dust, the core and its heart.
-    expect(kernelCount).toBe(126);
+    // ten (T1349b): the halo, six swarm grids, the dust, the core and its heart;
+    // E86 adds relative-depth Carve and the pure photo-colour Paint processor.
+    expect(kernelCount).toBe(128);
   });
 
   it.each(Object.keys(FRAME_ZERO_DIGESTS))("%s is unchanged at frame 0", (fileName) => {

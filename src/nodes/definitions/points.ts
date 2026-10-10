@@ -28,7 +28,7 @@ import {
 import { kernelDimOf, parseTopology } from "../../points/topology.ts";
 import { drawArgsWgsl } from "../../points/lifecycle.ts";
 import { DEFAULT_POINT_KERNEL, SPRITE_RENDER_WGSL, TEXTURE_TO_ATTRIBUTE_WGSL, pointRayWgsl, spriteRenderWgsl } from "../shaders/points.wgsl.ts";
-import { RGBA_TEXTURE } from "./common-ports.ts";
+import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { codeParametersLast } from "../../domain/parameters/code.ts";
 import { readColor, readNumber } from "./parameter-readers.ts";
@@ -505,7 +505,7 @@ export const pointKernelNode: NodeDefinition = {
       id: "field",
       label: "Field",
       optional: true,
-      type: RGBA_TEXTURE,
+      type: DATA_TEXTURE,
       description:
         "Optional texture the kernel samples with fieldAt(position) — clip-space xy mapped to uv, exactly as Texture To Attribute maps it. Read with textureLoad, so data fields work on Tier B (§V57).",
     },

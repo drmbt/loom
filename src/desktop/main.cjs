@@ -6,6 +6,12 @@ const { webPreferences, validateOrigin, allowNavigation, allowPopup, performWind
 const { installFilePermissions } = require('./file-permissions.cjs');
 const { installUnloadGate } = require('./unload-gate.cjs');
 const origin = validateOrigin(process.env.LOOM_DESKTOP_URL);
+const { createMarigoldExecutor } = require('../devices/native/marigold-executor.mjs');
+const marigoldDirectory = process.env.LOOM_MARIGOLD_DIRECTORY ?? join(__dirname, '../../.cache/marigold-v2');
+const nativePreparation = require('./native-preparation.cjs').installNativePreparation({ ipcMain, origin,
+  executor: createMarigoldExecutor({ executable: join(marigoldDirectory, 'runtime/loom-marigold'),
+    assetsDirectory: join(marigoldDirectory, 'models'), manifest: require('../devices/native/marigold-model-manifest.json') }),
+});
 const nativeOutput = process.env.LOOM_NATIVE_OUTPUT_ADDON
   ? require('./native-output.cjs').installNativeOutput(require(process.env.LOOM_NATIVE_OUTPUT_ADDON), origin) : null;
 if (Boolean(nativeOutput) !== Boolean(process.env.LOOM_NATIVE_INPUT_ADDON))
@@ -28,6 +34,12 @@ const inferenceReady = process.env.LOOM_NATIVE_VISION_DIRECTORY
 module.exports.nativeOutputDiagnostics = () => [...(nativeOutput?.diagnostics() ?? []), ...(nativeNdiOutput?.diagnostics() ?? [])];
 module.exports.nativeInputDiagnostics = () => [...(nativeInput?.diagnostics() ?? []), ...(nativeNdiInput?.diagnostics() ?? [])];
 module.exports.nativeInferenceDiagnostics = () => nativeInference?.diagnostics() ?? [];
+module.exports.nativePreparationDiagnostics = () => nativePreparation.diagnostics();
+app.on('before-quit', event => {
+  if (nativePreparation.diagnostics().length === 0) return;
+  event.preventDefault();
+  void nativePreparation.dispose().then(() => app.quit()).catch(error => fail(String(error)));
+});
 app.on('will-quit', () => {
   const pending = nativeInput?.dispose();
   if (pending?.length) console.error('LOOM_NATIVE_INPUT_PENDING_SHUTDOWN', JSON.stringify(pending));
@@ -37,20 +49,22 @@ app.on('will-quit', () => {
   if (inference?.length) console.error('LOOM_NATIVE_INFERENCE_PENDING_SHUTDOWN', JSON.stringify(inference));
 });
 if (process.env.LOOM_NATIVE_NDI_ADDON && !nativeInput) throw new Error('NDI input requires the native desktop input host');
-const appPreferences = nativeOutput ? { ...webPreferences, preload: join(__dirname, 'preload.cjs'),
-  additionalArguments: process.env.LOOM_NATIVE_NDI_ADDON ? ['--loom-ndi-input'] : [],
-} : webPreferences;
+const appPreferences = { ...webPreferences, preload: join(__dirname, 'preload.cjs'),
+  additionalArguments: [...(nativeOutput ? ['--loom-native-video'] : []), ...(process.env.LOOM_NATIVE_NDI_ADDON ? ['--loom-ndi-input'] : [])],
+};
 const profile = process.env.LOOM_DESKTOP_PROFILE;
 if (!profile || !isAbsolute(profile)) throw new Error('An absolute desktop profile path is required');
 app.setPath('userData', profile);
 app.enableSandbox();
 let failed = false;
 const startup = setTimeout(() => fail('App window did not load within 60 seconds'), 60000);
-function fail(message) {
+async function fail(message) {
   if (failed) return;
   failed = true;
   clearTimeout(startup);
   console.error('LOOM_DESKTOP_FAILED', message);
+  try { await nativePreparation.dispose(); }
+  catch (error) { console.error('LOOM_NATIVE_PREPARATION_SHUTDOWN_FAILED', String(error)); }
   app.exit(1);
 }
 app.on('web-contents-created', (_event, contents) => {
@@ -127,13 +141,13 @@ module.exports.startDesktop = () => {
     }));
   });
   const window = new BrowserWindow({ width: 1600, height: 1000, title: 'Loom Development', webPreferences: appPreferences });
-  if (nativeInput) installUnloadGate({ window, inputs: {
-    retireOwner: owner => Promise.all([nativeInput.retireOwner(owner), nativeNdiInput?.retireOwner(owner),
-      nativeOutput.retireOwner(owner), nativeNdiOutput?.retireOwner(owner), nativeInference?.retireOwner(owner)]),
+  installUnloadGate({ window, inputs: {
+    retireOwner: owner => Promise.all([nativePreparation.retireOwner(owner), nativeInput?.retireOwner(owner), nativeNdiInput?.retireOwner(owner),
+      nativeOutput?.retireOwner(owner), nativeNdiOutput?.retireOwner(owner), nativeInference?.retireOwner(owner)]),
   }, onError: error => {
     console.error('LOOM_NATIVE_UNLOAD_FAILED', String(error));
     if (window.isDestroyed()) return; // The diagnostic is logged; no dialog can own a destroyed window.
-    void dialog.showMessageBox(window, { type: 'error', message: 'Native video could not close safely', detail: String(error) });
+    void dialog.showMessageBox(window, { type: 'error', message: 'Native processing could not close safely', detail: String(error) });
   } });
   await window.loadURL(`${origin}/`);
   clearTimeout(startup);

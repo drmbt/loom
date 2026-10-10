@@ -25,6 +25,8 @@ const FILES: ReadonlyArray<readonly [string, string]> = [
   ["ormbg-quantized", "ormbg.onnx"],
   ["depth-anything-v2-small", "depth.onnx"],
   ["depth-anything-v2-small-q4f16", "depth-q4f16.onnx"],
+  ["depth-anything-v2-large-fp16", "depth-large-fp16.onnx"],
+  ["depth-anything-v2-large-q4f16", "depth-large-q4f16.onnx"],
   ["movenet-lightning", "pose.onnx"],
   ["movenet-lightning-int8", "pose-int8.onnx"],
   ["modnet-photographic", "matte.onnx"],
@@ -54,8 +56,10 @@ for (const [id, file] of FILES) {
     `  {\n    modelId: ${JSON.stringify(id)},\n` +
       `    input: { name: ${JSON.stringify(input.name)}, type: ${JSON.stringify(input.type)}, ` +
       `shape: ${JSON.stringify(input.shape.map(String))} },\n` +
-      `    output: { name: ${JSON.stringify(output.name)}, type: ${JSON.stringify(output.type)} },\n  },`,
+      `    output: { name: ${JSON.stringify(output.name)}, type: ${JSON.stringify(output.type)} },\n` +
+      `    inputs: ${JSON.stringify(session.inputNames)}, outputs: ${JSON.stringify(session.outputNames)},\n  },`,
   );
   console.log(`read ${id}: ${input.type} [${input.shape.map(String).join(",")}]`);
+  await session.release();
 }
 console.log("\n--- paste into model-signatures.ts ---\n" + rows.join("\n"));

@@ -1,7 +1,8 @@
 import { occOf } from "../models/depth-runner.ts";
+import { photoDepthRecipeSchema, photoDepthInputSize, depthRefinementSize, type PhotoDepthRecipe } from "../../domain/media/photo-depth-recipe.ts";
 import type { FloatMap } from "./float-map.ts";
 
-export interface PreparedMapMetadata {
+export interface PreparedMapMetadataV1 {
   readonly version: 1;
   readonly kind: "depth" | "mask";
   readonly source: { readonly sha256: string; readonly width: number; readonly height: number };
@@ -10,6 +11,17 @@ export interface PreparedMapMetadata {
   readonly registration: "letterbox" | "stretch";
   readonly range: { readonly low: number; readonly high: number };
 }
+
+export interface PreparedDepthMetadataV2 extends Omit<PreparedMapMetadataV1, "version" | "kind"> {
+  readonly version: 2;
+  readonly kind: "depth";
+  readonly semantics: "inverse-relative" | "relative-linear" | "relative-log";
+  readonly recipe: PhotoDepthRecipe;
+  readonly stage: "native" | "refined";
+  readonly parent: { readonly sha256: string; readonly width: number; readonly height: number } | null;
+}
+
+export type PreparedMapMetadata = PreparedMapMetadataV1 | PreparedDepthMetadataV2;
 
 function invalid(message: string): never {
   throw new Error(`Invalid prepared map: ${message}`);
@@ -34,9 +46,12 @@ function finite(value: unknown, name: string): asserts value is number {
 
 /** Preparation provenance is versioned and strict; unprepared numerical maps are not guessed. */
 export function preparedMetadata(map: FloatMap): PreparedMapMetadata {
+  const value = map.metadata?.preparation;
+  const version = typeof value === "object" && value !== null && "version" in value ? value.version : undefined;
   const metadata = record(map.metadata?.preparation,
-    ["version", "kind", "source", "model", "inputSide", "registration", "range"], "preparation metadata");
-  if (metadata.version !== 1) invalid("unsupported preparation version");
+    ["version", "kind", "source", "model", "inputSide", "registration", "range",
+      ...(version === 2 ? ["semantics", "recipe", "stage", "parent"] : [])], "preparation metadata");
+  if (metadata.version !== 1 && metadata.version !== 2) invalid("unsupported preparation version");
   if (metadata.kind !== "depth" && metadata.kind !== "mask") invalid("kind must be depth or mask");
   const source = record(metadata.source, ["sha256", "width", "height"], "source");
   if (typeof source.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(source.sha256)) invalid("source sha256 must be a lowercase SHA-256 digest");
@@ -54,6 +69,33 @@ export function preparedMetadata(map: FloatMap): PreparedMapMetadata {
   finite(range.high, "range high");
   if (range.low > range.high) invalid("range low must not exceed high");
   if (metadata.kind === "mask" && (range.low !== 0 || range.high !== 1)) invalid("mask range must be 0..1");
+  if (metadata.version === 2) {
+    if (metadata.kind !== "depth") invalid("version 2 preparation must be depth");
+    if (!["inverse-relative", "relative-linear", "relative-log"].includes(String(metadata.semantics))) invalid("unknown depth semantics");
+    const recipe = photoDepthRecipeSchema.safeParse(metadata.recipe);
+    if (!recipe.success) invalid(`depth recipe: ${recipe.error.message}`);
+    if (recipe.data.modelId !== model.id || recipe.data.inputSide !== metadata.inputSide) invalid("recipe must match model and inputSide");
+    if (metadata.stage !== "native" && metadata.stage !== "refined") invalid("unknown depth stage");
+    if (metadata.stage === "native") {
+      if (metadata.parent !== null || recipe.data.refinement !== null) invalid("native depth has no parent or refinement");
+      if (recipe.data.version === 2) {
+        const expected = photoDepthInputSize(recipe.data, source.width, source.height);
+        if (map.width !== expected.width || map.height !== expected.height || metadata.registration !== "stretch" || metadata.semantics !== "relative-log") invalid("native Marigold dimensions, full-frame registration or log-depth semantics differ from its recipe");
+      }
+    } else {
+      if (recipe.data.refinement === null || metadata.registration !== "stretch") invalid("refined depth requires a refinement recipe and registered full frame");
+      const parent = record(metadata.parent, ["sha256", "width", "height"], "native parent");
+      if (typeof parent.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(parent.sha256)) invalid("parent sha256 must be a lowercase SHA-256 digest");
+      positiveInteger(parent.width, "parent width");
+      positiveInteger(parent.height, "parent height");
+      let target: { width: number; height: number };
+      try { target = depthRefinementSize(recipe.data, source.width, source.height,
+        Math.max(source.width, source.height,
+          recipe.data.refinement.target === "source" ? 0 : Number(recipe.data.refinement.target))); }
+      catch (error) { invalid(`refined dimensions: ${error instanceof Error ? error.message : String(error)}`); }
+      if (map.width !== target.width || map.height !== target.height) invalid("refined dimensions must match the recipe target and source aspect");
+    }
+  }
   return metadata as unknown as PreparedMapMetadata;
 }
 
@@ -87,9 +129,9 @@ function occupiedBounds(map: FloatMap, metadata?: PreparedMapMetadata): readonly
 /** Keep native float32 values untouched; normalization is separate display metadata. */
 export function makePreparedMap(
   values: Float32Array, width: number, height: number,
-  input: Omit<PreparedMapMetadata, "version" | "range">,
+  input: Omit<PreparedMapMetadataV1, "version" | "range">,
 ): FloatMap {
-  const preparation: PreparedMapMetadata = {
+  const preparation: PreparedMapMetadataV1 = {
     ...input, version: 1, range: { low: 0, high: 1 },
     source: { ...input.source }, model: { ...input.model },
   };
@@ -112,6 +154,34 @@ export function makePreparedMap(
     high = 1;
   }
   return { ...map, values: values.slice(), metadata: { preparation: { ...preparation, range: { low, high } } } };
+}
+
+/** Attach an inspected depth recipe without changing one native sample. */
+export function withDepthRecipe(
+  map: FloatMap, recipe: PhotoDepthRecipe,
+  parent: PreparedDepthMetadataV2["parent"] = null,
+  semantics: PreparedDepthMetadataV2["semantics"] = "inverse-relative",
+): FloatMap {
+  const metadata = preparedMetadata(map);
+  if (metadata.kind !== "depth") invalid("depth recipe requires a depth map");
+  const preparation: PreparedDepthMetadataV2 = {
+    version: 2, kind: "depth", source: metadata.source, model: metadata.model,
+    inputSide: metadata.inputSide, registration: metadata.registration, range: metadata.range,
+    recipe, semantics, stage: parent === null ? "native" : "refined", parent,
+  };
+  const result = { ...map, metadata: { ...map.metadata, preparation } };
+  preparedMetadata(result);
+  validateSamples(result, "depth");
+  return result;
+}
+
+/** Legacy photo depth was prepared by the explicit WASM route, without refinement. */
+export function depthRecipeOf(map: FloatMap): PhotoDepthRecipe {
+  const metadata = preparedMetadata(map);
+  if (metadata.kind !== "depth") invalid("depth recipe requires a depth map");
+  return metadata.version === 2 ? metadata.recipe : {
+    version: 1, modelId: metadata.model.id, inputSide: metadata.inputSide, backend: "wasm", refinement: null,
+  };
 }
 
 /** Bilinear sampling uses image texel centers and excludes letterbox padding for depth. */
@@ -143,9 +213,10 @@ export function rasterizeFloatMap(
       const top = a + (b - a) * (sx - xa);
       const bottom = c + (d - c) * (sx - xa);
       const raw = top + (bottom - top) * (sy - ya);
-      result[y * width + x] = interpretation === "depth" && metadata
-        ? (metadata.range.high === metadata.range.low ? 0.5 : (raw - metadata.range.low) / (metadata.range.high - metadata.range.low))
-        : raw;
+      let value = interpretation === "depth" && metadata
+        ? (metadata.range.high === metadata.range.low ? 0.5 : (raw - metadata.range.low) / (metadata.range.high - metadata.range.low)) : raw;
+      if (interpretation === "depth" && metadata?.version === 2 && metadata.semantics !== "inverse-relative") value = 1 - value;
+      result[y * width + x] = value;
     }
   }
   return result;

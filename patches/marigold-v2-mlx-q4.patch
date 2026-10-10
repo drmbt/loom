@@ -1,0 +1,252 @@
+--- a/Sources/MLXMarigoldV2/MarigoldSession.swift
++++ b/Sources/MLXMarigoldV2/MarigoldSession.swift
+@@ -148,6 +148,27 @@
+         return session
+     }
+ 
++    /// Load the audited affine mixed-Q4/Q8 transformer, keeping runtime LoRA
++    /// separate. No unquantized transformer is materialized on this route.
++    public static func loadQuantized(
++        _ config: MarigoldSessionConfig, shards: [URL], normOutBias: URL,
++        progress: ((String) -> Void)? = nil
++    ) throws -> MarigoldSession {
++        guard config.loraMode == .runtime else {
++            throw MarigoldError.weights("quantized sessions require runtime LoRA")
++        }
++        progress?("Loading mixed Q4/Q8 DiT (\(config.ditDType))…")
++        let dit = QwenImageTransformer2DModel(try .load(from: config.assets.transformerConfig))
++        try dit.loadMixedQuantizedBaseWeights(shards: shards, dtype: config.ditDType, biasURL: normOutBias)
++        eval(dit.parameters().flattened().map(\.1) + dit.quantizedArrays)
++        let vae = QwenImageVAE(try .load(from: config.assets.vaeConfig))
++        progress?("Loading checkpoint \(config.checkpoint.name)…")
++        let parts = try CheckpointParts.load(config.checkpoint, config: config)
++        let session = MarigoldSession(config: config, dit: dit, vae: vae, prompt: parts.prompt)
++        try session.install(parts, checkpoint: config.checkpoint)
++        return session
++    }
++
+     /// Swap LoRA, VAE decoder and prompt to another released checkpoint;
+     /// the base DiT stays resident.
+     public func setCheckpoint(_ checkpoint: MarigoldCheckpoint) throws {
+@@ -180,7 +201,7 @@
+         prompt = parts.prompt
+         config.checkpoint = checkpoint
+         let lora = config.loraMode == .runtime ? parts.trainables.lora.values.flatMap { [$0.a, $0.b] } : []
+-        eval(vae.parameters().flattened().map(\.1) + lora)
++        eval(vae.parameters().flattened().map(\.1) + lora + dit.quantizedArrays)
+     }
+ 
+     // MARK: Inference
+@@ -189,13 +210,16 @@
+     /// (H, W multiples of 16). `noise` (`[1, H/8, W/8, 16]`) overrides the
+     /// session RNG — parity tests inject the reference's draw. Returns the
+     /// modality prediction `[1, H, W, C]` fp32 at inference resolution.
+-    public func run(normalizedInput x: MLXArray, noise: MLXArray? = nil, timings: inout StageTimings) -> MLXArray {
++    public func run(normalizedInput x: MLXArray, noise: MLXArray? = nil, timings: inout StageTimings,
++        progress: ((String) -> Void)? = nil
++    ) -> MLXArray {
+         let modality = config.checkpoint.modality
+         guard x.dim(1) % 16 == 0, x.dim(2) % 16 == 0 else {
+             preconditionFailure("input \(x.shape) must be a multiple of 16")
+         }
+         var clock = ContinuousClock.now
+ 
++        progress?("Encoding reference photo…")
+         let img = x.asType(config.vaeDType)
+         let (mean, logvar) = vae.encodeMoments(img)
+         var eps = noise
+@@ -207,11 +231,13 @@
+         eval(latent)
+         timings.encode = lap(&clock)
+ 
++        progress?("Estimating structural depth…")
+         let (embeds, mask) = prompt.batch(latent.dim(0))
+         let predLatent = marigoldFlowStep(dit: dit, latent: latent, prompt: embeds, promptMask: mask)
+         eval(predLatent)
+         timings.dit = lap(&clock)
+ 
++        progress?("Decoding depth prediction…")
+         let pixel = vae.decode(predLatent)
+         var pred = modalityPrediction(modality, pixel: pixel).asType(.float32)
+         if modality == .albedo && config.albedoColorSpace == .srgb {
+@@ -226,16 +252,19 @@
+     /// resized up to the next multiple of 16 and the prediction back to the
+     /// native size (`scripts/infer.py` default); a fixed `size` is kept as is.
+     public func predict(
+-        _ rgb255: FloatImage, size: (width: Int, height: Int)? = nil, noise: MLXArray? = nil
++        _ rgb255: FloatImage, size: (width: Int, height: Int)? = nil, noise: MLXArray? = nil,
++        progress: ((String) -> Void)? = nil
+     ) -> MarigoldPrediction {
+         var timings = StageTimings()
+         var clock = ContinuousClock.now
++        progress?("Preparing reference pixels…")
+         let input = Preprocess.normalizedInput(rgb255, size: size)
+         eval(input)
+         timings.preprocess = lap(&clock)
+ 
+-        let pred = run(normalizedInput: input, noise: noise, timings: &timings)
++        let pred = run(normalizedInput: input, noise: noise, timings: &timings, progress: progress)
+         clock = ContinuousClock.now
++        progress?("Reading native depth samples…")
+         var out = FloatImage(pred)
+         let infW = out.width, infH = out.height
+         if size == nil && (out.width != rgb255.width || out.height != rgb255.height) {
+--- a/Sources/MLXMarigoldV2/QwenImageTransformer.swift
++++ b/Sources/MLXMarigoldV2/QwenImageTransformer.swift
+@@ -78,6 +78,18 @@
+ 
+ /// `nn.Linear` whose forward optionally adds `scale * B(A(x))` exactly like
+ /// `peft.tuners.lora.Linear` (dropout = 0).
++private final class MixedQuantizedLinearState {
++    let scales: MLXArray
++    let biases: MLXArray
++    let bits: Int
++
++    init(scales: MLXArray, biases: MLXArray, bits: Int) {
++        self.scales = scales
++        self.biases = biases
++        self.bits = bits
++    }
++}
++
+ public final class DiTLinear: Module, UnaryLayer {
+     // `private(set)`: parameters must only change through
+     // `update(parameters:)` — `Module` caches the array objects and a direct
+@@ -86,8 +98,22 @@
+     private(set) var bias: MLXArray?
+     /// The attached adapter, if any (set with ``QwenImageTransformer2DModel/setLoRA(_:)``).
+     public internal(set) var lora: LoRAAdapter?
++    let inputDimensions: Int
++    let outputDimensions: Int
++    private var quantization: MixedQuantizedLinearState?
++
++    fileprivate var quantizedArrays: [MLXArray] {
++        guard let quantization else { return [] }
++        return [quantization.scales, quantization.biases]
++    }
++
++    fileprivate func installQuantization(scales: MLXArray, biases: MLXArray, bits: Int) {
++        quantization = MixedQuantizedLinearState(scales: scales, biases: biases, bits: bits)
++    }
+ 
+     init(_ inDims: Int, _ outDims: Int, bias: Bool = true) {
++        self.inputDimensions = inDims
++        self.outputDimensions = outDims
+         self.weight = MLXArray.zeros([outDims, inDims])
+         self.bias = bias ? MLXArray.zeros([outDims]) : nil
+         super.init()
+@@ -97,6 +123,9 @@
+     /// fp32 and rounded once to the weight dtype. Removes the runtime
+     /// side-matmuls (~19 % of block time at 1024×768, `profile-block`).
+     func fuseLoRA() throws {
++        guard quantization == nil else {
++            throw MarigoldError.weights("cannot fuse LoRA into a packed quantized linear")
++        }
+         guard let lora else { return }
+         let delta = matmul(lora.b.asType(.float32), lora.a.asType(.float32)) * lora.scale
+         let fused = (weight.asType(.float32) + delta).asType(weight.dtype)
+@@ -107,7 +136,11 @@
+     /// `x·Wᵀ + b`, plus `scale·(x·Aᵀ)·Bᵀ` when an adapter is attached.
+     public func callAsFunction(_ x: MLXArray) -> MLXArray {
+         var y: MLXArray
+-        if let bias {
++        if let quantization {
++            y = quantizedMM(x, weight, scales: quantization.scales,
++                biases: quantization.biases, transpose: true, groupSize: 64, bits: quantization.bits)
++            if let bias { y = y + bias }
++        } else if let bias {
+             y = addMM(bias, x, weight.T)
+         } else {
+             y = matmul(x, weight.T)
+@@ -520,12 +553,91 @@
+         try update(parameters: ModuleParameters.unflattened(all), verify: verify)
+     }
+ 
++    /// Explicit loader for the audited mixed Q4/Q8 affine-MLX bundle. Packed
++    /// UInt32 weights remain packed; only floating tensors enter the compute dtype.
++    public func loadMixedQuantizedBaseWeights(shards: [URL], dtype: DType, biasURL: URL) throws {
++        guard [.float16, .bfloat16, .float32].contains(dtype), !shards.isEmpty else {
++            throw MarigoldError.weights("quantized loading requires floating compute dtype and nonempty shards")
++        }
++        let expected = Dictionary(uniqueKeysWithValues: parameters().flattened())
++        let linears = linearsByPath()
++        var tensors: [String: MLXArray] = [:]
++        let replacements = [
++            (".img_mod_linear.", ".img_mod.1."), (".txt_mod_linear.", ".txt_mod.1."),
++            (".img_ff.mlp_in.", ".img_mlp.net.0.proj."), (".img_ff.mlp_out.", ".img_mlp.net.2."),
++            (".txt_ff.mlp_in.", ".txt_mlp.net.0.proj."), (".txt_ff.mlp_out.", ".txt_mlp.net.2."),
++            (".attn.attn_to_out.", ".attn.to_out."),
++        ]
++        for url in shards {
++            for (sourceKey, value) in try MLX.loadArrays(url: url) {
++                var key = sourceKey
++                for (source, target) in replacements { key = key.replacingOccurrences(of: source, with: target) }
++                guard tensors[key] == nil else {
++                    throw MarigoldError.weights("duplicate quantized tensor after audited remapping: \(key)")
++                }
++                tensors[key] = value
++            }
++        }
++        let auxiliary = try MLX.loadArrays(url: biasURL)
++        guard Set(auxiliary.keys) == ["norm_out.linear.bias"], tensors["norm_out.linear.bias"] == nil else {
++            throw MarigoldError.weights("auxiliary must supply only the omitted norm_out.linear.bias")
++        }
++        tensors["norm_out.linear.bias"] = auxiliary["norm_out.linear.bias"]
++
++        var updates: [String: MLXArray] = [:]
++        var states: [String: (MLXArray, MLXArray, Int)] = [:]
++        var consumed = Set<String>()
++        for (key, original) in expected {
++            guard let value = tensors[key] else { throw MarigoldError.weights("missing quantized bundle tensor: \(key)") }
++            consumed.insert(key)
++            if value.dtype == .uint32 {
++                guard key.hasSuffix(".weight"), let linear = linears[String(key.dropLast(7))] else {
++                    throw MarigoldError.weights("packed tensor is not a known linear weight: \(key)")
++                }
++                let path = String(key.dropLast(7))
++                let bits = path.hasSuffix("img_mod.1") ? 8 : 4
++                let scaleKey = path + ".scales", biasKey = path + ".biases"
++                guard let scales = tensors[scaleKey], let biases = tensors[biasKey],
++                    linear.inputDimensions % 64 == 0,
++                    value.shape == [linear.outputDimensions, linear.inputDimensions / (32 / bits)],
++                    scales.shape == [linear.outputDimensions, linear.inputDimensions / 64],
++                    biases.shape == scales.shape, scales.dtype == .bfloat16, biases.dtype == .bfloat16 else {
++                    throw MarigoldError.weights("invalid Q\(bits)/group64 weight, scales or biases for \(path)")
++                }
++                updates[key] = value
++                states[path] = (scales.asType(dtype), biases.asType(dtype), bits)
++                consumed.formUnion([scaleKey, biasKey])
++            } else {
++                guard [.float16, .bfloat16, .float32].contains(value.dtype), value.shape == original.shape else {
++                    throw MarigoldError.weights("floating tensor dtype/shape mismatch for \(key)")
++                }
++                updates[key] = value.dtype == dtype ? value : value.asType(dtype)
++            }
++        }
++        let unused = Set(tensors.keys).subtracting(consumed)
++        guard unused.isEmpty, !states.isEmpty else {
++            throw MarigoldError.weights("unknown bundle tensors or no packed weights: \(unused.sorted().prefix(5))")
++        }
++        // Packed shapes differ deliberately. Every shape was checked above;
++        // retain exact key coverage without the float-shape verification flag.
++        try update(parameters: ModuleParameters.unflattened(updates), verify: [.noUnusedKeys, .allModelKeysSet])
++        for (path, state) in states {
++            linears[path]!.installQuantization(scales: state.0, biases: state.1, bits: state.2)
++        }
++    }
++
++    /// Quantization metadata is deliberately outside Module's parameter tree.
++    public var quantizedArrays: [MLXArray] { linearsByPath().values.flatMap { $0.quantizedArrays } }
++
+     /// Paths whose base weight currently has a LoRA merged in.
+     public private(set) var fusedLoRAPaths: Set<String> = []
+ 
+     /// Merge every attached adapter into its base weight (`W ← W + scale·B·A`,
+     /// computed in fp32, rounded once). Undo with ``restoreBaseWeights(shards:dtype:)``.
+     public func fuseLoRA() throws {
++        guard quantizedArrays.isEmpty else {
++            throw MarigoldError.weights("quantized transformers require runtime LoRA; fusion is unsupported")
++        }
+         for (path, lin) in linearsByPath() where lin.lora != nil {
+             try lin.fuseLoRA()
+             eval(lin.weight)  // bound the fp32 temporaries to one layer

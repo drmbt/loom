@@ -1,0 +1,49 @@
+.workspace { min-width: 0; margin: var(--space-4) 0; overflow: hidden; border: var(--border-hairline); border-radius: var(--radius); background: var(--bg-panel); }
+.toolbar, .details, .sampleBar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+.toolbar { border-bottom: var(--border-hairline); }
+.modes, .zoom { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+.modes button[aria-pressed="true"] { color: var(--text); background: var(--bg-raise); box-shadow: inset 0 -2px var(--signal); }
+.zoom output { min-width: 4ch; text-align: right; color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-micro); }
+.stage { position: relative; height: clamp(360px, 48vh, 480px); min-width: 0; overflow: hidden; outline-offset: -3px; background: var(--bg-void); cursor: grab; touch-action: none; }
+.stage:active { cursor: grabbing; }
+.stage:focus-visible { outline: 2px solid var(--signal); }
+.imageFrame { position: absolute; left: 50%; top: 50%; pointer-events: none; }
+.canvas { display: block; width: 100%; height: 100%; }
+.empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: var(--space-5); color: var(--text-dim); text-align: center; font-size: var(--fs-meta); }
+.error { position: absolute; inset: auto var(--space-3) var(--space-3); margin: 0; padding: var(--space-2); color: var(--error); background: var(--bg-panel); border: var(--border-hairline); font-size: var(--fs-meta); }
+.compareLeft, .compareRight { position: absolute; top: var(--space-2); padding: var(--space-1) var(--space-2); background: var(--bg-overlay); color: var(--text); font-size: var(--fs-micro); }
+.compareLeft { left: var(--space-2); }
+.compareRight { right: var(--space-2); }
+.wipe { position: absolute; inset: 0 auto 0 0; width: 1px; background: var(--signal); box-shadow: 0 0 0 1px var(--bg-void); }
+.pin { position: absolute; width: 15px; height: 15px; transform: translate(-50%, -50%); border: 1px solid var(--signal); border-radius: 50%; box-shadow: 0 0 0 1px var(--bg-void); }
+.pin::before, .pin::after { content: ""; position: absolute; background: var(--signal); }
+.pin::before { top: 6px; left: -5px; width: 23px; height: 1px; }
+.pin::after { left: 6px; top: -5px; height: 23px; width: 1px; }
+.details { border-top: var(--border-hairline); color: var(--text-dim); font-size: var(--fs-micro); }
+.compareToggle { display: flex; align-items: center; gap: var(--space-2); }
+.compareToggle input, .compareControl input { accent-color: var(--signal); }
+.compareControl { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-2) var(--space-3); color: var(--text-dim); font-size: var(--fs-meta); }
+.compareControl input { flex: 1; min-width: 40px; }
+.compareControl output { min-width: 4ch; font-family: var(--font-mono); }
+.sampleBar { background: var(--bg-raise); min-height: var(--control-h); }
+.sampleBar output { color: var(--text); font-size: var(--fs-micro); font-family: var(--font-mono); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.hint { margin: 0; padding: var(--space-2) var(--space-3); color: var(--text-dim); font-size: var(--fs-micro); line-height: 1.5; }
+@media (max-width: 480px) {
+  .stage { height: 320px; }
+  .toolbar { gap: var(--space-3); }
+  .zoom { width: 100%; }
+  .zoom output { margin-left: auto; }
+  .compareControl { flex-wrap: wrap; }
+}
+
+.paletteBar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-bottom: var(--border-hairline); color: var(--text-dim); font-size: var(--fs-meta); }
+.paletteBar label { display: flex; align-items: center; gap: var(--space-2); }
+.colourLegend { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-micro); }
+.colourLegend > span[aria-hidden] { display: inline-block; width: 96px; height: 8px; border-radius: var(--radius); }
+
+.brushTools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: var(--border-hairline); }
+.brushTools button svg { width: 14px; height: 14px; }
+.brushTools label { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-meta); color: var(--text-dim); }
+.brushTools input { width: 80px; accent-color: var(--signal); }
+.brushCursor { position: absolute; pointer-events: none; border: 1px solid var(--text); border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 1px var(--bg-void); }
+.painting, .painting:active { cursor: crosshair; }

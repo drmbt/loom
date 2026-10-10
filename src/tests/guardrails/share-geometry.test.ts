@@ -45,6 +45,20 @@ interface Exemption {
 }
 
 const NOT_A_SHARE: readonly Exemption[] = [
+  ...(["left", "top", "width", "height"] as const).map(property => ({ file: "app/photo-mapping-host.tsx", property, writes: 1, why: "A preview photograph is positioned and sized from its saved source crop, not a progress-track share." })),
+  {
+    file: "app/photo-depth-workspace.tsx",
+    property: "left",
+    writes: 3,
+    why: "Positions of the native/refined comparison divider, pinned photo sample and mask brush cursor. These are image inspection markers, not a played control share.",
+  },
+  {
+    file: "app/photo-depth-workspace.tsx",
+    property: "top",
+    writes: 2,
+    why: "Vertical positions of the pinned photo sample and mask brush cursor in image coordinates.",
+  },
+  ...(["width", "height"] as const).map(property => ({ file: "app/photo-depth-workspace.tsx", property, writes: 1, why: "The mask brush cursor diameter follows native mask-pixel radius in registered image coordinates." })),
   {
     file: "editor/controls/control-widget.tsx",
     property: "left",

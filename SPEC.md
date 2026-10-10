@@ -358,17 +358,172 @@ Unrelated undeclared keys still warn.
   Oversized source photographs fit proportionally within the project resolution limit
   for working textures, with an explicit size note and creation diagnostic. Original
   photo bytes, map identity and full framing are preserved rather than cropped.
-- Versioned external depth `.loomf32` assets retain the raw native single-channel float32
+- Versioned external depth `.loom.exr` assets retain the raw native single-channel float32
   output bit-for-bit. Metadata records photo SHA-256/dimensions, model revision URL,
-  inference size, registration and normalization range. Depth is relative inverse depth,
-  never metric geometry. Rendering deletterboxes/normalizes a working float32 copy;
-  source samples are unchanged. Image codecs and sRGB decoding never handle depth.
+  inference size, registration and normalization range. DAV2 uses relative inverse depth;
+  Marigold V2 uses relative log-depth. Neither is metric geometry. Rendering deletterboxes/normalizes a working float32 copy;
+  source samples are unchanged. Numerical image codecs preserve raw samples; sRGB/canvas decoding never handles depth.
 - Corrected masks preserve float confidence outside erase/restore strokes. Depth reruns
   leave mask edits and mapping nodes alone. A mask rerun explicitly replaces its edits.
   Source or detail mismatch reports out-of-date preparation; corrupt/missing assets and
   model failures are explicit errors, never successful substitute maps.
 - Save/reopen uses the existing external asset identities and relink flow. Browser video
   export awaits loaded, verified float maps; preparation itself never runs during export.
+
+#### model choice and guided depth refinement (2026-10-09)
+
+- Photo preparation adds DAV2 Large FP16 and Q4F16 beside Small FP32/Q4F16. Model labels
+  expose artifact precision and measured download size; revision/length/hash-pinned Large
+  weights carry their actual CC-BY-NC-4.0 notice. Backend selection is explicit. Browser
+  WebGPU passed every offered patch-aligned size on the measured M3 Max/36 GB machine;
+  Large WASM preparation offers the proven 266/518 sizes. Quantization names download
+  precision, never an assumed speed advantage. Existing live Depth identities stay unchanged.
+- Native depth is immutable float32. A separate explicit refinement reuses it without
+  inference, deletterboxes into registered full-frame coordinates and runs bounded progressive
+  RGB-guided WebGPU bilateral passes. Source-size, 2K and 4K targets preserve aspect, allow targets above source resolution and refuse
+  targets beyond project/device limits, and retain a separate float32 derived asset.
+  Guidance transfers photographic boundaries; it does not recover metric or missing geometry.
+- Preparation metadata v2 records the full static recipe, depth convention, stage and native
+  parent content identity. Strict v1 readers preserve old map behavior; the canonical artifact is a single-channel FLOAT32 OpenEXR with Loom metadata. Refined dimensions must match the recorded target. Graph asset fields retain
+  native parent locators. Preparation verifies parent bytes before save/application, while
+  rendering a verified final map does not load its parent or require inference models.
+- Recipes match model, explicit backend, input size and every refinement setting. Nonstatic
+  preparation settings report a diagnostic instead of reading retained values. Changes make
+  dependent results out of date; returning to saved settings restores reuse. Inference workers
+  retire after each job so large sessions do not accumulate. Cancellation waits for retirement
+  and discards late results. Failed/cancelled work preserves saved maps, masks and calibration.
+- A shared registered inspection viewport offers photo/native/refined/mask views, pan/zoom,
+  actual map-pixel scale, scalar sampling/pinning and a keyboard-operable comparison divider.
+  Depth inspection offers Grayscale/Ocean/Heat/Spectrum with a Far-to-Near legend; palette
+  changes affect display copies only, including both comparison halves. Photo and map preview
+  wells reserve their space before loading and throughout processing; the dialog uses more
+  available desktop width without stretching image registration. At desktop sizes from
+  1200 × 720, source/preview photos, the inspector and both preparation cards share columns;
+  creation controls sit below inspection. Common 1332 × 900 and 1366 × 768 layouts fit the
+  ordinary workflow (including mask brushes) without vertical scrolling. Shorter/narrower
+  windows retain scrolling; expanded advanced diagnostics/refinement can require it.
+  Large-viewport mask brushes and mapping gizmos remain independent. Refined saves require a saved,
+  verified native parent. Cache writes stream verified bytes in bounded chunks through the
+  existing Cache API, including Large FP16 artifacts.
+- Artifact save suggestions use actual prepared settings and the picked photo's name:
+  model/input detail, depth backend/native or refined dimensions and filter settings,
+  facade cutoff/detail/glass controls, Marigold seed, plus a short full-artifact SHA-256 fingerprint.
+  Brush corrections and different source bytes therefore produce distinct suggestions
+  even with identical visible settings. The save dialog remains editable; names do not
+  alter artifact identity, metadata or sample bits.
+- Quantized Marigold V2 depth now runs through an Electron-owned Swift/MLX child process on
+  macOS/Apple Silicon with at least 36 GiB unified memory. The verified mixed Q4/Q8 affine
+  transformer, BF16 runtime depth LoRA and VAE bundle totals 15,326,640,856 bytes. Shared
+  base weights omit the text encoder and restore the original pinned output bias explicitly.
+  A dedicated `pnpm native:marigold:build` builds pinned source archives and Metal resources;
+  startup/probe never builds, downloads or infers. First explicit Run streams, resumes and
+  hash-verifies the model bundle in the native disk cache. No helper or cloud inference.
+- Native recipe v2 records the immutable bundle identity, MLX backend, uint32 seed and
+  512/768/1024/1280/1536 long edge. Full-frame input/output dimensions fit source aspect and round
+  upward to 16-pixel alignment; no letterbox is inferred. Native log-depth sample bits stay
+  unchanged. Normalized near-bright working copies use the same guided refinement and loader.
+  Old recipe v1 and preparation v1/v2 assets retain their behavior; saved native/refined
+  Marigold assets render in the browser without a desktop bridge, model or parent installed.
+- Renderer IPC exposes only bounded pixels, size and seed, never executable/model/output
+  paths. The main owner authorizes the exact editor main frame, retains one job slot until
+  close, and owns acquisition, cancellation, process exit and temporary-file cleanup.
+  Cancellation/unload awaits retirement and discards late results. Native video flags and
+  addons are independent of static preparation. The shared preload unload lifecycle lives
+  under `loomDesktop.lifecycle`; video bridge objects exist only with their explicit
+  transport capabilities. Unavailable hosts show the canonical Desktop
+  only/macOS/Apple Silicon indicators and the specific setup/resource diagnostic.
+- Measured M3 Max/36 GiB: the initial three sizes stayed below the 20 GiB MLX soft scheduling threshold, including
+  1024-square (18.70 GiB peak, 11.15 s inference). Cold inference coincided with additional
+  system swap; subsequent serialized runs added zero swapouts. MLX affine Q4/Q8 numerical
+  parity with official NF4 remains unproven. Separate normal prediction and calibrated relief
+  tooling remain later phases and are not advertised as available. Evidence/notices:
+  [native verification](docs/models/marigold-v2-mlx-verification-2026-10-09.md).
+
+#### photo preparation iteration and interchange (2026-10-10)
+
+- Canonical depth and mask saves are `.loom.exr`: standard single-channel FLOAT32 OpenEXR,
+  preserving raw sample bits and Loom source/recipe/registration/parent metadata. The custom
+  float32 container and reader are removed. Imports support NONE/ZIP/ZIPS scalar scanlines;
+  unsupported channel/compression/layout profiles fail explicitly. Metadata-free images require
+  operator confirmation of convention and full-frame registration before becoming prepared assets.
+  Grayscale 16-bit PNG/TIFF remain optional normalized numerical interchange, never palette exports.
+- Guided refinement is optional, has a visible native-depth skip action, and allows 2K/4K
+  outputs above photo resolution within project/device bounds. Native is the original prediction:
+  one save suffices without refinement; derived output is saved separately. Parent identity is
+  the actual saved file's hash, not a reconstruction that might omit external EXR attributes.
+- Native, refined and comparison views show cutoff/re-range changes live while preserving
+  original samples. The effect stores its working range. An explicit depth-band mask operation
+  uses cutoffs/softness and parent content identity without inference; changed dependencies
+  invalidate that mask alone. Mask edits preserve the selected recipe and float confidence.
+- Large Surface mask inspection owns erase/restore/pan, a native-pixel brush cursor, grouped
+  stroke undo/redo and keyboard shortcuts. Entering manual editing preserves existing pixels.
+  All tabs, including the actual projection effect, support registered zoom/pan; small previews
+  open expanded inspection. Header/subtitle rows align. Toolbar groups never inherit viewport height.
+- Closing preparation retains the latest draft/settings/maps/undo within the current project
+  session, while retiring active work. Save all and create/apply writes needed files sequentially,
+  reuses saved identities, and mutates the graph only after all required saves succeed.
+- Optional depth and mask always create editable Float Map In inputs with explicit neutral
+  depth/full coverage when unassigned. Assigned missing/corrupt maps remain errors. Nine effect
+  looks plus mapped video share the actual shader in the dialog and created graph. Every newly
+  created mapping includes a regular calibration chart behind a Switch; effect/chart follow the
+  same mask/Grid Warp/Corner Pin/Window Out path. Full-frame coverage creates no artificial rim.
+- E83/E84/E85/E86 provide synthetic modular Moonlit Stone, Contour Engraving, Video and Point Cloud demonstrations. Video
+  accepts a replaceable local Movie File In through the same mapping path; its demo/source choice
+  is explicit. Dialog video decoding/playback is owned and retired on change/close, with a still
+  under reduced motion and explicit failures. No model or procedural substitute is selected on error.
+- Marigold native inference also offers 1280 and 1536. Production 1536-square passed on M3
+  Max/36 GiB at 21.75 GiB MLX peak and 35.38 s, with zero added system swapouts in that run.
+  MLX's 24 GiB setting is a soft scheduling threshold. A sampled watchdog aborts when active
+  allocation exceeds 24 GiB or recorded peak exceeds 26 GiB. The guarded 2048 attempt exceeded
+  these budgets and is unavailable. UI capability checks honor the running main process's sizes.
+- New mappings default to photographic point geometry: registered float32 depth feeds the
+  existing unprojection kernel, a separate paint kernel samples original photo UVs, and
+  coverage scales excluded points to zero area. The aspect-preserving grid has 768 samples
+  along the long edge (393,216 points at 3:2). Density, relative range/FOV, colour gain,
+  Geometry size/material, Camera/LFO and Render/Level remain separate editable nodes.
+  Point Kernel's unfiltered field input declares the data contract, accepting scalar depth
+  and colour fields without colour conversion. Existing kernel strings remain unchanged.
+- Additional modular grazing-light, contour-engraving and depth-slice recipes separate
+  numerical re-ranging, small depth shaders, ordinary LFO controls, tint/compositing and
+  grading. Calibration uses the same final projection path. The dialogue evaluates the
+  actual per-frame value graph and pushes uniform/camera updates without rebuilding GPU
+  pipelines. Point geometry is a relative-depth visualization with assumed camera/range;
+  it does not establish metric reconstruction or fill unseen surfaces.
+
+#### remaining photo-preparation plan (2026-10-09)
+
+Implementation plan: [model choice, guided refinement and quantized Marigold V2](docs/photo-mapping-pipeline-plan-2026-10-09.md).
+
+- Add verified DAV2 Large artifacts beside existing Small identities, with explicit model,
+  precision, artifact byte size, provider and supported inference dimensions. Inspect actual
+  artifact IO and measure supported configurations before enabling them; retain model notices.
+- Preparation becomes a versioned ordered recipe: native prediction, optional cleanup,
+  progressive RGB-guided float32 upscale, independent surface mask, optional separate normal
+  prediction, inspection and durable save. Inference size, native prediction size, refined
+  asset size and graph output size are distinct. RGB guidance does not recover measured geometry.
+- Native float32 predictions remain immutable and separately reusable. Strict preparation
+  metadata v2 records parameterization, registration, full recipe/stage identity and parents;
+  canonical scalar assets use OpenEXR FLOAT32 with Loom metadata; no proprietary container remains.
+  Model/precision/size/seed/refinement changes invalidate only dependent preparation stages.
+- Marigold V2 quantized depth feasibility and desktop integration are implemented. Target is the
+  owner's Apple M3 Mac with **36 GB unified memory**; quantized execution is required.
+  Prioritize audited MLX 4-bit/mixed-precision execution and evaluate MPS where viable.
+  Prove conversion/load/inference memory, task parity, usable size choices and full download
+  cost. Slower local preparation is acceptable; an unquantized 64 GB-only path is insufficient.
+  Do not substitute Marigold v1.1, promise an unverified browser export, or assume Electron
+  supplies model acceleration. V2's single transformer step still has explicit VAE/flow stages.
+- Reuse canonical helper/desktop/platform indicators on preparation executors and Run actions.
+  Report unknown, unsupported and resource-limited configurations honestly. Require both helper
+  and desktop only when the implemented route needs both. Saved numerical-map networks carry
+  no preparation-host requirement and reopen/render in browser without inference.
+- A shared inspection viewport provides native/refined comparison, registered pan/zoom,
+  numerical sampling, mask brushes, stage status and optional relative-relief/normal views.
+  Reuse existing Corner Pin/Grid Warp gizmos and command mutations for assisted alignment.
+  Relative monocular depth plus four clicks does not establish exact projector pose.
+- Downloads, inference, refinement and saving are explicit, cancellable owned jobs. Failure
+  preserves last saved maps, mask corrections and calibration; no automatic model/backend/size
+  substitutions. Reuse browser acquisition/cache paths and use verified sharded native bundles
+  when required. No cloud processing, inference on load/render/export, or new live-depth fusion.
 
 ### decided (was open, confirmed 2026-08-29)
 - baseline: Chrome/Edge ≥ 128 desktop. min capability Tier B (rgba16float + compute + storage buffers). timestamp query optional. mobile excluded v1.

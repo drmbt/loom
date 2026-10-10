@@ -1,0 +1,878 @@
+{
+  "assets": [],
+  "createdAt": "2026-08-29T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "ed_e84-photo-mapping-contour-engraving24": {
+        "id": "ed_e84-photo-mapping-contour-engraving24",
+        "order": 0,
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving4",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving5",
+          "portId": "more"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving25": {
+        "id": "ed_e84-photo-mapping-contour-engraving25",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving5",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving6",
+          "portId": "in1"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving26": {
+        "id": "ed_e84-photo-mapping-contour-engraving26",
+        "order": 0,
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving8",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving6",
+          "portId": "in2"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving27": {
+        "id": "ed_e84-photo-mapping-contour-engraving27",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving6",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving9",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving29": {
+        "id": "ed_e84-photo-mapping-contour-engraving29",
+        "order": 0,
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving9",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving15",
+          "portId": "inputs"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving30": {
+        "id": "ed_e84-photo-mapping-contour-engraving30",
+        "order": 1,
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving14",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving15",
+          "portId": "inputs"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving31": {
+        "id": "ed_e84-photo-mapping-contour-engraving31",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving15",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving10",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving33": {
+        "id": "ed_e84-photo-mapping-contour-engraving33",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving10",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving11",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving34": {
+        "id": "ed_e84-photo-mapping-contour-engraving34",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving11",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving12",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving35": {
+        "id": "ed_e84-photo-mapping-contour-engraving35",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving12",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving13",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving38": {
+        "id": "ed_e84-photo-mapping-contour-engraving38",
+        "order": 0,
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving16",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving17",
+          "portId": "in2"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving39": {
+        "id": "ed_e84-photo-mapping-contour-engraving39",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving17",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving18",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving46": {
+        "id": "ed_e84-photo-mapping-contour-engraving46",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving42",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving43",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving47": {
+        "id": "ed_e84-photo-mapping-contour-engraving47",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving43",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving44",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving48": {
+        "id": "ed_e84-photo-mapping-contour-engraving48",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving43",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving45",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving49": {
+        "id": "ed_e84-photo-mapping-contour-engraving49",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving43",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving4",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving50": {
+        "id": "ed_e84-photo-mapping-contour-engraving50",
+        "order": 0,
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving45",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving4",
+          "portId": "more"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving51": {
+        "id": "ed_e84-photo-mapping-contour-engraving51",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving43",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving5",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving52": {
+        "id": "ed_e84-photo-mapping-contour-engraving52",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving43",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving14",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving53": {
+        "id": "ed_e84-photo-mapping-contour-engraving53",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving44",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving10",
+          "portId": "mask"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving54": {
+        "id": "ed_e84-photo-mapping-contour-engraving54",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving43",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving16",
+          "portId": "input"
+        }
+      },
+      "ed_e84-photo-mapping-contour-engraving55": {
+        "id": "ed_e84-photo-mapping-contour-engraving55",
+        "source": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving12",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e84-photo-mapping-contour-engraving17",
+          "portId": "in1"
+        }
+      }
+    },
+    "groups": {
+      "gp_e84-photo-mapping-contour-engraving40": {
+        "bounds": {
+          "height": 1910,
+          "width": 2980,
+          "x": -380,
+          "y": -360
+        },
+        "id": "gp_e84-photo-mapping-contour-engraving40",
+        "label": "Photo mapping 1",
+        "members": [
+          "nd_e84-photo-mapping-contour-engraving10",
+          "nd_e84-photo-mapping-contour-engraving11",
+          "nd_e84-photo-mapping-contour-engraving12",
+          "nd_e84-photo-mapping-contour-engraving13",
+          "nd_e84-photo-mapping-contour-engraving14",
+          "nd_e84-photo-mapping-contour-engraving15",
+          "nd_e84-photo-mapping-contour-engraving16",
+          "nd_e84-photo-mapping-contour-engraving17",
+          "nd_e84-photo-mapping-contour-engraving18",
+          "nd_e84-photo-mapping-contour-engraving4",
+          "nd_e84-photo-mapping-contour-engraving42",
+          "nd_e84-photo-mapping-contour-engraving43",
+          "nd_e84-photo-mapping-contour-engraving44",
+          "nd_e84-photo-mapping-contour-engraving45",
+          "nd_e84-photo-mapping-contour-engraving5",
+          "nd_e84-photo-mapping-contour-engraving56",
+          "nd_e84-photo-mapping-contour-engraving57",
+          "nd_e84-photo-mapping-contour-engraving58",
+          "nd_e84-photo-mapping-contour-engraving6",
+          "nd_e84-photo-mapping-contour-engraving7",
+          "nd_e84-photo-mapping-contour-engraving8",
+          "nd_e84-photo-mapping-contour-engraving9"
+        ]
+      }
+    },
+    "nodes": {
+      "nd_e84-photo-mapping-contour-engraving10": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving10",
+        "label": "mask_surface1",
+        "parameters": {
+          "apply": "colour",
+          "channel": "red",
+          "invert": 0
+        },
+        "position": {
+          "x": 1560,
+          "y": 0
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "mask"
+      },
+      "nd_e84-photo-mapping-contour-engraving11": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving11",
+        "label": "gridwarp_surface1",
+        "parameters": {
+          "columns": 3,
+          "feather": 0,
+          "interpolation": "smooth",
+          "p00": [
+            0,
+            0
+          ],
+          "p01": [
+            0,
+            0.5
+          ],
+          "p02": [
+            0,
+            1
+          ],
+          "p10": [
+            0.5,
+            0
+          ],
+          "p11": [
+            0.5,
+            0.5
+          ],
+          "p12": [
+            0.5,
+            1
+          ],
+          "p20": [
+            1,
+            0
+          ],
+          "p21": [
+            1,
+            0.5
+          ],
+          "p22": [
+            1,
+            1
+          ],
+          "rows": 3,
+          "u0": 0,
+          "u1": 0.5,
+          "u2": 1,
+          "v0": 0,
+          "v1": 0.5,
+          "v2": 1
+        },
+        "position": {
+          "x": 1820,
+          "y": 0
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "gridWarp"
+      },
+      "nd_e84-photo-mapping-contour-engraving12": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving12",
+        "label": "cornerpin_surface1",
+        "parameters": {
+          "extend": "zero",
+          "extractbl": [
+            0,
+            0
+          ],
+          "extractbr": [
+            1,
+            0
+          ],
+          "extracttl": [
+            0,
+            1
+          ],
+          "extracttr": [
+            1,
+            1
+          ],
+          "feather": 0,
+          "pinbl": [
+            0,
+            0
+          ],
+          "pinbr": [
+            1,
+            0
+          ],
+          "pintl": [
+            0,
+            1
+          ],
+          "pintr": [
+            1,
+            1
+          ]
+        },
+        "position": {
+          "x": 2080,
+          "y": 0
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "cornerPin"
+      },
+      "nd_e84-photo-mapping-contour-engraving13": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving13",
+        "label": "window_projector1",
+        "parameters": {
+          "fit": "fit",
+          "fullscreen": true,
+          "height": 1080,
+          "hideCursor": true,
+          "screen": "",
+          "source": "",
+          "toneMap": "none",
+          "width": 1920
+        },
+        "position": {
+          "x": 2340,
+          "y": 0
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "window"
+      },
+      "nd_e84-photo-mapping-contour-engraving14": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving14",
+        "label": "wgsl_calibration1",
+        "parameters": {
+          "source": "\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let grid = uv * 10.0;\n  let cell = vec2i(floor(grid));\n  let checker = f32((cell.x + cell.y) % 2);\n  let aa = max(fwidth(grid), vec2f(0.004));\n  let distance = min(fract(grid), 1.0 - fract(grid));\n  let lines = 1.0 - smoothstep(aa.x, aa.x * 2.0, min(distance.x, distance.y));\n  var colour = mix(vec3f(0.07), vec3f(0.2), checker) + vec3f(lines * 0.55);\n  let center = abs(uv - 0.5);\n  colour = mix(colour, vec3f(1.0, 0.15, 0.1), 1.0 - smoothstep(0.002, 0.005, center.x));\n  colour = mix(colour, vec3f(0.1, 1.0, 0.25), 1.0 - smoothstep(0.002, 0.005, center.y));\n  let corners = step(0.92, max(abs(uv.x - 0.5), abs(uv.y - 0.5)) * 2.0);\n  let quadrant = vec3f(select(0.1, 1.0, uv.x > 0.5), select(0.1, 1.0, uv.y > 0.5), 0.6);\n  return vec4f(mix(colour, quadrant, corners), 1.0);\n}"
+        },
+        "position": {
+          "x": 1040,
+          "y": 900
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "customWgsl"
+      },
+      "nd_e84-photo-mapping-contour-engraving15": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving15",
+        "label": "switch_calibration1",
+        "parameters": {
+          "crossfade": false,
+          "index": 0
+        },
+        "position": {
+          "x": 1300,
+          "y": 0
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "switch"
+      },
+      "nd_e84-photo-mapping-contour-engraving16": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving16",
+        "label": "level_reference1",
+        "parameters": {
+          "blacklevel": 0,
+          "brightness": 0.65,
+          "contrast": 1,
+          "gamma1": 1,
+          "invert": 0,
+          "opacity": 1,
+          "whitelevel": 1
+        },
+        "position": {
+          "x": 1040,
+          "y": 300
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "level"
+      },
+      "nd_e84-photo-mapping-contour-engraving17": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving17",
+        "label": "screen_preview1",
+        "parameters": {
+          "opacity": 0.7
+        },
+        "position": {
+          "x": 1300,
+          "y": 300
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "screen"
+      },
+      "nd_e84-photo-mapping-contour-engraving18": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving18",
+        "label": "output_preview1",
+        "parameters": {
+          "toneMap": "none"
+        },
+        "position": {
+          "x": 1560,
+          "y": 300
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "output"
+      },
+      "nd_e84-photo-mapping-contour-engraving4": {
+        "definitionVersion": 1,
+        "format": {
+          "format": "r32float",
+          "mode": "fixed"
+        },
+        "id": "nd_e84-photo-mapping-contour-engraving4",
+        "label": "wgsl_depth_range1",
+        "parameters": {
+          "high": 1,
+          "low": 0,
+          "source": "\nstruct Params { low: f32, // @default 0\n  high: f32, // @default 1\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let dimensions = vec2i(textureDimensions(inputTexture1));\n  let pixel = clamp(vec2i(uv * vec2f(dimensions)), vec2i(0), dimensions - vec2i(1));\n  let depth = textureLoad(inputTexture1, pixel, 0).r;\n  let working = clamp((depth - params.low) / max(params.high - params.low, 0.000001), 0.0, 1.0);\n  return vec4f(working, 0.0, 0.0, 1.0);\n}"
+        },
+        "position": {
+          "x": 260,
+          "y": 0
+        },
+        "resolution": {
+          "height": 320,
+          "mode": "fixed",
+          "width": 480
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "customWgslMulti"
+      },
+      "nd_e84-photo-mapping-contour-engraving42": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving42",
+        "label": "checker_seed",
+        "parameters": {
+          "color1": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "color2": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0
+          ],
+          "size": [
+            8,
+            6
+          ]
+        },
+        "position": {
+          "x": -340,
+          "y": 0
+        },
+        "resolution": {
+          "height": 320,
+          "mode": "fixed",
+          "width": 480
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "checker"
+      },
+      "nd_e84-photo-mapping-contour-engraving43": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving43",
+        "label": "wgsl_synthetic_photo",
+        "parameters": {
+          "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nfn rectangle(uv: vec2f, center: vec2f, halfSize: vec2f) -> f32 {\n  let distance = abs(uv - center) - halfSize;\n  let aa = max(fwidth(uv), vec2f(0.001));\n  return (1.0 - smoothstep(-aa.x, aa.x, distance.x)) * (1.0 - smoothstep(-aa.y, aa.y, distance.y));\n}\nfn site(uv: vec2f) -> vec3f {\n  let wall = rectangle(uv, vec2f(0.5, 0.53), vec2f(0.42, 0.42));\n  let cell = fract((uv - vec2f(0.10, 0.13)) * vec2f(6.25, 3.85));\n  let openings = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.24, 0.27))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.37, 0.28));\n  let frames = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.30, 0.33))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.38, 0.30));\n  let portal = rectangle(uv, vec2f(0.5, 0.82), vec2f(0.075, 0.13));\n  let columns = 1.0 - smoothstep(0.010, 0.022, abs(fract((uv.x - 0.08) * 6.25) - 0.05));\n  let cornice = rectangle(uv, vec2f(0.5, 0.11), vec2f(0.43, 0.025));\n  let sill = rectangle(uv, vec2f(0.5, 0.70), vec2f(0.425, 0.012));\n  let rosePosition = (uv - vec2f(0.5, 0.31)) * vec2f(1.5, 1.0);\n  let roseRadius = length(rosePosition);\n  let roseRim = 1.0 - smoothstep(0.005, 0.013, abs(roseRadius - 0.078));\n  let spokes = pow(0.5 + 0.5 * cos(atan2(rosePosition.y, rosePosition.x) * 12.0), 12.0);\n  let roseDisc = 1.0 - smoothstep(0.063, 0.067, roseRadius);\n  let roseOpening = roseDisc * (1.0 - spokes);\n  let relief = clamp(0.48 + 0.24 * columns + 0.17 * frames - 0.43 * openings\n    + 0.31 * cornice + 0.16 * sill - 0.38 * portal + 0.25 * roseRim\n    + 0.2 * roseDisc * spokes - 0.3 * roseOpening + 0.055 * sin(uv.x * 3.14159), 0.0, 1.0);\n  let excluded = clamp(openings * (1.0 - roseRim) + portal + roseOpening, 0.0, 1.0);\n  let mask = max(wall, cornice) * (1.0 - excluded);\n  // Working normalized depth is near-bright, matching inverse-depth unprojection.\n  return vec3f(relief, mask, excluded);\n}\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let geometry = site(uv);\n  let wall = rectangle(uv, vec2f(0.5, 0.53), vec2f(0.42, 0.42));\n  let stone = 0.48 + 0.12 * sin(uv.x * 131.0) * sin(uv.y * 97.0);\n  let mortar = 1.0 - smoothstep(0.015, 0.035, min(fract(uv.x * 36.0), fract(uv.y * 32.0)));\n  let face = vec3f(stone * 0.92, stone * 0.96, stone) * (0.55 + geometry.x * 0.7) - mortar * 0.025;\n  let sky = mix(vec3f(0.035, 0.055, 0.105), vec3f(0.07, 0.095, 0.14), uv.y);\n  var colour = mix(sky, face, max(wall, geometry.y));\n  colour = mix(colour, vec3f(0.015, 0.022, 0.035), geometry.z);\n  return vec4f(max(colour, vec3f(0.0)), 1.0);\n}"
+        },
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "resolution": {
+          "height": 320,
+          "mode": "fixed",
+          "width": 480
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "customWgsl"
+      },
+      "nd_e84-photo-mapping-contour-engraving44": {
+        "definitionVersion": 1,
+        "format": {
+          "format": "r32float",
+          "mode": "fixed"
+        },
+        "id": "nd_e84-photo-mapping-contour-engraving44",
+        "label": "wgsl_synthetic_mask",
+        "parameters": {
+          "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nfn rectangle(uv: vec2f, center: vec2f, halfSize: vec2f) -> f32 {\n  let distance = abs(uv - center) - halfSize;\n  let aa = max(fwidth(uv), vec2f(0.001));\n  return (1.0 - smoothstep(-aa.x, aa.x, distance.x)) * (1.0 - smoothstep(-aa.y, aa.y, distance.y));\n}\nfn site(uv: vec2f) -> vec3f {\n  let wall = rectangle(uv, vec2f(0.5, 0.53), vec2f(0.42, 0.42));\n  let cell = fract((uv - vec2f(0.10, 0.13)) * vec2f(6.25, 3.85));\n  let openings = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.24, 0.27))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.37, 0.28));\n  let frames = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.30, 0.33))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.38, 0.30));\n  let portal = rectangle(uv, vec2f(0.5, 0.82), vec2f(0.075, 0.13));\n  let columns = 1.0 - smoothstep(0.010, 0.022, abs(fract((uv.x - 0.08) * 6.25) - 0.05));\n  let cornice = rectangle(uv, vec2f(0.5, 0.11), vec2f(0.43, 0.025));\n  let sill = rectangle(uv, vec2f(0.5, 0.70), vec2f(0.425, 0.012));\n  let rosePosition = (uv - vec2f(0.5, 0.31)) * vec2f(1.5, 1.0);\n  let roseRadius = length(rosePosition);\n  let roseRim = 1.0 - smoothstep(0.005, 0.013, abs(roseRadius - 0.078));\n  let spokes = pow(0.5 + 0.5 * cos(atan2(rosePosition.y, rosePosition.x) * 12.0), 12.0);\n  let roseDisc = 1.0 - smoothstep(0.063, 0.067, roseRadius);\n  let roseOpening = roseDisc * (1.0 - spokes);\n  let relief = clamp(0.48 + 0.24 * columns + 0.17 * frames - 0.43 * openings\n    + 0.31 * cornice + 0.16 * sill - 0.38 * portal + 0.25 * roseRim\n    + 0.2 * roseDisc * spokes - 0.3 * roseOpening + 0.055 * sin(uv.x * 3.14159), 0.0, 1.0);\n  let excluded = clamp(openings * (1.0 - roseRim) + portal + roseOpening, 0.0, 1.0);\n  let mask = max(wall, cornice) * (1.0 - excluded);\n  // Working normalized depth is near-bright, matching inverse-depth unprojection.\n  return vec3f(relief, mask, excluded);\n}\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let coverage = site(uv).y;\n  return vec4f(coverage, coverage, coverage, 1.0);\n}"
+        },
+        "position": {
+          "x": 0,
+          "y": 600
+        },
+        "resolution": {
+          "height": 320,
+          "mode": "fixed",
+          "width": 480
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "customWgsl"
+      },
+      "nd_e84-photo-mapping-contour-engraving45": {
+        "definitionVersion": 1,
+        "format": {
+          "format": "r32float",
+          "mode": "fixed"
+        },
+        "id": "nd_e84-photo-mapping-contour-engraving45",
+        "label": "wgsl_synthetic_depth",
+        "parameters": {
+          "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nfn rectangle(uv: vec2f, center: vec2f, halfSize: vec2f) -> f32 {\n  let distance = abs(uv - center) - halfSize;\n  let aa = max(fwidth(uv), vec2f(0.001));\n  return (1.0 - smoothstep(-aa.x, aa.x, distance.x)) * (1.0 - smoothstep(-aa.y, aa.y, distance.y));\n}\nfn site(uv: vec2f) -> vec3f {\n  let wall = rectangle(uv, vec2f(0.5, 0.53), vec2f(0.42, 0.42));\n  let cell = fract((uv - vec2f(0.10, 0.13)) * vec2f(6.25, 3.85));\n  let openings = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.24, 0.27))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.37, 0.28));\n  let frames = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.30, 0.33))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.38, 0.30));\n  let portal = rectangle(uv, vec2f(0.5, 0.82), vec2f(0.075, 0.13));\n  let columns = 1.0 - smoothstep(0.010, 0.022, abs(fract((uv.x - 0.08) * 6.25) - 0.05));\n  let cornice = rectangle(uv, vec2f(0.5, 0.11), vec2f(0.43, 0.025));\n  let sill = rectangle(uv, vec2f(0.5, 0.70), vec2f(0.425, 0.012));\n  let rosePosition = (uv - vec2f(0.5, 0.31)) * vec2f(1.5, 1.0);\n  let roseRadius = length(rosePosition);\n  let roseRim = 1.0 - smoothstep(0.005, 0.013, abs(roseRadius - 0.078));\n  let spokes = pow(0.5 + 0.5 * cos(atan2(rosePosition.y, rosePosition.x) * 12.0), 12.0);\n  let roseDisc = 1.0 - smoothstep(0.063, 0.067, roseRadius);\n  let roseOpening = roseDisc * (1.0 - spokes);\n  let relief = clamp(0.48 + 0.24 * columns + 0.17 * frames - 0.43 * openings\n    + 0.31 * cornice + 0.16 * sill - 0.38 * portal + 0.25 * roseRim\n    + 0.2 * roseDisc * spokes - 0.3 * roseOpening + 0.055 * sin(uv.x * 3.14159), 0.0, 1.0);\n  let excluded = clamp(openings * (1.0 - roseRim) + portal + roseOpening, 0.0, 1.0);\n  let mask = max(wall, cornice) * (1.0 - excluded);\n  // Working normalized depth is near-bright, matching inverse-depth unprojection.\n  return vec3f(relief, mask, excluded);\n}\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let depth = site(uv).x;\n  return vec4f(depth, depth, depth, 1.0);\n}"
+        },
+        "position": {
+          "x": 0,
+          "y": 300
+        },
+        "resolution": {
+          "height": 320,
+          "mode": "fixed",
+          "width": 480
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "customWgsl"
+      },
+      "nd_e84-photo-mapping-contour-engraving5": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving5",
+        "label": "wgsl_contours1",
+        "parameters": {
+          "gain": 1,
+          "levels": 24,
+          "offset": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('lfo_photo_motion1').chan.value"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n\nfn depthAt(uv: vec2f) -> f32 {\n  let size = vec2i(textureDimensions(inputTexture1));\n  let pixel = clamp(vec2i(uv * vec2f(size)), vec2i(0), size - vec2i(1));\n  return textureLoad(inputTexture1, pixel, 0).r;\n}\nstruct Params {\n  levels: f32, // @default 24 Number of iso-depth contours across the normalized depth range.\n  width: f32, // @default 0.045 Half-width in contour intervals, in 0..0.5.\n  offset: f32, // @default 0 Contour phase in intervals; drive this parameter to move the lines through depth.\n  gain: f32, // @default 1 Contour coverage gain. White marks the lines; tint or invert downstream.\n};\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let phase = depthAt(uv) * max(params.levels, 1.0) + params.offset;\n  let distance = abs(fract(phase) - 0.5);\n  let antialias = max(fwidth(phase), 0.0001);\n  let width = clamp(params.width, 0.0, 0.5);\n  let coverage = (1.0 - smoothstep(width, width + antialias, distance)) * max(params.gain, 0.0);\n  return vec4f(vec3f(coverage), 1.0);\n}",
+          "width": 0.045
+        },
+        "position": {
+          "x": 520,
+          "y": 0
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "customWgslMulti"
+      },
+      "nd_e84-photo-mapping-contour-engraving56": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving56",
+        "label": "note_synthetic_site",
+        "parameters": {
+          "body": "The stone photograph and scalar fields share one analytic facade with window recesses, portal, pilasters and a carved rosette. This executable workflow is synthetic, not a demonstration of AI depth quality. Depth and coverage stay r32float data textures. Replace these three source nodes with your saved photograph and maps for a real facade.",
+          "color": "shader",
+          "title": "Synthetic facade · registered RGB, depth and mask"
+        },
+        "position": {
+          "x": -340,
+          "y": -320
+        },
+        "size": {
+          "height": 220,
+          "width": 1000
+        },
+        "type": "annotate"
+      },
+      "nd_e84-photo-mapping-contour-engraving57": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving57",
+        "label": "note_alignment",
+        "parameters": {
+          "body": "switch_calibration1: 0 content, 1 regular test chart. Both pass through mask_surface1, gridwarp_surface1 and cornerpin_surface1. The preview shows that same warped branch over the reference photograph. Open window_projector1 explicitly to project it. Every stage remains editable.",
+          "color": "output",
+          "title": "Shared calibration and projector path"
+        },
+        "position": {
+          "x": 760,
+          "y": -320
+        },
+        "size": {
+          "height": 220,
+          "width": 900
+        },
+        "type": "annotate"
+      },
+      "nd_e84-photo-mapping-contour-engraving58": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving58",
+        "label": "note_editable_recipe",
+        "parameters": {
+          "body": "Contour engraving: depth_range → contours → Multiply with projection_tint → Level. Edit contour spacing and line width in wgsl_contours1, motion in lfo_photo_motion1, and colour/intensity in Solid and Level. The scalar depth creates lines through the carved relief instead of flat screen-space stripes.",
+          "color": "shader",
+          "title": "Contour Engraving · editable stages"
+        },
+        "position": {
+          "x": 0,
+          "y": 1260
+        },
+        "size": {
+          "height": 250,
+          "width": 1500
+        },
+        "type": "annotate"
+      },
+      "nd_e84-photo-mapping-contour-engraving6": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving6",
+        "label": "multiply_photo_look1",
+        "parameters": {
+          "opacity": 1
+        },
+        "position": {
+          "x": 780,
+          "y": 0
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "multiply"
+      },
+      "nd_e84-photo-mapping-contour-engraving7": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving7",
+        "label": "lfo_photo_motion1",
+        "parameters": {
+          "amplitude": 0.5,
+          "frequency": 0.03,
+          "offset": 0,
+          "phase": 0,
+          "shape": "sine"
+        },
+        "position": {
+          "x": 520,
+          "y": 600
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "lfo"
+      },
+      "nd_e84-photo-mapping-contour-engraving8": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving8",
+        "label": "solid_projection_tint1",
+        "parameters": {
+          "color": [
+            1,
+            0.88,
+            0.65,
+            1
+          ]
+        },
+        "position": {
+          "x": 780,
+          "y": 600
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "solid"
+      },
+      "nd_e84-photo-mapping-contour-engraving9": {
+        "definitionVersion": 1,
+        "id": "nd_e84-photo-mapping-contour-engraving9",
+        "label": "level_photo_grade1",
+        "parameters": {
+          "blacklevel": 0,
+          "brightness": 1,
+          "contrast": 1,
+          "gamma1": 1,
+          "invert": 0,
+          "opacity": 1,
+          "whitelevel": 1
+        },
+        "position": {
+          "x": 1040,
+          "y": 0
+        },
+        "size": {
+          "height": 220,
+          "width": 220
+        },
+        "type": "level"
+      }
+    },
+    "revision": 2
+  },
+  "name": "E84 Photo Mapping Contour Engraving",
+  "projectId": "example-e84-photo-mapping-contour-engraving",
+  "schemaVersion": 5,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 1073741824
+    },
+    "outputResolution": {
+      "height": 320,
+      "width": 480
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 84,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-08-29T00:00:00.000Z"
+}

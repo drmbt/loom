@@ -15,9 +15,9 @@ function installUnloadGate({ window, inputs, onError }) {
     if (draining) return;
     draining = true;
     void (async () => {
-      await contents.executeJavaScript('window.loomDesktop.input.prepareForUnload()');
+      await contents.executeJavaScript('window.loomDesktop.lifecycle.prepareForUnload()');
       await inputs.retireOwner(contents);
-      await contents.executeJavaScript('window.loomDesktop.input.commitUnload()');
+      await contents.executeJavaScript('window.loomDesktop.lifecycle.commitUnload()');
       if (closing) window.close();
       else contents.reload();
     })().catch(error => { draining = false; onError(error); });

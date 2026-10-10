@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { linearToSrgb } from "../export/pixel-format.ts";
 import { FACADE_MASK_DEFAULTS, facadeMaskSettings, refineFacadeMask, type FacadeMaskSettings } from "./facade-mask.ts";
-import { decodeFloatMap, encodeFloatMap, type FloatMap } from "./float-map.ts";
+import { type FloatMap } from "./float-map.ts";
+import { decodeDepthExr, encodeDepthExr } from "./depth-exr.ts";
 import { makePreparedMap, paintMaskStroke, preparedMetadata } from "./prepared-map.ts";
 
 function envelope(values: number[] = [1], width = values.length, height = 1): FloatMap {
@@ -64,7 +65,7 @@ describe("facade surface refinement", () => {
     const painted = paintMaskStroke(refined, { x: 4, y: 0 }, { x: 4, y: 0 }, 0.25, 1);
     expect(painted.values[4]).toBe(1);
     expect(painted.values[3]).toBe(refined.values[3]);
-    const reopened = decodeFloatMap(encodeFloatMap(painted));
+    const reopened = decodeDepthExr(encodeDepthExr(painted));
     expect(new Uint32Array(reopened.values.buffer)).toEqual(new Uint32Array(painted.values.buffer));
     expect(facadeMaskSettings(reopened)).toEqual(facadeMaskSettings(refined));
     expect(new Uint32Array(base.values.buffer)).toEqual(baseBits);
@@ -86,7 +87,7 @@ describe("facade surface refinement", () => {
     expect(facadeMaskSettings(refined)).toEqual({
       version: 1, detailSide: 1536, envelopeWidth: 64, envelopeHeight: 64, ...FACADE_MASK_DEFAULTS,
     });
-    expect(encodeFloatMap(refined).length).toBeLessThan(1536 * 4 + 1024);
+    expect(encodeDepthExr(refined).length).toBeLessThan(1536 * 4 + 1024);
     expect(facadeMaskSettings(base)).toBeUndefined();
   });
 

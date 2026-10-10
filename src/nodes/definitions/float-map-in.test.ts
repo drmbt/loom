@@ -7,6 +7,17 @@ import { floatMapInNode, FLOAT_MAP_TEXTURE_KEY, floatMapSourceIdFor } from "./fl
 import { compileContext, readNodePlan } from "./test-support.ts";
 
 describe("Float Map In", () => {
+  it("offers only validated Large sizes for the explicitly selected backend", () => {
+    for (const depthBackend of ["wasm", "webgpu"] as const) {
+      const schema = effectiveParameterSchema(floatMapInNode, { interpretation: "depth", depthModel: "depth-anything-v2-large-q4f16", depthBackend });
+      const size = schema.inputSide;
+      if (size?.type !== "enum") throw new Error("Depth input size must be an enum");
+      expect(size.options.map(option => option.value)).toEqual(depthBackend === "wasm" ? ["266", "518"]
+        : ["266", "392", "518", "644", "770", "896", "1036", "1288"]);
+    }
+    expect(floatMapInNode.requires).toBeUndefined();
+  });
+
   it("declares a data source with float32 storage and project resolution", () => {
     expect(validateNodeDefinition(floatMapInNode)).toEqual([]);
     expect(floatMapInNode.inputs).toEqual([expect.objectContaining({ id: "picture", optional: true })]);
@@ -69,5 +80,56 @@ describe("Float Map In", () => {
     expect(inputSide.inactiveWhen?.({ interpretation: "depth" })).toBeNull();
     expect(inputSide.inactiveWhen?.({ interpretation: "mask" })).toBeTruthy();
     expect(inputSide.inactiveWhen?.({ interpretation: "raw" })).toBeTruthy();
+  });
+
+  it("fills an explicitly unassigned constant map in float32 without external resources", () => {
+    for (const file of [undefined, ""]) for (const emptyValue of [0.5, 1, -2.5, 1.0000001192092896]) {
+      const compiled = floatMapInNode.compile(compileContext({ inputs: [],
+        parameters: { ...(file === undefined ? {} : { file }), emptySource: "constant", emptyValue } }));
+      expect(compiled.scratch).toBeUndefined();
+      expect(compiled.passes).toHaveLength(1);
+      const read = readNodePlan(compiled.passes, { inputs: [], scratch: [] });
+      expect(read.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+      const pass = read.passes[0];
+      if (pass?.kind !== "effect") throw new Error("Unassigned Float Map In must compile an effect pass");
+      expect(pass.textures).toEqual([]); expect(pass.samplers).toEqual([]);
+      expect(pass.uniforms).toEqual({ emptyValue });
+      expect(pass.uniformBinding).toBe("params");
+      expect(pass.shader).toContain("return vec4f(params.emptyValue, 0.0, 0.0, 1.0)");
+      expect(pass.shader).not.toMatch(/textureLoad|textureSample|srgb|pow\(/i);
+    }
+    expect(floatMapInNode.formatPolicy).toEqual({ kind: "fixed", format: "r32float" });
+    expect(floatMapInNode.requires).toBeUndefined();
+  });
+
+  it("always loads an assigned locator even when unassigned-constant mode is selected", () => {
+    for (const file of ["asset:depth", "file:///missing.loom.exr", "asset:corrupt", " "]) {
+      const compiled = floatMapInNode.compile(compileContext({ inputs: [], parameters: { file, emptySource: "constant", emptyValue: 1 } }));
+      expect(compiled.scratch).toEqual([{ key: FLOAT_MAP_TEXTURE_KEY, kind: "external", sourceId: floatMapSourceIdFor("n1"), format: "r32float" }]);
+      const pass = readNodePlan(compiled.passes, { inputs: [], scratch: [FLOAT_MAP_TEXTURE_KEY] }).passes[0];
+      if (pass?.kind !== "effect") throw new Error("Assigned Float Map In must compile its normal blit");
+      expect(pass.uniforms).toBeUndefined();
+      expect(pass.textures?.[0]?.resourceId).toBe(scratchResourceId("n1", FLOAT_MAP_TEXTURE_KEY));
+    }
+  });
+
+  it("preserves required-file behavior by default and recompiles changes to source selection", () => {
+    const schema = effectiveParameterSchema(floatMapInNode, {});
+    expect(schema.emptySource).toMatchObject({ type: "enum", default: "error", compileTime: true });
+    expect(schema.file?.compileTime).toBe(true);
+    expect(schema.emptyValue).toMatchObject({ type: "number", default: 0.5, min: 0, max: 1, range: "soft" });
+    for (const parameters of [{}, { file: "" }, { file: "", emptySource: "error" }]) {
+      expect(floatMapInNode.compile(compileContext({ inputs: [], parameters })).scratch?.[0]?.kind).toBe("external");
+    }
+    const compiled = floatMapInNode.compile(compileContext({ inputs: [], parameters: { emptySource: "constant" } }));
+    const pass = readNodePlan(compiled.passes, { inputs: [], scratch: [] }).passes[0];
+    if (pass?.kind !== "effect") throw new Error("Unassigned Float Map In must compile an effect pass");
+    expect(pass.uniforms).toEqual({ emptyValue: 0.5 });
+    expect(schema.emptyValue?.inactiveWhen?.({ emptySource: "constant", file: "" })).toBeNull();
+    expect(schema.emptyValue?.inactiveWhen?.({ emptySource: "constant", file: "asset:map" })).toBeTruthy();
+  });
+
+  it.each([NaN, Infinity, -Infinity])("refuses nonfinite unassigned constants: %s", emptyValue => {
+    expect(() => floatMapInNode.compile(compileContext({ inputs: [], parameters: { emptySource: "constant", emptyValue } }))).toThrow(/must be finite/);
   });
 });
