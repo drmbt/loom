@@ -618,6 +618,55 @@ describe("reusable photo preparation host", () => {
     expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.run).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
   });
 
+  it("creates the default photo point cloud as independently editable depth, colour, geometry, camera and rendering stages", async () => {
+    const target = runtime(); await open(target); await choosePhoto();
+    expect((screen.getByRole("combobox", { name: "First effect" }) as HTMLSelectElement).value).toBe("13");
+    await chooseMap("depth"); await screen.findByRole("button", { name: "Rerun depth" });
+    await chooseMap("mask"); await screen.findByRole("button", { name: "Rerun mask" });
+    await click("Create mapping network");
+    const graph = target.bus.store.getGraph();
+    const nodes = Object.values(graph.nodes);
+    expect(nodes.filter(node => node.type === "pointGrid")).toHaveLength(1);
+    expect(nodes.filter(node => node.type === "pointKernel")).toHaveLength(2);
+    for (const type of ["geometry", "camera", "render", "lfo", "materialUnlit"]) expect(nodes.filter(node => node.type === type)).toHaveLength(1);
+    const carve = nodes.find(node => node.label === "kernel_relative_depth1")!;
+    const paint = nodes.find(node => node.label === "kernel_photo_colour1")!;
+    const range = nodes.find(node => node.label === "wgsl_depth_range1")!;
+    const geometry = nodes.find(node => node.type === "geometry")!;
+    const camera = nodes.find(node => node.type === "camera")!;
+    const render = nodes.find(node => node.type === "render")!;
+    expect(paint.parameters).toMatchObject({ heat: 0, gain: 1 });
+    expect(geometry.parameters).toMatchObject({ mode: "points", scale: { mode: "map", bindings: { map: { attribute: "tint", channel: "w" } } },
+      tint: { mode: "map", bindings: { map: { attribute: "tint" } } } });
+    expect(render.parameters).toMatchObject({ camera: camera.label, scenes: geometry.label });
+    expect(nodes.find(node => node.label === "level_photo_grade1")?.parameters).toMatchObject({ brightness: 1.5 });
+    expect(Object.values(graph.edges)).toContainEqual(expect.objectContaining({ source: { nodeId: range.id, portId: "out" }, target: { nodeId: carve.id, portId: "field" } }));
+    const window = nodes.find(node => node.type === "window")!;
+    const plan = compileGraph({ graph, registry: target.registry, settings: target.settings, capabilities: testCapabilities(), sinks: [{ nodeId: window.id, kind: "output" }] });
+    expect(plan.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    const field = plan.outputs.find(output => output.nodeId === range.id)!;
+    expect(field).toMatchObject({ format: "r32float", space: "data" });
+    expect(plan.passes.find(pass => "nodeId" in pass && pass.nodeId === carve.id && "textures" in pass)).toMatchObject({
+      textures: [{ binding: "fieldTexture", resourceId: field.resourceId, sampled: "unfiltered" }] });
+    const depth = nodes.find(node => node.type === "floatMapIn" && node.parameters.interpretation === "depth")!;
+    const updated = await target.bus.execute("graph.applyPatch", { baseRevision: graph.revision, label: "Set modular depth range", operations: [
+      { op: "setParameters", nodeId: range.id, parameters: { low: 0.25, high: 0.8 } },
+    ] }, target.invocation);
+    expect(updated.status).toBe("applied");
+    await open(target, depth.id);
+    await screen.findByRole("button", { name: "Apply saved maps" });
+    expect(screen.queryByRole("combobox", { name: "First effect" })).toBeNull();
+    fireEvent.click(screen.getByText("Depth range and cutoff", { exact: true }));
+    expect((screen.getByRole("slider", { name: /^Far cutoff/ }) as HTMLInputElement).value).toBe("0.25");
+    expect((screen.getByRole("slider", { name: /^Near cutoff/ }) as HTMLInputElement).value).toBe("0.8");
+    fireEvent.change(screen.getByRole("slider", { name: /^Far cutoff/ }), { target: { value: "0.35" } });
+    await click("Apply saved maps");
+    expect(target.bus.store.getGraph().nodes[range.id]!.parameters).toMatchObject({ low: 0.35, high: 0.8 });
+    expect(target.bus.store.getGraph().nodes[camera.id]).toEqual(camera);
+    expect(target.bus.store.getGraph().nodes[geometry.id]).toEqual(geometry);
+    expect(mocks.run).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+  });
+
   it("runs depth and mask only on demand, saves each separately, and creates one undoable usable network", async () => {
     const target = runtime(); await open(target);
     expect(screen.getByText("Next: Choose a reference photo to begin")).toBeDefined();
@@ -640,7 +689,7 @@ describe("reusable photo preparation host", () => {
     await click("Create mapping network");
     expect(screen.queryByRole("dialog")).toBeNull();
     const graph = target.bus.store.getGraph();
-    expect(Object.values(graph.nodes)).toHaveLength(13);
+    expect(Object.values(graph.nodes)).toHaveLength(23);
     const window = Object.values(graph.nodes).find(node => node.type === "window")!;
     const plan = compileGraph({ graph, registry: target.registry, settings: target.settings, capabilities: testCapabilities(),
       sinks: [{ nodeId: window.id, kind: "output" }] });
@@ -661,15 +710,15 @@ describe("reusable photo preparation host", () => {
     await waitFor(() => expect((screen.getByRole("button", { name: "Create mapping network" }) as HTMLButtonElement).disabled).toBe(false));
     await click("Create mapping network");
     const graph = target.bus.store.getGraph();
-    expect(Object.values(graph.nodes)).toHaveLength(13);
+    expect(Object.values(graph.nodes)).toHaveLength(23);
     expect(Object.values(graph.nodes).find(node => node.type === "floatMapIn" && node.parameters.interpretation === "depth")?.parameters)
       .toMatchObject({ file: depthRef, inputSide: "392" });
     expect(Object.values(graph.nodes).find(node => node.type === "floatMapIn" && node.parameters.interpretation === "mask")?.parameters.file).toBe(maskRef);
     const output = Object.values(graph.nodes).find(node => node.type === "output")!;
     const preview = Object.values(graph.nodes).find(node => node.type === "screen")!;
     expect(preview.parameters.opacity).toBe(0.6);
-    const coverage = Object.values(graph.nodes).find(node => node.type === "mask")!;
-    const reference = Object.values(graph.nodes).find(node => node.type === "level")!;
+    const coverage = Object.values(graph.nodes).find(node => node.label === "mask_surface1")!;
+    const reference = Object.values(graph.nodes).find(node => node.label === "level_reference1")!;
     expect(Object.values(graph.edges).some(edge => edge.source.nodeId === coverage.id && edge.target.nodeId === preview.id && edge.target.portId === "in1")).toBe(true);
     expect(Object.values(graph.edges).some(edge => edge.source.nodeId === reference.id && edge.target.nodeId === preview.id && edge.target.portId === "in2")).toBe(true);
     expect(Object.values(graph.edges).some(edge => edge.source.nodeId === preview.id && edge.target.nodeId === output.id)).toBe(true);
@@ -686,7 +735,7 @@ describe("reusable photo preparation host", () => {
     fireEvent.click(previewSwitch);
     await click("Create mapping network");
     const graph = target.bus.store.getGraph();
-    expect(Object.values(graph.nodes)).toHaveLength(11);
+    expect(Object.values(graph.nodes)).toHaveLength(21);
     expect(Object.values(graph.nodes).some(node => node.type === "screen")).toBe(false);
     const output = Object.values(graph.nodes).find(node => node.type === "output")!;
     const corner = Object.values(graph.nodes).find(node => node.type === "cornerPin")!;
@@ -694,11 +743,12 @@ describe("reusable photo preparation host", () => {
     expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
   });
 
-  it("offers ten mapping effects with explanations for depth, masks and video", async () => {
+  it("offers four modular looks before ten classic effects with explanations for depth, masks and video", async () => {
     const target = runtime(); await open(target);
     const finish = within(screen.getByRole("region", { name: "Create or update mapping" }));
     const effect = screen.getByRole("combobox", { name: "First effect" });
     expect(within(effect).getAllByRole("option").map(option => option.textContent)).toEqual([
+      "Photo point cloud", "Grazing light · modular", "Contour engraving · modular", "Depth slices · modular",
       "Neon contours", "Prismatic sweep", "Chromatic relief", "Surface trace", "Depth reveal",
       "Moonlit stone", "Liquid strata", "Depth constellation", "Thermal scan", "Mapped video",
     ]);
@@ -735,10 +785,10 @@ describe("reusable photo preparation host", () => {
     await waitFor(() => expect((screen.getByRole("button", { name: "Create mapping network" }) as HTMLButtonElement).disabled).toBe(false));
     await click("Create mapping network");
     const graph = target.bus.store.getGraph();
-    expect(Object.values(graph.nodes)).toHaveLength(14);
+    expect(Object.values(graph.nodes)).toHaveLength(24);
     const original = Object.values(graph.nodes).find(node => node.type === "movieFileIn" && node.parameters.file === photoRef)!;
     const previewPhoto = Object.values(graph.nodes).find(node => node.type === "movieFileIn" && node.parameters.file === nightRef)!;
-    const reference = Object.values(graph.nodes).find(node => node.type === "level")!;
+    const reference = Object.values(graph.nodes).find(node => node.label === "level_reference1")!;
     const mapNodes = Object.values(graph.nodes).filter(node => node.type === "floatMapIn");
     expect(mapNodes.map(node => node.parameters.photo)).toEqual([photoRef, photoRef]);
     for (const node of mapNodes) {

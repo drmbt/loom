@@ -467,7 +467,7 @@ Unrelated undeclared keys still warn.
   looks plus mapped video share the actual shader in the dialog and created graph. Every newly
   created mapping includes a regular calibration chart behind a Switch; effect/chart follow the
   same mask/Grid Warp/Corner Pin/Window Out path. Full-frame coverage creates no artificial rim.
-- E83/E84/E85 provide synthetic Moonlit Stone, Liquid Strata and Video demonstrations. Video
+- E83/E84/E85/E86 provide synthetic modular Moonlit Stone, Contour Engraving, Video and Point Cloud demonstrations. Video
   accepts a replaceable local Movie File In through the same mapping path; its demo/source choice
   is explicit. Dialog video decoding/playback is owned and retired on change/close, with a still
   under reduced motion and explicit failures. No model or procedural substitute is selected on error.
@@ -476,6 +476,19 @@ Unrelated undeclared keys still warn.
   MLX's 24 GiB setting is a soft scheduling threshold. A sampled watchdog aborts when active
   allocation exceeds 24 GiB or recorded peak exceeds 26 GiB. The guarded 2048 attempt exceeded
   these budgets and is unavailable. UI capability checks honor the running main process's sizes.
+- New mappings default to photographic point geometry: registered float32 depth feeds the
+  existing unprojection kernel, a separate paint kernel samples original photo UVs, and
+  coverage scales excluded points to zero area. The aspect-preserving grid has 768 samples
+  along the long edge (393,216 points at 3:2). Density, relative range/FOV, colour gain,
+  Geometry size/material, Camera/LFO and Render/Level remain separate editable nodes.
+  Point Kernel's unfiltered field input declares the data contract, accepting scalar depth
+  and colour fields without colour conversion. Existing kernel strings remain unchanged.
+- Additional modular grazing-light, contour-engraving and depth-slice recipes separate
+  numerical re-ranging, small depth shaders, ordinary LFO controls, tint/compositing and
+  grading. Calibration uses the same final projection path. The dialogue evaluates the
+  actual per-frame value graph and pushes uniform/camera updates without rebuilding GPU
+  pipelines. Point geometry is a relative-depth visualization with assumed camera/range;
+  it does not establish metric reconstruction or fill unseen surfaces.
 
 #### remaining photo-preparation plan (2026-10-09)
 

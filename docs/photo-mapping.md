@@ -85,7 +85,20 @@ source bytes produce distinct suggestions. The save dialog remains editable.
 
 ## Effects, calibration and video
 
-Nine editable looks cover neon contours, prismatic sweeps, chromatic relief, surface
+The default **Photo point cloud** look creates real photo-coloured 3D points through
+Point Grid, depth unprojection, photographic paint, Geometry, Camera and Render. A lateral
+camera LFO reveals parallax. The default grid samples 768 points along the long edge
+(393,216 points for a 3:2 photograph). Point density, point size, colour gain, camera and exposure
+remain independent nodes. The reference underlay starts dark so the geometry is clear;
+raise its Level brightness to compare against the photograph. Relative depth and assumed
+FOV/range describe display geometry, not metric reconstruction.
+
+**Grazing light · modular**, **Contour engraving · modular** and **Depth slices · modular**
+separate a float32 range stage, a small depth-processing shader, ordinary motion controls,
+colour/compositing and grading. Replace any stage or input using ordinary graph wiring.
+The dialogue preview evaluates the same graph controls, including LFOs and camera motion.
+
+The earlier nine editable looks cover neon contours, prismatic sweeps, chromatic relief, surface
 tracing, depth reveals, moonlit stone, liquid strata, depth constellations and thermal
 scanning. **Projection effect** renders the actual network shader with depth and mask,
 including when coverage is full-frame. The image boundary is not a fake glowing frame.
@@ -101,8 +114,9 @@ shows a still preview. The main Output overlays light on the reference photo; Wi
 Out carries projector content independently of preview light.
 
 Try [Moonlit Stone](../examples/E83-Photo-Mapping-Moonlit-Stone.md),
-[Liquid Strata](../examples/E84-Photo-Mapping-Liquid-Strata.md) and
-[Video](../examples/E85-Photo-Mapping-Video.md). Their matching synthetic facade/depth/mask
+[Contour Engraving](../examples/E84-Photo-Mapping-Contour-Engraving.md),
+[Video](../examples/E85-Photo-Mapping-Video.md) and
+[Point Cloud](../examples/E86-Photo-Mapping-Point-Cloud.md). Their matching synthetic facade/depth/mask
 fields demonstrate the mapping controls without assets or model downloads; they do not
 claim model accuracy. Video has an explicit procedural-demo/local-clip switch.
 

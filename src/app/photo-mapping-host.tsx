@@ -4,6 +4,7 @@ import { commandHolder } from "@domain/commands/command-holder.ts";
 import { registerPhotoMappingCommands } from "@domain/commands/photo-mapping-commands.ts";
 import { nodeIdsInput } from "@domain/commands/input-schema.ts";
 import { uniqueNodeName } from "@domain/graph/names.ts";
+import { SHADER_DEPTH_RANGE, SHADER_DEPTH_LIGHT, SHADER_DEPTH_CONTOURS, SHADER_DEPTH_SLICE } from "@domain/media/photo-mapping-modules.ts";
 import { storedStaticValue } from "@domain/parameters/slots.ts";
 import { selectCreatedNodes } from "@editor/selection/select-created.ts";
 import { parseFileReference } from "@domain/media/file-reference.ts";
@@ -74,6 +75,7 @@ interface Recipe {
   readonly video?: string;
   readonly videoId?: string;
   readonly effectId?: string;
+  readonly rangeId?: string;
   readonly effectInputId?: string;
   readonly effectShader?: string;
   readonly patternSwitchId?: string;
@@ -83,7 +85,7 @@ interface Recipe {
 const reloadRecipeSchema = z.object({ version: z.literal(1), photo: z.string().min(1), depth: z.string(), mask: z.string(),
   nativeDepth: z.string().optional(), depthRecipe: photoDepthRecipeSchema.optional(),
   previewPhoto: z.string(), previewFit: z.enum(["fit", "fill", "stretch"]), previewFraming: imageFramingSchema.default(DEFAULT_IMAGE_FRAMING), inputSide: z.number().int().positive(),
-  mode: z.number().int().min(0).max(9), previz: z.boolean(), useMask: z.boolean().default(true),
+  mode: z.number().int().min(0).max(13), previz: z.boolean(), useMask: z.boolean().default(true),
   useDepth: z.boolean().default(true), depthRange: depthRangeSchema.default(DEFAULT_DEPTH_RANGE),
   testPattern: z.boolean().default(false), video: z.string().default(""),
   previewOpacity: z.number().min(0).max(1).default(0.35) }).strict()
@@ -110,7 +112,12 @@ function recipeFor(graph: GraphDocument, nodeId?: string): Recipe {
     && graph.nodes[candidate.source.nodeId]?.type === "level")?.source.nodeId;
   const previewSource = Object.values(graph.edges).find(candidate => candidate.target.nodeId === referenceId && candidate.target.portId === "input")?.source.nodeId;
   const previewPhotoId = previewSource !== edge?.source.nodeId && graph.nodes[previewSource ?? ""]?.type === "movieFileIn" ? previewSource : undefined;
-  const effectId = members.find(id => graph.nodes[id]?.type === "customWgslMulti");
+  const effectId = members.find(id => graph.nodes[id]?.type === "customWgslMulti" && Object.hasOwn(graph.nodes[id]!.parameters, "mode"));
+  const rangeId = members.find(id => value(graph, id, "source") === SHADER_DEPTH_RANGE);
+  const modularMode = members.some(id => graph.nodes[id]?.type === "render") ? 13
+    : members.some(id => value(graph, id, "source") === SHADER_DEPTH_LIGHT) ? 10
+    : members.some(id => value(graph, id, "source") === SHADER_DEPTH_CONTOURS) ? 11
+    : members.some(id => value(graph, id, "source") === SHADER_DEPTH_SLICE) ? 12 : undefined;
   const patternSwitchId = members.find(id => graph.nodes[id]?.type === "switch");
   const effectInput = Object.values(graph.edges).find(candidate => candidate.target.nodeId === effectId && candidate.target.portId === "input")?.source.nodeId;
   const videoSources = members.filter(id => graph.nodes[id]?.type === "movieFileIn" && id !== edge?.source.nodeId && id !== previewPhotoId);
@@ -132,12 +139,14 @@ function recipeFor(graph: GraphDocument, nodeId?: string): Recipe {
     ...(depthId === undefined ? {} : { depthId }), ...(maskId === undefined ? {} : { maskId }),
     ...(edge === undefined ? {} : { photoId: edge.source.nodeId }),
     ...(effectId === undefined ? {} : { effectId }), ...(patternSwitchId === undefined ? {} : { patternSwitchId }),
+    ...(rangeId === undefined ? {} : { rangeId }),
     ...(effectInput === undefined ? {} : { effectInputId: effectInput }), effectShader: value(graph, effectId, "source"),
     ...(videoId === undefined ? {} : { videoId }), video: value(graph, videoId, "file"),
-    mode: numeric(effectId, "mode", 0), testPattern: numeric(patternSwitchId, "index", 0) === 1,
+    ...(modularMode !== undefined ? { mode: modularMode } : effectId !== undefined ? { mode: numeric(effectId, "mode", 0) } : {}), testPattern: numeric(patternSwitchId, "index", 0) === 1,
     useDepth: depthId !== undefined && value(graph, depthId, "file") !== "",
     useMask: maskId !== undefined && value(graph, maskId, "file") !== "",
-    depthRange: depthRangeSchema.parse({ low: numeric(effectId, "depthLow", 0), high: numeric(effectId, "depthHigh", 1), softness: 0.02 }),
+    depthRange: depthRangeSchema.parse({ low: numeric(rangeId ?? effectId, rangeId === undefined ? "depthLow" : "low", 0),
+      high: numeric(rangeId ?? effectId, rangeId === undefined ? "depthHigh" : "high", 1), softness: 0.02 }),
     inputSide: Number(value(graph, depthId, "inputSide") || "518") };
 }
 
@@ -253,7 +262,7 @@ function PhotoMappingEditor({ runtime, initial, open, close }: { runtime: AppRun
   const [depthIdentity, setDepthIdentity] = useState<string | null>(null);
   const [inspectionExpanded, setInspectionExpanded] = useState(false);
   const [expandedPhoto, setExpandedPhoto] = useState<"reference" | "preview" | null>(null);
-  const [mode, setMode] = useState(initial.mode ?? 0);
+  const [mode, setMode] = useState(initial.mode ?? (initial.depthId !== undefined || initial.maskId !== undefined ? 0 : 13));
   const [testPattern, setTestPattern] = useState(initial.testPattern ?? false);
   const [videoRef, setVideoRef] = useState(initial.video ?? "");
   const [previz, setPreviz] = useState(initial.previz ?? true);
@@ -676,6 +685,11 @@ function PhotoMappingEditor({ runtime, initial, open, close }: { runtime: AppRun
           operations.push({ op: "setParameters" as const, nodeId: initial.effectId, parameters: { mode, depthLow: depthRange.low, depthHigh: depthRange.high,
             ...(mode === initial.mode ? {} : { source: PHOTO_MAPPING_SHADER }) } });
         }
+        if (initial.rangeId !== undefined && (depthRange.low !== initial.depthRange?.low || depthRange.high !== initial.depthRange?.high)) {
+          if (storedStaticValue(graph.nodes[initial.rangeId]!.parameters.low) !== initial.depthRange?.low ||
+            storedStaticValue(graph.nodes[initial.rangeId]!.parameters.high) !== initial.depthRange?.high) throw new Error("Depth range changed while preparation was open. Reopen preparation.");
+          operations.push({ op: "setParameters" as const, nodeId: initial.rangeId, parameters: { low: depthRange.low, high: depthRange.high } });
+        }
         if (initial.patternSwitchId !== undefined && testPattern !== initial.testPattern) {
           if ((storedStaticValue(graph.nodes[initial.patternSwitchId]!.parameters.index) ?? 0) !== Number(initial.testPattern ?? false)) throw new Error("Test pattern changed while preparation was open.");
           operations.push({ op: "setParameters" as const, nodeId: initial.patternSwitchId, parameters: { index: Number(testPattern) } });
@@ -1089,7 +1103,7 @@ function PhotoMappingEditor({ runtime, initial, open, close }: { runtime: AppRun
         <div className={styles.finishStep}>
         <Button variant="outline" disabled={photo === null} onClick={() => inspect(inspectionView)}>Expand inspection</Button>
         {(!existing || initial.effectId !== undefined) ? <label>First effect <select value={mode} disabled={busy} onChange={event => { setMode(Number(event.target.value)); setInspectionView("effect"); }}>
-        {PHOTO_MAPPING_EFFECTS.map(effect => <option key={effect.id} value={effect.id}>{effect.name}</option>)}
+        {PHOTO_MAPPING_EFFECTS.filter(effect => !existing || effect.id < 10).map(effect => <option key={effect.id} value={effect.id}>{effect.name}</option>)}
         </select></label> : null}
         <p className={styles.hint}>{PHOTO_MAPPING_EFFECTS.find(effect => effect.id === mode)?.description}</p>
         {existing && mode !== initial.mode ? <p className={styles.hint}>Applying this look replaces the effect shader.</p> : null}

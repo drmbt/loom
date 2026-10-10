@@ -43,7 +43,7 @@ test("Map from photo opens from File and reports an undecodable photograph", asy
   await expect(dialog.getByRole("switch", { name: "Use surface mask", exact: true })).toBeChecked();
   const finish = dialog.getByRole("region", { name: "Create or update mapping" });
   const effect = finish.getByRole("combobox", { name: "First effect" });
-  await expect(effect.getByRole("option")).toHaveText(["Neon contours", "Prismatic sweep", "Chromatic relief", "Surface trace", "Depth reveal", "Moonlit stone", "Liquid strata", "Depth constellation", "Thermal scan", "Mapped video"]);
+  await expect(effect.getByRole("option")).toHaveText(["Photo point cloud", "Grazing light · modular", "Contour engraving · modular", "Depth slices · modular", "Neon contours", "Prismatic sweep", "Chromatic relief", "Surface trace", "Depth reveal", "Moonlit stone", "Liquid strata", "Depth constellation", "Thermal scan", "Mapped video"]);
   await effect.selectOption("3");
   await expect(finish.getByText(/mask.*bound|bound.*mask/i)).toBeVisible();
   await effect.selectOption("4");

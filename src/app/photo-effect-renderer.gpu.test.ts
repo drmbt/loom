@@ -71,6 +71,74 @@ describe("photo effect preview runs the real isolated mapping network", () => {
     expect(() => renderer.read()).toThrow(/disposed/);
   });
 
+  it.each([10, 11, 12, 13])("renders modular recipe %i from non-affine depth with visible motion and preserved inputs", async mode => {
+    const depth = depthField(), flat = new Float32Array(width * height).fill(0.5), mask = new Float32Array(width * height).fill(1);
+    const photo = photograph(), beforePhoto = photo.bytes.slice(), beforeDepth = new Uint32Array(depth.buffer).slice(), beforeMask = new Uint32Array(mask.buffer).slice();
+    const request = { width, height, shader: PHOTO_MAPPING_SHADER, photo, photoSize: [width, height] as const, mask, mode, previewOpacity: 1 };
+    const render = async (field: Float32Array) => {
+      const renderer = await createPhotoEffectRenderer({ ...request, depth: field }, { host: nodeGpuHost() });
+      try {
+        renderer.draw(frame(0, 0)); const first = rgb(await renderer.read());
+        renderer.draw(frame(7, 420)); const animated = rgb(await renderer.read());
+        return { first, animated };
+      } finally { renderer.dispose(); }
+    };
+    const structured = await render(depth), uniform = await render(flat);
+    const difference = (left: Uint8Array, right: Uint8Array) => left.reduce((count, value, index) => count + Number(Math.abs(value - right[index]!) > 3), 0) / left.length;
+    expect(difference(structured.first, uniform.first), `recipe ${mode}: depth must change the rendered image`).toBeGreaterThan(0.03);
+    expect(difference(structured.animated, structured.first), `recipe ${mode}: seven seconds must visibly animate`).toBeGreaterThan(0.03);
+    expect(new Uint32Array(depth.buffer)).toEqual(beforeDepth); expect(new Uint32Array(mask.buffer)).toEqual(beforeMask); expect(photo.bytes).toEqual(beforePhoto);
+    expect([...flat].every(value => value === 0.5)).toBe(true);
+  });
+
+  it("covers a flat photographic surface densely at a large inspection resolution", async () => {
+    const w = 960, h = 640, bytes = new Uint8Array(w * h * 4);
+    for (let pixel = 0; pixel < w * h; pixel++) bytes.set([160, 100, 60, 255], pixel * 4);
+    const renderer = await createPhotoEffectRenderer({ width: w, height: h, shader: PHOTO_MAPPING_SHADER,
+      photo: { frameId: 1, bytes }, photoSize: [w, h], depth: new Float32Array(w * h).fill(0.5),
+      mask: new Float32Array(w * h).fill(1), mode: 13, previewOpacity: 1 }, { host: nodeGpuHost() });
+    try {
+      renderer.draw({ ...frame(0, 0), resolution: [w, h] });
+      const image = await renderer.read();
+      let covered = 0, inspected = 0;
+      // Inspect the interior so missing silhouette/hidden surfaces cannot affect coverage.
+      for (let y = h / 4; y < h * 3 / 4; y++) for (let x = w / 4; x < w * 3 / 4; x++) {
+        covered += Number(image.bytes[y * image.rowStride + x * 4]! > 20);
+        inspected++;
+      }
+      expect(covered / inspected, "the point grid must not leave a flat wall full of dark gaps").toBeGreaterThan(0.95);
+    } finally { renderer.dispose(); }
+  });
+
+  it("colours the 3D cloud from the photograph instead of a depth rainbow and preserves mask holes", async () => {
+    const depth = depthField(), beforeDepth = new Uint32Array(depth.buffer).slice();
+    const mask = Float32Array.from({ length: width * height }, (_, index) => Number(index % width < width / 3 || index % width >= width * 2 / 3));
+    const beforeMask = new Uint32Array(mask.buffer).slice();
+    const render = async (colour: readonly [number, number, number], opacity: number) => {
+      const photo = photograph();
+      for (let pixel = 0; pixel < width * height; pixel++) photo.bytes.set([...colour, 255], pixel * 4);
+      const beforePhoto = photo.bytes.slice();
+      const renderer = await createPhotoEffectRenderer({ width, height, shader: PHOTO_MAPPING_SHADER, photo, photoSize: [width, height], depth, mask, mode: 13, previewOpacity: opacity }, { host: nodeGpuHost() });
+      try { renderer.draw(frame(7, 420)); const image = rgb(await renderer.read()); expect(photo.bytes).toEqual(beforePhoto); return image; }
+      finally { renderer.dispose(); }
+    };
+    const warm = [190, 70, 30] as const, cool = [30, 70, 190] as const;
+    const warmBase = await render(warm, 0), warmCloud = await render(warm, 1), coolBase = await render(cool, 0), coolCloud = await render(cool, 1);
+    const gains = (image: Uint8Array, baseline: Uint8Array) => {
+      const channels = [0, 0, 0];
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const offset = (y * width + x) * 3;
+        if (mask[y * width + x] === 0) expect([...image.subarray(offset, offset + 3)]).toEqual([...baseline.subarray(offset, offset + 3)]);
+        else for (let channel = 0; channel < 3; channel++) channels[channel]! += image[offset + channel]! - baseline[offset + channel]!;
+      }
+      return channels;
+    };
+    const warmGain = gains(warmCloud, warmBase), coolGain = gains(coolCloud, coolBase);
+    expect(warmGain[0]).toBeGreaterThan(100); expect(warmGain[0]).toBeGreaterThan(warmGain[2]! * 2);
+    expect(coolGain[2]).toBeGreaterThan(100); expect(coolGain[2]).toBeGreaterThan(coolGain[0]! * 2);
+    expect(new Uint32Array(depth.buffer)).toEqual(beforeDepth); expect(new Uint32Array(mask.buffer)).toEqual(beforeMask);
+  });
+
   it("renders regular calibration cells and axes through the same mask, leaving excluded pixels photo-only", async () => {
     const w = 256, h = 192, photo = { frameId: 1, bytes: new Uint8Array(w * h * 4) };
     for (let pixel = 0; pixel < w * h; pixel++) photo.bytes.set([90, 90, 90, 255], pixel * 4);

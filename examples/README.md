@@ -103,9 +103,10 @@ happened:
 | [E80 Azulejo](./E80-Azulejo.md) | Two picture layers and a person-shaped window between them: a wall of blue-and-white tiles with the people in front of the camera cut out of it, and a night city playing inside the cut. Every layer is a Switch — stand-in shaders ship, a Movie File In or the webcam (browser Matte or Apple Vision Person Mask) replaces each one. |
 | [E81 Phone Desk](./E81-Phone-Desk.md) | The live controls, pre-wired and annotated in the network: a Slider, a Toggle, a Button and an XY Pad drive a picture through `op('name').chan` expressions, a Panel lays them out with Phone on so a paired phone gets the same controls, and a Corner Pin puts the pad on the picture's top-right corner. |
 | [E82 Set List](./E82-Set-List.md) | A set played from banks, shots, layers and a cue list: two looks and a glitch effect on a Layer stack, a Corner Pin as the mapping, three Presets banks (`presets_looks`, `presets_fx`, and `presets_shots` that switch layers and recall the other two), a Cue List of five cues with their own morph times, and a Show desk Panel with the shots, GO and BACK, the FX layer's switch and fader and two sliders, published to a phone. |
-| [E83 Photo Mapping Moonlit Stone](./E83-Photo-Mapping-Moonlit-Stone.md) | Grazing light on matching synthetic facade/depth/mask fields, with a calibration Switch and projector warps. |
-| [E84 Photo Mapping Liquid Strata](./E84-Photo-Mapping-Liquid-Strata.md) | Depth-following luminous ribbons, independent surface coverage and the same switchable alignment chart. |
-| [E85 Photo Mapping Video](./E85-Photo-Mapping-Video.md) | Explicit procedural-demo/local-video content selection through surface masking, calibration, Grid Warp and Corner Pin. |
+| [E83 Photo Mapping Moonlit Stone](./E83-Photo-Mapping-Moonlit-Stone.md) | Modular grazing light: scalar depth, light direction, tint, motion and exposure are independent graph stages. |
+| [E84 Photo Mapping Contour Engraving](./E84-Photo-Mapping-Contour-Engraving.md) | Ivory contour engraving with separate depth range, band generation, colour, motion and grading. |
+| [E85 Photo Mapping Video](./E85-Photo-Mapping-Video.md) | Explicit procedural-demo/local-video content through ordinary grading, surface masking and projector warps. |
+| [E86 Photo Mapping Point Cloud](./E86-Photo-Mapping-Point-Cloud.md) | 98,304 photo-coloured 3D points, float32 depth unprojection, real camera parallax and editable geometry. |
 
 ## Running them
 

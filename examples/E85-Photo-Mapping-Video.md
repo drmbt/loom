@@ -1,6 +1,6 @@
 # Photo Mapping: Video
 
-This example maps animated content onto a synthetic facade with masked openings. The default content is an explicit procedural demo, so the example opens without external media.
+This example maps animated content onto a synthetic facade with masked openings. The default content is an explicit procedural demo, so the example opens without external media. Video passes through an ordinary Level node; no combined effect shader hides the compositing.
 
 Choose a local clip in the Movie File In node and set the content switch to 1 to use it. Index 0 selects the procedural demo. Adjust the movie's image fit for the desired framing. Video then follows the same surface mask, Grid Warp and Corner Pin as the other photo-mapping effects.
 

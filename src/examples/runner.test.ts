@@ -114,6 +114,10 @@ describe("examples: the gate", () => {
       "E80-Azulejo.loom.json",
       "E81-Phone-Desk.loom.json",
       "E82-Set-List.loom.json",
+      "E83-Photo-Mapping-Moonlit-Stone.loom.json",
+      "E84-Photo-Mapping-Contour-Engraving.loom.json",
+      "E85-Photo-Mapping-Video.loom.json",
+      "E86-Photo-Mapping-Point-Cloud.loom.json",
       "E9-Ember.loom.json",
     ]);
   });

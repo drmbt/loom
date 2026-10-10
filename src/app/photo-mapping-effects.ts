@@ -2,6 +2,10 @@ import { SHARED_UNIFORMS_WGSL } from "@runtime/backend/shared-uniforms.ts";
 import { wgsl } from "@runtime/backend/wgsl.ts";
 
 export const PHOTO_MAPPING_EFFECTS = [
+  { id: 13, name: "Photo point cloud", description: "Real photo-coloured 3D points reveal relief through camera parallax; density, geometry and camera are separate nodes" },
+  { id: 10, name: "Grazing light · modular", description: "Warm directional light exposes depth relief and shadows; light, colour and grading are separate stages" },
+  { id: 11, name: "Contour engraving · modular", description: "Ivory depth engraving with independent bands, ink colour and exposure controls" },
+  { id: 12, name: "Depth slices · modular", description: "A moving depth band reveals the photograph; slicing, motion and compositing are separate stages" },
   { id: 0, name: "Neon contours", description: "Animated depth contours pick out ledges and architectural edges" },
   { id: 1, name: "Prismatic sweep", description: "Colour sweeps through depth planes, revealing protrusions and recesses" },
   { id: 2, name: "Chromatic relief", description: "Grazing gold and cyan lights reveal depth relief and local shadows" },

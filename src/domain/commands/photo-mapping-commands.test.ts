@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { compileGraph } from "../../compiler/compile.ts";
 import { SINK_TARGET_PORT, targetResourceId } from "../../compiler/resources.ts";
-import { testCapabilities, testSettings } from "../../compiler/test-support.ts";
+import { graphChannelResolver } from "../channels/graph-channels.ts";
+import { testCapabilities, testSettings, flatDocument } from "../../compiler/test-support.ts";
 import { allNodeDefinitions } from "../../nodes/definitions/index.ts";
 import { createNodeRegistry } from "../../nodes/registry/registry.ts";
 import { conformsToKind, kindOf } from "../graph/node-kinds.ts";
@@ -16,6 +17,8 @@ import { registerPhotoMappingCommands } from "./photo-mapping-commands.ts";
 import { alice, contextFor } from "./test-support.ts";
 import { DEFAULT_PHOTO_DEPTH_RECIPE, DEFAULT_DEPTH_REFINEMENT, depthRecipeFromParameters } from "../media/photo-depth-recipe.ts";
 import { DEFAULT_IMAGE_FRAMING } from "../media/image-framing.ts";
+import { SHADER_DEPTH_RANGE, SHADER_DEPTH_LIGHT, SHADER_DEPTH_CONTOURS, SHADER_DEPTH_SLICE } from "../media/photo-mapping-modules.ts";
+import { PHOTO_DEPTH_CARVE_KERNEL, PHOTO_DEPTH_PAINT_KERNEL } from "../media/depth-point-kernels.ts";
 import type { PhotoMappingCreateInput } from "./photo-mapping-commands.ts";
 
 const shader = `struct Params { mode: f32, };
@@ -40,6 +43,135 @@ function harness(omitType?: string) {
 }
 
 describe("photo mapping creation", () => {
+  it.each([10, 11, 12, 13])("creates modular recipe %i with editable stages and shared calibration, coverage and alignment", async effect => {
+    const { bus, store, registry } = harness();
+    const patternShader = "@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f { return vec4f(uv, 0.0, 1.0); }";
+    const depthRange = { low: 0.2, high: 0.8, softness: 0.03 };
+    const result = await bus.execute("photoMapping.create", { ...input, effect, depthRange, patternShader, testPattern: true }, contextFor(alice));
+    expect(result.status, JSON.stringify(result.diagnostics)).toBe("applied");
+    const graph = store.view.getGraph(), ids = result.output.createdIds;
+    const node = (ref: string) => graph.nodes[ids[ref]!]!;
+    const edges = Object.values(graph.edges);
+    const wire = (source: string, target: string, port: string) => expect(edges.find(edge =>
+      edge.source.nodeId === ids[source] && edge.target.nodeId === ids[target] && edge.target.portId === port)).toBeDefined();
+    expect(node("$range")).toMatchObject({ type: "customWgslMulti", format: { mode: "fixed", format: "r32float" },
+      parameters: { source: SHADER_DEPTH_RANGE, low: 0.2, high: 0.8 } });
+    expect(node("$effect")).toMatchObject({ type: "level", parameters: { brightness: effect === 13 ? 1.5 : 1, contrast: 1 } });
+    wire("$photo", "$depth", "picture"); wire("$photo", "$mask", "picture");
+    wire("$photo", "$range", "input"); wire("$depth", "$range", "more");
+    wire("$effect", "$testSwitch", "inputs"); wire("$pattern", "$testSwitch", "inputs");
+    wire("$testSwitch", "$coverage", "input"); wire("$mask", "$coverage", "mask");
+    wire("$coverage", "$grid", "input"); wire("$grid", "$corner", "input"); wire("$corner", "$window", "input");
+    if (effect === 13) {
+      expect(node("$points").parameters).toMatchObject({ count: 768 * 576, cols: 768, rows: 576, sizeX: 2, sizeY: 2 });
+      expect(node("$carve").parameters).toMatchObject({ capacity: 768 * 576, kernel: PHOTO_DEPTH_CARVE_KERNEL, inverseDepth: 1, near: 1.5, far: 3.5 });
+      expect(node("$paint").parameters).toMatchObject({ kernel: PHOTO_DEPTH_PAINT_KERNEL, heat: 0, gain: 1 });
+      expect(node("$cloudGeometry").parameters).toMatchObject({ material: node("$material").label, blend: "opaque", spherical: false,
+        scale: { mode: "map", bindings: { map: { attribute: "tint", channel: "w" } } },
+        tint: { mode: "map", bindings: { map: { attribute: "tint" } } } });
+      expect(node("$render").parameters).toMatchObject({ scenes: node("$cloudGeometry").label, camera: node("$camera").label });
+      wire("$points", "$carve", "in"); wire("$range", "$carve", "field"); wire("$carve", "$paint", "in");
+      wire("$photoCoverage", "$paint", "field"); wire("$paint", "$cloudGeometry", "points"); wire("$render", "$effect", "input");
+      expect(node("$photoCoverage").parameters.apply).toBe("alpha");
+      expect(node("$camera").parameters["eye.x"]).toMatchObject({ mode: "expression", bindings: { expression: { source: `op('${node("$motion").label}').chan.value` } } });
+    } else {
+      expect(node("$module").parameters.source).toBe(effect === 10 ? SHADER_DEPTH_LIGHT : effect === 11 ? SHADER_DEPTH_CONTOURS : SHADER_DEPTH_SLICE);
+      wire("$range", "$module", "more"); wire("$photo", "$module", "input"); wire("$module", "$multiply", "in1");
+      wire(effect === 12 ? "$photo" : "$tint", "$multiply", "in2"); wire("$multiply", "$effect", "input");
+      expect(node("$module").parameters[effect === 10 ? "direction.x" : effect === 11 ? "offset" : "center"])
+        .toMatchObject({ mode: "expression", bindings: { expression: { source: `op('${node("$motion").label}').chan.value` } } });
+    }
+    const plan = compileGraph({ graph, registry, settings: store.view.getSettings(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: ids.$window!, kind: "readback" }] });
+    expect(plan.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    const ranged = plan.outputs.find(output => output.nodeId === ids.$range);
+    expect(ranged).toMatchObject({ format: "r32float", space: "data", size: [800, 600] });
+    if (effect === 13) {
+      const carve = plan.passes.find(pass => "nodeId" in pass && pass.nodeId === ids.$carve && "textures" in pass);
+      expect(carve).toMatchObject({ textures: [{ binding: "fieldTexture", resourceId: ranged!.resourceId, sampled: "unfiltered" }] });
+      // The actual scalar field enters Carve directly: no colour conversion or image substitute.
+      expect(plan.outputs.find(output => output.nodeId === ids.$render)).toMatchObject({ size: [800, 600] });
+    }
+    const positions = Object.values(graph.nodes).map(value => `${value.position.x},${value.position.y}`);
+    expect(new Set(positions).size).toBe(positions.length);
+    const group = graph.groups[ids.$group!]!;
+    for (const value of Object.values(graph.nodes)) {
+      expect(conformsToKind(value.label!, kindOf(registry.get(value.type)!))).toBe(true);
+      expect(value.position.x + value.size!.width).toBeLessThanOrEqual(group.bounds.x + group.bounds.width);
+      expect(value.position.y + value.size!.height).toBeLessThanOrEqual(group.bounds.y + group.bounds.height);
+    }
+    expect(collectFileReferences([graph]).map(asset => asset.assetId).sort()).toEqual(["depth", "mask", "photo"]);
+    await bus.execute("graph.undo", {}, contextFor(alice));
+    expect(Object.keys(store.view.getGraph().nodes)).toHaveLength(0);
+  });
+
+  it.each([10, 11, 12, 13])("resolves recipe %i motion through ordinary LFO channels at the supplied frame", async effect => {
+    const { bus, store, registry } = harness();
+    const result = await bus.execute("photoMapping.create", { ...input, effect }, contextFor(alice));
+    expect(result.status).toBe("applied");
+    const graph = store.view.getGraph(), ids = result.output.createdIds;
+    const channels = graphChannelResolver(flatDocument(graph), registry);
+    const at = (timeSeconds: number) => compileGraph({ graph, registry, settings: store.view.getSettings(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: ids.$window!, kind: "readback" }], resolution: { channels, frame: {
+        timeSeconds, deltaSeconds: 1 / 60, frameIndex: Math.round(timeSeconds * 60), mode: "realtime", randomSeed: 7,
+      } } });
+    const first = at(0), later = at(6);
+    expect(first.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    expect(later.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    // The same graph and resources animate by parameter values; shader code does not own a clock.
+    expect(later.signature).toBe(first.signature);
+    expect(later.passes).not.toEqual(first.passes);
+    if (effect !== 13) {
+      const firstPass = first.passes.find(pass => "nodeId" in pass && pass.nodeId === ids.$module);
+      const laterPass = later.passes.find(pass => "nodeId" in pass && pass.nodeId === ids.$module);
+      expect(laterPass).not.toEqual(firstPass);
+    }
+  });
+
+  it("keeps portrait cloud sampling rectangular and compiles an explicit neutral depth stub", async () => {
+    const { bus, store, registry } = harness();
+    const result = await bus.execute("photoMapping.create", { photo: input.photo, width: 300, height: 800, shader, effect: 13 }, contextFor(alice));
+    expect(result.status).toBe("applied");
+    const graph = store.view.getGraph(), ids = result.output.createdIds;
+    expect(graph.nodes[ids.$points!]!.parameters).toMatchObject({ cols: 288, rows: 768, count: 288 * 768 });
+    expect(graph.nodes[ids.$carve!]!.parameters.capacity).toBe(288 * 768);
+    expect(graph.nodes[ids.$depth!]!.parameters).toMatchObject({ file: "", emptySource: "constant", emptyValue: 0.5 });
+    const plan = compileGraph({ graph, registry, settings: store.view.getSettings(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: ids.$window!, kind: "readback" }] });
+    expect(plan.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    expect(plan.resources.some(resource => resource.kind === "externalTexture" && resource.format === "r32float")).toBe(false);
+  });
+
+  it("resolves modular scene and expression names after collision suffixes and retains both recipes", async () => {
+    const { bus, store, registry } = harness();
+    for (let suffix = 1; suffix <= 2; suffix++) {
+      const result = await bus.execute("photoMapping.create", { ...input, effect: 13 }, contextFor(alice));
+      expect(result.status).toBe("applied");
+      const graph = store.view.getGraph(), ids = result.output.createdIds;
+      const geometry = graph.nodes[ids.$cloudGeometry!]!, material = graph.nodes[ids.$material!]!;
+      const camera = graph.nodes[ids.$camera!]!, motion = graph.nodes[ids.$motion!]!;
+      expect(geometry.parameters.material).toBe(material.label);
+      expect(material.label).toBe(`material_photo_white${suffix}`);
+      expect(camera.parameters["eye.x"]).toMatchObject({ bindings: { expression: { source: `op('${motion.label}').chan.value` } } });
+      expect(graph.nodes[ids.$render!]!.parameters).toMatchObject({ camera: camera.label, scenes: geometry.label });
+      const plan = compileGraph({ graph, registry, settings: store.view.getSettings(), capabilities: testCapabilities(),
+        sinks: [{ nodeId: ids.$window!, kind: "readback" }] });
+      expect(plan.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    }
+    await bus.execute("graph.undo", {}, contextFor(alice));
+    expect(Object.values(store.view.getGraph().nodes).some(node => node.label?.endsWith("2"))).toBe(false);
+    expect(Object.values(store.view.getGraph().nodes).some(node => node.label === "geometry_photo_points1")).toBe(true);
+  });
+
+  it("rejects a missing structured recipe dependency before creating any partial network", async () => {
+    const { bus, store } = harness("pointKernel");
+    const before = store.view.getGraph();
+    const result = await bus.execute("photoMapping.create", { ...input, effect: 13 }, contextFor(alice));
+    expect(result.status).toBe("rejected");
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "photoMapping.node.unavailable" }));
+    expect(store.view.getGraph()).toBe(before);
+  });
+
   it("creates editable neutral-depth and white-mask sources without assets, retaining both photo connections", async () => {
     const { bus, store, registry } = harness();
     const result = await bus.execute("photoMapping.create", { photo: input.photo, width: 800, height: 600, shader }, contextFor(alice));

@@ -1,4 +1,8 @@
-import { compileGraph } from "../compiler/compile.ts";
+import { prepareFrameCompiler } from "../compiler/frame-compile.ts";
+import { flattenComponents } from "../compiler/flatten.ts";
+import { graphChannelResolver } from "../domain/channels/graph-channels.ts";
+import { createComponentRegistry } from "../domain/components/index.ts";
+import { createUniformAnimator } from "./animate-parameters.ts";
 import { targetResourceId } from "../compiler/resources.ts";
 import { createDomainBus } from "../domain/commands/index.ts";
 import { createGraphStore } from "../domain/graph/store.ts";
@@ -106,8 +110,13 @@ export async function createPhotoEffectRenderer(request: PhotoEffectRenderReques
       ...(request.videoSize === undefined ? [] : [request.videoSize])]) {
       if (Math.max(...size) > textureLimit) throw new Error("Photo effect preview source exceeds this GPU's texture size limit.");
     }
-    const plan = compileGraph({ graph: store.view.getGraph(), registry, settings: store.view.getSettings(), capabilities,
+    const graph = store.view.getGraph();
+    const flattened = flattenComponents({ graph, registry, components: createComponentRegistry({ nodes: () => registry }).view() });
+    const channels = graphChannelResolver(flattened.graph, registry);
+    const frames = prepareFrameCompiler({ graph, registry, settings: store.view.getSettings(), capabilities, flattened,
       sinks: [{ nodeId: requiredId("$previz"), kind: "readback" }] });
+    if (!frames.uniformOnly) throw new Error(`Projection preview requires a fixed graph structure: ${frames.reason}`);
+    const plan = frames.base;
     const errors = plan.diagnostics.filter(diagnostic => diagnostic.severity === "error");
     if (errors.length) throw new Error(`Photo effect preview could not compile: ${errors.map(diagnostic => diagnostic.message).join("; ")}`);
     const resources = plan.resources.map(resource => {
@@ -118,6 +127,7 @@ export async function createPhotoEffectRenderer(request: PhotoEffectRenderReques
       return resource;
     });
     const compiled = await backend.compile({ ...plan, resources });
+    const animator = createUniformAnimator();
     releases.push(backend.registerMediaSource(photoSource, { currentFrame: () => request.photo, ended: true }),
       backend.registerMediaSource(depthSource, { currentFrame: () => ({ frameId: 1, bytes: depthBytes }), ended: true }),
       backend.registerMediaSource(maskSource, { currentFrame: () => ({ frameId: 1, bytes: maskBytes }), ended: true }));
@@ -125,7 +135,12 @@ export async function createPhotoEffectRenderer(request: PhotoEffectRenderReques
     if (videoSource !== undefined) releases.push(backend.registerMediaSource(videoSource, request.video!));
     const owned = () => { if (disposed) throw new Error("Photo effect preview was disposed."); };
     return {
-      draw(frame: FrameInputs) { owned(); backend.render(compiled, frame); },
+      draw(frame: FrameInputs) {
+        owned();
+        const next = frames.compileFrame({ frame: frame.frame, channels });
+        if (next === null || animator.push(backend, plan, next) === null) throw new Error(`Projection preview animation changed graph structure: ${frames.reason}`);
+        backend.render(compiled, frame);
+      },
       present(canvas: PresentableCanvas) { owned(); return backend.present(canvas, { outputId, sizing: "source" }); },
       read() { owned(); return backend.readOutput(outputId); },
       dispose,
