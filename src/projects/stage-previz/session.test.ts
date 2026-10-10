@@ -9,7 +9,7 @@ import { STAGE_GLB_PATH, STAGE_SESSION_PATH, builtSession, upgradedSession } fro
  *
  * The base session is GENERATED, so it is held to its source byte for byte, as the examples
  * are (`src/examples/sync.test.ts`). After a change to the source or a new export, regenerate
- * it with the command in build.ts's header. `-7` and `-8` are sessions saved from the app.
+ * it with the command in build.ts's header. `-7`, `-8`, `-9` and `-10` are sessions saved from the app (`-9` and `-10` built from an app save of `-8`, VN78 and VN79; `-10` on layout revision 2's `stage-r2.glb`).
  */
 const glb = new Uint8Array(readFileSync(STAGE_GLB_PATH));
 const session = (name: string): string => readFileSync(`projects/stage-previz/${name}`, "utf8");
@@ -23,9 +23,9 @@ describe("stage previz: the committed sessions", () => {
     expect(upgradedSession(session(name), glb)).toBe(session(name));
   });
 
-  it("an upgrade of the -8 session is refused, by name, and writes nothing", () => {
+  it.each(["stage-previz-8.loom.json", "stage-previz-9.loom.json", "stage-previz-10.loom.json", "stage-previz-11.loom.json", "stage-previz-12.loom.json"])("an upgrade of %s is refused, by name, and writes nothing", (name) => {
     // Its rig lives inside six components, which applyRig does not reach: what it would write
     // names nodes the root graph no longer has, and the checked save refuses that.
-    expect(() => upgradedSession(session("stage-previz-8.loom.json"), glb)).toThrow(DocumentRefused);
+    expect(() => upgradedSession(session(name), glb)).toThrow(DocumentRefused);
   });
 });
