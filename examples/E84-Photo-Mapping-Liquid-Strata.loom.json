@@ -1,0 +1,473 @@
+{
+  "assets": [],
+  "createdAt": "2026-08-29T00:00:00.000Z",
+  "graph": {
+    "edges": {
+      "choice-coverage": {
+        "id": "choice-coverage",
+        "source": {
+          "nodeId": "switch_calibration",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "mask_surface",
+          "portId": "input"
+        }
+      },
+      "corner-projector": {
+        "id": "corner-projector",
+        "source": {
+          "nodeId": "cornerpin_surface",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "window_projector",
+          "portId": "input"
+        }
+      },
+      "coverage-grid": {
+        "id": "coverage-grid",
+        "source": {
+          "nodeId": "mask_surface",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "gridwarp_surface",
+          "portId": "input"
+        }
+      },
+      "depth-effect": {
+        "id": "depth-effect",
+        "order": 0,
+        "source": {
+          "nodeId": "wgsl_synthetic_depth",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_relief",
+          "portId": "more"
+        }
+      },
+      "effect-choice": {
+        "id": "effect-choice",
+        "order": 0,
+        "source": {
+          "nodeId": "wgsl_relief",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "switch_calibration",
+          "portId": "inputs"
+        }
+      },
+      "grid-corner": {
+        "id": "grid-corner",
+        "source": {
+          "nodeId": "gridwarp_surface",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "cornerpin_surface",
+          "portId": "input"
+        }
+      },
+      "mapped-preview": {
+        "id": "mapped-preview",
+        "source": {
+          "nodeId": "cornerpin_surface",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "screen_preview",
+          "portId": "in1"
+        }
+      },
+      "mask-coverage": {
+        "id": "mask-coverage",
+        "source": {
+          "nodeId": "wgsl_synthetic_mask",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "mask_surface",
+          "portId": "mask"
+        }
+      },
+      "mask-effect": {
+        "id": "mask-effect",
+        "order": 1,
+        "source": {
+          "nodeId": "wgsl_synthetic_mask",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_relief",
+          "portId": "more"
+        }
+      },
+      "pattern-choice": {
+        "id": "pattern-choice",
+        "order": 1,
+        "source": {
+          "nodeId": "wgsl_calibration",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "switch_calibration",
+          "portId": "inputs"
+        }
+      },
+      "photo-depth": {
+        "id": "photo-depth",
+        "source": {
+          "nodeId": "wgsl_synthetic_photo",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_synthetic_depth",
+          "portId": "input"
+        }
+      },
+      "photo-mask": {
+        "id": "photo-mask",
+        "source": {
+          "nodeId": "wgsl_synthetic_photo",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_synthetic_mask",
+          "portId": "input"
+        }
+      },
+      "photo-pattern": {
+        "id": "photo-pattern",
+        "source": {
+          "nodeId": "wgsl_synthetic_photo",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_calibration",
+          "portId": "input"
+        }
+      },
+      "photo-reference": {
+        "id": "photo-reference",
+        "source": {
+          "nodeId": "wgsl_synthetic_photo",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "level_reference",
+          "portId": "input"
+        }
+      },
+      "preview-output": {
+        "id": "preview-output",
+        "source": {
+          "nodeId": "screen_preview",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "output_preview",
+          "portId": "input"
+        }
+      },
+      "reference-preview": {
+        "id": "reference-preview",
+        "source": {
+          "nodeId": "level_reference",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "screen_preview",
+          "portId": "in2"
+        }
+      },
+      "seed-photo": {
+        "id": "seed-photo",
+        "source": {
+          "nodeId": "checker_seed",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_synthetic_photo",
+          "portId": "input"
+        }
+      },
+      "source-effect": {
+        "id": "source-effect",
+        "source": {
+          "nodeId": "wgsl_synthetic_photo",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "wgsl_relief",
+          "portId": "input"
+        }
+      }
+    },
+    "groups": {},
+    "nodes": {
+      "checker_seed": {
+        "definitionVersion": 1,
+        "id": "checker_seed",
+        "label": "checker_seed",
+        "parameters": {
+          "color1": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "color2": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "size": [
+            8,
+            6
+          ]
+        },
+        "position": {
+          "x": -1680,
+          "y": 0
+        },
+        "type": "checker"
+      },
+      "cornerpin_surface": {
+        "definitionVersion": 1,
+        "id": "cornerpin_surface",
+        "label": "cornerpin_surface",
+        "parameters": {},
+        "position": {
+          "x": 460,
+          "y": 0
+        },
+        "type": "cornerPin"
+      },
+      "gridwarp_surface": {
+        "definitionVersion": 1,
+        "id": "gridwarp_surface",
+        "label": "gridwarp_surface",
+        "parameters": {},
+        "position": {
+          "x": 100,
+          "y": 0
+        },
+        "type": "gridWarp"
+      },
+      "level_reference": {
+        "definitionVersion": 1,
+        "id": "level_reference",
+        "label": "level_reference",
+        "parameters": {
+          "brightness": 0.6
+        },
+        "position": {
+          "x": -980,
+          "y": 320
+        },
+        "type": "level"
+      },
+      "mask_surface": {
+        "definitionVersion": 1,
+        "id": "mask_surface",
+        "label": "mask_surface",
+        "parameters": {
+          "apply": "colour",
+          "channel": "red"
+        },
+        "position": {
+          "x": -260,
+          "y": 0
+        },
+        "type": "mask"
+      },
+      "note_alignment": {
+        "definitionVersion": 1,
+        "id": "note_alignment",
+        "label": "note_alignment",
+        "parameters": {
+          "body": "switch_calibration index 0 shows the effect; index 1 shows the regular alignment chart. Both use mask_surface, gridwarp_surface and cornerpin_surface. output_preview compares that mapped result with the reference photo. Open window_projector explicitly to project it.",
+          "color": "output",
+          "title": "One projection path · content or calibration"
+        },
+        "position": {
+          "x": -260,
+          "y": -360
+        },
+        "size": {
+          "height": 230,
+          "width": 1320
+        },
+        "type": "annotate"
+      },
+      "note_synthetic_site": {
+        "definitionVersion": 1,
+        "id": "note_synthetic_site",
+        "label": "note_synthetic_site",
+        "parameters": {
+          "body": "The photo, depth and mask are analytic shader fields with matching image coordinates. This is a mapping workflow demonstration, not evidence of AI depth accuracy. Window openings and the portal stay unlit.",
+          "color": "shader",
+          "title": "Synthetic facade · no model download"
+        },
+        "position": {
+          "x": -1740,
+          "y": -360
+        },
+        "size": {
+          "height": 230,
+          "width": 1300
+        },
+        "type": "annotate"
+      },
+      "output_preview": {
+        "definitionVersion": 1,
+        "id": "output_preview",
+        "label": "output_preview",
+        "parameters": {},
+        "position": {
+          "x": -260,
+          "y": 320
+        },
+        "type": "output"
+      },
+      "screen_preview": {
+        "definitionVersion": 1,
+        "id": "screen_preview",
+        "label": "screen_preview",
+        "parameters": {
+          "opacity": 0.75
+        },
+        "position": {
+          "x": -620,
+          "y": 320
+        },
+        "type": "screen"
+      },
+      "switch_calibration": {
+        "definitionVersion": 1,
+        "id": "switch_calibration",
+        "label": "switch_calibration",
+        "parameters": {
+          "index": 0
+        },
+        "position": {
+          "x": -620,
+          "y": 0
+        },
+        "type": "switch"
+      },
+      "wgsl_calibration": {
+        "definitionVersion": 1,
+        "id": "wgsl_calibration",
+        "label": "wgsl_calibration",
+        "parameters": {
+          "source": "\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let grid = uv * 10.0;\n  let cell = vec2i(floor(grid));\n  let checker = f32((cell.x + cell.y) % 2);\n  let aa = max(fwidth(grid), vec2f(0.004));\n  let distance = min(fract(grid), 1.0 - fract(grid));\n  let lines = 1.0 - smoothstep(aa.x, aa.x * 2.0, min(distance.x, distance.y));\n  var colour = mix(vec3f(0.07), vec3f(0.2), checker) + vec3f(lines * 0.55);\n  let center = abs(uv - 0.5);\n  colour = mix(colour, vec3f(1.0, 0.15, 0.1), 1.0 - smoothstep(0.002, 0.005, center.x));\n  colour = mix(colour, vec3f(0.1, 1.0, 0.25), 1.0 - smoothstep(0.002, 0.005, center.y));\n  let corners = step(0.92, max(abs(uv.x - 0.5), abs(uv.y - 0.5)) * 2.0);\n  let quadrant = vec3f(select(0.1, 1.0, uv.x > 0.5), select(0.1, 1.0, uv.y > 0.5), 0.6);\n  return vec4f(mix(colour, quadrant, corners), 1.0);\n}"
+        },
+        "position": {
+          "x": -980,
+          "y": 640
+        },
+        "type": "customWgsl"
+      },
+      "wgsl_relief": {
+        "definitionVersion": 1,
+        "id": "wgsl_relief",
+        "label": "wgsl_relief",
+        "parameters": {
+          "architectureDetail": 0.85,
+          "depthStrength": 1.3,
+          "edgeGlow": 0.85,
+          "gain": 1.15,
+          "glow": 0.35,
+          "mode": 6,
+          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\nstruct Params {\n  mode: f32, // @default 0  Effect: 0 contours, 1 prismatic sweep, 2 chromatic relief, 3 surface trace, 4 depth reveal.\n  speed: f32, // @default 0.18  Motion speed.\n  bands: f32, // @default 24  Number of relief contours.\n  lineWidth: f32, // @default 0.045  Width of each contour.\n  gain: f32, // @default 1  Projected brightness.\n  photoAmount: f32, // @default 0  Mix in the reference photograph.\n  lightColor: vec3f, // @default 1  Colour of the projected effect.\n  paletteShift: f32, // @default 0  Rotate the animated colour ramp.\n  evolution: f32, // @default 0.35  Slow changes in shape, colour and lighting.\n  glow: f32, // @default 0.45  Soft light surrounding contours and ribbons.\n  edgeWidth: f32, // @default 0.006  Outline width as a fraction of the shorter image side.\n  edgeGlow: f32, // @default 1.2  Brightness of the animated surface boundary.\n  architectureDetail: f32, // @default 0.85  Reference-photo detail in projected lines and relief.\n  fineDetail: f32, // @default 1  Scale of fine depth contours and architectural highlights.\n  depthStrength: f32, // @default 1  Strength of relative-depth relief and shadows.\n  depthLow: f32, // @default 0  Far cutoff for relative-depth re-ranging.\n  depthHigh: f32, // @default 1  Near cutoff for relative-depth re-ranging.\n};\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n@group(0) @binding(4) var inputTexture1: texture_2d<f32>;\n@group(0) @binding(5) var inputTexture2: texture_2d<f32>;\n\nfn depthAt(uv: vec2f) -> f32 {\n  let dims = vec2i(textureDimensions(inputTexture1));\n  let pixel = clamp(vec2i(uv * vec2f(dims)), vec2i(0), dims - vec2i(1));\n  let raw = textureLoad(inputTexture1, pixel, 0).r;\n  return clamp((raw - params.depthLow) / max(params.depthHigh - params.depthLow, 0.000001), 0.0, 1.0);\n}\nfn maskAt(uv: vec2f) -> f32 {\n  if (any(uv < vec2f(0.0)) || any(uv >= vec2f(1.0))) { return 0.0; }\n  let dims = vec2i(textureDimensions(inputTexture2));\n  let pixel = clamp(vec2i(uv * vec2f(dims)), vec2i(0), dims - vec2i(1));\n  return textureLoad(inputTexture2, pixel, 0).r;\n}\nfn edgeMaskAt(uv: vec2f) -> f32 {\n  let halfPixel = 0.5 / vec2f(textureDimensions(inputTexture2));\n  return maskAt(clamp(uv, halfPixel, vec2f(1.0) - halfPixel));\n}\nfn surfaceEdge(uv: vec2f) -> f32 {\n  let dims = vec2f(textureDimensions(inputTexture2));\n  let offset = max(params.edgeWidth, 0.0) * min(dims.x, dims.y) / dims;\n  var inside = edgeMaskAt(uv + vec2f(offset.x, 0.0));\n  inside = min(inside, edgeMaskAt(uv - vec2f(offset.x, 0.0)));\n  inside = min(inside, edgeMaskAt(uv + vec2f(0.0, offset.y)));\n  inside = min(inside, edgeMaskAt(uv - vec2f(0.0, offset.y)));\n  inside = min(inside, edgeMaskAt(uv + offset * 0.7071));\n  inside = min(inside, edgeMaskAt(uv - offset * 0.7071));\n  inside = min(inside, edgeMaskAt(uv + vec2f(offset.x, -offset.y) * 0.7071));\n  inside = min(inside, edgeMaskAt(uv + vec2f(-offset.x, offset.y) * 0.7071));\n  return smoothstep(0.15, 0.75, maskAt(uv)) * (1.0 - smoothstep(0.15, 0.75, inside));\n}\nfn ramp(position: f32) -> vec3f {\n  let wave = 0.5 + 0.5 * cos(6.2831853 * (position + vec3f(0.0, 0.33, 0.67)));\n  return 0.025 + 0.975 * pow(wave, vec3f(1.7));\n}\nfn ridge(position: f32, width: f32) -> f32 {\n  let aa = max(fwidth(position) * 0.65, 0.002);\n  return 1.0 - smoothstep(width, width + aa, abs(fract(position) - 0.5));\n}\n// Relative inverse depth is a height field, not metric geometry. A short ray\n// along the grazing light tests nearby protrusions without moving the photograph.\nfn visibility(uv: vec2f, depth: f32, light: vec3f, strength: f32) -> f32 {\n  let dims = vec2f(textureDimensions(inputTexture1));\n  let direction = normalize(light.xy);\n  let stepUV = direction * 2.0 / dims;\n  var blocked = 0.0;\n  for (var step = 1; step <= 12; step++) {\n    let offset = stepUV * f32(step);\n    let sampleUV = uv + offset;\n    let rayHeight = depth + length(offset) * light.z / max(length(light.xy) * strength * 0.25, 0.001);\n    let obstruction = smoothstep(0.003, 0.025, depthAt(sampleUV) - rayHeight);\n    blocked = max(blocked, obstruction * maskAt(sampleUV));\n  }\n  return 1.0 - blocked * 0.85;\n}\nfn luminance(uv: vec2f) -> f32 {\n  return dot(textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb, vec3f(0.2126, 0.7152, 0.0722));\n}\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let depth = depthAt(uv);\n  let t = frameU.absTime * params.speed;\n  let slow = t * params.evolution;\n  let phase = 6.2831853 * t;\n  let evolve = sin(slow * 0.71) * 0.5 + sin(slow * 1.13) * 0.25;\n  let palette = params.paletteShift + slow * 0.12;\n  let bands = max(params.bands, 1.0);\n  let fine = clamp(params.fineDetail, 0.2, 4.0);\n  let width = clamp(params.lineWidth, 0.002, 0.4);\n  let glow = clamp(params.glow, 0.0, 1.0);\n  let strength = clamp(params.depthStrength, 0.0, 4.0);\n\n  // Recover cornices and window frames at their fixed photo coordinates. These\n  // derivatives affect projected features independently of literal photo mixing.\n  let pixel = max(1.0 / vec2f(textureDimensions(inputTexture)), fwidth(uv));\n  let dxPhoto = luminance(uv + vec2f(pixel.x, 0.0)) - luminance(uv - vec2f(pixel.x, 0.0));\n  let dyPhoto = luminance(uv + vec2f(0.0, pixel.y)) - luminance(uv - vec2f(0.0, pixel.y));\n  let dxWide = luminance(uv + vec2f(pixel.x * 3.0, 0.0)) - luminance(uv - vec2f(pixel.x * 3.0, 0.0));\n  let dyWide = luminance(uv + vec2f(0.0, pixel.y * 3.0)) - luminance(uv - vec2f(0.0, pixel.y * 3.0));\n  let detail = clamp(params.architectureDetail, 0.0, 2.0);\n  let architecture = clamp(length(vec2f(dxPhoto, dyPhoto)) * (3.0 + fine)\n    + length(vec2f(dxWide, dyWide)) * 1.15, 0.0, 1.0) * detail;\n  let depthPixel = max(pixel, 1.0 / vec2f(textureDimensions(inputTexture1)));\n  let left = depthAt(uv - vec2f(depthPixel.x, 0.0));\n  let right = depthAt(uv + vec2f(depthPixel.x, 0.0));\n  let above = depthAt(uv - vec2f(0.0, depthPixel.y));\n  let below = depthAt(uv + vec2f(0.0, depthPixel.y));\n  let gradient = vec2f(right - left, below - above) / (2.0 * depthPixel);\n  let normal = normalize(vec3f(-gradient * strength * 0.42, 1.0));\n  let photoNormal = normalize(vec3f(-gradient * strength * 0.42\n    - vec2f(dxPhoto, dyPhoto) * detail * 3.0, 1.0));\n  let curvature = (left + right + above + below - depth * 4.0);\n  let depthEdge = clamp(length(gradient) * strength * 0.28, 0.0, 1.0);\n  let crease = clamp(abs(curvature) * 60.0 * strength, 0.0, 1.0);\n  let features = clamp(architecture + depthEdge * 0.45 + crease, 0.0, 1.5);\n  let topology = depth * bands * (1.0 + evolve * 0.12) - t;\n  let line = ridge(topology, width);\n  let halo = exp(-18.0 * abs(fract(topology) - 0.5)) * glow;\n  let featurePulse = 0.65 + 0.35 * sin(depth * 18.0 - phase + slow * 0.7);\n  var colour = vec3f(0.0);\n\n  if (params.mode < 0.5) {\n    // Iso-depth engraving: every filament is a level set of the measured field.\n    let micro = ridge(depth * bands * 2.7 * fine - t * 0.37, width * 0.3);\n    let contourColour = ramp(depth * 1.35 + palette);\n    colour = ramp(depth * 0.6 + palette + 0.7) * 0.18\n      + contourColour * (line * 0.85 + halo * 0.45)\n      + vec3f(0.03, 0.8, 1.0) * micro * (0.12 + glow * 0.2)\n      + mix(vec3f(0.08, 0.65, 1.0), vec3f(1.0, 0.05, 0.35), featurePulse)\n        * features * (0.45 + featurePulse * 0.65);\n  } else if (params.mode < 1.5) {\n    // Broad spectral light planes cross depth, then catch differently facing walls.\n    let plane = depth * (2.4 + evolve * 0.8) - t * 0.25;\n    let spectral = ramp(plane + palette);\n    let light = normalize(vec3f(cos(phase * 0.21), sin(phase * 0.21), 0.3));\n    let facing = max(dot(normal, light), 0.0);\n    let prism = ridge(depth * max(bands * 0.25, 1.0) - t * 0.43, width * 0.65);\n    let sheet = 0.5 + 0.5 * sin(6.2831853 * plane);\n    colour = spectral * (0.35 + sheet * 0.25 + facing * 0.35)\n      + ramp(plane + palette + 0.32) * prism * (0.4 + glow * 0.5)\n      + mix(vec3f(0.1, 0.8, 1.0), vec3f(1.0, 0.2, 0.55), featurePulse)\n        * features * (0.55 + featurePulse * 0.45);\n  } else if (params.mode < 2.5) {\n    // Warm raised faces and cool recesses exchange grazing light and real local\n    // occlusion. Photo embossing is confined to the photograph's actual edges.\n    let lightA = normalize(vec3f(cos(phase * 0.27 + slow * 0.4), sin(phase * 0.27 + slow * 0.4), 0.24));\n    let lightB = normalize(vec3f(cos(-phase * 0.19 + 2.3), sin(-phase * 0.19 + 2.3), 0.4));\n    let shadow = visibility(uv, depth, lightA, strength);\n    let diffuseA = max(dot(photoNormal, lightA), 0.0) * shadow;\n    let diffuseB = max(dot(photoNormal, lightB), 0.0);\n    let halfLight = normalize(lightA + vec3f(0.0, 0.0, 1.0));\n    let specular = pow(max(dot(photoNormal, halfLight), 0.0), 12.0 + fine * 10.0) * shadow;\n    let raised = smoothstep(0.15, 0.9, depth);\n    let gold = mix(vec3f(0.52, 0.15, 0.025), vec3f(1.0, 0.56, 0.08), raised);\n    let cold = vec3f(0.015, 0.31, 0.7);\n    let metal = mix(gold, ramp(depth * 0.4 + palette), abs(sin(params.paletteShift * 3.14159)) * 0.45);\n    colour = metal * (0.25 + diffuseA * 0.85) * (0.65 + shadow * 0.35)\n      + cold * diffuseB * (0.4 + (1.0 - raised) * 0.5)\n      + vec3f(1.0, 0.78, 0.29) * specular * (0.45 + glow * 0.9)\n      + mix(vec3f(0.05, 0.75, 1.0), vec3f(1.0, 0.5, 0.07), featurePulse)\n        * architecture * (0.6 + featurePulse * 0.35)\n      + vec3f(1.0, 0.39, 0.055) * crease * glow * 0.4;\n  } else if (params.mode < 3.5) {\n    // A depth scanner activates measured seams and architectural linework. Empty\n    // wall interiors carry only a quiet depth tint, never a screen-space grid.\n    let plane = 0.5 + sin(phase * 0.19 + slow * 0.23) * 0.48;\n    let delta = (depth - plane) * (9.0 + fine * 4.0);\n    let scan = exp(-delta * delta);\n    let blueprint = mix(vec3f(0.025, 0.65, 1.0), ramp(0.58 + palette), 0.22);\n    colour = vec3f(0.012, 0.055, 0.19) + blueprint * depth * (0.035 + featurePulse * 0.035)\n      + blueprint * features * (0.4 + featurePulse * 0.65) * (0.8 + glow * 0.4)\n      + vec3f(1.0, 0.51, 0.035) * scan * features * (0.9 + glow * 0.7);\n  } else if (params.mode < 4.5) {\n    // Depth strata alternately expose near and far surfaces, with the transition\n    // following the height field and its occluding ridges rather than tiled UVs.\n    let plane = 0.5 + sin(phase * 0.23 + slow * 0.17) * 0.46;\n    let reveal = smoothstep(plane - 0.035, plane + 0.035, depth);\n    let delta = (depth - plane) * (18.0 + fine * 8.0);\n    let sweep = exp(-delta * delta);\n    let strata = ridge(depth * bands * 0.5 - t * 0.18 + evolve * 0.4, width * 0.5);\n    let far = mix(vec3f(0.025, 0.08, 0.38), vec3f(0.08, 0.4, 0.75), depth);\n    let near = mix(vec3f(0.8, 0.12, 0.04), vec3f(1.0, 0.62, 0.08), depth);\n    colour = mix(far, near, reveal) * (0.55 + normal.z * 0.25)\n      + ramp(depth * 0.7 + palette + 0.2) * strata * glow * 0.35\n      + vec3f(0.65, 0.94, 1.0) * sweep * (0.55 + features * 0.4)\n      + mix(vec3f(0.05, 0.65, 1.0), vec3f(1.0, 0.62, 0.08), reveal)\n        * features * (0.55 + featurePulse * 0.35);\n  } else if (params.mode < 5.5) {\n    let light = normalize(vec3f(cos(phase * 0.19), sin(phase * 0.19), 0.28));\n    let shadow = visibility(uv, depth, light, strength);\n    let facing = max(dot(photoNormal, light), 0.0) * shadow;\n    colour = vec3f(0.08, 0.12, 0.2) * (0.2 + depth * 0.4)\n      + vec3f(0.68, 0.82, 1.0) * facing * 0.85\n      + vec3f(0.45, 0.8, 1.0) * features * featurePulse * 0.25;\n  } else if (params.mode < 6.5) {\n    let ribbon = depth * (5.0 + evolve * 0.6) - t * 0.4;\n    let crest = pow(0.5 + 0.5 * sin(ribbon * 6.2831853), 5.0);\n    colour = ramp(ribbon * 0.12 + palette) * (0.18 + crest * 0.7)\n      + ramp(depth + palette + 0.5) * (features * featurePulse * 0.55 + halo * 0.3);\n  } else if (params.mode < 7.5) {\n    let lattice = fract(uv * vec2f(64.0, 48.0)) - 0.5;\n    let dotLight = exp(-dot(lattice, lattice) * 70.0);\n    let pulse = 0.5 + 0.5 * sin(depth * 32.0 - phase);\n    colour = ramp(depth + palette) * (0.04 + dotLight * (0.2 + pulse * 0.75))\n      + vec3f(0.15, 0.8, 1.0) * features * (0.35 + pulse * 0.4);\n  } else if (params.mode < 8.5) {\n    let plane = 0.5 + sin(phase * 0.16) * 0.48;\n    let scan = exp(-pow((depth - plane) * 16.0, 2.0));\n    let thermal = mix(vec3f(0.04, 0.03, 0.3), vec3f(1.0, 0.18, 0.025), smoothstep(0.1, 0.7, depth));\n    colour = thermal * (0.4 + featurePulse * 0.25) + vec3f(1.0, 0.86, 0.2) * scan * (0.5 + features * 0.4);\n  } else {\n    return vec4f(textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb * params.gain, 1.0);\n  }\n  // Window holes and concavities are independent of the depth model. Rim motion\n  // follows their depth, and the existing downstream Mask clips the final light.\n  let edge = surfaceEdge(uv);\n  let chase = 0.85 + 0.15 * sin(6.2831853 * (depth * 1.4 - t));\n  var edgeColour = ramp(depth * 0.7 + palette - t * 0.14);\n  if (params.mode >= 1.5 && params.mode < 2.5) { edgeColour = vec3f(1.0, 0.5, 0.065); }\n  if (params.mode >= 2.5 && params.mode < 3.5) { edgeColour = vec3f(0.05, 0.8, 1.0); }\n  let boundary = edgeColour * max(params.edgeGlow, 0.0) * chase;\n  colour = mix(colour, boundary, edge * clamp(params.edgeGlow, 0.0, 1.0));\n  colour = clamp(colour, vec3f(0.0), vec3f(1.0));\n  let photo = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).rgb;\n  let light = max(colour.r, max(colour.g, colour.b));\n  let projected = mix(colour * params.lightColor, photo * light, clamp(params.photoAmount, 0.0, 1.0));\n  return vec4f(projected * params.gain, 1.0);\n}",
+          "speed": 0.2
+        },
+        "position": {
+          "x": -980,
+          "y": 0
+        },
+        "type": "customWgslMulti"
+      },
+      "wgsl_synthetic_depth": {
+        "definitionVersion": 1,
+        "id": "wgsl_synthetic_depth",
+        "label": "wgsl_synthetic_depth",
+        "parameters": {
+          "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nfn rectangle(uv: vec2f, center: vec2f, halfSize: vec2f) -> f32 {\n  let distance = abs(uv - center) - halfSize;\n  let aa = max(fwidth(uv), vec2f(0.001));\n  return (1.0 - smoothstep(-aa.x, aa.x, distance.x)) * (1.0 - smoothstep(-aa.y, aa.y, distance.y));\n}\nfn site(uv: vec2f) -> vec3f {\n  let wall = rectangle(uv, vec2f(0.5, 0.53), vec2f(0.42, 0.42));\n  let cell = fract((uv - vec2f(0.10, 0.13)) * vec2f(6.25, 3.85));\n  let openings = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.24, 0.27))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.37, 0.28));\n  let frames = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.30, 0.33))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.38, 0.30));\n  let portal = rectangle(uv, vec2f(0.5, 0.82), vec2f(0.075, 0.13));\n  let columns = 1.0 - smoothstep(0.010, 0.022, abs(fract((uv.x - 0.08) * 6.25) - 0.05));\n  let cornice = rectangle(uv, vec2f(0.5, 0.11), vec2f(0.43, 0.025));\n  let sill = rectangle(uv, vec2f(0.5, 0.70), vec2f(0.425, 0.012));\n  let depth = clamp(0.48 + 0.24 * columns + 0.17 * frames - 0.43 * openings\n    + 0.31 * cornice + 0.16 * sill - 0.38 * portal + 0.055 * sin(uv.x * 3.14159), 0.0, 1.0);\n  let mask = max(wall, cornice) * (1.0 - openings) * (1.0 - portal);\n  return vec3f(depth, mask, clamp(openings + portal, 0.0, 1.0));\n}\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let depth = site(uv).x;\n  return vec4f(depth, depth, depth, 1.0);\n}"
+        },
+        "position": {
+          "x": -1360,
+          "y": 320
+        },
+        "type": "customWgsl"
+      },
+      "wgsl_synthetic_mask": {
+        "definitionVersion": 1,
+        "id": "wgsl_synthetic_mask",
+        "label": "wgsl_synthetic_mask",
+        "parameters": {
+          "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nfn rectangle(uv: vec2f, center: vec2f, halfSize: vec2f) -> f32 {\n  let distance = abs(uv - center) - halfSize;\n  let aa = max(fwidth(uv), vec2f(0.001));\n  return (1.0 - smoothstep(-aa.x, aa.x, distance.x)) * (1.0 - smoothstep(-aa.y, aa.y, distance.y));\n}\nfn site(uv: vec2f) -> vec3f {\n  let wall = rectangle(uv, vec2f(0.5, 0.53), vec2f(0.42, 0.42));\n  let cell = fract((uv - vec2f(0.10, 0.13)) * vec2f(6.25, 3.85));\n  let openings = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.24, 0.27))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.37, 0.28));\n  let frames = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.30, 0.33))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.38, 0.30));\n  let portal = rectangle(uv, vec2f(0.5, 0.82), vec2f(0.075, 0.13));\n  let columns = 1.0 - smoothstep(0.010, 0.022, abs(fract((uv.x - 0.08) * 6.25) - 0.05));\n  let cornice = rectangle(uv, vec2f(0.5, 0.11), vec2f(0.43, 0.025));\n  let sill = rectangle(uv, vec2f(0.5, 0.70), vec2f(0.425, 0.012));\n  let depth = clamp(0.48 + 0.24 * columns + 0.17 * frames - 0.43 * openings\n    + 0.31 * cornice + 0.16 * sill - 0.38 * portal + 0.055 * sin(uv.x * 3.14159), 0.0, 1.0);\n  let mask = max(wall, cornice) * (1.0 - openings) * (1.0 - portal);\n  return vec3f(depth, mask, clamp(openings + portal, 0.0, 1.0));\n}\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let coverage = site(uv).y;\n  return vec4f(coverage, coverage, coverage, 1.0);\n}"
+        },
+        "position": {
+          "x": -1360,
+          "y": 640
+        },
+        "type": "customWgsl"
+      },
+      "wgsl_synthetic_photo": {
+        "definitionVersion": 1,
+        "id": "wgsl_synthetic_photo",
+        "label": "wgsl_synthetic_photo",
+        "parameters": {
+          "source": "@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n\nfn rectangle(uv: vec2f, center: vec2f, halfSize: vec2f) -> f32 {\n  let distance = abs(uv - center) - halfSize;\n  let aa = max(fwidth(uv), vec2f(0.001));\n  return (1.0 - smoothstep(-aa.x, aa.x, distance.x)) * (1.0 - smoothstep(-aa.y, aa.y, distance.y));\n}\nfn site(uv: vec2f) -> vec3f {\n  let wall = rectangle(uv, vec2f(0.5, 0.53), vec2f(0.42, 0.42));\n  let cell = fract((uv - vec2f(0.10, 0.13)) * vec2f(6.25, 3.85));\n  let openings = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.24, 0.27))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.37, 0.28));\n  let frames = rectangle(cell, vec2f(0.5, 0.47), vec2f(0.30, 0.33))\n    * rectangle(uv, vec2f(0.5, 0.42), vec2f(0.38, 0.30));\n  let portal = rectangle(uv, vec2f(0.5, 0.82), vec2f(0.075, 0.13));\n  let columns = 1.0 - smoothstep(0.010, 0.022, abs(fract((uv.x - 0.08) * 6.25) - 0.05));\n  let cornice = rectangle(uv, vec2f(0.5, 0.11), vec2f(0.43, 0.025));\n  let sill = rectangle(uv, vec2f(0.5, 0.70), vec2f(0.425, 0.012));\n  let depth = clamp(0.48 + 0.24 * columns + 0.17 * frames - 0.43 * openings\n    + 0.31 * cornice + 0.16 * sill - 0.38 * portal + 0.055 * sin(uv.x * 3.14159), 0.0, 1.0);\n  let mask = max(wall, cornice) * (1.0 - openings) * (1.0 - portal);\n  return vec3f(depth, mask, clamp(openings + portal, 0.0, 1.0));\n}\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let geometry = site(uv);\n  let wall = rectangle(uv, vec2f(0.5, 0.53), vec2f(0.42, 0.42));\n  let stone = 0.48 + 0.12 * sin(uv.x * 131.0) * sin(uv.y * 97.0);\n  let mortar = 1.0 - smoothstep(0.015, 0.035, min(fract(uv.x * 36.0), fract(uv.y * 32.0)));\n  let face = vec3f(stone * 0.92, stone * 0.96, stone) * (0.55 + geometry.x * 0.7) - mortar * 0.025;\n  let sky = mix(vec3f(0.035, 0.055, 0.105), vec3f(0.07, 0.095, 0.14), uv.y);\n  var colour = mix(sky, face, max(wall, geometry.y));\n  colour = mix(colour, vec3f(0.015, 0.022, 0.035), geometry.z);\n  return vec4f(max(colour, vec3f(0.0)), 1.0);\n}"
+        },
+        "position": {
+          "x": -1360,
+          "y": 0
+        },
+        "type": "customWgsl"
+      },
+      "window_projector": {
+        "definitionVersion": 1,
+        "id": "window_projector",
+        "label": "window_projector",
+        "parameters": {
+          "fit": "stretch",
+          "height": 320,
+          "width": 480
+        },
+        "position": {
+          "x": 820,
+          "y": 0
+        },
+        "type": "window"
+      }
+    },
+    "revision": 1
+  },
+  "name": "E84 Photo Mapping Liquid Strata",
+  "projectId": "example-e84-photo-mapping-liquid-strata",
+  "schemaVersion": 5,
+  "settings": {
+    "limits": {
+      "maxBufferBytes": 268435456,
+      "maxDispatch": 65535,
+      "maxResolution": 4096,
+      "memoryBudgetBytes": 1073741824
+    },
+    "outputResolution": {
+      "height": 320,
+      "width": 480
+    },
+    "previewFps": 30,
+    "previewLongEdge": 192,
+    "randomSeed": 84,
+    "workingFormat": "rgba16float"
+  },
+  "updatedAt": "2026-08-29T00:00:00.000Z"
+}

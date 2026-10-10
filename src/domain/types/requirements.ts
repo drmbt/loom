@@ -86,7 +86,7 @@ export const RUNTIME_REQUIREMENTS: readonly RuntimeRequirement[] = [
     id: "helper",
     category: "host",
     label: "Device helper",
-    description: "Needs the local device helper running beside the page; a browser tab cannot open a socket itself.",
+    description: "Needs the local device helper running and paired beside the page for this integration.",
     liveState: true,
   },
   {
@@ -95,7 +95,7 @@ export const RUNTIME_REQUIREMENTS: readonly RuntimeRequirement[] = [
     // The owner's own words for this tag, kept verbatim. E74's prose and the e2e
     // requirement gate both quote it.
     label: "Desktop only",
-    description: "Needs the Loom desktop app. A browser tab has no access to this transport at all.",
+    description: "Needs the Loom desktop app for native access unavailable to a browser tab.",
   },
   {
     id: "macos",
@@ -107,7 +107,7 @@ export const RUNTIME_REQUIREMENTS: readonly RuntimeRequirement[] = [
     id: "apple-silicon",
     category: "platform",
     label: "Apple Silicon",
-    description: "Needs an Apple Silicon Mac and the configured Python Vision worker.",
+    description: "Needs an Apple Silicon Mac. The selected integration specifies its native runtime requirements.",
   },
   {
     id: "windows",

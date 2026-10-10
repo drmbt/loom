@@ -480,6 +480,7 @@ export default tseslint.config(
     // gate had become unreadable (§V752). AN IGNORE LIST HAS TO MOVE WITH THE
     // CONVENTION IT SERVES — if probes move again, this line moves with them.
     ignores: [
+      ".cache/**", // Pinned native dependency sources and runtime build output.
       "dist/**",
       // Build output, like dist/. Ignored here as well as in .gitignore: a stray
       // `pnpm build:pages` otherwise reds the shared lint gate with 5000+ errors

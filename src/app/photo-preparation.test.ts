@@ -1,16 +1,20 @@
 // @vitest-environment jsdom
 import { createHash, webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEPTH_ACCURATE, PHOTO_FACADE, PHOTO_MASK } from "@runtime/models/model-catalogue.ts";
+import { DEPTH_ACCURATE, PHOTO_DEPTH_MODELS, PHOTO_DEPTH_LARGE_FP16, PHOTO_DEPTH_LARGE_Q4F16, PHOTO_FACADE, PHOTO_MASK } from "@runtime/models/model-catalogue.ts";
 import type { WorkerRunner, WorkerRunnerOptions } from "@runtime/models/worker-runner.ts";
 import type { createModelAcquisition } from "@runtime/models/model-acquisition.ts";
-import { decodeFloatMap, encodeFloatMap } from "@runtime/media/float-map.ts";
+import { decodeDepthExr } from "@runtime/media/depth-exr.ts";
+import { encodePreparedMap } from "@runtime/media/prepared-map-file.ts";
 import { FACADE_MASK_DEFAULTS, facadeMaskSettings } from "@runtime/media/facade-mask.ts";
-import { preparedMetadata } from "@runtime/media/prepared-map.ts";
+import { depthRecipeOf, preparedMetadata, rasterizeFloatMap } from "@runtime/media/prepared-map.ts";
+import { DEFAULT_DEPTH_REFINEMENT, DEFAULT_MARIGOLD_RECIPE, DEFAULT_PHOTO_DEPTH_RECIPE, MARIGOLD_BUNDLE_ID, type PhotoDepthRecipe } from "@domain/media/photo-depth-recipe.ts";
+import type { NativePreparationCapability, NativePreparationRequest } from "@devices/native-preparation.ts";
 import { createFileReference, parseFileReference } from "@domain/media/file-reference.ts";
 import { createPhotoPreparer, decodePreparationPhoto, savePreparedMap, type PreparationPhoto } from "./photo-preparation.ts";
 
-const mocks = vi.hoisted(() => ({ acquisition: vi.fn(), acquire: vi.fn(), cancel: vi.fn(), cache: vi.fn(), runner: vi.fn(), remember: vi.fn() }));
+const mocks = vi.hoisted(() => ({ acquisition: vi.fn(), acquire: vi.fn(), cancel: vi.fn(), cache: vi.fn(), runner: vi.fn(), remember: vi.fn(), refine: vi.fn() }));
+vi.mock("@runtime/backend/photo-depth-refinement.ts", () => ({ refineBrowserPhotoDepth: mocks.refine }));
 vi.mock("@runtime/models/cache-model-store.ts", () => ({ cacheModelStore: mocks.cache }));
 vi.mock("@runtime/models/model-acquisition.ts", async importOriginal => ({
   ...await importOriginal<typeof import("@runtime/models/model-acquisition.ts")>(), createModelAcquisition: mocks.acquisition,
@@ -20,6 +24,10 @@ vi.mock("@ui/files/retained-files.ts", () => ({ retainedFiles: () => ({ remember
 
 function photograph(): PreparationPhoto {
   return { bitmap: { width: 4, height: 2, close: vi.fn() } as unknown as ImageBitmap, sha256: "a".repeat(64), name: "sculpture.png" };
+}
+
+function depthRequest(inputSide = 266, photo = photograph(), recipe: Partial<Extract<PhotoDepthRecipe, { version: 1 }>> = {}) {
+  return { kind: "depth" as const, photo, recipe: { ...DEFAULT_PHOTO_DEPTH_RECIPE, inputSide, ...recipe } };
 }
 
 function rawResult() {
@@ -47,6 +55,35 @@ function runnerWith(result = rawResult()) {
   return { runner, options: () => options };
 }
 
+function nativeBridge() {
+  let request!: NativePreparationRequest;
+  const valuesFor = () => {
+    const values = new Float32Array(request.width * request.height).fill(0.25);
+    values[5] = 1 + 2 ** -23;
+    values[6] = -0;
+    values[7] = -0.125;
+    return values;
+  };
+  const resultFor = () => ({ width: request.width, height: request.height,
+    values: valuesFor().buffer, semantics: "relative-log" as const });
+  const bridge = {
+    probe: vi.fn<() => Promise<NativePreparationCapability>>(async () => ({ available: true, cached: false,
+      bundleId: MARIGOLD_BUNDLE_ID, bytes: 15_326_640_856, backend: "mlx", inputSides: [512, 768, 1024] })),
+    start: vi.fn(async (value: NativePreparationRequest) => { request = value; return "native-job"; }),
+    status: vi.fn<(_id: string) => Promise<unknown>>(async () => ({ kind: "complete", result: resultFor() })),
+    cancel: vi.fn<(_id: string) => Promise<void>>(async () => {}),
+    close: vi.fn<(_id: string) => Promise<void>>(async () => {}),
+  };
+  (window as Window & { loomDesktop?: unknown }).loomDesktop = { preparation: bridge };
+  return { bridge, valuesFor, resultFor };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(complete => { resolve = complete; });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal("crypto", webcrypto);
@@ -54,29 +91,135 @@ beforeEach(() => {
   mocks.cache.mockReturnValue({});
   mocks.acquire.mockResolvedValue(new ArrayBuffer(8));
   mocks.acquisition.mockReturnValue({ acquire: mocks.acquire, cancel: mocks.cancel });
-  mocks.remember.mockResolvedValue(createFileReference("saved-map", "binary", "depth.loom-f32"));
+  mocks.remember.mockResolvedValue(createFileReference("saved-map", "binary", "depth.loom.exr"));
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((() => ({
     drawImage: vi.fn(),
     getImageData: (_x: number, _y: number, width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4).fill(128) }),
   })) as unknown as typeof HTMLCanvasElement.prototype.getContext);
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker; });
+afterEach(() => {
+  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+  delete (window as Window & { loomDesktop?: unknown }).loomDesktop;
+});
 
 describe("photo preparation sessions", () => {
+  it("runs Marigold through the real renderer bridge with rectangular RGBA and preserved native float32 log-depth", async () => {
+    const native = nativeBridge();
+    const worker = vi.fn(function () { throw new Error("Native preparation must not create a browser worker"); });
+    vi.stubGlobal("Worker", worker);
+    const progress = vi.fn();
+    const preparer = createPhotoPreparer(progress);
+    expect(native.bridge.probe).not.toHaveBeenCalled();
+    expect(native.bridge.start).not.toHaveBeenCalled();
+    const photo = photograph();
+    const map = await preparer.run({ kind: "depth", photo, recipe: DEFAULT_MARIGOLD_RECIPE });
+    expect(native.bridge.probe).toHaveBeenCalledTimes(1);
+    expect(native.bridge.start).toHaveBeenCalledWith({ modelId: DEFAULT_MARIGOLD_RECIPE.modelId,
+      inputSide: 512, seed: 2025, width: 512, height: 256, rgba: expect.any(ArrayBuffer) });
+    const request = native.bridge.start.mock.calls[0]![0];
+    expect(new Uint8Array(request.rgba)).toEqual(new Uint8Array(512 * 256 * 4).fill(128));
+    expect([map.width, map.height]).toEqual([512, 256]);
+    expect(new Uint32Array(map.values.buffer)).toEqual(new Uint32Array(native.valuesFor().buffer));
+    expect(Object.is(map.values[6], -0)).toBe(true);
+    expect(preparedMetadata(map)).toMatchObject({ version: 2, kind: "depth", stage: "native", parent: null,
+      registration: "stretch", semantics: "relative-log", inputSide: 512,
+      source: { sha256: photo.sha256, width: 4, height: 2 },
+      model: { id: DEFAULT_MARIGOLD_RECIPE.modelId, url: `loom:model-bundle/${MARIGOLD_BUNDLE_ID}` },
+      recipe: DEFAULT_MARIGOLD_RECIPE });
+    expect(depthRecipeOf(map)).toEqual(DEFAULT_MARIGOLD_RECIPE);
+    const reopened = decodeDepthExr(encodePreparedMap(map));
+    expect(new Uint32Array(reopened.values.buffer)).toEqual(new Uint32Array(map.values.buffer));
+    expect(preparedMetadata(reopened)).toEqual(preparedMetadata(map));
+    expect(native.bridge.close).toHaveBeenCalledWith("native-job");
+    expect(native.bridge.cancel).not.toHaveBeenCalled();
+    expect(worker).not.toHaveBeenCalled();
+    expect(mocks.runner).not.toHaveBeenCalled();
+    expect(mocks.acquire).not.toHaveBeenCalled();
+    expect(progress).toHaveBeenLastCalledWith({ phase: "finishing", message: "Marigold finished · native log-depth float32 preserved" });
+    preparer.dispose();
+  });
+
+  it("permits native preparation without a browser model cache and explicitly refuses browser inference", async () => {
+    mocks.cache.mockReturnValue(null);
+    const { bridge } = nativeBridge();
+    const preparer = createPhotoPreparer(() => {});
+    expect(mocks.acquisition).not.toHaveBeenCalled();
+    const map = await preparer.run({ kind: "depth", photo: photograph(), recipe: DEFAULT_MARIGOLD_RECIPE });
+    expect(preparedMetadata(map)).toMatchObject({ semantics: "relative-log", registration: "stretch" });
+    await expect(preparer.run(depthRequest())).rejects.toThrow("Browser model caching is unavailable");
+    expect(bridge.start).toHaveBeenCalledTimes(1);
+    expect(mocks.runner).not.toHaveBeenCalled();
+    expect(mocks.acquire).not.toHaveBeenCalled();
+    preparer.dispose();
+  });
+
+  it("reports the native capability refusal before starting a job or acquiring browser weights", async () => {
+    const { bridge } = nativeBridge();
+    bridge.probe.mockResolvedValue({ available: false, reason: "Install the trusted Marigold worker first." });
+    const preparer = createPhotoPreparer(() => {});
+    await expect(preparer.run({ kind: "depth", photo: photograph(), recipe: DEFAULT_MARIGOLD_RECIPE }))
+      .rejects.toThrow("Install the trusted Marigold worker first.");
+    expect(bridge.start).not.toHaveBeenCalled();
+    expect(bridge.status).not.toHaveBeenCalled();
+    expect(bridge.cancel).not.toHaveBeenCalled();
+    expect(bridge.close).not.toHaveBeenCalled();
+    expect(mocks.runner).not.toHaveBeenCalled();
+    expect(mocks.acquire).not.toHaveBeenCalled();
+    preparer.dispose();
+  });
+
+  it("waits for native retirement after cancellation and discards a late complete result before allowing retry", async () => {
+    const native = nativeBridge(), status = deferred<unknown>(), retired = deferred<void>();
+    native.bridge.status.mockReturnValueOnce(status.promise);
+    native.bridge.cancel.mockReturnValueOnce(retired.promise);
+    const progress = vi.fn();
+    const preparer = createPhotoPreparer(progress);
+    const request = { kind: "depth" as const, photo: photograph(), recipe: DEFAULT_MARIGOLD_RECIPE };
+    const pending = preparer.run(request);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    let settled = false;
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    await vi.waitFor(() => expect(native.bridge.status).toHaveBeenCalledWith("native-job"));
+    preparer.cancel();
+    await vi.waitFor(() => expect(native.bridge.cancel).toHaveBeenCalledWith("native-job"));
+    expect(native.bridge.close).not.toHaveBeenCalled();
+    expect(settled).toBe(false);
+    await expect(preparer.run(request)).rejects.toThrow("already running");
+    status.resolve({ kind: "complete", result: native.resultFor() });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(progress).not.toHaveBeenCalled();
+    retired.resolve();
+    await rejected;
+    expect(native.bridge.close).toHaveBeenCalledWith("native-job");
+    expect(progress).not.toHaveBeenCalled();
+    expect(mocks.runner).not.toHaveBeenCalled();
+    expect(mocks.acquire).not.toHaveBeenCalled();
+    const map = await preparer.run(request);
+    expect(preparedMetadata(map)).toMatchObject({ stage: "native", semantics: "relative-log" });
+    expect(native.bridge.start).toHaveBeenCalledTimes(2);
+    expect(native.bridge.close).toHaveBeenCalledTimes(2);
+    preparer.dispose();
+  });
+
   it("acquires no weights before explicit run, preserving native raw depth precision", async () => {
     const fake = runnerWith();
     const progress = vi.fn();
     const preparer = createPhotoPreparer(progress);
     expect(mocks.acquire).not.toHaveBeenCalled();
     expect(progress).not.toHaveBeenCalled();
-    const map = await preparer.run("depth", photograph(), 266);
+    expect(mocks.runner).not.toHaveBeenCalled();
+    const map = await preparer.run(depthRequest());
     expect(mocks.acquire).toHaveBeenCalledWith(DEPTH_ACCURATE);
     expect([map.width, map.height]).toEqual([4, 4]);
     expect(new Uint32Array(map.values.buffer)).toEqual(new Uint32Array(rawResult().raw.values.buffer));
-    expect(preparedMetadata(map)).toMatchObject({ kind: "depth", inputSide: 266, registration: "letterbox", model: { id: DEPTH_ACCURATE.id } });
+    expect(preparedMetadata(map)).toMatchObject({ version: 2, kind: "depth", inputSide: 266, registration: "letterbox", model: { id: DEPTH_ACCURATE.id },
+      recipe: depthRequest().recipe, stage: "native", parent: null, semantics: "inverse-relative" });
     const nodeId = fake.runner.runRaw.mock.calls[0]![0];
     expect(fake.options().describe(nodeId)).toBeUndefined();
     expect(fake.runner.retainNodes).toHaveBeenCalledWith([]);
+    expect(fake.runner.dispose).toHaveBeenCalledTimes(1);
     expect(fake.runner.run).not.toHaveBeenCalled();
     expect(progress).toHaveBeenCalledWith({ phase: "preparing", message: "Preparing depth input…" });
     preparer.dispose();
@@ -97,7 +240,7 @@ describe("photo preparation sessions", () => {
       fake.options().onMeasured!(id, { backend: "wasm", millis: 1500.4, isolated: false });
       return result;
     });
-    await preparer.run("depth", photograph(), 266);
+    await preparer.run(depthRequest());
     const updates = progress.mock.calls.map(([update]) => update);
     const download = updates.find(update => update.phase === "downloading");
     expect(download.message).toContain("50 B");
@@ -116,7 +259,7 @@ describe("photo preparation sessions", () => {
     runnerWith();
     const progress = vi.fn();
     const preparer = createPhotoPreparer(progress);
-    await preparer.run("depth", photograph(), 266);
+    await preparer.run(depthRequest());
     expect(progress.mock.calls.map(([update]) => update)).toEqual([
       { phase: "preparing", message: "Preparing depth input…" },
       { phase: "processing", message: "Processing depth · 266 × 266" },
@@ -133,7 +276,7 @@ describe("photo preparation sessions", () => {
     const originalRun = fake.runner.runRaw.getMockImplementation()!;
     fake.runner.runRaw.mockImplementation(async (id, bytes) => { requestedTarget = fake.options().describe(id); return originalRun(id, bytes); });
     const preparer = createPhotoPreparer(() => {});
-    const map = await preparer.run("depth", photograph(), side);
+    const map = await preparer.run(depthRequest(side));
     expect(requestedTarget).toMatchObject({ modelId: DEPTH_ACCURATE.id, nodeType: "depth", side, width: side, height: side, providers: ["wasm"], smoothing: 1 });
     expect(mocks.acquire).toHaveBeenCalledWith(DEPTH_ACCURATE);
     expect([map.width, map.height]).toEqual([result.raw.width, result.raw.height]);
@@ -142,13 +285,13 @@ describe("photo preparation sessions", () => {
     preparer.dispose();
   });
 
-  it("defaults the independent mask model to 1024 with stretch registration", async () => {
+  it("uses explicitly chosen independent mask detail at 1024 with stretch registration", async () => {
     const fake = runnerWith({ bytes: new Uint8Array(), raw: { width: 2, height: 1, values: new Float32Array([0.1234567, 0.9876543]) } });
     let requestedTarget: ReturnType<WorkerRunnerOptions["describe"]>;
     const originalRun = fake.runner.runRaw.getMockImplementation()!;
     fake.runner.runRaw.mockImplementation(async (id, bytes) => { requestedTarget = fake.options().describe(id); return originalRun(id, bytes); });
     const preparer = createPhotoPreparer(() => {});
-    const map = await preparer.run("mask", photograph(), 266);
+    const map = await preparer.run({ kind: "mask", photo: photograph(), inputSide: 1024 });
     expect(mocks.acquire).toHaveBeenCalledWith(PHOTO_MASK);
     expect(requestedTarget).toMatchObject({ modelId: PHOTO_MASK.id, nodeType: "matte", side: 1024, width: 1024, height: 1024, providers: ["wasm"], smoothing: 1 });
     expect(preparedMetadata(map)).toMatchObject({ kind: "mask", inputSide: 1024, registration: "stretch", range: { low: 0, high: 1 } });
@@ -163,7 +306,7 @@ describe("photo preparation sessions", () => {
     const originalRun = fake.runner.runRaw.getMockImplementation()!;
     fake.runner.runRaw.mockImplementation(async (id, bytes) => { requestedTarget = fake.options().describe(id); return originalRun(id, bytes); });
     const preparer = createPhotoPreparer(() => {});
-    const map = await preparer.run("mask", photograph(), 266, 1536);
+    const map = await preparer.run({ kind: "mask", photo: photograph(), inputSide: 1536 });
     expect(requestedTarget).toMatchObject({ modelId: PHOTO_MASK.id, nodeType: "matte", side: 1536, width: 1536, height: 1536, providers: ["wasm"], smoothing: 1 });
     expect(mocks.acquire).toHaveBeenCalledWith(PHOTO_MASK);
     expect([map.width, map.height]).toEqual([3, 2]);
@@ -175,7 +318,7 @@ describe("photo preparation sessions", () => {
   it("refuses unsupported mask sizes before acquiring weights or invoking inference", async () => {
     const fake = runnerWith();
     const preparer = createPhotoPreparer(() => {});
-    await expect(preparer.run("mask", photograph(), 266, 1288)).rejects.toThrow("Unsupported mask input size");
+    await expect(preparer.run({ kind: "mask", photo: photograph(), inputSide: 1288 })).rejects.toThrow("Unsupported mask input size");
     expect(fake.runner.runRaw).not.toHaveBeenCalled();
     expect(fake.runner.run).not.toHaveBeenCalled();
     expect(mocks.acquire).not.toHaveBeenCalled();
@@ -191,7 +334,7 @@ describe("photo preparation sessions", () => {
     const preparer = createPhotoPreparer(() => {});
     const reference = photograph();
     const settings = { darkCutoff: 0.031, feather: 0.021, excludeBlueGlass: false };
-    const map = await preparer.run("mask", reference, 266, detailSide, settings);
+    const map = await preparer.run({ kind: "mask", photo: reference, inputSide: detailSide, facade: settings });
     expect(mocks.acquire).toHaveBeenCalledWith(PHOTO_FACADE);
     expect(requestedTarget).toMatchObject({ modelId: PHOTO_FACADE.id, nodeType: "matte", side: 512,
       width: 512, height: 512, sourceWidth: 4, sourceHeight: 2, providers: ["wasm"], smoothing: 1 });
@@ -201,7 +344,7 @@ describe("photo preparation sessions", () => {
     expect(values).toEqual(new Float32Array(64 * 64).fill(0.8123456));
     expect(preparedMetadata(map)).toMatchObject({ kind: "mask", inputSide: 512, registration: "stretch",
       source: { sha256: reference.sha256, width: 4, height: 2 }, model: { id: "facade-surfaces-v1", url: PHOTO_FACADE.url } });
-    const reopened = decodeFloatMap(encodeFloatMap(map));
+    const reopened = decodeDepthExr(encodePreparedMap(map));
     expect(facadeMaskSettings(reopened)).toEqual({ version: 1, detailSide,
       envelopeWidth: 64, envelopeHeight: 64, ...settings });
     expect(new Uint32Array(reopened.values.buffer)).toEqual(new Uint32Array(map.values.buffer));
@@ -212,7 +355,7 @@ describe("photo preparation sessions", () => {
   it("rejects a facade recipe used for depth before acquiring or running a model", async () => {
     const fake = runnerWith();
     const preparer = createPhotoPreparer(() => {});
-    await expect(preparer.run("depth", photograph(), 266, 1024, FACADE_MASK_DEFAULTS)).rejects.toThrow("Facade settings apply only to masks");
+    await expect(preparer.run({ ...depthRequest(), facade: FACADE_MASK_DEFAULTS } as Parameters<typeof preparer.run>[0])).rejects.toThrow("Facade settings apply only to masks");
     expect(fake.runner.runRaw).not.toHaveBeenCalled();
     expect(mocks.acquire).not.toHaveBeenCalled();
     preparer.dispose();
@@ -221,7 +364,7 @@ describe("photo preparation sessions", () => {
   it("rejects invalid facade refinement settings without publishing a substitute map", async () => {
     const fake = runnerWith({ bytes: new Uint8Array(), raw: { width: 64, height: 64, values: new Float32Array(64 * 64).fill(1) } });
     const preparer = createPhotoPreparer(() => {});
-    await expect(preparer.run("mask", photograph(), 266, 1024, { ...FACADE_MASK_DEFAULTS, darkCutoff: NaN }))
+    await expect(preparer.run({ kind: "mask", photo: photograph(), inputSide: 1024, facade: { ...FACADE_MASK_DEFAULTS, darkCutoff: NaN } }))
       .rejects.toThrow("Invalid facade mask: darkCutoff");
     expect(fake.runner.retainNodes).toHaveBeenCalledWith([]);
     preparer.dispose();
@@ -230,7 +373,7 @@ describe("photo preparation sessions", () => {
   it("refuses unsupported sizes before acquiring weights and unavailable caching", async () => {
     const fake = runnerWith();
     const preparer = createPhotoPreparer(() => {});
-    await expect(preparer.run("depth", photograph(), 500)).rejects.toThrow("Unsupported depth input size");
+    await expect(preparer.run(depthRequest(500))).rejects.toThrow("Unsupported photo depth input size");
     expect(fake.runner.runRaw).not.toHaveBeenCalled();
     expect(mocks.acquire).not.toHaveBeenCalled();
     preparer.dispose();
@@ -243,22 +386,242 @@ describe("photo preparation sessions", () => {
     let finish!: (result: ReturnType<typeof rawResult>) => void;
     fake.runner.runRaw.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     const preparer = createPhotoPreparer(() => {});
-    const pending = preparer.run("depth", photograph(), 266);
+    const pending = preparer.run(depthRequest());
     const rejected = expect(pending).rejects.toThrow("Photo preparation was closed");
     preparer.dispose();
     finish(rawResult());
     await rejected;
     expect(fake.runner.dispose).toHaveBeenCalledTimes(1);
-    expect(mocks.cancel.mock.calls.map(call => call[0])).toEqual([DEPTH_ACCURATE.id, PHOTO_MASK.id, PHOTO_FACADE.id]);
-    await expect(preparer.run("depth", photograph(), 266)).rejects.toThrow("Photo preparation was closed");
+    expect(mocks.cancel.mock.calls.map(call => call[0])).toEqual([...PHOTO_DEPTH_MODELS.map(model => model.id), PHOTO_MASK.id, PHOTO_FACADE.id]);
+    await expect(preparer.run(depthRequest())).rejects.toThrow("Photo preparation was closed");
   });
 
   it("reports inference failures without publishing a substitute map", async () => {
     const fake = runnerWith();
     fake.runner.runRaw.mockRejectedValue(new Error("model failed"));
     const preparer = createPhotoPreparer(() => {});
-    await expect(preparer.run("depth", photograph(), 266)).rejects.toThrow("model failed");
+    await expect(preparer.run(depthRequest())).rejects.toThrow("model failed");
     expect(fake.runner.retainNodes).toHaveBeenCalledWith([]);
+    preparer.dispose();
+  });
+
+  it.each([PHOTO_DEPTH_LARGE_Q4F16, PHOTO_DEPTH_LARGE_FP16])("runs selected $label using its pinned descriptor and explicit provider", async descriptor => {
+    vi.stubGlobal("navigator", { gpu: {} });
+    const fake = runnerWith();
+    const preparer = createPhotoPreparer(() => {});
+    let target: ReturnType<WorkerRunnerOptions["describe"]>;
+    const run = fake.runner.runRaw.getMockImplementation()!;
+    fake.runner.runRaw.mockImplementation(async (id, bytes) => { target = fake.options().describe(id); return run(id, bytes); });
+    const request = depthRequest(518, photograph(), { modelId: descriptor.id, backend: "webgpu" });
+    const result = await preparer.run(request);
+    expect(mocks.acquire).toHaveBeenCalledWith(descriptor);
+    expect(descriptor.url).toMatch(/\/resolve\/[a-f0-9]{40}\/onnx\/model_/);
+    expect(descriptor.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(target).toMatchObject({ modelId: descriptor.id, side: 518, providers: ["webgpu"], smoothing: 1 });
+    expect(depthRecipeOf(result)).toEqual(request.recipe);
+    expect(preparedMetadata(result).model).toEqual({ id: descriptor.id, url: descriptor.url });
+    expect(fake.runner.dispose).toHaveBeenCalledTimes(1);
+    preparer.dispose();
+  });
+
+  it("refuses unvalidated Large CPU sizes or unavailable models before creating a worker or acquiring weights", async () => {
+    runnerWith();
+    const preparer = createPhotoPreparer(() => {});
+    await expect(preparer.run(depthRequest(1036, photograph(), { modelId: PHOTO_DEPTH_LARGE_Q4F16.id }))).rejects.toThrow(/has not been validated/);
+    await expect(preparer.run(depthRequest(518, photograph(), { modelId: "unknown-model" }))).rejects.toThrow(/not available for preparation/);
+    expect(mocks.runner).not.toHaveBeenCalled(); expect(mocks.acquire).not.toHaveBeenCalled();
+    preparer.dispose();
+  });
+
+  it("releases each inference session before the next explicitly chosen model runs", async () => {
+    const fake = runnerWith();
+    const preparer = createPhotoPreparer(() => {});
+    const first = await preparer.run(depthRequest(518, photograph(), { modelId: PHOTO_DEPTH_LARGE_FP16.id }));
+    expect(fake.runner.dispose).toHaveBeenCalledTimes(1);
+    const second = await preparer.run(depthRequest());
+    expect(mocks.runner).toHaveBeenCalledTimes(2); expect(fake.runner.dispose).toHaveBeenCalledTimes(2);
+    expect(mocks.acquire.mock.calls.map(([descriptor]) => descriptor.id)).toEqual([PHOTO_DEPTH_LARGE_FP16.id, DEPTH_ACCURATE.id]);
+    expect(preparedMetadata(first).model.id).toBe(PHOTO_DEPTH_LARGE_FP16.id);
+    expect(preparedMetadata(second).model.id).toBe(DEPTH_ACCURATE.id);
+    preparer.dispose();
+    expect(fake.runner.dispose).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels one job, refuses its late result and permits a subsequent explicit run", async () => {
+    const fake = runnerWith();
+    let finish!: (result: ReturnType<typeof rawResult>) => void;
+    fake.runner.runRaw.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const preparer = createPhotoPreparer(() => {});
+    const pending = preparer.run(depthRequest());
+    const canceled = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    preparer.cancel();
+    await expect(preparer.run(depthRequest())).rejects.toThrow(/already running/);
+    finish(rawResult()); await canceled;
+    expect(fake.runner.dispose).toHaveBeenCalledTimes(1);
+    const next = await preparer.run(depthRequest());
+    expect(preparedMetadata(next)).toMatchObject({ stage: "native" });
+    expect(fake.runner.dispose).toHaveBeenCalledTimes(2);
+    preparer.dispose();
+  });
+
+  it("refines a registered working copy without reinference, records native parent identity and saves the complete recipe", async () => {
+    const fake = runnerWith();
+    const progress = vi.fn();
+    const preparer = createPhotoPreparer(progress);
+    const reference = photograph();
+    const request = depthRequest(266, reference);
+    const native = await preparer.run(request);
+    const originalBits = new Uint32Array(native.values.buffer).slice();
+    const nativeBytes = encodePreparedMap(native);
+    const expectedParent = { sha256: createHash("sha256").update(nativeBytes).digest("hex"), width: native.width, height: native.height };
+    const recipe = { ...request.recipe, refinement: { ...DEFAULT_DEPTH_REFINEMENT } };
+    mocks.refine.mockImplementationOnce(async (input, guide, target, settings, options) => {
+      expect(input).toEqual({ width: 4, height: 2, values: rasterizeFloatMap(native, "depth", 4, 2) });
+      expect(input.values).not.toBe(native.values);
+      expect(guide).toEqual({ width: 4, height: 2, rgba: new Uint8Array(32).fill(128) });
+      expect(target).toEqual({ width: 4, height: 2 }); expect(settings).toEqual(recipe.refinement);
+      expect(options.signal.aborted).toBe(false);
+      options.onStage(1, 1, 4, 2);
+      return Float32Array.from({ length: 8 }, (_, index) => index / 7);
+    });
+    const refined = await preparer.refine(reference, native, recipe, 16384);
+    expect(fake.runner.runRaw).toHaveBeenCalledTimes(1); expect(mocks.acquire).toHaveBeenCalledTimes(1);
+    expect(new Uint32Array(native.values.buffer)).toEqual(originalBits);
+    expect(encodePreparedMap(native)).toEqual(nativeBytes);
+    expect(preparedMetadata(refined)).toMatchObject({ version: 2, stage: "refined", parent: expectedParent,
+      recipe, registration: "stretch", semantics: "inverse-relative", source: preparedMetadata(native).source });
+    expect(progress).toHaveBeenCalledWith({ phase: "processing", message: "Guided depth refinement · pass 1 of 1 · 4 × 2" });
+    let written!: Uint8Array;
+    const writable = { write: vi.fn(async (bytes: Uint8Array) => { written = bytes.slice(); }), close: vi.fn(), abort: vi.fn() };
+    (window as unknown as { showSaveFilePicker: unknown }).showSaveFilePicker = vi.fn(async () => ({ name: "refined.loom.exr", createWritable: async () => writable }));
+    await savePreparedMap(refined, "refined");
+    const reopened = decodeDepthExr(written);
+    expect(depthRecipeOf(reopened)).toEqual(recipe); expect(preparedMetadata(reopened)).toMatchObject({ parent: expectedParent });
+    expect(new Uint32Array(reopened.values.buffer)).toEqual(new Uint32Array(refined.values.buffer));
+    preparer.dispose();
+  });
+
+  it("retains the verified saved file's exact identity for refinement instead of hashing re-encoded metadata", async () => {
+    runnerWith();
+    const preparer = createPhotoPreparer(() => {}), reference = photograph(), request = depthRequest(266, reference);
+    const native = await preparer.run(request), recipe = { ...request.recipe, refinement: { ...DEFAULT_DEPTH_REFINEMENT } };
+    const canonical = encodePreparedMap(native), originalView = new DataView(canonical.buffer);
+    // A different EXR exporter may add an ordinary informational header attribute.
+    // It changes the file identity without changing depth samples or Loom provenance.
+    let headerEnd = 8;
+    while (canonical[headerEnd] !== 0) {
+      headerEnd = canonical.indexOf(0, headerEnd) + 1;
+      headerEnd = canonical.indexOf(0, headerEnd) + 1;
+      const length = originalView.getInt32(headerEnd, true);
+      headerEnd += 4 + length;
+    }
+    const names = new TextEncoder().encode("externalSoftware\0string\0"), value = new TextEncoder().encode("Independent depth exporter");
+    const extra = new Uint8Array(names.length + 4 + value.length);
+    extra.set(names); new DataView(extra.buffer).setInt32(names.length, value.length, true); extra.set(value, names.length + 4);
+    const savedBytes = new Uint8Array(canonical.length + extra.length), savedView = new DataView(savedBytes.buffer);
+    savedBytes.set(canonical.subarray(0, headerEnd)); savedBytes.set(extra, headerEnd); savedBytes.set(canonical.subarray(headerEnd), headerEnd + extra.length);
+    const table = headerEnd + 1;
+    for (let row = 0; row < native.height; row++) {
+      savedView.setBigUint64(table + extra.length + row * 8, originalView.getBigUint64(table + row * 8, true) + BigInt(extra.length), true);
+    }
+    const savedNative = decodeDepthExr(savedBytes);
+    const digest = createHash("sha256").update(savedBytes).digest("hex");
+    expect(digest).not.toBe(createHash("sha256").update(encodePreparedMap(savedNative)).digest("hex"));
+    mocks.refine.mockResolvedValueOnce(new Float32Array(8).fill(0.5));
+    const refined = await preparer.refine(reference, savedNative, recipe, 16384, digest);
+    expect(preparedMetadata(refined)).toMatchObject({ parent: { sha256: digest, width: 4, height: 4 } });
+    expect(new Uint32Array(savedNative.values.buffer)).toEqual(new Uint32Array(native.values.buffer));
+    const reopened = decodeDepthExr(encodePreparedMap(refined));
+    expect(preparedMetadata(reopened)).toMatchObject({ parent: { sha256: digest } });
+    preparer.dispose();
+  });
+
+  it("refuses malformed saved native identities before GPU refinement without changing the native prediction", async () => {
+    runnerWith();
+    const preparer = createPhotoPreparer(() => {}), reference = photograph(), request = depthRequest(266, reference);
+    const native = await preparer.run(request), original = encodePreparedMap(native);
+    const recipe = { ...request.recipe, refinement: { ...DEFAULT_DEPTH_REFINEMENT } };
+    for (const digest of ["", "unknown", "a".repeat(63), "A".repeat(64)]) {
+      await expect(preparer.refine(reference, native, recipe, 16384, digest)).rejects.toThrow(/lowercase SHA-256/);
+    }
+    expect(mocks.refine).not.toHaveBeenCalled();
+    expect(encodePreparedMap(native)).toEqual(original);
+    preparer.dispose();
+  });
+
+  it("refines a tiny reference to a genuine 2K float32 asset that validates, saves and reopens", async () => {
+    const fake = runnerWith(), preparer = createPhotoPreparer(() => {}), reference = photograph();
+    const nativeRequest = depthRequest(266, reference), native = await preparer.run(nativeRequest), original = encodePreparedMap(native);
+    const recipe = { ...nativeRequest.recipe, refinement: { ...DEFAULT_DEPTH_REFINEMENT, target: "2048" as const } };
+    const refinedValues = new Float32Array(2048 * 1024).fill(0.5);
+    refinedValues[0] = -0; refinedValues[1] = 0.5 + 2 ** -24; refinedValues[2] = 2 ** -149; refinedValues[refinedValues.length - 1] = 1;
+    mocks.refine.mockImplementationOnce(async (input, guide, target) => {
+      expect([input.width, input.height]).toEqual([4, 2]);
+      expect([guide.width, guide.height, guide.rgba.byteLength]).toEqual([2048, 1024, 2048 * 1024 * 4]);
+      expect(target).toEqual({ width: 2048, height: 1024 });
+      return refinedValues;
+    });
+    const refined = await preparer.refine(reference, native, recipe, 4096);
+    expect([refined.width, refined.height]).toEqual([2048, 1024]);
+    expect(preparedMetadata(refined)).toMatchObject({ stage: "refined", recipe, source: { width: 4, height: 2 },
+      registration: "stretch", parent: { width: 4, height: 4 } });
+    let written!: Uint8Array;
+    const writable = { write: vi.fn(async (bytes: Uint8Array) => { written = bytes.slice(); }), close: vi.fn(), abort: vi.fn() };
+    (window as unknown as { showSaveFilePicker: unknown }).showSaveFilePicker = vi.fn(async () => ({ name: "upscaled.loom.exr", createWritable: async () => writable }));
+    await savePreparedMap(refined, "upscaled");
+    const reopened = decodeDepthExr(written);
+    expect([reopened.width, reopened.height]).toEqual([2048, 1024]);
+    expect(preparedMetadata(reopened)).toEqual(preparedMetadata(refined));
+    for (const index of [0, 1, 2, 12345, refinedValues.length - 1]) {
+      expect(new Uint32Array(reopened.values.buffer)[index]).toBe(new Uint32Array(refinedValues.buffer)[index]);
+    }
+    expect(encodePreparedMap(native)).toEqual(original);
+    expect(fake.runner.runRaw).toHaveBeenCalledOnce(); expect(mocks.refine).toHaveBeenCalledOnce();
+    expect(writable.abort).not.toHaveBeenCalled();
+    preparer.dispose();
+  });
+
+  it("refuses mismatched native photo, inference recipe, inactive refinement or a refined parent before GPU work", async () => {
+    runnerWith();
+    const preparer = createPhotoPreparer(() => {});
+    const reference = photograph(), request = depthRequest(266, reference);
+    const native = await preparer.run(request);
+    const recipe = { ...request.recipe, refinement: { ...DEFAULT_DEPTH_REFINEMENT } };
+    await expect(preparer.refine({ ...reference, sha256: "b".repeat(64) }, native, recipe, 16384)).rejects.toThrow(/different photo/);
+    await expect(preparer.refine({ ...reference, bitmap: { ...reference.bitmap, width: 8 } as ImageBitmap }, native, recipe, 16384)).rejects.toThrow(/different photo/);
+    for (const change of [{ modelId: PHOTO_DEPTH_LARGE_Q4F16.id }, { inputSide: 518 }, { backend: "webgpu" as const }]) {
+      await expect(preparer.refine(reference, native, { ...recipe, ...change }, 16384)).rejects.toThrow(/differs from the selected/);
+    }
+    await expect(preparer.refine(reference, native, request.recipe, 16384)).rejects.toThrow(/not selected/);
+    await expect(preparer.refine(reference, native, recipe, 2)).rejects.toThrow(/output edge/);
+    expect(mocks.refine).not.toHaveBeenCalled();
+    mocks.refine.mockResolvedValue(new Float32Array(8).fill(0.5));
+    const refined = await preparer.refine(reference, native, recipe, 16384);
+    await expect(preparer.refine(reference, refined, recipe, 16384)).rejects.toThrow(/native depth prediction/);
+    expect(mocks.refine).toHaveBeenCalledTimes(1);
+    preparer.dispose();
+  });
+
+  it("keeps native depth unchanged after refinement failure or cancellation and can explicitly retry", async () => {
+    runnerWith();
+    const preparer = createPhotoPreparer(() => {});
+    const reference = photograph(), request = depthRequest(266, reference);
+    const native = await preparer.run(request), original = encodePreparedMap(native);
+    const recipe = { ...request.recipe, refinement: { ...DEFAULT_DEPTH_REFINEMENT } };
+    mocks.refine.mockRejectedValueOnce(new Error("device lost"));
+    await expect(preparer.refine(reference, native, recipe, 16384)).rejects.toThrow(/device lost/);
+    expect(encodePreparedMap(native)).toEqual(original);
+    let finish!: (result: Float32Array) => void;
+    mocks.refine.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const pending = preparer.refine(reference, native, recipe, 16384);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(mocks.refine).toHaveBeenCalledTimes(2));
+    preparer.cancel(); finish(new Float32Array(8).fill(0.5)); await rejected;
+    expect(encodePreparedMap(native)).toEqual(original);
+    mocks.refine.mockResolvedValueOnce(new Float32Array(8).fill(0.5));
+    const retried = await preparer.refine(reference, native, recipe, 16384);
+    expect(preparedMetadata(retried)).toMatchObject({ stage: "refined" });
+    expect(encodePreparedMap(native)).toEqual(original);
     preparer.dispose();
   });
 });
@@ -292,7 +655,7 @@ describe("saved prepared maps", () => {
   it("writes real float32 bytes before retaining the durable file identity", async () => {
     let written!: Uint8Array;
     const writable = { write: vi.fn(async (bytes: Uint8Array) => { written = bytes.slice(); }), close: vi.fn(async () => {}), abort: vi.fn(async () => {}) };
-    const handle = { name: "depth.loomf32", createWritable: vi.fn(async () => writable), getFile: async () => new File([written.buffer as ArrayBuffer], "depth.loomf32") };
+    const handle = { name: "depth.loom.exr", createWritable: vi.fn(async () => writable), getFile: async () => new File([written.buffer as ArrayBuffer], "depth.loom.exr") };
     const picker = vi.fn(async (options: { types: readonly { accept: Record<string, readonly string[]> }[] }) => {
       // Match the File System Access suffix rules so this mock cannot accept a
       // filter the browser would reject before showing the save dialog.
@@ -311,8 +674,8 @@ describe("saved prepared maps", () => {
     const map = rawResult().raw;
     const progress = vi.fn();
     const uri = await savePreparedMap(map, "depth", progress);
-    expect(picker).toHaveBeenCalledWith({ suggestedName: "depth.loomf32", types: [{ description: "Loom float32 map", accept: { "application/x-loom-f32": [".loomf32"] } }] });
-    expect(new Uint32Array(decodeFloatMap(written).values.buffer)).toEqual(new Uint32Array(map.values.buffer));
+    expect(picker).toHaveBeenCalledWith({ suggestedName: `depth-data-4x4-${createHash("sha256").update(written).digest("hex").slice(0, 12)}.loom.exr`, types: [{ description: "Loom OpenEXR float32 map", accept: { "image/x-exr": [".exr"] } }] });
+    expect(new Uint32Array(decodeDepthExr(written).values.buffer)).toEqual(new Uint32Array(map.values.buffer));
     expect(mocks.remember).toHaveBeenCalledWith(handle, "binary");
     expect(writable.close.mock.invocationCallOrder[0]!).toBeLessThan(mocks.remember.mock.invocationCallOrder[0]!);
     expect(parseFileReference(uri)?.source.kind).toBe("fileHandle");
@@ -331,6 +694,7 @@ describe("saved prepared maps", () => {
     const pending = savePreparedMap(rawResult().raw, "depth", progress);
     const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(progress).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(cancel).toBeTypeOf("function"));
     cancel(new DOMException("cancelled", "AbortError"));
     await rejected;
     expect(progress).not.toHaveBeenCalled();

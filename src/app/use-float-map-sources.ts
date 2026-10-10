@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledGraph } from "@compiler/index.ts";
 import { isSilencedSource } from "@domain/graph/bypass.ts";
+import { depthRecipeFromParameters, depthRecipeKey } from "@domain/media/photo-depth-recipe.ts";
 import { storedStaticValue } from "@domain/parameters/slots.ts";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
 import type { FlatGraph, GraphDocument } from "@domain/types/graph.ts";
+import type { StoredParameter } from "@domain/types/parameters.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
-import { decodeFloatMap } from "@runtime/media/float-map.ts";
-import { preparedMetadata, rasterizeFloatMap } from "@runtime/media/prepared-map.ts";
+import { decodeNumericalMap } from "@runtime/media/depth-image.ts";
+import { depthRecipeOf, preparedMetadata, rasterizeFloatMap } from "@runtime/media/prepared-map.ts";
 import { floatMapSourceIdFor } from "@nodes/definitions/float-map-in.ts";
 
 interface Request {
@@ -15,6 +17,8 @@ interface Request {
   readonly photo: string;
   readonly interpretation: string;
   readonly inputSide: number | null;
+  readonly emptySource: string;
+  readonly recipeParameters?: Readonly<Record<string, StoredParameter>>;
   readonly width: number;
   readonly height: number;
 }
@@ -62,12 +66,19 @@ function requestsFor(graph: FlatGraph, compiled: CompiledGraph | null): readonly
     if (node.type !== "floatMapIn" || isSilencedSource(node) || output === undefined) continue;
     const file = storedStaticValue(node.parameters["file"]);
     const interpretation = storedStaticValue(node.parameters["interpretation"]);
+    // An old Float Map In may carry only inputSide. Its existing depth validation
+    // remains independent of the selectors introduced with persisted recipes.
+    const recipeKeys = ["depthModel", "depthBackend", "depthSeed", "depthBundle", "refinementTarget", "refineRadius", "refineSpatialSigma", "refineColorSigma"] as const;
+    const hasRecipe = recipeKeys.some(key => node.parameters[key] !== undefined);
     requests.push({
       nodeId,
       file: typeof file === "string" ? file : "",
       photo: floatMapPhotoUrlFor(graph, nodeId),
+      emptySource: String(storedStaticValue(node.parameters["emptySource"]) ?? "error"),
       interpretation: interpretation === undefined ? "raw" : String(interpretation),
       inputSide: node.parameters["inputSide"] === undefined ? null : Number(storedStaticValue(node.parameters["inputSide"])),
+      ...(hasRecipe ? { recipeParameters: Object.fromEntries([...recipeKeys, "inputSide"].flatMap(key =>
+        node.parameters[key] === undefined ? [] : [[key, node.parameters[key]!]])) } : {}),
       width: output.size[0], height: output.size[1],
     });
   }
@@ -113,6 +124,7 @@ export function useFloatMapSources(
       sources.current.set(request.nodeId, source);
       const diagnostic = (severity: RuntimeDiagnostic["severity"], code: string, message: string): RuntimeDiagnostic => ({ severity, code, message, nodeId: request.nodeId });
       if (request.file === "") {
+        if (request.emptySource === "constant") continue;
         source.diagnostic = diagnostic("warning", "floatMap.missing", "Choose a saved float map or run photo preparation.");
         continue;
       }
@@ -130,12 +142,24 @@ export function useFloatMapSources(
         try {
           const bytes = await fetchBytes(request.file, source.abort.signal);
           if (!current()) return;
-          const map = decodeFloatMap(bytes);
+          const map = await decodeNumericalMap(bytes);
           if (request.interpretation !== "raw") {
             const metadata = preparedMetadata(map);
             if (metadata.kind !== request.interpretation) throw new MapLoadError({ code: "floatMap.interpretation", message: `Saved ${metadata.kind} map cannot be interpreted as ${request.interpretation}.` });
             if (metadata.kind === "depth" && request.inputSide !== null && metadata.inputSide !== request.inputSide) {
               throw new MapLoadError({ code: "floatMap.settingsMismatch", message: "Depth detail differs from the saved preparation. Run depth again." });
+            }
+            if (metadata.kind === "depth") {
+              if (request.recipeParameters !== undefined) {
+                let selected: ReturnType<typeof depthRecipeFromParameters>;
+                try { selected = depthRecipeFromParameters(request.recipeParameters); }
+                catch (error) {
+                  throw new MapLoadError({ code: "floatMap.settingsMismatch", message: `Depth preparation settings are invalid: ${error instanceof Error ? error.message : String(error)}.` });
+                }
+                if (depthRecipeKey(selected) !== depthRecipeKey(depthRecipeOf(map))) {
+                  throw new MapLoadError({ code: "floatMap.settingsMismatch", message: "Depth preparation settings differ from the saved map. Run depth again or restore its settings." });
+                }
+              }
             }
             const photoBytes = await fetchBytes(request.photo, source.abort.signal);
             if (!current()) return;

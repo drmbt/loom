@@ -16,12 +16,13 @@ export interface DesktopOutputBridge {
 }
 export type NativeOutputTransport = NativeVideoTransport;
 export function desktopOutputBridge(transport: NativeOutputTransport = "syphon"): DesktopOutputBridge | undefined {
-  const desktop = (window as Window & { loomDesktop?: DesktopOutputBridge & { ndiOutput?: DesktopOutputBridge; spoutOutput?: DesktopOutputBridge } }).loomDesktop;
-  switch (transport) {
-    case "syphon": return desktop;
-    case "ndi": return desktop?.ndiOutput;
-    case "spout": return desktop?.spoutOutput;
-  }
+  const desktop = (window as Window & { loomDesktop?: unknown }).loomDesktop;
+  const candidate = transport === "syphon" ? desktop : typeof desktop === "object" && desktop !== null
+    ? (desktop as Record<string, unknown>)[transport === "ndi" ? "ndiOutput" : "spoutOutput"] : undefined;
+  if (typeof candidate !== "object" || candidate === null || !("nativeOutput" in candidate) || candidate.nativeOutput !== true) return undefined;
+  if (["open", "close", "resize", "status"].some(key => typeof (candidate as Record<string, unknown>)[key] !== "function"))
+    throw new Error(`Invalid ${transport} native output bridge: an advertised output requires open, close, resize and status methods.`);
+  return candidate as DesktopOutputBridge;
 }
 export function attachNativeOutput(backend: LoomBackend, selection: NativeOutputSelection, canvas: PresentableCanvas) {
   canvas.width = selection.size[0]; canvas.height = selection.size[1];

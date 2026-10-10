@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "bundleId": "marigold-v2-log-stage2-mlx-q4-v1",
+  "totalBytes": 15326640856,
+  "files": [
+    {
+      "path": "quant/LICENSE.md",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/LICENSE.md?download=true",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "quant/README.md",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/README.md?download=true",
+      "bytes": 2306,
+      "sha256": "f5860bdd198a7f353ec16144072466091451cce607ab4fb564b2ed228ba26307"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/transformer/0.safetensors",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/transformer/0.safetensors?download=true",
+      "bytes": 2133769869,
+      "sha256": "97e221e28659142c0234f1a0d097ecd9ba5e6ebb2baef57463e291e0b28e2d94"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/transformer/1.safetensors",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/transformer/1.safetensors?download=true",
+      "bytes": 2142940100,
+      "sha256": "e8b2e62dcd3fd8552f160b7d756d35af65764bb981af31739b4080de6851a0c5"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/transformer/2.safetensors",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/transformer/2.safetensors?download=true",
+      "bytes": 2103978106,
+      "sha256": "6100e2628176a0834440c8d03c443b3c5d7649f16c4463587f1b0902416b2ca3"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/transformer/3.safetensors",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/transformer/3.safetensors?download=true",
+      "bytes": 2121682265,
+      "sha256": "7759f6d31531ceaf38c7760d12e8a1330964a8c7404ee741be2c96ad81a67617"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/transformer/4.safetensors",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/transformer/4.safetensors?download=true",
+      "bytes": 2142940118,
+      "sha256": "a0bce3238911d60db46d2da920496383c33b1c2130513300bcaab7361920a66e"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/transformer/5.safetensors",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/transformer/5.safetensors?download=true",
+      "bytes": 2103978210,
+      "sha256": "a499deda821a0a8d72b056f1794f5a8631874a465850c4e84d25b8c21c02bc2d"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/transformer/6.safetensors",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/transformer/6.safetensors?download=true",
+      "bytes": 449941880,
+      "sha256": "b813d48584b2c83b089641e4bdc79a81cb012f29ef9a491d9b08e064fe6482a5"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/transformer/model.safetensors.index.json",
+      "url": "https://huggingface.co/AbstractFramework/qwen-image-edit-2509-4bit/resolve/4af31392d562331651822afe6241daa09e87bbd1/transformer/model.safetensors.index.json?download=true",
+      "bytes": 241693,
+      "sha256": "f9f03fac574131598f16cdee75d60ffa15dc0fd5e60c37d89bcc74aa3653366c"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/transformer/config.json",
+      "url": "https://huggingface.co/Qwen/Qwen-Image-Edit-2509/resolve/d3968ef930e841f4c73640fb8afa3b306a78167e/transformer/config.json?download=true",
+      "bytes": 339,
+      "sha256": "247c94f9b923a7d6b6035ca76d27b556bd0efd1a8c7672f31f037644fcce340e"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/vae/config.json",
+      "url": "https://huggingface.co/Qwen/Qwen-Image-Edit-2509/resolve/d3968ef930e841f4c73640fb8afa3b306a78167e/vae/config.json?download=true",
+      "bytes": 730,
+      "sha256": "c448160dba5ce79c965cb075ee02e18d1c42eb6424f787e5869790d577b56a65"
+    },
+    {
+      "path": "Qwen-Image-Edit-2509/vae/diffusion_pytorch_model.safetensors",
+      "url": "https://huggingface.co/Qwen/Qwen-Image-Edit-2509/resolve/d3968ef930e841f4c73640fb8afa3b306a78167e/vae/diffusion_pytorch_model.safetensors?download=true",
+      "bytes": 253806966,
+      "sha256": "0c8bc8b758c649abef9ea407b95408389a3b2f610d0d10fcb054fe171d0a8344"
+    },
+    {
+      "path": "Marigold-V2/LICENSE",
+      "url": "https://huggingface.co/huawei-bayerlab/marigold-v2-0/resolve/cdf9810fb690886391a63aec012b5f501064fb0d/LICENSE?download=true",
+      "bytes": 11357,
+      "sha256": "b9cf2597773e6ad82b35aa652e4af4bba68e9304fbe4406bc0f6bdedad8a4b4a"
+    },
+    {
+      "path": "Marigold-V2/depth/Log-stage2/trainables.safetensors",
+      "url": "https://huggingface.co/huawei-bayerlab/marigold-v2-0/resolve/cdf9810fb690886391a63aec012b5f501064fb0d/depth/Log-stage2/trainables.safetensors?download=true",
+      "bytes": 1853909694,
+      "sha256": "3edec69490ba8e8fdc8d63e130f93cb93f514360d415a22701250b2535056892"
+    },
+    {
+      "path": "Marigold-V2/manifest.json",
+      "url": "https://huggingface.co/huawei-bayerlab/marigold-v2-0/resolve/cdf9810fb690886391a63aec012b5f501064fb0d/manifest.json?download=true",
+      "bytes": 5579,
+      "sha256": "b6545c4fcc395b1628c7960e1942e8428d411916a74c2d19acabfafd475454e8"
+    },
+    {
+      "path": "Marigold-V2/qwen_text_embeddings/qwen_edit_2509_qwen_depth_realimg512_prompt_embeds.pt",
+      "url": "https://huggingface.co/huawei-bayerlab/marigold-v2-0/resolve/cdf9810fb690886391a63aec012b5f501064fb0d/qwen_text_embeddings/qwen_edit_2509_qwen_depth_realimg512_prompt_embeds.pt?download=true",
+      "bytes": 19384278,
+      "sha256": "ba752b582571d990c75ad6aac2a2eeb0cf04c2fe01b233b1675028eabf342a6d"
+    },
+    {
+      "path": "Marigold-V2/qwen_text_embeddings/qwen_edit_2509_qwen_depth_realimg512_prompt_mask.pt",
+      "url": "https://huggingface.co/huawei-bayerlab/marigold-v2-0/resolve/cdf9810fb690886391a63aec012b5f501064fb0d/qwen_text_embeddings/qwen_edit_2509_qwen_depth_realimg512_prompt_mask.pt?download=true",
+      "bytes": 23624,
+      "sha256": "80973a6521f21a5a6faf6402cae185dafef840d91e654efbeb1097914e634798"
+    },
+    {
+      "path": "auxiliary/norm_out_bias.safetensors",
+      "url": "https://huggingface.co/Qwen/Qwen-Image-Edit-2509/resolve/d3968ef930e841f4c73640fb8afa3b306a78167e/transformer/diffusion_pytorch_model-00005-of-00005.safetensors?tensor=norm_out_bias",
+      "bytes": 12384,
+      "sha256": "a795b0d7bfa6693f123705484ad1167149654a491f583e8dac2280e739d70108",
+      "range": {
+        "start": 4776,
+        "end": 17063
+      },
+      "tensor": {
+        "name": "norm_out.linear.bias",
+        "dtype": "BF16",
+        "shape": [
+          6144
+        ],
+        "sha256": "c04b5d2762b398992af6c76f0726188d0dfdbef37a4ff761698a237efba0b633"
+      }
+    }
+  ]
+}

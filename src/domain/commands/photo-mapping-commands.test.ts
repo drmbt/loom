@@ -14,6 +14,9 @@ import { SCHEMA_VERSION } from "../types/schemas.ts";
 import { createDomainBus } from "./index.ts";
 import { registerPhotoMappingCommands } from "./photo-mapping-commands.ts";
 import { alice, contextFor } from "./test-support.ts";
+import { DEFAULT_PHOTO_DEPTH_RECIPE, DEFAULT_DEPTH_REFINEMENT, depthRecipeFromParameters } from "../media/photo-depth-recipe.ts";
+import { DEFAULT_IMAGE_FRAMING } from "../media/image-framing.ts";
+import type { PhotoMappingCreateInput } from "./photo-mapping-commands.ts";
 
 const shader = `struct Params { mode: f32, };
 @group(0) @binding(3) var<uniform> params: Params;
@@ -25,8 +28,8 @@ const shader = `struct Params { mode: f32, };
   return vec4f(vec3f(depth + params.mode * 0.01), 1.0);
 }`;
 const input = { photo: createFileReference("photo", "image", "sculpture.jpg"),
-  depth: createFileReference("depth", "binary", "depth.loom-f32"),
-  mask: createFileReference("mask", "binary", "mask.loom-f32"), width: 800, height: 600, shader };
+  depth: createFileReference("depth", "binary", "depth.loom.exr"),
+  mask: createFileReference("mask", "binary", "mask.loom.exr"), width: 800, height: 600, shader };
 
 function harness(omitType?: string) {
   const registry = createNodeRegistry(allNodeDefinitions.filter(definition => definition.type !== omitType)).view();
@@ -37,6 +40,177 @@ function harness(omitType?: string) {
 }
 
 describe("photo mapping creation", () => {
+  it("creates editable neutral-depth and white-mask sources without assets, retaining both photo connections", async () => {
+    const { bus, store, registry } = harness();
+    const result = await bus.execute("photoMapping.create", { photo: input.photo, width: 800, height: 600, shader }, contextFor(alice));
+    expect(result.status).toBe("applied");
+    const graph = store.view.getGraph(), ids = result.output.createdIds;
+    for (const [ref, interpretation, emptyValue] of [["$depth", "depth", 0.5], ["$mask", "mask", 1]] as const) {
+      expect(graph.nodes[ids[ref]!]!).toMatchObject({ type: "floatMapIn", parameters: {
+        file: "", photo: input.photo, interpretation, emptySource: "constant", emptyValue,
+      } });
+      expect(Object.values(graph.edges).find(edge => edge.target.nodeId === ids[ref] && edge.target.portId === "picture"))
+        .toMatchObject({ source: { nodeId: ids.$photo, portId: "out" } });
+    }
+    expect(collectFileReferences([graph]).map(asset => asset.assetId)).toEqual(["photo"]);
+    const plan = compileGraph({ graph, registry, settings: store.view.getSettings(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: ids.$window!, kind: "readback" }] });
+    expect(plan.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    for (const [ref, emptyValue] of [["$depth", 0.5], ["$mask", 1]] as const) {
+      expect(plan.outputs.find(output => output.nodeId === ids[ref])).toMatchObject({ format: "r32float", space: "data", size: [800, 600] });
+      expect(plan.passes.find(pass => "nodeId" in pass && pass.nodeId === ids[ref]))
+        .toMatchObject({ kind: "effect", uniforms: { emptyValue } });
+    }
+    expect(plan.resources.some(resource => resource.kind === "externalTexture" && resource.format === "r32float")).toBe(false);
+    await bus.execute("graph.undo", {}, contextFor(alice));
+    expect(Object.keys(store.view.getGraph().nodes)).toHaveLength(0);
+  });
+
+  it("keeps assigned numerical files on the explicit error path rather than a constant substitute", async () => {
+    const { bus, store, registry } = harness();
+    const result = await bus.execute("photoMapping.create", input, contextFor(alice));
+    expect(result.status).toBe("applied");
+    const graph = store.view.getGraph();
+    for (const ref of ["$depth", "$mask"]) {
+      const node = graph.nodes[result.output.createdIds[ref]!]!;
+      expect(node.parameters.emptySource).toBe("error");
+      const emptySource = effectiveParameterSchema(registry.get(node.type)!, node.parameters).emptySource;
+      if (emptySource?.type !== "enum") throw new Error("Float Map In requires its explicit empty-source enum.");
+      expect(emptySource.default).toBe("error");
+    }
+    const plan = compileGraph({ graph, registry, settings: store.view.getSettings(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: result.output.createdIds.$window!, kind: "readback" }] });
+    expect(plan.resources.filter(resource => resource.kind === "externalTexture" && resource.format === "r32float")).toHaveLength(2);
+  });
+
+  it.each([{ nativeDepth: input.depth }, { depthRecipe: DEFAULT_PHOTO_DEPTH_RECIPE }, { testPattern: true }])("rejects an incomplete optional preparation or calibration request without changing the graph: %j", async patch => {
+      const { bus, store } = harness();
+      const before = store.view.getGraph();
+      const result = await bus.execute("photoMapping.create", { photo: input.photo, width: 800, height: 600, shader, ...patch }, contextFor(alice));
+      expect(result.status).toBe("rejected");
+      expect(store.view.getGraph()).toBe(before);
+      expect(Object.keys(result.output.createdIds)).toHaveLength(0);
+    });
+
+  it("persists explicit working-depth bounds while leaving native assets and preparation settings intact", async () => {
+    const { bus, store, registry } = harness();
+    const rangeShader = shader.replace("struct Params { mode: f32, };", `struct Params {
+      mode: f32,
+      depthLow: f32, // @default 0
+      depthHigh: f32, // @default 1
+    };`);
+    const depthRange = { low: 0.2, high: 0.8, softness: 0.03 };
+    const result = await bus.execute("photoMapping.create", { ...input, shader: rangeShader, depthRange }, contextFor(alice));
+    expect(result.status).toBe("applied");
+    const graph = store.view.getGraph(), ids = result.output.createdIds;
+    expect(graph.nodes[ids.$effect!]!.parameters).toMatchObject({ depthLow: 0.2, depthHigh: 0.8 });
+    expect(graph.nodes[ids.$depth!]!.parameters).toMatchObject({ file: input.depth, interpretation: "depth" });
+    const plan = compileGraph({ graph, registry, settings: store.view.getSettings(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: ids.$window!, kind: "readback" }] });
+    expect(plan.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    expect(plan.passes.find(pass => "nodeId" in pass && pass.nodeId === ids.$effect)).toMatchObject({ uniforms: { depthLow: 0.2, depthHigh: 0.8 } });
+    const invalid = await bus.execute("photoMapping.create", { ...input, depthRange: { ...depthRange, high: 0.1 } }, contextFor(alice));
+    expect(invalid.status).toBe("rejected");
+    expect(store.view.getGraph()).toBe(graph);
+  });
+
+  it.each([true, false])("adds an editable calibration switch and arbitrary video without changing photo-depth-mask registration: %s", async testPattern => {
+    const { bus, store, registry } = harness();
+    const patternShader = `@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+      let grid = step(0.5, fract(uv.x * 8.0)); return vec4f(grid, grid, grid, 1.0);
+    }`;
+    const video = createFileReference("content-video", "video", "projection.webm");
+    const result = await bus.execute("photoMapping.create", { ...input, effect: 9, patternShader, testPattern, video }, contextFor(alice));
+    expect(result.status).toBe("applied");
+    const graph = store.view.getGraph(), ids = result.output.createdIds;
+    expect(graph.nodes[ids.$pattern!]!).toMatchObject({ type: "customWgsl", parameters: { source: patternShader } });
+    expect(graph.nodes[ids.$testSwitch!]!).toMatchObject({ type: "switch", parameters: { index: testPattern ? 1 : 0 } });
+    expect(graph.nodes[ids.$video!]!).toMatchObject({ type: "movieFileIn", parameters: { file: video },
+      resolution: { mode: "fixed", width: 800, height: 600 } });
+    const edges = Object.values(graph.edges);
+    expect(edges.filter(edge => edge.target.nodeId === ids.$testSwitch).sort((a, b) => a.order! - b.order!)).toMatchObject([
+      { source: { nodeId: ids.$effect }, target: { portId: "inputs" }, order: 0 },
+      { source: { nodeId: ids.$pattern }, target: { portId: "inputs" }, order: 1 },
+    ]);
+    expect(edges.find(edge => edge.target.nodeId === ids.$coverage && edge.target.portId === "input"))
+      .toMatchObject({ source: { nodeId: ids.$testSwitch } });
+    expect(edges.find(edge => edge.target.nodeId === ids.$effect && edge.target.portId === "input"))
+      .toMatchObject({ source: { nodeId: ids.$video } });
+    expect(edges.find(edge => edge.target.nodeId === ids.$pattern && edge.target.portId === "input"))
+      .toMatchObject({ source: { nodeId: ids.$photo } });
+    for (const ref of ["$depth", "$mask"]) {
+      expect(edges.find(edge => edge.target.nodeId === ids[ref] && edge.target.portId === "picture"))
+        .toMatchObject({ source: { nodeId: ids.$photo } });
+    }
+    const positions = Object.values(graph.nodes).map(node => `${node.position.x},${node.position.y}`);
+    expect(new Set(positions).size).toBe(positions.length);
+    const group = Object.values(graph.groups)[0]!;
+    for (const node of Object.values(graph.nodes)) {
+      expect(node.position.x + node.size!.width).toBeLessThanOrEqual(group.bounds.x + group.bounds.width);
+      expect(node.position.y + node.size!.height).toBeLessThanOrEqual(group.bounds.y + group.bounds.height);
+    }
+    const plan = compileGraph({ graph, registry, settings: store.view.getSettings(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: ids.$window!, kind: "readback" }] });
+    expect(plan.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    expect(collectFileReferences([graph]).map(asset => asset.assetId).sort()).toEqual(["content-video", "depth", "mask", "photo"]);
+    await bus.execute("graph.undo", {}, contextFor(alice));
+    expect(Object.keys(store.view.getGraph().nodes)).toHaveLength(0);
+  });
+
+  it("creates an unassigned replaceable movie input for Video mode and keeps provided video idle for other effects", async () => {
+    const unassigned = harness();
+    const videoMode = await unassigned.bus.execute("photoMapping.create", { ...input, effect: 9 }, contextFor(alice));
+    expect(videoMode.status).toBe("applied");
+    const graph = unassigned.store.view.getGraph(), ids = videoMode.output.createdIds;
+    expect(graph.nodes[ids.$video!]!).toMatchObject({ type: "movieFileIn", parameters: { file: "" } });
+    expect(Object.values(graph.edges).find(edge => edge.target.nodeId === ids.$effect && edge.target.portId === "input"))
+      .toMatchObject({ source: { nodeId: ids.$video } });
+    const plan = compileGraph({ graph, registry: unassigned.registry, settings: unassigned.store.view.getSettings(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: ids.$window!, kind: "readback" }] });
+    expect(plan.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+    const idle = harness();
+    const result = await idle.bus.execute("photoMapping.create", { ...input, effect: 3, video: "show.webm" }, contextFor(alice));
+    expect(result.status).toBe("applied");
+    const idleGraph = idle.store.view.getGraph(), idleIds = result.output.createdIds;
+    expect(idleGraph.nodes[idleIds.$video!]!.parameters.file).toBe("show.webm");
+    expect(Object.values(idleGraph.edges).find(edge => edge.target.nodeId === idleIds.$effect && edge.target.portId === "input"))
+      .toMatchObject({ source: { nodeId: idleIds.$photo } });
+    expect(Object.values(idleGraph.edges).some(edge => edge.source.nodeId === idleIds.$video)).toBe(false);
+  });
+
+  it("retains a refined map's native parent through normal save/reopen asset collection", async () => {
+    const { bus, store, registry } = harness();
+    const nativeDepth = createFileReference("native-depth", "binary", "native.loom.exr");
+    const depthRecipe = { ...DEFAULT_PHOTO_DEPTH_RECIPE, modelId: "depth-anything-v2-large-q4f16",
+      backend: "webgpu" as const, refinement: { ...DEFAULT_DEPTH_REFINEMENT, target: "2048" as const } };
+    const result = await bus.execute("photoMapping.create", { ...input, nativeDepth, depthRecipe }, contextFor(alice));
+    expect(result.status).toBe("applied");
+    const graph = store.view.getGraph();
+    const node = graph.nodes[result.output.createdIds.$depth!]!;
+    expect(node.parameters.nativeMap).toBe(nativeDepth);
+    expect(depthRecipeFromParameters(node.parameters)).toEqual(depthRecipe);
+    const assets = collectFileReferences([graph]);
+    expect(assets.map(asset => asset.assetId).sort()).toEqual(["depth", "mask", "native-depth", "photo"]);
+    const saved = parseProjectDocument(serializeProjectDocument({ schemaVersion: SCHEMA_VERSION,
+      projectId: "refined-photo", name: "Refined mapping", graph, settings: store.view.getSettings(), assets,
+      createdAt: "2026-10-09T00:00:00Z", updatedAt: "2026-10-09T00:00:00Z" }));
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) throw new Error(saved.reason);
+    expect(saved.document.graph).toEqual(graph);
+    const compiled = compileGraph({ graph, registry, settings: store.view.getSettings(), capabilities: testCapabilities(),
+      sinks: [{ nodeId: result.output.createdIds.$window!, kind: "output" }] });
+    expect(compiled.diagnostics.filter(diagnostic => diagnostic.severity === "error")).toEqual([]);
+  });
+
+  it("rejects an incomplete refined recipe before graph mutation", async () => {
+    const { bus, store } = harness();
+    const before = store.view.getGraph();
+    const result = await bus.execute("photoMapping.create", { ...input,
+      depthRecipe: { ...DEFAULT_PHOTO_DEPTH_RECIPE, refinement: DEFAULT_DEPTH_REFINEMENT } }, contextFor(alice));
+    expect(result.status).toBe("rejected");
+    expect(store.view.getGraph()).toBe(before);
+  });
+
   it("creates a registered editable graph with float32 data and root projector controls", async () => {
     const { bus, store, registry } = harness();
     const result = await bus.execute("photoMapping.create", { ...input, effect: 2 }, contextFor(alice));
@@ -133,7 +307,7 @@ describe("photo mapping creation", () => {
     const ids = result.output.createdIds;
     expect(Object.values(graph.nodes)).toHaveLength(11);
     expect(graph.nodes[ids.$previz!]!.parameters.opacity).toBe(previewOpacity);
-    expect(graph.nodes[ids.$mask!]!).toMatchObject({ type: "solid", parameters: { color: [1, 1, 1, 1] } });
+    expect(graph.nodes[ids.$mask!]!).toMatchObject({ type: "floatMapIn", parameters: { file: "", emptySource: "constant", emptyValue: 1, interpretation: "mask" } });
     for (const [source, target] of [["$coverage", "$grid"], ["$grid", "$corner"], ["$corner", "$window"]]) {
       expect(Object.values(graph.edges).find(edge => edge.target.nodeId === ids[target!] && edge.target.portId === "input"))
         .toMatchObject({ source: { nodeId: ids[source!], portId: "out" } });
@@ -189,11 +363,11 @@ describe("photo mapping creation", () => {
     const graph = store.view.getGraph();
     const ids = result.output.createdIds;
     expect(graph.nodes[ids.$mask!]!).toMatchObject({
-      type: "solid", label: "solid_coverage1", parameters: { color: [1, 1, 1, 1] },
+      type: "floatMapIn", label: "floatmap_mask1", parameters: { file: "", emptySource: "constant", emptyValue: 1, interpretation: "mask" },
       position: { x: 0, y: 600 }, resolution: { mode: "fixed", width: 800, height: 600 },
     });
     const edges = Object.values(graph.edges);
-    expect(edges.filter(edge => edge.target.nodeId === ids.$mask)).toEqual([]);
+    expect(edges.filter(edge => edge.target.nodeId === ids.$mask)).toMatchObject([{ source: { nodeId: ids.$photo }, target: { portId: "picture" } }]);
     expect(edges.filter(edge => edge.target.nodeId === ids.$effect && edge.target.portId === "more")
       .sort((a, b) => a.order! - b.order!)).toMatchObject([
       { source: { nodeId: ids.$depth }, order: 0 }, { source: { nodeId: ids.$mask }, order: 1 },
@@ -234,6 +408,79 @@ describe("photo mapping creation", () => {
     expect(store.view.getGraph().nodes).toEqual(graph.nodes);
     expect(store.view.getGraph().edges).toEqual(graph.edges);
     expect(store.view.getGraph().groups).toEqual(graph.groups);
+  });
+
+  it("saves framing only on the independent preview photo without changing the projector branch", async () => {
+    const previewPhoto = createFileReference("preview", "image", "preview.jpg");
+    const previewFraming = { x: 0.25, y: 0.8, zoom: 1.7 };
+    const baseline = harness();
+    const baselineResult = await baseline.bus.execute("photoMapping.create", {
+      ...input, previewPhoto, previewFit: "fill",
+    }, contextFor(alice));
+    expect(baselineResult.status).toBe("applied");
+    const { bus, store } = harness();
+    const result = await bus.execute("photoMapping.create", {
+      ...input, previewPhoto, previewFit: "fill", previewFraming,
+    }, contextFor(alice));
+    expect(result.status).toBe("applied");
+    expect(result.diagnostics).toEqual([]);
+    const graph = store.view.getGraph();
+    const ids = result.output.createdIds;
+    expect(graph.nodes[ids.$previewPhoto!]!.parameters).toMatchObject({
+      file: previewPhoto, imageFit: "fill", imageAnchorX: 0.25, imageAnchorY: 0.8, imageZoom: 1.7,
+    });
+    for (const ref of ["$photo", "$depth", "$mask", "$effect", "$coverage", "$grid", "$corner", "$window", "$reference", "$previz", "$output"]) {
+      expect(graph.nodes[ids[ref]!]!.parameters)
+        .toEqual(baseline.store.view.getGraph().nodes[baselineResult.output.createdIds[ref]!]!.parameters);
+    }
+    expect(graph.edges).toEqual(baseline.store.view.getGraph().edges);
+    const parsed = parseProjectDocument(serializeProjectDocument({ schemaVersion: SCHEMA_VERSION,
+      projectId: "preview-framing", name: "Photo mapping", graph, settings: store.view.getSettings(),
+      assets: collectFileReferences([graph]), createdAt: "2026-10-10T00:00:00Z", updatedAt: "2026-10-10T00:00:00Z" }));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    expect(parsed.document.graph).toEqual(graph);
+    expect(parsed.document.graph.nodes[ids.$previewPhoto!]!.parameters).toMatchObject({
+      imageAnchorX: 0.25, imageAnchorY: 0.8, imageZoom: 1.7,
+    });
+  });
+
+  it.each([undefined, DEFAULT_IMAGE_FRAMING])("preserves default framing for legacy preview creation: %j", async previewFraming => {
+    const { bus, store } = harness();
+    const previewPhoto = createFileReference("preview", "image", "preview.jpg");
+    const result = await bus.execute("photoMapping.create", {
+      ...input, previewPhoto, ...(previewFraming === undefined ? {} : { previewFraming }),
+    }, contextFor(alice));
+    expect(result.status).toBe("applied");
+    const graph = store.view.getGraph();
+    const source = graph.nodes[result.output.createdIds.$photo!]!;
+    const preview = graph.nodes[result.output.createdIds.$previewPhoto!]!;
+    expect(source.parameters).toMatchObject({ imageAnchorX: 0.5, imageAnchorY: 0.5, imageZoom: 1 });
+    expect(preview.parameters).toEqual({ ...source.parameters, file: previewPhoto, imageFit: "stretch" });
+  });
+
+  it.each([
+    { previewPhoto: undefined, previewFraming: DEFAULT_IMAGE_FRAMING },
+    { previz: false, previewFraming: DEFAULT_IMAGE_FRAMING },
+    { previewFraming: { x: 1.01, y: 0.5, zoom: 1 } },
+    { previewFraming: { x: 0.5, y: -0.01, zoom: 1 } },
+    { previewFraming: { x: 0.5, y: 0.5, zoom: 0.99 } },
+    { previewFraming: { x: 0.5, y: 0.5, zoom: 8.01 } },
+    { previewFraming: { x: NaN, y: 0.5, zoom: 1 } },
+    { previewFraming: { x: 0.5, y: 0.5, zoom: Infinity } },
+    { previewFraming: { x: 0.5, y: 0.5, zoom: 1, rotation: 0 } },
+    { previewFraming: { x: 0.5, y: 0.5 } },
+  ])("rejects invalid preview framing atomically: %j", async change => {
+    const { bus, store } = harness();
+    await bus.execute("photoMapping.create", input, contextFor(alice));
+    const before = store.view.getGraph();
+    const result = await bus.execute("photoMapping.create", {
+      ...input, previewPhoto: createFileReference("preview", "image", "preview.jpg"), ...change,
+    } as PhotoMappingCreateInput, contextFor(alice));
+    expect(result.status).toBe("rejected");
+    expect(result.output.appliedOperations).toBe(0);
+    expect(result.diagnostics.some(diagnostic => diagnostic.severity === "error")).toBe(true);
+    expect(store.view.getGraph()).toBe(before);
   });
 
   it.each([

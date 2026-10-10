@@ -1,10 +1,15 @@
+import { DEFAULT_IMAGE_FRAMING, type ImageFraming } from "@domain/media/image-framing.ts";
+import { DEFAULT_PROJECT_FPS } from "@domain/types/graph.ts";
+import { frameFromClock } from "@domain/types/frame.ts";
 import { useEffect, useRef, useState } from "react";
 import { rasterizeFloatMap } from "@runtime/media/prepared-map.ts";
+import { remapDepthValues, type DepthRangeSettings } from "@runtime/media/depth-tools.ts";
 import type { FloatMap } from "@runtime/media/float-map.ts";
+import type { MediaSource, PresentationHandle } from "@runtime/backend/index.ts";
 import type { PreparationPhoto } from "./photo-preparation.ts";
-import { previewPhotoPlacement, type PreviewImageFit } from "./photo-preview-framing.ts";
-
-// v17-allow-dynamic-color: canvas colours visualize prepared maps and animated coverage, not UI theme colours.
+import type { PreviewImageFit } from "./photo-preview-framing.ts";
+import { PHOTO_MAPPING_SHADER } from "./photo-mapping-effects.ts";
+import { createPhotoEffectRenderer } from "./photo-effect-renderer.ts";
 
 export interface PhotoMappingPreviewProps {
   readonly photo: PreparationPhoto | null;
@@ -13,120 +18,190 @@ export interface PhotoMappingPreviewProps {
   readonly readMaps: () => { readonly depth: FloatMap | null; readonly mask: FloatMap | null };
   readonly matching: boolean;
   readonly previewFit?: PreviewImageFit;
+  readonly previewFraming?: ImageFraming;
   readonly fullFrame?: boolean;
   readonly previewOpacity?: number;
+  readonly mode?: number;
+  readonly maxLongEdge?: number;
+  readonly depthRange?: DepthRangeSettings;
+  readonly testPattern?: boolean;
+  readonly videoUrl?: string;
 }
 
-/** Display-sized copies only: native depth and mask samples never pass through canvas. */
-function prepareMappingPreview(photo: PreparationPhoto, depth: FloatMap | null, mask: FloatMap | null, fullFrame: boolean) {
-  const scale = Math.min(1, 480 / photo.bitmap.width, 240 / photo.bitmap.height);
-  const width = Math.max(1, Math.round(photo.bitmap.width * scale));
-  const height = Math.max(1, Math.round(photo.bitmap.height * scale));
-  if (!fullFrame && mask === null) throw new Error("A surface preview requires a prepared mask.");
-  const coverage = fullFrame ? new Float32Array(width * height).fill(1) : rasterizeFloatMap(mask!, "mask", width, height);
-  const relief = depth === null ? null : rasterizeFloatMap(depth, "depth", width, height);
-  const fill = new Uint8ClampedArray(width * height * 4);
-  const boundary: number[] = [];
-  const radius = Math.max(1, Math.round(Math.min(width, height) * 0.012));
-  const covered = (x: number, y: number) => x >= 0 && x < width && y >= 0 && y < height && coverage[y * width + x]! >= 0.5;
-  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const index = y * width + x;
-    const offset = index * 4;
-    const d = relief === null ? 0.5 : relief[index]!;
-    const contour = relief !== null && Math.abs((d * 12) % 1 - 0.5) < 0.09;
-    fill[offset] = 40 + d * 160;
-    fill[offset + 1] = 155 - d * 95;
-    fill[offset + 2] = 230;
-    fill[offset + 3] = coverage[index]! * (contour ? 95 : 42);
-    if (covered(x, y) && (!covered(x - radius, y) || !covered(x + radius, y)
-      || !covered(x, y - radius) || !covered(x, y + radius))) boundary.push(index);
-  }
-  return { width, height, fill, boundary: Uint32Array.from(boundary), coverage };
+function whileActive<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => { signal.removeEventListener("abort", abort); reject(signal.reason); };
+    operation.then(value => { signal.removeEventListener("abort", abort); resolve(value); },
+      error => { signal.removeEventListener("abort", abort); reject(error); });
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+  });
 }
 
-function guidance({ photo, mask, matching, fullFrame = false }: Pick<PhotoMappingPreviewProps, "photo" | "matching" | "fullFrame"> & { mask: FloatMap | null }): string | null {
+function guidance(photo: PreparationPhoto | null, mask: FloatMap | null, matching: boolean, fullFrame: boolean): string | null {
   if (photo === null) return "Choose a reference photo to see the live mapping preview.";
-  if (mask === null && !fullFrame) return "Prepare or open a mask to preview its animated outline.";
+  if (mask === null && !fullFrame) return "Prepare or open a mask to preview the projection effect.";
   if (!matching) return "Use maps that match the reference photo for this preview.";
   return null;
 }
 
-/** A small UI diagnostic; it runs no inference and owns no photo bitmaps or network state. */
-export function PhotoMappingPreview(props: PhotoMappingPreviewProps) {
+/** An owned WebGPU rendering of the actual projection network; it runs no inference. */
+export function PhotoMappingPreview({ photo, previewPhoto, readMaps, matching, previewFit = "stretch",
+  previewFraming = DEFAULT_IMAGE_FRAMING, fullFrame = false, previewOpacity = 0.35,
+  mode = 0, maxLongEdge = 960, depthRange, testPattern = false, videoUrl }: PhotoMappingPreviewProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const { photo, previewPhoto, readMaps, matching, previewFit = "stretch", fullFrame = false, previewOpacity = 0.35 } = props;
-  const message = guidance({ photo, mask: readMaps().mask, matching, fullFrame });
+  const [ready, setReady] = useState(false);
+  const { depth, mask } = readMaps();
+  const message = guidance(photo, mask, matching, fullFrame);
   useEffect(() => {
-    const { depth, mask } = readMaps();
-    if (photo === null || guidance({ photo, mask, matching, fullFrame }) !== null) return;
+    if (photo === null || guidance(photo, mask, matching, fullFrame) !== null) return;
     const target = canvas.current;
     if (target === null) throw new Error("The mapping preview canvas was not mounted.");
-    const context = target.getContext("2d");
-    const fillCanvas = document.createElement("canvas");
-    const edgeCanvas = document.createElement("canvas");
-    const fillContext = fillCanvas.getContext("2d");
-    const edgeContext = edgeCanvas.getContext("2d");
-    if (context === null || fillContext === null || edgeContext === null) {
-      setError("The mapping preview requires a 2D canvas.");
-      return;
-    }
-    let raster: ReturnType<typeof prepareMappingPreview>;
-    try { raster = prepareMappingPreview(photo, depth, mask, fullFrame); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); return; }
-    setError(null);
-    const { width, height, fill, boundary, coverage } = raster;
-    for (const element of [target, fillCanvas, edgeCanvas]) { element.width = width; element.height = height; }
-    const fillImage = fillContext.createImageData(width, height);
-    fillImage.data.set(fill);
-    for (let i = 3; i < fillImage.data.length; i += 4) fillImage.data[i] = fillImage.data[i]! * previewOpacity;
-    fillContext.putImageData(fillImage, 0, 0);
-    const edgeImage = edgeContext.createImageData(width, height);
-    const background = previewPhoto === null ? photo.bitmap : previewPhoto.bitmap;
-    const placement = previewPhotoPlacement(background, { width, height }, previewFit);
+    setError(null); setReady(false);
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let reduced = motion.matches;
-    let stopped = false;
-    let frame = 0;
-    function draw(time: number) {
-      context!.clearRect(0, 0, width, height);
-      context!.drawImage(background, placement.source.x, placement.source.y, placement.source.width, placement.source.height,
-        placement.destination.x, placement.destination.y, placement.destination.width, placement.destination.height);
-      context!.drawImage(fillCanvas, 0, 0);
-      for (const index of boundary) {
-        const x = index % width;
-        const y = Math.floor(index / width);
-        const wave = 0.5 + 0.5 * Math.sin((x / width + y / height) * Math.PI * 5 - time * 0.0025);
-        const offset = index * 4;
-        edgeImage.data[offset] = 35 + wave * 220;
-        edgeImage.data[offset + 1] = 230 - wave * 175;
-        edgeImage.data[offset + 2] = 255;
-        edgeImage.data[offset + 3] = coverage[index]! * 255 * Math.min(1, previewOpacity * 2);
+    let reduced = motion.matches, stopped = false;
+    let pendingFrame: number | null = null;
+    let renderer: Awaited<ReturnType<typeof createPhotoEffectRenderer>> | null = null;
+    let presentation: PresentationHandle | null = null;
+    const lifetime = new AbortController();
+    let ownedVideo: HTMLVideoElement | null = null;
+    let loadedListener: (() => void) | null = null;
+    let frameIndex = 0, previousSeconds = 0;
+    const stop = () => {
+      stopped = true;
+      lifetime.abort(new DOMException("Projection video preview retired.", "AbortError"));
+      if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+      motion.removeEventListener("change", changeMotion);
+      try { presentation?.dispose(); }
+      finally {
+        presentation = null;
+        try { renderer?.dispose(); }
+        finally {
+          renderer = null;
+          if (ownedVideo !== null) {
+            ownedVideo.removeEventListener("error", videoError);
+            if (loadedListener !== null) ownedVideo.removeEventListener("loadeddata", loadedListener);
+            loadedListener = null;
+            ownedVideo.pause(); ownedVideo.removeAttribute("src"); ownedVideo.load(); ownedVideo = null;
+          }
+        }
       }
-      edgeContext!.putImageData(edgeImage, 0, 0);
-      context!.drawImage(edgeCanvas, 0, 0);
+    };
+    const fail = (failure: unknown) => {
+      if (stopped) return;
+      setError(failure instanceof Error ? failure.message : String(failure));
+      setReady(false); stop();
+    };
+    function videoError() {
+      const error = ownedVideo?.error;
+      fail(new Error("Projection video could not be decoded: " + (error?.message || "media error " + String(error?.code ?? "unknown"))));
+    }
+    async function playVideo() {
+      const video = ownedVideo;
+      if (video === null) return;
+      try { await whileActive(video.play(), lifetime.signal); }
+      catch (failure) {
+        // Switching to reduced motion deliberately pauses a pending play request.
+        if (!stopped && reduced && failure instanceof DOMException && failure.name === "AbortError") return;
+        throw failure;
+      }
+      if (reduced || stopped) video.pause();
+    }
+    async function loadVideo(): Promise<{ source: MediaSource; size: readonly [number, number] }> {
+      if (videoUrl === undefined || videoUrl.trim().length === 0) throw new Error("Choose a video to preview the mapped video effect.");
+      const video = document.createElement("video");
+      ownedVideo = video;
+      video.muted = true; video.loop = true; video.playsInline = true; video.preload = "auto";
+      video.addEventListener("error", videoError);
+      const loaded = new Promise<void>(resolve => {
+        loadedListener = () => {
+          video.removeEventListener("loadeddata", loadedListener!); loadedListener = null; resolve();
+        };
+        video.addEventListener("loadeddata", loadedListener);
+      });
+      video.src = videoUrl; video.load();
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) await whileActive(loaded, lifetime.signal);
+      else { video.removeEventListener("loadeddata", loadedListener!); loadedListener = null; }
+      lifetime.signal.throwIfAborted();
+      if (!Number.isSafeInteger(video.videoWidth) || !Number.isSafeInteger(video.videoHeight) || video.videoWidth < 1 || video.videoHeight < 1)
+        throw new Error("Projection video decoded no valid image dimensions.");
+      if (!reduced) await playVideo();
+      lifetime.signal.throwIfAborted();
+      let sequence = 0, lastTime = NaN;
+      return { source: { currentFrame() {
+        if (stopped) throw new Error("Projection video source was retired.");
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return undefined;
+        if (video.currentTime !== lastTime) { lastTime = video.currentTime; sequence++; }
+        return { image: video, frameId: sequence };
+      } }, size: [video.videoWidth, video.videoHeight] };
+    }
+    function draw(time: number) {
+      if (renderer === null || stopped) return;
+      const seconds = time / 1000;
+      const index = frameIndex++;
+      renderer.draw({ frame: frameFromClock({ timeSeconds: seconds, deltaSeconds: Math.max(0, seconds - previousSeconds),
+        frameIndex: index, absFrameIndex: index, absTimeSeconds: seconds, mode: "realtime", randomSeed: 1, fps: DEFAULT_PROJECT_FPS }),
+      pointer: { x: 0, y: 0, buttons: 0 }, resolution: [target!.width, target!.height] });
+      previousSeconds = seconds;
     }
     function animate(time: number) {
+      pendingFrame = null;
       if (stopped || reduced) return;
-      draw(time);
-      frame = requestAnimationFrame(animate);
+      try { draw(time); pendingFrame = requestAnimationFrame(animate); }
+      catch (failure) { fail(failure); }
     }
     function changeMotion(event: MediaQueryListEvent) {
+      if (stopped) return;
       reduced = event.matches;
-      cancelAnimationFrame(frame);
-      draw(0);
-      if (!reduced) frame = requestAnimationFrame(animate);
+      if (reduced) ownedVideo?.pause();
+      if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+      if (renderer === null) return;
+      if (!reduced && ownedVideo !== null) {
+        void playVideo().then(() => {
+          if (stopped || reduced) return;
+          draw(0); pendingFrame = requestAnimationFrame(animate);
+        }).catch(fail);
+        return;
+      }
+      try { draw(0); if (!reduced) pendingFrame = requestAnimationFrame(animate); }
+      catch (failure) { fail(failure); }
     }
-    draw(0);
-    if (!reduced) frame = requestAnimationFrame(animate);
     motion.addEventListener("change", changeMotion);
-    return () => { stopped = true; cancelAnimationFrame(frame); motion.removeEventListener("change", changeMotion); };
-  }, [photo, previewPhoto, readMaps, matching, previewFit, fullFrame, previewOpacity]);
+    void (async () => {
+      if (!Number.isSafeInteger(maxLongEdge) || maxLongEdge < 1) throw new Error("Projection preview maximum edge must be a positive integer.");
+      const scale = Math.min(1, maxLongEdge / Math.max(photo.bitmap.width, photo.bitmap.height));
+      const width = Math.max(1, Math.round(photo.bitmap.width * scale));
+      const height = Math.max(1, Math.round(photo.bitmap.height * scale));
+      if (width * height > 64_000_000) throw new Error("Projection preview exceeds 64 million samples.");
+      const relief = depth === null ? new Float32Array(width * height).fill(0.5)
+        : depthRange === undefined ? rasterizeFloatMap(depth, "depth", width, height) : remapDepthValues(depth, width, height, depthRange);
+      const coverage = fullFrame ? new Float32Array(width * height).fill(1) : rasterizeFloatMap(mask!, "mask", width, height);
+      const video = mode === 9 && !testPattern ? await loadVideo() : undefined;
+      lifetime.signal.throwIfAborted();
+      const created = await createPhotoEffectRenderer({ width, height, shader: PHOTO_MAPPING_SHADER,
+        photo: { image: photo.bitmap, frameId: 1 }, photoSize: [photo.bitmap.width, photo.bitmap.height],
+        ...(previewPhoto === null ? {} : { previewPhoto: { image: previewPhoto.bitmap, frameId: 1 },
+          previewPhotoSize: [previewPhoto.bitmap.width, previewPhoto.bitmap.height] as const, previewFit, previewFraming }),
+        ...(video === undefined ? {} : { video: video.source, videoSize: video.size }),
+        depth: relief, mask: coverage, mode, previewOpacity, testPattern });
+      if (stopped) { created.dispose(); return; }
+      renderer = created;
+      target.width = width; target.height = height;
+      presentation = renderer.present(target);
+      draw(0); setReady(true);
+      if (!reduced) pendingFrame = requestAnimationFrame(animate);
+    })().catch(fail);
+    return stop;
+  }, [photo, previewPhoto, depth, mask, matching, previewFit, previewFraming, fullFrame, previewOpacity, mode, maxLongEdge, depthRange, testPattern, videoUrl]);
   if (message !== null) return <p>{message}</p>;
-  return <figure style={{ margin: 0, width: "100%" }}>
+  const caption = "Projection effect · " + (depth === null ? "neutral depth" : "depth") + " + " + (fullFrame ? "full frame" : "surface mask");
+  return <figure style={{ margin: 0, width: "100%", height: "100%", position: "relative" }}>
     <canvas ref={canvas} role="img" aria-label="Animated mapping preview" hidden={error !== null}
-      style={{ display: error === null ? "block" : "none", width: "100%", height: "auto", maxWidth: `${Math.min(480, 240 * photo!.bitmap.width / photo!.bitmap.height)}px`, margin: "0 auto", objectFit: "contain" }} />
-    {error === null ? <figcaption style={{ textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--text-dim)" }}>Live outline · preview only</figcaption>
-      : <p role="alert">{error}</p>}
+      style={{ display: error === null ? "block" : "none", width: "100%", height: "100%", objectFit: "contain" }} />
+    {error === null ? <figcaption style={{ position: "absolute", bottom: 0, width: "100%", textAlign: "center", fontSize: "var(--fs-meta)", color: "var(--text-dim)", background: "var(--bg-overlay)" }}>{ready ? caption : "Preparing projection effect…"}</figcaption>
+      : <p role="note">Projection effect preview unavailable: {error}</p>}
   </figure>;
 }

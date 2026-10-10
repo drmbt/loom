@@ -101,6 +101,8 @@ const FILES: Readonly<Record<string, string>> = {
   "birefnet-lite-dynamic": "photo-mask.onnx",
   "depth-anything-v2-small": "depth.onnx",
   "depth-anything-v2-small-q4f16": "depth-q4f16.onnx",
+  "depth-anything-v2-large-fp16": "depth-large-fp16.onnx",
+  "depth-anything-v2-large-q4f16": "depth-large-q4f16.onnx",
   "modnet-photographic": "matte.onnx",
   "modnet-photographic-quantized": "matte-quantized.onnx",
   "movenet-lightning": "pose.onnx",
@@ -142,6 +144,8 @@ describe.skipIf(MODEL_DIR === undefined)("the recorded signatures still match th
       expect(session.inputNames).toEqual(signature.inputs);
       expect(session.outputNames).toEqual(signature.outputs);
       expect(signature.output.name).toBe(session.outputNames[0]);
+      expect((session.outputMetadata[0] as { type: string }).type).toBe(signature.output.type);
+      await session.release();
     }
   }, 300_000);
 });

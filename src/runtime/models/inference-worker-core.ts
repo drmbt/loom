@@ -239,6 +239,8 @@ export const MODEL_PLANS: Readonly<Record<string, ModelPlan>> = {
   },
   "depth-anything-v2-small": { ...DEPTH_PACKING, picture: "predicted_depth", smoothing: 1 },
   "depth-anything-v2-small-q4f16": { ...DEPTH_PACKING, picture: "predicted_depth", smoothing: 1 },
+  "depth-anything-v2-large-q4f16": { ...DEPTH_PACKING, picture: "predicted_depth", smoothing: 1 },
+  "depth-anything-v2-large-fp16": { ...DEPTH_PACKING, picture: "predicted_depth", smoothing: 1 },
   "movenet-lightning": { ...POSE_PACKING, picture: "keypoints", smoothing: 1 },
   "movenet-lightning-int8": { ...POSE_PACKING, picture: "keypoints", smoothing: 1 },
   /* §T957's measured default: MODNet is per-frame, its edges flicker, and 0.55 is what

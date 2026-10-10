@@ -43,9 +43,21 @@ export function cacheModelStore(): ModelStore | null {
     },
     async put(id, bytes) {
       const cache = await open();
+      // Chromium rejects large ArrayBuffer-backed Response bodies before CacheStorage
+      // sees them (Large FP16: 668,656,405 bytes, measured 2026-10-09). Stream verified
+      // bytes through bounded chunks for every artifact; this is one write path.
+      let offset = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (offset === bytes.byteLength) { controller.close(); return; }
+          const length = Math.min(16 * 1024 * 1024, bytes.byteLength - offset);
+          controller.enqueue(new Uint8Array(bytes, offset, length));
+          offset += length;
+        },
+      });
       await cache.put(
         keyOf(id),
-        new Response(bytes, {
+        new Response(body, {
           headers: {
             "content-type": "application/octet-stream",
             "content-length": String(bytes.byteLength),

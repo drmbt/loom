@@ -68,7 +68,12 @@ export default defineConfig({
   worker: {
     format: "es",
   },
-  server: { headers: isolationHeaders },
+  server: {
+    headers: isolationHeaders,
+    // Native build/model caches contain upstream HTML and many source files.
+    // They must not reload the editor while an explicit preparation is running.
+    watch: { ignored: ["**/.cache/**"] },
+  },
   preview: { headers: isolationHeaders },
   resolve: {
     alias: {

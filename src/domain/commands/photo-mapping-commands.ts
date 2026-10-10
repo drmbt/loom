@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { supportsPhotoDepthSize } from "../media/preparation-sizes.ts";
+import { photoDepthRecipeSchema, depthRecipeParameters, type PhotoDepthRecipe } from "../media/photo-depth-recipe.ts";
+import { imageFramingSchema, imageFramingParameters, type ImageFraming } from "../media/image-framing.ts";
+import { depthRangeSchema, type DepthRangeSettings } from "../media/depth-range.ts";
 import { kindOf } from "../graph/node-kinds.ts";
 import type { RuntimeDiagnostic } from "../types/diagnostics.ts";
 import type { Revision } from "../types/ids.ts";
@@ -10,7 +13,9 @@ import type { LoomBus } from "./bus.ts";
 
 export interface PhotoMappingCreateInput {
   photo: string;
-  depth: string;
+  depth?: string;
+  nativeDepth?: string;
+  depthRecipe?: PhotoDepthRecipe;
   mask?: string;
   width: number;
   height: number;
@@ -20,7 +25,12 @@ export interface PhotoMappingCreateInput {
   previz?: boolean;
   previewPhoto?: string;
   previewFit?: "fit" | "fill" | "stretch";
+  previewFraming?: ImageFraming;
   previewOpacity?: number;
+  depthRange?: DepthRangeSettings;
+  patternShader?: string;
+  testPattern?: boolean;
+  video?: string;
 }
 
 declare module "../types/commands.ts" {
@@ -43,16 +53,33 @@ export function registerPhotoMappingCommands(bus: LoomBus, options: { refresh?: 
     inSession: "definition",
     description: "Create an editable photo-mapping network from a photo, saved float32 depth and an optional mask asset.",
     inputSchema: z.object({
-      photo: z.string().trim().min(1), depth: z.string().trim().min(1), mask: z.string().trim().min(1).optional(),
+      photo: z.string().trim().min(1), depth: z.string().trim().min(1).optional(), mask: z.string().trim().min(1).optional(),
+      nativeDepth: z.string().trim().min(1).optional(), depthRecipe: photoDepthRecipeSchema.optional(),
       width: z.number().int().positive(), height: z.number().int().positive(),
       shader: z.string().trim().min(1), effect: z.number().finite().optional(),
-      inputSide: z.number().int().refine(supportsPhotoDepthSize, "Unsupported depth input size.").optional(),
+      inputSide: z.number().int().positive().optional(),
       previz: z.boolean().optional(),
       previewPhoto: z.string().trim().min(1).optional(),
       previewFit: z.enum(["fit", "fill", "stretch"]).optional(),
+      previewFraming: imageFramingSchema.optional(),
       previewOpacity: z.number().finite().min(0).max(1).optional(),
-    }).strict().refine(input => input.previewPhoto === undefined || input.previz !== false, {
+      depthRange: depthRangeSchema.optional(), patternShader: z.string().trim().min(1).optional(),
+      testPattern: z.boolean().optional(), video: z.string().trim().min(1).optional(),
+    }).strict().refine(input => input.inputSide === undefined ||
+      (input.depthRecipe?.version === 2 ? input.inputSide === input.depthRecipe.inputSide : supportsPhotoDepthSize(input.inputSide)), {
+      message: "Unsupported depth input size.", path: ["inputSide"],
+    }).refine(input => input.previewPhoto === undefined || input.previz !== false, {
       message: "A preview photo requires reference-photo previz.", path: ["previewPhoto"],
+    }).refine(input => input.previewFraming === undefined || (input.previewPhoto !== undefined && input.previz !== false), {
+      message: "Preview framing requires a preview photo with reference-photo previz.", path: ["previewFraming"],
+    }).refine(input => input.depth !== undefined || (input.nativeDepth === undefined && input.depthRecipe === undefined), {
+      message: "Native depth and depth recipes require an assigned depth map.", path: ["depth"],
+    }).refine(input => input.testPattern !== true || input.patternShader !== undefined, {
+      message: "Test pattern requires its calibration shader.", path: ["patternShader"],
+    }).refine(input => input.depthRecipe?.refinement == null || input.nativeDepth !== undefined, {
+      message: "Refined depth requires its saved native parent.", path: ["nativeDepth"],
+    }).refine(input => input.depthRecipe === undefined || input.inputSide === undefined || input.depthRecipe.inputSide === input.inputSide, {
+      message: "Depth recipe and input size must agree.", path: ["inputSide"],
     }),
     handler: (input, context) => {
       // Source identity and preparation metadata keep the original photograph dimensions.
@@ -63,21 +90,32 @@ export function registerPhotoMappingCommands(bus: LoomBus, options: { refresh?: 
       const height = Math.max(1, Math.round(input.height * scale));
 
       const previz = input.previz ?? true;
+      const pattern = input.patternShader !== undefined;
+      const projectorShift = pattern ? 1 : 0;
+      const video = input.video !== undefined || input.effect === 9;
       const specs: { ref: TempId; type: string; role: string; column: number; row: number; parameters: Record<string, StoredParameter> }[] = [
         { ref: "$photo", type: "movieFileIn", role: "surface", column: 0, row: 0, parameters: { file: input.photo } },
         { ref: "$depth", type: "floatMapIn", role: "depth", column: 0, row: 1,
-          parameters: { file: input.depth, photo: input.photo, interpretation: "depth", inputSide: String(input.inputSide ?? 518) } },
-        input.mask === undefined
-          ? { ref: "$mask", type: "solid", role: "coverage", column: 0, row: 2, parameters: { color: [1, 1, 1, 1] } }
-          : { ref: "$mask", type: "floatMapIn", role: "mask", column: 0, row: 2,
-            parameters: { file: input.mask, photo: input.photo, interpretation: "mask", inputSide: "518" } },
+          parameters: { file: input.depth ?? "", photo: input.photo, interpretation: "depth", inputSide: String(input.inputSide ?? 518),
+            ...(input.depth === undefined ? { emptySource: "constant", emptyValue: 0.5 } : {}),
+            ...(input.depthRecipe === undefined ? {} : depthRecipeParameters(input.depthRecipe)),
+            ...(input.nativeDepth === undefined ? {} : { nativeMap: input.nativeDepth }) } },
+        { ref: "$mask", type: "floatMapIn", role: "mask", column: 0, row: 2,
+          parameters: { file: input.mask ?? "", photo: input.photo, interpretation: "mask", inputSide: "518",
+            ...(input.mask === undefined ? { emptySource: "constant", emptyValue: 1 } : {}) } },
         { ref: "$effect", type: "customWgslMulti", role: "relief", column: 1, row: 0,
-          parameters: { source: input.shader, mode: input.effect ?? 0 } },
-        { ref: "$coverage", type: "mask", role: "surface", column: 2, row: 0, parameters: { channel: "red", apply: "colour" } },
-        { ref: "$grid", type: "gridWarp", role: "surface", column: 3, row: 0, parameters: {} },
-        { ref: "$corner", type: "cornerPin", role: "surface", column: 4, row: 0, parameters: {} },
-        { ref: "$window", type: "window", role: "projector", column: 5, row: 0, parameters: {} },
+          parameters: { source: input.shader, mode: input.effect ?? 0,
+            ...(input.depthRange === undefined ? {} : { depthLow: input.depthRange.low, depthHigh: input.depthRange.high }) } },
+        { ref: "$coverage", type: "mask", role: "surface", column: 2 + projectorShift, row: 0, parameters: { channel: "red", apply: "colour" } },
+        { ref: "$grid", type: "gridWarp", role: "surface", column: 3 + projectorShift, row: 0, parameters: {} },
+        { ref: "$corner", type: "cornerPin", role: "surface", column: 4 + projectorShift, row: 0, parameters: {} },
+        { ref: "$window", type: "window", role: "projector", column: 5 + projectorShift, row: 0, parameters: {} },
       ];
+      if (pattern) specs.push(
+        { ref: "$pattern", type: "customWgsl", role: "calibration", column: 1, row: 3, parameters: { source: input.patternShader! } },
+        { ref: "$testSwitch", type: "switch", role: "calibration", column: 2, row: 0, parameters: { index: input.testPattern === true ? 1 : 0 } },
+      );
+      if (video) specs.push({ ref: "$video", type: "movieFileIn", role: "content", column: 0, row: 3, parameters: { file: input.video ?? "" } });
       if (previz) specs.push(
         // Grade the reference RGB while preserving alpha; Screen opacity controls only
         // the effect's preview strength and leaves the projector branch alone.
@@ -85,7 +123,8 @@ export function registerPhotoMappingCommands(bus: LoomBus, options: { refresh?: 
         { ref: "$previz", type: "screen", role: "preview", column: 2, row: 1, parameters: { opacity: input.previewOpacity ?? 0.35 } },
       );
       if (input.previewPhoto !== undefined) specs.push({ ref: "$previewPhoto", type: "movieFileIn", role: "preview", column: 1, row: 2,
-        parameters: { file: input.previewPhoto, imageFit: input.previewFit ?? "stretch" } });
+        parameters: { file: input.previewPhoto, imageFit: input.previewFit ?? "stretch",
+          ...(input.previewFraming === undefined ? {} : imageFramingParameters(input.previewFraming)) } });
       specs.push({ ref: "$output", type: "output", role: previz ? "preview" : "mapping", column: 3, row: 1, parameters: {} });
       const kinds: string[] = [];
       for (const spec of specs) {
@@ -110,7 +149,7 @@ export function registerPhotoMappingCommands(bus: LoomBus, options: { refresh?: 
         { op: "addNode", ref: spec.ref, type: spec.type, label: `${kinds[index]}_${spec.role}${suffix}`,
           position: { x: origin + spec.column * 260, y: spec.row * 300 }, parameters: spec.parameters },
         { op: "setNodeSize", nodeId: spec.ref, size: { width: 220, height: 220 } },
-        ...(index < 3 || spec.ref === "$previewPhoto" ? [{ op: "setNodeResolution" as const, nodeId: spec.ref,
+        ...(index < 3 || spec.ref === "$previewPhoto" || spec.ref === "$video" ? [{ op: "setNodeResolution" as const, nodeId: spec.ref,
           resolution: { mode: "fixed" as const, width, height } }] : []),
       ]);
       const connect = (source: TempId, target: TempId, portId: string, order?: number): void => {
@@ -118,11 +157,17 @@ export function registerPhotoMappingCommands(bus: LoomBus, options: { refresh?: 
           ...(order === undefined ? {} : { order }) });
       };
       connect("$photo", "$depth", "picture");
-      if (input.mask !== undefined) connect("$photo", "$mask", "picture");
-      connect("$photo", "$effect", "input");
+      connect("$photo", "$mask", "picture");
+      connect(input.effect === 9 ? "$video" : "$photo", "$effect", "input");
       connect("$depth", "$effect", "more", 0);
       connect("$mask", "$effect", "more", 1);
-      connect("$effect", "$coverage", "input");
+      if (pattern) {
+        // Custom WGSL retains its required picture socket even for a UV-only generator.
+        connect("$photo", "$pattern", "input");
+        connect("$effect", "$testSwitch", "inputs", 0);
+        connect("$pattern", "$testSwitch", "inputs", 1);
+      }
+      connect(pattern ? "$testSwitch" : "$effect", "$coverage", "input");
       connect("$mask", "$coverage", "mask");
       connect("$coverage", "$grid", "input");
       connect("$grid", "$corner", "input");
@@ -136,7 +181,7 @@ export function registerPhotoMappingCommands(bus: LoomBus, options: { refresh?: 
         connect("$corner", "$output", "input");
       }
       operations.push({ op: "addGroup", ref: "$group", label: `Photo mapping ${suffix}`,
-        bounds: { x: origin - 20, y: -40, width: 1560, height: 880 }, members: specs.map(spec => spec.ref) });
+        bounds: { x: origin - 20, y: -40, width: pattern ? 1820 : 1560, height: pattern || video ? 1180 : 880 }, members: specs.map(spec => spec.ref) });
       const result = applyGraphPatch({ baseRevision: context.graph.revision, label: "Create photo mapping", operations }, context);
       if (scale === 1 || (result.status !== "applied" && result.status !== "validated")) return result;
       const diagnostics: RuntimeDiagnostic[] = [...(result.diagnostics ?? []), {

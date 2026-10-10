@@ -6,7 +6,7 @@ import { MEDIA_TRANSPORT_PARAMETERS } from "../../domain/media/transport.ts";
 import { pictureFileKind } from "../../domain/media/picture-file.ts";
 import { RGBA_TEXTURE } from "./common-ports.ts";
 import { readCompileInputs } from "./compile-context.ts";
-import { readEnumIndex } from "./parameter-readers.ts";
+import { readEnumIndex, readNumber } from "./parameter-readers.ts";
 import { wgsl } from "../../runtime/backend/wgsl.ts";
 
 /**
@@ -63,13 +63,25 @@ export const MEDIA_IMAGE_FIT_PARAMETERS = {
   imageFit: {
     type: "enum", label: "Image fit", group: "Common", default: "fit",
     options: MEDIA_IMAGE_FIT_OPTIONS,
-    description: "Fit keeps the whole image and its aspect, with transparent margins when needed. Fill crops the center to fill the output. Stretch fills without preserving aspect. Common Resolution controls the output size independently of the source.",
+    description: "Fit keeps the whole image and its aspect, with transparent margins when needed. Fill crops to fill the output. Stretch fills without preserving aspect. Image anchors position the image and set its zoom focus. Common Resolution controls the output size independently of the source.",
+  },
+  imageAnchorX: {
+    type: "number", label: "Image anchor X", group: "Common", default: 0.5, min: 0, max: 1, step: 0.01, range: "bounded",
+    description: "Horizontal image position and zoom focus: 0 anchors the left edge, 0.5 centers the image, and 1 anchors the right edge.",
+  },
+  imageAnchorY: {
+    type: "number", label: "Image anchor Y", group: "Common", default: 0.5, min: 0, max: 1, step: 0.01, range: "bounded",
+    description: "Vertical image position and zoom focus: 0 anchors the top edge, 0.5 centers the image, and 1 anchors the bottom edge.",
+  },
+  imageZoom: {
+    type: "number", label: "Image zoom", group: "Common", default: 1, min: 1, max: 8, step: 0.01, range: "bounded",
+    description: "Magnify the image around its anchor after fitting: 1 keeps the chosen fit, and larger values crop in. Output resolution stays unchanged.",
   },
 } satisfies NodeDefinition["parameters"];
 
 const MEDIA_FIT_WGSL = wgsl`@group(0) @binding(0) var mediaSampler: sampler;
 @group(0) @binding(1) var mediaTexture: texture_2d<f32>;
-struct MediaFitParams { targetResolution: vec2f, imageFit: u32, };
+struct MediaFitParams { targetResolution: vec2f, imageFit: u32, imageAnchor: vec2f, imageZoom: f32, };
 @group(0) @binding(2) var<uniform> params: MediaFitParams;
 
 @fragment
@@ -83,7 +95,8 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   } else if (params.imageFit == 1u) {
     scale = vec2f(max(1.0, sourceAspect / outputAspect), max(1.0, outputAspect / sourceAspect));
   }
-  let sourceUv = (uv - vec2f(0.5)) / scale + vec2f(0.5);
+  scale *= params.imageZoom;
+  let sourceUv = (uv - params.imageAnchor) / scale + params.imageAnchor;
   if (any(sourceUv < vec2f(0.0)) || any(sourceUv > vec2f(1.0))) { return vec4f(0.0); }
   return textureSampleLevel(mediaTexture, mediaSampler, sourceUv, 0.0);
 }`;
@@ -102,7 +115,12 @@ function compileMediaPass(context: unknown, fitted: boolean): CompiledNodeDescri
     textures: [{ binding: "mediaTexture", resourceId: scratchResourceId(nodeId, MEDIA_TEXTURE_KEY) }],
     ...(fitted ? {
       uniformBinding: "params",
-      uniforms: { targetResolution: resolution, imageFit: readEnumIndex(parameters, "imageFit", MEDIA_IMAGE_FIT_OPTIONS, "fit") },
+      uniforms: {
+        targetResolution: resolution, imageFit: readEnumIndex(parameters, "imageFit", MEDIA_IMAGE_FIT_OPTIONS, "fit"),
+        imageAnchor: [readNumber(parameters, "imageAnchorX", MEDIA_IMAGE_FIT_PARAMETERS.imageAnchorX.default),
+          readNumber(parameters, "imageAnchorY", MEDIA_IMAGE_FIT_PARAMETERS.imageAnchorY.default)],
+        imageZoom: readNumber(parameters, "imageZoom", MEDIA_IMAGE_FIT_PARAMETERS.imageZoom.default),
+      },
     } : {}),
     nodeId,
   };

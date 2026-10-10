@@ -22,9 +22,9 @@ test('reload resumes only after renderer preparation and confirmed GPU drainage'
   const h = harness();
   h.contents.emit('will-prevent-unload'); h.contents.emit('will-prevent-unload');
   await setImmediate();
-  assert.deepEqual(h.calls, ['window.loomDesktop.input.prepareForUnload()', 'drain']);
+  assert.deepEqual(h.calls, ['window.loomDesktop.lifecycle.prepareForUnload()', 'drain']);
   h.resolve(); await setImmediate();
-  assert.deepEqual(h.calls.slice(2), ['window.loomDesktop.input.commitUnload()', 'reload']);
+  assert.deepEqual(h.calls.slice(2), ['window.loomDesktop.lifecycle.commitUnload()', 'reload']);
   assert.deepEqual(h.errors, []);
 });
 test('close is resumed as close, never changed into reload', async () => {
@@ -35,6 +35,6 @@ test('close is resumed as close, never changed into reload', async () => {
 test('failed drainage cannot authorize unload', async () => {
   const h = harness(); h.window.emit('close'); h.contents.emit('will-prevent-unload');
   await setImmediate(); h.reject(new Error('retained GPU lease')); await setImmediate();
-  assert.deepEqual(h.calls, ['window.loomDesktop.input.prepareForUnload()', 'drain']);
+  assert.deepEqual(h.calls, ['window.loomDesktop.lifecycle.prepareForUnload()', 'drain']);
   assert.match(h.errors[0], /retained GPU lease/);
 });

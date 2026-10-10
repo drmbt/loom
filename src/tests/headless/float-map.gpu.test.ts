@@ -98,8 +98,8 @@ describe("float32 prepared maps on the real backend", () => {
       registerPhotoMappingCommands(bus);
       const result = await bus.execute("photoMapping.create", {
         photo: createFileReference("photo", "image", "surface.png"),
-        depth: createFileReference("depth", "binary", "depth.loomf32"),
-        ...(masked ? { mask: createFileReference("mask", "binary", "mask.loomf32") } : {}),
+        depth: createFileReference("depth", "binary", "depth.loom.exr"),
+        ...(masked ? { mask: createFileReference("mask", "binary", "mask.loom.exr") } : {}),
         width, height, shader: PHOTO_MAPPING_SHADER, effect,
       }, contextFor(alice));
       expect(result.status).toBe("applied");
@@ -222,7 +222,7 @@ describe("float32 prepared maps on the real backend", () => {
         expect(coverage[y! * size + x!]).toBe(0);
         expect(traced(x!, y!).every(value => value < 0.00001)).toBe(true);
       }
-      // A mask covering the complete photograph still ends at the image boundary.
+      // Full-frame coverage has no synthetic silhouette at the photograph boundary.
       coverage.fill(1);
       backend.registerMediaSource(floatMapSourceIdFor("coverage"), {
         currentFrame: () => ({ frameId: 2, bytes: new Uint8Array(coverage.buffer) }), ended: true,
@@ -232,7 +232,7 @@ describe("float32 prepared maps on the real backend", () => {
       const fullTraced = await render();
       for (const [x, y] of [[0, 32], [32, 0]]) {
         const boost = fullTraced(x!, y!).slice(0, 3).map((value, channel) => value - fullPlain(x!, y!)[channel]!);
-        expect(Math.max(...boost), "Full-image mask ends at the photograph boundary").toBeGreaterThan(0.2);
+        expect(Math.max(...boost), "Full-frame coverage has no artificial image-boundary outline").toBeLessThan(0.001);
       }
       expect(fullTraced(16, 32)).toEqual(fullPlain(16, 32));
     } finally { backend.dispose(); }

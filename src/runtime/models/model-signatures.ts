@@ -61,6 +61,20 @@ export interface ModelSignature {
 }
 
 export const MODEL_SIGNATURES: readonly ModelSignature[] = [
+  // Extracted from Large FP16 at 1fa1591 on 2026-10-09. IO stays float32.
+  {
+    modelId: "depth-anything-v2-large-fp16",
+    input: { name: "pixel_values", type: "float32", shape: ["batch_size", "3", "height", "width"] },
+    output: { name: "predicted_depth", type: "float32" },
+    inputs: ["pixel_values"], outputs: ["predicted_depth"],
+  },
+  // Extracted from Large Q4F16 at 1fa1591 on 2026-10-09. IO stays float32.
+  {
+    modelId: "depth-anything-v2-large-q4f16",
+    input: { name: "pixel_values", type: "float32", shape: ["batch_size", "3", "height", "width"] },
+    output: { name: "predicted_depth", type: "float32" },
+    inputs: ["pixel_values"], outputs: ["predicted_depth"],
+  },
   // Extracted from the hash-pinned TopFormer artifact; native logits are 150 × 64 × 64.
   {
     modelId: "topformer-ade20k",

@@ -1,15 +1,16 @@
 /* global require, window, Event, process */
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { contextBridge, ipcRenderer, sharedTexture } = require('electron');
+const nativeVideo = process.argv.includes('--loom-native-video');
 const inputs = new Map();
+const preparationJobs = new Map();
 const deliveries = new Set();
 const opening = new Set();
 let retiring = false;
 let unloadPrepared = false;
 let usedNativeInput = false;
 window.addEventListener('beforeunload', event => {
-  // A locally forgotten session can still have a main-process GPU release pending.
-  // Once this document has opened inputs, only the main drain can authorize unload.
+  // Native video references and static worker processes both need the main drain.
   if (!unloadPrepared && usedNativeInput) {
     event.preventDefault(); event.returnValue = false;
   }
@@ -28,7 +29,7 @@ const forget = (id, record) => {
   if (record.closed && !record.polling && !record.consuming) inputs.delete(id);
 };
 // Receiver registration is synchronous and precedes exposure of open/poll.
-sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture: imported }, metadata) => {
+if (nativeVideo) sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture: imported }, metadata) => {
   const record = inputs.get(metadata.session);
   let frame;
   let consuming = false;
@@ -108,8 +109,53 @@ function createOutputBridge(prefix) {
     status: name => ipcRenderer.invoke(`${prefix}-status`, name),
   };
 }
+function preparationJob(id) {
+  const record = preparationJobs.get(id);
+  if (!record) throw new Error('Native preparation job is closed or unknown');
+  return record;
+}
+function closePreparation(id) {
+  const record = preparationJob(id);
+  if (!record.closing) record.closing = ipcRenderer.invoke('loom-preparation-close', id).then(result => {
+    preparationJobs.delete(id);
+    return result;
+  });
+  return record.closing;
+}
+const lifecycle = {
+    prepareForUnload: async () => {
+      retiring = true;
+      window.dispatchEvent(new Event('loom-native-input-retire'));
+      // A denied/failed open still settles ownership. Its caller receives the
+      // rejection; main's retireOwner remains the authority for safe drainage.
+      await Promise.allSettled([...opening]);
+      for (const record of inputs.values()) record.closed = true;
+      for (const release of [...deliveries]) release();
+      await Promise.all([...preparationJobs.keys()].map(closePreparation));
+    },
+    commitUnload: () => { unloadPrepared = true; },
+};
+
 contextBridge.exposeInMainWorld('loomDesktop', {
-  vision: {
+  preparation: {
+    probe: () => ipcRenderer.invoke('loom-preparation-probe'),
+    start: async request => {
+      if (retiring) throw new Error('Native preparation document is retiring');
+      usedNativeInput = true;
+      const pending = ipcRenderer.invoke('loom-preparation-start', request);
+      opening.add(pending);
+      try {
+        const id = await pending;
+        if (typeof id !== 'string' || id.length === 0) throw new Error('Native preparation returned no owned job identifier');
+        preparationJobs.set(id, { closing: null });
+        return id;
+      } finally { opening.delete(pending); }
+    },
+    status: id => { preparationJob(id); return ipcRenderer.invoke('loom-preparation-status', id); },
+    cancel: id => { preparationJob(id); return ipcRenderer.invoke('loom-preparation-cancel', id); },
+    close: closePreparation,
+  },
+  ...(nativeVideo ? { vision: {
     open: async (name, width, height, outputWidth, outputHeight, consume) => {
       if (retiring) throw new Error('Native inference document is retiring');
       if (typeof consume !== 'function') throw new Error('Native inference requires a frame consumer');
@@ -133,22 +179,11 @@ contextBridge.exposeInMainWorld('loomDesktop', {
       try { return await ipcRenderer.invoke('loom-native-vision-close', id); }
       finally { if (record) forget(id, record); }
     },
-  },
-  input: {
-    prepareForUnload: async () => {
-      retiring = true;
-      window.dispatchEvent(new Event('loom-native-input-retire'));
-      // A denied/failed open still settles ownership. Its caller receives the
-      // rejection; main's retireOwner remains the authority for safe drainage.
-      await Promise.allSettled([...opening]);
-      for (const record of inputs.values()) record.closed = true;
-      for (const release of [...deliveries]) release();
-    },
-    commitUnload: () => { unloadPrepared = true; },
-    ...createInputBridge('loom-native-input'),
-  },
-  ...(process.argv.includes('--loom-ndi-input') ? {
+  } } : {}),
+  lifecycle,
+  ...(nativeVideo ? { input: { ...lifecycle, ...createInputBridge('loom-native-input') } } : {}),
+  ...(nativeVideo && process.argv.includes('--loom-ndi-input') ? {
     ndiInput: createInputBridge('loom-ndi-input'), ndiOutput: createOutputBridge('loom-ndi-output'),
   } : {}),
-  ...createOutputBridge('loom-native-output'),
+  ...(nativeVideo ? createOutputBridge('loom-native-output') : {}),
 });
